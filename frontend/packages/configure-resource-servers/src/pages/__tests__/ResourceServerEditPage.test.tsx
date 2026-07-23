@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import * as componentsModule from '@thunderid/components';
+import * as thunderIdReactModule from '@thunderid/react';
 import {renderWithProviders, screen, fireEvent, waitFor} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -47,9 +49,10 @@ vi.mock('react-router', async () => {
   };
 });
 
-vi.mock('@thunderid/react', () => ({
-  useThunderID: () => ({http: {request: vi.fn()}}),
-}));
+vi.mock('@thunderid/react', {spy: true});
+
+// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- vi.mock({spy:true}) type inference doesn't resolve for this package's conditional exports
+vi.mocked(thunderIdReactModule.useThunderID).mockImplementation(() => ({http: {request: vi.fn()}}) as never);
 
 vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
@@ -64,32 +67,30 @@ vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => ({error: vi.fn(), info: vi.fn(), debug: vi.fn()}),
 }));
 
-vi.mock('@thunderid/components', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@thunderid/components')>();
-  return {
-    ...actual,
-    PageLoadingAnimation: vi.fn(() => <div role="progressbar" />),
-    SettingsCard: vi.fn(({children, title}: {children: ReactNode; title?: string}) => (
-      <div data-testid="settings-card">
-        {title && <span>{title}</span>}
-        {children}
-      </div>
-    )),
-    UnsavedChangesBar: vi.fn(
-      ({message, onReset, onSave}: {message: string; onReset: () => void; onSave: () => void}) => (
-        <div data-testid="unsaved-changes-bar">
-          <span>{message}</span>
-          <button type="button" onClick={onReset}>
-            Discard
-          </button>
-          <button type="button" onClick={onSave}>
-            Save
-          </button>
-        </div>
-      ),
-    ),
-  };
-});
+vi.mock('@thunderid/components', {spy: true});
+
+vi.mocked(componentsModule.PageLoadingAnimation).mockImplementation(() => <div role="progressbar" />);
+vi.mocked(componentsModule.SettingsCard).mockImplementation(
+  ({children, title}: {children: ReactNode; title?: string}) => (
+    <div data-testid="settings-card">
+      {title && <span>{title}</span>}
+      {children}
+    </div>
+  ),
+);
+vi.mocked(componentsModule.UnsavedChangesBar).mockImplementation(
+  ({message, onReset, onSave}: {message: string; onReset: () => void; onSave: () => void}) => (
+    <div data-testid="unsaved-changes-bar">
+      <span>{message}</span>
+      <button type="button" onClick={onReset}>
+        Discard
+      </button>
+      <button type="button" onClick={onSave}>
+        Save
+      </button>
+    </div>
+  ),
+);
 
 const mockUseGetResourceServer = vi.fn();
 const mockUpdateMutate = vi.fn();

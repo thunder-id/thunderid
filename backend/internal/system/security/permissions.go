@@ -20,23 +20,14 @@ package security
 
 import "strings"
 
-// directAuthPaths defines the Direct API authentication path patterns (a subset of publicPaths)
-// that are gated by the Direct Auth Secret when one is configured. Uses the same glob syntax as
-// publicPaths.
-var directAuthPaths = []string{
-	"/auth/**",
-	"/register/passkey/**",
-	"/access/**",
-}
-
 // publicPaths defines the list of public paths using glob patterns.
 // - "*": Matches a single path segment (e.g., /a/*/b).
 // - "**": Matches zero or more path segments (subpaths) at the end of the path (e.g., /a/**).
 // Not allowed in the middle of the path (e.g., /a/**/b is invalid).
 //
-// The Direct API paths are appended from directAuthPaths so the two lists cannot drift: those
-// endpoints are public, but are additionally gated by the Direct Auth Secret.
-var publicPaths = append([]string{
+// The Direct API paths (/auth/**, /register/passkey/**, /access/**) are public here; their Direct
+// Auth Secret gating is owned by the authn service (internal/authn).
+var publicPaths = []string{
 	"/health/**",
 	"/flow/execute/**",
 	"/flow/meta",
@@ -66,7 +57,10 @@ var publicPaths = append([]string{
 	"/i18n/languages/*/translations/resolve",
 	"/i18n/languages/*/translations/ns/*/keys/*/resolve",
 	"/mcp/**", // MCP authorization is handled at MCP server handler.
-}, directAuthPaths...)
+	"/auth/**",
+	"/register/passkey/**",
+	"/access/**",
+}
 
 // ---- Resource types ----
 

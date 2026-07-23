@@ -19,22 +19,19 @@
 package manager
 
 import (
-	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
-	"github.com/thunder-id/thunderid/internal/authn/magiclink"
-	"github.com/thunder-id/thunderid/internal/authn/openid4vp"
-	"github.com/thunder-id/thunderid/internal/authn/otp"
-	"github.com/thunder-id/thunderid/internal/authn/passkey"
-	"github.com/thunder-id/thunderid/internal/authnprovider/provider"
-	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	"github.com/thunder-id/thunderid/internal/authnprovider/provider"
 )
 
-// InitializeAuthnProviderManager initializes and returns an AuthnProviderManager.
-func InitializeAuthnProviderManager(entitySvc entity.EntityServiceInterface,
-	passkeySvc passkey.PasskeyServiceInterface, otpSvc otp.OTPAuthnServiceInterface,
-	magicLinkSvc magiclink.MagicLinkAuthnServiceInterface,
-	openid4vpSvc openid4vp.OpenID4VPServiceInterface,
-	federatedAuths map[providers.IDPType]authncommon.FederatedAuthenticator) providers.AuthnProviderManager {
-	p := provider.InitializeAuthnProvider(entitySvc, passkeySvc, otpSvc, magicLinkSvc, openid4vpSvc, federatedAuths)
-	return newAuthnProviderManager(p)
+// AuthnProvider pairs a provider instance with the credential keys it handles.
+type AuthnProvider struct {
+	Instance provider.AuthnProviderInterface
+	Creds    []string
+}
+
+// Initialize creates a new AuthnProviderManager. defaultProvider is required.
+func Initialize(defaultProvider provider.AuthnProviderInterface,
+	others map[string]AuthnProvider) (providers.AuthnProviderManager, error) {
+	return newAuthnProviderManager(defaultProvider, others)
 }

@@ -31,7 +31,7 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-var testPublicPaths = append([]string{
+var testPublicPaths = []string{
 	"/health/**",
 	"/flow/execute/**",
 	"/oauth2/**",
@@ -44,7 +44,10 @@ var testPublicPaths = append([]string{
 	"/i18n/languages",
 	"/i18n/languages/*/translations/resolve",
 	"/i18n/languages/*/translations/ns/*/keys/*/resolve",
-}, directAuthPaths...)
+	"/auth/**",
+	"/register/passkey/**",
+	"/access/**",
+}
 
 // SecurityServiceTestSuite defines the test suite for SecurityService
 type SecurityServiceTestSuite struct {
@@ -67,7 +70,7 @@ func (suite *SecurityServiceTestSuite) SetupTest() {
 	var err error
 	suite.service, err = newSecurityService(
 		[]AuthenticatorInterface{suite.mockAuth1, suite.mockAuth2}, suite.mockRevocation,
-		testPublicPaths, apiPermissionEntries, "")
+		testPublicPaths, apiPermissionEntries)
 	suite.Require().NoError(err)
 
 	// Create test authentication context with "system" permission so that
@@ -181,130 +184,11 @@ func (suite *SecurityServiceTestSuite) TestProcess_SuccessfulAuthentication_Seco
 	assert.Equal(suite.T(), "user123", userID)
 }
 
-// newDirectAuthTestService builds a security service configured with the given Direct Auth secret,
-// optionally including a passthrough authenticator so Direct-API/public paths fall through to a runtime
-// context.
-func (suite *SecurityServiceTestSuite) newDirectAuthTestService(
-	configuredSecret string, auth AuthenticatorInterface) *securityService {
-	authenticators := []AuthenticatorInterface{}
-	if auth != nil {
-		authenticators = append(authenticators, auth)
-	}
-	svc, err := newSecurityService(authenticators, nil, testPublicPaths, apiPermissionEntries, configuredSecret)
-	suite.Require().NoError(err)
-	return svc
-}
-
-// passthroughAuthenticator returns an authenticator that never handles the request.
-func passthroughAuthenticator() *AuthenticatorInterfaceMock {
-	m := &AuthenticatorInterfaceMock{}
-	m.On("CanHandle", mock.Anything).Return(false)
-	return m
-}
-
-// TestProcess_DirectAuthSecret tests the Direct Auth Secret gate on the Direct API endpoints.
-func (suite *SecurityServiceTestSuite) TestProcess_DirectAuthSecret() {
-	const secret = "s3cr3t-value"
-
-	suite.Run("valid secret is admitted", func() {
-		svc := suite.newDirectAuthTestService(secret, passthroughAuthenticator())
-		req := httptest.NewRequest(http.MethodPost, "/auth/credentials/authenticate", nil)
-		req.Header.Set(directAuthHeaderName, secret)
-
-		ctx, err := svc.Process(req)
-
-		suite.NoError(err)
-		suite.True(IsRuntimeContext(ctx))
-	})
-
-	suite.Run("valid secret is admitted for AuthZEN access evaluation", func() {
-		svc := suite.newDirectAuthTestService(secret, passthroughAuthenticator())
-		req := httptest.NewRequest(http.MethodPost, "/access/v1/evaluation", nil)
-		req.Header.Set(directAuthHeaderName, secret)
-
-		ctx, err := svc.Process(req)
-
-		suite.NoError(err)
-		suite.True(IsRuntimeContext(ctx))
-	})
-
-	suite.Run("missing secret is rejected", func() {
-		svc := suite.newDirectAuthTestService(secret, nil)
-		req := httptest.NewRequest(http.MethodPost, "/auth/credentials/authenticate", nil)
-
-		ctx, err := svc.Process(req)
-
-		suite.Nil(ctx)
-		suite.ErrorIs(err, errInvalidDirectAuthSecret)
-	})
-
-	suite.Run("wrong secret is rejected", func() {
-		svc := suite.newDirectAuthTestService(secret, nil)
-		req := httptest.NewRequest(http.MethodPost, "/register/passkey/start", nil)
-		req.Header.Set(directAuthHeaderName, "wrong")
-
-		ctx, err := svc.Process(req)
-
-		suite.Nil(ctx)
-		suite.ErrorIs(err, errInvalidDirectAuthSecret)
-	})
-
-	suite.Run("CORS preflight is exempt", func() {
-		svc := suite.newDirectAuthTestService(secret, nil)
-		req := httptest.NewRequest(http.MethodOptions, "/auth/credentials/authenticate", nil)
-
-		ctx, err := svc.Process(req)
-
-		suite.NoError(err)
-		suite.NotNil(ctx)
-	})
-
-	suite.Run("non-Direct-API public path is not gated", func() {
-		svc := suite.newDirectAuthTestService(secret, passthroughAuthenticator())
-		req := httptest.NewRequest(http.MethodGet, "/health/liveness", nil)
-
-		ctx, err := svc.Process(req)
-
-		suite.NoError(err)
-		suite.True(IsRuntimeContext(ctx))
-	})
-
-	suite.Run("no configured secret blocks Direct API paths (secure by default)", func() {
-		svc := suite.newDirectAuthTestService("", nil)
-		req := httptest.NewRequest(http.MethodPost, "/auth/credentials/authenticate", nil)
-
-		ctx, err := svc.Process(req)
-
-		suite.Nil(ctx)
-		suite.ErrorIs(err, errDirectAuthSecretNotConfigured)
-	})
-}
-
-// TestInitialize verifies the security middleware is constructed with and without an direct secret.
+// TestInitialize verifies the security middleware is constructed successfully.
 func (suite *SecurityServiceTestSuite) TestInitialize() {
-	mw, err := Initialize(nil, nil, "some-direct-secret")
+	mw, err := Initialize(nil, nil)
 	suite.Require().NoError(err)
 	suite.Require().NotNil(mw)
-
-	mwOpen, err := Initialize(nil, nil, "")
-	suite.Require().NoError(err)
-	suite.Require().NotNil(mwOpen)
-}
-
-// TestIsDirectAPIPath covers the Direct-API-path matcher, including the length guard.
-func (suite *SecurityServiceTestSuite) TestIsDirectAPIPath() {
-	svc := suite.newDirectAuthTestService("some-direct-secret", nil)
-
-	suite.True(svc.isDirectAuthPath(context.Background(), "/auth/credentials/authenticate"))
-	suite.True(svc.isDirectAuthPath(context.Background(), "/register/passkey/start"))
-	suite.True(svc.isDirectAuthPath(context.Background(), "/access/v1/evaluation"))
-	suite.True(svc.isDirectAuthPath(context.Background(), "/access/v1/evaluations"))
-	suite.True(svc.isDirectAuthPath(context.Background(), "/access/v1/search/action"))
-	suite.True(svc.isDirectAuthPath(context.Background(), "/access/v1/future-endpoint"))
-	suite.False(svc.isDirectAuthPath(context.Background(), "/.well-known/authzen-configuration"))
-	suite.False(svc.isDirectAuthPath(context.Background(), "/health/liveness"))
-	// Paths longer than the maximum allowed length are rejected by the length guard.
-	suite.False(svc.isDirectAuthPath(context.Background(), "/auth/"+strings.Repeat("a", maxPublicPathLength)))
 }
 
 // Test Process method when no authenticator can handle the request
@@ -352,7 +236,7 @@ func (suite *SecurityServiceTestSuite) TestProcess_RevokedToken() {
 	mockRevocation.On("EnsureNotRevoked", mock.Anything, "jti-123").Return(revokedErr)
 
 	service, err := newSecurityService(
-		[]AuthenticatorInterface{suite.mockAuth1}, mockRevocation, testPublicPaths, apiPermissionEntries, "")
+		[]AuthenticatorInterface{suite.mockAuth1}, mockRevocation, testPublicPaths, apiPermissionEntries)
 	suite.Require().NoError(err)
 
 	ctx, err := service.Process(req)
@@ -376,7 +260,7 @@ func (suite *SecurityServiceTestSuite) TestProcess_NotRevokedToken() {
 	mockRevocation.On("EnsureNotRevoked", mock.Anything, "jti-456").Return(nil)
 
 	service, err := newSecurityService(
-		[]AuthenticatorInterface{suite.mockAuth1}, mockRevocation, testPublicPaths, apiPermissionEntries, "")
+		[]AuthenticatorInterface{suite.mockAuth1}, mockRevocation, testPublicPaths, apiPermissionEntries)
 	suite.Require().NoError(err)
 
 	ctx, err := service.Process(req)
@@ -517,7 +401,7 @@ func (suite *SecurityServiceTestSuite) TestIsPublicPath() {
 
 // Test SecurityService with empty authenticators list
 func (suite *SecurityServiceTestSuite) TestProcess_EmptyAuthenticators() {
-	service, err := newSecurityService([]AuthenticatorInterface{}, nil, testPublicPaths, apiPermissionEntries, "")
+	service, err := newSecurityService([]AuthenticatorInterface{}, nil, testPublicPaths, apiPermissionEntries)
 	suite.Require().NoError(err)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/protected", nil)
@@ -530,7 +414,7 @@ func (suite *SecurityServiceTestSuite) TestProcess_EmptyAuthenticators() {
 
 // Test SecurityService with nil authenticators list
 func (suite *SecurityServiceTestSuite) TestProcess_NilAuthenticators() {
-	service, err := newSecurityService(nil, nil, testPublicPaths, apiPermissionEntries, "")
+	service, err := newSecurityService(nil, nil, testPublicPaths, apiPermissionEntries)
 	suite.Require().NoError(err)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/protected", nil)
@@ -648,7 +532,7 @@ func (suite *SecurityServiceTestSuite) TestNewSecurityService_Error() {
 
 	for _, tt := range tests {
 		suite.Run(tt.name, func() {
-			service, err := newSecurityService(nil, nil, tt.publicPaths, tt.apiPerms, "")
+			service, err := newSecurityService(nil, nil, tt.publicPaths, tt.apiPerms)
 			assert.Error(suite.T(), err)
 			assert.Nil(suite.T(), service)
 			assert.Contains(suite.T(), err.Error(), tt.errContains)

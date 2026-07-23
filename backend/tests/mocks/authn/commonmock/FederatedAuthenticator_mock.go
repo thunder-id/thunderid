@@ -40,8 +40,8 @@ func (_m *FederatedAuthenticatorMock) EXPECT() *FederatedAuthenticatorMock_Expec
 }
 
 // Authenticate provides a mock function for the type FederatedAuthenticatorMock
-func (_mock *FederatedAuthenticatorMock) Authenticate(ctx context.Context, idpID string, code string) (*common.AuthnResult, *common0.ServiceError) {
-	ret := _mock.Called(ctx, idpID, code)
+func (_mock *FederatedAuthenticatorMock) Authenticate(ctx context.Context, idpID string, authzData common.AuthorizationData) (*common.AuthnResult, *common0.ServiceError) {
+	ret := _mock.Called(ctx, idpID, authzData)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Authenticate")
@@ -49,18 +49,18 @@ func (_mock *FederatedAuthenticatorMock) Authenticate(ctx context.Context, idpID
 
 	var r0 *common.AuthnResult
 	var r1 *common0.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*common.AuthnResult, *common0.ServiceError)); ok {
-		return returnFunc(ctx, idpID, code)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, common.AuthorizationData) (*common.AuthnResult, *common0.ServiceError)); ok {
+		return returnFunc(ctx, idpID, authzData)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *common.AuthnResult); ok {
-		r0 = returnFunc(ctx, idpID, code)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, common.AuthorizationData) *common.AuthnResult); ok {
+		r0 = returnFunc(ctx, idpID, authzData)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*common.AuthnResult)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common0.ServiceError); ok {
-		r1 = returnFunc(ctx, idpID, code)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, common.AuthorizationData) *common0.ServiceError); ok {
+		r1 = returnFunc(ctx, idpID, authzData)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common0.ServiceError)
@@ -77,12 +77,12 @@ type FederatedAuthenticatorMock_Authenticate_Call struct {
 // Authenticate is a helper method to define mock.On call
 //   - ctx context.Context
 //   - idpID string
-//   - code string
-func (_e *FederatedAuthenticatorMock_Expecter) Authenticate(ctx interface{}, idpID interface{}, code interface{}) *FederatedAuthenticatorMock_Authenticate_Call {
-	return &FederatedAuthenticatorMock_Authenticate_Call{Call: _e.mock.On("Authenticate", ctx, idpID, code)}
+//   - authzData common.AuthorizationData
+func (_e *FederatedAuthenticatorMock_Expecter) Authenticate(ctx interface{}, idpID interface{}, authzData interface{}) *FederatedAuthenticatorMock_Authenticate_Call {
+	return &FederatedAuthenticatorMock_Authenticate_Call{Call: _e.mock.On("Authenticate", ctx, idpID, authzData)}
 }
 
-func (_c *FederatedAuthenticatorMock_Authenticate_Call) Run(run func(ctx context.Context, idpID string, code string)) *FederatedAuthenticatorMock_Authenticate_Call {
+func (_c *FederatedAuthenticatorMock_Authenticate_Call) Run(run func(ctx context.Context, idpID string, authzData common.AuthorizationData)) *FederatedAuthenticatorMock_Authenticate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -92,9 +92,9 @@ func (_c *FederatedAuthenticatorMock_Authenticate_Call) Run(run func(ctx context
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 string
+		var arg2 common.AuthorizationData
 		if args[2] != nil {
-			arg2 = args[2].(string)
+			arg2 = args[2].(common.AuthorizationData)
 		}
 		run(
 			arg0,
@@ -110,7 +110,7 @@ func (_c *FederatedAuthenticatorMock_Authenticate_Call) Return(authnResult *comm
 	return _c
 }
 
-func (_c *FederatedAuthenticatorMock_Authenticate_Call) RunAndReturn(run func(ctx context.Context, idpID string, code string) (*common.AuthnResult, *common0.ServiceError)) *FederatedAuthenticatorMock_Authenticate_Call {
+func (_c *FederatedAuthenticatorMock_Authenticate_Call) RunAndReturn(run func(ctx context.Context, idpID string, authzData common.AuthorizationData) (*common.AuthnResult, *common0.ServiceError)) *FederatedAuthenticatorMock_Authenticate_Call {
 	_c.Call.Return(run)
 	return _c
 }

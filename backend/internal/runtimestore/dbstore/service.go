@@ -68,6 +68,35 @@ func (d *dbStore) Put(ctx context.Context, namespace providers.RuntimeStoreNames
 	return nil
 }
 
+// PutIfNotExists atomically stores a value only if the key does not already hold a non-expired
+// value. A non-positive ttlSeconds stores the entry without expiry.
+func (d *dbStore) PutIfNotExists(ctx context.Context, namespace providers.RuntimeStoreNamespace,
+	key string, value []byte, ttlSeconds int64) (bool, error) {
+	dbClient, err := d.dbProvider.GetRuntimeTransientDBClient()
+	if err != nil {
+		return false, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	now := time.Now().UTC()
+	var expiryTime interface{}
+	if ttlSeconds > 0 {
+		expiryTime = now.Add(time.Duration(ttlSeconds) * time.Second)
+	}
+
+	results, err := dbClient.QueryContext(
+		ctx, queryPutIfNotExistsRuntimeStore, d.deploymentID, string(namespace), key, value, expiryTime, now,
+	)
+	if err != nil {
+		return false, fmt.Errorf("failed to store in database: %w", err)
+	}
+	if len(results) == 0 {
+		return false, nil
+	}
+
+	d.logger.Debug(ctx, "Stored in database", log.String("key", key))
+	return true, nil
+}
+
 // Get retrieves a value from the database runtime store by its key.
 // Returns (nil, nil) when the key is missing or expired.
 func (d *dbStore) Get(ctx context.Context, namespace providers.RuntimeStoreNamespace,

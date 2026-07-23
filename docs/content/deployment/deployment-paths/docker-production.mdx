@@ -1,0 +1,223 @@
+---
+title: Docker Production Recommendations
+docType: guide
+sidebar_position: 2
+persona: iam
+description: Production-specific recommendations for running reliably and securely with Docker.
+---
+
+import {NextSteps, NextStepsCard} from '../../../src/components/NextSteps';
+
+# Docker Production Recommendations
+
+This guide covers Docker-specific hardening steps for running <ProductName /> in production. For configuration-level settings such as TLS certificates, encryption keys, and CORS, see the [Production Deployment Guidelines](../../production-guidelines).
+
+## Pin the Image Version
+
+Always pin to a specific release tag rather than `latest`:
+
+```bash
+# Avoid — resolves to a different image after each release
+ghcr.io/thunder-id/thunderid:latest
+
+# Prefer — explicit and reproducible
+ghcr.io/thunder-id/thunderid:latest
+```
+
+Pinning ensures upgrades are intentional and your deployment is reproducible across environments.
+
+## Use PostgreSQL
+
+SQLite stores data in a single local file and does not support concurrent writes. For production:
+
+- Use an external PostgreSQL instance (13 or later).
+- Configure the connection in `deployment.yaml`. See [Configure a Production Database](../../production-guidelines#configure-a-production-database) for the full schema.
+- Mount `deployment.yaml` into the container rather than baking configuration into a custom image.
+
+## Set a Restart Policy
+
+Always run <ProductName /> with `--restart unless-stopped` so it recovers automatically from host reboots and unexpected exits:
+
+```bash
+docker run -d \
+  --name thunderid \
+  --restart unless-stopped \
+  ...
+```
+
+In a Compose file:
+
+```yaml
+services:
+  thunderid:
+    restart: unless-stopped
+```
+
+## Persist Data with Named Volumes
+
+Without a volume, all data inside the container is lost when it is stopped or recreated. Mount a named volume for the database directory:
+
+```bash
+docker run -d \
+  --name thunderid \
+  --restart unless-stopped \
+  -v thunderid-data:/opt/thunder/database \
+  ghcr.io/thunder-id/thunderid:latest
+```
+
+Also mount the security directory to keep TLS certificates and the encryption key outside the container lifecycle:
+
+```bash
+-v $(pwd)/security:/opt/thunder/config/resources/security
+```
+
+## Terminate TLS at a Reverse Proxy
+
+Running a reverse proxy in front of <ProductName /> separates TLS termination from the application and gives you centralized certificate management. Use [Nginx](https://nginx.org/) or [Traefik](https://traefik.io/).
+
+**NGINX configuration example:**
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name thunderid.example.com;
+
+    ssl_certificate     /etc/ssl/certs/thunderid.crt;
+    ssl_certificate_key /etc/ssl/private/thunderid.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    location / {
+        proxy_pass         https://thunderid:8090;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+**Compose file with NGINX:**
+
+```yaml
+services:
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/thunderid.conf
+      - ./certs:/etc/ssl
+    depends_on:
+      - thunderid
+
+  thunderid:
+    image: ghcr.io/thunder-id/thunderid:latest
+    restart: unless-stopped
+    expose:
+      - "8090"
+    volumes:
+      - ./deployment.yaml:/opt/thunder/deployment.yaml
+```
+
+## Set Resource Constraints
+
+Prevent a runaway container from exhausting host resources by setting CPU and memory limits:
+
+```yaml
+services:
+  thunderid:
+    image: ghcr.io/thunder-id/thunderid:latest
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+```
+
+Start conservative and adjust based on observed usage.
+
+## Configure a Health Check
+
+Add a health check so Docker can detect and restart an unhealthy container automatically:
+
+```yaml
+services:
+  thunderid:
+    image: ghcr.io/thunder-id/thunderid:latest
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "https://localhost:8090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+```
+
+## Manage Secrets Securely
+
+Never pass secrets as inline environment variables or in `docker run` commands: they appear in `docker inspect` output and shell history.
+
+**Use an environment file:**
+
+```bash
+# .env  — add to .gitignore
+DB_HOST=postgres.example.com
+DB_USER=thunderid_user
+DB_PASS=<secure-password>
+```
+
+Reference it with `--env-file`:
+
+```bash
+docker run -d \
+  --name thunderid \
+  --env-file .env \
+  ...
+```
+
+Or in a Compose file:
+
+```yaml
+services:
+  thunderid:
+    env_file: .env
+```
+
+For secrets that must not appear on disk even temporarily, use [Docker Secrets](https://docs.docker.com/engine/swarm/secrets/) (Swarm mode) or mount them from a secrets manager such as HashiCorp Vault or AWS Secrets Manager.
+
+## Configure Log Drivers
+
+By default, Docker writes logs to JSON files with no size limit or rotation. Set limits to avoid filling the disk:
+
+```bash
+docker run -d \
+  --name thunderid \
+  --log-driver json-file \
+  --log-opt max-size=50m \
+  --log-opt max-file=5 \
+  ...
+```
+
+To forward directly to a log aggregator, use the appropriate driver:
+
+```bash
+docker run -d \
+  --name thunderid \
+  --log-driver syslog \
+  --log-opt syslog-address=tcp://logs.example.com:514 \
+  ...
+```
+
+## Next Steps
+
+<NextSteps>
+  <NextStepsCard
+    title="Production Deployment Guidelines"
+    description="Apply configuration-level hardening: TLS certificates, encryption keys, CORS allowlist, and Redis caching for multi-replica setups."
+    href="../../production-guidelines"
+    cta="Go to production guidelines"
+  />
+</NextSteps>

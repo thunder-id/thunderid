@@ -22,11 +22,13 @@ import {Plus} from '@wso2/oxygen-ui-icons-react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import UserTypesList from '../components/UserTypesList';
+import useUserTypeRoutes from '../hooks/useUserTypeRoutes';
 
 export default function UserTypesListPage() {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('UserTypesListPage');
+  const routes = useUserTypeRoutes();
 
   return (
     <PageContent>
@@ -40,7 +42,7 @@ export default function UserTypesListPage() {
             startIcon={<Plus size={18} />}
             onClick={() => {
               const handler = async () => {
-                await navigate('/user-types/create');
+                await navigate(routes.create());
               };
 
               handler().catch((error: unknown) => {

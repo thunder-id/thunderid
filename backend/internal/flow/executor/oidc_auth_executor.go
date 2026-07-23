@@ -31,6 +31,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/idp"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -106,7 +107,7 @@ func (o *oidcAuthExecutor) Execute(ctx *providers.NodeContext) (*providers.Execu
 
 	if !o.HasRequiredInputs(ctx, execResp) {
 		logger.Debug(ctx.Context, "Required inputs for OIDC authentication executor is not provided")
-		err := o.BuildAuthorizeFlow(ctx, execResp)
+		_, err := o.BuildAuthorizeFlow(ctx, execResp)
 		if err != nil {
 			return nil, err
 		}
@@ -122,6 +123,30 @@ func (o *oidcAuthExecutor) Execute(ctx *providers.NodeContext) (*providers.Execu
 		log.Bool("isAuthenticated", execResp.AuthUser.IsAuthenticated()))
 
 	return execResp, nil
+}
+
+// BuildAuthorizeFlow extends the base OAuth authorize flow by storing the OIDC nonce from
+// the service-level metadata into runtime data for later ID token validation.
+func (o *oidcAuthExecutor) BuildAuthorizeFlow(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) (map[string]string, error) {
+	metadata, err := o.oAuthExecutorInterface.BuildAuthorizeFlow(ctx, execResp)
+	if err != nil {
+		return nil, err
+	}
+
+	if execResp.Status != providers.ExecExternalRedirection {
+		return metadata, nil
+	}
+
+	nonce, ok := metadata[oauth2const.RequestParamNonce]
+	if !ok || nonce == "" {
+		logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
+		logger.Error(ctx.Context, "OIDC nonce is missing in the authorization flow metadata")
+		return nil, errors.New("OIDC nonce is missing in the authorization flow")
+	}
+	execResp.RuntimeData[common.RuntimeKeyOIDCNonce] = nonce
+
+	return metadata, nil
 }
 
 // ProcessAuthFlowResponse processes the response from the OIDC authentication flow and authenticates the user.
@@ -157,7 +182,7 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 
 	existingCtxUserAttributes := make(map[string]interface{})
 	if execResp.AuthUser.IsAuthenticated() {
-		metadata := buildGetAttributesMetadata(ctx)
+		metadata := core.BuildGetAttributesMetadata(ctx)
 		authUser, attributes, err := o.authnProvider.GetUserAttributes(ctx.Context, nil, metadata, execResp.AuthUser)
 		if err != nil {
 			logger.Warn(ctx.Context,
@@ -174,7 +199,10 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 		"federated": &authncm.FederatedAuthCredential{
 			IDPID:   idpID,
 			IDPType: o.idpType,
-			Code:    code,
+			AuthorizationData: authncm.AuthorizationData{
+				Code:  code,
+				Nonce: ctx.RuntimeData[common.RuntimeKeyOIDCNonce],
+			},
 		},
 	}
 	authUser, federatedAttributes, svcErr := o.authnProvider.AuthenticateUser(
@@ -192,16 +220,6 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 	}
 	execResp.AuthUser = authUser
 
-	// Validate nonce if configured
-	if claimNonce, ok := federatedAttributes[userInputNonce]; ok && claimNonce != "" {
-		expectedNonce := ctx.UserInputs[userInputNonce]
-		if expectedNonce != "" && claimNonce != expectedNonce {
-			execResp.Status = providers.ExecFailure
-			execResp.Error = &ErrNonceMismatch
-			return nil
-		}
-	}
-
 	if !validateFederatedIdentifierConsistency(ctx, federatedAttributes, existingCtxUserAttributes) {
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrInvalidFederatedUser
@@ -217,7 +235,7 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 		}
 	}
 
-	setFederatedEntityState(execResp)
+	setFederatedEntityState(ctx.Context, execResp, o.authnProvider)
 
 	switch ctx.FlowType {
 	case providers.FlowTypeAuthentication:

@@ -61,6 +61,7 @@ type flowStoreInterface interface {
 		flowType providers.FlowType,
 	) (*providers.CompleteFlowDefinition, error)
 	UpdateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (*providers.CompleteFlowDefinition, error)
+	InvalidateCache(ctx context.Context, flowID, handle string, flowType providers.FlowType)
 	DeleteFlow(ctx context.Context, flowID string) error
 	ListFlowVersions(ctx context.Context, flowID string) ([]BasicFlowVersion, error)
 	GetFlowVersion(ctx context.Context, flowID string, version int) (*FlowVersion, error)
@@ -301,6 +302,11 @@ func (s *flowStore) UpdateFlow(ctx context.Context, flowID string, flow *FlowDef
 	}
 
 	return s.GetFlowByID(ctx, flowID)
+}
+
+// InvalidateCache is a no-op for the plain SQL store; caching only lives in the cache-backed
+// decorator, which overrides this.
+func (s *flowStore) InvalidateCache(_ context.Context, _, _ string, _ providers.FlowType) {
 }
 
 // DeleteFlow deletes a flow definition and all its version history.

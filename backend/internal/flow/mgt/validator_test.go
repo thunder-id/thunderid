@@ -1598,6 +1598,107 @@ func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_NoMetaSkipsC
 	s.Nil(err)
 }
 
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_RequiredForModes_MatchingModeMissing() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
+		SupportedModes: []string{"challenge", "verify"},
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "relyingPartyId", IsRequired: true, ApplicableModes: []string{"challenge"}},
+		},
+	}, nil)
+	node := &providers.NodeDefinition{
+		ID:         "task",
+		Executor:   &providers.ExecutorDefinition{Name: "my-exec", Mode: "challenge"},
+		Properties: map[string]interface{}{},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_RequiredForModes_NonMatchingModeSkipped() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
+		SupportedModes: []string{"challenge", "verify"},
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "relyingPartyId", IsRequired: true, ApplicableModes: []string{"challenge"}},
+		},
+	}, nil)
+	node := &providers.NodeDefinition{
+		ID:         "task",
+		Executor:   &providers.ExecutorDefinition{Name: "my-exec", Mode: "verify"},
+		Properties: map[string]interface{}{},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Nil(err)
+}
+
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_RequiredForModes_MatchingModePresent() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
+		SupportedModes: []string{"challenge", "verify"},
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "relyingPartyId", IsRequired: true, ApplicableModes: []string{"challenge"}},
+		},
+	}, nil)
+	node := &providers.NodeDefinition{
+		ID:         "task",
+		Executor:   &providers.ExecutorDefinition{Name: "my-exec", Mode: "challenge"},
+		Properties: map[string]interface{}{"relyingPartyId": "example.com"},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Nil(err)
+}
+
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_RequiredForModes_EmptyModesEnforcedForAll() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
+		SupportedModes: []string{"challenge", "verify"},
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "emailTemplate", IsRequired: true},
+		},
+	}, nil)
+	node := &providers.NodeDefinition{
+		ID:         "task",
+		Executor:   &providers.ExecutorDefinition{Name: "my-exec", Mode: "verify"},
+		Properties: map[string]interface{}{},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_RequiredForModes_DefaultModeMatching() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
+		DefaultMode:    "challenge",
+		SupportedModes: []string{"challenge", "verify"},
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "relyingPartyId", IsRequired: true, ApplicableModes: []string{"challenge"}},
+		},
+	}, nil)
+	node := &providers.NodeDefinition{
+		ID:         "task",
+		Executor:   &providers.ExecutorDefinition{Name: "my-exec"},
+		Properties: map[string]interface{}{},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
+func (s *ValidatorServiceTestSuite) TestValidateExecutorConstraints_RequiredForModes_DefaultModeNonMatching() {
+	s.mockExecutorRegistry.On("GetExecutorMeta", "my-exec").Return(&providers.ExecutorMeta{
+		DefaultMode:    "verify",
+		SupportedModes: []string{"challenge", "verify"},
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "relyingPartyId", IsRequired: true, ApplicableModes: []string{"challenge"}},
+		},
+	}, nil)
+	node := &providers.NodeDefinition{
+		ID:         "task",
+		Executor:   &providers.ExecutorDefinition{Name: "my-exec"},
+		Properties: map[string]interface{}{},
+	}
+	err := s.v.validateExecutorMeta(node, providers.FlowTypeAuthentication)
+	s.Nil(err)
+}
+
 // ---------------------------------------------------------------------------
 // Tests for validateSSOCheckExecutor
 // ---------------------------------------------------------------------------

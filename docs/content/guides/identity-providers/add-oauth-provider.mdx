@@ -1,0 +1,65 @@
+---
+title: Add an OAuth 2.0 Identity Provider
+docType: guide
+sidebar_position: 5
+persona: iam
+description: Configure a generic OAuth 2.0 identity provider for federated authentication.
+---
+
+# Add an OAuth 2.0 Identity Provider
+
+This guide explains how to register a generic OAuth 2.0 identity provider (IdP) in <ProductName />. Use this type for OAuth 2.0 providers that do not implement OpenID Connect discovery. If the provider supports OIDC, use [Add an OIDC Identity Provider](../add-oidc-provider) instead.
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get Started](../../../getting-started/get-thunderid).
+- You can sign in to the <ProductName /> Console.
+- A client application registered in the external OAuth 2.0 provider with a **Client ID** and **Client Secret**, and permission to add the **Redirect URI** shown by the Console.
+- The provider's authorization endpoint, token endpoint, and userinfo endpoint URLs.
+
+## Create the OAuth 2.0 Connection
+
+<Stepper stepNode="h3" as="h3">
+
+### Step 1: Add a Custom Connection
+
+1. Sign in to the <ProductName /> Console.
+2. Navigate to **Connections**.
+3. Click the **Add custom connection** card.
+
+### Step 2: Choose the Connection Type
+
+1. On the **Connection type** step, click **OAuth 2.0 Provider**.
+2. Click **Continue**.
+
+### Step 3: Name the Connection
+
+1. Enter a **Connection name**, or pick one of the suggested names.
+2. Click **Continue**.
+
+### Step 4: Configure the Connection
+
+The form shows a setup hint with the **Redirect URI**. Before creating the connection, copy it and register it as the callback URL with your provider.
+
+Enter the following fields, then click **Create connection**:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| **Client ID** | Yes | The client ID issued by the OAuth 2.0 provider. |
+| **Client secret** | Yes | The client secret issued by the OAuth 2.0 provider. |
+| **Authorization endpoint** | Yes | The provider's authorization endpoint, used to start the sign-in flow. |
+| **Token endpoint** | Yes | The provider's token endpoint, used to exchange the authorization code for tokens. |
+| **UserInfo endpoint** | Yes | The provider's userinfo endpoint. <ProductName /> calls this endpoint to fetch the authenticated user's profile. |
+
+</Stepper>
+
+After creation, open the connection and set **Scopes** on its edit page to request space-separated OAuth scopes beyond the provider's default.
+
+:::note
+The connection also accepts `logoutEndpoint` and `prompt` fields, and an `attributeConfiguration` field to map this provider's claims to local user attributes. These are not available in the Console and can only be set through the [Connections API](../../../apis#tag/connections). See [Attribute Configuration](../add-oidc-provider#attribute-configuration) for the mapping concepts, which apply the same way to OAuth 2.0 connections.
+:::
+
+## Next Steps
+
+- [Connect an IdP to an Application](../connect-idp-to-application): Add this OAuth 2.0 IdP to an application's authentication flow.
+- [Manage Identity Providers](../manage-identity-providers): Update or delete identity providers.

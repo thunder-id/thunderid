@@ -22,7 +22,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/stretchr/testify/suite"
@@ -36,14 +35,6 @@ type UtilsTestSuite struct {
 
 func TestUtilsTestSuite(t *testing.T) {
 	suite.Run(t, new(UtilsTestSuite))
-}
-
-func (suite *UtilsTestSuite) TestGenerateDefaultCredentialName() {
-	name := generateDefaultCredentialName()
-
-	suite.NotEmpty(name)
-	suite.Contains(name, "Passkey")
-	suite.Contains(name, time.Now().Format("2006-01-02"))
 }
 
 func (suite *UtilsTestSuite) TestGetConfiguredOrigins() {

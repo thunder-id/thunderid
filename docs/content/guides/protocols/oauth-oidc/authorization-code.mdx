@@ -1,0 +1,107 @@
+---
+title: Authorization Code
+docType: reference
+sidebar_position: 1
+description: The OAuth 2.1 Authorization Code grant in {{ProductName}}, redirect-based sign-in for user-facing applications, with PKCE required for public clients.
+---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import { AuthorizationCodeDiagram } from '../../../../src/components/OAuthFlowDiagrams';
+
+# Authorization Code
+
+The **Authorization Code** grant ([RFC 6749 §4.1](https://datatracker.ietf.org/doc/html/rfc6749#section-4.1)) is the redirect-based flow OAuth 2.1 recommends for any application that signs in a real user. The client redirects the browser to <ProductName />, the user authenticates on <ProductName />-hosted pages, <ProductName /> redirects back with a short-lived authorization **code**, and the client exchanges that code for tokens at the token endpoint.
+
+Authorization codes are single-use, bound to the redirect URI and client, and short-lived. They exist only to let a confidential client (or a public client using PKCE) collect tokens over a back-channel without exposing them to the browser.
+
+## How It Works
+
+<AuthorizationCodeDiagram />
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect | Behavior |
+|---|---|
+| Authorization endpoint | `GET /oauth2/authorize` |
+| Token endpoint | `POST /oauth2/token` |
+| Response type | `code` only (implicit and hybrid response types are not supported) |
+| Response mode | `query` only. Omitted `response_mode` defaults to `query`; unsupported values such as `fragment` and `form_post` return `invalid_request` |
+| PKCE | **Required** for public clients (`publicClient: true`); recommended for confidential clients |
+| Redirect URI matching | Exact match against the application's registered `redirect_uris` |
+| Redirect URI at token endpoint | Required only when included in the authorization request ([RFC 6749 §4.1.3](https://datatracker.ietf.org/doc/html/rfc6749#section-4.1.3)); identical value enforced when present |
+| `state` parameter | Required by RFC 6749 §10.12 / OAuth 2.1; the client must validate it on callback |
+| `iss` in response | Always included (see [Issuer Identification](../issuer-identification)) |
+| Code lifetime | Single-use, short TTL; binding to client + redirect_uri enforced on exchange |
+| Refresh token | Issued when `refresh_token` is in the application's `grantTypes` |
+
+</details>
+
+## Try It in <ProductName />
+
+The Authorization Code grant is the default for newly registered applications. Confirm or enable it on your application.
+
+<Tabs groupId="client-registration">
+<TabItem value="console" label="Console" default>
+
+1. Open **Applications** or **Agents** in the <ProductName /> Console and select your client.
+2. Open the **Advanced Settings** tab.
+3. Under **Grant Types**, ensure `authorization_code` is selected (add `refresh_token` to issue refresh tokens alongside).
+4. Add at least one **Redirect URI**.
+5. Save.
+
+</TabItem>
+<TabItem value="dcr" label="Dynamic Client Registration">
+
+```http
+POST /oauth2/dcr/register
+Content-Type: application/json
+
+{
+  "client_name": "My App",
+  "redirect_uris": ["https://app.example.com/callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "client_secret_basic"
+}
+```
+
+</TabItem>
+</Tabs>
+
+### Run the Flow
+
+```bash
+# 1. Redirect the user to the authorization endpoint
+https://{{productSlug}}.example.com/oauth2/authorize
+  ?response_type=code
+  &client_id=$CLIENT_ID
+  &redirect_uri=https://app.example.com/callback
+  &scope=openid%20profile
+  &state=xyz
+  &code_challenge=$CODE_CHALLENGE
+  &code_challenge_method=S256
+
+# 2. After sign-in, the authorization server redirects to:
+# https://app.example.com/callback?code=...&state=xyz&iss=https://{{productSlug}}.example.com
+
+# 3. Exchange the code for tokens
+curl -X POST https://{{productSlug}}.example.com/oauth2/token \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -d "grant_type=authorization_code" \
+  -d "code=$CODE" \
+  -d "redirect_uri=https://app.example.com/callback" \
+  -d "code_verifier=$CODE_VERIFIER"
+```
+
+The `response_mode` parameter is optional. For `response_type=code`, <ProductName /> uses `query` by default and returns the authorization response in the callback URL query string. Explicit `response_mode=query` is also accepted. Other response modes, such as `fragment` and `form_post`, return `invalid_request`.
+
+Access tokens with permission scopes are bound to one resource server. Send `resource=https://api.example.com/...` on the authorization or token request when the client knows the target API, or configure `defaultResourceServer` for permission-bearing requests that omit `resource`. OIDC-only or scopeless requests without `resource` use the application's `token.accessToken.defaultAudience`, falling back to `client_id`.
+
+## Related Guides
+
+- [PKCE](../pkce): required for public clients on this flow
+- [Pushed Authorization Requests](../par): push the authorization parameters over a back-channel before the redirect
+- [Refresh Token](../refresh-token): keep the session alive without re-authenticating
+- [OpenID Connect](../openid-connect): add `openid` to the scope to receive an ID Token
+- [Issuer Identification](../issuer-identification): validate the `iss` parameter on the callback

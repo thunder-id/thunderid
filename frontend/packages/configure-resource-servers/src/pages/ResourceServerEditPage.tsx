@@ -46,6 +46,7 @@ import ResourceTree from '../components/resource-tree/ResourceTree';
 import ResourceServerDeleteDialog from '../components/ResourceServerDeleteDialog';
 import SetDefaultResourceServerDialog from '../components/SetDefaultResourceServerDialog';
 import {getResourceServerTypeLabel} from '../config/resource-server-types';
+import useResourceServerRoutes from '../hooks/useResourceServerRoutes';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -72,6 +73,7 @@ export default function ResourceServerEditPage(): JSX.Element {
   const {resourceServerId} = useParams<{resourceServerId: string}>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const routes = useResourceServerRoutes();
   const {t} = useTranslation();
   const {showToast} = useToast();
   const logger = useLogger('ResourceServerEditPage');
@@ -156,7 +158,7 @@ export default function ResourceServerEditPage(): JSX.Element {
     );
   };
 
-  const listUrl = '/resource-servers';
+  const listUrl = routes.list();
 
   if (isLoading) {
     return <PageLoadingAnimation />;

@@ -28,6 +28,7 @@ import {Link, useNavigate, useParams} from 'react-router';
 import useGetAgentType from '../api/useGetAgentType';
 import useUpdateAgentType from '../api/useUpdateAgentType';
 import EditSchemaSettings from '../components/edit-agent-type/schema-settings/EditSchemaSettings';
+import useAgentTypeRoutes from '../hooks/useAgentTypeRoutes';
 import type {
   AgentTypeDefinition,
   PropertyDefinition,
@@ -105,13 +106,14 @@ function convertPropertiesToSchema(properties: SchemaPropertyInput[]): AgentType
 
 export default function ViewAgentTypePage(): JSX.Element {
   const navigate = useNavigate();
+  const routes = useAgentTypeRoutes();
   const {t} = useTranslation();
   const logger = useLogger('ViewAgentTypePage');
   const {showToast} = useToast();
   const {id} = useParams<{id: string}>();
   // Agent types are restricted to a single `default` schema; there is no agent-types listing
   // page anymore, so the back button returns to the agent listing.
-  const listUrl = '/agents';
+  const listUrl = routes.agents.list();
 
   const {data: agentType, isLoading, error: fetchError} = useGetAgentType(id);
   const updateAgentTypeMutation = useUpdateAgentType();

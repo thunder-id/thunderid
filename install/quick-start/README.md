@@ -129,6 +129,12 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
   server: {
     public_url: 'https://<your-host>:<your-port>', // e.g. https://thunderid.local:8090
   },
+  // Optional: only needed when Gate is hosted separately from the server. Used to build the
+  // OAuth redirect URI shown when configuring social/OIDC connections. Defaults to
+  // `${server.public_url}/gate/callback`.
+  // gate_client: {
+  //   public_url: 'https://<gate-host>:<gate-port>', // or hostname/port/scheme
+  // },
 };
 ```
 

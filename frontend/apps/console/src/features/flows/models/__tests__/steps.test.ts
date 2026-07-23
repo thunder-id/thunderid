@@ -174,8 +174,24 @@ describe('steps models', () => {
       expect(ExecutionTypes.UserTypeResolver).toBe('UserTypeResolver');
     });
 
-    it('should have exactly 21 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(21);
+    it('should have SSOCheck type', () => {
+      expect(ExecutionTypes.SSOCheck).toBe('SSOCheckExecutor');
+    });
+
+    it('should have Session type', () => {
+      expect(ExecutionTypes.Session).toBe('SessionExecutor');
+    });
+
+    it('should have AuthAssert type', () => {
+      expect(ExecutionTypes.AuthAssert).toBe('AuthAssertExecutor');
+    });
+
+    it('should have Authorization type', () => {
+      expect(ExecutionTypes.Authorization).toBe('AuthorizationExecutor');
+    });
+
+    it('should have exactly 25 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(25);
     });
   });
 

@@ -75,6 +75,7 @@ interface UseCreateUserReturn {
 interface UseGetUserTypesReturn {
   data: UserTypeListResponse | undefined;
   isLoading: boolean;
+  isFetching?: boolean;
   error: Error | null;
 }
 
@@ -645,7 +646,10 @@ describe('UserCreatePage', () => {
 
     renderPage();
 
-    await goToDetailsStep(user);
+    // Single user type with an empty ouId: the User Type step is skipped.
+    await waitFor(() => {
+      expect(screen.getByTestId('configure-user-details')).toBeInTheDocument();
+    });
     await user.click(screen.getByTestId('fill-form'));
 
     await waitFor(() => {
@@ -703,7 +707,10 @@ describe('UserCreatePage', () => {
 
     renderPage();
 
-    await goToDetailsStep(user);
+    // Single user type with an empty ouId: the User Type step is skipped.
+    await waitFor(() => {
+      expect(screen.getByTestId('configure-user-details')).toBeInTheDocument();
+    });
     await user.click(screen.getByTestId('fill-form'));
 
     await waitFor(() => {
@@ -1014,6 +1021,111 @@ describe('UserCreatePage', () => {
       await waitFor(() => {
         expect(screen.getByTestId('configure-user-type')).toBeInTheDocument();
       });
+    });
+  });
+
+  // ============================================================================
+  // Single user type (User Type step skipped)
+  // ============================================================================
+
+  describe('single user type', () => {
+    const singleTypeData: UserTypeListResponse = {
+      totalResults: 1,
+      startIndex: 1,
+      count: 1,
+      types: [{id: 'schema1', name: 'Employee', ouId: 'root-ou'}],
+    };
+
+    beforeEach(() => {
+      mockUseGetUserTypes.mockReturnValue({
+        data: singleTypeData,
+        isLoading: false,
+        error: null,
+      });
+    });
+
+    it('auto-selects the only user type and skips to User Details', async () => {
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('configure-user-details')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('configure-user-type')).not.toBeInTheDocument();
+    });
+
+    it('does not show the User Type step in the breadcrumb', async () => {
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('configure-user-details')).toBeInTheDocument();
+      });
+      expect(screen.queryByRole('button', {name: /user type/i})).not.toBeInTheDocument();
+    });
+
+    it('does not show the Back button on the first step', async () => {
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('configure-user-details')).toBeInTheDocument();
+      });
+      expect(screen.queryByRole('button', {name: /back/i})).not.toBeInTheDocument();
+    });
+
+    it('submits with the single user type', async () => {
+      const user = userEvent.setup();
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('configure-user-details')).toBeInTheDocument();
+      });
+      await user.click(screen.getByTestId('fill-form'));
+
+      await waitFor(() => {
+        expect(getCreateUserButton()).not.toBeDisabled();
+      });
+      await user.click(getCreateUserButton());
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalledWith({
+          ouId: 'root-ou',
+          type: 'Employee',
+          attributes: {username: 'john_doe', age: 30},
+        });
+      });
+    });
+
+    it('shows loading and does not auto-skip while the types response is still fetching', async () => {
+      mockUseGetUserTypes.mockReturnValue({
+        data: singleTypeData,
+        isLoading: false,
+        isFetching: true,
+        error: null,
+      });
+
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByText('Loading...')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('configure-user-type')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('configure-user-details')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('configure-organization-unit')).not.toBeInTheDocument();
+    });
+
+    it('skips User Type and shows the OU step first when child OUs exist', async () => {
+      mockUseGetChildOrganizationUnits.mockReturnValue({
+        data: {totalResults: 3, startIndex: 1, count: 3, organizationUnits: [{}, {}, {}]},
+        isLoading: false,
+        error: null,
+      });
+
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('configure-organization-unit')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('configure-user-type')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: /back/i})).not.toBeInTheDocument();
     });
   });
 });

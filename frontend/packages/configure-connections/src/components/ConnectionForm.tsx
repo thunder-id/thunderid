@@ -32,7 +32,7 @@ import {type JSX, type ReactNode, useMemo, useState} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import MaskedSecretField from './MaskedSecretField';
 import ReadOnlyCopyField from './ReadOnlyCopyField';
-import {CONNECTION_FORM_FIELDS, type ConnectionFieldDef} from '../config/connectionFormFields';
+import {fieldsForMode, type ConnectionFieldDef} from '../config/connectionFormFields';
 import type {ConnectionType} from '../models/connection';
 import {type ConnectionFormValues, validateConnectionForm} from '../utils/connectionFormMapping';
 
@@ -50,8 +50,6 @@ interface ConnectionFormProps {
   nameError?: string | null;
   /** Render the connection-name field (custom connections only; branded names are fixed). */
   showNameField?: boolean;
-  /** Render the redirect URI field (moved to a quick-copy section on the edit page). */
-  showRedirectUri?: boolean;
   onFieldChange: (name: string, value: string) => void;
   onSecretReplacingChange: (replacing: boolean) => void;
 }
@@ -65,17 +63,13 @@ export default function ConnectionForm({
   vendorDisplayName,
   nameError = null,
   showNameField = true,
-  showRedirectUri = true,
   onFieldChange,
   onSecretReplacingChange,
 }: ConnectionFormProps): JSX.Element {
   const {t} = useTranslation('connections');
   const fields: ConnectionFieldDef[] = useMemo(
-    () =>
-      CONNECTION_FORM_FIELDS[type].filter(
-        (field) => (showNameField || field.name !== 'name') && (showRedirectUri || field.name !== 'redirectUri'),
-      ),
-    [type, showNameField, showRedirectUri],
+    () => fieldsForMode(type, mode).filter((field) => showNameField || field.name !== 'name'),
+    [type, mode, showNameField],
   );
 
   const [touched, setTouched] = useState<Record<string, boolean>>({});

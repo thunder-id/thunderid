@@ -123,6 +123,11 @@ func (d *callbackDispatcher) handleFlowCallback(w http.ResponseWriter, r *http.R
 		utils.WriteSuccessResponse(ctx, w, http.StatusOK, oauth2authz.AuthZPostResponse{RedirectURI: redirectURI})
 
 	case string(providers.GrantTypeCIBA):
+		if d.cibaService == nil {
+			utils.WriteJSONError(ctx, w, oauth2const.ErrorInvalidRequest,
+				"Unsupported callback type", http.StatusBadRequest, nil)
+			return
+		}
 		cibaErr := d.cibaService.HandleCallback(ctx, req.AuthID, req.Assertion)
 		if cibaErr != nil {
 			statusCode := http.StatusBadRequest

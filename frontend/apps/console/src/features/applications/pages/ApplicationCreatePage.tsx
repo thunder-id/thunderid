@@ -26,6 +26,7 @@ import type {JSX} from 'react';
 import {useState, useCallback, useEffect, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useLocation, useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import useCreateFlow from '../../flows/api/useCreateFlow';
 import useGetFlowById from '../../flows/api/useGetFlowById';
 import type {BasicFlowDefinition} from '../../flows/models/responses';
@@ -364,7 +365,7 @@ export default function ApplicationCreatePage(): JSX.Element {
           setCurrentStep(ApplicationCreateFlowStep.COMPLETE);
         } else {
           (async () => {
-            await navigate(`/applications/${createdApp.id}`);
+            await navigate(RouteConfig.applications.detail(createdApp.id));
           })().catch((_error: unknown) => {
             logger.error('Failed to navigate to application details', {error: _error, applicationId: createdApp.id});
           });
@@ -424,7 +425,7 @@ export default function ApplicationCreatePage(): JSX.Element {
     if (currentStep === ApplicationCreateFlowStep.COMPLETE) {
       if (createdApplication) {
         (async () => {
-          await navigate(`/applications/${createdApplication.id}`);
+          await navigate(RouteConfig.applications.detail(createdApplication.id));
         })().catch((_error: unknown) => {
           logger.error('Failed to navigate to application details', {
             error: _error,
@@ -552,8 +553,8 @@ export default function ApplicationCreatePage(): JSX.Element {
         return (
           <ConfigureDesign
             appLogo={appLogo}
+            appName={appName}
             themeId={themeId}
-            selectedTheme={selectedTheme}
             onLogoSelect={handleLogoSelect}
             onThemeSelect={(id, config) => {
               setThemeId(id);
@@ -660,19 +661,25 @@ export default function ApplicationCreatePage(): JSX.Element {
 
   const prefixCrumbs = isWelcomeFlow
     ? [
-        {key: 'welcome', label: t('common:welcome.header'), onClick: () => void navigate('/welcome')},
+        {key: 'welcome', label: t('common:welcome.header'), onClick: () => void navigate(RouteConfig.welcome.root())},
         {
           key: 'new',
           label: t('common:welcome.createProject.breadcrumb'),
-          onClick: () => void navigate('/welcome/create-project'),
+          onClick: () => void navigate(RouteConfig.welcome.createProject()),
         },
         {
           key: 'get-started',
           label: t('common:welcome.getStarted.breadcrumb'),
-          onClick: () => void navigate('/welcome/get-started'),
+          onClick: () => void navigate(RouteConfig.welcome.getStarted()),
         },
       ]
-    : [{key: 'applications', label: t('navigation:pages.applications'), onClick: () => void navigate('/applications')}];
+    : [
+        {
+          key: 'applications',
+          label: t('navigation:pages.applications'),
+          onClick: () => void navigate(RouteConfig.applications.list()),
+        },
+      ];
 
   // The wallet template's CONFIGURE step runs before DESIGN/OPTIONS, so there's no branding
   // to preview yet — show it full-width instead of alongside an empty/loading preview panel.

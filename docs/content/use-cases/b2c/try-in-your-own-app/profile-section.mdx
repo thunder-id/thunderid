@@ -30,13 +30,13 @@ In the redirect-based pattern, your application renders the profile UI itself. P
 
 Navigate to **User Types** and open your consumer user type. Add any attributes you want users to view or update (for example, `given_name`, `family_name`). Mark attributes you want users to be able to update as non-credential, non-unique fields.
 
-See [User Types](../../../../guides/guides/users/user-types).
+See [User Types](../../../../guides/users/user-types).
 
 **2. Ensure your application allows the required scopes**
 
 Navigate to **Applications** → your app. Under **Allowed Scopes**, confirm that `openid`, `profile`, and `email` are listed. These scopes allow the ID token to include the user's name and email attributes.
 
-See [Manage Applications](../../../../guides/guides/applications/manage-applications).
+See [Manage Applications](../../../../guides/applications/manage-applications).
 
 ### Integrate into Your App
 
@@ -45,8 +45,8 @@ Your app reads profile attributes from the ID token and calls the self-service e
 | Framework   | Where to integrate                                                                                                                                          |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | React       | [React SDK Overview](../../../../sdks/react/overview), [`<UserProfile />`](../../../../sdks/react/apis/components/user-profile) for the full profile UI, [`<User />`](../../../../sdks/react/apis/components/user) to read user attributes                               |
-| Next.js     | [Next.js Quickstart](../../../../guides/getting-started/connect-your-application/nextjs)                                                                     |
-| Vue         | [Vue Quickstart](../../../../guides/getting-started/connect-your-application/vue)                                                                            |
+| Next.js     | [Next.js Quickstart](../../../../getting-started/connect-your-application/nextjs)                                                                     |
+| Vue         | [Vue Quickstart](../../../../getting-started/connect-your-application/vue)                                                                            |
 | Browser SDK | [Browser SDK Overview](../../../../sdks/browser/overview)                                                                                                    |
 
 For direct API access, profile attributes are read and updated through the self-service endpoints:

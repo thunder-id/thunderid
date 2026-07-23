@@ -46,6 +46,8 @@ const mockLocationState = {
   configContent: 'application:\n  - name: {{.APP_NAME}}\n',
 };
 
+let mockPathname = '/import/summary';
+
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
   return {
@@ -53,7 +55,7 @@ vi.mock('react-router', async () => {
     useNavigate: () => mockNavigate,
     useLocation: () => ({
       state: mockLocationState,
-      pathname: '/import/summary',
+      pathname: mockPathname,
     }),
   };
 });
@@ -142,6 +144,7 @@ describe('ImportConfigurationSummaryPage', () => {
       isError: false,
       error: null,
     };
+    mockPathname = '/import/summary';
   });
 
   describe('rendering', () => {
@@ -203,6 +206,16 @@ describe('ImportConfigurationSummaryPage', () => {
       await userEvent.click(uploadLink);
 
       expect(mockNavigate).toHaveBeenCalledWith('/import-configuration');
+    });
+
+    it('shows a welcome breadcrumb that navigates to /welcome when reached from the welcome flow', async () => {
+      mockPathname = '/welcome/import-configuration/summary';
+      render(<ImportConfigurationSummaryPage />);
+
+      const welcomeLink = screen.getByText('common:welcome.header');
+      await userEvent.click(welcomeLink);
+
+      expect(mockNavigate).toHaveBeenCalledWith('/welcome');
     });
   });
 
@@ -377,6 +390,36 @@ describe('ImportConfigurationSummaryPage', () => {
       render(<ImportConfigurationSummaryPage />);
 
       expect(screen.getByTestId('env-variables-viewer')).toBeInTheDocument();
+    });
+
+    it('navigates home after the dry run passes and the import is confirmed', async () => {
+      const originalConfigContent = mockLocationState.configContent;
+      const originalEnvData = mockLocationState.envData;
+      // No `{{ }}` placeholders, so there are no required env variables to satisfy.
+      mockLocationState.configContent = 'application:\n  - name: test-app\n';
+      mockLocationState.envData = '';
+      mockMutateAsync.mockResolvedValue({
+        results: [],
+        summary: {imported: 1, totalDocuments: 1, failed: 0, importedAt: new Date(0).toISOString()},
+      });
+
+      render(<ImportConfigurationSummaryPage />);
+
+      await userEvent.click(screen.getByText('summary.importTest.test'));
+
+      const importButton = await waitFor(() => {
+        const button = screen.getByText('summary.import.action');
+        expect(button).not.toBeDisabled();
+        return button;
+      });
+      await userEvent.click(importButton);
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/home');
+      });
+
+      mockLocationState.configContent = originalConfigContent;
+      mockLocationState.envData = originalEnvData;
     });
   });
 

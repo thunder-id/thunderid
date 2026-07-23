@@ -154,6 +154,11 @@ func (r noopDepRegistry) CascadeDelete(context.Context, string, string) (int, er
 	return 0, r.cascadeErr
 }
 
+func (noopDepRegistry) ValidateReferenceUpdate(
+	context.Context, string, string) *tidcommon.ServiceError {
+	return nil
+}
+
 // buildAgentEntityFixture returns an providers.Entity with system attributes for the given fields.
 func buildAgentEntityFixture(name, description, owner, clientID string) *providers.Entity {
 	attrs := map[string]interface{}{}
@@ -1257,9 +1262,9 @@ func (suite *AgentServiceTestSuite) TestTranslateOAuthValidationError() {
 		{"AuthCodeRequiresCodeResponseType", inboundclient.ErrOAuthAuthCodeRequiresCodeResponseType,
 			ErrorInvalidOAuthConfiguration.Code,
 			"error.agentservice.auth_code_requires_code_response_type_description"},
-		{"RefreshTokenCannotBeSoleGrant", inboundclient.ErrOAuthRefreshTokenCannotBeSoleGrant,
+		{"RefreshTokenRequiresTokenIssuingGrant", inboundclient.ErrOAuthRefreshTokenRequiresTokenIssuingGrant,
 			ErrorInvalidOAuthConfiguration.Code,
-			"error.agentservice.refresh_token_cannot_be_sole_grant_description"},
+			"error.agentservice.refresh_token_requires_token_issuing_grant_description"},
 		{"PKCERequiresAuthCode", inboundclient.ErrOAuthPKCERequiresAuthCode,
 			ErrorInvalidOAuthConfiguration.Code,
 			"error.agentservice.pkce_requires_authorization_code_description"},

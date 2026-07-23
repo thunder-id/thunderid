@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {PageLoadingAnimation, UnsavedChangesBar} from '@thunderid/components';
+import {PageLoadingAnimation, ResourceAvatar, UnsavedChangesBar} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {
   Alert,
@@ -35,6 +35,7 @@ import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
 import {useState, useCallback, useMemo, type SyntheticEvent, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useNavigate, useParams} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import useGetAgent from '../api/useGetAgent';
 import useUpdateAgent from '../api/useUpdateAgent';
 import EditAccessSettings from '../components/edit-agent/access/EditAccessSettings';
@@ -44,6 +45,7 @@ import EditCredentialsSettings from '../components/edit-agent/credentials/EditCr
 import EditFlowsSettings from '../components/edit-agent/flows/EditFlowsSettings';
 import EditGeneralSettings from '../components/edit-agent/general/EditGeneralSettings';
 import EditTokensSettings from '../components/edit-agent/tokens/EditTokensSettings';
+import AgentConstants from '../constants/agent-constants';
 import type {Agent, OAuthAgentConfig} from '../models/agent';
 
 interface TabPanelProps {
@@ -99,7 +101,7 @@ export default function AgentEditPage(): JSX.Element {
   const hasAnyOtherValidationError = Object.values(validationErrorSources).some(Boolean);
 
   const handleBack = async () => {
-    await navigate('/agents');
+    await navigate(RouteConfig.agents.list());
   };
 
   const handleTabChange = (_event: SyntheticEvent, newValue: number) => {
@@ -338,24 +340,11 @@ export default function AgentEditPage(): JSX.Element {
         </Alert>
       )}
       <PageTitle>
-        <PageTitle.BackButton component={<Link to="/agents" />}>
+        <PageTitle.BackButton component={<Link to={RouteConfig.agents.list()} />}>
           {t('agents:edit.page.back', 'Back to agents')}
         </PageTitle.BackButton>
         <PageTitle.Avatar sx={{overflow: 'visible'}}>
-          <Box
-            sx={{
-              width: 55,
-              height: 55,
-              borderRadius: '50%',
-              bgcolor: 'primary.light',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '1.75rem',
-            }}
-          >
-            🤖
-          </Box>
+          <ResourceAvatar size={55} fallback={AgentConstants.DEFAULT_AVATAR} />
         </PageTitle.Avatar>
         <PageTitle.Header>
           <Stack direction="row" alignItems="center" spacing={1} mb={1}>

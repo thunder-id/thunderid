@@ -53,6 +53,7 @@ function Execution({data, resources}: ExecutionPropsInterface): ReactElement | n
     | {
         label?: string;
         image?: string;
+        preserveImageColor?: boolean;
         description?: string;
         showOnResourcePanel?: boolean;
         outcomes?: {success?: string; failure?: string; incomplete?: string};
@@ -75,6 +76,7 @@ function Execution({data, resources}: ExecutionPropsInterface): ReactElement | n
         display: {
           label: displayFromData?.label ?? executorName,
           image: displayFromData?.image ?? '',
+          preserveImageColor: displayFromData?.preserveImageColor,
           description: displayFromData?.description,
           showOnResourcePanel: displayFromData?.showOnResourcePanel ?? false,
           outcomes: displayFromData?.outcomes,
@@ -83,7 +85,10 @@ function Execution({data, resources}: ExecutionPropsInterface): ReactElement | n
     [stepId, data, executorName, displayFromData],
   );
 
-  const handleActionPanelDoubleClick = useMemo(
+  // Selecting the executor surfaces its properties panel (the provider opens the
+  // panel for EXECUTION resources). Reachable from both the header itself and its
+  // Cog button, mirroring ExecutionMinimal.
+  const handleSelect = useMemo(
     () => () => {
       if (stepId) {
         setLastInteractedStepId(stepId);
@@ -104,7 +109,8 @@ function Execution({data, resources}: ExecutionPropsInterface): ReactElement | n
           deletable={false}
           configurable
           droppableAllowedTypes={VisualFlowConstants.FLOW_BUILDER_STATIC_CONTENT_ALLOWED_RESOURCE_TYPES}
-          onActionPanelDoubleClick={handleActionPanelDoubleClick}
+          onActionPanelClick={handleSelect}
+          onConfigure={handleSelect}
         />
       ) : (
         <ExecutionMinimal resource={resource} />

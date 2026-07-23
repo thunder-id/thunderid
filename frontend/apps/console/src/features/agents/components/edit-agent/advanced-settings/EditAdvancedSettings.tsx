@@ -22,6 +22,7 @@ import OperationModesSection from './OperationModesSection';
 import OwnerSection from './OwnerSection';
 import SecuritySection from './SecuritySection';
 import TokenEndpointAuthMethodSection from './TokenEndpointAuthMethodSection';
+import AudienceSection from '../../../../applications/components/edit-application/advanced-settings/AudienceSection';
 import type {OAuth2Config} from '../../../../applications/models/oauth';
 import type {Agent, AgentInboundAuthConfig, OAuthAgentConfig} from '../../../models/agent';
 
@@ -44,6 +45,15 @@ export default function EditAdvancedSettings({
       auth.type === 'oauth2' ? {...auth, config: {...auth.config, ...updates} as OAuthAgentConfig} : auth,
     );
     onFieldChange('inboundAuthConfig', updatedInboundAuth);
+  };
+
+  const handleDefaultAudienceChange = (audience: string) => {
+    handleOAuth2ConfigChange({
+      token: {
+        ...oauth2Config?.token,
+        accessToken: {...oauth2Config?.token?.accessToken, defaultAudience: audience},
+      } as OAuth2Config['token'],
+    });
   };
 
   return (
@@ -70,6 +80,14 @@ export default function EditAdvancedSettings({
         onOAuth2ConfigChange={handleOAuth2ConfigChange}
         disabled={agent.isReadOnly}
       />
+      {oauth2Config && (
+        <AudienceSection
+          audience={oauth2Config.token?.accessToken?.defaultAudience ?? ''}
+          onAudienceChange={handleDefaultAudienceChange}
+          entityLabel="agent"
+          disabled={agent.isReadOnly}
+        />
+      )}
     </Stack>
   );
 }

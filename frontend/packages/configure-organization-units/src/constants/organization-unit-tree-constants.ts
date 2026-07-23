@@ -25,6 +25,7 @@ const OrganizationUnitTreeConstants = {
   ROOT_PARENT_ID: '__root',
   ROOT_LOAD_MORE_ID: '__root__loadMore',
   PAGE_SIZE: 30,
+  DEFAULT_AVATAR: 'avatar:shape=rounded,variant=anonymous_entity,content=pavilion,colors=0',
 } as const;
 
 export default OrganizationUnitTreeConstants;

@@ -252,6 +252,12 @@ func (ts *MagicLinkRegistrationTestSuite) SetupSuite() {
 	magicLinkRegTestApp.RegistrationFlowID = flowID
 	magicLinkRegTestApp.OUID = ts.ouID
 
+	// Create isolated auth flow to avoid cross-type reference validation with default auth flow.
+	isolatedAuthID, err := testutils.CreateIsolatedAuthFlow("magic-link-registration-isolated-auth")
+	ts.Require().NoError(err, "Failed to create isolated auth flow")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, isolatedAuthID)
+	magicLinkRegTestApp.AuthFlowID = isolatedAuthID
+
 	appID, err := testutils.CreateApplication(magicLinkRegTestApp)
 	ts.Require().NoError(err, "Failed to create test application")
 	ts.appID = appID

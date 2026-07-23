@@ -342,7 +342,8 @@ func (ah *authenticationHandler) HandlePasskeyRegisterFinishRequest(w http.Respo
 		ctx,
 		regRequest.PublicKeyCredential,
 		regRequest.SessionToken,
-		regRequest.CredentialName,
+		regRequest.SkipAssertion,
+		regRequest.Assertion,
 	)
 	if svcErr != nil {
 		ah.handleServiceError(ctx, w, svcErr)

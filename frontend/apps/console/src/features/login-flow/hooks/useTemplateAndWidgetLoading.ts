@@ -30,6 +30,7 @@ import {ResourceTypes, type Resource, type Resources} from '@/features/flows/mod
 import {StepTypes, type Step, type StepData} from '@/features/flows/models/steps';
 import {type Template, TemplateTypes, type TemplateReplacer} from '@/features/flows/models/templates';
 import type {Widget} from '@/features/flows/models/widget';
+import autoWireWidget, {type AutoWireMeta} from '@/features/flows/utils/autoWireWidget';
 import generateIdsForResources from '@/features/flows/utils/generateIdsForResources';
 import resolveComponentMetadata from '@/features/flows/utils/resolveComponentMetadata';
 import resolveStepMetadata from '@/features/flows/utils/resolveStepMetadata';
@@ -186,6 +187,7 @@ const useTemplateAndWidgetLoading = (props: UseTemplateAndWidgetLoadingProps): U
         __generationMeta__?: {
           replacers?: TemplateReplacer[];
           defaultPropertySelectorId?: string;
+          autoWire?: AutoWireMeta;
         };
       };
 
@@ -292,6 +294,15 @@ const useTemplateAndWidgetLoading = (props: UseTemplateAndWidgetLoadingProps): U
 
       newEdges = [...newEdges, ...generateUnconnectedEdges(newEdges, updatedNodes, edgeStyle)];
 
+      const wired = autoWireWidget(
+        currentNodes,
+        updatedNodes,
+        newEdges,
+        widgetFlow.__generationMeta__?.autoWire,
+        replacedPlaceholders,
+        edgeStyle,
+      );
+
       // Check if `defaultPropertySelector.id` is in the `replacedPlaceholders`.
       // If so, update them with the replaced value.
       if (defaultPropertySelector && 'id' in defaultPropertySelector) {
@@ -325,7 +336,7 @@ const useTemplateAndWidgetLoading = (props: UseTemplateAndWidgetLoadingProps): U
         }
       }
 
-      return [updatedNodes, newEdges, defaultPropertySelector, defaultPropertySelectorStepId];
+      return [wired.nodes, wired.edges, defaultPropertySelector, defaultPropertySelectorStepId];
     },
     [resources, edgeStyle],
   );

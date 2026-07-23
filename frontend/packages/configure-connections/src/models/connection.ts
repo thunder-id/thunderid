@@ -45,7 +45,8 @@ export type ConnectionCategory =
   | 'identity-verification'
   | 'crm'
   | 'data-store'
-  | 'trusted-idp';
+  | 'trusted-idp'
+  | 'custom';
 
 /**
  * Functional categories served by the backend /connections?category= filter.
@@ -294,6 +295,8 @@ export interface ConnectionVendorMeta {
   comingSoon?: boolean;
   /** Whether this connection provisions users and therefore exposes attribute mapping (IdPs only). */
   supportsAttributeMapping?: boolean;
+  /** i18n key for the create-wizard setup hint (vendors that need an OAuth app registered first). */
+  createHintKey?: string;
 }
 
 /**

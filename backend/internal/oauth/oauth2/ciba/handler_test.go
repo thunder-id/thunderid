@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -215,4 +216,58 @@ func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_ServerErrorMapsTo500() {
 	suite.handler.HandleBackchannelAuthRequest(w, req)
 
 	suite.Equal(http.StatusInternalServerError, w.Code)
+}
+
+func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_SingleResourceParsed() {
+	client := &clientauth.OAuthClientInfo{
+		ClientID: "client-1",
+		OAuthApp: &providers.OAuthClient{ClientID: "client-1"},
+	}
+	suite.mockService.EXPECT().InitiateBackchannelAuth(mock.Anything, mock.MatchedBy(
+		func(r *BackchannelAuthRequest) bool {
+			return len(r.Resources) == 1 && r.Resources[0] == "https://api.example.com"
+		}), client.OAuthApp).Return(&BackchannelAuthResponse{
+		AuthReqID: "auth-req-1",
+		ExpiresIn: 120,
+		Interval:  5,
+	}, nil)
+
+	form := url.Values{}
+	form.Set("login_hint", "alice")
+	form.Set("scope", "openid read:things")
+	form.Set("resource", "https://api.example.com")
+	req := suite.newAuthRequest(form.Encode(), client)
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleBackchannelAuthRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+}
+
+func (suite *CIBAHandlerTestSuite) TestBackchannelAuth_RepeatedResourcePreserved() {
+	client := &clientauth.OAuthClientInfo{
+		ClientID: "client-1",
+		OAuthApp: &providers.OAuthClient{ClientID: "client-1"},
+	}
+	suite.mockService.EXPECT().InitiateBackchannelAuth(mock.Anything, mock.MatchedBy(
+		func(r *BackchannelAuthRequest) bool {
+			return len(r.Resources) == 2 &&
+				r.Resources[0] == "https://rs1.example.com" &&
+				r.Resources[1] == "https://rs2.example.com"
+		}), client.OAuthApp).Return(&BackchannelAuthResponse{
+		AuthReqID: "auth-req-1",
+		ExpiresIn: 120,
+		Interval:  5,
+	}, nil)
+
+	form := url.Values{}
+	form.Set("login_hint", "alice")
+	form.Set("scope", "openid read:things")
+	form["resource"] = []string{"https://rs1.example.com", "https://rs2.example.com"}
+	req := suite.newAuthRequest(form.Encode(), client)
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleBackchannelAuthRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
 }

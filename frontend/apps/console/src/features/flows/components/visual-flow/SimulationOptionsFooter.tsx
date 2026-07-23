@@ -20,7 +20,7 @@ import {useTemplateLiteralResolver} from '@thunderid/hooks';
 import {Box, Button, Stack, Typography} from '@wso2/oxygen-ui';
 import {ArrowRight, CheckCircle, CircleAlert, CircleX, MousePointerClick} from '@wso2/oxygen-ui-icons-react';
 import DOMPurify from 'dompurify';
-import type {ReactElement} from 'react';
+import type {ReactElement, Ref} from 'react';
 import {useTranslation} from 'react-i18next';
 import {KIND_COLORS, KIND_LABEL_FALLBACKS, KIND_LABEL_KEYS} from '../../constants/simulationPreviewConstants';
 import {SimulationOptionKinds, type SimulationOption} from '../../utils/getSimulationOptions';
@@ -57,6 +57,15 @@ export interface SimulationOptionsFooterProps {
    * Previews the given transition on the canvas (null clears the preview).
    */
   onPreview: (option: SimulationOption | null) => void;
+  /**
+   * Where the options sit in the panel. Background steps render them at the
+   * top (divider below, free height); screen steps keep them at the bottom.
+   */
+  placement?: 'top' | 'bottom';
+  /**
+   * Ref to the footer's root element (used by the panel's keyboard navigation).
+   */
+  rootRef?: Ref<HTMLDivElement>;
 }
 
 /**
@@ -73,6 +82,8 @@ function SimulationOptionsFooter({
   hasScreenOptions,
   onChoose,
   onPreview,
+  placement = 'bottom',
+  rootRef = undefined,
 }: SimulationOptionsFooterProps): ReactElement | null {
   const {t} = useTranslation();
   const {resolveAll} = useTemplateLiteralResolver();
@@ -95,15 +106,14 @@ function SimulationOptionsFooter({
 
   return (
     <Box
+      ref={rootRef}
       data-testid="simulation-preview-footer"
       sx={{
-        borderTop: '1px solid',
-        borderColor: 'divider',
         px: 0.5,
         py: 1.25,
         flexShrink: 0,
-        maxHeight: '45%',
         overflow: 'auto',
+        ...(placement === 'bottom' && {borderTop: '1px solid', borderColor: 'divider', maxHeight: '45%'}),
       }}
     >
       {isComplete && (

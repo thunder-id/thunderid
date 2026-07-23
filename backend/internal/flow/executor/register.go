@@ -34,7 +34,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/oidc"
 	"github.com/thunder-id/thunderid/internal/authn/openid4vp"
 	"github.com/thunder-id/thunderid/internal/authn/otp"
-	"github.com/thunder-id/thunderid/internal/authn/passkey"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -138,7 +137,6 @@ type ExecutorDependencies struct {
 	ConsentEnforcer       providers.ConsentProvider
 	AuthnProvider         providers.AuthnProviderManager
 	OTPService            otp.OTPAuthnServiceInterface
-	PasskeyService        passkey.PasskeyServiceInterface
 	MagicLinkService      magiclink.MagicLinkAuthnServiceInterface
 	AuthZService          providers.AuthorizationProvider
 	EntityTypeService     entitytype.EntityTypeServiceInterface
@@ -168,7 +166,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNamePasskeyAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePasskeyAuth, newPasskeyAuthExecutor(
-				deps.FlowFactory, deps.PasskeyService, deps.AuthnProvider, deps.EntityProvider))
+				deps.FlowFactory, deps.AuthnProvider))
 		},
 		ExecutorNameMagicLink: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameMagicLink, newMagicLinkExecutor(

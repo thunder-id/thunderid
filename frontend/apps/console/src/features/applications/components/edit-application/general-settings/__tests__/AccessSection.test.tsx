@@ -499,6 +499,83 @@ describe('AccessSection', () => {
     });
   });
 
+  describe('Validation Change Callback', () => {
+    it('should notify parent with no errors for a valid URL', async () => {
+      const mockOnValidationChange = vi.fn();
+      vi.mocked(useGetUserTypes).mockReturnValue({
+        data: mockUserTypes,
+        isLoading: false,
+      } as unknown as MockedUseGetUserTypes);
+
+      render(
+        <AccessSection
+          application={mockApplication}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+          onValidationChange={mockOnValidationChange}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(mockOnValidationChange).toHaveBeenCalledWith(false);
+      });
+    });
+
+    it('should notify parent with errors when the URL becomes invalid', async () => {
+      const user = userEvent.setup();
+      const mockOnValidationChange = vi.fn();
+      vi.mocked(useGetUserTypes).mockReturnValue({
+        data: mockUserTypes,
+        isLoading: false,
+      } as unknown as MockedUseGetUserTypes);
+
+      render(
+        <AccessSection
+          application={mockApplication}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+          onValidationChange={mockOnValidationChange}
+        />,
+      );
+
+      const urlInput = screen.getByLabelText('Application URL');
+      await user.clear(urlInput);
+      await user.type(urlInput, 'invalid-url');
+
+      await waitFor(() => {
+        expect(mockOnValidationChange).toHaveBeenCalledWith(true);
+      });
+    });
+
+    it('should notify parent with errors when a redirect URI is invalid', async () => {
+      const user = userEvent.setup();
+      const mockOnValidationChange = vi.fn();
+      vi.mocked(useGetUserTypes).mockReturnValue({
+        data: mockUserTypes,
+        isLoading: false,
+      } as unknown as MockedUseGetUserTypes);
+
+      render(
+        <AccessSection
+          application={mockApplication}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          onValidationChange={mockOnValidationChange}
+        />,
+      );
+
+      const uriInput = screen.getByDisplayValue('https://example.com/callback');
+      await user.clear(uriInput);
+      await user.type(uriInput, 'not-a-valid-url');
+      await user.tab();
+
+      await waitFor(() => {
+        expect(mockOnValidationChange).toHaveBeenCalledWith(true);
+      });
+    });
+  });
+
   describe('Handle empty user types data', () => {
     it('should handle undefined user types data gracefully', () => {
       vi.mocked(useGetUserTypes).mockReturnValue({

@@ -40,7 +40,7 @@ interface LoadedContent {
  * Reads the `persona` frontmatter field from every doc and exposes a
  * `{ personaMap: Record<string, string> }` global data object.
  *
- * The map key is the doc ID (e.g. "guides/guides/flows/build-a-flow") and the
+ * The map key is the doc ID (e.g. "guides/flows/build-a-flow") and the
  * value is the persona string ("app" or "iam"). Pages without a `persona`
  * field are omitted — they are always visible regardless of the selected persona.
  */

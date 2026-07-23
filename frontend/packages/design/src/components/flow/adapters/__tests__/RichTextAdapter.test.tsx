@@ -136,53 +136,33 @@ describe('RichTextAdapter', () => {
   });
 
   describe('sign-up URL handling', () => {
-    const signUpLabel = '<p>Don\'t have an account? <a href="{{meta(application.sign_up_url)}}">Sign up</a></p>';
+    const signUpLabel =
+      '<p data-component-ref="self-sign-up-link">Don\'t have an account? <a href="#" data-action-ref="action_signup">Sign up</a></p>';
     const signUpComponent: FlowComponent = {
       id: 'signup-richtext',
       type: 'RICH_TEXT',
       label: signUpLabel,
+      action: {ref: 'action_signup'},
     };
 
     it('returns null when registration is disabled', () => {
       const resolve = (template: string | undefined) =>
         template?.includes('isRegistrationFlowEnabled') ? 'false' : template;
 
-      const {queryByTestId} = renderWithProviders(
-        <RichTextAdapter component={signUpComponent} resolve={resolve} signUpFallbackUrl="/signup" />,
-      );
+      const {queryByTestId} = renderWithProviders(<RichTextAdapter component={signUpComponent} resolve={resolve} />);
       expect(queryByTestId('rich-text-box')).not.toBeInTheDocument();
     });
 
     it('renders the sign-up link when registration is enabled and the server resolves the URL', () => {
       const resolve = (template: string | undefined) => {
         if (template?.includes('isRegistrationFlowEnabled')) return 'true';
-        return template?.replace('{{meta(application.sign_up_url)}}', '/custom/signup');
+        return template;
       };
 
       const {getByTestId} = renderWithProviders(<RichTextAdapter component={signUpComponent} resolve={resolve} />);
       const box = getByTestId('rich-text-box');
       expect(box).toBeInTheDocument();
-      expect(box.innerHTML).toContain('/custom/signup');
-    });
-
-    it('uses signUpFallbackUrl when the server does not resolve the sign-up URL template', () => {
-      const resolve = (template: string | undefined) =>
-        template?.includes('isRegistrationFlowEnabled') ? 'true' : template;
-
-      const {getByTestId} = renderWithProviders(
-        <RichTextAdapter component={signUpComponent} resolve={resolve} signUpFallbackUrl="/signup?client_id=abc" />,
-      );
-      expect(getByTestId('rich-text-box').innerHTML).toContain('/signup?client_id=abc');
-    });
-
-    it('renders sign-up content without href substitution when signUpFallbackUrl is not provided', () => {
-      const resolve = (template: string | undefined) =>
-        template?.includes('isRegistrationFlowEnabled') ? 'true' : template;
-
-      const {getByTestId} = renderWithProviders(<RichTextAdapter component={signUpComponent} resolve={resolve} />);
-      // Component renders (registration enabled) but no fallback URL is substituted
-      expect(getByTestId('rich-text-box')).toBeInTheDocument();
-      expect(getByTestId('rich-text-box').innerHTML).not.toContain('/signup?');
+      expect(box.innerHTML).toContain('Sign up');
     });
   });
 
@@ -200,18 +180,6 @@ describe('RichTextAdapter', () => {
 
       const {getByTestId} = renderWithProviders(<RichTextAdapter component={signInComponent} resolve={resolve} />);
       expect(getByTestId('rich-text-box').innerHTML).toContain('/custom/signin');
-    });
-
-    it('uses signInFallbackUrl when the server does not resolve the sign-in URL template', () => {
-      const {getByTestId} = renderWithProviders(
-        <RichTextAdapter
-          component={signInComponent}
-          resolve={(template: string | undefined) => template}
-          signInFallbackUrl="/signin?client_id=abc"
-        />,
-      );
-
-      expect(getByTestId('rich-text-box').innerHTML).toContain('/signin?client_id=abc');
     });
   });
 

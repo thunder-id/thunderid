@@ -159,7 +159,7 @@ describe('buildConnectionCards', () => {
       status: 'configured',
       comingSoon: false,
       navTarget: '/trusted-issuers/t1',
-      categories: ['trusted-idp'],
+      categories: ['trusted-idp', 'custom'],
     });
   });
 

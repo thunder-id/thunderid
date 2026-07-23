@@ -111,7 +111,7 @@ export interface McpConnectCompleteProps {
  *   clientId="my-client-id"
  *   redirectUris={['http://127.0.0.1:8080/callback']}
  *   clientType="userDelegated"
- *   onContinue={() => navigate(`/applications/${appId}`)}
+ *   onContinue={() => navigate(RouteConfig.applications.detail(appId))}
  * />
  * ```
  *

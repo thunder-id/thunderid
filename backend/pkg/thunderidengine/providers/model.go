@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"sort"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -358,8 +359,7 @@ type ConditionDefinition struct {
 
 // AuthnMetadata contains metadata for authentication.
 type AuthnMetadata struct {
-	AppMetadata     map[string]interface{} `json:"appMetadata,omitempty"`
-	RuntimeMetadata map[string]string      `json:"runtimeMetadata,omitempty"`
+	RuntimeMetadata map[string][]string `json:"runtimeMetadata,omitempty"`
 }
 
 // AuthenticatedClaims holds claims produced by an authentication mechanism.
@@ -451,103 +451,87 @@ type EntityReference struct {
 
 // GetAttributesMetadata holds metadata used when retrieving entity attributes.
 type GetAttributesMetadata struct {
-	AppMetadata     map[string]interface{} `json:"appMetadata,omitempty"`
-	Locale          string                 `json:"locale"`
-	RuntimeMetadata map[string]string      `json:"runtimeMetadata,omitempty"`
+	Locale          string              `json:"locale"`
+	RuntimeMetadata map[string][]string `json:"runtimeMetadata,omitempty"`
 }
 
-// AuthUser accumulates per-provider authentication state produced during flow execution.
-// All fields are unexported; use the manager methods to interact with this type.
-type AuthUser struct {
-	entityReferenceToken any
-	entityReference      *EntityReference
-	attributeToken       any
-	attributes           *AttributesResponse
-}
-
-// IsAuthenticated reports whether this AuthUser has been populated by a successful
-// authentication.
-func (a AuthUser) IsAuthenticated() bool {
-	return (a.entityReference != nil || a.entityReferenceToken != nil) &&
-		(a.attributes != nil || a.attributeToken != nil)
-}
-
-// EntityReferenceToken returns the opaque entity-reference token, if any.
-func (a AuthUser) EntityReferenceToken() any {
-	return a.entityReferenceToken
-}
-
-// EntityReference returns the resolved entity reference, if any.
-func (a AuthUser) EntityReference() *EntityReference {
-	return a.entityReference
-}
-
-// AttributeToken returns the opaque attribute token, if any.
-func (a AuthUser) AttributeToken() any {
-	return a.attributeToken
-}
-
-// Attributes returns the resolved attributes, if any.
-func (a AuthUser) Attributes() *AttributesResponse {
-	return a.attributes
-}
-
-// SetEntityReferenceToken stores an entity-reference token and clears any resolved reference.
-func (a *AuthUser) SetEntityReferenceToken(token any) {
-	a.entityReferenceToken = token
-	a.entityReference = nil
-}
-
-// SetEntityReference stores a resolved entity reference and clears any token.
-func (a *AuthUser) SetEntityReference(ref *EntityReference) {
-	a.entityReference = ref
-	a.entityReferenceToken = nil
-}
-
-// SetAttributeToken stores an attribute token and clears any resolved attributes.
-func (a *AuthUser) SetAttributeToken(token any) {
-	a.attributeToken = token
-	a.attributes = nil
-}
-
-// SetAttributes stores resolved attributes and clears any attribute token.
-func (a *AuthUser) SetAttributes(attrs *AttributesResponse) {
-	a.attributes = attrs
-	a.attributeToken = nil
-}
-
-// authUserJSON is the internal proxy used for JSON serialization of AuthUser.
-type authUserJSON struct {
+// AuthState is the per-provider authentication state held inside an AuthUser.
+// EntityReferenceToken and EntityReference are mutually exclusive (one is nil
+// while the other carries the value); same for AttributeToken and Attributes.
+type AuthState struct {
 	EntityReferenceToken any                 `json:"entityReferenceToken"`
 	EntityReference      *EntityReference    `json:"entityReference,omitempty"`
 	AttributeToken       any                 `json:"attributeToken"`
 	Attributes           *AttributesResponse `json:"attributes,omitempty"`
 }
 
-// MarshalJSON implements json.Marshaler.
-func (a *AuthUser) MarshalJSON() ([]byte, error) {
-	proxy := authUserJSON{
-		EntityReferenceToken: a.entityReferenceToken,
-		EntityReference:      a.entityReference,
-		AttributeToken:       a.attributeToken,
-		Attributes:           a.attributes,
-	}
-
-	return json.Marshal(proxy)
+// AuthUser accumulates per-provider authentication state produced during flow execution.
+// State is keyed by provider name; the meaning of each key is policy owned by the
+// authn provider manager.
+type AuthUser struct {
+	state map[string]AuthState
 }
 
-// UnmarshalJSON implements json.Unmarshaler.
+// IsAuthenticated reports whether every per-provider state held by this AuthUser
+// has both an entity-reference side and an attribute side populated. Returns false
+// when no state has been recorded.
+func (a AuthUser) IsAuthenticated() bool {
+	if len(a.state) == 0 {
+		return false
+	}
+	for _, s := range a.state {
+		if (s.EntityReference == nil && s.EntityReferenceToken == nil) ||
+			(s.Attributes == nil && s.AttributeToken == nil) {
+			return false
+		}
+	}
+	return true
+}
+
+// ProviderNames returns the sorted list of provider names that have recorded state.
+func (a AuthUser) ProviderNames() []string {
+	if len(a.state) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(a.state))
+	for name := range a.state {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// StateFor returns the authentication state recorded for the named provider.
+// The second return value reports whether the named provider has any state.
+func (a AuthUser) StateFor(name string) (AuthState, bool) {
+	s, ok := a.state[name]
+	return s, ok
+}
+
+// SetStateFor records (or replaces) the authentication state for the named provider.
+func (a *AuthUser) SetStateFor(name string, s AuthState) {
+	if a.state == nil {
+		a.state = make(map[string]AuthState)
+	}
+	a.state[name] = s
+}
+
+// MarshalJSON implements json.Marshaler. AuthUser is serialized as a per-provider
+// envelope: a map of provider name to AuthState. A zero AuthUser marshals to `{}`.
+func (a *AuthUser) MarshalJSON() ([]byte, error) {
+	if a.state == nil {
+		return []byte("{}"), nil
+	}
+	return json.Marshal(a.state)
+}
+
+// UnmarshalJSON implements json.Unmarshaler. Expects the per-provider envelope shape.
 func (a *AuthUser) UnmarshalJSON(b []byte) error {
-	var proxy authUserJSON
-	if err := json.Unmarshal(b, &proxy); err != nil {
+	var state map[string]AuthState
+	if err := json.Unmarshal(b, &state); err != nil {
 		return err
 	}
-
-	a.entityReferenceToken = proxy.EntityReferenceToken
-	a.entityReference = proxy.EntityReference
-	a.attributeToken = proxy.AttributeToken
-	a.attributes = proxy.Attributes
-
+	a.state = state
 	return nil
 }
 
@@ -596,8 +580,9 @@ type IDJAGConfig struct {
 // (UserConfig) or the OAuth client itself, issued only via the client_credentials grant
 // (ClientConfig).
 type AccessTokenConfig struct {
-	UserConfig   *AccessTokenSubConfig `json:"userConfig,omitempty"   yaml:"userConfig,omitempty"   jsonschema:"Access token configuration applied when the token subject is an end user."`
-	ClientConfig *AccessTokenSubConfig `json:"clientConfig,omitempty" yaml:"clientConfig,omitempty" jsonschema:"Access token configuration applied when the token subject is the OAuth client itself, issued only via the client_credentials grant."`
+	UserConfig      *AccessTokenSubConfig `json:"userConfig,omitempty"   yaml:"userConfig,omitempty"   jsonschema:"Access token configuration applied when the token subject is an end user."`
+	ClientConfig    *AccessTokenSubConfig `json:"clientConfig,omitempty" yaml:"clientConfig,omitempty" jsonschema:"Access token configuration applied when the token subject is the OAuth client itself, issued only via the client_credentials grant."`
+	DefaultAudience string                `json:"defaultAudience,omitempty" yaml:"defaultAudience,omitempty" jsonschema:"Audience for access tokens not bound to a resource server (OIDC-only or scopeless requests). Falls back to the client_id when empty."`
 }
 
 // AccessTokenSubConfig holds the validity period and attribute selection for one access
@@ -926,6 +911,8 @@ type ExecutorSupportedProperties struct {
 	Property string `json:"property"`
 	// IsRequired indicates whether the property is required for the executor to function correctly.
 	IsRequired bool `json:"isRequired"`
+	// ApplicableModes limits the required check to the listed modes.
+	ApplicableModes []string `json:"applicableModes,omitempty"`
 }
 
 // ExecutorMeta describes the static capabilities of an executor.
@@ -1066,12 +1053,19 @@ type InboundAuthConfigWithSecret struct {
 	OAuthConfig *OAuthConfigWithSecret `json:"config,omitempty" yaml:"config,omitempty" jsonschema:"OAuth/OIDC configuration. Required when type is 'oauth2'. Defines OAuth grant types, redirect URIs, client authentication, and PKCE settings."`
 }
 
+// InitiatorRequest holds the original HTTP request data that triggered the flow.
+type InitiatorRequest struct {
+	Headers     map[string][]string `json:"headers,omitempty"     yaml:"headers,omitempty"`
+	QueryParams map[string][]string `json:"queryParams,omitempty" yaml:"queryParams,omitempty"`
+}
+
 // NodeContext holds the context for a specific node in the flow execution.
 //
 // TODO: fields on NodeContext are currently exposed directly. Convert to unexported
 // fields accessed via getters and setters so that mutation can be encapsulated.
 type NodeContext struct {
-	Context context.Context
+	Context          context.Context
+	initiatorRequest *InitiatorRequest
 
 	ExecutionID   string
 	FlowType      FlowType
@@ -1120,6 +1114,16 @@ func (nc *NodeContext) AppendConsumedInputs(keys []string) {
 // during this call.
 func (nc *NodeContext) GetConsumedInputs() []string {
 	return nc.consumedInputs
+}
+
+// GetInitiatorRequest returns the original HTTP request that triggered the flow.
+func (nc *NodeContext) GetInitiatorRequest() *InitiatorRequest {
+	return nc.initiatorRequest
+}
+
+// SetInitiatorRequest sets the original HTTP request that triggered the flow.
+func (nc *NodeContext) SetInitiatorRequest(req *InitiatorRequest) {
+	nc.initiatorRequest = req
 }
 
 // NodeExecutionRecord represents a record of a node execution in the flow.

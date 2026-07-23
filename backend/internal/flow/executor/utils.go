@@ -19,10 +19,10 @@
 package executor
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
@@ -129,9 +129,12 @@ func isCrossOUProvisioningAllowed(ctx *providers.NodeContext) bool {
 
 // setFederatedEntityState records whether federated authentication resolved a concrete local user
 // (via account linking) into the entityState runtime key.
-func setFederatedEntityState(execResp *providers.ExecutorResponse) {
+func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorResponse,
+	authnProvider providers.AuthnProviderManager) {
 	execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateNotExists
-	if execResp.AuthUser.EntityReference() != nil {
+	authUser, entityRef, svcErr := authnProvider.GetEntityReference(ctx, execResp.AuthUser)
+	execResp.AuthUser = authUser
+	if svcErr == nil && entityRef != nil {
 		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists
 	}
 }
@@ -178,69 +181,4 @@ func validateFederatedIdentifierConsistency(ctx *providers.NodeContext,
 	}
 
 	return true
-}
-
-// buildAppMetadataFromContext constructs application metadata from the node context,
-// including application metadata and OAuth client IDs.
-func buildAppMetadataFromContext(ctx *providers.NodeContext) map[string]interface{} {
-	appMetadata := make(map[string]interface{})
-
-	if ctx.Application.Metadata != nil {
-		for key, value := range ctx.Application.Metadata {
-			appMetadata[key] = value
-		}
-	}
-
-	var clientIDs []string
-	for _, inboundConfig := range ctx.Application.InboundAuthConfig {
-		if inboundConfig.OAuthConfig != nil && inboundConfig.OAuthConfig.ClientID != "" {
-			clientIDs = append(clientIDs, inboundConfig.OAuthConfig.ClientID)
-		}
-	}
-
-	if len(clientIDs) > 0 {
-		appMetadata["client_ids"] = clientIDs
-	}
-
-	return appMetadata
-}
-
-// buildRuntimeMetadata constructs the runtime metadata for authentication.
-func buildRuntimeMetadata(ctx *providers.NodeContext) map[string]string {
-	runtimeMetadata := map[string]string{
-		"authorization_request_id": ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID],
-		"current_client_id":        ctx.RuntimeData[common.RuntimeKeyClientID],
-	}
-
-	if ctx.RuntimeData != nil {
-		for key, value := range ctx.RuntimeData {
-			// Only the ext_* runtime data keys are passed to the authn provider.
-			if strings.HasPrefix(key, "ext_") {
-				runtimeMetadata[key] = value
-			}
-		}
-	}
-	return runtimeMetadata
-}
-
-// buildAuthnMetadata constructs the metadata for authentication.
-func buildAuthnMetadata(ctx *providers.NodeContext) *providers.AuthnMetadata {
-	return &providers.AuthnMetadata{
-		AppMetadata:     buildAppMetadataFromContext(ctx),
-		RuntimeMetadata: buildRuntimeMetadata(ctx),
-	}
-}
-
-// buildGetAttributesMetadata constructs the metadata for fetching user attributes.
-func buildGetAttributesMetadata(ctx *providers.NodeContext) *providers.GetAttributesMetadata {
-	metadata := &providers.GetAttributesMetadata{
-		AppMetadata:     buildAppMetadataFromContext(ctx),
-		RuntimeMetadata: buildRuntimeMetadata(ctx),
-	}
-
-	if locale, exists := ctx.RuntimeData["required_locales"]; exists && locale != "" {
-		metadata.Locale = locale
-	}
-
-	return metadata
 }

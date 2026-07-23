@@ -120,17 +120,16 @@ func (n *taskExecutionNode) Execute(ctx *providers.NodeContext) (*common.NodeRes
 		if n.onSuccess != "" {
 			nodeResp.NextNodeID = n.onSuccess
 		}
-	} else if nodeResp.Error != nil && n.onFailure != "" {
+	} else if nodeResp.Status == common.NodeStatusFailure && n.onFailure != "" {
 		// Change status to Forward so engine forwards execution to onFailure node
 		nodeResp.Status = common.NodeStatusForward
 		nodeResp.NextNodeID = n.onFailure
 
 		// Store failure reason in RuntimeData so it's available to the onFailure handler
-		if nodeResp.RuntimeData == nil {
-			nodeResp.RuntimeData = make(map[string]string)
-		}
-		if jsonBytes, err := json.Marshal(nodeResp.Error); err == nil {
-			nodeResp.RuntimeData["failureReasonJSON"] = string(jsonBytes)
+		if nodeResp.Error != nil {
+			if jsonBytes, err := json.Marshal(nodeResp.Error); err == nil {
+				nodeResp.RuntimeData["failureReasonJSON"] = string(jsonBytes)
+			}
 		}
 
 		// Clear user inputs consumed by this executor

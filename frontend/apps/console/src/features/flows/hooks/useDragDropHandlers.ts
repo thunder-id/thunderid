@@ -29,6 +29,7 @@ import type {Step, StepData} from '../models/steps';
 import type {Widget} from '../models/widget';
 import autoAssignConnections from '../utils/autoAssignConnections';
 import generateResourceId from '../utils/generateResourceId';
+import updateNestedComponent from '../utils/updateNestedComponent';
 import {widgetNeedsViewContainer} from '../utils/widgetUtils';
 
 /**
@@ -259,15 +260,14 @@ const useDragDropHandlers = (props: UseDragDropHandlersProps): UseDragDropHandle
 
         updateNodeData(targetStepId, (node: Node) => {
           const nodeData = node?.data as StepData | undefined;
-          const updatedComponents: Element[] =
-            nodeData?.components?.map((component: Element) =>
-              component.id === targetResource.id
-                ? {
-                    ...component,
-                    components: move([...(component.components ?? [])], event).concat(generatedElement),
-                  }
-                : component,
-            ) ?? [];
+          const updatedComponents: Element[] = updateNestedComponent(
+            nodeData?.components ?? [],
+            targetResource.id,
+            (target: Element) => ({
+              ...target,
+              components: move([...(target.components ?? [])], event).concat(generatedElement),
+            }),
+          );
 
           return {
             components: mutateComponents(updatedComponents),
@@ -417,25 +417,24 @@ const useDragDropHandlers = (props: UseDragDropHandlersProps): UseDragDropHandle
         const nodeData = node?.data as StepData | undefined;
         const components: Element[] = nodeData?.components ?? [];
 
-        // Find the form and update it
-        const updatedComponents = components.map((component: Element) => {
-          if (component.id === formId) {
-            const formComponents: Element[] = component.components ?? [];
-            // Find target index within the form
-            const targetIndex = formComponents.findIndex((c) => c.id === targetElementId);
+        // Find the form/stack container and insert at the target index within it
+        const updatedComponents = updateNestedComponent(components, formId, (target: Element) => {
+          const containerComponents: Element[] = target.components ?? [];
+          const targetIndex = containerComponents.findIndex((c) => c.id === targetElementId);
 
-            const updatedFormComponents =
-              targetIndex !== -1
-                ? [...formComponents.slice(0, targetIndex), generatedElement, ...formComponents.slice(targetIndex)]
-                : [...formComponents, generatedElement];
+          const updatedContainerComponents =
+            targetIndex !== -1
+              ? [
+                  ...containerComponents.slice(0, targetIndex),
+                  generatedElement,
+                  ...containerComponents.slice(targetIndex),
+                ]
+              : [...containerComponents, generatedElement];
 
-            return {
-              ...component,
-              components: updatedFormComponents,
-            };
-          }
-
-          return component;
+          return {
+            ...target,
+            components: updatedContainerComponents,
+          };
         });
 
         return {

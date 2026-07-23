@@ -94,6 +94,14 @@ export interface ConfigContextType {
   getTrustedIssuerUrl: () => string;
 
   /**
+   * Gets the OAuth redirect/callback URL for the login gate app. When gate_client is
+   * configured, builds the URL from it. Otherwise falls back to
+   * `${getServerUrl()}/gate/callback`.
+   * @returns The gate callback URL (e.g., "https://localhost:5190/gate/callback")
+   */
+  getGateCallbackUrl: () => string;
+
+  /**
    * Gets the OAuth client ID for the trusted issuer. When trusted_issuer.client_id is
    * configured, returns that. Otherwise falls back to getClientId().
    * @returns The trusted issuer client ID string

@@ -95,6 +95,11 @@ export interface BaseDisplay {
    */
   image: string;
   /**
+   * Set for full-color brand logos (e.g. Google) that must not be inverted in
+   * dark mode.
+   */
+  preserveImageColor?: boolean;
+  /**
    * The default variant of the component or the primitive.
    */
   defaultVariant?: string;

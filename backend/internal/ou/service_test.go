@@ -56,6 +56,11 @@ func (s *stubDependencyRegistry) CascadeDelete(context.Context, string, string) 
 	return 0, nil
 }
 
+func (s *stubDependencyRegistry) ValidateReferenceUpdate(
+	context.Context, string, string) *tidcommon.ServiceError {
+	return nil
+}
+
 type OrganizationUnitServiceTestSuite struct {
 	suite.Suite
 }

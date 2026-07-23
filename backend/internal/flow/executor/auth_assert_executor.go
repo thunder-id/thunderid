@@ -232,7 +232,7 @@ func (a *authAssertExecutor) generateAuthAssertion(
 
 	requiredAttributes := a.getRequiredUserAttributes(ctx)
 
-	metadata := buildGetAttributesMetadata(ctx)
+	metadata := core.BuildGetAttributesMetadata(ctx)
 
 	// Convert requested attributes from []string to *RequestedAttributes
 	reqAttrs := &providers.RequestedAttributes{

@@ -25,20 +25,17 @@ import {FlowComponentRenderer, AuthCardLayout, useDesign} from '@thunderid/desig
 import {EmbeddedFlowEventType, SignUp, useThunderID, type EmbeddedFlowComponent} from '@thunderid/react';
 import {Box, Button, Alert, Typography, AlertTitle, CircularProgress} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
-import {useState} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
-import ROUTES from '../../constants/routes';
+import RouteConfig from '../../configs/RouteConfig';
 
 export default function SignUpBox(): JSX.Element {
   const navigate = useNavigate();
   const {resolveFlowTemplateLiterals: resolve, meta} = useThunderID();
   const {t} = useTranslation();
   const {isDesignEnabled} = useDesign();
-  const [flowError, setFlowError] = useState<string | null>(null);
-
   // For React Router navigate() — basename is handled by the router.
-  const signInPath = ROUTES.AUTH.SIGN_IN;
+  const signInPath = RouteConfig.signIn();
   // For window.location.href and new URL() (via afterSignUpUrl) — React Router basename is
   // bypassed, so an absolute URL with origin + base path must be constructed explicitly.
   // Vite appends a trailing slash to BASE_URL.
@@ -79,7 +76,6 @@ export default function SignUpBox(): JSX.Element {
               resolve={resolve}
               onInputChange={handleInputChange}
               onSubmit={(action, inputs) => {
-                setFlowError(null);
                 const isTrigger = action.eventType === EmbeddedFlowEventType.Trigger || action.eventType === 'TRIGGER';
                 void handleSubmit(action, inputs, isTrigger);
               }}
@@ -112,23 +108,7 @@ export default function SignUpBox(): JSX.Element {
       showLogo={!isDesignEnabled}
       logoDisplay={!isDesignEnabled ? {xs: 'flex', md: 'none'} : {display: 'none'}}
     >
-      <SignUp
-        afterSignUpUrl={afterSignUpUrl}
-        onFlowChange={(response: any) => {
-          const messageKey: string | undefined = response?.error?.message?.key;
-          if (messageKey) {
-            const translated: string = t(messageKey);
-            if (translated !== messageKey) {
-              setFlowError(translated);
-
-              return;
-            }
-          }
-          const fallback: string | undefined =
-            response?.error?.message?.defaultValue ?? response?.error?.description?.defaultValue;
-          setFlowError(fallback ?? null);
-        }}
-      >
+      <SignUp afterSignUpUrl={afterSignUpUrl}>
         {({values, fieldErrors, error, touched, handleInputChange, handleSubmit, isLoading, components}: any) => (
           <>
             {!components ? (
@@ -143,12 +123,6 @@ export default function SignUpBox(): JSX.Element {
                     {error.message ?? t('signup:errors.signup.failed.description')}
                   </Alert>
                 )}
-                {flowError && (
-                  <Alert severity="error" sx={{mb: 2}}>
-                    {flowError}
-                  </Alert>
-                )}
-
                 {renderFlowContent(
                   components as EmbeddedFlowComponent[],
                   error,

@@ -20,7 +20,7 @@ import {useTemplateLiteralResolver} from '@thunderid/hooks';
 import {Box, Button, Checkbox, Divider, FormControlLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {ImageIcon, Workflow} from '@wso2/oxygen-ui-icons-react';
 import DOMPurify from 'dompurify';
-import {Fragment, type ReactElement, type ReactNode} from 'react';
+import {Fragment, type MouseEvent, type ReactElement, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {GATE_CARD_WIDTH, SKETCH_TEXT_INPUT_TYPES, SKETCH_ZOOM} from '../../constants/simulationPreviewConstants';
 import {VARIANT_TO_MUI_MAP} from '../../constants/typographyVariantMaps';
@@ -88,12 +88,59 @@ function SimulationScreenSketch({components, options, onChoose, onPreview}: Simu
       case ElementTypes.RichText: {
         // Mirrors RichTextAdapter: resolve templates, then render sanitized HTML.
         const raw = component.label ?? '';
+
+        // A rich text can carry more than one anchor (e.g. a plain "Terms" link
+        // next to a wired "Reset" link) — resolve the option from the specific
+        // anchor interacted with, not from the whole component, so clicking an
+        // unrelated anchor cannot fire the wired transition. This mirrors the
+        // SDK's own RichTextAdapter: when any anchor in the container carries
+        // `data-action-ref` (the sentinel, stamped at save time on the wired
+        // anchor — see reactFlowTransformer), the clicked anchor's own ref must
+        // match an option's `edgeId`. Only when NO anchor carries the attribute
+        // at all (hand-authored content predating the convention, with a single
+        // wired link) does any anchor click fall back to the component-level
+        // match — safe there because there is no other anchor it could be.
+        const resolveAnchorOption = (
+          container: HTMLElement,
+          target: EventTarget | null,
+        ): SimulationOption | undefined => {
+          const anchor = target instanceof HTMLElement ? target.closest('a') : null;
+          if (!anchor) {
+            return undefined;
+          }
+          const hasSentinel = container.querySelector('a[data-action-ref]') !== null;
+          if (hasSentinel) {
+            const actionRef = anchor.getAttribute('data-action-ref');
+            return actionRef
+              ? options.find((candidate: SimulationOption) => candidate.edgeId === actionRef)
+              : undefined;
+          }
+          return findOption(component.id);
+        };
+
         return (
           <Typography
             component="div"
             variant="body2"
             align={component.align ?? 'left'}
-            sx={{'& a': {color: 'primary.main'}, '& p': {m: 0}}}
+            // A wired rich text (e.g. a sign-up link) follows its transition when
+            // the embedded link is clicked, like in the real gate. Unwired
+            // anchors are neutralized - the sketch must never navigate away.
+            onClick={(event: MouseEvent<HTMLElement>) => {
+              if (!(event.target instanceof HTMLElement) || !event.target.closest('a')) {
+                return;
+              }
+              event.preventDefault();
+              const option = resolveAnchorOption(event.currentTarget, event.target);
+              if (option) {
+                onChoose(option);
+              }
+            }}
+            onMouseOver={(event: MouseEvent<HTMLElement>) =>
+              onPreview(resolveAnchorOption(event.currentTarget, event.target) ?? null)
+            }
+            onMouseLeave={() => onPreview(null)}
+            sx={{'& a': {color: 'primary.main', cursor: 'pointer'}, '& p': {m: 0}}}
             // eslint-disable-next-line react/no-danger
             dangerouslySetInnerHTML={{
               __html: DOMPurify.sanitize(resolveAll(raw, {t}) ?? raw, {

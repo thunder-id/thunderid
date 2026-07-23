@@ -46,6 +46,7 @@ import {motion} from 'framer-motion';
 import {useState, type JSX} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import CodeInline from '../components/CodeInline';
 import CredentialsBlock from '../components/CredentialsBlock';
 import ExternalLink from '../components/ExternalLink';
@@ -123,7 +124,11 @@ export default function TryoutSecuringConsumerApp(): JSX.Element {
             </IconButton>
             <AppBreadcrumbs
               items={[
-                {key: 'welcome', label: t('common:welcome.header'), onClick: () => void navigate('/welcome')},
+                {
+                  key: 'welcome',
+                  label: t('common:welcome.header'),
+                  onClick: () => void navigate(RouteConfig.welcome.root()),
+                },
                 {key: 'tryout', label: t('common:welcome.applicationTryout.breadcrumb')},
               ]}
             />

@@ -29,7 +29,7 @@ function SmsProperties({resource, onChange}: CommonResourcePropertiesPropsInterf
 
   const properties = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;
-    return (stepData?.properties ?? {}) as Record<string, unknown>;
+    return stepData?.properties ?? {};
   }, [resource]);
 
   const hasSenders = (smsProviders?.length ?? 0) > 0;

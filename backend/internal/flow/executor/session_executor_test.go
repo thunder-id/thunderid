@@ -76,7 +76,8 @@ func (suite *SessionExecutorTestSuite) saveAuthnMock() *managermock.AuthnProvide
 // are opaque; the resolved subject is supplied by the mocked provider in each test.
 func authenticatedAuthUser() providers.AuthUser {
 	var authUser providers.AuthUser
-	if err := authUser.UnmarshalJSON([]byte(`{"entityReferenceToken":"tok","attributeToken":"tok"}`)); err != nil {
+	if err := authUser.UnmarshalJSON(
+		[]byte(`{"default":{"entityReferenceToken":"tok","attributeToken":"tok"}}`)); err != nil {
 		panic("authenticatedAuthUser: malformed hardcoded JSON: " + err.Error())
 	}
 	return authUser
@@ -325,8 +326,8 @@ func ssoLoadCtx() *providers.NodeContext {
 // TestSSOLoad verifies the load path rehydrates the subject from the service-returned context, replays
 // the snapshotted RuntimeData, and overrides auth_time from the lean session.
 func (suite *SessionExecutorTestSuite) TestSSOLoad() {
-	snapAuthUser := `{"entityReference":{"entityId":"user-2","ouId":"ou-9","type":"person"},` +
-		`"attributes":{"attributes":{"email":{"value":"bob@example.com"}}}}`
+	snapAuthUser := `{"default":{"entityReference":{"entityId":"user-2","ouId":"ou-9","type":"person"},` +
+		`"attributes":{"attributes":{"email":{"value":"bob@example.com"}}}}}`
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().LoadCheckpoint(mock.Anything, "handle-abc", "session", "app-456").Return(
 		&session.Session{

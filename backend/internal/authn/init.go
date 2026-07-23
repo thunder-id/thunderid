@@ -32,7 +32,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/oauth"
 	"github.com/thunder-id/thunderid/internal/authn/oidc"
 	"github.com/thunder-id/thunderid/internal/authn/otp"
-	"github.com/thunder-id/thunderid/internal/authn/passkey"
 	"github.com/thunder-id/thunderid/internal/authn/reactsdk"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
@@ -42,7 +41,9 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// Initialize initializes the authentication service and registers its routes.
+// Initialize initializes the authentication service and registers its routes. It also creates the
+// Direct Auth Secret guard used to gate the Direct API endpoints and returns it so callers that own
+// other Direct API endpoints (e.g. authzen) can reuse the same guard.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
@@ -50,7 +51,6 @@ func Initialize(
 	jwtSvc jwt.JWTServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 	authAssertGen assert.AuthAssertGeneratorInterface,
-	passkeySvc passkey.PasskeyServiceInterface,
 	otpSvc otp.OTPAuthnServiceInterface,
 	notifSenderSvc notification.NotificationSenderServiceInterface,
 	templateSvc template.TemplateServiceInterface,
@@ -59,7 +59,8 @@ func Initialize(
 	oidcSvc oidc.OIDCAuthnServiceInterface,
 	googleSvc google.GoogleOIDCAuthnServiceInterface,
 	githubSvc github.GithubOAuthAuthnServiceInterface,
-) AuthenticationServiceInterface {
+	directAuthSecret string,
+) (AuthenticationServiceInterface, DirectAuthGuardInterface) {
 	common.RegisterAuthenticator(common.AuthenticatorMeta{
 		Name:    common.AuthenticatorCredentials,
 		Factors: []common.AuthenticationFactor{common.FactorKnowledge},
@@ -114,11 +115,12 @@ func Initialize(
 		oidcSvc,
 		googleSvc,
 		githubSvc,
-		passkeySvc,
 	)
 
+	directAuthGuard := newDirectAuthGuard(directAuthSecret)
+
 	authnHandler := newAuthenticationHandler(authnService)
-	registerRoutes(mux, authnHandler)
+	registerRoutes(mux, authnHandler, directAuthGuard)
 
 	// Register MCP tools
 	if mcpServer != nil {
@@ -126,11 +128,13 @@ func Initialize(
 		nextjssdk.RegisterTools(mcpServer)
 	}
 
-	return authnService
+	return authnService, directAuthGuard
 }
 
-// registerRoutes registers the routes for the authentication.
-func registerRoutes(mux *http.ServeMux, authnHandler *authenticationHandler) {
+// registerRoutes registers the routes for the authentication. Direct API handlers are gated by the
+// Direct Auth Secret; the CORS preflight (OPTIONS) handlers are not.
+func registerRoutes(mux *http.ServeMux, authnHandler *authenticationHandler,
+	guard DirectAuthGuardInterface) {
 	opts := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
@@ -138,27 +142,29 @@ func registerRoutes(mux *http.ServeMux, authnHandler *authenticationHandler) {
 		MaxAge:           600,
 	}
 
+	// directRoute gates a handler with the guard, applied outside CORS so a rejected request gets a
+	// bare 401 with no CORS headers.
+	directRoute := func(pattern string, handler http.HandlerFunc) {
+		p, corsHandler := middleware.WithCORS(pattern, handler, opts)
+		mux.HandleFunc(p, guard.Wrap(corsHandler))
+	}
+
 	// Credentials authentication routes
-	mux.HandleFunc(middleware.WithCORS("POST /auth/credentials/authenticate",
-		authnHandler.HandleCredentialsAuthRequest, opts))
+	directRoute("POST /auth/credentials/authenticate", authnHandler.HandleCredentialsAuthRequest)
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /auth/credentials/authenticate",
 		optionsNoContentHandler, opts))
 
 	// SMS OTP routes
-	mux.HandleFunc(middleware.WithCORS("POST /auth/otp/sms/send",
-		authnHandler.HandleSendSMSOTPRequest, opts))
-	mux.HandleFunc(middleware.WithCORS("POST /auth/otp/sms/verify",
-		authnHandler.HandleVerifySMSOTPRequest, opts))
+	directRoute("POST /auth/otp/sms/send", authnHandler.HandleSendSMSOTPRequest)
+	directRoute("POST /auth/otp/sms/verify", authnHandler.HandleVerifySMSOTPRequest)
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /auth/otp/sms/send",
 		optionsNoContentHandler, opts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /auth/otp/sms/verify",
 		optionsNoContentHandler, opts))
 
 	// Google OAuth routes
-	mux.HandleFunc(middleware.WithCORS("POST /auth/oauth/google/start",
-		authnHandler.HandleGoogleAuthStartRequest, opts))
-	mux.HandleFunc(middleware.WithCORS("POST /auth/oauth/google/finish",
-		authnHandler.HandleGoogleAuthFinishRequest, opts))
+	directRoute("POST /auth/oauth/google/start", authnHandler.HandleGoogleAuthStartRequest)
+	directRoute("POST /auth/oauth/google/finish", authnHandler.HandleGoogleAuthFinishRequest)
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /auth/oauth/google/start",
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
@@ -167,10 +173,8 @@ func registerRoutes(mux *http.ServeMux, authnHandler *authenticationHandler) {
 		optionsNoContentHandler, opts))
 
 	// GitHub OAuth routes
-	mux.HandleFunc(middleware.WithCORS("POST /auth/oauth/github/start",
-		authnHandler.HandleGithubAuthStartRequest, opts))
-	mux.HandleFunc(middleware.WithCORS("POST /auth/oauth/github/finish",
-		authnHandler.HandleGithubAuthFinishRequest, opts))
+	directRoute("POST /auth/oauth/github/start", authnHandler.HandleGithubAuthStartRequest)
+	directRoute("POST /auth/oauth/github/finish", authnHandler.HandleGithubAuthFinishRequest)
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /auth/oauth/github/start",
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
@@ -179,10 +183,8 @@ func registerRoutes(mux *http.ServeMux, authnHandler *authenticationHandler) {
 		optionsNoContentHandler, opts))
 
 	// Standard OAuth routes
-	mux.HandleFunc(middleware.WithCORS("POST /auth/oauth/standard/start",
-		authnHandler.HandleStandardOAuthStartRequest, opts))
-	mux.HandleFunc(middleware.WithCORS("POST /auth/oauth/standard/finish",
-		authnHandler.HandleStandardOAuthFinishRequest, opts))
+	directRoute("POST /auth/oauth/standard/start", authnHandler.HandleStandardOAuthStartRequest)
+	directRoute("POST /auth/oauth/standard/finish", authnHandler.HandleStandardOAuthFinishRequest)
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /auth/oauth/standard/start",
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
@@ -191,14 +193,10 @@ func registerRoutes(mux *http.ServeMux, authnHandler *authenticationHandler) {
 		optionsNoContentHandler, opts))
 
 	// Passkey routes
-	mux.HandleFunc(middleware.WithCORS("POST /register/passkey/start",
-		authnHandler.HandlePasskeyRegisterStartRequest, opts))
-	mux.HandleFunc(middleware.WithCORS("POST /register/passkey/finish",
-		authnHandler.HandlePasskeyRegisterFinishRequest, opts))
-	mux.HandleFunc(middleware.WithCORS("POST /auth/passkey/start",
-		authnHandler.HandlePasskeyStartRequest, opts))
-	mux.HandleFunc(middleware.WithCORS("POST /auth/passkey/finish",
-		authnHandler.HandlePasskeyFinishRequest, opts))
+	directRoute("POST /register/passkey/start", authnHandler.HandlePasskeyRegisterStartRequest)
+	directRoute("POST /register/passkey/finish", authnHandler.HandlePasskeyRegisterFinishRequest)
+	directRoute("POST /auth/passkey/start", authnHandler.HandlePasskeyStartRequest)
+	directRoute("POST /auth/passkey/finish", authnHandler.HandlePasskeyFinishRequest)
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /register/passkey/start",
 		optionsNoContentHandler, opts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /register/passkey/finish",

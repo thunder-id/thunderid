@@ -39,6 +39,21 @@ var (
 		},
 	}
 
+	// ErrorEnrollmentFailed is returned when the underlying provider rejects the enrollment
+	// attempt due to a client-side reason (e.g. invalid credential data).
+	ErrorEnrollmentFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AUTHN-MGR-1002",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authnmgrservice.enrollment_failed",
+			DefaultValue: "Enrollment failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authnmgrservice.enrollment_failed_description",
+			DefaultValue: "The enrollment attempt failed",
+		},
+	}
+
 	// ErrorGetAttributesClientError is returned when the underlying provider rejects the
 	// attribute fetch due to a client-side reason (e.g. invalid or expired token).
 	ErrorGetAttributesClientError = tidcommon.ServiceError{

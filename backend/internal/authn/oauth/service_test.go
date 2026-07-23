@@ -35,6 +35,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/httpmock"
@@ -209,7 +210,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildAuthorizeURLSuccess() {
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
 
-	url, err := suite.service.BuildAuthorizeURL(context.Background(), testIDPID)
+	url, metadata, err := suite.service.BuildAuthorizeURL(context.Background(), testIDPID)
 	suite.Nil(err)
 	suite.NotNil(url)
 	suite.Contains(url, "https://example.com/oauth/authorize?")
@@ -217,6 +218,8 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildAuthorizeURLSuccess() {
 	suite.Contains(url, "client_id=test_client_id")
 	suite.Contains(url, "redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback")
 	suite.Contains(url, "scope=openid+profile")
+	suite.Contains(url, "state=")
+	suite.NotEmpty(metadata[oauth2const.RequestParamState])
 }
 
 func (suite *OAuthAuthnServiceTestSuite) TestBuildAuthorizeURLSuccessWithAdditionalParams() {
@@ -271,12 +274,14 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildAuthorizeURLSuccessWithAdditio
 			}
 			suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
 
-			url, err := suite.service.BuildAuthorizeURL(context.Background(), testIDPID)
+			url, metadata, err := suite.service.BuildAuthorizeURL(context.Background(), testIDPID)
 			suite.Nil(err)
 			suite.NotNil(url)
 			suite.Contains(url, "https://example.com/oauth/authorize?")
 			suite.Contains(url, "client_id=test_client_id")
 			suite.Contains(url, "redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback")
+			suite.Contains(url, "state=")
+			suite.NotEmpty(metadata[oauth2const.RequestParamState])
 
 			// Ensure the forbidden string (empty-key value or empty-value key) is not present in the URL
 			suite.NotContains(url, tc.forbiddenStr)
@@ -298,8 +303,9 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildAuthorizeURLWithError() {
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(nil, serverErr)
 
-	url, err := suite.service.BuildAuthorizeURL(context.Background(), testIDPID)
+	url, metadata, err := suite.service.BuildAuthorizeURL(context.Background(), testIDPID)
 	suite.Empty(url)
+	suite.Nil(metadata)
 	suite.NotNil(err)
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
@@ -709,8 +715,9 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildAuthorizeURLErrors() {
 			}
 			suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
 
-			url, err := suite.service.BuildAuthorizeURL(context.Background(), testIDPID)
+			url, metadata, err := suite.service.BuildAuthorizeURL(context.Background(), testIDPID)
 			suite.Empty(url)
+			suite.Nil(metadata)
 			suite.NotNil(err)
 			suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 		})
@@ -850,7 +857,8 @@ func (suite *OAuthAuthnServiceTestSuite) TestAuthenticateSuccess() {
 	suite.mockHTTPClient.On("Do", mock.Anything).Return(tokenHTTPResp, nil).Once()
 	suite.mockHTTPClient.On("Do", mock.Anything).Return(userInfoHTTPResp, nil).Once()
 
-	result, err := suite.service.Authenticate(context.Background(), testIDPID, "auth_code")
+	result, err := suite.service.Authenticate(context.Background(), testIDPID,
+		common.AuthorizationData{Code: "auth_code"})
 	suite.Nil(err)
 	suite.NotNil(result)
 	suite.Equal("user_sub_123", result.Token["sub"])
@@ -858,7 +866,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestAuthenticateSuccess() {
 }
 
 func (suite *OAuthAuthnServiceTestSuite) TestAuthenticateTokenExchangeFailure() {
-	result, err := suite.service.Authenticate(context.Background(), testIDPID, "")
+	result, err := suite.service.Authenticate(context.Background(), testIDPID, common.AuthorizationData{})
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(ErrorEmptyAuthorizationCode.Code, err.Code)
@@ -889,7 +897,8 @@ func (suite *OAuthAuthnServiceTestSuite) TestAuthenticateFetchUserInfoFailure() 
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
 	suite.mockHTTPClient.On("Do", mock.Anything).Return(tokenHTTPResp, nil).Once()
 
-	result, err := suite.service.Authenticate(context.Background(), testIDPID, "auth_code")
+	result, err := suite.service.Authenticate(context.Background(), testIDPID,
+		common.AuthorizationData{Code: "auth_code"})
 	suite.Nil(result)
 	suite.NotNil(err)
 }
@@ -958,7 +967,8 @@ func (suite *OAuthAuthnServiceTestSuite) TestAuthenticateMissingSub() {
 			freshHTTPMock.On("Do", mock.Anything).Return(tokenHTTPResp, nil).Once()
 			freshHTTPMock.On("Do", mock.Anything).Return(userInfoHTTPResp, nil).Once()
 
-			result, err := suite.service.Authenticate(context.Background(), testIDPID, "auth_code")
+			result, err := suite.service.Authenticate(context.Background(), testIDPID,
+				common.AuthorizationData{Code: "auth_code"})
 			suite.Nil(result)
 			suite.NotNil(err)
 			suite.Equal(common.ErrorSubClaimNotFound.Code, err.Code)

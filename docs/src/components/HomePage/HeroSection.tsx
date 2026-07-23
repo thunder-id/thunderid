@@ -284,7 +284,7 @@ export default function HeroSection(): JSX.Element {
               </Button>
               <Button
                 component={Link}
-                href="/docs/next/guides/getting-started/get-thunderid"
+                href="/docs/next/getting-started/get-thunderid"
                 variant="text"
                 size="large"
                 sx={{
@@ -697,7 +697,7 @@ export default function HeroSection(): JSX.Element {
               ) : null}
               <Typography
                 component={Link}
-                href="/docs/next/guides/getting-started/get-thunderid"
+                href="/docs/next/getting-started/get-thunderid"
                 sx={{
                   fontSize: '0.82rem',
                   color: dimColor,

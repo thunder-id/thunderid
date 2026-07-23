@@ -146,7 +146,7 @@ describe('generateFlowGraph', () => {
 
       expect(signUpLink).toBeDefined();
       expect(signUpLink?.type).toBe('RICH_TEXT');
-      expect(signUpLink?.label).toContain('{{meta(application.sign_up_url)}}');
+      expect(signUpLink?.label).toContain('data-component-ref="self-sign-up-link"');
     }
   });
 

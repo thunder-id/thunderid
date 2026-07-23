@@ -18,7 +18,7 @@
 
 import {SettingsCard, UnsavedChangesBar} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
-import {Alert, Box, Button, Chip, PageContent, Skeleton, Stack, Tab, Tabs, Typography} from '@wso2/oxygen-ui';
+import {Alert, Box, Button, PageContent, Skeleton, Stack, Tab, Tabs, Typography} from '@wso2/oxygen-ui';
 import {ChevronLeft, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {type JSX, type ReactNode, type SyntheticEvent, useEffect, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -33,6 +33,7 @@ import ConnectionForm from '../components/ConnectionForm';
 import ReadOnlyCopyField from '../components/ReadOnlyCopyField';
 import {CONNECTION_FORM_FIELDS} from '../config/connectionFormFields';
 import {VENDOR_META_BY_TYPE} from '../config/connectionVendorMeta';
+import useConnectionRoutes from '../hooks/useConnectionRoutes';
 import type {AttributeConfiguration, ConnectionType} from '../models/connection';
 import {
   type ConnectionFormValues,
@@ -79,7 +80,8 @@ function canonicalAttr(config: AttributeConfiguration | undefined): string {
 export default function ConnectionDetailPage(): JSX.Element | null {
   const {t} = useTranslation('connections');
   const navigate = useNavigate();
-  const {getServerUrl} = useConfig();
+  const routes = useConnectionRoutes();
+  const {getGateCallbackUrl} = useConfig();
   const {type, id} = useParams<{type: string; id?: string}>();
 
   const connectionType = type as ConnectionType;
@@ -105,12 +107,12 @@ export default function ConnectionDetailPage(): JSX.Element | null {
 
   useEffect(() => {
     if (!meta) {
-      void navigate('/connections');
+      void navigate(routes.connections.list());
     }
-  }, [meta, navigate]);
+  }, [meta, navigate, routes]);
 
   const fields = useMemo(() => (meta ? CONNECTION_FORM_FIELDS[connectionType] : []), [meta, connectionType]);
-  const redirectUri = `${getServerUrl()}/gate/callback`;
+  const redirectUri = getGateCallbackUrl();
   const data = connectionQuery.data;
 
   const baseline = useMemo<ConnectionFormValues>(
@@ -165,7 +167,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     deleteMutation.mutate(resolvedId, {
       onSuccess: () => {
         setDeleteOpen(false);
-        void navigate('/connections');
+        void navigate(routes.connections.list());
       },
     });
   };
@@ -175,7 +177,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
       <Button
         variant="text"
         startIcon={<ChevronLeft size={16} />}
-        onClick={() => void navigate('/connections')}
+        onClick={() => void navigate(routes.connections.list())}
         sx={{mb: 2, alignSelf: 'flex-start'}}
       >
         {t('detail.backToConnections')}
@@ -203,15 +205,15 @@ export default function ConnectionDetailPage(): JSX.Element | null {
               {meta.logo}
             </Box>
             <Stack direction="column" spacing={0.5}>
-              <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
-                <Typography variant="h5" fontWeight={700}>
-                  {data?.name ?? meta.displayName}
-                </Typography>
-                <Chip size="small" color="success" label={t('card.configured')} />
-              </Stack>
-              <Typography variant="body2" color="text.secondary">
-                {t('detail.subtitle', {name: data?.name ?? meta.displayName})}
+              <Typography variant="h5" fontWeight={700}>
+                {data?.name ?? meta.displayName}
               </Typography>
+              <Stack direction="row" spacing={0.75} alignItems="center">
+                <Box sx={{width: 8, height: 8, borderRadius: '50%', bgcolor: 'success.main'}} />
+                <Typography variant="body2" color="text.secondary">
+                  {t('card.configured')}
+                </Typography>
+              </Stack>
             </Stack>
           </Stack>
 

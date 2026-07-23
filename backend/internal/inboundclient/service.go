@@ -38,6 +38,7 @@ import (
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
@@ -67,6 +68,9 @@ type InboundClientServiceInterface interface {
 	// Validate resolves flow defaults and validates FK constraints and OAuth profile without persisting.
 	Validate(ctx context.Context, client *inboundmodel.InboundClient,
 		oauthProfile *providers.OAuthProfile, hasClientSecret bool) error
+	// RevalidateFKs re-runs FK validation for the inbound client identified by entityID. Used after
+	// a referenced resource (e.g. a flow) is updated to detect newly-inconsistent references.
+	RevalidateFKs(ctx context.Context, entityID string) error
 	// ResolveInboundAuthProfileHandles resolves flow handle fields in-place to their IDs.
 	// Only fields with an empty ID but a non-empty handle are resolved.
 	ResolveInboundAuthProfileHandles(ctx context.Context, profile *providers.InboundAuthProfile) error
@@ -137,6 +141,9 @@ func (s *inboundClientService) CreateInboundClient(ctx context.Context, client *
 		return ErrCannotModifyDeclarative
 	}
 	if err := s.resolveFlowDefaults(ctx, client); err != nil {
+		return err
+	}
+	if err := s.reconcileReferencedFlows(ctx, client); err != nil {
 		return err
 	}
 	if fkErr := s.validateFKs(ctx, client); fkErr != nil {
@@ -215,6 +222,9 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 	if err := s.resolveFlowDefaults(ctx, client); err != nil {
 		return err
 	}
+	if err := s.reconcileReferencedFlows(ctx, client); err != nil {
+		return err
+	}
 	if fkErr := s.validateFKs(ctx, client); fkErr != nil {
 		return fkErr
 	}
@@ -284,6 +294,22 @@ func (s *inboundClientService) Validate(ctx context.Context, client *inboundmode
 		}
 	}
 	return nil
+}
+
+// RevalidateFKs re-runs FK validation for the inbound client identified by entityID. Used by the
+// resource-dependency registry to catch newly-inconsistent references after a referenced resource
+// (e.g. a flow) is updated. A missing inbound client is treated as no-op — the reference is
+// stale and will be resolved when the entity itself is updated or removed.
+func (s *inboundClientService) RevalidateFKs(ctx context.Context, entityID string) error {
+	client, err := s.GetInboundClientByEntityID(ctx, entityID)
+	if err != nil {
+		if errors.Is(err, ErrInboundClientNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	return s.validateFKs(ctx, client)
 }
 
 func validateOAuthCertificateClientID(oauthProfile *providers.OAuthProfile, oauthClientID string) error {
@@ -752,6 +778,24 @@ func validateOAuthProfile(p *providers.OAuthProfile, hasClientSecret bool) error
 	if err := validateIDTokenConfig(p); err != nil {
 		return err
 	}
+	if err := validateAccessTokenConfig(p); err != nil {
+		return err
+	}
+	return nil
+}
+
+// maxDefaultAudienceLength bounds the access token default audience, a single audience identifier
+// (typically a URI), to a sane length.
+const maxDefaultAudienceLength = 2048
+
+// validateAccessTokenConfig validates the access token configuration.
+func validateAccessTokenConfig(p *providers.OAuthProfile) error {
+	if p.Token == nil || p.Token.AccessToken == nil {
+		return nil
+	}
+	if len(p.Token.AccessToken.DefaultAudience) > maxDefaultAudienceLength {
+		return ErrOAuthDefaultAudienceTooLong
+	}
 	return nil
 }
 
@@ -942,15 +986,13 @@ func containsInvalidWildcardSegment(p string) bool {
 
 // validateGrantAndResponseTypes validates grant types, response types, and their combinations.
 func validateGrantAndResponseTypes(p *providers.OAuthProfile) error {
-	for _, grantType := range p.GrantTypes {
-		if !providers.GrantType(grantType).IsValid() {
-			return ErrOAuthInvalidGrantType
-		}
+	err := validateWithAllowedGrantTypes(p.GrantTypes)
+	if err != nil {
+		return err
 	}
-	for _, responseType := range p.ResponseTypes {
-		if !providers.ResponseType(responseType).IsValid() {
-			return ErrOAuthInvalidResponseType
-		}
+	err = validateWithAllowedResponseTypes(p.ResponseTypes)
+	if err != nil {
+		return err
 	}
 	if len(p.GrantTypes) == 1 &&
 		slices.Contains(p.GrantTypes, string(providers.GrantTypeClientCredentials)) &&
@@ -963,9 +1005,9 @@ func validateGrantAndResponseTypes(p *providers.OAuthProfile) error {
 			return ErrOAuthAuthCodeRequiresCodeResponseType
 		}
 	}
-	if len(p.GrantTypes) == 1 &&
-		slices.Contains(p.GrantTypes, string(providers.GrantTypeRefreshToken)) {
-		return ErrOAuthRefreshTokenCannotBeSoleGrant
+	if slices.Contains(p.GrantTypes, string(providers.GrantTypeRefreshToken)) &&
+		!providers.AnyIssuesRefreshToken(p.GrantTypes) {
+		return ErrOAuthRefreshTokenRequiresTokenIssuingGrant
 	}
 	if p.PKCERequired &&
 		!slices.Contains(p.GrantTypes, string(providers.GrantTypeAuthorizationCode)) {
@@ -980,9 +1022,9 @@ func validateGrantAndResponseTypes(p *providers.OAuthProfile) error {
 
 // validateTokenEndpointAuthMethod validates the token endpoint auth method against cert and secret state.
 func validateTokenEndpointAuthMethod(p *providers.OAuthProfile, hasClientSecret bool) error {
-	method := providers.TokenEndpointAuthMethod(p.TokenEndpointAuthMethod)
-	if !method.IsValid() {
-		return ErrOAuthInvalidTokenEndpointAuthMethod
+	err := validateWithAllowedTokenEndpointAuthMethod(p.TokenEndpointAuthMethod)
+	if err != nil {
+		return err
 	}
 	hasCert := p.Certificate != nil && p.Certificate.Type != ""
 	userInfoNeedsCert := p.UserInfo != nil && p.UserInfo.EncryptionAlg != ""
@@ -991,7 +1033,7 @@ func validateTokenEndpointAuthMethod(p *providers.OAuthProfile, hasClientSecret 
 			p.Token.IDToken.ResponseType == providers.IDTokenResponseTypeNESTEDJWT)
 	needsCert := userInfoNeedsCert || idTokenNeedsCert
 
-	switch method {
+	switch providers.TokenEndpointAuthMethod(p.TokenEndpointAuthMethod) {
 	case providers.TokenEndpointAuthMethodPrivateKeyJWT:
 		if !hasCert {
 			return ErrOAuthPrivateKeyJWTRequiresCertificate
@@ -1026,6 +1068,49 @@ func validateTokenEndpointAuthMethod(p *providers.OAuthProfile, hasClientSecret 
 	return nil
 }
 
+// validateAllowedGrantTypes rejects grant types not permitted by the deployment's configured
+// oauth.allowed_grant_types allow-list. An empty allow-list permits all grant types.
+func validateWithAllowedGrantTypes(grantTypes []string) error {
+	allowed := config.GetServerRuntime().Config.OAuth.AllowedGrantTypes
+	for _, grantType := range grantTypes {
+		if !providers.GrantType(grantType).IsValid() {
+			return ErrOAuthInvalidGrantType
+		}
+		if len(allowed) > 0 && !slices.Contains(allowed, grantType) {
+			return ErrOAuthInvalidGrantType
+		}
+	}
+	return nil
+}
+
+// validateAllowedResponseTypes rejects response types not permitted by the deployment's configured
+// oauth.allowed_response_types allow-list. An empty allow-list permits all response types.
+func validateWithAllowedResponseTypes(responseTypes []string) error {
+	allowed := config.GetServerRuntime().Config.OAuth.AllowedResponseTypes
+	for _, responseType := range responseTypes {
+		if !providers.ResponseType(responseType).IsValid() {
+			return ErrOAuthInvalidResponseType
+		}
+		if len(allowed) > 0 && !slices.Contains(allowed, responseType) {
+			return ErrOAuthInvalidResponseType
+		}
+	}
+	return nil
+}
+
+// validateAllowedTokenEndpointAuthMethod rejects a token endpoint auth method not permitted by the
+// deployment's configured oauth.allowed_auth_methods allow-list. An empty allow-list permits all methods.
+func validateWithAllowedTokenEndpointAuthMethod(method string) error {
+	if !providers.TokenEndpointAuthMethod(method).IsValid() {
+		return ErrOAuthInvalidTokenEndpointAuthMethod
+	}
+	allowed := config.GetServerRuntime().Config.OAuth.AllowedAuthMethods
+	if len(allowed) == 0 || slices.Contains(allowed, method) {
+		return nil
+	}
+	return ErrOAuthInvalidTokenEndpointAuthMethod
+}
+
 // validatePublicClient validates constraints required for public clients.
 func validatePublicClient(p *providers.OAuthProfile) error {
 	if providers.TokenEndpointAuthMethod(p.TokenEndpointAuthMethod) != providers.TokenEndpointAuthMethodNone {
@@ -1052,6 +1137,9 @@ func (s *inboundClientService) validateFKs(ctx context.Context, c *inboundmodel.
 		return err
 	}
 	if err := s.validateSignOutFlowID(ctx, c.SignOutFlowID); err != nil {
+		return err
+	}
+	if err := s.validateReferencedFlows(ctx, c); err != nil {
 		return err
 	}
 	if err := s.validateThemeID(ctx, c.ThemeID); err != nil {
@@ -1300,7 +1388,8 @@ func applyInboundDefaults(c *inboundmodel.InboundClient, oauthProfile *providers
 		IDJAG:        resolveIDJAG(oauthProfile.Token),
 	}
 	oauthProfile.UserInfo = resolveUserInfo(oauthProfile.UserInfo, idToken)
-	oauthProfile.ScopeClaims = resolveScopeClaims(oauthProfile.ScopeClaims)
+	// Persist the effective scope-to-claims mapping: standard OIDC defaults merged with any overrides.
+	oauthProfile.ScopeClaims = oauthutils.ResolveEffectiveScopeClaims(oauthProfile.ScopeClaims)
 }
 
 // getDefaultAssertionFromDeployment returns the assertion config from the deployment-level JWT settings.
@@ -1349,6 +1438,7 @@ func resolveOAuthTokens(in *providers.OAuthTokenConfig,
 	}
 	if in != nil && in.AccessToken != nil {
 		accessToken.ClientConfig = in.AccessToken.ClientConfig
+		accessToken.DefaultAudience = in.AccessToken.DefaultAudience
 	}
 
 	var idToken *providers.IDTokenConfig
@@ -1466,10 +1556,120 @@ func resolveUserInfo(in *providers.UserInfoConfig,
 	return out
 }
 
-// resolveScopeClaims returns the input scope claims map, defaulting to an empty map if nil.
-func resolveScopeClaims(in map[string][]string) map[string][]string {
-	if in == nil {
-		return make(map[string][]string)
+// reconcileReferencedFlows walks call-node targets reachable from the inbound client's configured
+// flows and reconciles the client's flow bindings before persistence.
+// This mutates the client in place. It is intended for the create/update paths; the flow-update
+// revalidation path uses validateReferencedFlows instead, which never mutates.
+func (s *inboundClientService) reconcileReferencedFlows(
+	ctx context.Context, c *inboundmodel.InboundClient) error {
+	return s.walkReferencedFlows(ctx, c, true)
+}
+
+// validateReferencedFlows verifies that call-node targets reachable from the inbound client's
+// configured flows do not contradict the client's existing flow bindings. An unset field on the
+// client is treated as OK — no auto-fill happens here.
+func (s *inboundClientService) validateReferencedFlows(
+	ctx context.Context, c *inboundmodel.InboundClient) error {
+	return s.walkReferencedFlows(ctx, c, false)
+}
+
+// walkReferencedFlows walks call-node targets reachable from the inbound client's configured
+// flows and either reconciles or validates the client's flow bindings, depending on the reconcile flag.
+// If reconcile is true, the client is mutated in place to auto-fill unset flow IDs and disable the
+// corresponding flow flags. If reconcile is false, the function only validates and returns errors for
+// mismatches without mutating the client.
+func (s *inboundClientService) walkReferencedFlows(
+	ctx context.Context, c *inboundmodel.InboundClient, reconcile bool) error {
+	if s.flowMgt == nil {
+		return nil
 	}
-	return in
+
+	starts := []struct {
+		id       string
+		flowType providers.FlowType
+	}{
+		{c.AuthFlowID, providers.FlowTypeAuthentication},
+		{c.RegistrationFlowID, providers.FlowTypeRegistration},
+		{c.RecoveryFlowID, providers.FlowTypeRecovery},
+		{c.SignOutFlowID, providers.FlowTypeSignOut},
+	}
+	for _, start := range starts {
+		if start.id == "" {
+			continue
+		}
+
+		targets, svcErr := s.flowMgt.GetReachableCallTargets(ctx, start.id)
+		if svcErr != nil {
+			if svcErr.Type == tidcommon.ClientErrorType {
+				switch start.flowType {
+				case providers.FlowTypeAuthentication:
+					return ErrFKInvalidAuthFlow
+				case providers.FlowTypeRegistration:
+					return ErrFKInvalidRegistrationFlow
+				case providers.FlowTypeRecovery:
+					return ErrFKInvalidRecoveryFlow
+				case providers.FlowTypeSignOut:
+					return ErrFKInvalidSignOutFlow
+				}
+			}
+			return ErrFKFlowServerError
+		}
+
+		for _, t := range targets {
+			// Same-type CALL is subroutine composition, not an alternate entry point for
+			// that type. So it never conflicts with the inbound client's per-type binding.
+			if t.FlowType == start.flowType {
+				continue
+			}
+
+			var expected string
+			switch t.FlowType {
+			case providers.FlowTypeAuthentication:
+				expected = c.AuthFlowID
+			case providers.FlowTypeRegistration:
+				expected = c.RegistrationFlowID
+			case providers.FlowTypeRecovery:
+				expected = c.RecoveryFlowID
+			case providers.FlowTypeSignOut:
+				expected = c.SignOutFlowID
+			default:
+				continue
+			}
+
+			if expected == "" {
+				// The inbound client has no binding for this type. On the reconcile path (create/update),
+				// we auto-fill the reg/recovery/signout binding with the reachable target and force
+				// the enable flag to false. On the validate-only path (flow update revalidation)
+				// we simply accept — no mutation, no rejection.
+				if !reconcile {
+					continue
+				}
+				switch t.FlowType {
+				case providers.FlowTypeRegistration:
+					c.RegistrationFlowID = t.FlowID
+					c.IsRegistrationFlowEnabled = false
+				case providers.FlowTypeRecovery:
+					c.RecoveryFlowID = t.FlowID
+					c.IsRecoveryFlowEnabled = false
+				case providers.FlowTypeSignOut:
+					c.SignOutFlowID = t.FlowID
+					c.IsSignOutFlowEnabled = false
+				}
+				continue
+			}
+
+			if t.FlowID != expected {
+				return &FlowMismatchError{
+					SourceFlowType: start.flowType,
+					FlowType:       t.FlowType,
+					msg: fmt.Sprintf("configured %s flow invokes a %s flow that is not the configured %s flow",
+						strings.ToLower(string(start.flowType)),
+						strings.ToLower(string(t.FlowType)),
+						strings.ToLower(string(t.FlowType))),
+				}
+			}
+		}
+	}
+
+	return nil
 }

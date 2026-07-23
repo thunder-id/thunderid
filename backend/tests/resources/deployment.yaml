@@ -27,6 +27,12 @@ oauth:
   jwt:
     issuer: thunderid
     validity_period: 3600
+  dcr:
+    enabled: true
+  logout:
+    enabled: true
+  token_revocation:
+    enabled: true
 
 flow:
   max_version_history: 3

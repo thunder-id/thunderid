@@ -85,6 +85,7 @@ interface MockFlowComponent {
   required?: boolean;
   eventType?: string;
   image?: string;
+  action?: {ref?: string};
   components?: MockFlowComponent[];
 }
 
@@ -528,15 +529,16 @@ describe('SignInBox', () => {
         {
           id: 'rich-text-signup',
           type: 'RICH_TEXT',
-          label: '<p>Don\'t have an account? <a href="{{meta(application.sign_up_url)}}">Sign up</a></p>',
+          label:
+            '<p data-component-ref="self-sign-up-link">Don\'t have an account? <a href="#" data-action-ref="action_signup">Sign up</a></p>',
+          action: {ref: 'action_signup'},
         },
       ],
     });
     render(<SignInBox />);
 
-    const signUpLink = screen.getByText('Sign up');
-    // Sign-up link is now a plain anchor using the fallback URL
-    expect(signUpLink.closest('a')).toHaveAttribute('href', '/signup');
+    fireEvent.click(screen.getByText('Sign up'));
+    expect(mockOnSubmit).toHaveBeenCalledWith({inputs: {}, action: 'action_signup'});
   });
 
   it('renders correctly when design is enabled', () => {
@@ -662,7 +664,7 @@ describe('SignInBox', () => {
     });
   });
 
-  it('navigates to sign up with query params preserved', () => {
+  it('renders sign up link when registration is enabled', () => {
     mockResolveAll.mockImplementation(
       (template: string, handlers?: Record<string, (key: string) => string | undefined>) =>
         template.replace(/\{\{meta\(([^)]+)\)\}\}/g, (_match, path: string) => handlers?.meta?.(path) ?? _match),
@@ -673,18 +675,18 @@ describe('SignInBox', () => {
         {
           id: 'rich-text-signup',
           type: 'RICH_TEXT',
-          label: '<p>Don\'t have an account? <a href="{{meta(application.sign_up_url)}}">Sign up</a></p>',
+          label:
+            '<p data-component-ref="self-sign-up-link">Don\'t have an account? <a href="#" data-action-ref="action_signup">Sign up</a></p>',
+          action: {ref: 'action_signup'},
         },
       ],
     });
 
     render(<SignInBox />);
-    const signUpLink = screen.getByText('Sign up');
-    // Sign-up link is now a plain anchor using the fallback URL
-    expect(signUpLink.closest('a')).toHaveAttribute('href', '/signup');
+    expect(screen.getByText('Sign up')).toBeInTheDocument();
   });
 
-  it('preserves existing query params in the sign-up fallback URL', () => {
+  it('dispatches sign-up action regardless of URL query params', () => {
     mockSearchParams = new URLSearchParams({client_id: 'test-client', app_id: 'myapp'});
     mockResolveAll.mockImplementation(
       (template: string, handlers?: Record<string, (key: string) => string | undefined>) =>
@@ -696,17 +698,16 @@ describe('SignInBox', () => {
         {
           id: 'rich-text-signup',
           type: 'RICH_TEXT',
-          label: '<p>Don\'t have an account? <a href="{{meta(application.sign_up_url)}}">Sign up</a></p>',
+          label:
+            '<p data-component-ref="self-sign-up-link">Don\'t have an account? <a href="#" data-action-ref="action_signup">Sign up</a></p>',
+          action: {ref: 'action_signup'},
         },
       ],
     });
 
     render(<SignInBox />);
-    const signUpLink = screen.getByText('Sign up');
-    const href = signUpLink.closest('a')?.getAttribute('href') ?? '';
-    expect(href).toContain('/signup');
-    expect(href).toContain('client_id=test-client');
-    expect(href).toContain('app_id=myapp');
+    fireEvent.click(screen.getByText('Sign up'));
+    expect(mockOnSubmit).toHaveBeenCalledWith({inputs: {}, action: 'action_signup'});
   });
 
   it('handles password input change', async () => {
@@ -1935,15 +1936,16 @@ describe('SignInBox', () => {
         {
           id: 'rich-text-signup',
           type: 'RICH_TEXT',
-          label: '<p>Don\'t have an account? <a href="{{meta(application.sign_up_url)}}">Sign up</a></p>',
+          label:
+            '<p data-component-ref="self-sign-up-link">Don\'t have an account? <a href="#" data-action-ref="action_signup">Sign up</a></p>',
+          action: {ref: 'action_signup'},
         },
       ],
     });
     render(<SignInBox />);
 
-    const signUpLink = screen.getByText('Sign up');
-    // Sign-up link is now a plain anchor using the fallback URL
-    expect(signUpLink.closest('a')).toHaveAttribute('href', '/signup');
+    fireEvent.click(screen.getByText('Sign up'));
+    expect(mockOnSubmit).toHaveBeenCalledWith({inputs: {}, action: 'action_signup'});
   });
 
   it('renders social login trigger with missing label and image', () => {

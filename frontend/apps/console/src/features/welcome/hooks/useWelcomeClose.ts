@@ -20,6 +20,7 @@ import {useConfig, useToast} from '@thunderid/contexts';
 import {useCallback} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import getWelcomeDismissedStorageKey from '../utils/getWelcomeDismissedStorageKey';
 
 /**
@@ -37,7 +38,7 @@ export default function useWelcomeClose(): () => void {
 
   return useCallback((): void => {
     sessionStorage.setItem(getWelcomeDismissedStorageKey(productName), 'true');
-    void navigate('/home');
+    void navigate(RouteConfig.home.list());
     showToast(t('common:welcome.dismissed'), 'info');
   }, [navigate, productName, showToast, t]);
 }

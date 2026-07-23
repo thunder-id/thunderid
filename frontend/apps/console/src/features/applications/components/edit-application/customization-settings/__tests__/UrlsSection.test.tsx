@@ -205,6 +205,48 @@ describe('UrlsSection', () => {
     });
   });
 
+  describe('Validation Change Callback', () => {
+    it('should notify parent with no errors for valid default values', async () => {
+      const mockOnValidationChange = vi.fn();
+
+      render(
+        <UrlsSection
+          application={mockApplication}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+          onValidationChange={mockOnValidationChange}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(mockOnValidationChange).toHaveBeenCalledWith(false);
+      });
+    });
+
+    it('should notify parent with errors when a URL becomes invalid', async () => {
+      const user = userEvent.setup({delay: null});
+      const mockOnValidationChange = vi.fn();
+      const appWithoutUrls = {...mockApplication, tosUri: '', policyUri: ''};
+
+      render(
+        <UrlsSection
+          application={appWithoutUrls}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+          onValidationChange={mockOnValidationChange}
+        />,
+      );
+
+      const tosField = screen.getByPlaceholderText('applications:edit.customization.tosUri.placeholder');
+      await user.type(tosField, 'invalid-url');
+      await user.tab();
+
+      await waitFor(() => {
+        expect(mockOnValidationChange).toHaveBeenCalledWith(true);
+      });
+    });
+  });
+
   describe('Edge Cases', () => {
     it('should handle missing URLs in application', () => {
       const appWithoutUrls = {...mockApplication};

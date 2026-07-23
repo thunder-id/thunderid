@@ -19,6 +19,7 @@
 package requestvalidator
 
 import (
+	"net/url"
 	"strings"
 	"testing"
 
@@ -53,9 +54,9 @@ func (suite *AuthzValidationTestSuite) SetupTest() {
 	}
 }
 
-func (suite *AuthzValidationTestSuite) validParams() map[string]string {
-	return map[string]string{
-		constants.RequestParamResponseType: string(providers.ResponseTypeCode),
+func (suite *AuthzValidationTestSuite) validParams() url.Values {
+	return url.Values{
+		constants.RequestParamResponseType: {string(providers.ResponseTypeCode)},
 	}
 }
 
@@ -71,7 +72,7 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_Success() {
 }
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_MissingResponseType() {
-	params := map[string]string{}
+	params := url.Values{}
 
 	errCode, _ := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
 
@@ -79,13 +80,37 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_MissingResponseType() 
 }
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_UnsupportedResponseType() {
-	params := map[string]string{
-		constants.RequestParamResponseType: "token",
+	params := url.Values{
+		constants.RequestParamResponseType: {"token"},
 	}
 
 	errCode, _ := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
 
 	assert.Equal(suite.T(), constants.ErrorUnsupportedResponseType, errCode)
+}
+
+func (suite *AuthzValidationTestSuite) TestValidateParams_QueryResponseMode() {
+	params := suite.validParams()
+	params.Set(constants.RequestParamResponseMode, constants.ResponseModeQuery)
+
+	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
+
+	assert.Empty(suite.T(), errCode)
+	assert.Empty(suite.T(), errMsg)
+}
+
+func (suite *AuthzValidationTestSuite) TestValidateParams_UnsupportedResponseMode() {
+	for _, responseMode := range []string{"fragment", "form_post"} {
+		suite.T().Run(responseMode, func(t *testing.T) {
+			params := suite.validParams()
+			params.Set(constants.RequestParamResponseMode, responseMode)
+
+			errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
+
+			assert.Equal(t, constants.ErrorInvalidRequest, errCode)
+			assert.Equal(t, "Unsupported response_mode parameter", errMsg)
+		})
+	}
 }
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_GrantTypeNotAllowed() {
@@ -130,8 +155,8 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_PKCERequired_InvalidCo
 		PKCERequired:            true,
 	}
 	params := suite.validParams()
-	params[constants.RequestParamCodeChallenge] = "invalid"
-	params[constants.RequestParamCodeChallengeMethod] = "plain"
+	params.Set(constants.RequestParamCodeChallenge, "invalid")
+	params.Set(constants.RequestParamCodeChallengeMethod, "plain")
 
 	errCode, _ := ValidateAuthorizationRequestParams(params, app, "")
 
@@ -148,8 +173,8 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_PKCERequired_ValidPKCE
 		PKCERequired:            true,
 	}
 	params := suite.validParams()
-	params[constants.RequestParamCodeChallenge] = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
-	params[constants.RequestParamCodeChallengeMethod] = "S256"
+	params.Set(constants.RequestParamCodeChallenge, "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
+	params.Set(constants.RequestParamCodeChallengeMethod, "S256")
 
 	errCode, errMsg := ValidateAuthorizationRequestParams(params, app, "")
 
@@ -159,7 +184,7 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_PKCERequired_ValidPKCE
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_NonceTooLong() {
 	params := suite.validParams()
-	params[constants.RequestParamNonce] = strings.Repeat("a", constants.MaxNonceLength+1)
+	params.Set(constants.RequestParamNonce, strings.Repeat("a", constants.MaxNonceLength+1))
 
 	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
 
@@ -169,7 +194,7 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_NonceTooLong() {
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_ValidNonce() {
 	params := suite.validParams()
-	params[constants.RequestParamNonce] = strings.Repeat("a", constants.MaxNonceLength)
+	params.Set(constants.RequestParamNonce, strings.Repeat("a", constants.MaxNonceLength))
 
 	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
 
@@ -179,7 +204,7 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_ValidNonce() {
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_PromptLogin_Success() {
 	params := suite.validParams()
-	params[constants.RequestParamPrompt] = "login"
+	params.Set(constants.RequestParamPrompt, "login")
 
 	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
 
@@ -189,7 +214,7 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_PromptLogin_Success() 
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_PromptNone_LoginRequired() {
 	params := suite.validParams()
-	params[constants.RequestParamPrompt] = "none"
+	params.Set(constants.RequestParamPrompt, "none")
 
 	errCode, _ := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
 
@@ -198,7 +223,7 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_PromptNone_LoginRequir
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_PromptInvalid() {
 	params := suite.validParams()
-	params[constants.RequestParamPrompt] = "invalid_value"
+	params.Set(constants.RequestParamPrompt, "invalid_value")
 
 	errCode, _ := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
 
@@ -207,7 +232,7 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_PromptInvalid() {
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_PromptNoneCombined() {
 	params := suite.validParams()
-	params[constants.RequestParamPrompt] = "none login"
+	params.Set(constants.RequestParamPrompt, "none login")
 
 	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
 
@@ -217,7 +242,7 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_PromptNoneCombined() {
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_PromptConsent_Success() {
 	params := suite.validParams()
-	params[constants.RequestParamPrompt] = "consent"
+	params.Set(constants.RequestParamPrompt, "consent")
 
 	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
 
@@ -227,7 +252,7 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_PromptConsent_Success(
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_PromptLoginConsent_Success() {
 	params := suite.validParams()
-	params[constants.RequestParamPrompt] = "login consent"
+	params.Set(constants.RequestParamPrompt, "login consent")
 
 	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
 
@@ -237,7 +262,7 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_PromptLoginConsent_Suc
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_PromptSelectAccount() {
 	params := suite.validParams()
-	params[constants.RequestParamPrompt] = "select_account"
+	params.Set(constants.RequestParamPrompt, "select_account")
 
 	errCode, _ := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
 
@@ -246,7 +271,7 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_PromptSelectAccount() 
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_PromptEmpty() {
 	params := suite.validParams()
-	params[constants.RequestParamPrompt] = ""
+	params.Set(constants.RequestParamPrompt, "")
 
 	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
 
@@ -256,7 +281,7 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_PromptEmpty() {
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_DPoPJktParamOnly_Success() {
 	params := suite.validParams()
-	params[constants.RequestParamDPoPJkt] = testJKT
+	params.Set(constants.RequestParamDPoPJkt, testJKT)
 
 	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
 
@@ -275,7 +300,7 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_DPoPHeaderOnly_Success
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_DPoPJktAndHeaderMatch_Success() {
 	params := suite.validParams()
-	params[constants.RequestParamDPoPJkt] = testJKT
+	params.Set(constants.RequestParamDPoPJkt, testJKT)
 
 	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, testJKT)
 
@@ -285,7 +310,7 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_DPoPJktAndHeaderMatch_
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_DPoPJktAndHeaderMismatch_Rejected() {
 	params := suite.validParams()
-	params[constants.RequestParamDPoPJkt] = testJKT
+	params.Set(constants.RequestParamDPoPJkt, testJKT)
 
 	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, testOtherJKT)
 
@@ -295,7 +320,7 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_DPoPJktAndHeaderMismat
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_DPoPJktParamMalformed_Rejected() {
 	params := suite.validParams()
-	params[constants.RequestParamDPoPJkt] = "not-a-thumbprint"
+	params.Set(constants.RequestParamDPoPJkt, "not-a-thumbprint")
 
 	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
 

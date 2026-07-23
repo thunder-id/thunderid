@@ -598,6 +598,48 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RenewRevokeFailu
 	assert.Equal(suite.T(), constants.ErrorServerError, err.Error)
 }
 
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RevokePreviousOnRenew_NilRefreshRevoker() {
+	// When the token_revocation feature is disabled, refreshRevoker is nil even though
+	// renew_on_grant/revoke_previous_on_renew are independently configured. The handler must
+	// skip revocation rather than dereference the nil revoker.
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.testCfg.OAuth.RefreshToken.RevokePreviousOnRenew = true
+	suite.handler = newRefreshTokenGrantHandler(
+		suite.mockJWTService,
+		suite.mockTokenBuilder,
+		suite.mockTokenValidator,
+		suite.mockAttrCacheService,
+		suite.mockResourceService,
+		suite.mockServerConfigSvc,
+		nil,
+		suite.testCfg,
+	).(*refreshTokenGrantHandler)
+
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken, testRefreshTokenClientID).
+		Return(&tokenservice.RefreshTokenClaims{
+			Sub:       testRefreshTokenUserID,
+			Audiences: []string{testRefreshTokenAudience},
+			Scopes:    []string{"read", "write"},
+			GrantType: "authorization_code",
+			Iat:       int64(suite.validClaims["iat"].(float64)),
+			JTI:       "consumed-rt-jti",
+			Exp:       int64(suite.validClaims["exp"].(float64)),
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600, Scopes: []string{"read"},
+	}, nil)
+	suite.mockTokenBuilder.On("BuildRefreshToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.refresh.token", IssuedAt: time.Now().Unix(), ExpiresIn: 86400, Scopes: []string{"read", "write"},
+	}, nil)
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), response)
+	assert.Equal(suite.T(), "new.refresh.token", response.RefreshToken.Token)
+}
+
 func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_Success_WithRenewOnGrantEnabled() {
 	// Enable RenewOnGrant in config
 	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true

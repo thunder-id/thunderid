@@ -77,6 +77,29 @@ func (r *redisStore) Put(ctx context.Context, namespace providers.RuntimeStoreNa
 	return nil
 }
 
+// PutIfNotExists atomically stores a value only if the key does not already hold a value, using
+// Redis's native SET NX.
+func (r *redisStore) PutIfNotExists(ctx context.Context, namespace providers.RuntimeStoreNamespace,
+	key string, value []byte, ttlSeconds int64) (bool, error) {
+	ttl := time.Duration(0)
+	if ttlSeconds > 0 {
+		ttl = time.Duration(ttlSeconds) * time.Second
+	}
+	ok, err := r.client.SetArgs(ctx, r.getFormattedKey(namespace, key), value, redis.SetArgs{
+		Mode: "NX",
+		TTL:  ttl,
+	}).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to store in Redis: %w", err)
+	}
+
+	r.logger.Debug(ctx, "Stored in Redis", log.String("key", key))
+	return ok == "OK", nil
+}
+
 // Get retrieves a value from the Redis store by its key.
 func (r *redisStore) Get(ctx context.Context, namespace providers.RuntimeStoreNamespace,
 	key string) ([]byte, error) {

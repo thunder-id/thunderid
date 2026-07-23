@@ -18,8 +18,37 @@
 
 import {render, screen, fireEvent, waitFor} from '@testing-library/react';
 import {AppWindow} from '@wso2/oxygen-ui-icons-react';
+import {useState, type JSX} from 'react';
 import {describe, it, expect, vi} from 'vitest';
 import ResourceAvatar from '../ResourceAvatar';
+
+/**
+ * Mirrors how a real caller wires `ResourceAvatar` — `onSelect` feeds back into the
+ * `value` prop — so the dialog's Cancel-to-revert logic (which diffs against the
+ * live `value` prop) has something to actually diff against.
+ */
+function ControlledResourceAvatar({
+  initialValue,
+  onSelectSpy,
+  onSave = undefined,
+}: {
+  initialValue: string;
+  onSelectSpy: (value: string) => void;
+  onSave?: () => void | Promise<void>;
+}): JSX.Element {
+  const [value, setValue] = useState<string>(initialValue);
+  return (
+    <ResourceAvatar
+      editable
+      value={value}
+      onSave={onSave}
+      onSelect={(newValue) => {
+        onSelectSpy(newValue);
+        setValue(newValue);
+      }}
+    />
+  );
+}
 
 describe('ResourceAvatar', () => {
   describe('Read-only mode (no onSelect)', () => {
@@ -90,7 +119,7 @@ describe('ResourceAvatar', () => {
       expect(screen.getByRole('button', {name: 'Update icon'})).toBeInTheDocument();
     });
 
-    it('should open the ResourceLogoDialog when the edit button is clicked', () => {
+    it('should open the logo picker dialog when the edit button is clicked', () => {
       render(<ResourceAvatar editable value="emoji:🎉" onSelect={vi.fn()} />);
 
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -100,7 +129,7 @@ describe('ResourceAvatar', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
 
-    it('should open the ResourceLogoDialog when the avatar itself is clicked', () => {
+    it('should open the logo picker dialog when the avatar itself is clicked', () => {
       render(<ResourceAvatar value="emoji:🎉" onSelect={vi.fn()} />);
 
       fireEvent.click(screen.getByText('🎉'));
@@ -108,35 +137,137 @@ describe('ResourceAvatar', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
 
-    it('should close the dialog when the cancel button is clicked', async () => {
+    it('should close the dialog when the close button is clicked', async () => {
       render(<ResourceAvatar editable value="emoji:🎉" onSelect={vi.fn()} />);
 
       fireEvent.click(screen.getByRole('button', {name: 'Change logo'}));
       expect(screen.getByRole('dialog')).toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole('button', {name: /cancel/i}));
+      fireEvent.click(screen.getByRole('button', {name: /close/i}));
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     });
 
-    it('should call onSelect with the confirmed value and close the dialog', async () => {
+    it('should call onSelect as the user picks a logo, without closing the dialog', () => {
       const handleSelect = vi.fn();
       render(<ResourceAvatar editable value="emoji:🎉" onSelect={handleSelect} />);
 
       // Open the dialog
       fireEvent.click(screen.getByRole('button', {name: 'Change logo'}));
 
-      // The dialog pre-populates with the existing emoji, so Select is enabled
-      const selectButton = screen.getByRole('button', {name: /select/i});
-      fireEvent.click(selectButton);
+      // Enter a custom image URL; the picker commits it once the field loses focus
+      const urlField = screen.getByPlaceholderText(/paste an image url/i);
+      fireEvent.change(urlField, {target: {value: 'https://example.com/logo.png'}});
+      fireEvent.blur(urlField);
 
-      expect(handleSelect).toHaveBeenCalledWith('emoji:🎉');
-      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(handleSelect).toHaveBeenCalledWith('https://example.com/logo.png');
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
 
     it('should show fallback icon inside avatar when no value provided in edit mode', () => {
       render(<ResourceAvatar editable fallback={<AppWindow data-testid="fallback-icon" />} onSelect={vi.fn()} />);
 
       expect(screen.getByTestId('fallback-icon')).toBeInTheDocument();
+    });
+
+    it('should pre-select the string fallback spec in the picker when no value is set', () => {
+      render(
+        <ResourceAvatar
+          editable
+          fallback="avatar:shape=rounded,variant=anonymous_entity,content=pavilion,colors=0"
+          onSelect={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', {name: 'Change logo'}));
+
+      // Before the fix, the picker opened on an empty emoji instead of the fallback avatar,
+      // so its preview tile rendered as blank text rather than an image.
+      const dialog = screen.getByRole('dialog');
+      const previewImages = dialog.querySelectorAll('img');
+      expect(previewImages.length).toBeGreaterThan(0);
+    });
+
+    it('should revert to the original value and close the dialog when Cancel is clicked', async () => {
+      const handleSelect = vi.fn();
+      render(<ControlledResourceAvatar initialValue="emoji:🎉" onSelectSpy={handleSelect} />);
+
+      fireEvent.click(screen.getByRole('button', {name: 'Change logo'}));
+
+      const urlField = screen.getByPlaceholderText(/paste an image url/i);
+      fireEvent.change(urlField, {target: {value: 'https://example.com/logo.png'}});
+      fireEvent.blur(urlField);
+      expect(handleSelect).toHaveBeenCalledWith('https://example.com/logo.png');
+
+      fireEvent.click(screen.getByRole('button', {name: /cancel/i}));
+
+      expect(handleSelect).toHaveBeenLastCalledWith('emoji:🎉');
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    });
+
+    it('should not call onSelect on Cancel when nothing changed', () => {
+      const handleSelect = vi.fn();
+      render(<ResourceAvatar editable value="emoji:🎉" onSelect={handleSelect} />);
+
+      fireEvent.click(screen.getByRole('button', {name: 'Change logo'}));
+      fireEvent.click(screen.getByRole('button', {name: /cancel/i}));
+
+      expect(handleSelect).not.toHaveBeenCalled();
+    });
+
+    it('should close the dialog on Save without calling onSave when none is provided', async () => {
+      render(<ResourceAvatar editable value="emoji:🎉" onSelect={vi.fn()} />);
+
+      fireEvent.click(screen.getByRole('button', {name: 'Change logo'}));
+      fireEvent.click(screen.getByRole('button', {name: /^save$/i}));
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    });
+
+    it('should call onSave and close the dialog when Save is clicked', async () => {
+      const handleSave = vi.fn().mockResolvedValue(undefined);
+      render(<ResourceAvatar editable value="emoji:🎉" onSelect={vi.fn()} onSave={handleSave} />);
+
+      fireEvent.click(screen.getByRole('button', {name: 'Change logo'}));
+      fireEvent.click(screen.getByRole('button', {name: /^save$/i}));
+
+      expect(handleSave).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    });
+
+    it('should keep the dialog open and not throw when onSave rejects', async () => {
+      const handleSave = vi.fn().mockRejectedValue(new Error('save failed'));
+      render(<ResourceAvatar editable value="emoji:🎉" onSelect={vi.fn()} onSave={handleSave} />);
+
+      fireEvent.click(screen.getByRole('button', {name: 'Change logo'}));
+      fireEvent.click(screen.getByRole('button', {name: /^save$/i}));
+
+      await waitFor(() => expect(screen.getByRole('button', {name: /^save$/i})).not.toBeDisabled());
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    it('should ignore Cancel and disable the close button while a save is in flight', async () => {
+      const handleSelect = vi.fn();
+      let resolveSave: () => void = () => undefined;
+      const handleSave = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSave = resolve;
+          }),
+      );
+      render(<ControlledResourceAvatar initialValue="emoji:🎉" onSelectSpy={handleSelect} onSave={handleSave} />);
+
+      fireEvent.click(screen.getByRole('button', {name: 'Change logo'}));
+      fireEvent.click(screen.getByRole('button', {name: /^save$/i}));
+
+      const closeButton = screen.getByRole('button', {name: /close/i});
+      expect(closeButton).toBeDisabled();
+
+      fireEvent.click(closeButton);
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(handleSelect).not.toHaveBeenCalled();
+
+      resolveSave();
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     });
   });
 });

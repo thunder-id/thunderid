@@ -47,6 +47,7 @@ export * from './config/connectionFormFields';
 export * from './config/connectionVendorMeta';
 
 // Constants
+export {default as ConnectionConstants} from './constants/connection-constants';
 export {default as ConnectionQueryKeys} from './constants/query-keys';
 export * from './constants/connection-categories';
 
@@ -59,9 +60,13 @@ export * from './models/responses';
 
 // Pages
 export {default as ConnectionConfigureWizardPage} from './pages/ConnectionConfigureWizardPage';
-export {default as ConnectionCreateWizardPage} from './pages/ConnectionCreateWizardPage';
+export {default as ConnectionCreateWizardPage, type CustomConfigureStepProps} from './pages/ConnectionCreateWizardPage';
 export {default as ConnectionDetailPage} from './pages/ConnectionDetailPage';
 export {default as ConnectionsListPage} from './pages/ConnectionsListPage';
+
+// Routes
+export type {ConnectionRoutePaths} from './hooks/useConnectionRoutes';
+export {defaultConnectionRoutePaths, default as useConnectionRoutes} from './hooks/useConnectionRoutes';
 
 // Utils
 export * from './utils/attributeConfiguration';

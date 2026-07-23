@@ -117,6 +117,75 @@ func (s *DBStoreTestSuite) TestPut_ExecuteError() {
 	s.Contains(err.Error(), "failed to store in database")
 }
 
+// PutIfNotExists
+
+func (s *DBStoreTestSuite) TestPutIfNotExists_Claimed() {
+	const ttlSeconds int64 = 60
+	before := time.Now().UTC()
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", mock.Anything, queryPutIfNotExistsRuntimeStore,
+		testDeploymentID, string(testNamespace), testKey, testValue,
+		mock.MatchedBy(func(t time.Time) bool {
+			expected := before.Add(time.Duration(ttlSeconds) * time.Second)
+			diff := t.Sub(expected)
+			return diff >= -time.Second && diff <= time.Second
+		}), mock.Anything,
+	).Return([]map[string]interface{}{{"key": testKey}}, nil)
+
+	ok, err := s.store.PutIfNotExists(s.ctx, testNamespace, testKey, testValue, ttlSeconds)
+
+	s.NoError(err)
+	s.True(ok)
+}
+
+// TestPutIfNotExists_Blocked also covers the case where a concurrent claim wins the race: the
+// conditional upsert leaves the existing, unexpired row untouched and returns no rows.
+func (s *DBStoreTestSuite) TestPutIfNotExists_Blocked() {
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", mock.Anything, queryPutIfNotExistsRuntimeStore,
+		testDeploymentID, string(testNamespace), testKey, testValue, mock.Anything, mock.Anything,
+	).Return([]map[string]interface{}{}, nil)
+
+	ok, err := s.store.PutIfNotExists(s.ctx, testNamespace, testKey, testValue, 60)
+
+	s.NoError(err)
+	s.False(ok)
+}
+
+func (s *DBStoreTestSuite) TestPutIfNotExists_NoTTL_StoresNilExpiry() {
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", mock.Anything, queryPutIfNotExistsRuntimeStore,
+		testDeploymentID, string(testNamespace), testKey, testValue, nil, mock.Anything,
+	).Return([]map[string]interface{}{{"key": testKey}}, nil)
+
+	ok, err := s.store.PutIfNotExists(s.ctx, testNamespace, testKey, testValue, 0)
+
+	s.NoError(err)
+	s.True(ok)
+}
+
+func (s *DBStoreTestSuite) TestPutIfNotExists_DBClientError() {
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db client error"))
+
+	ok, err := s.store.PutIfNotExists(s.ctx, testNamespace, testKey, testValue, 60)
+
+	s.Error(err)
+	s.False(ok)
+}
+
+func (s *DBStoreTestSuite) TestPutIfNotExists_QueryError() {
+	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", mock.Anything, queryPutIfNotExistsRuntimeStore,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+	).Return(nil, errors.New("insert failed"))
+
+	ok, err := s.store.PutIfNotExists(s.ctx, testNamespace, testKey, testValue, 60)
+
+	s.Error(err)
+	s.False(ok)
+	s.Contains(err.Error(), "failed to store in database")
+}
+
 // Get
 
 func (s *DBStoreTestSuite) TestGet_Hit_StringValue() {

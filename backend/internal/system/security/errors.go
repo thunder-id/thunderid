@@ -38,12 +38,4 @@ var (
 
 	// errMissingAuthHeader indicates that the Authorization header is missing.
 	errMissingAuthHeader = errors.New("missing authorization header")
-
-	// errInvalidDirectAuthSecret indicates that an Direct API request presented a missing or incorrect
-	// Direct Auth Secret.
-	errInvalidDirectAuthSecret = errors.New("invalid direct auth secret")
-
-	// errDirectAuthSecretNotConfigured indicates the Direct API endpoints are blocked because no Direct API
-	// Secret is configured on the server (secure by default).
-	errDirectAuthSecretNotConfigured = errors.New("direct auth secret not configured")
 )

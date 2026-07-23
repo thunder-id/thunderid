@@ -47,6 +47,7 @@ import React, {
   useState,
 } from 'react';
 import {useTranslation} from 'react-i18next';
+import PanelActionButton from './PanelActionButton';
 import {invalidateI18nCache} from '../../../../i18n/invalidate-i18n-cache';
 import FlowI18nConstants from '../../constants/FlowI18nConstants';
 import useI18nConfig from '../../hooks/useI18nConfig';
@@ -339,13 +340,11 @@ export function I18nConfigurationCardContent({
 
       <Divider />
 
-      <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-        <Tooltip title={t('flows:core.elements.textPropertyField.i18nCard.tooltip.addNewTranslation')}>
-          <Button variant="text" startIcon={<PlusIcon size={16} />} onClick={handleEnterCreateMode}>
-            {t('flows:core.elements.textPropertyField.i18nCard.createTitle')}
-          </Button>
-        </Tooltip>
-      </Box>
+      <Tooltip title={t('flows:core.elements.textPropertyField.i18nCard.tooltip.addNewTranslation')}>
+        <PanelActionButton startIcon={<PlusIcon size={16} />} onClick={handleEnterCreateMode}>
+          {t('flows:core.elements.textPropertyField.i18nCard.createTitle')}
+        </PanelActionButton>
+      </Tooltip>
     </Box>
   );
 

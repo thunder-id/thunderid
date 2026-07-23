@@ -532,14 +532,14 @@ func (n *promptNode) enrichInputsFromForwardedData(ctx *providers.NodeContext, n
 			}
 			continue
 		}
-		if _, ok := ctx.UserInputs[fwdInput.Identifier]; ok {
+		if val, ok := ctx.UserInputs[fwdInput.Identifier]; ok && val != "" {
 			continue
 		}
-		if _, ok := ctx.RuntimeData[fwdInput.Identifier]; ok {
+		if val, ok := ctx.RuntimeData[fwdInput.Identifier]; ok && val != "" {
 			continue
 		}
 		if value, ok := ctx.ForwardedData[fwdInput.Identifier]; ok {
-			if _, isString := value.(string); isString {
+			if val, isString := value.(string); isString && val != "" {
 				continue
 			}
 		}

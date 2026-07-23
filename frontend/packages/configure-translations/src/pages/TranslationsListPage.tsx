@@ -23,6 +23,7 @@ import {useCallback, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import TranslationsList from '@/components/TranslationsList';
+import useTranslationRoutes from '@/hooks/useTranslationRoutes';
 
 /**
  * Page that lists all configured translation languages in a data grid.
@@ -50,14 +51,15 @@ export default function TranslationsListPage(): JSX.Element {
   const {t} = useTranslation('translations');
   const navigate = useNavigate();
   const logger = useLogger('TranslationsListPage');
+  const routes = useTranslationRoutes();
 
   const handleAddLanguage = useCallback(() => {
     (async (): Promise<void> => {
-      await navigate('/translations/create');
+      await navigate(routes.create());
     })().catch((_error: unknown) => {
       logger.error('Failed to navigate to translation create page', {error: _error});
     });
-  }, [navigate, logger]);
+  }, [navigate, logger, routes]);
 
   return (
     <PageContent>

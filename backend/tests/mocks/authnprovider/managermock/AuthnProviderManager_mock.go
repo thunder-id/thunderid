@@ -139,6 +139,106 @@ func (_c *AuthnProviderManagerMock_AuthenticateUser_Call) RunAndReturn(run func(
 	return _c
 }
 
+// Enroll provides a mock function for the type AuthnProviderManagerMock
+func (_mock *AuthnProviderManagerMock) Enroll(ctx context.Context, identifiers map[string]interface{}, credentials map[string]interface{}, requestedAttributes *providers.RequestedAttributes, metadata *providers.AuthnMetadata, authUser providers.AuthUser) (providers.AuthUser, providers.AuthenticatedClaims, *common.ServiceError) {
+	ret := _mock.Called(ctx, identifiers, credentials, requestedAttributes, metadata, authUser)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Enroll")
+	}
+
+	var r0 providers.AuthUser
+	var r1 providers.AuthenticatedClaims
+	var r2 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}, map[string]interface{}, *providers.RequestedAttributes, *providers.AuthnMetadata, providers.AuthUser) (providers.AuthUser, providers.AuthenticatedClaims, *common.ServiceError)); ok {
+		return returnFunc(ctx, identifiers, credentials, requestedAttributes, metadata, authUser)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}, map[string]interface{}, *providers.RequestedAttributes, *providers.AuthnMetadata, providers.AuthUser) providers.AuthUser); ok {
+		r0 = returnFunc(ctx, identifiers, credentials, requestedAttributes, metadata, authUser)
+	} else {
+		r0 = ret.Get(0).(providers.AuthUser)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, map[string]interface{}, map[string]interface{}, *providers.RequestedAttributes, *providers.AuthnMetadata, providers.AuthUser) providers.AuthenticatedClaims); ok {
+		r1 = returnFunc(ctx, identifiers, credentials, requestedAttributes, metadata, authUser)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(providers.AuthenticatedClaims)
+		}
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, map[string]interface{}, map[string]interface{}, *providers.RequestedAttributes, *providers.AuthnMetadata, providers.AuthUser) *common.ServiceError); ok {
+		r2 = returnFunc(ctx, identifiers, credentials, requestedAttributes, metadata, authUser)
+	} else {
+		if ret.Get(2) != nil {
+			r2 = ret.Get(2).(*common.ServiceError)
+		}
+	}
+	return r0, r1, r2
+}
+
+// AuthnProviderManagerMock_Enroll_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Enroll'
+type AuthnProviderManagerMock_Enroll_Call struct {
+	*mock.Call
+}
+
+// Enroll is a helper method to define mock.On call
+//   - ctx context.Context
+//   - identifiers map[string]interface{}
+//   - credentials map[string]interface{}
+//   - requestedAttributes *providers.RequestedAttributes
+//   - metadata *providers.AuthnMetadata
+//   - authUser providers.AuthUser
+func (_e *AuthnProviderManagerMock_Expecter) Enroll(ctx interface{}, identifiers interface{}, credentials interface{}, requestedAttributes interface{}, metadata interface{}, authUser interface{}) *AuthnProviderManagerMock_Enroll_Call {
+	return &AuthnProviderManagerMock_Enroll_Call{Call: _e.mock.On("Enroll", ctx, identifiers, credentials, requestedAttributes, metadata, authUser)}
+}
+
+func (_c *AuthnProviderManagerMock_Enroll_Call) Run(run func(ctx context.Context, identifiers map[string]interface{}, credentials map[string]interface{}, requestedAttributes *providers.RequestedAttributes, metadata *providers.AuthnMetadata, authUser providers.AuthUser)) *AuthnProviderManagerMock_Enroll_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 map[string]interface{}
+		if args[1] != nil {
+			arg1 = args[1].(map[string]interface{})
+		}
+		var arg2 map[string]interface{}
+		if args[2] != nil {
+			arg2 = args[2].(map[string]interface{})
+		}
+		var arg3 *providers.RequestedAttributes
+		if args[3] != nil {
+			arg3 = args[3].(*providers.RequestedAttributes)
+		}
+		var arg4 *providers.AuthnMetadata
+		if args[4] != nil {
+			arg4 = args[4].(*providers.AuthnMetadata)
+		}
+		var arg5 providers.AuthUser
+		if args[5] != nil {
+			arg5 = args[5].(providers.AuthUser)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+			arg5,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthnProviderManagerMock_Enroll_Call) Return(authUser1 providers.AuthUser, authenticatedClaims providers.AuthenticatedClaims, serviceError *common.ServiceError) *AuthnProviderManagerMock_Enroll_Call {
+	_c.Call.Return(authUser1, authenticatedClaims, serviceError)
+	return _c
+}
+
+func (_c *AuthnProviderManagerMock_Enroll_Call) RunAndReturn(run func(ctx context.Context, identifiers map[string]interface{}, credentials map[string]interface{}, requestedAttributes *providers.RequestedAttributes, metadata *providers.AuthnMetadata, authUser providers.AuthUser) (providers.AuthUser, providers.AuthenticatedClaims, *common.ServiceError)) *AuthnProviderManagerMock_Enroll_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetEntityReference provides a mock function for the type AuthnProviderManagerMock
 func (_mock *AuthnProviderManagerMock) GetEntityReference(ctx context.Context, authUser providers.AuthUser) (providers.AuthUser, *providers.EntityReference, *common.ServiceError) {
 	ret := _mock.Called(ctx, authUser)
@@ -369,6 +469,170 @@ func (_c *AuthnProviderManagerMock_GetUserAvailableAttributes_Call) Return(attri
 }
 
 func (_c *AuthnProviderManagerMock_GetUserAvailableAttributes_Call) RunAndReturn(run func(ctx context.Context, authUser providers.AuthUser) (*providers.AttributesResponse, *common.ServiceError)) *AuthnProviderManagerMock_GetUserAvailableAttributes_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// InitiateAuthentication provides a mock function for the type AuthnProviderManagerMock
+func (_mock *AuthnProviderManagerMock) InitiateAuthentication(ctx context.Context, credentialType string, initData any, metadata *providers.AuthnMetadata) (any, *common.ServiceError) {
+	ret := _mock.Called(ctx, credentialType, initData, metadata)
+
+	if len(ret) == 0 {
+		panic("no return value specified for InitiateAuthentication")
+	}
+
+	var r0 any
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, any, *providers.AuthnMetadata) (any, *common.ServiceError)); ok {
+		return returnFunc(ctx, credentialType, initData, metadata)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, any, *providers.AuthnMetadata) any); ok {
+		r0 = returnFunc(ctx, credentialType, initData, metadata)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(any)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, any, *providers.AuthnMetadata) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, credentialType, initData, metadata)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AuthnProviderManagerMock_InitiateAuthentication_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'InitiateAuthentication'
+type AuthnProviderManagerMock_InitiateAuthentication_Call struct {
+	*mock.Call
+}
+
+// InitiateAuthentication is a helper method to define mock.On call
+//   - ctx context.Context
+//   - credentialType string
+//   - initData any
+//   - metadata *providers.AuthnMetadata
+func (_e *AuthnProviderManagerMock_Expecter) InitiateAuthentication(ctx interface{}, credentialType interface{}, initData interface{}, metadata interface{}) *AuthnProviderManagerMock_InitiateAuthentication_Call {
+	return &AuthnProviderManagerMock_InitiateAuthentication_Call{Call: _e.mock.On("InitiateAuthentication", ctx, credentialType, initData, metadata)}
+}
+
+func (_c *AuthnProviderManagerMock_InitiateAuthentication_Call) Run(run func(ctx context.Context, credentialType string, initData any, metadata *providers.AuthnMetadata)) *AuthnProviderManagerMock_InitiateAuthentication_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 any
+		if args[2] != nil {
+			arg2 = args[2].(any)
+		}
+		var arg3 *providers.AuthnMetadata
+		if args[3] != nil {
+			arg3 = args[3].(*providers.AuthnMetadata)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthnProviderManagerMock_InitiateAuthentication_Call) Return(v any, serviceError *common.ServiceError) *AuthnProviderManagerMock_InitiateAuthentication_Call {
+	_c.Call.Return(v, serviceError)
+	return _c
+}
+
+func (_c *AuthnProviderManagerMock_InitiateAuthentication_Call) RunAndReturn(run func(ctx context.Context, credentialType string, initData any, metadata *providers.AuthnMetadata) (any, *common.ServiceError)) *AuthnProviderManagerMock_InitiateAuthentication_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// InitiateEnrollment provides a mock function for the type AuthnProviderManagerMock
+func (_mock *AuthnProviderManagerMock) InitiateEnrollment(ctx context.Context, credentialType string, initData any, metadata *providers.AuthnMetadata) (any, *common.ServiceError) {
+	ret := _mock.Called(ctx, credentialType, initData, metadata)
+
+	if len(ret) == 0 {
+		panic("no return value specified for InitiateEnrollment")
+	}
+
+	var r0 any
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, any, *providers.AuthnMetadata) (any, *common.ServiceError)); ok {
+		return returnFunc(ctx, credentialType, initData, metadata)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, any, *providers.AuthnMetadata) any); ok {
+		r0 = returnFunc(ctx, credentialType, initData, metadata)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(any)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, any, *providers.AuthnMetadata) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, credentialType, initData, metadata)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AuthnProviderManagerMock_InitiateEnrollment_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'InitiateEnrollment'
+type AuthnProviderManagerMock_InitiateEnrollment_Call struct {
+	*mock.Call
+}
+
+// InitiateEnrollment is a helper method to define mock.On call
+//   - ctx context.Context
+//   - credentialType string
+//   - initData any
+//   - metadata *providers.AuthnMetadata
+func (_e *AuthnProviderManagerMock_Expecter) InitiateEnrollment(ctx interface{}, credentialType interface{}, initData interface{}, metadata interface{}) *AuthnProviderManagerMock_InitiateEnrollment_Call {
+	return &AuthnProviderManagerMock_InitiateEnrollment_Call{Call: _e.mock.On("InitiateEnrollment", ctx, credentialType, initData, metadata)}
+}
+
+func (_c *AuthnProviderManagerMock_InitiateEnrollment_Call) Run(run func(ctx context.Context, credentialType string, initData any, metadata *providers.AuthnMetadata)) *AuthnProviderManagerMock_InitiateEnrollment_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 any
+		if args[2] != nil {
+			arg2 = args[2].(any)
+		}
+		var arg3 *providers.AuthnMetadata
+		if args[3] != nil {
+			arg3 = args[3].(*providers.AuthnMetadata)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthnProviderManagerMock_InitiateEnrollment_Call) Return(v any, serviceError *common.ServiceError) *AuthnProviderManagerMock_InitiateEnrollment_Call {
+	_c.Call.Return(v, serviceError)
+	return _c
+}
+
+func (_c *AuthnProviderManagerMock_InitiateEnrollment_Call) RunAndReturn(run func(ctx context.Context, credentialType string, initData any, metadata *providers.AuthnMetadata) (any, *common.ServiceError)) *AuthnProviderManagerMock_InitiateEnrollment_Call {
 	_c.Call.Return(run)
 	return _c
 }

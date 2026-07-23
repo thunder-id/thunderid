@@ -32,6 +32,7 @@ import type {JSX} from 'react';
 import {useEffect, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import useExportConfiguration from '../api/useExportConfiguration';
 import ConfigureExport from '../components/ConfigureExport';
 
@@ -99,7 +100,7 @@ export default function ExportPage(): JSX.Element {
               {
                 key: 'import-export',
                 label: t('landing.title', 'Import / Export'),
-                onClick: () => void navigate('/import-export'),
+                onClick: () => void navigate(RouteConfig.importExport.list()),
               },
               {key: 'export', label: t('export.page.title')},
             ]}

@@ -33,6 +33,7 @@ exceptions:
   - Per-Cache
   - act
   - Sign-In
+  - Sign-On
   - Sign-Out
   - Sign-Up
   - iOS

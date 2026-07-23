@@ -140,6 +140,122 @@ describe('useFlowSimulation', () => {
     expect(mockFitView).not.toHaveBeenCalled();
   });
 
+  it('should bring both the current step and the hovered target into view on preview', () => {
+    const {result} = renderHook(() => useFlowSimulation(nodes, edges));
+
+    act(() => result.current.start());
+    mockFitView.mockClear();
+    act(() => result.current.preview(result.current.options[0]));
+
+    expect(mockFitView).toHaveBeenCalledWith(expect.objectContaining({nodes: [{id: 'start'}, {id: 'view-1'}]}));
+  });
+
+  it('should restore the current-step focus after a grace period when the preview hover ends', () => {
+    vi.useFakeTimers();
+    try {
+      const {result} = renderHook(() => useFlowSimulation(nodes, edges));
+
+      act(() => result.current.start());
+      act(() => result.current.preview(result.current.options[0]));
+      mockFitView.mockClear();
+      act(() => result.current.preview(null));
+
+      // The camera holds during the grace period so option-to-option hovers do
+      // not bounce it.
+      expect(mockFitView).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+
+      expect(mockFitView).toHaveBeenCalledWith(expect.objectContaining({nodes: [{id: 'start'}]}));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('should not fire a pending restore after switching to the static view', () => {
+    vi.useFakeTimers();
+    try {
+      const {result} = renderHook(() => useFlowSimulation(nodes, edges));
+
+      act(() => result.current.start());
+      act(() => result.current.preview(result.current.options[0]));
+      act(() => result.current.preview(null));
+      act(() => result.current.toggleFollowCamera());
+      mockFitView.mockClear();
+
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+
+      expect(mockFitView).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('should cancel the pending restore when another option is hovered', () => {
+    vi.useFakeTimers();
+    try {
+      const {result} = renderHook(() => useFlowSimulation(nodes, edges));
+
+      act(() => result.current.start());
+      act(() => result.current.preview(result.current.options[0]));
+      act(() => result.current.preview(null));
+      mockFitView.mockClear();
+      act(() => result.current.preview(result.current.options[0]));
+
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+
+      // Only the two-node preview fit ran - the single-step restore was cancelled.
+      expect(mockFitView).toHaveBeenCalledTimes(1);
+      expect(mockFitView).toHaveBeenCalledWith(expect.objectContaining({nodes: [{id: 'start'}, {id: 'view-1'}]}));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('should not fire a stale restore after choosing an option while the hover-restore timer is pending', () => {
+    vi.useFakeTimers();
+    try {
+      const {result} = renderHook(() => useFlowSimulation(nodes, edges));
+
+      act(() => result.current.start());
+      act(() => result.current.preview(result.current.options[0]));
+      act(() => result.current.preview(null));
+      // The 200ms restore-to-'start' is now pending. Choosing the option
+      // navigates before it fires.
+      act(() => result.current.choose(result.current.options[0]));
+      mockFitView.mockClear();
+
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+
+      // The pending restore must not fire and re-focus the node the user just
+      // navigated away from.
+      expect(mockFitView).not.toHaveBeenCalled();
+      expect(result.current.currentNodeId).toBe('view-1');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('should not move the camera on preview when follow camera is off', () => {
+    const {result} = renderHook(() => useFlowSimulation(nodes, edges));
+
+    act(() => result.current.start());
+    act(() => result.current.toggleFollowCamera());
+    mockFitView.mockClear();
+    act(() => result.current.preview(result.current.options[0]));
+    act(() => result.current.preview(null));
+
+    expect(mockFitView).not.toHaveBeenCalled();
+  });
+
   it('should keep the options array identity across unrelated node changes', () => {
     const {result, rerender} = renderHook(({n, e}: {n: Node[]; e: Edge[]}) => useFlowSimulation(n, e), {
       initialProps: {n: nodes, e: edges},

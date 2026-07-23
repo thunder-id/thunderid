@@ -29,6 +29,7 @@ import (
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -68,6 +69,8 @@ func (h *logoutHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 		ClientID:              r.FormValue(constants.RequestParamClientID),
 		PostLogoutRedirectURI: r.FormValue(constants.RequestParamPostLogoutRedirect),
 		State:                 r.FormValue(constants.RequestParamState),
+		Headers:               sysutils.SanitizeRawMultiValueStringMap(r.Header),
+		QueryParams:           sysutils.SanitizeRawMultiValueStringMap(r.URL.Query()),
 	}
 
 	// Validate before initiating anything: the post-logout redirect URI is validated here (against the

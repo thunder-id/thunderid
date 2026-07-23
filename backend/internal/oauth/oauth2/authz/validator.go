@@ -20,6 +20,7 @@ package authz
 
 import (
 	"context"
+	"net/url"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz/requestvalidator"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -47,8 +48,9 @@ func (av *authorizationValidator) validateInitialAuthorizationRequest(ctx contex
 	oauthApp *providers.OAuthClient) (bool, string, string) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthorizationValidator"))
 
-	clientID := msg.RequestQueryParams[constants.RequestParamClientID]
-	redirectURI := msg.RequestQueryParams[constants.RequestParamRedirectURI]
+	queryParams := url.Values(msg.RequestQueryParams)
+	clientID := queryParams.Get(constants.RequestParamClientID)
+	redirectURI := queryParams.Get(constants.RequestParamRedirectURI)
 
 	if clientID == "" {
 		return false, constants.ErrorInvalidRequest, "Missing client_id parameter"

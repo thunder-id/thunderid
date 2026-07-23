@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {ConnectionCreateWizardPage} from '@thunderid/configure-connections';
+import {ConnectionCreateWizardPage, type CustomConfigureStepProps} from '@thunderid/configure-connections';
 import type {JSX} from 'react';
 import TrustedIssuerWizardStep from '../../trusted-issuers/pages/TrustedIssuerWizardStep';
 
@@ -26,5 +26,13 @@ import TrustedIssuerWizardStep from '../../trusted-issuers/pages/TrustedIssuerWi
  * rather than the `configure-connections` package.
  */
 export default function ConnectionCreateWizardRoute(): JSX.Element {
-  return <ConnectionCreateWizardPage customConfigureSteps={{'trusted-idp': <TrustedIssuerWizardStep />}} />;
+  return (
+    <ConnectionCreateWizardPage
+      customConfigureSteps={{
+        'trusted-idp': ({name, onNameConflict}: CustomConfigureStepProps) => (
+          <TrustedIssuerWizardStep name={name} onNameConflict={onNameConflict} />
+        ),
+      }}
+    />
+  );
 }

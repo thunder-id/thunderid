@@ -70,7 +70,7 @@ func (s *consentEnforcerService) SetConsentService(consentService consent.Consen
 func (s *consentEnforcerService) ResolveConsent(ctx context.Context, ouID, appID, appName, userID string,
 	essentialAttributes, optionalAttributes, authorizedPermissions []string,
 	availableAttributes *providers.AttributesResponse, forceReprompt bool,
-	runtimeMetadata map[string]string) (
+	runtimeMetadata map[string][]string) (
 	*providers.ConsentPromptData, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID))
 	logger.Debug(ctx, "Resolving consent for user")
@@ -156,7 +156,7 @@ func (s *consentEnforcerService) ResolveConsent(ctx context.Context, ouID, appID
 // attribute denials, and then persists the consent record.
 func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID, userID string,
 	decisions *providers.ConsentDecisions, sessionToken string,
-	validityPeriod int64, runtimeMetadata map[string]string) (*providers.Consent, *tidcommon.ServiceError) {
+	validityPeriod int64, runtimeMetadata map[string][]string) (*providers.Consent, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID))
 	logger.Debug(ctx, "Recording consent for user")
 

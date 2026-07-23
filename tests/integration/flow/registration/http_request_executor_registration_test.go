@@ -270,6 +270,14 @@ func (ts *HTTPRequestRegistrationFlowTestSuite) SetupSuite() {
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, flowID)
 	httpRequestRegTestApp.RegistrationFlowID = flowID
 
+	// Create isolated auth flow to avoid cross-type reference validation with default auth flow.
+	isolatedAuthID, err := testutils.CreateIsolatedAuthFlow("http-request-registration-isolated-auth")
+	if err != nil {
+		ts.T().Fatalf("Failed to create isolated auth flow: %v", err)
+	}
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, isolatedAuthID)
+	httpRequestRegTestApp.AuthFlowID = isolatedAuthID
+
 	// Create test application
 	httpRequestRegTestApp.OUID = httpRequestRegTestOUID
 	appID, err := testutils.CreateApplication(httpRequestRegTestApp)

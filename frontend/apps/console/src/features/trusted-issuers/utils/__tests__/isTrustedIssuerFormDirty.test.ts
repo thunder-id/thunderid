@@ -25,7 +25,6 @@ const BASELINE: TrustedIssuerFormData = {
   issuer: 'https://acme.okta.com',
   jwksEndpoint: 'https://acme.okta.com/keys',
   idJagEnabled: true,
-  clientId: undefined,
   tokenExchangeEnabled: false,
   trustedTokenAudience: undefined,
 };
@@ -39,7 +38,6 @@ describe('isTrustedIssuerFormDirty', () => {
     const values: TrustedIssuerFormData = {
       trustedTokenAudience: undefined,
       tokenExchangeEnabled: false,
-      clientId: undefined,
       idJagEnabled: true,
       jwksEndpoint: 'https://acme.okta.com/keys',
       issuer: 'https://acme.okta.com',
@@ -47,10 +45,6 @@ describe('isTrustedIssuerFormDirty', () => {
     };
 
     expect(isTrustedIssuerFormDirty(values, BASELINE)).toBe(false);
-  });
-
-  it('should return false when clientId is an empty string and baseline is undefined', () => {
-    expect(isTrustedIssuerFormDirty({...BASELINE, clientId: ''}, BASELINE)).toBe(false);
   });
 
   it('should return false when trustedTokenAudience is an empty string and baseline is undefined', () => {
@@ -71,10 +65,6 @@ describe('isTrustedIssuerFormDirty', () => {
 
   it('should return true when idJagEnabled changes', () => {
     expect(isTrustedIssuerFormDirty({...BASELINE, idJagEnabled: false}, BASELINE)).toBe(true);
-  });
-
-  it('should return true when clientId changes to a non-empty value', () => {
-    expect(isTrustedIssuerFormDirty({...BASELINE, clientId: 'thunderid-console'}, BASELINE)).toBe(true);
   });
 
   it('should return true when tokenExchangeEnabled changes', () => {

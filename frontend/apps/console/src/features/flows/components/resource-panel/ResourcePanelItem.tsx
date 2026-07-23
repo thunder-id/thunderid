@@ -16,14 +16,11 @@
  * under the License.
  */
 
-import {Avatar, Box, Card, CardContent, IconButton, Stack, Typography, useColorScheme} from '@wso2/oxygen-ui';
-import * as Icons from '@wso2/oxygen-ui-icons-react';
+import {Box, Card, CardContent, IconButton, Stack, Typography} from '@wso2/oxygen-ui';
 import {PlusIcon} from '@wso2/oxygen-ui-icons-react';
-import React, {type ComponentType, type HTMLAttributes, type ReactElement} from 'react';
+import React, {type HTMLAttributes, type ReactElement} from 'react';
 import type {Resource} from '../../models/resources';
-import resolveStaticResourcePath from '../../utils/resolveStaticResourcePath';
-
-const isImagePath = (value: string): boolean => value.includes('/') || value.includes(':');
+import ResourceDisplayImage from '../ResourceDisplayImage';
 
 /**
  * Props interface of {@link ResourcePanelItem}
@@ -61,47 +58,6 @@ function ResourcePanelItem({
   onAdd = undefined,
   disabled = false,
 }: ResourcePanelItemProps): ReactElement | React.ReactNode {
-  const {mode, systemMode} = useColorScheme();
-
-  // Determine the effective mode - if mode is 'system', use systemMode
-  const effectiveMode = mode === 'system' ? systemMode : mode;
-
-  const resourceDisplayImage = (() => {
-    if (!resource?.display?.image) return null;
-    if (isImagePath(resource.display.image)) {
-      return (
-        <Avatar
-          src={resolveStaticResourcePath(resource.display.image)}
-          alt={resource.display.label}
-          variant="square"
-          sx={{
-            height: 20,
-            width: 20,
-            backgroundColor: 'transparent !important',
-            color: 'text.primary',
-            '& .MuiAvatar-img': {
-              filter: effectiveMode === 'dark' ? 'brightness(0.9) invert(1)' : 'none',
-            },
-          }}
-        />
-      );
-    }
-    const IconComponent = Icons[resource.display.image as keyof typeof Icons] as ComponentType<{
-      size?: number;
-      color?: string;
-    }>;
-    return IconComponent ? (
-      <Box
-        display="inline-flex"
-        alignItems="center"
-        justifyContent="center"
-        sx={{color: 'text.primary', flexShrink: 0}}
-      >
-        <IconComponent size={20} />
-      </Box>
-    ) : null;
-  })();
-
   return (
     children ?? (
       <Card
@@ -127,7 +83,11 @@ function ResourcePanelItem({
         >
           <Box display="flex" justifyContent="space-between" alignItems="center" gap={1}>
             <Stack direction="row" spacing={1.5} alignItems="center" flex={1}>
-              {resourceDisplayImage}
+              <ResourceDisplayImage
+                image={resource?.display?.image}
+                label={resource?.display?.label}
+                preserveColor={resource?.display?.preserveImageColor}
+              />
               <Stack direction="column" spacing={0.25} flex={1}>
                 <Typography variant="body2" fontWeight={500} color="text.primary">
                   {resource?.display?.label}

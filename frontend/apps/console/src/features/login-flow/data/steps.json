@@ -171,5 +171,53 @@
         }
       ]
     }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "INTERFACE",
+    "type": "VIEW",
+    "display": {
+      "label": "Sign Out Confirmation",
+      "description": "Screen asking the user to confirm signing out",
+      "image": "assets/images/icons/arrowhead-right-outline.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {},
+    "data": {
+      "components": [
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "TEXT",
+          "variant": "HEADING_1",
+          "label": "{{ t(signout:forms.confirm.title) }}"
+        },
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "TEXT",
+          "variant": "BODY_1",
+          "label": "{{ t(signout:forms.confirm.description) }}"
+        },
+        {
+          "id": "{{ID}}",
+          "category": "BLOCK",
+          "type": "BLOCK",
+          "components": [
+            {
+              "id": "{{ID}}",
+              "category": "ACTION",
+              "type": "ACTION",
+              "variant": "PRIMARY",
+              "eventType": "SUBMIT",
+              "label": "{{ t(signout:forms.confirm.actions.submit.label) }}",
+              "action": {
+                "type": "NEXT"
+              }
+            }
+          ]
+        }
+      ]
+    }
   }
 ]

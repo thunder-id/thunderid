@@ -29,11 +29,12 @@ import {
   type Stylesheet,
 } from '@thunderid/design';
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
-import type {EmbeddedFlowComponent} from '@thunderid/react';
+import {EmbeddedFlowComponentType, EmbeddedFlowEventType, type EmbeddedFlowComponent} from '@thunderid/react';
 import {TemplateLiteralType} from '@thunderid/utils';
 import {Box, ParticleBackground, useTheme} from '@wso2/oxygen-ui';
 import {useEffect, useMemo, type JSX} from 'react';
 import PreviewThemeProvider from './PreviewThemeProvider';
+import {resolveAnchorActionRef, resolveHoverTarget} from './richTextClickResolution';
 import ElementInspector from '../../features/design/components/layouts/ElementInspector';
 
 /**
@@ -71,32 +72,6 @@ function IframeBodyBackground({iframeDoc}: {iframeDoc: Document}): null {
   }, [iframeDoc, muiTheme]);
 
   return null;
-}
-
-function findComponentById(root: EmbeddedFlowComponent, id: string): EmbeddedFlowComponent | null {
-  if (root.id === id) {
-    return root;
-  }
-  for (const child of root.components ?? []) {
-    const found = findComponentById(child, id);
-    if (found) {
-      return found;
-    }
-  }
-  return null;
-}
-
-/**
- * Resolves the most specific component for a hover/focus event: the gate's
- * button adapters carry their component id in the DOM, so a block with several
- * actions can be previewed per button instead of as one unit.
- */
-function resolveHoverTarget(component: EmbeddedFlowComponent, target: EventTarget | null): EmbeddedFlowComponent {
-  const buttonId = (target as HTMLElement | null)?.closest?.('button')?.id;
-  if (!buttonId) {
-    return component;
-  }
-  return findComponentById(component, buttonId) ?? component;
 }
 
 /** No-op handlers for preview mode — the form is purely visual. */
@@ -276,6 +251,22 @@ export default function IframeContent({
                         onMouseLeave={() => onComponentHover(null)}
                         onFocus={(event) => onComponentHover(resolveHoverTarget(component, event.target))}
                         onBlur={() => onComponentHover(null)}
+                        onClick={(event) => {
+                          // Only handle wired rich-text links; buttons dispatch through
+                          // their own handler. Prevent the decorative `href="#"` from
+                          // scrolling the iframe.
+                          const actionRef = resolveAnchorActionRef(event.target);
+                          if (actionRef === null) {
+                            return;
+                          }
+                          event.preventDefault();
+                          onSubmit?.({
+                            eventType: EmbeddedFlowEventType.Trigger,
+                            id: actionRef,
+                            ref: actionRef,
+                            type: EmbeddedFlowComponentType.Action,
+                          } as EmbeddedFlowComponent);
+                        }}
                       >
                         {renderer}
                       </Box>

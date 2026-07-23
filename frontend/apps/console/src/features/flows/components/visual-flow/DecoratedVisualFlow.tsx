@@ -40,6 +40,7 @@ import {
   useRef,
   useState,
   type ReactElement,
+  type ReactNode,
   type SetStateAction,
 } from 'react';
 import {useTranslation} from 'react-i18next';
@@ -49,7 +50,9 @@ import FormRequiresViewDialog from './FormRequiresViewDialog';
 import SimulationStepPreview from './SimulationStepPreview';
 import ValidationBadge from './ValidationBadge';
 import VisualFlow, {type VisualFlowPropsInterface} from './VisualFlow';
+import RouteConfig from '../../../../configs/RouteConfig';
 import VisualFlowConstants from '../../constants/VisualFlowConstants';
+import StepPreviewContext from '../../context/StepPreviewContext';
 import useComponentDelete from '../../hooks/useComponentDelete';
 import useConfirmPasswordField from '../../hooks/useConfirmPasswordField';
 import useContainerDialogConfirm from '../../hooks/useContainerDialogConfirm';
@@ -66,7 +69,7 @@ import useUIPanelState from '../../hooks/useUIPanelState';
 import useValidationStatus from '../../hooks/useValidationStatus';
 import useVisualFlowHandlers from '../../hooks/useVisualFlowHandlers';
 import type {DragSourceData, DragTargetData, DragEventWithNative} from '../../models/drag-drop';
-import {BlockTypes, ElementTypes, type Element} from '../../models/elements';
+import {BlockTypes, type Element} from '../../models/elements';
 import type {MetadataInterface} from '../../models/metadata';
 import Notification, {NotificationType} from '../../models/notification';
 import {ResourceTypes, type Resource, type Resources} from '../../models/resources';
@@ -82,8 +85,10 @@ import {
   stripSimulationNodeClasses,
   withSimulationClasses,
 } from '../../utils/stripSimulationClasses';
+import {findContainingComponent} from '../../utils/updateNestedComponent';
 import {widgetNeedsViewContainer} from '../../utils/widgetUtils';
 import Droppable from '../dnd/Droppable';
+import EdgePathsProvider from '../react-flow-overrides/EdgePathsProvider';
 import ResourcePanel from '../resource-panel/ResourcePanel';
 import ResourcePropertyPanel from '../resource-property-panel/ResourcePropertyPanel';
 import ValidationPanel from '../validation-panel/ValidationPanel';
@@ -122,6 +127,10 @@ export interface DecoratedVisualFlowPropsInterface extends Omit<VisualFlowPropsI
    * This is useful when loading flows that don't have saved canvas positions.
    */
   triggerAutoLayoutOnLoad?: boolean;
+  /**
+   * Extra controls rendered at the bottom of the resource panel, below the resource sections.
+   */
+  resourcePanelFooter?: ReactNode;
 }
 
 /**
@@ -149,6 +158,7 @@ function DecoratedVisualFlow({
   flowHandle,
   onFlowTitleChange,
   triggerAutoLayoutOnLoad = false,
+  resourcePanelFooter = undefined,
   ...rest
 }: DecoratedVisualFlowPropsInterface): ReactElement {
   useDeleteExecutionResource();
@@ -158,7 +168,8 @@ function DecoratedVisualFlow({
   const {toObject, getNodes, getEdges, updateNodeData, fitView} = useReactFlow();
   const updateNodeInternals: UpdateNodeInternals = useUpdateNodeInternals();
   const {deleteComponent} = useComponentDelete();
-  const {isResourcePanelOpen, isResourcePropertiesPanelOpen} = useUIPanelState();
+  const {isResourcePanelOpen, isResourcePropertiesPanelOpen, setIsResourcePanelOpen, setIsOpenResourcePropertiesPanel} =
+    useUIPanelState();
   const {notifyElementAdded, onAutoLayout} = useFlowEvents();
   const {isFlowMetadataLoading, metadata, setFlowNodes} = useFlowConfig();
   const {onResourceDropOnCanvas} = useInteractionState();
@@ -301,9 +312,8 @@ function DecoratedVisualFlow({
     const currentNodes = stripSimulationNodeClasses(getNodes());
     const currentEdges = getEdges();
     applyAutoLayout(currentNodes, currentEdges, {
-      direction: 'RIGHT',
-      nodeSpacing: 150,
-      rankSpacing: 300,
+      nodeSpacing: 100,
+      rankSpacing: 160,
       offsetX: 50,
       offsetY: 50,
     })
@@ -357,11 +367,28 @@ function DecoratedVisualFlow({
 
   const simulation = useFlowSimulation(nodes, edges);
 
+  // Entering the preview collapses the side panels so the canvas and the
+  // preview panel get the full width; they stay closed on exit until reopened.
+  const isSimulatingNow = simulation.isSimulating;
+  useEffect(() => {
+    if (isSimulatingNow) {
+      setIsResourcePanelOpen(false);
+      setIsOpenResourcePropertiesPanel(false);
+    }
+  }, [isSimulatingNow, setIsResourcePanelOpen, setIsOpenResourcePropertiesPanel]);
+
+  // Edge under the pointer, tracked so the edge and the node it leads into can
+  // be spotlighted (same visual language as the preview's option highlight).
+  // Styled via data-id selectors so no node/edge objects change on hover.
+  const [hoveredEdge, setHoveredEdge] = useState<{id: string; targetId: string} | null>(null);
+
   const {isSimulating: isSimulationActive, start: startSimulation, stop: stopSimulation} = simulation;
   const handleToggleSimulation = useCallback((): void => {
     if (isSimulationActive) {
       stopSimulation();
     } else {
+      // Drop any hover highlight so it doesn't resurface when the preview ends.
+      setHoveredEdge(null);
       startSimulation();
     }
   }, [isSimulationActive, stopSimulation, startSimulation]);
@@ -426,6 +453,21 @@ function DecoratedVisualFlow({
     },
     [fitView, simulation.isSimulating, simulation.followCamera],
   );
+
+  const handleEdgeMouseEnter = useCallback(
+    (_event: unknown, edge: Edge): void => {
+      // The preview mode has its own path decoration; don't fight it.
+      if (simulation.isSimulating) {
+        return;
+      }
+      setHoveredEdge({id: edge.id, targetId: edge.target});
+    },
+    [simulation.isSimulating],
+  );
+
+  const handleEdgeMouseLeave = useCallback((): void => {
+    setHoveredEdge(null);
+  }, []);
 
   const handleNodeDragStop = useCallback((): void => {
     const currentNodes = stripSimulationNodeClasses(getNodes());
@@ -590,14 +632,10 @@ function DecoratedVisualFlow({
         // Dropping on an existing sortable element - insert at that position
         const targetElementId = target.id;
 
-        // Check if the target element is inside a form or stack
+        // Check if the target element is inside a form or stack, at any nesting depth
         const targetNode = getNodes().find((n) => n.id === targetData.stepId);
         const nodeData = targetNode?.data as StepData | undefined;
-        const parentContainer = nodeData?.components?.find(
-          (c: Element) =>
-            (c.type === BlockTypes.Form || c.type === ElementTypes.Stack) &&
-            c.components?.some((child: Element) => child.id === targetElementId),
-        );
+        const parentContainer = findContainingComponent(nodeData?.components ?? [], targetElementId);
 
         if (parentContainer) {
           // Target element is inside a form or stack, insert at that position within it
@@ -669,7 +707,7 @@ function DecoratedVisualFlow({
 
   const handleBackToFlows = useCallback((): void => {
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    navigate('/flows');
+    navigate(RouteConfig.flows.list());
   }, [navigate]);
 
   const simulationNode = useMemo(
@@ -760,6 +798,33 @@ function DecoratedVisualFlow({
           '70%': {boxShadow: '0 0 0 15px transparent'},
           '100%': {boxShadow: '0 0 0 0 transparent'},
         },
+        // Each edge renders in its own svg layer; lift the hovered one so its
+        // highlight stays visible where edges overlap or run close together.
+        '& .react-flow__edges svg:has(.react-flow__edge:hover)': {zIndex: '1000 !important'},
+        // Spotlight the hovered edge and the node it leads into, mirroring the
+        // preview's option highlight. Targeted via data-id so hovering never
+        // mutates node/edge objects (React Flow's memoization stays intact).
+        // Suppressed while previewing — the simulation owns path decoration.
+        ...(hoveredEdge && !simulation.isSimulating
+          ? {
+              [`& .react-flow__edge[data-id="${hoveredEdge.id}"] .react-flow__edge-path`]: {
+                stroke: `${theme.palette.primary.main} !important`,
+              },
+              [`& .react-flow__node[data-id="${hoveredEdge.targetId}"] .flow-builder-step, ` +
+              `& .react-flow__node[data-id="${hoveredEdge.targetId}"] .execution-minimal-step, ` +
+              `& .react-flow__node[data-id="${hoveredEdge.targetId}"] .flow-builder-rule, ` +
+              `& .react-flow__node[data-id="${hoveredEdge.targetId}"] .MuiFab-root`]: {
+                outline: `2px solid ${theme.palette.primary.main}`,
+                outlineOffset: '4px',
+                animation: 'edge-hover-target-pulse 1s infinite',
+              },
+              '@keyframes edge-hover-target-pulse': {
+                '0%': {boxShadow: `0 0 0 0 ${theme.palette.primary.main}`},
+                '70%': {boxShadow: '0 0 0 15px transparent'},
+                '100%': {boxShadow: '0 0 0 0 transparent'},
+              },
+            }
+          : {}),
       })}
     >
       {/* ── Top bar: back button | toolbar | save button ── */}
@@ -819,69 +884,77 @@ function DecoratedVisualFlow({
 
       {/* ── Three-column builder area ── */}
       <Box sx={{position: 'relative', flex: 1, overflow: 'hidden', p: 1, pt: 0}}>
-        <DragDropProvider onDragEnd={handleDragEnd} onDragOver={handleDragOver}>
-          <ResourcePanel
-            resources={resources}
-            open={isResourcePanelOpen}
-            onAdd={handleOnAdd}
-            disabled={isFlowMetadataLoading}
-            flowTitle={flowTitle}
-            flowHandle={flowHandle}
-            onFlowTitleChange={onFlowTitleChange}
-            rightPanel={rightPanel}
-          >
-            <Droppable
-              id={generateResourceId(VisualFlowConstants.FLOW_BUILDER_CANVAS_ID)}
-              type={VisualFlowConstants.FLOW_BUILDER_DROPPABLE_CANVAS_ID}
-              accept={[...VisualFlowConstants.FLOW_BUILDER_CANVAS_ALLOWED_RESOURCE_TYPES]}
-              hideDropZones
-              collisionPriority={CollisionPriority.Low}
+        {/* startAt is referentially stable, so providing it does not re-render nodes on simulation state changes */}
+        <StepPreviewContext.Provider value={simulation.startAt}>
+          <DragDropProvider onDragEnd={handleDragEnd} onDragOver={handleDragOver}>
+            <ResourcePanel
+              resources={resources}
+              open={isResourcePanelOpen}
+              onAdd={handleOnAdd}
+              disabled={isFlowMetadataLoading}
+              flowTitle={flowTitle}
+              flowHandle={flowHandle}
+              onFlowTitleChange={onFlowTitleChange}
+              rightPanel={rightPanel}
+              footer={resourcePanelFooter}
             >
-              <VisualFlow
-                nodes={displayNodes}
-                onNodesChange={onNodesChange}
-                edges={displayEdges}
-                edgeTypes={edgeTypes}
-                onEdgesChange={onEdgesChange}
-                onConnect={handleConnect}
-                onNodesDelete={handleNodesDelete}
-                onEdgesDelete={handleEdgesDelete}
-                onNodeDragStop={handleNodeDragStop}
-                onNodeClick={handleNodeClick}
-                {...rest}
-              />
-            </Droppable>
-          </ResourcePanel>
-          <DragOverlay>
-            {(source) => {
-              const data = source?.data as DragSourceData | undefined;
+              <Droppable
+                id={generateResourceId(VisualFlowConstants.FLOW_BUILDER_CANVAS_ID)}
+                type={VisualFlowConstants.FLOW_BUILDER_DROPPABLE_CANVAS_ID}
+                accept={[...VisualFlowConstants.FLOW_BUILDER_CANVAS_ALLOWED_RESOURCE_TYPES]}
+                hideDropZones
+                collisionPriority={CollisionPriority.Low}
+              >
+                <EdgePathsProvider>
+                  <VisualFlow
+                    nodes={displayNodes}
+                    onNodesChange={onNodesChange}
+                    edges={displayEdges}
+                    edgeTypes={edgeTypes}
+                    onEdgesChange={onEdgesChange}
+                    onConnect={handleConnect}
+                    onNodesDelete={handleNodesDelete}
+                    onEdgesDelete={handleEdgesDelete}
+                    onNodeDragStop={handleNodeDragStop}
+                    onNodeClick={handleNodeClick}
+                    onEdgeMouseEnter={handleEdgeMouseEnter}
+                    onEdgeMouseLeave={handleEdgeMouseLeave}
+                    {...rest}
+                  />
+                </EdgePathsProvider>
+              </Droppable>
+            </ResourcePanel>
+            <DragOverlay>
+              {(source) => {
+                const data = source?.data as DragSourceData | undefined;
 
-              if (!data?.isReordering || !data.resource) return null;
+                if (!data?.isReordering || !data.resource) return null;
 
-              const label = (data.resource as Resource)?.display?.label ?? (data.resource as Resource)?.type;
+                const label = (data.resource as Resource)?.display?.label ?? (data.resource as Resource)?.type;
 
-              return (
-                <Card
-                  elevation={3}
-                  sx={{
-                    px: 2,
-                    py: 1.5,
-                    minWidth: 120,
-                    maxWidth: 280,
-                    cursor: 'grabbing',
-                    bgcolor: 'background.paper',
-                  }}
-                >
-                  <CardContent sx={{p: 0, '&:last-child': {pb: 0}}}>
-                    <Typography variant="body2" fontWeight={500} noWrap>
-                      {label}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              );
-            }}
-          </DragOverlay>
-        </DragDropProvider>
+                return (
+                  <Card
+                    elevation={3}
+                    sx={{
+                      px: 2,
+                      py: 1.5,
+                      minWidth: 120,
+                      maxWidth: 280,
+                      cursor: 'grabbing',
+                      bgcolor: 'background.paper',
+                    }}
+                  >
+                    <CardContent sx={{p: 0, '&:last-child': {pb: 0}}}>
+                      <Typography variant="body2" fontWeight={500} noWrap>
+                        {label}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                );
+              }}
+            </DragOverlay>
+          </DragDropProvider>
+        </StepPreviewContext.Provider>
       </Box>
 
       <FormRequiresViewDialog

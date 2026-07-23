@@ -21,6 +21,7 @@ import {Alert, Autocomplete, CircularProgress, FormControl, FormLabel, TextField
 import {type JSX} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import {Link} from 'react-router';
+import RouteConfig from '../../../../../configs/RouteConfig';
 import useGetAgentGroups from '../../../api/useGetAgentGroups';
 
 interface AgentGroupsSectionProps {
@@ -39,7 +40,7 @@ export default function AgentGroupsSection({agentId}: AgentGroupsSectionProps): 
         <Trans
           i18nKey="agents:edit.access.groups.description"
           defaults="Groups this agent belongs to. Manage membership from the <manageLink>Groups page</manageLink>."
-          components={{manageLink: <Link to="/groups" />}}
+          components={{manageLink: <Link to={RouteConfig.groups.list()} />}}
         />
       }
     >

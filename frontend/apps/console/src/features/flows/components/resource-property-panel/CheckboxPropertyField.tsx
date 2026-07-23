@@ -18,8 +18,8 @@
 
 import {Box, Checkbox, FormControlLabel, FormHelperText} from '@wso2/oxygen-ui';
 import startCase from 'lodash-es/startCase';
-import {type ReactElement, type SyntheticEvent, useMemo} from 'react';
-import useValidationStatus from '../../hooks/useValidationStatus';
+import {type ReactElement, type SyntheticEvent} from 'react';
+import useResourceFieldError from '../../hooks/useResourceFieldError';
 import type {Resource} from '../../models/resources';
 
 /**
@@ -60,20 +60,10 @@ function CheckboxPropertyField({
   onChange,
   ...rest
 }: CheckboxPropertyFieldPropsInterface): ReactElement {
-  const {selectedNotification} = useValidationStatus();
-
   /**
    * Get the error message for the checkbox property field.
    */
-  const errorMessage: string = useMemo(() => {
-    const key = `${resource?.id}_${propertyKey}`;
-
-    if (selectedNotification?.hasResourceFieldNotification(key)) {
-      return selectedNotification?.getResourceFieldNotification(key);
-    }
-
-    return '';
-  }, [resource, selectedNotification, propertyKey]);
+  const errorMessage: string = useResourceFieldError(resource?.id, propertyKey);
 
   return (
     <Box>

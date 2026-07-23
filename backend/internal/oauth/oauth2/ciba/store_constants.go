@@ -27,6 +27,7 @@ const (
 	dbColumnUserID           = "user_id"
 	dbColumnStandardScopes   = "standard_scopes"
 	dbColumnAuthorizedScopes = "authorized_scopes"
+	dbColumnResources        = "resources"
 	dbColumnState            = "state"
 	dbColumnAttributeCacheID = "attribute_cache_id"
 	dbColumnCompletedACR     = "completed_acr"
@@ -39,14 +40,14 @@ const (
 // USER_ID is omitted — it is unknown at creation and populated at callback via MarkAuthenticated.
 var queryInsertCIBAAuthRequest = dbmodel.DBQuery{
 	ID: "CBQ-CRS-01",
-	Query: `INSERT INTO "CIBA_AUTH_REQUEST" (AUTH_REQ_ID, CLIENT_ID, STANDARD_SCOPES, STATE, ` +
-		`EXPIRY_TIME, DEPLOYMENT_ID) VALUES ($1, $2, $3, $4, $5, $6)`,
+	Query: `INSERT INTO "CIBA_AUTH_REQUEST" (AUTH_REQ_ID, CLIENT_ID, STANDARD_SCOPES, RESOURCES, STATE, ` +
+		`EXPIRY_TIME, DEPLOYMENT_ID) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 }
 
 // queryGetCIBAAuthRequest retrieves a CIBA authentication request by ID.
 var queryGetCIBAAuthRequest = dbmodel.DBQuery{
 	ID: "CBQ-CRS-02",
-	Query: `SELECT AUTH_REQ_ID, CLIENT_ID, USER_ID, STANDARD_SCOPES, AUTHORIZED_SCOPES, STATE, ` +
+	Query: `SELECT AUTH_REQ_ID, CLIENT_ID, USER_ID, STANDARD_SCOPES, AUTHORIZED_SCOPES, RESOURCES, STATE, ` +
 		`ATTRIBUTE_CACHE_ID, COMPLETED_ACR, AUTH_TIME, LAST_POLLED_AT, EXPIRY_TIME ` +
 		`FROM "CIBA_AUTH_REQUEST" WHERE AUTH_REQ_ID = $1 AND DEPLOYMENT_ID = $2`,
 }

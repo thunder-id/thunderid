@@ -1,0 +1,61 @@
+---
+title: Manage Identity Providers
+docType: guide
+sidebar_position: 1
+persona: iam
+description: View, update, and delete identity provider connections from the {{ProductName}} Console.
+---
+
+# Manage Identity Providers
+
+This guide explains how to view, update, and delete identity providers from the <ProductName /> Console.
+
+For provider-specific setup instructions, see:
+
+- [Add a Google Identity Provider](../add-google)
+- [Add a GitHub Identity Provider](../add-github)
+- [Add an OIDC Identity Provider](../add-oidc-provider)
+- [Add an OAuth 2.0 Identity Provider](../add-oauth-provider)
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get Started](../../../getting-started/get-thunderid).
+- You can sign in to the <ProductName /> Console.
+
+## View Identity Providers
+
+1. Sign in to the <ProductName /> Console.
+2. Navigate to **Connections**. Each configured identity provider appears as a card, showing **Configured**, **Not configured**, or **Coming soon**.
+3. Use the **Social Login** or **Enterprise** category filters to narrow the list to identity providers.
+4. Click a card to open the connection's detail page.
+
+On the detail page, the **General** tab's **Quick copy** section shows the **Connection ID**, an identifier you can copy for use in your integration.
+
+## Update an Identity Provider
+
+1. Open the connection from the Connections page.
+2. On the **General** tab, edit the fields under **Credentials**.
+3. Stored secrets, such as **Client secret**, are write-only: the field stays locked until you click **Update**. Leave it unchanged to keep the stored secret.
+4. Click **Save changes** in the bar at the bottom of the page. You can click **Discard** instead to abandon your edits.
+
+Only custom OIDC and OAuth 2.0 connections have an editable **Connection name**. Google, GitHub, and other branded connections keep the vendor's name.
+
+Settings not shown during creation are also configured here: **Scopes** for all connection types, and for OIDC connections the **UserInfo endpoint**, **JWKS endpoint**, **Issuer**, and **Enable token exchange** with its **Trusted token audience** field.
+
+Changes take effect immediately for new authentication requests.
+
+## Delete an Identity Provider
+
+1. Open the connection from the Connections page.
+2. On the **General** tab, go to **Danger zone** and click **Delete connection**.
+3. Confirm the deletion in the dialog.
+
+If an authentication flow or another resource still references this identity provider, the dialog lists the resources and blocks the deletion until you remove or update them, for example, the flow node that uses this connection.
+
+:::note
+Identity providers created through declarative configuration are read-only. Deleting one fails even when no other resource references it.
+:::
+
+## Next Steps
+
+- [Connect an IdP to an Application](../connect-idp-to-application): Assign a configured IdP to an application's sign-in flow.

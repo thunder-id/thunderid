@@ -245,7 +245,20 @@ oauth:
   authorization_code:
     validity_period: {{ .Values.configuration.oauth.authorizationCode.validityPeriod }}
   dcr:
+    enabled: {{ .Values.configuration.oauth.dcr.enabled }}
     insecure: {{ .Values.configuration.oauth.dcr.insecure }}
+  allowed_auth_methods:
+  {{- range .Values.configuration.oauth.allowedAuthMethods }}
+    - {{ . | quote }}
+  {{- end }}
+  allowed_response_types:
+  {{- range .Values.configuration.oauth.allowedResponseTypes }}
+    - {{ . | quote }}
+  {{- end }}
+  allowed_grant_types:
+  {{- range .Values.configuration.oauth.allowedGrantTypes }}
+    - {{ . | quote }}
+  {{- end }}
 
 flow:
   default_auth_flow_handle: {{ .Values.configuration.flow.defaultAuthFlowHandle | quote }}

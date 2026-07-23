@@ -19,7 +19,10 @@
 // Package providers provides constants for the providers module.
 package providers
 
-import "errors"
+import (
+	"errors"
+	"slices"
+)
 
 // IDPType represents the type of an identity provider.
 type IDPType string
@@ -192,6 +195,24 @@ func (gt GrantType) IsValid() bool {
 		}
 	}
 	return false
+}
+
+// refreshTokenIssuingGrantTypes lists the grant types that can issue a refresh token.
+var refreshTokenIssuingGrantTypes = []GrantType{
+	GrantTypeAuthorizationCode,
+	GrantTypeCIBA,
+}
+
+// IssuesRefreshToken reports whether this grant type can issue a refresh token.
+func (gt GrantType) IssuesRefreshToken() bool {
+	return slices.Contains(refreshTokenIssuingGrantTypes, gt)
+}
+
+// AnyIssuesRefreshToken reports whether any of the given grant types can issue a refresh token.
+func AnyIssuesRefreshToken(grantTypes []string) bool {
+	return slices.ContainsFunc(grantTypes, func(gt string) bool {
+		return GrantType(gt).IssuesRefreshToken()
+	})
 }
 
 // SupportedResponseTypes lists all the supported response types.

@@ -31,7 +31,7 @@
     "vite": "catalog:"
   },
   "overrides": {
-    "postcss": "8.5.10",
+    "postcss": "8.5.12",
     "flatted": ">=3.4.2",
     "picomatch": ">=4.0.4",
     "yaml": ">=1.10.3"

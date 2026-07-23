@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import {isConflictError} from '@thunderid/configure-connections';
+import {useConfig} from '@thunderid/contexts';
 import {
   Box,
   Button,
@@ -33,34 +35,40 @@ import {
 import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import useCreateTrustedIssuer from '../api/useCreateTrustedIssuer';
 import validateTrustedIssuerForm, {
   type TrustedIssuerFieldErrorKind,
   type TrustedIssuerFormErrors,
 } from '../utils/validateTrustedIssuerForm';
-import {isConflictError} from '@thunderid/configure-connections';
+
+interface TrustedIssuerCreateFormProps {
+  /** Connection name collected on the wizard's name step. */
+  name: string;
+  /** Call when the create request 409s on a duplicate name, to bounce back to the name step. */
+  onNameConflict: () => void;
+}
 
 /**
  * The trusted-issuer create form: fields, validation, and submission via
  * {@link useCreateTrustedIssuer}. On success, navigates to the created issuer's detail page.
  *
  * Has no back/cancel affordance of its own — callers (the "Add custom connection" wizard) provide
- * that chrome.
+ * that chrome, and collect the connection name on a preceding step.
  */
-export default function TrustedIssuerCreateForm(): JSX.Element {
+export default function TrustedIssuerCreateForm({name, onNameConflict}: TrustedIssuerCreateFormProps): JSX.Element {
   const {t} = useTranslation();
   const navigate = useNavigate();
+  const {config} = useConfig();
+  const productName = config.brand.product_name;
   const createTrustedIssuer = useCreateTrustedIssuer();
 
-  const [name, setName] = useState('');
   const [issuer, setIssuer] = useState('');
   const [jwksEndpoint, setJwksEndpoint] = useState('');
   const [idJagEnabled, setIdJagEnabled] = useState(false);
-  const [clientId, setClientId] = useState('');
   const [tokenExchangeEnabled, setTokenExchangeEnabled] = useState(true);
   const [trustedTokenAudience, setTrustedTokenAudience] = useState('');
   const [touched, setTouched] = useState<Record<string, boolean>>({});
-  const [nameError, setNameError] = useState<string | null>(null);
 
   const errors: TrustedIssuerFormErrors = useMemo(
     () => validateTrustedIssuerForm({name, issuer, jwksEndpoint}),
@@ -83,24 +91,22 @@ export default function TrustedIssuerCreateForm(): JSX.Element {
   const handleCreate = (): void => {
     if (!formValid) return;
 
-    setNameError(null);
     createTrustedIssuer.mutate(
       {
-        name: name.trim(),
+        name,
         issuer: issuer.trim(),
         jwksEndpoint: jwksEndpoint.trim(),
         idJagEnabled,
-        clientId: clientId.trim() || undefined,
         tokenExchangeEnabled,
         trustedTokenAudience: trustedTokenAudience.trim() || undefined,
       },
       {
         onSuccess: (created) => {
-          void navigate(`/trusted-issuers/${created.id}`);
+          void navigate(RouteConfig.trustedIssuers.detail(created.id));
         },
         onError: (error) => {
           if (isConflictError(error)) {
-            setNameError(t('trustedIssuers:create.duplicateName', 'A trusted issuer with this name already exists.'));
+            onNameConflict();
           }
         },
       },
@@ -110,10 +116,10 @@ export default function TrustedIssuerCreateForm(): JSX.Element {
   return (
     <Stack direction="column" spacing={3}>
       <Stack direction="column" spacing={1}>
-        <Typography variant="h4" fontWeight={700}>
+        <Typography variant="h1" gutterBottom>
           {t('trustedIssuers:create.title', 'Add trusted issuer')}
         </Typography>
-        <Typography variant="body1" color="text.secondary">
+        <Typography variant="subtitle1" gutterBottom>
           {t(
             'trustedIssuers:create.subtitle',
             'Register an external identity provider whose identity assertions ThunderID can exchange for access tokens.',
@@ -123,22 +129,6 @@ export default function TrustedIssuerCreateForm(): JSX.Element {
 
       <Paper variant="outlined" sx={{p: 3}}>
         <Stack direction="column" spacing={3}>
-          <FormControl fullWidth required error={Boolean(nameError ?? (touched.name && errors.name))}>
-            <FormLabel htmlFor="trusted-issuer-name">{t('trustedIssuers:create.form.name.label', 'Name')}</FormLabel>
-            <TextField
-              id="trusted-issuer-name"
-              fullWidth
-              value={name}
-              error={Boolean(nameError ?? (touched.name && errors.name))}
-              helperText={nameError ?? (touched.name ? fieldErrorMessage(errors.name) : undefined)}
-              onChange={(e) => {
-                setName(e.target.value);
-                setNameError(null);
-              }}
-              onBlur={() => setTouchedField('name')}
-            />
-          </FormControl>
-
           <FormControl fullWidth required error={Boolean(touched.issuer && errors.issuer)}>
             <FormLabel htmlFor="trusted-issuer-issuer">
               {t('trustedIssuers:create.form.issuer.label', 'Issuer URI')}
@@ -159,23 +149,6 @@ export default function TrustedIssuerCreateForm(): JSX.Element {
               }
               onChange={(e) => setIssuer(e.target.value)}
               onBlur={() => setTouchedField('issuer')}
-            />
-          </FormControl>
-
-          <FormControl fullWidth>
-            <FormLabel htmlFor="trusted-issuer-client-id">
-              {t('trustedIssuers:create.form.clientId.label', 'Client ID')}
-            </FormLabel>
-            <TextField
-              id="trusted-issuer-client-id"
-              fullWidth
-              placeholder="your-thunderid-client-id"
-              value={clientId}
-              helperText={t(
-                'trustedIssuers:create.form.clientId.hint',
-                "ThunderID's client ID registered at this identity provider. Used for audience validation in incoming assertions.",
-              )}
-              onChange={(e) => setClientId(e.target.value)}
             />
           </FormControl>
 
@@ -229,11 +202,12 @@ export default function TrustedIssuerCreateForm(): JSX.Element {
                 <TextField
                   id="trusted-issuer-token-audience"
                   fullWidth
-                  placeholder="my-external-client-id"
+                  placeholder="api://thunderid"
                   value={trustedTokenAudience}
                   helperText={t(
                     'trustedIssuers:detail.tokenExchange.audience.hint',
-                    'The audience value ThunderID expects in subject tokens from this issuer.',
+                    "An additional audience value {{productName}} will accept in subject tokens from this issuer. Tokens whose audience is {{productName}}'s own issuer URL are always accepted.",
+                    {productName},
                   )}
                   onChange={(e) => setTrustedTokenAudience(e.target.value)}
                 />

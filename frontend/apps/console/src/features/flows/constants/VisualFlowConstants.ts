@@ -83,6 +83,7 @@ class VisualFlowConstants {
     WidgetTypes.EUDIWallet,
     WidgetTypes.PasskeyAuthentication,
     WidgetTypes.Provisioning,
+    WidgetTypes.Consent,
     WidgetTypes.MagicLink,
     WidgetTypes.SelfSignUpLink,
     WidgetTypes.SignInLink,

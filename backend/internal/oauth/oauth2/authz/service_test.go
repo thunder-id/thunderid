@@ -21,6 +21,7 @@ package authz
 import (
 	"context"
 	"errors"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -173,12 +174,12 @@ func (suite *AuthorizeServiceTestSuite) testApp() *providers.OAuthClient {
 func (suite *AuthorizeServiceTestSuite) testMsg() *OAuthMessage {
 	return &OAuthMessage{
 		RequestType: oauth2const.TypeInitialAuthorizationRequest,
-		RequestQueryParams: map[string]string{
-			"client_id":     "test-client-id",
-			"redirect_uri":  "https://client.example.com/callback",
-			"response_type": "code",
-			"scope":         "read write",
-			"state":         "test-state",
+		RequestQueryParams: url.Values{
+			"client_id":     {"test-client-id"},
+			"redirect_uri":  {"https://client.example.com/callback"},
+			"response_type": {"code"},
+			"scope":         {"read write"},
+			"state":         {"test-state"},
 		},
 	}
 }
@@ -186,9 +187,9 @@ func (suite *AuthorizeServiceTestSuite) testMsg() *OAuthMessage {
 func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_MissingClientID() {
 	msg := &OAuthMessage{
 		RequestType: oauth2const.TypeInitialAuthorizationRequest,
-		RequestQueryParams: map[string]string{
-			"redirect_uri":  "https://client.example.com/callback",
-			"response_type": "code",
+		RequestQueryParams: url.Values{
+			"redirect_uri":  {"https://client.example.com/callback"},
+			"response_type": {"code"},
 		},
 	}
 
@@ -206,10 +207,10 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_In
 
 	msg := &OAuthMessage{
 		RequestType: oauth2const.TypeInitialAuthorizationRequest,
-		RequestQueryParams: map[string]string{
-			"client_id":     "invalid-client",
-			"redirect_uri":  "https://client.example.com/callback",
-			"response_type": "code",
+		RequestQueryParams: url.Values{
+			"client_id":     {"invalid-client"},
+			"redirect_uri":  {"https://client.example.com/callback"},
+			"response_type": {"code"},
 		},
 	}
 
@@ -227,10 +228,10 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_In
 
 	msg := &OAuthMessage{
 		RequestType: oauth2const.TypeInitialAuthorizationRequest,
-		RequestQueryParams: map[string]string{
-			"client_id":    "test-client-id",
-			"redirect_uri": "https://client.example.com/callback",
-			"claims":       "{invalid json}",
+		RequestQueryParams: url.Values{
+			"client_id":    {"test-client-id"},
+			"redirect_uri": {"https://client.example.com/callback"},
+			"claims":       {"{invalid json}"},
 		},
 	}
 
@@ -354,12 +355,12 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Fi
 
 	msg := &OAuthMessage{
 		RequestType: oauth2const.TypeInitialAuthorizationRequest,
-		RequestQueryParams: map[string]string{
-			"client_id":     "test-client-id",
-			"redirect_uri":  "https://client.example.com/callback",
-			"response_type": "code",
-			"scope":         "openid email profile",
-			"state":         "test-state",
+		RequestQueryParams: url.Values{
+			"client_id":     {"test-client-id"},
+			"redirect_uri":  {"https://client.example.com/callback"},
+			"response_type": {"code"},
+			"scope":         {"openid email profile"},
+			"state":         {"test-state"},
 		},
 	}
 
@@ -382,11 +383,11 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_In
 
 	msg := &OAuthMessage{
 		RequestType: oauth2const.TypeInitialAuthorizationRequest,
-		RequestQueryParams: map[string]string{
-			"client_id":     "test-client-id",
-			"redirect_uri":  "http://client.example.com/callback",
-			"response_type": "code",
-			"scope":         "read write",
+		RequestQueryParams: url.Values{
+			"client_id":     {"test-client-id"},
+			"redirect_uri":  {"http://client.example.com/callback"},
+			"response_type": {"code"},
+			"scope":         {"read write"},
 		},
 	}
 
@@ -408,10 +409,10 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Em
 
 	msg := &OAuthMessage{
 		RequestType: oauth2const.TypeInitialAuthorizationRequest,
-		RequestQueryParams: map[string]string{
-			"client_id":     "test-client-id",
-			"response_type": "code",
-			"scope":         "read write",
+		RequestQueryParams: url.Values{
+			"client_id":     {"test-client-id"},
+			"response_type": {"code"},
+			"scope":         {"read write"},
 			// No redirect_uri — service should use app.RedirectURIs[0].
 		},
 	}
@@ -433,12 +434,12 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Wi
 
 	msg := &OAuthMessage{
 		RequestType: oauth2const.TypeInitialAuthorizationRequest,
-		RequestQueryParams: map[string]string{
-			"client_id":      "test-client-id",
-			"redirect_uri":   "https://client.example.com/callback",
-			"response_type":  "code",
-			"scope":          "openid read write",
-			"claims_locales": "en-US fr-CA",
+		RequestQueryParams: url.Values{
+			"client_id":      {"test-client-id"},
+			"redirect_uri":   {"https://client.example.com/callback"},
+			"response_type":  {"code"},
+			"scope":          {"openid read write"},
+			"claims_locales": {"en-US fr-CA"},
 		},
 	}
 
@@ -483,12 +484,12 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Se
 
 	msg := &OAuthMessage{
 		RequestType: oauth2const.TypeInitialAuthorizationRequest,
-		RequestQueryParams: map[string]string{
-			"client_id":     "test-client-id",
-			"redirect_uri":  "https://client.example.com/callback",
-			"response_type": "code",
-			"scope":         "openid",
-			"claims":        `{"id_token":{"email":{"essential":true}},"userinfo":{"phone_number":{}}}`,
+		RequestQueryParams: url.Values{
+			"client_id":     {"test-client-id"},
+			"redirect_uri":  {"https://client.example.com/callback"},
+			"response_type": {"code"},
+			"scope":         {"openid"},
+			"claims":        {`{"id_token":{"email":{"essential":true}},"userinfo":{"phone_number":{}}}`},
 		},
 	}
 
@@ -1922,8 +1923,8 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Ac
 	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
 
 	msg := suite.testMsg()
-	msg.RequestQueryParams[oauth2const.RequestParamAcrValues] =
-		"urn:thunder:acr:password urn:thunder:acr:generated-code"
+	acrValues := "urn:thunder:acr:password urn:thunder:acr:generated-code"
+	url.Values(msg.RequestQueryParams).Set(oauth2const.RequestParamAcrValues, acrValues)
 
 	svc := suite.newService()
 	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
@@ -1954,8 +1955,8 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Ac
 	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
 
 	msg := suite.testMsg()
-	msg.RequestQueryParams[oauth2const.RequestParamAcrValues] =
-		"urn:thunder:acr:generated-code urn:thunder:acr:password"
+	acrValues := "urn:thunder:acr:generated-code urn:thunder:acr:password"
+	url.Values(msg.RequestQueryParams).Set(oauth2const.RequestParamAcrValues, acrValues)
 
 	svc := suite.newService()
 	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
@@ -1985,7 +1986,8 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Ac
 	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
 
 	msg := suite.testMsg()
-	msg.RequestQueryParams[oauth2const.RequestParamAcrValues] = "urn:thunder:acr:password urn:thunder:acr:biometrics"
+	url.Values(msg.RequestQueryParams).Set(oauth2const.RequestParamAcrValues,
+		"urn:thunder:acr:password urn:thunder:acr:biometrics")
 
 	svc := suite.newService()
 	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
@@ -2012,8 +2014,8 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Ac
 	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
 
 	msg := suite.testMsg()
-	msg.RequestQueryParams[oauth2const.RequestParamAcrValues] =
-		"urn:thunder:acr:biometrics urn:thunder:acr:linked-wallet"
+	acrValues := "urn:thunder:acr:biometrics urn:thunder:acr:linked-wallet"
+	url.Values(msg.RequestQueryParams).Set(oauth2const.RequestParamAcrValues, acrValues)
 
 	svc := suite.newService()
 	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
@@ -2043,8 +2045,8 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Ac
 	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
 
 	msg := suite.testMsg()
-	msg.RequestQueryParams[oauth2const.RequestParamAcrValues] =
-		"urn:thunder:acr:password urn:thunder:acr:password urn:thunder:acr:generated-code"
+	acrValues := "urn:thunder:acr:password urn:thunder:acr:password urn:thunder:acr:generated-code"
+	url.Values(msg.RequestQueryParams).Set(oauth2const.RequestParamAcrValues, acrValues)
 
 	svc := suite.newService()
 	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
@@ -2071,7 +2073,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Ac
 	suite.mockAuthReqStore.EXPECT().AddRequest(mock.Anything, mock.Anything).Return(testAuthID, nil)
 
 	msg := suite.testMsg()
-	msg.RequestQueryParams[oauth2const.RequestParamAcrValues] = "urn:thunder:acr:password"
+	url.Values(msg.RequestQueryParams).Set(oauth2const.RequestParamAcrValues, "urn:thunder:acr:password")
 
 	svc := suite.newService()
 	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)

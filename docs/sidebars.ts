@@ -68,7 +68,7 @@ const sidebars: SidebarsConfig = {
       collapsible: false,
       className: 'sidebar-section',
       items: [
-        {type: 'doc', id: 'guides/getting-started/get-thunderid', label: 'Get ThunderID'},
+        {type: 'doc', id: 'getting-started/get-thunderid', label: 'Get ThunderID'},
         {type: 'html', value: '<!-- connect-type-selector -->', className: 'connect-type-selector-wrapper'},
         {
           type: 'category',
@@ -77,16 +77,16 @@ const sidebars: SidebarsConfig = {
           collapsed: false,
           collapsible: false,
           items: [
-            {type: 'doc', id: 'guides/getting-started/connect-your-application/react', label: 'React', customProps: {icon: 'react'}},
-            {type: 'doc', id: 'guides/getting-started/connect-your-application/nextjs', label: 'Next.js', customProps: {icon: 'next'}},
-            {type: 'doc', id: 'guides/getting-started/connect-your-application/express', label: 'Express', customProps: {icon: 'express'}},
-            {type: 'doc', id: 'guides/getting-started/connect-your-application/vue', label: 'Vue', customProps: {icon: 'vue'}},
-            {type: 'doc', id: 'guides/getting-started/connect-your-application/nuxt', label: 'Nuxt', customProps: {icon: 'nuxt'}},
-            {type: 'doc', id: 'guides/getting-started/connect-your-application/node', label: 'Node.js', customProps: {icon: 'node'}},
-            {type: 'doc', id: 'guides/getting-started/connect-your-application/browser', label: 'JavaScript', customProps: {icon: 'javascript'}},
-            {type: 'doc', id: 'guides/getting-started/connect-your-application/ios', label: 'iOS', customProps: {icon: 'ios'}},
-            {type: 'doc', id: 'guides/getting-started/connect-your-application/android', label: 'Android', customProps: {icon: 'android'}},
-            {type: 'doc', id: 'guides/getting-started/connect-your-application/flutter', label: 'Flutter', customProps: {icon: 'flutter'}},
+            {type: 'doc', id: 'getting-started/connect-your-application/react', label: 'React', customProps: {icon: 'react'}},
+            {type: 'doc', id: 'getting-started/connect-your-application/nextjs', label: 'Next.js', customProps: {icon: 'next'}},
+            {type: 'doc', id: 'getting-started/connect-your-application/express', label: 'Express', customProps: {icon: 'express'}},
+            {type: 'doc', id: 'getting-started/connect-your-application/vue', label: 'Vue', customProps: {icon: 'vue'}},
+            {type: 'doc', id: 'getting-started/connect-your-application/nuxt', label: 'Nuxt', customProps: {icon: 'nuxt'}},
+            {type: 'doc', id: 'getting-started/connect-your-application/node', label: 'Node.js', customProps: {icon: 'node'}},
+            {type: 'doc', id: 'getting-started/connect-your-application/browser', label: 'JavaScript', customProps: {icon: 'javascript'}},
+            {type: 'doc', id: 'getting-started/connect-your-application/ios', label: 'iOS', customProps: {icon: 'ios'}},
+            {type: 'doc', id: 'getting-started/connect-your-application/android', label: 'Android', customProps: {icon: 'android'}},
+            {type: 'doc', id: 'getting-started/connect-your-application/flutter', label: 'Flutter', customProps: {icon: 'flutter'}},
           ],
         },
       ],
@@ -108,12 +108,12 @@ const sidebars: SidebarsConfig = {
       items: [
         {
           type: 'doc',
-          id: 'guides/working-with-ai/skills',
+          id: 'working-with-ai/skills',
           label: 'Skills',
         },
         {
           type: 'doc',
-          id: 'guides/working-with-ai/mcp-server',
+          id: 'working-with-ai/mcp-server',
           label: 'MCP Server',
         },
       ],
@@ -241,23 +241,18 @@ const sidebars: SidebarsConfig = {
           items: [
             {
               type: 'category',
-              label: 'Identity for AI Agents',
+              label: 'Agent ID',
               collapsible: true,
               collapsed: true,
+              link: {type: 'doc', id: 'use-cases/ai-agents/overview'},
               items: [
-                {type: 'doc', id: 'use-cases/ai-agents/overview', label: 'Agent Identity'},
-                {
-                  type: 'doc',
-                  id: 'use-cases/ai-agents/solution-patterns',
-                  label: 'Solution Patterns',
-                  key: 'ai-agents-solution-patterns',
-                },
-                {
-                  type: 'doc',
-                  id: 'use-cases/ai-agents/identity-concepts',
-                  label: 'Identity Concepts',
-                  key: 'ai-agents-identity-concepts',
-                },
+                {type: 'doc', id: 'use-cases/ai-agents/managed-agent-identity', label: 'Managed Identity'},
+                {type: 'doc', id: 'use-cases/ai-agents/invoking-the-agent', label: 'Invoking the Agent'},
+                {type: 'doc', id: 'use-cases/ai-agents/agent-as-subject', label: 'Agent as Subject'},
+                {type: 'doc', id: 'use-cases/ai-agents/model-interaction', label: 'Model Interaction Controls'},
+                {type: 'doc', id: 'use-cases/ai-agents/internal-services', label: 'Internal Business Services'},
+                {type: 'doc', id: 'use-cases/ai-agents/external-integration', label: 'External Integration'},
+                {type: 'doc', id: 'use-cases/ai-agents/multi-agent', label: 'Multi-Agent Interactions'},
                 {
                   type: 'category',
                   label: 'Try It Out',
@@ -407,12 +402,12 @@ const sidebars: SidebarsConfig = {
           items: [
             {
               type: 'doc',
-              id: 'guides/guides/applications/manage-applications',
+              id: 'guides/applications/manage-applications',
               label: 'Manage Applications',
             },
             {
               type: 'doc',
-              id: 'guides/guides/applications/application-settings',
+              id: 'guides/applications/application-settings',
               label: 'Application Settings',
             },
           ],
@@ -425,27 +420,27 @@ const sidebars: SidebarsConfig = {
           items: [
             {
               type: 'doc',
-              id: 'guides/guides/users/manage-users',
+              id: 'guides/users/manage-users',
               label: 'Manage Users',
             },
             {
               type: 'doc',
-              id: 'guides/guides/users/manage-groups',
+              id: 'guides/users/manage-groups',
               label: 'Manage Groups',
             },
             {
               type: 'doc',
-              id: 'guides/guides/users/manage-roles',
+              id: 'guides/users/manage-roles',
               label: 'Manage Roles',
             },
             {
               type: 'doc',
-              id: 'guides/guides/users/user-types',
+              id: 'guides/users/user-types',
               label: 'User Types',
             },
             {
               type: 'doc',
-              id: 'guides/guides/users/user-type-reference',
+              id: 'guides/users/user-type-reference',
               label: 'User Type Reference',
             },
           ],
@@ -458,12 +453,12 @@ const sidebars: SidebarsConfig = {
           items: [
             {
               type: 'doc',
-              id: 'guides/guides/agents/manage-agents',
+              id: 'guides/agents/manage-agents',
               label: 'Manage Agents',
             },
             {
               type: 'doc',
-              id: 'guides/guides/agents/agent-authentication',
+              id: 'guides/agents/agent-authentication',
               label: 'Agent Authentication',
             },
           ],
@@ -482,42 +477,42 @@ const sidebars: SidebarsConfig = {
               items: [
                 {
                   type: 'doc',
-                  id: 'guides/guides/identity-providers/overview',
+                  id: 'guides/identity-providers/overview',
                   label: 'What are Identity Providers?',
                 },
                 {
                   type: 'doc',
-                  id: 'guides/guides/identity-providers/add-google',
+                  id: 'guides/identity-providers/add-google',
                   label: 'Add Google',
                 },
                 {
                   type: 'doc',
-                  id: 'guides/guides/identity-providers/add-github',
+                  id: 'guides/identity-providers/add-github',
                   label: 'Add GitHub',
                 },
                 {
                   type: 'doc',
-                  id: 'guides/guides/identity-providers/add-oidc-provider',
+                  id: 'guides/identity-providers/add-oidc-provider',
                   label: 'Add OIDC Provider',
                 },
                 {
                   type: 'doc',
-                  id: 'guides/guides/identity-providers/add-oauth-provider',
+                  id: 'guides/identity-providers/add-oauth-provider',
                   label: 'Add OAuth 2.0 Provider',
                 },
                 {
                   type: 'doc',
-                  id: 'guides/guides/identity-providers/manage-identity-providers',
+                  id: 'guides/identity-providers/manage-identity-providers',
                   label: 'Manage Identity Providers',
                 },
                 {
                   type: 'doc',
-                  id: 'guides/guides/identity-providers/connect-idp-to-application',
+                  id: 'guides/identity-providers/connect-idp-to-application',
                   label: 'Connect IdP to Application',
                 },
                 {
                   type: 'doc',
-                  id: 'guides/guides/identity-providers/token-exchange-idp',
+                  id: 'guides/identity-providers/token-exchange-idp',
                   label: 'Token Exchange',
                   key: 'idp-token-exchange',
                 },
@@ -531,12 +526,12 @@ const sidebars: SidebarsConfig = {
               items: [
                 {
                   type: 'doc',
-                  id: 'guides/guides/smtp-server/smtp-server-configuration',
+                  id: 'guides/smtp-server/smtp-server-configuration',
                   label: 'SMTP Server',
                 },
                 {
                   type: 'doc',
-                  id: 'guides/guides/notifications/sms-providers',
+                  id: 'guides/notifications/sms-providers',
                   label: 'SMS Providers',
                 },
               ],
@@ -547,19 +542,19 @@ const sidebars: SidebarsConfig = {
               collapsed: true,
               collapsible: true,
               items: [
-                {type: 'doc', id: 'guides/guides/integrations/apim-gateways/overview', label: 'Overview'},
-                {type: 'doc', id: 'guides/guides/integrations/apim-gateways/apisix', label: 'Apache APISIX'},
-                {type: 'doc', id: 'guides/guides/integrations/apim-gateways/azure-apim', label: 'Azure API Management'},
-                {type: 'doc', id: 'guides/guides/integrations/apim-gateways/envoy', label: 'Envoy'},
-                {type: 'doc', id: 'guides/guides/integrations/apim-gateways/kong', label: 'Kong Konnect'},
-                {type: 'doc', id: 'guides/guides/integrations/apim-gateways/krakend', label: 'KrakenD'},
+                {type: 'doc', id: 'guides/integrations/apim-gateways/overview', label: 'Overview'},
+                {type: 'doc', id: 'guides/integrations/apim-gateways/apisix', label: 'Apache APISIX'},
+                {type: 'doc', id: 'guides/integrations/apim-gateways/azure-apim', label: 'Azure API Management'},
+                {type: 'doc', id: 'guides/integrations/apim-gateways/envoy', label: 'Envoy'},
+                {type: 'doc', id: 'guides/integrations/apim-gateways/kong', label: 'Kong Konnect'},
+                {type: 'doc', id: 'guides/integrations/apim-gateways/krakend', label: 'KrakenD'},
               ],
             },
           ],
         },
         {
           type: 'doc',
-          id: 'guides/guides/organization-units',
+          id: 'guides/organization-units',
           label: 'Organization Units',
         },
         {
@@ -570,39 +565,44 @@ const sidebars: SidebarsConfig = {
           items: [
             {
               type: 'doc',
-              id: 'guides/guides/flows/what-are-flows',
+              id: 'guides/flows/what-are-flows',
               label: 'What Are Flows?',
             },
             {
               type: 'doc',
-              id: 'guides/guides/flows/flow-concepts',
+              id: 'guides/flows/flow-concepts',
               label: 'Flow Concepts',
             },
             {
               type: 'doc',
-              id: 'guides/guides/flows/build-a-flow',
+              id: 'guides/flows/build-a-flow',
               label: 'Build a Flow',
             },
             {
               type: 'doc',
-              id: 'guides/guides/flows/advanced-configurations',
+              id: 'guides/flows/single-sign-on',
+              label: 'Single Sign-On',
+            },
+            {
+              type: 'doc',
+              id: 'guides/flows/advanced-configurations',
               label: 'Advanced Configurations',
             },
           ],
         },
         {
           type: 'doc',
-          id: 'guides/guides/consent',
+          id: 'guides/consent',
           label: 'Consent',
         },
         {
           type: 'doc',
-          id: 'guides/guides/trusted-issuer',
+          id: 'guides/trusted-issuer',
           label: 'Secure Using a Third-Party IdP',
         },
         {
           type: 'doc',
-          id: 'guides/guides/resource-servers',
+          id: 'guides/resource-servers',
           label: 'Resource Servers',
         },
         {
@@ -613,22 +613,22 @@ const sidebars: SidebarsConfig = {
           items: [
             {
               type: 'doc',
-              id: 'guides/guides/design/overview',
+              id: 'guides/design/overview',
               label: 'Style Your Experience',
             },
             {
               type: 'doc',
-              id: 'guides/guides/design/themes',
+              id: 'guides/design/themes',
               label: 'Themes',
             },
             {
               type: 'doc',
-              id: 'guides/guides/design/layouts',
+              id: 'guides/design/layouts',
               label: 'Layouts',
             },
             {
               type: 'doc',
-              id: 'guides/guides/design/design-catalog',
+              id: 'guides/design/design-catalog',
               label: 'Design Catalog',
             },
           ],
@@ -641,17 +641,17 @@ const sidebars: SidebarsConfig = {
           items: [
             {
               type: 'doc',
-              id: 'guides/guides/i18n/localization',
+              id: 'guides/i18n/localization',
               label: 'Localization',
             },
             {
               type: 'doc',
-              id: 'guides/guides/i18n/manage-translations',
+              id: 'guides/i18n/manage-translations',
               label: 'Manage Translations',
             },
             {
               type: 'doc',
-              id: 'guides/guides/i18n/resolve-translations',
+              id: 'guides/i18n/resolve-translations',
               label: 'Resolve Translations',
             },
           ],
@@ -663,7 +663,7 @@ const sidebars: SidebarsConfig = {
           collapsible: true,
           link: {
             type: 'doc',
-            id: 'guides/guides/protocols/index',
+            id: 'guides/protocols/index',
           },
           items: [
             {
@@ -673,7 +673,7 @@ const sidebars: SidebarsConfig = {
               collapsible: true,
               link: {
                 type: 'doc',
-                id: 'guides/guides/protocols/oauth-oidc/index',
+                id: 'guides/protocols/oauth-oidc/index',
               },
               items: [
                 {
@@ -684,26 +684,26 @@ const sidebars: SidebarsConfig = {
                   items: [
                     {
                       type: 'doc',
-                      id: 'guides/guides/protocols/oauth-oidc/authorization-code',
+                      id: 'guides/protocols/oauth-oidc/authorization-code',
                       label: 'Authorization Code',
                     },
                     {
                       type: 'doc',
-                      id: 'guides/guides/protocols/oauth-oidc/client-credentials',
+                      id: 'guides/protocols/oauth-oidc/client-credentials',
                       label: 'Client Credentials',
                     },
-                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/refresh-token', label: 'Refresh Token'},
+                    {type: 'doc', id: 'guides/protocols/oauth-oidc/refresh-token', label: 'Refresh Token'},
                     // Unique `key` avoids a translation-key collision with the "Token Exchange"
                     // item under Identity Providers (i18n key is derived from the label).
                     {
                       type: 'doc',
-                      id: 'guides/guides/protocols/oauth-oidc/token-exchange',
+                      id: 'guides/protocols/oauth-oidc/token-exchange',
                       label: 'Token Exchange',
                       key: 'oauth-token-exchange',
                     },
                     {
                       type: 'doc',
-                      id: 'guides/guides/protocols/oauth-oidc/backchannel-authentication',
+                      id: 'guides/protocols/oauth-oidc/backchannel-authentication',
                       label: 'Backchannel Authentication (CIBA)',
                     },
                   ],
@@ -716,7 +716,7 @@ const sidebars: SidebarsConfig = {
                   items: [
                     {
                       type: 'doc',
-                      id: 'guides/guides/protocols/oauth-oidc/client-authentication-methods',
+                      id: 'guides/protocols/oauth-oidc/client-authentication-methods',
                       label: 'Client Authentication Methods',
                     },
                   ],
@@ -727,21 +727,21 @@ const sidebars: SidebarsConfig = {
                   collapsed: true,
                   collapsible: true,
                   items: [
-                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/pkce', label: 'PKCE'},
-                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/par', label: 'Pushed Authorization Requests'},
+                    {type: 'doc', id: 'guides/protocols/oauth-oidc/pkce', label: 'PKCE'},
+                    {type: 'doc', id: 'guides/protocols/oauth-oidc/par', label: 'Pushed Authorization Requests'},
                     {
                       type: 'doc',
-                      id: 'guides/guides/protocols/oauth-oidc/dpop',
+                      id: 'guides/protocols/oauth-oidc/dpop',
                       label: 'DPoP — Sender-Constrained Tokens',
                     },
                     {
                       type: 'doc',
-                      id: 'guides/guides/protocols/oauth-oidc/issuer-identification',
+                      id: 'guides/protocols/oauth-oidc/issuer-identification',
                       label: 'Issuer Identification',
                     },
                     {
                       type: 'doc',
-                      id: 'guides/guides/protocols/oauth-oidc/resource-indicators',
+                      id: 'guides/protocols/oauth-oidc/resource-indicators',
                       label: 'Resource Indicators',
                     },
                   ],
@@ -754,7 +754,7 @@ const sidebars: SidebarsConfig = {
                   items: [
                     {
                       type: 'doc',
-                      id: 'guides/guides/protocols/oauth-oidc/token-introspection',
+                      id: 'guides/protocols/oauth-oidc/token-introspection',
                       label: 'Token Introspection',
                     },
                   ],
@@ -765,11 +765,11 @@ const sidebars: SidebarsConfig = {
                   collapsed: true,
                   collapsible: true,
                   items: [
-                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/server-metadata', label: 'Server Metadata'},
-                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/jwks', label: 'JWKS'},
+                    {type: 'doc', id: 'guides/protocols/oauth-oidc/server-metadata', label: 'Server Metadata'},
+                    {type: 'doc', id: 'guides/protocols/oauth-oidc/jwks', label: 'JWKS'},
                     {
                       type: 'doc',
-                      id: 'guides/guides/protocols/oauth-oidc/dynamic-client-registration',
+                      id: 'guides/protocols/oauth-oidc/dynamic-client-registration',
                       label: 'Dynamic Client Registration',
                     },
                   ],
@@ -780,10 +780,10 @@ const sidebars: SidebarsConfig = {
                   collapsed: true,
                   collapsible: true,
                   items: [
-                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/openid-connect', label: 'OpenID Connect'},
-                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/userinfo', label: 'UserInfo'},
-                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/claims-and-scopes', label: 'Claims & Scopes'},
-                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/token-formats', label: 'Token Formats'},
+                    {type: 'doc', id: 'guides/protocols/oauth-oidc/openid-connect', label: 'OpenID Connect'},
+                    {type: 'doc', id: 'guides/protocols/oauth-oidc/userinfo', label: 'UserInfo'},
+                    {type: 'doc', id: 'guides/protocols/oauth-oidc/claims-and-scopes', label: 'Claims & Scopes'},
+                    {type: 'doc', id: 'guides/protocols/oauth-oidc/token-formats', label: 'Token Formats'},
                   ],
                 },
               ],
@@ -795,17 +795,17 @@ const sidebars: SidebarsConfig = {
               collapsible: true,
               link: {
                 type: 'doc',
-                id: 'guides/guides/protocols/openid4vc/index',
+                id: 'guides/protocols/openid4vc/index',
               },
               items: [
                 {
                   type: 'doc',
-                  id: 'guides/guides/protocols/openid4vc/openid4vci',
+                  id: 'guides/protocols/openid4vc/openid4vci',
                   label: 'OpenID for Verifiable Credential Issuance',
                 },
                 {
                   type: 'doc',
-                  id: 'guides/guides/protocols/openid4vc/openid4vp',
+                  id: 'guides/protocols/openid4vc/openid4vp',
                   label: 'OpenID for Verifiable Presentations',
                 },
               ],
@@ -817,12 +817,12 @@ const sidebars: SidebarsConfig = {
               collapsible: true,
               link: {
                 type: 'doc',
-                id: 'guides/guides/protocols/authzen/index',
+                id: 'guides/protocols/authzen/index',
               },
               items: [
                 {
                   type: 'doc',
-                  id: 'guides/guides/protocols/authzen/pdp',
+                  id: 'guides/protocols/authzen/pdp',
                   label: 'Policy Decision Point',
                 },
               ],
@@ -860,31 +860,36 @@ const sidebars: SidebarsConfig = {
               items: [
                 {
                   type: 'doc',
-                  id: 'guides/key-concepts/authentication/passwordless/passkeys',
+                  id: 'key-concepts/authentication/passwordless/passkeys',
                   label: 'Passkeys',
                 },
                 {
                   type: 'doc',
-                  id: 'guides/key-concepts/authentication/passwordless/magiclink',
+                  id: 'key-concepts/authentication/passwordless/magiclink',
                   label: 'Magic Link',
                 },
               ],
             },
             {
               type: 'doc',
-              id: 'guides/key-concepts/authentication/integration-models',
+              id: 'key-concepts/authentication/integration-models',
               label: 'Integration Models',
+            },
+            {
+              type: 'doc',
+              id: 'key-concepts/authentication/sessions',
+              label: 'Sessions and Single Sign-On',
             },
           ],
         },
         {
           type: 'doc',
-          id: 'guides/key-concepts/authorization',
+          id: 'key-concepts/authorization',
           label: 'Authorization',
         },
         {
           type: 'doc',
-          id: 'guides/key-concepts/tokens',
+          id: 'key-concepts/tokens',
           label: 'Tokens',
         },
         {
@@ -905,7 +910,7 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
-              id: 'guides/guides/resource-export',
+              id: 'guides/resource-export',
               label: 'Export Resources',
             },
             {
@@ -918,28 +923,24 @@ const sidebars: SidebarsConfig = {
       ],
     },
 
-    // Deployment Patterns Section
+    // Deployment Section
     {
       type: 'html',
       value:
-        '<div class="sidebar-section-label"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg><span>Deployment Patterns</span></div>',
+        '<div class="sidebar-section-label"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg><span>Deployment</span></div>',
       className: 'sidebar-html-section-header sidebar-persona-iam',
     },
     {
       type: 'category',
-      label: 'Deployment Patterns',
+      label: 'Deployment',
       collapsed: false,
       collapsible: false,
       className: 'sidebar-section sidebar-persona-iam',
       items: [
         {
-          type: 'doc',
-          id: 'guides/deployment-patterns/index',
-          label: 'Choose Your Deployment',
-        },
-        {
           type: 'category',
           label: 'Deployment Paths',
+          link: {type: 'doc', id: 'deployment/deployment-paths/index'},
           collapsible: true,
           collapsed: true,
           items: [
@@ -951,41 +952,41 @@ const sidebars: SidebarsConfig = {
               items: [
                 {
                   type: 'doc',
-                  id: 'guides/deployment-patterns/docker',
+                  id: 'deployment/deployment-paths/docker',
                   label: 'Deploy with Docker',
                 },
                 {
                   type: 'doc',
-                  id: 'guides/deployment-patterns/docker-production',
+                  id: 'deployment/deployment-paths/docker-production',
                   label: 'Production Recommendations',
                 },
               ],
             },
             {
               type: 'doc',
-              id: 'guides/deployment-patterns/kubernetes',
+              id: 'deployment/deployment-paths/kubernetes',
               label: 'Kubernetes',
             },
             {
               type: 'doc',
-              id: 'guides/deployment-patterns/openchoreo',
+              id: 'deployment/deployment-paths/openchoreo',
               label: 'OpenChoreo',
             },
           ],
         },
         {
           type: 'doc',
-          id: 'guides/getting-started/configuration',
+          id: 'deployment/configuration',
           label: 'Configure your Instance',
         },
         {
           type: 'doc',
-          id: 'guides/deployment-patterns/production-guidelines',
+          id: 'deployment/production-guidelines',
           label: 'Production Guidelines',
         },
         {
           type: 'doc',
-          id: 'guides/deployment-patterns/observability',
+          id: 'deployment/observability',
           label: 'Observability',
         },
       ],

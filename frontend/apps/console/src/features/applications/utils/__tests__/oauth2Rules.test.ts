@@ -68,12 +68,25 @@ describe('applyGrantTypesChange', () => {
     expect(updates.grantTypes).toEqual([]);
   });
 
-  it('allows refresh_token alongside another grant', () => {
+  it('drops refresh_token when no token-issuing grant is present', () => {
+    const updates = applyGrantTypesChange(baseConfig(), [
+      OAuth2GrantTypes.CLIENT_CREDENTIALS,
+      OAuth2GrantTypes.REFRESH_TOKEN,
+    ]);
+    expect(updates.grantTypes).toEqual([OAuth2GrantTypes.CLIENT_CREDENTIALS]);
+  });
+
+  it('allows refresh_token alongside authorization_code', () => {
     const updates = applyGrantTypesChange(baseConfig(), [
       OAuth2GrantTypes.AUTHORIZATION_CODE,
       OAuth2GrantTypes.REFRESH_TOKEN,
     ]);
     expect(updates.grantTypes).toEqual([OAuth2GrantTypes.AUTHORIZATION_CODE, OAuth2GrantTypes.REFRESH_TOKEN]);
+  });
+
+  it('allows refresh_token alongside ciba', () => {
+    const updates = applyGrantTypesChange(baseConfig(), [OAuth2GrantTypes.CIBA, OAuth2GrantTypes.REFRESH_TOKEN]);
+    expect(updates.grantTypes).toEqual([OAuth2GrantTypes.CIBA, OAuth2GrantTypes.REFRESH_TOKEN]);
   });
 
   it('turns off PKCE when authorization_code is removed', () => {
@@ -197,8 +210,13 @@ describe('isGrantItemDisabled', () => {
     expect(isGrantItemDisabled(OAuth2GrantTypes.REFRESH_TOKEN, [])).toBe(true);
   });
 
-  it('enables refresh_token once another grant is selected', () => {
+  it('enables refresh_token once a token-issuing grant is selected', () => {
     expect(isGrantItemDisabled(OAuth2GrantTypes.REFRESH_TOKEN, [OAuth2GrantTypes.AUTHORIZATION_CODE])).toBe(false);
+    expect(isGrantItemDisabled(OAuth2GrantTypes.REFRESH_TOKEN, [OAuth2GrantTypes.CIBA])).toBe(false);
+  });
+
+  it('keeps refresh_token disabled when only a non-token-issuing grant is selected', () => {
+    expect(isGrantItemDisabled(OAuth2GrantTypes.REFRESH_TOKEN, [OAuth2GrantTypes.CLIENT_CREDENTIALS])).toBe(true);
   });
 
   it('keeps refresh_token enabled when already selected so it can be unchecked', () => {

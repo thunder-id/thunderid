@@ -38,6 +38,7 @@ import {ChevronRight, X} from '@wso2/oxygen-ui-icons-react';
 import {useState, type ChangeEvent, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import useCreateVerifiablePresentation from '../api/useCreateVerifiablePresentation';
 import ClaimsEditor from '../components/ClaimsEditor';
 import ConfigureName from '../components/create-verifiable-presentation/ConfigureName';
@@ -82,7 +83,7 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
   const progress = ((stepIndex + 1) / STEP_ORDER.length) * 100;
 
   const close = (): void => {
-    void navigate('/verifiable-presentations');
+    void navigate(RouteConfig.verifiablePresentations.list());
   };
 
   const handleCreate = (): void => {
@@ -98,7 +99,7 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
       {
         onSuccess: () => {
           (async () => {
-            await navigate('/verifiable-presentations');
+            await navigate(RouteConfig.verifiablePresentations.list());
           })().catch((error: unknown) => {
             logger.error('Failed to navigate after create', {error});
           });

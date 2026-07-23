@@ -34,7 +34,7 @@ const TYPES: IntegrationType[] = [
     icon: <MonitorSmartphone size={28} />,
     title: 'Application',
     description: 'Web, mobile, and desktop apps. React, Vue, Next.js, iOS, Android, and more.',
-    href: '/docs/next/guides/getting-started/connect-your-application',
+    href: '/docs/next/getting-started/connect-your-application',
   },
   {
     icon: <Bot size={28} />,

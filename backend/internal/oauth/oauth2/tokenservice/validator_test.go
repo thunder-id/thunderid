@@ -2076,6 +2076,30 @@ func (suite *TokenValidatorTestSuite) TestValidateAccessToken_EnforcementUnavail
 	assert.ErrorIs(suite.T(), err, revocation.ErrEnforcementUnavailable)
 }
 
+// When token revocation is disabled, enforcementService is nil. Validation must still succeed
+// rather than dereferencing the nil service.
+func (suite *TokenValidatorTestSuite) TestValidateAccessToken_NilEnforcementService_Succeeds() {
+	claims := map[string]interface{}{
+		"sub":       "user123",
+		"iss":       "https://example.com",
+		"aud":       "test-app",
+		"client_id": "test-client",
+		"jti":       "at-jti-no-enforcement",
+	}
+	token := suite.createTestAccessToken(claims)
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "https://example.com").Return(nil)
+
+	validator := &tokenValidator{
+		cfg:        suite.validator.cfg,
+		jwtService: suite.mockJWTService,
+	}
+
+	result, err := validator.ValidateAccessToken(context.Background(), token)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+}
+
 // Refresh token validation enforces the deny list as its final step: a revoked token surfaces
 // revocation.ErrTokenRevoked and an unavailable deny list fails closed with
 // revocation.ErrEnforcementUnavailable rather than returning claims.

@@ -277,7 +277,7 @@ spec:
           onSuccess: prompt_credentials
         - id: prompt_credentials
           type: PROMPT
-          meta: '{"components":[{"alt":"{{ t(signin:images.app_logo.alt) }}","category":"DISPLAY","height":"60","id":"image","resourceType":"ELEMENT","src":"{{ meta(application.logoUrl) }}","type":"IMAGE","width":""},{"align":"center","id":"text_001","label":"{{ t(signin:forms.credentials.title) }}","type":"TEXT","variant":"HEADING_1"},{"components":[{"id":"input_001","label":"{{ t(signin:forms.credentials.fields.username.label) }}","placeholder":"{{ t(signin:forms.credentials.fields.username.placeholder) }}","ref":"username","required":true,"type":"TEXT_INPUT"},{"id":"input_002","label":"{{ t(signin:forms.credentials.fields.password.label) }}","placeholder":"{{ t(signin:forms.credentials.fields.password.placeholder) }}","ref":"password","required":true,"type":"PASSWORD_INPUT"},{"category":"DISPLAY","id":"rich_text_forgot_password","label":"\u003cp class=\"rich-text-paragraph\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(signin:forms.credentials.links.forgot_password.prefix) }} \u003c/span\u003e\u003ca href=\"{{meta(application.forgot_password_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(signin:forms.credentials.links.forgot_password.label) }}\u003c/span\u003e\u003c/a\u003e\u003c/p\u003e","resourceType":"ELEMENT","type":"RICH_TEXT"},{"eventType":"SUBMIT","id":"action_001","label":"{{ t(signin:forms.credentials.actions.submit.label) }}","type":"ACTION","variant":"PRIMARY"},{"category":"DISPLAY","id":"rich_text_signup","label":"\u003cp class=\"rich-text-paragraph\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(signin:forms.credentials.links.sign_up.prefix) }} \u003c/span\u003e\u003ca href=\"{{meta(application.sign_up_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(signin:forms.credentials.links.sign_up.label) }}\u003c/span\u003e\u003c/a\u003e\u003c/p\u003e","resourceType":"ELEMENT","type":"RICH_TEXT"}],"id":"block_001","type":"BLOCK"}]}'
+          meta: '{"components":[{"alt":"{{ t(signin:images.app_logo.alt) }}","category":"DISPLAY","height":"60","id":"image","resourceType":"ELEMENT","src":"{{ meta(application.logoUrl) }}","type":"IMAGE","width":""},{"align":"center","id":"text_001","label":"{{ t(signin:forms.credentials.title) }}","type":"TEXT","variant":"HEADING_1"},{"components":[{"id":"input_001","label":"{{ t(signin:forms.credentials.fields.username.label) }}","placeholder":"{{ t(signin:forms.credentials.fields.username.placeholder) }}","ref":"username","required":true,"type":"TEXT_INPUT"},{"id":"input_002","label":"{{ t(signin:forms.credentials.fields.password.label) }}","placeholder":"{{ t(signin:forms.credentials.fields.password.placeholder) }}","ref":"password","required":true,"type":"PASSWORD_INPUT"},{"action":{"ref":"action_forgot_password"},"category":"DISPLAY","id":"rich_text_forgot_password","label":"<p data-component-ref=\"recovery-link\" class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">{{ t(signin:forms.credentials.links.forgot_password.prefix) }} </span><a href=\"#\" data-action-ref=\"action_forgot_password\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">{{ t(signin:forms.credentials.links.forgot_password.label) }}</span></a></p>","resourceType":"ELEMENT","type":"RICH_TEXT"},{"eventType":"SUBMIT","id":"action_001","label":"{{ t(signin:forms.credentials.actions.submit.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_001","type":"BLOCK"},{"action":{"ref":"action_signup"},"category":"DISPLAY","id":"rich_text_signup","label":"<p data-component-ref=\"self-sign-up-link\" class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">{{ t(signin:forms.credentials.links.sign_up.prefix) }} </span><a href=\"#\" data-action-ref=\"action_signup\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">{{ t(signin:forms.credentials.links.sign_up.label) }}</span></a></p>","resourceType":"ELEMENT","type":"RICH_TEXT"}]}'
           prompts:
             - inputs:
                 - ref: input_001
@@ -291,6 +291,12 @@ spec:
               action:
                 ref: action_001
                 nextNode: credentials_auth
+            - action:
+                ref: action_forgot_password
+                nextNode: call_recovery
+            - action:
+                ref: action_signup
+                nextNode: call_registration
         - id: credentials_auth
           type: TASK_EXECUTION
           executor:
@@ -307,6 +313,16 @@ spec:
           executor:
             name: AuthAssertExecutor
           onSuccess: end
+        - id: call_recovery
+          type: CALL
+          flow:
+            ref: 01900000-0000-7000-8000-000000000067
+          onSuccess: end
+        - id: call_registration
+          type: CALL
+          flow:
+            ref: 01900000-0000-7000-8000-000000000064
+          onSuccess: auth_assert
         - id: end
           type: END
       createdAt: 2026-07-08 15:23:27
@@ -430,7 +446,7 @@ spec:
           onSuccess: prompt_credentials
         - id: prompt_credentials
           type: PROMPT
-          meta: '{"components":[{"id":"text_001","label":"{{ t(signin:forms.credentials.title) }}","type":"TEXT","variant":"HEADING_1"},{"components":[{"id":"input_001","label":"{{ t(signin:forms.credentials.fields.username.label) }}","placeholder":"{{ t(signin:forms.credentials.fields.username.placeholder) }}","ref":"username","required":true,"type":"TEXT_INPUT"},{"id":"input_002","label":"{{ t(signin:forms.credentials.fields.password.label) }}","placeholder":"{{ t(signin:forms.credentials.fields.password.placeholder) }}","ref":"password","required":true,"type":"PASSWORD_INPUT"},{"category":"DISPLAY","id":"rich_text_forgot_password","label":"\u003cp class=\"rich-text-paragraph\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(signin:forms.credentials.links.forgot_password.prefix) }} \u003c/span\u003e\u003ca href=\"{{meta(application.forgot_password_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(signin:forms.credentials.links.forgot_password.label) }}\u003c/span\u003e\u003c/a\u003e\u003c/p\u003e","resourceType":"ELEMENT","type":"RICH_TEXT"},{"eventType":"SUBMIT","id":"action_001","label":"{{ t(signin:forms.credentials.actions.submit.label) }}","type":"ACTION","variant":"PRIMARY"},{"category":"DISPLAY","id":"rich_text_signup","label":"\u003cp class=\"rich-text-paragraph\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(signin:forms.credentials.links.sign_up.prefix) }} \u003c/span\u003e\u003ca href=\"{{meta(application.sign_up_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(signin:forms.credentials.links.sign_up.label) }}\u003c/span\u003e\u003c/a\u003e\u003c/p\u003e","resourceType":"ELEMENT","type":"RICH_TEXT"}],"id":"block_001","type":"BLOCK"}]}'
+          meta: '{"components":[{"id":"text_001","label":"{{ t(signin:forms.credentials.title) }}","type":"TEXT","variant":"HEADING_1"},{"components":[{"id":"input_001","label":"{{ t(signin:forms.credentials.fields.username.label) }}","placeholder":"{{ t(signin:forms.credentials.fields.username.placeholder) }}","ref":"username","required":true,"type":"TEXT_INPUT"},{"id":"input_002","label":"{{ t(signin:forms.credentials.fields.password.label) }}","placeholder":"{{ t(signin:forms.credentials.fields.password.placeholder) }}","ref":"password","required":true,"type":"PASSWORD_INPUT"},{"action":{"ref":"action_forgot_password"},"category":"DISPLAY","id":"rich_text_forgot_password","label":"<p data-component-ref=\"recovery-link\" class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">{{ t(signin:forms.credentials.links.forgot_password.prefix) }} </span><a href=\"#\" data-action-ref=\"action_forgot_password\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">{{ t(signin:forms.credentials.links.forgot_password.label) }}</span></a></p>","resourceType":"ELEMENT","type":"RICH_TEXT"},{"eventType":"SUBMIT","id":"action_001","label":"{{ t(signin:forms.credentials.actions.submit.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_001","type":"BLOCK"},{"action":{"ref":"action_signup"},"category":"DISPLAY","id":"rich_text_signup","label":"<p data-component-ref=\"self-sign-up-link\" class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">{{ t(signin:forms.credentials.links.sign_up.prefix) }} </span><a href=\"#\" data-action-ref=\"action_signup\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">{{ t(signin:forms.credentials.links.sign_up.label) }}</span></a></p>","resourceType":"ELEMENT","type":"RICH_TEXT"}]}'
           prompts:
             - inputs:
                 - ref: input_001
@@ -444,6 +460,12 @@ spec:
               action:
                 ref: action_001
                 nextNode: credentials_auth
+            - action:
+                ref: action_forgot_password
+                nextNode: call_recovery
+            - action:
+                ref: action_signup
+                nextNode: call_registration
         - id: credentials_auth
           type: TASK_EXECUTION
           executor:
@@ -460,6 +482,16 @@ spec:
           executor:
             name: AuthAssertExecutor
           onSuccess: end
+        - id: call_recovery
+          type: CALL
+          flow:
+            ref: 01900000-0000-7000-8000-000000000067
+          onSuccess: end
+        - id: call_registration
+          type: CALL
+          flow:
+            ref: 01900000-0000-7000-8000-000000000069
+          onSuccess: auth_assert
         - id: end
           type: END
       createdAt: 2026-07-08 15:23:27
@@ -591,7 +623,7 @@ spec:
             position:
               x: 200
               y: 250
-          meta: '{"components":[{"align":"center","id":"text_header_username","label":"{{ t(recovery:forms.username.title) }}","type":"TEXT","variant":"HEADING_1"},{"id":"text_subtitle_username","label":"{{ t(recovery:forms.username.subtitle) }}","type":"TEXT","variant":"HEADING_6"},{"components":[{"id":"input_username","label":"{{ t(recovery:forms.username.fields.username.label) }}","placeholder":"{{ t(recovery:forms.username.fields.username.placeholder) }}","ref":"username","required":true,"type":"TEXT_INPUT"},{"eventType":"SUBMIT","id":"action_submit_username","label":"{{ t(recovery:forms.username.actions.submit.label) }}","type":"ACTION","variant":"PRIMARY"},{"category":"DISPLAY","id":"rich_text_signup","label":"\u003cp class=\"rich-text-paragraph\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(recovery:forms.username.links.sign_in.prefix) }} \u003c/span\u003e\u003ca href=\"{{meta(application.sign_in_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(recovery:forms.username.links.sign_in.label) }}\u003c/span\u003e\u003c/a\u003e\u003c/p\u003e","resourceType":"ELEMENT","type":"RICH_TEXT"}],"id":"block_username","type":"BLOCK"}]}'
+          meta: '{"components":[{"align":"center","id":"text_header_username","label":"{{ t(recovery:forms.username.title) }}","type":"TEXT","variant":"HEADING_1"},{"id":"text_subtitle_username","label":"{{ t(recovery:forms.username.subtitle) }}","type":"TEXT","variant":"HEADING_6"},{"components":[{"id":"input_username","label":"{{ t(recovery:forms.username.fields.username.label) }}","placeholder":"{{ t(recovery:forms.username.fields.username.placeholder) }}","ref":"username","required":true,"type":"TEXT_INPUT"},{"eventType":"SUBMIT","id":"action_submit_username","label":"{{ t(recovery:forms.username.actions.submit.label) }}","type":"ACTION","variant":"PRIMARY"}],"id":"block_username","type":"BLOCK"},{"action":{"ref":"action_signin"},"category":"DISPLAY","id":"rich_text_signin","label":"\u003cp data-component-ref=\"sign-in-link\" class=\"rich-text-paragraph\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(recovery:forms.username.links.sign_in.prefix) }} \u003c/span\u003e\u003ca href=\"#\" data-action-ref=\"action_signin\" class=\"rich-text-link\"\u003e\u003cspan class=\"rich-text-pre-wrap\"\u003e{{ t(recovery:forms.username.links.sign_in.label) }}\u003c/span\u003e\u003c/a\u003e\u003c/p\u003e","resourceType":"ELEMENT","type":"RICH_TEXT"}]}'
           prompts:
             - inputs:
                 - ref: input_username
@@ -601,6 +633,9 @@ spec:
               action:
                 ref: action_submit_username
                 nextNode: identify_user
+            - action:
+                ref: action_signin
+                nextNode: call_authentication
         - id: identify_user
           type: TASK_EXECUTION
           layout:
@@ -726,6 +761,18 @@ spec:
           meta: '{"components":[{"align":"center","id":"recovery_complete_icon","label":"✅","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"recovery_complete_heading","label":"{{ t(recovery:forms.complete.title) }}","type":"TEXT","variant":"HEADING_1"},{"align":"center","id":"recovery_complete_message","label":"{{ t(recovery:forms.complete.message) }}","type":"TEXT","variant":"HEADING_6"}]}'
           next: end
           message: Password Reset Successful
+        - id: call_authentication
+          type: CALL
+          flow:
+            ref: 01900000-0000-7000-8000-000000000061
+          onSuccess: end
+          layout:
+            size:
+              width: 260
+              height: 129
+            position:
+              x: 3600
+              y: 100
         - id: end
           type: END
           layout:
@@ -733,7 +780,7 @@ spec:
               width: 85
               height: 34
             position:
-              x: 3600
+              x: 3960
               y: 375
       createdAt: 2026-07-08 15:23:27
       updatedAt: 2026-07-08 15:23:27
@@ -1420,7 +1467,7 @@ spec:
       name: Default
       description: Default organization unit
       parent: null
-      logoUrl: emoji:🏛️
+      logoUrl: avatar:shape=rounded,variant=anonymous_entity,content=pavilion,colors=0,bg=#2c4ed4
       createdAt:
       updatedAt:
 

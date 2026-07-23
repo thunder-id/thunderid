@@ -21,74 +21,20 @@ package executor
 import (
 	"testing"
 
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/suite"
+	"github.com/stretchr/testify/assert"
 
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-
-	authnoidc "github.com/thunder-id/thunderid/internal/authn/oidc"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/googlemock"
-	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
-	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
-	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
-	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 )
 
-type GoogleAuthExecutorTestSuite struct {
-	suite.Suite
-	mockFlowFactory   *coremock.FlowFactoryInterfaceMock
-	mockIDPService    *idpmock.IDPServiceInterfaceMock
-	mockGoogleService *googlemock.GoogleOIDCAuthnServiceInterfaceMock
-	mockOIDCService   *oidcmock.OIDCAuthnCoreServiceInterfaceMock
-	mockAuthnProvider *managermock.AuthnProviderManagerMock
-}
+func TestNewGoogleOIDCAuthExecutor_Success(t *testing.T) {
+	mockFlowFactory, mockIDPService, mockAuthnProvider := setupSocialAuthExecutorMock(t, ExecutorNameGoogleAuth)
+	mockGoogleSvc := googlemock.NewGoogleOIDCAuthnServiceInterfaceMock(t)
 
-func TestGoogleAuthExecutorTestSuite(t *testing.T) {
-	suite.Run(t, new(GoogleAuthExecutorTestSuite))
-}
+	executor := newGoogleOIDCAuthExecutor(mockFlowFactory, mockIDPService, mockGoogleSvc, mockAuthnProvider)
 
-func (suite *GoogleAuthExecutorTestSuite) SetupTest() {
-	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
-	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
-	suite.mockGoogleService = googlemock.NewGoogleOIDCAuthnServiceInterfaceMock(suite.T())
-	suite.mockOIDCService = oidcmock.NewOIDCAuthnCoreServiceInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
-}
-
-func (suite *GoogleAuthExecutorTestSuite) TestNewGoogleOIDCAuthExecutor_Success() {
-	defaultInputs := []providers.Input{
-		{
-			Identifier: "code",
-			Type:       "string",
-			Required:   true,
-		},
-		{
-			Identifier: "nonce",
-			Type:       "string",
-			Required:   false,
-		},
-	}
-	baseExec := coremock.NewExecutorInterfaceMock(suite.T())
-	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameGoogleAuth,
-		providers.ExecutorTypeAuthentication, defaultInputs, []providers.Input{}, mock.Anything).
-		Return(baseExec).Once()
-
-	mockGoogleSvc := &mockGoogleServiceWithOIDC{
-		GoogleOIDCAuthnServiceInterfaceMock: suite.mockGoogleService,
-		oidcService:                         suite.mockOIDCService,
-	}
-
-	executor := newGoogleOIDCAuthExecutor(suite.mockFlowFactory, suite.mockIDPService,
-		mockGoogleSvc, suite.mockAuthnProvider)
-
-	suite.NotNil(executor)
-	googleExec, ok := executor.(*googleOIDCAuthExecutor)
-	suite.True(ok)
-	suite.NotNil(googleExec.oidcAuthExecutorInterface)
-	suite.Equal(mockGoogleSvc, googleExec.googleAuthService)
-}
-
-type mockGoogleServiceWithOIDC struct {
-	*googlemock.GoogleOIDCAuthnServiceInterfaceMock
-	oidcService authnoidc.OIDCAuthnCoreServiceInterface
+	assert.NotNil(t, executor)
+	result, ok := executor.(*googleOIDCAuthExecutor)
+	assert.True(t, ok)
+	assert.NotNil(t, result.oidcAuthExecutorInterface)
+	assert.Equal(t, mockGoogleSvc, result.googleAuthService)
 }

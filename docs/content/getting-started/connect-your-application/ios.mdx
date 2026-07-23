@@ -1,0 +1,288 @@
+---
+toc_progress: quickstart
+title: iOS Quickstart
+docType: quickstart
+sidebar_position: 8
+persona: app
+description: Add {{ProductName}} authentication to an iOS application using the ThunderID iOS SDK for SwiftUI.
+---
+
+import {
+  Boxes,
+  Package,
+  LogIn,
+  BookOpen,
+  Clock,
+  Server,
+  Hexagon,
+  FileCode,
+} from '@wso2/oxygen-ui-icons-react';
+
+# iOS Quickstart
+
+Use this guide to add <ProductName /> authentication to an iOS application using the <ProductName /> iOS SDK for SwiftUI.
+
+<TutorialHero>
+
+## What You Will Learn
+
+<TutorialHeroItem icon={<Boxes />}>Create a new Xcode project</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>Install the <code><ProductName />SwiftUI</code> Swift package</TutorialHeroItem>
+<TutorialHeroItem icon={<LogIn />}>Add working sign-in and sign-out using SwiftUI components</TutorialHeroItem>
+<TutorialHeroItem icon={<BookOpen />}>Display the signed-in user's name</TutorialHeroItem>
+
+## Prerequisites
+
+<TutorialHeroItem icon={<Clock />}>About 15 minutes</TutorialHeroItem>
+<TutorialHeroItem icon={<Hexagon />}>Xcode 15 or later</TutorialHeroItem>
+<TutorialHeroItem icon={<FileCode />}>iOS 16+ deployment target</TutorialHeroItem>
+
+</TutorialHero>
+
+:::tip Example Source Code
+Check out the complete <RepoLink path="/tree/main/sdks/ios/Samples/Quickstart">iOS Quickstart Sample</RepoLink> in the <ProductName /> repository.
+:::
+
+<Stepper stepNode="h2" as="h2">
+
+## Run <ProductName />
+
+Start a local <ProductName /> instance. Pick the method that works best for you:
+
+<RunThunderID />
+
+Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
+
+## Create an Application
+
+1. Sign in to the Console.
+
+    :::info Test User
+    If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
+    :::
+
+2. Navigate to **Applications**, and click **Add Application**.
+
+3. Under **Application Type**, select **Mobile App**.
+4. Enter a name (e.g. `My iOS App`) and create an application. The rest of the settings can stay at their defaults.
+5. Copy the **Client ID** from the **General** tab. You'll add the redirect URI in the next step after configuring your URL scheme.
+
+## Create an iOS App
+
+In Xcode, create a new project using the **iOS > App** template. Choose **SwiftUI** as the interface and **Swift** as the language.
+
+:::note
+If you already have an existing iOS project, skip this step.
+:::
+
+## Install <ProductName />SwiftUI
+
+In Xcode, go to **File > Add Package Dependencies** and enter the package URL:
+
+```text
+https://github.com/thunderid/thunderid-ios-sdk
+```
+
+When prompted to choose package products, select **<ProductName />SwiftUI**. This includes the core `<ProductName />` client as a dependency.
+
+:::note
+If you manage dependencies with CocoaPods, add the following to your `Podfile` instead:
+
+```ruby
+pod 'ThunderIDSwiftUI'
+```
+:::
+
+## Configure a Callback URL Scheme
+
+<ProductName /> redirects back to your app after sign-in and sign-out using a custom URL scheme. You need to register this scheme in two places.
+
+**1. Register the scheme in your app**
+
+Open your app's `Info.plist` and add a URL scheme under **URL Types**. For example:
+
+```xml
+<key>CFBundleURLTypes</key>
+<array>
+  <dict>
+    <key>CFBundleURLSchemes</key>
+    <array>
+      <string>io.thunderid.b2c</string>
+    </array>
+  </dict>
+</array>
+```
+
+**2. Register the redirect URI in the <ProductName /> console**
+
+In the console, open your registered application and add the following as an **Allowed Redirect URI**:
+
+```text
+io.thunderid.b2c://callback
+```
+
+Add the same value as an **Allowed Post-Logout Redirect URI**:
+
+```text
+io.thunderid.b2c://logout
+```
+
+## Initialize the SDK
+
+Open your app's entry point (the file that conforms to `App`) and apply the `.thunderIDProvider(config:)` modifier to your root view. This injects a `ThunderIDState` environment object into all child views.
+
+```swift title="MyApp.swift" showLineNumbers
+import SwiftUI
+import ThunderIDSwiftUI
+
+@main
+struct MyApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                .thunderIDProvider(config: ThunderIDConfig(
+                    baseUrl: "https://localhost:8090",
+                    clientId: "<your-client-id>",
+                    scopes: ["openid", "profile", "email"],
+                    afterSignInUrl: "io.thunderid.b2c://callback",
+                    afterSignOutUrl: "io.thunderid.b2c://logout",
+                    applicationId: "<your-application-id>"
+                ))
+        }
+    }
+}
+```
+
+:::warning Configuration
+Replace `<your-client-id>` with the **Client ID** and `<your-application-id>` with the **Application ID** from your <ProductName /> application settings.
+:::
+
+### Configuration Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `baseUrl` | Your <ProductName /> instance URL. Must use HTTPS. |
+| `clientId` | The Client ID from your <ProductName /> application |
+| `scopes` | OAuth 2.0 scopes to request. Include `"openid"` at minimum. |
+| `afterSignInUrl` | The redirect URI to return to after sign-in |
+| `afterSignOutUrl` | The redirect URI to return to after sign-out |
+| `applicationId` | The Application ID used for embedded (app-native) sign-in flows |
+
+## Add Sign-In and Sign-Out
+
+The <ProductName /> iOS SDK provides `SignedIn` and `SignedOut` guard views for conditional rendering, a `SignIn` component for the embedded sign-in flow, and a `SignOutButton` for sign-out.
+
+Replace the contents of `ContentView.swift` with:
+
+```swift title="ContentView.swift" showLineNumbers
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct ContentView: View {
+    @EnvironmentObject var state: ThunderIDState
+
+    var body: some View {
+        Group {
+            if !state.isInitialized {
+                ProgressView("Loading...")
+            } else {
+                SignedIn {
+                    HomeView()
+                } fallback: {
+                    AuthView()
+                }
+            }
+        }
+    }
+}
+```
+
+Create `AuthView.swift` to display the sign-in form:
+
+```swift title="AuthView.swift" showLineNumbers
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct AuthView: View {
+    var body: some View {
+        VStack(spacing: 24) {
+            Text("Welcome")
+                .font(.largeTitle)
+                .bold()
+
+            SignIn(applicationId: "<your-application-id>")
+                .padding()
+        }
+        .padding()
+    }
+}
+```
+
+## Display User Profile Information
+
+Create `HomeView.swift` to show the authenticated user's name and a sign-out button:
+
+```swift title="HomeView.swift" showLineNumbers
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct HomeView: View {
+    @EnvironmentObject var state: ThunderIDState
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                if let user = state.user {
+                    Text("Welcome, \(user.displayName ?? user.email ?? "User")!")
+                        .font(.title2)
+                        .bold()
+
+                    Text(user.email ?? "")
+                        .foregroundStyle(.secondary)
+                }
+
+                SignOutButton()
+                    .buttonStyle(.borderedProminent)
+            }
+            .padding()
+            .navigationTitle("Home")
+        }
+    }
+}
+```
+
+## Run the App
+
+In Xcode, select an iOS 16+ simulator and press **Run** (⌘R).
+
+:::note Test credentials
+You'll need a user to sign in with. If you haven't created one yet, open <ConsoleUrl />, navigate to **Users**, and add a test user with an email and password.
+:::
+
+:::tip Success
+You should see the sign-in form. Enter your test user credentials and tap **Submit**. After successful authentication, the home screen displays the user's name and a **Sign Out** button.
+:::
+
+</Stepper>
+
+## What's Next
+
+<div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginTop: '1.5rem'}}>
+
+  <a href="../../../guides/flows/what-are-flows" style={{textDecoration: 'none', color: 'inherit'}}>
+    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
+      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Upgrade the sign-in flow</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Add MFA, passkeys, or social login to your flow, no app code changes required.</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>Flow Designer →</div>
+    </div>
+  </a>
+
+  <a href="../../../../sdks/ios/overview" style={{textDecoration: 'none', color: 'inherit'}}>
+    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
+      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>iOS SDK Reference</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Explore the full API reference for the <ProductName /> iOS SDK.</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>API Reference →</div>
+    </div>
+  </a>
+
+</div>

@@ -37,20 +37,31 @@ func (_m *oAuthExecutorInterfaceMock) EXPECT() *oAuthExecutorInterfaceMock_Expec
 }
 
 // BuildAuthorizeFlow provides a mock function for the type oAuthExecutorInterfaceMock
-func (_mock *oAuthExecutorInterfaceMock) BuildAuthorizeFlow(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) error {
+func (_mock *oAuthExecutorInterfaceMock) BuildAuthorizeFlow(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) (map[string]string, error) {
 	ret := _mock.Called(ctx, execResp)
 
 	if len(ret) == 0 {
 		panic("no return value specified for BuildAuthorizeFlow")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(*providers.NodeContext, *providers.ExecutorResponse) error); ok {
+	var r0 map[string]string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(*providers.NodeContext, *providers.ExecutorResponse) (map[string]string, error)); ok {
+		return returnFunc(ctx, execResp)
+	}
+	if returnFunc, ok := ret.Get(0).(func(*providers.NodeContext, *providers.ExecutorResponse) map[string]string); ok {
 		r0 = returnFunc(ctx, execResp)
 	} else {
-		r0 = ret.Error(0)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]string)
+		}
 	}
-	return r0
+	if returnFunc, ok := ret.Get(1).(func(*providers.NodeContext, *providers.ExecutorResponse) error); ok {
+		r1 = returnFunc(ctx, execResp)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
 }
 
 // oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BuildAuthorizeFlow'
@@ -83,12 +94,12 @@ func (_c *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call) Run(run func(ctx *
 	return _c
 }
 
-func (_c *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call) Return(err error) *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call {
-	_c.Call.Return(err)
+func (_c *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call) Return(stringToString map[string]string, err error) *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call {
+	_c.Call.Return(stringToString, err)
 	return _c
 }
 
-func (_c *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call) RunAndReturn(run func(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) error) *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call {
+func (_c *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call) RunAndReturn(run func(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) (map[string]string, error)) *oAuthExecutorInterfaceMock_BuildAuthorizeFlow_Call {
 	_c.Call.Return(run)
 	return _c
 }

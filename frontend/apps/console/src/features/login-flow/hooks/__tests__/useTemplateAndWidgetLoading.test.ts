@@ -771,6 +771,60 @@ describe('useTemplateAndWidgetLoading', () => {
       const otherNode = nodes.find((n) => n.id === 'other-node');
       expect(otherNode).toBeDefined();
     });
+
+    it('auto-wires a consent-shaped widget between the authorization executor and the auth assert generator', () => {
+      const {result} = renderUseTemplateAndWidgetLoading();
+
+      const widget = {
+        id: 'consent-widget',
+        config: {
+          data: {
+            __generationMeta__: {
+              defaultPropertySelectorId: 'consent_check',
+              autoWire: {
+                entry: {stepRef: 'consent_check'},
+                exit: {stepRef: 'consent_check', handle: 'success'},
+                spliceAfter: [{executorName: 'AuthorizationExecutor'}],
+                spliceBefore: [{executorName: 'AuthAssertExecutor'}],
+              },
+            },
+            steps: [
+              {
+                id: 'consent_check',
+                type: StepTypes.Execution,
+                position: {x: 0, y: 0},
+                data: {action: {type: 'EXECUTOR', executor: {name: 'ConsentExecutor'}, onSuccess: ''}},
+              },
+              {id: 'consent_view', type: StepTypes.View, position: {x: 0, y: 0}, data: {components: []}},
+            ],
+          },
+        },
+      } as unknown as Widget;
+
+      const currentNodes: Node[] = [
+        createMockNode({
+          id: 'authz',
+          type: StepTypes.Execution,
+          data: {action: {executor: {name: 'AuthorizationExecutor'}}},
+        }),
+        createMockNode({
+          id: 'auth_assert',
+          type: StepTypes.Execution,
+          data: {action: {executor: {name: 'AuthAssertExecutor'}}},
+        }),
+        createMockNode({id: 'end', type: StepTypes.End}),
+      ];
+      const currentEdges: Edge[] = [
+        {id: 'authz->auth_assert', source: 'authz', target: 'auth_assert', sourceHandle: 'authz_NEXT', type: 'default'},
+      ];
+
+      const [nodes, edges] = result.current.handleWidgetLoad(widget, {} as Resource, currentNodes, currentEdges);
+
+      expect(nodes.some((n) => n.id === 'consent_check')).toBe(true);
+      expect(edges.some((e) => e.source === 'authz' && e.target === 'auth_assert')).toBe(false);
+      expect(edges.some((e) => e.source === 'authz' && e.target === 'consent_check')).toBe(true);
+      expect(edges.some((e) => e.source === 'consent_check' && e.target === 'auth_assert')).toBe(true);
+    });
   });
 
   describe('handleResourceAdd', () => {

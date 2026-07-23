@@ -17,9 +17,9 @@
  */
 
 import {FormControl, FormHelperText, FormLabel, MenuItem, Select} from '@wso2/oxygen-ui';
-import {memo, useMemo, type ReactElement} from 'react';
+import {memo, type ReactElement} from 'react';
 import {useTranslation} from 'react-i18next';
-import useValidationStatus from '../../hooks/useValidationStatus';
+import useResourceFieldError from '../../hooks/useResourceFieldError';
 import type {Element} from '../../models/elements';
 import type {Resource} from '../../models/resources';
 
@@ -45,17 +45,7 @@ function VariantSelect({
   onVariantChange = undefined,
 }: VariantSelectProps): ReactElement | null {
   const {t} = useTranslation();
-  const {selectedNotification} = useValidationStatus();
-
-  const errorMessage: string = useMemo(() => {
-    const key = `${resource?.id}_variant`;
-
-    if (selectedNotification?.hasResourceFieldNotification(key)) {
-      return selectedNotification?.getResourceFieldNotification(key);
-    }
-
-    return '';
-  }, [resource?.id, selectedNotification]);
+  const errorMessage: string = useResourceFieldError(resource?.id, 'variant');
 
   if (!resource.variants || resource.variants.length === 0) {
     return null;

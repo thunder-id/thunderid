@@ -23,6 +23,7 @@ import {motion} from 'framer-motion';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import useWelcomeClose from '../hooks/useWelcomeClose';
 
 const MotionBox = motion.create(Box);
@@ -40,7 +41,7 @@ export default function GetStartedPage(): JSX.Element {
       icon: <AppWindow size={36} />,
       title: t('common:welcome.getStarted.options.onboardApp.title'),
       description: t('common:welcome.getStarted.options.onboardApp.description', {productName}),
-      action: () => void navigate('/welcome/get-started/applications/types'),
+      action: () => void navigate(RouteConfig.welcome.getStartedApplicationsTypes()),
       actionLabel: t('common:welcome.getStarted.options.onboardApp.action'),
       disabled: false,
     },
@@ -81,18 +82,22 @@ export default function GetStartedPage(): JSX.Element {
           <Stack direction="row" spacing={2} sx={{alignItems: 'center'}}>
             <IconButton
               aria-label={t('common:actions.close')}
-              onClick={() => void navigate('/home')}
+              onClick={() => void navigate(RouteConfig.home.list())}
               sx={{bgcolor: 'background.paper', '&:hover': {bgcolor: 'action.hover'}, boxShadow: 1}}
             >
               <X size={24} />
             </IconButton>
             <AppBreadcrumbs
               items={[
-                {key: 'welcome', label: t('common:welcome.header'), onClick: () => void navigate('/welcome')},
+                {
+                  key: 'welcome',
+                  label: t('common:welcome.header'),
+                  onClick: () => void navigate(RouteConfig.welcome.root()),
+                },
                 {
                   key: 'create-project',
                   label: t('common:welcome.createProject.breadcrumb'),
-                  onClick: () => void navigate('/welcome/create-project'),
+                  onClick: () => void navigate(RouteConfig.welcome.createProject()),
                 },
                 {key: 'get-started', label: t('common:welcome.getStarted.breadcrumb')},
               ]}

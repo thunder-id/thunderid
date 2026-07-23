@@ -26,11 +26,9 @@ import (
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
@@ -65,11 +63,6 @@ func (suite *InitTestSuite) SetupTest() {
 	suite.mockAttributeCacheService = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 	suite.mockDiscoveryService = discoverymock.NewDiscoveryServiceInterfaceMock(suite.T())
 	suite.mockDPoPVerifier = dpopmock.NewVerifierInterfaceMock(suite.T())
-	suite.mockDiscoveryService.On("GetOAuth2AuthorizationServerMetadata", mock.Anything).
-		Return(&discovery.OAuth2AuthorizationServerMetadata{
-			UserInfoEndpoint: "https://localhost:8090/oauth2/userinfo",
-		})
-
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime(
 		"test-home",

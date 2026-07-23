@@ -107,6 +107,17 @@ func (o *OAuthClient) ClientAccessTokenConfig() *AccessTokenSubConfig {
 	return o.Token.AccessToken.ClientConfig
 }
 
+// ResolveDefaultAudience returns the aud claim for an access token that is not bound to a
+// resource server (an OIDC-only or scopeless request). It returns the application's configured
+// default audience when set; otherwise it falls back to the given client_id.
+func (o *OAuthClient) ResolveDefaultAudience(clientID string) string {
+	if o != nil && o.Token != nil && o.Token.AccessToken != nil &&
+		o.Token.AccessToken.DefaultAudience != "" {
+		return o.Token.AccessToken.DefaultAudience
+	}
+	return clientID
+}
+
 // ValidateRedirectURI validates the provided redirect URI against the registered list.
 func ValidateRedirectURI(ctx context.Context, redirectURIs []string, redirectURI string) error {
 	logger := log.GetLogger()

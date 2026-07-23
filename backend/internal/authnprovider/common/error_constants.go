@@ -27,4 +27,5 @@ const (
 	ErrorCodeNotImplemented       = "AUP-0005"
 	ErrorCodeInvalidRequest       = "AUP-0006"
 	ErrorCodeAmbiguousUser        = "AUP-0007"
+	ErrorCodeEnrollmentFailed     = "AUP-0008"
 )

@@ -193,8 +193,14 @@ func isZeroValue(v reflect.Value) bool {
 func WriteJSONError(ctx context.Context, w http.ResponseWriter, code, desc string, statusCode int,
 	respHeaders []map[string]string) {
 	logger := log.GetLogger()
-	logger.Error(ctx, "Error in HTTP response",
-		log.String("error", code), log.String("description", desc))
+	// Log 5xx as errors (server faults) and 4xx as debug (client errors).
+	if statusCode >= http.StatusInternalServerError {
+		logger.Error(ctx, "Error in HTTP response",
+			log.String("error", code), log.String("description", desc))
+	} else {
+		logger.Debug(ctx, "Error in HTTP response",
+			log.String("error", code), log.String("description", desc))
+	}
 
 	// Set the response headers.
 	for _, header := range respHeaders {
@@ -398,7 +404,7 @@ func IsValidURI(uri string) bool {
 }
 
 // IsValidLogoURI checks if the provided URI is valid for use as a logo URL.
-// It enforces a scheme allowlist: http/https require a non-empty host, data/blob/emoji
+// It enforces a scheme allowlist: http/https require a non-empty host, data/blob/emoji/avatar
 // schemes are always accepted, and relative paths (no scheme, non-empty path) are accepted.
 // All other schemes (e.g. javascript, file) are rejected.
 func IsValidLogoURI(uri string) bool {
@@ -412,7 +418,7 @@ func IsValidLogoURI(uri string) bool {
 	switch parsed.Scheme {
 	case "http", "https":
 		return parsed.Host != ""
-	case "data", "blob", "emoji":
+	case "data", "blob", "emoji", "avatar":
 		return true
 	case "":
 		// Accept relative paths (no scheme, but path must start with /)
@@ -494,6 +500,69 @@ func SanitizeStringMap(inputs map[string]string) map[string]string {
 		sanitized[key] = SanitizeString(value)
 	}
 	return sanitized
+}
+
+// sanitizeRaw trims whitespace and removes control characters but does NOT HTML-escape.
+// Use this for values that must remain structurally intact (e.g. JSON, URIs, JWTs)
+// and are not rendered in an HTML context.
+func sanitizeRaw(input string) string {
+	if input == "" {
+		return input
+	}
+
+	trimmed := strings.TrimSpace(input)
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, trimmed)
+}
+
+// SanitizeRawMultiValueStringMap sanitizes a map[string][]string by trimming whitespace and
+// removing control characters from values but does NOT HTML-escape and does NOT modify keys.
+// Keys are preserved verbatim to prevent normalization collisions (e.g. " X " and "X" trimming
+// to the same key). Use this for structured HTTP values such as JSON, URIs, and JWTs.
+func SanitizeRawMultiValueStringMap(inputs map[string][]string) map[string][]string {
+	if len(inputs) == 0 {
+		return inputs
+	}
+
+	sanitized := make(map[string][]string, len(inputs))
+	for key, values := range inputs {
+		sanitizedValues := make([]string, len(values))
+		for i, v := range values {
+			sanitizedValues[i] = sanitizeRaw(v)
+		}
+		sanitized[key] = sanitizedValues
+	}
+
+	return sanitized
+}
+
+// sensitiveHeaders is the deny-list of header names (lowercase) that must not be forwarded
+// beyond the HTTP boundary into provider metadata or initiator requests.
+var sensitiveHeaders = map[string]bool{
+	strings.ToLower(constants.AuthorizationHeaderName):      true,
+	strings.ToLower(constants.CookieHeaderName):             true,
+	strings.ToLower(constants.SetCookieHeaderName):          true,
+	strings.ToLower(constants.ProxyAuthorizationHeaderName): true,
+}
+
+// FilterSensitiveHeaders returns a copy of the header map with credential-bearing headers removed.
+func FilterSensitiveHeaders(h map[string][]string) map[string][]string {
+	if len(h) == 0 {
+		return h
+	}
+
+	filtered := make(map[string][]string, len(h))
+	for name, values := range h {
+		if !sensitiveHeaders[strings.ToLower(name)] {
+			filtered[name] = values
+		}
+	}
+
+	return filtered
 }
 
 // IsBearerAuth checks if the Authorization header uses the Bearer scheme (case-insensitive).

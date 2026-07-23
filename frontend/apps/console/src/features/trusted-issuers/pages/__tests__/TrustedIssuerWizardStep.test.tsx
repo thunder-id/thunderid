@@ -21,15 +21,15 @@ import {describe, expect, it, vi} from 'vitest';
 import TrustedIssuerWizardStep from '../TrustedIssuerWizardStep';
 
 vi.mock('../../components/TrustedIssuerCreateForm', () => ({
-  default: function StubTrustedIssuerCreateForm() {
-    return <div data-testid="stub-trusted-issuer-create-form" />;
+  default: function StubTrustedIssuerCreateForm({name}: {name: string}) {
+    return <div data-testid="stub-trusted-issuer-create-form">{name}</div>;
   },
 }));
 
 describe('TrustedIssuerWizardStep', () => {
-  it('should render the trusted issuer create form', () => {
-    render(<TrustedIssuerWizardStep />);
+  it('should render the trusted issuer create form, forwarding the wizard name', () => {
+    render(<TrustedIssuerWizardStep name="Acme Issuer" onNameConflict={vi.fn()} />);
 
-    expect(screen.getByTestId('stub-trusted-issuer-create-form')).toBeInTheDocument();
+    expect(screen.getByTestId('stub-trusted-issuer-create-form')).toHaveTextContent('Acme Issuer');
   });
 });

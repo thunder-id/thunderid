@@ -27,6 +27,8 @@ interface ConnectionFullPageLayoutProps {
   progress?: number;
   /** Optional breadcrumb rendered in the header instead of the plain label. */
   breadcrumb?: ReactNode;
+  /** Let the content column span the full page width (e.g. a type-selection gallery). */
+  fullWidthContent?: boolean;
   children: ReactNode;
 }
 
@@ -40,6 +42,7 @@ export default function ConnectionFullPageLayout({
   onClose,
   progress = undefined,
   breadcrumb = undefined,
+  fullWidthContent = false,
   children,
 }: ConnectionFullPageLayoutProps): JSX.Element {
   return (
@@ -73,7 +76,10 @@ export default function ConnectionFullPageLayout({
             width: '100%',
           }}
         >
-          <Box data-testid="connection-fullpage-content" sx={{width: '100%', maxWidth: 920}}>
+          <Box
+            data-testid="connection-fullpage-content"
+            sx={{width: '100%', maxWidth: fullWidthContent ? 'none' : 920}}
+          >
             {children}
           </Box>
         </Box>

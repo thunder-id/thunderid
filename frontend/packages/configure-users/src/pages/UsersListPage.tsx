@@ -22,11 +22,13 @@ import {Plus} from '@wso2/oxygen-ui-icons-react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import UsersList from '../components/UsersList';
+import useUserRoutes from '../hooks/useUserRoutes';
 
 export default function UsersListPage() {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('UsersListPage');
+  const routes = useUserRoutes();
 
   return (
     <PageContent>
@@ -40,7 +42,7 @@ export default function UsersListPage() {
             startIcon={<Plus size={20} />}
             onClick={() => {
               (async () => {
-                await navigate('/users/add');
+                await navigate(routes.add());
               })().catch((error: unknown) => {
                 logger.error('Failed to navigate to add user page', {error});
               });

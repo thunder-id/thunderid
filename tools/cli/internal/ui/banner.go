@@ -20,12 +20,14 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
+	"github.com/thunder-id/thunderid/tools/cli/internal/services/setup"
 )
 
 const (
@@ -236,6 +238,65 @@ func PromptPortConflict(port, altPort int) (PortConflictChoice, int) {
 		return choice, altPort
 	}
 	return choice, port
+}
+
+// PromptAdminCredentials interactively collects the admin username and password
+// before setup runs. The defaults (defaultUsername and generatedPassword) are shown
+// as the values that will be used if the operator provides nothing, mirroring
+// setup.sh; neither field is prefilled with editable text. Pressing Enter on the
+// password field accepts the generated one, in which case usedGenerated is true.
+//
+// It returns ok=false (a no-op) when stdin is not an interactive terminal, so
+// scripted and CI runs fall through to setup's own defaults.
+func PromptAdminCredentials(defaultUsername, generatedPassword string) (username, password string, usedGenerated, ok bool) {
+	if fi, err := os.Stdin.Stat(); err != nil || (fi.Mode()&os.ModeCharDevice) == 0 {
+		return "", "", false, false
+	}
+	var userInput, passInput string
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewNote().
+				Title("Configure the default admin user").
+				Description("Press Enter to accept the shown default."),
+			huh.NewInput().
+				Title("Admin username").
+				Description("Default: "+defaultUsername).
+				Placeholder(defaultUsername).
+				Value(&userInput),
+			huh.NewInput().
+				Title("Admin password").
+				Description("Press Enter to use the generated password: "+generatedPassword).
+				Placeholder("leave blank to use the generated password").
+				EchoMode(huh.EchoModePassword).
+				Value(&passInput),
+		),
+	)
+	if err := form.Run(); err != nil {
+		return "", "", false, false
+	}
+	username = strings.TrimSpace(userInput)
+	if username == "" {
+		username = defaultUsername
+	}
+	if passInput == "" {
+		return username, generatedPassword, true, true
+	}
+	return username, passInput, false, true
+}
+
+// PrintCredentialsFallback prints generated admin credentials to stdout when the
+// REPL that normally displays them will not be reached (e.g. startup failed). Setup
+// does not regenerate the password on a later run, so this is the last chance to
+// surface it. No-op when no credentials were generated.
+func PrintCredentialsFallback(creds *setup.AdminCredentials) {
+	if creds == nil {
+		return
+	}
+	fmt.Println("  " + Bold("Admin credentials"))
+	fmt.Println("    Username: " + Cyan(creds.Username))
+	fmt.Println("    Password: " + Cyan(creds.Password))
+	fmt.Println("    " + Dim("Sign in to the Console with these credentials once it is running."))
+	fmt.Println()
 }
 
 // PromptUpgrade shows the "new version available" banner and asks the user what to do.

@@ -24,15 +24,6 @@ import type {JSX, MouseEvent as ReactMouseEvent} from 'react';
 import useDesign from '../../../contexts/Design/useDesign';
 import type {FlowComponent} from '../../../models/flow';
 
-/** The meta key used by the server to embed the application's sign-up URL. */
-const SIGN_UP_URL_META_KEY = 'application.sign_up_url';
-
-/** The meta key used by the server to embed the application's sign-in URL. */
-const SIGN_IN_URL_META_KEY = 'application.sign_in_url';
-
-/** The meta key used by the server to embed the application's forgot-password URL. */
-const FORGOT_PASSWORD_URL_META_KEY = 'application.forgot_password_url';
-
 /** The meta key used by the server to embed the application's access URL. */
 const APPLICATION_URL_META_KEY = 'application.url';
 
@@ -47,6 +38,11 @@ if (typeof window !== 'undefined') {
   });
 }
 const RECOVERY_ENABLED_META_KEY = 'isRecoveryFlowEnabled';
+
+/** Checks whether the raw HTML label contains a `data-component-ref` with the given value. */
+function hasComponentRef(html: string, ref: string): boolean {
+  return html.includes(`data-component-ref="${ref}"`);
+}
 
 // When a RICH_TEXT component has a wired action, the anchor's href is decorative — the
 // click is intercepted and dispatched as a flow action. Strip navigation attributes so
@@ -73,21 +69,6 @@ interface RichTextAdapterProps {
   component: FlowComponent;
   resolve: (template: string | undefined) => string | undefined;
   /**
-   * Fallback sign-up URL used when the flow meta does not supply
-   * `application.sign_up_url` but self registration is enabled.
-   */
-  signUpFallbackUrl?: string;
-  /**
-   * Fallback sign-in URL used when the flow meta does not supply
-   * `application.sign_in_url`.
-   */
-  signInFallbackUrl?: string;
-  /**
-   * Fallback forgot-password URL used when the flow meta does not supply
-   * `application.forgot_password_url` but recovery is enabled.
-   */
-  forgotPasswordFallbackUrl?: string;
-  /**
    * Current form values, passed to `onSubmit` when a wired anchor click
    * dispatches the component's `action`.
    */
@@ -104,9 +85,6 @@ interface RichTextAdapterProps {
 export default function RichTextAdapter({
   component,
   resolve,
-  signUpFallbackUrl = undefined,
-  signInFallbackUrl = undefined,
-  forgotPasswordFallbackUrl = undefined,
   values = undefined,
   onSubmit = undefined,
 }: RichTextAdapterProps): JSX.Element | null {
@@ -121,6 +99,18 @@ export default function RichTextAdapter({
   // links from a template.
   if (richTextAction?.ref && rawLabel) {
     const resolvedLabel = resolve(rawLabel) ?? rawLabel;
+
+    if (hasComponentRef(resolvedLabel, 'self-sign-up-link')) {
+      if (resolve(`{{meta(${REGISTRATION_ENABLED_META_KEY})}}`) !== 'true') {
+        return null;
+      }
+    }
+    if (hasComponentRef(resolvedLabel, 'recovery-link')) {
+      if (resolve(`{{meta(${RECOVERY_ENABLED_META_KEY})}}`) !== 'true') {
+        return null;
+      }
+    }
+
     const actionRef = richTextAction.ref;
 
     const handleClick = (event: ReactMouseEvent<HTMLDivElement>): void => {
@@ -152,7 +142,9 @@ export default function RichTextAdapter({
       onSubmit(syntheticAction, values ?? {});
     };
 
-    const sanitized = DOMPurify.sanitize(resolvedLabel, {ADD_ATTR: ['target', 'data-action-ref']});
+    const sanitized = DOMPurify.sanitize(resolvedLabel, {
+      ADD_ATTR: ['target', 'data-action-ref', 'data-component-ref'],
+    });
     const finalHtml = neutralizeActionAnchors(sanitized, actionRef);
 
     return (
@@ -163,83 +155,6 @@ export default function RichTextAdapter({
         onClick={handleClick}
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{__html: finalHtml}}
-      />
-    );
-  }
-
-  // When any component label embeds a sign-up URL meta template we treat the
-  // whole element as the "sign up link" block.  Show it only when self
-  // registration is enabled; hide it entirely otherwise.
-  if (rawLabel && containsMetaTemplate(rawLabel, SIGN_UP_URL_META_KEY)) {
-    const isRegistrationEnabled = resolve(`{{meta(${REGISTRATION_ENABLED_META_KEY})}}`) === 'true';
-
-    if (!isRegistrationEnabled) {
-      return null;
-    }
-
-    // Resolve the label so all other meta/i18n tokens are processed first.
-    let resolvedLabel = resolve(rawLabel) ?? rawLabel;
-
-    // If the sign-up URL token is still present after resolution (i.e. the
-    // server did not provide application.sign_up_url in meta), substitute the
-    // fallback URL so the link still works.
-    if (containsMetaTemplate(resolvedLabel, SIGN_UP_URL_META_KEY) && signUpFallbackUrl) {
-      resolvedLabel = replaceMetaTemplate(resolvedLabel, SIGN_UP_URL_META_KEY, signUpFallbackUrl);
-    }
-
-    return (
-      <Box
-        id={component.id}
-        className={[cn('Flow--richText'), component.classes].filter(Boolean).join(' ')}
-        sx={{mb: 1, textAlign: isDesignEnabled ? 'center' : 'left'}}
-        // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(resolvedLabel, {ADD_ATTR: ['target']})}}
-      />
-    );
-  }
-
-  // When any component label embeds a forgot-password URL meta template, treat it
-  // as the "forgot password link" block. Show it only when recovery is enabled.
-  if (rawLabel && containsMetaTemplate(rawLabel, FORGOT_PASSWORD_URL_META_KEY)) {
-    const isRecoveryEnabled = resolve(`{{meta(${RECOVERY_ENABLED_META_KEY})}}`) === 'true';
-
-    if (!isRecoveryEnabled) {
-      return null;
-    }
-
-    let resolvedLabel = resolve(rawLabel) ?? rawLabel;
-
-    if (containsMetaTemplate(resolvedLabel, FORGOT_PASSWORD_URL_META_KEY) && forgotPasswordFallbackUrl) {
-      resolvedLabel = replaceMetaTemplate(resolvedLabel, FORGOT_PASSWORD_URL_META_KEY, forgotPasswordFallbackUrl);
-    }
-
-    return (
-      <Box
-        id={component.id}
-        className={[cn('Flow--richText'), component.classes].filter(Boolean).join(' ')}
-        sx={{mb: 1, textAlign: isDesignEnabled ? 'center' : 'left'}}
-        // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(resolvedLabel)}}
-      />
-    );
-  }
-
-  // When any component label embeds a sign-in URL meta template, treat it
-  // as the "sign in link" block.
-  if (rawLabel && containsMetaTemplate(rawLabel, SIGN_IN_URL_META_KEY)) {
-    let resolvedLabel = resolve(rawLabel) ?? rawLabel;
-
-    if (containsMetaTemplate(resolvedLabel, SIGN_IN_URL_META_KEY) && signInFallbackUrl) {
-      resolvedLabel = replaceMetaTemplate(resolvedLabel, SIGN_IN_URL_META_KEY, signInFallbackUrl);
-    }
-
-    return (
-      <Box
-        id={component.id}
-        className={[cn('Flow--richText'), component.classes].filter(Boolean).join(' ')}
-        sx={{mb: 1, textAlign: isDesignEnabled ? 'center' : 'left'}}
-        // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(resolvedLabel)}}
       />
     );
   }

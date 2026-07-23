@@ -61,7 +61,6 @@ describe('ConnectionForm', () => {
 
     expect(screen.getByText('OAuth2 client identifier used for authentication.')).toBeInTheDocument();
     expect(screen.getByText('OAuth2 client secret issued by your identity provider.')).toBeInTheDocument();
-    expect(screen.getByText(/Space-separated scopes to request during sign-in\. Defaults to/)).toBeInTheDocument();
 
     fireEvent.blur(getConnectionField('clientId'));
 
@@ -80,20 +79,61 @@ describe('ConnectionForm', () => {
     expect(onFieldChange).toHaveBeenCalledWith('clientId', 'my-client-id');
   });
 
-  it('renders the redirect URI as an editable field that reports edits', () => {
-    const onFieldChange = vi.fn();
-    render(<ConnectionForm {...baseProps} onFieldChange={onFieldChange} />);
+  it('does not render the redirect URI or scopes fields on create (moved to a create hint / edit view)', () => {
+    render(<ConnectionForm {...baseProps} />);
 
-    const input = screen.getByPlaceholderText('https://your-gate-host/gate/callback');
-    fireEvent.change(input, {target: {value: 'https://gate.example.com/gate/callback'}});
-
-    expect(onFieldChange).toHaveBeenCalledWith('redirectUri', 'https://gate.example.com/gate/callback');
+    expect(document.getElementById('connection-field-redirectUri')).not.toBeInTheDocument();
+    expect(document.getElementById('connection-field-scopes')).not.toBeInTheDocument();
   });
 
-  describe('OIDC federation fields', () => {
-    const oidcProps = {
+  it('renders the redirect URI as a read-only copy field and the scopes field on edit', () => {
+    render(<ConnectionForm {...baseProps} mode="edit" hasStoredSecret />);
+
+    const field = getConnectionField('redirectUri') as HTMLInputElement;
+    expect(field).toHaveValue('https://id.acme.io/oauth/callback/google');
+    expect(field).toHaveAttribute('readonly');
+    expect(screen.getByTestId('connection-field-redirectUri-copy')).toBeInTheDocument();
+    expect(screen.getByText('Add this exact URI to your Google OAuth client.')).toBeInTheDocument();
+    expect(screen.getByText(/Space-separated scopes to request during sign-in\. Defaults to/)).toBeInTheDocument();
+  });
+
+  describe('OIDC create', () => {
+    const oidcCreateProps = {
       ...baseProps,
       type: 'oidc' as const,
+      values: {
+        name: '',
+        clientId: '',
+        clientSecret: '',
+        authorizationEndpoint: '',
+        tokenEndpoint: '',
+        redirectUri: 'https://id.acme.io/oauth/callback/oidc',
+      },
+    };
+
+    it('renders only the required fields and no Federation section', () => {
+      render(<ConnectionForm {...oidcCreateProps} />);
+
+      expect(getConnectionField('clientId')).toBeInTheDocument();
+      expect(getConnectionField('clientSecret')).toBeInTheDocument();
+      expect(getConnectionField('authorizationEndpoint')).toBeInTheDocument();
+      expect(getConnectionField('tokenEndpoint')).toBeInTheDocument();
+      expect(document.getElementById('connection-field-userInfoEndpoint')).not.toBeInTheDocument();
+      expect(document.getElementById('connection-field-issuer')).not.toBeInTheDocument();
+      expect(document.getElementById('connection-field-jwksEndpoint')).not.toBeInTheDocument();
+      expect(document.getElementById('connection-field-redirectUri')).not.toBeInTheDocument();
+      expect(document.getElementById('connection-field-scopes')).not.toBeInTheDocument();
+      expect(screen.queryByRole('switch', {name: 'Enable token exchange'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', {name: 'Federation'})).not.toBeInTheDocument();
+    });
+  });
+
+  describe('OIDC edit federation fields', () => {
+    const oidcEditProps = {
+      ...baseProps,
+      type: 'oidc' as const,
+      mode: 'edit' as const,
+      hasStoredSecret: true,
       values: {
         name: '',
         clientId: '',
@@ -111,13 +151,13 @@ describe('ConnectionForm', () => {
     };
 
     it('renders the Federation section heading above the tokenExchangeEnabled field', () => {
-      render(<ConnectionForm {...oidcProps} />);
+      render(<ConnectionForm {...oidcEditProps} />);
 
       expect(screen.getByRole('heading', {name: 'Federation'})).toBeInTheDocument();
     });
 
     it('renders a switch for the tokenExchangeEnabled field', () => {
-      render(<ConnectionForm {...oidcProps} />);
+      render(<ConnectionForm {...oidcEditProps} />);
 
       const toggle = screen.getByRole('switch', {name: 'Enable token exchange'});
       expect(toggle).toBeInTheDocument();
@@ -126,7 +166,7 @@ describe('ConnectionForm', () => {
 
     it('reports the switch toggle through onFieldChange as a "true"/"false" string', () => {
       const onFieldChange = vi.fn();
-      render(<ConnectionForm {...oidcProps} onFieldChange={onFieldChange} />);
+      render(<ConnectionForm {...oidcEditProps} onFieldChange={onFieldChange} />);
 
       const toggle = screen.getByRole('switch', {name: 'Enable token exchange'});
       fireEvent.click(toggle);
@@ -135,26 +175,26 @@ describe('ConnectionForm', () => {
     });
 
     it('hides trustedTokenAudience when tokenExchangeEnabled is off', () => {
-      render(<ConnectionForm {...oidcProps} />);
+      render(<ConnectionForm {...oidcEditProps} />);
 
       expect(document.getElementById('connection-field-trustedTokenAudience')).not.toBeInTheDocument();
     });
 
     it('shows trustedTokenAudience when tokenExchangeEnabled is on', () => {
-      render(<ConnectionForm {...oidcProps} values={{...oidcProps.values, tokenExchangeEnabled: 'true'}} />);
+      render(<ConnectionForm {...oidcEditProps} values={{...oidcEditProps.values, tokenExchangeEnabled: 'true'}} />);
 
       expect(document.getElementById('connection-field-trustedTokenAudience')).toBeInTheDocument();
     });
 
     it('does not mark issuer/jwksEndpoint required when tokenExchangeEnabled is off', () => {
-      render(<ConnectionForm {...oidcProps} />);
+      render(<ConnectionForm {...oidcEditProps} />);
 
       expect(isFieldMarkedRequired('issuer')).toBe(false);
       expect(isFieldMarkedRequired('jwksEndpoint')).toBe(false);
     });
 
     it('marks issuer/jwksEndpoint required when tokenExchangeEnabled is on', () => {
-      render(<ConnectionForm {...oidcProps} values={{...oidcProps.values, tokenExchangeEnabled: 'true'}} />);
+      render(<ConnectionForm {...oidcEditProps} values={{...oidcEditProps.values, tokenExchangeEnabled: 'true'}} />);
 
       expect(isFieldMarkedRequired('issuer')).toBe(true);
       expect(isFieldMarkedRequired('jwksEndpoint')).toBe(true);

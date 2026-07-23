@@ -24,13 +24,12 @@ const TRUSTED_ISSUER_FORM_FIELDS: (keyof TrustedIssuerFormData)[] = [
   'issuer',
   'jwksEndpoint',
   'idJagEnabled',
-  'clientId',
   'tokenExchangeEnabled',
   'trustedTokenAudience',
 ];
 
 /** Fields where the form maps an empty string to `undefined`, so the two should compare equal. */
-const EMPTY_STRING_AS_UNDEFINED_FIELDS: (keyof TrustedIssuerFormData)[] = ['clientId', 'trustedTokenAudience'];
+const EMPTY_STRING_AS_UNDEFINED_FIELDS: (keyof TrustedIssuerFormData)[] = ['trustedTokenAudience'];
 
 function normalize(field: keyof TrustedIssuerFormData, value: unknown): unknown {
   if (EMPTY_STRING_AS_UNDEFINED_FIELDS.includes(field) && value === '') {

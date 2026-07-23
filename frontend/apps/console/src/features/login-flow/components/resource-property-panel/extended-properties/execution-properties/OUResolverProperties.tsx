@@ -28,7 +28,7 @@ function OUResolverProperties({resource, onChange}: CommonResourcePropertiesProp
 
   const properties = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;
-    return (stepData?.properties ?? {}) as Record<string, unknown>;
+    return stepData?.properties ?? {};
   }, [resource]);
 
   const currentResolveFrom = (properties.resolveFrom as string) || 'caller';

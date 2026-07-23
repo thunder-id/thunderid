@@ -41,25 +41,32 @@ const {useNavigate} = await import('react-router');
 
 describe('TrustedIssuerCreateForm', () => {
   let mockNavigate: ReturnType<typeof vi.fn>;
+  let onNameConflict: ReturnType<typeof vi.fn<() => void>>;
 
   beforeEach(() => {
     mockNavigate = vi.fn();
+    onNameConflict = vi.fn<() => void>();
     mockMutate.mockReset();
     vi.mocked(useNavigate).mockReturnValue(mockNavigate as unknown as NavigateFunction);
   });
 
   it('should render the form with the ID-JAG switch off and token exchange switch on by default', () => {
-    render(<TrustedIssuerCreateForm />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} />);
 
-    expect(screen.getByLabelText(/^Name/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^Issuer URI/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^JWKS endpoint/)).toBeInTheDocument();
     expect(screen.getByRole('switch', {name: /id-jag/i})).not.toBeChecked();
     expect(screen.getByRole('switch', {name: /enable token exchange/i})).toBeChecked();
   });
 
+  it('should not render a name field (collected on the wizard name step)', () => {
+    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} />);
+
+    expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+  });
+
   it('should have no back or cancel affordance of its own', () => {
-    render(<TrustedIssuerCreateForm />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} />);
 
     expect(screen.queryByRole('button', {name: /back/i})).not.toBeInTheDocument();
     expect(screen.queryByRole('button', {name: /^cancel$/i})).not.toBeInTheDocument();
@@ -67,12 +74,9 @@ describe('TrustedIssuerCreateForm', () => {
 
   it('should disable the submit button until all required fields are valid', async () => {
     const user = userEvent.setup();
-    render(<TrustedIssuerCreateForm />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} />);
 
     const submitButton = screen.getByTestId('trusted-issuer-create-submit');
-    expect(submitButton).toBeDisabled();
-
-    await user.type(screen.getByLabelText(/^Name/), 'Acme Okta');
     expect(submitButton).toBeDisabled();
 
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
@@ -84,7 +88,7 @@ describe('TrustedIssuerCreateForm', () => {
 
   it('should show a validation error when an issuer URI is not https', async () => {
     const user = userEvent.setup();
-    render(<TrustedIssuerCreateForm />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} />);
 
     const issuerField = screen.getByLabelText(/^Issuer URI/);
     await user.type(issuerField, 'http://acme.okta.com');
@@ -95,16 +99,16 @@ describe('TrustedIssuerCreateForm', () => {
 
   it('should show a required error when a field is left blank on blur', async () => {
     const user = userEvent.setup();
-    render(<TrustedIssuerCreateForm />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} />);
 
-    const nameField = screen.getByLabelText(/^Name/);
-    await user.click(nameField);
+    const issuerField = screen.getByLabelText(/^Issuer URI/);
+    await user.click(issuerField);
     await user.tab();
 
     expect(await screen.findByText('This field is required.')).toBeInTheDocument();
   });
 
-  it('should submit the form and navigate to the detail page on success', async () => {
+  it('should submit the form with the wizard-collected name and navigate to the detail page on success', async () => {
     const user = userEvent.setup();
     mockMutate.mockImplementation((_data, opts) => {
       opts.onSuccess({
@@ -116,9 +120,8 @@ describe('TrustedIssuerCreateForm', () => {
       });
     });
 
-    render(<TrustedIssuerCreateForm />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} />);
 
-    await user.type(screen.getByLabelText(/^Name/), 'Acme Okta');
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
     await user.type(screen.getByLabelText(/^JWKS endpoint/), 'https://acme.okta.com/keys');
     await user.click(screen.getByTestId('trusted-issuer-create-submit'));
@@ -129,7 +132,6 @@ describe('TrustedIssuerCreateForm', () => {
         issuer: 'https://acme.okta.com',
         jwksEndpoint: 'https://acme.okta.com/keys',
         idJagEnabled: false,
-        clientId: undefined,
         tokenExchangeEnabled: true,
         trustedTokenAudience: undefined,
       },
@@ -141,21 +143,20 @@ describe('TrustedIssuerCreateForm', () => {
     });
   });
 
-  it('should show an inline duplicate-name error on 409 conflict without navigating', async () => {
+  it('should call onNameConflict on a 409 conflict without navigating', async () => {
     const user = userEvent.setup();
     mockMutate.mockImplementation((_data, opts) => {
       opts.onError({response: {status: 409}});
     });
 
-    render(<TrustedIssuerCreateForm />);
+    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} />);
 
-    await user.type(screen.getByLabelText(/^Name/), 'Acme Okta');
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
     await user.type(screen.getByLabelText(/^JWKS endpoint/), 'https://acme.okta.com/keys');
     await user.click(screen.getByTestId('trusted-issuer-create-submit'));
 
-    expect(await screen.findByText('A trusted issuer with this name already exists.')).toBeInTheDocument();
-    expect(mockNavigate).not.toHaveBeenCalledWith(expect.stringContaining('/trusted-issuers/'));
+    await waitFor(() => expect(onNameConflict).toHaveBeenCalledTimes(1));
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('should turn on ID-JAG when the switch is toggled', async () => {
@@ -170,10 +171,9 @@ describe('TrustedIssuerCreateForm', () => {
       });
     });
 
-    render(<TrustedIssuerCreateForm />);
+    render(<TrustedIssuerCreateForm name="Beta AD" onNameConflict={onNameConflict} />);
 
     await user.click(screen.getByRole('switch', {name: /id-jag/i}));
-    await user.type(screen.getByLabelText(/^Name/), 'Beta AD');
     await user.type(screen.getByLabelText(/^Issuer URI/), 'https://beta.example.com');
     await user.type(screen.getByLabelText(/^JWKS endpoint/), 'https://beta.example.com/keys');
     await user.click(screen.getByTestId('trusted-issuer-create-submit'));
@@ -181,37 +181,9 @@ describe('TrustedIssuerCreateForm', () => {
     expect(mockMutate).toHaveBeenCalledWith(expect.objectContaining({idJagEnabled: true}), expect.any(Object));
   });
 
-  it('should render the client id field', () => {
-    render(<TrustedIssuerCreateForm />);
+  it('should not render a client id field', () => {
+    render(<TrustedIssuerCreateForm name="Acme Okta" onNameConflict={onNameConflict} />);
 
-    expect(screen.getByLabelText(/^Client ID/)).toBeInTheDocument();
-  });
-
-  it('should include the client id in the create payload', async () => {
-    const user = userEvent.setup();
-    mockMutate.mockImplementation((_data, opts) => {
-      opts.onSuccess({
-        id: 'ti-3',
-        name: 'Acme Okta',
-        issuer: 'https://acme.okta.com',
-        jwksEndpoint: 'https://acme.okta.com/keys',
-        idJagEnabled: false,
-      });
-    });
-
-    render(<TrustedIssuerCreateForm />);
-
-    await user.type(screen.getByLabelText(/^Name/), 'Acme Okta');
-    await user.type(screen.getByLabelText(/^Issuer URI/), 'https://acme.okta.com');
-    await user.type(screen.getByLabelText(/^JWKS endpoint/), 'https://acme.okta.com/keys');
-    await user.type(screen.getByLabelText(/^Client ID/), 'thunderid-console');
-    await user.click(screen.getByTestId('trusted-issuer-create-submit'));
-
-    expect(mockMutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        clientId: 'thunderid-console',
-      }),
-      expect.any(Object),
-    );
+    expect(screen.queryByLabelText(/^Client ID/)).not.toBeInTheDocument();
   });
 });

@@ -29,7 +29,7 @@ import (
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/utils"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // AuthorizeHandlerInterface defines the interface for handling OAuth2 authorization requests.
@@ -119,7 +119,7 @@ func (ah *authorizeHandler) HandleAuthCallbackPostRequest(w http.ResponseWriter,
 		//  Verify whether we need separate session data key for consent flow.
 		//  Alternatively could add consent info also to the same session object.
 	default:
-		utils.WriteJSONError(ctx, w, oauth2const.ErrorInvalidRequest, "Invalid authorization request",
+		sysutils.WriteJSONError(ctx, w, oauth2const.ErrorInvalidRequest, "Invalid authorization request",
 			http.StatusBadRequest, nil)
 	}
 }
@@ -148,7 +148,7 @@ func (ah *authorizeHandler) getOAuthMessage(r *http.Request, w http.ResponseWrit
 
 	if err != nil {
 		ah.logger.Debug(r.Context(), "Invalid authorize request", log.Error(err))
-		utils.WriteJSONError(r.Context(), w, oauth2const.ErrorInvalidRequest, "Invalid authorization request",
+		sysutils.WriteJSONError(r.Context(), w, oauth2const.ErrorInvalidRequest, "Invalid authorization request",
 			http.StatusBadRequest, nil)
 	}
 
@@ -163,33 +163,29 @@ func (ah *authorizeHandler) getOAuthMessageForGetRequest(r *http.Request) (*OAut
 		return nil, fmt.Errorf("failed to parse form data: %w", err)
 	}
 
-	queryParams := make(map[string]string)
+	queryParams := r.URL.Query()
 	var resources []string
-	for key, values := range r.URL.Query() {
-		if len(values) == 0 {
-			continue
-		}
+	for key, values := range queryParams {
 		if key == oauth2const.RequestParamResource {
 			resources = values
-			queryParams[key] = values[0]
 			continue
 		}
 		if len(values) > 1 {
 			return nil, fmt.Errorf("query parameter %q must not be repeated", key)
 		}
-		queryParams[key] = values[0]
 	}
 
 	return &OAuthMessage{
 		RequestType:        oauth2const.TypeInitialAuthorizationRequest,
-		RequestQueryParams: queryParams,
 		Resources:          resources,
+		RequestHeaders:     sysutils.SanitizeRawMultiValueStringMap(r.Header),
+		RequestQueryParams: sysutils.SanitizeRawMultiValueStringMap(queryParams),
 	}, nil
 }
 
 // getOAuthMessageForPostRequest extracts the OAuth message from an authorization POST request.
 func (ah *authorizeHandler) getOAuthMessageForPostRequest(r *http.Request) (*OAuthMessage, error) {
-	authZReq, err := utils.DecodeJSONBody[AuthZPostRequest](r)
+	authZReq, err := sysutils.DecodeJSONBody[AuthZPostRequest](r)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode JSON body: %w", err)
 	}
@@ -289,7 +285,7 @@ func (ah *authorizeHandler) writeAuthZResponse(ctx context.Context, w http.Respo
 	authZResp := AuthZPostResponse{
 		RedirectURI: redirectURI,
 	}
-	utils.WriteSuccessResponse(ctx, w, http.StatusOK, authZResp)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, authZResp)
 }
 
 // writeAuthZResponseToErrorPage writes the authorization response redirecting to the error page.

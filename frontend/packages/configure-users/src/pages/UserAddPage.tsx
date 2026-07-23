@@ -32,6 +32,7 @@ import {Send, UserPlus, X} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import useUserRoutes from '../hooks/useUserRoutes';
 
 interface AddUserOption {
   route: string;
@@ -46,10 +47,11 @@ export default function UserAddPage(): JSX.Element {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const logger = useLogger('UserAddPage');
+  const routes = useUserRoutes();
 
   const handleClose = (): void => {
     (async () => {
-      await navigate('/users');
+      await navigate(routes.list());
     })().catch((error: unknown) => {
       logger.error('Failed to navigate to users page', {error});
     });
@@ -65,7 +67,7 @@ export default function UserAddPage(): JSX.Element {
 
   const options: AddUserOption[] = [
     {
-      route: '/users/add/create',
+      route: routes.addCreate(),
       labelKey: 'users:add.type.create.label',
       labelDefault: 'Create User',
       descriptionKey: 'users:add.type.create.description',
@@ -73,7 +75,7 @@ export default function UserAddPage(): JSX.Element {
       icon: <UserPlus size={28} />,
     },
     {
-      route: '/users/add/invite',
+      route: routes.addInvite(),
       labelKey: 'users:add.type.invite.label',
       labelDefault: 'Invite User',
       descriptionKey: 'users:add.type.invite.description',

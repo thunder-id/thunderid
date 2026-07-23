@@ -24,6 +24,7 @@ import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import RoleDeleteDialog from './RoleDeleteDialog';
+import RouteConfig from '../../../configs/RouteConfig';
 import useGetRoles from '../api/useGetRoles';
 import type {RoleSummary} from '../models/role';
 
@@ -52,7 +53,7 @@ export default function RolesList(): JSX.Element {
   const handleViewClick = useCallback(
     (roleId: string): void => {
       (async (): Promise<void> => {
-        await navigate(`/roles/${roleId}`);
+        await navigate(RouteConfig.roles.detail(roleId));
       })().catch((_error: unknown) => {
         logger.error('Failed to navigate to role details', {error: _error, roleId});
       });
@@ -174,7 +175,7 @@ export default function RolesList(): JSX.Element {
             onRowClick={(params) => {
               const roleId = (params.row as RoleSummary).id;
               (async (): Promise<void> => {
-                await navigate(`/roles/${roleId}`);
+                await navigate(RouteConfig.roles.detail(roleId));
               })().catch((_error: unknown) => {
                 logger.error('Failed to navigate to role', {error: _error, roleId});
               });

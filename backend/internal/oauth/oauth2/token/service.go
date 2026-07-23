@@ -194,7 +194,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	}
 
 	// Issue refresh token if applicable.
-	if (grantType == providers.GrantTypeAuthorizationCode || grantType == providers.GrantTypeCIBA) &&
+	if grantType.IssuesRefreshToken() &&
 		oauthApp.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
 		logger.Debug(ctx, "Issuing refresh token for the token request",
 			log.String("client_id", clientID), log.String("grant_type", grantTypeStr))

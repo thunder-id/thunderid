@@ -36,6 +36,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/oauth"
 	"github.com/thunder-id/thunderid/internal/authn/oidc"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
@@ -46,6 +47,7 @@ const (
 	testGoogleIDPID = "google_idp"
 	testClientID    = "test-client-id"
 	testAuthCode    = "auth_code"
+	testNonceValue  = "test-nonce-value"
 )
 
 type GoogleOIDCAuthnServiceTestSuite struct {
@@ -79,11 +81,16 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) SetupTest() {
 
 func (suite *GoogleOIDCAuthnServiceTestSuite) TestBuildAuthorizeURLSuccess() {
 	expectedURL := "https://accounts.google.com/o/oauth2/v2/auth?client_id=test"
-	suite.mockOIDCService.On("BuildAuthorizeURL", mock.Anything, testGoogleIDPID).Return(expectedURL, nil)
+	suite.mockOIDCService.On("BuildAuthorizeURL", mock.Anything, testGoogleIDPID).
+		Return(expectedURL, map[string]string{
+			oauth2const.RequestParamState: "test-state", oauth2const.RequestParamNonce: "test-nonce",
+		}, nil)
 
-	url, err := suite.service.BuildAuthorizeURL(context.Background(), testGoogleIDPID)
+	url, metadata, err := suite.service.BuildAuthorizeURL(context.Background(), testGoogleIDPID)
 	suite.Nil(err)
 	suite.Equal(expectedURL, url)
+	suite.Equal("test-state", metadata[oauth2const.RequestParamState])
+	suite.Equal("test-nonce", metadata[oauth2const.RequestParamNonce])
 }
 
 func (suite *GoogleOIDCAuthnServiceTestSuite) TestExchangeCodeForTokenSuccess() {
@@ -836,11 +843,12 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestGetOAuthClientConfigFailure() 
 func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateSuccess() {
 	now := time.Now()
 	validClaims := map[string]interface{}{
-		"iss": Issuer1,
-		"aud": testClientID,
-		"sub": "user123",
-		"exp": float64(now.Add(1 * time.Hour).Unix()),
-		"iat": float64(now.Add(-1 * time.Minute).Unix()),
+		"iss":   Issuer1,
+		"aud":   testClientID,
+		"sub":   "user123",
+		"exp":   float64(now.Add(1 * time.Hour).Unix()),
+		"iat":   float64(now.Add(-1 * time.Minute).Unix()),
+		"nonce": testNonceValue,
 	}
 	idToken := generateTestJWT(validClaims)
 
@@ -868,7 +876,8 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateSuccess() {
 			AuthenticatedClaims: validClaims,
 		}, nil)
 
-	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID, testAuthCode)
+	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID,
+		common.AuthorizationData{Code: testAuthCode, Nonce: testNonceValue})
 	suite.Nil(err)
 	suite.NotNil(result)
 	suite.Equal("user123", result.Token["sub"])
@@ -879,7 +888,8 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateExchangeCodeFailur
 	suite.mockOIDCService.On("ExchangeCodeForToken", mock.Anything, testGoogleIDPID, testAuthCode, false).
 		Return(nil, &tidcommon.ServiceError{Code: "TOKEN-001"})
 
-	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID, testAuthCode)
+	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID,
+		common.AuthorizationData{Code: testAuthCode})
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal("TOKEN-001", err.Code)
@@ -916,7 +926,8 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateGetIDTokenClaimsFa
 	suite.mockOIDCService.On("GetIDTokenClaims", mock.Anything, idToken).
 		Return(nil, &tidcommon.ServiceError{Code: "CLAIMS-001"})
 
-	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID, testAuthCode)
+	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID,
+		common.AuthorizationData{Code: testAuthCode})
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal("CLAIMS-001", err.Code)
@@ -925,10 +936,11 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateGetIDTokenClaimsFa
 func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateMissingSub() {
 	now := time.Now()
 	claimsWithoutSub := map[string]interface{}{
-		"iss": Issuer1,
-		"aud": testClientID,
-		"exp": float64(now.Add(1 * time.Hour).Unix()),
-		"iat": float64(now.Add(-1 * time.Minute).Unix()),
+		"iss":   Issuer1,
+		"aud":   testClientID,
+		"exp":   float64(now.Add(1 * time.Hour).Unix()),
+		"iat":   float64(now.Add(-1 * time.Minute).Unix()),
+		"nonce": testNonceValue,
 	}
 	idToken := generateTestJWT(claimsWithoutSub)
 
@@ -951,7 +963,8 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateMissingSub() {
 	suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).Return(oAuthConfig, nil)
 	suite.mockOIDCService.On("GetIDTokenClaims", mock.Anything, idToken).Return(claimsWithoutSub, nil)
 
-	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID, testAuthCode)
+	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID,
+		common.AuthorizationData{Code: testAuthCode, Nonce: testNonceValue})
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(common.ErrorSubClaimNotFound.Code, err.Code)
@@ -960,11 +973,12 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateMissingSub() {
 func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateEmptySub() {
 	now := time.Now()
 	claimsWithEmptySub := map[string]interface{}{
-		"iss": Issuer1,
-		"aud": testClientID,
-		"sub": "",
-		"exp": float64(now.Add(1 * time.Hour).Unix()),
-		"iat": float64(now.Add(-1 * time.Minute).Unix()),
+		"iss":   Issuer1,
+		"aud":   testClientID,
+		"sub":   "",
+		"exp":   float64(now.Add(1 * time.Hour).Unix()),
+		"iat":   float64(now.Add(-1 * time.Minute).Unix()),
+		"nonce": testNonceValue,
 	}
 	idToken := generateTestJWT(claimsWithEmptySub)
 
@@ -987,7 +1001,8 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateEmptySub() {
 	suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).Return(oAuthConfig, nil)
 	suite.mockOIDCService.On("GetIDTokenClaims", mock.Anything, idToken).Return(claimsWithEmptySub, nil)
 
-	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID, testAuthCode)
+	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID,
+		common.AuthorizationData{Code: testAuthCode, Nonce: testNonceValue})
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(common.ErrorSubClaimNotFound.Code, err.Code)
@@ -996,11 +1011,12 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateEmptySub() {
 func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateSubNilValue() {
 	now := time.Now()
 	claimsWithNilSub := map[string]interface{}{
-		"iss": Issuer1,
-		"aud": testClientID,
-		"sub": nil,
-		"exp": float64(now.Add(1 * time.Hour).Unix()),
-		"iat": float64(now.Add(-1 * time.Minute).Unix()),
+		"iss":   Issuer1,
+		"aud":   testClientID,
+		"sub":   nil,
+		"exp":   float64(now.Add(1 * time.Hour).Unix()),
+		"iat":   float64(now.Add(-1 * time.Minute).Unix()),
+		"nonce": testNonceValue,
 	}
 	idToken := generateTestJWT(claimsWithNilSub)
 
@@ -1023,7 +1039,8 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateSubNilValue() {
 	suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).Return(oAuthConfig, nil)
 	suite.mockOIDCService.On("GetIDTokenClaims", mock.Anything, idToken).Return(claimsWithNilSub, nil)
 
-	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID, testAuthCode)
+	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID,
+		common.AuthorizationData{Code: testAuthCode, Nonce: testNonceValue})
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(common.ErrorSubClaimNotFound.Code, err.Code)
@@ -1255,6 +1272,104 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestValidateIDToken_Leeway_IatJust
 	suite.NotNil(err)
 	suite.Equal(oidc.ErrorInvalidIDToken.Code, err.Code)
 	suite.Contains(err.ErrorDescription.DefaultValue, "future")
+}
+
+func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateNonceValidationErrors() {
+	now := time.Now()
+
+	testCases := []struct {
+		name              string
+		claims            map[string]interface{}
+		authzNonce        string
+		expectedErrorCode string
+	}{
+		{
+			name: "NonceMissingInIDToken",
+			claims: map[string]interface{}{
+				"iss": Issuer1,
+				"aud": testClientID,
+				"sub": "user123",
+				"exp": float64(now.Add(1 * time.Hour).Unix()),
+				"iat": float64(now.Add(-1 * time.Minute).Unix()),
+			},
+			authzNonce:        testNonceValue,
+			expectedErrorCode: tidcommon.InternalServerError.Code,
+		},
+		{
+			name: "NonceEmptyInIDToken",
+			claims: map[string]interface{}{
+				"iss":   Issuer1,
+				"aud":   testClientID,
+				"sub":   "user123",
+				"exp":   float64(now.Add(1 * time.Hour).Unix()),
+				"iat":   float64(now.Add(-1 * time.Minute).Unix()),
+				"nonce": "",
+			},
+			authzNonce:        testNonceValue,
+			expectedErrorCode: tidcommon.InternalServerError.Code,
+		},
+		{
+			name: "NonceMissingInAuthzData",
+			claims: map[string]interface{}{
+				"iss":   Issuer1,
+				"aud":   testClientID,
+				"sub":   "user123",
+				"exp":   float64(now.Add(1 * time.Hour).Unix()),
+				"iat":   float64(now.Add(-1 * time.Minute).Unix()),
+				"nonce": testNonceValue,
+			},
+			authzNonce:        "",
+			expectedErrorCode: tidcommon.InternalServerError.Code,
+		},
+		{
+			name: "NonceMismatch",
+			claims: map[string]interface{}{
+				"iss":   Issuer1,
+				"aud":   testClientID,
+				"sub":   "user123",
+				"exp":   float64(now.Add(1 * time.Hour).Unix()),
+				"iat":   float64(now.Add(-1 * time.Minute).Unix()),
+				"nonce": "server-generated-nonce",
+			},
+			authzNonce:        "different-nonce-value",
+			expectedErrorCode: tidcommon.InternalServerError.Code,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.mockOIDCService = oidcmock.NewOIDCAuthnServiceInterfaceMock(suite.T())
+			suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
+			suite.service = &googleOIDCAuthnService{
+				internal:   suite.mockOIDCService,
+				jwtService: suite.mockJWTService,
+				logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GoogleOIDCAuthnService")),
+			}
+
+			idToken := generateTestJWT(tc.claims)
+			tokenResp := &oauth.TokenResponse{
+				AccessToken: "access_token", IDToken: idToken, TokenType: "Bearer",
+			}
+			oAuthConfig := &oauth.OAuthClientConfig{
+				ClientID:       testClientID,
+				ClientSecret:   "test-secret",
+				OAuthEndpoints: oauth.OAuthEndpoints{},
+			}
+
+			suite.mockOIDCService.On("ExchangeCodeForToken", mock.Anything, testGoogleIDPID, testAuthCode, false).
+				Return(tokenResp, nil)
+			suite.mockOIDCService.On("ValidateTokenResponse", mock.Anything, testGoogleIDPID, tokenResp, false).
+				Return(nil)
+			suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).Return(oAuthConfig, nil)
+			suite.mockOIDCService.On("GetIDTokenClaims", mock.Anything, idToken).Return(tc.claims, nil)
+
+			result, svcErr := suite.service.Authenticate(context.Background(), testGoogleIDPID,
+				common.AuthorizationData{Code: testAuthCode, Nonce: tc.authzNonce})
+			suite.Nil(result)
+			suite.NotNil(svcErr)
+			suite.Equal(tc.expectedErrorCode, svcErr.Code)
+		})
+	}
 }
 
 func (suite *GoogleOIDCAuthnServiceTestSuite) TestBuildFederatedAuthResultDelegates() {

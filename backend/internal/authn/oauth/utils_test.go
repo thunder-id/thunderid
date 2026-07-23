@@ -651,3 +651,61 @@ func (suite *OAuthUtilsTestSuite) TestSendTokenRequestCloseErrorAndDoReturnsResp
 	suite.Nil(got2)
 	suite.NotNil(err2)
 }
+
+func (suite *OAuthUtilsTestSuite) TestValidateNonce() {
+	tests := []struct {
+		name          string
+		claims        map[string]interface{}
+		expectedNonce string
+		expectError   bool
+	}{
+		{
+			name:          "Success",
+			claims:        map[string]interface{}{"nonce": "abc123"},
+			expectedNonce: "abc123",
+			expectError:   false,
+		},
+		{
+			name:          "MissingNonceInClaims",
+			claims:        map[string]interface{}{},
+			expectedNonce: "abc123",
+			expectError:   true,
+		},
+		{
+			name:          "EmptyNonceInClaims",
+			claims:        map[string]interface{}{"nonce": ""},
+			expectedNonce: "abc123",
+			expectError:   true,
+		},
+		{
+			name:          "NonStringNonceInClaims",
+			claims:        map[string]interface{}{"nonce": 12345},
+			expectedNonce: "abc123",
+			expectError:   true,
+		},
+		{
+			name:          "EmptyExpectedNonce",
+			claims:        map[string]interface{}{"nonce": "abc123"},
+			expectedNonce: "",
+			expectError:   true,
+		},
+		{
+			name:          "Mismatch",
+			claims:        map[string]interface{}{"nonce": "abc123"},
+			expectedNonce: "xyz789",
+			expectError:   true,
+		},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			err := ValidateNonce(context.Background(), tc.claims, tc.expectedNonce, log.GetLogger())
+			if tc.expectError {
+				suite.NotNil(err)
+				suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+			} else {
+				suite.Nil(err)
+			}
+		})
+	}
+}

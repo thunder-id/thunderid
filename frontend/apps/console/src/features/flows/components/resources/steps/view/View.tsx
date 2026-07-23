@@ -16,19 +16,8 @@
  * under the License.
  */
 
-import {
-  Box,
-  Button,
-  FormGroup,
-  IconButton,
-  Menu,
-  MenuItem,
-  Paper,
-  Tooltip,
-  Typography,
-  type Theme,
-} from '@wso2/oxygen-ui';
-import {CogIcon, PlusIcon, TrashIcon} from '@wso2/oxygen-ui-icons-react';
+import {Box, Button, FormGroup, IconButton, Menu, MenuItem, Paper, Tooltip, type Theme} from '@wso2/oxygen-ui';
+import {CogIcon, EyeIcon, PlusIcon, TrashIcon} from '@wso2/oxygen-ui-icons-react';
 import {Handle, Position, useNodeId, useReactFlow} from '@xyflow/react';
 import {
   Fragment,
@@ -45,8 +34,10 @@ import dashedAddButtonSx from './dashedAddButtonSx';
 import ReorderableViewElement from './ReorderableElement';
 import Droppable from '../../../dnd/Droppable';
 import GapDropZone from '../../../dnd/GapDropZone';
+import StepTitle from '../StepTitle';
 import VisualFlowConstants from '@/features/flows/constants/VisualFlowConstants';
 import useFlowPlugins from '@/features/flows/hooks/useFlowPlugins';
+import useStepPreview from '@/features/flows/hooks/useStepPreview';
 import type {Element} from '@/features/flows/models/elements';
 import type {StepData} from '@/features/flows/models/steps';
 import generateResourceId from '@/features/flows/utils/generateResourceId';
@@ -83,11 +74,12 @@ export interface ViewPropsInterface extends Omit<HTMLAttributes<HTMLDivElement>,
    */
   enableSourceHandle?: boolean;
   /**
-   * Event handler for double click on the action panel.
+   * Event handler for clicks on the action panel (header). Clicks on the header's
+   * own buttons and inputs are excluded.
    *
    * @param event - The mouse event.
    */
-  onActionPanelDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
+  onActionPanelClick?: (event: MouseEvent<HTMLDivElement>) => void;
   /**
    * Is the view deletable.
    */
@@ -131,7 +123,7 @@ function View({
   // droppableRestrictedTypes = undefined,
   enableSourceHandle = false,
   data = undefined,
-  onActionPanelDoubleClick = undefined,
+  onActionPanelClick = undefined,
   className,
   deletable = true,
   configurable = false,
@@ -149,6 +141,7 @@ function View({
   const stepId: string | null = useNodeId();
   const {deleteElements, getNode} = useReactFlow();
   const {emitElementFilter} = useFlowPlugins();
+  const previewStep = useStepPreview();
 
   // Get current node - use getNode instead of useNodesData to avoid re-renders
   const currentNode = useMemo(() => (stepId ? getNode(stepId) : undefined), [stepId, getNode]);
@@ -214,24 +207,49 @@ function View({
         display="flex"
         justifyContent="space-between"
         alignItems="center"
-        onDoubleClick={onActionPanelDoubleClick}
+        onClick={(event: MouseEvent<HTMLDivElement>) => {
+          // The header's own controls (add/configure/delete, title rename input)
+          // have their own actions.
+          if ((event.target as HTMLElement).closest('button, input')) {
+            return;
+          }
+          onActionPanelClick?.(event);
+        }}
         sx={{
-          backgroundColor: 'secondary.main',
+          backgroundColor: '#151515',
           px: 2,
           py: 1.25,
           height: 44,
+          gap: 1.5,
+          cursor: onActionPanelClick ? 'pointer' : undefined,
         }}
       >
-        <Typography
-          variant="body2"
-          sx={{
-            color: 'common.white',
-            fontWeight: 500,
-          }}
-        >
-          {heading ?? 'View'}
-        </Typography>
+        <StepTitle label={heading} />
         <Box display="flex" gap={0.5}>
+          {previewStep && stepId && (
+            <Tooltip title={t('flows:core.steps.view.preview', 'Preview this screen')}>
+              <IconButton
+                size="small"
+                onClick={() => previewStep(stepId)}
+                data-testid="view-preview-button"
+                sx={(theme: Theme) => ({
+                  color: 'common.white',
+                  '&:hover': {
+                    ...theme.applyStyles('dark', {
+                      backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                      color: 'common.white',
+                    }),
+                    ...theme.applyStyles('light', {
+                      backgroundColor: 'rgba(0, 0, 0, 0.1)',
+                      color: 'common.white',
+                    }),
+                  },
+                })}
+              >
+                <EyeIcon size={18} />
+              </IconButton>
+            </Tooltip>
+          )}
           {filteredAvailableElements.length > 0 && (
             <Tooltip title={t('flows:core.steps.view.addComponent')}>
               <IconButton

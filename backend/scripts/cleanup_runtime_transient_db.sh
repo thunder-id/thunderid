@@ -25,12 +25,9 @@ set -euo pipefail
 # manually (one-shot) or scheduled via cron for periodic cleanup.
 #
 # Tables cleaned (in order):
-#   1. AUTHORIZATION_CODE
-#   2. AUTHORIZATION_REQUEST
-#   3. WEBAUTHN_SESSION
-#   4. PAR_REQUEST
-#   5. JTI_RECORD
-#   6. RUNTIME_STORE
+#   1. WEBAUTHN_SESSION
+#   2. CIBA_AUTH_REQUEST
+#   2. RUNTIME_STORE
 #
 # Usage examples:
 #   # SQLite (local development)
@@ -70,7 +67,7 @@ USERNAME=""
 PASSWORD=""
 
 # Tables to clean
-TABLES=("AUTHORIZATION_CODE" "AUTHORIZATION_REQUEST" "WEBAUTHN_SESSION" "PAR_REQUEST" "JTI_RECORD" "RUNTIME_STORE")
+TABLES=("WEBAUTHN_SESSION" "CIBA_AUTH_REQUEST" "RUNTIME_STORE")
 
 # Totals for summary.
 TOTAL_DELETED=0

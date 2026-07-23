@@ -1,0 +1,437 @@
+---
+toc_progress: quickstart
+title: Node.js Quickstart
+docType: quickstart
+sidebar_position: 5
+persona: app
+description: Add {{ProductName}} authentication to a vanilla Node.js application using the @thunderid/node SDK.
+---
+
+import {
+  Boxes,
+  Package,
+  LogIn,
+  BookOpen,
+  Clock,
+  Server,
+  Hexagon,
+  FileCode,
+} from '@wso2/oxygen-ui-icons-react';
+
+# Node.js Quickstart
+
+Use this guide to add <ProductName /> authentication to a vanilla Node.js application using the `@thunderid/node` SDK and the built-in `http` module. No framework required.
+
+<TutorialHero>
+
+## What You Will Learn
+
+<TutorialHeroItem icon={<Boxes />}>Create a Node.js project</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>Install the <code>@thunderid/node</code> package</TutorialHeroItem>
+<TutorialHeroItem icon={<LogIn />}>Add working sign-in and sign-out routes</TutorialHeroItem>
+<TutorialHeroItem icon={<BookOpen />}>Protect routes and display the signed-in user's profile</TutorialHeroItem>
+
+## Prerequisites
+
+<TutorialHeroItem icon={<Clock />}>About 15 minutes</TutorialHeroItem>
+<TutorialHeroItem icon={<Hexagon />}>Node.js 18+ installed on your system</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>npm, yarn, or pnpm</TutorialHeroItem>
+<TutorialHeroItem icon={<FileCode />}>Your preferred code editor</TutorialHeroItem>
+
+</TutorialHero>
+
+<Stepper stepNode="h2" as="h2">
+
+## Run <ProductName />
+
+Start a local <ProductName /> instance. Pick the method that works best for you:
+
+<RunThunderID />
+
+Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
+
+## Create an Application
+
+1. Sign in to the Console.
+
+    :::info Test User
+    If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
+    :::
+
+2. Navigate to **Applications**, and click **Add Application**.
+
+3. Under **Technology**, select **Node.js**.
+4. Enter a name (e.g. `My Node.js App`) and create an application. The rest of the settings can stay at their defaults.
+5. Copy both the **Client ID** and **Client Secret** from the window that pops up. The Client ID can also be found in the **General** tab.
+6. Under **General**, add `http://localhost:3000/callback` to the list of **Authorized Redirect URIs**.
+
+## Create a Node.js Project
+
+Initialize a new Node.js project:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    mkdir my-node-app
+    cd my-node-app
+    npm init -y
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    mkdir my-node-app
+    cd my-node-app
+    yarn init -y
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    mkdir my-node-app
+    cd my-node-app
+    pnpm init
+  </CodeBlock>
+</CodeGroup>
+
+## Install @thunderid/node
+
+Install the <ProductName /> Node.js SDK:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm install @thunderid/node
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn add @thunderid/node
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm add @thunderid/node
+  </CodeBlock>
+</CodeGroup>
+
+## Initialize the Client
+
+Create an `index.js` file and initialize the `ThunderIDNodeClient` with your application credentials:
+
+```js title="index.js" showLineNumbers
+const http = require('http');
+const { URL } = require('url');
+const { randomUUID } = require('crypto');
+const { ThunderIDNodeClient } = require('@thunderid/node');
+
+const PORT = 3000;
+const SESSION_COOKIE = 'tid_session';
+
+const auth = new ThunderIDNodeClient();
+
+function getSessionId(req) {
+  const cookieHeader = req.headers.cookie ?? '';
+  for (const part of cookieHeader.split(';')) {
+    const [name, value] = part.trim().split('=');
+    if (name === SESSION_COOKIE) return decodeURIComponent(value);
+  }
+  return null;
+}
+
+async function main() {
+  await auth.initialize({
+    clientId: '<your-client-id>',
+    clientSecret: '<your-client-secret>',
+    baseUrl: 'https://localhost:8090',
+    afterSignInUrl: 'http://localhost:3000/callback',
+    afterSignOutUrl: 'http://localhost:3000',
+  });
+
+  const server = http.createServer(async (req, res) => {
+    // routes added in the next step
+  });
+
+  server.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+main();
+```
+
+:::warning Configuration
+Replace `<your-client-id>` and `<your-client-secret>` with the values from your <ProductName /> application. Set the authorized redirect URL in your application settings to `http://localhost:3000/callback`.
+:::
+
+### Configuration Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `clientId` | The Client ID from your <ProductName /> application |
+| `clientSecret` | The Client Secret from your <ProductName /> application |
+| `baseUrl` | Your <ProductName /> instance URL (e.g., `https://localhost:8090`) |
+| `afterSignInUrl` | The callback URL <ProductName /> redirects to after sign-in |
+| `afterSignOutUrl` | The URL to redirect to after sign-out |
+
+## Add Sign-In and Sign-Out Routes
+
+The `signIn` method works in two phases: it first redirects the user to <ProductName />, then handles the authorization code on the callback. Session state is tied to a session ID stored in a cookie.
+
+Replace the `// routes added in the next step` comment with:
+
+```js title="index.js" showLineNumbers
+    const url = new URL(req.url, `http://localhost:${PORT}`);
+
+    try {
+      if (url.pathname === '/login') {
+        let sessionId = getSessionId(req);
+        const extraHeaders = {};
+        if (!sessionId) {
+          sessionId = randomUUID();
+          extraHeaders['Set-Cookie'] =
+            `${SESSION_COOKIE}=${sessionId}; HttpOnly; SameSite=Lax; Path=/`;
+        }
+        await auth.signIn((authUrl) => {
+          res.writeHead(302, { ...extraHeaders, Location: authUrl });
+          res.end();
+        }, sessionId);
+
+      } else if (url.pathname === '/callback') {
+        const code = url.searchParams.get('code');
+        const state = url.searchParams.get('state');
+        const sessionState = url.searchParams.get('session_state');
+        const sessionId = getSessionId(req);
+
+        if (!sessionId || !code || !state) {
+          res.writeHead(400);
+          return res.end('Bad request');
+        }
+
+        await auth.signIn(() => {}, sessionId, code, sessionState, state);
+        res.writeHead(302, { Location: '/profile' });
+        res.end();
+
+      } else if (url.pathname === '/logout') {
+        const sessionId = getSessionId(req);
+        if (!sessionId) {
+          res.writeHead(302, { Location: '/' });
+          return res.end();
+        }
+        const signOutUrl = await auth.signOut(sessionId);
+        res.writeHead(302, {
+          Location: signOutUrl,
+          'Set-Cookie': `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`,
+        });
+        res.end();
+
+      }
+    } catch {
+      res.writeHead(500);
+      res.end('Internal server error');
+    }
+```
+
+**How the sign-in flow works:**
+
+1. `GET /login`: generates a session ID, stores it in a cookie, and calls `signIn` with an `authUrlCallback`. The callback receives the <ProductName /> authorization URL and redirects the user's browser there.
+2. `GET /callback`: <ProductName /> redirects back with `code` and `state` query parameters. Calling `signIn` again with those values exchanges the code for tokens and stores the session.
+3. `GET /logout`: calls `signOut` to get the OIDC end-session URL, clears the local cookie, then redirects the browser to complete the logout at <ProductName />.
+
+## Protect a Route and Display User Info
+
+Use `isSignedIn` to guard routes and `getUser` to retrieve the authenticated user's profile. Add these inside the same `try` block, before the closing `}`:
+
+```js title="index.js" showLineNumbers
+      if (url.pathname === '/') {
+        const sessionId = getSessionId(req);
+        const signedIn = sessionId && (await auth.isSignedIn(sessionId));
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(signedIn
+          ? '<a href="/profile">View profile</a> | <a href="/logout">Sign out</a>'
+          : '<a href="/login">Sign in</a>'
+        );
+
+      } else if (url.pathname === '/profile') {
+        const sessionId = getSessionId(req);
+        if (!sessionId || !(await auth.isSignedIn(sessionId))) {
+          res.writeHead(302, { Location: '/login' });
+          return res.end();
+        }
+        const user = await auth.getUser(sessionId);
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+          <h1>Welcome, ${user.name || user.username}!</h1>
+          <p><strong>Email:</strong> ${user.email}</p>
+          <p><strong>First name:</strong> ${user.given_name}</p>
+          <p><strong>Last name:</strong> ${user.family_name}</p>
+          <a href="/logout">Sign out</a>
+        `);
+
+      } else if (url.pathname === '/login') {
+```
+
+## Complete index.js
+
+Here is the full file for reference:
+
+```js title="index.js" showLineNumbers
+const http = require('http');
+const { URL } = require('url');
+const { randomUUID } = require('crypto');
+const { ThunderIDNodeClient } = require('@thunderid/node');
+
+const PORT = 3000;
+const SESSION_COOKIE = 'tid_session';
+
+const auth = new ThunderIDNodeClient();
+
+function getSessionId(req) {
+  const cookieHeader = req.headers.cookie ?? '';
+  for (const part of cookieHeader.split(';')) {
+    const [name, value] = part.trim().split('=');
+    if (name === SESSION_COOKIE) return decodeURIComponent(value);
+  }
+  return null;
+}
+
+async function main() {
+  await auth.initialize({
+    clientId: '<your-client-id>',
+    clientSecret: '<your-client-secret>',
+    baseUrl: 'https://localhost:8090',
+    afterSignInUrl: 'http://localhost:3000/callback',
+    afterSignOutUrl: 'http://localhost:3000',
+  });
+
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url, `http://localhost:${PORT}`);
+
+    try {
+      if (url.pathname === '/') {
+        const sessionId = getSessionId(req);
+        const signedIn = sessionId && (await auth.isSignedIn(sessionId));
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(signedIn
+          ? '<a href="/profile">View profile</a> | <a href="/logout">Sign out</a>'
+          : '<a href="/login">Sign in</a>'
+        );
+
+      } else if (url.pathname === '/profile') {
+        const sessionId = getSessionId(req);
+        if (!sessionId || !(await auth.isSignedIn(sessionId))) {
+          res.writeHead(302, { Location: '/login' });
+          return res.end();
+        }
+        const user = await auth.getUser(sessionId);
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+          <h1>Welcome, ${user.name || user.username}!</h1>
+          <p><strong>Email:</strong> ${user.email}</p>
+          <p><strong>First name:</strong> ${user.given_name}</p>
+          <p><strong>Last name:</strong> ${user.family_name}</p>
+          <a href="/logout">Sign out</a>
+        `);
+
+      } else if (url.pathname === '/login') {
+        let sessionId = getSessionId(req);
+        const extraHeaders = {};
+        if (!sessionId) {
+          sessionId = randomUUID();
+          extraHeaders['Set-Cookie'] =
+            `${SESSION_COOKIE}=${sessionId}; HttpOnly; SameSite=Lax; Path=/`;
+        }
+        await auth.signIn((authUrl) => {
+          res.writeHead(302, { ...extraHeaders, Location: authUrl });
+          res.end();
+        }, sessionId);
+
+      } else if (url.pathname === '/callback') {
+        const code = url.searchParams.get('code');
+        const state = url.searchParams.get('state');
+        const sessionState = url.searchParams.get('session_state');
+        const sessionId = getSessionId(req);
+
+        if (!sessionId || !code || !state) {
+          res.writeHead(400);
+          return res.end('Bad request');
+        }
+
+        await auth.signIn(() => {}, sessionId, code, sessionState, state);
+        res.writeHead(302, { Location: '/profile' });
+        res.end();
+
+      } else if (url.pathname === '/logout') {
+        const sessionId = getSessionId(req);
+        if (!sessionId) {
+          res.writeHead(302, { Location: '/' });
+          return res.end();
+        }
+        const signOutUrl = await auth.signOut(sessionId);
+        res.writeHead(302, {
+          Location: signOutUrl,
+          'Set-Cookie': `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`,
+        });
+        res.end();
+
+      } else {
+        res.writeHead(404);
+        res.end('Not found');
+      }
+    } catch {
+      res.writeHead(500);
+      res.end('Internal server error');
+    }
+  });
+
+  server.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+main();
+```
+
+## Run Your App
+
+Start the server:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    node index.js
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn node index.js
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm node index.js
+  </CodeBlock>
+</CodeGroup>
+
+Open [http://localhost:3000](http://localhost:3000).
+
+:::note Test credentials
+You'll need a user to sign in with. If you haven't created one yet, open <ConsoleUrl />, navigate to **Users**, and add a test user with an email and password.
+:::
+
+:::tip Success
+You should see the sign-in link. Click it to be redirected to the <ProductName />-hosted sign-in page. After authenticating with your test user, you'll return to the `/profile` route with your user profile displayed.
+:::
+
+</Stepper>
+
+## What's Next
+
+<div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginTop: '1.5rem'}}>
+
+  <a href="../../../guides/flows/what-are-flows" style={{textDecoration: 'none', color: 'inherit'}}>
+    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
+      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Upgrade the sign-in flow</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Add MFA, passkeys, or social login to your flow without changing your route wiring.</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>Flow Designer →</div>
+    </div>
+  </a>
+
+  <a href="../../../../sdks/node/overview" style={{textDecoration: 'none', color: 'inherit'}}>
+    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
+      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Node.js SDK Reference</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Explore the full API reference for the <ProductName /> Node.js SDK.</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>API Reference →</div>
+    </div>
+  </a>
+
+</div>

@@ -16,10 +16,11 @@
  * under the License.
  */
 
-import {Box, Button, FormControl, FormLabel, IconButton, Stack, TextField, Tooltip} from '@wso2/oxygen-ui';
+import {Box, FormControl, FormLabel, IconButton, Stack, TextField, Tooltip} from '@wso2/oxygen-ui';
 import {Plus, Trash} from '@wso2/oxygen-ui-icons-react';
 import {useState, type ReactElement} from 'react';
 import {useTranslation} from 'react-i18next';
+import PanelActionButton from './PanelActionButton';
 import type {Resource} from '../../models/resources';
 
 const parseClasses = (value: string): string[] => {
@@ -117,9 +118,9 @@ function ClassesPropertyField({
           ))}
 
           <Box>
-            <Button variant="outlined" startIcon={<Plus />} onClick={handleAdd} size="small">
+            <PanelActionButton startIcon={<Plus size={16} />} onClick={handleAdd}>
               {t('flows:core.elements.classesPropertyField.addClass')}
-            </Button>
+            </PanelActionButton>
           </Box>
         </Stack>
       </FormControl>

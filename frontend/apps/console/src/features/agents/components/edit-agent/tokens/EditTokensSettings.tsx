@@ -64,11 +64,20 @@ export default function EditTokensSettings({
   return (
     <Box>
       <Tabs value={subTab} onChange={handleSubTabChange} aria-label="agent token settings sub-tabs">
-        <Tab label={t('agents:edit.tokens.tabs.user', 'User')} sx={{textTransform: 'none'}} />
         <Tab label={t('agents:edit.tokens.tabs.agent', 'Agent')} sx={{textTransform: 'none'}} />
+        <Tab label={t('agents:edit.tokens.tabs.user', 'User')} sx={{textTransform: 'none'}} />
       </Tabs>
       <Box sx={{pt: 3}}>
         {subTab === 0 && (
+          <AgentAccessTokenSection
+            agent={agent}
+            editedAgent={editedAgent}
+            oauth2Config={oauth2Config}
+            onFieldChange={onFieldChange}
+            onValidationChange={setAgentTabHasError}
+          />
+        )}
+        {subTab === 1 && (
           <DelegationLockNotice
             isUnlocked={isUnlocked}
             message={t(
@@ -88,15 +97,6 @@ export default function EditTokensSettings({
               />
             </Stack>
           </DelegationLockNotice>
-        )}
-        {subTab === 1 && (
-          <AgentAccessTokenSection
-            agent={agent}
-            editedAgent={editedAgent}
-            oauth2Config={oauth2Config}
-            onFieldChange={onFieldChange}
-            onValidationChange={setAgentTabHasError}
-          />
         )}
       </Box>
     </Box>

@@ -23,128 +23,197 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
-type stubProvider struct {
-	usages []ResourceDependency
-	err    error
+// providerCascadeMock combines the generated ProviderMock and CascadeDeleterMock so a single value
+// satisfies both interfaces — needed because Registry uses a type assertion to select cascade-capable
+// providers.
+type providerCascadeMock struct {
+	*ProviderMock
+	*CascadeDeleterMock
 }
 
-func (s *stubProvider) GetResourceDependencies(
-	_ context.Context, _, _ string) ([]ResourceDependency, error) {
-	return s.usages, s.err
+// providerValidatorMock combines ProviderMock and UpdateValidatorMock so a single value satisfies
+// both interfaces for the update-validation type assertion.
+type providerValidatorMock struct {
+	*ProviderMock
+	*UpdateValidatorMock
 }
 
-func TestGetDependenciesAggregatesAcrossProviders(t *testing.T) {
+type RegistryTestSuite struct {
+	suite.Suite
+}
+
+func TestRegistryTestSuite(t *testing.T) {
+	suite.Run(t, new(RegistryTestSuite))
+}
+
+func (suite *RegistryTestSuite) newProvider(usages []ResourceDependency, err error) *ProviderMock {
+	p := NewProviderMock(suite.T())
+	p.EXPECT().GetResourceDependencies(mock.Anything, mock.Anything, mock.Anything).
+		Return(usages, err).Maybe()
+	return p
+}
+
+// ----- GetDependencies -----
+
+func (suite *RegistryTestSuite) TestGetDependenciesAggregatesAcrossProviders() {
 	reg := newRegistry()
-	reg.RegisterProvider(&stubProvider{usages: []ResourceDependency{
+	reg.RegisterProvider(suite.newProvider([]ResourceDependency{
 		{ResourceType: "application", ID: "a1", DisplayName: "App 1", BehaviorOnDelete: BehaviorFallback},
 		{ResourceType: "application", ID: "a2", DisplayName: "App 2", BehaviorOnDelete: BehaviorFallback},
-	}})
-	reg.RegisterProvider(&stubProvider{usages: []ResourceDependency{
+	}, nil))
+	reg.RegisterProvider(suite.newProvider([]ResourceDependency{
 		{ResourceType: "agent", ID: "g1", DisplayName: "Agent 1", BehaviorOnDelete: BehaviorFallback},
-	}})
+	}, nil))
 
 	resp, err := reg.GetDependencies(context.Background(), "theme", "t1")
 
-	assert.NoError(t, err)
-	assert.NotNil(t, resp.TotalResults)
-	assert.Equal(t, 3, *resp.TotalResults)
-	assert.Equal(t, 3, resp.Count)
-	assert.Len(t, resp.Usages, 3)
-	assert.Equal(t, map[string]int{"application": 2, "agent": 1}, resp.Summary)
+	suite.Require().NoError(err)
+	suite.Require().NotNil(resp.TotalResults)
+	suite.Equal(3, *resp.TotalResults)
+	suite.Equal(3, resp.Count)
+	suite.Len(resp.Usages, 3)
+	suite.Equal(map[string]int{"application": 2, "agent": 1}, resp.Summary)
 }
 
-func TestGetDependenciesProviderErrorReturnsUnknown(t *testing.T) {
+func (suite *RegistryTestSuite) TestGetDependenciesProviderErrorReturnsUnknown() {
 	reg := newRegistry()
-	reg.RegisterProvider(&stubProvider{usages: []ResourceDependency{
+	reg.RegisterProvider(suite.newProvider([]ResourceDependency{
 		{ResourceType: "application", ID: "a1", DisplayName: "App 1", BehaviorOnDelete: BehaviorFallback},
-	}})
-	reg.RegisterProvider(&stubProvider{err: errors.New("lookup failed")})
+	}, nil))
+	reg.RegisterProvider(suite.newProvider(nil, errors.New("lookup failed")))
 
 	resp, err := reg.GetDependencies(context.Background(), "theme", "t1")
 
-	assert.NoError(t, err)
-	assert.Nil(t, resp.TotalResults)
-	assert.Nil(t, resp.Summary)
-	assert.Equal(t, 0, resp.Count)
-	assert.Empty(t, resp.Usages)
+	suite.Require().NoError(err)
+	suite.Nil(resp.TotalResults)
+	suite.Nil(resp.Summary)
+	suite.Equal(0, resp.Count)
+	suite.Empty(resp.Usages)
 }
 
-func TestRegisterProviderIgnoresNil(t *testing.T) {
+func (suite *RegistryTestSuite) TestRegisterProviderIgnoresNil() {
 	reg := newRegistry()
 	reg.RegisterProvider(nil)
-	reg.RegisterProvider(&stubProvider{usages: []ResourceDependency{
+	reg.RegisterProvider(suite.newProvider([]ResourceDependency{
 		{ResourceType: "application", ID: "a1", DisplayName: "App 1", BehaviorOnDelete: BehaviorFallback},
-	}})
+	}, nil))
 
 	resp, err := reg.GetDependencies(context.Background(), "theme", "t1")
 
-	assert.NoError(t, err)
-	assert.NotNil(t, resp.TotalResults)
-	assert.Equal(t, 1, *resp.TotalResults)
-	assert.Len(t, resp.Usages, 1)
+	suite.Require().NoError(err)
+	suite.Require().NotNil(resp.TotalResults)
+	suite.Equal(1, *resp.TotalResults)
+	suite.Len(resp.Usages, 1)
 }
 
-func TestGetDependenciesNoProvidersReturnsEmpty(t *testing.T) {
+func (suite *RegistryTestSuite) TestGetDependenciesNoProvidersReturnsEmpty() {
 	reg := newRegistry()
 
 	resp, err := reg.GetDependencies(context.Background(), "theme", "t1")
 
-	assert.NoError(t, err)
-	assert.NotNil(t, resp.TotalResults)
-	assert.Equal(t, 0, *resp.TotalResults)
-	assert.Empty(t, resp.Usages)
-	assert.Empty(t, resp.Summary)
+	suite.Require().NoError(err)
+	suite.Require().NotNil(resp.TotalResults)
+	suite.Equal(0, *resp.TotalResults)
+	suite.Empty(resp.Usages)
+	suite.Empty(resp.Summary)
 }
 
-// cascadeStubProvider is a provider that also implements CascadeDeleter.
-type cascadeStubProvider struct {
-	usages  []ResourceDependency
-	deleted int
-	err     error
+// ----- CascadeDelete -----
+
+func (suite *RegistryTestSuite) newCascadeProvider(deleted int, err error) providerCascadeMock {
+	p := NewProviderMock(suite.T())
+	p.EXPECT().GetResourceDependencies(mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, nil).Maybe()
+	c := NewCascadeDeleterMock(suite.T())
+	c.EXPECT().CascadeDeleteDependencies(mock.Anything, mock.Anything, mock.Anything).
+		Return(deleted, err).Maybe()
+	return providerCascadeMock{ProviderMock: p, CascadeDeleterMock: c}
 }
 
-func (s *cascadeStubProvider) GetResourceDependencies(
-	_ context.Context, _, _ string) ([]ResourceDependency, error) {
-	return s.usages, nil
-}
-
-func (s *cascadeStubProvider) CascadeDeleteDependencies(_ context.Context, _, _ string) (int, error) {
-	return s.deleted, s.err
-}
-
-func TestCascadeDeleteSumsAcrossProvidersAndSkipsNonCascaders(t *testing.T) {
+func (suite *RegistryTestSuite) TestCascadeDeleteSumsAcrossProvidersAndSkipsNonCascaders() {
 	reg := newRegistry()
 	// A plain provider (no CascadeDeleter) must be skipped, not fail.
-	reg.RegisterProvider(&stubProvider{usages: []ResourceDependency{}})
-	reg.RegisterProvider(&cascadeStubProvider{deleted: 2})
-	reg.RegisterProvider(&cascadeStubProvider{deleted: 3})
+	reg.RegisterProvider(suite.newProvider(nil, nil))
+	reg.RegisterProvider(suite.newCascadeProvider(2, nil))
+	reg.RegisterProvider(suite.newCascadeProvider(3, nil))
 
 	deleted, err := reg.CascadeDelete(context.Background(), "user", "u1")
 
-	assert.NoError(t, err)
-	assert.Equal(t, 5, deleted)
+	suite.Require().NoError(err)
+	suite.Equal(5, deleted)
 }
 
-func TestCascadeDeleteStopsOnProviderError(t *testing.T) {
+func (suite *RegistryTestSuite) TestCascadeDeleteStopsOnProviderError() {
 	reg := newRegistry()
-	reg.RegisterProvider(&cascadeStubProvider{deleted: 1})
-	reg.RegisterProvider(&cascadeStubProvider{err: errors.New("delete failed")})
+	reg.RegisterProvider(suite.newCascadeProvider(1, nil))
+	reg.RegisterProvider(suite.newCascadeProvider(0, errors.New("delete failed")))
 
 	deleted, err := reg.CascadeDelete(context.Background(), "user", "u1")
 
-	assert.Error(t, err)
-	assert.Equal(t, 1, deleted)
+	suite.Require().Error(err)
+	suite.Equal(1, deleted)
 }
 
-func TestCascadeDeleteNoProvidersReturnsZero(t *testing.T) {
+func (suite *RegistryTestSuite) TestCascadeDeleteNoProvidersReturnsZero() {
 	reg := newRegistry()
-	reg.RegisterProvider(&stubProvider{usages: []ResourceDependency{}})
+	reg.RegisterProvider(suite.newProvider(nil, nil))
 
 	deleted, err := reg.CascadeDelete(context.Background(), "user", "u1")
 
-	assert.NoError(t, err)
-	assert.Equal(t, 0, deleted)
+	suite.Require().NoError(err)
+	suite.Equal(0, deleted)
+}
+
+// ----- ValidateReferenceUpdate -----
+
+func (suite *RegistryTestSuite) newValidatorProvider(
+	validateErr *tidcommon.ServiceError) providerValidatorMock {
+	p := NewProviderMock(suite.T())
+	p.EXPECT().GetResourceDependencies(mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, nil).Maybe()
+	v := NewUpdateValidatorMock(suite.T())
+	v.EXPECT().ValidateReferenceUpdate(mock.Anything, mock.Anything, mock.Anything).
+		Return(validateErr).Maybe()
+	return providerValidatorMock{ProviderMock: p, UpdateValidatorMock: v}
+}
+
+func (suite *RegistryTestSuite) TestValidateReferenceUpdateNoValidatorsReturnsNil() {
+	reg := newRegistry()
+	reg.RegisterProvider(suite.newProvider(nil, nil))
+
+	svcErr := reg.ValidateReferenceUpdate(context.Background(), "flow", "f1")
+
+	suite.Nil(svcErr)
+}
+
+func (suite *RegistryTestSuite) TestValidateReferenceUpdateAllPassReturnsNil() {
+	reg := newRegistry()
+	reg.RegisterProvider(suite.newValidatorProvider(nil))
+	reg.RegisterProvider(suite.newValidatorProvider(nil))
+
+	svcErr := reg.ValidateReferenceUpdate(context.Background(), "flow", "f1")
+
+	suite.Nil(svcErr)
+}
+
+func (suite *RegistryTestSuite) TestValidateReferenceUpdateStopsOnFirstError() {
+	reg := newRegistry()
+	failure := &tidcommon.ServiceError{Code: "X", Type: tidcommon.ClientErrorType}
+	first := suite.newValidatorProvider(failure)
+	second := suite.newValidatorProvider(nil)
+	reg.RegisterProvider(first)
+	reg.RegisterProvider(second)
+
+	svcErr := reg.ValidateReferenceUpdate(context.Background(), "flow", "f1")
+
+	suite.Equal(failure, svcErr)
+	// The second provider's validator must not be invoked once the first returned an error.
+	second.UpdateValidatorMock.AssertNotCalled(suite.T(), "ValidateReferenceUpdate",
+		mock.Anything, mock.Anything, mock.Anything)
 }

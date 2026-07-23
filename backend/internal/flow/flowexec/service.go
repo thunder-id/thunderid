@@ -810,6 +810,7 @@ func (s *flowExecService) InitiateFlow(ctx context.Context,
 
 	// Replace the RuntimeData with initContext RuntimeData
 	engineCtx.RuntimeData = initContext.RuntimeData
+	engineCtx.SetInitiatorRequest(initContext.InitiatorRequest)
 
 	// Store the context without executing the flow
 	if storeErr := s.storeContext(ctx, engineCtx, 0, logger); storeErr != nil {
@@ -859,6 +860,7 @@ func (s *flowExecService) InitiateAndExecute(ctx context.Context,
 	}
 
 	engineCtx.RuntimeData = initContext.RuntimeData
+	engineCtx.SetInitiatorRequest(initContext.InitiatorRequest)
 	prepareContext(engineCtx, "", initContext.InitialInputs)
 
 	flowStep, flowErr := s.flowEngine.Execute(engineCtx)

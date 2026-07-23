@@ -25,6 +25,7 @@ import (
 
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -291,6 +292,50 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_Success() {
 			suite.mockTokenBuilder.AssertExpectations(t)
 		})
 	}
+}
+
+// A scopeless request (not bound to a resource server) uses the app's configured default audience
+// for the aud claim instead of the client_id.
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ScopelessUsesConfiguredDefaultAudience() {
+	suite.mockJWTService.Mock = mock.Mock{}
+	suite.oauthApp.Token = &providers.OAuthTokenConfig{
+		AccessToken: &providers.AccessTokenConfig{
+			DefaultAudience: "https://api.example.com/booking",
+		},
+	}
+
+	tokenRequest := &model.TokenRequest{
+		GrantType:    "client_credentials",
+		ClientID:     testClientID,
+		ClientSecret: "secret123",
+		Scope:        "",
+	}
+
+	expectedAudiences := []string{"https://api.example.com/booking"}
+	suite.mockTokenBuilder.On("BuildAccessToken",
+		mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.Subject == testEntityID &&
+				slices.Equal(ctx.Audiences, expectedAudiences) &&
+				ctx.ClientID == testClientID &&
+				len(ctx.Scopes) == 0
+		})).Return(&model.TokenDTO{
+		Token:     testJWTToken,
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  int64(1234567890),
+		ExpiresIn: 3600,
+		Scopes:    []string{},
+		ClientID:  testClientID,
+		Subject:   testEntityID,
+		Audiences: expectedAudiences,
+	}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), expectedAudiences, result.AccessToken.Audiences)
+	suite.mockTokenBuilder.AssertExpectations(suite.T())
 }
 
 func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_JWTGenerationError() {

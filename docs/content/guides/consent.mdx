@@ -1,0 +1,109 @@
+---
+title: Consent
+docType: guide
+description: Learn about Consent and how to apply it in configuration, integration, and operational workflows.
+---
+
+import ThemedImage from '@theme/ThemedImage';
+import FlowBuilderConsentNodeLight from './assets/images/flow-builder-consent-light.png';
+import FlowBuilderConsentNodeDark from './assets/images/flow-builder-consent-dark.png';
+import ConsentLoginScreenLight from './assets/images/consent-login-screen-light.png';
+import ConsentLoginScreenDark from './assets/images/consent-login-screen-dark.png';
+
+# Consent
+
+<ProductName /> provides built-in support for capturing user consent during the login flow.
+
+:::note
+As of now, <ProductName /> only supports **attribute consent**.
+:::
+
+## Attribute Consent in Login Flows
+
+When users authenticate with an application that requires specific profile attributes, <ProductName /> can prompt them to consent to sharing specific attributes with the application.
+
+Attribute consent requirements are driven by the requested attributes during application configuration. If an application requires specific user attributes (e.g., username, email), the user will be asked to grant consent before the login process completes.
+
+## Configuring Consent in Flows
+
+The **User Consent** widget adds a pre-wired consent executor and consent screen and connects them into your flow automatically:
+
+1. Navigate to the **Flows** section in the <ProductName /> console and select the flow you want to update (e.g., the default login flow).
+2. In the flow builder, expand the **Widgets** section and add the **User Consent** widget. The consent screen and the **Allow** and **Deny** responses come pre-connected. The widget also connects its output to the **Auth Assert Generator** node and its input to the **Authorization** node when those are present in the flow. If either is missing, that edge is left open for you to connect to the node you want.
+3. Save the flow configuration.
+
+To assemble the consent step manually, add and connect the individual nodes instead:
+
+1. In the flow builder, expand the **Executors** section and add the **User Consent** executor node. It should be placed after the necessary authentication steps and before the **Auth Assert Generator** node.
+2. Connect the `onSuccess` edge of the preceding node to the input of the **User Consent** node, and then connect the `onSuccess` edge of the **User Consent** node to the next node in the flow (e.g., **Auth Assert Generator**).
+3. Expand the **Steps** section and add the **Consent View** step to the flow. This step will render the consent page to the user during the login process.
+4. Connect the `onIncomplete` edge of the **User Consent** node to the input of the **Consent View** step.
+5. Then connect both **Allow** and **Deny** buttons in the **Consent View** step back to the **User Consent** node to handle user responses.
+6. Save the flow configuration.
+
+{/* Placeholder for the flow graph image */}
+<ThemedImage
+  alt="Flow Builder Consent Node Placeholder"
+  sources={{
+    light: FlowBuilderConsentNodeLight,
+    dark: FlowBuilderConsentNodeDark,
+  }}
+/>
+
+### Configure optional timeout for the user input
+
+By default, the consent flow will wait indefinitely for the user to provide input. However, you can configure an optional timeout to automatically deny consent if the user does not respond within a specified time frame.
+
+To set a timeout for user input in the consent flow:
+
+1. In the flow builder, select the **User Consent** node.
+2. In the node configuration panel, locate the **Consent Timeout** setting.
+3. Enter the desired timeout duration in seconds (e.g., `60` for a 1-minute timeout).
+4. Expand the **Components** section, and drag and drop the **Timer** component into the **Consent View** step.
+5. Save the flow configuration.
+
+### Configure validity period for granted consent
+
+By default, once a user grants consent, it remains valid indefinitely until the user revokes it. However, you can configure a validity period for granted consent to require users to re-consent after a certain duration.
+
+Currently, this configuration is supported via the Application Management API. When creating or updating an application, you can define the validity period under the `loginConsent` section in the JSON payload.
+
+**Example request:**
+
+```bash
+curl --location -X POST 'https://localhost:8090/applications' \
+--header 'Content-Type: application/json' \
+--header 'Accept: application/json' \
+--data '{
+    "name": "Your Application Name",
+    "template": "browser",
+    "authFlowId": "019d206c-1766-76e2-aaa5-5b311dee8de7",
+    "assertion": {
+        "validityPeriod": 3600
+    },
+    "loginConsent": {
+        "validityPeriod": 120
+    }
+}'
+```
+
+`validityPeriod` is specified in seconds (e.g., `120` for a 2-minute validity period). After this period expires, the user will be prompted to grant consent again during the next login attempt.
+
+## Trying It Out
+
+To verify the attribute consent flow using an application configured with consent requirements:
+
+1. Ensure that the application is configured to request the necessary user attributes.
+2. Start the login process for the application (e.g., by accessing the application's login page).
+3. After successful authentication, you should be presented with the consent page, prompting you to grant or deny consent for sharing the requested attributes with the application.
+4. Review the requested attributes and choose to either **Allow** or **Deny** consent.
+5. If you allow consent, the login process will complete successfully, and the application will receive the approved attributes. If you deny any essential attributes, the login process will be terminated.
+
+{/* Placeholder for the consent page during login */}
+<ThemedImage
+  alt="Consent Page Login Placeholder"
+  sources={{
+    light: ConsentLoginScreenLight,
+    dark: ConsentLoginScreenDark,
+  }}
+/>

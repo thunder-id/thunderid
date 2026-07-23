@@ -1788,3 +1788,45 @@ func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_MissingOptional
 	suite.Empty(claims.AttributeCacheID)
 	suite.Empty(claims.CompletedACR)
 }
+
+func (suite *OAuth2UtilsTestSuite) TestResolveEffectiveScopeClaims_NilReturnsAllStandardDefaults() {
+	effective := ResolveEffectiveScopeClaims(nil)
+
+	suite.Len(effective, len(constants.StandardOIDCScopes))
+	suite.Equal([]string{"sub"}, effective["openid"])
+	suite.Equal([]string{"email", "email_verified"}, effective["email"])
+	suite.Contains(effective["profile"], "name")
+	suite.Contains(effective["profile"], "family_name")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestResolveEffectiveScopeClaims_PartialOverrideMergesWithDefaults() {
+	effective := ResolveEffectiveScopeClaims(map[string][]string{
+		"profile":     {"name"},
+		"customScope": {"customClaim"},
+	})
+
+	// Overridden scope wins.
+	suite.Equal([]string{"name"}, effective["profile"])
+	// Custom scope is carried through.
+	suite.Equal([]string{"customClaim"}, effective["customScope"])
+	// Untouched standard scopes keep their defaults.
+	suite.Equal([]string{"email", "email_verified"}, effective["email"])
+}
+
+func (suite *OAuth2UtilsTestSuite) TestResolveEffectiveScopeClaims_EmptySliceOverrideIsPreserved() {
+	effective := ResolveEffectiveScopeClaims(map[string][]string{
+		"profile": {},
+	})
+
+	claims, ok := effective["profile"]
+	suite.True(ok, "profile key should be present")
+	suite.Empty(claims, "explicit empty override should suppress default claims")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestResolveEffectiveScopeClaims_DoesNotMutateStandardDefaults() {
+	effective := ResolveEffectiveScopeClaims(nil)
+	effective["email"][0] = "mutated"
+
+	suite.Equal([]string{"email", "email_verified"}, constants.StandardOIDCScopes["email"].Claims,
+		"the shared StandardOIDCScopes constant must not be mutated via the returned map")
+}

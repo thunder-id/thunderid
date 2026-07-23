@@ -17,6 +17,8 @@
  */
 
 import {ResourceAvatar, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
+import {ConnectionConstants, isConflictError} from '@thunderid/configure-connections';
+import {useConfig} from '@thunderid/contexts';
 import {
   Alert,
   Box,
@@ -33,6 +35,7 @@ import {ChevronLeft, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate, useParams} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import useTrustedIssuer from '../api/useTrustedIssuer';
 import useUpdateTrustedIssuer from '../api/useUpdateTrustedIssuer';
 import TrustedIssuerDeleteDialog from '../components/TrustedIssuerDeleteDialog';
@@ -42,12 +45,13 @@ import validateTrustedIssuerForm, {
   type TrustedIssuerFieldErrorKind,
   type TrustedIssuerFormErrors,
 } from '../utils/validateTrustedIssuerForm';
-import {isConflictError} from '@thunderid/configure-connections';
 
 export default function TrustedIssuerDetailPage(): JSX.Element {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const {id} = useParams<{id: string}>();
+  const {config} = useConfig();
+  const productName = config.brand.product_name;
 
   const trustedIssuerQuery = useTrustedIssuer(id);
   const updateMutation = useUpdateTrustedIssuer(id ?? '');
@@ -65,7 +69,6 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
       issuer: data?.issuer ?? '',
       jwksEndpoint: data?.jwksEndpoint ?? '',
       idJagEnabled: data?.idJagEnabled ?? false,
-      clientId: data?.clientId ?? undefined,
       tokenExchangeEnabled: data?.tokenExchangeEnabled ?? false,
       trustedTokenAudience: data?.trustedTokenAudience ?? undefined,
     }),
@@ -125,7 +128,7 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
       <Button
         variant="text"
         startIcon={<ChevronLeft size={16} />}
-        onClick={() => void navigate('/connections')}
+        onClick={() => void navigate(RouteConfig.connections.list())}
         sx={{mb: 2, alignSelf: 'flex-start'}}
       >
         {t('trustedIssuers:detail.back', 'Back to connections')}
@@ -150,7 +153,7 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
                 flexShrink: 0,
               }}
             >
-              <ResourceAvatar size={32} fallback="emoji:🤝" />
+              <ResourceAvatar variant="rounded" size={55} fallback={ConnectionConstants.DEFAULT_TRUSTED_IDP_AVATAR} />
             </Box>
             <Stack direction="column" spacing={0.5}>
               <Typography variant="h5" fontWeight={700}>
@@ -201,23 +204,6 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
                   />
                 </FormControl>
 
-                <FormControl fullWidth>
-                  <FormLabel htmlFor="trusted-issuer-client-id">
-                    {t('trustedIssuers:create.form.clientId.label', 'Client ID')}
-                  </FormLabel>
-                  <TextField
-                    id="trusted-issuer-client-id"
-                    fullWidth
-                    placeholder="your-thunderid-client-id"
-                    value={values.clientId ?? ''}
-                    helperText={t(
-                      'trustedIssuers:create.form.clientId.hint',
-                      "ThunderID's client ID registered at this identity provider. Used for audience validation in incoming assertions.",
-                    )}
-                    onChange={(e) => setField('clientId', e.target.value || undefined)}
-                  />
-                </FormControl>
-
                 <FormControl fullWidth required error={Boolean(touched.jwksEndpoint && errors.jwksEndpoint)}>
                   <FormLabel htmlFor="trusted-issuer-jwks-endpoint">
                     {t('trustedIssuers:create.form.jwksEndpoint.label', 'JWKS endpoint')}
@@ -251,11 +237,12 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
                 <TextField
                   id="trusted-issuer-token-audience"
                   fullWidth
-                  placeholder="my-external-client-id"
+                  placeholder="api://thunderid"
                   value={values.trustedTokenAudience ?? ''}
                   helperText={t(
                     'trustedIssuers:detail.tokenExchange.audience.hint',
-                    'The audience value ThunderID expects in subject tokens from this issuer.',
+                    "An additional audience value {{productName}} will accept in subject tokens from this issuer. Tokens whose audience is {{productName}}'s own issuer URL are always accepted.",
+                    {productName},
                   )}
                   onChange={(e) => setField('trustedTokenAudience', e.target.value || undefined)}
                 />
@@ -322,7 +309,7 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
             trustedIssuerId={id ?? null}
             trustedIssuerName={data?.name ?? ''}
             onClose={() => setDeleteOpen(false)}
-            onSuccess={() => void navigate('/connections')}
+            onSuccess={() => void navigate(RouteConfig.connections.list())}
           />
         </>
       )}

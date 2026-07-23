@@ -1,0 +1,129 @@
+---
+title: Resource Indicators
+docType: reference
+sidebar_position: 5
+description: RFC 8707 Resource Indicators in {{ProductName}}, to target access tokens to specific resource servers via the resource parameter, with audience-restricted aud claims.
+---
+
+# Resource Indicators
+
+**Resource Indicators for OAuth 2.0** ([RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707)) lets a client tell <ProductName /> *which* resource server the access token is for. The client passes a single `resource` parameter. <ProductName /> looks it up against the registered resource servers, narrows the granted permission scopes to those owned by that resource server, and writes its identifier into the token's `aud` claim. When permission scopes are requested without `resource`, <ProductName /> uses the configured `defaultResourceServer`. If neither target is available, token issuance fails with `invalid_target`. OIDC-only and scopeless requests without `resource` are not bound to a resource server, so their audience is the application's configured default audience (`token.accessToken.defaultAudience`), or the `client_id` when it is unset.
+
+The effect: a token issued for the payments API cannot be replayed against the bookings API. Each token is bound to its intended audience.
+
+## How It Works
+
+The `resource` parameter is accepted on authorization and PAR requests, on authorization code, client credentials, JWT bearer, refresh token, and token exchange requests, and on CIBA backchannel authentication requests (`POST /oauth2/bc-authorize`). A CIBA request binds to its resource server at initiation, before the user authorizes it. A `resource` supplied when polling the token endpoint must match that binding.
+
+```http
+GET /oauth2/authorize
+  ?response_type=code
+  &client_id=$CLIENT_ID
+  &redirect_uri=https://app.example.com/callback
+  &scope=payments:read%20payments:write
+  &resource=https://api.example.com/payments
+  &state=xyz
+```
+
+```http
+POST /oauth2/token
+grant_type=authorization_code
+&code=$CODE
+&resource=https://api.example.com/payments
+```
+
+The issued access token carries the resource identifier as its `aud`:
+
+```json
+{
+  "sub": "user-123",
+  "iss": "https://{{productSlug}}.example.com",
+  "aud": "https://api.example.com/payments",
+  "scope": "payments:read payments:write",
+  "exp": 1717000000
+}
+```
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect | Behavior |
+|---|---|
+| Accepted on | `/oauth2/authorize`, `/oauth2/par`, `/oauth2/bc-authorize`, and `/oauth2/token` for authorization code, client credentials, JWT bearer, refresh token, and token exchange grants |
+| Value rules | The `resource` must be an absolute URI with no fragment. A request with more than one `resource` parameter is rejected with `invalid_target`. |
+| Resolution | The URI is matched to a registered resource server's `identifier` |
+| Unknown identifier | Request rejected with `invalid_target` |
+| No `resource` | Permission-bearing requests use `defaultResourceServer` and return `invalid_target` if it is unset. OIDC-only and scopeless requests use the application's `token.accessToken.defaultAudience`, or `client_id` when it is unset |
+| CIBA | The request binds to a resource server at `/oauth2/bc-authorize`, before user authorization. A `resource` supplied at token-endpoint polling must equal that binding, or the poll is rejected with `invalid_target` |
+| Scope filtering | Requested scopes are filtered to those defined on the targeted resource server. Scopes not owned by that resource server are silently dropped |
+| OIDC standard scopes | `openid`, `profile`, `email`, `phone`, `address` are **not** filtered by resource indicators |
+| Custom scope_claims | Scopes covered by an application's `scopeClaims` mapping also pass through unchanged |
+
+### `aud` Claim Behavior
+
+| Caller passes `resource` | `aud` value |
+|---|---|
+| One `resource` | JSON string: `"aud": "https://api.example.com/payments"` |
+| Multiple `resource` parameters | Rejected with `invalid_target` |
+| No `resource`, permission scopes requested | The configured `defaultResourceServer` identifier. If no default is configured, the request is rejected with `invalid_target`. |
+| No `resource`, no permission scopes | The application's configured default audience (`token.accessToken.defaultAudience`), or the requesting client's `client_id` when it is unset. |
+
+The `aud` claim is always a single string, per [RFC 7519 §4.1.3](https://datatracker.ietf.org/doc/html/rfc7519#section-4.1.3).
+
+### Scope Filtering Rules
+
+| Scope category | Filtered by `resource`? |
+|---|---|
+| Permissions owned by a targeted resource server | ✅ Kept |
+| Permissions owned by a different resource server | ❌ Dropped |
+| OIDC standard scopes (`openid`, `profile`, `email`, `phone`, `address`) | Always kept |
+| Custom scopes mapped via `scopeClaims` | Always kept |
+
+### Resource on Refresh
+
+On refresh, `resource` may only name the resource server the refresh token is already bound to. A mismatch is rejected with `invalid_target`:
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/oauth2/token \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -d "grant_type=refresh_token" \
+  -d "refresh_token=$REFRESH_TOKEN" \
+  -d "resource=https://api.example.com/payments"
+```
+
+Without `resource`, the new access token keeps the refresh token's existing resource-server binding.
+
+</details>
+
+## Try It in <ProductName />
+
+Resource indicators activate as soon as you register a resource server with an absolute-URI `identifier`.
+
+### Register a Resource Server
+
+See [Resource Servers](../../../resource-servers) for full setup. At minimum:
+
+| Field | Value |
+|---|---|
+| `name` | `Payments API` |
+| `handle` | `payments-api` |
+| `identifier` | `https://api.example.com/payments` |
+| `delimiter` | `:` |
+| `permissions` | `payments:read`, `payments:write`, … |
+
+### Request a Token for It
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/oauth2/token \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -d "grant_type=client_credentials" \
+  -d "scope=payments:read" \
+  -d "resource=https://api.example.com/payments"
+```
+
+## Related Guides
+
+- [Authorization](../../../../key-concepts/authorization), how resource servers, permissions, and scopes fit together
+- [Resource Servers](../../../resource-servers), register a resource server
+- [Refresh Token](../refresh-token), preserving the resource binding on refresh
+- [Token Exchange](../token-exchange), `resource` is supported on exchange too

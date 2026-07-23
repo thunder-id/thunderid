@@ -12,7 +12,7 @@ Complete the setup once. Every walkthrough below builds on the same starting poi
 
 Before you begin, make sure you have:
 
-- <ProductName /> running locally, with `http://localhost:5173` added to the server-config `cors` section so the web app can call <ProductName /> from the browser. Add it to `backend/cmd/server/config/resources/server_configs/cors.yaml`, or use `PUT /server-config/cors` after startup. See [Get <ProductName />](../../../../guides/getting-started/get-thunderid).
+- <ProductName /> running locally, with `http://localhost:5173` added to the server-config `cors` section so the web app can call <ProductName /> from the browser. Add it to `backend/cmd/server/config/resources/server_configs/cors.yaml`, or use `PUT /server-config/cors` after startup. See [Get <ProductName />](../../../../getting-started/get-thunderid).
 
   ```yaml
   name: cors
@@ -21,7 +21,7 @@ Before you begin, make sure you have:
       - "http://localhost:5173"
   ```
 
-- The Wayfinder sample distribution. The [Get <ProductName />](../../../../guides/getting-started/get-thunderid) step above already pulls the archive that ships it. It contains a `thunderid-config/redirect/` bundle with an importable YAML config and a `thunderid.env` file, plus the Wayfinder web frontend and the Concierge services.
+- The Wayfinder sample distribution. The [Get <ProductName />](../../../../getting-started/get-thunderid) step above already pulls the archive that ships it. It contains a `thunderid-config/redirect/` bundle with an importable YAML config and a `thunderid.env` file, plus the Wayfinder web frontend and the Concierge services.
 - **Node.js 20+** for running the sample's services.
 - **An LLM API key.** One of an Anthropic API key from [console.anthropic.com](https://console.anthropic.com) or a Google Gemini API key from [aistudio.google.com](https://aistudio.google.com).
 

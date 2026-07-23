@@ -26,64 +26,19 @@ import {
   useReactFlow,
   useStore,
   type EdgeProps,
-  type ReactFlowState,
 } from '@xyflow/react';
-import {useMemo, useState, type ReactElement, type SyntheticEvent} from 'react';
+import {useContext, useEffect, useMemo, useState, type ReactElement, type SyntheticEvent} from 'react';
+import EdgeGeometryContext from '../../context/EdgeGeometryContext';
+import EdgePathsContext from '../../context/EdgePathsContext';
 import useFlowConfig from '../../hooks/useFlowConfig';
 import {EdgeStyleTypes} from '../../models/steps';
 import {calculateEdgePath, type EdgePathResult, type EdgeStyle} from '../../utils/calculateEdgePath';
+import {DRAGGING_OBSTACLES_KEY, SMOOTH_STEP_BORDER_RADIUS, selectObstaclesKey} from '../../utils/edgeRoutingKeys';
 
 /**
  * Props interface of {@link BaseEdge}
  */
 export type BaseEdgePropsInterface = EdgeProps;
-
-/**
- * Border radius for smooth step edges in pixels.
- */
-const SMOOTH_STEP_BORDER_RADIUS = 20;
-
-/**
- * Sentinel obstacle key returned while any node is being dragged, so edges skip
- * the expensive smart routing and stay stable across drag ticks.
- */
-const DRAGGING_OBSTACLES_KEY = 'dragging';
-
-/**
- * Cache of computed obstacle keys per store nodes snapshot. The selector runs for
- * every edge on every store update (including pan/zoom frames); React Flow only
- * replaces the nodes array when a node actually changes, so caching on the array
- * identity turns the O(edges × nodes) string building into a single computation.
- */
-const obstaclesKeyCache = new WeakMap<object, string>();
-
-/**
- * Derives a coarse key of all node bounds from the React Flow store. The key only
- * changes when a node settles at a new position or size — during a drag it returns
- * a constant, so edges neither re-render per drag tick nor re-route until drop.
- */
-function selectObstaclesKey(state: ReactFlowState): string {
-  const {nodes} = state;
-
-  if (nodes.some((node) => node.dragging)) {
-    return DRAGGING_OBSTACLES_KEY;
-  }
-
-  const cached = obstaclesKeyCache.get(nodes);
-  if (cached !== undefined) {
-    return cached;
-  }
-
-  const key = nodes
-    .map(
-      (node) =>
-        `${node.id}:${Math.round(node.position.x)},${Math.round(node.position.y)},` +
-        `${Math.round(node.measured?.width ?? 0)}x${Math.round(node.measured?.height ?? 0)}`,
-    )
-    .join('|');
-  obstaclesKeyCache.set(nodes, key);
-  return key;
-}
 
 /**
  * Enhanced edge component with custom routing algorithm to avoid nodes.
@@ -106,11 +61,27 @@ function BaseEdge({
   deletable,
   markerEnd,
   markerStart,
+  selected,
 }: BaseEdgePropsInterface): ReactElement {
   const {deleteElements, getNodes} = useReactFlow();
   const [isHovered, setIsHovered] = useState<boolean>(false);
   const {edgeStyle} = useFlowConfig();
   const obstaclesKey = useStore(selectObstaclesKey);
+  const separatedPaths = useContext(EdgePathsContext);
+  const geometryRegistry = useContext(EdgeGeometryContext);
+
+  // Report this edge's exact endpoint geometry so the provider can route all
+  // edges together and separate the ones sharing a corridor. Registration is
+  // skipped while dragging (transient geometry would churn the provider per
+  // tick); the obstacles key change on drop re-fires it with settled values.
+  useEffect(() => {
+    if (obstaclesKey === DRAGGING_OBSTACLES_KEY) {
+      return;
+    }
+    geometryRegistry?.register({id, sourcePosition, sourceX, sourceY, targetPosition, targetX, targetY});
+  }, [geometryRegistry, id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, obstaclesKey]);
+
+  useEffect(() => () => geometryRegistry?.unregister(id), [geometryRegistry, id]);
 
   const {
     path: edgePath,
@@ -129,6 +100,13 @@ function BaseEdge({
       return {centerX, centerY, path};
     }
 
+    // Prefer the centrally computed path: it is routed together with every
+    // other edge so shared corridors are separated into parallel lanes.
+    const separated = separatedPaths?.get(id);
+    if (separated) {
+      return separated;
+    }
+
     // Calculate smart path that routes around nodes with the selected edge style
     return calculateEdgePath(
       sourceX,
@@ -141,7 +119,19 @@ function BaseEdge({
       edgeStyle as EdgeStyle,
       SMOOTH_STEP_BORDER_RADIUS,
     );
-  }, [sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, obstaclesKey, edgeStyle, getNodes]);
+  }, [
+    id,
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+    obstaclesKey,
+    edgeStyle,
+    getNodes,
+    separatedPaths,
+  ]);
 
   const handleDelete = (event: SyntheticEvent) => {
     event.stopPropagation();
@@ -188,7 +178,9 @@ function BaseEdge({
             {label}
           </Box>
         )}
-        {isHovered && deletable !== false && (
+        {/* Clicking an edge selects it, keeping the delete button visible without
+            hover precision; Delete/Backspace also removes the selected edge. */}
+        {(isHovered || selected) && deletable !== false && (
           <Box
             className="nodrag nopan"
             onClick={handleDelete}
@@ -205,8 +197,8 @@ function BaseEdge({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '24px',
-              height: '24px',
+              width: '28px',
+              height: '28px',
               backgroundColor: 'error.main',
               borderRadius: '50%',
               cursor: 'pointer',

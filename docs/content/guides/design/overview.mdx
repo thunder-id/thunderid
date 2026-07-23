@@ -1,0 +1,55 @@
+---
+title: Design
+docType: concept
+sidebar_position: 1
+description: Customize the visual appearance and structural layout of screens for your applications.
+---
+
+import {NextSteps, NextStepsCard} from '../../../src/components/NextSteps';
+
+# Design
+
+<ProductName /> gives you full control over the visual appearance and structure of your user-facing screens. You can tailor every screen, including sign-in, sign-up, recovery, and consent, to match your brand and deliver a consistent user experience.
+
+## What You Can Customize
+
+Design customization in <ProductName /> covers two independent areas:
+
+- **Themes** (visual styling): Configure color palettes, typography, shapes, and visual effects. Each theme supports separate styles per color scheme (light or dark) and both left-to-right and right-to-left text directions.
+- **Layouts** (screen structure): Define the arrangement, sizing, spacing, element visibility, and custom stylesheets for each screen.
+
+Because these two areas are independent, you can update a theme without affecting the layout, and vice versa.
+
+:::tip
+To localize screen text, see [Localization](../../i18n/localization).
+:::
+
+:::note
+Layouts loaded through declarative configurations become read-only. You cannot update or delete.
+:::
+
+## How Design Is Applied
+
+Design configurations are scoped per application or organizational unit. You can assign a separate theme and layout to each application or organizational unit. When a user opens an authentication screen, <ProductName /> resolves the matching design configuration for that context and renders the screen accordingly.
+
+To create, update, or delete design configurations, you need access to the <ProductName /> Console or an access token with the `system` scope. Resolve endpoints are public and require no authentication.
+
+## Next Steps
+
+<NextSteps>
+  <NextStepsCard
+    title="Themes"
+    description="Configure color palettes, typography, and visual effects for your screens."
+    href="../themes"
+  />
+  <NextStepsCard
+    title="Layouts"
+    description="Configure screen structure, sections, and custom stylesheets for your screens."
+    href="../layouts"
+  />
+  <NextStepsCard
+    title="Localization"
+    description="Understand how languages, namespaces, and translation resolution work."
+    href="../../i18n/localization"
+  />
+</NextSteps>

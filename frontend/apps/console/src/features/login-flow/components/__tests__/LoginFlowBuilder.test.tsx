@@ -54,6 +54,7 @@ const {
   getDefaultFlowConfigMock,
 } = vi.hoisted(() => {
   const setFlowCompletionConfigsFn = vi.fn();
+  const setGraphValidationRulesFn = vi.fn();
   const isVerboseModeObj = {value: true};
   const edgeStyleObj = {value: 'default'};
 
@@ -83,6 +84,7 @@ const {
       setFlowCompletionConfigs: setFlowCompletionConfigsFn,
       edgeStyle: edgeStyleObj.value,
       isVerboseMode: isVerboseModeObj.value,
+      setGraphValidationRules: setGraphValidationRulesFn,
     }),
   };
 });
@@ -469,6 +471,34 @@ vi.mock('@/features/flows/hooks/useFlowEvents', () => ({
 vi.mock('@/features/flows/hooks/useGenerateStepElement', () => ({
   default: () => ({
     generateStepElement: mockGenerateStepElement,
+  }),
+}));
+
+// Mock useInteractionState (used by useSsoToggle)
+vi.mock('@/features/flows/hooks/useInteractionState', () => ({
+  default: () => ({
+    lastInteractedResource: undefined,
+    lastInteractedStepId: '',
+    setLastInteractedResource: vi.fn(),
+    setLastInteractedStepId: vi.fn(),
+    onResourceDropOnCanvas: vi.fn(),
+    selectedAttributes: {},
+    setSelectedAttributes: vi.fn(),
+  }),
+}));
+
+// Mock useUIPanelState (used by useSsoToggle)
+vi.mock('@/features/flows/hooks/useUIPanelState', () => ({
+  default: () => ({
+    isResourcePanelOpen: true,
+    isResourcePropertiesPanelOpen: false,
+    isVersionHistoryPanelOpen: false,
+    resourcePropertiesPanelHeading: null,
+    setIsResourcePanelOpen: vi.fn(),
+    setIsOpenResourcePropertiesPanel: vi.fn(),
+    setIsVersionHistoryPanelOpen: vi.fn(),
+    setResourcePropertiesPanelHeading: vi.fn(),
+    registerCloseValidationPanel: vi.fn(),
   }),
 }));
 
@@ -3418,6 +3448,7 @@ describe('Edge Style Update Effect - Component Integration', () => {
     mockExistingFlowData.value = null;
     mockUseFlowConfig.mockReturnValue({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: 'default',
       isVerboseMode: true,
     });
@@ -3440,6 +3471,7 @@ describe('Edge Style Update Effect - Component Integration', () => {
   it('should update edge types when edgeStyle value changes', () => {
     mockUseFlowConfig.mockReturnValue({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: 'bezier',
       isVerboseMode: true,
     });
@@ -3466,6 +3498,7 @@ describe('StepsByType Ref Update Effect - Component Integration', () => {
     mockExistingFlowData.value = null;
     mockUseFlowConfig.mockReturnValue({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: 'default',
       isVerboseMode: true,
     });
@@ -3491,6 +3524,7 @@ describe('NodeTypes and StaticStepFactory Creation - Component Integration', () 
     mockExistingFlowData.value = null;
     mockUseFlowConfig.mockReturnValue({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: 'default',
       isVerboseMode: true,
     });
@@ -3516,6 +3550,7 @@ describe('Snackbar State Management - Close Handlers', () => {
     mockExistingFlowData.value = null;
     mockUseFlowConfig.mockReturnValue({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: 'default',
       isVerboseMode: true,
     });
@@ -4271,6 +4306,7 @@ describe('Edge Style Effect - setEdges Callback Execution', () => {
     mockExistingFlowData.value = null;
     mockUseFlowConfig.mockReturnValue({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: 'smoothstep',
       isVerboseMode: true,
     });
@@ -4349,6 +4385,7 @@ describe('Verbose Mode Filtering - Component Integration', () => {
 
     mockUseFlowConfig.mockReturnValue({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: 'default',
       isVerboseMode: true,
     });
@@ -5625,6 +5662,7 @@ describe('Verbose Mode Filtering Integration', () => {
     // Override the mock implementation
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: false,
     }));
@@ -5657,6 +5695,7 @@ describe('Verbose Mode Filtering Integration', () => {
     // Override the mock implementation
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: true,
     }));
@@ -5683,6 +5722,7 @@ describe('Snackbar Display and Close - Branch Coverage', () => {
     mockIsVerboseMode.value = true;
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: true,
     }));
@@ -5893,6 +5933,7 @@ describe('Verbose Mode Filtering - Component Integration with Execution Nodes', 
     mockIsVerboseMode.value = false;
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: false,
     }));
@@ -5924,6 +5965,7 @@ describe('Verbose Mode Filtering - Component Integration with Execution Nodes', 
     mockIsVerboseMode.value = true;
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: true,
     }));
@@ -5957,6 +5999,7 @@ describe('Verbose Mode Filtering - Component Integration with Execution Nodes', 
     mockIsVerboseMode.value = false;
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: false,
     }));
@@ -5981,6 +6024,7 @@ describe('isEditingExistingFlow Branch Coverage', () => {
     mockIsVerboseMode.value = true;
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: true,
     }));
@@ -6079,6 +6123,7 @@ describe('Verbose Mode - Empty Arrays Edge Cases', () => {
     mockIsVerboseMode.value = false;
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: false,
     }));
@@ -6102,6 +6147,7 @@ describe('Verbose Mode - Empty Arrays Edge Cases', () => {
     mockIsVerboseMode.value = false;
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: false,
     }));
@@ -6127,6 +6173,7 @@ describe('Verbose Mode - Empty Arrays Edge Cases', () => {
     mockIsVerboseMode.value = false;
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: false,
     }));
@@ -6151,6 +6198,7 @@ describe('Edge Style Effect - Branch Coverage', () => {
     mockIsVerboseMode.value = true;
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: 'smoothstep',
       isVerboseMode: true,
     }));
@@ -6192,6 +6240,7 @@ describe('Snackbar onClose Handlers - Direct Coverage', () => {
     mockIsVerboseMode.value = true;
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: true,
     }));
@@ -6269,6 +6318,7 @@ describe('Verbose Mode Node and Edge Filtering', () => {
     mockIsVerboseMode.value = false;
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: false,
     }));
@@ -6287,6 +6337,7 @@ describe('Verbose Mode Node and Edge Filtering', () => {
     mockIsVerboseMode.value = false;
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: false,
     }));
@@ -6312,6 +6363,7 @@ describe('Verbose Mode Node and Edge Filtering', () => {
     mockIsVerboseMode.value = false;
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: false,
     }));
@@ -6337,6 +6389,7 @@ describe('Verbose Mode Node and Edge Filtering', () => {
     mockIsVerboseMode.value = false;
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: false,
     }));
@@ -6357,6 +6410,7 @@ describe('Verbose Mode Node and Edge Filtering', () => {
     mockIsVerboseMode.value = true;
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: true,
     }));
@@ -6375,6 +6429,7 @@ describe('Verbose Mode Node and Edge Filtering', () => {
     mockIsVerboseMode.value = true;
     mockUseFlowConfig.mockImplementation(() => ({
       setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules: vi.fn(),
       edgeStyle: mockEdgeStyle.value,
       isVerboseMode: true,
     }));

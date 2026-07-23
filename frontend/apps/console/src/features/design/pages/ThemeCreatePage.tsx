@@ -24,6 +24,7 @@ import {useState, useCallback, useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import GatePreview from '../../../components/GatePreview/GatePreview';
+import RouteConfig from '../../../configs/RouteConfig';
 import ConfigureThemeColor from '../components/create-theme/ConfigureThemeColor';
 import ConfigureThemeName from '../components/create-theme/ConfigureThemeName';
 import buildThemeFromPrimaryColor from '../utils/buildThemeFromPrimaryColor';
@@ -101,7 +102,7 @@ export default function ThemeCreatePage(): JSX.Element {
   };
 
   const handleClose = (): void => {
-    void navigate('/design');
+    void navigate(RouteConfig.design.list());
   };
 
   const handleNext = (): void => {
@@ -123,7 +124,7 @@ export default function ThemeCreatePage(): JSX.Element {
       },
       {
         onSuccess: (created) => {
-          Promise.resolve(navigate(`/design/themes/${created.id}`)).catch(() => null);
+          Promise.resolve(navigate(RouteConfig.design.themeDetail(created.id))).catch(() => null);
         },
         onError: (err: Error) => {
           setError(

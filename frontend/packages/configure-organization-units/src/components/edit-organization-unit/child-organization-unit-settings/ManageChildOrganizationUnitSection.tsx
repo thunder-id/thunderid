@@ -25,6 +25,7 @@ import {useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import useGetChildOrganizationUnits from '../../../api/useGetChildOrganizationUnits';
+import useOrganizationUnitRoutes from '../../../hooks/useOrganizationUnitRoutes';
 import type {OUNavigationState} from '../../../models/navigation';
 import type {OrganizationUnit} from '../../../models/organization-unit';
 
@@ -61,6 +62,7 @@ export default function ManageChildOrganizationUnitSection({
   organizationUnitName,
 }: ManageChildOrganizationUnitSectionProps): JSX.Element {
   const navigate = useNavigate();
+  const routes = useOrganizationUnitRoutes();
   const {t} = useTranslation();
   const theme = useTheme();
   const logger = useLogger('ManageChildOrganizationUnitSection');
@@ -152,7 +154,7 @@ export default function ManageChildOrganizationUnitSection({
               },
             };
             (async (): Promise<void> => {
-              await navigate(`/organization-units/${ou.id}`, {state: navigationState});
+              await navigate(routes.detail(ou.id), {state: navigationState});
             })().catch((_error: unknown) => {
               logger.error('Failed to navigate to child organization unit', {error: _error, ouId: ou.id});
             });

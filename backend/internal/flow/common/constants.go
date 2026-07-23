@@ -186,6 +186,8 @@ const (
 	RuntimeKeyMagicLinkUsedJti = "magicLinkUsedJti"
 	// RuntimeKeyOAuthState holds the generated OAuth state parameter for CSRF validation.
 	RuntimeKeyOAuthState = "oauthState"
+	// RuntimeKeyOIDCNonce holds the server-generated nonce for OIDC ID token replay protection.
+	RuntimeKeyOIDCNonce = "oidcNonce"
 	// RuntimeKeyOpenID4VPState holds the OpenID4VP request state across poll steps.
 	RuntimeKeyOpenID4VPState = "openid4vpVerificationState"
 	// RuntimeKeyRequestedAuthClasses holds the space-separated ACR values from acr_values.

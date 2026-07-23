@@ -21,7 +21,6 @@ package security
 
 import (
 	"context"
-	"crypto/subtle"
 	"net/http"
 	"regexp"
 
@@ -46,13 +45,11 @@ type RevocationEnforcerInterface interface {
 
 // securityService orchestrates authentication and authorization for HTTP requests.
 type securityService struct {
-	authenticators          []AuthenticatorInterface
-	revocationEnforcer      RevocationEnforcerInterface
-	logger                  *log.Logger
-	compiledPaths           []*regexp.Regexp
-	compiledAPIPermissions  []compiledAPIPermission
-	directAuthSecret        string
-	compiledDirectAuthPaths []*regexp.Regexp
+	authenticators         []AuthenticatorInterface
+	revocationEnforcer     RevocationEnforcerInterface
+	logger                 *log.Logger
+	compiledPaths          []*regexp.Regexp
+	compiledAPIPermissions []compiledAPIPermission
 }
 
 // newSecurityService creates a new instance of the security service.
@@ -62,13 +59,12 @@ type securityService struct {
 //   - revocationEnforcer: Consulted after authentication to reject revoked tokens.
 //   - publicPaths: A slice of string patterns representing paths that are exempt from authentication.
 //   - apiPermissions: An ordered slice of API permission entries used for authorization.
-//   - directAuthSecret: The server-level secret gating the Direct API endpoints; empty disables the gate.
 //
 // Returns:
 //   - *securityService: A pointer to the created securityService instance.
 //   - error: An error if any of the provided path patterns are invalid and cannot be compiled.
 func newSecurityService(authenticators []AuthenticatorInterface, revocationEnforcer RevocationEnforcerInterface,
-	publicPaths []string, apiPermissions []apiPermissionEntry, directAuthSecret string) (*securityService, error) {
+	publicPaths []string, apiPermissions []apiPermissionEntry) (*securityService, error) {
 	compiledPaths, err := compilePathPatterns(publicPaths)
 	if err != nil {
 		return nil, err
@@ -79,21 +75,14 @@ func newSecurityService(authenticators []AuthenticatorInterface, revocationEnfor
 		return nil, err
 	}
 
-	compiledDirectAuthPaths, err := compilePathPatterns(directAuthPaths)
-	if err != nil {
-		return nil, err
-	}
-
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
 	return &securityService{
-		authenticators:          authenticators,
-		revocationEnforcer:      revocationEnforcer,
-		logger:                  logger,
-		compiledPaths:           compiledPaths,
-		compiledAPIPermissions:  compiledPerms,
-		directAuthSecret:        directAuthSecret,
-		compiledDirectAuthPaths: compiledDirectAuthPaths,
+		authenticators:         authenticators,
+		revocationEnforcer:     revocationEnforcer,
+		logger:                 logger,
+		compiledPaths:          compiledPaths,
+		compiledAPIPermissions: compiledPerms,
 	}, nil
 }
 
@@ -105,18 +94,6 @@ func (s *securityService) Process(r *http.Request) (context.Context, error) {
 	// Check if the request is options (CORS preflight)
 	if r.Method == http.MethodOptions {
 		return r.Context(), nil
-	}
-
-	// Secure by default: the Direct API endpoints are closed unless the caller presents a
-	// matching Direct Auth Secret. When no secret is configured, the APIs are blocked entirely.
-	if s.isDirectAuthPath(r.Context(), r.URL.Path) {
-		if s.directAuthSecret == "" {
-			return nil, errDirectAuthSecretNotConfigured
-		}
-		provided := r.Header.Get(directAuthHeaderName)
-		if subtle.ConstantTimeCompare([]byte(provided), []byte(s.directAuthSecret)) != 1 {
-			return nil, errInvalidDirectAuthSecret
-		}
 	}
 
 	// Find an authenticator that can process this request
@@ -205,25 +182,6 @@ func (s *securityService) isPublicPath(ctx context.Context, requestPath string) 
 	}
 
 	for _, regex := range s.compiledPaths {
-		if regex.MatchString(requestPath) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isDirectAuthPath reports whether the given request path is one of the Direct API endpoints
-// gated by the Direct Auth Secret.
-func (s *securityService) isDirectAuthPath(ctx context.Context, requestPath string) bool {
-	if len(requestPath) > maxPublicPathLength {
-		s.logger.Warn(ctx, "Path length exceeds maximum allowed length",
-			log.Int("limit", maxPublicPathLength),
-			log.Int("length", len(requestPath)))
-		return false
-	}
-
-	for _, regex := range s.compiledDirectAuthPaths {
 		if regex.MatchString(requestPath) {
 			return true
 		}

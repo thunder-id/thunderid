@@ -19,6 +19,7 @@
 import {Stack} from '@wso2/oxygen-ui';
 import {useEffect, useState} from 'react';
 import AttestationSection from './AttestationSection';
+import AudienceSection from './AudienceSection';
 import CertificateSection from './CertificateSection';
 import IdentityAssertionsSection from './IdentityAssertionsSection';
 import MetadataSection from './MetadataSection';
@@ -144,6 +145,12 @@ export default function EditAdvancedSettings({
     onFieldChange('inboundAuthConfig', updatedInboundAuth);
   };
 
+  const handleDefaultAudienceChange = (audience: string) => {
+    handleTokenConfigChange({
+      accessToken: {...oauth2Config?.token?.accessToken, defaultAudience: audience},
+    });
+  };
+
   return (
     <Stack spacing={3}>
       <OAuth2ConfigSection
@@ -159,6 +166,13 @@ export default function EditAdvancedSettings({
           onTokenConfigChange={handleTokenConfigChange}
           disabled={application.isReadOnly}
           onValidationChange={setIdentityAssertionsInvalid}
+        />
+      )}
+      {oauth2Config && (
+        <AudienceSection
+          audience={oauth2Config.token?.accessToken?.defaultAudience ?? ''}
+          onAudienceChange={handleDefaultAudienceChange}
+          disabled={application.isReadOnly}
         />
       )}
       <CertificateSection

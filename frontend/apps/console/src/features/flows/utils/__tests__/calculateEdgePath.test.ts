@@ -482,6 +482,35 @@ describe('calculateAllEdgePaths', () => {
       expect(result.size).toBe(2);
     });
 
+    it('should never offset the terminal segments away from the handles', () => {
+      // Both edges are a single straight segment; that segment touches both
+      // handles, so no separation may be applied to it at all.
+      const edges: EdgeInput[] = [createEdgeInput('e1', 0, 100, 200, 100), createEdgeInput('e2', 0, 100, 200, 100)];
+
+      const result = calculateAllEdgePaths(edges, [], 'step');
+
+      expect(result.get('e1')?.path).toBe('M 0,100 L 200,100');
+      expect(result.get('e2')?.path).toBe('M 0,100 L 200,100');
+    });
+
+    it('should separate interior segments while keeping paths anchored to the handles', () => {
+      // Identical Z-shaped routes: the shared interior vertical segment must be
+      // offset apart, but both paths must still start and end exactly on the
+      // source and target handles.
+      const edges: EdgeInput[] = [createEdgeInput('e1', 0, 0, 300, 200), createEdgeInput('e2', 0, 0, 300, 200)];
+
+      const result = calculateAllEdgePaths(edges, [], 'step');
+      const path1 = result.get('e1')!.path;
+      const path2 = result.get('e2')!.path;
+
+      expect(path1.startsWith('M 0,0 ')).toBe(true);
+      expect(path2.startsWith('M 0,0 ')).toBe(true);
+      expect(path1.endsWith('L 300,200')).toBe(true);
+      expect(path2.endsWith('L 300,200')).toBe(true);
+      // The interior corridor is separated, so the full paths differ.
+      expect(path1).not.toBe(path2);
+    });
+
     it('should handle edges with different paths (no overlap)', () => {
       const edges: EdgeInput[] = [createEdgeInput('e1', 0, 0, 200, 0), createEdgeInput('e2', 0, 200, 200, 200)];
       const nodes: Node[] = [];

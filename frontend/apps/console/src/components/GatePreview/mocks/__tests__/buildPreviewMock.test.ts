@@ -22,8 +22,19 @@ import buildPreviewMock from '../buildPreviewMock';
 
 type MockComponent = Record<string, unknown>;
 
-const getComponentById = (components: MockComponent[], id: string): MockComponent | undefined =>
-  components.find((c) => c.id === id);
+const getComponentById = (components: MockComponent[], id: string): MockComponent | undefined => {
+  for (const component of components) {
+    if (component.id === id) {
+      return component;
+    }
+    const nested = component.components as MockComponent[] | undefined;
+    const found = nested && getComponentById(nested, id);
+    if (found) {
+      return found;
+    }
+  }
+  return undefined;
+};
 
 describe('buildPreviewMock', () => {
   describe('Always-present components', () => {

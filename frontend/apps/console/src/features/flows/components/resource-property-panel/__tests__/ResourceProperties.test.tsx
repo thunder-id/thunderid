@@ -151,6 +151,8 @@ describe('ResourceProperties', () => {
       setFlowEdgeTypes: vi.fn(),
       flowNodes: [],
       setFlowNodes: vi.fn(),
+      graphValidationRules: [],
+      setGraphValidationRules: vi.fn(),
     };
 
     function Wrapper({children}: {children: ReactNode}) {

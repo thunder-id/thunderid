@@ -20,12 +20,13 @@ package discovery
 
 import (
 	"encoding/json"
+	"io"
 
 	"net/http"
 	"testing"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -39,12 +40,10 @@ type OAuth2AuthorizationServerMetadata struct {
 	Issuer                                     string   `json:"issuer"`
 	AuthorizationEndpoint                      string   `json:"authorization_endpoint"`
 	TokenEndpoint                              string   `json:"token_endpoint"`
-	UserInfoEndpoint                           string   `json:"userinfo_endpoint,omitempty"`
 	JWKSUri                                    string   `json:"jwks_uri"`
 	RevocationEndpoint                         string   `json:"revocation_endpoint,omitempty"`
 	IntrospectionEndpoint                      string   `json:"introspection_endpoint,omitempty"`
 	RegistrationEndpoint                       string   `json:"registration_endpoint,omitempty"`
-	ScopesSupported                            []string `json:"scopes_supported"`
 	ResponseTypesSupported                     []string `json:"response_types_supported"`
 	GrantTypesSupported                        []string `json:"grant_types_supported"`
 	TokenEndpointAuthMethodsSupported          []string `json:"token_endpoint_auth_methods_supported"`
@@ -55,6 +54,8 @@ type OAuth2AuthorizationServerMetadata struct {
 // OIDCProviderMetadata represents OpenID Connect Provider Metadata (OIDC Discovery 1.0)
 type OIDCProviderMetadata struct {
 	OAuth2AuthorizationServerMetadata
+	UserInfoEndpoint                 string   `json:"userinfo_endpoint"`
+	ScopesSupported                  []string `json:"scopes_supported"`
 	SubjectTypesSupported            []string `json:"subject_types_supported"`
 	IDTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported"`
 	ClaimsSupported                  []string `json:"claims_supported"`
@@ -87,8 +88,15 @@ func (ts *DiscoveryTestSuite) TestOAuth2AuthorizationServerMetadata_GET_Success(
 	ts.Equal(http.StatusOK, resp.StatusCode)
 	ts.Equal("application/json", resp.Header.Get("Content-Type"))
 
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+
 	var metadata OAuth2AuthorizationServerMetadata
-	err = json.NewDecoder(resp.Body).Decode(&metadata)
+	err = json.Unmarshal(body, &metadata)
+	ts.Require().NoError(err)
+
+	var rawMetadata map[string]json.RawMessage
+	err = json.Unmarshal(body, &rawMetadata)
 	ts.Require().NoError(err)
 
 	// Verify required fields are present
@@ -106,9 +114,9 @@ func (ts *DiscoveryTestSuite) TestOAuth2AuthorizationServerMetadata_GET_Success(
 	ts.Contains(metadata.RegistrationEndpoint, "/oauth2/dcr/register", "RegistrationEndpoint should contain correct path")
 	ts.Contains(metadata.IntrospectionEndpoint, "/oauth2/introspect", "IntrospectionEndpoint should contain correct path")
 
-	// Verify userinfo endpoint is present
-	ts.NotEmpty(metadata.UserInfoEndpoint, "UserInfoEndpoint should be present")
-	ts.Contains(metadata.UserInfoEndpoint, "/oauth2/userinfo", "UserInfoEndpoint should contain correct path")
+	// Verify OIDC-specific fields are not present
+	ts.NotContains(rawMetadata, "userinfo_endpoint", "OAuth metadata should not include the UserInfo endpoint")
+	ts.NotContains(rawMetadata, "scopes_supported", "OAuth metadata should not include OIDC scopes")
 
 	// Verify revocation endpoint is present
 	ts.NotEmpty(metadata.RevocationEndpoint, "RevocationEndpoint should be present")
@@ -135,10 +143,6 @@ func (ts *DiscoveryTestSuite) TestOAuth2AuthorizationServerMetadata_GET_Success(
 	// Verify only S256 code challenge method is supported (plain is prohibited per OAuth 2.0 Security BCP)
 	ts.Equal([]string{"S256"}, metadata.CodeChallengeMethodsSupported,
 		"CodeChallengeMethodsSupported should contain exactly S256")
-
-	// Verify supported scopes
-	ts.NotEmpty(metadata.ScopesSupported, "ScopesSupported should not be empty")
-	ts.Contains(metadata.ScopesSupported, "openid", "Should support openid scope")
 
 	// Verify RFC 9207 issuer identification support
 	ts.True(metadata.AuthorizationResponseIssParameterSupported,
@@ -189,6 +193,10 @@ func (ts *DiscoveryTestSuite) TestOIDCDiscovery_GET_Success() {
 	ts.Contains(metadata.IDTokenSigningAlgValuesSupported, "RS256", "Should support RS256 signing algorithm")
 
 	ts.NotEmpty(metadata.ClaimsSupported, "ClaimsSupported should not be empty")
+	ts.NotEmpty(metadata.UserInfoEndpoint, "UserInfoEndpoint should be present")
+	ts.Contains(metadata.UserInfoEndpoint, "/oauth2/userinfo", "UserInfoEndpoint should contain correct path")
+	ts.NotEmpty(metadata.ScopesSupported, "ScopesSupported should not be empty")
+	ts.Contains(metadata.ScopesSupported, "openid", "Should support openid scope")
 	// Verify standard JWT claims
 	ts.Contains(metadata.ClaimsSupported, "sub", "Should support sub claim")
 	ts.Contains(metadata.ClaimsSupported, "iss", "Should support iss claim")
@@ -283,8 +291,6 @@ func (ts *DiscoveryTestSuite) TestOAuth2MetadataConsistency() {
 	ts.Equal(oauth2Metadata.ResponseTypesSupported, oidcMetadata.ResponseTypesSupported, "ResponseTypesSupported should match")
 	ts.Equal(oauth2Metadata.TokenEndpointAuthMethodsSupported, oidcMetadata.TokenEndpointAuthMethodsSupported, "TokenEndpointAuthMethodsSupported should match")
 	ts.Equal(oauth2Metadata.CodeChallengeMethodsSupported, oidcMetadata.CodeChallengeMethodsSupported, "CodeChallengeMethodsSupported should match")
-	// ScopesSupported order may differ, so we check that they contain the same scopes
-	ts.ElementsMatch(oauth2Metadata.ScopesSupported, oidcMetadata.ScopesSupported, "ScopesSupported should contain the same scopes")
 }
 
 // TestDiscoveryEndpointsAccessibility tests that discovery endpoints are accessible without authentication

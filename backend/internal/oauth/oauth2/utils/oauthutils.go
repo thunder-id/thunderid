@@ -172,6 +172,22 @@ func FilterOIDCScopesByAllowedScopes(oidcScopes []string, allowedScopes []string
 	return filteredScopes
 }
 
+// ResolveEffectiveScopeClaims returns the scope-to-claims mapping as it is applied at runtime: the
+// standard OIDC defaults from StandardOIDCScopes, with any per-scope overrides from the stored mapping
+// applied on top and any custom scopes carried through.
+func ResolveEffectiveScopeClaims(stored map[string][]string) map[string][]string {
+	effective := make(map[string][]string, len(constants.StandardOIDCScopes)+len(stored))
+	for scope, def := range constants.StandardOIDCScopes {
+		claims := make([]string, len(def.Claims))
+		copy(claims, def.Claims)
+		effective[scope] = claims
+	}
+	for scope, claims := range stored {
+		effective[scope] = claims
+	}
+	return effective
+}
+
 // ParseClaimsRequest parses the claims parameter JSON string into a ClaimsRequest struct.
 // Returns nil if the input is empty.
 // Returns an error if the JSON is malformed or violates OIDC spec constraints.

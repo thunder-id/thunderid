@@ -197,3 +197,55 @@ func MergePresentedOptionalInputIdentifiers(raw string, identifiers []string) st
 	}
 	return strings.Join(parts, " ")
 }
+
+// BuildProviderMetadata constructs the metadata for providers. It includes
+// provider_ext_* runtime keys and the initiator request data (headers and query params).
+func BuildProviderMetadata(ctx *providers.NodeContext) *providers.AuthnMetadata {
+	return &providers.AuthnMetadata{
+		RuntimeMetadata: buildRuntimeMetadata(ctx),
+	}
+}
+
+// BuildGetAttributesMetadata constructs the metadata for fetching user attributes. It includes
+// provider_ext_* runtime keys and the initiator request data (headers and query params).
+func BuildGetAttributesMetadata(ctx *providers.NodeContext) *providers.GetAttributesMetadata {
+	metadata := &providers.GetAttributesMetadata{
+		RuntimeMetadata: buildRuntimeMetadata(ctx),
+	}
+
+	if locale, exists := ctx.RuntimeData[common.RuntimeKeyRequiredLocales]; exists && locale != "" {
+		metadata.Locale = locale
+	}
+
+	return metadata
+}
+
+// buildRuntimeMetadata collects provider_ext_* runtime keys and flattens initiator request
+// headers/query params into the metadata map.
+func buildRuntimeMetadata(ctx *providers.NodeContext) map[string][]string {
+	runtimeMetadata := make(map[string][]string)
+
+	if ctx.RuntimeData != nil {
+		for key, value := range ctx.RuntimeData {
+			if strings.HasPrefix(key, "provider_ext_") {
+				runtimeMetadata[key] = []string{value}
+			}
+		}
+	}
+
+	if req := ctx.GetInitiatorRequest(); req != nil {
+		// Header names are case-insensitive per RFC 7230, so lowercase the key to give consumers
+		// a stable form. Since distinct-casing entries (e.g. "Foo" and "foo") normalize to the
+		// same key, merge the value slices instead of overwriting so nothing is silently dropped.
+		for name, values := range req.Headers {
+			key := "initiator_header_" + strings.ToLower(name)
+			runtimeMetadata[key] = append(runtimeMetadata[key], values...)
+		}
+		// Query parameter names are case-sensitive; preserve original casing verbatim.
+		for name, values := range req.QueryParams {
+			runtimeMetadata["initiator_query_"+name] = values
+		}
+	}
+
+	return runtimeMetadata
+}

@@ -137,7 +137,9 @@ func (s *magicLinkAuthnService) Authenticate(ctx context.Context,
 		subjectAttribute = common.UserAttributeUserID
 	}
 
-	s.logger.Debug(ctx, "Magic link authentication successful", log.String("subjectAttribute", subject))
+	s.logger.Debug(ctx, "Magic link authentication successful",
+		log.String("subjectAttribute", subjectAttribute),
+		log.MaskedString("subject", subject))
 
 	return &common.AuthnResult{
 		Token:               map[string]interface{}{subjectAttribute: subject},

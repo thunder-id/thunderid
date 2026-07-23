@@ -19,7 +19,6 @@
 import userEvent from '@testing-library/user-event';
 import {DesignContext, type DesignContextType} from '@thunderid/design';
 import {screen, fireEvent, waitFor, render as testRender} from '@thunderid/test-utils';
-import {act} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import SignUpBox from '../SignUpBox';
 
@@ -97,7 +96,6 @@ const createMockSignUpRenderProps = (overrides: Partial<MockSignUpRenderProps> =
 });
 
 let mockSignUpRenderProps: MockSignUpRenderProps = createMockSignUpRenderProps();
-let capturedOnFlowChange: ((response: unknown) => void) | undefined;
 let capturedAfterSignUpUrl: string | undefined;
 let mockMeta: {application?: {url?: string}} | null = null;
 
@@ -111,14 +109,11 @@ vi.mock('@thunderid/react', async () => {
     }),
     SignUp: ({
       children,
-      onFlowChange = undefined,
       afterSignUpUrl = undefined,
     }: {
       children: (props: typeof mockSignUpRenderProps) => React.ReactNode;
-      onFlowChange?: (response: unknown) => void;
       afterSignUpUrl?: string;
     }) => {
-      capturedOnFlowChange = onFlowChange;
       capturedAfterSignUpUrl = afterSignUpUrl;
       return <div data-testid="thunderid-signup">{children(mockSignUpRenderProps)}</div>;
     },
@@ -143,7 +138,6 @@ describe('SignUpBox', () => {
       isDesignEnabled: false,
     });
     mockSignUpRenderProps = createMockSignUpRenderProps();
-    capturedOnFlowChange = undefined;
     capturedAfterSignUpUrl = undefined;
     mockMeta = null;
   });
@@ -183,97 +177,6 @@ describe('SignUpBox', () => {
     render(<SignUpBox />);
 
     expect(screen.getByText(/Already have an account/)).toBeInTheDocument();
-
-    expect(capturedOnFlowChange).toBeDefined();
-
-    act(() => {
-      capturedOnFlowChange!({data: {additionalData: {}}});
-    });
-
-    // Link remains visible after any flow change
-    expect(screen.getByText(/Already have an account/)).toBeInTheDocument();
-  });
-
-  it('shows flowError alert when onFlowChange reports error', () => {
-    mockSignUpRenderProps = createMockSignUpRenderProps({
-      components: [{id: 'block', type: 'BLOCK', components: []}],
-    });
-    render(<SignUpBox />);
-
-    expect(capturedOnFlowChange).toBeDefined();
-
-    act(() => {
-      capturedOnFlowChange!({
-        error: {
-          code: 'FEE-60005',
-          message: {
-            key: 'flows.errors.user_exists',
-            defaultValue: 'A user with this email already exists. Please use a different value.',
-          },
-          description: {
-            key: 'flows.errors.user_exists_desc',
-            defaultValue: 'A user with this email already exists. Please use a different value.',
-          },
-        },
-        data: {additionalData: {}},
-      });
-    });
-
-    expect(
-      screen.getByText('A user with this email already exists. Please use a different value.'),
-    ).toBeInTheDocument();
-  });
-
-  it('clears flowError when submit is triggered', async () => {
-    mockSignUpRenderProps = createMockSignUpRenderProps({
-      components: [
-        {
-          id: 'block-1',
-          type: 'BLOCK',
-          components: [
-            {
-              id: 'submit-btn',
-              type: 'ACTION',
-              eventType: 'SUBMIT',
-              label: 'Register',
-              variant: 'PRIMARY',
-            },
-          ],
-        },
-      ],
-    });
-    render(<SignUpBox />);
-
-    expect(capturedOnFlowChange).toBeDefined();
-
-    act(() => {
-      capturedOnFlowChange!({
-        error: {
-          code: 'FEE-60005',
-          message: {
-            key: 'flows.errors.user_exists',
-            defaultValue: 'A user with this email already exists. Please use a different value.',
-          },
-          description: {
-            key: 'flows.errors.user_exists_desc',
-            defaultValue: 'A user with this email already exists. Please use a different value.',
-          },
-        },
-        data: {additionalData: {}},
-      });
-    });
-
-    expect(
-      screen.getByText('A user with this email already exists. Please use a different value.'),
-    ).toBeInTheDocument();
-
-    fireEvent.click(screen.getByText('Register'));
-
-    await waitFor(() => {
-      expect(
-        screen.queryByText('A user with this email already exists. Please use a different value.'),
-      ).not.toBeInTheDocument();
-    });
   });
 
   it('renders TEXT component as heading', () => {

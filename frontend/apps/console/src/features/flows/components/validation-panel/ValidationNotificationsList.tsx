@@ -16,10 +16,11 @@
  * under the License.
  */
 
-import {Alert, Box, Button, List, ListItem, Typography} from '@wso2/oxygen-ui';
+import {Box, ButtonBase, Stack, Typography} from '@wso2/oxygen-ui';
+import {ArrowRight, CircleCheckIcon, CircleXIcon, InfoIcon, TriangleAlertIcon} from '@wso2/oxygen-ui-icons-react';
 import type {ReactElement} from 'react';
 import {useTranslation} from 'react-i18next';
-import Notification from '../../models/notification';
+import Notification, {NotificationType} from '../../models/notification';
 
 /**
  * Props interface of {@link ValidationNotificationsList}
@@ -39,8 +40,21 @@ export interface ValidationNotificationsListPropsInterface {
   onNotificationClick: (notification: Notification) => void;
 }
 
+const severityIcon = (type: NotificationType): ReactElement => {
+  switch (type) {
+    case NotificationType.ERROR:
+      return <CircleXIcon size={16} />;
+    case NotificationType.WARNING:
+      return <TriangleAlertIcon size={16} />;
+    default:
+      return <InfoIcon size={16} />;
+  }
+};
+
 /**
- * Component to render a list of validation notifications.
+ * Component to render a list of validation notifications. Notifications wired to
+ * a resource render as clickable rows (styled like the flow preview's option
+ * rows) that navigate straight to the offending resource.
  *
  * @param props - Props injected to the component.
  * @returns The ValidationNotificationsList component.
@@ -54,40 +68,89 @@ function ValidationNotificationsList({
 
   if (!notifications || notifications.length === 0) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
-        <Typography variant="body2" color="textSecondary" fontStyle="italic">
+      <Stack alignItems="center" justifyContent="center" gap={1} minHeight="200px" sx={{color: 'text.secondary'}}>
+        <Box sx={{color: 'success.main', display: 'inline-flex'}}>
+          <CircleCheckIcon size={24} />
+        </Box>
+        <Typography variant="body2" color="textSecondary">
           {emptyMessage}
         </Typography>
-      </Box>
+      </Stack>
     );
   }
 
   return (
-    <Box>
-      <List>
-        {notifications.map((notification: Notification) => (
-          <ListItem key={notification.getId()}>
-            <Alert icon={false} className="notification-item" severity={notification.getType()}>
+    <Stack gap={1}>
+      {notifications.map((notification: Notification) => {
+        const type = notification.getType();
+        const isNavigable = notification.hasResources() || notification.hasPanelNotification();
+
+        const content = (
+          <>
+            <Box sx={{color: `${type}.main`, display: 'inline-flex', flexShrink: 0, mt: '2px'}}>
+              {severityIcon(type)}
+            </Box>
+            <Typography variant="body2" sx={{flex: 1, textAlign: 'left'}}>
               {notification.getMessage()}
-              {(notification.hasResources() || notification.hasPanelNotification()) && (
-                <Box textAlign="right">
-                  <Button
-                    variant="text"
-                    size="small"
-                    color={notification.getType()}
-                    onClick={() => onNotificationClick(notification)}
-                    disableRipple
-                    className="notification-action-button"
-                  >
-                    {t('common:show')}
-                  </Button>
-                </Box>
-              )}
-            </Alert>
-          </ListItem>
-        ))}
-      </List>
-    </Box>
+            </Typography>
+            {isNavigable && (
+              <Box
+                className="notification-open-icon"
+                sx={{
+                  display: 'inline-flex',
+                  flexShrink: 0,
+                  alignSelf: 'center',
+                  color: `${type}.main`,
+                  opacity: 0,
+                  transition: 'opacity 0.15s ease',
+                }}
+              >
+                <ArrowRight size={14} />
+              </Box>
+            )}
+          </>
+        );
+
+        const rowSx = {
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 1,
+          width: '100%',
+          px: 1.5,
+          py: 1.25,
+          borderRadius: 1.5,
+          border: '1px solid',
+          borderColor: 'divider',
+        } as const;
+
+        if (!isNavigable) {
+          return (
+            <Box key={notification.getId()} className="notification-item" sx={rowSx}>
+              {content}
+            </Box>
+          );
+        }
+
+        return (
+          <ButtonBase
+            key={notification.getId()}
+            className="notification-item"
+            onClick={() => onNotificationClick(notification)}
+            aria-label={t('common:show')}
+            sx={{
+              ...rowSx,
+              '&:hover': {
+                borderColor: `${type}.main`,
+                bgcolor: 'action.hover',
+                '& .notification-open-icon': {opacity: 1},
+              },
+            }}
+          >
+            {content}
+          </ButtonBase>
+        );
+      })}
+    </Stack>
   );
 }
 

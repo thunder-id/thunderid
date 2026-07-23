@@ -125,6 +125,22 @@ func (suite *OAuthClientTestSuite) TestOAuthClient_ShouldAppendActorClaim() {
 	})
 }
 
+func (suite *OAuthClientTestSuite) TestOAuthClient_ResolveDefaultAudience() {
+	suite.T().Run("returns the configured default audience", func(t *testing.T) {
+		client := &OAuthClient{Token: &OAuthTokenConfig{AccessToken: &AccessTokenConfig{
+			DefaultAudience: "https://api.example.com",
+		}}}
+		assert.Equal(t, "https://api.example.com", client.ResolveDefaultAudience("client-123"))
+	})
+	suite.T().Run("falls back to client_id when default audience unset", func(t *testing.T) {
+		client := &OAuthClient{Token: &OAuthTokenConfig{AccessToken: &AccessTokenConfig{}}}
+		assert.Equal(t, "client-123", client.ResolveDefaultAudience("client-123"))
+	})
+	suite.T().Run("falls back to client_id when token config unset", func(t *testing.T) {
+		assert.Equal(t, "client-123", (&OAuthClient{}).ResolveDefaultAudience("client-123"))
+	})
+}
+
 func (suite *OAuthClientTestSuite) TestOAuthClient_RequiresPAR() {
 	suite.T().Run("client flag forces PAR", func(t *testing.T) {
 		suite.setupRuntime(t, engineconfig.OAuthConfig{PAR: engineconfig.PARConfig{RequirePAR: false}})

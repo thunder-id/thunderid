@@ -22,6 +22,7 @@ import {Plus} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import ApplicationsList from '../components/ApplicationsList';
 
 export default function ApplicationsListPage(): JSX.Element {
@@ -42,7 +43,7 @@ export default function ApplicationsListPage(): JSX.Element {
             startIcon={<Plus size={18} />}
             onClick={() => {
               (async () => {
-                await navigate('/applications/types');
+                await navigate(RouteConfig.applications.types());
               })().catch((error: unknown) => {
                 logger.error('Failed to navigate to create application page', {error});
               });

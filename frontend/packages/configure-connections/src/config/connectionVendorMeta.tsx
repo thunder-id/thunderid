@@ -37,6 +37,7 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
     categories: ['social-login'],
     presentation: 'branded',
     supportsAttributeMapping: true,
+    createHintKey: 'connections:configure.hint.google',
   },
   {
     key: 'github',
@@ -47,6 +48,7 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
     categories: ['social-login'],
     presentation: 'branded',
     supportsAttributeMapping: true,
+    createHintKey: 'connections:configure.hint.github',
   },
   {
     key: 'oidc',
@@ -54,7 +56,7 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
     displayName: 'OpenID Connect',
     descriptionKey: 'connections:vendor.oidc.description',
     logo: <ShieldCheck />,
-    categories: ['enterprise'],
+    categories: ['enterprise', 'custom'],
     presentation: 'custom',
     supportsAttributeMapping: true,
   },
@@ -64,7 +66,7 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
     displayName: 'OAuth 2.0',
     descriptionKey: 'connections:vendor.oauth.description',
     logo: <KeyRound />,
-    categories: ['enterprise'],
+    categories: ['enterprise', 'custom'],
     presentation: 'custom',
   },
   {

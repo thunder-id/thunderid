@@ -24,6 +24,7 @@ import {useCallback, useMemo, useRef, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import GatePreview from '../../../components/GatePreview/GatePreview';
+import RouteConfig from '../../../configs/RouteConfig';
 import LayoutConfigPanel from '../components/LayoutConfigPanel';
 import LayoutPreviewPanel from '../components/LayoutPreviewPanel';
 import AddScreenRow from '../components/layouts/AddScreenRow';
@@ -125,7 +126,7 @@ export default function LayoutBuilderPage(): JSX.Element {
 
   const handleNavigateBack = (): void => {
     (async () => {
-      await navigate('/design');
+      await navigate(RouteConfig.design.list());
     })().catch(() => {
       // Ignore navigation errors
     });

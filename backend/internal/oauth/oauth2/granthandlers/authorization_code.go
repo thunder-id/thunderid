@@ -153,8 +153,9 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	var accessTokenAudiences, accessTokenScopes []string
 	if targetRS == nil {
 		// OIDC-only (or scopeless) request with no resource: the token is not bound to a resource
-		// server, so its audience is the client_id and it carries only the OIDC scopes.
-		accessTokenAudiences = []string{tokenRequest.ClientID}
+		// server, so its audience is the app's configured default audiences (falling back to the
+		// client_id) and it carries only the OIDC scopes.
+		accessTokenAudiences = []string{oauthApp.ResolveDefaultAudience(tokenRequest.ClientID)}
 		accessTokenScopes = oidcScopes
 	} else {
 		downscopedNonOidc, dErr := resourceindicators.DownscopeToResourceServer(

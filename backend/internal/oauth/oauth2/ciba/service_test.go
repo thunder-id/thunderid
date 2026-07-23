@@ -38,6 +38,7 @@ import (
 	flowcm "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
@@ -45,6 +46,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
+	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
 	"github.com/thunder-id/thunderid/tests/testhelpers"
 )
 
@@ -58,6 +60,7 @@ type CIBAServiceTestSuite struct {
 	mockInboundClient  *inboundclientmock.InboundClientServiceInterfaceMock
 	mockEntityProvider *entityprovidermock.EntityProviderInterfaceMock
 	mockResourceSvc    *resourcemock.ResourceServiceInterfaceMock
+	mockServerConfig   *serverconfigmock.ServerConfigServiceMock
 	service            CIBAServiceInterface
 	oauthApp           *providers.OAuthClient
 }
@@ -76,9 +79,10 @@ func (suite *CIBAServiceTestSuite) SetupTest() {
 	suite.mockInboundClient = inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 	suite.mockResourceSvc = resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	suite.mockServerConfig = serverconfigmock.NewServerConfigServiceMock(suite.T())
 	actorProv := actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr())
 	suite.service = newCIBAService(suite.mockStore, suite.mockFlowExec,
-		suite.mockJWTService, actorProv, suite.mockResourceSvc, testhelpers.OAuthConfig())
+		suite.mockJWTService, actorProv, suite.mockResourceSvc, suite.mockServerConfig, testhelpers.OAuthConfig())
 	suite.oauthApp = &providers.OAuthClient{
 		ID:         "app-1",
 		ClientID:   "client-1",
@@ -102,6 +106,17 @@ func (suite *CIBAServiceTestSuite) expectStoreAddSuccess() {
 	suite.mockStore.EXPECT().Add(mock.Anything, mock.MatchedBy(func(r *CIBAAuthRequest) bool {
 		return r.ClientID == "client-1" && r.State == CIBAStatePending && r.UserID == ""
 	})).Return(nil)
+}
+
+// expectDefaultResourceServer stubs the resolver path for a request without an explicit resource:
+// the configured default resolves to the given RS and its permissions validate as requested.
+func (suite *CIBAServiceTestSuite) expectDefaultResourceServer(rsID, identifier string) {
+	suite.mockServerConfig.EXPECT().GetMergedConfig(mock.Anything, "defaultResourceServer").
+		Return(resource.DefaultResourceServerConfig{ResourceServerID: rsID}, nil)
+	suite.mockResourceSvc.EXPECT().GetResourceServer(mock.Anything, rsID).
+		Return(&providers.ResourceServer{ID: rsID, Identifier: identifier}, nil)
+	suite.mockResourceSvc.EXPECT().ValidatePermissions(mock.Anything, rsID, mock.Anything).
+		Return([]string{}, nil)
 }
 
 // -------------------------------------------------------------------
@@ -252,6 +267,7 @@ func (suite *CIBAServiceTestSuite) TestInitiate_ForceConsentRepromptAlwaysSet() 
 }
 
 func (suite *CIBAServiceTestSuite) TestInitiate_StripsStandardScopesFromRuntime() {
+	suite.expectDefaultResourceServer("rs-1", "https://default.example.com")
 	suite.mockFlowExec.EXPECT().InitiateAndExecute(mock.Anything, mock.MatchedBy(
 		func(initCtx *flowexec.FlowInitContext) bool {
 			perms := strings.Fields(initCtx.RuntimeData[flowcm.RuntimeKeyRequestedPermissions])
@@ -271,6 +287,107 @@ func (suite *CIBAServiceTestSuite) TestInitiate_StripsStandardScopesFromRuntime(
 
 	suite.Nil(cibaErr)
 	suite.NotNil(resp)
+}
+
+func (suite *CIBAServiceTestSuite) TestInitiate_ExplicitResourceBindsAndDownscopes() {
+	suite.mockResourceSvc.EXPECT().GetResourceServerByIdentifier(mock.Anything, "https://api.example.com").
+		Return(&providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"}, nil)
+	suite.mockResourceSvc.EXPECT().ValidatePermissions(mock.Anything, "rs-1", mock.Anything).
+		Return([]string{}, nil)
+	suite.expectFlowInitiateSuccess()
+
+	var stored *CIBAAuthRequest
+	suite.mockStore.EXPECT().Add(mock.Anything, mock.MatchedBy(func(r *CIBAAuthRequest) bool {
+		stored = r
+		return true
+	})).Return(nil)
+
+	_, cibaErr := suite.service.InitiateBackchannelAuth(context.Background(), &BackchannelAuthRequest{
+		LoginHint: "alice",
+		Scope:     "openid read:things",
+		Resources: []string{"https://api.example.com"},
+	}, suite.oauthApp)
+
+	suite.Nil(cibaErr)
+	suite.Equal([]string{"https://api.example.com"}, stored.Resources)
+}
+
+func (suite *CIBAServiceTestSuite) TestInitiate_MissingResourceWithPermissionUsesDefault() {
+	suite.expectDefaultResourceServer("rs-1", "https://default.example.com")
+	suite.expectFlowInitiateSuccess()
+
+	var stored *CIBAAuthRequest
+	suite.mockStore.EXPECT().Add(mock.Anything, mock.MatchedBy(func(r *CIBAAuthRequest) bool {
+		stored = r
+		return true
+	})).Return(nil)
+
+	_, cibaErr := suite.service.InitiateBackchannelAuth(context.Background(), &BackchannelAuthRequest{
+		LoginHint: "alice",
+		Scope:     "openid read:things",
+	}, suite.oauthApp)
+
+	suite.Nil(cibaErr)
+	suite.Equal([]string{"https://default.example.com"}, stored.Resources)
+}
+
+func (suite *CIBAServiceTestSuite) TestInitiate_MissingResourceNoDefaultRejects() {
+	suite.mockServerConfig.EXPECT().GetMergedConfig(mock.Anything, "defaultResourceServer").
+		Return(resource.DefaultResourceServerConfig{}, nil)
+
+	resp, cibaErr := suite.service.InitiateBackchannelAuth(context.Background(), &BackchannelAuthRequest{
+		LoginHint: "alice",
+		Scope:     "openid read:things",
+	}, suite.oauthApp)
+
+	suite.Nil(resp)
+	suite.NotNil(cibaErr)
+	suite.Equal(oauth2const.ErrorInvalidTarget, cibaErr.Code)
+}
+
+func (suite *CIBAServiceTestSuite) TestInitiate_UnknownResourceRejects() {
+	suite.mockResourceSvc.EXPECT().GetResourceServerByIdentifier(mock.Anything, "https://nope.example.com").
+		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RS-1001"})
+
+	resp, cibaErr := suite.service.InitiateBackchannelAuth(context.Background(), &BackchannelAuthRequest{
+		LoginHint: "alice",
+		Scope:     "openid read:things",
+		Resources: []string{"https://nope.example.com"},
+	}, suite.oauthApp)
+
+	suite.Nil(resp)
+	suite.NotNil(cibaErr)
+	suite.Equal(oauth2const.ErrorInvalidTarget, cibaErr.Code)
+}
+
+func (suite *CIBAServiceTestSuite) TestInitiate_MultipleResourcesRejected() {
+	resp, cibaErr := suite.service.InitiateBackchannelAuth(context.Background(), &BackchannelAuthRequest{
+		LoginHint: "alice",
+		Scope:     "openid read:things",
+		Resources: []string{"https://a.example.com", "https://a.example.com"},
+	}, suite.oauthApp)
+
+	suite.Nil(resp)
+	suite.NotNil(cibaErr)
+	suite.Equal(oauth2const.ErrorInvalidTarget, cibaErr.Code)
+}
+
+func (suite *CIBAServiceTestSuite) TestInitiate_OIDCOnlyNoResourceUnbound() {
+	suite.expectFlowInitiateSuccess()
+
+	var stored *CIBAAuthRequest
+	suite.mockStore.EXPECT().Add(mock.Anything, mock.MatchedBy(func(r *CIBAAuthRequest) bool {
+		stored = r
+		return true
+	})).Return(nil)
+
+	_, cibaErr := suite.service.InitiateBackchannelAuth(context.Background(), &BackchannelAuthRequest{
+		LoginHint: "alice",
+		Scope:     "openid profile",
+	}, suite.oauthApp)
+
+	suite.Nil(cibaErr)
+	suite.Empty(stored.Resources)
 }
 
 func (suite *CIBAServiceTestSuite) TestInitiate_InjectsRequiredAttributes() {
@@ -815,7 +932,7 @@ func (suite *CIBAServiceTestSuite) withIssuer() {
 	cfg.JWT.Issuer = testIssuer
 	actorProv := actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr())
 	suite.service = newCIBAService(suite.mockStore, suite.mockFlowExec,
-		suite.mockJWTService, actorProv, suite.mockResourceSvc, cfg)
+		suite.mockJWTService, actorProv, suite.mockResourceSvc, suite.mockServerConfig, cfg)
 }
 
 func (suite *CIBAServiceTestSuite) validIDTokenHint() string {

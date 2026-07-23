@@ -25,11 +25,23 @@ import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import type {Resources} from '../../../models/resources';
 import DecoratedVisualFlow from '../DecoratedVisualFlow';
 
+const mockNavigate = vi.fn();
+
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual('react-router');
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
+
 // Mock hooks
 vi.mock('../../../hooks/useUIPanelState', () => ({
   default: () => ({
     isResourcePanelOpen: true,
     isResourcePropertiesPanelOpen: false,
+    setIsResourcePanelOpen: vi.fn(),
+    setIsOpenResourcePropertiesPanel: vi.fn(),
   }),
 }));
 
@@ -94,13 +106,18 @@ vi.mock('../../../hooks/useVisualFlowHandlers', () => ({
   }),
 }));
 
+const {mockAddToViewAtIndex, mockAddToFormAtIndex} = vi.hoisted(() => ({
+  mockAddToViewAtIndex: vi.fn(),
+  mockAddToFormAtIndex: vi.fn(),
+}));
+
 vi.mock('../../../hooks/useDragDropHandlers', () => ({
   default: () => ({
     addCanvasNode: vi.fn(),
     addToView: vi.fn(),
     addToForm: vi.fn(),
-    addToViewAtIndex: vi.fn(),
-    addToFormAtIndex: vi.fn(),
+    addToViewAtIndex: mockAddToViewAtIndex,
+    addToFormAtIndex: mockAddToFormAtIndex,
   }),
 }));
 
@@ -144,12 +161,17 @@ const {mockToObject, mockGetNodes, mockGetEdges, mockUpdateNodeData, mockFitView
 );
 
 vi.mock('@xyflow/react', () => ({
+  Position: {Bottom: 'bottom', Left: 'left', Right: 'right', Top: 'top'},
   useReactFlow: () => ({
     toObject: mockToObject,
     getNodes: mockGetNodes,
     getEdges: mockGetEdges,
     updateNodeData: mockUpdateNodeData,
     fitView: mockFitView,
+  }),
+  useStore: (selector: (state: {nodes: never[]; edges: never[]}) => unknown) => selector({edges: [], nodes: []}),
+  useStoreApi: () => ({
+    getState: () => ({edges: [], nodeLookup: new Map(), nodes: []}),
   }),
   useUpdateNodeInternals: () => mockUpdateNodeInternals,
 }));
@@ -448,6 +470,16 @@ describe('DecoratedVisualFlow', () => {
       renderComponent(<DecoratedVisualFlow {...defaultProps} />);
 
       expect(screen.getByTestId('form-requires-view-dialog')).toBeInTheDocument();
+    });
+  });
+
+  describe('Navigation', () => {
+    it('should navigate to the flows list when the back button is clicked', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      fireEvent.click(screen.getByRole('button', {name: /back/i}));
+
+      expect(mockNavigate).toHaveBeenCalledWith('/flows');
     });
   });
 
@@ -1238,6 +1270,55 @@ describe('DecoratedVisualFlow', () => {
       });
 
       expect(screen.getByTestId('visual-flow')).toBeInTheDocument();
+    });
+
+    it('should handle drop on element inside a stack nested inside a form', () => {
+      // Form contains a Stack, and the Stack contains the drop target element.
+      const targetNode: Node = {
+        id: 'step-1',
+        position: {x: 0, y: 0},
+        data: {
+          components: [
+            {
+              id: 'form-1',
+              type: 'BLOCK',
+              components: [
+                {
+                  id: 'stack-1',
+                  type: 'STACK',
+                  components: [{id: 'button-1', type: 'BUTTON'}],
+                },
+              ],
+            },
+          ],
+        },
+      };
+      mockGetNodes.mockReturnValue([targetNode]);
+
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      // Simulate drop on button-1, which lives inside stack-1, which lives inside form-1.
+      triggerCapturedDragEnd({
+        operation: {
+          source: {
+            data: {
+              dragged: {type: 'IMAGE'},
+            },
+          },
+          target: {
+            id: 'button-1',
+            data: {
+              isReordering: true,
+              stepId: 'step-1',
+            },
+          },
+        },
+        canceled: false,
+      });
+
+      // The nested stack (not the form, and not a view-level fallback) should be the target container.
+      expect(mockAddToFormAtIndex).toHaveBeenCalledWith(expect.anything(), 'step-1', 'stack-1', 'button-1');
+      expect(mockAddToViewAtIndex).not.toHaveBeenCalled();
     });
 
     it('should call confirm handler from useContainerDialogConfirm', () => {

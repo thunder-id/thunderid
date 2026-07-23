@@ -39,7 +39,7 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
 
   const properties = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;
-    return (stepData?.properties ?? {}) as Record<string, unknown>;
+    return stepData?.properties ?? {};
   }, [resource]);
 
   const headers = (properties.headers as Record<string, string>) || {};
@@ -63,7 +63,7 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
   const handleNumberPropertyChange = useCallback(
     (propertyName: string, value: string, min: number, max: number): void => {
       if (value === '') {
-        onChange(`data.properties.${propertyName}`, min, resource, true);
+        onChange(`data.properties.${propertyName}`, min, resource);
         return;
       }
 
@@ -72,7 +72,7 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
         return;
       }
 
-      onChange(`data.properties.${propertyName}`, Math.min(max, Math.max(min, Math.floor(num))), resource, true);
+      onChange(`data.properties.${propertyName}`, Math.min(max, Math.max(min, Math.floor(num))), resource);
     },
     [resource, onChange],
   );
@@ -80,11 +80,11 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
   const entriesToRecord = (entries: [string, string][]): Record<string, string> => Object.fromEntries(entries);
 
   const updateHeaderEntries = (updater: (prev: [string, string][]) => [string, string][]): void => {
-    onChange('data.properties.headers', entriesToRecord(updater(headerEntries)), resource, true);
+    onChange('data.properties.headers', entriesToRecord(updater(headerEntries)), resource);
   };
 
   const updateResponseMappingEntries = (updater: (prev: [string, string][]) => [string, string][]): void => {
-    onChange('data.properties.responseMapping', entriesToRecord(updater(responseMappingEntries)), resource, true);
+    onChange('data.properties.responseMapping', entriesToRecord(updater(responseMappingEntries)), resource);
   };
 
   return (
@@ -146,9 +146,9 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
           onChange={(e) => {
             try {
               const parsed: unknown = JSON.parse(e.target.value);
-              onChange('data.properties.body', parsed, resource, true);
+              onChange('data.properties.body', parsed, resource);
             } catch {
-              onChange('data.properties.body', e.target.value, resource, true);
+              onChange('data.properties.body', e.target.value, resource);
             }
           }}
           placeholder={t('flows:core.executions.httpRequest.body.placeholder')}

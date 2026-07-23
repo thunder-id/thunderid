@@ -54,6 +54,7 @@ function ConfigConsumer() {
   return (
     <div>
       <span data-testid="server-url">{ctx.getServerUrl()}</span>
+      <span data-testid="gate-callback-url">{ctx.getGateCallbackUrl()}</span>
       <span data-testid="trusted-issuer-url">{ctx.getTrustedIssuerUrl()}</span>
       <span data-testid="trusted-issuer-client-id">{ctx.getTrustedIssuerClientId()}</span>
       <span data-testid="trusted-issuer-scopes">{JSON.stringify(ctx.getTrustedIssuerScopes())}</span>
@@ -130,6 +131,45 @@ describe('ConfigProvider', () => {
   it('falls back to the served origin when hostname and port are not configured', () => {
     renderWithConfig(buildConfig({server: {http_only: false}}), ConfigConsumer);
     expect(getTestId('server-url')).toBe(window.location.origin);
+  });
+
+  // --- getGateCallbackUrl ---
+
+  describe('getGateCallbackUrl', () => {
+    it('falls back to the served origin + default callback path when gate_client is not configured', () => {
+      renderWithConfig(buildConfig({server: undefined}), ConfigConsumer);
+      expect(getTestId('gate-callback-url')).toBe(`${window.location.origin}/gate/callback`);
+    });
+
+    it('falls back to the server URL + default callback path when gate_client is not configured', () => {
+      renderWithConfig(buildConfig(), ConfigConsumer);
+      expect(getTestId('gate-callback-url')).toBe('https://localhost:8090/gate/callback');
+    });
+
+    it('uses gate_client public_url with the default callback path', () => {
+      renderWithConfig(buildConfig({gate_client: {public_url: 'https://localhost:5190'}}), ConfigConsumer);
+      expect(getTestId('gate-callback-url')).toBe('https://localhost:5190/gate/callback');
+    });
+
+    it('builds the URL from gate_client hostname/port/scheme', () => {
+      renderWithConfig(buildConfig({gate_client: {hostname: 'localhost', port: 5190, scheme: 'http'}}), ConfigConsumer);
+      expect(getTestId('gate-callback-url')).toBe('http://localhost:5190/gate/callback');
+    });
+
+    it('defaults gate_client scheme to https when hostname/port are set without a scheme', () => {
+      renderWithConfig(buildConfig({gate_client: {hostname: 'localhost', port: 5190}}), ConfigConsumer);
+      expect(getTestId('gate-callback-url')).toBe('https://localhost:5190/gate/callback');
+    });
+
+    it('builds the URL from gate_client hostname without a port', () => {
+      renderWithConfig(buildConfig({gate_client: {hostname: 'gate.example.com'}}), ConfigConsumer);
+      expect(getTestId('gate-callback-url')).toBe('https://gate.example.com/gate/callback');
+    });
+
+    it('strips a trailing slash from public_url before appending the callback path', () => {
+      renderWithConfig(buildConfig({gate_client: {public_url: 'https://localhost:5190/'}}), ConfigConsumer);
+      expect(getTestId('gate-callback-url')).toBe('https://localhost:5190/gate/callback');
+    });
   });
 
   // --- getTrustedIssuerUrl ---

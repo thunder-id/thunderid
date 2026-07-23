@@ -41,6 +41,7 @@ import {useNavigate, useLocation} from 'react-router';
 import {z} from 'zod';
 import useCreateOrganizationUnit from '../api/useCreateOrganizationUnit';
 import useOrganizationUnit from '../contexts/useOrganizationUnit';
+import useOrganizationUnitRoutes from '../hooks/useOrganizationUnitRoutes';
 import type {CreateOrganizationUnitRequest} from '../models/requests';
 
 /**
@@ -67,6 +68,7 @@ type FormData = z.infer<ReturnType<typeof createFormSchema>>;
 export default function CreateOrganizationUnitPage(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
+  const routes = useOrganizationUnitRoutes();
   const {t} = useTranslation();
   const theme = useTheme();
   const logger = useLogger('CreateOrganizationUnitPage');
@@ -106,7 +108,7 @@ export default function CreateOrganizationUnitPage(): JSX.Element {
    */
   const generateHandleFromName = (nameValue: string): string => nameValue.toLowerCase().replace(/\s+/g, '-');
 
-  const listUrl = '/organization-units';
+  const listUrl = routes.list();
 
   const handleClose = (): void => {
     (async (): Promise<void> => {

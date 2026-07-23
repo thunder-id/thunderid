@@ -38,6 +38,7 @@ import ConfigureGeneral from '../components/create-user-type/ConfigureGeneral';
 import ConfigureName from '../components/create-user-type/ConfigureName';
 import ConfigureProperties from '../components/create-user-type/ConfigureProperties';
 import useUserTypeCreate from '../contexts/UserTypeCreate/useUserTypeCreate';
+import useUserTypeRoutes from '../hooks/useUserTypeRoutes';
 import {UserTypeCreateFlowStep} from '../models/user-type-create-flow';
 import type {PropertyDefinition, UserTypeDefinition, CreateUserTypeRequest} from '../types/user-types';
 
@@ -46,6 +47,7 @@ export default function CreateUserTypePage(): JSX.Element {
   const navigate = useNavigate();
   const logger = useLogger('CreateUserTypePage');
   const createUserTypeMutation = useCreateUserType();
+  const routes = useUserTypeRoutes();
 
   const {
     currentStep,
@@ -85,7 +87,7 @@ export default function CreateUserTypePage(): JSX.Element {
   });
 
   const handleClose = (): void => {
-    void navigate('/user-types');
+    void navigate(routes.list());
   };
 
   const handleStepReadyChange = useCallback((step: UserTypeCreateFlowStep, isReady: boolean): void => {
@@ -204,7 +206,7 @@ export default function CreateUserTypePage(): JSX.Element {
 
     try {
       await createUserTypeMutation.mutateAsync(requestBody);
-      await navigate('/user-types');
+      await navigate(routes.list());
     } catch (submitError) {
       logger.error('Failed to create user type or navigate', {error: submitError, userTypeName: name});
     }

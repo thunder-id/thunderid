@@ -253,6 +253,21 @@ func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_CIBA_Error() {
 	suite.Equal(oauth2const.ErrorAccessDenied, body["error"])
 }
 
+func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_CIBA_NilCIBAService_ReturnsBadRequest() {
+	// When the CIBA grant type is not in allowed_grant_types, cibaService is nil. A CIBA
+	// callback must be rejected gracefully instead of panicking on the nil service.
+	suite.dispatcher = newCallbackDispatcher(testhelpers.OAuthConfig(), suite.mockAuthZ, nil)
+
+	w := suite.postCallback(
+		`{"authId":"auth-req-1","assertion":"ciba-assertion","type":"urn:openid:params:grant-type:ciba"}`)
+
+	suite.Equal(http.StatusBadRequest, w.Code)
+	var body map[string]string
+	suite.NoError(json.NewDecoder(w.Body).Decode(&body))
+	suite.Equal(oauth2const.ErrorInvalidRequest, body["error"])
+	suite.Contains(body["error_description"], "Unsupported callback type")
+}
+
 // --- handleFlowCallback: unsupported type ---
 
 func (suite *CallbackDispatcherTestSuite) TestHandleFlowCallback_UnsupportedType_ReturnsBadRequest() {

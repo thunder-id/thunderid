@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import type {Node} from '@xyflow/react';
 import {createElement} from 'react';
 import {Trans} from 'react-i18next';
 import {ActionEventTypes, BlockTypes, ElementCategories, ElementTypes} from '../models/elements';
@@ -243,3 +244,87 @@ export const VALIDATION_RULES: ValidationRuleDefinition[] = [
     },
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Graph Validation Rules (cross-node)
+// ---------------------------------------------------------------------------
+
+/**
+ * A validation rule that inspects the whole node set instead of a single
+ * resource, for constraints that span multiple nodes.
+ */
+export type GraphValidationRule = (nodes: Node[]) => Notification[];
+
+function getNodeExecutorName(node: Node): string | undefined {
+  return (node.data as StepData | undefined)?.action?.executor?.name;
+}
+
+function createGraphErrorNotification(errorId: string, i18nKey: string, node: Node): Notification {
+  const message = createElement(Trans, {
+    i18nKey,
+    values: {id: node.id},
+    components: {code: createElement('code')},
+  });
+  const notification = new Notification(errorId, message, NotificationType.ERROR);
+
+  notification.addResource(node as unknown as Resource);
+
+  return notification;
+}
+
+/**
+ * Mirrors the backend SSO pairing contract: every SSO check must reference an
+ * existing session node via `checkpointRef`, and every session node must be
+ * referenced by at least one SSO check. Surfaces hand-deleting half of a pair
+ * immediately instead of at save time.
+ */
+export const ssoPairingRule: GraphValidationRule = (nodes: Node[]): Notification[] => {
+  const notifications: Notification[] = [];
+
+  const ssoCheckNodes = nodes.filter((node) => getNodeExecutorName(node) === ExecutionTypes.SSOCheck);
+  const sessionNodeIds = new Set(
+    nodes.filter((node) => getNodeExecutorName(node) === ExecutionTypes.Session).map((node) => node.id),
+  );
+
+  const referencedSessionIds = new Set<string>();
+
+  for (const node of ssoCheckNodes) {
+    const checkpointRef = (node.data as StepData | undefined)?.properties?.checkpointRef;
+
+    if (typeof checkpointRef !== 'string' || checkpointRef === '') {
+      notifications.push(
+        createGraphErrorNotification(
+          `${node.id}_SSO_MISSING_CHECKPOINT_REF`,
+          'flows:core.validation.sso.missingCheckpointRef',
+          node,
+        ),
+      );
+      continue;
+    }
+
+    if (!sessionNodeIds.has(checkpointRef)) {
+      notifications.push(
+        createGraphErrorNotification(
+          `${node.id}_SSO_INVALID_CHECKPOINT_REF`,
+          'flows:core.validation.sso.invalidCheckpointRef',
+          node,
+        ),
+      );
+      continue;
+    }
+
+    referencedSessionIds.add(checkpointRef);
+  }
+
+  for (const node of nodes) {
+    if (getNodeExecutorName(node) === ExecutionTypes.Session && !referencedSessionIds.has(node.id)) {
+      notifications.push(
+        createGraphErrorNotification(`${node.id}_SSO_ORPHAN_SESSION`, 'flows:core.validation.sso.orphanSession', node),
+      );
+    }
+  }
+
+  return notifications;
+};
+
+export const GRAPH_VALIDATION_RULES: GraphValidationRule[] = [ssoPairingRule];

@@ -94,6 +94,69 @@ func (s *InMemoryStoreTestSuite) TestPut_ZeroTTL_NeverExpires() {
 	s.Equal([]byte("forever"), got)
 }
 
+func (s *InMemoryStoreTestSuite) TestPutIfNotExists_MissingKey_Stores() {
+	ok, err := s.store.PutIfNotExists(s.ctx, testNamespace, testKey, []byte("value"), 60)
+	s.NoError(err)
+	s.True(ok)
+
+	got, err := s.store.Get(s.ctx, testNamespace, testKey)
+	s.NoError(err)
+	s.Equal([]byte("value"), got)
+}
+
+func (s *InMemoryStoreTestSuite) TestPutIfNotExists_ExistingUnexpiredKey_Rejected() {
+	_, err := s.store.PutIfNotExists(s.ctx, testNamespace, testKey, []byte("first"), 60)
+	s.Require().NoError(err)
+
+	ok, err := s.store.PutIfNotExists(s.ctx, testNamespace, testKey, []byte("second"), 60)
+	s.NoError(err)
+	s.False(ok)
+
+	got, err := s.store.Get(s.ctx, testNamespace, testKey)
+	s.NoError(err)
+	s.Equal([]byte("first"), got, "a rejected PutIfNotExists must not overwrite the existing value")
+}
+
+func (s *InMemoryStoreTestSuite) TestPutIfNotExists_ExistingExpiredKey_Overwrites() {
+	fk := s.store.getFormattedKey(testNamespace, testKey)
+	s.store.data[fk] = &entry{
+		value:     []byte("stale"),
+		expiresAt: time.Now().Add(-time.Second),
+	}
+
+	ok, err := s.store.PutIfNotExists(s.ctx, testNamespace, testKey, []byte("fresh"), 60)
+	s.NoError(err)
+	s.True(ok)
+
+	got, err := s.store.Get(s.ctx, testNamespace, testKey)
+	s.NoError(err)
+	s.Equal([]byte("fresh"), got)
+}
+
+func (s *InMemoryStoreTestSuite) TestConcurrentPutIfNotExists() {
+	const workers = 20
+	var wg sync.WaitGroup
+	results := make([]bool, workers)
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func(i int) {
+			defer wg.Done()
+			ok, _ := s.store.PutIfNotExists(s.ctx, testNamespace, testKey, []byte("v"), 60)
+			results[i] = ok
+		}(i)
+	}
+	wg.Wait()
+
+	// Exactly one goroutine should win the claim.
+	wins := 0
+	for _, ok := range results {
+		if ok {
+			wins++
+		}
+	}
+	s.Equal(1, wins)
+}
+
 func (s *InMemoryStoreTestSuite) TestUpdate_UpdatesValuePreservesExpiry() {
 	fk := s.store.getFormattedKey(testNamespace, testKey)
 	expiry := time.Now().Add(time.Minute)

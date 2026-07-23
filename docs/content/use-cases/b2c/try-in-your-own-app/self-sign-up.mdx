@@ -28,11 +28,11 @@ In the redirect-based pattern, your app redirects the user to <ProductName /> fo
 
 **1. Build a registration flow**
 
-Build a `REGISTRATION` flow using the Flow Designer or the flows API. See [Build a Flow](../../../../guides/guides/flows/build-a-flow).
+Build a `REGISTRATION` flow using the Flow Designer or the flows API. See [Build a Flow](../../../../guides/flows/build-a-flow).
 
 Your registration flow should collect the user's credentials, provision the account, and return an auth assertion so the user lands signed in.
 
-To automatically assign a default role to every self-registered user, create the role under **Roles** → **Add Role**. Then set `properties.assignRole` to that role's ID on the `ProvisioningExecutor` node in your flow. See [Authorization](../../../../guides/key-concepts/authorization).
+To automatically assign a default role to every self-registered user, create the role under **Roles** → **Add Role**. Then set `properties.assignRole` to that role's ID on the `ProvisioningExecutor` node in your flow. See [Authorization](../../../../key-concepts/authorization).
 
 <details>
   <summary>Sample registration flow</summary>
@@ -157,7 +157,7 @@ To automatically assign a default role to every self-registered user, create the
 
 Go to **Applications** → your app → **Flows** tab. Under **Registration Flow**, select the flow you created. Save the application.
 
-See [Manage Applications](../../../../guides/guides/applications/manage-applications).
+See [Manage Applications](../../../../guides/applications/manage-applications).
 
 ### Integrate into Your App
 
@@ -165,9 +165,9 @@ Trigger sign-up from your app using the SDK. The registration experience is host
 
 | Framework   | Where to integrate                                                                                                                         |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| React       | [React Quickstart](../../../../guides/getting-started/connect-your-application/react), `<SignUpButton />` component                       |
-| Next.js     | [Next.js Quickstart](../../../../guides/getting-started/connect-your-application/nextjs)                                                    |
-| Vue         | [Vue Quickstart](../../../../guides/getting-started/connect-your-application/vue)                                                           |
+| React       | [React Quickstart](../../../../getting-started/connect-your-application/react), `<SignUpButton />` component                       |
+| Next.js     | [Next.js Quickstart](../../../../getting-started/connect-your-application/nextjs)                                                    |
+| Vue         | [Vue Quickstart](../../../../getting-started/connect-your-application/vue)                                                           |
 | Browser SDK | [Browser SDK Overview](../../../../sdks/browser/overview)                                                                                   |
 
 :::tip Using a different SDK?

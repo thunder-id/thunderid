@@ -124,11 +124,12 @@ func Run(verbose, forceSetup bool) {
 		ui.Note("Already running",
 			fmt.Sprintf("%s is already running on port %d.\nAttaching to the existing instance.",
 				product.Name, health.DefaultPort))
-		replLoop(runVersion, path, nil, verbose, isFirstRun, newVersion, nodeWarning, 0)
+		replLoop(runVersion, path, nil, verbose, isFirstRun, newVersion, nodeWarning, 0, nil)
 		return
 	}
 
 	port := health.DefaultPort
+	var creds *setup.AdminCredentials
 
 	if alreadyInstalled && !forceSetup {
 		ui.Note("Starting "+product.Name, fmt.Sprintf("%s v%s is ready\n%s", product.Name, runVersion, path))
@@ -148,7 +149,7 @@ func Run(verbose, forceSetup bool) {
 			ui.Note("First-time setup", fmt.Sprintf("Setting up %s v%s\n%s", product.Name, runVersion, path))
 		}
 		port = resolvePort(path)
-		runSetupPhase(runVersion, path, verbose)
+		creds = runSetupPhase(runVersion, path, verbose)
 	} else {
 		// If the previously-active version is no longer in the manifest we'd need
 		// to download it, so fall back to the latest available version.
@@ -168,7 +169,7 @@ func Run(verbose, forceSetup bool) {
 		}
 		path = absPath
 		port = resolvePort(path)
-		runSetupPhase(runVersion, path, verbose)
+		creds = runSetupPhase(runVersion, path, verbose)
 		if err := config.WriteActiveVersion(runVersion); err != nil {
 			ui.Fatal("Failed to record active version: " + err.Error())
 			os.Exit(1)
@@ -184,19 +185,22 @@ func Run(verbose, forceSetup bool) {
 	proc, err := setup.StartBackgroundOnPort(path, verbose, port)
 	if err != nil {
 		fmt.Println()
+		// The REPL normally displays generated credentials; since we exit before it,
+		// print them here so a fresh password is not lost (setup won't regenerate it).
+		ui.PrintCredentialsFallback(creds)
 		ui.Fatal("Failed to start " + product.Name + ": " + err.Error())
 		os.Exit(1)
 	}
 	fmt.Printf("\r\033[2K  %s %s started  %s\n", ui.Green("✓"), product.Name, ui.Dim("logs: "+setup.LogDir(path)))
 
-	replLoop(runVersion, path, proc, verbose, isFirstRun, newVersion, nodeWarning, port)
+	replLoop(runVersion, path, proc, verbose, isFirstRun, newVersion, nodeWarning, port, creds)
 }
 
 // replLoop runs the REPL repeatedly, re-entering after no-op upgrades or version switches.
 // An actual upgrade or normal exit breaks the loop.
-func replLoop(version, installPath string, proc *exec.Cmd, verbose, isFirstRun bool, newVersion, nodeWarning string, port int) {
+func replLoop(version, installPath string, proc *exec.Cmd, verbose, isFirstRun bool, newVersion, nodeWarning string, port int, creds *setup.AdminCredentials) {
 	for {
-		upgradeRequested, switchRequested, err := ui.RunREPL(version, proc, installPath, verbose, isFirstRun, newVersion, nodeWarning, port)
+		upgradeRequested, switchRequested, err := ui.RunREPL(version, proc, installPath, verbose, isFirstRun, newVersion, nodeWarning, port, creds)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\nREPL error: %v\n", err)
 			os.Exit(1)
@@ -302,15 +306,66 @@ func downloadAndInstall(version, path string, verbose bool) {
 	fmt.Printf("  %s %s v%s installed to %s\n", ui.Green("✓"), product.Name, version, path)
 }
 
+// collectAdminCredentials prompts for the admin username and password before setup,
+// showing the default username and a freshly generated password as the values that
+// will be used if nothing is entered (mirroring setup.sh). It exports the results via
+// the THUNDERID_ADMIN_* env vars that setup consumes.
+//
+// It is skipped when both values are already provided via the environment (scripted
+// runs) or when stdin is not interactive; in those cases setup.sh generates and
+// surfaces the password itself. When the operator accepts the generated password it
+// is returned so the REPL can display it; a typed password returns nil (the operator
+// already knows it), matching setup.sh's notice behavior.
+func collectAdminCredentials() *setup.AdminCredentials {
+	if os.Getenv("THUNDERID_ADMIN_USERNAME") != "" && os.Getenv("THUNDERID_ADMIN_PASSWORD") != "" {
+		return nil
+	}
+	defaultUser := os.Getenv("THUNDERID_ADMIN_USERNAME")
+	if defaultUser == "" {
+		defaultUser = "admin"
+	}
+	username, password, useGenerated, ok := ui.PromptAdminCredentials(defaultUser, defaultAdminPassword())
+	if !ok {
+		return nil
+	}
+	if err := os.Setenv("THUNDERID_ADMIN_USERNAME", username); err != nil {
+		ui.Fatal("Failed to set admin username: " + err.Error())
+		os.Exit(1)
+	}
+	if err := os.Setenv("THUNDERID_ADMIN_PASSWORD", password); err != nil {
+		ui.Fatal("Failed to set admin password: " + err.Error())
+		os.Exit(1)
+	}
+	if useGenerated {
+		return &setup.AdminCredentials{Username: username, Password: password}
+	}
+	return nil
+}
+
+// defaultAdminPassword returns the password to offer as the prompt default: a
+// pre-configured THUNDERID_ADMIN_PASSWORD if set (so accepting the prompt keeps it
+// instead of overwriting it with a fresh one), otherwise a freshly generated one.
+func defaultAdminPassword() string {
+	if p := os.Getenv("THUNDERID_ADMIN_PASSWORD"); p != "" {
+		return p
+	}
+	return setup.GenerateAdminPassword()
+}
+
 // runSetupPhase runs setup.sh with a spinner (non-verbose) or raw output (verbose).
 // On failure in non-verbose mode, the captured stderr is printed before the error box.
-func runSetupPhase(version, installPath string, verbose bool) {
+// It returns the generated admin credentials when setup produced them, or nil.
+func runSetupPhase(version, installPath string, verbose bool) *setup.AdminCredentials {
+	promptCreds := collectAdminCredentials()
+	var setupCreds *setup.AdminCredentials
 	if verbose {
 		fmt.Printf("\n  Running %s setup (v%s)...\n", product.Name, version)
-		if err := setup.RunSetup(installPath, true); err != nil {
+		c, err := setup.RunSetup(installPath, true)
+		if err != nil {
 			ui.Fatal("Setup failed: " + err.Error())
 			os.Exit(1)
 		}
+		setupCreds = c
 	} else {
 		fmt.Println()
 		var setupErr error
@@ -323,7 +378,7 @@ func runSetupPhase(version, installPath string, verbose bool) {
 			})).
 			Title("Setting up " + product.Name + "...").
 			Action(func() {
-				setupErr = setup.RunSetup(installPath, false)
+				setupCreds, setupErr = setup.RunSetup(installPath, false)
 			}).
 			Run(); err != nil {
 			ui.Fatal("Setup interrupted: " + err.Error())
@@ -348,8 +403,19 @@ func runSetupPhase(version, installPath string, verbose bool) {
 	}
 
 	if err := config.MarkSetupComplete(version); err != nil {
+		creds := setupCreds
+		if promptCreds != nil {
+			creds = promptCreds
+		}
+		ui.PrintCredentialsFallback(creds)
 		ui.Fatal("Failed to mark setup complete: " + err.Error())
 		os.Exit(1)
 	}
 	fmt.Printf("  %s Setup complete\n", ui.Green("✓"))
+	// Prefer the interactively collected credentials; fall back to whatever setup.sh
+	// generated and printed (non-interactive path).
+	if promptCreds != nil {
+		return promptCreds
+	}
+	return setupCreds
 }

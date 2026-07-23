@@ -20,6 +20,7 @@ package ciba
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -72,8 +73,13 @@ func (s *cibaRequestStore) Add(ctx context.Context, request *CIBAAuthRequest) er
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
+	encodedResources, err := encodeResources(request.Resources)
+	if err != nil {
+		return err
+	}
+
 	_, err = dbClient.ExecuteContext(ctx, queryInsertCIBAAuthRequest,
-		request.AuthReqID, request.ClientID, request.StandardScopes, string(request.State),
+		request.AuthReqID, request.ClientID, request.StandardScopes, encodedResources, string(request.State),
 		request.ExpiryTime.UTC(), s.deploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to insert CIBA authentication request: %w", err)
@@ -192,6 +198,12 @@ func buildCIBAAuthRequestFromRow(row map[string]interface{}) (*CIBAAuthRequest, 
 		CompletedACR:     stringFromRow(row[dbColumnCompletedACR]),
 	}
 
+	resources, err := decodeResources(row[dbColumnResources])
+	if err != nil {
+		return nil, err
+	}
+	request.Resources = resources
+
 	expiryTime, err := sysutils.ParseDBTimeField(row[dbColumnExpiryTime], dbColumnExpiryTime)
 	if err != nil {
 		return nil, err
@@ -206,6 +218,32 @@ func buildCIBAAuthRequestFromRow(row map[string]interface{}) (*CIBAAuthRequest, 
 	}
 
 	return request, nil
+}
+
+// encodeResources serializes the effective resource binding for the single RESOURCES text column.
+// An empty binding (an unbound request) yields an empty string.
+func encodeResources(resources []string) (string, error) {
+	if len(resources) == 0 {
+		return "", nil
+	}
+	data, err := json.Marshal(resources)
+	if err != nil {
+		return "", fmt.Errorf("failed to encode CIBA resources: %w", err)
+	}
+	return string(data), nil
+}
+
+// decodeResources parses the stored resource binding. A NULL or empty column yields a nil slice.
+func decodeResources(value interface{}) ([]string, error) {
+	raw := stringFromRow(value)
+	if raw == "" {
+		return nil, nil
+	}
+	var resources []string
+	if err := json.Unmarshal([]byte(raw), &resources); err != nil {
+		return nil, fmt.Errorf("failed to decode CIBA resources: %w", err)
+	}
+	return resources, nil
 }
 
 // stringFromRow extracts a string value from a database row column, handling both string and []byte.

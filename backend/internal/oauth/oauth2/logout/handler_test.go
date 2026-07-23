@@ -79,7 +79,7 @@ func (suite *LogoutHandlerTestSuite) TestHandleLogout_InitiatesFlowAndRedirectsT
 			suite.Equal("app-1", ic.ApplicationID)
 			suite.Equal("SIGNOUT", ic.FlowType)
 			capturedRuntime = ic.RuntimeData
-			return "exec-1", nil
+			return testExecutionID, nil
 		})
 
 	// A post_logout_redirect_uri is only honored with an id_token_hint, so drive the flow with one.
@@ -102,7 +102,7 @@ func (suite *LogoutHandlerTestSuite) TestHandleLogout_InitiatesFlowAndRedirectsT
 	location := rec.Header().Get("Location")
 	suite.Contains(location, "https://gate.example:9443/signout")
 	suite.Contains(location, "applicationId=app-1")
-	suite.Contains(location, "executionId=exec-1")
+	suite.Contains(location, "executionId="+testExecutionID)
 	suite.Contains(location, "logoutId=", "the gate needs the logout id to complete on callback")
 
 	// The post-logout target is kept in the OAuth layer, not threaded through the flow.

@@ -19,6 +19,7 @@
 import {zodResolver} from '@hookform/resolvers/zod';
 import {SettingsCard} from '@thunderid/components';
 import {Box, Stack, Typography, TextField} from '@wso2/oxygen-ui';
+import {useEffect} from 'react';
 import {useForm, Controller} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import {z} from 'zod';
@@ -46,6 +47,11 @@ interface UrlsSectionProps {
    * Singular noun used to refer to the entity in user-visible copy (default: 'application').
    */
   entityLabel?: string;
+  /**
+   * Callback function to handle validation changes
+   * @param hasErrors - Boolean indicating if the URLs have validation errors
+   */
+  onValidationChange?: (hasErrors: boolean) => void;
 }
 
 /**
@@ -66,6 +72,7 @@ export default function UrlsSection({
   editedApp,
   onFieldChange,
   entityLabel = 'application',
+  onValidationChange = undefined,
 }: UrlsSectionProps) {
   const {t} = useTranslation();
 
@@ -78,6 +85,7 @@ export default function UrlsSection({
 
   const {
     control,
+    trigger,
     formState: {errors},
   } = useForm<UrlsFormData>({
     resolver: zodResolver(urlsSchema),
@@ -87,6 +95,19 @@ export default function UrlsSection({
       policyUri: editedApp.policyUri ?? application.policyUri ?? '',
     },
   });
+
+  // Validate default values on mount so stale validation state doesn't survive a remount.
+  useEffect(() => {
+    void trigger();
+  }, [trigger]);
+
+  // Effect to notify parent component of validation state changes
+  useEffect(() => {
+    if (onValidationChange) {
+      const hasErrors = !!errors.tosUri || !!errors.policyUri;
+      onValidationChange(hasErrors);
+    }
+  }, [errors.tosUri, errors.policyUri, onValidationChange]);
 
   return (
     <SettingsCard

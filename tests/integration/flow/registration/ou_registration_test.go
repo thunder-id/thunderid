@@ -509,6 +509,13 @@ func (ts *OURegistrationFlowTestSuite) SetupSuite() {
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, smsFlowID)
 	smsApp.RegistrationFlowID = smsFlowID
 
+	// Create isolated auth flow to avoid cross-type reference validation with default auth flow.
+	isolatedAuthID, err := testutils.CreateIsolatedAuthFlow("ou-registration-isolated-auth")
+	ts.Require().NoError(err, "Failed to create isolated auth flow")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, isolatedAuthID)
+	ouRegTestApp.AuthFlowID = isolatedAuthID
+	smsApp.AuthFlowID = isolatedAuthID
+
 	// Create test applications with allowed user types
 	ouRegTestApp.OUID = ts.basicFlowTestOUID
 	appID, err := testutils.CreateApplication(ouRegTestApp)

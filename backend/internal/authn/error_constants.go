@@ -103,6 +103,19 @@ var (
 			DefaultValue: "The passkey authentication attempt failed",
 		},
 	}
+	// ErrorPasskeyEnrollmentFailed is the error when the passkey enrollment attempt fails.
+	ErrorPasskeyEnrollmentFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AUTHN-PSK-1002",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authnservice.passkey_enrollment_failed",
+			DefaultValue: "Enrollment failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authnservice.passkey_enrollment_failed_description",
+			DefaultValue: "The passkey enrollment attempt failed",
+		},
+	}
 	// ErrorFederatedAuthenticationFailed is the error when federated authentication fails.
 	ErrorFederatedAuthenticationFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

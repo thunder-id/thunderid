@@ -185,9 +185,11 @@ func (s *flowInferenceService) cleanPromptNodeMeta(node *providers.NodeDefinitio
 		return
 	}
 
-	for i, comp := range components {
+	filteredComponents := make([]interface{}, 0, len(components))
+	for _, comp := range components {
 		c, ok := comp.(map[string]interface{})
 		if !ok {
+			filteredComponents = append(filteredComponents, comp)
 			continue
 		}
 
@@ -196,15 +198,15 @@ func (s *flowInferenceService) cleanPromptNodeMeta(node *providers.NodeDefinitio
 			if label, ok := c["label"].(string); ok {
 				if newLabel, replaced := replaceAuthLabel(label); replaced {
 					c["label"] = newLabel
-					components[i] = c
 				}
 			}
 		}
 
-		// Remove sign-up link from inside BLOCK components — match by type and label content, not ID
+		// Remove sign-up and recovery links from inside BLOCK components
 		if c["type"] == "BLOCK" {
 			blockComponents, ok := c["components"].([]interface{})
 			if !ok {
+				filteredComponents = append(filteredComponents, c)
 				continue
 			}
 			filtered := make([]interface{}, 0, len(blockComponents))
@@ -216,7 +218,8 @@ func (s *flowInferenceService) cleanPromptNodeMeta(node *providers.NodeDefinitio
 				}
 				if bcMap["type"] == "RICH_TEXT" {
 					if label, ok := bcMap["label"].(string); ok &&
-						(strings.Contains(label, "sign_up_url") || strings.Contains(label, "forgot_password_url")) {
+						(strings.Contains(label, `data-component-ref="self-sign-up-link"`) ||
+							strings.Contains(label, `data-component-ref="recovery-link"`)) {
 						continue
 					}
 				}
@@ -231,11 +234,21 @@ func (s *flowInferenceService) cleanPromptNodeMeta(node *providers.NodeDefinitio
 				filtered = append(filtered, bc)
 			}
 			c["components"] = filtered
-			components[i] = c
 		}
+
+		// Remove sign-up and recovery links from top-level components
+		if c["type"] == "RICH_TEXT" {
+			if label, ok := c["label"].(string); ok &&
+				(strings.Contains(label, `data-component-ref="self-sign-up-link"`) ||
+					strings.Contains(label, `data-component-ref="recovery-link"`)) {
+				continue
+			}
+		}
+
+		filteredComponents = append(filteredComponents, c)
 	}
 
-	meta["components"] = components
+	meta["components"] = filteredComponents
 }
 
 // findStartNode finds the START node in the flow

@@ -23,13 +23,14 @@ import type {JSX} from 'react';
 import {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useLocation, useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import type {ValidationStep, ParseError} from '../models/import-configuration';
 
 export default function ImportConfigurationValidatePage(): JSX.Element {
   const {t} = useTranslation('importExport');
   const navigate = useNavigate();
   const location = useLocation();
-  const isWelcomeFlow = location.pathname.startsWith('/welcome');
+  const isWelcomeFlow = location.pathname.startsWith(RouteConfig.welcome.root());
   const logger = useLogger('ImportConfigurationValidatePage');
 
   const state = location.state as {
@@ -48,11 +49,11 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
   ]);
 
   const handleClose = (): void => {
-    void navigate('/home');
+    void navigate(RouteConfig.home.list());
   };
 
   const handleCancel = (): void => {
-    void navigate('/home');
+    void navigate(RouteConfig.home.list());
   };
 
   useEffect(() => {
@@ -102,9 +103,12 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
             // Navigate to summary after all steps complete (only if no errors)
             setTimeout(() => {
               (async () => {
-                await navigate(`${isWelcomeFlow ? '/welcome' : ''}/import-configuration/summary`, {
-                  state: location.state as Record<string, unknown>,
-                });
+                await navigate(
+                  isWelcomeFlow
+                    ? RouteConfig.welcome.importConfigurationSummary()
+                    : RouteConfig.importConfiguration.summary(),
+                  {state: location.state as Record<string, unknown>},
+                );
               })().catch((_error: unknown) => {
                 logger.error('Failed to navigate to summary', {error: _error});
               });
@@ -144,7 +148,13 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
           <AppBreadcrumbs
             items={[
               ...(isWelcomeFlow
-                ? [{key: 'welcome', label: t('common:welcome.header'), onClick: () => void navigate('/welcome')}]
+                ? [
+                    {
+                      key: 'welcome',
+                      label: t('common:welcome.header'),
+                      onClick: () => void navigate(RouteConfig.welcome.root()),
+                    },
+                  ]
                 : []),
               {key: 'import-configuration', label: t('upload.breadcrumb.openProject')},
             ]}
@@ -318,7 +328,11 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
                 <Button variant="outlined" onClick={handleCancel}>
                   {t('common:actions.cancel')}
                 </Button>
-                <Button variant="outlined" color="error" onClick={() => void navigate('/welcome/import-configuration')}>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={() => void navigate(RouteConfig.welcome.importConfigurationUpload())}
+                >
                   {t('validate.actions.uploadDifferentFile')}
                 </Button>
               </Stack>

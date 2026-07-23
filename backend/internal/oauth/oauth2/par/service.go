@@ -20,6 +20,7 @@ package par
 
 import (
 	"context"
+	"net/url"
 	"strings"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -86,7 +87,11 @@ func (s *parService) HandlePushedAuthorizationRequest(
 	}
 
 	// Validate the authorization parameters using the same rules as the authorize endpoint.
-	errCode, errMsg := requestvalidator.ValidateAuthorizationRequestParams(params, oauthApp, dpopHeaderJkt)
+	parParams := make(url.Values, len(params))
+	for k, v := range params {
+		parParams.Set(k, v)
+	}
+	errCode, errMsg := requestvalidator.ValidateAuthorizationRequestParams(parParams, oauthApp, dpopHeaderJkt)
 	if errCode != "" {
 		return nil, errCode, errMsg
 	}

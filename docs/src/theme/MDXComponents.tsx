@@ -19,6 +19,7 @@
 import MDXComponents from '@theme-original/MDXComponents';
 import {Box, Card, CardContent, Typography, ColorSchemeSVG, Table, TableBody, TableCell, TableContainer, TableHead, TableRow} from '@wso2/oxygen-ui';
 import {AIAgentIdentityRoadmap as AIAgentIdentityExplorer, AIAgentSolutionPatternsRoadmap} from '@site/src/components/AIAgentIdentityJourney';
+import {AgentInteractionsDiagram} from '@site/src/components/AgentInteractionsDiagram';
 import ApiReference from '@site/src/components/ApiReference';
 import ApiVersionReference from '@site/src/components/ApiVersionReference';
 import {
@@ -146,6 +147,7 @@ export default {
   B2CNextSteps,
   AIAgentIdentityExplorer,
   AIAgentSolutionPatternsRoadmap,
+  AgentInteractionsDiagram,
   BuildAFlowDiagram,
   FlowNodeTypesRoadmap,
   FlowBuildingBlocksRoadmap,

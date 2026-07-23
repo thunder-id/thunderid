@@ -23,6 +23,7 @@ import type {FlowCompletionConfigsInterface} from '../models/flows';
 import type {MetadataInterface} from '../models/metadata';
 import type {Resource} from '../models/resources';
 import type {EdgeStyleTypes} from '../models/steps';
+import type {GraphValidationRule} from '../validation/validation-rules';
 
 /**
  * Props interface of {@link FlowConfigContext}
@@ -112,6 +113,16 @@ export interface FlowConfigContextProps {
    * Setter to push the latest nodes into the shared context.
    */
   setFlowNodes: Dispatch<SetStateAction<Node[]>>;
+  /**
+   * Cross-node validation rules active for the current flow. Empty by
+   * default; flow-type-specific hosts register the rules that apply
+   * (e.g. the SSO pairing rules for AUTHENTICATION flows).
+   */
+  graphValidationRules: GraphValidationRule[];
+  /**
+   * Setter to register the graph validation rules for the current flow.
+   */
+  setGraphValidationRules: Dispatch<SetStateAction<GraphValidationRule[]>>;
 }
 
 const FlowConfigContext: Context<FlowConfigContextProps | undefined> = createContext<

@@ -31,6 +31,7 @@ import (
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -50,6 +51,8 @@ type LogoutRequest struct {
 	ClientID              string
 	PostLogoutRedirectURI string
 	State                 string
+	Headers               map[string][]string
+	QueryParams           map[string][]string
 }
 
 // LogoutResolution is the validated target of a logout request.
@@ -57,6 +60,8 @@ type LogoutResolution struct {
 	AppID                 string
 	PostLogoutRedirectURI string
 	State                 string
+	Headers               map[string][]string
+	QueryParams           map[string][]string
 }
 
 // SignOutInitiation is the result of starting an RP-initiated sign-out: the stored logout-request id
@@ -117,9 +122,18 @@ func (s *logoutService) InitiateSignOutFlow(
 		return nil, &tidcommon.InternalServerError
 	}
 
+	// id_token_hint is used by the OAuth layer to resolve the target client; the sign-out flow
+	// itself never consumes it. Strip it from the forwarded initiator request so we don't persist a
+	// JWT with user identity claims into the flow context store.
+	forwardedQueryParams := filterQueryParams(resolution.QueryParams, constants.RequestParamIDTokenHint)
+
 	executionID, svcErr := s.flowExecService.InitiateFlow(ctx, &flowexec.FlowInitContext{
 		ApplicationID: resolution.AppID,
 		FlowType:      string(providers.FlowTypeSignOut),
+		InitiatorRequest: &providers.InitiatorRequest{
+			Headers:     sysutils.FilterSensitiveHeaders(resolution.Headers),
+			QueryParams: forwardedQueryParams,
+		},
 	})
 	if svcErr != nil {
 		return nil, svcErr
@@ -207,6 +221,8 @@ func (s *logoutService) Resolve(ctx context.Context, req LogoutRequest) (*Logout
 		AppID:                 client.ID,
 		PostLogoutRedirectURI: req.PostLogoutRedirectURI,
 		State:                 req.State,
+		Headers:               req.Headers,
+		QueryParams:           req.QueryParams,
 	}, nil
 }
 
@@ -225,6 +241,25 @@ func (s *logoutService) clientIDFromIDTokenHint(ctx context.Context, idTokenHint
 		return "", errInvalidIDTokenHint
 	}
 	return audienceClientID(payload), nil
+}
+
+// filterQueryParams returns a copy of the given query-parameter map with the named keys removed.
+func filterQueryParams(params map[string][]string, exclude ...string) map[string][]string {
+	if len(params) == 0 {
+		return params
+	}
+	excluded := make(map[string]struct{}, len(exclude))
+	for _, name := range exclude {
+		excluded[name] = struct{}{}
+	}
+	filtered := make(map[string][]string, len(params))
+	for name, values := range params {
+		if _, drop := excluded[name]; drop {
+			continue
+		}
+		filtered[name] = values
+	}
+	return filtered
 }
 
 // audienceClientID extracts the client id from an ID token. When the token has multiple audiences the

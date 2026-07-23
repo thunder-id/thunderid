@@ -21,7 +21,7 @@ import {describe, it, expect, vi} from 'vitest';
 import {NotificationType} from '../../models/notification';
 import type {StepData} from '../../models/steps';
 import {computeValidationNotifications} from '../computeValidationNotifications';
-import {VALIDATION_RULES} from '../validation-rules';
+import {GRAPH_VALIDATION_RULES, VALIDATION_RULES} from '../validation-rules';
 
 // Simple mock t function that returns the key
 const t = vi.fn((key: string) => key) as unknown as import('i18next').TFunction;
@@ -518,6 +518,73 @@ describe('computeValidationNotifications', () => {
 
       const notification = result.get('btn-1_REQUIRED_FIELD_ERROR')!;
       expect(notification.hasResource('btn-1')).toBe(true);
+    });
+  });
+
+  describe('SSO pairing rule', () => {
+    function createSsoCheckNode(id: string, checkpointRef?: string): Node {
+      return createNode({
+        id,
+        type: 'TASK_EXECUTION',
+        data: {
+          action: {type: 'EXECUTOR', executor: {name: 'SSOCheckExecutor'}},
+          ...(checkpointRef !== undefined ? {properties: {checkpointRef}} : {}),
+        } as unknown as StepData,
+      });
+    }
+
+    function createSessionNode(id: string): Node {
+      return createNode({
+        id,
+        type: 'TASK_EXECUTION',
+        data: {action: {type: 'EXECUTOR', executor: {name: 'SessionExecutor'}}} as unknown as StepData,
+      });
+    }
+
+    it('should not run graph rules by default (flow-type-specific opt-in)', () => {
+      const nodes = [createSsoCheckNode('sso_check_1'), createSessionNode('session_1')];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      expect(result.size).toBe(0);
+    });
+
+    it('should not report anything for a healthy pair', () => {
+      const nodes = [createSsoCheckNode('sso_check_1', 'session_1'), createSessionNode('session_1')];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t, GRAPH_VALIDATION_RULES);
+
+      expect(result.size).toBe(0);
+    });
+
+    it('should report an SSO check with a missing checkpointRef', () => {
+      const nodes = [createSsoCheckNode('sso_check_1'), createSessionNode('session_1')];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t, GRAPH_VALIDATION_RULES);
+
+      expect(result.has('sso_check_1_SSO_MISSING_CHECKPOINT_REF')).toBe(true);
+      expect(result.get('sso_check_1_SSO_MISSING_CHECKPOINT_REF')!.getType()).toBe(NotificationType.ERROR);
+      // The session is unreferenced as a consequence.
+      expect(result.has('session_1_SSO_ORPHAN_SESSION')).toBe(true);
+    });
+
+    it('should report an SSO check whose checkpointRef points to a deleted session', () => {
+      const nodes = [createSsoCheckNode('sso_check_1', 'session_gone')];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t, GRAPH_VALIDATION_RULES);
+
+      expect(result.has('sso_check_1_SSO_INVALID_CHECKPOINT_REF')).toBe(true);
+    });
+
+    it('should report a session node not referenced by any SSO check', () => {
+      const nodes = [createSessionNode('session_1')];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t, GRAPH_VALIDATION_RULES);
+
+      expect(result.has('session_1_SSO_ORPHAN_SESSION')).toBe(true);
+      const notification = result.get('session_1_SSO_ORPHAN_SESSION')!;
+      expect(notification.getType()).toBe(NotificationType.ERROR);
+      expect(notification.hasResource('session_1')).toBe(true);
     });
   });
 });

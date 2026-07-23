@@ -62,9 +62,6 @@ CREATE UNIQUE INDEX idx_sso_session_handle_id ON "SSO_SESSION" (HANDLE_ID, DEPLO
 -- concurrent joins in a single flow execution converge on one session instead of duplicating it.
 CREATE UNIQUE INDEX idx_sso_session_flow_execution ON "SSO_SESSION" (FLOW_EXECUTION_ID, DEPLOYMENT_ID);
 
--- Index for subject + flow lookup on SSO_SESSION
-CREATE INDEX idx_sso_session_subject_flow ON "SSO_SESSION" (SUBJECT_ID, FLOW_ID, DEPLOYMENT_ID);
-
 -- Index for absolute expiry on SSO_SESSION (supports cleanup)
 CREATE INDEX idx_sso_session_absolute_expires_at ON "SSO_SESSION" (ABSOLUTE_EXPIRES_AT);
 

@@ -93,7 +93,7 @@ export const ECOSYSTEM_ITEMS: EcosystemItem[] = [
     description:
       'Add {{ProductName}} auth to Claude. Secure your tools, MCP servers, and agent actions with scoped, revocable tokens.',
     ctaLabel: 'Get plugin',
-    href: '/docs/next/guides/working-with-ai/skills',
+    href: '/docs/next/working-with-ai/skills',
   },
   {
     id: 'codex-plugin',
@@ -103,7 +103,7 @@ export const ECOSYSTEM_ITEMS: EcosystemItem[] = [
     category: 'agent',
     description: 'Bring {{ProductName}} sign-in and token management to OpenAI Codex and the Codex CLI.',
     ctaLabel: 'Get plugin',
-    href: '/docs/next/guides/working-with-ai/skills',
+    href: '/docs/next/working-with-ai/skills',
   },
   {
     id: 'agent-skills',
@@ -114,7 +114,7 @@ export const ECOSYSTEM_ITEMS: EcosystemItem[] = [
     description:
       'Reusable skills that let any agent issue, verify, and revoke {{ProductName}} credentials as part of a workflow.',
     ctaLabel: 'Browse skills',
-    href: '/docs/next/guides/working-with-ai/skills',
+    href: '/docs/next/working-with-ai/skills',
   },
   {
     id: 'react',

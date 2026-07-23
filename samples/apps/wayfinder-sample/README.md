@@ -163,7 +163,7 @@ The agent's client secret defaults to `wayfinder-agent-secret` (set in `thunderi
 
 ### Manual Setup
 
-After the import, update `deployment.yaml` with three additions and restart the server:
+After the import, complete the following local configuration and restart the server:
 
 - Activate the Wayfinder onboarding flow. ThunderID permits only one `USER_ONBOARDING` flow at a time, selected by handle:
 
@@ -188,13 +188,21 @@ After the import, update `deployment.yaml` with three additions and restart the 
 
   Once the sample is running, open `http://localhost:8788` to view captured emails in the inbox UI.
 
-- Configure the Direct Auth Secret used by AuthZEN mode:
+- Configure the Direct Auth Secret used by AuthZEN mode. Keep the file-backed setting in `deployment.yaml` unchanged:
 
   ```yaml
   server:
     security:
-      direct_auth_secret: "wayfinder-direct-auth-secret"
+      direct_auth_secret: "file://config/secrets/direct_auth_secret"
   ```
+
+  Create or update `backend/cmd/server/config/secrets/direct_auth_secret` with:
+
+  ```text
+  wayfinder-direct-auth-secret
+  ```
+
+  The secrets directory is ignored by Git and remains local to your environment.
 
 #### SMS Notifications (Optional)
 
@@ -250,6 +258,8 @@ AUTHORIZATION_MODE=authzen
 THUNDERID_DIRECT_AUTH_SECRET=wayfinder-direct-auth-secret
 ```
 
+ThunderID loads the matching value from `backend/cmd/server/config/secrets/direct_auth_secret` through the file-backed
+`server.security.direct_auth_secret` setting in `deployment.yaml`.
 The backend sends this value in the `Direct-Auth-Secret` header when it calls the AuthZEN PDP. This secret authenticates
 the PDP request; it is not the authorization subject. The user or agent identified by the incoming MCP token remains the
 subject whose role assignments determine the decision.
@@ -290,7 +300,7 @@ From the sample root, install all workspace dependencies:
 ```bash
 cd backend     && npm install && npm run seed && npm start   # http://localhost:8787 (REST + /mcp)
 cd smtp-server && npm install && npm run dev                 # SMTP :2525 | Inbox http://localhost:8788
-cd ai-agent    && npm install && npm start                   # http://localhost:8790/chat
+cd ai-agent    && npm install && npm run dev                 # http://localhost:8790/chat
 cd frontend    && npm install && npm run dev                 # http://localhost:5173
 ```
 

@@ -88,13 +88,71 @@ func (suite *CIBARequestStoreTestSuite) TestNewCIBARequestStore() {
 func (suite *CIBARequestStoreTestSuite) TestAdd_Success() {
 	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertCIBAAuthRequest,
-		"auth-req-1", "client-1", "openid profile", string(CIBAStatePending),
+		"auth-req-1", "client-1", "openid profile", "", string(CIBAStatePending),
 		mock.AnythingOfType("time.Time"), testDeploymentID).Return(int64(1), nil)
 
 	err := suite.store.Add(context.Background(), suite.sampleRequest())
 	assert.NoError(suite.T(), err)
 
 	suite.mockDBProvider.AssertExpectations(suite.T())
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestAdd_EncodesResources() {
+	req := suite.sampleRequest()
+	req.Resources = []string{"https://api.example.com"}
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertCIBAAuthRequest,
+		"auth-req-1", "client-1", "openid profile", `["https://api.example.com"]`,
+		string(CIBAStatePending), mock.AnythingOfType("time.Time"), testDeploymentID).Return(int64(1), nil)
+
+	err := suite.store.Add(context.Background(), req)
+	assert.NoError(suite.T(), err)
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestGetByID_DecodesResources() {
+	expiry := time.Now().Add(2 * time.Minute)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetCIBAAuthRequest,
+		"auth-req-1", testDeploymentID).Return([]map[string]interface{}{
+		{
+			dbColumnAuthReqID:      "auth-req-1",
+			dbColumnClientID:       "client-1",
+			dbColumnStandardScopes: "openid",
+			dbColumnResources:      `["https://api.example.com"]`,
+			dbColumnState:          string(CIBAStatePending),
+			dbColumnExpiryTime:     expiry.Format("2006-01-02 15:04:05.999999999"),
+		},
+	}, nil)
+
+	record, err := suite.store.GetByID(context.Background(), "auth-req-1")
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), []string{"https://api.example.com"}, record.Resources)
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestGetByID_EmptyResourcesRoundTrips() {
+	expiry := time.Now().Add(2 * time.Minute)
+	suite.mockDBProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetCIBAAuthRequest,
+		"auth-req-1", testDeploymentID).Return([]map[string]interface{}{
+		{
+			dbColumnAuthReqID:      "auth-req-1",
+			dbColumnClientID:       "client-1",
+			dbColumnStandardScopes: "openid",
+			dbColumnResources:      nil,
+			dbColumnState:          string(CIBAStatePending),
+			dbColumnExpiryTime:     expiry.Format("2006-01-02 15:04:05.999999999"),
+		},
+	}, nil)
+
+	record, err := suite.store.GetByID(context.Background(), "auth-req-1")
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), record.Resources)
+
 	suite.mockDBClient.AssertExpectations(suite.T())
 }
 

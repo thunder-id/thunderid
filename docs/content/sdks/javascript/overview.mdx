@@ -94,7 +94,7 @@ Initiating a **sign-in** flow directly from a **browser SPA** via `POST /flow/ex
 `applicationId` and `flowType`) is **not supported**.
 
 Browser SPAs must use the redirect-based OAuth2 `authorization_code` + PKCE flow instead. See
-[Register an application](../../../guides/guides/applications/manage-applications) and the
+[Register an application](../../../guides/applications/manage-applications) and the
 [Browser SDK overview](../../browser/overview). Calling these functions to *continue* a
 flow with an `executionId` (as the hosted sign-in pages do) and initiating the flow from server-side
 (confidential client) code are unaffected.

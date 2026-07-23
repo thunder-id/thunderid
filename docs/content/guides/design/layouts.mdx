@@ -1,0 +1,95 @@
+---
+title: Layouts
+docType: guide
+sidebar_position: 3
+description: Configure custom stylesheets for authentication screens to apply CSS customizations beyond theme properties.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import {NextSteps, NextStepsCard} from '../../../src/components/NextSteps';
+
+# Layouts
+
+A layout defines the structural composition of authentication screens. While a [theme](../themes) controls visual styling (colors, fonts), a layout controls how screen elements are arranged, including header, main content area, and footer slots, along with their sizing, spacing, and visibility.
+
+## Layout Properties
+
+Each layout includes the following configurable properties. For detailed property references, see [Design Catalog](../design-catalog#layout-properties).
+
+| Property | Description |
+|----------|-------------|
+| **Screen Type** | The `centered` template, which positions the main content container at the center of the screen. See [Screen Type](../design-catalog#screen-type). |
+| **Custom Stylesheets** | Inject inline or external CSS stylesheets for customizations beyond theme properties. See [Custom Stylesheets](../design-catalog#custom-stylesheets). |
+
+## Create a Layout
+
+<Stepper stepNode="h3" as="h3">
+
+### Select a Layout Preset
+
+1. Sign in to the <ProductName /> Console.
+2. Navigate to **Design** from the sidebar.
+3. In the **Layouts** section, click a layout preset. The **Centered** layout positions the main content container at the center of the screen.
+
+<ProductName /> creates the layout with default settings and opens the layout builder.
+
+:::note
+Additional layout presets (Split, Full Screen, Popup) will be available in future releases.
+:::
+
+### Customize the Layout
+
+Use the layout builder to adjust your layout:
+
+- **Theme Preview**: Preview how the layout pairs with different themes.
+- **Custom CSS**: Add inline or external stylesheets from the right panel.
+- **Element Inspector**: Click any element in the preview to auto-generate a CSS selector.
+
+Click **Save** to apply your changes.
+
+### Assign the Layout to an Application
+
+Open your application in the <ProductName /> Console, navigate to **Customization** settings, and select your layout.
+
+</Stepper>
+
+## Update a Layout
+
+1. Navigate to **Design** in the <ProductName /> Console and click the layout you want to edit. The layout builder opens with a live preview.
+2. Edit your custom stylesheets in the right panel, or use the element inspector to target specific elements.
+3. Click **Save** to apply your changes.
+
+Changes take effect immediately for new authentication sessions.
+
+## Delete a Layout
+
+You cannot delete layouts created through the Console from the Console. Use the API to delete a layout.
+
+Send a `DELETE` request to `/design/layouts/{id}`. The server returns `204` on success.
+
+**Request:**
+```bash
+curl -X DELETE https://localhost:8090/design/layouts/{id} \
+  -H "Authorization: Bearer <access_token>"
+```
+
+:::warning
+You cannot delete a layout that is currently assigned to an application. Remove the layout from all applications before deleting it.
+:::
+
+
+## Next Steps
+
+<NextSteps>
+  <NextStepsCard
+    title="Themes"
+    description="Configure colors, typography, and visual effects for your screens."
+    href="../themes"
+  />
+  <NextStepsCard
+    title="Localization"
+    description="Understand how languages, namespaces, and translation resolution work."
+    href="../../i18n/localization"
+  />
+</NextSteps>

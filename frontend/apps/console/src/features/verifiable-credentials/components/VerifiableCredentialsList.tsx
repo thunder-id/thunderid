@@ -25,6 +25,7 @@ import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import CredentialOfferDialog from './CredentialOfferDialog';
 import VerifiableCredentialDeleteDialog from './VerifiableCredentialDeleteDialog';
+import RouteConfig from '../../../configs/RouteConfig';
 import useGetVerifiableCredentials from '../api/useGetVerifiableCredentials';
 import type {VerifiableCredentialSummary} from '../models/vc';
 
@@ -46,7 +47,7 @@ export default function VerifiableCredentialsList(): JSX.Element {
   const handleEditClick = useCallback(
     (id: string): void => {
       (async (): Promise<void> => {
-        await navigate(`/verifiable-credentials/${id}`);
+        await navigate(RouteConfig.verifiableCredentials.detail(id));
       })().catch((_error: unknown) => {
         logger.error('Failed to navigate to credential configuration', {error: _error, id});
       });

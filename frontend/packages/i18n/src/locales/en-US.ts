@@ -1614,7 +1614,7 @@ const translations = {
     // Listing page
     'listing.title': 'Connections',
     'listing.subtitle': 'Configure the external services ThunderID connects to.',
-    'listing.search.placeholder': 'Search ..',
+    'listing.search.placeholder': 'Search connections',
     'listing.showingCount': 'Showing {{count}} connections',
     'listing.loading': 'Loading connections...',
     'listing.clearFilters': 'Clear filters',
@@ -1623,7 +1623,6 @@ const translations = {
       'Try a different search term, or clear the active filters to see all available connections.',
 
     // Filters / categories
-    'filters.label': 'Filter',
     'categories.all': 'All',
     'categories.social-login': 'Social Login',
     'categories.enterprise': 'Enterprise',
@@ -1633,6 +1632,7 @@ const translations = {
     'categories.crm': 'CRM',
     'categories.data-store': 'Data store',
     'categories.trusted-idp': 'Trusted Token Issuer',
+    'categories.custom': 'Custom',
 
     // Card
     'card.configured': 'Configured',
@@ -1654,6 +1654,7 @@ const translations = {
     // Add custom connection wizard
     'wizard.title': 'Add custom connection',
     'wizard.steps.type': 'Connection type',
+    'wizard.steps.name': 'Name',
     'wizard.steps.configure': 'Configure',
     'wizard.type.heading': 'What kind of connection do you want to add?',
     'wizard.type.subheading':
@@ -1671,17 +1672,26 @@ const translations = {
     'wizard.type.trustedIdp.description':
       "Trust an external IdP's identity assertions and exchange them for access tokens.",
     'wizard.type.trustedIdp.tag': 'Token exchange · ID-JAG',
+    'wizard.name.title': "Let's give a name to your connection",
+    'wizard.name.fieldLabel': 'Connection name',
+    'wizard.name.placeholder': 'Enter your connection name',
+    'wizard.name.suggestions.label': 'In a hurry? Pick a random name:',
     'wizard.configure.heading': 'Configure your connection',
     'wizard.configure.subheading':
       'Enter the credentials and endpoints for your custom connection. Secrets are stored write-only.',
+    'wizard.configure.redirectHint':
+      'Register the redirect URI below with your identity provider as an allowed callback URL, then enter the credentials and endpoints it gives you.',
 
     // Branded configure wizard
     'configure.heading': 'Configure your {{vendor}} connection',
     'configure.subheading': 'Enter the credentials and endpoints for this connection. Secrets are stored write-only.',
+    'configure.hint.google':
+      'Create an OAuth client for your app in the Google Cloud Console under APIs and Services, Credentials. Register the redirect URI below as an authorized redirect URI, then enter the client ID and client secret Google gives you.',
+    'configure.hint.github':
+      'Create an OAuth app in GitHub under Settings, Developer settings, OAuth Apps. Set the authorization callback URL to the redirect URI below, then enter the client ID and client secret GitHub gives you.',
 
     // Connection detail / edit page
     'detail.backToConnections': 'Back to Connections',
-    'detail.subtitle': '{{name}} connection',
     'detail.tabs.general': 'General',
     'detail.tabs.attributeMapping': 'Attribute Configuration',
     'detail.quickCopy.title': 'Quick copy',
@@ -1836,9 +1846,6 @@ const translations = {
     'create.form.name.label': 'Name',
     'create.form.issuer.label': 'Issuer URI',
     'create.form.issuer.hint': "The issuer URI from the external IdP's OpenID Connect discovery document.",
-    'create.form.clientId.label': 'Client ID',
-    'create.form.clientId.hint':
-      "ThunderID's client ID registered at this identity provider. Used for audience validation in incoming assertions.",
     'create.form.jwksEndpoint.label': 'JWKS endpoint',
     'create.form.jwksEndpoint.hint':
       'The JWKS endpoint used to validate the signature of incoming identity assertions.',
@@ -1857,7 +1864,8 @@ const translations = {
     'detail.tokenExchange.title': 'Token Exchange',
     'detail.tokenExchange.description': 'Exchange subject tokens from this issuer for access tokens.',
     'detail.tokenExchange.audience.label': 'Trusted token audience',
-    'detail.tokenExchange.audience.hint': 'The audience value ThunderID expects in subject tokens from this issuer.',
+    'detail.tokenExchange.audience.hint':
+      "An additional audience value {{productName}} will accept in subject tokens from this issuer. Tokens whose audience is {{productName}}'s own issuer URL are always accepted.",
     'detail.consumption.title': 'Identity Assertion JWT Authorization Grant (ID-JAG)',
     'detail.idJag.description': 'Accept and exchange signed identity assertions from this issuer for access tokens.',
     'detail.idJag.enabledNote': 'Identity assertions from this issuer are accepted via the ID-JAG protocol.',
@@ -2102,7 +2110,7 @@ const translations = {
       "This secret is shown only once. Store it securely — you'll need to regenerate it if it's lost.",
     'onboarding.mcp.complete.m2m.tokenHint':
       "Request tokens with grant_type=client_credentials and include the target MCP server's resource parameter so the token is audience-scoped.",
-    'onboarding.mcp.complete.goToApp': 'Go to application',
+    'onboarding.mcp.complete.goToApp': 'Go to MCP client',
     'onboarding.mcp.complete.copySecret': 'Copy secret',
     'onboarding.mcp.complete.copied': 'Copied',
     'onboarding.configure.design.title': 'Design Your Application',
@@ -2652,6 +2660,12 @@ const translations = {
     'edit.token.scopes.add_custom.error.duplicate': 'This scope is already added',
     'edit.token.scopes.add_custom.error.invalid': 'Scope name must not contain spaces',
     'edit.token.scopes.openid_required': 'The openid scope is required and cannot be removed',
+    'edit.advanced.audience.title': 'Default Audience',
+    'edit.advanced.audience.description':
+      "The default aud for access tokens that don't target a resource server (OIDC only or scopeless).",
+    'edit.advanced.audience.label': 'Default audience (aud)',
+    'edit.advanced.audience.placeholder': 'e.g. https://api.example.com',
+    'edit.advanced.audience.hint': 'Leave empty to use the {{entity}} client ID.',
     'edit.token.scope_mapper.title': 'User Attribute Mapping',
     'edit.token.scope_mapper.hint':
       'Select a scope to configure which user attributes are exposed when it is requested.',
@@ -2753,6 +2767,12 @@ const translations = {
     'errors.APP-1030': 'The application is declarative and cannot be modified or deleted.',
     'errors.APP-1031': 'Failed to synchronize consent configurations for the application.',
     'errors.APP-1032': 'Cannot enable consent for the application as the consent service is not enabled.',
+    'errors.APP-1033': 'One or more ACR values in acr_values are not recognized by the system.',
+    'errors.APP-1034': 'An application may have at most one inbound auth config per protocol.',
+    'errors.APP-1035': 'One or more user attributes are not valid for the configured allowed user types.',
+    'errors.APP-1036': 'The provided recovery flow ID is invalid.',
+    'errors.APP-1037': 'Native flow execution is not allowed for single-page applications as it requires PKCE.',
+    'errors.APP-1038': 'Attestation configuration may configure only one platform (android or apple) at a time.',
     'errors.APP-5001': 'An unexpected error occurred while processing the request.',
     'errors.APP-5002': 'An error occurred while performing the certificate operation.',
   },
@@ -3012,14 +3032,56 @@ const translations = {
     'emoji_picker.categories.symbols': 'Symbols',
     'emoji_picker.categories.flags': 'Flags',
 
+    // Avatar picker
+    'avatar_picker.variants.anonymous_animal': 'Anonymous animal',
+    'avatar_picker.variants.anonymous_entity': 'Entity',
+    'avatar_picker.background.label': 'Background color',
+    'avatar_picker.background.reset': 'Auto',
+    'avatar_picker.seed_text.label': 'Seed text',
+    'avatar_picker.seed_text.placeholder': 'e.g. your app name',
+    'avatar_picker.shuffle': 'Shuffle colors',
+    'avatar_swatch_grid.shuffle': 'Shuffle',
+    'avatar_swatch_grid.swatch': 'Background option',
+
+    // Icon grid picker
+    'icon_grid_picker.shuffle': 'Shuffle',
+
+    // Logo picker
+    'logo_picker.url.placeholder': 'Paste an image URL, e.g. https://example.com/logo.png',
+    'logo_picker.url.helper_text':
+      'Direct link to a PNG, SVG or JPG. For best results, use a square image less than 1MB in size.',
+    'logo_picker.divider': 'OR PICK ONE',
+    'logo_picker.groups.emoji': 'Emoji',
+    'logo_picker.flyouts.emoji': 'Choose an emoji',
+    'logo_picker.groups.more_emojis': 'More emojis',
+    'logo_picker.content_type.avatar': 'Avatar',
+    'logo_picker.content_type.text_avatar': 'Text Avatar',
+    'logo_picker.shapes.rounded': 'Rounded',
+    'logo_picker.shapes.circle': 'Circle',
+    'logo_picker.flyouts.rounded_blank': 'Pick a background',
+    'logo_picker.flyouts.rounded_text': 'Rounded avatar',
+    'logo_picker.flyouts.circle_blank': 'Pick a background',
+    'logo_picker.flyouts.circle_text': 'Circular avatar',
+    'logo_picker.groups.animal': 'Animal',
+    'logo_picker.flyouts.animal': 'Choose an animal',
+    'logo_picker.groups.entity': 'Entity',
+    'logo_picker.flyouts.entity': 'Choose an icon',
+    'logo_picker.emoji_dialog.title': 'Choose an emoji',
+    'logo_picker.shuffle': 'Shuffle',
+
     // Resource logo dialog
     'resource_logo_dialog.title': 'Choose a Logo',
     'resource_logo_dialog.divider.or': 'Or',
+    'resource_logo_dialog.tabs.label': 'Logo source',
+    'resource_logo_dialog.tabs.emoji': 'Emoji',
+    'resource_logo_dialog.tabs.avatar': 'Avatar',
     'resource_logo_dialog.url_section.label': 'Use a custom image URL',
     'resource_logo_dialog.url_section.placeholder': 'https://example.com/logo.png',
     'resource_logo_dialog.url_section.helper_text': 'Enter a direct URL to a custom logo image',
     'resource_logo_dialog.actions.cancel': 'Cancel',
+    'resource_logo_dialog.actions.close': 'Close',
     'resource_logo_dialog.actions.select': 'Select',
+    'resource_logo_dialog.actions.save': 'Save',
   },
 
   // ============================================================================
@@ -3398,6 +3460,14 @@ const translations = {
     'core.validation.fields.form.noSubmitButton':
       'Form <code>{{id}}</code> has input fields but no submit button. Add a button with type "Submit" so that users can submit the form.',
 
+    // Validation messages - SSO pairing
+    'core.validation.sso.missingCheckpointRef':
+      'SSO check <code>{{id}}</code> does not reference a session checkpoint. Select one in its properties, or remove the step.',
+    'core.validation.sso.invalidCheckpointRef':
+      'SSO check <code>{{id}}</code> references a session step that no longer exists. Select a valid session checkpoint in its properties.',
+    'core.validation.sso.orphanSession':
+      'Session step <code>{{id}}</code> is not referenced by any SSO check. Add an SSO check that uses it, or remove the step.',
+
     // Elements - rich text
     'core.elements.richText.placeholder': 'Enter text here...',
     'core.elements.richText.resolvedI18nValue': 'Resolved i18n value',
@@ -3413,7 +3483,7 @@ const translations = {
     'core.elements.richText.action.ref.label': 'Connected step',
 
     // Call step
-    'core.call.unconfiguredLabel': 'Call flow',
+    'core.call.unconfiguredLabel': 'Flow',
     'core.call.selectFlow': 'Select a flow to invoke',
     'core.call.referencedFlow': 'Referenced flow',
     'core.call.tooltip.configure': 'Configure',
@@ -3512,6 +3582,31 @@ const translations = {
     'core.dialogs.formRequiresView.widgetOnCanvas.confirmButton': 'Add View with Widget',
     'core.dialogs.formRequiresView.cancelButton': 'Cancel',
 
+    // SSO toggle (login flows)
+    'sso.toggleLabel': 'Enable SSO',
+    'sso.toggleDescription': 'Reuse an active session to skip sign-in',
+    'sso.toggleTooltipOn': 'Single sign-on is active for this flow. Turn off to remove the SSO wiring.',
+    'sso.disabledNoEntry': 'Connect the Start step to a view step to enable SSO.',
+    'sso.disabledEntryNotPrompt':
+      'To enable SSO, the flow must start with a view step. The SSO check needs a login screen to fall back to.',
+    'sso.disabledNoAssert': 'Add an authentication completion step to the flow before enabling SSO.',
+    'sso.disabledReadOnly': 'This flow is read-only and cannot be modified.',
+    'sso.enabledSnackbar':
+      'SSO enabled. A session check now runs after Start, and sessions are saved before the flow completes.',
+    'sso.disabledSnackbar_one': 'SSO disabled. {{count}} checkpoint was removed and the flow reconnected.',
+    'sso.disabledSnackbar_other': 'SSO disabled. {{count}} checkpoints were removed and the flow reconnected.',
+    'sso.placementHint': 'Click a highlighted connection to choose where the session checkpoint joins the flow.',
+    'sso.placementCancel': 'Cancel',
+    'sso.confirmDialog.title': 'Remove single sign-on?',
+    'sso.confirmDialog.description_one':
+      'This removes {{count}} SSO checkpoint and its session step, and reconnects the flow. Users will authenticate with their credentials every time.',
+    'sso.confirmDialog.description_other':
+      'This removes {{count}} SSO checkpoints and their session steps, and reconnects the flow. Users will authenticate with their credentials every time.',
+    'sso.confirmDialog.confirmButton': 'Remove SSO',
+    'sso.confirmDialog.cancelButton': 'Cancel',
+    'sso.properties.checkpointLabel': 'Session checkpoint',
+    'sso.properties.checkpointDangling': 'The referenced session step no longer exists. Select a valid session step.',
+
     // Form adapter
     'core.adapters.form.badgeLabel': 'Form',
     'core.adapters.form.placeholder': 'DROP FORM COMPONENTS HERE',
@@ -3550,6 +3645,8 @@ const translations = {
     'core.simulation.preview.title': 'End-user preview',
     'core.simulation.preview.noScreen': 'No screen is shown for this step',
     'core.simulation.preview.noScreenHint': 'This step runs in the background before the flow continues',
+    'core.simulation.preview.noScreenHintNamed': '{{id}} runs in the background before the flow continues',
+    'core.simulation.preview.callStepLabel': 'Calls another flow',
     'core.simulation.preview.applicationLabel': 'Preview as application',
     'core.simulation.preview.devices.mobile': 'Mobile',
     'core.simulation.preview.devices.tablet': 'Tablet',
@@ -3580,10 +3677,15 @@ const translations = {
     'core.resourcePanel.executors.title': 'Executors',
     'core.resourcePanel.executors.description': 'Backend actions like verifying credentials or sending OTPs',
 
+    // Steps (shared)
+    'core.steps.renameTooltip': 'Double-click to edit the step ID',
+    'core.steps.stepId': 'Step ID',
+
     // View step
     'core.steps.view.addComponent': 'Add Component',
     'core.steps.view.addField': 'Add Field',
     'core.steps.view.configure': 'Configure',
+    'core.steps.view.preview': 'Preview this screen',
     'core.steps.view.remove': 'Remove',
     'core.steps.view.noComponentsAvailable': 'No components available',
 
@@ -4230,11 +4332,16 @@ const translations = {
     'tree.title': 'Resource Hierarchy',
     'detail.identifierRequired': 'Identifier is required.',
     'tree.add': 'Add',
-    'tree.addResource': 'Add resource',
+    'tree.addResource.title': 'Add resource',
     'tree.addServerAction': 'Add server-level action',
     'tree.empty': 'No resources yet — add a resource or action to get started.',
     'tree.addSubResource': 'Add sub-resource',
     'tree.addAction': 'Add action',
+    'tree.fields.handle': 'Handle',
+    'tree.fields.handleDelimiterError': 'Handle cannot contain the delimiter character {{delimiter}}.',
+    'tree.fields.handleHint':
+      'Lowercase, alphanumeric, and {{allowedChars}} characters. Cannot be changed after creation.',
+    'tree.fields.name': 'Name',
     'tree.deleteResource.success': 'Resource deleted.',
     'tree.deleteResource.error': 'Cannot delete — remove child resources and actions first.',
     'tree.deleteAction.success': 'Action deleted.',

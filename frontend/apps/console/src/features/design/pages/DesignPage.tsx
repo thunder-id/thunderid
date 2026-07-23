@@ -22,6 +22,7 @@ import {ArrowUpRight, LayoutTemplate, Palette, Plus} from '@wso2/oxygen-ui-icons
 import {useState, useCallback, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import ItemCard from '../components/common/ItemCard';
 import SectionHeader from '../components/common/SectionHeader';
 import LayoutPresetThumbnail, {type LayoutPresetVariant} from '../components/layouts/LayoutPresetThumbnail';
@@ -61,7 +62,7 @@ export default function DesignPage(): JSX.Element {
   const handleLayoutClick = useCallback(
     async (presetId: LayoutPresetVariant, existingLayoutId?: string) => {
       if (existingLayoutId) {
-        await navigate(`/design/layouts/${existingLayoutId}`);
+        await navigate(RouteConfig.design.layoutDetail(existingLayoutId));
         return;
       }
 
@@ -71,7 +72,7 @@ export default function DesignPage(): JSX.Element {
         displayName: LAYOUT_PRESET_DEFAULT[presetId],
         layout: {},
       });
-      await navigate(`/design/layouts/${created.id}`);
+      await navigate(RouteConfig.design.layoutDetail(created.id));
     },
     [navigate, createLayout],
   );
@@ -103,7 +104,7 @@ export default function DesignPage(): JSX.Element {
               startIcon={<Plus size={16} />}
               onClick={() => {
                 (async () => {
-                  await navigate('/design/themes/create');
+                  await navigate(RouteConfig.design.themesCreate());
                 })().catch(() => {
                   // Ignore navigation errors
                 });
@@ -130,7 +131,7 @@ export default function DesignPage(): JSX.Element {
                       isReadOnly={theme.isReadOnly}
                       onClick={() => {
                         (async () => {
-                          await navigate(`/design/themes/${theme.id}`);
+                          await navigate(RouteConfig.design.themeDetail(theme.id));
                         })().catch(() => {
                           // Ignore navigation errors
                         });

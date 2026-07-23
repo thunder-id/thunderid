@@ -1,0 +1,1194 @@
+---
+title: Protect APIs on Envoy with {{ProductName}}
+docType: guide
+description: Configure Envoy to validate JWTs issued by {{ProductName}}, enforce scope-based authorization, or call the AuthZEN policy decision point.
+sidebar_position: 2
+---
+
+import {EnvoyPDPIntegrationDiagram, STSIntegrationDiagram, EnvoyLogo} from '../../../../src/components/GatewayIntegrationDiagram';
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Protect APIs on Envoy with <ProductName />
+
+This guide explains how to secure your APIs at the [Envoy](https://www.envoyproxy.io/) gateway layer using tokens issued by <ProductName />. By retrieving public signing keys from the <ProductName /> [JWKS endpoint](https://www.rfc-editor.org/rfc/rfc7517), Envoy cryptographically verifies every incoming token at the edge before forwarding authorized requests to your backend services.
+
+<STSIntegrationDiagram gatewayName="Envoy" gatewayLogo={<EnvoyLogo color="#fff" />} gatewayBgColor="#1a0a2e" />
+
+The guide covers three integration approaches available in Envoy:
+
+- **[Token Validation](#configure-jwt-token-validation-in-envoy):** Configure Envoy to validate incoming JWTs issued by <ProductName /> using the [`envoy.filters.http.jwt_authn`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter) HTTP filter, ensuring only authenticated requests access your APIs.
+- **[Scope-Based Authorization](#configure-scope-based-authorization-in-envoy):** Use scopes issued by <ProductName /> and Envoy's RBAC filter to enforce route-level access control on upstream APIs.
+- **[AuthZEN PDP Authorization](#configure-authzen-pdp-authorization-in-envoy):** Call the <ProductName /> AuthZEN policy decision point (PDP) through an Envoy authorization adapter for request-time authorization decisions. Role and permission changes can take effect without waiting for an existing access token to expire.
+
+
+## Prerequisites
+
+Before you begin, ensure you have the following:
+
+- A running <ProductName /> installation. Follow [Get <ProductName />](../../../../getting-started/get-thunderid) for download, setup, and start commands.
+- The latest stable [Envoy](https://www.envoyproxy.io/docs/envoy/latest/start/install) version installed.
+- A backend REST API service running and accessible to Envoy. The examples use `http://localhost:9000`.
+- `curl` available in your terminal.
+
+The examples use the following local ports:
+
+| Port | Component | Used for |
+| --- | --- | --- |
+| `8080` | Envoy HTTP listener | Client-facing API gateway listener |
+| `8081` | Envoy gRPC listener | Client-facing listener for the gRPC `ext_authz` example |
+| `8090` | <ProductName /> | Console, token endpoint, JWKS endpoint, and AuthZEN PDP |
+| `8181` | HTTP authorization adapter | Envoy HTTP `ext_authz` checks |
+| `8182` | gRPC authorization adapter | Envoy gRPC `ext_authz` checks |
+| `9000` | Backend REST API | Upstream service that Envoy forwards allowed requests to |
+| `9901` | Envoy admin | Envoy administration interface |
+
+Verify your Envoy version:
+
+```bash
+envoy --version
+```
+
+## Configure JWT Token Validation in Envoy
+
+JWT Token Validation is the foundation of API security with Envoy and <ProductName />. In this section, you register an application in <ProductName /> to obtain credentials, configure Envoy to validate tokens using the <ProductName /> JWKS endpoint, and verify that unauthenticated requests are rejected.
+
+### Configure <ProductName />
+
+#### Create an Application
+
+1. Sign in to the <ProductName /> Console at `https://<THUNDER_HOST>:<THUNDER_PORT>/console`.
+2. Navigate to **Applications** → **New Application**.
+3. Enter an **Application Name**.
+4. Select **Backend Service** as the application type.
+5. Click **Create Application**.
+6. Note the **Client ID** and **Client Secret** from the application details page.
+
+#### Obtain an Access Token
+
+Use the client credentials grant to request an access token. The examples use HTTP Basic authentication for the client credentials:
+
+```bash
+curl -kL -X POST 'https://<THUNDER_HOST>:8090/oauth2/token' \
+  --user '<CLIENT_ID>:<CLIENT_SECRET>' \
+  --header 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'grant_type=client_credentials'
+```
+
+Save the returned `access_token`. You will use it in the **Try It Out** section.
+
+### Configure Envoy
+
+#### Create an API
+
+Create an Envoy configuration file. See the [Envoy configuration overview](https://www.envoyproxy.io/docs/envoy/latest/configuration/overview/overview) for a full reference.
+
+The listener defines the port Envoy exposes to clients. The route configuration defines the paths Envoy exposes. The cluster configuration defines the upstream service.
+
+This example exposes Envoy on port `8080` and forwards requests for `/resources` to an upstream API on `http://localhost:9000`.
+
+<div className="envoy-scroll-code">
+
+~~~yaml
+static_resources:
+  listeners:
+    - name: local_listener
+      address:
+        socket_address:
+          address: 127.0.0.1
+          port_value: 8080
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: resources_api_gateway
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: resources_api
+                      domains: ["*"]
+                      routes:
+                        - match:
+                            prefix: "/resources"
+                          route:
+                            cluster: upstream_api
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+  clusters:
+    - name: upstream_api
+      connect_timeout: 1s
+      type: STATIC
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: upstream_api
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 9000
+~~~
+
+</div>
+
+Start Envoy to verify the API is reachable before adding authentication:
+
+~~~bash
+envoy --mode validate -c envoy.yaml
+envoy -c envoy.yaml
+~~~
+
+Envoy starts on port `8080`. Verify the endpoint responds:
+
+```bash
+curl -i --location 'http://localhost:8080/resources' \
+  --header 'Content-Type: application/json'
+```
+
+Expected response:
+
+```text
+HTTP/1.1 200 OK
+```
+
+#### Add JWT Validation
+
+Envoy validates JWTs using the [`jwt_authn`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter) HTTP filter. Envoy fetches public keys from the <ProductName /> JWKS endpoint and uses the keys to verify the signature on incoming tokens.
+
+Add the `jwt_authn` filter before the router filter:
+
+<div className="envoy-scroll-code">
+
+~~~yaml
+http_filters:
+  - name: envoy.filters.http.jwt_authn
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+      providers:
+        thunderid:
+          issuer: "https://localhost:8090"
+          remote_jwks:
+            http_uri:
+              uri: "https://127.0.0.1:8090/oauth2/jwks"
+              cluster: thunderid
+              timeout: 5s
+            cache_duration: 300s
+          from_headers:
+            - name: authorization
+              value_prefix: "Bearer "
+      rules:
+        - match:
+            prefix: "/resources"
+          requires:
+            provider_name: thunderid
+        - match:
+            prefix: "/"
+          requires:
+            allow_missing: {}
+  - name: envoy.filters.http.router
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+~~~
+
+</div>
+
+Add a cluster for the <ProductName /> JWKS endpoint:
+
+<div className="envoy-scroll-code">
+
+~~~yaml
+clusters:
+  - name: thunderid
+    connect_timeout: 1s
+    type: STATIC
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: thunderid
+      endpoints:
+        - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: 127.0.0.1
+                    port_value: 8090
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        sni: localhost
+        common_tls_context:
+          tls_params:
+            tls_minimum_protocol_version: TLSv1_3
+            tls_maximum_protocol_version: TLSv1_3
+          validation_context:
+            trust_chain_verification: ACCEPT_UNTRUSTED
+~~~
+
+</div>
+
+:::warning Local development only
+`trust_chain_verification: ACCEPT_UNTRUSTED` skips certificate chain verification for local development with self-signed certificates. Remove this setting in production and configure Envoy with a certificate authority trusted by your deployment.
+:::
+
+**Configuration reference** -- see the full list of options in the [JWT authentication filter docs](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter):
+
+| Field | Value | Description |
+|---|---|---|
+| `issuer` | `https://<THUNDER_HOST>:<THUNDER_PORT>` | Token issuer expected by Envoy |
+| `remote_jwks.http_uri.uri` | `https://<THUNDER_HOST>:<THUNDER_PORT>/oauth2/jwks` | <ProductName /> JWKS endpoint for fetching public keys |
+| `cache_duration` | `300s` | Caches JWKS keys to avoid fetching them on every request |
+| `from_headers` | `Authorization: Bearer` | Reads the JWT from the `Authorization` header |
+| `trust_chain_verification` | `ACCEPT_UNTRUSTED` | Skips TLS certificate chain verification. Use only in local development. |
+
+Restart Envoy to apply the changes:
+
+~~~bash
+pkill -f "envoy -c envoy.yaml"
+envoy --mode validate -c envoy.yaml
+envoy -c envoy.yaml
+~~~
+
+### Try It Out
+
+**Request without a token, expect `401 Unauthorized`:**
+
+```bash
+curl -i --location 'http://localhost:8080/resources' \
+  --header 'Content-Type: application/json'
+```
+
+Expected response:
+
+```text
+HTTP/1.1 401 Unauthorized
+
+Jwt is missing
+```
+
+**Request with a valid <ProductName /> token, expect `200 OK`:**
+
+```bash
+curl -i --location 'http://localhost:8080/resources' \
+  --header 'Authorization: Bearer <ACCESS_TOKEN>' \
+  --header 'Content-Type: application/json'
+```
+
+Expected response:
+
+```json
+{
+  "resources": [
+    {
+      "id": "101",
+      "name": "Resource One",
+      "status": "active"
+    },
+    {
+      "id": "102",
+      "name": "Resource Two",
+      "status": "pending"
+    }
+  ]
+}
+```
+
+## Configure Scope-Based Authorization in Envoy
+
+JWT authentication confirms that a token is valid and was issued by <ProductName />. It does not control what the token holder is allowed to do. With the configuration from the previous section, Envoy accepts any valid <ProductName /> token for the protected route.
+
+Scope-based authorization adds a second layer of control. <ProductName /> embeds scopes in tokens based on the roles assigned to an application. Envoy then checks those scopes on every request and rejects tokens that do not carry the required permissions. This lets you enforce scope-based authorization, for example, restricting a read endpoint to tokens with `resource:read`, without changing the upstream service.
+
+The steps below build on the JWT authentication configuration from the previous section. You will define a Resource Server, a Resource, and actions in <ProductName /> to model your API permissions. Then bundle them into a role, assign the role to your application, and update the Envoy configuration to enforce scope validation.
+
+### Configure <ProductName /> {#configure-productname-for-scope-authorization}
+
+#### Create a Resource Server
+
+A Resource Server represents your API in <ProductName />.
+The Resource Server groups all resources and actions under a single identifier and acts as the audience for tokens issued to clients of that API.
+For a full reference, see [Resource Servers](../../../resource-servers).
+
+**Using the Console:**
+
+1. Sign in to the <ProductName /> Console at `https://<THUNDER_HOST>:<THUNDER_PORT>/console`.
+2. Navigate to **Resource Servers** → **New Resource Server**.
+3. Fill in the following fields:
+   - **Name**: `Resources API`
+   - **Identifier**: `https://api.example.com/resources`
+   - **Description**: `Handles resource operations`
+   - **Delimiter**: `:` (colon)
+4. Click **Create**.
+5. Note the Resource Server **ID** from the details page.
+
+#### Create a Resource
+
+A Resource represents a specific entity within the API, such as `/resources`. Resources let you model your API surface so that permissions can be granted at a granular level.
+
+**Using the Console:**
+
+1. Open the **Resources API** Resource Server.
+2. Go to the **Resources** tab and click **New Resource**.
+3. Fill in the following fields:
+   - **Name**: `Resources`
+   - **Handle**: `resource`
+4. Click **Create**.
+
+#### Create Resource Actions
+
+Actions define the operations allowed on a resource.
+Each action produces a scope in the format `<resource-handle>:<action-handle>`.
+<ProductName /> includes these scopes in tokens issued to applications that hold the corresponding role.
+
+**Using the Console:**
+
+1. Under the **Resources API** Resource Server, open the **Resources** resource.
+2. Go to the **Actions** tab and click **New Action**.
+3. Fill in the following fields:
+   - **Name**: `Read Resource`
+   - **Handle**: `read`
+   - **Description**: `Permission to read resources`
+4. Click **Create**.
+5. Note the generated permission shown in the action details: `resource:read`.
+
+#### Create a Role and assign permission
+
+Roles bundle one or more permissions together. Assign roles to applications to control which scopes appear in their tokens.
+
+1. Navigate to **Roles** → **New Role**.
+2. Fill in the following fields:
+   - **Name**: `Resources API Reader`
+3. Click **Continue**.
+4. Under **Assign permissions**, choose `resource:read`.
+5. Click **Continue**.
+
+#### Assign a Role to the Application
+
+Assign the role to the application you created in the previous section. <ProductName /> includes the role's scopes in every token issued for that application.
+
+**Using the Console:**
+
+1. Navigate to **Applications** and open your Backend Service application.
+2. Go to the **Roles** tab.
+3. Click **Assign Role**, select **Resources API Reader** from the list, and confirm.
+
+### Configure Envoy
+
+Add `claim_to_headers` to the `jwt_authn` provider you configured in the previous section, then use the Envoy RBAC filter to enforce the required scope. See the [JWT authentication filter docs](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/jwt_authn_filter) and [RBAC filter docs](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/rbac_filter) for the full list of options.
+
+Envoy copies the JWT `scope` claim into a request header. The required scope can then be checked before Envoy forwards the request.
+
+Then add scope validation before the router filter:
+
+<div className="envoy-scroll-code">
+
+~~~yaml
+http_filters:
+  - name: envoy.filters.http.jwt_authn
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+      providers:
+        thunderid:
+          issuer: "https://localhost:8090"
+          remote_jwks:
+            http_uri:
+              uri: "https://127.0.0.1:8090/oauth2/jwks"
+              cluster: thunderid
+              timeout: 5s
+            cache_duration: 300s
+          from_headers:
+            - name: authorization
+              value_prefix: "Bearer "
+          claim_to_headers:
+            - header_name: x-jwt-scope
+              claim_name: scope
+      rules:
+        - match:
+            prefix: "/resources"
+          requires:
+            provider_name: thunderid
+        - match:
+            prefix: "/"
+          requires:
+            allow_missing: {}
+  - name: envoy.filters.http.rbac
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC
+      rules:
+        action: ALLOW
+        policies:
+          resources-read:
+            permissions:
+              - and_rules:
+                  rules:
+                    - url_path:
+                        path:
+                          prefix: "/resources"
+                    - header:
+                        name: ":method"
+                        string_match:
+                          exact: "GET"
+                    - header:
+                        name: "x-jwt-scope"
+                        string_match:
+                          safe_regex:
+                            regex: "(^|\\s)resource:read(\\s|$)"
+            principals:
+              - any: true
+  - name: envoy.filters.http.router
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+~~~
+
+</div>
+
+Add one scope policy for each protected route or operation. For example, an update endpoint can require a separate scope such as `resource:update`.
+
+**Scope configuration reference:**
+
+| Field | Value | Description |
+|---|---|---|
+| `claim_to_headers.claim_name` | `scope` | JWT claim that stores scopes |
+| `claim_to_headers.header_name` | `x-jwt-scope` | Header Envoy uses to check the token scopes |
+| `string_match.safe_regex.regex` | `(^\|\\s)resource:read(\\s\|$)` | Required scope to access the matching route. The regular expression matches scope token boundaries in a space-delimited scope claim. |
+| `action` | `ALLOW` | Allows only requests that match one of the configured scope policies |
+
+Restart Envoy to apply the changes:
+
+~~~bash
+pkill -f "envoy -c envoy.yaml"
+envoy --mode validate -c envoy.yaml
+envoy -c envoy.yaml
+~~~
+
+### Try It Out
+
+#### Obtain an Access Token with the Required Scope
+
+Request a token for the application that has the role assigned:
+
+```bash
+curl -kL -X POST 'https://<THUNDER_HOST>:8090/oauth2/token' \
+  --user '<CLIENT_ID>:<CLIENT_SECRET>' \
+  --header 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'grant_type=client_credentials' \
+  --data-urlencode 'scope=resource:read'
+```
+
+The response confirms the scope is present:
+
+```json
+{
+  "access_token": "<ACCESS_TOKEN>",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "resource:read"
+}
+```
+
+#### Call the Protected API
+
+**With a token that has the required scope, expect `200 OK`:**
+
+```bash
+curl -i --location 'http://localhost:8080/resources' \
+  --header 'Authorization: Bearer <ACCESS_TOKEN>' \
+  --header 'Content-Type: application/json'
+```
+
+**With a token missing the required scope, expect `403 Forbidden`:**
+
+```bash
+curl -i --location 'http://localhost:8080/resources' \
+  --header 'Authorization: Bearer <TOKEN_WITHOUT_REQUIRED_SCOPE>' \
+  --header 'Content-Type: application/json'
+```
+
+Expected response:
+
+```text
+HTTP/1.1 403 Forbidden
+
+RBAC: access denied
+```
+
+## Configure AuthZEN PDP Authorization in Envoy
+
+<EnvoyPDPIntegrationDiagram />
+
+JWT authentication and scope-based authorization make decisions from token contents. AuthZEN PDP authorization lets Envoy ask <ProductName /> for a policy decision on each request. Use this pattern when the gateway must evaluate the subject, resource, action, and request context before it forwards traffic to the upstream service.
+
+For endpoint behavior and standalone PDP examples, see [Policy Decision Point](../../protocols/authzen/pdp.mdx).
+
+Because Envoy requests a new decision for each request, changes to a subject's roles or permissions can affect authorization without waiting for an existing access token to expire.
+
+<ProductName /> currently exposes the AuthZEN PDP over HTTP. Envoy can integrate with the PDP in two ways:
+
+- **HTTP adapter:** Envoy calls an HTTP authorization adapter through the [`ext_authz`](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/ext_authz_filter) filter. The adapter converts the Envoy authorization request into an AuthZEN access evaluation request.
+- **gRPC adapter:** Envoy calls an adapter that implements the Envoy external authorization gRPC service. The adapter still calls the <ProductName /> AuthZEN PDP over HTTP.
+
+In both patterns, Envoy validates the JWT and delegates the authorization check to an adapter. The adapter builds the AuthZEN request, calls the <ProductName /> PDP, and returns an allow or deny response to Envoy.
+
+Envoy's `ext_authz` filter delegates the authorization check to an external service. The adapter is required because Envoy does not manage the adapter's own service token lifecycle and, in local development, the adapter can handle <ProductName />'s self-signed TLS setup when calling the PDP.
+
+### Configure <ProductName />
+
+Before you continue, complete [Configure <ProductName />](#configure-productname-for-scope-authorization) in the scope-based authorization section. The AuthZEN PDP evaluates the same Resource Server, Resource, Action, permission, and role assignments.
+
+The adapter sends this AuthZEN request for `GET /resources/<RESOURCE_ID>`:
+
+```json
+{
+  "subject": {
+    "id": "<SUBJECT_ID>"
+  },
+  "resource": {
+    "type": "https://api.example.com/resources",
+    "id": "<RESOURCE_ID>"
+  },
+  "action": {
+    "name": "resource:read"
+  }
+}
+```
+
+The action name must match a permission registered in <ProductName />. In this guide, the Resource handle and Action handle produce `resource:read`; if your adapter sends a different action name, the PDP returns `decision: false`.
+
+### Configure the Authorization Adapter
+
+Run the authorization adapter as a separate service next to Envoy. Envoy sends external authorization checks to the adapter, and the adapter sends AuthZEN access evaluation requests to <ProductName />.
+
+Configure the adapter with the <ProductName /> base URL and the Direct Auth Secret that can invoke the AuthZEN PDP. These credentials authorize the adapter to call `/access/v1/evaluation`; the API caller token remains the token that Envoy receives in the `Authorization` header.
+
+Set `server.security.direct_auth_secret` in the <ProductName /> deployment configuration and restart <ProductName />. Store the same value as `THUNDERID_DIRECT_AUTH_SECRET` when you start the adapter. A missing or incorrect secret causes <ProductName /> to reject the PDP call with `401`.
+
+Use `AUTHZEN_ADAPTER_PORT` when you configure Envoy's HTTP `ext_authz` service. Use `AUTHZEN_GRPC_ADAPTER_PORT` when you configure Envoy's gRPC `ext_authz` service.
+
+:::tip Local development adapter
+The adapter bridges Envoy `ext_authz` and the <ProductName /> AuthZEN PDP. It reads the identity and request context forwarded by Envoy, builds an AuthZEN access evaluation request, calls `/access/v1/evaluation`, and returns allow or deny to Envoy.
+
+For local development, the sample adapter can also handle Direct Auth Secret configuration, self-signed TLS, HTTP and gRPC `ext_authz` endpoints, health checks, and structured logging.
+
+Set the required environment variables first. Then start the adapter:
+
+```bash
+python authzen_adapter.py
+```
+
+The adapter exposes:
+
+- `http://localhost:8181/ext-authz/*` - Envoy HTTP `ext_authz` endpoint
+- `grpc://localhost:8182` - Envoy gRPC `ext_authz` endpoint
+- `http://localhost:8181/health` - health check
+:::
+
+Use the following configuration for the adapter. The minimized snippets below use the core settings.
+A fuller local adapter can also use the optional transport and gRPC startup settings.
+
+- Base URL setting. Required.
+- Direct Auth Secret: `THUNDERID_DIRECT_AUTH_SECRET`. Required.
+- TLS verification: `THUNDERID_TLS_VERIFY`.
+- Local transport switch: `THUNDERID_HTTP_TRANSPORT`.
+- HTTP adapter port: `AUTHZEN_ADAPTER_PORT`. Defaults to `8181`.
+- gRPC adapter port: `AUTHZEN_GRPC_ADAPTER_PORT`. Defaults to `8182`.
+- gRPC startup switch: `AUTHZEN_ENABLE_GRPC`.
+- PDP call timeout: `AUTHZEN_ADAPTER_TIMEOUT`. Defaults to `10`.
+
+The adapter can be implemented in any language. It must do four things:
+
+1. Read the authenticated subject from the claims Envoy forwards after JWT validation.
+2. Map the incoming method and path to the permission name that <ProductName /> evaluates.
+3. Call the <ProductName /> AuthZEN PDP at `/access/v1/evaluation` with the Direct Auth Secret.
+4. Return allow to Envoy only when the PDP response contains `decision: true`.
+
+The request mapping and PDP call can look like this. The example omits `subject.type` because the AuthZEN field is optional and the subject can be a user, application, or agent:
+
+<div className="envoy-scroll-code">
+
+```python
+import json
+import os
+import ssl
+import urllib.request
+
+base_url = os.environ["THUNDERID" + "_BASE" + "_URL"].rstrip("/")  # URL.
+direct_auth_secret = os.environ["THUNDERID_DIRECT_AUTH_SECRET"]  # Direct Auth Secret.
+tls_verify = os.environ.get("THUNDERID_TLS_VERIFY", "false").lower() == "true"  # TLS.
+timeout = float(os.environ.get("AUTHZEN_ADAPTER_TIMEOUT", "10"))  # Timeout.
+
+
+def tls_context():
+    if tls_verify:
+        return ssl.create_default_context()
+    return ssl._create_unverified_context()
+
+
+def resource_id_from_path(path):
+    return path.rsplit("/", 1)[-1]
+
+def action_for(method, path):
+    if method == "GET" and path.startswith("/resources"):
+        return "resource:read"
+    return "resource:unknown"
+
+def build_authzen_request(method, path, headers):
+    subject = {"id": headers.get("x-authenticated-subject", "").strip()}
+    if not subject["id"]:
+        raise ValueError("Envoy must provide x-authenticated-subject from a validated JWT")
+
+    properties = {}
+    client_id = headers.get("x-authenticated-client-id", "").strip()
+    if client_id:
+        properties["client_id"] = client_id
+
+    for name, value in headers.items():
+        lower_name = name.lower()
+        if lower_name.startswith("x-authzen-property-") and value:
+            properties[lower_name.removeprefix("x-authzen-property-")] = value
+
+    if properties:
+        subject["properties"] = properties
+
+    return {
+        "subject": subject,
+        "resource": {
+            "type": "https://api.example.com/resources",
+            "id": resource_id_from_path(path),
+        },
+        "action": {
+            "name": action_for(method, path),
+        },
+    }
+
+
+def evaluate_with_thunderid(authzen_request):
+    body = json.dumps(authzen_request).encode()
+    request = urllib.request.Request(
+        f"{base_url}/access/v1/evaluation",
+        data=body,
+        method="POST",
+        headers={
+            "content-type": "application/json",
+            "Direct-Auth-Secret": direct_auth_secret,
+        },
+    )
+
+    with urllib.request.urlopen(
+        request, timeout=timeout, context=tls_context()
+    ) as response:
+        return bool(json.loads(response.read()).get("decision"))
+```
+
+</div>
+
+Then expose the adapter endpoint that matches the Envoy `ext_authz` protocol you configured:
+
+<Tabs groupId="envoy-authzen-adapter-code">
+<TabItem value="http" label="HTTP Adapter" default>
+
+For HTTP `ext_authz`, Envoy calls the adapter over HTTP. Return `200` to allow the request, or `403` to deny it:
+
+<div className="envoy-scroll-code">
+
+```python
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+EXT_AUTHZ_PREFIX = "/ext-authz"
+
+
+def route_path_from_ext_authz_path(path):
+    if path == EXT_AUTHZ_PREFIX:
+        return "/"
+    if path.startswith(f"{EXT_AUTHZ_PREFIX}/"):
+        return path[len(EXT_AUTHZ_PREFIX):]
+    return path
+
+
+class HttpAdapter(BaseHTTPRequestHandler):
+    # Send a JSON response.
+    def send_json(self, status, payload):
+        body = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def handle_ext_authz(self):
+        route_path = route_path_from_ext_authz_path(self.path.split("?", 1)[0])
+
+        try:
+            authzen_request = build_authzen_request(self.command, route_path, self.headers)
+            allowed = evaluate_with_thunderid(authzen_request)
+        except ValueError as error:
+            self.send_json(401, {"error": "missing_subject", "message": str(error)})
+            return
+        except Exception as error:
+            self.send_json(502, {"error": "adapter_failed", "message": str(error)})
+            return
+
+        if allowed:
+            self.send_response(200)
+            self.send_header("x-authzen-decision", "true")
+            self.send_header("content-length", "0")
+            self.end_headers()
+            return
+
+        self.send_json(403, {"error": "access_denied"})
+
+    def do_GET(self):
+        if self.path == "/health":
+            self.send_json(200, {"status": "ok"})
+            return
+        self.handle_ext_authz()
+
+    def do_POST(self):
+        self.handle_ext_authz()
+
+    def do_PUT(self):
+        self.handle_ext_authz()
+
+    def do_PATCH(self):
+        self.handle_ext_authz()
+
+    def do_DELETE(self):
+        self.handle_ext_authz()
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("AUTHZEN_ADAPTER_PORT", "8181"))
+    ThreadingHTTPServer(("127.0.0.1", port), HttpAdapter).serve_forever()
+```
+
+</div>
+
+</TabItem>
+<TabItem value="grpc" label="gRPC Adapter">
+
+For gRPC `ext_authz`, Envoy calls the adapter's `Authorization.Check` method. Return `OK` to allow the request, or `PERMISSION_DENIED` with a denied HTTP response to block it:
+
+<div className="envoy-scroll-code">
+
+```python
+from concurrent import futures
+
+import grpc
+from envoy.service.auth.v3 import external_auth_pb2, external_auth_pb2_grpc
+from envoy.type.v3 import http_status_pb2
+from google.rpc import code_pb2, status_pb2
+
+
+def grpc_denied(message, code=code_pb2.PERMISSION_DENIED):
+    return external_auth_pb2.CheckResponse(
+        status=status_pb2.Status(code=code, message=message),
+        denied_response=external_auth_pb2.DeniedHttpResponse(
+            status=http_status_pb2.HttpStatus(code=http_status_pb2.Forbidden),
+            body=message,
+        ),
+    )
+
+
+class AuthZENGrpcAdapter(external_auth_pb2_grpc.AuthorizationServicer):
+    def Check(self, request, context):
+        http = request.attributes.request.http
+        headers = {name.lower(): value for name, value in http.headers.items()}
+        path = http.path.split("?", 1)[0]
+
+        try:
+            authzen_request = build_authzen_request(http.method, path, headers)
+            allowed = evaluate_with_thunderid(authzen_request)
+        except ValueError as error:
+            return grpc_denied(str(error))
+        except Exception as error:
+            return grpc_denied(str(error), code=code_pb2.UNAVAILABLE)
+
+        if allowed:
+            return external_auth_pb2.CheckResponse(
+                status=status_pb2.Status(code=code_pb2.OK),
+                ok_response=external_auth_pb2.OkHttpResponse(),
+            )
+
+        return grpc_denied("{{ProductName}} PDP did not allow the request")
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("AUTHZEN_GRPC_ADAPTER_PORT", "8182"))
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    external_auth_pb2_grpc.add_AuthorizationServicer_to_server(
+        AuthZENGrpcAdapter(),
+        server,
+    )
+    server.add_insecure_port(f"127.0.0.1:{port}")
+    server.start()
+    server.wait_for_termination()
+```
+
+</div>
+
+</TabItem>
+</Tabs>
+
+### Configure Envoy
+
+Choose the adapter protocol that Envoy uses for the external authorization check.
+
+Use the listener, route, and upstream cluster from the previous Envoy examples. Replace the listener's `http_filters` block with the filter chain from the selected tab, and add the matching adapter cluster.
+
+`jwt_authn` validates the bearer token and copies the `sub` claim into `x-authenticated-subject`. The adapter reads this header to build the AuthZEN `subject.id`. Without this handoff, the adapter has no verified identity to send to the PDP.
+
+<Tabs groupId="envoy-authzen-adapter">
+<TabItem value="http" label="HTTP Adapter" default>
+
+#### Configure Envoy for the HTTP Adapter
+
+Configure Envoy to validate the JWT and call the HTTP adapter. The `jwt_authn` filter validates the JWT and forwards the claims the adapter needs. The `ext_authz` filter calls the HTTP adapter after JWT validation and before the router filter:
+
+<div className="envoy-scroll-code">
+
+```yaml
+http_filters:
+  - name: envoy.filters.http.jwt_authn
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+      providers:
+        thunderid:
+          issuer: "https://localhost:8090"
+          remote_jwks:
+            http_uri:
+              uri: "https://localhost:8090/oauth2/jwks"
+              cluster: thunderid
+              timeout: 5s
+            cache_duration: 300s
+          from_headers:
+            - name: authorization
+              value_prefix: "Bearer "
+          claim_to_headers:
+            - header_name: x-authenticated-subject
+              claim_name: sub
+            - header_name: x-authenticated-client-id
+              claim_name: client_id
+      rules:
+        - match:
+            prefix: "/resources"
+          requires:
+            provider_name: thunderid
+        - match:
+            prefix: "/"
+          requires:
+            allow_missing: {}
+  - name: envoy.filters.http.ext_authz
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+      failure_mode_allow: false
+      status_on_error:
+        code: ServiceUnavailable
+      http_service:
+        server_uri:
+          uri: http://127.0.0.1:8181
+          cluster: authzen_ext_authz
+          timeout: 5s
+        path_prefix: /ext-authz
+        authorization_request:
+          allowed_headers:
+            patterns:
+              - exact: x-authenticated-subject
+              - exact: x-authenticated-client-id
+              - prefix: x-authzen-property-
+        authorization_response:
+          allowed_upstream_headers:
+            patterns:
+              - exact: x-authzen-decision
+              - exact: x-authzen-action
+              - exact: x-authzen-resource-type
+              - exact: x-authzen-resource-id
+          allowed_client_headers:
+            patterns:
+              - exact: content-type
+  - name: envoy.filters.http.router
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+```
+
+</div>
+
+:::note
+The example uses `failure_mode_allow: false`. If the adapter is unreachable or returns an error, Envoy returns `503 Service Unavailable` instead of forwarding the request without an authorization decision.
+:::
+
+Add Envoy clusters for the <ProductName /> JWKS endpoint and the HTTP adapter:
+
+<div className="envoy-scroll-code">
+
+```yaml
+clusters:
+  - name: thunderid
+    connect_timeout: 1s
+    type: STATIC
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: thunderid
+      endpoints:
+        - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: 127.0.0.1
+                    port_value: 8090
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        sni: localhost
+        common_tls_context:
+          tls_params:
+            tls_minimum_protocol_version: TLSv1_3
+            tls_maximum_protocol_version: TLSv1_3
+          validation_context:
+            trust_chain_verification: ACCEPT_UNTRUSTED
+  - name: authzen_ext_authz
+    connect_timeout: 1s
+    type: STATIC
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: authzen_ext_authz
+      endpoints:
+        - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: 127.0.0.1
+                    port_value: 8181
+```
+
+</div>
+
+If you configure JWT audience validation in Envoy, include the audience used by both user tokens and client credentials tokens that call the protected API.
+
+</TabItem>
+<TabItem value="grpc" label="gRPC Adapter">
+
+#### Configure Envoy for the gRPC Adapter
+
+Configure Envoy to validate the JWT and call the gRPC adapter. The `jwt_authn` filter forwards the same claims as the HTTP adapter flow. The `ext_authz` filter calls the gRPC adapter after JWT validation and before the router filter:
+
+<div className="envoy-scroll-code">
+
+```yaml
+http_filters:
+  - name: envoy.filters.http.jwt_authn
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+      providers:
+        thunderid:
+          issuer: "https://localhost:8090"
+          remote_jwks:
+            http_uri:
+              uri: "https://localhost:8090/oauth2/jwks"
+              cluster: thunderid
+              timeout: 5s
+            cache_duration: 300s
+          from_headers:
+            - name: authorization
+              value_prefix: "Bearer "
+          claim_to_headers:
+            - header_name: x-authenticated-subject
+              claim_name: sub
+            - header_name: x-authenticated-client-id
+              claim_name: client_id
+      rules:
+        - match:
+            prefix: "/resources"
+          requires:
+            provider_name: thunderid
+        - match:
+            prefix: "/"
+          requires:
+            allow_missing: {}
+  - name: envoy.filters.http.ext_authz
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+      failure_mode_allow: false
+      status_on_error:
+        code: ServiceUnavailable
+      grpc_service:
+        envoy_grpc:
+          cluster_name: authzen_grpc_ext_authz
+        timeout: 5s
+  - name: envoy.filters.http.router
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+```
+
+</div>
+
+Add Envoy clusters for the <ProductName /> JWKS endpoint and the gRPC adapter. The gRPC adapter cluster must use HTTP/2:
+
+<div className="envoy-scroll-code">
+
+```yaml
+clusters:
+  - name: thunderid
+    connect_timeout: 1s
+    type: STATIC
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: thunderid
+      endpoints:
+        - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: 127.0.0.1
+                    port_value: 8090
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        sni: localhost
+        common_tls_context:
+          tls_params:
+            tls_minimum_protocol_version: TLSv1_3
+            tls_maximum_protocol_version: TLSv1_3
+          validation_context:
+            trust_chain_verification: ACCEPT_UNTRUSTED
+  - name: authzen_grpc_ext_authz
+    connect_timeout: 1s
+    type: STATIC
+    lb_policy: ROUND_ROBIN
+    typed_extension_protocol_options:
+      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+        explicit_http_config:
+          http2_protocol_options: {}
+    load_assignment:
+      cluster_name: authzen_grpc_ext_authz
+      endpoints:
+        - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: 127.0.0.1
+                    port_value: 8182
+```
+
+</div>
+
+:::note
+The gRPC example also uses `failure_mode_allow: false`. Keep this setting unless fail-open behavior is acceptable for your API.
+:::
+
+</TabItem>
+</Tabs>
+
+### Try It Out
+
+#### Start the Adapter and Envoy
+
+Start the authorization adapter with the <ProductName /> PDP settings:
+
+```bash
+export THUNDERID_BASE_URL="https://localhost:8090"
+export THUNDERID_DIRECT_AUTH_SECRET="<direct-auth-secret>"
+export AUTHZEN_ADAPTER_PORT=8181
+export AUTHZEN_GRPC_ADAPTER_PORT=8182
+
+python authzen_adapter.py
+```
+
+In another terminal, validate and start Envoy:
+
+```bash
+envoy --mode validate -c envoy.yaml
+envoy -c envoy.yaml
+```
+
+#### Obtain an Access Token
+
+Use a user token or client credentials token for a subject that has the `resource:read` permission through the `Resources API Reader` role.
+
+For a [client credentials](../../../protocols/oauth-oidc/client-credentials) token, request the corresponding scope from <ProductName />:
+
+```bash
+curl -kL -X POST 'https://<THUNDER_HOST>:8090/oauth2/token' \
+  --user '<CLIENT_ID>:<CLIENT_SECRET>' \
+  --header 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'grant_type=client_credentials' \
+  --data-urlencode 'scope=resource:read'
+```
+
+Save the returned `access_token` as `ACCESS_TOKEN`. The token contains the scope associated with the assigned permission.
+
+<Tabs groupId="envoy-authzen-adapter">
+<TabItem value="http" label="HTTP Adapter" default>
+
+Call the HTTP listener with a token for a subject that has the required permission:
+
+```bash
+curl -i --location 'http://localhost:8080/resources' \
+  --header 'Authorization: Bearer <ACCESS_TOKEN>'
+```
+
+Expected response:
+
+```text
+HTTP/1.1 200 OK
+```
+
+#### Verify the Deny Response
+
+Call the protected API with a token for a subject that does not have the required permission. The token does not contain the corresponding scope:
+
+```bash
+curl -i --location 'http://localhost:8080/resources' \
+  --header 'Authorization: Bearer <TOKEN_WITHOUT_REQUIRED_SCOPE>'
+```
+
+Expected response:
+
+```text
+HTTP/1.1 403 Forbidden
+```
+
+</TabItem>
+<TabItem value="grpc" label="gRPC Adapter">
+
+Install the Python packages required by the gRPC adapter before you start it:
+
+```bash
+pip install "grpcio>=1.60.0" "protobuf>=4.25.0" "googleapis-common-protos>=1.62.0" "xds-protos>=1.80.0"
+```
+
+Call the Envoy listener with the same token:
+
+```bash
+curl -i --location 'http://localhost:8081/resources' \
+  --header 'Authorization: Bearer <ACCESS_TOKEN>'
+```
+
+Expected response:
+
+```text
+HTTP/1.1 200 OK
+```
+
+#### Verify the Deny Response
+
+Call the protected API with a token for a subject that does not have the required permission. The token does not contain the corresponding scope:
+
+```bash
+curl -i --location 'http://localhost:8081/resources' \
+  --header 'Authorization: Bearer <TOKEN_WITHOUT_REQUIRED_SCOPE>'
+```
+
+Expected response:
+
+```text
+HTTP/1.1 403 Forbidden
+```
+
+</TabItem>
+</Tabs>

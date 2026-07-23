@@ -262,7 +262,6 @@ type OpenID4VCIConfig struct {
 
 // AuthnProviderConfig holds the authentication provider configuration details.
 type AuthnProviderConfig struct {
-	Type string     `yaml:"type" json:"type"`
 	Rest RestConfig `yaml:"rest" json:"rest"`
 }
 
@@ -278,6 +277,9 @@ type EntityProviderConfig struct {
 
 // RestConfig holds the REST authentication provider configuration details.
 type RestConfig struct {
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// CredentialTypes lists the credential keys routed to the REST provider.
+	CredentialTypes     []string           `yaml:"credential_types" json:"credential_types"`
 	BaseURL             string             `yaml:"base_url" json:"base_url"`
 	Timeout             int                `yaml:"timeout" json:"timeout"`
 	CorrelationIDHeader string             `yaml:"correlation_id_header" json:"correlation_id_header"`
@@ -434,6 +436,14 @@ type TranslationConfig struct {
 type LogConfig struct {
 	Level  string          `yaml:"level"  json:"level"`
 	Output LogOutputConfig `yaml:"output" json:"output"`
+	Access LogAccessConfig `yaml:"access" json:"access"`
+}
+
+// LogAccessConfig holds the access log settings.
+type LogAccessConfig struct {
+	// ExcludePaths lists extra path prefixes whose requests are served without an access log line.
+	// The Gate and Console frontend prefixes are always excluded in addition to these.
+	ExcludePaths []string `yaml:"exclude_paths" json:"exclude_paths"`
 }
 
 // LogOutputConfig holds the log output destinations.

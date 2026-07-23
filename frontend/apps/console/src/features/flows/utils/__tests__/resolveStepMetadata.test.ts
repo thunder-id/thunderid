@@ -242,7 +242,7 @@ describe('resolveStepMetadata', () => {
       });
 
       const result = resolveStepMetadata(resources, steps);
-      const properties = result[0].data?.properties as Record<string, unknown>;
+      const properties = result[0].data.properties!;
 
       expect(properties.includeOptional).toBe(true);
       expect(properties.maxPerPrompt).toBe(5);
@@ -281,7 +281,7 @@ describe('resolveStepMetadata', () => {
       });
 
       const result = resolveStepMetadata(resources, steps);
-      const properties = result[0].data?.properties as Record<string, unknown>;
+      const properties = result[0].data.properties!;
 
       expect(properties.maxPerPrompt).toBe(0);
     });
@@ -319,7 +319,7 @@ describe('resolveStepMetadata', () => {
       });
 
       const result = resolveStepMetadata(resources, steps);
-      const properties = result[0].data?.properties as Record<string, unknown>;
+      const properties = result[0].data.properties!;
 
       expect(properties.includeOptional).toBe(false);
     });
@@ -349,7 +349,7 @@ describe('resolveStepMetadata', () => {
       });
 
       const result = resolveStepMetadata(resources, steps);
-      const properties = result[0].data?.properties as Record<string, unknown>;
+      const properties = result[0].data.properties!;
 
       expect(properties.maxPerPrompt).toBe(3);
     });
@@ -379,7 +379,7 @@ describe('resolveStepMetadata', () => {
       });
 
       const result = resolveStepMetadata(resources, steps);
-      const properties = result[0].data?.properties as Record<string, unknown>;
+      const properties = result[0].data.properties!;
 
       expect(properties.includeOptional).toBe(false);
     });
@@ -409,7 +409,7 @@ describe('resolveStepMetadata', () => {
       });
 
       const result = resolveStepMetadata(resources, steps);
-      const properties = result[0].data?.properties as Record<string, unknown>;
+      const properties = result[0].data.properties!;
 
       expect(properties.assignGroup).toBe('my-group');
     });

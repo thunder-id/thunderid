@@ -26,7 +26,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
-	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -43,22 +42,15 @@ func Initialize(
 	resourceService providers.ResourceServerProvider,
 	dpopVerifier dpop.VerifierInterface,
 	cfg oauthconfig.Config,
+	storeProvider providers.RuntimeStoreProvider,
 ) PARServiceInterface {
-	store := initializePARStore(cfg)
+	store := newPARRequestStore(storeProvider)
 	parSvc := newPARService(store, resourceService, cfg)
 	parEndpoint := discoveryService.GetOAuth2AuthorizationServerMetadata(
 		context.Background()).PushedAuthorizationRequestEndpoint
 	handler := newPARHandler(parSvc, dpopVerifier, parEndpoint)
 	registerRoutes(mux, handler, actorProvider, authnProvider, jwtService, discoveryService)
 	return parSvc
-}
-
-// initializePARStore selects the PAR store implementation based on the configured runtime transient DB type.
-func initializePARStore(cfg oauthconfig.Config) parStoreInterface {
-	if cfg.RuntimeTransientDBType == provider.DataSourceTypeRedis {
-		return newRedisPARRequestStore(provider.GetRedisProvider(), cfg.DeploymentID)
-	}
-	return newPARRequestStore(cfg.DeploymentID)
 }
 
 // registerRoutes registers the PAR endpoint route with client authentication middleware.
@@ -77,9 +69,8 @@ func registerRoutes(
 		MaxAge:           600,
 	}
 
-	metadata := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background())
-	endpointURL := metadata.PushedAuthorizationRequestEndpoint
-	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService, endpointURL)
+	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
+	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService, issuer)
 	wrappedHandler := clientAuthMiddleware(http.HandlerFunc(handler.HandlePARRequest))
 
 	pattern, corsHandler := middleware.WithCORS(

@@ -93,4 +93,10 @@ export interface AccessTokenConfig {
    * (client_credentials grant).
    */
   clientConfig?: AccessTokenSubConfig;
+
+  /**
+   * Audience (aud claim) for access tokens that are not bound to a resource server, i.e.
+   * OIDC-only or scopeless requests. Falls back to the client_id when empty.
+   */
+  defaultAudience?: string;
 }

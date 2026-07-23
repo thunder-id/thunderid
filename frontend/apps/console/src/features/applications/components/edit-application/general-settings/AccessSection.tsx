@@ -34,7 +34,7 @@ import {
   Tooltip,
 } from '@wso2/oxygen-ui';
 import {Trash, Plus} from '@wso2/oxygen-ui-icons-react';
-import {useState} from 'react';
+import {useState, useEffect} from 'react';
 import {useForm, Controller} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import {z} from 'zod';
@@ -63,6 +63,11 @@ interface AccessSectionProps {
    * @param value - The new value for the field
    */
   onFieldChange: (field: keyof Application, value: unknown) => void;
+  /**
+   * Callback function to handle validation changes
+   * @param hasErrors - Boolean indicating if the access settings have validation errors
+   */
+  onValidationChange?: (hasErrors: boolean) => void;
 }
 
 /**
@@ -83,6 +88,7 @@ export default function AccessSection({
   editedApp,
   oauth2Config = undefined,
   onFieldChange,
+  onValidationChange = undefined,
 }: AccessSectionProps) {
   const {t} = useTranslation();
   const {data: userTypesData, isLoading: loadingUserTypes} = useGetUserTypes();
@@ -105,6 +111,7 @@ export default function AccessSection({
 
   const {
     control,
+    trigger,
     formState: {errors},
   } = useForm<GeneralSettingsFormData>({
     resolver: zodResolver(generalSettingsSchema),
@@ -113,6 +120,20 @@ export default function AccessSection({
       url: editedApp.url ?? application.url ?? '',
     },
   });
+
+  // Validate default values on mount so stale validation state doesn't survive a remount.
+  useEffect(() => {
+    void trigger();
+  }, [trigger]);
+
+  // Effect to notify parent component of validation state changes
+  useEffect(() => {
+    if (onValidationChange) {
+      const hasErrors =
+        !!errors.url || Object.keys(uriErrors).length > 0 || Object.keys(postLogoutUriErrors).length > 0;
+      onValidationChange(hasErrors);
+    }
+  }, [errors.url, uriErrors, postLogoutUriErrors, onValidationChange]);
 
   // Pure URI-format check shared by the redirect and post-logout redirect URI fields.
   const isValidUriFormat = (uri: string): boolean => {

@@ -31,7 +31,6 @@ export default function mapConnectionToTrustedIssuer(connection: ConnectionRespo
     issuer: connection.issuer ?? '',
     jwksEndpoint: connection.jwksEndpoint ?? '',
     idJagEnabled: connection.idJagEnabled ?? false,
-    clientId: connection.clientId ?? undefined,
     tokenExchangeEnabled: connection.tokenExchangeEnabled ?? false,
     trustedTokenAudience: connection.trustedTokenAudience ?? undefined,
   };

@@ -22,7 +22,4 @@ const (
 	// maxPublicPathLength defines the maximum allowed length for a public path.
 	// This prevents potential DoS attacks via excessively long paths (even with safe regex).
 	maxPublicPathLength = 4096
-
-	// directAuthHeaderName is the request header carrying the Direct Auth Secret on Direct API requests.
-	directAuthHeaderName = "Direct-Auth-Secret"
 )

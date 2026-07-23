@@ -41,6 +41,8 @@ vi.mock('@thunderid/logger/react', async (importOriginal) => {
 // Mock useDesign + layout/renderer so the box renders without the real design context.
 const mockUseDesign = vi.fn();
 let capturedOnSubmit: ((action: {id?: string}, inputs: Record<string, string>) => void) | undefined;
+let capturedResolve: ((template: string) => string) | undefined;
+let capturedOnInputChange: ((id: string, value: string) => void) | undefined;
 vi.mock('@thunderid/design', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/design')>();
   return {
@@ -51,11 +53,17 @@ vi.mock('@thunderid/design', async (importOriginal) => {
     FlowComponentRenderer: ({
       component,
       onSubmit,
+      resolve,
+      onInputChange,
     }: {
       component: {id?: string; type: string};
       onSubmit: (action: {id?: string}, inputs: Record<string, string>) => void;
+      resolve: (template: string) => string;
+      onInputChange: (id: string, value: string) => void;
     }) => {
       capturedOnSubmit = onSubmit;
+      capturedResolve = resolve;
+      capturedOnInputChange = onInputChange;
       return (
         <div data-testid={`flow-component-${component.id ?? component.type}`}>{component.id ?? component.type}</div>
       );
@@ -83,7 +91,7 @@ vi.mock('@thunderid/react', async () => {
   const actual = await vi.importActual('@thunderid/react');
   return {
     ...actual,
-    useThunderID: () => ({resolveFlowTemplateLiterals: (template: string) => template}),
+    useThunderID: () => ({meta: {application: {name: 'My App'}}}),
     normalizeFlowResponse: (...args: unknown[]) => mockNormalize(...args) as {components: unknown[]},
   };
 });
@@ -98,6 +106,8 @@ describe('SignOutBox', () => {
     mockSearchParams = new URLSearchParams({executionId: 'exec-1', logoutId: 'logout-1'});
     mockNormalize.mockReturnValue({components: [], additionalData: {}, executionId: ''});
     capturedOnSubmit = undefined;
+    capturedResolve = undefined;
+    capturedOnInputChange = undefined;
     // Default: an interactive step so the mount fetch neither redirects nor errors.
     vi.stubGlobal(
       'fetch',
@@ -203,6 +213,56 @@ describe('SignOutBox', () => {
 
   it('shows an error alert and logs when the flow execute call fails', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ok: false, status: 500}));
+    render(<SignOutBox />);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(mockLogger.error).toHaveBeenCalled();
+  });
+
+  it('resolves translation and meta literals through the FlowComponentRenderer resolve prop', async () => {
+    mockNormalize.mockReturnValue({components: [{id: 'confirm', type: 'ACTION'}], additionalData: {}, executionId: ''});
+    render(<SignOutBox />);
+    await screen.findByTestId('flow-component-confirm');
+
+    expect(capturedResolve).toBeDefined();
+    // Translation literal resolves via the i18n `t` handler.
+    expect(typeof capturedResolve?.('{{ t(signout:forms.confirm.title) }}')).toBe('string');
+    // A valid meta path resolves to the value from the flow meta.
+    expect(capturedResolve?.('{{ meta(application.name) }}')).toBe('My App');
+    // A path that overshoots a primitive falls back to the unresolved literal (not the primitive).
+    expect(capturedResolve?.('{{ meta(application.name.first) }}')).toBe('{{meta(application.name.first)}}');
+    // An unknown meta path falls back to the unresolved literal.
+    expect(capturedResolve?.('{{ meta(unknown.key) }}')).toBe('{{meta(unknown.key)}}');
+  });
+
+  it('tracks input changes through the FlowComponentRenderer onInputChange prop', async () => {
+    mockNormalize.mockReturnValue({components: [{id: 'confirm', type: 'ACTION'}], additionalData: {}, executionId: ''});
+    render(<SignOutBox />);
+    await screen.findByTestId('flow-component-confirm');
+
+    expect(capturedOnInputChange).toBeDefined();
+    await act(async () => {
+      capturedOnInputChange?.('field', 'value');
+      await Promise.resolve();
+    });
+  });
+
+  it('shows an error and does not resume the flow when there is no executionId', async () => {
+    mockSearchParams = new URLSearchParams({logoutId: 'logout-1'});
+    render(<SignOutBox />);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('shows an error alert when the logout completion callback fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        if (url.endsWith('/oauth2/logout/callback')) {
+          return Promise.resolve({ok: false, status: 500});
+        }
+        return Promise.resolve({ok: true, json: () => Promise.resolve({flowStatus: 'COMPLETE'})});
+      }),
+    );
     render(<SignOutBox />);
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(mockLogger.error).toHaveBeenCalled();

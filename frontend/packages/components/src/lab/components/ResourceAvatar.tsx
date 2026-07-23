@@ -16,22 +16,27 @@
  * under the License.
  */
 
-import {Avatar, Box, IconButton, useTheme} from '@wso2/oxygen-ui';
+import type {AvatarShape} from '@thunderid/react';
+import {
+  Avatar,
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  Stack,
+  Typography,
+  useTheme,
+} from '@wso2/oxygen-ui';
 import type {AvatarProps} from '@wso2/oxygen-ui';
-import {Edit} from '@wso2/oxygen-ui-icons-react';
-import {useState, useCallback} from 'react';
+import {Edit, X} from '@wso2/oxygen-ui-icons-react';
+import {useState, useCallback, useRef} from 'react';
 import type {ReactNode, JSX, KeyboardEvent} from 'react';
-import ResourceLogoDialog from './ResourceLogoDialog';
-
-const EMOJI_SCHEME = 'emoji:';
-
-function isUrl(value: string): boolean {
-  return value.startsWith('http://') || value.startsWith('https://');
-}
-
-function resolveDisplayValue(value: string): string {
-  return value.startsWith(EMOJI_SCHEME) ? value.slice(EMOJI_SCHEME.length) : value;
-}
+import {useTranslation} from 'react-i18next';
+import LogoPicker from './LogoPicker/LogoPicker';
+import {resolveResourceIcon} from './resourceIconSchemes';
 
 /**
  * Props for the {@link ResourceAvatar} component.
@@ -62,11 +67,21 @@ export interface ResourceAvatarProps extends Omit<AvatarProps, 'onSelect'> {
 
   /**
    * When provided, the avatar becomes editable: an overlay pencil button is
-   * shown and clicking either the avatar or the button opens
-   * {@link ResourceLogoDialog}. The callback receives the confirmed value
-   * (`emoji:<char>` or a raw URL).
+   * shown and clicking either the avatar or the button opens a dialog with
+   * {@link LogoPicker}. The callback fires with each picked value
+   * (`emoji:<char>`, `avatar:...`, or a raw URL) as the user browses the
+   * picker, so the avatar updates live behind the dialog. Clicking "Cancel"
+   * reverts to the value the dialog opened with; clicking "Save" keeps the
+   * latest pick and, if {@link onSave} is provided, persists it.
    */
   onSelect?: (value: string) => void;
+
+  /**
+   * Called when the user clicks "Save" in the logo picker dialog, to persist
+   * the value already reported via {@link onSelect}. When omitted, "Save"
+   * simply closes the dialog and keeps the locally-applied value.
+   */
+  onSave?: () => void | Promise<void>;
 
   /**
    * Accessible label for the edit button (only relevant when `onSelect` is set).
@@ -80,6 +95,18 @@ export interface ResourceAvatarProps extends Omit<AvatarProps, 'onSelect'> {
    * precedence for opening the dialog.
    */
   onClick?: () => void;
+
+  /**
+   * Seed text used to default the picker dialog's avatar tab (e.g. the resource's name).
+   */
+  seedText?: string;
+
+  /**
+   * Avatar shapes offered in the edit dialog's {@link LogoPicker}. Forwarded as-is.
+   *
+   * @defaultValue ['rounded']
+   */
+  supportedShapes?: AvatarShape[];
 }
 
 /**
@@ -88,7 +115,7 @@ export interface ResourceAvatarProps extends Omit<AvatarProps, 'onSelect'> {
  * **Read-only mode** (no `onSelect`): renders just the Avatar.
  *
  * **Edit mode** (`onSelect` provided): wraps the Avatar in a relative container,
- * shows an overlaid pencil button, and manages a {@link ResourceLogoDialog}
+ * shows an overlaid pencil button, and manages a dialog wrapping {@link LogoPicker}
  * internally. No external state or dialog wiring needed by the caller.
  *
  * @example
@@ -115,49 +142,89 @@ export default function ResourceAvatar({
   fallback = null,
   sx,
   onSelect = undefined,
+  onSave = undefined,
   editAriaLabel = 'Change logo',
   onClick = undefined,
+  seedText = '',
+  supportedShapes = undefined,
+  variant = 'circular',
   ...rest
 }: ResourceAvatarProps): JSX.Element {
   const theme = useTheme();
+  const {t} = useTranslation('elements');
 
   const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
   const [imgErrorUrl, setImgErrorUrl] = useState<string | null>(null);
+  const originalValueRef = useRef<string | undefined>(value);
 
   const hasValue = Boolean(value);
-  const displayValue: string = hasValue ? resolveDisplayValue(value!) : '';
-  const isUrlValue: boolean = Boolean(displayValue) && isUrl(displayValue);
-  const imgError: boolean = imgErrorUrl === displayValue && Boolean(displayValue);
+  const resolvedIcon = hasValue ? resolveResourceIcon(value!) : null;
+  const imgSrc: string | undefined = resolvedIcon?.type === 'image' ? resolvedIcon.src : undefined;
+  const imgError: boolean = Boolean(imgSrc) && imgErrorUrl === imgSrc;
 
+  const resolvedFallback = typeof fallback === 'string' ? resolveResourceIcon(fallback, seedText) : null;
+
+  // When no value is set, the avatar renders `fallback` (if it's a resource-icon spec).
+  // Pre-select that same spec in the picker dialog instead of opening on nothing.
+  const pickerValue: string = hasValue ? value! : typeof fallback === 'string' ? fallback : '';
   const resolvedFallbackIcon: ReactNode =
-    typeof fallback === 'string' && fallback.startsWith(EMOJI_SCHEME) ? fallback.slice(EMOJI_SCHEME.length) : fallback;
+    resolvedFallback?.type === 'emoji' ? (
+      resolvedFallback.char
+    ) : resolvedFallback?.type === 'image' ? (
+      <img
+        src={resolvedFallback.src}
+        alt="logo"
+        style={{width: '100%', height: '100%', objectFit: 'cover', textAlign: 'center'}}
+      />
+    ) : (
+      fallback
+    );
 
   const handleOpenDialog = useCallback((): void => {
+    originalValueRef.current = value;
     setIsDialogOpen(true);
-  }, []);
+  }, [value]);
 
-  const handleCloseDialog = useCallback((): void => {
+  const handleCancel = useCallback((): void => {
+    if (isSaving) return;
+    if (originalValueRef.current !== value) {
+      onSelect?.(originalValueRef.current ?? '');
+    }
     setIsDialogOpen(false);
-  }, []);
+  }, [isSaving, onSelect, value]);
 
   const handleImgError = useCallback((): void => {
-    setImgErrorUrl(displayValue);
-  }, [displayValue]);
+    setImgErrorUrl(imgSrc ?? null);
+  }, [imgSrc]);
 
-  const handleSelect = useCallback(
+  const handleLogoChange = useCallback(
     (val: string): void => {
       onSelect?.(val);
-      setIsDialogOpen(false);
     },
     [onSelect],
   );
 
+  const handleSaveClick = useCallback(async (): Promise<void> => {
+    if (onSave) {
+      setIsSaving(true);
+      try {
+        await onSave();
+      } catch {
+        setIsSaving(false);
+        return;
+      }
+      setIsSaving(false);
+    }
+    setIsDialogOpen(false);
+  }, [onSave]);
+
   let avatarContent: ReactNode;
-  if (isUrlValue) {
+  if (imgSrc) {
     avatarContent = (
       <>
         <img
-          src={displayValue}
+          src={imgSrc}
           alt="logo"
           onError={handleImgError}
           style={
@@ -168,7 +235,7 @@ export default function ResourceAvatar({
       </>
     );
   } else {
-    avatarContent = displayValue || resolvedFallbackIcon;
+    avatarContent = (resolvedIcon?.type === 'emoji' && resolvedIcon.char) || resolvedFallbackIcon;
   }
 
   const isInteractive = Boolean(onSelect ?? onClick);
@@ -188,6 +255,7 @@ export default function ResourceAvatar({
   const avatar = (
     <Avatar
       src={undefined}
+      variant={variant}
       role={isInteractive ? 'button' : undefined}
       tabIndex={isInteractive ? 0 : undefined}
       onClick={onSelect ? handleOpenDialog : onClick}
@@ -229,13 +297,44 @@ export default function ResourceAvatar({
             right: -4,
             bgcolor: 'background.paper',
             boxShadow: 1,
+            borderRadius: variant === 'circular' ? '50%' : 1,
             '&:hover': {bgcolor: 'action.hover'},
           }}
         >
           <Edit size={14} />
         </IconButton>
       )}
-      <ResourceLogoDialog open={isDialogOpen} onClose={handleCloseDialog} value={value} onSelect={handleSelect} />
+      <Dialog open={isDialogOpen} onClose={handleCancel} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
+            <Typography variant="h5">{t('resource_logo_dialog.title', 'Choose a Logo')}</Typography>
+            <IconButton
+              aria-label={t('resource_logo_dialog.actions.close', 'Close')}
+              onClick={handleCancel}
+              size="small"
+              disabled={isSaving}
+            >
+              <X size={20} />
+            </IconButton>
+          </Stack>
+        </DialogTitle>
+        <DialogContent dividers>
+          <LogoPicker
+            value={pickerValue}
+            onChange={handleLogoChange}
+            seedText={seedText}
+            supportedShapes={supportedShapes}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancel} variant="outlined" disabled={isSaving}>
+            {t('resource_logo_dialog.actions.cancel', 'Cancel')}
+          </Button>
+          <Button onClick={() => void handleSaveClick()} variant="contained" disabled={isSaving}>
+            {t('resource_logo_dialog.actions.save', 'Save')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

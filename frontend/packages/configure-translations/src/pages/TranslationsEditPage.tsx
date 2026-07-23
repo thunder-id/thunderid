@@ -25,6 +25,7 @@ import {useNavigate, useParams} from 'react-router';
 import NamespaceSelector from '@/components/edit-translation/NamespaceSelector';
 import TranslationEditorCard from '@/components/edit-translation/TranslationEditorCard';
 import TranslationEditorHeader from '@/components/edit-translation/TranslationEditorHeader';
+import useTranslationRoutes from '@/hooks/useTranslationRoutes';
 
 interface ToastState {
   open: boolean;
@@ -61,6 +62,7 @@ export default function TranslationsEditPage(): JSX.Element {
   const logger = useLogger('TranslationsEditPage');
   const {language: languageParam} = useParams<{language: string}>();
   const selectedLanguage = languageParam ?? null;
+  const routes = useTranslationRoutes();
 
   const {mode, systemMode} = useColorScheme();
   const colorMode: 'light' | 'dark' =
@@ -216,7 +218,7 @@ export default function TranslationsEditPage(): JSX.Element {
 
   const handleBack = () => {
     (async (): Promise<void> => {
-      await navigate('/translations');
+      await navigate(routes.list());
     })().catch((_error: unknown) => {
       logger.error('Failed to navigate back to translations list', {error: _error});
     });

@@ -16,9 +16,10 @@
  * under the License.
  */
 
-import {Checkbox, FormControlLabel, FormHelperText, Stack, Typography} from '@wso2/oxygen-ui';
+import {Stack, Typography} from '@wso2/oxygen-ui';
 import {useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
+import CheckboxWithHint from './CheckboxWithHint';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import PresentationDefinitionSelect from '@/features/flows/components/resource-property-panel/PresentationDefinitionSelect';
 import type {StepData} from '@/features/flows/models/steps';
@@ -33,7 +34,7 @@ function OpenID4VPProperties({resource, onChange}: CommonResourcePropertiesProps
 
   const properties = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;
-    return (stepData?.properties ?? {}) as Record<string, unknown>;
+    return stepData?.properties ?? {};
   }, [resource]);
 
   return (
@@ -46,20 +47,18 @@ function OpenID4VPProperties({resource, onChange}: CommonResourcePropertiesProps
         value={(properties.presentation_definition_id as string) ?? ''}
         onChange={(value: string) => onChange('data.properties.presentation_definition_id', value, resource)}
       />
-      <div>
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={!!properties.allowAuthenticationWithoutLocalUser}
-              onChange={(e) =>
-                onChange('data.properties.allowAuthenticationWithoutLocalUser', e.target.checked, resource)
-              }
-            />
-          }
-          label={t('flows:core.executions.openid4vp.allowAuthenticationWithoutLocalUser.label')}
-        />
-        <FormHelperText>{t('flows:core.executions.openid4vp.allowAuthenticationWithoutLocalUser.hint')}</FormHelperText>
-      </div>
+      <CheckboxWithHint
+        checked={!!properties.allowAuthenticationWithoutLocalUser}
+        onChange={(checked) => onChange('data.properties.allowAuthenticationWithoutLocalUser', checked, resource)}
+        label={t(
+          'flows:core.executions.openid4vp.allowAuthenticationWithoutLocalUser.label',
+          'Allow authentication without a local user',
+        )}
+        hint={t(
+          'flows:core.executions.openid4vp.allowAuthenticationWithoutLocalUser.hint',
+          'When enabled, a holder with no matching local user is provisioned just-in-time. When disabled, login requires an existing matching user.',
+        )}
+      />
     </Stack>
   );
 }

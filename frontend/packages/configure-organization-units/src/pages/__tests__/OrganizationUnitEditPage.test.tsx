@@ -128,18 +128,6 @@ vi.mock('@thunderid/components', async () => {
   const React = await import('react');
   return {
     EmojiPicker: vi.fn(() => null),
-    ResourceLogoDialog: vi.fn(
-      ({open, onClose, onSelect}: {open: boolean; onClose: () => void; onSelect: (value: string) => void}) => (
-        <div data-testid="resource-logo-dialog" style={{display: open ? 'block' : 'none'}}>
-          <button type="button" onClick={() => onSelect('emoji:🚀')}>
-            Select Icon
-          </button>
-          <button type="button" onClick={onClose}>
-            Close
-          </button>
-        </div>
-      ),
-    ),
     UnsavedChangesBar: vi.fn(
       ({
         message,
@@ -1010,7 +998,9 @@ describe('OrganizationUnitEditPage', () => {
 
       renderWithProviders(<OrganizationUnitEditPage />);
 
-      const logoEditButton = await screen.findByLabelText(t('organizationUnits:edit.page.logoUpdate.label'));
+      const logoEditButton = await screen.findByLabelText(
+        t('organizationUnits:edit.page.logoUpdate.label', 'Update Logo'),
+      );
       fireEvent.click(logoEditButton);
 
       await waitFor(() => {
@@ -1033,7 +1023,9 @@ describe('OrganizationUnitEditPage', () => {
       renderWithProviders(<OrganizationUnitEditPage />);
 
       // Open the modal via logo edit icon button
-      const logoEditButton = await screen.findByLabelText(t('organizationUnits:edit.page.logoUpdate.label'));
+      const logoEditButton = await screen.findByLabelText(
+        t('organizationUnits:edit.page.logoUpdate.label', 'Update Logo'),
+      );
       fireEvent.click(logoEditButton);
 
       await waitFor(() => {
@@ -1052,7 +1044,7 @@ describe('OrganizationUnitEditPage', () => {
       mockUseGetOrganizationUnit.mockReturnValue({
         data: {
           ...mockOrganizationUnit,
-          logoUrl: 'emoji:🚀',
+          logoUrl: 'https://example.com/logo.png',
         },
         isLoading: false,
         error: null,
@@ -1062,7 +1054,9 @@ describe('OrganizationUnitEditPage', () => {
       renderWithProviders(<OrganizationUnitEditPage />);
 
       // Open the modal
-      const logoEditButton = await screen.findByLabelText(t('organizationUnits:edit.page.logoUpdate.label'));
+      const logoEditButton = await screen.findByLabelText(
+        t('organizationUnits:edit.page.logoUpdate.label', 'Update Logo'),
+      );
       fireEvent.click(logoEditButton);
 
       await waitFor(() => {

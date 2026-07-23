@@ -1,0 +1,253 @@
+---
+title: Skills
+docType: reference
+sidebar_position: 2
+description: Use ThunderID agent skills to set up the server and integrate authentication into any framework with a single prompt.
+---
+
+import {Box, Card, CardContent, Grid, Typography, Chip, Tooltip} from '@wso2/oxygen-ui';
+import {Check, Copy} from '@wso2/oxygen-ui-icons-react';
+import {useState} from 'react';
+import ProductName from '@site/src/components/ProductName';
+import ReactLogo from '@site/src/components/icons/ReactLogo';
+import NextLogo from '@site/src/components/icons/NextLogo';
+import NuxtLogo from '@site/src/components/icons/NuxtLogo';
+import VueLogo from '@site/src/components/icons/VueLogo';
+import ExpressLogo from '@site/src/components/icons/ExpressLogo';
+import Html5Logo from '@site/src/components/icons/Html5Logo';
+import SkillsLogo from '@site/src/components/icons/SkillsLogo';
+
+export const SkillCard = ({icon, title, skillCommand, pkg, description}) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(skillCommand);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API unavailable or denied, silently ignore.
+    }
+  };
+
+  return (
+    <Card sx={{border: '1px solid', borderColor: 'divider'}}>
+      <CardContent sx={{p: 2, '&:last-child': {pb: 2}}}>
+        <Box sx={{display: 'flex', alignItems: 'center', gap: 2}}>
+          <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flexShrink: 0}}>
+            {icon}
+          </Box>
+          <Box sx={{flex: 1, minWidth: 0}}>
+            <Box sx={{display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap'}}>
+              <Typography variant="subtitle2" sx={{fontWeight: 600}}>
+                {title}
+              </Typography>
+              {pkg && (
+                <Typography
+                  component="span"
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.7rem',
+                    color: 'text.secondary',
+                    bgcolor: 'action.hover',
+                    px: 0.75,
+                    py: 0.2,
+                    borderRadius: 0.5,
+                  }}
+                >
+                  {pkg}
+                </Typography>
+              )}
+            </Box>
+            <Typography variant="body2" sx={{color: 'text.secondary', mt: 0.25, lineHeight: 1.5}}>
+              {description}
+            </Typography>
+          </Box>
+          <Tooltip title={copied ? 'Copied!' : 'Copy command'} placement="top">
+            <Box
+              component="button"
+              type="button"
+              onClick={() => void handleCopy()}
+              sx={{
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5,
+                bgcolor: 'action.selected',
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                px: 1,
+                py: 0.5,
+                fontFamily: 'monospace',
+                fontSize: '0.72rem',
+                color: 'text.primary',
+                whiteSpace: 'nowrap',
+                cursor: 'pointer',
+                '&:hover': {
+                  bgcolor: 'action.hover',
+                  borderColor: 'text.secondary',
+                },
+              }}
+            >
+              {copied ? <Check size={11} /> : <SkillsLogo size={11} />}
+              {skillCommand}
+              <Copy size={11} style={{opacity: 0.5}} />
+            </Box>
+          </Tooltip>
+        </Box>
+      </CardContent>
+    </Card>
+  );
+};
+
+# Skills
+
+<ProductName /> agent skills let AI coding assistants set up the <ProductName /> server and integrate authentication into your application automatically. You describe what you want in plain language and the agent runs the skill to handle the configuration, file edits, and code generation.
+
+Skills are available for [Claude Code](https://claude.ai/code), [Codex](https://openai.com/index/openai-codex/), and any assistant that supports [Open Agent Skills](https://openagentskills.dev).
+
+## Install
+
+Add the <ProductName /> skill pack to your AI coding assistant once. All skills in the pack become immediately available.
+
+<RunThunderID tabs={['skills', 'claude', 'codex']} defaultTab="skills" />
+
+## Core Skills
+
+Skills for installing and running the <ProductName /> server.
+
+<Grid container spacing={2} sx={{mt: 1, mb: 4}}>
+  <Grid size={{xs: 12}}>
+    <SkillCard
+      icon={<SkillsLogo size={28} />}
+      title="Install <ProductName />"
+      skillCommand="/thunderid-install"
+      description="Download, configure, and start the <ProductName /> server. Outputs the Sample App Client ID you need for SDK integration."
+    />
+  </Grid>
+</Grid>
+
+## Tryout Skills
+
+Skills for launching demos of <ProductName /> features in action.
+
+### Use Case Samples
+
+Product usecase samples that are ready to run in your local environment. These demos showcase how <ProductName /> features work in practice.
+
+<Grid container spacing={2} sx={{mt: 1, mb: 4}}>
+  <Grid size={{xs: 12}}>
+    <SkillCard
+      icon={<SkillsLogo size={28} />}
+      title="Try the Consumer Demo"
+      skillCommand="/thunderid-try-consumer"
+      description="Launch the Wayfinder B2C consumer login demo to see social login and passkey sign-in in action."
+    />
+  </Grid>
+  <Grid size={{xs: 12}}>
+    <SkillCard
+      icon={<SkillsLogo size={28} />}
+      title="Try the AgentID Demo"
+      skillCommand="/thunderid-try-agentid"
+      description="Launch the AgentID demo to see AI agent authentication in action."
+    />
+  </Grid>
+</Grid>
+
+## Integration Skills
+
+Choose the skill that matches your framework. Each skill registers an application in the <ProductName /> Console, installs the correct SDK, and wires up authentication in your project.
+
+### SPA
+
+<Grid container spacing={2} sx={{mt: 1, mb: 3}}>
+  <Grid size={{xs: 12}}>
+    <SkillCard
+      icon={<ReactLogo size={36} />}
+      title="React"
+      skillCommand="/thunderid-integrate-react"
+      pkg="@thunderid/react"
+      description="Add authentication to a React application."
+    />
+  </Grid>
+  <Grid size={{xs: 12}}>
+    <SkillCard
+      icon={<VueLogo size={36} />}
+      title="Vue"
+      skillCommand="/thunderid-integrate-vue"
+      pkg="@thunderid/vue"
+      description="Integrate authentication into a Vue 3 application with composables for session access and route guards."
+    />
+  </Grid>
+  <Grid size={{xs: 12}}>
+    <SkillCard
+      icon={<Html5Logo size={36} />}
+      title="Browser / Vanilla JS"
+      skillCommand="/thunderid-integrate-browser"
+      pkg="@thunderid/browser"
+      description="Add authentication to a plain HTML and JavaScript app with no framework, ideal for simple SPAs or prototype projects."
+    />
+  </Grid>
+</Grid>
+
+### Fullstack
+
+<Grid container spacing={2} sx={{mt: 1, mb: 3}}>
+  <Grid size={{xs: 12}}>
+    <SkillCard
+      icon={<NextLogo size={36} />}
+      title="Next.js"
+      skillCommand="/thunderid-integrate-nextjs"
+      pkg="@thunderid/nextjs"
+      description="Integrate authentication into a Next.js App Router application with server-side session management and route protection middleware."
+    />
+  </Grid>
+  <Grid size={{xs: 12}}>
+    <SkillCard
+      icon={<NuxtLogo size={36} />}
+      title="Nuxt"
+      skillCommand="/thunderid-integrate-nuxt"
+      pkg="@thunderid/nuxt"
+      description="Add authentication to a Nuxt 3 application using the official <ProductName /> Nuxt module."
+    />
+  </Grid>
+</Grid>
+
+### Backend
+
+<Grid container spacing={2} sx={{mt: 1, mb: 4}}>
+  <Grid size={{xs: 12}}>
+    <SkillCard
+      icon={<ExpressLogo size={36} />}
+      title="Express"
+      skillCommand="/thunderid-integrate-express"
+      pkg="@thunderid/express"
+      description="Protect routes in an Express application with session-based authentication middleware and callback handling."
+    />
+  </Grid>
+</Grid>
+
+## How to Use Skills
+
+Type a plain-language request in your AI assistant's chat. The assistant detects the intent, selects the matching skill, and runs it.
+
+| You Say | Skill |
+|---|---|
+| "Set up <ProductName /> on my machine" | `/thunderid-install` |
+| "Try <ProductName />" | `/thunderid-try-consumer` |
+| "Demo AI agent auth" | `/thunderid-try-agentid` |
+| "Add <ProductName /> to my Next.js app" | `/thunderid-integrate-nextjs` |
+| "Add <ProductName /> to my Nuxt app" | `/thunderid-integrate-nuxt` |
+| "Integrate <ProductName /> into my React app" | `/thunderid-integrate-react` |
+| "Add <ProductName /> to my Vue app" | `/thunderid-integrate-vue` |
+| "Protect routes in my Express app" | `/thunderid-integrate-express` |
+| "Add <ProductName /> to my vanilla JS app" | `/thunderid-integrate-browser` |
+
+You can also invoke skills directly by name. In Claude Code, type `/thunderid-integrate-nextjs`. In Codex, type `/thunderid-integrate-nextjs` in a thread. Both assistants run the skill immediately without further prompting.
+
+{/* Screenshot placeholder: Split view showing the same "Add <ProductName /> to my Next.js app" prompt in Claude Code (left) and Codex (right), each running the integrate-nextjs skill */}
+
+:::tip Run Setup First
+If <ProductName /> is not running yet, ask your assistant to "set up <ProductName />" before running an integration skill. The setup skill outputs the Sample App **Client ID** that the integration skills need to configure your application.
+:::

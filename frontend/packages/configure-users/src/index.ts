@@ -63,5 +63,9 @@ export {default as UserEditPage} from './pages/UserEditPage';
 export {default as UserInvitePage} from './pages/UserInvitePage';
 export {default as UsersListPage} from './pages/UsersListPage';
 
+// Routes
+export type {UserRoutePaths} from './hooks/useUserRoutes';
+export {defaultUserRoutePaths, default as useUserRoutes} from './hooks/useUserRoutes';
+
 // Utils
 export {default as renderSchemaField} from './utils/renderSchemaField';

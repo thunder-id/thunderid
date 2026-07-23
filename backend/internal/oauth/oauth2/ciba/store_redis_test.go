@@ -114,6 +114,29 @@ func (suite *RedisCIBARequestStoreTestSuite) TestAdd_RedisError() {
 	suite.Error(err)
 }
 
+func (suite *RedisCIBARequestStoreTestSuite) TestAddGet_PreservesResources() {
+	record := suite.sampleRecord()
+	record.Resources = []string{"https://api.example.com"}
+
+	var stored []byte
+	statusCmd := redis.NewStatusCmd(suite.ctx)
+	suite.mockClient.On("Set", suite.ctx, suite.expectedKey("auth-req-1"),
+		mock.AnythingOfType("[]uint8"), mock.AnythingOfType("time.Duration")).
+		Run(func(args mock.Arguments) {
+			stored = args.Get(2).([]byte)
+		}).Return(statusCmd)
+
+	suite.NoError(suite.store.Add(suite.ctx, record))
+
+	stringCmd := redis.NewStringCmd(suite.ctx)
+	stringCmd.SetVal(string(stored))
+	suite.mockClient.On("Get", suite.ctx, suite.expectedKey("auth-req-1")).Return(stringCmd)
+
+	got, err := suite.store.GetByID(suite.ctx, "auth-req-1")
+	suite.NoError(err)
+	suite.Equal([]string{"https://api.example.com"}, got.Resources)
+}
+
 func (suite *RedisCIBARequestStoreTestSuite) TestGetByID_EmptyID() {
 	record, err := suite.store.GetByID(suite.ctx, "")
 	suite.ErrorIs(err, ErrCIBARequestNotFound)

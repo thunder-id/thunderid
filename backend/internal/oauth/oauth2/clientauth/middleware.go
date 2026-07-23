@@ -28,17 +28,17 @@ import (
 )
 
 // ClientAuthMiddleware authenticates OAuth2 clients and attaches client info to request context.
-// The endpointURL is the full URL of the endpoint being protected, used as the expected audience
-// when validating client assertion JWTs (private_key_jwt authentication).
+// The issuer is the authorization server's issuer identifier, accepted as the audience of a client
+// assertion JWT (private_key_jwt authentication), per FAPI 2.0 Security Profile Section 5.3.2.1.
 func ClientAuthMiddleware(actorProvider providers.ActorProvider,
 	authnProvider providers.AuthnProviderManager,
 	jwtService jwt.JWTServiceInterface,
-	endpointURL string) func(http.Handler) http.Handler {
+	issuer string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 			// Authenticate client
-			clientInfo, authErr := authenticate(ctx, r, actorProvider, authnProvider, jwtService, endpointURL)
+			clientInfo, authErr := authenticate(ctx, r, actorProvider, authnProvider, jwtService, issuer)
 			if authErr != nil {
 				// If the client attempted to authenticate via the Authorization
 				// header, include WWW-Authenticate in 401 responses.

@@ -36,4 +36,17 @@ describe('ConnectionFullPageLayout', () => {
     expect(content).not.toHaveStyle({marginLeft: 'auto'});
     expect(content).not.toHaveStyle({marginRight: 'auto'});
   });
+
+  it('lets the content column span the full width when fullWidthContent is set', () => {
+    render(
+      <ConnectionFullPageLayout label="Choose a type" onClose={vi.fn()} fullWidthContent>
+        <div>Type gallery</div>
+      </ConnectionFullPageLayout>,
+    );
+
+    const content = screen.getByTestId('connection-fullpage-content');
+    const styles = window.getComputedStyle(content);
+
+    expect(styles.maxWidth).toBe('none');
+  });
 });

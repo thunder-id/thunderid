@@ -20,8 +20,7 @@ package authz
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -31,16 +30,14 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
-	"github.com/thunder-id/thunderid/internal/system/config"
-	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
-
-	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+	"github.com/thunder-id/thunderid/internal/runtimestore/inmemory"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// AuthorizationRequestStoreTestSuite exercises the authorizationRequestStore adapter against a
+// real in-memory runtime store, verifying the add/get/clear round-trip semantics.
 type AuthorizationRequestStoreTestSuite struct {
 	suite.Suite
-	mockdbProvider         *providermock.DBProviderInterfaceMock
-	mockDBClient           *providermock.DBClientInterfaceMock
 	store                  *authorizationRequestStore
 	testAuthRequestContext authRequestContext
 }
@@ -50,27 +47,9 @@ func TestAuthorizationRequestStoreTestSuite(t *testing.T) {
 }
 
 func (suite *AuthorizationRequestStoreTestSuite) SetupTest() {
-	testConfig := &config.Config{
-		Database: config.DatabaseConfig{
-			Config: config.DataSource{
-				Type:   "sqlite",
-				SQLite: config.SQLiteDataSource{Path: ":memory:"},
-			},
-			RuntimeTransient: config.DataSource{
-				Type:   "sqlite",
-				SQLite: config.SQLiteDataSource{Path: ":memory:"},
-			},
-		},
-	}
-	_ = config.InitializeServerRuntime("test", testConfig)
-
-	suite.mockdbProvider = &providermock.DBProviderInterfaceMock{}
-	suite.mockDBClient = &providermock.DBClientInterfaceMock{}
-
 	suite.store = &authorizationRequestStore{
-		dbProvider:     suite.mockdbProvider,
+		storeProvider:  inmemory.Initialize("test-deployment"),
 		validityPeriod: 10 * time.Minute,
-		deploymentID:   testDeploymentID,
 	}
 
 	suite.testAuthRequestContext = authRequestContext{
@@ -89,124 +68,51 @@ func (suite *AuthorizationRequestStoreTestSuite) SetupTest() {
 	}
 }
 
-func (suite *AuthorizationRequestStoreTestSuite) TearDownTest() {
-	config.ResetServerRuntime()
-}
-
 func (suite *AuthorizationRequestStoreTestSuite) TestNewAuthorizationRequestStore() {
-	store := newAuthorizationRequestStore("test-deployment")
+	store := newAuthorizationRequestStore(inmemory.Initialize("test-deployment"))
 	assert.NotNil(suite.T(), store)
 	assert.Implements(suite.T(), (*authorizationRequestStoreInterface)(nil), store)
 }
 
+// Tests for AddRequest
+
 func (suite *AuthorizationRequestStoreTestSuite) TestAddRequest_Success() {
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertAuthRequest,
-		mock.MatchedBy(func(key string) bool {
-			return len(key) > 0 // UUID should be generated
-		}),
-		mock.Anything, // JSON data bytes
-		mock.MatchedBy(func(expiryTime time.Time) bool {
-			// Expiry is calculated from time.Now() when storing
-			// Allow 1 second tolerance for timing
-			now := time.Now()
-			expectedExpiry := now.Add(10 * time.Minute)
-			diff := expiryTime.Sub(expectedExpiry)
-			return diff >= -time.Second && diff <= time.Second
-		}),
-		testDeploymentID).
-		Return(int64(1), nil)
-
 	identifier, err := suite.store.AddRequest(context.Background(), suite.testAuthRequestContext)
 	assert.NoError(suite.T(), err)
 	assert.NotEmpty(suite.T(), identifier)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
 }
 
-func (suite *AuthorizationRequestStoreTestSuite) TestAddRequest_DBClientError() {
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db client error"))
+func (suite *AuthorizationRequestStoreTestSuite) TestAddRequest_GeneratesUniqueIdentifiers() {
+	id1, err1 := suite.store.AddRequest(context.Background(), suite.testAuthRequestContext)
+	id2, err2 := suite.store.AddRequest(context.Background(), suite.testAuthRequestContext)
 
-	identifier, err := suite.store.AddRequest(context.Background(), suite.testAuthRequestContext)
+	assert.NoError(suite.T(), err1)
+	assert.NoError(suite.T(), err2)
+	assert.NotEqual(suite.T(), id1, id2)
+}
+
+func (suite *AuthorizationRequestStoreTestSuite) TestAddRequest_PutError() {
+	rt := NewRuntimeStoreProviderMock(suite.T())
+	rt.EXPECT().Put(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(fmt.Errorf("put failed"))
+	store := &authorizationRequestStore{
+		storeProvider:  rt,
+		validityPeriod: 10 * time.Minute,
+	}
+
+	identifier, err := store.AddRequest(context.Background(), suite.testAuthRequestContext)
 	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "failed to insert authorization request")
 	assert.Empty(suite.T(), identifier)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
 }
 
-func (suite *AuthorizationRequestStoreTestSuite) TestAddRequest_ExecuteError() {
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertAuthRequest,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(int64(0), errors.New("execute error"))
-
-	identifier, err := suite.store.AddRequest(context.Background(), suite.testAuthRequestContext)
-	assert.Error(suite.T(), err)
-	assert.Empty(suite.T(), identifier)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestAddRequest_JSONMarshalingError() {
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertAuthRequest,
-		mock.Anything,
-		mock.MatchedBy(func(data []byte) bool {
-			// Verify the JSON structure
-			var jsonData map[string]interface{}
-			err := json.Unmarshal(data, &jsonData)
-			return err == nil &&
-				jsonData["state"] == "test-state" &&
-				jsonData["client_id"] == "test-client-id" &&
-				jsonData["redirect_uri"] == "https://client.example.com/callback"
-		}),
-		mock.Anything,
-		testDeploymentID).
-		Return(int64(1), nil)
-
-	identifier, err := suite.store.AddRequest(context.Background(), suite.testAuthRequestContext)
-	assert.NoError(suite.T(), err)
-	assert.NotEmpty(suite.T(), identifier)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
-}
+// Tests for GetRequest
 
 func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_Success() {
-	requestData := map[string]interface{}{
-		"state":                 "test-state",
-		"client_id":             "test-client-id",
-		"redirect_uri":          "https://client.example.com/callback",
-		"redirect_uri_provided": true,
-		"response_type":         "code",
-		"standard_scopes":       []interface{}{"openid", "profile"},
-		"permission_scopes":     []interface{}{"read", "write"},
-		"code_challenge":        "test-challenge",
-		"code_challenge_method": "S256",
-		"resource":              []interface{}{"https://api.example.com/resource"},
-	}
-	requestDataJSON, _ := json.Marshal(requestData)
+	identifier, err := suite.store.AddRequest(context.Background(), suite.testAuthRequestContext)
+	suite.Require().NoError(err)
 
-	expiryTime := time.Now().Add(10 * time.Minute)
-
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthRequest,
-		"test-request-id", mock.Anything, testDeploymentID).
-		Return([]map[string]interface{}{
-			{
-				"auth_id":      "test-request-id",
-				"request_data": string(requestDataJSON),
-				"expiry_time":  expiryTime.Format("2006-01-02 15:04:05.999999999"),
-			},
-		}, nil)
-
-	ok, result, err := suite.store.GetRequest(context.Background(), "test-request-id")
+	ok, result, err := suite.store.GetRequest(context.Background(), identifier)
 	assert.NoError(suite.T(), err)
 	assert.True(suite.T(), ok)
 	assert.Equal(suite.T(), "test-state", result.OAuthParameters.State)
@@ -219,9 +125,6 @@ func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_Success() {
 	assert.Equal(suite.T(), "test-challenge", result.OAuthParameters.CodeChallenge)
 	assert.Equal(suite.T(), "S256", result.OAuthParameters.CodeChallengeMethod)
 	assert.Equal(suite.T(), []string{"https://api.example.com/resource"}, result.OAuthParameters.Resources)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
 }
 
 func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_EmptyKey() {
@@ -230,548 +133,64 @@ func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_EmptyKey() {
 	assert.False(suite.T(), ok)
 }
 
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_DBClientError() {
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db client error"))
-
-	ok, _, err := suite.store.GetRequest(context.Background(), "test-request-id")
-	assert.Error(suite.T(), err)
-	assert.False(suite.T(), ok)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_QueryError() {
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthRequest,
-		"test-request-id", mock.Anything, testDeploymentID).
-		Return(nil, errors.New("query error"))
-
-	ok, _, err := suite.store.GetRequest(context.Background(), "test-request-id")
-	assert.Error(suite.T(), err)
-	assert.False(suite.T(), ok)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_NoResults() {
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthRequest,
-		"test-request-id", mock.Anything, testDeploymentID).
-		Return([]map[string]interface{}{}, nil)
-
-	ok, _, err := suite.store.GetRequest(context.Background(), "test-request-id")
+func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_NotFound() {
+	ok, result, err := suite.store.GetRequest(context.Background(), "missing")
 	assert.NoError(suite.T(), err)
 	assert.False(suite.T(), ok)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
+	assert.Equal(suite.T(), authRequestContext{}, result)
 }
 
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_Expired() {
-	// Query with expiry check should return no results if expired
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthRequest,
-		"test-request-id", mock.Anything, testDeploymentID).
-		Return([]map[string]interface{}{}, nil)
-
-	ok, _, err := suite.store.GetRequest(context.Background(), "test-request-id")
-	assert.NoError(suite.T(), err)
-	assert.False(suite.T(), ok)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_MissingRequestData() {
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthRequest,
-		"test-request-id", mock.Anything, testDeploymentID).
-		Return([]map[string]interface{}{
-			{
-				"auth_id":     "test-request-id",
-				"expiry_time": time.Now().Add(10 * time.Minute).Format("2006-01-02 15:04:05.999999999"),
-				// Missing request_data
-			},
-		}, nil)
-
-	ok, _, err := suite.store.GetRequest(context.Background(), "test-request-id")
-	assert.Error(suite.T(), err)
-	assert.False(suite.T(), ok)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_EmptyRequestDataString() {
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthRequest,
-		"test-request-id", mock.Anything, testDeploymentID).
-		Return([]map[string]interface{}{
-			{
-				"auth_id":      "test-request-id",
-				"request_data": "", // Empty string
-				"expiry_time":  time.Now().Add(10 * time.Minute).Format("2006-01-02 15:04:05.999999999"),
-			},
-		}, nil)
-
-	ok, _, err := suite.store.GetRequest(context.Background(), "test-request-id")
-	assert.Error(suite.T(), err)
-	assert.False(suite.T(), ok)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_RequestDataAsBytes() {
-	requestData := map[string]interface{}{
-		"state":        "test-state",
-		"client_id":    "test-client-id",
-		"redirect_uri": "https://client.example.com/callback",
+func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_GetError() {
+	rt := NewRuntimeStoreProviderMock(suite.T())
+	rt.EXPECT().Get(mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("get failed"))
+	store := &authorizationRequestStore{
+		storeProvider: rt,
 	}
-	requestDataJSON, _ := json.Marshal(requestData)
 
-	expiryTime := time.Now().Add(10 * time.Minute)
-
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthRequest,
-		"test-request-id", mock.Anything, testDeploymentID).
-		Return([]map[string]interface{}{
-			{
-				"auth_id":      "test-request-id",
-				"request_data": requestDataJSON, // Byte array
-				"expiry_time":  expiryTime.Format("2006-01-02 15:04:05.999999999"),
-			},
-		}, nil)
-
-	ok, result, err := suite.store.GetRequest(context.Background(), "test-request-id")
-	assert.NoError(suite.T(), err)
-	assert.True(suite.T(), ok)
-	assert.Equal(suite.T(), "test-state", result.OAuthParameters.State)
-	assert.Equal(suite.T(), "test-client-id", result.OAuthParameters.ClientID)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_InvalidRequestDataJSON() {
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthRequest,
-		"test-request-id", mock.Anything, testDeploymentID).
-		Return([]map[string]interface{}{
-			{
-				"auth_id":      "test-request-id",
-				"request_data": "{invalid json", // Invalid JSON
-				"expiry_time":  time.Now().Add(10 * time.Minute).Format("2006-01-02 15:04:05.999999999"),
-			},
-		}, nil)
-
-	ok, _, err := suite.store.GetRequest(context.Background(), "test-request-id")
+	ok, _, err := store.GetRequest(context.Background(), "test-request-id")
 	assert.Error(suite.T(), err)
 	assert.False(suite.T(), ok)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
 }
 
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_EmptyScopes() {
-	requestData := map[string]interface{}{
-		"state":        "test-state",
-		"client_id":    "test-client-id",
-		"redirect_uri": "https://client.example.com/callback",
-		// No scopes - should default to empty slices
-	}
-	requestDataJSON, _ := json.Marshal(requestData)
+func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_InvalidJSON() {
+	store := inmemory.Initialize("test-deployment")
+	suite.Require().NoError(store.Put(context.Background(), providers.NamespaceAuthzReq,
+		"test-request-id", []byte("{invalid json"), 60))
 
-	expiryTime := time.Now().Add(10 * time.Minute)
-
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthRequest,
-		"test-request-id", mock.Anything, testDeploymentID).
-		Return([]map[string]interface{}{
-			{
-				"auth_id":      "test-request-id",
-				"request_data": string(requestDataJSON),
-				"expiry_time":  expiryTime.Format("2006-01-02 15:04:05.999999999"),
-			},
-		}, nil)
-
-	ok, result, err := suite.store.GetRequest(context.Background(), "test-request-id")
-	assert.NoError(suite.T(), err)
-	assert.True(suite.T(), ok)
-	assert.Equal(suite.T(), []string{}, result.OAuthParameters.StandardScopes)
-	assert.Equal(suite.T(), []string{}, result.OAuthParameters.PermissionScopes)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
+	authReqStore := &authorizationRequestStore{storeProvider: store}
+	ok, _, err := authReqStore.GetRequest(context.Background(), "test-request-id")
+	assert.Error(suite.T(), err)
+	assert.False(suite.T(), ok)
 }
 
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_NilScopes() {
-	requestData := map[string]interface{}{
-		"state":             "test-state",
-		"client_id":         "test-client-id",
-		"redirect_uri":      "https://client.example.com/callback",
-		"standard_scopes":   nil,
-		"permission_scopes": nil,
-	}
-	requestDataJSON, _ := json.Marshal(requestData)
-
-	expiryTime := time.Now().Add(10 * time.Minute)
-
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthRequest,
-		"test-request-id", mock.Anything, testDeploymentID).
-		Return([]map[string]interface{}{
-			{
-				"auth_id":      "test-request-id",
-				"request_data": string(requestDataJSON),
-				"expiry_time":  expiryTime.Format("2006-01-02 15:04:05.999999999"),
-			},
-		}, nil)
-
-	ok, result, err := suite.store.GetRequest(context.Background(), "test-request-id")
-	assert.NoError(suite.T(), err)
-	assert.True(suite.T(), ok)
-	assert.Equal(suite.T(), []string{}, result.OAuthParameters.StandardScopes)
-	assert.Equal(suite.T(), []string{}, result.OAuthParameters.PermissionScopes)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_StringScopes() {
-	requestData := map[string]interface{}{
-		"state":             "test-state",
-		"client_id":         "test-client-id",
-		"standard_scopes":   []string{"openid", "profile"},
-		"permission_scopes": []string{"read", "write"},
-	}
-	requestDataJSON, _ := json.Marshal(requestData)
-
-	expiryTime := time.Now().Add(10 * time.Minute)
-
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthRequest,
-		"test-request-id", mock.Anything, testDeploymentID).
-		Return([]map[string]interface{}{
-			{
-				"auth_id":      "test-request-id",
-				"request_data": string(requestDataJSON),
-				"expiry_time":  expiryTime.Format("2006-01-02 15:04:05.999999999"),
-			},
-		}, nil)
-
-	ok, result, err := suite.store.GetRequest(context.Background(), "test-request-id")
-	assert.NoError(suite.T(), err)
-	assert.True(suite.T(), ok)
-	assert.Equal(suite.T(), []string{"openid", "profile"}, result.OAuthParameters.StandardScopes)
-	assert.Equal(suite.T(), []string{"read", "write"}, result.OAuthParameters.PermissionScopes)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
-}
+// Tests for ClearRequest
 
 func (suite *AuthorizationRequestStoreTestSuite) TestClearRequest_Success() {
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
+	identifier, err := suite.store.AddRequest(context.Background(), suite.testAuthRequestContext)
+	suite.Require().NoError(err)
 
-	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteAuthRequest, "test-request-id", testDeploymentID).
-		Return(int64(1), nil)
-
-	err := suite.store.ClearRequest(context.Background(), "test-request-id")
+	err = suite.store.ClearRequest(context.Background(), identifier)
 	assert.NoError(suite.T(), err)
 
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
+	ok, _, err := suite.store.GetRequest(context.Background(), identifier)
+	assert.NoError(suite.T(), err)
+	assert.False(suite.T(), ok)
 }
 
 func (suite *AuthorizationRequestStoreTestSuite) TestClearRequest_EmptyKey() {
-	// Should return early without calling DB
 	err := suite.store.ClearRequest(context.Background(), "")
 	assert.NoError(suite.T(), err)
-
-	// No expectations set, so this should pass
 }
 
-func (suite *AuthorizationRequestStoreTestSuite) TestClearRequest_DBClientError() {
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db client error"))
-
-	err := suite.store.ClearRequest(context.Background(), "test-request-id")
-	assert.Error(suite.T(), err)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestClearRequest_ExecuteError() {
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteAuthRequest, "test-request-id", testDeploymentID).
-		Return(int64(0), errors.New("execute error"))
-
-	err := suite.store.ClearRequest(context.Background(), "test-request-id")
-	assert.Error(suite.T(), err)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestParseTimeFieldForAuthRequest_StringInput() {
-	testTime := "2023-12-01 10:30:45.123456789"
-	expectedTime, _ := time.Parse("2006-01-02 15:04:05.999999999", testTime)
-
-	result, err := sysutils.ParseDBTimeField(testTime, "test_field")
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), expectedTime, result)
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestParseTimeFieldForAuthRequest_StringWithExtraContent() {
-	testTime := "2023-12-01 10:30:45.123456789 extra content"
-	expectedTime, _ := time.Parse("2006-01-02 15:04:05.999999999", "2023-12-01 10:30:45.123456789")
-
-	result, err := sysutils.ParseDBTimeField(testTime, "test_field")
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), expectedTime, result)
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestParseTimeFieldForAuthRequest_TimeInput() {
-	testTime := time.Now()
-
-	result, err := sysutils.ParseDBTimeField(testTime, "test_field")
-	assert.NoError(suite.T(), err)
-	assert.True(suite.T(), testTime.Equal(result))
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestParseTimeFieldForAuthRequest_InvalidStringFormat() {
-	testTime := "invalid-time-format"
-
-	result, err := sysutils.ParseDBTimeField(testTime, "test_field")
-	assert.Error(suite.T(), err)
-	assert.Contains(suite.T(), err.Error(), "error parsing test_field")
-	assert.True(suite.T(), result.IsZero())
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestParseTimeFieldForAuthRequest_InvalidType() {
-	result, err := sysutils.ParseDBTimeField(12345, "test_field")
-	assert.Error(suite.T(), err)
-	assert.Contains(suite.T(), err.Error(), "unexpected type for test_field")
-	assert.True(suite.T(), result.IsZero())
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestConvertToStringArray() {
-	input := []interface{}{"one", "two", "three"}
-	expected := []string{"one", "two", "three"}
-
-	result := convertToStringArray(input)
-	assert.Equal(suite.T(), expected, result)
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestConvertToStringArray_WithNonStringValues() {
-	input := []interface{}{"one", 123, "three", true}
-	expected := []string{"one", "three"} // Only strings are included
-
-	result := convertToStringArray(input)
-	assert.Equal(suite.T(), expected, result)
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestConvertToStringArray_Empty() {
-	input := []interface{}{}
-	expected := []string{}
-
-	result := convertToStringArray(input)
-	assert.Equal(suite.T(), expected, result)
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_EmptyByteArray() {
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthRequest,
-		"test-request-id", mock.Anything, testDeploymentID).
-		Return([]map[string]interface{}{
-			{
-				"auth_id":      "test-request-id",
-				"request_data": []byte{}, // Empty byte array
-				"expiry_time":  time.Now().Add(10 * time.Minute).Format("2006-01-02 15:04:05.999999999"),
-			},
-		}, nil)
-
-	ok, _, err := suite.store.GetRequest(context.Background(), "test-request-id")
-	assert.Error(suite.T(), err)
-	assert.False(suite.T(), ok)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_RequestDataAsUnexpectedType() {
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthRequest,
-		"test-request-id", mock.Anything, testDeploymentID).
-		Return([]map[string]interface{}{
-			{
-				"auth_id":      "test-request-id",
-				"request_data": 12345, // Unexpected type (int)
-				"expiry_time":  time.Now().Add(10 * time.Minute).Format("2006-01-02 15:04:05.999999999"),
-			},
-		}, nil)
-
-	ok, _, err := suite.store.GetRequest(context.Background(), "test-request-id")
-	assert.Error(suite.T(), err)
-	assert.False(suite.T(), ok)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestParseTimeFieldForAuthRequest_AlternativeFormat() {
-	// Test ISO 8601 format when custom format fails
-	testTime := "2023-12-01T10:30:45Z"
-	expectedTime, _ := time.Parse("2006-01-02T15:04:05Z07:00", testTime)
-
-	result, err := sysutils.ParseDBTimeField(testTime, "test_field")
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), expectedTime, result)
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestParseTimeFieldForAuthRequest_AlternativeFormatWithTimezone() {
-	// Test ISO 8601 format with timezone — result is normalised to UTC.
-	testTime := "2023-12-01T10:30:45+05:30"
-	expectedTime, _ := time.Parse("2006-01-02T15:04:05Z07:00", testTime)
-
-	result, err := sysutils.ParseDBTimeField(testTime, "test_field")
-	assert.NoError(suite.T(), err)
-	assert.True(suite.T(), expectedTime.Equal(result))
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_AllOptionalFieldsMissing() {
-	// Test when optional fields are missing from JSON
-	requestData := map[string]interface{}{
-		"state": "test-state",
-		// Missing client_id, redirect_uri, etc.
+func (suite *AuthorizationRequestStoreTestSuite) TestClearRequest_DeleteError() {
+	rt := NewRuntimeStoreProviderMock(suite.T())
+	rt.EXPECT().Delete(mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("delete failed"))
+	store := &authorizationRequestStore{
+		storeProvider: rt,
 	}
-	requestDataJSON, _ := json.Marshal(requestData)
 
-	expiryTime := time.Now().Add(10 * time.Minute)
-
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthRequest,
-		"test-request-id", mock.Anything, testDeploymentID).
-		Return([]map[string]interface{}{
-			{
-				"auth_id":      "test-request-id",
-				"request_data": string(requestDataJSON),
-				"expiry_time":  expiryTime.Format("2006-01-02 15:04:05.999999999"),
-			},
-		}, nil)
-
-	ok, result, err := suite.store.GetRequest(context.Background(), "test-request-id")
-	assert.NoError(suite.T(), err)
-	assert.True(suite.T(), ok)
-	assert.Equal(suite.T(), "test-state", result.OAuthParameters.State)
-	assert.Empty(suite.T(), result.OAuthParameters.ClientID)
-	assert.Empty(suite.T(), result.OAuthParameters.RedirectURI)
-	assert.Equal(suite.T(), []string{}, result.OAuthParameters.StandardScopes)
-	assert.Equal(suite.T(), []string{}, result.OAuthParameters.PermissionScopes)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_NonStringScopes() {
-	// Test when scopes are not string arrays but other types
-	requestData := map[string]interface{}{
-		"state":             "test-state",
-		"client_id":         "test-client-id",
-		"standard_scopes":   "not-an-array", // Wrong type
-		"permission_scopes": 12345,          // Wrong type
-	}
-	requestDataJSON, _ := json.Marshal(requestData)
-
-	expiryTime := time.Now().Add(10 * time.Minute)
-
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthRequest,
-		"test-request-id", mock.Anything, testDeploymentID).
-		Return([]map[string]interface{}{
-			{
-				"auth_id":      "test-request-id",
-				"request_data": string(requestDataJSON),
-				"expiry_time":  expiryTime.Format("2006-01-02 15:04:05.999999999"),
-			},
-		}, nil)
-
-	ok, result, err := suite.store.GetRequest(context.Background(), "test-request-id")
-	assert.NoError(suite.T(), err)
-	assert.True(suite.T(), ok)
-	assert.Equal(suite.T(), "test-state", result.OAuthParameters.State)
-	assert.Equal(suite.T(), []string{}, result.OAuthParameters.StandardScopes)   // Should default to empty
-	assert.Equal(suite.T(), []string{}, result.OAuthParameters.PermissionScopes) // Should default to empty
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_StandardScopesOtherType() {
-	// Test when standard_scopes is neither []interface{}, []string, nor nil
-	requestData := map[string]interface{}{
-		"state":           "test-state",
-		"standard_scopes": map[string]string{"key": "value"}, // Wrong type - map instead of array
-	}
-	suite.testGetRequestWithInvalidScopesType(requestData, func(result authRequestContext) {
-		assert.Equal(suite.T(), []string{}, result.OAuthParameters.StandardScopes) // Should default to empty
-	})
-}
-
-func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_PermissionScopesOtherType() {
-	// Test when permission_scopes is neither []interface{}, []string, nor nil
-	requestData := map[string]interface{}{
-		"state":             "test-state",
-		"permission_scopes": map[string]string{"key": "value"}, // Wrong type - map instead of array
-	}
-	suite.testGetRequestWithInvalidScopesType(requestData, func(result authRequestContext) {
-		assert.Equal(suite.T(), []string{}, result.OAuthParameters.PermissionScopes) // Should default to empty
-	})
-}
-
-// testGetRequestWithInvalidScopesType is a helper function to test GetRequest with invalid scope types
-func (suite *AuthorizationRequestStoreTestSuite) testGetRequestWithInvalidScopesType(
-	requestData map[string]interface{},
-	assertFn func(authRequestContext),
-) {
-	requestDataJSON, _ := json.Marshal(requestData)
-
-	expiryTime := time.Now().Add(10 * time.Minute)
-
-	suite.mockdbProvider.On("GetRuntimeTransientDBClient").Return(suite.mockDBClient, nil)
-
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAuthRequest,
-		"test-request-id", mock.Anything, testDeploymentID).
-		Return([]map[string]interface{}{
-			{
-				"auth_id":      "test-request-id",
-				"request_data": string(requestDataJSON),
-				"expiry_time":  expiryTime.Format("2006-01-02 15:04:05.999999999"),
-			},
-		}, nil)
-
-	ok, result, err := suite.store.GetRequest(context.Background(), "test-request-id")
-	assert.NoError(suite.T(), err)
-	assert.True(suite.T(), ok)
-	assertFn(result)
-
-	suite.mockdbProvider.AssertExpectations(suite.T())
-	suite.mockDBClient.AssertExpectations(suite.T())
+	err := store.ClearRequest(context.Background(), "test-request-id")
+	assert.Error(suite.T(), err)
 }
 
 // TestRoundTrip_VerifiedClaims verifies that a claims request carrying userinfo.verified_claims
@@ -798,16 +217,12 @@ func (suite *AuthorizationRequestStoreTestSuite) TestRoundTrip_VerifiedClaims() 
 		},
 	}
 
-	// Serialize as the store would when persisting.
-	jsonDataBytes, err := suite.store.getJSONDataBytes(original)
+	identifier, err := suite.store.AddRequest(context.Background(), original)
 	suite.Require().NoError(err)
 
-	// Reconstruct as the store would when reading back from the database.
-	row := map[string]interface{}{
-		dbColumnRequestData: string(jsonDataBytes),
-	}
-	reconstructed, err := suite.store.buildAuthRequestContextFromResultRow(row)
+	ok, reconstructed, err := suite.store.GetRequest(context.Background(), identifier)
 	suite.Require().NoError(err)
+	suite.Require().True(ok)
 
 	reloaded := reconstructed.OAuthParameters.ClaimsRequest
 	suite.Require().NotNil(reloaded)

@@ -75,15 +75,18 @@
                             "resourceType": "ELEMENT",
                             "type": "ACTION",
                             "variant": "PRIMARY"
-                        },
-                        {
-                            "category": "DISPLAY",
-                            "id": "rich-text-signup",
-                            "resourceType": "ELEMENT",
-                            "type": "RICH_TEXT",
-                            "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Don't have an account? </span><a href=\"{{meta(application.sign_up_url)}}\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Sign up</span></a></p>"
                         }
                     ]
+                },
+                {
+                    "action": {
+                        "ref": "action_signup"
+                    },
+                    "category": "DISPLAY",
+                    "id": "rich_text_signup",
+                    "resourceType": "ELEMENT",
+                    "type": "RICH_TEXT",
+                    "label": "<p data-component-ref=\"self-sign-up-link\" class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Don't have an account? </span><a href=\"#\" data-action-ref=\"action_signup\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Sign up</span></a></p>"
                 }
             ]
         },
@@ -106,6 +109,12 @@
                 "action": {
                     "ref": "action_001",
                     "nextNode": "credentials_auth"
+                }
+            },
+            {
+                "action": {
+                    "ref": "action_signup",
+                    "nextNode": "call_registration"
                 }
             }
         ]
@@ -253,6 +262,14 @@
             "name": "AuthAssertExecutor"
         },
         "onSuccess": "end"
+    },
+    {
+        "id": "call_registration",
+        "type": "CALL",
+        "flow": {
+            "ref": "01900000-0000-7000-8000-000000000064"
+        },
+        "onSuccess": "auth_assert"
     },
     {
         "id": "end",

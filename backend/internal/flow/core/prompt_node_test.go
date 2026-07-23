@@ -2223,6 +2223,75 @@ func (s *PromptOnlyNodeTestSuite) TestEnrichInputsFromForwardedData_PropagatesSe
 	s.Equal([]string{"admin", "user"}, resp.Inputs[0].Options, "options must be propagated from ForwardedData")
 }
 
+func (s *PromptOnlyNodeTestSuite) TestEnrichInputsFromForwardedData_EmptyUserInput_InputAppended() {
+	// A forwarded input whose identifier is present in UserInputs with an empty string must not be
+	// treated as satisfied — it should still be appended to the response.
+	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		UserInputs:  map[string]string{testEmailAttr: ""},
+		ForwardedData: map[string]interface{}{
+			common.ForwardedDataKeyInputs: []providers.Input{
+				{Identifier: testEmailAttr, Type: "TEXT_INPUT", Required: true, DisplayName: "Email Address"},
+			},
+		},
+	}
+	resp, err := node.Execute(ctx)
+
+	s.Nil(err)
+	s.NotNil(resp)
+	s.Len(resp.Inputs, 1)
+	s.Equal(testEmailAttr, resp.Inputs[0].Identifier)
+}
+
+func (s *PromptOnlyNodeTestSuite) TestEnrichInputsFromForwardedData_EmptyRuntimeData_InputAppended() {
+	// A forwarded input whose identifier is present in RuntimeData with an empty string must not be
+	// treated as satisfied — it should still be appended to the response.
+	// This is the federated-login scenario where the IdP sets the claim key but provides no value.
+	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		UserInputs:  map[string]string{},
+		RuntimeData: map[string]string{testEmailAttr: ""},
+		ForwardedData: map[string]interface{}{
+			common.ForwardedDataKeyInputs: []providers.Input{
+				{Identifier: testEmailAttr, Type: "TEXT_INPUT", Required: true, DisplayName: "Email Address"},
+			},
+		},
+	}
+	resp, err := node.Execute(ctx)
+
+	s.Nil(err)
+	s.NotNil(resp)
+	s.Len(resp.Inputs, 1)
+	s.Equal(testEmailAttr, resp.Inputs[0].Identifier)
+}
+
+func (s *PromptOnlyNodeTestSuite) TestEnrichInputsFromForwardedData_EmptyScalarForwardedData_InputAppended() {
+	// A forwarded input whose identifier is also present as an empty scalar string in ForwardedData
+	// must not be treated as satisfied — it should still be appended to the response.
+	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		UserInputs:  map[string]string{},
+		ForwardedData: map[string]interface{}{
+			testEmailAttr: "",
+			common.ForwardedDataKeyInputs: []providers.Input{
+				{Identifier: testEmailAttr, Type: "TEXT_INPUT", Required: true, DisplayName: "Email Address"},
+			},
+		},
+	}
+	resp, err := node.Execute(ctx)
+
+	s.Nil(err)
+	s.NotNil(resp)
+	s.Len(resp.Inputs, 1)
+	s.Equal(testEmailAttr, resp.Inputs[0].Identifier)
+}
+
 func (s *PromptOnlyNodeTestSuite) TestHasRequiredInputs_UnknownActionFallsBackToAllInputs() {
 	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
 	pn := node.(PromptNodeInterface)

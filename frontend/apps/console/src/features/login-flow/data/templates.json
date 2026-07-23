@@ -217,12 +217,6 @@
                         "type": "NEXT",
                         "onSuccess": "{{CREDENTIALS_AUTH_EXECUTION_STEP_ID}}"
                       }
-                    },
-                    {
-                      "category": "DISPLAY",
-                      "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Don't have an account? </span><a href=\"{{meta(application.sign_up_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Sign up</span></a></p>",
-                      "id": "{{ID}}",
-                      "type": "RICH_TEXT"
                     }
                   ]
                 }
@@ -306,7 +300,8 @@
     "display": {
       "label": "Password Login or Google",
       "description": "Login experience with Google as an additional option",
-      "image": "assets/images/icons/google-generic.svg",
+      "image": "assets/images/icons/google.svg",
+      "preserveImageColor": true,
       "showOnResourcePanel": true
     },
     "config": {
@@ -1262,12 +1257,6 @@
                         "type": "NEXT",
                         "onSuccess": "{{IDENTITY_RESOLVER_EXECUTOR_ID}}"
                       }
-                    },
-                    {
-                      "category": "DISPLAY",
-                      "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Don't have an account? </span><a href=\"{{meta(application.sign_up_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Sign up</span></a></p>",
-                      "id": "{{ID}}",
-                      "type": "RICH_TEXT"
                     }
                   ]
                 }

@@ -22,10 +22,12 @@ import {type JSX, useEffect, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate, useParams} from 'react-router';
 import useCreateConnection from '../api/useCreateConnection';
+import ConnectionCreateHint from '../components/ConnectionCreateHint';
 import ConnectionForm from '../components/ConnectionForm';
 import ConnectionFullPageLayout from '../components/ConnectionFullPageLayout';
-import {CONNECTION_FORM_FIELDS} from '../config/connectionFormFields';
+import {CONNECTION_FORM_FIELDS, fieldsForMode} from '../config/connectionFormFields';
 import {VENDOR_META_BY_TYPE} from '../config/connectionVendorMeta';
+import useConnectionRoutes from '../hooks/useConnectionRoutes';
 import type {ConnectionResponse, ConnectionType} from '../models/connection';
 import {
   type ConnectionFormValues,
@@ -42,7 +44,8 @@ import isConflictError from '../utils/isConflictError';
 export default function ConnectionConfigureWizardPage(): JSX.Element | null {
   const {t} = useTranslation('connections');
   const navigate = useNavigate();
-  const {getServerUrl} = useConfig();
+  const routes = useConnectionRoutes();
+  const {getGateCallbackUrl} = useConfig();
   const {type} = useParams<{type: string}>();
 
   const connectionType = type as ConnectionType;
@@ -55,12 +58,12 @@ export default function ConnectionConfigureWizardPage(): JSX.Element | null {
 
   useEffect(() => {
     if (!meta) {
-      void navigate('/connections');
+      void navigate(routes.connections.list());
     }
-  }, [meta, navigate]);
+  }, [meta, navigate, routes]);
 
   const fields = useMemo(() => (meta ? CONNECTION_FORM_FIELDS[connectionType] : []), [meta, connectionType]);
-  const redirectUri = `${getServerUrl()}/gate/callback`;
+  const redirectUri = getGateCallbackUrl();
   const emptyValues = useMemo(() => emptyFormValues(fields, redirectUri), [fields, redirectUri]);
 
   if (!meta) {
@@ -69,11 +72,11 @@ export default function ConnectionConfigureWizardPage(): JSX.Element | null {
 
   const values: ConnectionFormValues = {...emptyValues, ...editedValues};
   // The connection name is fixed to the vendor display name, so it is hidden and excluded from validation.
-  const visibleFields = fields.filter((field) => field.name !== 'name');
+  const visibleFields = fieldsForMode(connectionType, 'create').filter((field) => field.name !== 'name');
   const formValid: boolean = Object.keys(validateConnectionForm(values, visibleFields, 'create')).length === 0;
 
   const close = (): void => {
-    void navigate('/connections');
+    void navigate(routes.connections.list());
   };
 
   const handleCreate = (): void => {
@@ -86,7 +89,7 @@ export default function ConnectionConfigureWizardPage(): JSX.Element | null {
       name: meta.displayName,
     };
     createMutation.mutate(payload, {
-      onSuccess: (created: ConnectionResponse) => void navigate(`/connections/${connectionType}/${created.id}`),
+      onSuccess: (created: ConnectionResponse) => void navigate(routes.connections.detail(connectionType, created.id)),
       onError: (error: Error) => {
         if (isConflictError(error)) {
           setNameError(t('error.duplicateName'));
@@ -109,13 +112,24 @@ export default function ConnectionConfigureWizardPage(): JSX.Element | null {
     >
       <Stack direction="column" spacing={3}>
         <Stack direction="column" spacing={1}>
-          <Typography variant="h4" fontWeight={700}>
+          <Typography variant="h1" gutterBottom>
             {t('configure.heading', {vendor: meta.displayName})}
           </Typography>
-          <Typography variant="body1" color="text.secondary">
+          <Typography variant="subtitle1" gutterBottom>
             {t('configure.subheading')}
           </Typography>
         </Stack>
+
+        {meta.createHintKey && (
+          <ConnectionCreateHint
+            instruction={t(meta.createHintKey, {
+              vendor: meta.displayName,
+              defaultValue:
+                'Create an OAuth client for {{vendor}}, then register the redirect URI below and enter the client ID and client secret it gives you.',
+            })}
+            redirectUri={redirectUri}
+          />
+        )}
 
         <Paper variant="outlined" sx={{p: 3}}>
           <ConnectionForm

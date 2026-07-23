@@ -76,12 +76,22 @@
     "display": {
       "label": "Continue with Google",
       "description": "Login experience with Google",
-      "image": "assets/images/icons/google-generic.svg",
+      "image": "assets/images/icons/google.svg",
+      "preserveImageColor": true,
       "showOnResourcePanel": true
     },
     "config": {
       "data": {
         "__generationMeta__": {
+          "autoWire": {
+            "reuse": [
+              {
+                "stepRef": "AUTH_ASSERT_EXECUTOR_ID",
+                "matchBy": "executorName",
+                "match": "AuthAssertExecutor"
+              }
+            ]
+          },
           "defaultPropertySelectorId": "{{GOOGLE_EXECUTION_STEP_ID}}",
           "replacers": [
             {
@@ -190,6 +200,15 @@
     "config": {
       "data": {
         "__generationMeta__": {
+          "autoWire": {
+            "reuse": [
+              {
+                "stepRef": "AUTH_ASSERT_EXECUTOR_ID",
+                "matchBy": "executorName",
+                "match": "AuthAssertExecutor"
+              }
+            ]
+          },
           "defaultPropertySelectorId": "{{GITHUB_EXECUTION_STEP_ID}}",
           "replacers": [
             {
@@ -298,6 +317,15 @@
     "config": {
       "data": {
         "__generationMeta__": {
+          "autoWire": {
+            "reuse": [
+              {
+                "stepRef": "AUTH_ASSERT_EXECUTOR_ID",
+                "matchBy": "executorName",
+                "match": "AuthAssertExecutor"
+              }
+            ]
+          },
           "defaultPropertySelectorId": "{{EUDI_EXECUTION_STEP_ID}}",
           "replacers": [
             {
@@ -460,6 +488,15 @@
     "config": {
       "data": {
         "__generationMeta__": {
+          "autoWire": {
+            "reuse": [
+              {
+                "stepRef": "AUTH_ASSERT_EXECUTOR_ID",
+                "matchBy": "executorName",
+                "match": "AuthAssertExecutor"
+              }
+            ]
+          },
           "replacers": [
             {
               "key": "MOBILE_NUMBER_VIEW_ID",
@@ -755,6 +792,15 @@
     "config": {
       "data": {
         "__generationMeta__": {
+          "autoWire": {
+            "reuse": [
+              {
+                "stepRef": "AUTH_ASSERT_EXECUTOR_ID",
+                "matchBy": "executorName",
+                "match": "AuthAssertExecutor"
+              }
+            ]
+          },
           "replacers": [
             {
               "key": "EMAIL_VIEW_ID",
@@ -1060,6 +1106,15 @@
     "config": {
       "data": {
         "__generationMeta__": {
+          "autoWire": {
+            "reuse": [
+              {
+                "stepRef": "AUTH_ASSERT_EXECUTOR_ID",
+                "matchBy": "executorName",
+                "match": "AuthAssertExecutor"
+              }
+            ]
+          },
           "defaultPropertySelectorId": "{{PASSKEY_CHALLENGE_EXECUTOR_ID}}",
           "replacers": [
             {
@@ -1434,6 +1489,15 @@
     "config": {
       "data": {
         "__generationMeta__": {
+          "autoWire": {
+            "reuse": [
+              {
+                "stepRef": "AUTH_ASSERT_EXECUTOR_ID",
+                "matchBy": "executorName",
+                "match": "AuthAssertExecutor"
+              }
+            ]
+          },
           "replacers": [
             {
               "key": "EMAIL_VIEW_ID",
@@ -1733,7 +1797,26 @@
               "key": "PROVISIONING_PROMPT_STEP_ID",
               "type": "ID"
             }
-          ]
+          ],
+          "autoWire": {
+            "entry": {
+              "stepRef": "PROVISIONING_EXECUTOR_STEP_ID"
+            },
+            "exit": {
+              "stepRef": "PROVISIONING_EXECUTOR_STEP_ID",
+              "handle": "success"
+            },
+            "spliceAfter": [
+              {
+                "executorName": "AuthorizationExecutor"
+              }
+            ],
+            "spliceBefore": [
+              {
+                "executorName": "AuthAssertExecutor"
+              }
+            ]
+          }
         },
         "steps": [
           {
@@ -1830,6 +1913,155 @@
   },
   {
     "resourceType": "WIDGET",
+    "category": "FLOW",
+    "type": "CONSENT",
+    "display": {
+      "label": "User Consent",
+      "description": "Prompt the user to consent to sharing requested attributes with the application",
+      "image": "assets/images/icons/stamp.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "data": {
+        "__generationMeta__": {
+          "defaultPropertySelectorId": "{{CONSENT_EXECUTOR_STEP_ID}}",
+          "replacers": [
+            {
+              "key": "CONSENT_EXECUTOR_STEP_ID",
+              "type": "ID",
+              "prefix": "consent_check"
+            },
+            {
+              "key": "CONSENT_VIEW_STEP_ID",
+              "type": "ID",
+              "prefix": "consent_view"
+            }
+          ],
+          "autoWire": {
+            "entry": {
+              "stepRef": "CONSENT_EXECUTOR_STEP_ID"
+            },
+            "exit": {
+              "stepRef": "CONSENT_EXECUTOR_STEP_ID",
+              "handle": "success"
+            },
+            "spliceAfter": [
+              {
+                "executorName": "AuthorizationExecutor"
+              }
+            ],
+            "spliceBefore": [
+              {
+                "executorName": "AuthAssertExecutor"
+              }
+            ]
+          }
+        },
+        "steps": [
+          {
+            "id": "{{CONSENT_EXECUTOR_STEP_ID}}",
+            "type": "TASK_EXECUTION",
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 760,
+              "y": 360
+            },
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "ConsentExecutor"
+                },
+                "onSuccess": "",
+                "onFailure": "",
+                "onIncomplete": "{{CONSENT_VIEW_STEP_ID}}"
+              },
+              "properties": {
+                "timeout": "0"
+              }
+            }
+          },
+          {
+            "id": "{{CONSENT_VIEW_STEP_ID}}",
+            "type": "VIEW",
+            "size": {
+              "width": 350,
+              "height": 500
+            },
+            "position": {
+              "x": 1120,
+              "y": 100
+            },
+            "data": {
+              "components": [
+                {
+                  "id": "{{ID}}",
+                  "category": "DISPLAY",
+                  "type": "TEXT",
+                  "variant": "HEADING_3",
+                  "label": "{{meta(application.name)}} wants to access your account"
+                },
+                {
+                  "id": "{{ID}}",
+                  "category": "DISPLAY",
+                  "type": "TEXT",
+                  "variant": "BODY_1",
+                  "label": "Please review the information requested by the application and provide your consent to proceed."
+                },
+                {
+                  "id": "{{ID}}",
+                  "category": "BLOCK",
+                  "type": "BLOCK",
+                  "components": [
+                    {
+                      "id": "{{ID}}",
+                      "category": "DISPLAY",
+                      "type": "CONSENT"
+                    },
+                    {
+                      "id": "{{ID}}",
+                      "category": "ACTION",
+                      "type": "ACTION",
+                      "variant": "PRIMARY",
+                      "eventType": "SUBMIT",
+                      "label": "Allow",
+                      "action": {
+                        "type": "NEXT",
+                        "onSuccess": "{{CONSENT_EXECUTOR_STEP_ID}}"
+                      }
+                    },
+                    {
+                      "id": "{{ID}}",
+                      "category": "ACTION",
+                      "type": "ACTION",
+                      "variant": "SECONDARY",
+                      "eventType": "SUBMIT",
+                      "label": "Deny",
+                      "action": {
+                        "type": "NEXT",
+                        "onSuccess": "{{CONSENT_EXECUTOR_STEP_ID}}"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "{{ID}}",
+                  "category": "DISPLAY",
+                  "type": "RICH_TEXT",
+                  "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Go back to </span><a href=\"{{meta(application.url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Application</span></a></p>"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "resourceType": "WIDGET",
     "category": "COMPOSITE",
     "type": "SELF_SIGN_UP_LINK",
     "display": {
@@ -1845,7 +2077,8 @@
           "replacers": [
             {
               "key": "SELF_SIGN_UP_CALL_STEP_ID",
-              "type": "ID"
+              "type": "ID",
+              "prefix": "self_sign_up_call"
             }
           ]
         },
@@ -1865,7 +2098,7 @@
                     "ref": "action_signup",
                     "onSuccess": "{{SELF_SIGN_UP_CALL_STEP_ID}}"
                   },
-                  "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Don't have an account? </span><a href=\"#\" data-action-ref=\"action_signup\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Sign up</span></a></p>"
+                  "label": "<p data-component-ref=\"self-sign-up-link\" class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Don't have an account? </span><a href=\"#\" data-action-ref=\"action_signup\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Sign up</span></a></p>"
                 }
               ]
             }
@@ -1912,7 +2145,8 @@
           "replacers": [
             {
               "key": "SIGN_IN_CALL_STEP_ID",
-              "type": "ID"
+              "type": "ID",
+              "prefix": "sign_in_call"
             }
           ]
         },
@@ -1932,7 +2166,7 @@
                     "ref": "action_signin",
                     "onSuccess": "{{SIGN_IN_CALL_STEP_ID}}"
                   },
-                  "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Already have an account? </span><a href=\"#\" data-action-ref=\"action_signin\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Sign in</span></a></p>"
+                  "label": "<p data-component-ref=\"sign-in-link\" class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Already have an account? </span><a href=\"#\" data-action-ref=\"action_signin\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Sign in</span></a></p>"
                 }
               ]
             }
@@ -1979,7 +2213,8 @@
           "replacers": [
             {
               "key": "RECOVERY_CALL_STEP_ID",
-              "type": "ID"
+              "type": "ID",
+              "prefix": "recovery_call"
             }
           ]
         },
@@ -1999,7 +2234,7 @@
                     "ref": "action_recovery",
                     "onSuccess": "{{RECOVERY_CALL_STEP_ID}}"
                   },
-                  "label": "<p class=\"rich-text-paragraph\"><a href=\"#\" data-action-ref=\"action_recovery\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Forgot password?</span></a></p>"
+                  "label": "<p data-component-ref=\"recovery-link\" class=\"rich-text-paragraph\"><a href=\"#\" data-action-ref=\"action_recovery\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Forgot password?</span></a></p>"
                 }
               ]
             }

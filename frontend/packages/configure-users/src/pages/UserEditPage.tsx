@@ -57,6 +57,8 @@ import CredentialsTabPanel, {type CredentialFieldInfo} from '../components/edit-
 import EditUserAttributes from '../components/edit-user/EditUserAttributes';
 import QuickCopySection from '../components/edit-user/QuickCopySection';
 import UserDeleteDialog from '../components/UserDeleteDialog';
+import UserConstants from '../constants/user-constants';
+import useUserRoutes from '../hooks/useUserRoutes';
 
 interface TabPanelProps {
   children?: ReactNode;
@@ -90,6 +92,7 @@ export default function UserEditPage() {
   const logger = useLogger('UserEditPage');
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
   const {userId} = useParams<{userId: string}>();
+  const routes = useUserRoutes();
 
   const [activeTab, setActiveTab] = useState(0);
   const [editedUser, setEditedUser] = useState<Partial<User>>({});
@@ -183,12 +186,12 @@ export default function UserEditPage() {
   const hasChanges = Object.keys(editedUser).length > 0;
 
   const handleBack = async () => {
-    await navigate('/users');
+    await navigate(routes.list());
   };
 
   const handleDeleteSuccess = () => {
     (async () => {
-      await navigate('/users');
+      await navigate(routes.list());
     })().catch((error: unknown) => {
       logger.error('Failed to navigate after deleting user', {error});
     });
@@ -405,11 +408,15 @@ export default function UserEditPage() {
       )}
       {/* Header */}
       <PageTitle>
-        <PageTitle.BackButton component={<Link to="/users" />}>
+        <PageTitle.BackButton component={<Link to={routes.list()} />}>
           {t('users:manageUser.back', 'Back to Users')}
         </PageTitle.BackButton>
         <PageTitle.Avatar>
-          <ResourceAvatar value={picture} fallback={getInitials(displayName)} size={55} />
+          <ResourceAvatar
+            value={picture}
+            fallback={`${UserConstants.DEFAULT_AVATAR_PREFIX}${getInitials(displayName)}`}
+            size={55}
+          />
         </PageTitle.Avatar>
         <PageTitle.Header>
           <Typography variant="h3">{displayName}</Typography>

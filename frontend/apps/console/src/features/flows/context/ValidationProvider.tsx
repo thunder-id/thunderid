@@ -46,15 +46,17 @@ function ValidationProvider({
   },
 }: PropsWithChildren<ValidationProviderProps>): ReactElement {
   const {setIsOpenResourcePropertiesPanel, registerCloseValidationPanel} = useUIPanelState();
-  const {flowNodes} = useFlowConfig();
+  const {flowNodes, graphValidationRules} = useFlowConfig();
   const {t} = useTranslation();
 
   // Computed validation notifications — derived from flow node data + rule registry.
   // This replaces the old useEffect-based approach where each adapter/executor
   // imperatively called addNotification/removeNotification.
+  // Graph rules are flow-type-specific and registered by the host (e.g. the
+  // SSO pairing rules for AUTHENTICATION flows).
   const computedNotifications = useMemo(
-    () => computeValidationNotifications(flowNodes, VALIDATION_RULES, t),
-    [flowNodes, t],
+    () => computeValidationNotifications(flowNodes, VALIDATION_RULES, t, graphValidationRules),
+    [flowNodes, graphValidationRules, t],
   );
 
   // Operational notifications (e.g. delete errors from ReorderableElement).

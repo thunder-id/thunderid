@@ -828,10 +828,16 @@ export function calculateAllEdgePaths(
     initialPaths.set(edge.id, fullPath);
   });
 
-  // Step 2: Extract all segments
+  // Step 2: Extract the interior segments. The first and last segments are
+  // anchored to the node handles — offsetting them would detach the path from
+  // its endpoints — so only segments between them participate in separation.
   const allSegments: Segment[] = [];
   initialPaths.forEach((path, edgeId) => {
-    allSegments.push(...extractSegments(edgeId, path));
+    allSegments.push(
+      ...extractSegments(edgeId, path).filter(
+        (segment) => segment.segmentIndex > 0 && segment.segmentIndex < path.length - 2,
+      ),
+    );
   });
 
   // Step 3: Find overlapping groups

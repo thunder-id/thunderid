@@ -132,6 +132,17 @@ html[data-color-scheme='dark'] {
     border: none;
     padding: 24px;
 
+    // Clicking the body opens the step's properties — signal it.
+    cursor: pointer;
+
+    &:hover {
+      background-color: color-mix(
+        in srgb,
+        var(--flow-builder-execution-step-background-color) 92%,
+        var(--oxygen-palette-primary-main)
+      );
+    }
+
     .execution-minimal-dnd-droppable {
       &.is-dropping {
         &.allowed {

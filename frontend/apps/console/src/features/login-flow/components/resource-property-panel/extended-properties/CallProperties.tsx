@@ -22,7 +22,7 @@ import {useTranslation} from 'react-i18next';
 import {useParams} from 'react-router';
 import useGetFlows from '@/features/flows/api/useGetFlows';
 import type {CommonResourcePropertiesPropsInterface} from '@/features/flows/components/resource-property-panel/ResourceProperties';
-import useValidationStatus from '@/features/flows/hooks/useValidationStatus';
+import useResourceFieldError from '@/features/flows/hooks/useResourceFieldError';
 import {FlowType} from '@/features/flows/models/flows';
 import type {BasicFlowDefinition} from '@/features/flows/models/responses';
 import type {StepData} from '@/features/flows/models/steps';
@@ -33,7 +33,6 @@ function CallProperties({resource, onChange}: CallPropertiesPropsInterface): Rea
   const {t} = useTranslation();
   const {flowId} = useParams<{flowId: string}>();
   const {data, isLoading, error} = useGetFlows({limit: 100});
-  const {selectedNotification} = useValidationStatus();
 
   const currentRef = useMemo<string>(() => {
     const stepData = resource?.data as (StepData & {flow?: {ref?: string}}) | undefined;
@@ -65,10 +64,7 @@ function CallProperties({resource, onChange}: CallPropertiesPropsInterface): Rea
     [currentRef, flows],
   );
 
-  const fieldNotificationKey = `${resource?.id}_data.flow.ref`;
-  const validatorMessage: string = selectedNotification?.hasResourceFieldNotification(fieldNotificationKey)
-    ? selectedNotification.getResourceFieldNotification(fieldNotificationKey)
-    : '';
+  const validatorMessage: string = useResourceFieldError(resource?.id, 'data.flow.ref');
 
   const staleRefMessage: string =
     !validatorMessage && currentRef && !isLoading && !isRefKnown

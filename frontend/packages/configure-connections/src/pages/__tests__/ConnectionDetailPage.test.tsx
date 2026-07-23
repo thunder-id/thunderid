@@ -63,7 +63,7 @@ vi.mock('react-router', async (importOriginal) => ({
 }));
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
-  useConfig: () => ({getServerUrl: () => 'https://id.acme.io'}),
+  useConfig: () => ({getGateCallbackUrl: () => 'https://id.acme.io/gate/callback'}),
   useToast: () => ({showToast: vi.fn()}),
 }));
 vi.mock('@thunderid/components', () => ({
@@ -123,6 +123,14 @@ describe('ConnectionDetailPage', () => {
     expect(screen.getByText('Unique identifier for this connection.')).toBeInTheDocument();
     expect(screen.getByTestId('stub-connection-form')).toBeInTheDocument();
     expect(screen.getByTestId('connection-delete-button')).toBeInTheDocument();
+  });
+
+  it('shows the Configured status under the name in the card style, with no redundant subtitle', () => {
+    render(<ConnectionDetailPage />);
+    expect(screen.getByText('Google')).toBeInTheDocument();
+    expect(screen.getByText('Configured')).toBeInTheDocument();
+    expect(screen.queryByText('Google connection')).not.toBeInTheDocument();
+    expect(document.querySelector('.MuiChip-root')).not.toBeInTheDocument();
   });
 
   it('hides the save bar until a field is edited', () => {

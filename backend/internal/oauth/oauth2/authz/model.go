@@ -28,8 +28,9 @@ import (
 type OAuthMessage struct {
 	RequestType        string
 	AuthID             string
-	RequestQueryParams map[string]string
 	Resources          []string
+	RequestHeaders     map[string][]string
+	RequestQueryParams map[string][]string
 	RequestBodyParams  map[string]string
 }
 

@@ -33,6 +33,7 @@ import {motion} from 'framer-motion';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import HowSolutionWorksIllustration from '../components/HowSolutionWorksIllustration';
 
 const MotionBox = motion.create(Box);
@@ -44,11 +45,11 @@ export default function CreateProjectPage(): JSX.Element {
   const productName = config.brand.product_name;
 
   const handleContinue = (): void => {
-    void navigate('/welcome/get-started');
+    void navigate(RouteConfig.welcome.getStarted());
   };
 
   const handleClose = (): void => {
-    void navigate('/home');
+    void navigate(RouteConfig.home.list());
   };
 
   return (
@@ -83,7 +84,11 @@ export default function CreateProjectPage(): JSX.Element {
             </IconButton>
             <AppBreadcrumbs
               items={[
-                {key: 'welcome', label: t('common:welcome.header'), onClick: () => void navigate('/welcome')},
+                {
+                  key: 'welcome',
+                  label: t('common:welcome.header'),
+                  onClick: () => void navigate(RouteConfig.welcome.root()),
+                },
                 {key: 'create-project', label: t('common:welcome.createProject.breadcrumb')},
               ]}
             />

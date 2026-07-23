@@ -28,6 +28,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/thunder-id/thunderid/internal/application/model"
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
 )
@@ -340,11 +341,13 @@ func (t *applicationTools) getApplicationTemplates(
 
 // getCommonSchemaModifiers returns the common schema modifiers for ApplicationDTO.
 func getCommonSchemaModifiers() []func(*jsonschema.Schema) {
+	oauthCfg := oauthconfig.FromServerRuntime()
 	return []func(*jsonschema.Schema){
-		tool.WithEnum("inbound_auth_config.config", "grant_types", oauth2const.GetSupportedGrantTypes()),
-		tool.WithEnum("inbound_auth_config.config", "response_types", oauth2const.GetSupportedResponseTypes()),
+		tool.WithEnum("inbound_auth_config.config", "grant_types", oauth2const.GetSupportedGrantTypes(oauthCfg)),
+		tool.WithEnum("inbound_auth_config.config", "response_types",
+			oauth2const.GetSupportedResponseTypes(oauthCfg)),
 		tool.WithEnum("inbound_auth_config.config", "token_endpoint_auth_method",
-			oauth2const.GetSupportedTokenEndpointAuthMethods()),
+			oauth2const.GetSupportedTokenEndpointAuthMethods(oauthCfg)),
 		tool.WithEnum("inbound_auth_config", "type", []string{string(providers.OAuthInboundAuthType)}),
 	}
 }

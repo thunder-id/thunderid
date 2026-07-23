@@ -46,4 +46,10 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
   },
   // Defaults to the origin this app is served from. Add a `server` block with `public_url`
   // (or `hostname`, `port`, `http_only`) to target a different backend.
+
+  // Optional: location of the login gate, used to build the OAuth redirect URI shown when
+  // configuring social/OIDC connections. Omit to default to `${served origin}/gate/callback`.
+  // gate_client: {
+  //   public_url: 'https://gate.example.com',   // or hostname/port/scheme
+  // },
 };

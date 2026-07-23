@@ -309,6 +309,7 @@ type ReplModel struct {
 	baseURL     string
 	installPath string
 	verbose     bool
+	adminCreds  *setup.AdminCredentials
 
 	showCompletions bool
 	completions     []SlashCommand
@@ -361,7 +362,7 @@ type ReplModel struct {
 }
 
 // NewReplModel initializes the REPL model.
-func NewReplModel(version string, proc *exec.Cmd, installPath string, verbose bool, isFirstRun bool) ReplModel {
+func NewReplModel(version string, proc *exec.Cmd, installPath string, verbose bool, isFirstRun bool, creds *setup.AdminCredentials) ReplModel {
 	ti := textinput.New()
 	ti.Placeholder = "Starting " + product.Name + "..."
 	ti.Prompt = "> "
@@ -470,6 +471,7 @@ func NewReplModel(version string, proc *exec.Cmd, installPath string, verbose bo
 		version:        version,
 		installPath:    installPath,
 		verbose:        verbose,
+		adminCreds:     creds,
 		status:         statusStarting,
 		proc:           proc,
 		width:          80,
@@ -1364,6 +1366,27 @@ func renderIntegrate(m ReplModel) string {
 	return b.String()
 }
 
+// credentialsBox renders a bordered box with the generated admin credentials, so
+// they stay visible on the alternate screen for the whole session. Returns an empty
+// string when no credentials were generated this run.
+func (m ReplModel) credentialsBox() string {
+	if m.adminCreds == nil {
+		return ""
+	}
+	label := lipgloss.NewStyle().Foreground(lipgloss.Color(colorGrey)).Width(10)
+	rows := lipgloss.JoinVertical(lipgloss.Left,
+		Bold("Admin credentials"),
+		label.Render("Username")+Cyan(m.adminCreds.Username),
+		label.Render("Password")+Cyan(m.adminCreds.Password),
+		Dim("Sign in to the Console with these credentials."),
+	)
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(colorBrandBlue)).
+		Padding(0, 1).
+		Render(rows)
+}
+
 // View implements tea.Model.
 func (m ReplModel) View() tea.View {
 	v := tea.NewView(m.render())
@@ -1393,6 +1416,9 @@ func (m ReplModel) render() string {
 		b.WriteString(StatusBoxString(m.baseURL) + "\n")
 	case statusStopped:
 		b.WriteString(Red("○") + " Stopped\n")
+	}
+	if box := m.credentialsBox(); box != "" {
+		b.WriteString(box + "\n")
 	}
 	b.WriteString(Dim(strings.Repeat("─", clamp(m.width-2, 20, 80))) + "\n\n")
 
@@ -1482,9 +1508,9 @@ func clamp(v, min, max int) int {
 // Returns upgradeRequested=true when the user ran /upgrade, switchRequested=true when /use.
 func RunREPL(
 	version string, proc *exec.Cmd, installPath string,
-	verbose, isFirstRun bool, newVersion, nodeWarning string, port int,
+	verbose, isFirstRun bool, newVersion, nodeWarning string, port int, creds *setup.AdminCredentials,
 ) (upgradeRequested, switchRequested bool, err error) {
-	m := NewReplModel(version, proc, installPath, verbose, isFirstRun)
+	m := NewReplModel(version, proc, installPath, verbose, isFirstRun, creds)
 	m.newVersion = newVersion
 	m.nodeWarning = nodeWarning
 	if port > 0 {
@@ -1501,8 +1527,8 @@ func RunREPL(
 // RunStagingREPL runs the REPL connected to a staging instance on stagingPort.
 // It injects a /cutover command; when the user runs it the REPL exits and
 // cutoverRequested=true is returned so the caller can perform the cut-over.
-func RunStagingREPL(version string, proc *exec.Cmd, installPath string, verbose bool, stagingPort int) (cutoverRequested bool, err error) {
-	m := NewReplModel(version, proc, installPath, verbose, false)
+func RunStagingREPL(version string, proc *exec.Cmd, installPath string, verbose bool, stagingPort int, creds *setup.AdminCredentials) (cutoverRequested bool, err error) {
+	m := NewReplModel(version, proc, installPath, verbose, false, creds)
 	m.checkPort = stagingPort
 	m.commands = append([]SlashCommand{
 		{

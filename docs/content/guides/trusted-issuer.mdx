@@ -1,0 +1,180 @@
+---
+title: Secure {{ProductName}} Using a Third-Party Identity Provider
+docType: guide
+description: Learn about Secure {{ProductName}} Using a Third-Party Identity Provider and how to apply it in configuration, integration, and operational workflows.
+---
+
+# Secure <ProductName /> Using a Third-Party Identity Provider
+
+By default, <ProductName /> only accepts tokens it issued itself. Your users might authenticate against an external authorization server: another <ProductName /> instance, an enterprise identity provider, or any standard OIDC provider. In that case, those users cannot call <ProductName />'s own APIs or sign in to the <ProductName /> Console unless <ProductName /> can validate their tokens.
+
+The trusted issuer feature enables this. You configure <ProductName /> to trust a specific external authorization server, and <ProductName /> fetches that server's public signing keys to validate incoming tokens locally. <ProductName /> acts as the resource server: it accepts and validates tokens the external server issued, without issuing its own tokens for those users or duplicating the user directory.
+
+You enable this by adding a `server.security.trusted_issuer` block to `deployment.yaml` on the resource-server instance.
+
+## When to Enable
+
+Enable trusted issuer on a <ProductName /> instance when:
+
+- Users authenticate against an external authorization server and need to call <ProductName />'s own APIs or sign in to the <ProductName /> Console using those tokens.
+- You want <ProductName /> to act as a resource server for an external IdP without duplicating user directories or re-issuing tokens.
+- Incoming bearer tokens are signed by the external server and carry an `iss` claim that identifies it.
+
+If a <ProductName /> instance only serves its own users and issues its own tokens, omit the `server.security.trusted_issuer` block.
+
+## Prerequisites
+
+- A running <ProductName /> instance that acts as the resource server.
+- An external authorization server (another <ProductName /> instance, an enterprise IdP, or any OIDC-compatible provider) that issues JWTs with an `iss` claim and exposes a JWKS endpoint.
+- The central server's issuer URL and JWKS endpoint URL.
+
+## Configure the Server
+
+Add a `server.security.trusted_issuer` block to the tenant instance's `deployment.yaml`:
+
+```yaml
+server:
+  security:
+    trusted_issuer:
+      issuer: "https://cloud.example.com"
+      jwks_url: "https://cloud.example.com/oauth2/jwks"
+      audience: "https://tenant.example.com"
+      required_claims:
+        - claim: "ouId"
+          value: "tenant-123"
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `issuer` | Yes | The issuer URL of the central authorization server. <ProductName /> matches this against the `iss` claim on every incoming token and rejects any token that does not match exactly, including differences in scheme, host, port, or trailing slash. |
+| `jwks_url` | Yes | The JWKS endpoint on the central server. <ProductName /> fetches the public signing keys from this URL and uses them to verify token signatures. |
+| `audience` | Yes | The `aud` value that tokens from the central server must carry. Set this to the resource-server <ProductName /> instance's own public URL. The client at the central server must include a matching `resource` parameter in the authorization request so the issued token targets this instance. |
+| `required_claims` | No | A list of claims that every accepted token must contain, each paired with an expected value. Tokens that are missing a required claim or carry a different value are rejected. Use this to scope accepted tokens further, for example to a specific organization unit. |
+
+
+The JWKS cache time-to-live applies to signing keys fetched from this endpoint and is configured at `server.security.jwks_cache_ttl`, not inside the `trusted_issuer` block. See [Security Configuration](../../deployment/configuration#security-configuration) for details.
+
+## Configure the Console
+
+The `server.security.trusted_issuer` block controls how <ProductName /> validates incoming API tokens. It does not affect how users sign in to the <ProductName /> Console. By default, the Console still authenticates users against the local <ProductName /> instance.
+
+To delegate Console sign-in to the central authorization server, add a `trusted_issuer` entry to the Console's runtime configuration at `apps/console/config.js`:
+
+```js
+window.__THUNDERID_RUNTIME_CONFIG__ = {
+  // ...existing client, server, brand entries...
+  trusted_issuer: {
+    hostname: "auth.example.com",
+    port: 443,
+    http_only: false,
+    public_url: "https://auth.example.com",
+    client_id: "FEDERATED_CONSOLE",
+    scopes: ['openid', 'profile', 'email', 'group', 'ou', 'system', 'system:user', 'system:group', 'system:ou:view', 'system:usertype:view'],
+    type: "generic",
+  },
+};
+```
+
+| Field | Description |
+|-------|-------------|
+| `hostname` | The hostname of the external authorization server the Console redirects users to for sign-in. |
+| `port` | The port on the external authorization server. |
+| `http_only` | Set to `true` only for local or development authorization servers served over HTTP. |
+| `public_url` | The fully qualified URL of the external authorization server. The Console uses this to build authorization requests. |
+| `client_id` | The OAuth client ID registered on the external authorization server for this <ProductName /> instance's Console. |
+| `scopes` | The scopes the Console requests from the external authorization server. Include every scope that <ProductName />'s APIs require. |
+| `type` | Set to `"generic"` when the central authorization server is a generic OIDC provider rather than another <ProductName /> instance. When set, the Console skips <ProductName />-specific bootstrap calls (flow metadata, branding preferences) that would fail against a generic provider, and uses the provider's `end_session_endpoint` for sign-out. Defaults to `"thunderid"`. |
+
+When this block is present, the Console delegates sign-in to the external authorization server. When it is absent, the Console authenticates against the local <ProductName /> instance.
+
+:::note
+The external authorization server must permit this <ProductName /> instance's origin in its CORS allowed-origins configuration. Otherwise, browser calls from the Console to the authorization server's `/oauth2/token`, `/oauth2/jwks`, and related endpoints are blocked.
+:::
+
+## How Validation Works
+
+When a request arrives with a bearer token, <ProductName /> reads the token's `iss` claim to decide which verifier to use. For a token whose `iss` matches `trusted_issuer.issuer`, <ProductName /> performs the following checks in order:
+
+1. Parses the JWT and confirms its `iss` claim matches `trusted_issuer.issuer`.
+2. Fetches signing keys from `trusted_issuer.jwks_url` and verifies the signature.
+3. Checks the `exp` claim and rejects expired tokens.
+4. Checks the `nbf` (not before) claim if present. If `nbf` is absent, the token is still accepted.
+5. Confirms the `aud` claim matches `trusted_issuer.audience`. The `aud` claim may be a single string or a JSON array of strings; <ProductName /> accepts the token if the configured audience appears in either form.
+6. Checks that every entry in `required_claims` is present with the expected value.
+
+If any check fails, <ProductName /> rejects the token.
+
+### Claim Details
+
+**`iss` (Issuer):** Must match `trusted_issuer.issuer` exactly, including scheme, host, and any path.
+
+**`exp` (Expiry):** Required. Tokens that omit `exp` or carry a non-numeric value are rejected.
+
+**`nbf` (Not Before):** Optional per [RFC 7519 Section 4.1.5](https://datatracker.ietf.org/doc/html/rfc7519#section-4.1.5). Many commercial OIDC providers omit this claim. When `nbf` is present, <ProductName /> enforces it with the configured clock-skew leeway.
+
+**`aud` (Audience):** May be a single string or an array of strings per [RFC 7519 Section 4.1.3](https://datatracker.ietf.org/doc/html/rfc7519#section-4.1.3). Some providers issue an array `aud` when a token targets more than one audience, for example both the resource API and the provider's own `/userinfo` endpoint. <ProductName /> matches the configured `trusted_issuer.audience` value against both forms.
+
+**`required_claims`:** Each entry matches by exact string equality. The claim must be present on the token and its value must equal the configured `value`.
+
+**Accepted signature algorithms:** `RS256`, `PS256`, `RS512`, `ES256`, `ES384`, `ES512`, `EdDSA`. Tokens signed with any other algorithm are rejected.
+
+### Self-Issued Tokens
+
+Configuring `server.security.trusted_issuer` does not stop <ProductName /> from accepting the tokens it issues itself. <ProductName /> selects the verifier based on the token's `iss` claim:
+
+- `iss` matches `trusted_issuer.issuer`: the token is verified against the central server's JWKS endpoint.
+- `iss` matches this <ProductName /> instance's own issuer (configured at `jwt.issuer`, defaulting to the instance's public URL): the token is verified with the local signing key.
+- Any other `iss` value, or a token whose payload cannot be parsed, is rejected.
+
+This means service accounts, the system bootstrap token, and Console sessions that are not delegated all continue to work unchanged. Verification never falls back between verifiers: a token routed to the JWKS verifier that fails signature validation is rejected immediately. <ProductName /> does not retry it against the local signing key.
+
+JWKS responses are cached in-process for `server.security.jwks_cache_ttl` seconds (default: 300). Plan key rotations on the central server with at least that much overlap so tenant instances do not reject tokens signed with a new key before the cache refreshes.
+
+## Helm Configuration
+
+When installing <ProductName /> with the Helm chart at `install/helm`, the same settings are available under the `configuration` key using camelCase field names.
+
+```yaml
+configuration:
+  server:
+    security:
+      trustedIssuer:
+        issuer: "https://auth.example.com"
+        jwksUrl: "https://auth.example.com/oauth2/jwks"
+        audience: "https://thunder.example.com"
+        requiredClaims:
+          - claim: "ouId"
+            value: "tenant-123"
+```
+
+To configure the Console without editing `apps/console/config.js` directly, set `configuration.consoleClient.trustedIssuer` in the chart values. The fields mirror those in [Configure the Console](#configure-the-console) but use camelCase:
+
+```yaml
+configuration:
+  consoleClient:
+    trustedIssuer:
+      hostname: "auth.example.com"
+      port: 443
+      httpOnly: false
+      publicUrl: "https://auth.example.com"
+      clientId: "FEDERATED_CONSOLE"
+      scopes: "['openid', 'profile', 'email', 'group', 'ou', 'system', 'system:user', 'system:group', 'system:ou:view', 'system:usertype:view']"
+      type: "generic"
+```
+
+## Troubleshooting
+
+| Symptom | Likely Cause | Fix |
+|---------|--------------|-----|
+| Console sign-in redirect hangs or token exchange fails with a CORS error | <ProductName />'s origin is not in the external authorization server's CORS allowed-origins list | Add the <ProductName /> instance's origin to the authorization server's CORS configuration. |
+| Tokens rejected with "issuer mismatch" | `trusted_issuer.issuer` does not exactly match the `iss` claim on incoming tokens | Set `trusted_issuer.issuer` to match exactly, including scheme, host, port, and trailing slash. |
+| Tokens rejected with "audience mismatch" | The authorization server is not receiving a `resource` parameter and falls back to a default resource server whose identifier does not match <ProductName />'s expected audience | Configure the client to send `resource=<server-url>` in the authorization request, or set `defaultResourceServer` to the expected resource server. |
+| Tokens rejected with "required claim missing" | A claim listed under `required_claims` is absent from the token or its value does not match | Remove the entry from `required_claims`, or configure the authorization server to include the claim with the expected value. |
+| JWKS fetch fails | `trusted_issuer.jwks_url` is unreachable, or the authorization server uses a certificate that <ProductName /> does not trust | Verify network connectivity to the URL, and install the authorization server's CA certificate on the <ProductName /> instance if needed. |
+| Console does not redirect to the external authorization server | `consoleClient.trustedIssuer` is not set, or `publicUrl`/`hostname` still point at the local <ProductName /> instance | Verify the `consoleClient.trustedIssuer` block and re-render the Helm chart. |
+
+## Related Guides
+
+- [Resource Indicators](../protocols/oauth-oidc/resource-indicators), use the `resource` parameter to set the `aud` claim on tokens issued by the central authorization server.
+- [Resource Servers](../resource-servers), define resource servers with identifiers and permissions.
+- [Security Configuration](../../deployment/configuration#security-configuration), configure JWKS cache TTL and other security settings.

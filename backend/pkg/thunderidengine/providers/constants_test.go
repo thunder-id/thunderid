@@ -53,6 +53,22 @@ func (suite *ConstantsTestSuite) TestGrantType_IsValid() {
 	assert.False(suite.T(), GrantType("").IsValid())
 }
 
+func (suite *ConstantsTestSuite) TestGrantType_IssuesRefreshToken() {
+	assert.True(suite.T(), GrantTypeAuthorizationCode.IssuesRefreshToken())
+	assert.True(suite.T(), GrantTypeCIBA.IssuesRefreshToken())
+	assert.False(suite.T(), GrantTypeClientCredentials.IssuesRefreshToken())
+	assert.False(suite.T(), GrantTypeRefreshToken.IssuesRefreshToken())
+	assert.False(suite.T(), GrantTypeTokenExchange.IssuesRefreshToken())
+	assert.False(suite.T(), GrantTypeJWTBearer.IssuesRefreshToken())
+}
+
+func (suite *ConstantsTestSuite) TestAnyIssuesRefreshToken() {
+	assert.True(suite.T(), AnyIssuesRefreshToken([]string{"client_credentials", "authorization_code"}))
+	assert.True(suite.T(), AnyIssuesRefreshToken([]string{string(GrantTypeCIBA)}))
+	assert.False(suite.T(), AnyIssuesRefreshToken([]string{"client_credentials", "refresh_token"}))
+	assert.False(suite.T(), AnyIssuesRefreshToken([]string{}))
+}
+
 func (suite *ConstantsTestSuite) TestResponseType_IsValid() {
 	assert.True(suite.T(), ResponseTypeCode.IsValid())
 	assert.False(suite.T(), ResponseTypeIDToken.IsValid())

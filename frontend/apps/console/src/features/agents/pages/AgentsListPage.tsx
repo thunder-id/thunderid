@@ -23,6 +23,7 @@ import {FileCog, Plus} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import AgentsList from '../components/AgentsList';
 import {DEFAULT_AGENT_TYPE_NAME} from '../models/agent';
 
@@ -39,7 +40,7 @@ export default function AgentsListPage(): JSX.Element {
   const handleSchemaClick = (): void => {
     if (!defaultAgentType) return;
     (async () => {
-      await navigate(`/agent-types/${defaultAgentType.id}`);
+      await navigate(RouteConfig.agentTypes.detail(defaultAgentType.id));
     })().catch((error: unknown) => {
       logger.error('Failed to navigate to agent type page', {error});
     });
@@ -68,7 +69,7 @@ export default function AgentsListPage(): JSX.Element {
             startIcon={<Plus size={18} />}
             onClick={() => {
               (async () => {
-                await navigate('/agents/create');
+                await navigate(RouteConfig.agents.create());
               })().catch((error: unknown) => {
                 logger.error('Failed to navigate to create agent page', {error});
               });

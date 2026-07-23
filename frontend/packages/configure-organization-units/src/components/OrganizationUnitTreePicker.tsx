@@ -177,7 +177,12 @@ function PickerTreeItem(allProps: PickerTreeItemProps): JSX.Element {
       {...(isItemLoading ? {slots: {collapseIcon: PickerLoadingIcon, expandIcon: PickerLoadingIcon}} : {})}
       label={
         <Box sx={{display: 'flex', alignItems: 'center', gap: 1.5}}>
-          <ResourceAvatar value={itemData?.logoUrl} size={30} fallback="emoji:🏛️" />
+          <ResourceAvatar
+            variant="rounded"
+            value={itemData?.logoUrl}
+            size={30}
+            fallback={OrganizationUnitTreeConstants.DEFAULT_AVATAR}
+          />
           <Box sx={{flexGrow: 1, minWidth: 0}}>
             <Typography variant="body2" sx={{fontWeight: 500, lineHeight: 1.3}}>
               {labelStr}

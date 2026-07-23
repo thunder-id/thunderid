@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oauthmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
@@ -54,19 +55,18 @@ func (suite *OAuthExecutorTestSuite) SetupTest() {
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 
-	defaultInputs := []providers.Input{{Identifier: "code", Type: "string", Required: true}}
 	mockExec := createMockAuthExecutor(suite.T(), ExecutorNameOAuth)
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameOAuth, providers.ExecutorTypeAuthentication,
-		defaultInputs, []providers.Input{}, mock.Anything).Return(mockExec)
+		defaultCodeOnlyInputs, []providers.Input{}, mock.Anything).Return(mockExec)
 
-	suite.executor = newOAuthExecutor(ExecutorNameOAuth, defaultInputs, []providers.Input{},
+	suite.executor = newOAuthExecutor(ExecutorNameOAuth, defaultCodeOnlyInputs, []providers.Input{},
 		suite.mockFlowFactory, suite.mockIDPService, suite.mockOAuthService,
 		suite.mockAuthnProvider, providers.IDPTypeOAuth)
 }
 
 func newOAuthAuthenticatedUser() providers.AuthUser {
 	var authUser providers.AuthUser
-	_ = authUser.UnmarshalJSON([]byte(`{"entityReferenceToken":"tok","attributeToken":"tok"}`))
+	_ = authUser.UnmarshalJSON([]byte(`{"default":{"entityReferenceToken":"tok","attributeToken":"tok"}}`))
 	return authUser
 }
 
@@ -85,8 +85,9 @@ func (suite *OAuthExecutorTestSuite) TestExecute_CodeNotProvided_BuildsAuthorize
 		},
 	}
 
+	oauthURL := "https://oauth.provider.com/authorize?client_id=abc&state=test-state"
 	suite.mockOAuthService.On("BuildAuthorizeURL", mock.Anything, "idp-123").
-		Return("https://oauth.provider.com/authorize?client_id=abc", nil)
+		Return(oauthURL, map[string]string{oauth2const.RequestParamState: "test-state"}, nil)
 
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-123").
 		Return(&providers.IDPDTO{ID: "idp-123", Name: "TestIDP"}, nil)
@@ -96,10 +97,9 @@ func (suite *OAuthExecutorTestSuite) TestExecute_CodeNotProvided_BuildsAuthorize
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecExternalRedirection, resp.Status)
-	assert.Contains(suite.T(), resp.RedirectURL, "https://oauth.provider.com/authorize?client_id=abc")
-	assert.Contains(suite.T(), resp.RedirectURL, "state=")
+	assert.Contains(suite.T(), resp.RedirectURL, "https://oauth.provider.com/authorize?client_id=abc&state=test-state")
 	assert.Equal(suite.T(), "TestIDP", resp.AdditionalData[common.DataIDPName])
-	assert.NotEmpty(suite.T(), resp.RuntimeData[common.RuntimeKeyOAuthState])
+	assert.Equal(suite.T(), "test-state", resp.RuntimeData[common.RuntimeKeyOAuthState])
 	suite.mockOAuthService.AssertExpectations(suite.T())
 	suite.mockIDPService.AssertExpectations(suite.T())
 }
@@ -122,6 +122,7 @@ func (suite *OAuthExecutorTestSuite) TestExecute_CodeProvided_AuthenticatesUser(
 		Return(authenticatedAuthUser, providers.AuthenticatedClaims{
 			"sub": "user-sub-123", "email": "test@example.com", "name": "Test User",
 		}, (*tidcommon.ServiceError)(nil))
+	expectEntityReferenceResolved(suite.mockAuthnProvider, authenticatedAuthUser)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -148,18 +149,18 @@ func (suite *OAuthExecutorTestSuite) TestBuildAuthorizeFlow_Success() {
 	}
 
 	suite.mockOAuthService.On("BuildAuthorizeURL", mock.Anything, "idp-123").
-		Return("https://oauth.provider.com/authorize", nil)
+		Return("https://oauth.provider.com/authorize?state=test-state",
+			map[string]string{oauth2const.RequestParamState: "test-state"}, nil)
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-123").
 		Return(&providers.IDPDTO{ID: "idp-123", Name: "GoogleIDP"}, nil)
 
-	err := suite.executor.BuildAuthorizeFlow(ctx, execResp)
+	_, err := suite.executor.BuildAuthorizeFlow(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecExternalRedirection, execResp.Status)
-	assert.Contains(suite.T(), execResp.RedirectURL, "https://oauth.provider.com/authorize")
-	assert.Contains(suite.T(), execResp.RedirectURL, "state=")
+	assert.Contains(suite.T(), execResp.RedirectURL, "https://oauth.provider.com/authorize?state=test-state")
 	assert.Equal(suite.T(), "GoogleIDP", execResp.AdditionalData[common.DataIDPName])
-	assert.NotEmpty(suite.T(), execResp.RuntimeData[common.RuntimeKeyOAuthState])
+	assert.Equal(suite.T(), "test-state", execResp.RuntimeData[common.RuntimeKeyOAuthState])
 	suite.mockOAuthService.AssertExpectations(suite.T())
 	suite.mockIDPService.AssertExpectations(suite.T())
 }
@@ -176,7 +177,7 @@ func (suite *OAuthExecutorTestSuite) TestBuildAuthorizeFlow_IDPNotConfigured() {
 		RuntimeData:    make(map[string]string),
 	}
 
-	err := suite.executor.BuildAuthorizeFlow(ctx, execResp)
+	_, err := suite.executor.BuildAuthorizeFlow(ctx, execResp)
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "idpId is not configured")
@@ -265,14 +266,14 @@ func (suite *OAuthExecutorTestSuite) TestBuildAuthorizeFlow_BuildURLClientError(
 	}
 
 	suite.mockOAuthService.On("BuildAuthorizeURL", mock.Anything, "idp-123").
-		Return("", &tidcommon.ServiceError{
+		Return("", (map[string]string)(nil), &tidcommon.ServiceError{
 			Type: tidcommon.ClientErrorType,
 			ErrorDescription: tidcommon.I18nMessage{
 				Key: "error.test.invalid_idp_configuration", DefaultValue: "Invalid IDP configuration",
 			},
 		})
 
-	err := suite.executor.BuildAuthorizeFlow(ctx, execResp)
+	_, err := suite.executor.BuildAuthorizeFlow(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecFailure, execResp.Status)
@@ -295,7 +296,7 @@ func (suite *OAuthExecutorTestSuite) TestBuildAuthorizeFlow_BuildURLServerError(
 	}
 
 	suite.mockOAuthService.On("BuildAuthorizeURL", mock.Anything, "idp-123").
-		Return("", &tidcommon.ServiceError{
+		Return("", (map[string]string)(nil), &tidcommon.ServiceError{
 			Type: tidcommon.ServerErrorType,
 			Code: "OAUTH-5000",
 			ErrorDescription: tidcommon.I18nMessage{
@@ -303,7 +304,7 @@ func (suite *OAuthExecutorTestSuite) TestBuildAuthorizeFlow_BuildURLServerError(
 			},
 		})
 
-	err := suite.executor.BuildAuthorizeFlow(ctx, execResp)
+	_, err := suite.executor.BuildAuthorizeFlow(ctx, execResp)
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "failed to build authorize URL")
@@ -361,6 +362,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationFlo
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{
 			"sub": "new-user-sub", "email": "newuser@example.com", "name": "New User",
 		}, (*tidcommon.ServiceError)(nil))
+	expectEntityReferenceNotFound(suite.mockAuthnProvider, providers.AuthUser{})
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
@@ -391,6 +393,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_AuthFlow_UserNo
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{}, (*tidcommon.ServiceError)(nil))
+	expectEntityReferenceNotFound(suite.mockAuthnProvider, providers.AuthUser{})
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
@@ -416,13 +419,14 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_NoLocalUser_Ent
 		RuntimeData:    make(map[string]string),
 	}
 
-	// newOAuthAuthenticatedUser carries an entity-reference token but no resolved EntityReference,
-	// modeling account linking that found no matching local account.
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(newOAuthAuthenticatedUser(), providers.AuthenticatedClaims{
 			"sub": "user-sub-123", "email": "new@example.com",
 		}, (*tidcommon.ServiceError)(nil))
+	// Entity reference resolution finds no matching local account, modeling account linking
+	// that did not resolve to an existing local user.
+	expectEntityReferenceNotFound(suite.mockAuthnProvider, newOAuthAuthenticatedUser())
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
@@ -449,14 +453,13 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_LocalUser_Entit
 		RuntimeData:    make(map[string]string),
 	}
 
-	// A resolved EntityReference models account linking matching an existing local user.
-	var authUser providers.AuthUser
-	authUser.SetEntityReference(&providers.EntityReference{EntityID: "local-user-123"})
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authUser, providers.AuthenticatedClaims{
+		Return(newOAuthAuthenticatedUser(), providers.AuthenticatedClaims{
 			"sub": "user-sub-123", "email": "existing@example.com",
 		}, (*tidcommon.ServiceError)(nil))
+	// A resolved EntityReference models account linking matching an existing local user.
+	expectEntityReferenceResolved(suite.mockAuthnProvider, newOAuthAuthenticatedUser())
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
@@ -489,6 +492,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_UserAlreadyExis
 		Return(authenticatedAuthUser, providers.AuthenticatedClaims{
 			"sub": "existing-user-sub",
 		}, (*tidcommon.ServiceError)(nil))
+	expectEntityReferenceResolved(suite.mockAuthnProvider, authenticatedAuthUser)
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
@@ -722,6 +726,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationFlo
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{
 			"sub": "new-user-sub", "email": "newuser@example.com", "name": "New User",
 		}, (*tidcommon.ServiceError)(nil))
+	expectEntityReferenceNotFound(suite.mockAuthnProvider, providers.AuthUser{})
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
@@ -781,6 +786,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowAuthWithou
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{
 			"sub": "new-user-sub", "email": "newuser@example.com", "name": "New User",
 		}, (*tidcommon.ServiceError)(nil))
+	expectEntityReferenceNotFound(suite.mockAuthnProvider, providers.AuthUser{})
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
@@ -813,6 +819,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_PreventAuthWith
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{}, (*tidcommon.ServiceError)(nil))
+	expectEntityReferenceNotFound(suite.mockAuthnProvider, providers.AuthUser{})
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
@@ -845,6 +852,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowRegistrati
 		Return(authenticatedAuthUser, providers.AuthenticatedClaims{
 			"sub": "existing-user-sub", "email": "existing@example.com", "name": "Existing User",
 		}, (*tidcommon.ServiceError)(nil))
+	expectEntityReferenceResolved(suite.mockAuthnProvider, authenticatedAuthUser)
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
@@ -879,6 +887,7 @@ func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_PreventRegistra
 		Return(authenticatedAuthUser, providers.AuthenticatedClaims{
 			"sub": "existing-user-sub",
 		}, (*tidcommon.ServiceError)(nil))
+	expectEntityReferenceResolved(suite.mockAuthnProvider, authenticatedAuthUser)
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 

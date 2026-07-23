@@ -456,6 +456,9 @@ async function initiateCiba(
     const body = new URLSearchParams({
         [hintParam]: hint,
         scope: `openid upgrade:process`,
+        // RFC 8707: bind the CIBA request to the MCP resource server so the issued
+        // access token's aud is the MCP server and upgrade:process resolves against it.
+        resource: MCP_SERVER_URL,
         binding_message: bindingMessage,
     });
 

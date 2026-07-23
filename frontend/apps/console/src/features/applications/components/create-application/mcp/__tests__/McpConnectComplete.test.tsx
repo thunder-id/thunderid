@@ -166,11 +166,11 @@ describe('McpConnectComplete', () => {
       expect(screen.queryByText('App Name')).not.toBeInTheDocument();
     });
 
-    it('should render a single "Go to application" button that calls onContinue', async () => {
+    it('should render a single "Go to MCP client" button that calls onContinue', async () => {
       const user = userEvent.setup();
       renderComponent();
 
-      const continueButton = screen.getByRole('button', {name: /go to application/i});
+      const continueButton = screen.getByRole('button', {name: /go to mcp client/i});
       await user.click(continueButton);
 
       expect(mockOnContinue).toHaveBeenCalled();
@@ -242,7 +242,7 @@ describe('McpConnectComplete', () => {
       expect(screen.queryByText('Registered redirect URIs')).not.toBeInTheDocument();
     });
 
-    it('should render "Copy secret" and "Go to application" footer buttons', async () => {
+    it('should render "Copy secret" and "Go to MCP client" footer buttons', async () => {
       const user = userEvent.setup();
       renderComponent(m2mProps);
 
@@ -253,7 +253,7 @@ describe('McpConnectComplete', () => {
         expect(mockCopy).toHaveBeenCalledWith('super-secret-value');
       });
 
-      const continueButton = screen.getByRole('button', {name: /go to application/i});
+      const continueButton = screen.getByRole('button', {name: /go to mcp client/i});
       await user.click(continueButton);
       expect(mockOnContinue).toHaveBeenCalled();
     });

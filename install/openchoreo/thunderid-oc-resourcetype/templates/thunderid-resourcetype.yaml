@@ -704,6 +704,11 @@ spec:
               server: {
                 public_url: "${environmentConfigs.consolePublicUrl != '' ? environmentConfigs.consolePublicUrl : environmentConfigs.serverPublicUrl}",
               },
+              gate_client: {
+                hostname: "${environmentConfigs.gateClientHostname}",
+                port: ${environmentConfigs.gateClientPort},
+                scheme: "${environmentConfigs.gateClientScheme}",
+              },
             };
 
     # User-supplied Console config.js, replacing the built-in default above.

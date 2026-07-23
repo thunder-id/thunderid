@@ -2963,6 +2963,11 @@ func (r noopDepRegistry) CascadeDelete(context.Context, string, string) (int, er
 	return 0, r.cascadeErr
 }
 
+func (noopDepRegistry) ValidateReferenceUpdate(
+	context.Context, string, string) *tidcommon.ServiceError {
+	return nil
+}
+
 func (suite *GroupServiceTestSuite) TestCascadeDeleteDependencies_Group_DeletesMemberships() {
 	storeMock := newGroupStoreInterfaceMock(suite.T())
 	storeMock.On("DeleteMembershipsByMember", mock.Anything, string(MemberTypeGroup), "group-1").

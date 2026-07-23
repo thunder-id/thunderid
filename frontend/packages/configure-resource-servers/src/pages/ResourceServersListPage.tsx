@@ -23,9 +23,11 @@ import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import ResourceServersList from '../components/ResourceServersList';
+import useResourceServerRoutes from '../hooks/useResourceServerRoutes';
 
 export default function ResourceServersListPage(): JSX.Element {
   const navigate = useNavigate();
+  const routes = useResourceServerRoutes();
   const {t} = useTranslation();
   const logger = useLogger('ResourceServersListPage');
 
@@ -46,7 +48,7 @@ export default function ResourceServersListPage(): JSX.Element {
               startIcon={<Plus size={18} />}
               onClick={() => {
                 (async (): Promise<void> => {
-                  await navigate('/resource-servers/create');
+                  await navigate(routes.create());
                 })().catch((err: unknown) => {
                   logger.error('Failed to navigate to create resource server page', {error: err});
                 });

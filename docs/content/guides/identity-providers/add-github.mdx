@@ -1,0 +1,64 @@
+---
+title: Add a GitHub Identity Provider
+docType: guide
+sidebar_position: 3
+persona: iam
+description: Configure a GitHub identity provider to enable Sign in with GitHub for your applications.
+---
+
+# Add a GitHub Identity Provider
+
+This guide walks you through registering a GitHub identity provider (IdP) in <ProductName />. Once configured, you can add **Sign in with GitHub** to any application by including a GitHub social login executor in its authentication flow.
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get Started](../../../getting-started/get-thunderid).
+- You can sign in to the <ProductName /> Console.
+- A GitHub account.
+
+<Stepper stepNode="h2" as="h2">
+
+## Step 1: Register an OAuth App in GitHub
+
+1. Sign in to [GitHub](https://github.com) and go to **Settings** → **Developer settings** → **OAuth Apps**.
+2. Click **New OAuth App**.
+3. Fill in the required fields:
+   - **Application name**: A name for your OAuth app.
+   - **Homepage URL**: The URL of your application.
+   - **Authorization callback URL**: The callback URL for your <ProductName /> deployment:
+
+     ```text
+     https://<your-thunderid-host>/gate/callback
+     ```
+
+     You can copy this value exactly from the Console in the next step, so it does not need to match character for character here.
+
+4. Click **Register application**.
+5. On the app page, copy the **Client ID**.
+6. Click **Generate a new client secret** and copy the **Client Secret**. GitHub shows it only once.
+
+## Step 2: Configure the GitHub Connection in the Console
+
+1. Sign in to the <ProductName /> Console.
+2. Navigate to **Connections**.
+3. Click the **GitHub** card. If the card shows **Not configured**, this opens a form to create the connection. If it already shows **Configured**, this opens the existing connection instead.
+4. The form shows a setup hint with the **Redirect URI**. Copy it and add it to your GitHub OAuth app's authorization callback URL if you have not already done so.
+5. Enter your **Client ID** and **Client secret** from the previous step.
+6. Click **Create connection**. If you opened an existing **Configured** connection instead, update the credentials and click **Save changes**.
+
+<ProductName /> automatically uses the GitHub authorization, token, and userinfo endpoints. You do not need to supply them.
+
+</Stepper>
+
+To map GitHub's profile fields (for example, `login` or `avatar_url`) to local user attributes, open the connection and go to the **Attribute Configuration** tab. See [Attribute Configuration](../add-oidc-provider#attribute-configuration).
+
+:::note
+By default, the connection uses GitHub's own default scope, which does not include the user's email address. To ensure the email address is accessible, open the connection after creation and set **Scopes** to include `user:email` on its edit page.
+
+The GitHub connection also accepts a `prompt` field, forwarded as a query parameter on the authorization request. GitHub's OAuth flow supports `select_account` to force the account picker; other values have no effect. This field is not available in the Console and can only be set through the [Connections API](../../../apis#tag/connections).
+:::
+
+## Next Steps
+
+- [Connect an IdP to an Application](../connect-idp-to-application): Add this GitHub IdP to an application's authentication flow.
+- [Manage Identity Providers](../manage-identity-providers): Update or delete identity providers.

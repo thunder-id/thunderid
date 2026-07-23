@@ -31,7 +31,6 @@ const TRUSTED_ISSUER: TrustedIssuer = {
   issuer: 'https://acme.okta.com',
   jwksEndpoint: 'https://acme.okta.com/keys',
   idJagEnabled: true,
-  clientId: 'thunderid-console',
 };
 
 vi.mock('react-router', async () => {
@@ -83,10 +82,10 @@ describe('TrustedIssuerDetailPage', () => {
     } as unknown as ReturnType<typeof useTrustedIssuer>);
   });
 
-  it('should render the client id field with the stored value', () => {
+  it('should not render a client id field', () => {
     render(<TrustedIssuerDetailPage />);
 
-    expect(screen.getByLabelText(/^Client ID/)).toHaveValue('thunderid-console');
+    expect(screen.queryByLabelText(/^Client ID/)).not.toBeInTheDocument();
   });
 
   it('should render the ID-JAG card title and enabled note when assertions are accepted', () => {
@@ -123,24 +122,21 @@ describe('TrustedIssuerDetailPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('should show the unsaved changes bar and save the updated client id', async () => {
+  it('should show the unsaved changes bar and save the updated name', async () => {
     const user = userEvent.setup();
     render(<TrustedIssuerDetailPage />);
 
     expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument();
 
-    const clientIdField = screen.getByLabelText(/^Client ID/);
-    await user.clear(clientIdField);
-    await user.type(clientIdField, 'updated-client-id');
+    const nameField = screen.getByLabelText(/^Name/);
+    await user.clear(nameField);
+    await user.type(nameField, 'Updated Acme Okta');
 
     expect(await screen.findByText('You have unsaved changes')).toBeInTheDocument();
 
     await user.click(screen.getByText('Save changes'));
 
-    expect(mockMutate).toHaveBeenCalledWith(
-      expect.objectContaining({clientId: 'updated-client-id'}),
-      expect.any(Object),
-    );
+    expect(mockMutate).toHaveBeenCalledWith(expect.objectContaining({name: 'Updated Acme Okta'}), expect.any(Object));
   });
 
   it('should navigate back to connections when Back is clicked', async () => {

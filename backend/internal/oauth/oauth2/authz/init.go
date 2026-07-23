@@ -19,14 +19,12 @@
 package authz
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
 	"github.com/thunder-id/thunderid/internal/system/constants"
-	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -41,11 +39,11 @@ func Initialize(
 	flowExecService flowexec.FlowExecServiceInterface,
 	parService par.PARServiceInterface,
 	cfg oauthconfig.Config,
+	storeProvider providers.RuntimeStoreProvider,
+	transactioner transaction.Transactioner,
 ) (AuthorizeServiceInterface, error) {
-	authzCodeStore, authzReqStore, transactioner, err := initializeAuthorizationStores(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize authorization stores: %w", err)
-	}
+	authzCodeStore := newAuthorizationCodeStore(storeProvider)
+	authzReqStore := newAuthorizationRequestStore(storeProvider)
 
 	authzService := newAuthorizeService(
 		actorProvider, resourceService, jwtService, flowExecService,
@@ -54,27 +52,6 @@ func Initialize(
 	authzHandler := newAuthorizeHandler(authzService, cfg)
 	registerRoutes(mux, authzHandler)
 	return authzService, nil
-}
-
-// initializeAuthorizationStores creates the authorization code store, request store, and transactioner.
-func initializeAuthorizationStores(cfg oauthconfig.Config) (
-	AuthorizationCodeStoreInterface, authorizationRequestStoreInterface, transaction.Transactioner, error) {
-	if cfg.RuntimeTransientDBType == provider.DataSourceTypeRedis {
-		redisProvider := provider.GetRedisProvider()
-		return newRedisAuthorizationCodeStore(redisProvider, cfg.DeploymentID),
-			newRedisAuthorizationRequestStore(redisProvider, cfg.DeploymentID),
-			transaction.NewNoOpTransactioner(),
-			nil
-	}
-	dbProvider := provider.GetDBProvider()
-	transactioner, err := dbProvider.GetRuntimeTransientDBTransactioner()
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	return newAuthorizationCodeStore(cfg.DeploymentID),
-		newAuthorizationRequestStore(cfg.DeploymentID),
-		transactioner,
-		nil
 }
 
 // registerRoutes registers the GET /oauth2/authorize route. The POST /oauth2/auth/callback

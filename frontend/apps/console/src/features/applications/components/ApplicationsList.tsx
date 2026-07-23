@@ -26,7 +26,9 @@ import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import ApplicationDeleteDialog from './ApplicationDeleteDialog';
+import RouteConfig from '../../../configs/RouteConfig';
 import useGetApplications from '../api/useGetApplications';
+import ApplicationConstants from '../constants/application-constants';
 import type {BasicApplication} from '../models/application';
 import getTemplateMetadata from '../utils/getTemplateMetadata';
 
@@ -50,7 +52,7 @@ export default function ApplicationsList(): JSX.Element {
   const handleEditClick = useCallback(
     (appId: string): void => {
       (async (): Promise<void> => {
-        await navigate(`/applications/${appId}`);
+        await navigate(RouteConfig.applications.detail(appId));
       })().catch((_error: unknown) => {
         logger.error('Failed to navigate to application', {error: _error, applicationId: appId});
       });
@@ -73,7 +75,14 @@ export default function ApplicationsList(): JSX.Element {
         renderCell: (params: DataGrid.GridRenderCellParams<BasicApplication>): JSX.Element => (
           <ListingTable.CellIcon
             sx={{width: '100%'}}
-            icon={<ResourceAvatar value={params.row.logoUrl} size={30} fallback="emoji:🖥️" />}
+            icon={
+              <ResourceAvatar
+                variant="rounded"
+                value={params.row.logoUrl}
+                size={30}
+                fallback={ApplicationConstants.DEFAULT_AVATAR}
+              />
+            }
             primary={params.row.name}
             secondary={params.row.description}
           />

@@ -48,6 +48,7 @@ export const WidgetTypes = {
   EUDIWallet: 'EUDI_WALLET',
   PasskeyAuthentication: 'PASSKEY_AUTHENTICATION',
   Provisioning: 'PROVISIONING',
+  Consent: 'CONSENT',
   MagicLink: 'MAGIC_LINK',
   SelfSignUpLink: 'SELF_SIGN_UP_LINK',
   SignInLink: 'SIGN_IN_LINK',

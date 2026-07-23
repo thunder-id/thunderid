@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import type {CustomConfigureStepProps} from '@thunderid/configure-connections';
 import {render, screen} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {describe, expect, it, vi} from 'vitest';
@@ -26,21 +27,25 @@ vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   ConnectionCreateWizardPage: ({
     customConfigureSteps = undefined,
   }: {
-    customConfigureSteps?: Record<string, ReactNode>;
-  }) => <div data-testid="stub-wizard">{customConfigureSteps?.['trusted-idp']}</div>,
+    customConfigureSteps?: Record<string, (props: CustomConfigureStepProps) => ReactNode>;
+  }) => (
+    <div data-testid="stub-wizard">
+      {customConfigureSteps?.['trusted-idp']?.({name: 'Acme Issuer', onNameConflict: vi.fn()})}
+    </div>
+  ),
 }));
 
 vi.mock('../../../trusted-issuers/pages/TrustedIssuerWizardStep', () => ({
-  default: function StubTrustedIssuerWizardStep() {
-    return <div data-testid="stub-trusted-issuer-wizard-step" />;
+  default: function StubTrustedIssuerWizardStep({name}: {name: string}) {
+    return <div data-testid="stub-trusted-issuer-wizard-step">{name}</div>;
   },
 }));
 
 describe('ConnectionCreateWizardRoute', () => {
-  it('should wire the trusted-idp custom configure step to TrustedIssuerWizardStep', () => {
+  it('should wire the trusted-idp custom configure step to TrustedIssuerWizardStep, passing the wizard name through', () => {
     render(<ConnectionCreateWizardRoute />);
 
     expect(screen.getByTestId('stub-wizard')).toBeInTheDocument();
-    expect(screen.getByTestId('stub-trusted-issuer-wizard-step')).toBeInTheDocument();
+    expect(screen.getByTestId('stub-trusted-issuer-wizard-step')).toHaveTextContent('Acme Issuer');
   });
 });

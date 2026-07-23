@@ -36,6 +36,10 @@ const (
 	defaultRSTestClientID     = "default_rs_test_client"
 	defaultRSTestClientSecret = "default_rs_test_secret"
 	defaultRSTestIdentifier   = "https://default-rs-token.example.com"
+
+	defaultAudTestClientID     = "default_aud_test_client"
+	defaultAudTestClientSecret = "default_aud_test_secret"
+	defaultAudTestAudience     = "https://custom-audience.example.com"
 )
 
 type DefaultResourceServerTestSuite struct {
@@ -183,4 +187,110 @@ func (s *DefaultResourceServerTestSuite) TestNoResourceWithoutDefaultAndPermissi
 	status, body := s.requestClientCredentials("read", "")
 	s.Equal(http.StatusBadRequest, status)
 	s.Equal("invalid_target", body["error"])
+}
+
+// createOAuthAppWithDefaultAudience creates a client_credentials app whose access token config
+// carries a configured default audience (token.accessToken.defaultAudience).
+func (s *DefaultResourceServerTestSuite) createOAuthAppWithDefaultAudience() string {
+	app := map[string]interface{}{
+		"name":                      "Default Audience Token App",
+		"description":               "Application for default audience token tests",
+		"ouId":                      s.ouID,
+		"isRegistrationFlowEnabled": false,
+		"inboundAuthConfig": []map[string]interface{}{
+			{
+				"type": "oauth2",
+				"config": map[string]interface{}{
+					"clientId":                defaultAudTestClientID,
+					"clientSecret":            defaultAudTestClientSecret,
+					"grantTypes":              []string{"client_credentials"},
+					"tokenEndpointAuthMethod": "client_secret_basic",
+					"token": map[string]interface{}{
+						"accessToken": map[string]interface{}{
+							"defaultAudience": defaultAudTestAudience,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	payload, err := json.Marshal(app)
+	s.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/applications", bytes.NewReader(payload))
+	s.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(req)
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	s.Require().Equal(http.StatusCreated, resp.StatusCode, string(body))
+
+	var respBody map[string]interface{}
+	s.Require().NoError(json.Unmarshal(body, &respBody))
+	return respBody["id"].(string)
+}
+
+func (s *DefaultResourceServerTestSuite) requestClientCredentialsAs(
+	clientID, clientSecret, scope, resource string,
+) (int, map[string]interface{}) {
+	form := url.Values{}
+	form.Set("grant_type", "client_credentials")
+	if scope != "" {
+		form.Set("scope", scope)
+	}
+	if resource != "" {
+		form.Set("resource", resource)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/oauth2/token", strings.NewReader(form.Encode()))
+	s.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(clientID, clientSecret)
+
+	resp, err := s.client.Do(req)
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+
+	var respBody map[string]interface{}
+	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&respBody))
+	return resp.StatusCode, respBody
+}
+
+// A scopeless request that is not bound to a resource server uses the app's configured default
+// audience for the aud claim instead of the client_id.
+func (s *DefaultResourceServerTestSuite) TestScopelessWithConfiguredDefaultAudienceUsesIt() {
+	appID := s.createOAuthAppWithDefaultAudience()
+	defer func() { _ = testutils.DeleteApplication(appID) }()
+	s.Require().NoError(testutils.PutDefaultResourceServer(""))
+
+	status, body := s.requestClientCredentialsAs(defaultAudTestClientID, defaultAudTestClientSecret, "", "")
+	s.Equal(http.StatusOK, status)
+
+	token, ok := body["access_token"].(string)
+	s.Require().True(ok, "response should contain an access token")
+
+	claims, err := testutils.DecodeJWT(token)
+	s.Require().NoError(err)
+	s.Equal(defaultAudTestAudience, claims.Aud)
+}
+
+// An explicit resource parameter binds the token to that resource server, taking precedence over
+// the configured default audience.
+func (s *DefaultResourceServerTestSuite) TestExplicitResourceOverridesConfiguredDefaultAudience() {
+	appID := s.createOAuthAppWithDefaultAudience()
+	defer func() { _ = testutils.DeleteApplication(appID) }()
+
+	status, body := s.requestClientCredentialsAs(defaultAudTestClientID, defaultAudTestClientSecret, "", defaultRSTestIdentifier)
+	s.Equal(http.StatusOK, status)
+
+	token, ok := body["access_token"].(string)
+	s.Require().True(ok, "response should contain an access token")
+
+	claims, err := testutils.DecodeJWT(token)
+	s.Require().NoError(err)
+	s.Equal(defaultRSTestIdentifier, claims.Aud)
 }

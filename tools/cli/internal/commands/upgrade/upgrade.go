@@ -157,7 +157,7 @@ func Switch(baseDir, currentVersion string, verbose bool) (bool, error) {
 	}
 	fmt.Printf("\r\033[2K  %s Switched to %s v%s  %s\n", ui.Green("✓"), product.Name, selected, ui.Dim("logs: "+setup.LogDir(installPath)))
 
-	_, _, err = ui.RunREPL(selected, proc, installPath, verbose, false, "", "", 0)
+	_, _, err = ui.RunREPL(selected, proc, installPath, verbose, false, "", "", 0, nil)
 	return true, err
 }
 
@@ -180,7 +180,8 @@ func runDirect(baseDir, activeVersion, newVersion string, verbose bool) error {
 	if err := downloadVersion(newVersion, newPath, verbose); err != nil {
 		return err
 	}
-	if err := runSetupWithPort(newVersion, newPath, verbose, 0); err != nil {
+	creds, err := runSetupWithPort(newVersion, newPath, verbose, 0)
+	if err != nil {
 		return err
 	}
 
@@ -188,6 +189,7 @@ func runDirect(baseDir, activeVersion, newVersion string, verbose bool) error {
 	proc, err := setup.StartBackground(newPath, verbose)
 	if err != nil {
 		fmt.Println()
+		ui.PrintCredentialsFallback(creds)
 		ui.Fatal("Failed to start " + product.Name + ": " + err.Error())
 		return err
 	}
@@ -204,7 +206,7 @@ func runDirect(baseDir, activeVersion, newVersion string, verbose bool) error {
 	}
 	fmt.Printf("\r\033[2K  %s %s v%s started  %s\n", ui.Green("✓"), product.Name, newVersion, ui.Dim("logs: "+setup.LogDir(newPath)))
 
-	_, _, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "", "", 0)
+	_, _, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "", "", 0, creds)
 	return err
 }
 
@@ -213,7 +215,8 @@ func runSideBySide(baseDir, activeVersion, newVersion string, verbose bool) erro
 	if err := downloadVersion(newVersion, newPath, verbose); err != nil {
 		return err
 	}
-	if err := runSetupWithPort(newVersion, newPath, verbose, stagingPort); err != nil {
+	creds, err := runSetupWithPort(newVersion, newPath, verbose, stagingPort)
+	if err != nil {
 		return err
 	}
 
@@ -221,6 +224,7 @@ func runSideBySide(baseDir, activeVersion, newVersion string, verbose bool) erro
 	proc, err := setup.StartBackgroundOnPort(newPath, verbose, stagingPort)
 	if err != nil {
 		fmt.Println()
+		ui.PrintCredentialsFallback(creds)
 		ui.Fatal("Failed to start staging instance: " + err.Error())
 		return err
 	}
@@ -229,17 +233,17 @@ func runSideBySide(baseDir, activeVersion, newVersion string, verbose bool) erro
 	fmt.Printf("  Type %s in the REPL to cut over to v%s and restart on port %d.\n\n",
 		ui.Cyan("/cutover"), newVersion, health.DefaultPort)
 
-	cutoverRequested, err := ui.RunStagingREPL(newVersion, proc, newPath, verbose, stagingPort)
+	cutoverRequested, err := ui.RunStagingREPL(newVersion, proc, newPath, verbose, stagingPort, creds)
 	if err != nil {
 		return err
 	}
 	if !cutoverRequested {
 		return nil // user exited without cutting over
 	}
-	return performCutover(baseDir, activeVersion, newVersion, newPath, proc, verbose)
+	return performCutover(baseDir, activeVersion, newVersion, newPath, proc, verbose, creds)
 }
 
-func performCutover(baseDir, activeVersion, newVersion, newPath string, stagingProc *exec.Cmd, verbose bool) error {
+func performCutover(baseDir, activeVersion, newVersion, newPath string, stagingProc *exec.Cmd, verbose bool, creds *setup.AdminCredentials) error {
 	fmt.Printf("\n  %s Cutting over from v%s to v%s...\n\n", ui.Cyan("→"), activeVersion, newVersion)
 
 	if stagingProc != nil && stagingProc.Process != nil {
@@ -272,7 +276,7 @@ func performCutover(baseDir, activeVersion, newVersion, newPath string, stagingP
 	}
 	fmt.Printf("\r\033[2K  %s %s v%s is now live on port %d\n", ui.Green("✓"), product.Name, newVersion, health.DefaultPort)
 
-	_, _, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "", "", 0)
+	_, _, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "", "", 0, creds)
 	return err
 }
 
@@ -307,13 +311,16 @@ func downloadVersion(version, destDir string, verbose bool) error {
 	return nil
 }
 
-func runSetupWithPort(version, installPath string, verbose bool, port int) error {
+func runSetupWithPort(version, installPath string, verbose bool, port int) (*setup.AdminCredentials, error) {
+	var creds *setup.AdminCredentials
 	if verbose {
 		fmt.Printf("\n  Running %s setup (v%s)...\n", product.Name, version)
-		if err := setup.RunSetupOnPort(installPath, true, port); err != nil {
+		c, err := setup.RunSetupOnPort(installPath, true, port)
+		if err != nil {
 			ui.Fatal("Setup failed: " + err.Error())
-			return err
+			return nil, err
 		}
+		creds = c
 	} else {
 		fmt.Println()
 		var setupErr error
@@ -326,11 +333,11 @@ func runSetupWithPort(version, installPath string, verbose bool, port int) error
 			})).
 			Title("Setting up " + product.Name + " v" + version + "...").
 			Action(func() {
-				setupErr = setup.RunSetupOnPort(installPath, false, port)
+				creds, setupErr = setup.RunSetupOnPort(installPath, false, port)
 			}).
 			Run(); err != nil {
 			ui.Fatal("Setup interrupted: " + err.Error())
-			return err
+			return nil, err
 		}
 		if setupErr != nil {
 			msg := setupErr.Error()
@@ -346,15 +353,16 @@ func runSetupWithPort(version, installPath string, verbose bool, port int) error
 				msg = strings.TrimSpace(msg[:idx])
 			}
 			ui.Fatal(msg)
-			return setupErr
+			return nil, setupErr
 		}
 	}
 	if err := config.MarkSetupComplete(version); err != nil {
+		ui.PrintCredentialsFallback(creds)
 		ui.Fatal("Failed to mark setup complete: " + err.Error())
-		return err
+		return nil, err
 	}
 	fmt.Printf("  %s Setup complete\n", ui.Green("✓"))
-	return nil
+	return creds, nil
 }
 
 func versionedPath(baseDir, version string) string {

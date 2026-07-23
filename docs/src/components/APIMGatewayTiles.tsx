@@ -28,11 +28,11 @@ interface GatewayConfig {
 }
 
 const GATEWAY_CONFIG: Record<string, GatewayConfig> = {
-  'guides/guides/integrations/apim-gateways/apisix':     {bgColor: '#1a0a14', logo: <APISIXLogo color="#fff" />},
-  'guides/guides/integrations/apim-gateways/azure-apim': {bgColor: '#002050', logo: <AzureAPIMlogo color="#fff" />},
-  'guides/guides/integrations/apim-gateways/envoy':      {bgColor: '#1a0a2e', logo: <EnvoyLogo color="#fff" />},
-  'guides/guides/integrations/apim-gateways/kong':       {bgColor: '#043558', logo: <KongLogo color="#fff" />},
-  'guides/guides/integrations/apim-gateways/krakend':    {bgColor: '#041c36', logo: <KrakenDLogo color="#fff" />},
+  'guides/integrations/apim-gateways/apisix':     {bgColor: '#1a0a14', logo: <APISIXLogo color="#fff" />},
+  'guides/integrations/apim-gateways/azure-apim': {bgColor: '#002050', logo: <AzureAPIMlogo color="#fff" />},
+  'guides/integrations/apim-gateways/envoy':      {bgColor: '#1a0a2e', logo: <EnvoyLogo color="#fff" />},
+  'guides/integrations/apim-gateways/kong':       {bgColor: '#043558', logo: <KongLogo color="#fff" />},
+  'guides/integrations/apim-gateways/krakend':    {bgColor: '#041c36', logo: <KrakenDLogo color="#fff" />},
 };
 
 const DEFAULT_BG = '#1e2a4a';
@@ -42,7 +42,7 @@ export function APIMGatewayTiles(): React.ReactElement {
 
   const items = category.items.filter(
     (item): item is PropSidebarItemLink =>
-      item.type === 'link' && item.docId !== 'guides/guides/integrations/apim-gateways/overview',
+      item.type === 'link' && item.docId !== 'guides/integrations/apim-gateways/overview',
   );
 
   return (

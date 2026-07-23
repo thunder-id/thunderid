@@ -1,0 +1,56 @@
+name: Patch Coverage Gate
+description: >-
+  Enforces patch coverage for the current diff. Uses Codecov's own patch
+  coverage number via its public API when a fully processed report is
+  available, and computes patch coverage locally with diff-cover from the
+  archived coverage artifacts otherwise, so the check always reports a result
+  and can never hang on Codecov's backend.
+inputs:
+  fail-under:
+    description: 'Minimum patch coverage percentage required to pass'
+    required: false
+    default: '79'
+  pr-number:
+    description: >-
+      Pull request number used to query the Codecov API. Leave empty to skip
+      the API and compute patch coverage locally (e.g. on merge queue runs).
+    required: false
+    default: ''
+  head-sha:
+    description: 'Commit SHA whose Codecov report is polled'
+    required: true
+  base-ref:
+    description: 'Git ref or SHA the diff is compared against'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    # If this step fails, patch coverage is authoritatively below the
+    # threshold and the composite stops here. If it succeeds without
+    # resolving (Codecov unavailable or report incomplete), the local
+    # computation below takes over.
+    - name: 🔎 Enforce Codecov patch coverage via API
+      id: codecov-api
+      if: inputs.pr-number != ''
+      shell: bash
+      env:
+        PR_NUMBER: ${{ inputs.pr-number }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+        FAIL_UNDER: ${{ inputs.fail-under }}
+      run: bash "${{ github.action_path }}/check-codecov-api.sh"
+
+    - name: 📥 Download coverage artifacts
+      if: steps.codecov-api.outcome == 'skipped' || steps.codecov-api.outputs.resolved != 'true'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      with:
+        pattern: "*coverage*"
+        path: coverage-artifacts
+
+    - name: 🛡️ Compute patch coverage locally
+      if: steps.codecov-api.outcome == 'skipped' || steps.codecov-api.outputs.resolved != 'true'
+      shell: bash
+      env:
+        BASE_REF: ${{ inputs.base-ref }}
+        FAIL_UNDER: ${{ inputs.fail-under }}
+      run: bash "${{ github.action_path }}/compute-local-patch-coverage.sh"

@@ -21,7 +21,7 @@ import type {TFunction} from 'i18next';
 import get from 'lodash-es/get';
 import {createElement, type ReactElement} from 'react';
 import {Trans} from 'react-i18next';
-import type {RequiredFieldRule, ValidationRuleDefinition} from './validation-rules';
+import type {GraphValidationRule, RequiredFieldRule, ValidationRuleDefinition} from './validation-rules';
 import ValidationConstants from '../constants/ValidationConstants';
 import type {Element} from '../models/elements';
 import Notification, {NotificationType} from '../models/notification';
@@ -150,12 +150,16 @@ function walkElements(
  * @param nodes - All React Flow nodes in the current flow.
  * @param rules - The validation rule registry.
  * @param t     - i18next translate function.
+ * @param graphRules - Cross-node rules applied against the whole node set.
+ *                     Empty by default; the host registers the rules that
+ *                     apply to the current flow type.
  * @returns A map of notification ID → Notification.
  */
 export function computeValidationNotifications(
   nodes: Node[],
   rules: ValidationRuleDefinition[],
   t: TFunction,
+  graphRules: GraphValidationRule[] = [],
 ): Map<string, Notification> {
   const notifications = new Map<string, Notification>();
 
@@ -168,6 +172,12 @@ export function computeValidationNotifications(
     // Walk the element tree within each step.
     if (stepData?.components) {
       walkElements(stepData.components, rules, t, notifications);
+    }
+  }
+
+  for (const graphRule of graphRules) {
+    for (const notification of graphRule(nodes)) {
+      notifications.set(notification.getId(), notification);
     }
   }
 

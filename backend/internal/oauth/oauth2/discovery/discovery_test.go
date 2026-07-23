@@ -87,6 +87,9 @@ func (suite *DiscoveryTestSuite) SetupTest() {
 					"urn:thunder:acr:generated-code": {"OTP"},
 				},
 			},
+			DCR:             engineconfig.DCRConfig{Enabled: boolPtr(true)},
+			TokenRevocation: engineconfig.OAuthTokenRevocationConfig{Enabled: true},
+			Logout:          engineconfig.LogoutConfig{Enabled: true},
 		},
 	}
 	_ = config.InitializeServerRuntime("test", testConfig)
@@ -119,8 +122,12 @@ func (suite *DiscoveryTestSuite) TestOAuth2AuthorizationServerMetadata() {
 	assert.NotEmpty(suite.T(), metadata.JWKSUri)
 	assert.NotEmpty(suite.T(), metadata.RegistrationEndpoint)
 	assert.NotEmpty(suite.T(), metadata.IntrospectionEndpoint)
-	assert.NotEmpty(suite.T(), metadata.UserInfoEndpoint)
 	assert.NotEmpty(suite.T(), metadata.RevocationEndpoint)
+
+	body, err := json.Marshal(metadata)
+	assert.NoError(suite.T(), err)
+	assert.NotContains(suite.T(), string(body), "userinfo_endpoint")
+	assert.NotContains(suite.T(), string(body), "scopes_supported")
 
 	// Verify only implemented grant types are present
 	assert.Contains(suite.T(), metadata.GrantTypesSupported, "authorization_code")
@@ -165,6 +172,10 @@ func (suite *DiscoveryTestSuite) TestOIDCDiscovery() {
 	assert.NotEmpty(suite.T(), metadata.SubjectTypesSupported)
 	assert.NotEmpty(suite.T(), metadata.ClaimsSupported)
 	assert.NotEmpty(suite.T(), metadata.IDTokenSigningAlgValuesSupported)
+	assert.NotEmpty(suite.T(), metadata.UserInfoEndpoint)
+	assert.NotEmpty(suite.T(), metadata.ScopesSupported)
+	assert.Contains(suite.T(), metadata.ScopesSupported, "openid")
+	assert.NotEmpty(suite.T(), metadata.EndSessionEndpoint)
 
 	// Verify OIDC-specific fields
 	assert.Contains(suite.T(), metadata.SubjectTypesSupported, constants.SubjectTypePublic)
@@ -214,6 +225,32 @@ func (suite *DiscoveryTestSuite) TestDPoPSigningAlgValuesOmittedWhenUnconfigured
 	assert.NotContains(suite.T(), string(body), "dpop_signing_alg_values_supported")
 }
 
+func (suite *DiscoveryTestSuite) TestDCRRevocationLogoutEndpointsOmittedWhenDisabled() {
+	config.ResetServerRuntime()
+	testConfig := &config.Config{
+		Server: engineconfig.ServerConfig{Hostname: "localhost", Port: 8080},
+		JWT:    engineconfig.JWTConfig{Issuer: "https://auth.example.com"},
+	}
+	_ = config.InitializeServerRuntime("test", testConfig)
+	defer config.ResetServerRuntime()
+
+	svc := newDiscoveryService(suite.cryptoMock, oauthCfgFromServerConfig(testConfig))
+	oauth2Meta := svc.GetOAuth2AuthorizationServerMetadata(context.Background())
+	assert.Empty(suite.T(), oauth2Meta.RegistrationEndpoint)
+	assert.Empty(suite.T(), oauth2Meta.RevocationEndpoint)
+
+	suite.cryptoMock.EXPECT().GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{}).
+		Return([]kmprovider.PublicKeyInfo{{KeyID: "k1", Algorithm: cryptolib.AlgorithmRS256}}, nil)
+	oidcMeta, err := svc.GetOIDCMetadata(context.Background())
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), oidcMeta.EndSessionEndpoint)
+
+	body, err := json.Marshal(oauth2Meta)
+	assert.NoError(suite.T(), err)
+	assert.NotContains(suite.T(), string(body), "registration_endpoint")
+	assert.NotContains(suite.T(), string(body), "revocation_endpoint")
+}
+
 // TestGrantTypeIsValid tests the GrantType.IsValid() method
 // This is a standalone test for constants - doesn't require discovery service setup
 func TestGrantTypeIsValid(t *testing.T) {
@@ -260,7 +297,7 @@ func TestTokenEndpointAuthMethodIsValid(t *testing.T) {
 // TestGetSupportedResponseTypes tests the GetSupportedResponseTypes function
 // This is a standalone test for constants - doesn't require discovery service setup
 func TestGetSupportedResponseTypes(t *testing.T) {
-	supported := constants.GetSupportedResponseTypes()
+	supported := constants.GetSupportedResponseTypes(oauthconfig.Config{})
 
 	assert.NotNil(t, supported)
 	assert.Equal(t, 1, len(supported))
@@ -268,10 +305,17 @@ func TestGetSupportedResponseTypes(t *testing.T) {
 	assert.Equal(t, []string{"code"}, supported)
 }
 
+func TestGetSupportedResponseTypes_ConfiguredAllowList(t *testing.T) {
+	cfg := oauthconfig.Config{
+		OAuth: engineconfig.OAuthConfig{AllowedResponseTypes: []string{"code"}},
+	}
+	assert.Equal(t, []string{"code"}, constants.GetSupportedResponseTypes(cfg))
+}
+
 // TestGetSupportedGrantTypes tests the GetSupportedGrantTypes function
 // This is a standalone test for constants - doesn't require discovery service setup
 func TestGetSupportedGrantTypes(t *testing.T) {
-	supported := constants.GetSupportedGrantTypes()
+	supported := constants.GetSupportedGrantTypes(oauthconfig.Config{})
 
 	assert.NotNil(t, supported)
 	assert.Equal(t, 6, len(supported))
@@ -285,10 +329,17 @@ func TestGetSupportedGrantTypes(t *testing.T) {
 	assert.NotContains(t, supported, "implicit")
 }
 
+func TestGetSupportedGrantTypes_ConfiguredAllowList(t *testing.T) {
+	cfg := oauthconfig.Config{
+		OAuth: engineconfig.OAuthConfig{AllowedGrantTypes: []string{"client_credentials", "refresh_token"}},
+	}
+	assert.Equal(t, []string{"client_credentials", "refresh_token"}, constants.GetSupportedGrantTypes(cfg))
+}
+
 // TestGetSupportedTokenEndpointAuthMethods tests the GetSupportedTokenEndpointAuthMethods function
 // This is a standalone test for constants - doesn't require discovery service setup
 func TestGetSupportedTokenEndpointAuthMethods(t *testing.T) {
-	supported := constants.GetSupportedTokenEndpointAuthMethods()
+	supported := constants.GetSupportedTokenEndpointAuthMethods(oauthconfig.Config{})
 
 	assert.NotNil(t, supported)
 	assert.Equal(t, 4, len(supported))
@@ -297,6 +348,13 @@ func TestGetSupportedTokenEndpointAuthMethods(t *testing.T) {
 	assert.Contains(t, supported, "none")
 	assert.Contains(t, supported, "private_key_jwt")
 	assert.NotContains(t, supported, "client_secret_jwt")
+}
+
+func TestGetSupportedTokenEndpointAuthMethods_ConfiguredAllowList(t *testing.T) {
+	cfg := oauthconfig.Config{
+		OAuth: engineconfig.OAuthConfig{AllowedAuthMethods: []string{"client_secret_basic"}},
+	}
+	assert.Equal(t, []string{"client_secret_basic"}, constants.GetSupportedTokenEndpointAuthMethods(cfg))
 }
 
 // TestGetSupportedSubjectTypes tests the GetSupportedSubjectTypes function
@@ -432,3 +490,5 @@ func (suite *DiscoveryTestSuite) TestOIDCDiscovery_DeduplicatesAlgorithms() {
 	assert.Equal(suite.T(), 1, len(algs))
 	assert.Contains(suite.T(), algs, "RS256")
 }
+
+func boolPtr(b bool) *bool { return &b }

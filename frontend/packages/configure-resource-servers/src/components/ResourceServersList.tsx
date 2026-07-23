@@ -27,10 +27,12 @@ import ResourceServerDeleteDialog from './ResourceServerDeleteDialog';
 import useGetDefaultResourceServer from '../api/useGetDefaultResourceServer';
 import useGetResourceServers from '../api/useGetResourceServers';
 import {getResourceServerTypeLabel} from '../config/resource-server-types';
+import useResourceServerRoutes from '../hooks/useResourceServerRoutes';
 import type {ResourceServer} from '../models/resource-server';
 
 export default function ResourceServersList(): JSX.Element {
   const navigate = useNavigate();
+  const routes = useResourceServerRoutes();
   const {t} = useTranslation();
   const logger = useLogger('ResourceServersList');
   const dataGridLocaleText = useDataGridLocaleText();
@@ -134,7 +136,7 @@ export default function ResourceServersList(): JSX.Element {
                     onClick={(e) => {
                       e.stopPropagation();
                       (async (): Promise<void> => {
-                        await navigate(`/resource-servers/${params.row.id}`);
+                        await navigate(routes.detail(params.row.id));
                       })().catch((err: unknown) => {
                         logger.error('Failed to navigate to resource server detail', {error: err});
                       });
@@ -161,7 +163,7 @@ export default function ResourceServersList(): JSX.Element {
         ),
       },
     ],
-    [t, navigate, logger, defaultId],
+    [t, navigate, routes, logger, defaultId],
   );
 
   if (error) {
@@ -182,7 +184,7 @@ export default function ResourceServersList(): JSX.Element {
             getRowId={(row) => (row as ResourceServer).id}
             onRowClick={(params) => {
               (async (): Promise<void> => {
-                await navigate(`/resource-servers/${(params.row as ResourceServer).id}`);
+                await navigate(routes.detail((params.row as ResourceServer).id));
               })().catch((err: unknown) => {
                 logger.error('Failed to navigate to resource server detail', {error: err});
               });

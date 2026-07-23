@@ -30,6 +30,7 @@ type IDPAuthInitData struct {
 type AuthSessionData struct {
 	IDPID   string            `json:"idpId"`
 	IDPType providers.IDPType `json:"idpType"`
+	Nonce   string            `json:"nonce,omitempty"`
 }
 
 // AuthenticationResponseDTO represents the data transfer object for the authentication response.
@@ -117,7 +118,8 @@ type PasskeyCredentialResponseDTO struct {
 type PasskeyRegisterFinishRequestDTO struct {
 	PublicKeyCredential PasskeyPublicKeyCredentialDTO `json:"publicKeyCredential"`
 	SessionToken        string                        `json:"sessionToken"`
-	CredentialName      string                        `json:"credentialName,omitempty"`
+	SkipAssertion       bool                          `json:"skipAssertion"`
+	Assertion           string                        `json:"assertion,omitempty"`
 }
 
 // PasskeyStartRequestDTO is the request to start passkey authentication.

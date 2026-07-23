@@ -173,7 +173,8 @@
       "header": "Google Executor",
       "label": "Google",
       "description": "Authenticate the user with Google",
-      "image": "assets/images/icons/google-generic.svg",
+      "image": "assets/images/icons/google.svg",
+      "preserveImageColor": true,
       "showOnResourcePanel": true
     },
     "data": {
@@ -913,6 +914,7 @@
     "display": {
       "header": "Session Executor",
       "label": "Save / Load Session",
+      "description": "Save the session at this checkpoint or load it on the SSO path",
       "image": "assets/images/icons/link.svg",
       "showOnResourcePanel": true
     },

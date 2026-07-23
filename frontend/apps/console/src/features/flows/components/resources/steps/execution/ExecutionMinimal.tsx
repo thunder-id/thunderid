@@ -16,13 +16,14 @@
  * under the License.
  */
 
-import {Box, Card, IconButton, Tooltip, Typography} from '@wso2/oxygen-ui';
-import {CogIcon, TrashIcon} from '@wso2/oxygen-ui-icons-react';
+import {Box, Card, IconButton, Tooltip} from '@wso2/oxygen-ui';
+import {CogIcon, InfoIcon, TrashIcon} from '@wso2/oxygen-ui-icons-react';
 import {Handle, Position, useNodeId, useReactFlow} from '@xyflow/react';
 import classNames from 'classnames';
 import type {ReactElement} from 'react';
 import {useTranslation} from 'react-i18next';
 import ExecutionFactory from './execution-factory/ExecutionFactory';
+import StepTitle from '../StepTitle';
 import VisualFlowConstants from '@/features/flows/constants/VisualFlowConstants';
 import useInteractionState from '@/features/flows/hooks/useInteractionState';
 import useUIPanelState from '@/features/flows/hooks/useUIPanelState';
@@ -55,6 +56,7 @@ function ExecutionMinimal({resource}: ExecutionMinimalPropsInterface): ReactElem
 
   // Get the display label from resource.display.label, falling back to executor name
   const displayLabel = resource.display?.label ?? resource.data?.action?.executor?.name ?? 'Executor';
+  const displayDescription = resource.display?.description;
 
   // Check if the node has action data with onSuccess/onFailure fields defined (even if empty)
   // This indicates the node supports branching and should show both handles
@@ -91,23 +93,29 @@ function ExecutionMinimal({resource}: ExecutionMinimalPropsInterface): ReactElem
         alignItems="center"
         className="execution-minimal-step-action-panel"
         sx={{
-          backgroundColor: 'secondary.main',
+          backgroundColor: '#151515',
           px: 2,
           py: 1.25,
           height: 44,
+          gap: 1.5,
         }}
       >
-        <Typography
-          variant="body2"
-          className="execution-minimal-step-title"
-          sx={{
-            color: 'common.white',
-            fontWeight: 500,
-          }}
-        >
-          {displayLabel}
-        </Typography>
+        <Box className="execution-minimal-step-title">
+          <StepTitle label={displayLabel} />
+        </Box>
         <Box display="flex" alignItems="center" gap={0.5}>
+          {displayDescription && (
+            <Tooltip title={displayDescription}>
+              <Box
+                display="inline-flex"
+                alignItems="center"
+                data-testid="execution-description-hint"
+                sx={{color: 'common.white', cursor: 'help', px: 0.5}}
+              >
+                <InfoIcon size={18} />
+              </Box>
+            </Tooltip>
+          )}
           <Tooltip title={t('flows:core.executions.tooltip.configurationHint')}>
             <IconButton
               size="small"

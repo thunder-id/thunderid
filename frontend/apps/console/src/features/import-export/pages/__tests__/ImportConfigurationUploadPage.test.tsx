@@ -20,6 +20,7 @@ import {render, screen, userEvent, waitFor, fireEvent} from '@thunderid/test-uti
 import {afterEach, describe, expect, it, vi} from 'vitest';
 
 const mockNavigate = vi.fn();
+let mockPathname = '/import-configuration';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({t: (key: string) => key}),
@@ -27,7 +28,7 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
-  return {...actual, useNavigate: () => mockNavigate};
+  return {...actual, useNavigate: () => mockNavigate, useLocation: () => ({pathname: mockPathname})};
 });
 
 vi.mock('@thunderid/logger/react', () => ({
@@ -62,6 +63,7 @@ import ImportConfigurationUploadPage from '../ImportConfigurationUploadPage';
 
 afterEach(() => {
   vi.clearAllMocks();
+  mockPathname = '/import-configuration';
 });
 
 describe('ImportConfigurationUploadPage', () => {
@@ -112,6 +114,25 @@ describe('ImportConfigurationUploadPage', () => {
     await user.click(screen.getByRole('button', {name: 'common:actions.close'}));
 
     expect(mockNavigate).toHaveBeenCalledWith('/home');
+  });
+
+  it('navigates to /import-export when the default breadcrumb is clicked outside the welcome flow', async () => {
+    const user = userEvent.setup();
+    render(<ImportConfigurationUploadPage />);
+
+    await user.click(screen.getByText('landing.title'));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/import-export');
+  });
+
+  it('navigates to /welcome when the welcome breadcrumb is clicked from the welcome flow', async () => {
+    mockPathname = '/welcome/import-configuration';
+    const user = userEvent.setup();
+    render(<ImportConfigurationUploadPage />);
+
+    await user.click(screen.getByText('common:welcome.header'));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/welcome');
   });
 
   it('shows error when non-yaml file is selected', () => {
@@ -185,7 +206,7 @@ describe('ImportConfigurationUploadPage', () => {
     const user = userEvent.setup();
     render(<ImportConfigurationUploadPage />);
 
-    const yamlContent = '---\n# resource_type: application\nname: test-app\n';
+    const yamlContent = 'resource_type: application\nname: test-app\n';
     const yamlFile = new File([yamlContent], 'config.yaml', {type: 'text/yaml'});
     Object.defineProperty(yamlFile, 'text', {value: () => Promise.resolve(yamlContent)});
 
@@ -213,7 +234,7 @@ describe('ImportConfigurationUploadPage', () => {
     const user = userEvent.setup();
     render(<ImportConfigurationUploadPage />);
 
-    const yamlContent = '---\n# resource_type: application\nname: test-app\n';
+    const yamlContent = 'resource_type: application\nname: test-app\n';
     const envContent = 'KEY=VALUE';
     const yamlFile = new File([yamlContent], 'config.yaml', {type: 'text/yaml'});
     const envFile = new File([envContent], '.env', {type: 'text/plain'});
@@ -242,7 +263,7 @@ describe('ImportConfigurationUploadPage', () => {
     render(<ImportConfigurationUploadPage />);
 
     const yamlContent =
-      '---\n# resource_type: server_config\nname: cors\nvalue:\n  allowedOrigins:\n    - https://example.com\n';
+      'resource_type: server_config\nname: cors\nvalue:\n  allowedOrigins:\n    - https://example.com\n';
     const yamlFile = new File([yamlContent], 'config.yaml', {type: 'text/yaml'});
     Object.defineProperty(yamlFile, 'text', {value: () => Promise.resolve(yamlContent)});
 
@@ -264,6 +285,49 @@ describe('ImportConfigurationUploadPage', () => {
       },
       {timeout: 5000},
     );
+  });
+
+  it('detects resource types from the resource_type YAML field (not comments)', async () => {
+    const user = userEvent.setup();
+    render(<ImportConfigurationUploadPage />);
+
+    const yamlContent =
+      'resource_type: application\n' +
+      'id: claims-demo-m2m-app\n' +
+      'name: Claims Demo M2M Application\n' +
+      'ouHandle: default\n' +
+      '---\n' +
+      'resource_type: agent\n' +
+      'id: claims-demo-agent\n' +
+      'name: Claims Demo Agent\n' +
+      'ouHandle: default\n' +
+      'type: default\n';
+    const yamlFile = new File([yamlContent], 'config.yaml', {type: 'text/yaml'});
+    Object.defineProperty(yamlFile, 'text', {value: () => Promise.resolve(yamlContent)});
+
+    await user.upload(document.getElementById('file-upload') as HTMLInputElement, yamlFile);
+    await user.click(screen.getByRole('button', {name: 'common:actions.continue'}));
+
+    await waitFor(
+      () => {
+        expect(mockNavigate).toHaveBeenCalledWith(
+          '/welcome/import-configuration/validate',
+          expect.objectContaining({
+            state: expect.objectContaining({
+              method: 'file',
+              parseErrors: [],
+              parseStats: {successCount: 2, failCount: 0},
+            }) as Record<string, unknown>,
+          }),
+        );
+      },
+      {timeout: 5000},
+    );
+
+    const {state} = (mockNavigate.mock.calls[0] as [string, {state: {configData: Record<string, unknown[]>}}])[1];
+    expect(Object.keys(state.configData)).toEqual(['application', 'agent']);
+    expect(state.configData.application).toHaveLength(1);
+    expect(state.configData.agent).toHaveLength(1);
   });
 
   it('shows error when file.text() throws during continue', async () => {

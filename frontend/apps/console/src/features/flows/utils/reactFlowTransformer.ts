@@ -23,7 +23,7 @@ import {ActionTypes} from '../models/actions';
 import type {Element} from '../models/elements';
 import {ElementCategories, ElementTypes, ActionEventTypes, ButtonTypes} from '../models/elements';
 import type {StepAction, StepData} from '../models/steps';
-import {StepTypes, StaticStepTypes} from '../models/steps';
+import {ExecutionTypes, StepTypes, StaticStepTypes} from '../models/steps';
 
 /**
  * Suffix used in edge sourceHandle to identify the connection point
@@ -505,6 +505,12 @@ function transformNode(canvasNode: Node<StepData>, edges: Edge[]): FlowNode {
     layout,
   };
 
+  // Persist node properties for every node type — they carry the user-set
+  // displayName and executor-specific options.
+  if (stepData?.properties && Object.keys(stepData.properties).length > 0) {
+    flowNode.properties = stepData.properties;
+  }
+
   // Handle PROMPT nodes (VIEW steps with UI components)
   // Clean components to remove internal properties like variants
   if (canvasNode.type === StepTypes.View && stepData?.components) {
@@ -539,11 +545,6 @@ function transformNode(canvasNode: Node<StepData>, edges: Edge[]): FlowNode {
     // Add executor configuration
     if (stepData?.action?.executor?.name) {
       flowNode.executor = stepData.action.executor as {name: string; [key: string]: unknown};
-    }
-
-    // Add execution properties if present
-    if (stepData?.properties && Object.keys(stepData.properties).length > 0) {
-      flowNode.properties = stepData.properties as Record<string, unknown>;
     }
 
     // Add onSuccess connection
@@ -585,7 +586,7 @@ function transformNode(canvasNode: Node<StepData>, edges: Edge[]): FlowNode {
 
     // Add decision properties if present (for conditions)
     if (stepData?.properties && Object.keys(stepData.properties).length > 0) {
-      flowNode.properties = stepData.properties as Record<string, unknown>;
+      flowNode.properties = stepData.properties;
     }
   }
 
@@ -923,6 +924,34 @@ export function validateFlowGraph(flowGraph: FlowGraph): string[] {
   if (endNodes.length === 0) {
     errors.push('Flow must have at least one END node');
   }
+
+  // SSO pairing: mirrors the backend contract so an invalid pairing never
+  // reaches the API, even when live validation could not see the executors.
+  const sessionNodeIds = new Set(
+    flowGraph.nodes.filter((node) => node.executor?.name === ExecutionTypes.Session).map((node) => node.id),
+  );
+  const referencedSessionIds = new Set<string>();
+
+  flowGraph.nodes.forEach((node) => {
+    if (node.executor?.name !== ExecutionTypes.SSOCheck) {
+      return;
+    }
+
+    const checkpointRef = node.properties?.checkpointRef;
+    if (typeof checkpointRef !== 'string' || checkpointRef === '') {
+      errors.push(`Node ${node.id}: SSO check must reference a session checkpoint via checkpointRef`);
+    } else if (!sessionNodeIds.has(checkpointRef)) {
+      errors.push(`Node ${node.id}: checkpointRef references non-existent session node ${checkpointRef}`);
+    } else {
+      referencedSessionIds.add(checkpointRef);
+    }
+  });
+
+  sessionNodeIds.forEach((sessionNodeId) => {
+    if (!referencedSessionIds.has(sessionNodeId)) {
+      errors.push(`Node ${sessionNodeId}: session node is not referenced by any SSO check`);
+    }
+  });
 
   return errors;
 }

@@ -17,24 +17,21 @@
  */
 
 import userEvent from '@testing-library/user-event';
-import {generateIconSuggestions} from '@thunderid/components';
 import {render, screen} from '@thunderid/test-utils';
-import type {ReactNode} from 'react';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import ConfigureDesign, {type ConfigureDesignProps} from '../ConfigureDesign';
 
 // Mock the Packages
 vi.mock('@thunderid/components', () => ({
-  generateIconSuggestions: vi.fn(() => null),
-  ResourceAvatar: vi.fn(({value, fallback, onClick}: {value?: string; fallback?: ReactNode; onClick?: () => void}) => (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{display: 'inline-block', background: 'none', border: 'none', padding: 0, cursor: 'pointer'}}
-    >
-      {value ?? fallback}
+  LogoPicker: vi.fn(({value, onChange}: {value: string; onChange: (value: string) => void}) => (
+    <button type="button" data-testid="logo-picker" onClick={() => onChange('emoji:🚀')}>
+      {value}
     </button>
   )),
+}));
+vi.mock('@thunderid/react', () => ({
+  buildAvatarSpec: vi.fn(() => 'avatar:shape=rounded,variant=anonymous_entity,content=briefcase,colors=0'),
+  pickAnonymousEntityName: vi.fn(() => 'briefcase'),
 }));
 vi.mock('@thunderid/design');
 
@@ -44,18 +41,16 @@ describe('ConfigureDesign', () => {
   const mockOnLogoSelect = vi.fn();
   const mockOnThemeSelect = vi.fn();
 
-  const mockIconSuggestions = ['🐼', '🦊', '🐬', '🦁'];
+  const mockDefaultEntityLogo = 'avatar:shape=rounded,variant=anonymous_entity,content=briefcase,colors=0';
 
   const defaultProps: ConfigureDesignProps = {
     appLogo: null,
-    selectedTheme: null,
     onLogoSelect: mockOnLogoSelect,
     onThemeSelect: mockOnThemeSelect,
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(generateIconSuggestions).mockReturnValue(mockIconSuggestions);
 
     vi.mocked(useGetThemes).mockReturnValue({
       data: undefined,
@@ -91,16 +86,16 @@ describe('ConfigureDesign', () => {
     expect(screen.getByRole('heading', {name: 'Application Logo'})).toBeInTheDocument();
   });
 
-  it('should render shuffle button', () => {
-    renderComponent();
+  it('should render the LogoPicker with the current logo value', () => {
+    renderComponent({appLogo: 'emoji:🐼'});
 
-    expect(screen.getByRole('button', {name: 'Shuffle'})).toBeInTheDocument();
+    expect(screen.getByTestId('logo-picker')).toHaveTextContent('emoji:🐼');
   });
 
-  it('should auto-select first emoji when appLogo is null', () => {
+  it('should auto-select a default entity avatar when appLogo is null', () => {
     renderComponent();
 
-    expect(mockOnLogoSelect).toHaveBeenCalledWith(`emoji:${mockIconSuggestions[0]}`);
+    expect(mockOnLogoSelect).toHaveBeenCalledWith(mockDefaultEntityLogo);
   });
 
   it('should not auto-select when appLogo is already set', () => {
@@ -109,48 +104,13 @@ describe('ConfigureDesign', () => {
     expect(mockOnLogoSelect).not.toHaveBeenCalled();
   });
 
-  it('should render all emoji suggestions', () => {
-    renderComponent();
-
-    mockIconSuggestions.forEach((emoji) => {
-      expect(screen.getByText(emoji)).toBeInTheDocument();
-    });
-  });
-
-  it('should call onLogoSelect when clicking an emoji', async () => {
+  it('should call onLogoSelect when the LogoPicker fires onChange', async () => {
     const user = userEvent.setup();
-    renderComponent();
+    renderComponent({appLogo: 'emoji:🐼'});
 
-    await user.click(screen.getByText(mockIconSuggestions[0]));
+    await user.click(screen.getByTestId('logo-picker'));
 
-    expect(mockOnLogoSelect).toHaveBeenCalledWith(`emoji:${mockIconSuggestions[0]}`);
-  });
-
-  it('should regenerate icons when shuffle button is clicked', async () => {
-    const user = userEvent.setup();
-    const newIcons = ['🚀', '💡'];
-
-    vi.mocked(generateIconSuggestions).mockReturnValueOnce(mockIconSuggestions).mockReturnValueOnce(newIcons);
-
-    renderComponent();
-
-    const shuffleButton = screen.getByRole('button', {name: 'Shuffle'});
-    await user.click(shuffleButton);
-
-    expect(generateIconSuggestions).toHaveBeenCalledTimes(2);
-  });
-
-  it('should generate icons with correct count', () => {
-    renderComponent();
-
-    expect(generateIconSuggestions).toHaveBeenCalledWith(8);
-  });
-
-  it('should render a "+" button to open the full picker', () => {
-    renderComponent();
-
-    // The "+" button is an avatar rendered after the suggestions; it contains a Plus/lucide-plus SVG icon
-    expect(document.querySelector('.lucide-plus')).toBeInTheDocument();
+    expect(mockOnLogoSelect).toHaveBeenCalledWith('emoji:🚀');
   });
 
   it('should handle null appLogo prop without errors', () => {
@@ -159,53 +119,12 @@ describe('ConfigureDesign', () => {
     expect(screen.getByRole('heading', {level: 1})).toBeInTheDocument();
   });
 
-  it('should handle rapid emoji clicks', async () => {
-    const user = userEvent.setup();
-    renderComponent();
-
-    await user.click(screen.getByText(mockIconSuggestions[0]));
-    await user.click(screen.getByText(mockIconSuggestions[1]));
-
-    expect(mockOnLogoSelect).toHaveBeenCalledTimes(3); // initial auto-select + 2 clicks
-    expect(mockOnLogoSelect).toHaveBeenCalledWith(`emoji:${mockIconSuggestions[0]}`);
-    expect(mockOnLogoSelect).toHaveBeenCalledWith(`emoji:${mockIconSuggestions[1]}`);
-  });
-
   describe('onReadyChange callback', () => {
     it('should call onReadyChange with true on mount', () => {
       const mockOnReadyChange = vi.fn();
       renderComponent({onReadyChange: mockOnReadyChange});
 
       expect(mockOnReadyChange).toHaveBeenCalledWith(true);
-    });
-  });
-
-  describe('Custom logo (isCustomLogo)', () => {
-    it('should show a larger custom avatar when appLogo is a URL (not in suggestions)', () => {
-      renderComponent({appLogo: 'https://example.com/custom-logo.png'});
-
-      // When isCustomLogo=true, a large avatar is displayed — just verify no crash and heading exists
-      expect(screen.getByRole('heading', {level: 1})).toBeInTheDocument();
-    });
-
-    it('should treat an emoji not in suggestions as a custom logo', () => {
-      // '🐉' is not in mockIconSuggestions
-      renderComponent({appLogo: 'emoji:🐉'});
-
-      expect(screen.getByRole('heading', {level: 1})).toBeInTheDocument();
-    });
-
-    it('should treat an emoji in the suggestions list as a non-custom logo', () => {
-      // '🐼' IS in mockIconSuggestions
-      renderComponent({appLogo: `emoji:${mockIconSuggestions[0]}`});
-
-      expect(screen.getByRole('heading', {level: 1})).toBeInTheDocument();
-    });
-
-    it('should not auto-select logo when appLogo is already a URL', () => {
-      renderComponent({appLogo: 'https://example.com/logo.png'});
-
-      expect(mockOnLogoSelect).not.toHaveBeenCalled();
     });
   });
 

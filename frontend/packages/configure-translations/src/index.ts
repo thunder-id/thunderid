@@ -23,3 +23,7 @@ export {default as TranslationCreateProvider} from './contexts/TranslationCreate
 export {default as TranslationCreatePage} from './pages/TranslationCreatePage';
 export {default as TranslationsEditPage} from './pages/TranslationsEditPage';
 export {default as TranslationsListPage} from './pages/TranslationsListPage';
+
+// Routes
+export type {TranslationRoutePaths} from './hooks/useTranslationRoutes';
+export {defaultTranslationRoutePaths, default as useTranslationRoutes} from './hooks/useTranslationRoutes';

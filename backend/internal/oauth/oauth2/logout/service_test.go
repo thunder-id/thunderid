@@ -37,7 +37,10 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 )
 
-const testIssuer = "https://issuer.test"
+const (
+	testIssuer      = "https://issuer.test"
+	testExecutionID = "exec-1"
+)
 
 type LogoutServiceTestSuite struct {
 	suite.Suite
@@ -82,7 +85,7 @@ func (suite *LogoutServiceTestSuite) TestInitiateSignOutFlow_StoresContextAndIni
 	flowSvc.EXPECT().InitiateFlow(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, ic *flowexec.FlowInitContext) (string, *tidcommon.ServiceError) {
 			captured = ic
-			return "exec-1", nil
+			return testExecutionID, nil
 		})
 	svc := suite.newServiceWithStore(store, flowSvc)
 
@@ -92,7 +95,7 @@ func (suite *LogoutServiceTestSuite) TestInitiateSignOutFlow_StoresContextAndIni
 
 	suite.Nil(svcErr)
 	suite.Require().NotNil(initiation)
-	suite.Equal("exec-1", initiation.ExecutionID)
+	suite.Equal(testExecutionID, initiation.ExecutionID)
 	suite.Equal("logout-1", initiation.LogoutID)
 	// The flow carries no post-logout data — it stays protocol-agnostic.
 	suite.Require().NotNil(captured)
@@ -139,6 +142,141 @@ func (suite *LogoutServiceTestSuite) TestCompleteSignOut_UnknownID() {
 
 	suite.Require().NoError(err)
 	suite.Empty(redirectURI)
+}
+
+func (suite *LogoutServiceTestSuite) TestInitiateSignOutFlow_StripsIDTokenHintFromInitiatorRequest() {
+	// id_token_hint has already been consumed by the OAuth layer at Resolve() to identify the
+	// target client; it must not be persisted into the flow context store as part of the initiator
+	// request. Other logout params (state, client_id, post_logout_redirect_uri) are not
+	// credential-bearing and must be preserved.
+	store := newLogoutRequestStoreInterfaceMock(suite.T())
+	store.EXPECT().AddRequest(mock.Anything, mock.Anything).Return("logout-1", nil)
+	flowSvc := flowexecmock.NewFlowExecServiceInterfaceMock(suite.T())
+	var captured *flowexec.FlowInitContext
+	flowSvc.EXPECT().InitiateFlow(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, ic *flowexec.FlowInitContext) (string, *tidcommon.ServiceError) {
+			captured = ic
+			return testExecutionID, nil
+		})
+	svc := suite.newServiceWithStore(store, flowSvc)
+
+	_, svcErr := svc.InitiateSignOutFlow(context.Background(), &LogoutResolution{
+		AppID: "app-1",
+		QueryParams: map[string][]string{
+			"id_token_hint":            {"header.payload.sig"},
+			"client_id":                {"client-x"},
+			"post_logout_redirect_uri": {"https://rp.example/after"},
+			"state":                    {"xyz"},
+		},
+	})
+
+	suite.Nil(svcErr)
+	suite.Require().NotNil(captured)
+	suite.Require().NotNil(captured.InitiatorRequest)
+	forwarded := captured.InitiatorRequest.QueryParams
+	suite.NotContains(forwarded, "id_token_hint")
+	suite.Equal([]string{"client-x"}, forwarded["client_id"])
+	suite.Equal([]string{"https://rp.example/after"}, forwarded["post_logout_redirect_uri"])
+	suite.Equal([]string{"xyz"}, forwarded["state"])
+}
+
+func (suite *LogoutServiceTestSuite) TestFilterQueryParams() {
+	testCases := []struct {
+		name     string
+		input    map[string][]string
+		exclude  []string
+		expected map[string][]string
+	}{
+		{
+			name:     "NilInputReturnedAsIs",
+			input:    nil,
+			exclude:  []string{"id_token_hint"},
+			expected: nil,
+		},
+		{
+			name:     "EmptyInputReturnedAsIs",
+			input:    map[string][]string{},
+			exclude:  []string{"id_token_hint"},
+			expected: map[string][]string{},
+		},
+		{
+			name: "NoExcludeReturnsCopy",
+			input: map[string][]string{
+				"client_id": {"c1"},
+				"state":     {"s1"},
+			},
+			exclude: nil,
+			expected: map[string][]string{
+				"client_id": {"c1"},
+				"state":     {"s1"},
+			},
+		},
+		{
+			name: "RemovesNamedKey",
+			input: map[string][]string{
+				"id_token_hint": {"header.payload.sig"},
+				"client_id":     {"c1"},
+			},
+			exclude: []string{"id_token_hint"},
+			expected: map[string][]string{
+				"client_id": {"c1"},
+			},
+		},
+		{
+			name: "RemovesMultipleKeys",
+			input: map[string][]string{
+				"a": {"1"},
+				"b": {"2"},
+				"c": {"3"},
+			},
+			exclude: []string{"a", "c"},
+			expected: map[string][]string{
+				"b": {"2"},
+			},
+		},
+		{
+			name: "UnknownExcludeIsNoOp",
+			input: map[string][]string{
+				"client_id": {"c1"},
+			},
+			exclude: []string{"not_present"},
+			expected: map[string][]string{
+				"client_id": {"c1"},
+			},
+		},
+		{
+			name: "MatchIsCaseSensitive",
+			input: map[string][]string{
+				"ID_Token_Hint": {"header.payload.sig"},
+				"id_token_hint": {"other"},
+			},
+			exclude: []string{"id_token_hint"},
+			expected: map[string][]string{
+				"ID_Token_Hint": {"header.payload.sig"},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			result := filterQueryParams(tc.input, tc.exclude...)
+			suite.Equal(tc.expected, result)
+		})
+	}
+}
+
+func (suite *LogoutServiceTestSuite) TestFilterQueryParams_DoesNotMutateInput() {
+	input := map[string][]string{
+		"id_token_hint": {"header.payload.sig"},
+		"client_id":     {"c1"},
+	}
+
+	_ = filterQueryParams(input, "id_token_hint")
+
+	// Original map must remain intact — filterQueryParams returns a copy.
+	suite.Contains(input, "id_token_hint")
+	suite.Equal([]string{"header.payload.sig"}, input["id_token_hint"])
+	suite.Equal([]string{"c1"}, input["client_id"])
 }
 
 func clientWithPostLogout(uris ...string) *providers.OAuthClient {

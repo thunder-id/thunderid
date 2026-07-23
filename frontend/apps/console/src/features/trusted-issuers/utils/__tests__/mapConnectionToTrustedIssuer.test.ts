@@ -35,24 +35,6 @@ const BASE_CONNECTION: ConnectionResponse = {
 };
 
 describe('mapConnectionToTrustedIssuer', () => {
-  it('should map the client id when present on the connection', () => {
-    const result: TrustedIssuer = mapConnectionToTrustedIssuer({
-      ...BASE_CONNECTION,
-      clientId: 'thunderid-console',
-    });
-
-    expect(result.clientId).toBe('thunderid-console');
-  });
-
-  it('should default the client id when absent on the connection', () => {
-    const result: TrustedIssuer = mapConnectionToTrustedIssuer({
-      ...BASE_CONNECTION,
-      clientId: undefined,
-    } as unknown as ConnectionResponse);
-
-    expect(result.clientId).toBeUndefined();
-  });
-
   it('should map the core trusted-issuer fields', () => {
     const result: TrustedIssuer = mapConnectionToTrustedIssuer(BASE_CONNECTION);
 

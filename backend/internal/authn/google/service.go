@@ -62,7 +62,7 @@ func newGoogleOIDCAuthnService(internal authnoidc.OIDCAuthnServiceInterface,
 
 // BuildAuthorizeURL constructs the authorization request URL for Google OIDC authentication.
 func (g *googleOIDCAuthnService) BuildAuthorizeURL(
-	ctx context.Context, idpID string) (string, *tidcommon.ServiceError) {
+	ctx context.Context, idpID string) (string, map[string]string, *tidcommon.ServiceError) {
 	return g.internal.BuildAuthorizeURL(ctx, idpID)
 }
 
@@ -235,20 +235,26 @@ func (g *googleOIDCAuthnService) GetOAuthClientConfig(ctx context.Context, idpID
 }
 
 // Authenticate performs the full Google OIDC authentication flow: exchanges the code for a token,
-// extracts ID token claims, and resolves the internal user.
+// extracts ID token claims, validates the nonce, and resolves the internal user.
 // A missing internal user is NOT an error — the caller decides how to handle it.
-func (g *googleOIDCAuthnService) Authenticate(ctx context.Context, idpID, code string) (
-	*common.AuthnResult, *tidcommon.ServiceError) {
+func (g *googleOIDCAuthnService) Authenticate(ctx context.Context, idpID string,
+	authzData common.AuthorizationData) (*common.AuthnResult, *tidcommon.ServiceError) {
 	logger := g.logger.With(log.String("idpId", idpID))
 	logger.Debug(ctx, "Performing federated Google OIDC authentication")
 
-	tokenResp, svcErr := g.ExchangeCodeForToken(ctx, idpID, code, true)
+	tokenResp, svcErr := g.ExchangeCodeForToken(ctx, idpID, authzData.Code, true)
 	if svcErr != nil {
 		return nil, svcErr
 	}
 
 	claims, svcErr := g.GetIDTokenClaims(ctx, tokenResp.IDToken)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	// Validate that the ID token nonce matches the server-generated nonce.
+	if svcErr := authnoauth.ValidateNonce(ctx, claims, authzData.Nonce, logger); svcErr != nil {
+		logger.Debug(ctx, "OIDC nonce validation failed")
 		return nil, svcErr
 	}
 

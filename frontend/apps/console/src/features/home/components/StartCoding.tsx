@@ -22,6 +22,7 @@ import type {JSX} from 'react';
 import {useRef, useState, useEffect} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import TechnologyBasedApplicationTemplateMetadata from '../../applications/config/TechnologyBasedApplicationTemplateMetadata';
 
 export default function StartCoding(): JSX.Element {
@@ -34,7 +35,7 @@ export default function StartCoding(): JSX.Element {
 
   const handleFrameworkClick = (frameworkId: string) => {
     // Navigate to applications page with the selected type as a query parameter
-    navigate(`/applications/types?type=${frameworkId}`)?.catch(() => undefined);
+    navigate(`${RouteConfig.applications.types()}?type=${frameworkId}`)?.catch(() => undefined);
   };
 
   const checkScroll = () => {

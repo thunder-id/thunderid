@@ -19,11 +19,19 @@
 import type {JSX} from 'react';
 import TrustedIssuerCreateForm from '../components/TrustedIssuerCreateForm';
 
+interface TrustedIssuerWizardStepProps {
+  /** Connection name collected on the wizard's name step. */
+  name: string;
+  /** Call when the create request 409s on a duplicate name, to bounce back to the name step. */
+  onNameConflict: () => void;
+}
+
 /**
  * The "trusted-idp" configure step plugged into the "Add custom connection" wizard (see
  * `customConfigureSteps` on `ConnectionCreateWizardPage`). Renders the trusted-issuer create
- * form; the wizard supplies the surrounding chrome (breadcrumb, progress, Back, close).
+ * form; the wizard supplies the surrounding chrome (breadcrumb, progress, Back, close) and the
+ * name, collected on its own name step.
  */
-export default function TrustedIssuerWizardStep(): JSX.Element {
-  return <TrustedIssuerCreateForm />;
+export default function TrustedIssuerWizardStep({name, onNameConflict}: TrustedIssuerWizardStepProps): JSX.Element {
+  return <TrustedIssuerCreateForm name={name} onNameConflict={onNameConflict} />;
 }

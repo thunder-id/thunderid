@@ -38,6 +38,12 @@ func (errRuntimeStore) Put(context.Context, providers.RuntimeStoreNamespace, str
 	return errors.New("store failure")
 }
 
+func (errRuntimeStore) PutIfNotExists(
+	context.Context, providers.RuntimeStoreNamespace, string, []byte, int64,
+) (bool, error) {
+	return false, errors.New("store failure")
+}
+
 func (errRuntimeStore) Get(context.Context, providers.RuntimeStoreNamespace, string) ([]byte, error) {
 	return nil, errors.New("store failure")
 }

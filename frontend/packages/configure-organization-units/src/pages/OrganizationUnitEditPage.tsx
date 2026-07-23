@@ -45,7 +45,9 @@ import EditGeneralSettings from '../components/edit-organization-unit/general-se
 import EditGroups from '../components/edit-organization-unit/group-settings/EditGroupSettings';
 import EditUsers from '../components/edit-organization-unit/user-settings/EditUserSettings';
 import OrganizationUnitDeleteDialog from '../components/OrganizationUnitDeleteDialog';
+import OrganizationUnitTreeConstants from '../constants/organization-unit-tree-constants';
 import useOrganizationUnit from '../contexts/useOrganizationUnit';
+import useOrganizationUnitRoutes from '../hooks/useOrganizationUnitRoutes';
 import type {OUNavigationState} from '../models/navigation';
 import type {OrganizationUnit} from '../models/organization-unit';
 
@@ -73,6 +75,7 @@ export default function OrganizationUnitEditPage(): JSX.Element {
   const {id} = useParams<{id: string}>();
   const navigate = useNavigate();
   const location = useLocation();
+  const routes = useOrganizationUnitRoutes();
   const {t} = useTranslation();
   const logger = useLogger('OrganizationUnitEditPage');
 
@@ -92,11 +95,11 @@ export default function OrganizationUnitEditPage(): JSX.Element {
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [tempName, setTempName] = useState('');
   const [tempDescription, setTempDescription] = useState('');
-  const listUrl = '/organization-units';
+  const listUrl = routes.list();
 
   const handleBack = async (): Promise<void> => {
     if (fromOU) {
-      await navigate(`/organization-units/${fromOU.id}`);
+      await navigate(routes.detail(fromOU.id));
     } else {
       await navigate(listUrl);
     }
@@ -207,16 +210,29 @@ export default function OrganizationUnitEditPage(): JSX.Element {
       )}
       {/* Header */}
       <PageTitle>
-        <PageTitle.BackButton component={<Link to={fromOU ? `/organization-units/${fromOU.id}` : listUrl} />}>
+        <PageTitle.BackButton component={<Link to={fromOU ? routes.detail(fromOU.id) : listUrl} />}>
           {backButtonText}
         </PageTitle.BackButton>
-        <PageTitle.Avatar sx={{overflow: 'visible'}}>
+        <PageTitle.Avatar variant="rounded" sx={{overflow: 'visible'}}>
           <ResourceAvatar
+            size={55}
+            variant="rounded"
+            supportedShapes={['rounded']}
             editable={!organizationUnit.isReadOnly}
             value={editedOU.logoUrl ?? organizationUnit.logoUrl ?? undefined}
-            fallback="emoji:🏛️"
-            editAriaLabel={t('organizationUnits:edit.page.logoUpdate.label')}
-            onSelect={(newLogoUrl: string) => setEditedOU((prev) => ({...prev, logoUrl: newLogoUrl}))}
+            fallback={OrganizationUnitTreeConstants.DEFAULT_AVATAR}
+            editAriaLabel={t('organizationUnits:edit.page.logoUpdate.label', 'Update Logo')}
+            onSelect={(newLogoUrl: string) =>
+              setEditedOU((prev) => {
+                if (newLogoUrl === organizationUnit.logoUrl) {
+                  const {logoUrl, ...rest} = prev;
+                  void logoUrl;
+                  return rest;
+                }
+                return {...prev, logoUrl: newLogoUrl};
+              })
+            }
+            onSave={handleSave}
           />
         </PageTitle.Avatar>
         <PageTitle.Header>

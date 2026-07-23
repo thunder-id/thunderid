@@ -30,7 +30,9 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
+	"github.com/thunder-id/thunderid/internal/runtimestore/inmemory"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowexecmock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
@@ -94,6 +96,7 @@ func (suite *InitTestSuite) TestInitialize() {
 		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr()),
 		suite.mockResourceService,
 		suite.mockJWTService, suite.mockFlowExecService, nil, testhelpers.OAuthConfig(),
+		inmemory.Initialize("test-deployment"), transaction.NewNoOpTransactioner(),
 	)
 
 	assert.NoError(suite.T(), err)
@@ -109,6 +112,7 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr()),
 		suite.mockResourceService,
 		suite.mockJWTService, suite.mockFlowExecService, nil, testhelpers.OAuthConfig(),
+		inmemory.Initialize("test-deployment"), transaction.NewNoOpTransactioner(),
 	)
 	assert.NoError(suite.T(), err)
 
@@ -126,6 +130,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSConfiguration() {
 		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr()),
 		suite.mockResourceService,
 		suite.mockJWTService, suite.mockFlowExecService, nil, testhelpers.OAuthConfig(),
+		inmemory.Initialize("test-deployment"), transaction.NewNoOpTransactioner(),
 	)
 	assert.NoError(suite.T(), err)
 

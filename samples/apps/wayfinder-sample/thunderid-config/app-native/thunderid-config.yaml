@@ -214,6 +214,13 @@ nodes:
               label: Continue
               variant: PRIMARY
               eventType: SUBMIT
+        - category: DISPLAY
+          id: rich_text_signin
+          action:
+            ref: action_signin
+          label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">Already have an account? </span><a href="#" data-action-ref="action_signin" class="rich-text-link"><span class="rich-text-pre-wrap">Sign in</span></a></p>
+          resourceType: ELEMENT
+          type: RICH_TEXT
     prompts:
       - inputs:
           - ref: input_username
@@ -227,6 +234,9 @@ nodes:
         action:
           ref: action_credentials
           nextNode: basic_auth
+      - action:
+          ref: action_signin
+          nextNode: call_authentication
   - id: basic_auth
     type: TASK_EXECUTION
     executor:
@@ -310,6 +320,11 @@ nodes:
               label: '<h3 class="rich-text-heading-h3"><a href="{{meta(application.url)}}" target="_blank" rel="noopener noreferrer" class="rich-text-link"><span class="rich-text-pre-wrap">Go to Wayfinder</span></a></h3>'
     message: Registration complete
     next: end
+  - id: call_authentication
+    type: CALL
+    flow:
+      ref: 0193b0a1-1001-7000-8000-000000000010
+    onSuccess: end
   - id: end
     type: END
 
@@ -350,6 +365,13 @@ nodes:
               label: Send recovery link
               variant: PRIMARY
               eventType: SUBMIT
+        - category: DISPLAY
+          id: rich_text_signin
+          action:
+            ref: action_signin
+          label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">Remembered your password? </span><a href="#" data-action-ref="action_signin" class="rich-text-link"><span class="rich-text-pre-wrap">Sign in</span></a></p>
+          resourceType: ELEMENT
+          type: RICH_TEXT
     prompts:
       - inputs:
           - ref: input_username
@@ -359,6 +381,9 @@ nodes:
         action:
           ref: action_submit_username
           nextNode: identify_user
+      - action:
+          ref: action_signin
+          nextNode: call_authentication
   - id: identify_user
     type: TASK_EXECUTION
     executor:
@@ -478,6 +503,11 @@ nodes:
           variant: HEADING_6
     message: Password Reset Successful
     next: end
+  - id: call_authentication
+    type: CALL
+    flow:
+      ref: 0193b0a1-1001-7000-8000-000000000010
+    onSuccess: end
   - id: end
     type: END
 
@@ -993,6 +1023,107 @@ nodes:
     type: END
 
 ---
+resource_type: flow
+id: 0193b0a1-1001-7000-8000-000000000010
+name: Wayfinder App Authentication Flow
+handle: wayfinder-app-auth-flow
+flowType: AUTHENTICATION
+nodes:
+  - id: start
+    type: START
+    onSuccess: prompt_credentials
+  - id: prompt_credentials
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: text_001
+          label: "{{ t(signin:forms.credentials.title) }}"
+          variant: HEADING_1
+        - type: BLOCK
+          id: block_001
+          components:
+            - id: input_001
+              ref: username
+              type: TEXT_INPUT
+              label: "{{ t(signin:forms.credentials.fields.username.label) }}"
+              required: true
+              placeholder: "{{ t(signin:forms.credentials.fields.username.placeholder) }}"
+            - id: input_002
+              ref: password
+              type: PASSWORD_INPUT
+              label: "{{ t(signin:forms.credentials.fields.password.label) }}"
+              required: true
+              placeholder: "{{ t(signin:forms.credentials.fields.password.placeholder) }}"
+            - type: ACTION
+              id: action_001
+              label: "{{ t(signin:forms.credentials.actions.submit.label) }}"
+              variant: PRIMARY
+              eventType: SUBMIT
+        - category: DISPLAY
+          id: rich_text_forgot_password
+          action:
+            ref: action_forgot_password
+          label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.prefix) }} </span><a href="#" data-action-ref="action_forgot_password" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.label) }}</span></a></p>
+          resourceType: ELEMENT
+          type: RICH_TEXT
+        - category: DISPLAY
+          id: rich_text_signup
+          action:
+            ref: action_signup
+          label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.sign_up.prefix) }} </span><a href="#" data-action-ref="action_signup" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.sign_up.label) }}</span></a></p>
+          resourceType: ELEMENT
+          type: RICH_TEXT
+    prompts:
+      - inputs:
+          - ref: input_001
+            identifier: username
+            type: TEXT_INPUT
+            required: true
+          - ref: input_002
+            identifier: password
+            type: PASSWORD_INPUT
+            required: true
+        action:
+          ref: action_001
+          nextNode: credentials_auth
+      - action:
+          ref: action_forgot_password
+          nextNode: call_recovery
+      - action:
+          ref: action_signup
+          nextNode: call_registration
+  - id: credentials_auth
+    type: TASK_EXECUTION
+    executor:
+      name: CredentialsAuthExecutor
+    onSuccess: authorization_check
+    onIncomplete: prompt_credentials
+  - id: authorization_check
+    type: TASK_EXECUTION
+    executor:
+      name: AuthorizationExecutor
+    onSuccess: auth_assert
+  - id: auth_assert
+    type: TASK_EXECUTION
+    executor:
+      name: AuthAssertExecutor
+    onSuccess: end
+  - id: call_recovery
+    type: CALL
+    flow:
+      ref: 0193b0a1-1001-7000-8000-000000000002
+    onSuccess: end
+  - id: call_registration
+    type: CALL
+    flow:
+      ref: 0193b0a1-1001-7000-8000-000000000001
+    onSuccess: end
+  - id: end
+    type: END
+
+---
 resource_type: application
 id: wayfinder-app
 name: Wayfinder
@@ -1000,7 +1131,8 @@ description: Wayfinder Travel sample application
 ouHandle: default
 url: http://localhost:5173
 logoUrl: "emoji:✈️"
-registrationFlowHandle: wayfinder-registration-autosignin-flow
+authFlowHandle: wayfinder-app-auth-flow
+registrationFlowHandle: wayfinder-registration-flow
 recoveryFlowHandle: wayfinder-recovery-flow
 isRegistrationFlowEnabled: true
 isRecoveryFlowEnabled: true

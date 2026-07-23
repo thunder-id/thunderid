@@ -23,6 +23,7 @@ import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import HomeFloatingLogos from './HomeFloatingLogos';
+import RouteConfig from '../../../configs/RouteConfig';
 import useGetApplications from '../../applications/api/useGetApplications';
 
 export default function StartBuildingSection(): JSX.Element {
@@ -68,7 +69,7 @@ export default function StartBuildingSection(): JSX.Element {
                     variant="contained"
                     size="small"
                     onClick={() => {
-                      navigate('/applications/types')?.catch(() => undefined);
+                      navigate(RouteConfig.applications.types())?.catch(() => undefined);
                     }}
                     sx={{textTransform: 'none'}}
                   >
@@ -89,7 +90,7 @@ export default function StartBuildingSection(): JSX.Element {
                   variant="contained"
                   size="small"
                   onClick={() => {
-                    navigate('/applications/types')?.catch(() => undefined);
+                    navigate(RouteConfig.applications.types())?.catch(() => undefined);
                   }}
                   sx={{textTransform: 'none'}}
                 >

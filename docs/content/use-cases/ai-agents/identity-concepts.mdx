@@ -17,7 +17,7 @@ This page explains the identity concepts behind the AI agent sample you set up i
 
 A user type defines who can exist in the system and what attributes they carry. Each user record belongs to exactly one user type. Wayfinder defines a `Customer` user type for the two demo consumers, John Doe and Jane Smith, with standard attributes like username, email, and name.
 
-See [User Types](../../../guides/guides/users/user-types).
+See [User Types](../../../guides/users/user-types).
 
 ## Resources and Permissions
 
@@ -40,7 +40,7 @@ wayfinder                               (Resource Server)
 
 `wayfinder` protects both the booking REST API on `/api/*` and the MCP tools on `/mcp`. The Wayfinder Server checks the same `booking:*` permissions on both surfaces in scope mode. In AuthZEN mode, the MCP server sends the same complete permission string as `action.name` in an AuthZEN access evaluation request.
 
-Permissions are included in access tokens. See [Resource Servers](../../../guides/guides/resource-servers).
+Permissions are included in access tokens. See [Resource Servers](../../../guides/resource-servers).
 
 ## Roles
 
@@ -52,13 +52,13 @@ A role bundles permissions for a class of principal. A user's or agent's effecti
 
 John Doe carries both user roles; Jane Smith carries only `Booking User`. The `Recommender` role is assigned to the `WAYFINDER-CONCIERGE` agent, not to a user.
 
-See [Authorization](../../../guides/key-concepts/authorization).
+See [Authorization](../../../key-concepts/authorization).
 
 ## Application
 
 An application is the OAuth2 client that <ProductName /> issues tokens to. Wayfinder Web is registered as `WAYFINDER`, a public, PKCE-enforced browser client.
 
-See [Manage Applications](../../../guides/guides/applications/manage-applications).
+See [Manage Applications](../../../guides/applications/manage-applications).
 
 ## Agent
 
@@ -67,7 +67,7 @@ An agent is a first-class non-human principal in <ProductName /> with its own cr
 - `client_credentials`: for the agent's own M2M token, used to call browsing tools.
 - `authorization_code` (with PKCE): for the on-behalf-of flow, where the user consents and the agent calls mutating tools as the user.
 
-See [Manage Agents](../../../guides/guides/agents/manage-agents) and [Agent Authentication](../../../guides/guides/agents/agent-authentication).
+See [Manage Agents](../../../guides/agents/manage-agents) and [Agent Authentication](../../../guides/agents/agent-authentication).
 
 ## Flows
 
@@ -75,4 +75,4 @@ A flow is the sequence of steps a user moves through when signing in or granting
 
 The consent screen surfaces each requested `booking:*` permission as an individual toggle. The user picks which ones to grant, and the issued token carries only what they ticked. The agent cannot widen its access after the fact. The resulting OBO token identifies *both* the user (as the subject) and the agent (as the actor), so downstream services know the request was made by an agent acting for that user. The token's effective permissions are the intersection of what the user holds and what the user just consented to.
 
-See [Build a Flow](../../../guides/guides/flows/build-a-flow) and [Agent Authentication](../../../guides/guides/agents/agent-authentication).
+See [Build a Flow](../../../guides/flows/build-a-flow) and [Agent Authentication](../../../guides/agents/agent-authentication).

@@ -150,8 +150,9 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 	var audiences []string
 	if targetRS == nil {
 		// OIDC-only assertion with no resource: the token is not bound to a resource server, so its
-		// audience is the client_id and it carries only the OIDC scopes.
-		audiences = []string{tokenRequest.ClientID}
+		// audience is the app's configured default audiences (falling back to the client_id) and it
+		// carries only the OIDC scopes.
+		audiences = []string{oauthApp.ResolveDefaultAudience(tokenRequest.ClientID)}
 		grantedScopes = oidcScopes
 	} else {
 		permissionScopes, errResp = resourceindicators.DownscopeToResourceServer(

@@ -22,6 +22,7 @@ import type {JSX} from 'react';
 import {useState, useEffect, useRef} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../../configs/RouteConfig';
 import type {IntegrationGuides} from '../../models/application-templates';
 import TechnologyGuide from '../edit-application/integration-guides/TechnologyGuide';
 
@@ -248,7 +249,7 @@ export default function IntegrationGuide({
             onClick={(): void => {
               if (applicationId) {
                 (async () => {
-                  await navigate(`/applications/${applicationId}`);
+                  await navigate(RouteConfig.applications.detail(applicationId));
                 })().catch(() => {
                   // Ignore navigation errors
                 });
@@ -260,7 +261,7 @@ export default function IntegrationGuide({
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       (async () => {
-                        await navigate(`/applications/${applicationId}`);
+                        await navigate(RouteConfig.applications.detail(applicationId));
                       })().catch(() => {
                         // Ignore navigation errors
                       });

@@ -36,6 +36,7 @@ import PasskeyProperties from './execution-properties/PasskeyProperties';
 import PermissionValidatorProperties from './execution-properties/PermissionValidatorProperties';
 import ProvisioningProperties from './execution-properties/ProvisioningProperties';
 import SmsProperties from './execution-properties/SmsProperties';
+import SsoCheckProperties from './execution-properties/SsoCheckProperties';
 import UserTypeResolverProperties from './execution-properties/UserTypeResolverProperties';
 import type {CommonResourcePropertiesPropsInterface} from '@/features/flows/components/resource-property-panel/ResourceProperties';
 import type {FlowNodeInput} from '@/features/flows/models/responses';
@@ -126,8 +127,12 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     case ExecutionTypes.OpenID4VPVerify:
       executorSpecificProperties = <OpenID4VPProperties resource={resource} onChange={onChange} />;
       break;
+    case ExecutionTypes.SSOCheck:
+      executorSpecificProperties = <SsoCheckProperties resource={resource} onChange={onChange} />;
+      break;
     case ExecutionTypes.CredentialSetter:
     case ExecutionTypes.AttributeUniquenessValidator:
+    case ExecutionTypes.Session:
       executorSpecificProperties = <NoConfigProperties />;
       break;
     default:

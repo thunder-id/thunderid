@@ -45,12 +45,6 @@ interface BlockContext {
   hasMultipleSubmits?: boolean;
   /** ID of the primary submit action that stays as type="submit" */
   primarySubmitId?: string;
-  /** Fallback sign-up URL for RICH_TEXT elements that embed `application.sign_up_url` */
-  signUpFallbackUrl?: string;
-  /** Fallback sign-in URL for RICH_TEXT elements that embed `application.sign_in_url` */
-  signInFallbackUrl?: string;
-  /** Fallback forgot-password URL for RICH_TEXT elements that embed `application.forgot_password_url` */
-  forgotPasswordFallbackUrl?: string;
 }
 
 interface SubmitButtonAdapterProps {
@@ -241,16 +235,7 @@ function renderFormSubComponent(
   }
 
   if (sub.type === 'RICH_TEXT') {
-    return (
-      <RichTextAdapter
-        key={sub.id ?? compIndex}
-        component={sub}
-        resolve={ctx.resolve}
-        signUpFallbackUrl={ctx.signUpFallbackUrl}
-        signInFallbackUrl={ctx.signInFallbackUrl}
-        forgotPasswordFallbackUrl={ctx.forgotPasswordFallbackUrl}
-      />
-    );
+    return <RichTextAdapter key={sub.id ?? compIndex} component={sub} resolve={ctx.resolve} />;
   }
 
   if (

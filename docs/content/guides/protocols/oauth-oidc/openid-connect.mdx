@@ -1,0 +1,117 @@
+---
+title: OpenID Connect
+docType: reference
+sidebar_position: 1
+description: OpenID Connect Core 1.0 in {{ProductName}}, the identity layer on top of OAuth 2.1, including ID tokens, authentication context parameters, and standard claims.
+---
+import { OIDCFlowDiagram } from '../../../../src/components/OAuthFlowDiagrams';
+
+# OpenID Connect
+
+**OpenID Connect Core 1.0** ([OIDC Core](https://openid.net/specs/openid-connect-core-1_0.html)) is the identity layer on top of OAuth 2.1. Where OAuth tells you *what* a client can do, OIDC tells you *who* the user is. <ProductName /> implements OIDC Core as a thin layer over its OAuth 2.1 authorization code grant, adding the `openid` scope, the ID Token, the [UserInfo](../userinfo) endpoint, and a small set of authentication-context request parameters.
+
+If your application needs the user's identity, request the `openid` scope. If it also needs to call APIs on the user's behalf, keep the access token. The two are complementary, not competing.
+
+## How It Works
+
+<OIDCFlowDiagram />
+
+The ID Token is a signed JWT delivered to the client at the token endpoint. It is **never** sent to a resource server: its audience is the client itself. Resource servers use the access token; clients use the ID Token to establish a local session.
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect | Behavior |
+|---|---|
+| Activation | Include `openid` in the `scope` parameter of the authorization request |
+| ID Token | Issued at the token endpoint alongside the access token |
+| ID Token format | JWS by default; can be configured per app as JWE or NESTED_JWT (see [Token Formats](../token-formats)) |
+| UserInfo | `GET /oauth2/userinfo`, see [UserInfo](../userinfo) |
+| Standard scopes | `openid`, `profile`, `email`, `phone`, `address`, see [Claims & Scopes](../claims-and-scopes) |
+| Subject types | `public` only: pairwise subject identifiers are not supported |
+| Discovery | `/.well-known/openid-configuration`, see [Server Metadata](../server-metadata) |
+
+</details>
+
+## ID Token Claims
+
+| Claim | Description |
+|---|---|
+| `iss` | Issuer: the <ProductName /> instance |
+| `sub` | Stable identifier for the user within `iss` |
+| `aud` | The requesting application's `client_id` |
+| `exp` | Expiry as a Unix timestamp |
+| `iat` | Issued-at as a Unix timestamp |
+| `auth_time` | When the user actually authenticated, included when available |
+| `nonce` | Echoed from the authorization request, clients **must** verify this |
+| `acr` | Authentication Context Class Reference, which authentication flow ran |
+
+Additional user claims (e.g. `name`, `email`) are added based on the requested scopes, see [Claims & Scopes](../claims-and-scopes).
+
+## Authentication Context Parameters
+
+These parameters on the authorization request control *how* the user authenticates and *what* the ID Token reflects about that authentication.
+
+| Parameter | Purpose | Notes |
+|---|---|---|
+| `nonce` | Replay protection for the ID Token | Max 64 characters. Required for clients that accept the ID Token. |
+| `prompt` | Control re-authentication | Only `login` and `consent` is currently honored, see below |
+| `acr_values` | Request a specific authentication context | <ProductName /> selects an authentication flow that satisfies the requested ACR |
+| `claims` | Request specific claims claim-by-claim | See [Claims & Scopes](../claims-and-scopes) |
+
+### `prompt` Values
+
+| Value | Behavior |
+|---|---|
+| `login` | Forces the user to authenticate. **Supported.** |
+| `none` | Returns `login_required`. <ProductName /> does not yet maintain server-side sessions, so silent re-authentication is not available. |
+| `consent` | Forces the user to re-grant consent for all required attributes, even if consent was previously granted. |
+| `select_account` | Returns `account_selection_required`: account selection is not currently supported. |
+
+## Try It in <ProductName />
+
+OpenID Connect activates as soon as a client requests the `openid` scope. No deployment-level toggle is needed.
+
+Agents typically use OIDC features only when running an `authorization_code` grant on a user's behalf; for pure machine-to-machine grants (`client_credentials`) there is no user identity to put in an ID Token.
+
+### Console
+
+1. Open **Applications** or **Agents** in the <ProductName /> Console and select your client.
+2. Open the **Token** tab and ensure `openid` is among the allowed `scopes` (it is by default).
+3. Optionally configure ID Token format, signing algorithm, and lifetime on the same tab (see [Token Formats](../token-formats)).
+4. Save.
+
+### Run an OIDC Sign-In
+
+```http
+GET /oauth2/authorize
+  ?response_type=code
+  &client_id=$CLIENT_ID
+  &redirect_uri=https://app.example.com/callback
+  &scope=openid%20profile%20email
+  &state=xyz
+  &nonce=$NONCE
+  &code_challenge=$CODE_CHALLENGE
+  &code_challenge_method=S256
+```
+
+The token response will include both an access token and an ID Token:
+
+```json
+{
+  "access_token": "eyJhbGciOi...",
+  "id_token": "eyJhbGciOi...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "eyJhbGciOi...",
+  "scope": "openid profile email"
+}
+```
+
+## Related Guides
+
+- [UserInfo](../userinfo), the endpoint that returns claims about the authenticated user
+- [Claims & Scopes](../claims-and-scopes), how scope requests map to claims in the ID Token and UserInfo
+- [Token Formats](../token-formats), JWS, JWE, and NESTED_JWT options for the ID Token
+- [Authorization Code](../authorization-code), the underlying OAuth flow
+- [Server Metadata](../server-metadata), the `/.well-known/openid-configuration` document

@@ -492,33 +492,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/WebAuthnStartResponse'
         "400":
-          description: 'Bad Request: The request body is malformed or contains invalid data'
+          description: >
+            Bad Request: The request body is malformed or contains invalid data. Client-side
+            failures (invalid input, user or credential not found, etc.) surface as a single
+            authentication failure code (AUTHN-PSK-1001).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               example:
-                code: "PSK-1001"
+                code: "AUTHN-PSK-1001"
                 message:
-                  key: "error.passkeyservice.empty_user_identifier"
-                  defaultValue: "Empty user identifier"
+                  key: "error.authnservice.passkey_authentication_failed"
+                  defaultValue: "Authentication failed"
                 description:
-                  key: "error.passkeyservice.empty_user_identifier_description"
-                  defaultValue: "Either user ID or username must be provided"
-        "404":
-          description: 'Not Found: The user could not be found'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                code: "AUTHN-1008"
-                message:
-                  key: "error.authnservice.user_not_found"
-                  defaultValue: "User not found"
-                description:
-                  key: "error.authnservice.user_not_found_description"
-                  defaultValue: "No user found with the provided attributes"
+                  key: "error.authnservice.passkey_authentication_failed_description"
+                  defaultValue: "The passkey authentication attempt failed"
         "500":
           description: 'Internal Server Error: An unexpected error occurred while processing the request'
           content:
@@ -547,66 +536,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthenticationResponse'
         "400":
-          description: 'Bad Request: The request body is malformed or contains invalid data'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                emptyCredentialId:
-                  summary: Empty credential ID
-                  value:
-                    code: "PSK-1003"
-                    message:
-                      key: "error.passkeyservice.empty_credential_id"
-                      defaultValue: "Empty credential ID"
-                    description:
-                      key: "error.passkeyservice.empty_credential_id_description"
-                      defaultValue: "The credential ID is required"
-                emptyCredentialType:
-                  summary: Empty credential type
-                  value:
-                    code: "PSK-1004"
-                    message:
-                      key: "error.passkeyservice.empty_credential_type"
-                      defaultValue: "Empty credential type"
-                    description:
-                      key: "error.passkeyservice.empty_credential_type_description"
-                      defaultValue: "The credential type is required"
-                invalidAuthenticatorResponse:
-                  summary: Invalid authenticator response
-                  value:
-                    code: "PSK-1005"
-                    message:
-                      key: "error.passkeyservice.invalid_authenticator_response"
-                      defaultValue: "Invalid authenticator response"
-                    description:
-                      key: "error.passkeyservice.invalid_authenticator_response_description"
-                      defaultValue: "The authenticator response is missing required fields (clientDataJSON, authenticatorData, or signature)"
-                emptySessionToken:
-                  summary: Empty session token
-                  value:
-                    code: "PSK-1006"
-                    message:
-                      key: "error.passkeyservice.empty_session_token"
-                      defaultValue: "Empty session token"
-                    description:
-                      key: "error.passkeyservice.empty_session_token_description"
-                      defaultValue: "The session token is required"
-        "404":
-          description: 'Not Found: The user or credential could not be found'
+          description: >
+            Bad Request: The request body is malformed or contains invalid data. Client-side
+            failures (invalid authenticator response, expired session, invalid signature, user or
+            credential not found, etc.) surface as a single authentication failure code
+            (AUTHN-PSK-1001).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               example:
-                code: "AUTHN-1008"
+                code: "AUTHN-PSK-1001"
                 message:
-                  key: "error.authnservice.user_not_found"
-                  defaultValue: "User not found"
+                  key: "error.authnservice.passkey_authentication_failed"
+                  defaultValue: "Authentication failed"
                 description:
-                  key: "error.authnservice.user_not_found_description"
-                  defaultValue: "No user found with the provided attributes"
+                  key: "error.authnservice.passkey_authentication_failed_description"
+                  defaultValue: "The passkey authentication attempt failed"
         "500":
           description: 'Internal Server Error: An unexpected error occurred while processing the request'
           content:
@@ -936,7 +882,7 @@ components:
       properties:
         code:
           type: string
-          description: "Error code. Prefixes: AUTHN-1000 (request format), AUTHN-XXXX (IDP/session), AUTH-CRED-XXXX (credentials), AUTHN-OTP-XXXX (OTP), AUTHN-OTPAUTHN-XXXX (OTP auth), AUTHN-PSK-XXXX (passkey auth), PSK-XXXX (passkey service)."
+          description: "Error code. Prefixes: AUTHN-1000 (request format), AUTHN-XXXX (IDP/session), AUTH-CRED-XXXX (credentials), AUTHN-OTP-XXXX (OTP), AUTHN-OTPAUTHN-XXXX (OTP auth), AUTHN-PSK-XXXX (passkey auth and enrollment)."
           example: "AUTHN-1000"
         message:
           $ref: '#/components/schemas/I18nMessage'

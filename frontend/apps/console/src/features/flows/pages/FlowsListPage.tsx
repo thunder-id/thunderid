@@ -22,6 +22,7 @@ import {Plus} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import FlowsList from '../components/FlowsList';
 
 export default function FlowsListPage(): JSX.Element {
@@ -41,7 +42,7 @@ export default function FlowsListPage(): JSX.Element {
             startIcon={<Plus size={18} />}
             onClick={() => {
               const handler = async () => {
-                await navigate('/flows/create');
+                await navigate(RouteConfig.flows.create());
               };
 
               handler().catch((error: unknown) => {

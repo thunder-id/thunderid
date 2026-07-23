@@ -20,31 +20,24 @@ package par
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
+	"fmt"
 	"testing"
-	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
-	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+	"github.com/thunder-id/thunderid/internal/runtimestore/inmemory"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-const (
-	testDeploymentID = "test-deployment-id"
-	testRandomKey    = "abc"
-)
-
+// StoreTestSuite exercises the parRequestStore adapter against a real in-memory runtime store,
+// verifying the store/consume-once semantics.
 type StoreTestSuite struct {
 	suite.Suite
-	mockDBProvider *providermock.DBProviderInterfaceMock
-	mockDBClient   *providermock.DBClientInterfaceMock
-	store          *parRequestStore
-	ctx            context.Context
-	testRequest    pushedAuthorizationRequest
+	store       *parRequestStore
+	ctx         context.Context
+	testRequest pushedAuthorizationRequest
 }
 
 func TestStoreTestSuite(t *testing.T) {
@@ -52,12 +45,7 @@ func TestStoreTestSuite(t *testing.T) {
 }
 
 func (s *StoreTestSuite) SetupTest() {
-	s.mockDBProvider = &providermock.DBProviderInterfaceMock{}
-	s.mockDBClient = &providermock.DBClientInterfaceMock{}
-	s.store = &parRequestStore{
-		dbProvider:   s.mockDBProvider,
-		deploymentID: testDeploymentID,
-	}
+	s.store = &parRequestStore{storeProvider: inmemory.Initialize("test-deployment")}
 	s.ctx = context.Background()
 	s.testRequest = pushedAuthorizationRequest{
 		ClientID: "test-client",
@@ -80,230 +68,92 @@ func (s *StoreTestSuite) SetupTest() {
 // Tests for Store
 
 func (s *StoreTestSuite) TestStore_Success() {
-	const expirySeconds int64 = 60
-	before := time.Now().UTC()
-	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertPARRequest,
-		mock.MatchedBy(func(key string) bool { return key != "" }),
-		testDeploymentID,
-		mock.MatchedBy(func(data []byte) bool { return len(data) > 0 }),
-		mock.MatchedBy(func(t time.Time) bool {
-			expected := before.Add(time.Duration(expirySeconds) * time.Second)
-			diff := t.Sub(expected)
-			return diff >= -time.Second && diff <= time.Second
-		}),
-	).Return(int64(1), nil)
+	randomKey, err := s.store.Store(s.ctx, s.testRequest, 60)
 
-	randomKey, err := s.store.Store(s.ctx, s.testRequest, expirySeconds)
-
-	assert.NoError(s.T(), err)
-	assert.NotEmpty(s.T(), randomKey)
-	s.mockDBProvider.AssertExpectations(s.T())
-	s.mockDBClient.AssertExpectations(s.T())
-}
-
-func (s *StoreTestSuite) TestStore_DBClientError() {
-	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db client error"))
-
-	randomKey, err := s.store.Store(s.ctx, s.testRequest, int64(60))
-
-	assert.Error(s.T(), err)
-	assert.Empty(s.T(), randomKey)
-}
-
-func (s *StoreTestSuite) TestStore_ExecuteError() {
-	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertPARRequest,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-	).Return(int64(0), errors.New("insert failed"))
-
-	randomKey, err := s.store.Store(s.ctx, s.testRequest, int64(60))
-
-	assert.Error(s.T(), err)
-	assert.Contains(s.T(), err.Error(), "failed to insert PAR request")
-	assert.Empty(s.T(), randomKey)
+	s.Require().NoError(err)
+	s.NotEmpty(randomKey)
 }
 
 func (s *StoreTestSuite) TestStore_GeneratesUniqueURIs() {
-	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertPARRequest,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-	).Return(int64(1), nil)
+	key1, err1 := s.store.Store(s.ctx, s.testRequest, 60)
+	key2, err2 := s.store.Store(s.ctx, s.testRequest, 60)
 
-	key1, err1 := s.store.Store(s.ctx, s.testRequest, int64(60))
-	key2, err2 := s.store.Store(s.ctx, s.testRequest, int64(60))
+	s.Require().NoError(err1)
+	s.Require().NoError(err2)
+	s.NotEqual(key1, key2)
+}
 
-	assert.NoError(s.T(), err1)
-	assert.NoError(s.T(), err2)
-	assert.NotEqual(s.T(), key1, key2)
+func (s *StoreTestSuite) TestStore_PutError() {
+	rt := NewRuntimeStoreProviderMock(s.T())
+	rt.EXPECT().Put(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(fmt.Errorf("put failed"))
+	store := &parRequestStore{storeProvider: rt}
+
+	randomKey, err := store.Store(s.ctx, s.testRequest, 60)
+
+	s.Error(err)
+	s.Contains(err.Error(), "failed to store PAR request")
+	s.Empty(randomKey)
 }
 
 // Tests for Consume
 
 func (s *StoreTestSuite) TestConsume_Success() {
-	data, _ := json.Marshal(s.testRequest)
-	randomKey := "abc123"
-
-	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("QueryContext", mock.Anything, queryGetPARRequest,
-		randomKey, mock.Anything, testDeploymentID,
-	).Return([]map[string]any{
-		{
-			dbColumnRequestURI:    randomKey,
-			dbColumnRequestParams: string(data),
-		},
-	}, nil)
-	s.mockDBClient.On("ExecuteContext", mock.Anything, queryDeletePARRequest,
-		randomKey, testDeploymentID,
-	).Return(int64(1), nil)
+	randomKey, err := s.store.Store(s.ctx, s.testRequest, 60)
+	s.Require().NoError(err)
 
 	result, found, err := s.store.Consume(s.ctx, randomKey)
 
-	assert.NoError(s.T(), err)
-	assert.True(s.T(), found)
-	assert.Equal(s.T(), s.testRequest.ClientID, result.ClientID)
-	assert.Equal(s.T(), s.testRequest.OAuthParameters.RedirectURI, result.OAuthParameters.RedirectURI)
-	assert.Equal(s.T(), s.testRequest.OAuthParameters.StandardScopes, result.OAuthParameters.StandardScopes)
-	assert.Equal(s.T(), s.testRequest.OAuthParameters.PermissionScopes, result.OAuthParameters.PermissionScopes)
+	s.Require().NoError(err)
+	s.True(found)
+	s.Equal(s.testRequest.ClientID, result.ClientID)
+	s.Equal(s.testRequest.OAuthParameters.RedirectURI, result.OAuthParameters.RedirectURI)
+	s.Equal(s.testRequest.OAuthParameters.StandardScopes, result.OAuthParameters.StandardScopes)
+	s.Equal(s.testRequest.OAuthParameters.PermissionScopes, result.OAuthParameters.PermissionScopes)
+}
+
+func (s *StoreTestSuite) TestConsume_ConsumedOnce() {
+	randomKey, err := s.store.Store(s.ctx, s.testRequest, 60)
+	s.Require().NoError(err)
+
+	_, found, err := s.store.Consume(s.ctx, randomKey)
+	s.Require().NoError(err)
+	s.True(found)
+
+	_, found, err = s.store.Consume(s.ctx, randomKey)
+	s.Require().NoError(err)
+	s.False(found, "a consumed PAR request must not be retrievable again")
 }
 
 func (s *StoreTestSuite) TestConsume_NotFound() {
-	randomKey := "missing"
-	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("QueryContext", mock.Anything, queryGetPARRequest,
-		randomKey, mock.Anything, testDeploymentID,
-	).Return([]map[string]any{}, nil)
+	result, found, err := s.store.Consume(s.ctx, "missing")
 
-	result, found, err := s.store.Consume(s.ctx, randomKey)
-
-	assert.NoError(s.T(), err)
-	assert.False(s.T(), found)
-	assert.Equal(s.T(), pushedAuthorizationRequest{}, result)
+	s.Require().NoError(err)
+	s.False(found)
+	s.Equal(pushedAuthorizationRequest{}, result)
 }
 
-func (s *StoreTestSuite) TestConsume_DBClientError() {
-	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(nil, errors.New("db error"))
+func (s *StoreTestSuite) TestConsume_TakeError() {
+	rt := NewRuntimeStoreProviderMock(s.T())
+	rt.EXPECT().Take(mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("take failed"))
+	store := &parRequestStore{storeProvider: rt}
 
-	_, found, err := s.store.Consume(s.ctx, testRandomKey)
+	_, found, err := store.Consume(s.ctx, "abc")
 
-	assert.Error(s.T(), err)
-	assert.False(s.T(), found)
-}
-
-func (s *StoreTestSuite) TestConsume_QueryError() {
-	randomKey := testRandomKey
-	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("QueryContext", mock.Anything, queryGetPARRequest,
-		randomKey, mock.Anything, testDeploymentID,
-	).Return(nil, errors.New("query error"))
-
-	_, found, err := s.store.Consume(s.ctx, randomKey)
-
-	assert.Error(s.T(), err)
-	assert.Contains(s.T(), err.Error(), "failed to query PAR request")
-	assert.False(s.T(), found)
-}
-
-func (s *StoreTestSuite) TestConsume_DeleteError() {
-	randomKey := testRandomKey
-	data, _ := json.Marshal(s.testRequest)
-
-	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("QueryContext", mock.Anything, queryGetPARRequest,
-		randomKey, mock.Anything, testDeploymentID,
-	).Return([]map[string]any{
-		{dbColumnRequestURI: randomKey, dbColumnRequestParams: string(data)},
-	}, nil)
-	s.mockDBClient.On("ExecuteContext", mock.Anything, queryDeletePARRequest,
-		randomKey, testDeploymentID,
-	).Return(int64(0), errors.New("delete error"))
-
-	_, found, err := s.store.Consume(s.ctx, randomKey)
-
-	assert.Error(s.T(), err)
-	assert.Contains(s.T(), err.Error(), "failed to delete PAR request")
-	assert.False(s.T(), found)
-}
-
-func (s *StoreTestSuite) TestConsume_RaceLost_DeleteReturnsZero() {
-	// Another consumer won the race between the SELECT and the DELETE.
-	randomKey := testRandomKey
-	data, _ := json.Marshal(s.testRequest)
-
-	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("QueryContext", mock.Anything, queryGetPARRequest,
-		randomKey, mock.Anything, testDeploymentID,
-	).Return([]map[string]any{
-		{dbColumnRequestURI: randomKey, dbColumnRequestParams: string(data)},
-	}, nil)
-	s.mockDBClient.On("ExecuteContext", mock.Anything, queryDeletePARRequest,
-		randomKey, testDeploymentID,
-	).Return(int64(0), nil)
-
-	_, found, err := s.store.Consume(s.ctx, randomKey)
-
-	assert.NoError(s.T(), err)
-	assert.False(s.T(), found)
-}
-
-func (s *StoreTestSuite) TestConsume_RequestParamsAsBytes() {
-	randomKey := testRandomKey
-	data, _ := json.Marshal(s.testRequest)
-
-	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("QueryContext", mock.Anything, queryGetPARRequest,
-		randomKey, mock.Anything, testDeploymentID,
-	).Return([]map[string]any{
-		{dbColumnRequestURI: randomKey, dbColumnRequestParams: data},
-	}, nil)
-	s.mockDBClient.On("ExecuteContext", mock.Anything, queryDeletePARRequest,
-		randomKey, testDeploymentID,
-	).Return(int64(1), nil)
-
-	result, found, err := s.store.Consume(s.ctx, randomKey)
-
-	assert.NoError(s.T(), err)
-	assert.True(s.T(), found)
-	assert.Equal(s.T(), s.testRequest.ClientID, result.ClientID)
+	s.Error(err)
+	s.Contains(err.Error(), "failed to retrieve PAR request")
+	s.False(found)
 }
 
 func (s *StoreTestSuite) TestConsume_InvalidJSON() {
-	randomKey := testRandomKey
+	store := inmemory.Initialize("test-deployment")
+	s.Require().NoError(store.Put(s.ctx, providers.NamespacePAR, "abc", []byte("{invalid json"), 60))
 
-	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("QueryContext", mock.Anything, queryGetPARRequest,
-		randomKey, mock.Anything, testDeploymentID,
-	).Return([]map[string]any{
-		{dbColumnRequestURI: randomKey, dbColumnRequestParams: "{not valid json"},
-	}, nil)
-	s.mockDBClient.On("ExecuteContext", mock.Anything, queryDeletePARRequest,
-		randomKey, testDeploymentID,
-	).Return(int64(1), nil)
+	parStore := &parRequestStore{storeProvider: store}
+	_, found, err := parStore.Consume(s.ctx, "abc")
 
-	_, found, err := s.store.Consume(s.ctx, randomKey)
-
-	assert.Error(s.T(), err)
-	assert.False(s.T(), found)
-}
-
-func (s *StoreTestSuite) TestConsume_MissingRequestParams() {
-	randomKey := testRandomKey
-
-	s.mockDBProvider.On("GetRuntimeTransientDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("QueryContext", mock.Anything, queryGetPARRequest,
-		randomKey, mock.Anything, testDeploymentID,
-	).Return([]map[string]any{
-		{dbColumnRequestURI: randomKey},
-	}, nil)
-	s.mockDBClient.On("ExecuteContext", mock.Anything, queryDeletePARRequest,
-		randomKey, testDeploymentID,
-	).Return(int64(1), nil)
-
-	_, found, err := s.store.Consume(s.ctx, randomKey)
-
-	assert.Error(s.T(), err)
-	assert.Contains(s.T(), err.Error(), "request_params is missing")
-	assert.False(s.T(), found)
+	s.Error(err)
+	s.False(found)
 }
 
 // Tests for helpers
@@ -311,7 +161,7 @@ func (s *StoreTestSuite) TestConsume_MissingRequestParams() {
 func (s *StoreTestSuite) TestGenerateRandomKey() {
 	key, err := generateRandomKey()
 
-	assert.NoError(s.T(), err)
+	s.Require().NoError(err)
 	// 32 bytes base64url encoded = 43 chars.
-	assert.True(s.T(), len(key) == 43, "expected random key of length 43, got %d", len(key))
+	s.True(len(key) == 43, "expected random key of length 43, got %d", len(key))
 }

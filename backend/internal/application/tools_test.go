@@ -28,8 +28,10 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -39,6 +41,31 @@ type ApplicationToolsTestSuite struct {
 
 func TestApplicationToolsTestSuite(t *testing.T) {
 	suite.Run(t, new(ApplicationToolsTestSuite))
+}
+
+func (suite *ApplicationToolsTestSuite) SetupTest() {
+	config.ResetServerRuntime()
+	cfg := &config.Config{
+		Server: engineconfig.ServerConfig{
+			Identifier: "test-dep",
+			Hostname:   "thunderid.io",
+			Port:       443,
+			PublicURL:  "https://thunderid.io",
+		},
+		Database: config.DatabaseConfig{
+			RuntimeTransient: config.DataSource{Type: "sqlite"},
+		},
+		JWT: engineconfig.JWTConfig{
+			Issuer:         "https://thunderid.io",
+			ValidityPeriod: 3600,
+		},
+	}
+	err := config.InitializeServerRuntime("/tmp/test-application-tools", cfg)
+	suite.Require().NoError(err)
+}
+
+func (suite *ApplicationToolsTestSuite) TearDownTest() {
+	config.ResetServerRuntime()
 }
 
 func (suite *ApplicationToolsTestSuite) TestNewApplicationTools() {

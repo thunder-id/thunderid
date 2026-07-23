@@ -1,0 +1,307 @@
+---
+title: Observability
+docType: guide
+sidebar_position: 5
+persona: iam
+description: Monitor {{ProductName}} authentication events using console, file, or OpenTelemetry outputs.
+---
+
+# Observability
+
+<ProductName /> emits structured events for key identity operations: token issuance, authentication flow execution, and authorization decisions. You can route these events to one or more output backends to monitor your deployment.
+
+## Output Backends
+
+| Backend | Best For |
+|---------|----------|
+| Console | Local development and containerized deployments that collect stdout logs |
+| File | Persistent local log storage |
+| OpenTelemetry | Distributed tracing with backends such as Jaeger or Grafana Tempo |
+
+All backends are disabled by default. For the full list of configuration settings for each backend, see [Observability Configuration](../../deployment/configuration#observability-configuration).
+
+:::note
+These backends carry structured **observability events** (token issuance, flow execution, authorization decisions), not the server's application log. To write the ordinary `INFO`/`WARN`/`ERROR` application log to a file, see [Log Output](../../deployment/configuration#log-output).
+:::
+
+## Set Up OpenTelemetry
+
+<ProductName /> can export observability events as OpenTelemetry (OTel) traces to any OpenTelemetry Protocol (OTLP)-compatible backend. This section walks through enabling the OpenTelemetry output and connecting it to a backend using an OpenTelemetry Collector, Jaeger, or Grafana Tempo.
+
+### How It Works
+
+<ProductName /> publishes internal events, such as token issuance and authentication flow execution, as OpenTelemetry spans. Events with the same `TraceID` are grouped into a single distributed trace.
+
+<ProductName /> exports spans over **OTLP gRPC**. You can point <ProductName /> directly at a backend that accepts OTLP (such as Jaeger or Grafana Tempo), or route spans through an OpenTelemetry Collector for additional processing and fan-out.
+
+### Prerequisites
+
+Before you begin, ensure you have:
+
+- A running <ProductName /> instance with access to `deployment.yaml`.
+- One of the following backends running and reachable from the <ProductName /> server:
+  - [Jaeger](https://www.jaegertracing.io/) v2 or later
+  - [Jaeger](https://www.jaegertracing.io/) v2 or later, fronted by an [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) for additional processing and fan-out
+  - [Grafana Tempo](https://grafana.com/docs/tempo/latest/)
+
+### Enable the OpenTelemetry Output
+
+Add the following to `deployment.yaml` in your <ProductName /> installation directory. Adjust the values for your environment.
+
+```yaml
+observability:
+  enabled: true
+  output:
+    opentelemetry:
+      enabled: true
+      exporter_type: otlp
+      otlp_endpoint: "localhost:4317"
+      service_name: "thunderid-iam"
+      service_version: "1.0.0"
+      environment: "production"
+      sample_rate: 1.0
+      insecure: false
+```
+
+Key settings:
+
+- `otlp_endpoint`: The host and port of your OTLP receiver (gRPC). Do not include the scheme (`grpc://`).
+- `service_name`: Identifies <ProductName /> in your tracing backend. Use a consistent name across deployments.
+- `sample_rate`: Set to `1.0` to capture all traces. Reduce this value for high-traffic deployments (for example, `0.1` samples 10% of traces).
+- `insecure`: Set to `true` only in development environments where TLS is not configured on the collector.
+
+:::note
+<ProductName /> must be restarted for configuration changes to take effect.
+:::
+
+#### Filter by Event Category
+
+By default, the OpenTelemetry output exports all events. To limit exports to specific categories, set the `categories` list:
+
+```yaml
+observability:
+  enabled: true
+  output:
+    opentelemetry:
+      enabled: true
+      exporter_type: otlp
+      otlp_endpoint: "localhost:4317"
+      service_name: "thunderid-iam"
+      categories:
+        - observability.authentication
+        - observability.flows
+```
+
+For valid category values, see [Event Categories](../../deployment/configuration#event-categories) in the configuration reference.
+
+## Deployment Patterns
+
+### Jaeger
+
+Jaeger v2 accepts OTLP gRPC natively and is the recommended version. For local development, run the all-in-one image with no configuration file. It ships with a default OTLP receiver and in-memory storage already enabled:
+
+```bash
+docker run --rm \
+  -p 16686:16686 \
+  -p 4317:4317 \
+  jaegertracing/jaeger:latest
+```
+
+Open `http://localhost:16686` in your browser to access the Jaeger UI.
+
+For custom deployments, for example to configure a persistent storage backend, Jaeger v2 is built on the OpenTelemetry Collector framework, so receivers, storage backends, and pipelines must be explicitly declared in a configuration file. Create a `jaeger-config.yaml` file:
+
+```yaml
+extensions:
+  jaeger_storage:
+    backends:
+      memstore:
+        memory:
+          max_traces: 100000
+  jaeger_query:
+    storage:
+      traces: memstore
+    http:
+      endpoint: "0.0.0.0:16686"
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+
+exporters:
+  jaeger_storage_exporter:
+    trace_storage: memstore
+
+service:
+  extensions: [jaeger_storage, jaeger_query]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [jaeger_storage_exporter]
+```
+
+Start Jaeger v2 with the config file mounted:
+
+```bash
+docker run --rm \
+  -p 16686:16686 \
+  -p 4317:4317 \
+  -v $(pwd)/jaeger-config.yaml:/etc/jaeger/config.yaml \
+  jaegertracing/jaeger:latest \
+  --config=/etc/jaeger/config.yaml
+```
+
+Open `http://localhost:16686` in your browser to access the Jaeger UI.
+
+:::note Using Jaeger v1
+If you are using Jaeger v1 (1.35 or later), no configuration file is needed. OTLP support is disabled by default and must be explicitly enabled with the `COLLECTOR_OTLP_ENABLED` environment variable:
+
+```bash
+docker run --rm \
+  -p 16686:16686 \
+  -p 4317:4317 \
+  -e COLLECTOR_OTLP_ENABLED=true \
+  jaegertracing/all-in-one:latest
+```
+
+:::
+
+### OpenTelemetry Collector + Jaeger
+
+An OpenTelemetry Collector receives spans from <ProductName /> and forwards them to one or more backends. The following is a minimal Collector configuration (`otel-collector-config.yaml`) that accepts OTLP gRPC input and exports to Jaeger:
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+
+exporters:
+  otlp_grpc/jaeger:
+    endpoint: "jaeger:4317"
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp_grpc/jaeger]
+```
+
+The Collector forwards spans to Jaeger, so both must run together. Use Docker Compose to manage them: it automatically places both containers on a shared network, allowing the Collector to reach Jaeger by service name. Create a `docker-compose.yaml` file (using the same `jaeger-config.yaml` from the [Jaeger](#jaeger) section):
+
+```yaml
+services:
+  jaeger:
+    image: jaegertracing/jaeger:latest
+    command: ["--config=/etc/jaeger/config.yaml"]
+    volumes:
+      - ./jaeger-config.yaml:/etc/jaeger/config.yaml
+    ports:
+      - "16686:16686"
+
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml
+    ports:
+      - "4317:4317"
+    depends_on:
+      - jaeger
+```
+
+Start both containers:
+
+```bash
+docker compose up
+```
+
+Open `http://localhost:16686` in your browser to access the Jaeger UI.
+
+### Grafana Tempo
+
+Grafana Tempo accepts OTLP gRPC natively. A minimal Tempo configuration (`tempo-config.yaml`):
+
+```yaml
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:4317"
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /tmp/tempo
+```
+
+Tempo has no built-in UI, so Grafana is required to visualize traces. Use Docker Compose to run both together. First, create a Grafana data source provisioning file (for example, `tempo.yaml`) so Grafana automatically connects to Tempo on startup:
+
+```yaml
+apiVersion: 1
+datasources:
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    isDefault: true
+```
+
+Then create a `docker-compose.yaml`:
+
+```yaml
+services:
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo/config.yaml"]
+    volumes:
+      - ./tempo-config.yaml:/etc/tempo/config.yaml
+    ports:
+      - "4317:4317"
+
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      - "3000:3000"
+    depends_on:
+      - tempo
+```
+
+Start both containers:
+
+```bash
+docker compose up
+```
+
+Open `http://localhost:3000` in your browser to access Grafana and sign in. Navigate to **Explore**, select the **Tempo** data source, and query for the `thunderid-iam` service.
+
+## Verify the Setup
+
+After restarting <ProductName />, trigger an authentication flow (for example, sign in through a registered application). Then check your tracing backend:
+
+- **Jaeger**: Open the Jaeger UI, select the `thunderid-iam` service, and search for recent traces. You should see spans for `FLOW_STARTED`, `FLOW_NODE_EXECUTION_STARTED`, `TOKEN_ISSUED`, and related events.
+- **Grafana Tempo**: Query for the `thunderid-iam` service in the Tempo data source. Traces appear as a tree of spans grouped by `TraceID`.
+
+If no spans appear, check the following:
+
+- Confirm `observability.enabled` is `true` and `observability.output.opentelemetry.enabled` is `true`.
+- Confirm `otlp_endpoint` matches the host and port of your OTLP receiver.
+- If using TLS, ensure the certificate chain is trusted or set `insecure: true` temporarily to rule out TLS issues.
+- Check <ProductName /> startup logs for any errors from the OpenTelemetry subscriber. <ProductName /> uses a lenient failure mode: if the OTLP endpoint is unreachable at startup, the server still starts but spans are silently dropped.
+- If you are using the OpenTelemetry Collector + Jaeger pattern, also check the Collector container logs. <ProductName /> may be exporting spans successfully while the Collector fails to forward them to Jaeger.
+
+## Next Steps
+
+- See [Observability Configuration](../../deployment/configuration#observability-configuration) for the full list of settings for each output backend.
+- See the [Observability Contributing Guide](../../community/contributing/contributing-code/backend-development/observability) to learn how to add instrumentation to new <ProductName /> components.

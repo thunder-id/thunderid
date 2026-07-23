@@ -112,6 +112,40 @@ export interface ClientConfig {
 }
 
 /**
+ * Gate-client configuration interface that defines where the login gate app is deployed,
+ * used to build the OAuth redirect/callback URL shown when configuring social/OIDC
+ * connections. Mirrors the backend's `gate_client` deployment config.
+ *
+ * @public
+ */
+export interface GateClientConfig {
+  /**
+   * Full public URL of the gate app. If provided, this will be used instead of
+   * constructing the URL from hostname, port, and scheme.
+   * @example "https://gate.example.com", "https://localhost:5190"
+   */
+  public_url?: string;
+
+  /**
+   * Gate app hostname or IP address. Optional — see public_url.
+   * @example "localhost", "gate.example.com"
+   */
+  hostname?: string;
+
+  /**
+   * Gate app port number. Optional — see public_url.
+   * @example 5190, 443
+   */
+  port?: number;
+
+  /**
+   * URL scheme for the gate app. Defaults to "https" when omitted.
+   * @example "https", "http"
+   */
+  scheme?: string;
+}
+
+/**
  * Theme configuration interface that defines theming options for applications.
  */
 export interface ThemeConfig {
@@ -260,6 +294,13 @@ export interface ProductConfig {
 
   /** Optional trusted issuer configuration for external token validation */
   trusted_issuer?: TrustedIssuerConfig;
+
+  /**
+   * Optional gate-client configuration for the login gate app's location. When omitted,
+   * the OAuth redirect/callback URL shown in connection wizards falls back to
+   * `${getServerUrl()}/gate/callback`.
+   */
+  gate_client?: GateClientConfig;
 
   /** Optional design configuration for theming and UI customization */
   design?: DesignConfig;

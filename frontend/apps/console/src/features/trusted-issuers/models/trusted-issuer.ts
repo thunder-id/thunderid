@@ -49,11 +49,6 @@ export interface TrustedIssuerFormData {
    */
   idJagEnabled: boolean;
   /**
-   * ThunderID's client ID registered at this external identity provider.
-   * @example "thunderid-console"
-   */
-  clientId?: string;
-  /**
    * Whether token exchange is enabled for this issuer.
    * @example true
    */

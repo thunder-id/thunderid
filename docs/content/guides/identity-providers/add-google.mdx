@@ -1,0 +1,60 @@
+---
+title: Add a Google Identity Provider
+docType: guide
+sidebar_position: 2
+persona: iam
+description: Configure a Google identity provider to enable Sign in with Google for your applications.
+---
+
+# Add a Google Identity Provider
+
+This guide walks you through registering a Google identity provider (IdP) in <ProductName />. Once configured, you can add **Sign in with Google** to any application by including a Google social login executor in its authentication flow.
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get Started](../../../getting-started/get-thunderid).
+- You can sign in to the <ProductName /> Console.
+- A Google account with access to [Google Cloud Console](https://console.cloud.google.com).
+
+<Stepper stepNode="h2" as="h2">
+
+## Step 1: Register an OAuth App in Google Cloud Console
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com) and sign in.
+2. Select or create a project.
+3. In the navigation menu, go to **APIs & Services** → **Credentials**.
+4. Click **Create Credentials** → **OAuth client ID**.
+5. Set **Application type** to **Web application**.
+6. Under **Authorized redirect URIs**, add the callback URL for your <ProductName /> deployment:
+
+   ```text
+   https://<your-thunderid-host>/gate/callback
+   ```
+
+   You can copy this value exactly from the Console in the next step, so it does not need to match character for character here.
+
+7. Click **Create**. Google displays your **Client ID** and **Client Secret**. Copy both values. You need them in the next step.
+
+## Step 2: Configure the Google Connection in the Console
+
+1. Sign in to the <ProductName /> Console.
+2. Navigate to **Connections**.
+3. Click the **Google** card. If the card shows **Not configured**, this opens a form to create the connection. If it already shows **Configured**, this opens the existing connection instead.
+4. The form shows a setup hint with the **Redirect URI**. Copy it and add it to your Google OAuth client's authorized redirect URIs if you have not already done so.
+5. Enter your **Client ID** and **Client secret** from the previous step.
+6. Click **Create connection**. If you opened an existing **Configured** connection instead, update the credentials and click **Save changes**.
+
+<ProductName /> automatically uses the Google authorization, token, userinfo, and JWKS endpoints. You do not need to supply them.
+
+</Stepper>
+
+:::note
+The connection requests the `openid email profile` scopes by default. To change this, open the connection after creation and set **Scopes** on its edit page.
+
+The Google connection also accepts a `prompt` field to control the Google consent screen behavior (for example, `consent` or `select_account`). This field is not available in the Console and can only be set through the [Connections API](../../../apis#tag/connections).
+:::
+
+## Next Steps
+
+- [Connect an IdP to an Application](../connect-idp-to-application): Add this Google IdP to an application's authentication flow.
+- [Manage Identity Providers](../manage-identity-providers): Update or delete identity providers.

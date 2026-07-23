@@ -19,7 +19,6 @@
 package userinfo
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
@@ -50,8 +49,7 @@ func Initialize(
 ) userInfoServiceInterface {
 	userInfoService := newUserInfoService(jwtService, jweService, resolver, tokenValidator,
 		actorProvider, attributeCacheSvc, dpopVerifier, cfg)
-	userInfoEndpoint := discoveryService.GetOAuth2AuthorizationServerMetadata(
-		context.Background()).UserInfoEndpoint
+	userInfoEndpoint := cfg.BaseURL + constants.OAuth2UserInfoEndpoint
 	dpopAlgs := cfg.OAuth.DPoP.AllowedAlgs
 	userInfoHandler := newUserInfoHandler(userInfoService, userInfoEndpoint, dpopAlgs)
 	registerRoutes(mux, userInfoHandler)

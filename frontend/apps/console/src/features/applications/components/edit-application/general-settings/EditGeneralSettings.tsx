@@ -68,6 +68,11 @@ interface EditGeneralSettingsProps {
    * Callback invoked after the application is successfully deleted
    */
   onDeleteSuccess?: () => void;
+  /**
+   * Callback function to handle validation changes
+   * @param hasErrors - Boolean indicating if the general settings have validation errors
+   */
+  onValidationChange?: (hasErrors: boolean) => void;
 }
 
 /**
@@ -89,6 +94,7 @@ export default function EditGeneralSettings({
   copiedField,
   onCopyToClipboard,
   onDeleteSuccess = undefined,
+  onValidationChange = undefined,
 }: EditGeneralSettingsProps): JSX.Element {
   const {config} = useConfig();
   const {t} = useTranslation();
@@ -155,6 +161,7 @@ export default function EditGeneralSettings({
           editedApp={editedApp}
           oauth2Config={oauth2Config}
           onFieldChange={onFieldChange}
+          onValidationChange={onValidationChange}
         />
         {!application.isReadOnly && oauth2Config?.clientId?.toUpperCase() !== systemConsoleClientId && (
           <DangerZoneSection

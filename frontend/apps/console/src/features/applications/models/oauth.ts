@@ -69,6 +69,16 @@ export const OAuth2GrantTypes = {
 } as const;
 
 /**
+ * Grant types that can issue a refresh token.
+ *
+ * @public
+ */
+export const REFRESH_TOKEN_ISSUING_GRANTS: readonly string[] = [
+  OAuth2GrantTypes.AUTHORIZATION_CODE,
+  OAuth2GrantTypes.CIBA,
+];
+
+/**
  * OAuth2 Response Type
  *
  * Supported OAuth2 response types for authorization requests.

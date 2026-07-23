@@ -25,11 +25,13 @@ import SimulationStepPreview from '../SimulationStepPreview';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => {
+    t: (key: string, ...args: unknown[]) => {
+      const params = args.find((arg): arg is Record<string, string> => typeof arg === 'object' && arg !== null);
       const translations: Record<string, string> = {
         'flows:core.simulation.preview.title': 'End-user preview',
         'flows:core.simulation.preview.noScreen': 'No screen is shown for this step',
         'flows:core.simulation.preview.noScreenHint': 'This step runs in the background',
+        'flows:core.simulation.preview.noScreenHintNamed': '{{id}} runs in the background',
         'flows:core.simulation.preview.devices.mobile': 'Mobile',
         'flows:core.simulation.preview.devices.tablet': 'Tablet',
         'flows:core.simulation.preview.devices.desktop': 'Desktop',
@@ -47,7 +49,7 @@ vi.mock('react-i18next', () => ({
         'flows:core.simulation.kinds.success': 'On success',
         'flows:core.simulation.preview.dynamicFieldsHint': 'Input fields resolved at runtime',
       };
-      return translations[key] || key;
+      return (translations[key] || key).replace(/{{(\w+)}}/g, (match, name: string) => params?.[name] ?? match);
     },
   }),
 }));
@@ -108,7 +110,7 @@ vi.mock('@/components/GatePreview/GatePreview', () => ({
     additionalData,
   }: {
     mock?: {id?: string}[];
-    onSubmit?: (component: {id?: string}) => void;
+    onSubmit?: (component: {id?: string; components?: {id?: string}[]}) => void;
     onComponentHover?: (component: {id?: string} | null) => void;
     toolbarStart?: React.ReactNode;
     toolbarEnd?: React.ReactNode;
@@ -128,6 +130,12 @@ vi.mock('@/components/GatePreview/GatePreview', () => ({
       <button type="button" onClick={() => onSubmit?.({id: 'action_001'})}>
         gate-submit
       </button>
+      <button type="button" onClick={() => onSubmit?.({id: 'wrapper_001', components: [{id: 'action_001'}]})}>
+        gate-submit-nested
+      </button>
+      <button type="button" onClick={() => onSubmit?.({id: 'action_recovery'})}>
+        gate-submit-link
+      </button>
       <button
         type="button"
         onMouseEnter={() => onComponentHover?.(mock?.[1] ?? null)}
@@ -141,6 +149,7 @@ vi.mock('@/components/GatePreview/GatePreview', () => ({
 
 const createSimulation = (overrides: Partial<FlowSimulation> = {}): FlowSimulation => ({
   isSimulating: true,
+  startAt: vi.fn(),
   pathNodeIds: ['view-1'],
   pathEdges: [],
   currentNodeId: 'view-1',
@@ -191,6 +200,19 @@ const executorNode = {
   data: {},
 } as unknown as Node;
 
+const startNode = {id: 'start-1', type: 'START', position: {x: 0, y: 0}, data: {}} as unknown as Node;
+const endNode = {id: 'end', type: 'END', position: {x: 0, y: 0}, data: {}} as unknown as Node;
+
+const namedExecutorNode = {
+  id: 'credentials_auth',
+  type: 'TASK_EXECUTION',
+  position: {x: 0, y: 0},
+  data: {
+    display: {label: 'Identifier + Password'},
+    action: {executor: {name: 'CredentialsAuthExecutor'}},
+  },
+} as unknown as Node;
+
 const dynamicInputNode = {
   id: 'view-1',
   type: 'VIEW',
@@ -235,6 +257,7 @@ const consentNode = {
 describe('SimulationStepPreview', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     mockColorSchemeMode = 'light';
     mockDesignResolve = {data: {theme: {palette: {}}, layout: {}}, isError: false};
     mockApplications = [{id: 'app-1', name: 'My App'}];
@@ -495,6 +518,54 @@ describe('SimulationStepPreview', () => {
       expect(simulation.choose).toHaveBeenCalledWith(simulation.options[0]);
     });
 
+    it('should resolve gate submits through the reported component subtree', () => {
+      const simulation = createSimulation();
+      render(<SimulationStepPreview node={viewNode} simulation={simulation} />);
+
+      selectApplication();
+      fireEvent.click(screen.getByText('gate-submit-nested'));
+
+      expect(simulation.choose).toHaveBeenCalledWith(simulation.options[0]);
+    });
+
+    it('should resolve rich-text link submits reported by their action ref', () => {
+      // The gate dispatches wired link clicks as a synthetic action whose id is
+      // the rich text's action.ref, not the component id.
+      const linkViewNode = {
+        id: 'view-1',
+        type: 'VIEW',
+        position: {x: 0, y: 0},
+        data: {
+          components: [
+            {
+              id: 'rich_001',
+              type: 'RICH_TEXT',
+              label: '<p><a href="#" data-action-ref="action_recovery">Reset</a></p>',
+              action: {ref: 'action_recovery'},
+            },
+          ],
+        },
+      } as unknown as Node;
+      // The rich-text link's edge id is its action.ref ('action_recovery'), which
+      // is also what the gate reports on click. sourceComponentId is the rich
+      // text component id, unrelated to the reported id - so the match must be
+      // by edgeId.
+      const linkOption = {
+        edgeId: 'action_recovery',
+        targetNodeId: 'recovery-1',
+        kind: SimulationOptionKinds.Action,
+        actionLabel: 'Reset',
+        sourceComponentId: 'rich_001',
+      };
+      const simulation = createSimulation({options: [linkOption]});
+      render(<SimulationStepPreview node={linkViewNode} simulation={simulation} />);
+
+      selectApplication();
+      fireEvent.click(screen.getByText('gate-submit-link'));
+
+      expect(simulation.choose).toHaveBeenCalledWith(linkOption);
+    });
+
     it('should render the gate default design when the application has no design configured', () => {
       // The design resolve endpoint responds 404 for applications without a design.
       // The gate falls back to an empty theme merged over the renderer defaults —
@@ -551,10 +622,114 @@ describe('SimulationStepPreview', () => {
         <SimulationStepPreview node={executorNode} simulation={createSimulation({currentNodeId: 'executor-1'})} />,
       );
 
-      selectApplication();
-
       expect(screen.queryByTestId('gate-preview')).not.toBeInTheDocument();
+      expect(screen.getByTestId('simulation-background-step')).toBeInTheDocument();
       expect(screen.getByText('No screen is shown for this step')).toBeInTheDocument();
+    });
+
+    it('should hide the preview chrome and put the options first for steps without a screen', () => {
+      render(
+        <SimulationStepPreview node={executorNode} simulation={createSimulation({currentNodeId: 'executor-1'})} />,
+      );
+
+      // No device toggles or application selector - there is nothing to preview.
+      expect(screen.queryByLabelText('Preview as application')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Mobile'})).not.toBeInTheDocument();
+
+      // The transition options come before the background-step note.
+      const footer = screen.getByTestId('simulation-preview-footer');
+      const note = screen.getByTestId('simulation-background-step');
+      expect(footer.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('should name the background step in the hint card when its label is known', () => {
+      render(
+        <SimulationStepPreview
+          node={namedExecutorNode}
+          simulation={createSimulation({currentNodeId: 'credentials_auth'})}
+        />,
+      );
+
+      const note = screen.getByTestId('simulation-background-step');
+      expect(note).toHaveTextContent('Identifier + Password');
+      expect(note).toHaveTextContent('credentials_auth runs in the background');
+    });
+
+    it('should still name the step by id when it has no label', () => {
+      const unlabeledNode = {
+        id: 'mystery_step',
+        type: 'TASK_EXECUTION',
+        position: {x: 0, y: 0},
+        data: {},
+      } as unknown as Node;
+      render(
+        <SimulationStepPreview node={unlabeledNode} simulation={createSimulation({currentNodeId: 'mystery_step'})} />,
+      );
+
+      const note = screen.getByTestId('simulation-background-step');
+      expect(note).toHaveTextContent('mystery_step runs in the background');
+    });
+
+    it('should not show the background-step card on Start and End nodes', () => {
+      const {rerender} = render(
+        <SimulationStepPreview node={startNode} simulation={createSimulation({currentNodeId: 'start-1'})} />,
+      );
+      expect(screen.queryByTestId('simulation-background-step')).not.toBeInTheDocument();
+
+      rerender(<SimulationStepPreview node={endNode} simulation={createSimulation({currentNodeId: 'end'})} />);
+      expect(screen.queryByTestId('simulation-background-step')).not.toBeInTheDocument();
+    });
+
+    it('should keep only options wired to screen-triggerable components out of the footer', () => {
+      const linksViewNode = {
+        id: 'view-1',
+        type: 'VIEW',
+        position: {x: 0, y: 0},
+        data: {
+          components: [
+            {id: 'text_001', type: 'TEXT', label: 'Sign In', variant: 'HEADING_1'},
+            {id: 'rich_001', type: 'RICH_TEXT', label: '<p>Forgot password? <a href="#">Reset</a></p>'},
+            {
+              id: 'block_001',
+              type: 'BLOCK',
+              components: [{id: 'action_001', type: 'ACTION', label: 'Sign In', variant: 'PRIMARY'}],
+            },
+          ],
+        },
+      } as unknown as Node;
+      const simulation = createSimulation({
+        options: [
+          {
+            edgeId: 'e1',
+            targetNodeId: 'executor-1',
+            kind: SimulationOptionKinds.Action,
+            actionLabel: 'Sign In',
+            sourceComponentId: 'action_001',
+          },
+          {
+            edgeId: 'e2',
+            targetNodeId: 'recovery-1',
+            kind: SimulationOptionKinds.Action,
+            actionLabel: 'Forgot password? Reset',
+            sourceComponentId: 'rich_001',
+          },
+          {
+            edgeId: 'e3',
+            targetNodeId: 'somewhere-1',
+            kind: SimulationOptionKinds.Action,
+            actionLabel: 'Wired plain text',
+            sourceComponentId: 'text_001',
+          },
+        ],
+      });
+      render(<SimulationStepPreview node={linksViewNode} simulation={simulation} />);
+
+      const footer = screen.getByTestId('simulation-preview-footer');
+      // Buttons and rich-text links are clickable on the screen itself.
+      expect(footer).not.toHaveTextContent('Forgot password? Reset');
+      // A non-interactive component keeps its option in the footer so the path
+      // stays reachable.
+      expect(footer).toHaveTextContent('Wired plain text');
     });
 
     it('should default the themed preview to the console color scheme', () => {
@@ -731,6 +906,106 @@ describe('SimulationStepPreview', () => {
 
       fireEvent.click(screen.getByRole('button', {name: 'Desktop'}));
       expect(panel).toHaveAttribute('data-device', 'desktop');
+    });
+  });
+
+  describe('Keyboard support', () => {
+    it('should exit the preview on Escape', () => {
+      const simulation = createSimulation();
+      render(<SimulationStepPreview node={viewNode} simulation={simulation} />);
+
+      fireEvent.keyDown(window, {key: 'Escape'});
+
+      expect(simulation.stop).toHaveBeenCalled();
+    });
+
+    it('should step back on Backspace', () => {
+      const simulation = createSimulation();
+      render(<SimulationStepPreview node={viewNode} simulation={simulation} />);
+
+      fireEvent.keyDown(window, {key: 'Backspace'});
+
+      expect(simulation.back).toHaveBeenCalled();
+    });
+
+    it('should not react to keys typed into inputs', () => {
+      const simulation = createSimulation();
+      render(
+        <div>
+          <input data-testid="outside-input" />
+          <SimulationStepPreview node={viewNode} simulation={simulation} />
+        </div>,
+      );
+
+      fireEvent.keyDown(screen.getByTestId('outside-input'), {key: 'Escape'});
+
+      expect(simulation.stop).not.toHaveBeenCalled();
+    });
+
+    it('should walk the transition options with the arrow keys', () => {
+      render(
+        <SimulationStepPreview node={executorNode} simulation={createSimulation({currentNodeId: 'executor-1'})} />,
+      );
+
+      fireEvent.keyDown(window, {key: 'ArrowDown'});
+
+      const footer = screen.getByTestId('simulation-preview-footer');
+      expect(footer.contains(document.activeElement)).toBe(true);
+    });
+
+    it('should not re-attach the window listener when back/stop change identity across a step, and should call the latest one', () => {
+      const addEventListenerSpy = vi.spyOn(window, 'addEventListener');
+      const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener');
+
+      const staleBack = vi.fn();
+      const freshBack = vi.fn();
+      const simulation = createSimulation({back: staleBack});
+      const {rerender} = render(<SimulationStepPreview node={viewNode} simulation={simulation} />);
+
+      const keydownAttachCount = addEventListenerSpy.mock.calls.filter(([type]) => type === 'keydown').length;
+      addEventListenerSpy.mockClear();
+      removeEventListenerSpy.mockClear();
+
+      // Simulate advancing a step: `back`'s identity changes (as it does in the
+      // real hook, which closes over the traversal path) but `isSimulating`
+      // stays true - the listener should not be torn down and re-added for this.
+      rerender(<SimulationStepPreview node={viewNode} simulation={{...simulation, back: freshBack}} />);
+
+      expect(addEventListenerSpy.mock.calls.filter(([type]) => type === 'keydown')).toHaveLength(0);
+      expect(removeEventListenerSpy.mock.calls.filter(([type]) => type === 'keydown')).toHaveLength(0);
+      expect(keydownAttachCount).toBeGreaterThan(0);
+
+      fireEvent.keyDown(window, {key: 'Backspace'});
+
+      expect(staleBack).not.toHaveBeenCalled();
+      expect(freshBack).toHaveBeenCalled();
+
+      addEventListenerSpy.mockRestore();
+      removeEventListenerSpy.mockRestore();
+    });
+  });
+
+  describe('Preference persistence', () => {
+    it('should restore the persisted device on open', () => {
+      window.localStorage.setItem('thunderid.flows.preview.device', 'desktop');
+      render(<SimulationStepPreview node={viewNode} simulation={createSimulation()} />);
+
+      expect(screen.getByRole('button', {name: 'Desktop'})).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('should persist the device pick', () => {
+      render(<SimulationStepPreview node={viewNode} simulation={createSimulation()} />);
+
+      fireEvent.click(screen.getByRole('button', {name: 'Tablet'}));
+
+      expect(window.localStorage.getItem('thunderid.flows.preview.device')).toBe('tablet');
+    });
+
+    it('should ignore an unknown persisted device', () => {
+      window.localStorage.setItem('thunderid.flows.preview.device', 'holodeck');
+      render(<SimulationStepPreview node={viewNode} simulation={createSimulation()} />);
+
+      expect(screen.getByRole('button', {name: 'Mobile'})).toHaveAttribute('aria-pressed', 'true');
     });
   });
 });

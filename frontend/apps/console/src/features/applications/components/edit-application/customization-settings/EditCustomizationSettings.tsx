@@ -44,6 +44,11 @@ interface EditCustomizationSettingsProps {
    * Singular noun used to refer to the entity in user-visible copy (default: 'application').
    */
   entityLabel?: string;
+  /**
+   * Callback function to handle validation changes
+   * @param hasErrors - Boolean indicating if the customization settings have validation errors
+   */
+  onValidationChange?: (hasErrors: boolean) => void;
 }
 
 /**
@@ -62,6 +67,7 @@ export default function EditCustomizationSettings({
   editedApp,
   onFieldChange,
   entityLabel = 'application',
+  onValidationChange = undefined,
 }: EditCustomizationSettingsProps) {
   return (
     <Stack spacing={3}>
@@ -76,6 +82,7 @@ export default function EditCustomizationSettings({
         editedApp={editedApp}
         onFieldChange={onFieldChange}
         entityLabel={entityLabel}
+        onValidationChange={onValidationChange}
       />
       <ContactsSection
         application={application}

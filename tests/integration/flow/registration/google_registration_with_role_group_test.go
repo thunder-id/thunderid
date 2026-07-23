@@ -327,6 +327,12 @@ func (ts *GoogleRegistrationGroupRoleTestSuite) SetupSuite() {
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, flowID)
 	googleRegGroupRoleTestApp.RegistrationFlowID = flowID
 
+	// Create isolated auth flow to avoid cross-type reference validation with default auth flow.
+	isolatedAuthID, err := testutils.CreateIsolatedAuthFlow("google-registration-role-group-isolated-auth")
+	ts.Require().NoError(err, "Failed to create isolated auth flow")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, isolatedAuthID)
+	googleRegGroupRoleTestApp.AuthFlowID = isolatedAuthID
+
 	// Create test application
 	googleRegGroupRoleTestApp.OUID = googleRegGroupRoleTestOUID
 	appID, err := testutils.CreateApplication(googleRegGroupRoleTestApp)

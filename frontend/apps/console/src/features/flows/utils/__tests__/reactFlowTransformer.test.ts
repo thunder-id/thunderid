@@ -575,6 +575,28 @@ describe('reactFlowTransformer', () => {
         });
       });
 
+      it('should persist properties for PROMPT nodes (e.g. the user-set display name)', () => {
+        const canvasData: ReactFlowCanvasData = {
+          nodes: [
+            createNode(
+              'view-1',
+              StepTypes.View,
+              {x: 0, y: 0},
+              {
+                components: [],
+                properties: {displayName: 'Collect credentials'},
+              },
+            ),
+          ],
+          edges: [],
+        };
+
+        const result = transformReactFlow(canvasData);
+
+        const promptNode = result.nodes.find((n) => n.id === 'view-1');
+        expect(promptNode?.properties).toEqual({displayName: 'Collect credentials'});
+      });
+
       it('should use first edge target when no default edge exists (all edges have sourceHandle)', () => {
         const canvasData: ReactFlowCanvasData = {
           nodes: [
@@ -1572,6 +1594,86 @@ describe('reactFlowTransformer', () => {
       const errors = validateFlowGraph(flowGraph);
 
       expect(errors).toHaveLength(0);
+    });
+
+    describe('SSO pairing', () => {
+      const layout = {size: {width: 100, height: 50}, position: {x: 0, y: 0}};
+
+      const baseNodes = [
+        {id: 'start-1', type: 'START', layout, onSuccess: 'end-1'},
+        {id: 'end-1', type: 'END', layout},
+      ];
+
+      it('should accept a valid SSO check and session pair', () => {
+        const flowGraph: FlowGraph = {
+          nodes: [
+            ...baseNodes,
+            {
+              id: 'sso_check_1',
+              type: 'TASK_EXECUTION',
+              layout,
+              executor: {name: 'SSOCheckExecutor'},
+              properties: {checkpointRef: 'session_1'},
+              onSuccess: 'session_1',
+            },
+            {id: 'session_1', type: 'TASK_EXECUTION', layout, executor: {name: 'SessionExecutor'}, onSuccess: 'end-1'},
+          ],
+        };
+
+        expect(validateFlowGraph(flowGraph)).toHaveLength(0);
+      });
+
+      it('should detect an SSO check without a checkpointRef', () => {
+        const flowGraph: FlowGraph = {
+          nodes: [
+            ...baseNodes,
+            {
+              id: 'sso_check_1',
+              type: 'TASK_EXECUTION',
+              layout,
+              executor: {name: 'SSOCheckExecutor'},
+              onSuccess: 'end-1',
+            },
+          ],
+        };
+
+        expect(validateFlowGraph(flowGraph)).toContain(
+          'Node sso_check_1: SSO check must reference a session checkpoint via checkpointRef',
+        );
+      });
+
+      it('should detect a checkpointRef pointing to a missing session node', () => {
+        const flowGraph: FlowGraph = {
+          nodes: [
+            ...baseNodes,
+            {
+              id: 'sso_check_1',
+              type: 'TASK_EXECUTION',
+              layout,
+              executor: {name: 'SSOCheckExecutor'},
+              properties: {checkpointRef: 'session_gone'},
+              onSuccess: 'end-1',
+            },
+          ],
+        };
+
+        expect(validateFlowGraph(flowGraph)).toContain(
+          'Node sso_check_1: checkpointRef references non-existent session node session_gone',
+        );
+      });
+
+      it('should detect a session node not referenced by any SSO check', () => {
+        const flowGraph: FlowGraph = {
+          nodes: [
+            ...baseNodes,
+            {id: 'session_1', type: 'TASK_EXECUTION', layout, executor: {name: 'SessionExecutor'}, onSuccess: 'end-1'},
+          ],
+        };
+
+        expect(validateFlowGraph(flowGraph)).toContain(
+          'Node session_1: session node is not referenced by any SSO check',
+        );
+      });
     });
 
     it('should detect duplicate node IDs', () => {

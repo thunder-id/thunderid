@@ -25,14 +25,12 @@ import (
 )
 
 // Initialize creates and returns the security middleware with necessary authenticators. The
-// revocationEnforcer is consulted after authentication to reject revoked tokens. When
-// directAuthSecret is non-empty, the Direct API endpoints are gated behind it.
+// revocationEnforcer is consulted after authentication to reject revoked tokens.
 func Initialize(jwtService jwt.JWTServiceInterface, revocationEnforcer RevocationEnforcerInterface,
-	directAuthSecret string) (func(http.Handler) http.Handler, error) {
+) (func(http.Handler) http.Handler, error) {
 	jwtAuthenticator := newJWTAuthenticator(jwtService)
 	securityService, err := newSecurityService(
-		[]AuthenticatorInterface{jwtAuthenticator}, revocationEnforcer, publicPaths, apiPermissionEntries,
-		directAuthSecret)
+		[]AuthenticatorInterface{jwtAuthenticator}, revocationEnforcer, publicPaths, apiPermissionEntries)
 	if err != nil {
 		return nil, err
 	}

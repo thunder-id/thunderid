@@ -21,6 +21,7 @@ import {Alert, Autocomplete, CircularProgress, FormControl, FormLabel, TextField
 import {type JSX} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import {Link} from 'react-router';
+import RouteConfig from '../../../../../configs/RouteConfig';
 import useGetAgentRoles from '../../../api/useGetAgentRoles';
 
 interface AgentRolesSectionProps {
@@ -39,7 +40,7 @@ export default function AgentRolesSection({agentId}: AgentRolesSectionProps): JS
         <Trans
           i18nKey="agents:edit.access.roles.description"
           defaults="Roles assigned to this agent, directly or through its groups. Manage assignments from the <manageLink>Roles page</manageLink>."
-          components={{manageLink: <Link to="/roles" />}}
+          components={{manageLink: <Link to={RouteConfig.roles.list()} />}}
         />
       }
     >

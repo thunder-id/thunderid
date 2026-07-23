@@ -30,6 +30,8 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+const testRemoteAddr = "192.168.1.1:12345"
+
 type AccessLogTestSuite struct {
 	suite.Suite
 }
@@ -60,10 +62,10 @@ func (suite *AccessLogTestSuite) TestAccessLogHandler() {
 		}
 	})
 
-	handler := AccessLogHandler(log, testHandler)
+	handler := AccessLogHandler(log, nil, testHandler)
 
 	req := httptest.NewRequest("GET", "/test?include=display&token=secret", nil)
-	req.RemoteAddr = "192.168.1.1:12345"
+	req.RemoteAddr = testRemoteAddr
 
 	rr := httptest.NewRecorder()
 
@@ -83,6 +85,94 @@ func (suite *AccessLogTestSuite) TestAccessLogHandler() {
 	assert.NotContains(suite.T(), output, "token=secret")
 	// Verify that escape characters are not present in the log output
 	assert.NotContains(suite.T(), output, `\"`)
+}
+
+func (suite *AccessLogTestSuite) TestAccessLogHandlerSkipPrefixes() {
+	var buf bytes.Buffer
+
+	logger = nil
+	once = sync.Once{}
+
+	logHandler := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	log := &Logger{
+		internal: slog.New(logHandler),
+	}
+
+	served := false
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		served = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := AccessLogHandler(log, []string{"/gate/", "/console/"}, testHandler)
+
+	// A skipped path is still served, but no access log line is emitted.
+	req := httptest.NewRequest("GET", "/console/assets/index.js", nil)
+	req.RemoteAddr = testRemoteAddr
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.True(suite.T(), served, "skipped request should still be served")
+	assert.Equal(suite.T(), http.StatusOK, rr.Code)
+	assert.Empty(suite.T(), buf.String(), "no access log should be written for skipped prefixes")
+
+	// A non-skipped path is logged as usual.
+	buf.Reset()
+	req = httptest.NewRequest("GET", "/oauth2/token", nil)
+	req.RemoteAddr = testRemoteAddr
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Contains(suite.T(), buf.String(), "GET /oauth2/token")
+}
+
+func (suite *AccessLogTestSuite) TestAccessLogHandlerSkipPrefixEdgeCases() {
+	skipPrefixes := []string{"/gate/", "/console/", "/health/"}
+
+	cases := []struct {
+		path       string
+		wantLogged bool
+	}{
+		{"/console/", false},
+		{"/console/assets/index.js", false},
+		{"/gate/", false},
+		{"/gate/signin", false},
+		{"/health/liveness", false},
+		{"/health/readiness", false},
+		// Bare prefixes without a trailing slash are not skipped (e.g. the /console -> /console/ redirect).
+		{"/console", true},
+		{"/gate", true},
+		{"/health", true},
+		// Paths that merely share a leading substring must not be skipped.
+		{"/consolexyz", true},
+		{"/gateway", true},
+		{"/healthz", true},
+		// Regular API traffic is always logged.
+		{"/oauth2/token", true},
+		{"/applications", true},
+	}
+
+	for _, tc := range cases {
+		var buf bytes.Buffer
+		logHandler := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
+		log := &Logger{internal: slog.New(logHandler)}
+
+		handler := AccessLogHandler(log, skipPrefixes, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+
+		req := httptest.NewRequest("GET", tc.path, nil)
+		req.RemoteAddr = testRemoteAddr
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(suite.T(), http.StatusOK, rr.Code, "path %q should still be served", tc.path)
+		if tc.wantLogged {
+			assert.Contains(suite.T(), buf.String(), "GET "+tc.path, "path %q should be logged", tc.path)
+		} else {
+			assert.Empty(suite.T(), buf.String(), "path %q should not be logged", tc.path)
+		}
+	}
 }
 
 func (suite *AccessLogTestSuite) TestLoggingResponseWriter() {

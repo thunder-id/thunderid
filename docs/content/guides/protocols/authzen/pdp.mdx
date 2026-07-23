@@ -1,0 +1,318 @@
+---
+title: Policy Decision Point
+docType: reference
+sidebar_position: 1
+description: Use {{ProductName}} as an AuthZEN policy decision point for metadata discovery, access evaluation, batch evaluation, and action search.
+---
+
+import {AuthZENPDPDiagram} from '../../../../src/components/AuthZENPDPDiagram';
+
+# Policy Decision Point
+
+<ProductName /> acts as an AuthZEN policy decision point (PDP). A Policy Enforcement Point (PEP), such as a gateway,
+adapter, service, or application, calls <ProductName /> before it allows access to a protected resource.
+
+## How the PDP Flow Works
+
+<AuthZENPDPDiagram />
+
+The PEP calls <ProductName /> with the server-level Direct Auth Secret. AuthZEN access endpoints under `/access/**`
+require the `Direct-Auth-Secret` header. The metadata endpoint stays public so PEPs can discover the PDP endpoints.
+
+```json
+{
+  "subject": {
+    "type": "user",
+    "id": "<subject-id>"
+  },
+  "resource": {
+    "type": "https://api.example.com/booking",
+    "id": "<booking-id>"
+  },
+  "action": {
+    "name": "reservations:view"
+  }
+}
+```
+
+<ProductName /> evaluates the request and returns a decision:
+
+```json
+{
+  "decision": true
+}
+```
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect                   | Behavior                                                                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PDP metadata             | `GET /.well-known/authzen-configuration`                                                                                                          |
+| Single access evaluation | `POST /access/v1/evaluation`                                                                                                                      |
+| Batch access evaluation  | `POST /access/v1/evaluations`                                                                                                                     |
+| Action search            | `POST /access/v1/search/action`                                                                                                                   |
+| `subject.id`             | Required. Identifies the user, application, or agent being evaluated.                                                                             |
+| `subject.type`           | Optional. When provided, <ProductName /> validates that the subject ID matches the subject category.                                              |
+| `resource.type`          | Required. Maps to the <ProductName /> resource server identifier.                                                                                 |
+| `resource.id`            | Optional in <ProductName />. Identifies the protected resource instance when provided and is reserved for future resource-instance authorization. |
+| `action.name`            | Required. Must match a permission registered on the resource server.                                                                              |
+| `context`                | Optional object for request-time attributes.                                                                                                      |
+
+</details>
+
+## Configure <ProductName />
+
+The following example creates the `reservations:view` permission and assigns it to a subject that can view
+reservations.
+
+### Create a Resource Server
+
+1. Sign in to the <ProductName /> Console at `https://<HOST>:<PORT>/console`.
+2. Select **Resource Servers**, then select **New Resource Server**.
+3. Enter the following values:
+   - **Name**: `Booking API`
+   - **Identifier**: `https://api.example.com/booking`
+   - **Delimiter**: `:`
+4. Select **Create**.
+
+For details about resource server fields and permission formats, see
+[Resource Servers](../../../resource-servers).
+
+### Create a Resource
+
+1. Open the **Booking API** resource server.
+2. Select the **Resources** tab, then select **New Resource**.
+3. Enter the following values:
+   - **Name**: `Reservations`
+   - **Handle**: `reservations`
+4. Select **Create**.
+
+### Create an Action
+
+1. Open the **Reservations** resource.
+2. Select the **Actions** tab, then select **New Action**.
+3. Enter the following values:
+   - **Name**: `View Reservations`
+   - **Handle**: `view`
+4. Select **Create**.
+5. Confirm that the generated permission is `reservations:view`.
+
+The `action.name` value in an AuthZEN request must match this complete permission string.
+
+### Assign the Permission to a Subject
+
+1. Select **Roles**, then select **New Role**.
+2. Create a role named `Booking API Viewer`.
+3. Add the `reservations:view` permission to the role.
+4. Complete the role creation.
+5. Open the role and select the **Assignments** tab.
+6. Add the users, groups, applications, or agents that can view reservations.
+
+The authorization decision evaluates the user, application, or agent identified by `subject.id`. For a group assignment,
+use the ID of a group member as `subject.id`; <ProductName /> includes the subject's group memberships in the
+evaluation. For more information, see [Roles](../../../users/manage-roles).
+
+### Configure the Direct Auth Secret
+
+The PEP uses the server-level Direct Auth Secret to call protected AuthZEN endpoints. This secret authenticates the PEP
+or adapter that sends the request. It does not replace the subject in the evaluation request.
+
+1. Open your <ProductName /> deployment configuration.
+2. Set `server.security.direct_auth_secret` to a strong secret value.
+3. Restart the server.
+4. Store the same secret in the PEP or adapter configuration.
+
+Example:
+
+```yaml
+server:
+  security:
+    direct_auth_secret: "<direct-auth-secret>"
+```
+
+Use this value in the `Direct-Auth-Secret` header when the PEP calls a protected AuthZEN endpoint. A missing or
+incorrect secret returns `401`. For more information, see
+[Security Configuration](../../../../deployment/configuration#security-configuration).
+
+### Map the Configuration to AuthZEN
+
+Use the configured values in an access evaluation request:
+
+- Set `subject.id` to the ID of the user, application, or agent being evaluated.
+- Set `resource.type` to the resource server identifier, `https://api.example.com/booking`.
+- Optionally set `resource.id` to the reservation instance identifier.
+- Set `action.name` to the generated permission, `reservations:view`.
+
+## Discover AuthZEN Metadata
+
+Use the metadata endpoint to discover the <ProductName /> PDP base URL and supported AuthZEN API endpoints. This
+endpoint does not require authentication.
+
+```bash
+curl https://{{productSlug}}.example.com/.well-known/authzen-configuration
+```
+
+Response:
+
+```json
+{
+  "policy_decision_point": "https://{{productSlug}}.example.com",
+  "access_evaluation_endpoint": "https://{{productSlug}}.example.com/access/v1/evaluation",
+  "access_evaluations_endpoint": "https://{{productSlug}}.example.com/access/v1/evaluations",
+  "search_action_endpoint": "https://{{productSlug}}.example.com/access/v1/search/action"
+}
+```
+
+## Evaluate Single Access Request
+
+Use `/access/v1/evaluation` when the PEP needs one allow or deny decision. The response contains `decision: true` when
+the subject has the requested permission.
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/access/v1/evaluation \
+  -H 'Content-Type: application/json' \
+  -H 'Direct-Auth-Secret: <direct-auth-secret>' \
+  -d '{
+    "subject": {
+      "type": "user",
+      "id": "<subject-id>"
+    },
+    "resource": {
+      "type": "https://api.example.com/booking",
+      "id": "<booking-id>"
+    },
+    "action": {
+      "name": "reservations:view"
+    }
+  }'
+```
+
+Allowed response:
+
+```json
+{
+  "decision": true
+}
+```
+
+Denied response:
+
+```json
+{
+  "decision": false,
+  "context": {
+    "reason": "Subject is not authorized to perform the requested action"
+  }
+}
+```
+
+If `resource.type` does not match a resource server identifier, or `action.name` does not match a registered permission,
+
+<ProductName /> returns a denied decision with error context instead of allowing the request.
+
+## Evaluate Multiple Access Requests
+
+Use `/access/v1/evaluations` when the PEP needs decisions for multiple access requests in one call. <ProductName />
+preserves request order in the response, so each result maps to the evaluation at the same array index.
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/access/v1/evaluations \
+  -H 'Content-Type: application/json' \
+  -H 'Direct-Auth-Secret: <direct-auth-secret>' \
+  -d '{
+    "evaluations": [
+      {
+        "subject": {
+          "type": "user",
+          "id": "<subject-id>"
+        },
+        "resource": {
+          "type": "https://api.example.com/booking",
+          "id": "<booking-id>"
+        },
+        "action": {
+          "name": "reservations:view"
+        }
+      },
+      {
+        "subject": {
+          "type": "user",
+          "id": "<subject-id>"
+        },
+        "resource": {
+          "type": "https://api.example.com/booking",
+          "id": "<booking-id>"
+        },
+        "action": {
+          "name": "reservations:delete"
+        }
+      }
+    ]
+  }'
+```
+
+Response:
+
+```json
+{
+  "evaluations": [
+    {
+      "decision": true
+    },
+    {
+      "decision": false,
+      "context": {
+        "reason": "Subject is not authorized to perform the requested action"
+      }
+    }
+  ]
+}
+```
+
+An empty `evaluations` array returns a request error.
+
+## Search Allowed Actions
+
+Use `/access/v1/search/action` when the PEP needs to know which registered actions the subject can perform on a
+resource. <ProductName /> checks the permissions under the target resource server and returns only the allowed actions.
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/access/v1/search/action \
+  -H 'Content-Type: application/json' \
+  -H 'Direct-Auth-Secret: <direct-auth-secret>' \
+  -d '{
+    "subject": {
+      "type": "user",
+      "id": "<subject-id>"
+    },
+    "resource": {
+      "type": "https://api.example.com/booking",
+      "id": "<booking-id>"
+    }
+  }'
+```
+
+Response:
+
+```json
+{
+  "results": [
+    {
+      "name": "reservations:view"
+    },
+    {
+      "name": "reservations:update"
+    }
+  ]
+}
+```
+
+## Related Guides
+
+- [Resource Servers](../../../resource-servers) define protected APIs, resources, and actions.
+- [Roles](../../../users/manage-roles) assign permissions to users, groups, applications, and agents.
+- [Security Configuration](../../../../deployment/configuration#security-configuration) describes how to configure the
+  Direct Auth Secret for protected direct endpoints.
+- [Envoy](../../../integrations/apim-gateways/envoy) shows how to configure Envoy to call <ProductName /> as an
+  AuthZEN PDP.

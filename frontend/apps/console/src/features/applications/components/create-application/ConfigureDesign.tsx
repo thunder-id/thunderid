@@ -16,25 +16,17 @@
  * under the License.
  */
 
-import {generateIconSuggestions, ResourceAvatar} from '@thunderid/components';
+import {LogoPicker} from '@thunderid/components';
 import {useGetThemes, useGetTheme, type ThemeListItem, type Theme} from '@thunderid/design';
-import {
-  Typography,
-  Stack,
-  Button,
-  Card,
-  Box,
-  Grid,
-  useTheme,
-  Autocomplete,
-  TextField,
-  CircularProgress,
-} from '@wso2/oxygen-ui';
-import {Palette, Shuffle, Plus} from '@wso2/oxygen-ui-icons-react';
+import {buildAvatarSpec, pickAnonymousEntityName, type AvatarShape} from '@thunderid/react';
+import {Typography, Stack, Card, Box, Grid, useTheme, Autocomplete, TextField, CircularProgress} from '@wso2/oxygen-ui';
+import {Palette} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
-import {useState, useMemo, useEffect} from 'react';
+import {useState, useEffect} from 'react';
 import {useTranslation} from 'react-i18next';
 import ThemeThumbnail from '../../../design/components/themes/ThemeThumbnail';
+
+const LOGO_SUPPORTED_SHAPES: AvatarShape[] = ['rounded'];
 
 /**
  * Props for the {@link ConfigureDesign} component.
@@ -48,14 +40,14 @@ export interface ConfigureDesignProps {
   appLogo: string | null;
 
   /**
+   * The application's current name, used to seed the avatar picker's default text.
+   */
+  appName?: string | null;
+
+  /**
    * The ID of the currently selected theme (from API response)
    */
   themeId?: string | null;
-
-  /**
-   * The currently selected theme configuration (UI theme data only, not API response wrapper)
-   */
-  selectedTheme: Theme | null;
 
   /**
    * Callback function when a logo is selected
@@ -78,8 +70,8 @@ export interface ConfigureDesignProps {
  * application creation onboarding flow.
  *
  * This component allows users to customize their application's visual identity by:
- * 1. Selecting a logo from random emoji suggestions (with shuffle capability) or
- *    opening the full EmojiPicker modal via the "+" button
+ * 1. Selecting a logo via the {@link LogoPicker} (emoji, generated letter avatar, curated
+ *    anonymous animal icon, or a custom image URL)
  * 2. Selecting a theme from available theme configurations
  *
  * @param props - The component props
@@ -89,8 +81,8 @@ export interface ConfigureDesignProps {
  */
 export default function ConfigureDesign({
   appLogo,
+  appName = null,
   themeId: externallyProvidedThemeId = null,
-  selectedTheme: selectedThemeProp,
   onLogoSelect,
   onThemeSelect,
   onReadyChange = undefined,
@@ -106,33 +98,23 @@ export default function ConfigureDesign({
   const themeList = themesData?.themes ?? [];
   const hasThemes = Boolean(themeList.length);
   const useAutocomplete = themeList.length > THEME_GRID_THRESHOLD;
-  const primaryColorLight: string =
-    selectedThemeProp?.colorSchemes?.light?.palette?.primary?.main ?? theme.vars?.palette.primary.main ?? '';
-  const primaryColorDark: string =
-    selectedThemeProp?.colorSchemes?.dark?.palette?.primary?.main ??
-    selectedThemeProp?.colorSchemes?.light?.palette?.primary?.main ??
-    theme.vars?.palette.primary.main ??
-    '';
-
-  const [logoSeed, setLogoSeed] = useState<number>(0);
-
-  // logoSeed is intentionally used as a dependency to trigger logo regeneration on shuffle
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const logoSuggestions: string[] = useMemo((): string[] => generateIconSuggestions(8), [logoSeed]);
-
-  // Derived: true when appLogo was chosen via the full picker (URL, or an emoji not in the inline suggestions)
-  const isCustomLogo: boolean =
-    Boolean(appLogo) && (!appLogo!.startsWith('emoji:') || !logoSuggestions.includes(appLogo!.slice(6)));
 
   /**
-   * Auto-select the first logo when component mounts.
+   * Auto-select a default logo when the component mounts, if none is set yet.
    */
   useEffect((): void => {
-    if (logoSuggestions.length > 0 && !appLogo) {
-      onLogoSelect(`emoji:${logoSuggestions[0]}`);
+    if (!appLogo) {
+      onLogoSelect(
+        buildAvatarSpec({
+          colors: 0,
+          content: pickAnonymousEntityName(appName ?? undefined),
+          shape: 'rounded',
+          variant: 'anonymous_entity',
+        }),
+      );
     }
-  }, [logoSuggestions, appLogo, onLogoSelect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
    * Auto-select the first theme when themes load and none is selected yet.
@@ -160,10 +142,6 @@ export default function ConfigureDesign({
       onReadyChange(true);
     }
   }, [onReadyChange]);
-
-  const handleRotateLogos = (): void => {
-    setLogoSeed((prev: number): number => prev + 1);
-  };
 
   const handleLogoSelect = (logoValue: string): void => {
     onLogoSelect(logoValue);
@@ -283,80 +261,16 @@ export default function ConfigureDesign({
       </Stack>
 
       {/* Logo Selection */}
-      <Stack direction="column" spacing={4}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
-          <Typography variant="h6">{t('applications:onboarding.configure.design.logo.title')}</Typography>
-          <Button
-            size="small"
-            variant="text"
-            startIcon={<Shuffle size={14} />}
-            onClick={handleRotateLogos}
-            sx={{minWidth: 'auto'}}
-          >
-            {t('applications:onboarding.configure.design.logo.shuffle')}
-          </Button>
-        </Stack>
-
-        {/* Inline emoji suggestions + "+" to open full picker */}
-        <Stack direction="row" sx={{flexWrap: 'wrap', gap: 2}} alignItems="center">
-          {logoSuggestions.map((emoji: string) => {
-            const isSelected: boolean = appLogo === `emoji:${emoji}`;
-
-            return (
-              <ResourceAvatar
-                key={emoji}
-                value={emoji}
-                size={isSelected ? 70 : 50}
-                onClick={(): void => handleLogoSelect(`emoji:${emoji}`)}
-                sx={{
-                  cursor: 'pointer',
-                  border: isSelected
-                    ? `2px solid ${theme.vars?.palette.primary.main}`
-                    : `1px solid ${theme.vars?.palette.divider}`,
-                  p: 1,
-                  transition: 'all 0.2s ease-in-out',
-                  '&:hover': {
-                    transform: 'scale(1.1)',
-                    borderColor: theme.vars?.palette.primary.main,
-                  },
-                  ...theme.applyStyles('light', {
-                    backgroundColor: isSelected ? primaryColorLight : theme.vars?.palette.grey[600],
-                  }),
-                  ...theme.applyStyles('dark', {
-                    backgroundColor: isSelected ? primaryColorDark : theme.vars?.palette.grey[600],
-                  }),
-                }}
-              />
-            );
-          })}
-
-          {/* Button to open full picker — shows selected custom logo when one is active */}
-          <ResourceAvatar
-            value={isCustomLogo ? appLogo! : undefined}
-            fallback={<Plus size={20} />}
-            size={isCustomLogo ? 70 : 50}
-            onSelect={handleLogoSelect}
-            editAriaLabel={t('applications:onboarding.configure.design.logo.chooseLogo')}
-            sx={{
-              border: isCustomLogo
-                ? `2px solid ${theme.vars?.palette.primary.main}`
-                : `1px dashed ${theme.vars?.palette.divider}`,
-              color: 'text.secondary',
-              transition: 'all 0.2s ease-in-out',
-              '&:hover': {
-                borderColor: theme.vars?.palette.primary.main,
-                color: 'primary.main',
-                bgcolor: isCustomLogo ? undefined : 'action.hover',
-              },
-              ...(isCustomLogo
-                ? {
-                    ...theme.applyStyles('light', {backgroundColor: primaryColorLight}),
-                    ...theme.applyStyles('dark', {backgroundColor: primaryColorDark}),
-                  }
-                : {bgcolor: 'transparent'}),
-            }}
-          />
-        </Stack>
+      <Stack direction="column" spacing={2}>
+        <Typography variant="h6">
+          {t('applications:onboarding.configure.design.logo.title', 'Application Logo')}
+        </Typography>
+        <LogoPicker
+          value={appLogo ?? ''}
+          onChange={handleLogoSelect}
+          seedText={appName ?? ''}
+          supportedShapes={LOGO_SUPPORTED_SHAPES}
+        />
       </Stack>
 
       {/* Theme Selection */}

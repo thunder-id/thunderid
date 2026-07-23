@@ -415,10 +415,17 @@ packages:
           filename: "ExecutorInterface_mock_test.go"
       RuntimeStoreProvider:
         config:
-          dir: internal/oauth/oauth2/logout
           structname: '{{.InterfaceName}}Mock'
-          pkgname: logout
           filename: "{{.InterfaceName}}_mock_test.go"
+        configs:
+          - dir: internal/oauth/oauth2/logout
+            pkgname: logout
+          - dir: internal/oauth/oauth2/authz
+            pkgname: authz
+          - dir: internal/oauth/oauth2/jti
+            pkgname: jti
+          - dir: internal/oauth/oauth2/par
+            pkgname: par
 
   github.com/thunder-id/thunderid/internal/flow/graphbuilder:
     interfaces:
@@ -435,4 +442,12 @@ packages:
       dir: internal/attestation
       structname: '{{.InterfaceName}}Mock'
       pkgname: attestation
+      filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/system/resourcedependency:
+    config:
+      all: true
+      dir: internal/system/resourcedependency
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: resourcedependency
       filename: "{{.InterfaceName}}_mock_test.go"

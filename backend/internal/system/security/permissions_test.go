@@ -335,7 +335,7 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 	InitSystemPermissions("")
 	p := GetSystemPermissions()
 
-	svc, err := newSecurityService(nil, nil, []string{}, apiPermissionEntries, "")
+	svc, err := newSecurityService(nil, nil, []string{}, apiPermissionEntries)
 	require.NoError(t, err)
 
 	tests := []struct {

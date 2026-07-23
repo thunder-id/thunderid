@@ -32,6 +32,7 @@ import {FileOutput, FileInput, X} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 
 interface ImportExportOption {
   route: string;
@@ -49,7 +50,7 @@ export default function ImportExportPage(): JSX.Element {
 
   const handleClose = (): void => {
     (async () => {
-      await navigate('/home');
+      await navigate(RouteConfig.home.list());
     })().catch((error: unknown) => {
       logger.error('Failed to navigate to home page', {error});
     });
@@ -65,7 +66,7 @@ export default function ImportExportPage(): JSX.Element {
 
   const options: ImportExportOption[] = [
     {
-      route: '/import-configuration',
+      route: RouteConfig.importConfiguration.upload(),
       labelKey: 'landing.type.import.label',
       labelDefault: 'Import',
       descriptionKey: 'landing.type.import.description',
@@ -73,7 +74,7 @@ export default function ImportExportPage(): JSX.Element {
       icon: <FileInput size={28} />,
     },
     {
-      route: '/export',
+      route: RouteConfig.export.page(),
       labelKey: 'landing.type.export.label',
       labelDefault: 'Export',
       descriptionKey: 'landing.type.export.description',

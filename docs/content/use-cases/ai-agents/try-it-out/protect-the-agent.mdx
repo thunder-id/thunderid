@@ -14,7 +14,7 @@ Complete [Setup](../#setup) before starting this walkthrough.
 :::
 
 :::info Background
-[Implementation Paths](../../overview#implementation-paths) covers the requirements story behind this use case.
+The [AI Agent Identity and Access Journey](../../overview#ai-agent-identity-and-access-journey) covers the requirements story behind this use case.
 :::
 
 ## Walk Through the Use Case
@@ -31,7 +31,7 @@ Complete [Setup](../#setup) before starting this walkthrough.
 - Add a second permission to the `wayfinder-agent` resource server, for example `agent:admin`, and gate a separate admin endpoint behind it.
 
 :::info[Concepts]
-**Authorization.** The AI Agent is a resource server (`wayfinder-agent`) with a single permission (`agent:access`). The `Chat User` role bundles that permission. <ProductName /> writes only the permissions the user actually holds into the access token, so the same edge check (`token has agent:access?`) lets John in and turns Jane away. See [Authorization](../../../../guides/key-concepts/authorization).
+**Authorization.** The AI Agent is a resource server (`wayfinder-agent`) with a single permission (`agent:access`). The `Chat User` role bundles that permission. <ProductName /> writes only the permissions the user actually holds into the access token, so the same edge check (`token has agent:access?`) lets John in and turns Jane away. See [Authorization](../../../../key-concepts/authorization).
 
-**Branding.** The sign-in surface is the <ProductName /> hosted page. The Wayfinder sample ships with <ProductName />'s default branding. You can customize the logo and color theme for the `WAYFINDER` application from its **Design** settings in the Console. See [Register an Application](../../../../guides/guides/applications/manage-applications) for where the Design step sits.
+**Branding.** The sign-in surface is the <ProductName /> hosted page. The Wayfinder sample ships with <ProductName />'s default branding. You can customize the logo and color theme for the `WAYFINDER` application from its **Design** settings in the Console. See [Register an Application](../../../../guides/applications/manage-applications) for where the Design step sits.
 :::

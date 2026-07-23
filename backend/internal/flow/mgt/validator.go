@@ -928,11 +928,21 @@ func (v *flowValidator) validateExecutorProperties(
 		return nil
 	}
 
+	// Resolve effective mode: explicit node mode, or executor default.
+	effectiveMode := node.Executor.Mode
+	if effectiveMode == "" {
+		effectiveMode = meta.DefaultMode
+	}
+
 	supported := make(map[string]bool, len(meta.SupportedProperties))
 	for _, prop := range meta.SupportedProperties {
 		supported[prop.Property] = true
 		// Check required properties
 		if prop.IsRequired {
+			// If RequiredForModes is specified, only enforce for those modes.
+			if len(prop.ApplicableModes) > 0 && !containsMode(prop.ApplicableModes, effectiveMode) {
+				continue
+			}
 			val, ok := node.Properties[prop.Property]
 			if !ok || val == nil || val == "" {
 				return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
@@ -965,6 +975,16 @@ func (v *flowValidator) validateExecutorProperties(
 		}
 	}
 	return nil
+}
+
+// containsMode returns true if the given mode is present in the modes slice.
+func containsMode(modes []string, mode string) bool {
+	for _, m := range modes {
+		if m == mode {
+			return true
+		}
+	}
+	return false
 }
 
 // validateSSOCheckExecutor validates that an SSOCheck node's checkpointRef property references

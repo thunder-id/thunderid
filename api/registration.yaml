@@ -44,39 +44,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/PasskeyRegistrationStartResponse'
         "400":
-          description: 'Bad Request: The request body is malformed or contains invalid data, or the user was not found'
+          description: >
+            Bad Request: The request body is malformed or contains invalid data. Client-side
+            failures (invalid input, user not found, etc.) surface as a single enrollment failure
+            code (AUTHN-PSK-1002).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               examples:
-                emptyUserId:
+                enrollmentFailed:
                   value:
-                    code: "PSK-1001"
+                    code: "AUTHN-PSK-1002"
                     message:
-                      key: "error.passkeyservice.empty_user_identifier"
-                      defaultValue: "Empty user identifier"
+                      key: "error.authnservice.passkey_enrollment_failed"
+                      defaultValue: "Enrollment failed"
                     description:
-                      key: "error.passkeyservice.empty_user_identifier_description"
-                      defaultValue: "Either user ID or username must be provided"
-                emptyRelyingPartyId:
-                  value:
-                    code: "PSK-1002"
-                    message:
-                      key: "error.passkeyservice.empty_relying_party_id"
-                      defaultValue: "Empty relying party ID"
-                    description:
-                      key: "error.passkeyservice.empty_relying_party_id_description"
-                      defaultValue: "The relying party ID is required"
-                userNotFound:
-                  value:
-                    code: "PSK-1012"
-                    message:
-                      key: "error.passkeyservice.user_not_found"
-                      defaultValue: "User not found"
-                    description:
-                      key: "error.passkeyservice.user_not_found_description"
-                      defaultValue: "The specified user was not found"
+                      key: "error.authnservice.passkey_enrollment_failed_description"
+                      defaultValue: "The passkey enrollment attempt failed"
         "500":
           description: 'Internal Server Error: An unexpected error occurred while processing the request'
           content:
@@ -95,7 +80,8 @@ paths:
   /register/passkey/finish:
     post:
       summary: Finish Passkey credential registration
-      description: Complete Passkey credential creation for a user.
+      description: >
+        Complete Passkey credential creation for a user.
       tags:
         - Passkeys
       requestBody:
@@ -113,57 +99,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/PasskeyRegistrationFinishResponse'
         "400":
-          description: 'Bad Request: The request body is malformed, contains invalid data, or the session is invalid'
+          description: >
+            Bad Request: The request body is malformed or contains invalid data. Client-side
+            failures (invalid authenticator response, expired or invalid session, user or
+            credential not found, etc.) surface as a single enrollment failure code (AUTHN-PSK-1002).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               examples:
-                emptySessionToken:
+                enrollmentFailed:
                   value:
-                    code: "PSK-1006"
+                    code: "AUTHN-PSK-1002"
                     message:
-                      key: "error.passkeyservice.empty_session_token"
-                      defaultValue: "Empty session token"
+                      key: "error.authnservice.passkey_enrollment_failed"
+                      defaultValue: "Enrollment failed"
                     description:
-                      key: "error.passkeyservice.empty_session_token_description"
-                      defaultValue: "The session token is required"
-                invalidFinishData:
-                  value:
-                    code: "PSK-1007"
-                    message:
-                      key: "error.passkeyservice.invalid_finish_data"
-                      defaultValue: "Invalid finish data"
-                    description:
-                      key: "error.passkeyservice.invalid_finish_data_description"
-                      defaultValue: "The finish data cannot be null"
-                invalidAttestationResponse:
-                  value:
-                    code: "PSK-1011"
-                    message:
-                      key: "error.passkeyservice.invalid_attestation_response"
-                      defaultValue: "Invalid attestation response"
-                    description:
-                      key: "error.passkeyservice.invalid_attestation_response_description"
-                      defaultValue: "The attestation response is missing required fields (clientDataJSON or attestationObject)"
-                userNotFound:
-                  value:
-                    code: "PSK-1012"
-                    message:
-                      key: "error.passkeyservice.user_not_found"
-                      defaultValue: "User not found"
-                    description:
-                      key: "error.passkeyservice.user_not_found_description"
-                      defaultValue: "The specified user was not found"
-                sessionExpired:
-                  value:
-                    code: "PSK-1014"
-                    message:
-                      key: "error.passkeyservice.session_expired"
-                      defaultValue: "Session expired"
-                    description:
-                      key: "error.passkeyservice.session_expired_description"
-                      defaultValue: "The session has expired. Please start a new session"
+                      key: "error.authnservice.passkey_enrollment_failed_description"
+                      defaultValue: "The passkey enrollment attempt failed"
         "500":
           description: 'Internal Server Error: An unexpected error occurred while processing the request'
           content:
@@ -427,42 +380,54 @@ components:
           type: string
           description: Session token from the registration start response
           example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-        credentialName:
+        skipAssertion:
+          type: boolean
+          description: Skip generating an assertion token in the response
+          default: false
+          example: false
+        assertion:
           type: string
-          description: User-friendly name for the credential (auto-generated if omitted)
-          example: "My iPhone"
+          description: Optional existing JWT assertion token to enrich with this enrollment
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
       required:
         - publicKeyCredential
         - sessionToken
 
     PasskeyRegistrationFinishResponse:
       type: object
+      description: >
+        Completing enrollment also authenticates the user, so the response returns the
+        authenticated user and an optional assertion token (unless skipAssertion was set).
       properties:
-        credentialId:
+        id:
           type: string
-          description: The unique identifier of the registered credential
-          example: "AdC-ff_z-Z1gY2s6e_2A-g"
-        credentialName:
+          format: uuid
+          description: The unique identifier of the authenticated user
+        type:
           type: string
-          description: User-friendly name for the credential
-          example: "My iPhone"
-        createdAt:
+          description: The type of the authenticated user
+        ouId:
           type: string
-          format: date-time
-          description: Timestamp when the credential was created
-          example: "2024-01-15T10:30:00Z"
+          format: uuid
+          description: The organization unit ID of the authenticated user
+        assertion:
+          type: string
+          description: JWT assertion token for the authenticated user
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
       required:
-        - credentialId
-        - credentialName
-        - createdAt
+        - id
+        - type
+        - ouId
 
     Error:
       type: object
       properties:
         code:
           type: string
-          description: "Error code. Codes follow the PSK-XXXX convention for passkey errors and SSE-XXXX for server errors."
-          example: "PSK-1001"
+          description: >
+            Error code. Client-side passkey registration failures (both start and finish) surface as
+            AUTHN-PSK-XXXX codes; server errors use the SSE-XXXX convention.
+          example: "AUTHN-PSK-1002"
         message:
           $ref: '#/components/schemas/I18nMessage'
         description:

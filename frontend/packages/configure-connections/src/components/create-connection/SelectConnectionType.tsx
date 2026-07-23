@@ -108,14 +108,21 @@ export default function SelectConnectionType({
 
   return (
     <Stack direction="column" spacing={1} data-testid="select-connection-type">
-      <Typography variant="h4" fontWeight={700}>
+      <Typography variant="h1" gutterBottom>
         {t('wizard.type.heading')}
       </Typography>
-      <Typography variant="body1" color="text.secondary">
+      <Typography variant="subtitle1" gutterBottom>
         {t('wizard.type.subheading')}
       </Typography>
 
-      <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', sm: 'repeat(2, 1fr)'}, gap: 2, mt: 3, maxWidth: 760}}>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: {xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', xl: 'repeat(4, 1fr)'},
+          gap: 2,
+          mt: 3,
+        }}
+      >
         {options.map((option) => {
           const isSelected: boolean = selectedType === option.type;
           return (

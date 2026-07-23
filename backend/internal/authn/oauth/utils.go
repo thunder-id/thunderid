@@ -165,8 +165,8 @@ func buildUserInfoRequest(ctx context.Context, userInfoEndpoint string, accessTo
 }
 
 // sendUserInfoRequest sends the user info request to the identity provider and processes the response.
-func sendUserInfoRequest(httpReq *http.Request, httpClient httpservice.HTTPClientInterface, logger *log.Logger) (
-	map[string]interface{}, *tidcommon.ServiceError) {
+func sendUserInfoRequest(httpReq *http.Request, httpClient httpservice.HTTPClientInterface,
+	logger *log.Logger) (map[string]interface{}, *tidcommon.ServiceError) {
 	ctx := httpReq.Context()
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
@@ -217,6 +217,27 @@ func ProcessSubClaim(userInfo map[string]interface{}) {
 		delete(userInfo, "id")
 		return
 	}
+}
+
+// ValidateNonce checks that the nonce in the ID token claims matches the expected nonce
+// from the authorization flow. Returns nil on success or an InternalServerError on mismatch.
+func ValidateNonce(ctx context.Context, claims map[string]interface{}, expectedNonce string,
+	logger *log.Logger) *tidcommon.ServiceError {
+	claimNonce, ok := claims[oauth2const.RequestParamNonce].(string)
+	if !ok || claimNonce == "" {
+		logger.Error(ctx, "Nonce missing in ID token claims")
+		return &tidcommon.InternalServerError
+	}
+	if expectedNonce == "" {
+		logger.Error(ctx, "Nonce expected from authorization flow is missing")
+		return &tidcommon.InternalServerError
+	}
+	if claimNonce != expectedNonce {
+		logger.Error(ctx, "Nonce in ID token claims does not match expected nonce")
+		return &tidcommon.InternalServerError
+	}
+
+	return nil
 }
 
 // GetStringUserClaimValue retrieves a string claim value from the user info map.

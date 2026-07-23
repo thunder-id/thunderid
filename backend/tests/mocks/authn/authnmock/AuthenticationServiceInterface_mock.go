@@ -325,27 +325,27 @@ func (_c *AuthenticationServiceInterfaceMock_FinishPasskeyAuthentication_Call) R
 }
 
 // FinishPasskeyRegistration provides a mock function for the type AuthenticationServiceInterfaceMock
-func (_mock *AuthenticationServiceInterfaceMock) FinishPasskeyRegistration(ctx context.Context, credential authn.PasskeyPublicKeyCredentialDTO, sessionToken string, credentialName string) (interface{}, *common0.ServiceError) {
-	ret := _mock.Called(ctx, credential, sessionToken, credentialName)
+func (_mock *AuthenticationServiceInterfaceMock) FinishPasskeyRegistration(ctx context.Context, credential authn.PasskeyPublicKeyCredentialDTO, sessionToken string, skipAssertion bool, existingAssertion string) (*common.AuthenticationResponse, *common0.ServiceError) {
+	ret := _mock.Called(ctx, credential, sessionToken, skipAssertion, existingAssertion)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FinishPasskeyRegistration")
 	}
 
-	var r0 interface{}
+	var r0 *common.AuthenticationResponse
 	var r1 *common0.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, authn.PasskeyPublicKeyCredentialDTO, string, string) (interface{}, *common0.ServiceError)); ok {
-		return returnFunc(ctx, credential, sessionToken, credentialName)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, authn.PasskeyPublicKeyCredentialDTO, string, bool, string) (*common.AuthenticationResponse, *common0.ServiceError)); ok {
+		return returnFunc(ctx, credential, sessionToken, skipAssertion, existingAssertion)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, authn.PasskeyPublicKeyCredentialDTO, string, string) interface{}); ok {
-		r0 = returnFunc(ctx, credential, sessionToken, credentialName)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, authn.PasskeyPublicKeyCredentialDTO, string, bool, string) *common.AuthenticationResponse); ok {
+		r0 = returnFunc(ctx, credential, sessionToken, skipAssertion, existingAssertion)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(interface{})
+			r0 = ret.Get(0).(*common.AuthenticationResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, authn.PasskeyPublicKeyCredentialDTO, string, string) *common0.ServiceError); ok {
-		r1 = returnFunc(ctx, credential, sessionToken, credentialName)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, authn.PasskeyPublicKeyCredentialDTO, string, bool, string) *common0.ServiceError); ok {
+		r1 = returnFunc(ctx, credential, sessionToken, skipAssertion, existingAssertion)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common0.ServiceError)
@@ -363,12 +363,13 @@ type AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call struct {
 //   - ctx context.Context
 //   - credential authn.PasskeyPublicKeyCredentialDTO
 //   - sessionToken string
-//   - credentialName string
-func (_e *AuthenticationServiceInterfaceMock_Expecter) FinishPasskeyRegistration(ctx interface{}, credential interface{}, sessionToken interface{}, credentialName interface{}) *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call {
-	return &AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call{Call: _e.mock.On("FinishPasskeyRegistration", ctx, credential, sessionToken, credentialName)}
+//   - skipAssertion bool
+//   - existingAssertion string
+func (_e *AuthenticationServiceInterfaceMock_Expecter) FinishPasskeyRegistration(ctx interface{}, credential interface{}, sessionToken interface{}, skipAssertion interface{}, existingAssertion interface{}) *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call {
+	return &AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call{Call: _e.mock.On("FinishPasskeyRegistration", ctx, credential, sessionToken, skipAssertion, existingAssertion)}
 }
 
-func (_c *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call) Run(run func(ctx context.Context, credential authn.PasskeyPublicKeyCredentialDTO, sessionToken string, credentialName string)) *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call {
+func (_c *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call) Run(run func(ctx context.Context, credential authn.PasskeyPublicKeyCredentialDTO, sessionToken string, skipAssertion bool, existingAssertion string)) *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -382,26 +383,31 @@ func (_c *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call) Run
 		if args[2] != nil {
 			arg2 = args[2].(string)
 		}
-		var arg3 string
+		var arg3 bool
 		if args[3] != nil {
-			arg3 = args[3].(string)
+			arg3 = args[3].(bool)
+		}
+		var arg4 string
+		if args[4] != nil {
+			arg4 = args[4].(string)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
 }
 
-func (_c *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call) Return(ifaceVal interface{}, serviceError *common0.ServiceError) *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call {
-	_c.Call.Return(ifaceVal, serviceError)
+func (_c *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call) Return(authenticationResponse *common.AuthenticationResponse, serviceError *common0.ServiceError) *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call {
+	_c.Call.Return(authenticationResponse, serviceError)
 	return _c
 }
 
-func (_c *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call) RunAndReturn(run func(ctx context.Context, credential authn.PasskeyPublicKeyCredentialDTO, sessionToken string, credentialName string) (interface{}, *common0.ServiceError)) *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call {
+func (_c *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call) RunAndReturn(run func(ctx context.Context, credential authn.PasskeyPublicKeyCredentialDTO, sessionToken string, skipAssertion bool, existingAssertion string) (*common.AuthenticationResponse, *common0.ServiceError)) *AuthenticationServiceInterfaceMock_FinishPasskeyRegistration_Call {
 	_c.Call.Return(run)
 	return _c
 }

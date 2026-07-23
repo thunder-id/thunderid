@@ -33,6 +33,8 @@ tags:
     description: OIDC UserInfo endpoint for retrieving claims about the authenticated user.
   - name: DCR
     description: Dynamic Client Registration per RFC 7591.
+  - name: Backchannel Authentication
+    description: OpenID Connect Client-Initiated Backchannel Authentication (CIBA) endpoint.
 
 security: []
 
@@ -55,6 +57,16 @@ paths:
             type: string
             enum: [code]
           description: Must be `code` for the authorization code flow.
+        - name: response_mode
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [query]
+          description: >-
+            OAuth 2.0 response mode. When omitted, query mode is used by default.
+            Only query mode is supported. Requests with unsupported values such as
+            fragment or form_post are rejected with invalid_request.
         - name: client_id
           in: query
           required: true
@@ -250,6 +262,72 @@ paths:
               example:
                 error: "invalid_grant"
                 error_description: "The provided authorization grant is invalid"
+        "401":
+          description: Unauthorized — client authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+
+  /oauth2/bc-authorize:
+    post:
+      summary: Backchannel authentication endpoint
+      description: |
+        Initiates an OpenID Connect Client-Initiated Backchannel Authentication (CIBA) request in
+        poll mode. The client identifies the user with exactly one of `login_hint` or `id_token_hint`
+        (`login_hint_token` is defined by the specification but not supported and is rejected with
+        `invalid_request`), and the server begins an out-of-band authentication ceremony. The returned
+        `auth_req_id` is polled at the token endpoint using the `urn:openid:params:grant-type:ciba`
+        grant. Requires client authentication.
+
+        RFC 8707 resource indicators bind the request to a single resource server before user
+        authorization. A valid `resource` binds the request to that resource server; when omitted from
+        a permission-bearing request the configured `defaultResourceServer` is used, and a
+        permission-bearing request with no resource and no default is rejected with `invalid_target`.
+        OIDC-only requests without a resource remain valid and keep the `client_id` audience. Multiple
+        `resource` values, including duplicates, are rejected with `invalid_target`. The resulting
+        access token has the bound resource server identifier as its sole `aud`, and its permissions
+        are limited to those defined by that resource server. A `resource` optionally supplied when
+        polling the token endpoint must exactly match the bound resource server.
+      tags:
+        - Backchannel Authentication
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BackchannelAuthRequest'
+      responses:
+        "200":
+          description: Backchannel authentication request accepted.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: Always `no-store`.
+            Pragma:
+              schema:
+                type: string
+              description: Always `no-cache`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackchannelAuthResponse'
+              example:
+                auth_req_id: "1c266114-a1be-4252-8ad1-04986c5b9ac1"
+                expires_in: 120
+                interval: 5
+        "400":
+          description: >-
+            Bad Request — invalid_request, invalid_scope, invalid_target, unknown_user_id,
+            invalid_binding_message, or unauthorized_client.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+              example:
+                error: "invalid_target"
+                error_description: "The resource parameter does not match any registered resource server"
         "401":
           description: Unauthorized — client authentication failed.
           content:
@@ -579,6 +657,7 @@ components:
             - password
             - urn:ietf:params:oauth:grant-type:token-exchange
             - urn:ietf:params:oauth:grant-type:jwt-bearer
+            - urn:openid:params:grant-type:ciba
           description: The OAuth 2.0 grant type.
         client_id:
           type: string
@@ -649,6 +728,11 @@ components:
           description: >-
             ID-JAG assertion JWT issued by a trusted external IdP (draft-ietf-oauth-identity-assertion-authz-grant).
             Required for the `urn:ietf:params:oauth:grant-type:jwt-bearer` grant.
+        auth_req_id:
+          type: string
+          description: >-
+            The backchannel authentication request identifier returned by /oauth2/bc-authorize.
+            Required for the `urn:openid:params:grant-type:ciba` grant.
 
     TokenResponse:
       type: object
@@ -1038,6 +1122,70 @@ components:
           type: string
       description: Language-tagged variants (e.g. `client_name#fr`) are included as top-level properties in the response.
 
+    BackchannelAuthRequest:
+      type: object
+      required:
+        - scope
+      properties:
+        client_id:
+          type: string
+          description: The client identifier (required when not using HTTP Basic auth).
+        client_secret:
+          type: string
+          description: The client secret (required for confidential clients not using HTTP Basic auth).
+        login_hint:
+          type: string
+          description: >-
+            A hint identifying the user to authenticate. Exactly one of login_hint or id_token_hint
+            must be provided.
+        id_token_hint:
+          type: string
+          description: >-
+            A previously issued ID token identifying the user. Exactly one of login_hint or
+            id_token_hint must be provided.
+        login_hint_token:
+          type: string
+          description: >-
+            Defined by the CIBA specification but not supported; requests including it are rejected
+            with invalid_request. Use login_hint instead.
+        scope:
+          type: string
+          description: Space-separated scopes. Must include `openid`.
+        resource:
+          type: string
+          description: >-
+            Resource indicator per RFC 8707 (absolute URI, no fragment). Only one value is
+            supported; requests with multiple resource values, including duplicates, are rejected
+            with invalid_target. When omitted from a permission-bearing request, the configured
+            defaultResourceServer is used; a permission-bearing request with no resource and no
+            default is rejected with invalid_target. OIDC-only requests use the client_id audience.
+        binding_message:
+          type: string
+          description: >-
+            Optional human-readable message shown to the user in the authentication notification
+            (CIBA Core 1.0 §7.1). Limited to 256 printable characters.
+        requested_expiry:
+          type: integer
+          description: Requested lifetime of the auth_req_id in seconds. Clamped to the server maximum.
+        acr_values:
+          type: string
+          description: Space-separated list of requested Authentication Context Class Reference values.
+    BackchannelAuthResponse:
+      type: object
+      required:
+        - auth_req_id
+        - expires_in
+        - interval
+      properties:
+        auth_req_id:
+          type: string
+          description: Unique identifier for the backchannel authentication request, polled at the token endpoint.
+        expires_in:
+          type: integer
+          description: Lifetime of the auth_req_id in seconds.
+        interval:
+          type: integer
+          description: Minimum number of seconds the client must wait between token endpoint polls.
     OAuthError:
       type: object
       required:

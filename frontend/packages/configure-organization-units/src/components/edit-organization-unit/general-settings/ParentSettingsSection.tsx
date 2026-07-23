@@ -22,6 +22,7 @@ import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link} from 'react-router';
 import useGetOrganizationUnit from '../../../api/useGetOrganizationUnit';
+import useOrganizationUnitRoutes from '../../../hooks/useOrganizationUnitRoutes';
 import type {OUNavigationState} from '../../../models/navigation';
 import type {OrganizationUnit} from '../../../models/organization-unit';
 
@@ -49,6 +50,7 @@ interface ParentSettingsSectionProps {
  */
 export default function ParentSettingsSection({organizationUnit}: ParentSettingsSectionProps): JSX.Element {
   const {t} = useTranslation();
+  const routes = useOrganizationUnitRoutes();
 
   const {data: parentOU, isLoading: isLoadingParent} = useGetOrganizationUnit(
     organizationUnit.parent ?? undefined,
@@ -85,7 +87,7 @@ export default function ParentSettingsSection({organizationUnit}: ParentSettings
         <Stack direction="row" spacing={1} alignItems="center">
           <Typography
             component={Link}
-            to={`/organization-units/${parentOU.id}`}
+            to={routes.detail(parentOU.id)}
             state={navigationState}
             data-state={JSON.stringify(navigationState)}
             variant="body2"

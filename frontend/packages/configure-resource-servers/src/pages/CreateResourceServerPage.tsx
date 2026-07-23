@@ -40,6 +40,7 @@ import ConfigureOrgUnit from '../components/create-resource-server/ConfigureOrgU
 import ConfigureSeparator from '../components/create-resource-server/ConfigureSeparator';
 import ConfigureType from '../components/create-resource-server/ConfigureType';
 import {DEFAULT_PERMISSION_DELIMITER} from '../constants/permission-constants';
+import useResourceServerRoutes from '../hooks/useResourceServerRoutes';
 import type {PermissionDelimiter} from '../models/permissions';
 import type {ResourceServerType} from '../models/resource-server';
 
@@ -54,6 +55,7 @@ type ResourceServerCreateStep = keyof typeof ResourceServerCreateStep;
 
 export default function CreateResourceServerPage(): JSX.Element {
   const navigate = useNavigate();
+  const routes = useResourceServerRoutes();
   const {t} = useTranslation();
   const {showToast} = useToast();
   const logger = useLogger('CreateResourceServerPage');
@@ -94,7 +96,7 @@ export default function CreateResourceServerPage(): JSX.Element {
 
   const handleClose = (): void => {
     (async (): Promise<void> => {
-      await navigate('/resource-servers');
+      await navigate(routes.list());
     })().catch((err: unknown) => {
       logger.error('Failed to navigate to resource servers list', {error: err});
     });
@@ -169,7 +171,7 @@ export default function CreateResourceServerPage(): JSX.Element {
           'success',
         );
         (async (): Promise<void> => {
-          await navigate(`/resource-servers/${created.id}?tab=resources`);
+          await navigate(`${routes.detail(created.id)}?tab=resources`);
         })().catch((err: unknown) => {
           logger.error('Failed to navigate after create', {error: err});
         });

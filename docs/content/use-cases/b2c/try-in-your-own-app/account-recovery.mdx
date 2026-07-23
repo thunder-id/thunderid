@@ -15,7 +15,7 @@ This walkthrough configures <ProductName /> to let users reset a forgotten passw
 
 :::note Prerequisites
 - Complete the [Login](../add-login) walkthrough first. The user type and application set up there are required here.
-- Configure SMTP so that <ProductName /> can send recovery emails. See [Email Configuration](../../../../guides/getting-started/configuration#email-configuration), then restart <ProductName /> for the changes to take effect.
+- Configure SMTP so that <ProductName /> can send recovery emails. See [Email Configuration](../../../../deployment/configuration#email-configuration), then restart <ProductName /> for the changes to take effect.
 :::
 
 ## Pick Your Pattern
@@ -29,7 +29,7 @@ In the redirect-based pattern, the entire recovery experience is hosted by <Prod
 
 **1. Build a recovery flow**
 
-Build a `RECOVERY` flow that identifies the user, generates a recovery token, sends the email, verifies the link, and lets the user set a new password. See [Build a Flow](../../../../guides/guides/flows/build-a-flow).
+Build a `RECOVERY` flow that identifies the user, generates a recovery token, sends the email, verifies the link, and lets the user set a new password. See [Build a Flow](../../../../guides/flows/build-a-flow).
 
 <details>
   <summary>Sample recovery flow</summary>
@@ -166,7 +166,7 @@ Build a `RECOVERY` flow that identifies the user, generates a recovery token, se
 
 Go to **Applications** → your app → **Flows** tab. Under **Recovery Flow**, select the flow you created. Save the application.
 
-See [Manage Applications](../../../../guides/guides/applications/manage-applications).
+See [Manage Applications](../../../../guides/applications/manage-applications).
 
 ### Integrate into Your App
 
@@ -175,8 +175,8 @@ The recovery flow is hosted on <ProductName />. Your app only needs a **Forgot p
 | Framework   | Where to integrate                                                                            |
 | ----------- | --------------------------------------------------------------------------------------------- |
 | React       | [React SDK Overview](../../../../sdks/react/overview), use the SDK's recovery entry point    |
-| Next.js     | [Next.js Quickstart](../../../../guides/getting-started/connect-your-application/nextjs)       |
-| Vue         | [Vue Quickstart](../../../../guides/getting-started/connect-your-application/vue)              |
+| Next.js     | [Next.js Quickstart](../../../../getting-started/connect-your-application/nextjs)       |
+| Vue         | [Vue Quickstart](../../../../getting-started/connect-your-application/vue)              |
 | Browser SDK | [Browser SDK Overview](../../../../sdks/browser/overview)                                      |
 
 ### Try It Out

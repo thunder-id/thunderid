@@ -49,7 +49,8 @@ vi.mock('../../../validation-panel/ValidationErrorBoundary', () => ({
 }));
 
 // Mock View component
-let capturedOnActionPanelDoubleClick: (() => void) | undefined;
+let capturedOnActionPanelClick: (() => void) | undefined;
+let capturedOnConfigure: (() => void) | undefined;
 
 vi.mock('../../view/View', () => ({
   default: ({
@@ -57,15 +58,18 @@ vi.mock('../../view/View', () => ({
     enableSourceHandle,
     deletable,
     configurable,
-    onActionPanelDoubleClick,
+    onActionPanelClick,
+    onConfigure,
   }: {
     heading: string;
     enableSourceHandle: boolean;
     deletable: boolean;
     configurable: boolean;
-    onActionPanelDoubleClick?: () => void;
+    onActionPanelClick?: () => void;
+    onConfigure?: () => void;
   }) => {
-    capturedOnActionPanelDoubleClick = onActionPanelDoubleClick;
+    capturedOnActionPanelClick = onActionPanelClick;
+    capturedOnConfigure = onConfigure;
     return (
       <div
         data-testid="view-component"
@@ -435,8 +439,8 @@ describe('Execution', () => {
     });
   });
 
-  describe('Action Panel Double Click Handler', () => {
-    it('should call setLastInteractedStepId and setLastInteractedResource when onActionPanelDoubleClick is triggered', () => {
+  describe('Action Panel Click Handler', () => {
+    it('should call setLastInteractedStepId and setLastInteractedResource when onActionPanelClick is triggered', () => {
       render(
         <Execution
           {...createMockProps({
@@ -450,8 +454,26 @@ describe('Execution', () => {
 
       expect(screen.getByTestId('view-component')).toBeInTheDocument();
 
-      // Trigger the captured double click handler
-      capturedOnActionPanelDoubleClick?.();
+      // Trigger the captured click handler
+      capturedOnActionPanelClick?.();
+
+      expect(mockSetLastInteractedStepId).toHaveBeenCalledWith('execution-node-id');
+      expect(mockSetLastInteractedResource).toHaveBeenCalled();
+    });
+
+    it('should wire the header configure button to the same selection handler', () => {
+      render(
+        <Execution
+          {...createMockProps({
+            data: {
+              action: {executor: {name: 'Configure Test'}},
+              components: [{id: 'comp-1', type: 'BUTTON'}],
+            },
+          })}
+        />,
+      );
+
+      capturedOnConfigure?.();
 
       expect(mockSetLastInteractedStepId).toHaveBeenCalledWith('execution-node-id');
       expect(mockSetLastInteractedResource).toHaveBeenCalled();
@@ -471,8 +493,8 @@ describe('Execution', () => {
         />,
       );
 
-      // Trigger the captured double click handler
-      capturedOnActionPanelDoubleClick?.();
+      // Trigger the captured click handler
+      capturedOnActionPanelClick?.();
 
       expect(mockSetLastInteractedStepId).not.toHaveBeenCalled();
       expect(mockSetLastInteractedResource).toHaveBeenCalled();

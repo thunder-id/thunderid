@@ -19,6 +19,7 @@
 import {render, screen, fireEvent} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import View from '../View';
+import StepPreviewContext from '@/features/flows/context/StepPreviewContext';
 import type {Element} from '@/features/flows/models/elements';
 
 // Mock i18next
@@ -54,6 +55,16 @@ vi.mock('@xyflow/react', () => ({
   useReactFlow: () => ({
     deleteElements: mockDeleteElements,
     getNode: mockGetNode,
+  }),
+}));
+
+// StepTitle (rendered in the header) reads the interaction state for rename syncing
+vi.mock('@/features/flows/hooks/useInteractionState', () => ({
+  default: () => ({
+    lastInteractedResource: undefined,
+    lastInteractedStepId: '',
+    setLastInteractedResource: vi.fn(),
+    setLastInteractedStepId: vi.fn(),
   }),
 }));
 
@@ -107,13 +118,14 @@ describe('View', () => {
   });
 
   describe('Rendering', () => {
-    it('should render the View component', () => {
+    it('should render the step id in the header', () => {
       render(<View />);
 
-      expect(screen.getByText('View')).toBeInTheDocument();
+      expect(screen.getByText('view-node-id')).toBeInTheDocument();
     });
 
-    it('should render with custom heading', () => {
+    it('should fall back to the heading when there is no node context', () => {
+      mockUseNodeId.mockReturnValue(null as unknown as string);
       render(<View heading="Login Form" />);
 
       expect(screen.getByText('Login Form')).toBeInTheDocument();
@@ -370,14 +382,45 @@ describe('View', () => {
     });
   });
 
-  describe('Action Panel Double Click', () => {
-    it('should call onActionPanelDoubleClick when action panel is double clicked', () => {
-      const onDoubleClick = vi.fn();
-      render(<View onActionPanelDoubleClick={onDoubleClick} />);
+  describe('Preview Button', () => {
+    it('should not render a preview button without a preview provider', () => {
+      render(<View />);
+
+      expect(screen.queryByTestId('view-preview-button')).not.toBeInTheDocument();
+    });
+
+    it('should start the step preview for this node when clicked', () => {
+      const previewStep = vi.fn();
+      render(
+        <StepPreviewContext.Provider value={previewStep}>
+          <View />
+        </StepPreviewContext.Provider>,
+      );
+
+      fireEvent.click(screen.getByTestId('view-preview-button'));
+      expect(previewStep).toHaveBeenCalledWith('view-node-id');
+    });
+  });
+
+  describe('Action Panel Click', () => {
+    it('should call onActionPanelClick when the action panel is clicked', () => {
+      const onClick = vi.fn();
+      render(<View onActionPanelClick={onClick} />);
 
       const actionPanel = screen.getByTestId('step-action-panel');
-      fireEvent.doubleClick(actionPanel);
-      expect(onDoubleClick).toHaveBeenCalled();
+      fireEvent.click(actionPanel);
+      expect(onClick).toHaveBeenCalled();
+    });
+
+    it('should not call onActionPanelClick for clicks on the header buttons', () => {
+      const onClick = vi.fn();
+      render(<View onActionPanelClick={onClick} deletable />);
+
+      const actionPanel = screen.getByTestId('step-action-panel');
+      const button = actionPanel.querySelector('button');
+      expect(button).toBeTruthy();
+      fireEvent.click(button!);
+      expect(onClick).not.toHaveBeenCalled();
     });
   });
 
@@ -387,12 +430,13 @@ describe('View', () => {
       render(<View droppableAllowedTypes={['CUSTOM_TYPE']} />);
 
       // Component should render without errors
-      expect(screen.getByText('View')).toBeInTheDocument();
+      expect(screen.getByText('view-node-id')).toBeInTheDocument();
     });
   });
 
   describe('Memoization', () => {
     it('should render correctly on rerender with same props', () => {
+      mockUseNodeId.mockReturnValue(null as unknown as string);
       const {rerender} = render(<View heading="Test View" />);
 
       expect(screen.getByText('Test View')).toBeInTheDocument();
@@ -418,6 +462,7 @@ describe('View', () => {
     });
 
     it('should re-render when heading prop changes', () => {
+      mockUseNodeId.mockReturnValue(null as unknown as string);
       const {rerender} = render(<View heading="Initial Heading" />);
       expect(screen.getByText('Initial Heading')).toBeInTheDocument();
 
@@ -452,6 +497,7 @@ describe('View', () => {
     });
 
     it('should not re-render when only callback props change', () => {
+      mockUseNodeId.mockReturnValue(null as unknown as string);
       const onAddElement1 = vi.fn();
       const onAddElement2 = vi.fn();
 

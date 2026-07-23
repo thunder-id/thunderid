@@ -22,6 +22,7 @@ import {ArrowLeft, Save, Trash, Undo2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useRef, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import ThemeConfigPanel from '../components/ThemeConfigPanel';
 import ThemePreviewPanel from '../components/ThemePreviewPanel';
 import ThemeBuilderLeftPanel from '../components/themes/ThemeBuilderLeftPanel';
@@ -58,12 +59,12 @@ export default function ThemeBuilderPage(): JSX.Element {
 
   const handleBack = useCallback(() => {
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    navigate('/design');
+    navigate(RouteConfig.design.list());
   }, [navigate]);
 
   const handleDeleteSuccess = useCallback(() => {
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    navigate('/design');
+    navigate(RouteConfig.design.list());
   }, [navigate]);
 
   const bgColor = (systemMode ?? mode) === 'dark' ? '#141414' : '#f6f7f9';

@@ -63,9 +63,13 @@ vi.mock('@/api/useGetChildOrganizationUnits', () => ({
 // Mock ThunderID — stable reference to avoid useCallback churn
 const mockHttpRequest = vi.fn();
 const stableHttp = {request: mockHttpRequest};
-vi.mock('@thunderid/react', () => ({
-  useThunderID: () => ({http: stableHttp}),
-}));
+vi.mock('@thunderid/react', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...(actual as object),
+    useThunderID: () => ({http: stableHttp}),
+  };
+});
 
 // Mock config — stable reference to avoid useCallback churn
 const stableConfig = {getServerUrl: () => 'http://localhost:8080'};

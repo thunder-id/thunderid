@@ -42,6 +42,7 @@ import useUpdateUserType from '../api/useUpdateUserType';
 import EditGeneralSettings from '../components/edit-user-type/general-settings/EditGeneralSettings';
 import EditSchemaSettings from '../components/edit-user-type/schema-settings/EditSchemaSettings';
 import UserTypeDeleteDialog from '../components/edit-user-type/UserTypeDeleteDialog';
+import useUserTypeRoutes from '../hooks/useUserTypeRoutes';
 import type {PropertyDefinition, UserTypeDefinition, PropertyType, SchemaPropertyInput} from '../types/user-types';
 
 interface TabPanelProps {
@@ -138,7 +139,8 @@ export default function ViewUserTypePage(): JSX.Element {
   const logger = useLogger('ViewUserTypePage');
   const {showToast} = useToast();
   const {id} = useParams<{id: string}>();
-  const listUrl = '/user-types';
+  const routes = useUserTypeRoutes();
+  const listUrl = routes.list();
 
   const {data: userType, isLoading, error: fetchError} = useGetUserType(id);
   const updateUserTypeMutation = useUpdateUserType();

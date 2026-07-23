@@ -21,6 +21,7 @@ package inboundclient
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -34,6 +35,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	entitytypepkg "github.com/thunder-id/thunderid/internal/entitytype"
+	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -554,6 +556,21 @@ func (suite *InboundClientServiceTestSuite) TestValidate_ValidProfile() {
 
 	err := svc.Validate(context.Background(), ptrInboundClient(), validOAuthProfile(), true)
 	assert.NoError(suite.T(), err)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidate_DefaultAudienceTooLong() {
+	store := newInboundClientStoreInterfaceMock(suite.T())
+	svc := newServiceForTest(store)
+
+	p := validOAuthProfile()
+	p.Token = &providers.OAuthTokenConfig{
+		AccessToken: &providers.AccessTokenConfig{
+			DefaultAudience: strings.Repeat("a", maxDefaultAudienceLength+1),
+		},
+	}
+
+	err := svc.Validate(context.Background(), ptrInboundClient(), p, false)
+	assert.ErrorIs(suite.T(), err, ErrOAuthDefaultAudienceTooLong)
 }
 
 func (suite *InboundClientServiceTestSuite) TestValidate_InvalidGrantType() {
@@ -1216,18 +1233,12 @@ func (suite *InboundClientServiceTestSuite) TestResolveOAuthTokens_ZeroValidityF
 	assert.Equal(suite.T(), int64(86400), rt.ValidityPeriod)
 }
 
-// ----- resolveScopeClaims -----
-
-func (suite *InboundClientServiceTestSuite) TestResolveScopeClaims_NilReturnsEmptyMap() {
-	out := resolveScopeClaims(nil)
-	assert.NotNil(suite.T(), out)
-	assert.Empty(suite.T(), out)
-}
-
-func (suite *InboundClientServiceTestSuite) TestResolveScopeClaims_PassesThroughExistingMap() {
-	in := map[string][]string{"profile": {"given_name"}}
-	out := resolveScopeClaims(in)
-	assert.Equal(suite.T(), in, out)
+func (suite *InboundClientServiceTestSuite) TestResolveOAuthTokens_CarriesDefaultAudience() {
+	in := &providers.OAuthTokenConfig{
+		AccessToken: &providers.AccessTokenConfig{DefaultAudience: "https://api.example.com"},
+	}
+	at, _, _ := resolveOAuthTokens(in, &inboundmodel.AssertionConfig{ValidityPeriod: 900})
+	assert.Equal(suite.T(), "https://api.example.com", at.DefaultAudience)
 }
 
 // ----- validateRedirectURIs error branches -----
@@ -1725,7 +1736,30 @@ func (suite *InboundClientServiceTestSuite) TestValidateGrantAndResponseTypes_Re
 		GrantTypes: []string{"refresh_token"},
 	}
 	assert.ErrorIs(suite.T(), validateGrantAndResponseTypes(p),
-		ErrOAuthRefreshTokenCannotBeSoleGrant)
+		ErrOAuthRefreshTokenRequiresTokenIssuingGrant)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateGrantAndResponseTypes_RefreshTokenWithClientCredentials() {
+	p := &providers.OAuthProfile{
+		GrantTypes: []string{"client_credentials", "refresh_token"},
+	}
+	assert.ErrorIs(suite.T(), validateGrantAndResponseTypes(p),
+		ErrOAuthRefreshTokenRequiresTokenIssuingGrant)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateGrantAndResponseTypes_RefreshTokenWithAuthCode() {
+	p := &providers.OAuthProfile{
+		GrantTypes:    []string{"authorization_code", "refresh_token"},
+		ResponseTypes: []string{"code"},
+	}
+	assert.NoError(suite.T(), validateGrantAndResponseTypes(p))
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateGrantAndResponseTypes_RefreshTokenWithCIBA() {
+	p := &providers.OAuthProfile{
+		GrantTypes: []string{string(providers.GrantTypeCIBA), "refresh_token"},
+	}
+	assert.NoError(suite.T(), validateGrantAndResponseTypes(p))
 }
 
 func (suite *InboundClientServiceTestSuite) TestValidateGrantAndResponseTypes_PKCEWithoutAuthCode() {
@@ -1758,6 +1792,113 @@ func (suite *InboundClientServiceTestSuite) TestValidateGrantAndResponseTypes_Ha
 		GrantTypes: []string{"client_credentials"},
 	}
 	assert.NoError(suite.T(), validateGrantAndResponseTypes(p))
+}
+
+// ----- allow-list enforcement (validateWithAllowed*) -----
+
+func (suite *InboundClientServiceTestSuite) configureAllowedGrantTypes(allowed []string) {
+	sysconfig.ResetServerRuntime()
+	cfg := &sysconfig.Config{}
+	cfg.OAuth.AllowedGrantTypes = allowed
+	suite.Require().NoError(sysconfig.InitializeServerRuntime("/tmp/test", cfg))
+}
+
+func (suite *InboundClientServiceTestSuite) configureAllowedResponseTypes(allowed []string) {
+	sysconfig.ResetServerRuntime()
+	cfg := &sysconfig.Config{}
+	cfg.OAuth.AllowedResponseTypes = allowed
+	suite.Require().NoError(sysconfig.InitializeServerRuntime("/tmp/test", cfg))
+}
+
+func (suite *InboundClientServiceTestSuite) configureAllowedAuthMethods(allowed []string) {
+	sysconfig.ResetServerRuntime()
+	cfg := &sysconfig.Config{}
+	cfg.OAuth.AllowedAuthMethods = allowed
+	suite.Require().NoError(sysconfig.InitializeServerRuntime("/tmp/test", cfg))
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateWithAllowedGrantTypes_EmptyAllowList_PermitsAny() {
+	err := validateWithAllowedGrantTypes([]string{"authorization_code", "client_credentials"})
+	assert.NoError(suite.T(), err)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateWithAllowedGrantTypes_NotInAllowList_Rejected() {
+	suite.configureAllowedGrantTypes([]string{"client_credentials"})
+	err := validateWithAllowedGrantTypes([]string{"authorization_code"})
+	assert.ErrorIs(suite.T(), err, ErrOAuthInvalidGrantType)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateWithAllowedGrantTypes_InAllowList_Allowed() {
+	suite.configureAllowedGrantTypes([]string{"authorization_code", "refresh_token"})
+	err := validateWithAllowedGrantTypes([]string{"authorization_code"})
+	assert.NoError(suite.T(), err)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateWithAllowedGrantTypes_InvalidGrantTypeStillRejected() {
+	// An allow-list entry does not bypass the underlying IsValid() check.
+	suite.configureAllowedGrantTypes([]string{"bogus_grant"})
+	err := validateWithAllowedGrantTypes([]string{"bogus_grant"})
+	assert.ErrorIs(suite.T(), err, ErrOAuthInvalidGrantType)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateWithAllowedResponseTypes_EmptyAllowList_PermitsAny() {
+	err := validateWithAllowedResponseTypes([]string{"code"})
+	assert.NoError(suite.T(), err)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateWithAllowedResponseTypes_NotInAllowList_Rejected() {
+	suite.configureAllowedResponseTypes([]string{"code"})
+	err := validateWithAllowedResponseTypes([]string{"id_token"})
+	assert.ErrorIs(suite.T(), err, ErrOAuthInvalidResponseType)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateWithAllowedResponseTypes_InAllowList_Allowed() {
+	suite.configureAllowedResponseTypes([]string{"code"})
+	err := validateWithAllowedResponseTypes([]string{"code"})
+	assert.NoError(suite.T(), err)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateWithAllowedTokenEndpointAuthMethod_EmptyAllowList_PermitsAny() {
+	err := validateWithAllowedTokenEndpointAuthMethod("client_secret_basic")
+	assert.NoError(suite.T(), err)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateWithAllowedTokenEndpointAuthMethod_NotInAllowList_Rejected() {
+	suite.configureAllowedAuthMethods([]string{"client_secret_basic"})
+	err := validateWithAllowedTokenEndpointAuthMethod("none")
+	assert.ErrorIs(suite.T(), err, ErrOAuthInvalidTokenEndpointAuthMethod)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateWithAllowedTokenEndpointAuthMethod_InAllowList_Allowed() {
+	suite.configureAllowedAuthMethods([]string{"client_secret_basic"})
+	err := validateWithAllowedTokenEndpointAuthMethod("client_secret_basic")
+	assert.NoError(suite.T(), err)
+}
+
+// ----- allow-list enforcement wired into the higher-level validators -----
+
+func (suite *InboundClientServiceTestSuite) TestValidateGrantAndResponseTypes_GrantTypeNotAllowed() {
+	suite.configureAllowedGrantTypes([]string{"client_credentials"})
+	p := &providers.OAuthProfile{
+		GrantTypes: []string{"authorization_code"},
+	}
+	assert.ErrorIs(suite.T(), validateGrantAndResponseTypes(p), ErrOAuthInvalidGrantType)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateGrantAndResponseTypes_ResponseTypeNotAllowed() {
+	suite.configureAllowedResponseTypes([]string{"code"})
+	p := &providers.OAuthProfile{
+		GrantTypes:    []string{"authorization_code"},
+		ResponseTypes: []string{"id_token"},
+	}
+	assert.ErrorIs(suite.T(), validateGrantAndResponseTypes(p), ErrOAuthInvalidResponseType)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateTokenEndpointAuthMethod_NotAllowed() {
+	suite.configureAllowedAuthMethods([]string{"client_secret_basic"})
+	p := &providers.OAuthProfile{TokenEndpointAuthMethod: "private_key_jwt"}
+	err := validateTokenEndpointAuthMethod(p, false)
+	assert.ErrorIs(suite.T(), err, ErrOAuthInvalidTokenEndpointAuthMethod)
 }
 
 // ----- validatePublicClient branch coverage -----
@@ -1800,6 +1941,47 @@ func (suite *InboundClientServiceTestSuite) TestValidateFKs_AllPassWithEmptyOpti
 	svc := &inboundClientService{}
 	c := &inboundmodel.InboundClient{}
 	assert.NoError(suite.T(), svc.validateFKs(context.Background(), c))
+}
+
+// ----- RevalidateFKs -----
+
+func (suite *InboundClientServiceTestSuite) TestRevalidateFKs_MissingInboundClientIsNoOp() {
+	store := newInboundClientStoreInterfaceMock(suite.T())
+	store.EXPECT().GetInboundClientByEntityID(mock.Anything, "app-1").
+		Return(nil, ErrInboundClientNotFound)
+	svc := newServiceForTest(store).(*inboundClientService)
+	assert.NoError(suite.T(), svc.RevalidateFKs(context.Background(), "app-1"))
+}
+
+func (suite *InboundClientServiceTestSuite) TestRevalidateFKs_StoreErrorPropagated() {
+	store := newInboundClientStoreInterfaceMock(suite.T())
+	storeErr := errors.New("boom")
+	store.EXPECT().GetInboundClientByEntityID(mock.Anything, "app-1").Return(nil, storeErr)
+	svc := newServiceForTest(store).(*inboundClientService)
+	assert.ErrorIs(suite.T(), svc.RevalidateFKs(context.Background(), "app-1"), storeErr)
+}
+
+func (suite *InboundClientServiceTestSuite) TestRevalidateFKs_FlowMismatchSurfaced() {
+	client := &inboundmodel.InboundClient{
+		ID: "app-1", AuthFlowID: "auth", RegistrationFlowID: "reg-a",
+	}
+	store := newInboundClientStoreInterfaceMock(suite.T())
+	store.EXPECT().GetInboundClientByEntityID(mock.Anything, "app-1").Return(client, nil)
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().IsValidFlow(mock.Anything, "auth", providers.FlowTypeAuthentication).
+		Return(true, nil)
+	flowMgt.EXPECT().IsValidFlow(mock.Anything, "reg-a", providers.FlowTypeRegistration).
+		Return(true, nil)
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
+		[]flowmgt.CallTarget{{FlowID: "reg-b", FlowType: providers.FlowTypeRegistration}}, nil)
+	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(),
+		nil, nil, nil, nil, flowMgt, nil).(*inboundClientService)
+
+	err := svc.RevalidateFKs(context.Background(), "app-1")
+	var fm *FlowMismatchError
+	suite.Require().True(errors.As(err, &fm))
+	assert.Equal(suite.T(), providers.FlowTypeAuthentication, fm.SourceFlowType)
+	assert.Equal(suite.T(), providers.FlowTypeRegistration, fm.FlowType)
 }
 
 // ----- validateUniqueInboundClientID -----
@@ -2388,4 +2570,303 @@ func (suite *InboundClientServiceTestSuite) TestListInboundClientAttributes() {
 	assert.ElementsMatch(suite.T(), []string{"email", "name"}, got[0].Attributes)
 	assert.Equal(suite.T(), "app2", got[1].InboundClientID)
 	assert.Empty(suite.T(), got[1].Attributes)
+}
+
+// ----- reconcileReferencedFlows -----
+
+func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_NilFlowMgtSkips() {
+	svc := &inboundClientService{}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth"}
+	assert.NoError(suite.T(), svc.reconcileReferencedFlows(context.Background(), c))
+}
+
+func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_AutoFillsMissingRegistration() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
+		[]flowmgt.CallTarget{{FlowID: "reg-b", FlowType: providers.FlowTypeRegistration}}, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{
+		AuthFlowID:                "auth",
+		IsRegistrationFlowEnabled: true,
+	}
+	suite.Require().NoError(svc.reconcileReferencedFlows(context.Background(), c))
+	assert.Equal(suite.T(), "reg-b", c.RegistrationFlowID)
+	assert.False(suite.T(), c.IsRegistrationFlowEnabled,
+		"auto-fill must force the enable flag to false regardless of its previous value")
+}
+
+func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_AutoFillsMissingRecovery() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
+		[]flowmgt.CallTarget{{FlowID: "rec-b", FlowType: providers.FlowTypeRecovery}}, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth", IsRecoveryFlowEnabled: true}
+	suite.Require().NoError(svc.reconcileReferencedFlows(context.Background(), c))
+	assert.Equal(suite.T(), "rec-b", c.RecoveryFlowID)
+	assert.False(suite.T(), c.IsRecoveryFlowEnabled)
+}
+
+func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_AutoFillsMissingSignOut() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
+		[]flowmgt.CallTarget{{FlowID: "so-b", FlowType: providers.FlowTypeSignOut}}, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth", IsSignOutFlowEnabled: true}
+	suite.Require().NoError(svc.reconcileReferencedFlows(context.Background(), c))
+	assert.Equal(suite.T(), "so-b", c.SignOutFlowID)
+	assert.False(suite.T(), c.IsSignOutFlowEnabled)
+}
+
+func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_MatchingBindingPreservesEnableFlag() {
+	// When the app already has RegistrationFlowID set and it matches the referenced target,
+	// reconcile must not touch the IsRegistrationFlowEnabled flag.
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
+		[]flowmgt.CallTarget{{FlowID: "reg-a", FlowType: providers.FlowTypeRegistration}}, nil)
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "reg-a").Return(nil, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{
+		AuthFlowID:                "auth",
+		RegistrationFlowID:        "reg-a",
+		IsRegistrationFlowEnabled: true,
+	}
+	suite.Require().NoError(svc.reconcileReferencedFlows(context.Background(), c))
+	assert.True(suite.T(), c.IsRegistrationFlowEnabled)
+}
+
+func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_MismatchStillRejects() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
+		[]flowmgt.CallTarget{{FlowID: "reg-b", FlowType: providers.FlowTypeRegistration}}, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth", RegistrationFlowID: "reg-a"}
+	err := svc.reconcileReferencedFlows(context.Background(), c)
+	var fm *FlowMismatchError
+	suite.Require().True(errors.As(err, &fm))
+	assert.Equal(suite.T(), providers.FlowTypeRegistration, fm.FlowType)
+	assert.Equal(suite.T(), "reg-a", c.RegistrationFlowID, "mismatch must not clobber the existing binding")
+}
+
+func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_MismatchedAuthTargetRejects() {
+	// A recovery flow referencing an AUTHENTICATION target different from the app's AuthFlowID
+	// must be rejected — direct-init auth for the app runs a different flow than the recovery
+	// path composes with, which is an invariant violation.
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth-a").Return(nil, nil)
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "rec-a").Return(
+		[]flowmgt.CallTarget{{FlowID: "auth-b", FlowType: providers.FlowTypeAuthentication}}, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth-a", RecoveryFlowID: "rec-a"}
+	err := svc.reconcileReferencedFlows(context.Background(), c)
+	var fm *FlowMismatchError
+	suite.Require().True(errors.As(err, &fm))
+	assert.Equal(suite.T(), providers.FlowTypeRecovery, fm.SourceFlowType)
+	assert.Equal(suite.T(), providers.FlowTypeAuthentication, fm.FlowType)
+}
+
+func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_UnsetAuthAllowsAnyAuthTarget() {
+	// When the app has no AuthFlowID configured, a recovery flow referencing an AUTHENTICATION
+	// target must be allowed — there is no direct-init auth binding to conflict with, and
+	// AuthFlowID has no disable toggle so we do not auto-fill it either.
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "rec-a").Return(
+		[]flowmgt.CallTarget{{FlowID: "auth-x", FlowType: providers.FlowTypeAuthentication}}, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{RecoveryFlowID: "rec-a"}
+	suite.Require().NoError(svc.reconcileReferencedFlows(context.Background(), c))
+	assert.Empty(suite.T(), c.AuthFlowID, "reconcile must not auto-fill AuthFlowID")
+}
+
+func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_SameTypeCallIsSubroutine() {
+	// A registration flow that CALLs another registration flow is subroutine composition, not an
+	// alternate entry point — must not be flagged even when the target differs from the app's
+	// RegistrationFlowID.
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(nil, nil)
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "reg-a").Return(
+		[]flowmgt.CallTarget{{FlowID: "reg-helper", FlowType: providers.FlowTypeRegistration}}, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth", RegistrationFlowID: "reg-a"}
+	suite.Require().NoError(svc.reconcileReferencedFlows(context.Background(), c))
+	assert.Equal(suite.T(), "reg-a", c.RegistrationFlowID)
+}
+
+// ----- validateReferencedFlows -----
+
+func (suite *InboundClientServiceTestSuite) TestValidateReferencedFlows_NilFlowMgtSkips() {
+	svc := &inboundClientService{}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth", RegistrationFlowID: "reg-a"}
+	assert.NoError(suite.T(), svc.validateReferencedFlows(context.Background(), c))
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateReferencedFlows_MatchingTargetsPass() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
+		[]flowmgt.CallTarget{
+			{FlowID: "reg-a", FlowType: providers.FlowTypeRegistration},
+			{FlowID: "rec-a", FlowType: providers.FlowTypeRecovery},
+		}, nil)
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "reg-a").Return(nil, nil)
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "rec-a").Return(nil, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{
+		AuthFlowID: "auth", RegistrationFlowID: "reg-a", RecoveryFlowID: "rec-a",
+	}
+	assert.NoError(suite.T(), svc.validateReferencedFlows(context.Background(), c))
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateReferencedFlows_CrossTypeMismatchRejected() {
+	// Cross-type CALL from the auth flow to a reg/recovery/signout flow whose ID differs from the
+	// app's binding of that type must be rejected. The three target types share this behavior;
+	// exercise them via a table so the linter does not flag three near-identical bodies.
+	cases := []struct {
+		name       string
+		target     flowmgt.CallTarget
+		configured func(*inboundmodel.InboundClient)
+		typeLabel  string
+	}{
+		{
+			name:       "registration",
+			target:     flowmgt.CallTarget{FlowID: "reg-b", FlowType: providers.FlowTypeRegistration},
+			configured: func(c *inboundmodel.InboundClient) { c.RegistrationFlowID = "reg-a" },
+			typeLabel:  "registration",
+		},
+		{
+			name:       "recovery",
+			target:     flowmgt.CallTarget{FlowID: "rec-b", FlowType: providers.FlowTypeRecovery},
+			configured: func(c *inboundmodel.InboundClient) { c.RecoveryFlowID = "rec-a" },
+			typeLabel:  "recovery",
+		},
+		{
+			name:       "signout",
+			target:     flowmgt.CallTarget{FlowID: "so-b", FlowType: providers.FlowTypeSignOut},
+			configured: func(c *inboundmodel.InboundClient) { c.SignOutFlowID = "so-a" },
+			typeLabel:  "signout",
+		},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+			flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
+				[]flowmgt.CallTarget{tc.target}, nil)
+			flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, mock.Anything).
+				Return(nil, nil).Maybe()
+			svc := &inboundClientService{flowMgt: flowMgt}
+			c := &inboundmodel.InboundClient{AuthFlowID: "auth"}
+			tc.configured(c)
+
+			err := svc.validateReferencedFlows(context.Background(), c)
+
+			var fm *FlowMismatchError
+			suite.Require().True(errors.As(err, &fm))
+			assert.Equal(suite.T(), providers.FlowTypeAuthentication, fm.SourceFlowType)
+			assert.Equal(suite.T(), tc.target.FlowType, fm.FlowType)
+			assert.Contains(suite.T(), fm.Error(), "invokes a "+tc.typeLabel+" flow")
+			assert.Contains(suite.T(), fm.Error(), "not the configured "+tc.typeLabel+" flow")
+		})
+	}
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateReferencedFlows_RegistrationMissingOnAppIsAllowed() {
+	// Validate-only path (used from RevalidateFKs during flow updates) must NOT reject when the
+	// referencing app has an unset registration binding — we can't mutate apps from that path.
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
+		[]flowmgt.CallTarget{{FlowID: "reg-b", FlowType: providers.FlowTypeRegistration}}, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth"}
+	assert.NoError(suite.T(), svc.validateReferencedFlows(context.Background(), c))
+	assert.Empty(suite.T(), c.RegistrationFlowID, "validate-only path must not mutate the client")
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateReferencedFlows_RecoveryMissingOnAppIsAllowed() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
+		[]flowmgt.CallTarget{{FlowID: "rec-b", FlowType: providers.FlowTypeRecovery}}, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth"}
+	assert.NoError(suite.T(), svc.validateReferencedFlows(context.Background(), c))
+	assert.Empty(suite.T(), c.RecoveryFlowID)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateReferencedFlows_AuthTargetMatchingPasses() {
+	// A reachable AUTHENTICATION target that matches the app's AuthFlowID must not be flagged.
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(nil, nil)
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "reg-a").Return(
+		[]flowmgt.CallTarget{{FlowID: "auth", FlowType: providers.FlowTypeAuthentication}}, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth", RegistrationFlowID: "reg-a"}
+	assert.NoError(suite.T(), svc.validateReferencedFlows(context.Background(), c))
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateReferencedFlows_AuthTargetMismatchFromRegistration() {
+	// A registration flow that calls an AUTHENTICATION flow different from the app's AuthFlowID is a mismatch.
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(nil, nil)
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "reg-a").Return(
+		[]flowmgt.CallTarget{{FlowID: "other-auth", FlowType: providers.FlowTypeAuthentication}}, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth", RegistrationFlowID: "reg-a"}
+	err := svc.validateReferencedFlows(context.Background(), c)
+	var fm *FlowMismatchError
+	suite.Require().True(errors.As(err, &fm))
+	assert.Equal(suite.T(), providers.FlowTypeRegistration, fm.SourceFlowType)
+	assert.Equal(suite.T(), providers.FlowTypeAuthentication, fm.FlowType)
+	assert.Contains(suite.T(), fm.Error(), "registration flow invokes a authentication flow")
+	assert.Contains(suite.T(), fm.Error(), "not the configured authentication flow")
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateReferencedFlows_AuthMissingWhenReferencedIsAllowed() {
+	// The validate-only path treats an unset app field as OK — the reconcile path handles auth
+	// differently (it does not auto-fill AuthFlowID since there's no disable toggle).
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "rec-a").Return(
+		[]flowmgt.CallTarget{{FlowID: "auth-x", FlowType: providers.FlowTypeAuthentication}}, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{RecoveryFlowID: "rec-a"}
+	assert.NoError(suite.T(), svc.validateReferencedFlows(context.Background(), c))
+	assert.Empty(suite.T(), c.AuthFlowID)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateReferencedFlows_SignOutTargetMatchingPasses() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
+		[]flowmgt.CallTarget{{FlowID: "so-a", FlowType: providers.FlowTypeSignOut}}, nil)
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "so-a").Return(nil, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth", SignOutFlowID: "so-a"}
+	assert.NoError(suite.T(), svc.validateReferencedFlows(context.Background(), c))
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateReferencedFlows_SignOutMissingOnAppIsAllowed() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
+		[]flowmgt.CallTarget{{FlowID: "so-b", FlowType: providers.FlowTypeSignOut}}, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth"}
+	assert.NoError(suite.T(), svc.validateReferencedFlows(context.Background(), c))
+	assert.Empty(suite.T(), c.SignOutFlowID)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateReferencedFlows_SignOutStartWalksAndAllowsUnsetReg() {
+	// Walking must start from SignOutFlowID too when set. Under the validate-only path an unset
+	// RegistrationFlowID is not a rejection.
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "so-a").Return(
+		[]flowmgt.CallTarget{{FlowID: "reg-b", FlowType: providers.FlowTypeRegistration}}, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{SignOutFlowID: "so-a"}
+	assert.NoError(suite.T(), svc.validateReferencedFlows(context.Background(), c))
+	assert.Empty(suite.T(), c.RegistrationFlowID)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateReferencedFlows_WalkerServerErrorMapped() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(nil, &tidcommon.ServiceError{Code: "E"})
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth"}
+	assert.ErrorIs(suite.T(),
+		svc.validateReferencedFlows(context.Background(), c),
+		ErrFKFlowServerError)
 }

@@ -16,7 +16,13 @@
  * under the License.
  */
 
-import {OAuth2GrantTypes, OAuth2ResponseTypes, TokenEndpointAuthMethods, type OAuth2Config} from '../models/oauth';
+import {
+  OAuth2GrantTypes,
+  OAuth2ResponseTypes,
+  REFRESH_TOKEN_ISSUING_GRANTS,
+  TokenEndpointAuthMethods,
+  type OAuth2Config,
+} from '../models/oauth';
 
 /**
  * Derived boolean flags describing the current OAuth2 configuration state.
@@ -51,17 +57,24 @@ export function deriveOAuth2Flags(config: OAuth2Config): OAuth2Flags {
 }
 
 /**
+ * Returns whether the grant list contains a token-issuing grant.
+ */
+function hasTokenIssuingGrant(grants: string[]): boolean {
+  return grants.some((grant) => REFRESH_TOKEN_ISSUING_GRANTS.includes(grant));
+}
+
+/**
  * Computes the set of config updates triggered by a grant-types selection change.
  * Enforces cross-field invariants:
- * - refresh_token cannot be the sole grant
+ * - refresh_token requires a token-issuing grant (authorization_code or ciba)
  * - PKCE requires authorization_code
  * - public client is incompatible with client_credentials and requires authorization_code
  * - response type 'code' is added/removed alongside the authorization_code grant
  */
 export function applyGrantTypesChange(current: OAuth2Config, selected: string[]): Partial<OAuth2Config> {
   let nextGrantTypes = selected;
-  if (nextGrantTypes.length === 1 && nextGrantTypes[0] === OAuth2GrantTypes.REFRESH_TOKEN) {
-    nextGrantTypes = [];
+  if (nextGrantTypes.includes(OAuth2GrantTypes.REFRESH_TOKEN) && !hasTokenIssuingGrant(nextGrantTypes)) {
+    nextGrantTypes = nextGrantTypes.filter((g) => g !== OAuth2GrantTypes.REFRESH_TOKEN);
   }
 
   const updates: Partial<OAuth2Config> = {grantTypes: nextGrantTypes};
@@ -131,12 +144,12 @@ export function applyTokenEndpointAuthMethodChange(current: OAuth2Config, method
 
 /**
  * Returns whether a grant-type MenuItem should be disabled in the grants picker.
- * refresh_token cannot be picked as the first grant since it has no companion yet.
+ * refresh_token requires a token-issuing grant.
  */
 export function isGrantItemDisabled(grant: string, currentGrants: string[]): boolean {
   if (grant !== OAuth2GrantTypes.REFRESH_TOKEN) return false;
   if (currentGrants.includes(OAuth2GrantTypes.REFRESH_TOKEN)) return false;
-  return currentGrants.length === 0;
+  return !hasTokenIssuingGrant(currentGrants);
 }
 
 /** i18n key paired with its English fallback, suitable for spreading into `t(key, fallback)`. */

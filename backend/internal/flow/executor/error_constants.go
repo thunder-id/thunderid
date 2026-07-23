@@ -193,24 +193,10 @@ var (
 		},
 	}
 
-	// ErrNonceMismatch is returned when the nonce in the ID token does not match.
-	ErrNonceMismatch = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1013",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.nonce_mismatch",
-			DefaultValue: "Nonce mismatch in ID token",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.nonce_mismatch_desc",
-			DefaultValue: "The nonce in the ID token claims does not match the expected value",
-		},
-	}
-
 	// ErrInvalidOAuthCode is returned when the OAuth authorization code is invalid.
 	ErrInvalidOAuthCode = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1014",
+		Code: "FET-1013",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.invalid_oauth_code",
 			DefaultValue: "Invalid OAuth authorization code",
@@ -224,7 +210,7 @@ var (
 	// ErrInvalidFederatedUser is returned when the federated user information is invalid during authentication.
 	ErrInvalidFederatedUser = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1015",
+		Code: "FET-1014",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.invalid_federated_user",
 			DefaultValue: "Invalid federated user",
@@ -238,7 +224,7 @@ var (
 	// ErrInvalidPasskey is returned when the passkey credentials are invalid.
 	ErrInvalidPasskey = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1016",
+		Code: "FET-1015",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.invalid_passkey",
 			DefaultValue: "Invalid passkey credentials",
@@ -252,7 +238,7 @@ var (
 	// ErrNoRegisteredPasskeys is returned when no registered passkeys are found for the user.
 	ErrNoRegisteredPasskeys = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1017",
+		Code: "FET-1016",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.no_registered_passkeys",
 			DefaultValue: "No registered passkeys found",
@@ -266,7 +252,7 @@ var (
 	// ErrUserIDRequiredForPasskeyReg is returned when user ID is missing for passkey registration.
 	ErrUserIDRequiredForPasskeyReg = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1018",
+		Code: "FET-1017",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_id_required_for_passkey_reg",
 			DefaultValue: "User ID missing for passkey registration",
@@ -280,7 +266,7 @@ var (
 	// ErrPasskeyRegistrationFailed is returned when passkey registration fails.
 	ErrPasskeyRegistrationFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1019",
+		Code: "FET-1018",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.passkey_registration_failed",
 			DefaultValue: "Passkey registration failed",
@@ -294,7 +280,7 @@ var (
 	// ErrPasskeyAuthFailed is returned when passkey authentication fails.
 	ErrPasskeyAuthFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1020",
+		Code: "FET-1019",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.passkey_auth_failed",
 			DefaultValue: "Passkey authentication failed",
@@ -308,7 +294,7 @@ var (
 	// ErrProvisioningUserAttrsMissing is returned when no user attributes are provided for provisioning.
 	ErrProvisioningUserAttrsMissing = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1021",
+		Code: "FET-1020",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.provisioning_user_attrs_missing",
 			DefaultValue: "No user attributes provided for provisioning",
@@ -322,7 +308,7 @@ var (
 	// ErrProvisioningFailed is returned when user provisioning fails.
 	ErrProvisioningFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1022",
+		Code: "FET-1021",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.provisioning_failed",
 			DefaultValue: "User provisioning failed",
@@ -336,7 +322,7 @@ var (
 	// ErrProvisioningAssignmentFailed is returned when group or role assignment fails during provisioning.
 	ErrProvisioningAssignmentFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1023",
+		Code: "FET-1022",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.provisioning_assignment_failed",
 			DefaultValue: "Failed to assign groups and roles",
@@ -350,7 +336,7 @@ var (
 	// ErrCrossOUProvisioningTargetMissing is returned when target OU is missing for cross-OU provisioning.
 	ErrCrossOUProvisioningTargetMissing = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1024",
+		Code: "FET-1023",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.cross_ou_provisioning_target_missing",
 			DefaultValue: "Target OU is not set for cross-OU provisioning",
@@ -364,7 +350,7 @@ var (
 	// ErrUserAlreadyExistsInTargetOU is returned when the user already exists in the target organization.
 	ErrUserAlreadyExistsInTargetOU = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1025",
+		Code: "FET-1024",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_already_exists_in_target_ou",
 			DefaultValue: "User already exists in the target organization",
@@ -378,7 +364,7 @@ var (
 	// ErrCannotProvisionAutomatically is returned when the user cannot be provisioned automatically.
 	ErrCannotProvisionAutomatically = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1026",
+		Code: "FET-1025",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.cannot_provision_automatically",
 			DefaultValue: "Cannot provision user automatically",
@@ -392,7 +378,7 @@ var (
 	// ErrSelfRegistrationDisabled is returned when self-registration is not enabled.
 	ErrSelfRegistrationDisabled = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1027",
+		Code: "FET-1026",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.self_registration_disabled",
 			DefaultValue: "Self-registration not enabled",
@@ -406,7 +392,7 @@ var (
 	// ErrInsufficientPermissions is returned when the user lacks required permissions.
 	ErrInsufficientPermissions = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1028",
+		Code: "FET-1027",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.insufficient_permissions",
 			DefaultValue: "Insufficient permissions",
@@ -420,7 +406,7 @@ var (
 	// ErrAuthorizationFailed is returned when authorization validation fails.
 	ErrAuthorizationFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1029",
+		Code: "FET-1028",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.authorization_failed",
 			DefaultValue: "Authorization validation failed",
@@ -434,7 +420,7 @@ var (
 	// ErrInvalidOU is returned when the selected organization unit is invalid.
 	ErrInvalidOU = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1030",
+		Code: "FET-1029",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.invalid_ou",
 			DefaultValue: "Selected organization unit is invalid",
@@ -448,7 +434,7 @@ var (
 	// ErrOUNotFound is returned when the organization unit is not found.
 	ErrOUNotFound = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1031",
+		Code: "FET-1030",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.ou_not_found",
 			DefaultValue: "Organization unit not found",
@@ -462,7 +448,7 @@ var (
 	// ErrOUNameConflict is returned when an organization unit with the same name already exists.
 	ErrOUNameConflict = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1032",
+		Code: "FET-1031",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.ou_name_conflict",
 			DefaultValue: "Organization unit with the same name already exists",
@@ -476,7 +462,7 @@ var (
 	// ErrOUHandleConflict is returned when an organization unit with the same handle already exists.
 	ErrOUHandleConflict = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1033",
+		Code: "FET-1032",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.ou_handle_conflict",
 			DefaultValue: "Organization unit with the same handle already exists",
@@ -490,7 +476,7 @@ var (
 	// ErrOUCreationPrereqFailed is returned when prerequisites validation fails for OU creation.
 	ErrOUCreationPrereqFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1034",
+		Code: "FET-1033",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.ou_creation_prereq_failed",
 			DefaultValue: "Prerequisites validation failed for OU creation",
@@ -504,7 +490,7 @@ var (
 	// ErrOUResolutionFailed is returned when the organization unit cannot be resolved.
 	ErrOUResolutionFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1035",
+		Code: "FET-1034",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.ou_resolution_failed",
 			DefaultValue: "Failed to resolve organization unit",
@@ -518,7 +504,7 @@ var (
 	// ErrOUCreationFailed is returned when organization unit creation fails.
 	ErrOUCreationFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1036",
+		Code: "FET-1035",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.ou_creation_failed",
 			DefaultValue: "Organization unit creation failed",
@@ -532,7 +518,7 @@ var (
 	// ErrEmailSendFailed is returned when the email fails to send.
 	ErrEmailSendFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1037",
+		Code: "FET-1036",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.email_send_failed",
 			DefaultValue: "Failed to send email",
@@ -546,7 +532,7 @@ var (
 	// ErrEmailRecipientMissing is returned when the email recipient is not provided.
 	ErrEmailRecipientMissing = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1038",
+		Code: "FET-1037",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.email_recipient_missing",
 			DefaultValue: "Email recipient is required",
@@ -560,7 +546,7 @@ var (
 	// ErrEmailServiceNotConfigured is returned when the email service is not configured.
 	ErrEmailServiceNotConfigured = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1039",
+		Code: "FET-1038",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.email_service_not_configured",
 			DefaultValue: "Email service is not configured",
@@ -574,7 +560,7 @@ var (
 	// ErrSMSRecipientMissing is returned when the SMS recipient is not provided.
 	ErrSMSRecipientMissing = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1040",
+		Code: "FET-1039",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.sms_recipient_missing",
 			DefaultValue: "SMS recipient is required",
@@ -588,7 +574,7 @@ var (
 	// ErrSMSInvalidPhone is returned when the SMS recipient phone number is invalid.
 	ErrSMSInvalidPhone = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1041",
+		Code: "FET-1040",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.sms_invalid_phone",
 			DefaultValue: "SMS recipient is not a valid phone number",
@@ -602,7 +588,7 @@ var (
 	// ErrSMSTemplateMissing is returned when the SMS template is not provided.
 	ErrSMSTemplateMissing = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1042",
+		Code: "FET-1041",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.sms_template_missing",
 			DefaultValue: "SMS template is required",
@@ -616,7 +602,7 @@ var (
 	// ErrSMSProviderNotConfigured is returned when the SMS provider is not configured.
 	ErrSMSProviderNotConfigured = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1043",
+		Code: "FET-1042",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.sms_provider_not_configured",
 			DefaultValue: "SMS notification provider is not configured",
@@ -630,7 +616,7 @@ var (
 	// ErrPrerequisitesFailed is returned when prerequisites validation fails.
 	ErrPrerequisitesFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1044",
+		Code: "FET-1043",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.prerequisites_failed",
 			DefaultValue: "Prerequisites validation failed",
@@ -644,7 +630,7 @@ var (
 	// ErrUserIDMissingInContext is returned when the user ID is not found in the flow context.
 	ErrUserIDMissingInContext = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1045",
+		Code: "FET-1044",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_id_missing_in_context",
 			DefaultValue: "User ID not found",
@@ -658,7 +644,7 @@ var (
 	// ErrCredentialInputMissing is returned when no credential input is configured.
 	ErrCredentialInputMissing = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1046",
+		Code: "FET-1045",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.credential_input_missing",
 			DefaultValue: "No credential input configured",
@@ -672,7 +658,7 @@ var (
 	// ErrCredentialInputInvalid is returned when the credential input configuration is invalid.
 	ErrCredentialInputInvalid = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1047",
+		Code: "FET-1046",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.credential_input_invalid",
 			DefaultValue: "Invalid credential input configuration",
@@ -686,7 +672,7 @@ var (
 	// ErrCredentialValueEmpty is returned when the credential value is empty.
 	ErrCredentialValueEmpty = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1048",
+		Code: "FET-1047",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.credential_value_empty",
 			DefaultValue: "Credential value is empty",
@@ -700,7 +686,7 @@ var (
 	// ErrCredentialSetFailed is returned when setting credentials fails.
 	ErrCredentialSetFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1049",
+		Code: "FET-1048",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.credential_set_failed",
 			DefaultValue: "Failed to set credentials",
@@ -714,7 +700,7 @@ var (
 	// ErrAttributeCollectFailed is returned when updating user attributes fails.
 	ErrAttributeCollectFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1050",
+		Code: "FET-1049",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.attribute_collect_failed",
 			DefaultValue: "Failed to update user attributes",
@@ -728,7 +714,7 @@ var (
 	// ErrHTTPRequestConfigInvalid is returned when the HTTP request executor configuration is invalid.
 	ErrHTTPRequestConfigInvalid = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1051",
+		Code: "FET-1050",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.http_request_config_invalid",
 			DefaultValue: "Configuration error",
@@ -742,7 +728,7 @@ var (
 	// ErrAuthNotAvailableForApp is returned when authentication is not available for the application.
 	ErrAuthNotAvailableForApp = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1052",
+		Code: "FET-1051",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.auth_not_available_for_app",
 			DefaultValue: "Authentication not available for this application",
@@ -756,7 +742,7 @@ var (
 	// ErrSelfRegNotAvailableForApp is returned when self-registration is not available for the application.
 	ErrSelfRegNotAvailableForApp = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1053",
+		Code: "FET-1052",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.self_reg_not_available_for_app",
 			DefaultValue: "Self-registration not available for this application",
@@ -770,7 +756,7 @@ var (
 	// ErrNoValidUserTypes is returned when no valid user types are available for the flow.
 	ErrNoValidUserTypes = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1054",
+		Code: "FET-1053",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.no_valid_user_types",
 			DefaultValue: "No valid user types available",
@@ -784,7 +770,7 @@ var (
 	// ErrUserTypeNotAllowed is returned when the user type is not allowed for the flow.
 	ErrUserTypeNotAllowed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1055",
+		Code: "FET-1054",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_type_not_allowed",
 			DefaultValue: "User type not allowed for this flow",
@@ -798,7 +784,7 @@ var (
 	// ErrInvalidUserType is returned when the user type is invalid.
 	ErrInvalidUserType = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1056",
+		Code: "FET-1055",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.invalid_user_type",
 			DefaultValue: "Invalid user type",
@@ -812,7 +798,7 @@ var (
 	// ErrNoUserTypesAvailable is returned when no user types are available.
 	ErrNoUserTypesAvailable = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1057",
+		Code: "FET-1056",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.no_user_types_available",
 			DefaultValue: "No user types available",
@@ -826,7 +812,7 @@ var (
 	// ErrUserTypeRetrievalFailed is returned when user type retrieval fails.
 	ErrUserTypeRetrievalFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1058",
+		Code: "FET-1057",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_type_retrieval_failed",
 			DefaultValue: "Failed to retrieve user types",
@@ -840,7 +826,7 @@ var (
 	// ErrUserTypeNotValidForOU is returned when the user type is not valid for the selected OU.
 	ErrUserTypeNotValidForOU = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1059",
+		Code: "FET-1058",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_type_not_valid_for_ou",
 			DefaultValue: "User type is not valid",
@@ -854,7 +840,7 @@ var (
 	// ErrSelfRegDisabledForUserType is returned when self-registration is disabled for a specific user type.
 	ErrSelfRegDisabledForUserType = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1060",
+		Code: "FET-1059",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.self_reg_disabled_for_user_type",
 			DefaultValue: "Self-registration is disabled for the user type",
@@ -868,7 +854,7 @@ var (
 	// ErrAttributeNotFoundForUser is returned when a required attribute is not found for the user.
 	ErrAttributeNotFoundForUser = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1061",
+		Code: "FET-1060",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.attribute_not_found_for_user",
 			DefaultValue: "Required attribute not found",
@@ -882,7 +868,7 @@ var (
 	// ErrAttributeNotUnique is returned when an attribute value already exists.
 	ErrAttributeNotUnique = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1062",
+		Code: "FET-1061",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.attribute_not_unique",
 			DefaultValue: "User already exists with the provided {{param(attribute)}}",
@@ -897,7 +883,7 @@ var (
 	// ErrAttributeRetrievalFailed is returned when user attribute retrieval fails.
 	ErrAttributeRetrievalFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1063",
+		Code: "FET-1062",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.attribute_retrieval_failed",
 			DefaultValue: "Failed to retrieve user attributes",
@@ -911,7 +897,7 @@ var (
 	// ErrCredentialProcessingFailed is returned when credential processing fails.
 	ErrCredentialProcessingFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1064",
+		Code: "FET-1063",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.credential_processing_failed",
 			DefaultValue: "Failed to process credentials",
@@ -925,7 +911,7 @@ var (
 	// ErrInvalidAction is returned when an invalid action is provided to a prompt node.
 	ErrInvalidAction = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1065",
+		Code: "FET-1064",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.invalid_action",
 			DefaultValue: "Invalid action provided",
@@ -939,7 +925,7 @@ var (
 	// ErrConsentPrereqFailed is returned when prerequisites validation fails for consent.
 	ErrConsentPrereqFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1066",
+		Code: "FET-1065",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.consent_prereq_failed",
 			DefaultValue: "Prerequisites validation failed for consent",
@@ -953,7 +939,7 @@ var (
 	// ErrConsentDenied is returned when the user denies consent.
 	ErrConsentDenied = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1067",
+		Code: "FET-1066",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.consent_denied",
 			DefaultValue: "User denied consent",
@@ -967,7 +953,7 @@ var (
 	// ErrConsentDecisionsMissing is returned when consent decisions input is missing.
 	ErrConsentDecisionsMissing = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1068",
+		Code: "FET-1067",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.consent_decisions_missing",
 			DefaultValue: "Consent decisions input is missing or empty",
@@ -981,7 +967,7 @@ var (
 	// ErrConsentDecisionsParseFail is returned when consent decisions cannot be parsed.
 	ErrConsentDecisionsParseFail = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1069",
+		Code: "FET-1068",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.consent_decisions_parse",
 			DefaultValue: "Failed to parse consent decisions",
@@ -995,7 +981,7 @@ var (
 	// ErrConsentPromptTimedOut is returned when the consent prompt times out.
 	ErrConsentPromptTimedOut = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1070",
+		Code: "FET-1069",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.consent_prompt_timed_out",
 			DefaultValue: "Consent prompt has timed out",
@@ -1009,7 +995,7 @@ var (
 	// ErrConsentRecordFailed is returned when recording consent fails.
 	ErrConsentRecordFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1071",
+		Code: "FET-1070",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.consent_record_failed",
 			DefaultValue: "Failed to record consent",
@@ -1023,7 +1009,7 @@ var (
 	// ErrConsentResolutionFailed is returned when resolving consent fails.
 	ErrConsentResolutionFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1072",
+		Code: "FET-1071",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.consent_resolution_failed",
 			DefaultValue: "Failed to resolve consent",
@@ -1037,7 +1023,7 @@ var (
 	// ErrHTTPRequestFailed is returned when the HTTP request executor fails.
 	ErrHTTPRequestFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1073",
+		Code: "FET-1072",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.http_request_failed",
 			DefaultValue: "HTTP request executor failed",
@@ -1051,7 +1037,7 @@ var (
 	// ErrInvalidInviteToken is returned when the invite token is invalid.
 	ErrInvalidInviteToken = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1074",
+		Code: "FET-1073",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.invalid_invite_token",
 			DefaultValue: "Invalid invite token",
@@ -1065,7 +1051,7 @@ var (
 	// ErrInviteTokenGenerationFailed is returned when generating an invite token fails.
 	ErrInviteTokenGenerationFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1075",
+		Code: "FET-1074",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.invite_token_generation_failed",
 			DefaultValue: "Failed to generate invite token",
@@ -1079,7 +1065,7 @@ var (
 	// ErrOUNotValidForUserType is returned when the selected OU is not valid for the chosen user type.
 	ErrOUNotValidForUserType = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1076",
+		Code: "FET-1075",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.ou_not_valid_for_user_type",
 			DefaultValue: "The selected organization unit is not valid for the chosen user type.",
@@ -1093,7 +1079,7 @@ var (
 	// ErrOpenID4VPDefinitionNotConfigured is returned when the OpenID4VP node has no presentation_definition_id.
 	ErrOpenID4VPDefinitionNotConfigured = tidcommon.ServiceError{
 		Type: tidcommon.ServerErrorType,
-		Code: "FET-1082",
+		Code: "FET-1076",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.openid4vp_definition_not_configured",
 			DefaultValue: "OpenID4VP presentation definition is not configured",
@@ -1107,7 +1093,7 @@ var (
 	// ErrOpenID4VPInitiateFailed is returned when initiating the OpenID4VP request fails.
 	ErrOpenID4VPInitiateFailed = tidcommon.ServiceError{
 		Type: tidcommon.ServerErrorType,
-		Code: "FET-1078",
+		Code: "FET-1077",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.openid4vp_initiate_failed",
 			DefaultValue: "Failed to initiate the OpenID4VP request",
@@ -1121,7 +1107,7 @@ var (
 	// ErrOpenID4VPExpired is returned when the OpenID4VP request expires before a response is received.
 	ErrOpenID4VPExpired = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1079",
+		Code: "FET-1078",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.openid4vp_expired",
 			DefaultValue: "The OpenID4VP request expired before a response was received",
@@ -1135,7 +1121,7 @@ var (
 	// ErrOpenID4VPVerificationFailed is returned when the OpenID4VP presentation verification fails.
 	ErrOpenID4VPVerificationFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1080",
+		Code: "FET-1079",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.openid4vp_verification_failed",
 			DefaultValue: "OpenID4VP presentation verification failed",
@@ -1149,7 +1135,7 @@ var (
 	// ErrProvisioningAttributeConflict is returned when user provisioning fails due to an attribute conflict.
 	ErrProvisioningAttributeConflict = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1081",
+		Code: "FET-1080",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.provisioning_attribute_conflict",
 			DefaultValue: "A user with the provided attributes already exists",
@@ -1165,7 +1151,7 @@ var (
 	// (onFailure) outcome to the full-authentication path.
 	ErrNoLiveSSOSession = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1082",
+		Code: "FET-1081",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.no_live_sso_session",
 			DefaultValue: "No live SSO session",
@@ -1184,7 +1170,7 @@ var (
 	// drive step-up re-authentication.
 	ErrInteractionRequired = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "FET-1083",
+		Code: "FET-1082",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.interaction_required",
 			DefaultValue: "Interaction required",

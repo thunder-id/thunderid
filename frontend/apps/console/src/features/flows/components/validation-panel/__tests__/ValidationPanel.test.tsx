@@ -330,7 +330,12 @@ describe('ValidationPanel', () => {
 
       expect(mockSetLastInteractedResource).toHaveBeenCalledWith(resource);
       expect(mockSetLastInteractedStepId).toHaveBeenCalledWith('step-node-1');
-      expect(mockFitView).toHaveBeenCalledWith({nodes: [{id: 'step-node-1'}], padding: 0.5, duration: 400});
+      expect(mockFitView).toHaveBeenCalledWith({
+        nodes: [{id: 'step-node-1'}],
+        padding: 0.3,
+        maxZoom: 1.2,
+        duration: 400,
+      });
     });
   });
 
@@ -350,7 +355,7 @@ describe('ValidationPanel', () => {
       fireEvent.click(notificationButton);
 
       expect(mockSetLastInteractedStepId).toHaveBeenCalledWith('step-1');
-      expect(mockFitView).toHaveBeenCalledWith({nodes: [{id: 'step-1'}], padding: 0.5, duration: 400});
+      expect(mockFitView).toHaveBeenCalledWith({nodes: [{id: 'step-1'}], padding: 0.3, maxZoom: 1.2, duration: 400});
     });
 
     it('should not call fitView when no node matches the resource', () => {

@@ -1,0 +1,89 @@
+---
+title: Manage Translations
+docType: guide
+sidebar_position: 2
+description: Add, update, and delete translations for authentication screens through the Console or the i18n API.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import {NextSteps, NextStepsCard} from '../../../src/components/NextSteps';
+
+# Manage Translations
+
+Add, update, and delete translations through the <ProductName /> Console or the i18n API.
+
+## Prerequisites
+
+- **Console**: Access to the <ProductName /> Console.
+- The language tag for your target locale in BCP 47 format (for example, `es` for Spanish, `fr-CA` for Canadian French). See [Validation Rules](./#validation-rules) for format constraints.
+
+## Add a Language
+
+
+<Stepper stepNode="h3" as="h3">
+
+### Start the Add Language Wizard
+
+Navigate to **Translations** in the <ProductName /> Console and click **Add Language**.
+
+### Select a Country
+
+Select the country associated with the language you want to add.
+
+### Select a Language
+
+Choose the language variant for the selected country. The available options depend on the country you selected in the previous step.
+
+### Review the Locale Code
+
+Review the generated BCP 47 locale code. You can override the code if you need a custom locale tag.
+
+### Initialize Translations
+
+Choose how to initialize translations for the new language:
+
+- **Populate from English**: Copy all default `en-US` translation values as a starting point.
+- **Leave empty**: Start with no translations and add them manually. See [Validation Rules](./#validation-rules) for format constraints.
+
+Click **Create** to finish. <ProductName /> creates the language and opens the translation editor.
+
+</Stepper>
+
+
+## Update Translations
+
+1. Navigate to **Translations** in the <ProductName /> Console and open the language you want to edit.
+2. Select a **Namespace** to filter translations for a specific screen (for example, `signin` or `recovery`).
+3. Edit translation values using either the **Fields** view for individual key-value pairs or the **JSON** editor for bulk changes.
+4. Click **Save** to apply your changes.
+
+## Delete Translations
+
+1. Navigate to **Translations** in the <ProductName /> Console.
+2. Click the delete icon on the language you want to remove and confirm the deletion.
+
+:::warning
+Deleting a language removes all custom translation overrides for that language. System defaults still apply for any keys that have default values.
+:::
+
+:::note
+Translations loaded through declarative configurations become read-only. You cannot update or delete them.
+:::
+
+## Validation Rules
+
+The i18n API enforces the following format rules:
+
+| Field | Rule | Example |
+|-------|------|---------|
+| Language | Valid BCP 47 tag. | `en-US`, `fr`, `ja-JP` |
+| Namespace | Alphanumeric characters, underscores, and hyphens. Maximum 64 characters. | `signin`, `recovery`, `my-app` |
+| Key | Alphanumeric characters, dots, underscores, and hyphens. Maximum 256 characters. | `forms.credentials.title`, `forms.username.title` |
+| Value | Non-empty string. Maximum 4096 characters. | `Welcome back` |
+
+
+## Reference
+
+- [Resolve Translations](../resolve-translations): API reference, validation rules, and error codes for translations.
+- [Localization](../localization): Learn how languages, namespaces, and translation resolution work.

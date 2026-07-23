@@ -342,6 +342,11 @@ spec:
               server: {
                 public_url: "${environmentConfigs.serverPublicUrl}",
               },
+              gate_client: {
+                hostname: "${environmentConfigs.gateClientHostname}",
+                port: {{ "{{.GATE_CLIENT_PORT}}" }},
+                scheme: "{{ "{{.GATE_CLIENT_SCHEME}}" }}",
+              },
             };
 
     - id: file-config

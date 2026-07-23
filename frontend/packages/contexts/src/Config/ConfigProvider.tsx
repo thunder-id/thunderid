@@ -47,6 +47,26 @@ function loadConfig(): ProductConfig {
 }
 
 /**
+ * Resolves the resource server URL from config, falling back to the served origin.
+ *
+ * @internal
+ */
+function buildServerUrl(config: ProductConfig): string {
+  // If public_url is provided, use it directly
+  if (config.server?.public_url) {
+    return config.server.public_url;
+  }
+  // Otherwise, construct from hostname, port, and http_only when configured
+  const {hostname, port, http_only: httpOnly} = config.server ?? {};
+  if (hostname && port !== undefined) {
+    const protocol: string = httpOnly ? 'http' : 'https';
+    return `${protocol}://${hostname}:${port}`;
+  }
+  // Fall back to the URL the app is served from
+  return typeof window !== 'undefined' ? window.location.origin : '';
+}
+
+/**
  * React context provider component that provides runtime configuration
  * to all child components.
  *
@@ -84,19 +104,21 @@ export default function ConfigProvider({children}: ConfigProviderProps) {
   const contextValue: ConfigContextType = useMemo(
     () => ({
       config,
-      getServerUrl: () => {
-        // If public_url is provided, use it directly
-        if (config.server?.public_url) {
-          return config.server.public_url;
+      getServerUrl: () => buildServerUrl(config),
+      getGateCallbackUrl: () => {
+        const gate = config.gate_client;
+
+        let base: string | undefined;
+        if (gate?.public_url) {
+          base = gate.public_url;
+        } else if (gate?.hostname) {
+          const scheme: string = gate.scheme ?? 'https';
+          base = gate.port !== undefined ? `${scheme}://${gate.hostname}:${gate.port}` : `${scheme}://${gate.hostname}`;
         }
-        // Otherwise, construct from hostname, port, and http_only when configured
-        const {hostname, port, http_only: httpOnly} = config.server ?? {};
-        if (hostname && port !== undefined) {
-          const protocol: string = httpOnly ? 'http' : 'https';
-          return `${protocol}://${hostname}:${port}`;
-        }
-        // Fall back to the URL the app is served from
-        return typeof window !== 'undefined' ? window.location.origin : '';
+        // Fall back to the resource server URL when the gate app is not separately configured.
+        base ??= buildServerUrl(config);
+
+        return `${base.replace(/\/+$/, '')}/gate/callback`;
       },
       getServerHostname: () => config.server?.hostname,
       getServerPort: () => config.server?.port,

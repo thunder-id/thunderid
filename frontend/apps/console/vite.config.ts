@@ -21,7 +21,7 @@ import {resolve, dirname} from 'path';
 import {fileURLToPath} from 'url';
 import {codecovVitePlugin} from '@codecov/vite-plugin';
 import babel from '@rolldown/plugin-babel';
-import {prismjsInjectCore} from '@thunderid/build-plugins/vite';
+import {linkWorkspaceSource, prismjsInjectCore} from '@thunderid/build-plugins/vite';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import react, {reactCompilerPreset} from '@vitejs/plugin-react';
 import {visualizer} from 'rollup-plugin-visualizer';
@@ -52,6 +52,10 @@ const BUNDLE_ANALYSIS_ENABLED = process.env.CODECOV_BUNDLE_UPLOAD === 'true';
 // Dev backend URL, from THUNDERID_DEV_SERVER_URL (default https://localhost:8090). Injected into
 // __DEV_SERVER_URL__ only for the dev server; production builds receive an empty string.
 const DEV_SERVER_URL = process.env.THUNDERID_DEV_SERVER_URL?.trim();
+
+// Dev gate app URL, from THUNDERID_DEV_GATE_URL (default https://localhost:5190). Injected into
+// __DEV_GATE_URL__ only for the dev server; production builds receive an empty string.
+const DEV_GATE_URL = process.env.THUNDERID_DEV_GATE_URL?.trim();
 
 // https://vite.dev/config/
 export default defineConfig(({command}) => ({
@@ -96,8 +100,12 @@ export default defineConfig(({command}) => ({
           : 'https://localhost:8090'
         : '',
     ),
+    __DEV_GATE_URL__: JSON.stringify(
+      command === 'serve' ? (DEV_GATE_URL && DEV_GATE_URL.length > 0 ? DEV_GATE_URL : 'https://localhost:5190') : '',
+    ),
   },
   plugins: [
+    linkWorkspaceSource(),
     prismjsInjectCore(),
     basicSsl(),
     svgr(),

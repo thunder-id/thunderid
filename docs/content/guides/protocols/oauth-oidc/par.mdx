@@ -1,0 +1,105 @@
+---
+title: Pushed Authorization Requests (PAR)
+docType: reference
+sidebar_position: 2
+description: RFC 9126 Pushed Authorization Requests in {{ProductName}}, to push authorization parameters to the server over a back-channel before the redirect.
+---
+import { PARDiagram } from '../../../../src/components/OAuthFlowDiagrams';
+
+# Pushed Authorization Requests (PAR)
+
+**Pushed Authorization Requests** ([RFC 9126](https://datatracker.ietf.org/doc/html/rfc9126)) let a client send authorization parameters to <ProductName /> over a direct, authenticated back-channel **before** redirecting the user's browser to `/oauth2/authorize`. <ProductName /> stores the parameters and returns an opaque `request_uri` that the client uses in the redirect.
+
+PAR removes sensitive parameters (`scope`, `redirect_uri`, `state`, `claims`, `resource`, `code_challenge`) from the browser URL and from any intermediate logs. It also lets <ProductName /> reject tampered authorization requests at the source: once a request is pushed, the only thing that can travel through the front-channel is the opaque `request_uri`.
+
+## How It Works
+
+<PARDiagram />
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect | Behavior |
+|---|---|
+| Endpoint | `POST /oauth2/par` |
+| Client authentication | Required, same method as `/oauth2/token` (see [Client Authentication Methods](../client-authentication-methods)) |
+| Request lifetime | The returned `request_uri` is single-use and expires after a short TTL |
+| `request_uri` format | `urn:ietf:params:oauth:request_uri:<opaque>` |
+| Per-application enforcement | `requirePushedAuthorizationRequests: true` on the application requires PAR for every authorization request |
+| Global enforcement | `oauth.par.require_par: true` in `deployment.yaml` requires PAR for every client |
+| DPoP interaction | When DPoP is in use, a DPoP proof on the PAR request binds the resulting authorization code to the proof's public key |
+| Failure mode | Direct `GET /oauth2/authorize` requests without a `request_uri` are rejected with `invalid_request` when PAR is required |
+
+When both the global flag and the per-application flag are set, the per-application flag adds enforcement on top: there is no way to opt **out** of a globally required PAR.
+
+</details>
+
+## Try It in <ProductName />
+
+### Enable per Application (Console)
+
+1. Open **Applications** or **Agents** in the <ProductName /> Console and select your client.
+2. Open the **Advanced Settings** tab.
+3. Toggle **Require Pushed Authorization Requests** on.
+4. Save.
+
+### Enable per Application (DCR)
+
+```http
+POST /oauth2/dcr/register
+Content-Type: application/json
+
+{
+  "client_name": "My App",
+  "redirect_uris": ["https://app.example.com/callback"],
+  "grant_types": ["authorization_code"],
+  "response_types": ["code"],
+  "require_pushed_authorization_requests": true
+}
+```
+
+### Enable Globally (deployment.yaml)
+
+```yaml
+oauth:
+  par:
+    require_par: true
+```
+
+### Push and Redirect
+
+```bash
+# 1. Push the request
+curl -X POST https://{{productSlug}}.example.com/oauth2/par \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -d "response_type=code" \
+  -d "client_id=$CLIENT_ID" \
+  -d "redirect_uri=https://app.example.com/callback" \
+  -d "scope=openid profile" \
+  -d "state=xyz" \
+  -d "code_challenge=$CODE_CHALLENGE" \
+  -d "code_challenge_method=S256"
+```
+
+Response:
+
+```json
+{
+  "request_uri": "urn:ietf:params:oauth:request_uri:abc123...",
+  "expires_in": 60
+}
+```
+
+```http
+# 2. Redirect the user
+GET /oauth2/authorize
+  ?client_id=$CLIENT_ID
+  &request_uri=urn:ietf:params:oauth:request_uri:abc123...
+```
+
+## Related Guides
+
+- [Authorization Code](../authorization-code), the flow PAR fronts
+- [PKCE](../pkce), `code_challenge` is pushed inside the PAR request
+- [DPoP](../dpop), pushing the PAR request with a DPoP proof binds the auth code
+- [Client Authentication Methods](../client-authentication-methods), required on the PAR endpoint

@@ -180,6 +180,12 @@ func (c *compositeFlowStore) DeleteFlow(ctx context.Context, flowID string) erro
 	return c.dbStore.DeleteFlow(ctx, flowID)
 }
 
+// InvalidateCache delegates to the DB store; the file-based store has no cache to invalidate.
+func (c *compositeFlowStore) InvalidateCache(
+	ctx context.Context, flowID, handle string, flowType providers.FlowType) {
+	c.dbStore.InvalidateCache(ctx, flowID, handle, flowType)
+}
+
 // ListFlowVersions retrieves versions from the database store only.
 func (c *compositeFlowStore) ListFlowVersions(ctx context.Context, flowID string) ([]BasicFlowVersion, error) {
 	return c.dbStore.ListFlowVersions(ctx, flowID)

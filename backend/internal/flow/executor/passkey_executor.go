@@ -27,7 +27,6 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/authn/passkey"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -53,8 +52,6 @@ const (
 // Passkey registration input identifiers
 const (
 	inputAttestationObject = "attestationObject"
-	// nolint:gosec // G101: This is a JSON field identifier, not a credential
-	inputCredentialName = "credentialName"
 )
 
 // Runtime data keys
@@ -62,29 +59,21 @@ const (
 	runtimePasskeySessionToken    = "passkeySessionToken"
 	runtimePasskeyChallenge       = "passkeyChallenge"
 	runtimePasskeyCreationOptions = "passkeyCreationOptions"
-	runtimePasskeyCredentialID    = "passkeyCredentialID"
-	runtimePasskeyCredentialName  = "passkeyCredentialName"
 )
 
 // passkeyAuthExecutor implements the ExecutorInterface for passkey authentication.
 type passkeyAuthExecutor struct {
 	providers.Executor
-	identifyingExecutorInterface
-	passkeyService passkey.PasskeyServiceInterface
-	authnProvider  providers.AuthnProviderManager
-	entityProvider entityprovider.EntityProviderInterface
-	logger         *log.Logger
+	authnProvider providers.AuthnProviderManager
+	logger        *log.Logger
 }
 
 var _ providers.Executor = (*passkeyAuthExecutor)(nil)
-var _ identifyingExecutorInterface = (*passkeyAuthExecutor)(nil)
 
 // newPasskeyAuthExecutor creates a new instance of PasskeyAuthExecutor.
 func newPasskeyAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
-	passkeyService passkey.PasskeyServiceInterface,
 	authnProvider providers.AuthnProviderManager,
-	entityProvider entityprovider.EntityProviderInterface,
 ) *passkeyAuthExecutor {
 	defaultInputs := []providers.Input{
 		{
@@ -125,8 +114,6 @@ func newPasskeyAuthExecutor(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "PasskeyAuthExecutor"),
 		log.String(log.LoggerKeyExecutorName, ExecutorNamePasskeyAuth))
 
-	identifyExec := newIdentifyingExecutor(ExecutorNamePasskeyAuth, defaultInputs, prerequisites,
-		flowFactory, entityProvider)
 	base := flowFactory.CreateExecutor(ExecutorNamePasskeyAuth, providers.ExecutorTypeAuthentication,
 		defaultInputs, prerequisites, &providers.ExecutorMeta{
 			SupportedModes: []string{
@@ -136,7 +123,9 @@ func newPasskeyAuthExecutor(
 				passkeyExecutorModeRegFinish,
 			},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
-				{Property: "relyingPartyId", IsRequired: true},
+				{Property: "relyingPartyId", IsRequired: true, ApplicableModes: []string{
+					passkeyExecutorModeChallenge, passkeyExecutorModeRegStart,
+				}},
 				{Property: "relyingPartyName"},
 				{Property: "authenticatorSelection"},
 				{Property: "attestation"},
@@ -144,12 +133,9 @@ func newPasskeyAuthExecutor(
 		})
 
 	return &passkeyAuthExecutor{
-		Executor:                     base,
-		identifyingExecutorInterface: identifyExec,
-		passkeyService:               passkeyService,
-		authnProvider:                authnProvider,
-		entityProvider:               entityProvider,
-		logger:                       logger,
+		Executor:      base,
+		authnProvider: authnProvider,
+		logger:        logger,
 	}
 }
 
@@ -211,7 +197,7 @@ func (p *passkeyAuthExecutor) executeChallenge(ctx *providers.NodeContext,
 		UserID:         userID, // May be empty for usernameless flow
 		RelyingPartyID: relyingPartyID,
 	}
-	startData, svcErr := p.passkeyService.StartAuthentication(ctx.Context, startReq)
+	initResponse, svcErr := p.authnProvider.InitiateAuthentication(ctx.Context, passkey.CredentialType, startReq, nil)
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx.Context, "Failed to start passkey authentication",
@@ -227,6 +213,12 @@ func (p *passkeyAuthExecutor) executeChallenge(ctx *providers.NodeContext,
 		logger.Error(ctx.Context, "Failed to start passkey authentication",
 			log.MaskedString(log.LoggerKeyUserID, userID), log.Error(errors.New(svcErr.ErrorDescription.DefaultValue)))
 		return execResp, fmt.Errorf("failed to start passkey authentication: %s", svcErr.ErrorDescription.DefaultValue)
+	}
+	startData, ok := initResponse.(*passkey.PasskeyAuthenticationStartData)
+	if !ok {
+		logger.Error(ctx.Context, "Invalid response type from InitiateAuthentication",
+			log.MaskedString(log.LoggerKeyUserID, userID))
+		return execResp, errors.New("invalid response type from InitiateAuthentication")
 	}
 
 	// Store session token in runtime data for verification phase
@@ -314,7 +306,7 @@ func (p *passkeyAuthExecutor) validatePasskey(ctx *providers.NodeContext, execRe
 		UserHandle:        userHandle,
 		SessionToken:      sessionToken,
 	}
-	credentials := map[string]interface{}{"passkey": passkeyCredential}
+	credentials := map[string]interface{}{passkey.CredentialType: passkeyCredential}
 	authUser, authenticatedClaims, svcErr := p.authnProvider.AuthenticateUser(
 		ctx.Context, nil, credentials, nil, nil, execResp.AuthUser)
 	execResp.AuthUser = authUser
@@ -380,7 +372,7 @@ func (p *passkeyAuthExecutor) executeRegisterStart(ctx *providers.NodeContext,
 	}
 
 	// Start passkey registration
-	startData, svcErr := p.passkeyService.StartRegistration(ctx.Context, regReq)
+	initResponse, svcErr := p.authnProvider.InitiateEnrollment(ctx.Context, passkey.CredentialType, regReq, nil)
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx.Context, "Failed to start passkey registration",
@@ -396,6 +388,12 @@ func (p *passkeyAuthExecutor) executeRegisterStart(ctx *providers.NodeContext,
 		logger.Error(ctx.Context, "Failed to start passkey registration",
 			log.MaskedString(log.LoggerKeyUserID, userID), log.Error(errors.New(svcErr.ErrorDescription.DefaultValue)))
 		return execResp, fmt.Errorf("failed to start passkey registration: %s", svcErr.ErrorDescription.DefaultValue)
+	}
+	startData, ok := initResponse.(*passkey.PasskeyRegistrationStartData)
+	if !ok {
+		logger.Error(ctx.Context, "Invalid response type from InitiateEnrollment",
+			log.MaskedString(log.LoggerKeyUserID, userID))
+		return execResp, errors.New("invalid response type from InitiateEnrollment")
 	}
 
 	// Store session token in runtime data for finish phase
@@ -428,7 +426,6 @@ func (p *passkeyAuthExecutor) executeRegisterFinish(ctx *providers.NodeContext,
 		{Identifier: inputCredentialID, Required: true},
 		{Identifier: inputClientDataJSON, Required: true},
 		{Identifier: inputAttestationObject, Required: true},
-		{Identifier: inputCredentialName, Required: false}, // Optional: user-friendly name for the passkey
 	}
 
 	// Validate inputs - only block on missing REQUIRED inputs
@@ -453,10 +450,6 @@ func (p *passkeyAuthExecutor) executeRegisterFinish(ctx *providers.NodeContext,
 	credentialID := ctx.UserInputs[inputCredentialID]
 	clientDataJSON := ctx.UserInputs[inputClientDataJSON]
 	attestationObject := ctx.UserInputs[inputAttestationObject]
-	credentialName := ctx.UserInputs[inputCredentialName]
-	if credentialName == "" {
-		credentialName = "Passkey" // Default name if not provided
-	}
 
 	// Get session token from runtime data
 	sessionToken := ctx.RuntimeData[runtimePasskeySessionToken]
@@ -472,11 +465,11 @@ func (p *passkeyAuthExecutor) executeRegisterFinish(ctx *providers.NodeContext,
 		ClientDataJSON:    clientDataJSON,
 		AttestationObject: attestationObject,
 		SessionToken:      sessionToken,
-		CredentialName:    credentialName,
 	}
-
-	// Call passkey service to finish registration
-	finishData, svcErr := p.passkeyService.FinishRegistration(ctx.Context, finishReq)
+	credentials := map[string]interface{}{passkey.CredentialType: finishReq}
+	authUser, authenticatedClaims, svcErr := p.authnProvider.Enroll(
+		ctx.Context, nil, credentials, nil, nil, execResp.AuthUser)
+	execResp.AuthUser = authUser
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
 			logger.Debug(ctx.Context, "Passkey registration failed",
@@ -494,22 +487,16 @@ func (p *passkeyAuthExecutor) executeRegisterFinish(ctx *providers.NodeContext,
 			log.String("error", svcErr.ErrorDescription.DefaultValue))
 		return execResp, fmt.Errorf("failed to finish passkey registration: %s", svcErr.ErrorDescription.DefaultValue)
 	}
-
-	// Store credential info in runtime data
-	execResp.RuntimeData[runtimePasskeyCredentialID] = finishData.CredentialID
-	execResp.RuntimeData[runtimePasskeyCredentialName] = finishData.CredentialName
+	for key, value := range authenticatedClaims {
+		execResp.RuntimeData[key] = systemutils.ConvertInterfaceValueToString(value)
+	}
 
 	// Clear session token after successful registration
 	execResp.RuntimeData[runtimePasskeySessionToken] = ""
 
-	// For registration flows, return the credential info in additional data
-	execResp.AdditionalData[runtimePasskeyCredentialID] = finishData.CredentialID
-	execResp.AdditionalData[runtimePasskeyCredentialName] = finishData.CredentialName
-	execResp.AdditionalData["credentialCreatedAt"] = finishData.CreatedAt
-
 	execResp.Status = providers.ExecComplete
 	logger.Debug(ctx.Context, "Passkey registration finished successfully",
-		log.String("credentialID", finishData.CredentialID))
+		log.MaskedString("credentialID", finishReq.CredentialID))
 	return execResp, nil
 }
 

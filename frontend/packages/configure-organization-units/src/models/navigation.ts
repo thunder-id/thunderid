@@ -30,7 +30,7 @@
  * @example
  * ```typescript
  * // Navigating to a child OU from a parent
- * navigate(`/organization-units/${childId}`, {
+ * navigate(routes.detail(childId), {
  *   state: {
  *     fromOU: { id: parentId, name: parentName }
  *   } satisfies OUNavigationState

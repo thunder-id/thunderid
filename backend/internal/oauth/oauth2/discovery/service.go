@@ -30,6 +30,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/pkce"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // DiscoveryServiceInterface defines the interface for discovery services
@@ -62,17 +63,10 @@ func (ds *discoveryService) GetOAuth2AuthorizationServerMetadata(
 		Issuer:                                     ds.getIssuer(),
 		AuthorizationEndpoint:                      ds.getAuthorizationEndpoint(),
 		TokenEndpoint:                              ds.getTokenEndpoint(),
-		UserInfoEndpoint:                           ds.getUserInfoEndpoint(),
 		JWKSUri:                                    ds.getJWKSUri(),
-		RegistrationEndpoint:                       ds.getRegistrationEndpoint(),
 		IntrospectionEndpoint:                      ds.getIntrospectionEndpoint(),
-		RevocationEndpoint:                         ds.getRevocationEndpoint(),
 		PushedAuthorizationRequestEndpoint:         ds.getPAREndpoint(),
 		RequirePushedAuthorizationRequests:         ds.isGlobalPARRequired(),
-		BackchannelAuthenticationEndpoint:          ds.getBackchannelAuthenticationEndpoint(),
-		BackchannelTokenDeliveryModesSupported:     []string{"poll"},
-		BackchannelUserCodeParameterSupported:      false,
-		ScopesSupported:                            ds.getSupportedScopes(),
 		ResponseTypesSupported:                     ds.getSupportedResponseTypes(),
 		GrantTypesSupported:                        ds.getSupportedGrantTypes(),
 		TokenEndpointAuthMethodsSupported:          ds.getSupportedTokenEndpointAuthMethods(),
@@ -81,6 +75,17 @@ func (ds *discoveryService) GetOAuth2AuthorizationServerMetadata(
 		DPoPSigningAlgValuesSupported:              ds.getSupportedDPoPSigningAlgs(),
 	}
 
+	if slices.Contains(metadata.GrantTypesSupported, string(providers.GrantTypeCIBA)) {
+		metadata.BackchannelAuthenticationEndpoint = ds.getBackchannelAuthenticationEndpoint()
+		metadata.BackchannelTokenDeliveryModesSupported = []string{"poll"}
+		metadata.BackchannelUserCodeParameterSupported = false
+	}
+	if ds.cfg.OAuth.TokenRevocation.Enabled {
+		metadata.RevocationEndpoint = ds.getRevocationEndpoint()
+	}
+	if ds.cfg.OAuth.DCR.IsEnabled() {
+		metadata.RegistrationEndpoint = ds.getRegistrationEndpoint()
+	}
 	return metadata
 }
 
@@ -92,8 +97,10 @@ func (ds *discoveryService) GetOIDCMetadata(ctx context.Context) (*OIDCProviderM
 	if err != nil {
 		return nil, err
 	}
-	return &OIDCProviderMetadata{
+	oidcProviderMetadata := &OIDCProviderMetadata{
 		OAuth2AuthorizationServerMetadata:    *oauth2Meta,
+		UserInfoEndpoint:                     ds.getUserInfoEndpoint(),
+		ScopesSupported:                      ds.getSupportedOIDCScopes(),
 		SubjectTypesSupported:                ds.getSupportedSubjectTypes(),
 		IDTokenSigningAlgValuesSupported:     signingAlgs,
 		UserInfoSigningAlgValuesSupported:    signingAlgs,
@@ -103,9 +110,14 @@ func (ds *discoveryService) GetOIDCMetadata(ctx context.Context) (*OIDCProviderM
 		IDTokenEncryptionEncValuesSupported:  inboundmodel.SupportedIDTokenEncryptionEncs,
 		ClaimsSupported:                      ds.getSupportedClaims(),
 		ClaimsParameterSupported:             true,
-		EndSessionEndpoint:                   ds.getEndSessionEndpoint(),
 		AcrValuesSupported:                   ds.getSupportedAcrValues(),
-	}, nil
+	}
+
+	if ds.cfg.OAuth.Logout.Enabled {
+		oidcProviderMetadata.EndSessionEndpoint = ds.getEndSessionEndpoint()
+	}
+
+	return oidcProviderMetadata, nil
 }
 
 func (ds *discoveryService) getEndSessionEndpoint() string {
@@ -144,7 +156,7 @@ func (ds *discoveryService) getRegistrationEndpoint() string {
 	return ds.cfg.BaseURL + constants.OAuth2DCREndpoint
 }
 
-func (ds *discoveryService) getSupportedScopes() []string {
+func (ds *discoveryService) getSupportedOIDCScopes() []string {
 	scopes := make([]string, 0, len(constants.StandardOIDCScopes))
 	for scope := range constants.StandardOIDCScopes {
 		scopes = append(scopes, scope)
@@ -153,15 +165,15 @@ func (ds *discoveryService) getSupportedScopes() []string {
 }
 
 func (ds *discoveryService) getSupportedResponseTypes() []string {
-	return constants.GetSupportedResponseTypes()
+	return constants.GetSupportedResponseTypes(ds.cfg)
 }
 
 func (ds *discoveryService) getSupportedGrantTypes() []string {
-	return constants.GetSupportedGrantTypes()
+	return constants.GetSupportedGrantTypes(ds.cfg)
 }
 
 func (ds *discoveryService) getSupportedTokenEndpointAuthMethods() []string {
-	return constants.GetSupportedTokenEndpointAuthMethods()
+	return constants.GetSupportedTokenEndpointAuthMethods(ds.cfg)
 }
 
 func (ds *discoveryService) getSupportedCodeChallengeMethods() []string {

@@ -107,3 +107,13 @@ export const KIND_COLORS: Record<SimulationOptionKinds, 'primary' | 'success' | 
   [SimulationOptionKinds.Incomplete]: 'warning',
   [SimulationOptionKinds.Failure]: 'error',
 };
+
+/**
+ * localStorage key persisting the preview's device frame pick across sessions.
+ */
+export const PREVIEW_DEVICE_STORAGE_KEY = 'thunderid.flows.preview.device';
+
+/**
+ * localStorage key persisting the preview's application pick across sessions.
+ */
+export const PREVIEW_APP_STORAGE_KEY = 'thunderid.flows.preview.appId';

@@ -111,7 +111,7 @@ export default function Footer(): JSX.Element {
           <FooterColumn
             title="Product"
             links={[
-              {label: 'Docs', href: '/docs/next/guides/getting-started/get-thunderid'},
+              {label: 'Docs', href: '/docs/next/getting-started/get-thunderid'},
               {label: 'APIs', href: '/docs/next/apis'},
               {label: 'SDKs', href: '/sdks'},
             ]}

@@ -20,6 +20,9 @@ import {type ConnectionType, ConnectionTypes} from '../models/connection';
 
 export type ConnectionFieldKind = 'text' | 'url' | 'secret' | 'scopes' | 'readonly-copy' | 'switch';
 
+/** Which form mode renders a field. Defaults to 'both' when unset. */
+export type ConnectionFieldVisibility = 'create' | 'edit' | 'both';
+
 export interface ConnectionFieldDef {
   /** Request payload property this field maps to. */
   name: string;
@@ -42,6 +45,8 @@ export interface ConnectionFieldDef {
   revealedBy?: string;
   /** Becomes required when the named switch field's value is truthy. */
   requiredWhen?: string;
+  /** Which form mode renders this field (default 'both'). Optional fields are edit-only to keep create simple. */
+  visibility?: ConnectionFieldVisibility;
 }
 
 const NAME_FIELD = (placeholder: string): ConnectionFieldDef => ({
@@ -73,10 +78,8 @@ const oauthFields = (namePlaceholder: string, clientIdPlaceholder: string): Conn
   {
     name: 'redirectUri',
     labelKey: 'connections:form.fields.redirectUri.label',
-    hintKey: 'connections:form.fields.redirectUri.hint',
-    kind: 'url',
-    required: true,
-    placeholder: 'https://your-gate-host/gate/callback',
+    kind: 'readonly-copy',
+    visibility: 'edit',
   },
   {
     name: 'scopes',
@@ -84,6 +87,7 @@ const oauthFields = (namePlaceholder: string, clientIdPlaceholder: string): Conn
     hintKey: 'connections:form.fields.scopes.hint',
     kind: 'scopes',
     placeholder: 'openid email profile',
+    visibility: 'edit',
   },
 ];
 
@@ -93,6 +97,7 @@ const TOKEN_EXCHANGE_ENABLED_FIELD: ConnectionFieldDef = {
   hintKey: 'connections:form.fields.tokenExchangeEnabled.hint',
   kind: 'switch',
   section: 'connections:form.sections.federation',
+  visibility: 'edit',
 };
 
 const TRUSTED_TOKEN_AUDIENCE_FIELD: ConnectionFieldDef = {
@@ -103,6 +108,7 @@ const TRUSTED_TOKEN_AUDIENCE_FIELD: ConnectionFieldDef = {
   optional: true,
   placeholder: 'my-external-client-id',
   revealedBy: 'tokenExchangeEnabled',
+  visibility: 'edit',
 };
 
 /**
@@ -152,6 +158,7 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
       kind: 'url',
       placeholder: 'https://idp.example.com',
       requiredWhen: 'tokenExchangeEnabled',
+      visibility: 'edit',
     },
     {
       name: 'userInfoEndpoint',
@@ -160,6 +167,7 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
       kind: 'url',
       optional: true,
       placeholder: 'https://idp.example.com/userinfo',
+      visibility: 'edit',
     },
     {
       name: 'jwksEndpoint',
@@ -169,14 +177,13 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
       optional: true,
       placeholder: 'https://idp.example.com/.well-known/jwks.json',
       requiredWhen: 'tokenExchangeEnabled',
+      visibility: 'edit',
     },
     {
       name: 'redirectUri',
       labelKey: 'connections:form.fields.redirectUri.label',
-      hintKey: 'connections:form.fields.redirectUri.hint',
-      kind: 'url',
-      required: true,
-      placeholder: 'https://your-gate-host/gate/callback',
+      kind: 'readonly-copy',
+      visibility: 'edit',
     },
     {
       name: 'scopes',
@@ -184,6 +191,7 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
       hintKey: 'connections:form.fields.scopes.hint',
       kind: 'scopes',
       placeholder: 'openid email profile',
+      visibility: 'edit',
     },
     TOKEN_EXCHANGE_ENABLED_FIELD,
     TRUSTED_TOKEN_AUDIENCE_FIELD,
@@ -232,10 +240,8 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
     {
       name: 'redirectUri',
       labelKey: 'connections:form.fields.redirectUri.label',
-      hintKey: 'connections:form.fields.redirectUri.hint',
-      kind: 'url',
-      required: true,
-      placeholder: 'https://your-gate-host/gate/callback',
+      kind: 'readonly-copy',
+      visibility: 'edit',
     },
     {
       name: 'scopes',
@@ -243,6 +249,7 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
       hintKey: 'connections:form.fields.scopes.hint',
       kind: 'scopes',
       placeholder: 'read:user email',
+      visibility: 'edit',
     },
   ],
   [ConnectionTypes.TWILIO]: [
@@ -300,3 +307,14 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
     },
   ],
 };
+
+/**
+ * Field definitions rendered (and validated) for the given form mode. Fields hidden at create
+ * are still passed to the payload mapper via {@link CONNECTION_FORM_FIELDS} directly, so derived
+ * values (e.g. redirectUri) are still sent and empty optional values are still omitted.
+ */
+export function fieldsForMode(type: ConnectionType, mode: 'create' | 'edit'): ConnectionFieldDef[] {
+  return CONNECTION_FORM_FIELDS[type].filter(
+    (field) => (field.visibility ?? 'both') === 'both' || field.visibility === mode,
+  );
+}

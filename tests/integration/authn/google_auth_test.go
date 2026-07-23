@@ -486,13 +486,15 @@ func (suite *GoogleAuthTestSuite) simulateGoogleAuthorization(redirectURL string
 	state := query.Get("state")
 	redirectURI := query.Get("redirect_uri")
 	scope := query.Get("scope")
+	nonce := query.Get("nonce")
 
-	authURL := fmt.Sprintf("%s/o/oauth2/v2/auth?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&state=%s",
+	authURL := fmt.Sprintf("%s/o/oauth2/v2/auth?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&state=%s&nonce=%s",
 		suite.mockGoogleServer.GetURL(),
 		url.QueryEscape(clientID),
 		url.QueryEscape(redirectURI),
 		url.QueryEscape(scope),
-		url.QueryEscape(state))
+		url.QueryEscape(state),
+		url.QueryEscape(nonce))
 
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {

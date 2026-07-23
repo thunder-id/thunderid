@@ -283,7 +283,7 @@
     "deprecated": false,
     "deletable": true,
     "display": {
-      "label": "Call Flow",
+      "label": "Flow",
       "image": "assets/images/icons/play.svg",
       "showOnResourcePanel": true,
       "description": "Invoke another flow and resume when it completes."

@@ -114,6 +114,47 @@ func (s *RedisStoreTestSuite) TestPut_BackendError() {
 	s.Contains(err.Error(), "failed to store in Redis")
 }
 
+func (s *RedisStoreTestSuite) TestPutIfNotExists_WithTTL_Success() {
+	key := s.store.getFormattedKey(providers.NamespaceFlow, "k")
+	s.client.On("SetArgs", mock.Anything, key, []byte("v"),
+		redis.SetArgs{Mode: "NX", TTL: 60 * time.Second}).
+		Return(redis.NewStatusResult("OK", nil))
+
+	ok, err := s.store.PutIfNotExists(s.ctx, providers.NamespaceFlow, "k", []byte("v"), 60)
+	s.NoError(err)
+	s.True(ok)
+}
+
+func (s *RedisStoreTestSuite) TestPutIfNotExists_ZeroTTL_NoExpiry() {
+	key := s.store.getFormattedKey(providers.NamespaceFlow, "k")
+	s.client.On("SetArgs", mock.Anything, key, []byte("v"),
+		redis.SetArgs{Mode: "NX", TTL: time.Duration(0)}).
+		Return(redis.NewStatusResult("OK", nil))
+
+	ok, err := s.store.PutIfNotExists(s.ctx, providers.NamespaceFlow, "k", []byte("v"), 0)
+	s.NoError(err)
+	s.True(ok)
+}
+
+func (s *RedisStoreTestSuite) TestPutIfNotExists_ExistingKey_ReturnsFalse() {
+	s.client.On("SetArgs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(redis.NewStatusResult("", redis.Nil))
+
+	ok, err := s.store.PutIfNotExists(s.ctx, providers.NamespaceFlow, "k", []byte("v"), 60)
+	s.NoError(err)
+	s.False(ok)
+}
+
+func (s *RedisStoreTestSuite) TestPutIfNotExists_BackendError() {
+	s.client.On("SetArgs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(redis.NewStatusResult("", errors.New("connection refused")))
+
+	ok, err := s.store.PutIfNotExists(s.ctx, providers.NamespaceFlow, "k", []byte("v"), 60)
+	s.Error(err)
+	s.False(ok)
+	s.Contains(err.Error(), "failed to store in Redis")
+}
+
 func (s *RedisStoreTestSuite) TestGet_Success() {
 	key := s.store.getFormattedKey(providers.NamespaceFlow, "k")
 	s.client.On("Get", mock.Anything, key).Return(redis.NewStringResult("v", nil))

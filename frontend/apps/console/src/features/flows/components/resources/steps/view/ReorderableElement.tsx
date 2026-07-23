@@ -424,6 +424,8 @@ function ReorderableElement({
               display: 'flex',
               flexDirection: 'column',
               gap: 1,
+              // Clicking an element opens its properties — signal it.
+              cursor: hideChrome ? undefined : 'pointer',
               '& .adapter': {position: 'relative'},
               ...slotProps?.ContentContainer?.sx,
             }}

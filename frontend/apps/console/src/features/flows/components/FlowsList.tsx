@@ -24,6 +24,7 @@ import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import FlowDeleteDialog from './FlowDeleteDialog';
+import RouteConfig from '../../../configs/RouteConfig';
 import useGetFlows from '../api/useGetFlows';
 import type {BasicFlowDefinition} from '../models/responses';
 
@@ -50,7 +51,7 @@ export default function FlowsList(): JSX.Element {
   const handleEditClick = useCallback(
     (flow: BasicFlowDefinition): void => {
       (async (): Promise<void> => {
-        await navigate(`/flows/signin/${flow.id}`);
+        await navigate(RouteConfig.flows.detail('signin', flow.id));
       })().catch((_error: unknown) => {
         logger.error('Failed to navigate to flow builder', {error: _error, flowId: flow.id});
       });

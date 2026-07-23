@@ -140,18 +140,6 @@ vi.mock('@thunderid/components', async () => {
     CopyableId: vi.fn(() => null),
     EmojiPicker: vi.fn(() => null),
     PageLoadingAnimation: vi.fn(() => <div data-testid="page-loading-animation" />),
-    ResourceLogoDialog: vi.fn(
-      ({open, onClose, onSelect}: {open: boolean; onClose: () => void; onSelect: (value: string) => void}) => (
-        <div data-testid="resource-logo-dialog" style={{display: open ? 'block' : 'none'}}>
-          <button type="button" onClick={() => onSelect('emoji:🚀')}>
-            Select Icon
-          </button>
-          <button type="button" onClick={onClose}>
-            Close
-          </button>
-        </div>
-      ),
-    ),
     UnsavedChangesBar: vi.fn(
       ({
         message,

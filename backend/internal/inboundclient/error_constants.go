@@ -24,6 +24,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/cert"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 var (
@@ -84,14 +85,18 @@ var (
 	ErrOAuthClientCredentialsCannotUseResponseTypes = errors.New("client_credentials grant cannot use response types")
 	// ErrOAuthAuthCodeRequiresCodeResponseType is returned when authorization_code grant lacks code response type.
 	ErrOAuthAuthCodeRequiresCodeResponseType = errors.New("authorization_code grant requires code response type")
-	// ErrOAuthRefreshTokenCannotBeSoleGrant is returned when refresh_token is the only grant type.
-	ErrOAuthRefreshTokenCannotBeSoleGrant = errors.New("refresh_token cannot be the sole grant type")
+	// ErrOAuthRefreshTokenRequiresTokenIssuingGrant is returned when refresh_token is set without a
+	// token-issuing grant (authorization_code or ciba).
+	ErrOAuthRefreshTokenRequiresTokenIssuingGrant = errors.New(
+		"refresh_token grant type requires a token-issuing grant type")
 	// ErrOAuthPKCERequiresAuthCode is returned when PKCE is enabled without authorization_code grant.
 	ErrOAuthPKCERequiresAuthCode = errors.New("PKCE requires authorization_code grant type")
 	// ErrOAuthResponseTypesRequireAuthCode is returned when response types are set without authorization_code grant.
 	ErrOAuthResponseTypesRequireAuthCode = errors.New("response types require authorization_code grant type")
 	// ErrOAuthInvalidTokenEndpointAuthMethod is returned when an unsupported auth method is specified.
 	ErrOAuthInvalidTokenEndpointAuthMethod = errors.New("invalid token endpoint auth method")
+	// ErrOAuthDefaultAudienceTooLong is returned when the access token default audience exceeds the maximum length.
+	ErrOAuthDefaultAudienceTooLong = errors.New("default audience exceeds the maximum allowed length")
 	// ErrOAuthPrivateKeyJWTRequiresCertificate is returned when private_key_jwt is used without a certificate.
 	ErrOAuthPrivateKeyJWTRequiresCertificate = errors.New("private_key_jwt requires a certificate")
 	// ErrOAuthCertificateRequiresClientID is returned when a certificate is provided without an OAuth client ID.
@@ -206,4 +211,19 @@ func (e *CertOperationError) Error() string {
 // IsClientError reports whether the underlying cert service error is a client error.
 func (e *CertOperationError) IsClientError() bool {
 	return e.Underlying != nil && e.Underlying.Type == tidcommon.ClientErrorType
+}
+
+// FlowMismatchError is returned when a flow reached from one of the inbound client's configured flows
+// does not align with the inbound client's per-type flow ID (registration/recovery). SourceFlowType
+// is the type of the client-level flow whose flow reached the mismatched reference; FlowType
+// is the type of the referenced flow.
+type FlowMismatchError struct {
+	SourceFlowType providers.FlowType
+	FlowType       providers.FlowType
+	msg            string
+}
+
+// Error implements the error interface.
+func (e *FlowMismatchError) Error() string {
+	return e.msg
 }

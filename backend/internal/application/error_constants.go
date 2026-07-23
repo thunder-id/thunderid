@@ -503,4 +503,21 @@ var (
 				"(android or apple) at a time",
 		},
 	}
+	// ErrorApplicationFlowMismatch is returned when a flow reached (via a CALL node) from one of the
+	// flows configured on the application conflicts with the application's binding of the same
+	// flow type — either the binding points at a different flow, or no binding exists.
+	ErrorApplicationFlowMismatch = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1039",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.application_flow_mismatch",
+			DefaultValue: "Conflicting flow references",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.applicationservice.application_flow_mismatch_description",
+			DefaultValue: "The {{param(sourceFlowType)}} flow references a different " +
+				"{{param(flowType)}} flow than the one configured on the application. " +
+				"Both must point to the same {{param(flowType)}} flow.",
+		},
+	}
 )

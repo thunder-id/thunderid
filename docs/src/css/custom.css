@@ -3275,6 +3275,18 @@ a.connect-card {
   transform: none !important;
 }
 
+/* On mobile the Ask AI sidepanel opens as a full-screen overlay, but DocSearch's
+   inline mode still sets an inline margin-right on the app root to reserve space
+   for it. On a phone-width viewport that margin (~360px) squeezes the page into a
+   sliver, collapsing the content into a single vertical column that persists after
+   the panel is closed. Cancel the reserved space at this breakpoint so the page
+   keeps its full width behind the overlay. */
+@media screen and (max-width: 768px) {
+  #__docusaurus:has(~ .DocSearch-Sidepanel-Container) {
+    margin-right: 0 !important;
+  }
+}
+
 /* ------------------------------ OneTrust Cookie Consent ---------------------- */
 /* OneTrust (CookiePro) injects its banner and preference-center modal outside the
    React tree with inline styles, so we override it here rather than via sx/styled(). */

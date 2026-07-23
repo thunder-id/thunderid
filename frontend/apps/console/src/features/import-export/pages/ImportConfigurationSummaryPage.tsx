@@ -57,6 +57,7 @@ import type {ComponentType, JSX} from 'react';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate, useLocation} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import useImportConfiguration from '../api/useImportConfiguration';
 import EnvVariablesViewer from '../components/EnvVariablesViewer';
 import ResourceSummaryTable from '../components/ResourceSummaryTable';
@@ -423,7 +424,7 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
   const {t} = useTranslation('importExport');
   const navigate = useNavigate();
   const location = useLocation();
-  const isWelcomeFlow = location.pathname.startsWith('/welcome');
+  const isWelcomeFlow = location.pathname.startsWith(RouteConfig.welcome.root());
   const logger = useLogger('ImportConfigurationSummaryPage');
   const {showToast} = useToast();
   const {config} = useConfig();
@@ -692,7 +693,7 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
   });
 
   const handleClose = (): void => {
-    void navigate('/home');
+    void navigate(RouteConfig.home.list());
   };
 
   const handleProceed = (): void => {
@@ -719,7 +720,7 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
         showToast(t('summary.import.completedSuccessfully', {count: response.summary.imported}), 'success');
       }
 
-      await navigate('/home');
+      await navigate(RouteConfig.home.list());
     })().catch((_error: unknown) => {
       logger.error('Failed to import configuration', {error: _error});
       showToast(t('summary.import.failedRetry'), 'error');
@@ -750,12 +751,23 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
           <AppBreadcrumbs
             items={[
               ...(isWelcomeFlow
-                ? [{key: 'welcome', label: t('common:welcome.header'), onClick: () => void navigate('/welcome')}]
+                ? [
+                    {
+                      key: 'welcome',
+                      label: t('common:welcome.header'),
+                      onClick: () => void navigate(RouteConfig.welcome.root()),
+                    },
+                  ]
                 : []),
               {
                 key: 'import-configuration',
                 label: t('upload.breadcrumb.openProject'),
-                onClick: () => void navigate(`${isWelcomeFlow ? '/welcome' : ''}/import-configuration`),
+                onClick: () =>
+                  void navigate(
+                    isWelcomeFlow
+                      ? RouteConfig.welcome.importConfigurationUpload()
+                      : RouteConfig.importConfiguration.upload(),
+                  ),
               },
               {key: 'summary', label: t('summary.breadcrumb')},
             ]}

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {isEmojiUri, extractEmojiFromUri} from '@thunderid/react';
+import {resolveLogoUri, type ResolvedLogo} from '@thunderid/react';
 import {cn} from '@thunderid/utils';
 import {Box} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
@@ -42,7 +42,9 @@ export default function ImageAdapter({
 
   if (!resolvedSrc) return null;
 
-  if (isEmojiUri(resolvedSrc)) {
+  const resolvedIcon: ResolvedLogo = resolveLogoUri(resolvedSrc, resolvedAlt);
+
+  if (resolvedIcon.kind === 'emoji') {
     const cssWidth = component.width ? `${component.width}px` : '100%';
     const cssHeight = component.height ? `${component.height}px` : 'auto';
 
@@ -69,7 +71,7 @@ export default function ImageAdapter({
         }}
       >
         <span aria-label={resolvedAlt} role="img" style={{fontSize: '100cqmin', lineHeight: 1}}>
-          {extractEmojiFromUri(resolvedSrc)}
+          {resolvedIcon.glyph}
         </span>
       </span>
     );
@@ -80,7 +82,7 @@ export default function ImageAdapter({
       component="img"
       id={component.id}
       className={[cn('Flow--image'), component.classes].filter(Boolean).join(' ')}
-      src={resolvedSrc}
+      src={resolvedIcon.imgSrc}
       alt={resolvedAlt}
       sx={{
         width: component.width ? `${component.width}px` : 'auto',

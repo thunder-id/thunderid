@@ -38,7 +38,7 @@ When the agent acts on its own, running a scheduled task, processing a queue, mo
 
 This is the simplest flow and fits any agent that operates autonomously. Coverage includes nightly jobs, background workers, internal data syncs, and any agent-to-service call where no user context is needed. The trade-off: permissions are static, assigned at provisioning, applied to every request, so any decision that depends on user identity falls to a delegated flow.
 
-This flow is built using the standard OAuth2 `client_credentials` grant. See [Agent Authentication](../../../guides/guides/agents/agent-authentication).
+This flow is built using the standard OAuth2 `client_credentials` grant. See [Agent Authentication](../../../guides/agents/agent-authentication).
 
 ### Authorization Code with OBO
 
@@ -46,7 +46,7 @@ When a user is present at the moment the agent acts, the agent obtains a token t
 
 This is the right flow for interactive assistants, chat-driven agents, and any case where the user is at the keyboard when the agent needs delegated access. The pattern covers consent capture, scope intersection (the token never exceeds what the user can do), and revocation, the user can withdraw consent at any time.
 
-This flow is built using OAuth2 authorization code followed by a token exchange that converts the user's token into an on-behalf-of (OBO) token carrying the agent as actor. See [Agent Authentication](../../../guides/guides/agents/agent-authentication).
+This flow is built using OAuth2 authorization code followed by a token exchange that converts the user's token into an on-behalf-of (OBO) token carrying the agent as actor. See [Agent Authentication](../../../guides/agents/agent-authentication).
 
 ### Backchannel Authorization (CIBA)
 
@@ -54,7 +54,7 @@ When delegated access is needed but the user is not present, a background workfl
 
 This pattern fits long-running agents, asynchronous workflows, and any case where the user authorizes once on their phone while the agent continues on a server. The trade-off is latency, the agent must wait for the user to act, and the user must have a registered device that can receive the prompt.
 
-This flow is built using the OpenID Connect CIBA grant. See [Backchannel Authentication (CIBA)](../../../guides/guides/protocols/oauth-oidc/backchannel-authentication).
+This flow is built using the OpenID Connect CIBA grant. See [Backchannel Authentication (CIBA)](../../../guides/protocols/oauth-oidc/backchannel-authentication).
 
 ### Token Exchange
 
@@ -62,7 +62,7 @@ When one agent delegates work to another, the parent agent exchanges its current
 
 This pattern fits multi-agent workflows where each hop should receive only what it needs. The chain is preserved: the new token carries the original user as subject (if any) and an actor chain of every agent that participated. The final service can inspect the chain to understand who initiated the request and how it arrived.
 
-This flow is built using OAuth2 token exchange ([RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693)). See [Agent Authentication](../../../guides/guides/agents/agent-authentication).
+This flow is built using OAuth2 token exchange ([RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693)). See [Agent Authentication](../../../guides/agents/agent-authentication).
 
 ## Part B: Supporting Patterns
 

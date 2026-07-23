@@ -136,9 +136,10 @@ func (ts *SMSOTPRecoveryFlowTestSuite) SetupSuite() {
 	ts.smsFlowID = customFlowID
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, customFlowID)
 
-	authFlowID, err := testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
-	ts.Require().NoError(err, "Failed to get default auth flow ID")
+	authFlowID, err := testutils.CreateIsolatedAuthFlow("sms-otp-recovery-isolated-auth")
+	ts.Require().NoError(err, "Failed to create isolated auth flow")
 	ts.authFlowID = authFlowID
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, authFlowID)
 
 	// Create test application with SMS OTP recovery flow
 	appID, err := testutils.CreateApplication(testutils.Application{
@@ -298,8 +299,8 @@ func (ts *SMSOTPRecoveryFlowTestSuite) TestSMSOTPRecoveryFlow_UnknownUsername() 
 		"No SMS should be sent for a non-existent username")
 }
 
-// TestSMSOTPRecoveryFlow_InvalidOTP tests that a wrong OTP causes verify_otp to fail
-// and the flow returns to prompt_username (as configured in onFailure).
+// TestSMSOTPRecoveryFlow_InvalidOTP tests that a wrong OTP causes verify_otp to return
+// incomplete and the flow redirects to otp_sent_status (as configured in onIncomplete).
 func (ts *SMSOTPRecoveryFlowTestSuite) TestSMSOTPRecoveryFlow_InvalidOTP() {
 	ts.mockSMSServer.ClearMessages()
 
@@ -320,7 +321,7 @@ func (ts *SMSOTPRecoveryFlowTestSuite) TestSMSOTPRecoveryFlow_InvalidOTP() {
 	time.Sleep(1 * time.Second)
 	ts.mockSMSServer.ClearMessages()
 
-	// Submit an incorrect OTP — verify_otp fails, onFailure → prompt_username.
+	// Submit an incorrect OTP — verify_otp onIncomplete → otp_sent_status.
 	flowStep, err = common.CompleteFlow(
 		flowStep.ExecutionID,
 		map[string]string{"otp": "000000"},
@@ -329,7 +330,7 @@ func (ts *SMSOTPRecoveryFlowTestSuite) TestSMSOTPRecoveryFlow_InvalidOTP() {
 	)
 	ts.Require().NoError(err)
 
-	// The flow must be INCOMPLETE (restarted to prompt_username), not COMPLETE.
+	// The flow must be INCOMPLETE (restarted to otp_sent_status), not COMPLETE.
 	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus,
 		"Invalid OTP must not complete the recovery flow")
 	ts.Require().NotEqual("COMPLETE", flowStep.FlowStatus)
@@ -338,9 +339,9 @@ func (ts *SMSOTPRecoveryFlowTestSuite) TestSMSOTPRecoveryFlow_InvalidOTP() {
 	ts.Require().NotNil(flowStep.Error,
 		"Expected an error for invalid OTP")
 
-	// The flow should loop back to username prompt.
-	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "username"),
-		"After invalid OTP, flow must restart at prompt_username")
+	// The flow should loop back to OTP prompt.
+	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "otp"),
+		"After invalid OTP, flow must return to otp_sent_status")
 }
 
 // TestSMSOTPRecoveryFlow_MissingMobileNumber tests that a user without a mobileNumber
@@ -491,8 +492,9 @@ func buildSMSOTPRecoveryFlow(senderID string) testutils.Flow {
 					"name": "OTPExecutor",
 					"mode": "verify",
 				},
-				"onSuccess": "prompt_new_password",
-				"onFailure": "prompt_username",
+				"onSuccess":    "prompt_new_password",
+				"onFailure":    "prompt_username",
+				"onIncomplete": "otp_sent_status",
 			},
 			{
 				"id":   "prompt_new_password",

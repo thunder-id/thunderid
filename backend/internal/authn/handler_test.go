@@ -853,20 +853,21 @@ func (suite *AuthenticationHandlerTestSuite) TestHandlePasskeyRegisterFinishRequ
 				AttestationObject: "base64-attestation",
 			},
 		},
-		SessionToken:   testSessionTkn,
-		CredentialName: "My Passkey",
+		SessionToken: testSessionTkn,
 	}
-	regResponse := map[string]interface{}{
-		"credentialId":   "credential-id-123",
-		"credentialName": "My Passkey",
-		"createdAt":      "2025-01-01T00:00:00Z",
+	regResponse := &common.AuthenticationResponse{
+		ID:        testUserID,
+		Type:      "person",
+		OUID:      testOrgUnit,
+		Assertion: testJWTToken,
 	}
 
 	suite.mockService.On("FinishPasskeyRegistration",
 		mock.Anything,
 		regRequest.PublicKeyCredential,
 		testSessionTkn,
-		"My Passkey").Return(regResponse, nil)
+		false,
+		"").Return(regResponse, nil)
 
 	body, _ := json.Marshal(regRequest)
 	req := httptest.NewRequest(http.MethodPost, "/authenticate/passkey/register/finish", bytes.NewReader(body))
@@ -878,8 +879,8 @@ func (suite *AuthenticationHandlerTestSuite) TestHandlePasskeyRegisterFinishRequ
 	var response map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	suite.NoError(err)
-	suite.Equal("credential-id-123", response["credentialId"])
-	suite.Equal("My Passkey", response["credentialName"])
+	suite.Equal(testUserID, response["id"])
+	suite.Equal(testJWTToken, response["assertion"])
 }
 
 func (suite *AuthenticationHandlerTestSuite) TestHandlePasskeyRegisterFinishRequestInvalidJSON() {
@@ -918,7 +919,7 @@ func (suite *AuthenticationHandlerTestSuite) TestHandlePasskeyRegisterFinishRequ
 	}
 
 	suite.mockService.On("FinishPasskeyRegistration",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, serviceError)
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, serviceError)
 
 	body, _ := json.Marshal(regRequest)
 	req := httptest.NewRequest(http.MethodPost, "/authenticate/passkey/register/finish", bytes.NewReader(body))

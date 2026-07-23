@@ -22,6 +22,7 @@ import {Plus} from '@wso2/oxygen-ui-icons-react';
 import {type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import VerifiablePresentationsList from '../components/VerifiablePresentationsList';
 
 export default function VerifiablePresentationsListPage(): JSX.Element {
@@ -41,7 +42,7 @@ export default function VerifiablePresentationsListPage(): JSX.Element {
               startIcon={<Plus size={18} />}
               onClick={() => {
                 (async () => {
-                  await navigate('/verifiable-presentations/create');
+                  await navigate(RouteConfig.verifiablePresentations.create());
                 })().catch((error: unknown) => {
                   logger.error('Failed to navigate to create page', {error});
                 });

@@ -87,9 +87,8 @@ export default function generateFlowGraph(options: FlowGeneratorOptions): Create
       eventType: 'SUBMIT',
     },
     label:
-      '<p class="rich-text-paragraph"><span class="rich-text-pre-wrap">Don\'t have an account? </span>' +
-      '<a href="{{meta(application.sign_up_url)}}" data-action-ref="action_signup" target="_blank" ' +
-      'rel="noopener noreferrer" class="rich-text-link">' +
+      '<p data-component-ref="self-sign-up-link" class="rich-text-paragraph"><span class="rich-text-pre-wrap">Don\'t have an account? </span>' +
+      '<a href="#" data-action-ref="action_signup" class="rich-text-link">' +
       '<span class="rich-text-pre-wrap">Sign up</span></a></p>',
   };
 

@@ -148,7 +148,6 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyUser_FilterNonSearchableA
 		"username": "testuser",
 		"password": "secret123",
 		"code":     "auth-code",
-		"nonce":    "nonce-value",
 		"otp":      "123456",
 	}
 	execResp := &providers.ExecutorResponse{

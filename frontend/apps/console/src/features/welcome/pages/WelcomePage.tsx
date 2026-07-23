@@ -33,6 +33,7 @@ import {motion} from 'framer-motion';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import useWelcomeClose from '../hooks/useWelcomeClose';
 import getWelcomeDismissedStorageKey from '../utils/getWelcomeDismissedStorageKey';
 
@@ -49,7 +50,7 @@ export default function WelcomePage(): JSX.Element {
 
   const handleCreateNewProject = (): void => {
     sessionStorage.setItem(getWelcomeDismissedStorageKey(productName), 'true');
-    void navigate('/welcome/create-project');
+    void navigate(RouteConfig.welcome.createProject());
   };
 
   const startActions = [
@@ -67,7 +68,7 @@ export default function WelcomePage(): JSX.Element {
       description: t('common:welcome.start.openImportDesc', {productName}),
       action: () => {
         sessionStorage.setItem(getWelcomeDismissedStorageKey(productName), 'true');
-        void navigate('/welcome/import-configuration');
+        void navigate(RouteConfig.welcome.importConfigurationUpload());
       },
     },
   ];
@@ -80,7 +81,7 @@ export default function WelcomePage(): JSX.Element {
       description: t('common:welcome.tryoutProduct.securingApplicationDesc'),
       action: () => {
         sessionStorage.setItem(getWelcomeDismissedStorageKey(productName), 'true');
-        void navigate('/welcome/tryout/securing-application');
+        void navigate(RouteConfig.welcome.tryoutSecuringApplication());
       },
     },
     {
@@ -90,7 +91,7 @@ export default function WelcomePage(): JSX.Element {
       description: t('common:welcome.tryoutProduct.aiAgentsDesc'),
       action: () => {
         sessionStorage.setItem(getWelcomeDismissedStorageKey(productName), 'true');
-        void navigate('/welcome/tryout/ai-agents');
+        void navigate(RouteConfig.welcome.tryoutAiAgents());
       },
     },
     {
@@ -100,7 +101,7 @@ export default function WelcomePage(): JSX.Element {
       description: t('common:welcome.tryoutProduct.mcpDesc'),
       action: () => {
         sessionStorage.setItem(getWelcomeDismissedStorageKey(productName), 'true');
-        void navigate('/welcome/tryout/mcp');
+        void navigate(RouteConfig.welcome.tryoutMcp());
       },
     },
   ];

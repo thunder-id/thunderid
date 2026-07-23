@@ -24,9 +24,9 @@ const {processMarkdownFile} = require('./mdxProcessor');
  * Generates a clean .md file for every .mdx doc page at build time,
  * mirroring the Docusaurus URL structure:
  *
- *   content/guides/getting-started/foo.mdx
- *     → build/docs/next/guides/getting-started/foo.md
- *     → served at /docs/next/guides/getting-started/foo.md
+ *   content/getting-started/foo.mdx
+ *     → build/docs/next/getting-started/foo.md
+ *     → served at /docs/next/getting-started/foo.md
  *
  * ThunderID only has one docs version ("current" → served under /docs/next/).
  */

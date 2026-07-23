@@ -20,8 +20,10 @@ package setup
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"os"
 	"os/exec"
@@ -107,17 +109,27 @@ func FindThunderRoot(installPath string) (string, error) {
 	return filepath.Dir(script), nil
 }
 
+// AdminCredentials holds the admin username and password surfaced by setup, so the
+// caller can display them after the setup spinner has finished rather than printing
+// them mid-run (which interleaves with the spinner and is hidden by the REPL's
+// alternate screen).
+type AdminCredentials struct {
+	Username string
+	Password string
+}
+
 // RunSetup executes the platform setup script non-interactively on the default port.
-func RunSetup(installPath string, verbose bool) error {
+func RunSetup(installPath string, verbose bool) (*AdminCredentials, error) {
 	return RunSetupOnPort(installPath, verbose, 0)
 }
 
 // RunSetupOnPort executes the platform setup script with an optional custom port.
-// Pass port=0 to use the default.
-func RunSetupOnPort(installPath string, verbose bool, port int) error {
+// Pass port=0 to use the default. When the setup run generated an admin password,
+// the parsed credentials are returned; otherwise the returned credentials are nil.
+func RunSetupOnPort(installPath string, verbose bool, port int) (*AdminCredentials, error) {
 	root, err := FindThunderRoot(installPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var cmd *exec.Cmd
@@ -146,9 +158,15 @@ func RunSetupOnPort(installPath string, verbose bool, port int) error {
 	cmd.Stdin = nil // no stdin → prevents any remaining interactive prompts
 
 	if verbose {
-		cmd.Stdout = os.Stdout
+		// Mirror to the terminal live, but also capture so the credentials can be
+		// re-surfaced inside the REPL (which draws on the alternate screen).
+		var outBuf bytes.Buffer
+		cmd.Stdout = io.MultiWriter(os.Stdout, &outBuf)
 		cmd.Stderr = os.Stderr
-		return cmd.Run()
+		if err := cmd.Run(); err != nil {
+			return nil, err
+		}
+		return parseAdminCredentials(outBuf.String()), nil
 	}
 
 	// Non-verbose: capture stdout+stderr so we can surface them on failure.
@@ -159,23 +177,49 @@ func RunSetupOnPort(installPath string, verbose bool, port int) error {
 		detail := strings.TrimSpace(errBuf.String() + "\n" + outBuf.String())
 		detail = strings.TrimSpace(detail)
 		if detail != "" {
-			return fmt.Errorf("%w\n\n%s", err, detail)
+			return nil, fmt.Errorf("%w\n\n%s", err, detail)
 		}
-		return fmt.Errorf("%w\n\nRun with --verbose for full setup output", err)
+		return nil, fmt.Errorf("%w\n\nRun with --verbose for full setup output", err)
 	}
-	// Always surface the admin credentials block, even in non-verbose mode — this is
-	// the only place a generated admin password is shown when running non-verbosely.
-	printAdminCredentials(outBuf.String())
-	return nil
+	return parseAdminCredentials(outBuf.String()), nil
 }
 
-// printAdminCredentials extracts and prints the admin credentials block from captured
-// setup output, if present. setup.sh/setup.ps1 print this block followed by a blank
-// line, only when the password was generated this run.
-func printAdminCredentials(output string) {
+// GenerateAdminPassword returns a random 12-character password using the same
+// character set and constraints as setup.sh (at least one digit and one special
+// character). The CLI generates it up-front so it can be shown as the default value
+// in the interactive prompt before setup runs.
+func GenerateAdminPassword() string {
+	const (
+		digits  = "0123456789"
+		special = "@#%+=_.?-"
+		letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+		charset = letters + digits + special
+		length  = 12
+	)
+	for {
+		b := make([]byte, length)
+		for i := range b {
+			n, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+			if err != nil {
+				panic("crypto/rand unavailable: " + err.Error())
+			}
+			b[i] = charset[n.Int64()]
+		}
+		s := string(b)
+		if strings.ContainsAny(s, digits) && strings.ContainsAny(s, special) {
+			return s
+		}
+	}
+}
+
+// parseAdminCredentials extracts the admin username and password from captured setup
+// output. setup.sh/setup.ps1 print an "Admin credentials:" block followed by a blank
+// line, but only when the password was generated this run; returns nil when no such
+// block is present.
+func parseAdminCredentials(output string) *AdminCredentials {
 	start := strings.Index(output, "Admin credentials:")
 	if start == -1 {
-		return
+		return nil
 	}
 	block := output[start:]
 	if idx := strings.Index(block, "\n\n"); idx != -1 {
@@ -183,7 +227,19 @@ func printAdminCredentials(output string) {
 	} else if idx := strings.Index(block, "\r\n\r\n"); idx != -1 {
 		block = block[:idx+2]
 	}
-	fmt.Print(block)
+	creds := &AdminCredentials{}
+	for _, line := range strings.Split(block, "\n") {
+		line = strings.TrimSpace(line)
+		if v := strings.TrimPrefix(line, "Username:"); v != line {
+			creds.Username = strings.TrimSpace(v)
+		} else if v := strings.TrimPrefix(line, "Password:"); v != line {
+			creds.Password = strings.TrimSpace(v)
+		}
+	}
+	if creds.Username == "" && creds.Password == "" {
+		return nil
+	}
+	return creds
 }
 
 // StartBackground starts Thunder detached from the terminal on the default port.

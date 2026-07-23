@@ -19,7 +19,6 @@
 package providers
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -36,114 +35,8 @@ func TestModelSuite(t *testing.T) {
 	suite.Run(t, new(ModelTestSuite))
 }
 
-// ----- AuthUser -----
-
-func (suite *ModelTestSuite) TestAuthUser_IsAuthenticated() {
-	suite.T().Run("empty user is not authenticated", func(t *testing.T) {
-		assert.False(t, AuthUser{}.IsAuthenticated())
-	})
-
-	suite.T().Run("entity reference only is not authenticated", func(t *testing.T) {
-		var u AuthUser
-		u.SetEntityReference(&EntityReference{EntityID: "id1"})
-		assert.False(t, u.IsAuthenticated())
-	})
-
-	suite.T().Run("attributes only is not authenticated", func(t *testing.T) {
-		var u AuthUser
-		u.SetAttributes(&AttributesResponse{})
-		assert.False(t, u.IsAuthenticated())
-	})
-
-	suite.T().Run("reference and attributes is authenticated", func(t *testing.T) {
-		var u AuthUser
-		u.SetEntityReference(&EntityReference{EntityID: "id1"})
-		u.SetAttributes(&AttributesResponse{})
-		assert.True(t, u.IsAuthenticated())
-	})
-
-	suite.T().Run("entity reference token and attribute token is authenticated", func(t *testing.T) {
-		var u AuthUser
-		u.SetEntityReferenceToken("tok")
-		u.SetAttributeToken("attr-tok")
-		assert.True(t, u.IsAuthenticated())
-	})
-}
-
-func (suite *ModelTestSuite) TestAuthUser_SetEntityReference_ClearsToken() {
-	var u AuthUser
-	u.SetEntityReferenceToken("old-token")
-	u.SetEntityReference(&EntityReference{EntityID: "id1"})
-
-	assert.Nil(suite.T(), u.EntityReferenceToken())
-	assert.NotNil(suite.T(), u.EntityReference())
-}
-
-func (suite *ModelTestSuite) TestAuthUser_SetEntityReferenceToken_ClearsReference() {
-	var u AuthUser
-	u.SetEntityReference(&EntityReference{EntityID: "id1"})
-	u.SetEntityReferenceToken("new-token")
-
-	assert.Nil(suite.T(), u.EntityReference())
-	assert.Equal(suite.T(), "new-token", u.EntityReferenceToken())
-}
-
-func (suite *ModelTestSuite) TestAuthUser_SetAttributes_ClearsToken() {
-	var u AuthUser
-	u.SetAttributeToken("tok")
-	u.SetAttributes(&AttributesResponse{})
-
-	assert.Nil(suite.T(), u.AttributeToken())
-	assert.NotNil(suite.T(), u.Attributes())
-}
-
-func (suite *ModelTestSuite) TestAuthUser_SetAttributeToken_ClearsAttributes() {
-	var u AuthUser
-	u.SetAttributes(&AttributesResponse{})
-	u.SetAttributeToken("new-tok")
-
-	assert.Nil(suite.T(), u.Attributes())
-	assert.Equal(suite.T(), "new-tok", u.AttributeToken())
-}
-
-func (suite *ModelTestSuite) TestAuthUser_JSON_RoundTrip() {
-	ref := &EntityReference{EntityID: "entity-1", EntityCategory: "user", EntityType: "default", OUID: "ou-1"}
-	attrs := &AttributesResponse{
-		Attributes: map[string]*AttributeResponse{
-			"email": {Value: "user@example.com"},
-		},
-	}
-
-	original := AuthUser{}
-	original.SetEntityReference(ref)
-	original.SetAttributes(attrs)
-
-	data, err := json.Marshal(&original)
-	suite.Require().NoError(err)
-
-	var restored AuthUser
-	suite.Require().NoError(json.Unmarshal(data, &restored))
-
-	assert.Equal(suite.T(), original.EntityReference(), restored.EntityReference())
-	assert.Equal(suite.T(), original.Attributes(), restored.Attributes())
-	assert.Nil(suite.T(), restored.EntityReferenceToken())
-	assert.Nil(suite.T(), restored.AttributeToken())
-}
-
-func (suite *ModelTestSuite) TestAuthUser_JSON_WithTokens() {
-	original := AuthUser{}
-	original.SetEntityReferenceToken("ref-token")
-	original.SetAttributeToken("attr-token")
-
-	data, err := json.Marshal(&original)
-	suite.Require().NoError(err)
-
-	var restored AuthUser
-	suite.Require().NoError(json.Unmarshal(data, &restored))
-
-	assert.Equal(suite.T(), "ref-token", restored.EntityReferenceToken())
-	assert.Equal(suite.T(), "attr-token", restored.AttributeToken())
-}
+// AuthUser tests live in auth_user_test.go — the multi-provider AuthUser API
+// (ProviderNames / StateFor / SetStateFor) is exercised there.
 
 // ----- NodeDefinition YAML -----
 
@@ -347,6 +240,38 @@ func (suite *ModelTestSuite) TestNodeContext_ConsumeInput_AccumulatesAcrossCalls
 	nc.ConsumeInput("b")
 
 	assert.Equal(suite.T(), []string{"a", "c", "b"}, nc.GetConsumedInputs())
+}
+
+// ----- NodeContext initiator request -----
+
+func (suite *ModelTestSuite) TestNodeContext_GetInitiatorRequest_NilByDefault() {
+	nc := &NodeContext{}
+
+	assert.Nil(suite.T(), nc.GetInitiatorRequest())
+}
+
+func (suite *ModelTestSuite) TestNodeContext_SetAndGetInitiatorRequest() {
+	nc := &NodeContext{}
+	req := &InitiatorRequest{
+		Headers:     map[string][]string{"X-Custom": {"val"}},
+		QueryParams: map[string][]string{"client_id": {"my-client"}},
+	}
+
+	nc.SetInitiatorRequest(req)
+
+	got := nc.GetInitiatorRequest()
+	assert.Equal(suite.T(), req, got)
+	assert.Equal(suite.T(), []string{"val"}, got.Headers["X-Custom"])
+	assert.Equal(suite.T(), []string{"my-client"}, got.QueryParams["client_id"])
+}
+
+func (suite *ModelTestSuite) TestNodeContext_SetInitiatorRequest_Nil() {
+	nc := &NodeContext{}
+	nc.SetInitiatorRequest(&InitiatorRequest{})
+
+	nc.SetInitiatorRequest(nil)
+
+	assert.Nil(suite.T(), nc.GetInitiatorRequest())
 }
 
 // ----- AttestationConfig -----

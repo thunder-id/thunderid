@@ -58,7 +58,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    | -------- | -------------------- |
    | `access` | `agent:access`       |
 
-   See [Resource Servers](../../../guides/guides/resource-servers).
+   See [Resource Servers](../../../guides/resource-servers).
 
 2. **Create the `wayfinder` resource server.**
 
@@ -175,7 +175,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
      }'
    ```
 
-   See [Authorization](../../../guides/key-concepts/authorization).
+   See [Authorization](../../../key-concepts/authorization).
 
 6. **Create the `Customer` user type.**
 
@@ -189,7 +189,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    | `given_name`  | string | No       |                                        |
    | `family_name` | string | No       |                                        |
 
-   See [User Types](../../../guides/guides/users/user-types).
+   See [User Types](../../../guides/users/user-types).
 
 7. **Create the two demo users.**
 
@@ -200,7 +200,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    | `john.doe`   | `john.doe`   |
    | `jane.smith` | `jane.smith` |
 
-   See [Manage Users](../../../guides/guides/users/manage-users).
+   See [Manage Users](../../../guides/users/manage-users).
 
 8. **Assign user roles.**
 
@@ -219,7 +219,7 @@ The foundation creates the two resource servers, three roles, two demo users, an
    | PKCE                | Required                                       |
    | Allowed user types  | `Customer`                                     |
 
-   See [Manage Applications](../../../guides/guides/applications/manage-applications).
+   See [Manage Applications](../../../guides/applications/manage-applications).
 
 ## Register the Wayfinder Concierge Agent
 
@@ -233,7 +233,7 @@ The Concierge runs as a first-class agent in <ProductName />. It needs its own c
    - Under **Protocol** settings, enable the **Authorization Code** grant. Client Credentials is on by default for agents.
    - Add the redirect URI `{{WayFinderSampleUrl}}/agent-callback`.
 
-   See [Manage Agents](../../../guides/guides/agents/manage-agents) and [Agent Authentication](../../../guides/guides/agents/agent-authentication).
+   See [Manage Agents](../../../guides/agents/manage-agents) and [Agent Authentication](../../../guides/agents/agent-authentication).
 
 2. **Assign the `Recommender` role to the agent.**
 
@@ -257,7 +257,7 @@ Attach the flow to the `WAYFINDER-CONCIERGE` agent (set `auth_flow_handle` on th
 
 The complete flow definition is in the Wayfinder sample distribution at `thunderid-config/redirect/thunderid-config.yaml` under the `wayfinder-agent-auth-flow` entry: copy it as a reference.
 
-See [Build a Flow](../../../guides/guides/flows/build-a-flow).
+See [Build a Flow](../../../guides/flows/build-a-flow).
 
 ## Start the Sample
 

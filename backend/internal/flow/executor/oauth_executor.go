@@ -32,6 +32,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/idp"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -56,7 +57,7 @@ var userInfoSkipAttributes = []string{"username", "sub", "id"}
 // oAuthExecutorInterface defines the interface for OAuth authentication executors.
 type oAuthExecutorInterface interface {
 	providers.Executor
-	BuildAuthorizeFlow(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) error
+	BuildAuthorizeFlow(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) (map[string]string, error)
 	ProcessAuthFlowResponse(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) error
 	GetIdpID(ctx *providers.NodeContext) (string, error)
 }
@@ -132,7 +133,7 @@ func (o *oAuthExecutor) Execute(ctx *providers.NodeContext) (*providers.Executor
 
 	if !o.HasRequiredInputs(ctx, execResp) {
 		logger.Debug(ctx.Context, "Required inputs for OAuth authentication executor is not provided")
-		err := o.BuildAuthorizeFlow(ctx, execResp)
+		_, err := o.BuildAuthorizeFlow(ctx, execResp)
 		if err != nil {
 			return nil, err
 		}
@@ -151,37 +152,35 @@ func (o *oAuthExecutor) Execute(ctx *providers.NodeContext) (*providers.Executor
 }
 
 // BuildAuthorizeFlow constructs the redirection to the external OAuth provider for user authentication.
-func (o *oAuthExecutor) BuildAuthorizeFlow(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) error {
+// It returns the service-level metadata so that subtype executors can extract additional values.
+func (o *oAuthExecutor) BuildAuthorizeFlow(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) (map[string]string, error) {
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Initiating OAuth authentication flow")
 
 	idpID, err := o.GetIdpID(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	authorizeURL, svcErr := o.authService.BuildAuthorizeURL(ctx.Context, idpID)
+	authorizeURL, metadata, svcErr := o.authService.BuildAuthorizeURL(ctx.Context, idpID)
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
 			execResp.Status = providers.ExecFailure
 			execResp.Error = svcErr
-			return nil
+			return nil, nil
 		}
 
 		logger.Error(ctx.Context, "Failed to build authorize URL", log.String("errorCode", svcErr.Code),
 			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
-		return errors.New("failed to build authorize URL")
+		return nil, errors.New("failed to build authorize URL")
 	}
 
 	// Get the idp name for additional data
 	idpName, err := o.getIDPName(ctx.Context, idpID)
 	if err != nil {
-		return fmt.Errorf("failed to get idp name: %w", err)
+		return nil, fmt.Errorf("failed to get idp name: %w", err)
 	}
-
-	// Generate a random state parameter for CSRF protection and append it to the authorize URL.
-	state := systemutils.GenerateUUID()
-	authorizeURL = authorizeURL + "&" + "state=" + state
 
 	// Set the response to redirect the user to the authorization URL.
 	execResp.Status = providers.ExecExternalRedirection
@@ -192,9 +191,11 @@ func (o *oAuthExecutor) BuildAuthorizeFlow(ctx *providers.NodeContext, execResp 
 	if execResp.RuntimeData == nil {
 		execResp.RuntimeData = make(map[string]string)
 	}
-	execResp.RuntimeData[common.RuntimeKeyOAuthState] = state
+	if state, ok := metadata[oauth2const.RequestParamState]; ok {
+		execResp.RuntimeData[common.RuntimeKeyOAuthState] = state
+	}
 
-	return nil
+	return metadata, nil
 }
 
 // ProcessAuthFlowResponse processes the response from the OAuth authentication flow and authenticates the user.
@@ -230,7 +231,8 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 
 	existingCtxUserAttributes := make(map[string]interface{})
 	if execResp.AuthUser.IsAuthenticated() {
-		authUser, attributes, err := o.authnProvider.GetUserAttributes(ctx.Context, nil, nil, execResp.AuthUser)
+		metadata := core.BuildGetAttributesMetadata(ctx)
+		authUser, attributes, err := o.authnProvider.GetUserAttributes(ctx.Context, nil, metadata, execResp.AuthUser)
 		if err != nil {
 			logger.Warn(ctx.Context,
 				"Failed to fetch user attributes for authenticated user, proceeding without attributes")
@@ -246,11 +248,13 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 		"federated": &authncm.FederatedAuthCredential{
 			IDPID:   idpID,
 			IDPType: o.idpType,
-			Code:    code,
+			AuthorizationData: authncm.AuthorizationData{
+				Code: code,
+			},
 		},
 	}
 
-	metadata := buildAuthnMetadata(ctx)
+	metadata := core.BuildProviderMetadata(ctx)
 	authUser, federatedAttributes, svcErr := o.authnProvider.AuthenticateUser(
 		ctx.Context, nil, credentials, nil, metadata, execResp.AuthUser)
 	if svcErr != nil {
@@ -281,7 +285,7 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 		}
 	}
 
-	setFederatedEntityState(execResp)
+	setFederatedEntityState(ctx.Context, execResp, o.authnProvider)
 
 	switch ctx.FlowType {
 	case providers.FlowTypeAuthentication:

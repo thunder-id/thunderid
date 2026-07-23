@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {Chip, Stack, Typography} from '@wso2/oxygen-ui';
+import {Chip, Stack} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {AVAILABLE_CONNECTION_CATEGORIES} from '../config/connectionVendorMeta';
@@ -43,17 +43,14 @@ export default function ConnectionCategoryFilters({selected, onSelect}: Connecti
       useFlexGap
       data-testid="connection-category-filters"
     >
-      <Typography variant="caption" color="text.secondary" sx={{textTransform: 'uppercase', fontWeight: 600, mr: 0.5}}>
-        {t('filters.label')}
-      </Typography>
       {values.map((value) => (
         <Chip
           key={value}
           label={t(`categories.${value}`)}
-          clickable
           color={selected === value ? 'primary' : 'default'}
           variant={selected === value ? 'filled' : 'outlined'}
           onClick={() => onSelect(value)}
+          sx={{borderRadius: '20px', cursor: 'pointer'}}
         />
       ))}
     </Stack>

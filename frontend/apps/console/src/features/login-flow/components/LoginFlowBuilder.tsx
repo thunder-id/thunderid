@@ -26,6 +26,8 @@ import {useParams} from 'react-router';
 import '@xyflow/react/dist/style.css';
 import useGetLoginFlowBuilderResources from '../api/useGetLoginFlowBuilderResources';
 import {EXECUTOR_TO_IDP_TYPE_MAP} from '../components/resource-property-panel/extended-properties/execution-properties/constants';
+import SsoDisableConfirmDialog from '../components/SsoDisableConfirmDialog';
+import SsoToggle from '../components/SsoToggle';
 import LoginFlowConstants from '../constants/LoginFlowConstants';
 import useEdgeGeneration from '../hooks/useEdgeGeneration';
 import useElementAddition from '../hooks/useElementAddition';
@@ -34,6 +36,7 @@ import useFlowNaming from '../hooks/useFlowNaming';
 import useFlowSave from '../hooks/useFlowSave';
 import useNodeTypes from '../hooks/useNodeTypes';
 import useSnackbarNotifications from '../hooks/useSnackbarNotifications';
+import useSsoToggle from '../hooks/useSsoToggle';
 import useTemplateAndWidgetLoading from '../hooks/useTemplateAndWidgetLoading';
 import {mutateComponents} from '../utils/componentMutations';
 import GradientBorderButton from '@/features/applications/components/GradientBorderButton';
@@ -43,6 +46,7 @@ import useFlowConfig from '@/features/flows/hooks/useFlowConfig';
 import useFlowEvents from '@/features/flows/hooks/useFlowEvents';
 import useValidationStatus from '@/features/flows/hooks/useValidationStatus';
 import {ExecutionTypes, StepTypes, type StepData} from '@/features/flows/models/steps';
+import {GRAPH_VALIDATION_RULES} from '@/features/flows/validation/validation-rules';
 
 const SMS_EXECUTORS = new Set<string>([ExecutionTypes.SMSExecutor]);
 
@@ -53,7 +57,7 @@ function LoginFlowBuilder() {
   const {t} = useTranslation();
 
   const {data: resources} = useGetLoginFlowBuilderResources();
-  const {edgeStyle, isVerboseMode} = useFlowConfig();
+  const {edgeStyle, isVerboseMode, setGraphValidationRules} = useFlowConfig();
   const {triggerAutoLayout, onRestoreFromHistory, onElementAdded} = useFlowEvents();
   const {isValid: isFlowValid, setOpenValidationPanel} = useValidationStatus();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -146,7 +150,7 @@ function LoginFlowBuilder() {
                 data: {
                   ...node.data,
                   properties: {
-                    ...((stepData?.properties as Record<string, unknown>) ?? {}),
+                    ...(stepData?.properties ?? {}),
                     senderId: smsProviders[0].id,
                   },
                 },
@@ -170,7 +174,7 @@ function LoginFlowBuilder() {
           ...node,
           data: {
             ...node.data,
-            properties: {...((stepData?.properties as Record<string, unknown>) ?? {}), idpId: matching[0].id},
+            properties: {...(stepData?.properties ?? {}), idpId: matching[0].id},
           },
         };
       });
@@ -209,6 +213,14 @@ function LoginFlowBuilder() {
     updateNodeInternals,
   });
 
+  const flowType = (existingFlowData as {flowType?: string} | undefined)?.flowType ?? 'AUTHENTICATION';
+
+  // The SSO pairing rules only apply to AUTHENTICATION flows; other flow
+  // types run without graph-level rules.
+  useEffect(() => {
+    setGraphValidationRules(flowType === 'AUTHENTICATION' ? GRAPH_VALIDATION_RULES : []);
+  }, [flowType, setGraphValidationRules]);
+
   // Flow save hook
   const {handleSave} = useFlowSave({
     flowId,
@@ -216,10 +228,21 @@ function LoginFlowBuilder() {
     isFlowValid,
     flowName,
     flowHandle,
-    flowType: (existingFlowData as {flowType?: string} | undefined)?.flowType ?? 'AUTHENTICATION',
+    flowType,
     showError,
     showSuccess,
     setOpenValidationPanel,
+  });
+
+  // SSO toggle orchestration (enable/disable transformations, placement mode)
+  const sso = useSsoToggle({
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    resources,
+    showInfo,
+    showSuccess,
   });
 
   const onNodesChange = defaultOnNodesChange;
@@ -273,11 +296,66 @@ function LoginFlowBuilder() {
     return edges.filter((edge) => !executionNodeIds.has(edge.source) && !executionNodeIds.has(edge.target));
   }, [edges, nodes, isVerboseMode]);
 
+  // While the SSO placement mode is active, spotlight the candidate join edges
+  // and dim the rest (same visual language as the simulation path decoration).
+  const displayEdges = useMemo(() => {
+    if (!sso.placement.active) {
+      return filteredEdges;
+    }
+    const candidateEdgeIds = new Set(sso.placement.candidateEdgeIds);
+    return filteredEdges.map((edge) => ({
+      ...edge,
+      className: candidateEdgeIds.has(edge.id) ? 'sso-placement-candidate' : 'sso-placement-dimmed',
+    }));
+  }, [filteredEdges, sso.placement]);
+
+  const isReadOnlyFlow = Boolean(existingFlowData?.isReadOnly);
+
+  // Memoized so the resource panel (which renders this as its footer and is
+  // itself memoized) is not re-rendered on unrelated graph changes like drags.
+  const ssoToggleFooter = useMemo(
+    () =>
+      flowType === 'AUTHENTICATION' ? (
+        <SsoToggle
+          ssoState={sso.ssoState}
+          joinResolution={sso.joinResolution}
+          placement={sso.placement}
+          isReadOnly={isReadOnlyFlow}
+          focusRequest={sso.focusRequest}
+          onFocusHandled={sso.clearFocusRequest}
+          onEnable={sso.handleEnable}
+          onDisableRequest={sso.handleDisableRequest}
+        />
+      ) : undefined,
+    [
+      flowType,
+      isReadOnlyFlow,
+      sso.ssoState,
+      sso.joinResolution,
+      sso.placement,
+      sso.focusRequest,
+      sso.clearFocusRequest,
+      sso.handleEnable,
+      sso.handleDisableRequest,
+    ],
+  );
+
   return (
     <Box
-      sx={{
+      sx={(theme) => ({
         width: '100%',
-      }}
+        ['& .react-flow__edge.sso-placement-candidate .react-flow__edge-path']: {
+          stroke: theme.palette.primary.main,
+          strokeWidth: 3,
+        },
+        ['& .react-flow__edge.sso-placement-candidate']: {
+          cursor: 'pointer',
+        },
+        ['& .react-flow__edge.sso-placement-dimmed']: {
+          opacity: 0.2,
+          pointerEvents: 'none',
+        },
+      })}
     >
       {existingFlowData?.isReadOnly && (
         <Alert severity="info" sx={{mb: 2}}>
@@ -295,16 +373,39 @@ function LoginFlowBuilder() {
         onResourceAdd={handleResourceAdd}
         onSave={existingFlowData?.isReadOnly ? undefined : handleSave}
         nodes={filteredNodes}
-        edges={filteredEdges}
+        edges={displayEdges}
         setNodes={setNodes}
         setEdges={setEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onEdgeClick={sso.handleEdgeClick}
         flowTitle={flowName}
         flowHandle={flowHandle}
         onFlowTitleChange={handleFlowNameChange}
         triggerAutoLayoutOnLoad={needsAutoLayout}
+        resourcePanelFooter={ssoToggleFooter}
       />
+      <SsoDisableConfirmDialog
+        open={sso.isConfirmDialogOpen}
+        checkpointCount={sso.ssoState.ssoCheckIds.length}
+        onClose={sso.handleCloseConfirmDialog}
+        onConfirm={sso.handleConfirmDisable}
+      />
+      <Snackbar open={sso.placement.active} anchorOrigin={{vertical: 'top', horizontal: 'center'}}>
+        <Alert severity="info" sx={{width: '100%', alignItems: 'center'}}>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <span>
+              {t(
+                'flows:sso.placementHint',
+                'Click a highlighted connection to choose where the session checkpoint joins the flow.',
+              )}
+            </span>
+            <GradientBorderButton size="small" onClick={sso.handleCancelPlacement}>
+              {t('flows:sso.placementCancel', 'Cancel')}
+            </GradientBorderButton>
+          </Stack>
+        </Alert>
+      </Snackbar>
       <Snackbar
         open={errorSnackbar.open}
         autoHideDuration={6000}

@@ -22,6 +22,7 @@ package constants
 import (
 	"errors"
 
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -43,6 +44,7 @@ const (
 	RequestParamCodeChallengeMethod string = "code_challenge_method"
 	RequestParamRefreshToken        string = "refresh_token"
 	RequestParamResponseType        string = "response_type"
+	RequestParamResponseMode        string = "response_mode"
 	RequestParamState               string = "state"
 	RequestParamIss                 string = "iss"
 	RequestParamResource            string = "resource"
@@ -78,6 +80,16 @@ const (
 const (
 	HeaderDPoP string = "DPoP"
 )
+
+// OAuth2 response modes.
+const (
+	ResponseModeQuery string = "query"
+)
+
+// IsSupportedResponseMode checks if the response mode is supported.
+func IsSupportedResponseMode(responseMode string) bool {
+	return responseMode == "" || responseMode == ResponseModeQuery
+}
 
 // OIDC prompt parameter values.
 const (
@@ -314,7 +326,11 @@ const (
 )
 
 // GetSupportedResponseTypes returns all supported OAuth2 response types.
-func GetSupportedResponseTypes() []string {
+func GetSupportedResponseTypes(oauthConfig oauthconfig.Config) []string {
+	allowedResponseTypes := oauthConfig.OAuth.AllowedResponseTypes
+	if len(allowedResponseTypes) > 0 {
+		return allowedResponseTypes
+	}
 	result := make([]string, len(providers.SupportedResponseTypes))
 	for i, rt := range providers.SupportedResponseTypes {
 		result[i] = string(rt)
@@ -323,7 +339,11 @@ func GetSupportedResponseTypes() []string {
 }
 
 // GetSupportedGrantTypes returns all supported OAuth2 grant types.
-func GetSupportedGrantTypes() []string {
+func GetSupportedGrantTypes(oauthConfig oauthconfig.Config) []string {
+	allowedGrantTypes := oauthConfig.OAuth.AllowedGrantTypes
+	if len(allowedGrantTypes) > 0 {
+		return allowedGrantTypes
+	}
 	result := make([]string, len(providers.SupportedGrantTypes))
 	for i, gt := range providers.SupportedGrantTypes {
 		result[i] = string(gt)
@@ -332,7 +352,11 @@ func GetSupportedGrantTypes() []string {
 }
 
 // GetSupportedTokenEndpointAuthMethods returns all supported token endpoint authentication methods.
-func GetSupportedTokenEndpointAuthMethods() []string {
+func GetSupportedTokenEndpointAuthMethods(oauthConfig oauthconfig.Config) []string {
+	allowedAuthMethods := oauthConfig.OAuth.AllowedAuthMethods
+	if len(allowedAuthMethods) > 0 {
+		return allowedAuthMethods
+	}
 	result := make([]string, len(providers.SupportedTokenEndpointAuthMethods))
 	for i, tam := range providers.SupportedTokenEndpointAuthMethods {
 		result[i] = string(tam)

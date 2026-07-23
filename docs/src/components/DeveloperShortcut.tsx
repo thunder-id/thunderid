@@ -36,16 +36,16 @@ import {CONNECT_TYPE_STORAGE_KEY, applyConnectType, toConnectType} from '../util
 type ConnectType = 'app' | 'agent' | 'mcp';
 
 const ALL_FRAMEWORKS = [
-  {Logo: ReactLogo,      href: '/docs/next/guides/getting-started/connect-your-application/react',   label: 'React'},
-  {Logo: NextLogo,       href: '/docs/next/guides/getting-started/connect-your-application/nextjs',  label: 'Next.js'},
-  {Logo: ExpressLogo,    href: '/docs/next/guides/getting-started/connect-your-application/express', label: 'Express'},
-  {Logo: VueLogo,        href: '/docs/next/guides/getting-started/connect-your-application/vue',     label: 'Vue'},
-  {Logo: NuxtLogo,       href: '/docs/next/guides/getting-started/connect-your-application/nuxt',    label: 'Nuxt'},
-  {Logo: NodeLogo,       href: '/docs/next/guides/getting-started/connect-your-application/node',    label: 'Node.js'},
-  {Logo: JavaScriptLogo, href: '/docs/next/guides/getting-started/connect-your-application/browser', label: 'JavaScript'},
-  {Logo: IOSLogo,        href: '/docs/next/guides/getting-started/connect-your-application/ios',     label: 'iOS'},
-  {Logo: AndroidLogo,    href: '/docs/next/guides/getting-started/connect-your-application/android', label: 'Android'},
-  {Logo: FlutterLogo,    href: '/docs/next/guides/getting-started/connect-your-application/flutter', label: 'Flutter'},
+  {Logo: ReactLogo,      href: '/docs/next/getting-started/connect-your-application/react',   label: 'React'},
+  {Logo: NextLogo,       href: '/docs/next/getting-started/connect-your-application/nextjs',  label: 'Next.js'},
+  {Logo: ExpressLogo,    href: '/docs/next/getting-started/connect-your-application/express', label: 'Express'},
+  {Logo: VueLogo,        href: '/docs/next/getting-started/connect-your-application/vue',     label: 'Vue'},
+  {Logo: NuxtLogo,       href: '/docs/next/getting-started/connect-your-application/nuxt',    label: 'Nuxt'},
+  {Logo: NodeLogo,       href: '/docs/next/getting-started/connect-your-application/node',    label: 'Node.js'},
+  {Logo: JavaScriptLogo, href: '/docs/next/getting-started/connect-your-application/browser', label: 'JavaScript'},
+  {Logo: IOSLogo,        href: '/docs/next/getting-started/connect-your-application/ios',     label: 'iOS'},
+  {Logo: AndroidLogo,    href: '/docs/next/getting-started/connect-your-application/android', label: 'Android'},
+  {Logo: FlutterLogo,    href: '/docs/next/getting-started/connect-your-application/flutter', label: 'Flutter'},
 ];
 
 const CATEGORIES: {id: ConnectType; icon: React.ReactElement; label: string; description: string; comingSoon: boolean}[] = [
@@ -330,7 +330,7 @@ export default function DeveloperShortcut({
               </Typography>
               <Box
                 component={Link}
-                to="/docs/next/guides/getting-started/get-thunderid"
+                to="/docs/next/getting-started/get-thunderid"
                 sx={{
                   color: 'primary.main',
                   fontSize: '0.875rem',

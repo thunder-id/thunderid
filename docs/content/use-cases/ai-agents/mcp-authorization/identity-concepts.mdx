@@ -1,13 +1,13 @@
 ---
 title: Identity Concepts
 docType: use-case
-description: "How the Securing MCP tryout maps to product concepts: the external MCP client application, the protected MCP resource server, and the consent step that narrows what the client can do."
+description: How the Securing MCP tryout maps to product concepts, including the external MCP client application, the protected MCP resource server, and the consent step that narrows what the client can do.
 sidebar_position: 5
 ---
 
 # Identity Concepts
 
-This page explains the identity concepts behind the Securing MCP tryout you set up in [Try It Out](../try-it-out). For the underlying user types, roles, the booking resource server, and the Wayfinder Concierge agent, see [Identity Concepts](../../identity-concepts) under Securing AI Agents. This page covers only the MCP-specific additions.
+This page explains the identity concepts behind the Securing MCP tryout you set up in [Try It Out](../try-it-out). For the underlying user types, roles, the booking resource server, and the Wayfinder Concierge agent, see the [Identity Model](../../try-it-out#identity-model) under Securing AI Agents. This page covers only the MCP-specific additions.
 
 ## Application
 
@@ -15,12 +15,12 @@ An application is the OAuth2 client that <ProductName /> issues tokens to. This 
 
 The application registers redirect URIs for MCP Inspector:
 
-- `http://localhost:6274/oauth/callback/debug`: MCP Inspector's debug callback.
-- `http://localhost:6274/oauth/callback`: MCP Inspector's standard callback.
+- `http://localhost:6274/oauth/callback/debug`, MCP Inspector's debug callback.
+- `http://localhost:6274/oauth/callback`, MCP Inspector's standard callback.
 
 `EXTERNAL-MCP-CLIENT` is wired to the same authentication flow as the Wayfinder Concierge, so the OAuth consent screen surfaces each requested `booking:*` permission as an individual toggle at sign-in time.
 
-See [Manage Applications](../../../../guides/guides/applications/manage-applications).
+See [Manage Applications](../../../../guides/applications/manage-applications).
 
 ## Consent at Sign-In
 
@@ -28,7 +28,7 @@ See [Manage Applications](../../../../guides/guides/applications/manage-applicat
 
 The token Inspector receives carries only the permissions he ticked. The MCP server enforces those per-tool, so the walkthrough can demonstrate scope enforcement by leaving `booking:cancel` unchecked the first time and including it on a later retry without touching the user's roles.
 
-See [Authorization](../../../../guides/key-concepts/authorization).
+See [Authorization](../../../../key-concepts/authorization).
 
 ## Resource Server
 
@@ -44,7 +44,7 @@ Each MCP tool checks for the same scope its REST counterpart checks for:
 | `create_booking` | `POST /api/bookings` | `booking:create` |
 | `delete_all_bookings` | `DELETE /api/bookings/flights` | `booking:cancel` |
 
-See [Resource Servers](../../../../guides/guides/resource-servers).
+See [Resource Servers](../../../../guides/resource-servers).
 
 ## AuthZEN Authorization Mode
 
@@ -61,7 +61,7 @@ In `authzen` mode, the Wayfinder Server still validates the incoming MCP token. 
 
 The server-level Direct Auth Secret authenticates the Wayfinder Server when it calls the protected AuthZEN API. This secret only authorizes the PDP API call. The PDP still evaluates the user or agent from the incoming MCP token.
 
-See [AuthZEN](../../../../guides/guides/protocols/authzen/) and [Policy Decision Point](../../../../guides/guides/protocols/authzen/pdp).
+See [AuthZEN](../../../../guides/protocols/authzen/) and [Policy Decision Point](../../../../guides/protocols/authzen/pdp).
 
 ## Discovery Endpoint
 

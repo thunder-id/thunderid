@@ -34,8 +34,8 @@ import startCase from 'lodash-es/startCase';
 import {useEffect, useMemo, useState, type ChangeEvent, type ReactElement} from 'react';
 import {useTranslation} from 'react-i18next';
 import DynamicValuePopover from './DynamicValuePopover';
-import useValidationStatus from '../../hooks/useValidationStatus';
-import type {Resource} from '../../models/resources';
+import useResourceFieldError from '../../hooks/useResourceFieldError';
+import {ResourceTypes, type Resource} from '../../models/resources';
 
 /**
  * Props interface of {@link TextPropertyField}
@@ -84,7 +84,6 @@ function TextPropertyField({
   const [isDynamicValuePopoverOpen, setIsDynamicValuePopoverOpen] = useState<boolean>(false);
   const [localValue, setLocalValue] = useState<string>(propertyValue);
   const [iconButtonEl, setIconButtonEl] = useState<HTMLButtonElement | null>(null);
-  const {selectedNotification} = useValidationStatus();
 
   /**
    * Sync local state when propertyValue changes from external sources.
@@ -117,15 +116,7 @@ function TextPropertyField({
   /**
    * Get the error message for the text property field.
    */
-  const errorMessage: string = useMemo(() => {
-    const key = `${resource?.id}_${propertyKey}`;
-
-    if (selectedNotification?.hasResourceFieldNotification(key)) {
-      return selectedNotification?.getResourceFieldNotification(key);
-    }
-
-    return '';
-  }, [propertyKey, resource?.id, selectedNotification]);
+  const errorMessage: string = useResourceFieldError(resource?.id, propertyKey);
 
   /**
    * Handles the toggle of the dynamic value popover.
@@ -141,6 +132,14 @@ function TextPropertyField({
     setIsDynamicValuePopoverOpen(false);
   };
 
+  // Ids are identifiers, not display text: no dynamic/i18n value insertion.
+  const isIdField = propertyKey === 'id';
+
+  // A step's id is the node's identity: renaming it remounts this field, so it
+  // commits on blur/Enter instead of per keystroke. A rejected rename leaves the
+  // resource untouched and the field falls back to the current id.
+  const commitsOnBlur = isIdField && resource.resourceType === ResourceTypes.Step;
+
   return (
     <Box>
       <FormControl fullWidth>
@@ -151,7 +150,24 @@ function TextPropertyField({
           error={!!errorMessage}
           onChange={(e: ChangeEvent<HTMLInputElement>) => {
             setLocalValue(e.target.value);
-            onChange(propertyKey, e.target.value, resource, true);
+            if (!commitsOnBlur) {
+              onChange(propertyKey, e.target.value, resource, true);
+            }
+          }}
+          onBlur={() => {
+            if (!commitsOnBlur || localValue === propertyValue) {
+              return;
+            }
+            onChange(propertyKey, localValue, resource);
+            // A successful rename remounts this field (its key carries the id), so
+            // this reset only takes effect when the rename is rejected — reverting
+            // the field to the actual id, since no prop change will sync it.
+            setLocalValue(propertyValue);
+          }}
+          onKeyDown={(e) => {
+            if (commitsOnBlur && e.key === 'Enter') {
+              (e.target as HTMLInputElement).blur();
+            }
           }}
           placeholder={t('flows:core.elements.textPropertyField.placeholder', {propertyName: startCase(propertyKey)})}
           sx={
@@ -172,23 +188,27 @@ function TextPropertyField({
                 }
               : undefined
           }
-          InputProps={{
-            endAdornment: (
-              <InputAdornment position="end">
-                <Tooltip title={t('flows:core.elements.textPropertyField.tooltip.configureDynamicValue')}>
-                  <IconButton
-                    ref={setIconButtonEl}
-                    onClick={handleDynamicValueToggle}
-                    size="small"
-                    edge="end"
-                    color={isDynamic ? 'primary' : 'default'}
-                  >
-                    <SquareFunction size={16} />
-                  </IconButton>
-                </Tooltip>
-              </InputAdornment>
-            ),
-          }}
+          InputProps={
+            isIdField
+              ? undefined
+              : {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <Tooltip title={t('flows:core.elements.textPropertyField.tooltip.configureDynamicValue')}>
+                        <IconButton
+                          ref={setIconButtonEl}
+                          onClick={handleDynamicValueToggle}
+                          size="small"
+                          edge="end"
+                          color={isDynamic ? 'primary' : 'default'}
+                        >
+                          <SquareFunction size={16} />
+                        </IconButton>
+                      </Tooltip>
+                    </InputAdornment>
+                  ),
+                }
+          }
           {...rest}
         />
       </FormControl>
@@ -212,14 +232,16 @@ function TextPropertyField({
           </Typography>
         </Box>
       )}
-      <DynamicValuePopover
-        open={isDynamicValuePopoverOpen}
-        anchorEl={iconButtonEl}
-        propertyKey={propertyKey}
-        onClose={handleDynamicValueClose}
-        value={propertyValue}
-        onChange={(newValue: string) => onChange(propertyKey, newValue, resource)}
-      />
+      {!isIdField && (
+        <DynamicValuePopover
+          open={isDynamicValuePopoverOpen}
+          anchorEl={iconButtonEl}
+          propertyKey={propertyKey}
+          onClose={handleDynamicValueClose}
+          value={propertyValue}
+          onChange={(newValue: string) => onChange(propertyKey, newValue, resource)}
+        />
+      )}
     </Box>
   );
 }

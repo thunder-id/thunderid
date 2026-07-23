@@ -24,6 +24,7 @@ import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import GroupDeleteDialog from './GroupDeleteDialog';
+import RouteConfig from '../../../configs/RouteConfig';
 import useGetGroups from '../api/useGetGroups';
 import type {GroupBasic} from '../models/group';
 
@@ -52,7 +53,7 @@ export default function GroupsList(): JSX.Element {
   const handleViewClick = useCallback(
     (groupId: string): void => {
       (async (): Promise<void> => {
-        await navigate(`/groups/${groupId}`);
+        await navigate(RouteConfig.groups.detail(groupId));
       })().catch((_error: unknown) => {
         logger.error('Failed to navigate to group details', {error: _error, groupId});
       });
@@ -174,7 +175,7 @@ export default function GroupsList(): JSX.Element {
             onRowClick={(params) => {
               const groupId = (params.row as GroupBasic).id;
               (async (): Promise<void> => {
-                await navigate(`/groups/${groupId}`);
+                await navigate(RouteConfig.groups.detail(groupId));
               })().catch((_error: unknown) => {
                 logger.error('Failed to navigate to group', {error: _error, groupId});
               });

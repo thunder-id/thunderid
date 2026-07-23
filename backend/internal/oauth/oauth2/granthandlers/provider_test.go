@@ -134,6 +134,14 @@ func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_RefreshToken() {
 	assert.Implements(suite.T(), (*RefreshTokenGrantHandlerInterface)(nil), handler)
 }
 
+func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_TokenExchange() {
+	handler, err := suite.provider.GetGrantHandler(providers.GrantTypeTokenExchange)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), handler)
+	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
+}
+
 func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_CIBA() {
 	handler, err := suite.provider.GetGrantHandler(providers.GrantTypeCIBA)
 
@@ -175,6 +183,7 @@ func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_AllSupportedType
 		providers.GrantTypeClientCredentials,
 		providers.GrantTypeAuthorizationCode,
 		providers.GrantTypeRefreshToken,
+		providers.GrantTypeTokenExchange,
 		providers.GrantTypeCIBA,
 		providers.GrantTypeJWTBearer,
 	}

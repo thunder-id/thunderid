@@ -72,9 +72,9 @@ func (suite *CreateSecurityMiddlewareTestSuite) SetupTest() {
 // TestCreateSecurityMiddleware_MultipleInvocations tests that multiple calls work correctly
 func (suite *CreateSecurityMiddlewareTestSuite) TestCreateSecurityMiddleware_MultipleInvocations() {
 	// Execute multiple times
-	handler1 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService, nil, "")
-	handler2 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService, nil, "")
-	handler3 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService, nil, "")
+	handler1 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService, nil)
+	handler2 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService, nil)
+	handler3 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService, nil)
 
 	// Assert - each call should return a new handler instance
 	assert.NotNil(suite.T(), handler1)
@@ -656,4 +656,18 @@ func runExitHelper(t *testing.T, envKey, testName string) {
 	} else {
 		t.Fatalf("expected process to exit with code 1, got %v", err)
 	}
+}
+
+func TestAccessLogExcludePaths(t *testing.T) {
+	// The frontend prefixes are always present, even with no configured extras.
+	assert.Equal(t, []string{"/gate/", "/console/"}, accessLogExcludePaths(nil))
+
+	// Configured prefixes are appended after the built-in frontend prefixes.
+	assert.Equal(t, []string{"/gate/", "/console/", "/health/", "/metrics/"},
+		accessLogExcludePaths([]string{"/health/", "/metrics/"}))
+
+	// Empty and root ("/") entries are dropped so they cannot match every request
+	// and silently disable all access logging.
+	assert.Equal(t, []string{"/gate/", "/console/", "/health/"},
+		accessLogExcludePaths([]string{"", "/health/", "/"}))
 }

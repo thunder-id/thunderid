@@ -40,7 +40,7 @@ import (
 
 // authenticate authenticates the OAuth2 client from the request.
 // It extracts credentials, validates them, and returns OAuthClientInfo on success.
-// The endpointURL is used as the expected audience when validating client assertion JWTs.
+// The issuer is the audience value accepted when validating client assertion JWTs.
 // Returns an authError on failure.
 func authenticate(
 	ctx context.Context,
@@ -48,7 +48,7 @@ func authenticate(
 	actorProvider providers.ActorProvider,
 	authnProvider providers.AuthnProviderManager,
 	jwtService jwt.JWTServiceInterface,
-	endpointURL string,
+	issuer string,
 ) (*OAuthClientInfo, *authError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ClientAuthMiddleware"))
 
@@ -146,7 +146,7 @@ func authenticate(
 	switch detectedMethod {
 	// TODO: Move this to authnProvider.Authenticate
 	case providers.TokenEndpointAuthMethodPrivateKeyJWT:
-		if err := validateClientAssertion(ctx, oauthApp, jwtService, endpointURL, clientID,
+		if err := validateClientAssertion(ctx, oauthApp, jwtService, issuer, clientID,
 			clientAssertion); err != nil {
 			logger.Debug(ctx, "Invalid client assertion: "+err.Error())
 			return nil, errInvalidClientAssertion
@@ -230,18 +230,19 @@ func extractClientIDFromAssertion(ctx context.Context, assertion string) (string
 }
 
 // validateClientAssertion validates the provided client assertion JWT using the configured certificate and JWT service.
-// The endpointURL is used as the expected audience for JWT validation.
+// Per FAPI 2.0 Security Profile Section 5.3.2.1, the assertion's 'aud' claim must be the authorization server's
+// issuer identifier.
 func validateClientAssertion(ctx context.Context,
 	oauthApp *providers.OAuthClient,
 	jwtService jwt.JWTServiceInterface,
-	endpointURL string,
+	issuer string,
 	clientID, clientAssertion string) error {
 	if oauthApp.Certificate == nil {
 		return fmt.Errorf("no certificate configured for client assertion validation")
 	}
 
 	if oauthApp.Certificate.Type == cert.CertificateTypeJWKSURI {
-		if err := jwtService.VerifyJWTWithJWKS(ctx, clientAssertion, oauthApp.Certificate.Value, endpointURL,
+		if err := jwtService.VerifyJWTWithJWKS(ctx, clientAssertion, oauthApp.Certificate.Value, issuer,
 			clientID); err != nil {
 			return fmt.Errorf("client assertion verification with JWKS URI failed: %v", err.Error)
 		}
@@ -280,7 +281,7 @@ func validateClientAssertion(ctx context.Context,
 		return fmt.Errorf("failed to convert JWK to public key: %w", err)
 	}
 
-	if err := jwtService.VerifyJWTWithPublicKey(ctx, clientAssertion, pubKey, endpointURL, clientID); err != nil {
+	if err := jwtService.VerifyJWTWithPublicKey(ctx, clientAssertion, pubKey, issuer, clientID); err != nil {
 		return fmt.Errorf("client assertion verification failed: %v", err.Error)
 	}
 

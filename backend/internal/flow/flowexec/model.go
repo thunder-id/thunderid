@@ -54,7 +54,8 @@ type frame struct {
 // TODO: fields on EngineContext are currently exposed directly. Convert to unexported
 // fields accessed via getters and setters so that mutation can be encapsulated.
 type EngineContext struct {
-	Context context.Context
+	Context          context.Context
+	initiatorRequest *providers.InitiatorRequest
 
 	ExecutionID    string
 	FlowType       providers.FlowType
@@ -100,6 +101,16 @@ type EngineContext struct {
 	// that flow rather than the running sign-out flow. Empty for all other flows. Transient — re-derived
 	// from the application on each context load, never persisted.
 	SessionFlowID string
+}
+
+// GetInitiatorRequest returns the original HTTP request that triggered the flow.
+func (ec *EngineContext) GetInitiatorRequest() *providers.InitiatorRequest {
+	return ec.initiatorRequest
+}
+
+// SetInitiatorRequest sets the original HTTP request that triggered the flow.
+func (ec *EngineContext) SetInitiatorRequest(req *providers.InitiatorRequest) {
+	ec.initiatorRequest = req
 }
 
 // mergeRuntimeData merges the given data into RuntimeData.
@@ -275,11 +286,12 @@ type FlowRequest struct {
 
 // FlowInitContext represents the context for initiating a new flow with runtime data
 type FlowInitContext struct {
-	ApplicationID string
-	FlowType      string
-	RuntimeData   map[string]string
-	InitialInputs map[string]string
-	ExpirySeconds int64
+	ApplicationID    string
+	FlowType         string
+	RuntimeData      map[string]string
+	InitialInputs    map[string]string
+	ExpirySeconds    int64
+	InitiatorRequest *providers.InitiatorRequest
 }
 
 // FlowContextDB represents the database row for a flow context.
@@ -323,6 +335,7 @@ type flowContextContent struct {
 	InterceptorSharedData *string `json:"interceptorSharedData,omitempty"`
 	FrameStack            *string `json:"frameStack,omitempty"`
 	SharedRuntimeData     *string `json:"sharedRuntimeData,omitempty"`
+	InitiatorRequest      *string `json:"initiatorRequest,omitempty"`
 }
 
 // graphResolverFunc resolves a flow graph by its flow ID. Used during context deserialization to
@@ -470,7 +483,17 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context,
 		}
 	}
 
-	return EngineContext{
+	// Parse initiator request if present
+	var initiatorRequest *providers.InitiatorRequest
+	if content.InitiatorRequest != nil {
+		var req providers.InitiatorRequest
+		if err := json.Unmarshal([]byte(*content.InitiatorRequest), &req); err != nil {
+			return EngineContext{}, err
+		}
+		initiatorRequest = &req
+	}
+
+	engineCtx := EngineContext{
 		Context:               ctx,
 		ExecutionID:           f.ExecutionID,
 		TraceID:               "", // TraceID is transient and set from request context
@@ -489,7 +512,10 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context,
 		InterceptorSharedData: interceptorSharedData,
 		frameStack:            frameStack,
 		sharedRuntimeData:     sharedRuntimeData,
-	}, nil
+	}
+	engineCtx.SetInitiatorRequest(initiatorRequest)
+
+	return engineCtx, nil
 }
 
 // FromEngineContext converts an EngineContext to the database model for persistence.
@@ -616,6 +642,17 @@ func (f *FlowContextDB) FromEngineContext(ctx EngineContext) error {
 		sharedRuntimeDataStr = &s
 	}
 
+	// Serialize initiator request if present
+	var initiatorRequestStr *string
+	if ctx.initiatorRequest != nil {
+		initiatorRequestJSON, err := json.Marshal(ctx.initiatorRequest)
+		if err != nil {
+			return err
+		}
+		s := string(initiatorRequestJSON)
+		initiatorRequestStr = &s
+	}
+
 	content := flowContextContent{
 		AppID:                 ctx.AppID,
 		Verbose:               ctx.Verbose,
@@ -637,6 +674,7 @@ func (f *FlowContextDB) FromEngineContext(ctx EngineContext) error {
 		InterceptorSharedData: &interceptorSharedData,
 		FrameStack:            frameStackStr,
 		SharedRuntimeData:     sharedRuntimeDataStr,
+		InitiatorRequest:      initiatorRequestStr,
 	}
 
 	contextJSON, err := json.Marshal(content)

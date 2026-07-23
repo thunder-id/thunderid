@@ -5,9 +5,15 @@
 
 name: 👷🛠️ PR Builder
 
+# TEMPORARY WORKAROUND for runner saturation (see #4268): on pull requests, the
+# builder only runs once the `trigger-pr-builder` label is present. Early pushes
+# iterate against the review bots without consuming runners, and the label
+# (added when the PR is ready) turns CI on for that push and every subsequent
+# one. Merge queue runs are always on. Remove this gate (restore unconditional
+# pull_request runs) once queue pressure is resolved.
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, labeled]
   merge_group:
   workflow_dispatch:
 
@@ -26,7 +32,7 @@ env:
 jobs:
   security-audit:
     name: 🔒 Security Audit
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+    if: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -47,9 +53,9 @@ jobs:
 
   dependency-review:
     name: 🔎 Dependency Review
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+    if: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: write
@@ -66,9 +72,32 @@ jobs:
           base-ref: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
           head-ref: ${{ github.event_name == 'merge_group' && github.sha || github.event.pull_request.head.sha }}
 
+  codecov-merge-queue-status:
+    name: 📊 Codecov Merge Queue Status
+    # Codecov does not reliably process merge queue (merge_group) commits, leaving the
+    # required codecov/patch status stuck at "Expected" and timing the queue entry out.
+    # Patch coverage is already enforced on the pull request before it can enter the
+    # queue, and the queue commit carries the same diff rebased onto main, so this job
+    # marks codecov/patch as passed on the queue commit instead of re-running Codecov.
+    # Tracker: https://github.com/codecov/codecov-action/issues/1796
+    if: github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - name: 📊 Mark codecov/patch as passed on the merge queue commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -f state=success \
+            -f context=codecov/patch \
+            -f description="Patch coverage was enforced on the pull request"
+
   verify-mocks:
     name: 🔍 Verify Mock Files
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+    if: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -104,7 +133,7 @@ jobs:
 
   lint:
     name: 🧹 Lint Code
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+    if: ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -148,7 +177,7 @@ jobs:
   build:
     name: 🛠️ Build Product
     needs: [detect-code-changes]
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder')) || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -222,6 +251,9 @@ jobs:
           if-no-files-found: error
 
       - name: 📊 Upload Unit Test Coverage Report to Codecov
+        # Skipped on merge queue commits: Codecov cannot process them, and the
+        # codecov-merge-queue-status job stamps the required status instead.
+        if: github.event_name != 'merge_group'
         uses: codecov/codecov-action@v5
         timeout-minutes: 5
         continue-on-error: true
@@ -242,7 +274,7 @@ jobs:
 
   detect-code-changes:
     name: 🔍 Detect Code Changes
-    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    if: (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder')) || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -278,9 +310,9 @@ jobs:
   test-frontend-packages:
     name: 🧪 Frontend Packages Tests
     needs: [detect-code-changes]
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder')) || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -316,7 +348,7 @@ jobs:
   test-frontend-gate-app:
     name: 🧪 Gate App Tests with Coverage
     needs: [detect-code-changes]
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder')) || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -365,7 +397,7 @@ jobs:
   test-frontend-console-app:
     name: 🧪 Console App Tests with Coverage
     needs: [detect-code-changes]
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder')) || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -437,6 +469,7 @@ jobs:
           path: coverage/gate
 
       - name: 📊 Upload `@thunderid/console` Unit Test Coverage Report to Codecov
+        if: github.event_name != 'merge_group'
         uses: codecov/codecov-action@v5
         timeout-minutes: 5
         continue-on-error: true
@@ -449,6 +482,7 @@ jobs:
           fail_ci_if_error: false
 
       - name: 📊 Upload `@thunderid/gate` Unit Test Coverage Report to Codecov
+        if: github.event_name != 'merge_group'
         uses: codecov/codecov-action@v5
         timeout-minutes: 5
         continue-on-error: true
@@ -460,10 +494,38 @@ jobs:
           name: Frontend Gate App Unit Tests
           fail_ci_if_error: false
 
+  patch-coverage-gate:
+    name: 🛡️ Patch Coverage Gate
+    # Deterministic patch coverage check that always reports, unlike the external
+    # codecov/patch status which can hang at "Expected" (fork PRs, merge queue
+    # commits, Codecov processing stalls). Mirrors coverage.status.patch.default
+    # in codecov.yml (target 80%, threshold 1%). The enforcement logic lives in
+    # .github/actions/patch-coverage-gate.
+    needs: [build, test-integration, test-frontend-console-app, test-frontend-gate-app, upload-frontend-coverage]
+    if: ${{ always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.build.result == 'success' && needs.test-integration.result == 'success' && needs.test-frontend-console-app.result == 'success' && needs.test-frontend-gate-app.result == 'success' && needs.upload-frontend-coverage.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: 🛡️ Enforce Patch Coverage
+        uses: ./.github/actions/patch-coverage-gate
+        with:
+          fail-under: "79"
+          pr-number: ${{ github.event_name == 'pull_request' && github.event.pull_request.number || '' }}
+          head-sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          base-ref: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || format('origin/{0}', github.base_ref) }}
+
   build_samples:
     name: 🛠️ Build Sample Apps
     needs: [detect-code-changes]
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder')) || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -568,7 +630,15 @@ jobs:
           database-type: ${{ matrix.database }}
           coverage-enabled: true
 
+      - name: 📦 Archive Integration Coverage Report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: integration-coverage-${{ matrix.database }}
+          path: target/coverage_integration.out
+          if-no-files-found: error
+
       - name: 📊 Upload Integration Test Coverage Report to Codecov
+        if: github.event_name != 'merge_group'
         uses: codecov/codecov-action@v5
         timeout-minutes: 5
         continue-on-error: true
@@ -596,7 +666,7 @@ jobs:
   test-integration-status:
     name: ✅ Integration Tests Status
     needs: [test-integration]
-    if: always()
+    if: ${{ always() && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -717,9 +787,17 @@ jobs:
             exit 1
           fi
 
+          # The console login flow runs an SSO check before the credentials prompt. This bootstrap is a
+          # fresh, cookie-less login (no SSO session), so the first execute advances the flow past the
+          # SSO check to the credentials prompt and mints a challenge token; the second submits the admin
+          # credentials with that token.
+          PROMPT_RESP=$(curl -sk -X POST "$SERVER_URL/flow/execute" \
+            -H "Content-Type: application/json" \
+            -d "{\"executionId\": \"$EXEC_ID\"}")
+          CHALLENGE_TOKEN=$(echo "$PROMPT_RESP" | jq -r '.challengeToken // empty')
           FLOW_RESP=$(curl -sk -X POST "$SERVER_URL/flow/execute" \
             -H "Content-Type: application/json" \
-            -d "{\"executionId\": \"$EXEC_ID\", \"inputs\": {\"username\": \"admin\", \"password\": \"admin\"}, \"action\": \"action_001\"}")
+            -d "{\"executionId\": \"$EXEC_ID\", \"challengeToken\": \"$CHALLENGE_TOKEN\", \"inputs\": {\"username\": \"admin\", \"password\": \"admin\"}, \"action\": \"action_001\"}")
           ASSERTION=$(echo "$FLOW_RESP" | jq -r '.assertion // empty')
           if [ -z "$ASSERTION" ]; then
             echo "❌ Flow execution did not return an assertion: $FLOW_RESP"
@@ -989,7 +1067,7 @@ jobs:
 
   detect-powershell-changes:
     name: 🔍 Detect PowerShell Changes
-    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    if: (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder')) || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -1014,7 +1092,7 @@ jobs:
 
   detect-docs-changes:
     name: 🔍 Detect Documentation Changes
-    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    if: (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder')) || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -1067,7 +1145,7 @@ jobs:
     name: 🗑️ Cleanup Stale Turbo Cache
     runs-on: ubuntu-latest
     # Skip on fork PRs — GITHUB_TOKEN is always read-only there regardless of permissions declared here.
-    if: always() && github.event.pull_request.head.repo.full_name == github.repository
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder')
     needs:
       - build
       - test-frontend-packages

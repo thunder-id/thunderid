@@ -45,7 +45,7 @@ The setup below creates a set of <ProductName /> resources. Here is what each on
 
 A user type defines who can exist in the system and what attributes they carry. Each user record belongs to exactly one user type. Wayfinder defines a `Customer` user type for the two demo consumers, John Doe and Jane Smith, with standard attributes like username, email, and name.
 
-See [User Types](../../../guides/guides/users/user-types).
+See [User Types](../../../guides/users/user-types).
 
 ### Resources and Permissions
 
@@ -66,7 +66,7 @@ wayfinder                               (Resource Server)
     └── recommend  →  booking:recommend
 ```
 
-Permissions are issued to the access tokens. See [Resource Servers](../../../guides/guides/resource-servers).
+Permissions are issued to the access tokens. See [Resource Servers](../../../guides/resource-servers).
 
 ### Roles
 
@@ -78,13 +78,13 @@ A role bundles permissions for a class of principal. A user's or agent's effecti
 
 John Doe carries both user roles; Jane Smith carries only `Booking User`. The `Recommender` role is assigned to the `WAYFINDER-CONCIERGE` agent, not to a user.
 
-See [Authorization](../../../guides/key-concepts/authorization).
+See [Authorization](../../../key-concepts/authorization).
 
 ### Application
 
 An application is the OAuth2 client that <ProductName /> issues tokens to. Wayfinder Web is registered as `WAYFINDER`, a public, PKCE-enforced browser client.
 
-See [Manage Applications](../../../guides/guides/applications/manage-applications).
+See [Manage Applications](../../../guides/applications/manage-applications).
 
 ### Agent
 
@@ -93,13 +93,13 @@ An agent is a first-class non-human principal in <ProductName /> with its own cr
 - `client_credentials`: for the agent's own M2M token, used to call browsing tools.
 - `authorization_code` (with PKCE): for the on-behalf-of flow, where the user consents and the agent calls mutating tools as the user.
 
-See [Manage Agents](../../../guides/guides/agents/manage-agents) and [Agent Authentication](../../../guides/guides/agents/agent-authentication).
+See [Manage Agents](../../../guides/agents/manage-agents) and [Agent Authentication](../../../guides/agents/agent-authentication).
 
 ### Flows
 
 A flow is the sequence of steps a user moves through when signing in or granting consent. Wayfinder Web uses the bundled `default-flow` for sign-in. The agent uses a separate **Wayfinder Agent Authentication Flow** that drives the OBO consent screen.
 
-See [Build a Flow](../../../guides/guides/flows/build-a-flow).
+See [Build a Flow](../../../guides/flows/build-a-flow).
 
 ## Set Up the Sample
 

@@ -231,6 +231,11 @@ func (suite *HTTPUtilTestSuite) TestIsValidLogoURI() {
 			expected: true,
 		},
 		{
+			name:     "AvatarURI",
+			uri:      "avatar:1",
+			expected: true,
+		},
+		{
 			name:     "HTTPWithoutHost",
 			uri:      "http:///no-host",
 			expected: false,
@@ -526,6 +531,131 @@ func (suite *HTTPUtilTestSuite) TestSanitizeStringMap() {
 	for _, tc := range testCases {
 		suite.T().Run(tc.name, func(t *testing.T) {
 			result := SanitizeStringMap(tc.input)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func (suite *HTTPUtilTestSuite) TestFilterSensitiveHeaders() {
+	testCases := []struct {
+		name     string
+		input    map[string][]string
+		expected map[string][]string
+	}{
+		{
+			name:     "NilHeader",
+			input:    nil,
+			expected: nil,
+		},
+		{
+			name:     "EmptyHeader",
+			input:    map[string][]string{},
+			expected: map[string][]string{},
+		},
+		{
+			name: "RemovesSensitiveHeaders",
+			input: map[string][]string{
+				"Authorization":       {"Bearer token"},
+				"Cookie":              {"session=abc"},
+				"Set-Cookie":          {"id=1"},
+				"Proxy-Authorization": {"Basic xyz"},
+				"X-Request-Id":        {"req-123"},
+			},
+			expected: map[string][]string{
+				"X-Request-Id": {"req-123"},
+			},
+		},
+		{
+			name: "PreservesNonSensitiveHeaders",
+			input: map[string][]string{
+				"Content-Type": {"application/json"},
+				"Accept":       {"text/html"},
+			},
+			expected: map[string][]string{
+				"Content-Type": {"application/json"},
+				"Accept":       {"text/html"},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.T().Run(tc.name, func(t *testing.T) {
+			result := FilterSensitiveHeaders(tc.input)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func (suite *HTTPUtilTestSuite) TestSanitizeRawMultiValueStringMap() {
+	testCases := []struct {
+		name     string
+		input    map[string][]string
+		expected map[string][]string
+	}{
+		{
+			name:     "NilMap",
+			input:    nil,
+			expected: nil,
+		},
+		{
+			name:     "EmptyMap",
+			input:    map[string][]string{},
+			expected: map[string][]string{},
+		},
+		{
+			name: "NormalValues",
+			input: map[string][]string{
+				"Content-Type": {"application/json"},
+				"Accept":       {"text/html", "application/json"},
+			},
+			expected: map[string][]string{
+				"Content-Type": {"application/json"},
+				"Accept":       {"text/html", "application/json"},
+			},
+		},
+		{
+			name: "PreservesHTMLInValues",
+			input: map[string][]string{
+				"X-Claims":  {`{"email":{"essential":true}}`},
+				"X-Snippet": {"<script>alert('xss')</script>"},
+			},
+			expected: map[string][]string{
+				"X-Claims":  {`{"email":{"essential":true}}`},
+				"X-Snippet": {"<script>alert('xss')</script>"},
+			},
+		},
+		{
+			name: "RemovesControlCharsAndTrimsFromValues",
+			input: map[string][]string{
+				"X-Custom": {"  value\x01  "},
+			},
+			expected: map[string][]string{
+				"X-Custom": {"value"},
+			},
+		},
+		{
+			name: "RemovesNewlineAndTab",
+			input: map[string][]string{
+				"X-Inject": {"line1\nline2", "col1\tcol2"},
+			},
+			expected: map[string][]string{
+				"X-Inject": {"line1line2", "col1col2"},
+			},
+		},
+		{
+			name: "PreservesKeysVerbatim",
+			input: map[string][]string{
+				"X-Custom\x00": {"val"},
+			},
+			expected: map[string][]string{
+				"X-Custom\x00": {"val"},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.T().Run(tc.name, func(t *testing.T) {
+			result := SanitizeRawMultiValueStringMap(tc.input)
 			assert.Equal(t, tc.expected, result)
 		})
 	}

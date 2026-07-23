@@ -160,3 +160,31 @@ export function withDynamicFieldStandIns(list: PreviewComponent[], caption: stri
     return component;
   });
 }
+
+/**
+ * Re-attaches the SDK-facing `action.ref` to RICH_TEXT components from the
+ * simulation options. A rich-text link's option carries the component id as
+ * `sourceComponentId` and the wiring ref as `edgeId`; the gate's RichTextAdapter
+ * only dispatches an anchor click when the component exposes `action.ref`, and
+ * that field can be lost by the time a loaded flow reaches the preview. Sourcing
+ * it from the simulation graph makes link clicks work regardless.
+ */
+export function withRichTextActionRefs(
+  list: PreviewComponent[],
+  optionsByComponentId: Map<string, string>,
+): PreviewComponent[] {
+  return list.map((component: PreviewComponent) => {
+    let next = component;
+    const ref = component.type === ElementTypes.RichText ? optionsByComponentId.get(component.id) : undefined;
+    if (ref && (component as {action?: {ref?: string}}).action?.ref !== ref) {
+      next = {...component, action: {...(component as {action?: object}).action, ref}} as PreviewComponent;
+    }
+    if (next.components?.length) {
+      next = {
+        ...next,
+        components: withRichTextActionRefs(next.components as PreviewComponent[], optionsByComponentId),
+      };
+    }
+    return next;
+  });
+}

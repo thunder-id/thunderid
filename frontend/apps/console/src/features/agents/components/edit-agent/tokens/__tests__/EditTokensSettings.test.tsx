@@ -39,7 +39,7 @@ describe('EditTokensSettings', () => {
   const mockOnFieldChange = vi.fn();
   const baseAgent: Agent = {id: 'agent-1', ouId: 'ou-1', type: 'default', name: 'Test Agent'};
 
-  it('shows both "User" and "Agent" secondary tabs, defaulting to User', () => {
+  it('shows both "Agent" and "User" secondary tabs, defaulting to Agent', () => {
     render(
       <EditTokensSettings
         agent={baseAgent}
@@ -49,12 +49,12 @@ describe('EditTokensSettings', () => {
       />,
     );
 
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['User', 'Agent']);
-    expect(screen.getByTestId('token-settings')).toBeInTheDocument();
-    expect(screen.queryByTestId('agent-access-token')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Agent', 'User']);
+    expect(screen.getByTestId('agent-access-token')).toBeInTheDocument();
+    expect(screen.queryByTestId('token-settings')).not.toBeInTheDocument();
   });
 
-  it('switches to the Agent tab content when clicked', async () => {
+  it('switches to the User tab content when clicked', async () => {
     const user = userEvent.setup();
     render(
       <EditTokensSettings
@@ -65,13 +65,14 @@ describe('EditTokensSettings', () => {
       />,
     );
 
-    await user.click(screen.getByRole('tab', {name: 'Agent'}));
+    await user.click(screen.getByRole('tab', {name: 'User'}));
 
-    expect(screen.getByTestId('agent-access-token')).toBeInTheDocument();
-    expect(screen.queryByTestId('token-settings')).not.toBeInTheDocument();
+    expect(screen.getByTestId('token-settings')).toBeInTheDocument();
+    expect(screen.queryByTestId('agent-access-token')).not.toBeInTheDocument();
   });
 
-  it('keeps token settings editable and hides the lock notice when Delegated mode is on', () => {
+  it('keeps token settings editable and hides the lock notice when Delegated mode is on', async () => {
+    const user = userEvent.setup();
     render(
       <EditTokensSettings
         agent={baseAgent}
@@ -81,11 +82,14 @@ describe('EditTokensSettings', () => {
       />,
     );
 
+    await user.click(screen.getByRole('tab', {name: 'User'}));
+
     expect(screen.getByTestId('token-settings')).toHaveAttribute('data-readonly', 'false');
     expect(screen.queryByText(/These settings are frozen for this agent/)).not.toBeInTheDocument();
   });
 
-  it('forces token settings read-only and shows the lock notice when Delegated mode is off', () => {
+  it('forces token settings read-only and shows the lock notice when Delegated mode is off', async () => {
+    const user = userEvent.setup();
     render(
       <EditTokensSettings
         agent={baseAgent}
@@ -95,11 +99,14 @@ describe('EditTokensSettings', () => {
       />,
     );
 
+    await user.click(screen.getByRole('tab', {name: 'User'}));
+
     expect(screen.getByTestId('token-settings')).toHaveAttribute('data-readonly', 'true');
     expect(screen.getByText(/These settings are frozen for this agent/)).toBeInTheDocument();
   });
 
-  it('stays read-only when the agent is already read-only, even with Delegated mode on', () => {
+  it('stays read-only when the agent is already read-only, even with Delegated mode on', async () => {
+    const user = userEvent.setup();
     render(
       <EditTokensSettings
         agent={{...baseAgent, isReadOnly: true}}
@@ -109,11 +116,12 @@ describe('EditTokensSettings', () => {
       />,
     );
 
+    await user.click(screen.getByRole('tab', {name: 'User'}));
+
     expect(screen.getByTestId('token-settings')).toHaveAttribute('data-readonly', 'true');
   });
 
-  it('keeps the Agent tab fully editable regardless of Delegated mode', async () => {
-    const user = userEvent.setup();
+  it('keeps the Agent tab fully editable regardless of Delegated mode', () => {
     render(
       <EditTokensSettings
         agent={{...baseAgent, isReadOnly: false}}
@@ -122,8 +130,6 @@ describe('EditTokensSettings', () => {
         onFieldChange={mockOnFieldChange}
       />,
     );
-
-    await user.click(screen.getByRole('tab', {name: 'Agent'}));
 
     expect(screen.getByTestId('agent-access-token')).toHaveAttribute('data-readonly', 'false');
     expect(screen.queryByText(/These settings are frozen for this agent/)).not.toBeInTheDocument();

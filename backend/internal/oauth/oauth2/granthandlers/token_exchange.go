@@ -225,7 +225,8 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 
 	// Bind the token to a single target resource server (RFC 8707 resource or configured default).
 	// The RFC 8693 audience parameter is not honored. A request that resolves no permission scopes
-	// and carries no resource is not bound to a resource server: its audience is the client_id.
+	// and carries no resource is not bound to a resource server: its audience is the app's configured
+	// default audiences, falling back to the client_id.
 	targetRS, resErr := resourceindicators.ResolveAudienceBinding(
 		ctx, h.resourceService, h.serverConfigService, tokenRequest.Resources, permissionScopes)
 	if resErr != nil {
@@ -234,7 +235,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 
 	var finalAudiences []string
 	if targetRS == nil {
-		finalAudiences = []string{tokenRequest.ClientID}
+		finalAudiences = []string{oauthApp.ResolveDefaultAudience(tokenRequest.ClientID)}
 		finalScopes = oidcScopes
 	} else {
 		permissionScopes, resErr = resourceindicators.DownscopeToResourceServer(

@@ -27,7 +27,15 @@ import (
 
 // AuthnProviderManager defines the interface for the authentication provider manager.
 type AuthnProviderManager interface {
+	InitiateAuthentication(ctx context.Context, credentialType string, initData any,
+		metadata *AuthnMetadata) (any, *common.ServiceError)
 	AuthenticateUser(ctx context.Context, identifiers, credentials map[string]interface{},
+		requestedAttributes *RequestedAttributes,
+		metadata *AuthnMetadata,
+		authUser AuthUser) (AuthUser, AuthenticatedClaims, *common.ServiceError)
+	InitiateEnrollment(ctx context.Context, credentialType string, initData any,
+		metadata *AuthnMetadata) (any, *common.ServiceError)
+	Enroll(ctx context.Context, identifiers, credentials map[string]interface{},
 		requestedAttributes *RequestedAttributes,
 		metadata *AuthnMetadata,
 		authUser AuthUser) (AuthUser, AuthenticatedClaims, *common.ServiceError)
@@ -130,14 +138,14 @@ type ConsentProvider interface {
 	ResolveConsent(ctx context.Context, ouID, appID, appName, userID string,
 		essentialAttributes, optionalAttributes, authorizedPermissions []string,
 		availableAttributes *AttributesResponse, forceReprompt bool,
-		runtimeMetadata map[string]string) (
+		runtimeMetadata map[string][]string) (
 		*ConsentPromptData, *common.ServiceError)
 
 	// RecordConsent records the user's consent decisions and returns the persisted consent record.
 	// If the user denied any essential attribute, ErrorEssentialConsentDenied is returned.
 	RecordConsent(ctx context.Context, ouID, appID, userID string,
 		decisions *ConsentDecisions, sessionToken string, validityPeriod int64,
-		runtimeMetadata map[string]string) (
+		runtimeMetadata map[string][]string) (
 		*Consent, *common.ServiceError)
 }
 
@@ -209,6 +217,12 @@ type AttestationProvider interface {
 type RuntimeStoreProvider interface {
 	// Put stores a value in the runtime store with the specified key and TTL (time-to-live) in seconds.
 	Put(ctx context.Context, namespace RuntimeStoreNamespace, key string, value []byte, ttlSeconds int64) error
+
+	// PutIfNotExists atomically stores a value only if the key does not already hold a non-expired
+	// value. Returns true if the value was stored, false if an unexpired value already exists.
+	PutIfNotExists(
+		ctx context.Context, namespace RuntimeStoreNamespace, key string, value []byte, ttlSeconds int64,
+	) (bool, error)
 
 	// Get retrieves a value from the runtime store by its key.
 	Get(ctx context.Context, namespace RuntimeStoreNamespace, key string) ([]byte, error)

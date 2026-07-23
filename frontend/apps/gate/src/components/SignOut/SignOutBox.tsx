@@ -18,11 +18,13 @@
 
 import {useConfig} from '@thunderid/contexts';
 import {AuthCardLayout, FlowComponentRenderer, useDesign} from '@thunderid/design';
+import {useTemplateLiteralResolver} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {normalizeFlowResponse, useThunderID, type EmbeddedFlowComponent} from '@thunderid/react';
+import {TemplateLiteralType} from '@thunderid/utils';
 import {Alert, Box, CircularProgress} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useSearchParams} from 'react-router';
 
@@ -54,7 +56,8 @@ export default function SignOutBox(): JSX.Element {
   const executionId = searchParams.get('executionId') ?? '';
   const logoutId = searchParams.get('logoutId') ?? '';
   const {getServerUrl} = useConfig();
-  const {resolveFlowTemplateLiterals} = useThunderID();
+  const {meta} = useThunderID();
+  const {resolveAll} = useTemplateLiteralResolver();
   const {t} = useTranslation();
   const logger = useLogger('SignOutBox');
   const {isDesignEnabled} = useDesign();
@@ -109,7 +112,10 @@ export default function SignOutBox(): JSX.Element {
 
       // Each interactive step mints a fresh challenge token that the next submit must echo back.
       setChallengeToken(res.challengeToken ?? '');
-      const {components: next} = normalizeFlowResponse(res, t, {throwOnError: false});
+      // Keep the raw `{{ t(ns:key) }}` labels: resolving them here would use the SDK resolver, which
+      // flattens the namespace `:` to `.` and misses the backend-injected `signout` namespace. The
+      // FlowComponentRenderer `resolve` prop resolves them at render, preserving the namespace form.
+      const {components: next} = normalizeFlowResponse(res, t, {throwOnError: false, resolveTranslations: false});
       setComponents(next);
     } catch (error) {
       logger.error('Sign-out flow error:', error instanceof Error ? error : undefined);
@@ -119,9 +125,24 @@ export default function SignOutBox(): JSX.Element {
     }
   };
 
-  // Resume the execution the sign-out endpoint initiated.
+  // Resume the execution the sign-out endpoint initiated, guarding against React StrictMode's
+  // double-invocation and any re-render.
+  const resumedRef = useRef<string | null>(null);
   useEffect(() => {
-    void run({executionId});
+    if (!executionId) {
+      // Reached without an execution to resume (e.g. a malformed link): surface an error instead of
+      // leaving the initial spinner running indefinitely.
+      setIsLoading(false);
+      setFlowError(t('signout:errors.failed.description', 'Something went wrong. Please try again.'));
+      return;
+    }
+    // Resume once per executionId. A second resume re-runs the step without the challenge token the
+    // first one minted, which the interceptor rejects (ICS-1002) and whose empty error response would
+    // otherwise clear the rendered prompt.
+    if (resumedRef.current !== executionId) {
+      resumedRef.current = executionId;
+      void run({executionId});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [executionId]);
 
@@ -157,7 +178,21 @@ export default function SignOutBox(): JSX.Element {
                 index={index}
                 values={values}
                 isLoading={isLoading}
-                resolve={resolveFlowTemplateLiterals}
+                resolve={(template) =>
+                  resolveAll(template, {
+                    [TemplateLiteralType.TRANSLATION]: t,
+                    [TemplateLiteralType.META]: (path: string) => {
+                      const keys = path.split('.');
+                      const value: unknown = keys.reduce<unknown>((acc: unknown, key: string): unknown => {
+                        if (acc == null || typeof acc !== 'object') return undefined;
+                        const record = acc as Record<string, unknown>;
+                        return record[key] ?? record[key.replace(/([A-Z])/g, '_$1').toLowerCase()];
+                      }, meta as unknown);
+
+                      return (value as string | undefined) ?? `{{meta(${path})}}`;
+                    },
+                  })
+                }
                 onInputChange={(id: string, value: string) => setValues((prev) => ({...prev, [id]: value}))}
                 onSubmit={(action: {id?: string}, inputs: Record<string, string>) => {
                   void run({executionId, challengeToken, action: action.id ?? component.id, inputs});

@@ -59,7 +59,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GetAttributesResult'
+                $ref: '#/components/schemas/AttributesResponse'
         '400':
           description: Invalid request
           content:
@@ -68,6 +68,117 @@ paths:
                 $ref: '#/components/schemas/AuthnProviderError'
         '401':
           description: Invalid token or unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthnProviderError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthnProviderError'
+
+  /initiate-authentication:
+    post:
+      summary: Initiate authentication for a credential type
+      description: >
+        Begin an authentication ceremony (for example, issue a passkey challenge) for the given
+        credential type. Only some credential types require this step. The response payload is
+        provider-defined and is passed through to the caller as-is.
+      operationId: initiateAuthentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitiateRequest'
+      responses:
+        '200':
+          description: Initiation successful; a provider-defined payload is returned
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                description: Provider-defined initiation data (for example, a WebAuthn challenge)
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthnProviderError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthnProviderError'
+
+  /initiate-enrollment:
+    post:
+      summary: Initiate enrollment for a credential type
+      description: >
+        Begin a credential enrollment ceremony (for example, issue passkey creation options) for
+        the given credential type. The response payload is provider-defined and is passed through
+        to the caller as-is.
+      operationId: initiateEnrollment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitiateRequest'
+      responses:
+        '200':
+          description: Initiation successful; a provider-defined payload is returned
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                description: Provider-defined initiation data (for example, passkey creation options)
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthnProviderError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthnProviderError'
+
+  /enroll:
+    post:
+      summary: Enroll a credential for a user
+      description: >
+        Complete a credential enrollment. Completing enrollment also authenticates the user, so
+        the enrolled and authenticated user is returned.
+      operationId: enroll
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnrollRequest'
+      responses:
+        '200':
+          description: Enrollment successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthnResult'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthnProviderError'
+        '401':
+          description: Enrollment failed
           content:
             application/json:
               schema:
@@ -116,6 +227,37 @@ components:
       required:
         - token
 
+    InitiateRequest:
+      type: object
+      properties:
+        credentialType:
+          type: string
+          description: The credential type to initiate (for example, "passkey")
+        initData:
+          type: object
+          additionalProperties: true
+          description: Provider-defined initiation input for the credential type
+        metadata:
+          $ref: '#/components/schemas/AuthnMetadata'
+      required:
+        - credentialType
+
+    EnrollRequest:
+      type: object
+      properties:
+        identifiers:
+          type: object
+          additionalProperties: true
+          description: Map of user identifiers
+        credentials:
+          type: object
+          additionalProperties: true
+          description: Map of credentials to enroll
+        metadata:
+          $ref: '#/components/schemas/AuthnMetadata'
+      required:
+        - credentials
+
     AuthnMetadata:
       type: object
       properties:
@@ -137,57 +279,49 @@ components:
 
     AuthnResult:
       type: object
+      description: >
+        Result of a successful authentication or enrollment. For both the entity reference and the
+        attributes, the provider returns either an opaque token to be resolved later or the resolved
+        value inline: entityReferenceToken or entityReference, and attributeToken or attributes.
       properties:
-        userId:
-          type: string
-        userType:
-          type: string
-        ouId:
-          type: string
-        token:
-          type: string
-        availableAttributes:
-          $ref: '#/components/schemas/AvailableAttributes'
-      required:
-        - userId
-        - userType
-        - ouId
-
-    GetAttributesResult:
-      type: object
-      properties:
-        userId:
-          type: string
-        userType:
-          type: string
-        ouId:
-          type: string
-        attributeResponse:
-          $ref: '#/components/schemas/AttributesResponse'
-      required:
-        - userId
-        - userType
-        - ouId
-
-    AvailableAttributes:
-      type: object
-      properties:
+        authenticatedClaims:
+          type: object
+          additionalProperties: true
+          description: Claims produced by the authentication or enrollment mechanism
+        entityReferenceToken:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: >
+            Opaque, provider-defined token used to resolve the entity reference later.
+            Null when entityReference is returned inline.
+        entityReference:
+          $ref: '#/components/schemas/EntityReference'
+        attributeToken:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: >
+            Opaque, provider-defined token used to resolve the user attributes later.
+            Null when attributes are returned inline.
         attributes:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/AttributeMetadataResponse'
-          description: Map of attribute names to their metadata
-        verifications:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/VerificationResponse'
-          description: Map of verification IDs to verification details
+          $ref: '#/components/schemas/AttributesResponse'
 
-    AttributeMetadataResponse:
+    EntityReference:
       type: object
       properties:
-        assuranceMetadataResponse:
-          $ref: '#/components/schemas/AssuranceMetadataResponse'
+        entityId:
+          type: string
+          description: Identifier of the referenced entity
+        entityCategory:
+          type: string
+          description: Category of the referenced entity
+        entityType:
+          type: string
+          description: Type of the referenced entity
+        ouId:
+          type: string
+          description: Organization unit ID the entity belongs to
 
     AssuranceMetadataResponse:
       type: object
@@ -310,6 +444,8 @@ components:
         - AUP-0004: Invalid Token
         - AUP-0005: Not Implemented
         - AUP-0006: Invalid Request
+        - AUP-0007: Ambiguous User
+        - AUP-0008: Enrollment Failed
       enum:
         - AUP-0001
         - AUP-0002
@@ -317,6 +453,8 @@ components:
         - AUP-0004
         - AUP-0005
         - AUP-0006
+        - AUP-0007
+        - AUP-0008
 
     AuthnProviderError:
       type: object

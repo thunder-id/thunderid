@@ -27,8 +27,10 @@ import (
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const (
@@ -72,10 +74,24 @@ func (s *oidcAuthnService) GetOAuthClientConfig(ctx context.Context, idpID strin
 	return s.internal.GetOAuthClientConfig(ctx, idpID)
 }
 
-// BuildAuthorizeURL constructs the authorization request URL for the external identity provider.
+// BuildAuthorizeURL constructs the authorization request URL for the external identity provider
+// with an OIDC nonce parameter appended.
 func (s *oidcAuthnService) BuildAuthorizeURL(
-	ctx context.Context, idpID string) (string, *tidcommon.ServiceError) {
-	return s.internal.BuildAuthorizeURL(ctx, idpID)
+	ctx context.Context, idpID string) (string, map[string]string, *tidcommon.ServiceError) {
+	authorizeURL, metadata, svcErr := s.internal.BuildAuthorizeURL(ctx, idpID)
+	if svcErr != nil {
+		return "", nil, svcErr
+	}
+
+	nonce := systemutils.GenerateUUID()
+	authorizeURL = authorizeURL + "&nonce=" + nonce
+
+	if metadata == nil {
+		metadata = make(map[string]string)
+	}
+	metadata[oauth2const.RequestParamNonce] = nonce
+
+	return authorizeURL, metadata, nil
 }
 
 // ExchangeCodeForToken exchanges the authorization code for a token with the external identity provider
@@ -192,20 +208,26 @@ func (s *oidcAuthnService) FetchUserInfo(ctx context.Context, idpID, accessToken
 }
 
 // Authenticate performs the full OIDC authentication flow: exchanges the code for a token,
-// extracts ID token claims, and resolves the internal user.
+// extracts ID token claims, validates the nonce, and resolves the internal user.
 // A missing internal user is NOT an error — the caller decides how to handle it.
-func (s *oidcAuthnService) Authenticate(ctx context.Context, idpID, code string) (
-	*authncm.AuthnResult, *tidcommon.ServiceError) {
+func (s *oidcAuthnService) Authenticate(ctx context.Context, idpID string,
+	authzData authncm.AuthorizationData) (*authncm.AuthnResult, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("idpId", idpID))
 	logger.Debug(ctx, "Performing federated OIDC authentication")
 
-	tokenResp, svcErr := s.ExchangeCodeForToken(ctx, idpID, code, true)
+	tokenResp, svcErr := s.ExchangeCodeForToken(ctx, idpID, authzData.Code, true)
 	if svcErr != nil {
 		return nil, svcErr
 	}
 
 	claims, svcErr := s.GetIDTokenClaims(ctx, tokenResp.IDToken)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	// Validate that the ID token nonce matches the server-generated nonce.
+	if svcErr := authnoauth.ValidateNonce(ctx, claims, authzData.Nonce, logger); svcErr != nil {
+		logger.Debug(ctx, "OIDC nonce validation failed")
 		return nil, svcErr
 	}
 

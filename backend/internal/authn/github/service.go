@@ -59,7 +59,7 @@ func newGithubOAuthAuthnService(internal authnoauth.OAuthAuthnServiceInterface,
 
 // BuildAuthorizeURL constructs the authorization request URL for GitHub OAuth authentication.
 func (g *githubOAuthAuthnService) BuildAuthorizeURL(
-	ctx context.Context, idpID string) (string, *tidcommon.ServiceError) {
+	ctx context.Context, idpID string) (string, map[string]string, *tidcommon.ServiceError) {
 	return g.internal.BuildAuthorizeURL(ctx, idpID)
 }
 
@@ -151,12 +151,12 @@ func (g *githubOAuthAuthnService) GetOAuthClientConfig(ctx context.Context, idpI
 // Authenticate performs the full GitHub OAuth authentication flow: exchanges the code for a token,
 // fetches user info, and resolves the internal user.
 // A missing internal user is NOT an error — the caller decides how to handle it.
-func (g *githubOAuthAuthnService) Authenticate(ctx context.Context, idpID, code string) (
-	*authncm.AuthnResult, *tidcommon.ServiceError) {
+func (g *githubOAuthAuthnService) Authenticate(ctx context.Context, idpID string,
+	authzData authncm.AuthorizationData) (*authncm.AuthnResult, *tidcommon.ServiceError) {
 	logger := g.logger.With(log.String("idpId", idpID))
 	logger.Debug(ctx, "Performing federated GitHub OAuth authentication")
 
-	tokenResp, svcErr := g.ExchangeCodeForToken(ctx, idpID, code, true)
+	tokenResp, svcErr := g.ExchangeCodeForToken(ctx, idpID, authzData.Code, true)
 	if svcErr != nil {
 		return nil, svcErr
 	}

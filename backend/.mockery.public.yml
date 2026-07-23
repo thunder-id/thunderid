@@ -289,9 +289,9 @@ packages:
       PasskeyServiceInterface:
         config:
           dir: tests/mocks/authn/passkeymock
-          structname: 'WebAuthnAuthnServiceInterfaceMock'
+          structname: 'PasskeyServiceInterfaceMock'
           pkgname: passkeymock
-          filename: "WebAuthnAuthnServiceInterface_mock.go"
+          filename: "PasskeyServiceInterface_mock.go"
 
   github.com/thunder-id/thunderid/internal/authn/common:
     config:
@@ -574,6 +574,36 @@ packages:
           structname: '{{.InterfaceName}}Mock'
           pkgname: consentprovidermock
           filename: "{{.InterfaceName}}_mock.go"
+      ResourceServerProvider:
+        config:
+          dir: tests/mocks/resourceserverprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: resourceserverprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      OrganizationUnitProvider:
+        config:
+          dir: tests/mocks/ouprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: ouprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      DesignProvider:
+        config:
+          dir: tests/mocks/designprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: designprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      I18nProvider:
+        config:
+          dir: tests/mocks/i18nprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: i18nprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      IDPProvider:
+        config:
+          dir: tests/mocks/idpprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: idpprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
       AuthorizationProvider:
         config:
           dir: tests/mocks/authzmock
@@ -603,6 +633,12 @@ packages:
           dir: tests/mocks/attestationprovidermock
           structname: '{{.InterfaceName}}Mock'
           pkgname: attestationprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      RuntimeStoreProvider:
+        config:
+          dir: tests/mocks/runtimestoreprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: runtimestoreprovidermock
           filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/authnprovider/provider:

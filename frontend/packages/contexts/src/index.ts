@@ -19,6 +19,7 @@
 // Export types
 export type {ProductConfig, ServerConfig, TrustedIssuerConfig, BrandConfig, SdkConfig} from './Config/types';
 export type {ToastContextType, ToastSeverity} from './Toast/ToastContext';
+export type {RoutePaths} from './Routes/RoutesContext';
 
 // Export React components and hooks
 export {default as ConfigContext, type ConfigContextType} from './Config/ConfigContext';
@@ -27,3 +28,6 @@ export {default as useConfig} from './Config/useConfig';
 export {default as ToastContext} from './Toast/ToastContext';
 export {default as ToastProvider, type ToastProviderProps} from './Toast/ToastProvider';
 export {default as useToast} from './Toast/useToast';
+export {default as RoutesContext} from './Routes/RoutesContext';
+export {default as RoutesProvider, type RoutesProviderProps} from './Routes/RoutesProvider';
+export {default as useRoutes} from './Routes/useRoutes';

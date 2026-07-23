@@ -102,6 +102,38 @@ reviews:
         `lazy(() => import('...Page'))` for a Monaco-rendering page as a CDN-regression risk and ask
         for the `monaco-setup` gate.
 
+        Route destination guidance. Every route destination in this app must be resolved from that
+        app's `RouteConfig` (`src/configs/RouteConfig.ts`), never a literal path string. Flag any
+        `navigate(...)` call, `<Link to=...>`, or `<Route path=...>` built from a literal path string
+        (e.g. `navigate('/users')`, `` navigate(`/users/${id}`) ``, `<Link to="/users" />`) as a
+        **major issue**:
+
+        "🔴 **Hardcoded route**: resolve this destination from `RouteConfig` instead of a literal path
+        string, so the mounted route and this navigation call can't silently drift apart."
+
+        Do not flag:
+        - External URLs (`http://`, `https://`, `mailto:`) or same-page hash fragments.
+        - Code inside `src/configs/RouteConfig.ts` itself, which is the source of these paths.
+        - A relative path segment nested under a parent `<Route>` whose own path already comes from
+          `RouteConfig`/`ROUTE_SEGMENTS` (e.g. a plain `"validate"` child route, or a dynamic
+          `:paramName` segment) — only the domain's own top-level path needs to trace back to
+          `RouteConfig`.
+
+    - path: "frontend/packages/configure-*/**/*.{ts,tsx}"
+      instructions: |
+        Route destination guidance for reusable packages. A `@thunderid/configure-*` package must
+        never hardcode or assume the host application's URL structure. Flag any `navigate(...)` call
+        or `<Link to=...>` prop built from a literal path string instead of a `use<Domain>Routes()`
+        hook (built on `@thunderid/contexts`'s `useRoutes`, with a local default) as a **major issue**:
+
+        "🔴 **Hardcoded route in a reusable package**: resolve this destination through a
+        `use<Domain>Routes()` hook instead of a literal path string — otherwise a host application
+        cannot mount this package under a different URL without editing the package itself."
+
+        Do not flag:
+        - The package's own `routes/types.ts` (or equivalent) file defining its default paths.
+        - External URLs (`http://`, `https://`, `mailto:`).
+
     - path: "docs/**"
       instructions: |
         Scan for hardcoded occurrences of the string literals `Thunder` or `ThunderID`.

@@ -1182,7 +1182,8 @@
           "executor": {
             "name": "SMSExecutor"
           },
-          "onSuccess": "prompt_otp"
+          "onSuccess": "prompt_otp",
+          "onFailure": "prompt_mobile"
         },
         {
           "id": "prompt_otp",
@@ -1491,7 +1492,6 @@
             }
           },
           "properties": {
-            "senderId": "{{SENDER_ID}}",
             "emailTemplate": "OTP"
           },
           "executor": {
@@ -1506,7 +1506,8 @@
               }
             ]
           },
-          "onSuccess": "prompt_otp"
+          "onSuccess": "prompt_otp",
+          "onFailure": "prompt_email"
         },
         {
           "id": "prompt_otp",
@@ -6665,7 +6666,8 @@
           "executor": {
             "name": "SMSExecutor"
           },
-          "onSuccess": "prompt_otp"
+          "onSuccess": "prompt_otp",
+          "onFailure": "prompt_mobile"
         },
         {
           "id": "prompt_otp",
@@ -7127,7 +7129,6 @@
             }
           },
           "properties": {
-            "senderId": "{{SENDER_ID}}",
             "emailTemplate": "OTP"
           },
           "executor": {
@@ -7142,7 +7143,8 @@
               }
             ]
           },
-          "onSuccess": "prompt_otp"
+          "onSuccess": "prompt_otp",
+          "onFailure": "prompt_email"
         },
         {
           "id": "prompt_otp",
@@ -9314,7 +9316,8 @@
           "executor": {
             "name": "SMSExecutor"
           },
-          "onSuccess": "prompt_otp"
+          "onSuccess": "prompt_otp",
+          "onFailure": "prompt_mobile"
         },
         {
           "id": "prompt_otp",
@@ -12436,13 +12439,6 @@
                     "label": "{{ t(recovery:forms.username.actions.submit.label) }}",
                     "variant": "PRIMARY",
                     "eventType": "SUBMIT"
-                  },
-                  {
-                    "category": "DISPLAY",
-                    "id": "rich_text_signup",
-                    "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Remember your password? </span><a href=\"{{meta(application.sign_in_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Sign in</span></a></p>",
-                    "resourceType": "ELEMENT",
-                    "type": "RICH_TEXT"
                   }
                 ]
               }
@@ -12595,13 +12591,6 @@
                     "label": "{{ t(recovery:forms.otp_sent.actions.verify.label) }}",
                     "variant": "PRIMARY",
                     "eventType": "SUBMIT"
-                  },
-                  {
-                    "category": "DISPLAY",
-                    "id": "rich_text_signup",
-                    "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Remember your password? </span><a href=\"{{meta(application.sign_in_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Sign in</span></a></p>",
-                    "resourceType": "ELEMENT",
-                    "type": "RICH_TEXT"
                   }
                 ]
               }
@@ -12955,10 +12944,19 @@
                 "align": "center",
                 "category": "DISPLAY",
                 "id": "text_signout_title",
-                "label": "Sign out of your account?",
+                "label": "{{ t(signout:forms.confirm.title) }}",
                 "resourceType": "ELEMENT",
                 "type": "TEXT",
-                "variant": "HEADING_3"
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "category": "DISPLAY",
+                "id": "text_signout_desc",
+                "label": "{{ t(signout:forms.confirm.description) }}",
+                "resourceType": "ELEMENT",
+                "type": "TEXT",
+                "variant": "BODY_1"
               },
               {
                 "category": "BLOCK",
@@ -12967,7 +12965,7 @@
                     "category": "ACTION",
                     "eventType": "SUBMIT",
                     "id": "action_confirm",
-                    "label": "Sign out",
+                    "label": "{{ t(signout:forms.confirm.actions.submit.label) }}",
                     "resourceType": "ELEMENT",
                     "type": "ACTION",
                     "variant": "PRIMARY"

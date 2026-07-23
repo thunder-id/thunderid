@@ -16,7 +16,8 @@
  * under the License.
  */
 
-// Package provider provides authentication provider implementations.
+// Package provider defines the authentication provider interface implemented by
+// each concrete authn provider.
 package provider
 
 import (
@@ -28,6 +29,8 @@ import (
 
 // AuthnProviderInterface defines the interface for authentication providers.
 type AuthnProviderInterface interface {
+	InitiateAuthentication(ctx context.Context, credentialType string, initData any,
+		metadata *providers.AuthnMetadata) (any, *tidcommon.ServiceError)
 	Authenticate(ctx context.Context, identifiers, credentials map[string]interface{},
 		metadata *providers.AuthnMetadata) (*providers.AuthnResult, *tidcommon.ServiceError)
 	GetEntityReference(ctx context.Context, entityReferenceToken any) (*providers.EntityReference,
@@ -35,4 +38,8 @@ type AuthnProviderInterface interface {
 	GetAttributes(ctx context.Context, attributeToken any, consentedAttributes *providers.RequestedAttributes,
 		metadata *providers.GetAttributesMetadata) (
 		*providers.AttributesResponse, *tidcommon.ServiceError)
+	InitiateEnrollment(ctx context.Context, credentialType string, initData any,
+		metadata *providers.AuthnMetadata) (any, *tidcommon.ServiceError)
+	Enroll(ctx context.Context, identifiers, credentials map[string]interface{},
+		metadata *providers.AuthnMetadata) (*providers.AuthnResult, *tidcommon.ServiceError)
 }

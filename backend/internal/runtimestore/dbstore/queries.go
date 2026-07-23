@@ -71,3 +71,16 @@ var queryExtendTTLRuntimeStore = dbmodel.DBQuery{
 		`WHERE DEPLOYMENT_ID = $1 AND NAMESPACE = $2 AND KEY = $3 ` +
 		`AND (EXPIRY_TIME IS NULL OR EXPIRY_TIME > $5)`,
 }
+
+// queryPutIfNotExistsRuntimeStore inserts an entry, or overwrites it in place if the existing entry
+// has already expired. The conflicting row is left untouched (and no row is returned) when it is
+// still live, so the caller can tell a fresh claim from a blocked one by whether a row came back.
+var queryPutIfNotExistsRuntimeStore = dbmodel.DBQuery{
+	ID: "RTS-07",
+	Query: `INSERT INTO "RUNTIME_STORE" (DEPLOYMENT_ID, NAMESPACE, KEY, VALUE, EXPIRY_TIME) ` +
+		`VALUES ($1, $2, $3, $4, $5) ` +
+		`ON CONFLICT (DEPLOYMENT_ID, NAMESPACE, KEY) ` +
+		`DO UPDATE SET VALUE = EXCLUDED.VALUE, EXPIRY_TIME = EXCLUDED.EXPIRY_TIME, UPDATED_AT = CURRENT_TIMESTAMP ` +
+		`WHERE "RUNTIME_STORE".EXPIRY_TIME IS NOT NULL AND "RUNTIME_STORE".EXPIRY_TIME <= $6 ` +
+		`RETURNING KEY`,
+}

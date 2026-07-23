@@ -41,13 +41,14 @@ const (
 
 // OAuthAuthnCoreServiceInterface defines the core contract for OAuth based authenticator services.
 type OAuthAuthnCoreServiceInterface interface {
-	BuildAuthorizeURL(ctx context.Context, idpID string) (string, *tidcommon.ServiceError)
+	BuildAuthorizeURL(ctx context.Context, idpID string) (string, map[string]string, *tidcommon.ServiceError)
 	ExchangeCodeForToken(ctx context.Context, idpID, code string, validateResponse bool) (
 		*TokenResponse, *tidcommon.ServiceError)
 	FetchUserInfo(ctx context.Context, idpID, accessToken string) (
 		map[string]interface{}, *tidcommon.ServiceError)
 	GetOAuthClientConfig(ctx context.Context, idpID string) (*OAuthClientConfig, *tidcommon.ServiceError)
-	Authenticate(ctx context.Context, idpID, code string) (*common.AuthnResult, *tidcommon.ServiceError)
+	Authenticate(ctx context.Context, idpID string, authzData common.AuthorizationData) (
+		*common.AuthnResult, *tidcommon.ServiceError)
 	BuildFederatedAuthResult(ctx context.Context, idpID, sub string, claims map[string]interface{}) (
 		*common.AuthnResult, *tidcommon.ServiceError)
 }
@@ -115,17 +116,17 @@ func (s *oAuthAuthnService) GetOAuthClientConfig(ctx context.Context, idpID stri
 
 // BuildAuthorizeURL constructs the authorization request URL for the external identity provider.
 func (s *oAuthAuthnService) BuildAuthorizeURL(
-	ctx context.Context, idpID string) (string, *tidcommon.ServiceError) {
+	ctx context.Context, idpID string) (string, map[string]string, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("idpId", idpID))
 	logger.Debug(ctx, "Building authorize URL")
 
 	oAuthClientConfig, svcErr := s.GetOAuthClientConfig(ctx, idpID)
 	if svcErr != nil {
-		return "", svcErr
+		return "", nil, svcErr
 	}
 	if oAuthClientConfig.OAuthEndpoints.AuthorizationEndpoint == "" {
 		logger.Error(ctx, "Authorization endpoint is not configured for the identity provider")
-		return "", &tidcommon.InternalServerError
+		return "", nil, &tidcommon.InternalServerError
 	}
 
 	queryParams := map[string]string{
@@ -144,14 +145,22 @@ func (s *oAuthAuthnService) BuildAuthorizeURL(
 		queryParams[key] = value
 	}
 
+	// Generate a random state parameter for CSRF protection.
+	state := sysutils.GenerateUUID()
+	queryParams[oauth2const.RequestParamState] = state
+
 	authZURL, err := sysutils.GetURIWithQueryParams(oAuthClientConfig.OAuthEndpoints.AuthorizationEndpoint,
 		queryParams)
 	if err != nil {
 		logger.Error(ctx, "Failed to build authorize URL", log.Error(err))
-		return "", &tidcommon.InternalServerError
+		return "", nil, &tidcommon.InternalServerError
 	}
 
-	return authZURL, nil
+	metadata := map[string]string{
+		oauth2const.RequestParamState: state,
+	}
+
+	return authZURL, metadata, nil
 }
 
 // ExchangeCodeForToken exchanges the authorization code for a token with the external identity provider
@@ -304,12 +313,12 @@ func (s *oAuthAuthnService) GetInternalUser(
 // Authenticate performs the full OAuth authentication flow: exchanges the code for a token,
 // fetches user info, extracts the subject claim, and resolves the internal user.
 // A missing internal user is NOT an error — the caller decides how to handle it.
-func (s *oAuthAuthnService) Authenticate(ctx context.Context, idpID, code string) (
-	*common.AuthnResult, *tidcommon.ServiceError) {
+func (s *oAuthAuthnService) Authenticate(ctx context.Context, idpID string,
+	authzData common.AuthorizationData) (*common.AuthnResult, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("idpId", idpID))
 	logger.Debug(ctx, "Performing federated OAuth authentication")
 
-	tokenResp, svcErr := s.ExchangeCodeForToken(ctx, idpID, code, true)
+	tokenResp, svcErr := s.ExchangeCodeForToken(ctx, idpID, authzData.Code, true)
 	if svcErr != nil {
 		return nil, svcErr
 	}

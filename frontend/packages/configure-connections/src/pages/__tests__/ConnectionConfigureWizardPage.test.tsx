@@ -32,7 +32,8 @@ vi.mock('react-router', async (importOriginal) => ({
 }));
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
-  useConfig: () => ({getServerUrl: () => 'https://id.acme.io'}),
+  useConfig: () => ({getGateCallbackUrl: () => 'https://id.acme.io/gate/callback'}),
+  useToast: () => ({showToast: vi.fn()}),
 }));
 vi.mock('../../api/useCreateConnection', () => ({default: () => ({mutate: mutateMock, isPending: false})}));
 
@@ -67,9 +68,29 @@ describe('ConnectionConfigureWizardPage', () => {
     fireEvent.click(screen.getByTestId('wizard-create'));
 
     expect(mutateMock).toHaveBeenCalledTimes(1);
-    const payload = mutateMock.mock.calls[0][0] as {name: string; clientId: string; attributeConfiguration?: unknown};
-    expect(payload).toMatchObject({name: 'Google', clientId: 'x', clientSecret: 's'});
+    const payload = mutateMock.mock.calls[0][0] as {
+      name: string;
+      clientId: string;
+      redirectUri: string;
+      scopes?: string[];
+      attributeConfiguration?: unknown;
+    };
+    expect(payload).toMatchObject({
+      name: 'Google',
+      clientId: 'x',
+      clientSecret: 's',
+      redirectUri: 'https://id.acme.io/gate/callback',
+    });
+    expect(payload.scopes).toBeUndefined();
     expect(payload.attributeConfiguration).toBeUndefined();
+  });
+
+  it('shows the setup hint with the redirect URI to copy for Google', () => {
+    render(<ConnectionConfigureWizardPage />);
+
+    const hint = screen.getByTestId('connection-create-hint');
+    expect(hint).toBeInTheDocument();
+    expect(screen.getByDisplayValue('https://id.acme.io/gate/callback')).toBeInTheDocument();
   });
 
   it('navigates to the connection detail page after a successful create', () => {

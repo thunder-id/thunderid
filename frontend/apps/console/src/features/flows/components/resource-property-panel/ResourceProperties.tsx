@@ -28,9 +28,11 @@ import ResourcePropertyPanelConstants from '../../constants/ResourcePropertyPane
 import useFlowConfig from '../../hooks/useFlowConfig';
 import useFlowPlugins from '../../hooks/useFlowPlugins';
 import useInteractionState from '../../hooks/useInteractionState';
+import useRenameStep from '../../hooks/useRenameStep';
 import type {Properties} from '../../models/base';
 import type {Element} from '../../models/elements';
 import {ElementTypes} from '../../models/elements';
+import {ResourceTypes} from '../../models/resources';
 import type {Resource} from '../../models/resources';
 import type {StepData} from '../../models/steps';
 
@@ -111,6 +113,12 @@ function ResourceProperties(): ReactElement {
   const lastInteractedStepIdRef = useRef(lastInteractedStepId);
   const setLastInteractedResourceRef = useRef(setLastInteractedResource);
   const updateNodeDataRef = useRef(updateNodeData);
+  const {renameStep} = useRenameStep();
+  const renameStepRef = useRef(renameStep);
+
+  useEffect(() => {
+    renameStepRef.current = renameStep;
+  }, [renameStep]);
 
   // Keep refs in sync
   useEffect(() => {
@@ -253,6 +261,14 @@ function ResourceProperties(): ReactElement {
     ): void => {
       const currentStepId = lastInteractedStepIdRef.current;
       const currentResource = lastInteractedResourceRef.current;
+
+      // A step's id is the node's identity, not node data: route it through the
+      // shared rename (validation + edge rewiring + interaction-state sync) that
+      // the node header title also uses, so both surfaces stay in sync.
+      if (propertyKey === 'id' && (element as Resource).resourceType === ResourceTypes.Step) {
+        renameStepRef.current(element.id, typeof newValue === 'string' ? newValue : '');
+        return;
+      }
 
       // Execute plugins for property change event.
       const pluginResult = emitPropertyChange(propertyKey, newValue, element, currentStepId);

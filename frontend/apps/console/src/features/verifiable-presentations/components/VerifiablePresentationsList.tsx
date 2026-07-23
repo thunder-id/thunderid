@@ -25,6 +25,7 @@ import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import VerifiablePresentationDeleteDialog from './VerifiablePresentationDeleteDialog';
 import VerificationDialog from './VerificationDialog';
+import RouteConfig from '../../../configs/RouteConfig';
 import useGetVerifiablePresentations from '../api/useGetVerifiablePresentations';
 import type {VerifiablePresentationSummary} from '../models/vp';
 
@@ -46,7 +47,7 @@ export default function VerifiablePresentationsList(): JSX.Element {
   const handleEditClick = useCallback(
     (id: string): void => {
       (async (): Promise<void> => {
-        await navigate(`/verifiable-presentations/${id}`);
+        await navigate(RouteConfig.verifiablePresentations.detail(id));
       })().catch((_error: unknown) => {
         logger.error('Failed to navigate to presentation definition', {error: _error, id});
       });

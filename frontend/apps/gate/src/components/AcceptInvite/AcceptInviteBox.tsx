@@ -25,7 +25,7 @@ import type {JSX} from 'react';
 import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate, useSearchParams} from 'react-router';
-import ROUTES from '../../constants/routes';
+import RouteConfig from '../../configs/RouteConfig';
 
 export interface FlowChangeResponse {
   flowStatus?: string;
@@ -52,7 +52,7 @@ export default function AcceptInviteBox(): JSX.Element {
   const baseUrl = getServerUrl() ?? (import.meta.env.VITE_THUNDER_BASE_URL as string);
 
   const handleGoToSignIn = () => {
-    const result = navigate(ROUTES.AUTH.SIGN_IN);
+    const result = navigate(RouteConfig.signIn());
     if (result instanceof Promise) {
       result.catch(() => null);
     }

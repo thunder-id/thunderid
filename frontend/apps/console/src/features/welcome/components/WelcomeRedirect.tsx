@@ -20,6 +20,7 @@ import {useConfig} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import {useEffect, type JSX} from 'react';
 import {useLocation, useNavigate} from 'react-router';
+import RouteConfig from '../../../configs/RouteConfig';
 import getWelcomeDismissedStorageKey from '../utils/getWelcomeDismissedStorageKey';
 
 export default function WelcomeRedirect(): JSX.Element | null {
@@ -36,7 +37,7 @@ export default function WelcomeRedirect(): JSX.Element | null {
 
     if (!dismissed) {
       sessionStorage.setItem(getWelcomeDismissedStorageKey(productName), 'true');
-      void navigate('/welcome', {replace: true});
+      void navigate(RouteConfig.welcome.root(), {replace: true});
     }
   }, [isSignedIn, navigate, config.brand.product_name, location.pathname]);
 

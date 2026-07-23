@@ -340,8 +340,9 @@ func (h *httpRequestExecutor) enrichOURuntimeData(ctx *providers.NodeContext, co
 		if svcErr != nil {
 			h.logger.Warn(ctx.Context, "Failed to fetch entity reference for OU enrichment",
 				log.String("error", svcErr.ErrorDescription.DefaultValue))
+		} else if entityRef != nil {
+			ouID = entityRef.EntityID
 		}
-		ouID = entityRef.EntityID
 	}
 	if ouID == "" {
 		return

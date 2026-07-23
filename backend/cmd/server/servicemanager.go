@@ -43,7 +43,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/openid4vp"
 	"github.com/thunder-id/thunderid/internal/authn/otp"
 	"github.com/thunder-id/thunderid/internal/authn/passkey"
+	"github.com/thunder-id/thunderid/internal/authnprovider/defaultprovider"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/authnprovider/restprovider"
 	"github.com/thunder-id/thunderid/internal/authz"
 	"github.com/thunder-id/thunderid/internal/authzen"
 	"github.com/thunder-id/thunderid/internal/cert"
@@ -114,6 +116,9 @@ var observabilitySvc observability.ObservabilityServiceInterface
 // registerServices registers all the services with the provided HTTP multiplexer.
 // It also returns the import service so the bootstrap subcommand can create default
 // resources in-process through the same service instances.
+// nolint:gocyclo // This is the main service registration function, so its length is expected to be proportional
+// to the number of services. Eventhough it has many branching statements, almost all are early exits so cognitive
+// complexity is low.
 func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterface) (
 	jwt.JWTServiceInterface, kmprovider.RuntimeCryptoProvider, importer.ImportServiceInterface) {
 	logger := log.GetLogger()
@@ -212,7 +217,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	ouService.SetOURoleResolver(ouRoleResolver)
 
 	authZService := authz.Initialize(roleService)
-	authzen.Initialize(mux, authZService, entityProvider, resourceService)
 
 	idpService, err := idp.Initialize(cacheManager, entityTypeService)
 	fatalOnError(ctx, logger, err, "Failed to initialize IDPService")
@@ -251,30 +255,49 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		providers.IDPTypeGitHub: githubAuthnService,
 	}
 
-	// Shared DPoP verifier (and its JTI replay cache) so OAuth and OpenID4VCI
-	// share JTI replay protection.
-	oauthCfg := oauthconfig.FromServerRuntime()
-	dpopVerifier := dpop.Initialize(oauthCfg, jti.Initialize(oauthCfg))
-
 	runtimeStoreProvider, transactioner, err := runtimestore.Initialize(runtime.Config.Database.RuntimeTransient.Type,
 		runtime.Config.Server.Identifier)
 	fatalOnError(ctx, logger, err, "Failed to initialize runtime store")
+
+	// Shared DPoP verifier (and its JTI replay cache) so OAuth and OpenID4VCI
+	// share JTI replay protection.
+	oauthCfg := oauthconfig.FromServerRuntime()
+	dpopVerifier := dpop.Initialize(oauthCfg, jti.Initialize(runtimeStoreProvider))
 
 	openid4vpSvc, openid4vpDefSvc, openid4vciCredSvc, exporters :=
 		initializeVCServices(ctx, logger, mux, runtimeCryptoSvc, configCryptoSvc, jwtService, userService,
 			ouService, dpopVerifier, runtimeStoreProvider, exporters)
 
-	// Initialize authn provider
-	authnProvider := authnprovidermgr.InitializeAuthnProviderManager(entityService, passkeyService, otpCoreService,
-		magicLinkService, openid4vpSvc, federatedAuths)
+	defaultProvider := defaultprovider.Initialize(entityService, passkeyService,
+		otpCoreService, magicLinkService, openid4vpSvc, federatedAuths)
+
+	customProviders := map[string]authnprovidermgr.AuthnProvider{}
+	restCfg := runtime.Config.AuthnProvider.Rest
+	if restCfg.Enabled {
+		restProvider, err := restprovider.Initialize(restCfg)
+		fatalOnError(ctx, logger, err, "Failed to initialize REST authn provider")
+		customProviders[restprovider.Name] = authnprovidermgr.AuthnProvider{
+			Instance: restProvider,
+			Creds:    restCfg.CredentialTypes,
+		}
+	}
+	authnProvider, err := authnprovidermgr.Initialize(defaultProvider, customProviders)
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize authn provider manager", log.Error(err))
+	}
 
 	// Initialize authentication services.
 	authAssertGen := authnAssert.Initialize()
 	consentEnforcer := authnConsent.Initialize(jwtService)
 
-	authn.Initialize(mux, mcpServer, idpService, jwtService, authnProvider, authAssertGen, passkeyService,
-		otpCoreService, notifSenderSvc, templateService, magicLinkService, oauthAuthnService, oidcAuthnService,
-		googleAuthnService, githubAuthnService)
+	_, directAuthGuard := authn.Initialize(mux, mcpServer, idpService, jwtService, authnProvider, authAssertGen,
+		otpCoreService, notifSenderSvc, templateService, magicLinkService, oauthAuthnService,
+		oidcAuthnService, googleAuthnService, githubAuthnService,
+		runtime.Config.Server.SecurityConfig.DirectAuthSecret)
+
+	// AuthZEN access-evaluation endpoints are Direct API endpoints, so they reuse the Direct Auth
+	// guard created by the authn service.
+	authzen.Initialize(mux, authZService, entityProvider, resourceService, directAuthGuard)
 
 	attributeCacheService := attributecache.Initialize(runtimeStoreProvider)
 
@@ -306,7 +329,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			ConsentEnforcer:       consentEnforcer,
 			AuthnProvider:         authnProvider,
 			OTPService:            otpCoreService,
-			PasskeyService:        passkeyService,
 			MagicLinkService:      magicLinkService,
 			AuthZService:          authZService,
 			EntityTypeService:     entityTypeService,
@@ -429,12 +451,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	err = oauth.Initialize(mux, actorProvider, authnProvider, jwtService, jweService,
 		flowExecService, observabilitySvc, runtimeCryptoSvc, ouService, attributeCacheService, authZService,
 		resourceService, serverConfigService, i18nService, idpService, dpopVerifier,
-		runtimeStoreProvider, oauthCfg)
+		runtimeStoreProvider, transactioner, oauthCfg)
 	fatalOnError(ctx, logger, err, "Failed to initialize OAuth services")
 
-	// Register OAuth2 DCR service.
-	err = dcr.Initialize(mux, applicationService, ouService, i18nService, oauthCfg)
-	fatalOnError(ctx, logger, err, "Failed to initialize OAuth2 DCR service")
+	if oauthCfg.OAuth.DCR.IsEnabled() {
+		// Register OAuth2 DCR service.
+		err = dcr.Initialize(mux, applicationService, ouService, i18nService, oauthCfg)
+		fatalOnError(ctx, logger, err, "Failed to initialize OAuth2 DCR service")
+	}
 
 	// Register the health service.
 	healthSvc := healthcheckservice.Initialize(dbprovider.GetDBProvider(), dbprovider.GetRedisProvider())

@@ -31,7 +31,7 @@ import type {JSX, ReactNode} from 'react';
 import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useSearchParams} from 'react-router';
-import ROUTES from '../../constants/routes';
+import RouteConfig from '../../configs/RouteConfig';
 
 export default function RecoveryBox(): JSX.Element {
   const {resolveAll} = useTemplateLiteralResolver();
@@ -45,8 +45,8 @@ export default function RecoveryBox(): JSX.Element {
   const base = import.meta.env.BASE_URL.replace(/\/$/, '');
   const applicationId = searchParams.get('applicationId');
   const signInUrl = applicationId
-    ? `${base}${ROUTES.AUTH.SIGN_IN}?applicationId=${applicationId}`
-    : `${base}${ROUTES.AUTH.SIGN_IN}`;
+    ? `${base}${RouteConfig.signIn()}?applicationId=${applicationId}`
+    : `${base}${RouteConfig.signIn()}`;
 
   return (
     <AuthCardLayout
@@ -139,7 +139,6 @@ export default function RecoveryBox(): JSX.Element {
                             action.eventType === EmbeddedFlowEventType.Trigger || action.eventType === 'TRIGGER';
                           void handleSubmit(action, inputs, isTrigger);
                         }}
-                        signInFallbackUrl={signInUrl}
                       />
                     ))}
                   </Box>

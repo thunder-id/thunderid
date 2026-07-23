@@ -713,6 +713,19 @@ describe('ApplicationCreatePage', () => {
     });
   });
 
+  describe('Default breadcrumbs', () => {
+    it('navigates to /applications when the default breadcrumb is clicked outside the welcome flow', async () => {
+      mockPathname = '/';
+      const {container} = renderWithProviders();
+
+      const breadcrumbItem = container.querySelector('nav [role="button"]');
+      expect(breadcrumbItem).toBeInTheDocument();
+      await user.click(breadcrumbItem!);
+
+      expect(mockNavigate).toHaveBeenCalledWith('/applications');
+    });
+  });
+
   describe('Close Functionality', () => {
     it('should navigate to applications list when close button is clicked', async () => {
       const {container} = renderWithProviders();

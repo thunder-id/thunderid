@@ -1482,11 +1482,11 @@ paths:
               schema:
                 modelProvider:
                   type: "string"
-                  required: true
+                  required: false
                   enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
                 model:
                   type: "string"
-                  required: true
+                  required: false
                 function:
                   type: "string"
                   required: false
@@ -1508,11 +1508,11 @@ paths:
                 schema:
                   modelProvider:
                     type: "string"
-                    required: true
+                    required: false
                     enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
                   model:
                     type: "string"
-                    required: true
+                    required: false
                   function:
                     type: "string"
                     required: false
@@ -1608,11 +1608,11 @@ paths:
                 schema:
                   modelProvider:
                     type: "string"
-                    required: true
+                    required: false
                     enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
                   model:
                     type: "string"
-                    required: true
+                    required: false
                   function:
                     type: "string"
                     required: false
@@ -1669,11 +1669,11 @@ paths:
               schema:
                 modelProvider:
                   type: "string"
-                  required: true
+                  required: false
                   enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
                 model:
                   type: "string"
-                  required: true
+                  required: false
                 function:
                   type: "string"
                   required: false
@@ -2372,6 +2372,15 @@ components:
           description: >
             Configuration applied when the access token's subject is the agent itself, issued
             only via the client_credentials grant.
+        defaultAudience:
+          type: string
+          maxLength: 2048
+          description: >
+            The aud claim for access tokens that are not bound to a resource server, that is,
+            OIDC-only or scopeless requests. Falls back to the client_id when empty. A request
+            that targets a resource server (via the resource parameter or API scopes) uses that
+            resource server as the audience instead.
+          example: https://api.example.com
 
     AccessTokenSubConfig:
       type: object
@@ -2793,11 +2802,11 @@ components:
           example:
             modelProvider:
               type: "string"
-              required: true
+              required: false
               enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
             model:
               type: "string"
-              required: true
+              required: false
             function:
               type: "string"
               required: false

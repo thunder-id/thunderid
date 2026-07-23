@@ -33,7 +33,7 @@ const mockUseColorScheme = vi.hoisted(() =>
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, fallback?: string) => fallback ?? key,
   }),
 }));
 
@@ -49,24 +49,6 @@ vi.mock('@wso2/oxygen-ui', async () => {
 // Mock resolveStaticResourcePath
 vi.mock('@/features/flows/utils/resolveStaticResourcePath', () => ({
   default: (path: string) => `/static/${path}`,
-}));
-
-// Mock GoogleExecution
-vi.mock('../GoogleExecution', () => ({
-  default: ({resource}: {resource: Step}) => (
-    <div data-testid="google-execution" data-resource-id={resource?.id}>
-      GoogleExecution
-    </div>
-  ),
-}));
-
-// Mock GithubExecution
-vi.mock('../GithubExecution', () => ({
-  default: ({resource}: {resource: Step}) => (
-    <div data-testid="github-execution" data-resource-id={resource?.id}>
-      GithubExecution
-    </div>
-  ),
 }));
 
 // Create mock resource
@@ -101,79 +83,7 @@ describe('ExecutionFactory', () => {
     });
   });
 
-  describe('Google Federation', () => {
-    it('should render GoogleExecution for GoogleOIDCAuthExecutor', () => {
-      const resource = createMockResource({
-        data: {
-          action: {
-            executor: {
-              name: ExecutionTypes.GoogleFederation,
-            },
-          },
-        },
-      });
-      render(<ExecutionFactory resource={resource} />);
-
-      expect(screen.getByTestId('google-execution')).toBeInTheDocument();
-      expect(screen.queryByTestId('github-execution')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('sms-otp-execution')).not.toBeInTheDocument();
-    });
-
-    it('should pass resource to GoogleExecution', () => {
-      const resource = createMockResource({
-        id: 'google-resource-1',
-        data: {
-          action: {
-            executor: {
-              name: ExecutionTypes.GoogleFederation,
-            },
-          },
-        },
-      });
-      render(<ExecutionFactory resource={resource} />);
-
-      const googleExecution = screen.getByTestId('google-execution');
-      expect(googleExecution).toHaveAttribute('data-resource-id', 'google-resource-1');
-    });
-  });
-
-  describe('GitHub Federation', () => {
-    it('should render GithubExecution for GithubOAuthExecutor', () => {
-      const resource = createMockResource({
-        data: {
-          action: {
-            executor: {
-              name: ExecutionTypes.GithubFederation,
-            },
-          },
-        },
-      });
-      render(<ExecutionFactory resource={resource} />);
-
-      expect(screen.getByTestId('github-execution')).toBeInTheDocument();
-      expect(screen.queryByTestId('google-execution')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('sms-otp-execution')).not.toBeInTheDocument();
-    });
-
-    it('should pass resource to GithubExecution', () => {
-      const resource = createMockResource({
-        id: 'github-resource-1',
-        data: {
-          action: {
-            executor: {
-              name: ExecutionTypes.GithubFederation,
-            },
-          },
-        },
-      });
-      render(<ExecutionFactory resource={resource} />);
-
-      const githubExecution = screen.getByTestId('github-execution');
-      expect(githubExecution).toHaveAttribute('data-resource-id', 'github-resource-1');
-    });
-  });
-
-  describe('Generic Executor with Display Image', () => {
+  describe('Display Metadata Rendering', () => {
     it('should render image and label for executors with display.image', () => {
       const resource = createMockResource({
         display: {
@@ -193,11 +103,97 @@ describe('ExecutionFactory', () => {
 
       const img = screen.getByRole('img');
       expect(img).toHaveAttribute('src', '/static/assets/images/icons/custom.svg');
-      expect(img).toHaveAttribute('alt', 'Custom Executor-icon');
+      expect(img).toHaveAttribute('alt', 'Custom Executor');
       expect(screen.getByText('Custom Executor')).toBeInTheDocument();
     });
 
-    it('should render the description inside the node body when provided', () => {
+    it('should render Google federation from its display metadata like any other executor', () => {
+      const resource = createMockResource({
+        display: {
+          label: 'Google',
+          image: 'assets/images/icons/google.svg',
+          preserveImageColor: true,
+          showOnResourcePanel: true,
+        },
+        data: {
+          action: {
+            executor: {
+              name: ExecutionTypes.GoogleFederation,
+            },
+          },
+        },
+      });
+      render(<ExecutionFactory resource={resource} />);
+
+      expect(screen.getByRole('img')).toHaveAttribute('src', '/static/assets/images/icons/google.svg');
+      expect(screen.getByText('Google')).toBeInTheDocument();
+    });
+
+    it('should render GitHub federation from its display metadata like any other executor', () => {
+      const resource = createMockResource({
+        display: {
+          label: 'GitHub',
+          image: 'assets/images/icons/github.svg',
+          showOnResourcePanel: true,
+        },
+        data: {
+          action: {
+            executor: {
+              name: ExecutionTypes.GithubFederation,
+            },
+          },
+        },
+      });
+      render(<ExecutionFactory resource={resource} />);
+
+      expect(screen.getByRole('img')).toHaveAttribute('src', '/static/assets/images/icons/github.svg');
+      expect(screen.getByText('GitHub')).toBeInTheDocument();
+    });
+
+    it('should render icon-library names in display.image the same way as the resource panel', () => {
+      const resource = createMockResource({
+        display: {
+          label: 'Widget Executor',
+          image: 'UserPlus',
+          showOnResourcePanel: true,
+        },
+        data: {
+          action: {
+            executor: {
+              name: 'WidgetExecutor',
+            },
+          },
+        },
+      });
+      const {container} = render(<ExecutionFactory resource={resource} />);
+
+      expect(container.querySelector('svg')).toBeInTheDocument();
+      expect(screen.getByText('Widget Executor')).toBeInTheDocument();
+    });
+
+    it('should use the fallback label when displayLabel is undefined', () => {
+      const resource = createMockResource({
+        display: {
+          label: undefined as unknown as string,
+          image: 'assets/images/icons/custom.svg',
+          showOnResourcePanel: true,
+        },
+        data: {
+          action: {
+            executor: {
+              name: 'CustomExecutor',
+            },
+          },
+        },
+      });
+      render(<ExecutionFactory resource={resource} />);
+
+      expect(screen.getByText('Executor')).toBeInTheDocument();
+    });
+  });
+
+  describe('Description', () => {
+    it('should not render the description text in the node body (shown as a header hint instead)', () => {
       const resource = createMockResource({
         display: {
           label: 'Check SSO Session',
@@ -215,129 +211,9 @@ describe('ExecutionFactory', () => {
       });
       render(<ExecutionFactory resource={resource} />);
 
-      expect(screen.getByText('Check SSO Session')).toBeInTheDocument();
       expect(
-        screen.getByText('Can the following authentication be skipped by reusing the existing session?'),
-      ).toBeInTheDocument();
-    });
-
-    it('should use default alt text when displayLabel is undefined', () => {
-      const resource = createMockResource({
-        display: {
-          label: undefined as unknown as string,
-          image: 'assets/images/icons/custom.svg',
-          showOnResourcePanel: true,
-        },
-        data: {
-          action: {
-            executor: {
-              name: 'CustomExecutor',
-            },
-          },
-        },
-      });
-      render(<ExecutionFactory resource={resource} />);
-
-      const img = screen.getByRole('img');
-      expect(img).toHaveAttribute('alt', 'executor-icon');
-    });
-
-    it('should use translation key for default label when displayLabel is undefined', () => {
-      const resource = createMockResource({
-        display: {
-          label: undefined as unknown as string,
-          image: 'assets/images/icons/custom.svg',
-          showOnResourcePanel: true,
-        },
-        data: {
-          action: {
-            executor: {
-              name: 'CustomExecutor',
-            },
-          },
-        },
-      });
-      render(<ExecutionFactory resource={resource} />);
-
-      expect(screen.getByText('flows:core.executions.names.default')).toBeInTheDocument();
-    });
-
-    it('should apply dark mode filter when in dark mode', () => {
-      mockUseColorScheme.mockReturnValue({
-        mode: 'dark',
-        systemMode: 'dark',
-      });
-
-      const resource = createMockResource({
-        display: {
-          label: 'Dark Mode Executor',
-          image: 'assets/images/icons/custom.svg',
-          showOnResourcePanel: true,
-        },
-        data: {
-          action: {
-            executor: {
-              name: 'DarkModeExecutor',
-            },
-          },
-        },
-      });
-      render(<ExecutionFactory resource={resource} />);
-
-      const img = screen.getByRole('img');
-      expect(img).toHaveStyle({filter: 'brightness(0.9) invert(1)'});
-    });
-
-    it('should not apply filter in light mode', () => {
-      mockUseColorScheme.mockReturnValue({
-        mode: 'light',
-        systemMode: 'light',
-      });
-
-      const resource = createMockResource({
-        display: {
-          label: 'Light Mode Executor',
-          image: 'assets/images/icons/custom.svg',
-          showOnResourcePanel: true,
-        },
-        data: {
-          action: {
-            executor: {
-              name: 'LightModeExecutor',
-            },
-          },
-        },
-      });
-      render(<ExecutionFactory resource={resource} />);
-
-      const img = screen.getByRole('img');
-      expect(img).toHaveStyle({filter: 'none'});
-    });
-
-    it('should use systemMode when mode is set to system', () => {
-      mockUseColorScheme.mockReturnValue({
-        mode: 'system',
-        systemMode: 'dark',
-      });
-
-      const resource = createMockResource({
-        display: {
-          label: 'System Mode Executor',
-          image: 'assets/images/icons/custom.svg',
-          showOnResourcePanel: true,
-        },
-        data: {
-          action: {
-            executor: {
-              name: 'SystemModeExecutor',
-            },
-          },
-        },
-      });
-      render(<ExecutionFactory resource={resource} />);
-
-      const img = screen.getByRole('img');
-      expect(img).toHaveStyle({filter: 'brightness(0.9) invert(1)'});
+        screen.queryByText('Can the following authentication be skipped by reusing the existing session?'),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -363,23 +239,7 @@ describe('ExecutionFactory', () => {
       expect(screen.queryByRole('img')).not.toBeInTheDocument();
     });
 
-    it('should use translation key for default label when displayLabel is not provided and no image', () => {
-      const resource = createMockResource({
-        display: undefined,
-        data: {
-          action: {
-            executor: {
-              name: 'FallbackExecutor',
-            },
-          },
-        },
-      });
-      render(<ExecutionFactory resource={resource} />);
-
-      expect(screen.getByText('flows:core.executions.names.default')).toBeInTheDocument();
-    });
-
-    it('should render fallback when display is completely undefined', () => {
+    it('should use the fallback label when display is completely undefined', () => {
       const resource = createMockResource({
         display: undefined,
         data: {
@@ -392,7 +252,7 @@ describe('ExecutionFactory', () => {
       });
       render(<ExecutionFactory resource={resource} />);
 
-      expect(screen.getByText('flows:core.executions.names.default')).toBeInTheDocument();
+      expect(screen.getByText('Executor')).toBeInTheDocument();
     });
   });
 
@@ -404,8 +264,7 @@ describe('ExecutionFactory', () => {
       });
       render(<ExecutionFactory resource={resource} />);
 
-      // Should render fallback
-      expect(screen.getByText('flows:core.executions.names.default')).toBeInTheDocument();
+      expect(screen.getByText('Executor')).toBeInTheDocument();
     });
 
     it('should handle undefined action', () => {
@@ -415,36 +274,7 @@ describe('ExecutionFactory', () => {
       });
       render(<ExecutionFactory resource={resource} />);
 
-      // Should render fallback
-      expect(screen.getByText('flows:core.executions.names.default')).toBeInTheDocument();
-    });
-
-    it('should handle undefined executor', () => {
-      const resource = createMockResource({
-        display: undefined,
-        data: {
-          action: {},
-        },
-      });
-      render(<ExecutionFactory resource={resource} />);
-
-      // Should render fallback
-      expect(screen.getByText('flows:core.executions.names.default')).toBeInTheDocument();
-    });
-
-    it('should handle undefined executor name', () => {
-      const resource = createMockResource({
-        display: undefined,
-        data: {
-          action: {
-            executor: {},
-          },
-        },
-      });
-      render(<ExecutionFactory resource={resource} />);
-
-      // Should render fallback
-      expect(screen.getByText('flows:core.executions.names.default')).toBeInTheDocument();
+      expect(screen.getByText('Executor')).toBeInTheDocument();
     });
   });
 });

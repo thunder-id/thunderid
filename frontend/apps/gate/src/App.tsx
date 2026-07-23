@@ -20,7 +20,7 @@ import {PageLoader} from '@thunderid/components';
 import {CallbackRoute} from '@thunderid/react-router';
 import {lazy, Suspense, type JSX} from 'react';
 import {BrowserRouter, Navigate, Route, Routes} from 'react-router';
-import ROUTES from './constants/routes';
+import RouteConfig from './configs/RouteConfig';
 import DefaultLayout from './layouts/DefaultLayout';
 
 const AcceptInvitePage = lazy(() => import('./pages/AcceptInvitePage'));
@@ -35,15 +35,15 @@ export default function App(): JSX.Element {
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          <Route path={ROUTES.ROOT} element={<DefaultLayout />}>
-            <Route path={ROUTES.ROOT} element={<Navigate to={ROUTES.AUTH.SIGN_IN} replace />} />
-            <Route path={ROUTES.AUTH.SIGN_IN} element={<SignInPage />} />
-            <Route path={ROUTES.AUTH.SIGN_UP} element={<SignUpPage />} />
-            <Route path={ROUTES.AUTH.INVITE} element={<AcceptInvitePage />} />
-            <Route path={ROUTES.AUTH.RECOVERY} element={<RecoveryPage />} />
-            <Route path={ROUTES.AUTH.SIGNOUT} element={<SignOutPage />} />
-            <Route path={ROUTES.AUTH.CALLBACK} element={<CallbackRoute />} />
-            <Route path={ROUTES.AUTH.ERROR} element={<ErrorPage />} />
+          <Route path={RouteConfig.root()} element={<DefaultLayout />}>
+            <Route path={RouteConfig.root()} element={<Navigate to={RouteConfig.signIn()} replace />} />
+            <Route path={RouteConfig.signIn()} element={<SignInPage />} />
+            <Route path={RouteConfig.signUp()} element={<SignUpPage />} />
+            <Route path={RouteConfig.invite()} element={<AcceptInvitePage />} />
+            <Route path={RouteConfig.recovery()} element={<RecoveryPage />} />
+            <Route path={RouteConfig.signout()} element={<SignOutPage />} />
+            <Route path={RouteConfig.callback()} element={<CallbackRoute />} />
+            <Route path={RouteConfig.error()} element={<ErrorPage />} />
           </Route>
         </Routes>
       </Suspense>

@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -134,8 +135,9 @@ func (as *authorizeService) GetAuthorizationCodeDetails(
 // Returns the query params needed to redirect to the login page, or a structured authorization error.
 func (as *authorizeService) HandleInitialAuthorizationRequest(ctx context.Context, msg *OAuthMessage) (
 	*AuthorizationInitResult, *AuthorizationError) {
-	clientID := msg.RequestQueryParams[oauth2const.RequestParamClientID]
-	requestURI := msg.RequestQueryParams[oauth2const.RequestParamRequestURI]
+	queryParams := url.Values(msg.RequestQueryParams)
+	clientID := queryParams.Get(oauth2const.RequestParamClientID)
+	requestURI := queryParams.Get(oauth2const.RequestParamRequestURI)
 
 	if clientID == "" {
 		return nil, &AuthorizationError{
@@ -161,9 +163,14 @@ func (as *authorizeService) HandleInitialAuthorizationRequest(ctx context.Contex
 		}
 	}
 
+	initiatorReq := &providers.InitiatorRequest{
+		Headers:     utils.FilterSensitiveHeaders(msg.RequestHeaders),
+		QueryParams: msg.RequestQueryParams,
+	}
+
 	// If request_uri is present, resolve the pushed authorization request.
 	if requestURI != "" {
-		return as.handlePARAuthorizationRequest(ctx, requestURI, clientID, app)
+		return as.handlePARAuthorizationRequest(ctx, requestURI, clientID, app, initiatorReq)
 	}
 
 	// Enforce PAR requirement: if PAR is required (per-client or global), reject requests without request_uri.
@@ -174,13 +181,14 @@ func (as *authorizeService) HandleInitialAuthorizationRequest(ctx context.Contex
 		}
 	}
 
-	return as.handleStandardAuthorizationRequest(ctx, msg, app)
+	return as.handleStandardAuthorizationRequest(ctx, msg, app, initiatorReq)
 }
 
 // handlePARAuthorizationRequest resolves a request_uri from a PAR and continues the authorization flow.
 func (as *authorizeService) handlePARAuthorizationRequest(
-	ctx context.Context, requestURI string, clientID string, app *providers.OAuthClient,
-) (*AuthorizationInitResult, *AuthorizationError) {
+	ctx context.Context, requestURI string, clientID string,
+	app *providers.OAuthClient, initiatorReq *providers.InitiatorRequest) (
+	*AuthorizationInitResult, *AuthorizationError) {
 	oauthParams, err := as.parService.ResolvePushedAuthorizationRequest(ctx, requestURI, clientID)
 	if err != nil {
 		as.logger.Debug(ctx, "Failed to resolve PAR request", log.Error(err))
@@ -196,22 +204,25 @@ func (as *authorizeService) handlePARAuthorizationRequest(
 		}
 	}
 
-	return as.initiateFlowAndStoreRequest(ctx, oauthParams, app)
+	return as.initiateFlowAndStoreRequest(ctx, oauthParams, app, initiatorReq)
 }
 
 // handleStandardAuthorizationRequest processes a standard authorization request (without PAR).
 func (as *authorizeService) handleStandardAuthorizationRequest(
 	ctx context.Context, msg *OAuthMessage, app *providers.OAuthClient,
+	initiatorReq *providers.InitiatorRequest,
 ) (*AuthorizationInitResult, *AuthorizationError) {
+	queryParams := url.Values(msg.RequestQueryParams)
+
 	// Extract required parameters.
-	redirectURI := msg.RequestQueryParams[oauth2const.RequestParamRedirectURI]
-	scope := msg.RequestQueryParams[oauth2const.RequestParamScope]
-	state := msg.RequestQueryParams[oauth2const.RequestParamState]
-	responseType := msg.RequestQueryParams[oauth2const.RequestParamResponseType]
+	redirectURI := queryParams.Get(oauth2const.RequestParamRedirectURI)
+	scope := queryParams.Get(oauth2const.RequestParamScope)
+	state := queryParams.Get(oauth2const.RequestParamState)
+	responseType := queryParams.Get(oauth2const.RequestParamResponseType)
 
 	// Extract PKCE parameters.
-	codeChallenge := msg.RequestQueryParams[oauth2const.RequestParamCodeChallenge]
-	codeChallengeMethod := msg.RequestQueryParams[oauth2const.RequestParamCodeChallengeMethod]
+	codeChallenge := queryParams.Get(oauth2const.RequestParamCodeChallenge)
+	codeChallengeMethod := queryParams.Get(oauth2const.RequestParamCodeChallengeMethod)
 
 	resources := msg.Resources
 	// A token is bound to exactly one resource server, so an authorization request may target at
@@ -224,16 +235,16 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 	}
 
 	// Extract claims parameter.
-	claimsParam := msg.RequestQueryParams[oauth2const.RequestParamClaims]
+	claimsParam := queryParams.Get(oauth2const.RequestParamClaims)
 
 	// Extract claims_locales parameter.
-	claimsLocales := msg.RequestQueryParams[oauth2const.RequestParamClaimsLocales]
+	claimsLocales := queryParams.Get(oauth2const.RequestParamClaimsLocales)
 
-	nonce := msg.RequestQueryParams[oauth2const.RequestParamNonce]
-	acrValues := msg.RequestQueryParams[oauth2const.RequestParamAcrValues]
-	maxAge := msg.RequestQueryParams[oauth2const.RequestParamMaxAge]
-	dpopJkt := msg.RequestQueryParams[oauth2const.RequestParamDPoPJkt]
-	prompt := msg.RequestQueryParams[oauth2const.RequestParamPrompt]
+	nonce := queryParams.Get(oauth2const.RequestParamNonce)
+	acrValues := queryParams.Get(oauth2const.RequestParamAcrValues)
+	maxAge := queryParams.Get(oauth2const.RequestParamMaxAge)
+	dpopJkt := queryParams.Get(oauth2const.RequestParamDPoPJkt)
+	prompt := queryParams.Get(oauth2const.RequestParamPrompt)
 
 	// Parse the claims parameter if present.
 	var claimsRequest *oauth2model.ClaimsRequest
@@ -317,13 +328,14 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 		oauthParams.RedirectURI = app.RedirectURIs[0]
 	}
 
-	return as.initiateFlowAndStoreRequest(ctx, oauthParams, app)
+	return as.initiateFlowAndStoreRequest(ctx, oauthParams, app, initiatorReq)
 }
 
 // initiateFlowAndStoreRequest initiates the authentication flow and stores the authorization request context.
 // This is the common path shared by both standard and PAR-based authorization requests.
 func (as *authorizeService) initiateFlowAndStoreRequest(
-	ctx context.Context, oauthParams *oauth2model.OAuthParameters, app *providers.OAuthClient,
+	ctx context.Context, oauthParams *oauth2model.OAuthParameters,
+	app *providers.OAuthClient, initiatorReq *providers.InitiatorRequest,
 ) (*AuthorizationInitResult, *AuthorizationError) {
 	effectiveAcrValues := requestvalidator.ResolveACRValues(oauthParams.AcrValues, app.AcrValues)
 	essentialAttributes, optionalAttributes := getRequiredAttributes(
@@ -366,9 +378,10 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 		runtimeData[flowcm.RuntimeKeyMaxAge] = oauthParams.MaxAge
 	}
 	flowInitCtx := &flowexec.FlowInitContext{
-		ApplicationID: app.ID,
-		FlowType:      string(providers.FlowTypeAuthentication),
-		RuntimeData:   runtimeData,
+		ApplicationID:    app.ID,
+		FlowType:         string(providers.FlowTypeAuthentication),
+		RuntimeData:      runtimeData,
+		InitiatorRequest: initiatorReq,
 	}
 
 	executionID, flowErr := as.flowExecService.InitiateFlow(ctx, flowInitCtx)

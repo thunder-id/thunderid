@@ -18,33 +18,13 @@
 package setup
 
 import (
-	"io"
-	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func captureStdout(t *testing.T, fn func()) string {
-	t.Helper()
-	orig := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("failed to create pipe: %v", err)
-	}
-	os.Stdout = w
-	fn()
-	_ = w.Close()
-	os.Stdout = orig
-
-	out, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatalf("failed to read captured stdout: %v", err)
-	}
-	return string(out)
-}
-
-func TestPrintAdminCredentials_PrintsBlock(t *testing.T) {
+func TestParseAdminCredentials_ParsesBlock(t *testing.T) {
 	output := "some noise\n" +
 		"Admin credentials:\n" +
 		"  Username: admin\n" +
@@ -53,18 +33,14 @@ func TestPrintAdminCredentials_PrintsBlock(t *testing.T) {
 		"\n" +
 		"trailing noise\n"
 
-	captured := captureStdout(t, func() {
-		printAdminCredentials(output)
-	})
+	creds := parseAdminCredentials(output)
 
-	assert.Contains(t, captured, "Admin credentials:")
-	assert.Contains(t, captured, "Username: admin")
-	assert.Contains(t, captured, "Password: abc123")
-	assert.NotContains(t, captured, "trailing noise")
-	assert.NotContains(t, captured, "some noise")
+	assert.NotNil(t, creds)
+	assert.Equal(t, "admin", creds.Username)
+	assert.Equal(t, "abc123", creds.Password)
 }
 
-func TestPrintAdminCredentials_CRLFPrintsBlock(t *testing.T) {
+func TestParseAdminCredentials_CRLF(t *testing.T) {
 	output := "some noise\r\n" +
 		"Admin credentials:\r\n" +
 		"  Username: admin\r\n" +
@@ -73,21 +49,24 @@ func TestPrintAdminCredentials_CRLFPrintsBlock(t *testing.T) {
 		"\r\n" +
 		"trailing noise\r\n"
 
-	captured := captureStdout(t, func() {
-		printAdminCredentials(output)
-	})
+	creds := parseAdminCredentials(output)
 
-	assert.Contains(t, captured, "Admin credentials:")
-	assert.Contains(t, captured, "Username: admin")
-	assert.Contains(t, captured, "Password: abc123")
-	assert.NotContains(t, captured, "trailing noise")
-	assert.NotContains(t, captured, "some noise")
+	assert.NotNil(t, creds)
+	assert.Equal(t, "admin", creds.Username)
+	assert.Equal(t, "abc123", creds.Password)
 }
 
-func TestPrintAdminCredentials_NoBlockPrintsNothing(t *testing.T) {
-	captured := captureStdout(t, func() {
-		printAdminCredentials("no credentials here at all")
-	})
+func TestParseAdminCredentials_NoBlockReturnsNil(t *testing.T) {
+	assert.Nil(t, parseAdminCredentials("no credentials here at all"))
+}
 
-	assert.Empty(t, captured)
+func TestGenerateAdminPassword(t *testing.T) {
+	const special = "@#%+=_.?-"
+	for i := 0; i < 100; i++ {
+		pw := GenerateAdminPassword()
+		assert.Len(t, pw, 12)
+		assert.True(t, strings.ContainsAny(pw, "0123456789"), "must contain a digit: %q", pw)
+		assert.True(t, strings.ContainsAny(pw, special), "must contain a special char: %q", pw)
+	}
+	assert.NotEqual(t, GenerateAdminPassword(), GenerateAdminPassword())
 }

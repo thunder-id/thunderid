@@ -40,6 +40,7 @@ import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import useDeleteUserType from '../api/useDeleteUserType';
 import useGetUserTypes from '../api/useGetUserTypes';
+import useUserTypeRoutes from '../hooks/useUserTypeRoutes';
 import type {UserTypeListItem} from '../types/user-types';
 
 type GridColDef<R extends DataGrid.GridValidRowModel = DataGrid.GridValidRowModel> = DataGrid.GridColDef<R>;
@@ -50,6 +51,7 @@ export default function UserTypesList() {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('UserTypesList');
+  const routes = useUserTypeRoutes();
   const dataGridLocaleText = useDataGridLocaleText();
 
   const {data: userTypesData, isLoading, error: userTypesRequestError} = useGetUserTypes();
@@ -82,12 +84,12 @@ export default function UserTypesList() {
   const handleViewClick = useCallback(
     (userTypeId: string): void => {
       (async (): Promise<void> => {
-        await navigate(`/user-types/${userTypeId}`);
+        await navigate(routes.detail(userTypeId));
       })().catch((_error: unknown) => {
         logger.error('Failed to navigate to user type', {error: _error, userTypeId});
       });
     },
-    [logger, navigate],
+    [logger, navigate, routes],
   );
 
   const handleDeleteCancel = () => {

@@ -61,4 +61,17 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
     {{- end }}
   },
   {{- end }}
+  {{- if .Values.configuration.gateClient.hostname }}
+  // Location of the login gate, used to build the OAuth redirect URI shown when configuring
+  // social/OIDC connections. Omit to default to `${server public_url}/gate/callback`.
+  gate_client: {
+    hostname: {{ .Values.configuration.gateClient.hostname | quote }},
+    {{- if .Values.configuration.gateClient.port }}
+    port: {{ .Values.configuration.gateClient.port }},
+    {{- end }}
+    {{- if .Values.configuration.gateClient.scheme }}
+    scheme: {{ .Values.configuration.gateClient.scheme | quote }},
+    {{- end }}
+  },
+  {{- end }}
 };

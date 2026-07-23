@@ -17,10 +17,12 @@
  */
 
 import {BuilderStaticPanel} from '@thunderid/components';
-import {Box, Button, IconButton} from '@wso2/oxygen-ui';
+import {Box, IconButton} from '@wso2/oxygen-ui';
 import {X, TrashIcon} from '@wso2/oxygen-ui-icons-react';
 import {useReactFlow} from '@xyflow/react';
 import {memo, useCallback, type ReactElement} from 'react';
+import {useTranslation} from 'react-i18next';
+import PanelActionButton from './PanelActionButton';
 import ResourceProperties from './ResourceProperties';
 import useInteractionState from '../../hooks/useInteractionState';
 import useUIPanelState from '../../hooks/useUIPanelState';
@@ -43,6 +45,7 @@ export interface ResourcePropertyPanelPropsInterface {
  */
 function ResourcePropertyPanel({open = false, onComponentDelete}: ResourcePropertyPanelPropsInterface): ReactElement {
   const {deleteElements} = useReactFlow();
+  const {t} = useTranslation();
 
   const {resourcePropertiesPanelHeading, setIsOpenResourcePropertiesPanel} = useUIPanelState();
   const {lastInteractedStepId, lastInteractedResource} = useInteractionState();
@@ -108,10 +111,10 @@ function ResourcePropertyPanel({open = false, onComponentDelete}: ResourceProper
         <ResourceProperties />
       </Box>
       {lastInteractedResource && lastInteractedResource.deletable !== false && (
-        <Box display="flex" justifyContent="flex-end" alignItems="right" flexShrink={0}>
-          <Button variant="outlined" onClick={handleDelete} color="error" startIcon={<TrashIcon size={16} />} fullWidth>
-            Delete Element
-          </Button>
+        <Box flexShrink={0}>
+          <PanelActionButton accent="error" onClick={handleDelete} startIcon={<TrashIcon size={16} />}>
+            {t('flows:core.propertiesPanel.delete', 'Delete')}
+          </PanelActionButton>
         </Box>
       )}
     </BuilderStaticPanel>

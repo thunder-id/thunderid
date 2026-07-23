@@ -1,0 +1,116 @@
+---
+title: "DPoP: Sender-Constrained Tokens"
+docType: reference
+sidebar_position: 3
+description: RFC 9449 Demonstrating Proof-of-Possession in {{ProductName}}, to bind access and refresh tokens to a client-held key so stolen tokens are useless without the key.
+---
+import { DPoPDiagram } from '../../../../src/components/OAuthFlowDiagrams';
+
+# DPoP: Sender-Constrained Tokens
+
+**Demonstrating Proof-of-Possession at the Application Layer** ([RFC 9449](https://datatracker.ietf.org/doc/html/rfc9449)) (DPoP) binds an access token to a public key held by the client. <ProductName /> embeds a thumbprint of the client's key in the token's `cnf.jkt` claim. The resource server then requires every request to carry a fresh DPoP **proof JWT** signed with the matching private key. A token stolen in transit is useless without the private key.
+
+DPoP is an alternative to mutual TLS bound tokens (RFC 8705, not supported in <ProductName />) that works at the application layer without TLS client certificates.
+
+## How It Works
+
+<DPoPDiagram />
+
+The proof JWT is a one-time, short-lived JWT signed by the client. Each call to <ProductName /> or to a protected resource carries its own fresh proof.
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect | Behavior |
+|---|---|
+| Detection | A `DPoP` header on `/oauth2/token` switches the response `token_type` from `Bearer` to `DPoP` |
+| Token binding | The proof's public-key thumbprint (`jkt`) is embedded in the issued access token as `cnf.jkt` |
+| Refresh token binding | Refresh tokens issued under DPoP are **also** sender-constrained; refreshing requires a DPoP proof |
+| Supported signing algorithms | `RS256`, `RS512`, `PS256`, `ES256`, `ES384`, `ES512`, `EdDSA` (configurable via `oauth.dpop.allowed_algs`). Symmetric algorithms are rejected. |
+| Header type | The proof's JWT header must include `typ: dpop+jwt` |
+| Replay protection | JTI-based replay store; each `jti` accepted at most once within the configured window |
+| Where DPoP applies | `/oauth2/token`, `/oauth2/par`, and downstream resource servers that validate the proof |
+| Server-issued nonces | **Not implemented**: <ProductName /> does not issue `DPoP-Nonce` challenges today |
+
+### Required Proof Claims
+
+The client signs a JWT with this structure for every protected request:
+
+| Claim | Where | Value |
+|---|---|---|
+| `typ` (header) | JOSE header | `dpop+jwt` |
+| `alg` (header) | JOSE header | Asymmetric signing algorithm |
+| `jwk` (header) | JOSE header | The client's public key in JWK form |
+| `jti` | Payload | Unique value per proof |
+| `htm` | Payload | HTTP method of the request, e.g. `POST` |
+| `htu` | Payload | HTTP URI of the request, e.g. `https://api.example.com/payments` |
+| `iat` | Payload | Issued-at, within the server's freshness window |
+| `ath` | Payload | (Resource server calls only) Base64url SHA-256 of the access token |
+
+### What a Resource Server Validates
+
+| Check | What |
+|---|---|
+| Signature | Verify the proof's signature against `jwk` in its header |
+| Thumbprint | Compute the thumbprint (RFC 7638) of `jwk` and compare it to the access token's `cnf.jkt` |
+| `htm` / `htu` | Match the actual request method and URI |
+| `iat` | Within the freshness window |
+| `jti` | Not seen before |
+| `ath` | SHA-256 of the access token, when present |
+
+</details>
+
+## Try It in <ProductName />
+
+DPoP activates implicitly: send a `DPoP` header on the token request and the issued token will be DPoP-bound. No per-application opt-in is required: any client may use DPoP if it wants to.
+
+### Request a DPoP-Bound Token
+
+```bash
+# DPOP_PROOF is a JWT signed by the client, with htm=POST and htu pointing at the token endpoint
+curl -X POST https://{{productSlug}}.example.com/oauth2/token \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -H "DPoP: $DPOP_PROOF" \
+  -d "grant_type=authorization_code" \
+  -d "code=$CODE" \
+  -d "redirect_uri=https://app.example.com/callback" \
+  -d "code_verifier=$CODE_VERIFIER"
+```
+
+Response (DPoP token type, with `cnf.jkt` claim in the access token):
+
+```json
+{
+  "access_token": "eyJhbGciOi...",
+  "token_type": "DPoP",
+  "expires_in": 3600,
+  "refresh_token": "eyJhbGciOi...",
+  "scope": "openid profile"
+}
+```
+
+### Call a Protected Resource
+
+```bash
+# A fresh proof per request, with htm=GET and htu pointing at the resource
+curl -X GET https://api.example.com/payments \
+  -H "Authorization: DPoP $ACCESS_TOKEN" \
+  -H "DPoP: $DPOP_PROOF_FOR_THIS_CALL"
+```
+
+### Refresh a DPoP-Bound Token
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/oauth2/token \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -H "DPoP: $DPOP_PROOF" \
+  -d "grant_type=refresh_token" \
+  -d "refresh_token=$REFRESH_TOKEN"
+```
+
+## Related Guides
+
+- [Authorization Code](../authorization-code), initial token issuance
+- [Refresh Token](../refresh-token), DPoP binding is preserved on refresh
+- [Pushed Authorization Requests](../par), a DPoP proof at PAR time binds the resulting auth code
+- [Token Formats](../token-formats), the `cnf` claim in JWT access tokens
