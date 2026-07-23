@@ -30,6 +30,26 @@ type compiledAPIPermission struct {
 	permission string
 }
 
+// compiledPlaneRoute holds the pre-compiled regex form of a single planeRoute.
+type compiledPlaneRoute struct {
+	re    *regexp.Regexp
+	plane Plane
+}
+
+// compilePlaneRoutes compiles the management-route plane classification into regex form.
+// It returns an error if any pattern is invalid.
+func compilePlaneRoutes(routes []planeRoute) ([]compiledPlaneRoute, error) {
+	compiled := make([]compiledPlaneRoute, 0, len(routes))
+	for _, r := range routes {
+		re, err := compilePathPattern(r.pattern)
+		if err != nil {
+			return nil, err
+		}
+		compiled = append(compiled, compiledPlaneRoute{re: re, plane: r.plane})
+	}
+	return compiled, nil
+}
+
 // compilePathPattern compiles a single glob-style path pattern into a regular expression.
 // It returns an error if the pattern is invalid.
 //

@@ -125,9 +125,15 @@ type RedisConfig struct {
 
 // ServerConfig holds the server configuration details.
 type ServerConfig struct {
-	Hostname       string         `yaml:"hostname"   json:"hostname"`
-	Port           int            `yaml:"port"       json:"port"`
-	HTTPOnly       bool           `yaml:"http_only"  json:"http_only"`
+	Hostname string `yaml:"hostname"   json:"hostname"`
+	Port     int    `yaml:"port"       json:"port"`
+	HTTPOnly bool   `yaml:"http_only"  json:"http_only"`
+	// Mode selects which planes this instance serves: "hybrid" (default, both the control-plane
+	// configuration APIs and the data-plane runtime + identity APIs), "cp" (control plane only:
+	// configuration management such as applications, IdPs, flows, roles, groups, OUs), or "dp"
+	// (data plane only: runtime plus data-plane management such as users, agents, role assignment).
+	// It gates only the management HTTP surface; public runtime endpoints are always served.
+	Mode           string         `yaml:"mode"       json:"mode"`
 	PublicURL      string         `yaml:"public_url" json:"public_url"`
 	Identifier     string         `yaml:"identifier" json:"identifier"`
 	SecurityConfig SecurityConfig `yaml:"security"   json:"security"`
