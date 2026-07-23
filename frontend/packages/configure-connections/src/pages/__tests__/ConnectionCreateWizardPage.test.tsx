@@ -19,7 +19,7 @@
 import {fireEvent, render, screen} from '@thunderid/test-utils';
 import {useEffect} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import ConnectionCreateWizardPage, {type CustomConfigureStepProps} from '../ConnectionCreateWizardPage';
+import ConnectionCreateWizardPage from '../ConnectionCreateWizardPage';
 
 const mutateMock = vi.fn();
 const navigateMock = vi.fn();
@@ -30,7 +30,10 @@ vi.mock('react-router', async (importOriginal) => ({
 }));
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
-  useConfig: () => ({getGateCallbackUrl: () => 'https://id.acme.io/gate/callback'}),
+  useConfig: () => ({
+    getGateCallbackUrl: () => 'https://id.acme.io/gate/callback',
+    config: {brand: {product_name: 'ThunderID'}},
+  }),
   useToast: () => ({showToast: vi.fn()}),
 }));
 vi.mock('../../api/useCreateConnection', () => ({default: () => ({mutate: mutateMock, isPending: false})}));
@@ -47,6 +50,30 @@ vi.mock('../../components/ConnectionForm', () => ({
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     return <div data-testid="stub-connection-form" />;
+  },
+}));
+
+vi.mock('../../components/TrustedIssuerCreateForm', () => ({
+  default: function StubTrustedIssuerCreateForm({
+    name,
+    onNameConflict,
+    onBack,
+  }: {
+    name: string;
+    onNameConflict: () => void;
+    onBack: () => void;
+  }) {
+    return (
+      <div data-testid="custom-step">
+        {name}
+        <button type="button" data-testid="custom-step-conflict" onClick={onNameConflict}>
+          trigger conflict
+        </button>
+        <button type="button" data-testid="custom-step-back" onClick={onBack}>
+          back
+        </button>
+      </div>
+    );
   },
 }));
 
@@ -148,14 +175,8 @@ describe('ConnectionCreateWizardPage', () => {
     expect(screen.getByText('A connection with this name already exists.')).toBeInTheDocument();
   });
 
-  it('renders a custom configure step instead of the generic ConnectionForm for a type with a slot', () => {
-    render(
-      <ConnectionCreateWizardPage
-        customConfigureSteps={{
-          'trusted-idp': ({name}: CustomConfigureStepProps) => <div data-testid="custom-step">{name}</div>,
-        }}
-      />,
-    );
+  it('renders the baked-in trusted-idp step instead of the generic ConnectionForm', () => {
+    render(<ConnectionCreateWizardPage />);
 
     selectTypeAndName('connection-type-option-trusted-idp', 'My Trusted Issuer');
 
@@ -164,18 +185,8 @@ describe('ConnectionCreateWizardPage', () => {
     expect(screen.queryByTestId('wizard-create')).not.toBeInTheDocument();
   });
 
-  it('lets a custom configure step bounce back to the name step via onNameConflict', () => {
-    render(
-      <ConnectionCreateWizardPage
-        customConfigureSteps={{
-          'trusted-idp': ({onNameConflict}: CustomConfigureStepProps) => (
-            <button type="button" data-testid="custom-step-conflict" onClick={onNameConflict}>
-              trigger conflict
-            </button>
-          ),
-        }}
-      />,
-    );
+  it('lets the trusted-idp step bounce back to the name step via onNameConflict', () => {
+    render(<ConnectionCreateWizardPage />);
 
     selectTypeAndName('connection-type-option-trusted-idp');
     fireEvent.click(screen.getByTestId('custom-step-conflict'));
@@ -184,21 +195,17 @@ describe('ConnectionCreateWizardPage', () => {
     expect(screen.getByText('A connection with this name already exists.')).toBeInTheDocument();
   });
 
-  it('returns to the name step when Back is clicked from a custom configure step', () => {
-    render(
-      <ConnectionCreateWizardPage customConfigureSteps={{'trusted-idp': () => <div data-testid="custom-step" />}} />,
-    );
+  it('returns to the name step when Back is clicked from the trusted-idp step', () => {
+    render(<ConnectionCreateWizardPage />);
 
     selectTypeAndName('connection-type-option-trusted-idp');
-    fireEvent.click(screen.getByRole('button', {name: /back/i}));
+    fireEvent.click(screen.getByTestId('custom-step-back'));
 
     expect(screen.getByTestId('connection-name-step')).toBeInTheDocument();
   });
 
   it('renders the generic ConnectionForm for a type with no custom configure step', () => {
-    render(
-      <ConnectionCreateWizardPage customConfigureSteps={{'trusted-idp': () => <div data-testid="custom-step" />}} />,
-    );
+    render(<ConnectionCreateWizardPage />);
 
     selectTypeAndName('connection-type-option-oidc');
 
@@ -206,17 +213,8 @@ describe('ConnectionCreateWizardPage', () => {
     expect(screen.queryByTestId('custom-step')).not.toBeInTheDocument();
   });
 
-  it('shows three type cards and no trusted-idp card without customConfigureSteps', () => {
+  it('shows four type cards including trusted-idp', () => {
     render(<ConnectionCreateWizardPage />);
-
-    expect(screen.getAllByTestId(/^connection-type-option-/)).toHaveLength(3);
-    expect(screen.queryByTestId('connection-type-option-trusted-idp')).not.toBeInTheDocument();
-  });
-
-  it('shows four type cards including trusted-idp when its customConfigureSteps slot is wired', () => {
-    render(
-      <ConnectionCreateWizardPage customConfigureSteps={{'trusted-idp': () => <div data-testid="custom-step" />}} />,
-    );
 
     expect(screen.getAllByTestId(/^connection-type-option-/)).toHaveLength(4);
     expect(screen.getByTestId('connection-type-option-trusted-idp')).toBeInTheDocument();

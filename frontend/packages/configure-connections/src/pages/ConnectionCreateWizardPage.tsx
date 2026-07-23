@@ -19,7 +19,7 @@
 import {useConfig} from '@thunderid/contexts';
 import {AppBreadcrumbs, Box, Button, Paper, Stack, Typography} from '@wso2/oxygen-ui';
 import {ChevronLeft} from '@wso2/oxygen-ui-icons-react';
-import {type JSX, type ReactNode, useMemo, useState} from 'react';
+import {type JSX, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import useCreateConnection from '../api/useCreateConnection';
@@ -30,6 +30,7 @@ import ConnectionNameStep from '../components/create-connection/ConnectionNameSt
 import SelectConnectionType, {
   type SelectableConnectionType,
 } from '../components/create-connection/SelectConnectionType';
+import TrustedIssuerCreateForm from '../components/TrustedIssuerCreateForm';
 import {CONNECTION_FORM_FIELDS, fieldsForMode} from '../config/connectionFormFields';
 import {VENDOR_META_BY_TYPE} from '../config/connectionVendorMeta';
 import useConnectionRoutes from '../hooks/useConnectionRoutes';
@@ -46,33 +47,12 @@ const Step = {TYPE: 'TYPE', NAME: 'NAME', CONFIGURE: 'CONFIGURE'} as const;
 type Step = (typeof Step)[keyof typeof Step];
 const ALL_STEPS: Step[] = [Step.TYPE, Step.NAME, Step.CONFIGURE];
 
-/** Props passed to a custom configure step (see {@link ConnectionCreateWizardPageProps.customConfigureSteps}). */
-export interface CustomConfigureStepProps {
-  /** Connection name collected on the wizard's name step. */
-  name: string;
-  /** Call when the create request 409s on a duplicate name, to bounce back to the name step. */
-  onNameConflict: () => void;
-}
-
-interface ConnectionCreateWizardPageProps {
-  /**
-   * Renders a fully custom configure step (step 3) for the given selectable-type key instead of
-   * the generic `ConnectionForm` + create button — e.g. a UI-only pseudo-type like
-   * `'trusted-idp'` that has no backend /connections vendor route of its own. The supplied
-   * render function receives the name collected on the wizard's name step; the wizard still
-   * provides the chrome (breadcrumb, progress, Back, and the X close button).
-   */
-  customConfigureSteps?: Record<string, (props: CustomConfigureStepProps) => ReactNode>;
-}
-
 /**
  * Three-step full-screen wizard for adding a custom connection: pick the type, name it, then
- * enter the credentials/endpoints and create it. A type can opt out of the generic configure step
- * via `customConfigureSteps`.
+ * enter the credentials/endpoints and create it. The `'trusted-idp'` type renders the dedicated
+ * trusted-issuer form instead of the generic configure step.
  */
-export default function ConnectionCreateWizardPage({
-  customConfigureSteps = undefined,
-}: ConnectionCreateWizardPageProps): JSX.Element {
+export default function ConnectionCreateWizardPage(): JSX.Element {
   const {t} = useTranslation('connections');
   const navigate = useNavigate();
   const routes = useConnectionRoutes();
@@ -84,12 +64,11 @@ export default function ConnectionCreateWizardPage({
   const [editedValues, setEditedValues] = useState<ConnectionFormValues>({});
   const [nameError, setNameError] = useState<string | null>(null);
 
-  const customStepRenderer = selectedType ? customConfigureSteps?.[selectedType] : undefined;
-  const customTypes: string[] = useMemo(() => Object.keys(customConfigureSteps ?? {}), [customConfigureSteps]);
+  const isTrustedIdp: boolean = selectedType === 'trusted-idp';
 
   // Defaults to OIDC before the user picks a type on the first step; the SMS placeholder is
-  // disabled and unselectable, and pseudo-types render via `customStepRenderer` instead, so this
-  // is only read when rendering the generic configure step.
+  // disabled and unselectable, and the trusted-idp pseudo-type renders via TrustedIssuerCreateForm
+  // instead, so this is only read when rendering the generic configure step.
   const activeType: ConnectionType =
     selectedType && selectedType !== 'trusted-idp' ? selectedType : ConnectionTypes.OIDC;
   const createMutation = useCreateConnection(activeType);
@@ -148,7 +127,7 @@ export default function ConnectionCreateWizardPage({
     >
       {step === Step.TYPE && (
         <>
-          <SelectConnectionType selectedType={selectedType} onSelect={setSelectedType} customTypes={customTypes} />
+          <SelectConnectionType selectedType={selectedType} onSelect={setSelectedType} />
           <Box sx={{mt: 4, display: 'flex', justifyContent: 'flex-end'}}>
             <Button
               variant="contained"
@@ -188,19 +167,15 @@ export default function ConnectionCreateWizardPage({
         </Stack>
       )}
 
-      {step === Step.CONFIGURE && customStepRenderer && (
-        <Stack direction="column" spacing={3}>
-          {customStepRenderer({name: trimmedName, onNameConflict: bounceToNameStep})}
-
-          <Box sx={{display: 'flex', justifyContent: 'flex-start'}}>
-            <Button variant="outlined" startIcon={<ChevronLeft size={16} />} onClick={() => setStep(Step.NAME)}>
-              {t('common:actions.back')}
-            </Button>
-          </Box>
-        </Stack>
+      {step === Step.CONFIGURE && isTrustedIdp && (
+        <TrustedIssuerCreateForm
+          name={trimmedName}
+          onNameConflict={bounceToNameStep}
+          onBack={() => setStep(Step.NAME)}
+        />
       )}
 
-      {step === Step.CONFIGURE && !customStepRenderer && (
+      {step === Step.CONFIGURE && !isTrustedIdp && (
         <Stack direction="column" spacing={3}>
           <Stack direction="column" spacing={1}>
             <Typography variant="h1" gutterBottom>

@@ -16,7 +16,6 @@
  * under the License.
  */
 
-import {isConflictError} from '@thunderid/configure-connections';
 import {useConfig} from '@thunderid/contexts';
 import {
   Box,
@@ -32,11 +31,13 @@ import {
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
+import {ChevronLeft} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
-import RouteConfig from '../../../configs/RouteConfig';
 import useCreateTrustedIssuer from '../api/useCreateTrustedIssuer';
+import useConnectionRoutes from '../hooks/useConnectionRoutes';
+import isConflictError from '../utils/isConflictError';
 import validateTrustedIssuerForm, {
   type TrustedIssuerFieldErrorKind,
   type TrustedIssuerFormErrors,
@@ -47,20 +48,28 @@ interface TrustedIssuerCreateFormProps {
   name: string;
   /** Call when the create request 409s on a duplicate name, to bounce back to the name step. */
   onNameConflict: () => void;
+  /** Call when the wizard's Back button is pressed, to return to the name step. */
+  onBack: () => void;
 }
 
 /**
  * The trusted-issuer create form: fields, validation, and submission via
  * {@link useCreateTrustedIssuer}. On success, navigates to the created issuer's detail page.
  *
- * Has no back/cancel affordance of its own — callers (the "Add custom connection" wizard) provide
- * that chrome, and collect the connection name on a preceding step.
+ * Renders its own Back + submit footer so it lines up with the other "Add custom connection"
+ * wizard steps; the wizard supplies the surrounding chrome (breadcrumb, progress, close) and
+ * collects the connection name on a preceding step.
  */
-export default function TrustedIssuerCreateForm({name, onNameConflict}: TrustedIssuerCreateFormProps): JSX.Element {
+export default function TrustedIssuerCreateForm({
+  name,
+  onNameConflict,
+  onBack,
+}: TrustedIssuerCreateFormProps): JSX.Element {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const {config} = useConfig();
   const productName = config.brand.product_name;
+  const routes = useConnectionRoutes();
   const createTrustedIssuer = useCreateTrustedIssuer();
 
   const [issuer, setIssuer] = useState('');
@@ -102,7 +111,7 @@ export default function TrustedIssuerCreateForm({name, onNameConflict}: TrustedI
       },
       {
         onSuccess: (created) => {
-          void navigate(RouteConfig.trustedIssuers.detail(created.id));
+          void navigate(routes.trustedIssuers.detail(created.id));
         },
         onError: (error) => {
           if (isConflictError(error)) {
@@ -129,7 +138,7 @@ export default function TrustedIssuerCreateForm({name, onNameConflict}: TrustedI
 
       <Paper variant="outlined" sx={{p: 3}}>
         <Stack direction="column" spacing={3}>
-          <FormControl fullWidth required error={Boolean(touched.issuer && errors.issuer)}>
+          <FormControl fullWidth required error={Boolean(touched['issuer'] && errors.issuer)}>
             <FormLabel htmlFor="trusted-issuer-issuer">
               {t('trustedIssuers:create.form.issuer.label', 'Issuer URI')}
             </FormLabel>
@@ -138,9 +147,9 @@ export default function TrustedIssuerCreateForm({name, onNameConflict}: TrustedI
               fullWidth
               placeholder="https://idp.example.com"
               value={issuer}
-              error={Boolean(touched.issuer && errors.issuer)}
+              error={Boolean(touched['issuer'] && errors.issuer)}
               helperText={
-                touched.issuer
+                touched['issuer']
                   ? fieldErrorMessage(errors.issuer)
                   : t(
                       'trustedIssuers:create.form.issuer.hint',
@@ -152,7 +161,7 @@ export default function TrustedIssuerCreateForm({name, onNameConflict}: TrustedI
             />
           </FormControl>
 
-          <FormControl fullWidth required error={Boolean(touched.jwksEndpoint && errors.jwksEndpoint)}>
+          <FormControl fullWidth required error={Boolean(touched['jwksEndpoint'] && errors.jwksEndpoint)}>
             <FormLabel htmlFor="trusted-issuer-jwks-endpoint">
               {t('trustedIssuers:create.form.jwksEndpoint.label', 'JWKS endpoint')}
             </FormLabel>
@@ -161,9 +170,9 @@ export default function TrustedIssuerCreateForm({name, onNameConflict}: TrustedI
               fullWidth
               placeholder="https://idp.example.com/oauth2/v1/keys"
               value={jwksEndpoint}
-              error={Boolean(touched.jwksEndpoint && errors.jwksEndpoint)}
+              error={Boolean(touched['jwksEndpoint'] && errors.jwksEndpoint)}
               helperText={
-                touched.jwksEndpoint
+                touched['jwksEndpoint']
                   ? fieldErrorMessage(errors.jwksEndpoint)
                   : t(
                       'trustedIssuers:create.form.jwksEndpoint.hint',
@@ -238,7 +247,10 @@ export default function TrustedIssuerCreateForm({name, onNameConflict}: TrustedI
         </Stack>
       </Paper>
 
-      <Box sx={{display: 'flex', justifyContent: 'flex-end'}}>
+      <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+        <Button variant="outlined" startIcon={<ChevronLeft size={16} />} onClick={onBack}>
+          {t('common:actions.back')}
+        </Button>
         <Button
           variant="contained"
           disabled={!formValid || createTrustedIssuer.isPending}
@@ -247,7 +259,7 @@ export default function TrustedIssuerCreateForm({name, onNameConflict}: TrustedI
         >
           {createTrustedIssuer.isPending
             ? t('common:status.saving')
-            : t('trustedIssuers:create.submit', 'Add trusted issuer')}
+            : t('connections:form.actions.create', 'Create connection')}
         </Button>
       </Box>
     </Stack>

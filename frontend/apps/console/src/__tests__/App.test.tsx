@@ -66,6 +66,7 @@ vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   ConnectionCreateWizardPage: () => (
     <div data-testid="connection-create-wizard-page">Connection Create Wizard Page</div>
   ),
+  TrustedIssuerDetailPage: () => <div data-testid="trusted-issuer-detail-page">Trusted Issuer Detail Page</div>,
 }));
 
 vi.mock('../features/applications/pages/ApplicationsListPage', () => ({
@@ -243,6 +244,14 @@ describe('App', () => {
     render(<App />);
     await waitFor(() => {
       expect(screen.getByTestId('connection-configure-wizard-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads TrustedIssuerDetailPage lazily at /trusted-issuers/:id', async () => {
+    window.history.pushState({}, '', '/trusted-issuers/ti-1');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('trusted-issuer-detail-page')).toBeInTheDocument();
     });
   });
 });

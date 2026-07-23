@@ -17,7 +17,6 @@
  */
 
 import {ResourceAvatar, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
-import {ConnectionConstants, isConflictError} from '@thunderid/configure-connections';
 import {useConfig} from '@thunderid/contexts';
 import {
   Alert,
@@ -35,11 +34,15 @@ import {ChevronLeft, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate, useParams} from 'react-router';
-import RouteConfig from '../../../configs/RouteConfig';
+import useDeleteConnection from '../api/useDeleteConnection';
 import useTrustedIssuer from '../api/useTrustedIssuer';
 import useUpdateTrustedIssuer from '../api/useUpdateTrustedIssuer';
-import TrustedIssuerDeleteDialog from '../components/TrustedIssuerDeleteDialog';
+import ConnectionDeleteDialog from '../components/ConnectionDeleteDialog';
+import ConnectionConstants from '../constants/connection-constants';
+import useConnectionRoutes from '../hooks/useConnectionRoutes';
+import {ConnectionTypes} from '../models/connection';
 import type {TrustedIssuerFormData} from '../models/trusted-issuer';
+import isConflictError from '../utils/isConflictError';
 import isTrustedIssuerFormDirty from '../utils/isTrustedIssuerFormDirty';
 import validateTrustedIssuerForm, {
   type TrustedIssuerFieldErrorKind,
@@ -52,9 +55,11 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
   const {id} = useParams<{id: string}>();
   const {config} = useConfig();
   const productName = config.brand.product_name;
+  const routes = useConnectionRoutes();
 
   const trustedIssuerQuery = useTrustedIssuer(id);
   const updateMutation = useUpdateTrustedIssuer(id ?? '');
+  const deleteMutation = useDeleteConnection(ConnectionTypes.OIDC);
 
   const [editedValues, setEditedValues] = useState<Partial<TrustedIssuerFormData>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -128,7 +133,7 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
       <Button
         variant="text"
         startIcon={<ChevronLeft size={16} />}
-        onClick={() => void navigate(RouteConfig.connections.list())}
+        onClick={() => void navigate(routes.connections.list())}
         sx={{mb: 2, alignSelf: 'flex-start'}}
       >
         {t('trustedIssuers:detail.back', 'Back to connections')}
@@ -171,7 +176,7 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
               description={t('trustedIssuers:detail.general.description', 'Core identity of this trusted issuer.')}
             >
               <Stack direction="column" spacing={3}>
-                <FormControl fullWidth required error={Boolean(nameError ?? (touched.name && errors.name))}>
+                <FormControl fullWidth required error={Boolean(nameError ?? (touched['name'] && errors.name))}>
                   <FormLabel htmlFor="trusted-issuer-name">
                     {t('trustedIssuers:create.form.name.label', 'Name')}
                   </FormLabel>
@@ -179,8 +184,8 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
                     id="trusted-issuer-name"
                     fullWidth
                     value={values.name}
-                    error={Boolean(nameError ?? (touched.name && errors.name))}
-                    helperText={nameError ?? (touched.name ? fieldErrorMessage(errors.name) : undefined)}
+                    error={Boolean(nameError ?? (touched['name'] && errors.name))}
+                    helperText={nameError ?? (touched['name'] ? fieldErrorMessage(errors.name) : undefined)}
                     onChange={(e) => {
                       setField('name', e.target.value);
                       setNameError(null);
@@ -189,7 +194,7 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
                   />
                 </FormControl>
 
-                <FormControl fullWidth required error={Boolean(touched.issuer && errors.issuer)}>
+                <FormControl fullWidth required error={Boolean(touched['issuer'] && errors.issuer)}>
                   <FormLabel htmlFor="trusted-issuer-issuer">
                     {t('trustedIssuers:create.form.issuer.label', 'Issuer URI')}
                   </FormLabel>
@@ -197,14 +202,14 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
                     id="trusted-issuer-issuer"
                     fullWidth
                     value={values.issuer}
-                    error={Boolean(touched.issuer && errors.issuer)}
-                    helperText={touched.issuer ? fieldErrorMessage(errors.issuer) : undefined}
+                    error={Boolean(touched['issuer'] && errors.issuer)}
+                    helperText={touched['issuer'] ? fieldErrorMessage(errors.issuer) : undefined}
                     onChange={(e) => setField('issuer', e.target.value)}
                     onBlur={() => setTouchedField('issuer')}
                   />
                 </FormControl>
 
-                <FormControl fullWidth required error={Boolean(touched.jwksEndpoint && errors.jwksEndpoint)}>
+                <FormControl fullWidth required error={Boolean(touched['jwksEndpoint'] && errors.jwksEndpoint)}>
                   <FormLabel htmlFor="trusted-issuer-jwks-endpoint">
                     {t('trustedIssuers:create.form.jwksEndpoint.label', 'JWKS endpoint')}
                   </FormLabel>
@@ -212,8 +217,8 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
                     id="trusted-issuer-jwks-endpoint"
                     fullWidth
                     value={values.jwksEndpoint}
-                    error={Boolean(touched.jwksEndpoint && errors.jwksEndpoint)}
-                    helperText={touched.jwksEndpoint ? fieldErrorMessage(errors.jwksEndpoint) : undefined}
+                    error={Boolean(touched['jwksEndpoint'] && errors.jwksEndpoint)}
+                    helperText={touched['jwksEndpoint'] ? fieldErrorMessage(errors.jwksEndpoint) : undefined}
                     onChange={(e) => setField('jwksEndpoint', e.target.value)}
                     onBlur={() => setTouchedField('jwksEndpoint')}
                   />
@@ -304,12 +309,22 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
             />
           )}
 
-          <TrustedIssuerDeleteDialog
+          <ConnectionDeleteDialog
             open={deleteOpen}
-            trustedIssuerId={id ?? null}
-            trustedIssuerName={data?.name ?? ''}
+            connectionType={ConnectionTypes.OIDC}
+            connectionId={id ?? ''}
+            connectionName={data?.name ?? ''}
+            isPending={deleteMutation.isPending}
             onClose={() => setDeleteOpen(false)}
-            onSuccess={() => void navigate(RouteConfig.connections.list())}
+            onConfirm={() => {
+              if (!id) return;
+              deleteMutation.mutate(id, {
+                onSuccess: () => {
+                  setDeleteOpen(false);
+                  void navigate(routes.connections.list());
+                },
+              });
+            }}
           />
         </>
       )}

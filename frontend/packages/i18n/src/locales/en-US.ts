@@ -1842,7 +1842,6 @@ const translations = {
     'create.subtitle':
       'Register an external identity provider whose identity assertions ThunderID can exchange for access tokens.',
     'create.duplicateName': 'A trusted issuer with this name already exists.',
-    'create.submit': 'Add trusted issuer',
     'create.form.name.label': 'Name',
     'create.form.issuer.label': 'Issuer URI',
     'create.form.issuer.hint': "The issuer URI from the external IdP's OpenID Connect discovery document.",
@@ -1877,18 +1876,11 @@ const translations = {
     'detail.saveBar.discard': 'Discard',
     'detail.saveBar.save': 'Save changes',
 
-    // Delete dialog
-    'delete.title': 'Delete trusted issuer',
-    'delete.message':
-      'Delete "{{name}}"? Applications relying on assertions from this issuer will stop receiving tokens. This cannot be undone.',
-
     // Toasts
     'create.success': 'Trusted issuer created successfully.',
     'create.error': 'Failed to create trusted issuer. Please try again.',
     'update.success': 'Trusted issuer updated successfully.',
     'update.error': 'Failed to update trusted issuer. Please try again.',
-    'delete.success': 'Trusted issuer deleted successfully.',
-    'delete.error': 'Failed to delete trusted issuer. Please try again.',
   },
 
   // ============================================================================

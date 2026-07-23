@@ -23,7 +23,11 @@ import {describe, it, expect, beforeEach, vi} from 'vitest';
 import type {TrustedIssuer} from '../../models/trusted-issuer';
 import TrustedIssuerDetailPage from '../TrustedIssuerDetailPage';
 
-const {mockMutate, mockRefetch} = vi.hoisted(() => ({mockMutate: vi.fn(), mockRefetch: vi.fn()}));
+const {mockMutate, mockRefetch, mockDeleteMutate} = vi.hoisted(() => ({
+  mockMutate: vi.fn(),
+  mockRefetch: vi.fn(),
+  mockDeleteMutate: vi.fn(),
+}));
 
 const TRUSTED_ISSUER: TrustedIssuer = {
   id: 'ti-1',
@@ -50,12 +54,16 @@ vi.mock('../../api/useUpdateTrustedIssuer', () => ({
   default: () => ({mutate: mockMutate, isPending: false}),
 }));
 
-vi.mock('../../components/TrustedIssuerDeleteDialog', () => ({
-  default: function StubTrustedIssuerDeleteDialog({open, onSuccess}: {open: boolean; onSuccess?: () => void}) {
+vi.mock('../../api/useDeleteConnection', () => ({
+  default: () => ({mutate: mockDeleteMutate, isPending: false}),
+}));
+
+vi.mock('../../components/ConnectionDeleteDialog', () => ({
+  default: function StubConnectionDeleteDialog({open, onConfirm}: {open: boolean; onConfirm: () => void}) {
     return open ? (
       <div data-testid="stub-delete-dialog">
-        <button type="button" onClick={onSuccess}>
-          Simulate delete success
+        <button type="button" onClick={onConfirm}>
+          Simulate delete confirm
         </button>
       </div>
     ) : null;
@@ -72,6 +80,7 @@ describe('TrustedIssuerDetailPage', () => {
     mockNavigate = vi.fn();
     mockMutate.mockReset();
     mockRefetch.mockReset();
+    mockDeleteMutate.mockReset();
     vi.mocked(useNavigate).mockReturnValue(mockNavigate as unknown as NavigateFunction);
     vi.mocked(useParams).mockReturnValue({id: 'ti-1'} as unknown as Params);
     vi.mocked(useTrustedIssuer).mockReturnValue({
@@ -150,11 +159,15 @@ describe('TrustedIssuerDetailPage', () => {
 
   it('should navigate to connections when the trusted issuer is deleted', async () => {
     const user = userEvent.setup();
+    mockDeleteMutate.mockImplementation((_id: string, opts: {onSuccess: () => void}) => {
+      opts.onSuccess();
+    });
     render(<TrustedIssuerDetailPage />);
 
     await user.click(screen.getByTestId('trusted-issuer-delete-button'));
-    await user.click(screen.getByRole('button', {name: /simulate delete success/i}));
+    await user.click(screen.getByRole('button', {name: /simulate delete confirm/i}));
 
+    expect(mockDeleteMutate).toHaveBeenCalledWith('ti-1', expect.any(Object));
     expect(mockNavigate).toHaveBeenCalledWith('/connections');
   });
 });
