@@ -275,4 +275,59 @@ describe('ConfigureName', () => {
       expect(mockOnReadyChange).toHaveBeenCalledWith(false);
     });
   });
+
+  describe('duplicate name detection', () => {
+    const duplicateMessage = 'An application with this name already exists. Choose a different name.';
+
+    it('should show an inline error and block readiness for an exact duplicate name', () => {
+      const mockOnReadyChange = vi.fn();
+      renderComponent({appName: 'My App', existingAppNames: ['My App'], onReadyChange: mockOnReadyChange});
+
+      expect(screen.getByText(duplicateMessage)).toBeInTheDocument();
+      expect(mockOnReadyChange).toHaveBeenCalledWith(false);
+    });
+
+    it('should not flag case-variant names as duplicates', () => {
+      const mockOnReadyChange = vi.fn();
+      renderComponent({appName: 'my app', existingAppNames: ['My App'], onReadyChange: mockOnReadyChange});
+
+      expect(screen.queryByText(duplicateMessage)).not.toBeInTheDocument();
+      expect(mockOnReadyChange).toHaveBeenCalledWith(true);
+    });
+
+    it('should become ready again when the name is edited to a unique one', () => {
+      const mockOnReadyChange = vi.fn();
+      const {rerender} = render(
+        <ConfigureName
+          appName="My App"
+          existingAppNames={['My App']}
+          onAppNameChange={mockOnAppNameChange}
+          onReadyChange={mockOnReadyChange}
+        />,
+      );
+
+      expect(mockOnReadyChange).toHaveBeenCalledWith(false);
+      mockOnReadyChange.mockClear();
+
+      rerender(
+        <ConfigureName
+          appName="My App 2"
+          existingAppNames={['My App']}
+          onAppNameChange={mockOnAppNameChange}
+          onReadyChange={mockOnReadyChange}
+        />,
+      );
+
+      expect(screen.queryByText(duplicateMessage)).not.toBeInTheDocument();
+      expect(mockOnReadyChange).toHaveBeenCalledWith(true);
+    });
+
+    it('should behave as before when existingAppNames is omitted', () => {
+      const mockOnReadyChange = vi.fn();
+      renderComponent({appName: 'My App', onReadyChange: mockOnReadyChange});
+
+      expect(screen.queryByText(duplicateMessage)).not.toBeInTheDocument();
+      expect(mockOnReadyChange).toHaveBeenCalledWith(true);
+    });
+  });
 });

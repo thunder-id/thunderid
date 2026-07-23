@@ -2052,6 +2052,7 @@ const translations = {
     'onboarding.configure.name.title': "Let's give a name to your application",
     'onboarding.configure.name.fieldLabel': 'Application Name',
     'onboarding.configure.name.placeholder': 'Enter your application name',
+    'onboarding.configure.name.duplicate': 'An application with this name already exists. Choose a different name.',
     'onboarding.configure.name.suggestions.label': 'In a hurry? Pick a random name:',
     'onboarding.mcp.clientType.title': 'Client type',
     'onboarding.mcp.clientType.subtitle': 'How will this client obtain tokens?',

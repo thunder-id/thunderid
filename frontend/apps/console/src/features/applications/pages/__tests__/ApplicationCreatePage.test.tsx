@@ -143,29 +143,38 @@ vi.mock('@thunderid/configure-organization-units', () => ({
 }));
 
 // Mock child components
-vi.mock('../../components/create-application/ConfigureName', () => ({
-  default: ({
+vi.mock('../../components/create-application/ConfigureName', async () => {
+  const {useEffect} = await import('react');
+  const MockConfigureName = ({
     appName,
     onAppNameChange,
     onReadyChange,
+    existingAppNames = [],
   }: {
     appName: string;
     onAppNameChange: (name: string) => void;
     onReadyChange: (ready: boolean) => void;
-  }) => (
-    <div data-testid="application-configure-name">
-      <input
-        data-testid="app-name-input"
-        value={appName}
-        onChange={(e) => {
-          onAppNameChange(e.target.value);
-          onReadyChange(e.target.value.length > 0);
-        }}
-        placeholder="Enter app name"
-      />
-    </div>
-  ),
-}));
+    existingAppNames?: string[];
+  }) => {
+    // readiness is broadcast from an effect (including on mount) and a name already in the list is treated as a duplicate that blocks readiness.
+    const isDuplicate = appName.length > 0 && existingAppNames.includes(appName);
+    useEffect(() => {
+      onReadyChange(appName.trim().length > 0 && !isDuplicate);
+    }, [appName, isDuplicate, onReadyChange]);
+    return (
+      <div data-testid="application-configure-name" data-existing-names={existingAppNames.join(',')}>
+        <input
+          data-testid="app-name-input"
+          value={appName}
+          onChange={(e) => onAppNameChange(e.target.value)}
+          placeholder="Enter app name"
+        />
+        {isDuplicate ? <span data-testid="app-name-duplicate-error">duplicate</span> : null}
+      </div>
+    );
+  };
+  return {default: MockConfigureName};
+});
 
 vi.mock('../../components/create-application/ConfigureDesign', () => ({
   default: ({
@@ -1024,6 +1033,105 @@ describe('ApplicationCreatePage', () => {
         },
         {timeout: 10000},
       );
+    });
+
+    it('should show the duplicate name message and return to the name step on APP-1020', async () => {
+      const duplicateError = Object.assign(new Error('Bad Request'), {
+        response: {status: 400, data: {code: 'APP-1020', message: 'Application already exists'}},
+      });
+      mockCreateApplication.mockImplementation((_data, {onError}: {onError: (error: Error) => void}) => {
+        onError(duplicateError);
+      });
+
+      renderWithProviders();
+
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
+      });
+      // OPTIONS → EXPERIENCE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
+      });
+      // EXPERIENCE → CONFIGURE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
+      });
+      // CONFIGURE → Create
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      await waitFor(
+        () => {
+          expect(screen.getByText(/an application with this name already exists/i)).toBeInTheDocument();
+        },
+        {timeout: 10000},
+      );
+      expect(screen.queryByText(/bad request/i)).not.toBeInTheDocument();
+      // The wizard navigates back to the name step.
+      expect(screen.getByTestId('application-configure-name')).toBeInTheDocument();
+    });
+
+    it('should block resubmitting the same name after APP-1020 until it is edited', async () => {
+      const duplicateError = Object.assign(new Error('Bad Request'), {
+        response: {status: 400, data: {code: 'APP-1020', message: 'Application already exists'}},
+      });
+      mockCreateApplication.mockImplementation((_data, {onError}: {onError: (error: Error) => void}) => {
+        onError(duplicateError);
+      });
+
+      renderWithProviders();
+
+      await user.type(screen.getByTestId('app-name-input'), 'Beyond Limit App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
+      });
+      // OPTIONS → EXPERIENCE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
+      });
+      // EXPERIENCE → CONFIGURE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
+      });
+      // CONFIGURE → Create (rejected with APP-1020)
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      // Back on the name step, the rejected name is now treated as an existing one
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-name')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('application-configure-name')).toHaveAttribute(
+        'data-existing-names',
+        expect.stringContaining('Beyond Limit App'),
+      );
+      expect(screen.getByTestId('app-name-duplicate-error')).toBeInTheDocument();
+      expect(screen.getByTestId('application-wizard-next-button')).toBeDisabled();
+
+      // Editing to a new name clears the duplicate flag and re-enables Continue.
+      await user.type(screen.getByTestId('app-name-input'), ' v2');
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('app-name-duplicate-error')).not.toBeInTheDocument();
+      });
+      expect(screen.getByTestId('application-wizard-next-button')).toBeEnabled();
     });
 
     it('should allow dismissing error message', async () => {
