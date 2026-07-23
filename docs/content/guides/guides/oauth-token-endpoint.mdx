@@ -1,0 +1,27 @@
+---
+title: OAuth 2.0 Token Endpoint
+---
+
+import ProductName from '@site/src/components/ProductName';
+
+This guide describes client authentication behavior at the <ProductName /> OAuth 2.0 token endpoint (`/oauth2/token`).
+
+## Invalid client response contract
+
+When client authentication fails at the token endpoint (for example, due to missing or invalid client credentials), <ProductName /> returns:
+
+- HTTP status: `401 Unauthorized`
+- OAuth 2.0 error: `invalid_client`
+- Response header: `WWW-Authenticate` is included for Authorization-header-based client authentication challenges (for example, Basic auth).
+
+### Example response (Basic auth challenge)
+
+```http
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Basic
+Content-Type: application/json
+
+{
+  "error": "invalid_client",
+  "error_description": "Client authentication failed"
+}
