@@ -58,6 +58,8 @@ export interface UseFlowSaveProps {
   showSuccess: (message: string) => void;
   /** Callback to open the validation panel. */
   setOpenValidationPanel?: (open: boolean) => void;
+  /** Called after the flow is persisted successfully (to clear the dirty state). */
+  onSaved?: () => void;
 }
 
 /**
@@ -87,6 +89,7 @@ const useFlowSave = (props: UseFlowSaveProps): UseFlowSaveReturn => {
     showError,
     showSuccess,
     setOpenValidationPanel,
+    onSaved,
   } = props;
 
   const {t} = useTranslation();
@@ -124,6 +127,7 @@ const useFlowSave = (props: UseFlowSaveProps): UseFlowSaveReturn => {
           {
             onSuccess: () => {
               showSuccess(t('flows:core.loginFlowBuilder.success.flowUpdated'));
+              onSaved?.();
             },
             onError: () => {
               showError(t('flows:core.loginFlowBuilder.errors.saveFailed'));
@@ -135,6 +139,7 @@ const useFlowSave = (props: UseFlowSaveProps): UseFlowSaveReturn => {
         createFlow.mutate(flowConfig as CreateFlowRequest, {
           onSuccess: () => {
             showSuccess(t('flows:core.loginFlowBuilder.success.flowCreated'));
+            onSaved?.();
           },
           onError: () => {
             showError(t('flows:core.loginFlowBuilder.errors.saveFailed'));
@@ -152,6 +157,7 @@ const useFlowSave = (props: UseFlowSaveProps): UseFlowSaveReturn => {
       showError,
       showSuccess,
       setOpenValidationPanel,
+      onSaved,
       t,
       createFlow,
       updateFlow,

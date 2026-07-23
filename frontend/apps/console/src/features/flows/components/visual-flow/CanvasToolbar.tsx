@@ -17,7 +17,7 @@
  */
 
 import {Box, IconButton, Tooltip} from '@wso2/oxygen-ui';
-import {LayoutGrid, Maximize, Minus, Plus} from '@wso2/oxygen-ui-icons-react';
+import {LayoutGrid, Maximize, Minus, Plus, Redo2, Undo2} from '@wso2/oxygen-ui-icons-react';
 import {useReactFlow} from '@xyflow/react';
 import {type ReactElement} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -28,17 +28,33 @@ import getEdgeStyleIcon from '../../utils/getEdgeStyleIcon';
 
 export interface CanvasToolbarProps {
   onAutoLayout: () => void;
+  /** Undo the last canvas edit. Omit to hide the undo/redo controls. */
+  onUndo?: () => void;
+  /** Redo the last undone canvas edit. */
+  onRedo?: () => void;
+  /** Whether an undo step is available. */
+  canUndo?: boolean;
+  /** Whether a redo step is available. */
+  canRedo?: boolean;
 }
 
 function ToolbarDivider(): ReactElement {
   return <Box sx={{width: '1px', height: 16, bgcolor: 'divider', mx: 0.5, flexShrink: 0}} />;
 }
 
-export default function CanvasToolbar({onAutoLayout}: CanvasToolbarProps): ReactElement {
+export default function CanvasToolbar({
+  onAutoLayout,
+  onUndo = undefined,
+  onRedo = undefined,
+  canUndo = false,
+  canRedo = false,
+}: CanvasToolbarProps): ReactElement {
   const {t} = useTranslation();
   const {fitView, zoomIn, zoomOut} = useReactFlow();
   const {edgeStyle} = useFlowConfig();
   const {anchorEl, handleClick: handleEdgeStyleClick, handleClose: handleEdgeStyleClose} = useEdgeStyleSelector();
+
+  const showHistoryControls = Boolean(onUndo ?? onRedo);
 
   return (
     <>
@@ -58,6 +74,40 @@ export default function CanvasToolbar({onAutoLayout}: CanvasToolbarProps): React
           borderColor: 'divider',
         }}
       >
+        {showHistoryControls && (
+          <>
+            <Tooltip title={t('flows:core.headerPanel.undoTooltip', 'Undo (Ctrl+Z)')}>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={onUndo}
+                  disabled={!canUndo}
+                  sx={{borderRadius: 1, color: 'text.secondary'}}
+                  aria-label={t('flows:core.headerPanel.undo', 'Undo')}
+                >
+                  <Undo2 size={16} />
+                </IconButton>
+              </span>
+            </Tooltip>
+
+            <Tooltip title={t('flows:core.headerPanel.redoTooltip', 'Redo (Ctrl+Shift+Z)')}>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={onRedo}
+                  disabled={!canRedo}
+                  sx={{borderRadius: 1, color: 'text.secondary'}}
+                  aria-label={t('flows:core.headerPanel.redo', 'Redo')}
+                >
+                  <Redo2 size={16} />
+                </IconButton>
+              </span>
+            </Tooltip>
+
+            <ToolbarDivider />
+          </>
+        )}
+
         <Tooltip title={t('flows:core.headerPanel.autoLayout')}>
           <IconButton
             size="small"

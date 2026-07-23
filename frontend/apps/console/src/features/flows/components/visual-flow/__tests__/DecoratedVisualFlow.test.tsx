@@ -436,7 +436,7 @@ describe('DecoratedVisualFlow', () => {
       expect(screen.getByTestId('simulate-flow-button')).toBeInTheDocument();
     });
 
-    it('should disable save while previewing so the zoomed viewport is not persisted', () => {
+    it('should keep save enabled while previewing (clicking it stops the preview first)', () => {
       const nodes = [{id: 'node-1', position: {x: 0, y: 0}, data: {}}] as Node[];
       renderComponent(<DecoratedVisualFlow {...defaultProps} nodes={nodes} onSave={vi.fn()} />);
 
@@ -444,7 +444,7 @@ describe('DecoratedVisualFlow', () => {
 
       fireEvent.click(screen.getByTestId('simulate-flow-button'));
 
-      expect(screen.getByTestId('save-flow-button')).toBeDisabled();
+      expect(screen.getByTestId('save-flow-button')).toBeEnabled();
     });
 
     it('should focus the clicked node via fitView', () => {

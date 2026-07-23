@@ -20,7 +20,7 @@ import {useIdentityProviders, useSMSProviders} from '@thunderid/configure-connec
 import {Alert, Box, Snackbar, Stack} from '@wso2/oxygen-ui';
 import type {Edge, Node} from '@xyflow/react';
 import {useEdgesState, useNodesState, useUpdateNodeInternals} from '@xyflow/react';
-import {useCallback, useEffect, useMemo, useRef} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useParams} from 'react-router';
 import '@xyflow/react/dist/style.css';
@@ -31,6 +31,7 @@ import SsoToggle from '../components/SsoToggle';
 import LoginFlowConstants from '../constants/LoginFlowConstants';
 import useEdgeGeneration from '../hooks/useEdgeGeneration';
 import useElementAddition from '../hooks/useElementAddition';
+import useFlowHistory, {computeGraphSignature} from '../hooks/useFlowHistory';
 import useFlowInitialization from '../hooks/useFlowInitialization';
 import useFlowNaming from '../hooks/useFlowNaming';
 import useFlowSave from '../hooks/useFlowSave';
@@ -42,6 +43,7 @@ import {mutateComponents} from '../utils/componentMutations';
 import GradientBorderButton from '@/features/applications/components/GradientBorderButton';
 import useGetFlowById from '@/features/flows/api/useGetFlowById';
 import FlowBuilder from '@/features/flows/components/FlowBuilder';
+import FlowConstants from '@/features/flows/constants/FlowConstants';
 import useFlowConfig from '@/features/flows/hooks/useFlowConfig';
 import useFlowEvents from '@/features/flows/hooks/useFlowEvents';
 import useValidationStatus from '@/features/flows/hooks/useValidationStatus';
@@ -221,6 +223,55 @@ function LoginFlowBuilder() {
     setGraphValidationRules(flowType === 'AUTHENTICATION' ? GRAPH_VALIDATION_RULES : []);
   }, [flowType, setGraphValidationRules]);
 
+  // Undo/redo history over the canvas graph.
+  const {undo, redo, canUndo, canRedo, settledSignature, resetHistory} = useFlowHistory({
+    edges,
+    maxHistoryItems: FlowConstants.MAX_HISTORY_ITEMS,
+    nodes,
+    setEdges,
+    setNodes,
+  });
+
+  // Unsaved-changes tracking. The flow is considered clean until the user first
+  // interacts with the builder: the graph keeps mutating on its own after load
+  // (metadata resolution, field normalization, node internals, auto-layout), and
+  // none of that should count as an edit. The baseline signature is frozen at the
+  // first user interaction — every real edit begins with a pointer/key event, so
+  // the pre-edit graph is always captured — and re-frozen after each save.
+  // Dirtiness compares against the history hook's settled signature, so no
+  // per-render (or per-drag-tick) re-serialization of the graph is needed.
+  const [savedSignature, setSavedSignature] = useState<string | null>(null);
+  const isDirty = savedSignature !== null && settledSignature !== null && settledSignature !== savedSignature;
+
+  const resetHistoryRef = useRef(resetHistory);
+  useEffect(() => {
+    resetHistoryRef.current = resetHistory;
+  }, [resetHistory]);
+
+  const hasInteractedRef = useRef<boolean>(false);
+  useEffect(() => {
+    const freezeBaseline = (): void => {
+      if (hasInteractedRef.current) {
+        return;
+      }
+      hasInteractedRef.current = true;
+      // Rebase history on the settled pre-edit graph (discarding any entries
+      // recorded while it was still settling) and take it as the clean baseline.
+      setSavedSignature(resetHistoryRef.current());
+    };
+    window.addEventListener('pointerdown', freezeBaseline, true);
+    window.addEventListener('keydown', freezeBaseline, true);
+    return () => {
+      window.removeEventListener('pointerdown', freezeBaseline, true);
+      window.removeEventListener('keydown', freezeBaseline, true);
+    };
+  }, []);
+
+  const handleSaved = useCallback(() => {
+    hasInteractedRef.current = true;
+    setSavedSignature(resetHistory());
+  }, [resetHistory]);
+
   // Flow save hook
   const {handleSave} = useFlowSave({
     flowId,
@@ -232,6 +283,7 @@ function LoginFlowBuilder() {
     showError,
     showSuccess,
     setOpenValidationPanel,
+    onSaved: handleSaved,
   });
 
   // SSO toggle orchestration (enable/disable transformations, placement mode)
@@ -246,6 +298,65 @@ function LoginFlowBuilder() {
   });
 
   const onNodesChange = defaultOnNodesChange;
+
+  // Undo/redo keyboard shortcuts. Ignore edits inside text fields / rich text so
+  // native text undo keeps working there.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey)) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          target.closest('[contenteditable="true"]'))
+      ) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+      } else if ((key === 'z' && event.shiftKey) || key === 'y') {
+        event.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
+
+  // Warn before leaving (tab close / reload) with unsaved changes. Dirtiness is
+  // computed at unload time from the live graph, so the check stays exact even
+  // when the latest edit is still inside the history debounce window.
+  const graphRef = useRef<{nodes: Node[]; edges: Edge[]}>({edges, nodes});
+  useEffect(() => {
+    graphRef.current = {edges, nodes};
+  }, [nodes, edges]);
+
+  const savedSignatureRef = useRef<string | null>(savedSignature);
+  useEffect(() => {
+    savedSignatureRef.current = savedSignature;
+  }, [savedSignature]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent): void => {
+      if (savedSignatureRef.current === null) {
+        return;
+      }
+      const {nodes: liveNodes, edges: liveEdges} = graphRef.current;
+      if (computeGraphSignature(liveNodes, liveEdges) === savedSignatureRef.current) {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
 
   // Handle restore from history event
   useEffect(
@@ -384,6 +495,11 @@ function LoginFlowBuilder() {
         onFlowTitleChange={handleFlowNameChange}
         triggerAutoLayoutOnLoad={needsAutoLayout}
         resourcePanelFooter={ssoToggleFooter}
+        onUndo={undo}
+        onRedo={redo}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        isDirty={isDirty}
       />
       <SsoDisableConfirmDialog
         open={sso.isConfirmDialogOpen}
