@@ -62,6 +62,83 @@ var publicPaths = []string{
 	"/access/**",
 }
 
+// ---- Instance plane / mode ----
+
+// Plane identifies which deployment plane a management route or instance belongs to.
+type Plane string
+
+const (
+	// PlaneControl is the control plane: configuration/design-time management.
+	PlaneControl Plane = "cp"
+	// PlaneData is the data plane: runtime plus live-identity management.
+	PlaneData Plane = "dp"
+	// PlaneHybrid serves both planes (the default).
+	PlaneHybrid Plane = "hybrid"
+)
+
+// ParsePlane maps a configured mode string to a Plane, defaulting to PlaneHybrid for empty or
+// unrecognized values so an unset/typo mode fails open to the full (hybrid) surface.
+func ParsePlane(mode string) Plane {
+	switch Plane(strings.ToLower(strings.TrimSpace(mode))) {
+	case PlaneControl:
+		return PlaneControl
+	case PlaneData:
+		return PlaneData
+	default:
+		return PlaneHybrid
+	}
+}
+
+// planeRoute maps a request-path glob (same syntax as publicPaths) to the plane that owns it.
+type planeRoute struct {
+	pattern string
+	plane   Plane
+}
+
+// managementRoutePlanes classifies the management (non-public) API surface by plane, so an instance
+// running in "cp" or "dp" mode serves only its own routes and returns 404 for the other plane's.
+// Evaluation is first-match-wins, so more specific patterns come first (role assignment before the
+// generic role routes). Public runtime routes (OAuth2, flow execution, gate, well-known, health, the
+// VC/i18n runtime endpoints) are intentionally absent: they are never gated by plane.
+var managementRoutePlanes = []planeRoute{
+	// Data plane: live identities and assignment operations.
+	{"/roles/*/assignments/**", PlaneData},
+	{"/users", PlaneData},
+	{"/users/**", PlaneData},
+	{"/agents", PlaneData},
+	{"/agents/**", PlaneData},
+
+	// Control plane: configuration/design-time resources.
+	{"/roles", PlaneControl},
+	{"/roles/**", PlaneControl},
+	{"/groups", PlaneControl},
+	{"/groups/**", PlaneControl},
+	{"/organization-units", PlaneControl},
+	{"/organization-units/**", PlaneControl},
+	{"/applications", PlaneControl},
+	{"/applications/**", PlaneControl},
+	{"/user-types", PlaneControl},
+	{"/user-types/**", PlaneControl},
+	{"/agent-types", PlaneControl},
+	{"/agent-types/**", PlaneControl},
+	{"/resource-servers", PlaneControl},
+	{"/resource-servers/**", PlaneControl},
+	{"/flows", PlaneControl},
+	{"/flows/**", PlaneControl},
+	{"/design/**", PlaneControl},
+	{"/connections", PlaneControl},
+	{"/connections/**", PlaneControl},
+	{"/openid4vp/presentation-definitions/**", PlaneControl},
+	{"/openid4vci/credential-configurations/**", PlaneControl},
+	{"/server-config", PlaneControl},
+	{"/server-config/**", PlaneControl},
+	{"/i18n/**", PlaneControl},
+	{"/import", PlaneControl},
+	{"/import/**", PlaneControl},
+	{"/export", PlaneControl},
+	{"/export/**", PlaneControl},
+}
+
 // ---- Resource types ----
 
 // ResourceType defines the category of system resource being acted upon.
