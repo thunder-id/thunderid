@@ -43,6 +43,12 @@ export const ConsoleRoutes = {
   /** Dashboard page */
   dashboard: "/console/dashboard",
 
+  /** Welcome landing page (shown on first login) */
+  welcome: "/console/welcome",
+
+  /** Welcome try-out: Secured Web Application flow */
+  welcomeTryoutApp: "/console/welcome/tryout/securing-application",
+
   /** Applications list page */
   applications: "/console/applications",
 
