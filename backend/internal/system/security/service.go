@@ -55,6 +55,8 @@ type securityService struct {
 	mode Plane
 	// compiledPlaneRoutes is the pre-compiled per-plane classification of the management surface.
 	compiledPlaneRoutes []compiledPlaneRoute
+	// compiledPlaneSharedRoutes are management routes served on every plane (matched as "METHOD /path").
+	compiledPlaneSharedRoutes []*regexp.Regexp
 }
 
 // newSecurityService creates a new instance of the security service.
@@ -85,16 +87,22 @@ func newSecurityService(authenticators []AuthenticatorInterface, revocationEnfor
 		return nil, err
 	}
 
+	compiledShared, err := compilePathPatterns(planeSharedRoutes)
+	if err != nil {
+		return nil, err
+	}
+
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
 	return &securityService{
-		authenticators:         authenticators,
-		revocationEnforcer:     revocationEnforcer,
-		logger:                 logger,
-		compiledPaths:          compiledPaths,
-		compiledAPIPermissions: compiledPerms,
-		mode:                   PlaneHybrid,
-		compiledPlaneRoutes:    compiledPlanes,
+		authenticators:            authenticators,
+		revocationEnforcer:        revocationEnforcer,
+		logger:                    logger,
+		compiledPaths:             compiledPaths,
+		compiledAPIPermissions:    compiledPerms,
+		mode:                      PlaneHybrid,
+		compiledPlaneRoutes:       compiledPlanes,
+		compiledPlaneSharedRoutes: compiledShared,
 	}, nil
 }
 
@@ -111,7 +119,7 @@ func (s *securityService) Process(r *http.Request) (context.Context, error) {
 	// On a single-plane instance (cp or dp), a management route owned by the other plane is not
 	// served here and is reported as 404. Public runtime routes are never plane-gated.
 	if s.mode != PlaneHybrid && !isPublic {
-		if plane, ok := s.classifyPlane(r.URL.Path); ok && plane != s.mode {
+		if plane, ok := s.classifyPlane(r.Method, r.URL.Path); ok && plane != s.mode {
 			return r.Context(), errManagementDisabled
 		}
 	}
@@ -192,9 +200,17 @@ func (s *securityService) getRequiredPermissionForAPI(method, path string) strin
 	return GetSystemRootPermission()
 }
 
-// classifyPlane returns the plane that owns the given request path, or false when the path is not a
-// classified management route. Public/runtime paths and any unlisted path are never plane-gated.
-func (s *securityService) classifyPlane(requestPath string) (Plane, bool) {
+// classifyPlane returns the plane that owns the given request, or false when it is not a
+// plane-gated management route. Shared routes (matched as "METHOD /path") are served on every plane
+// and return false so they are never gated; otherwise classification is by path. Public/runtime
+// paths and any unlisted path are never plane-gated.
+func (s *securityService) classifyPlane(method, requestPath string) (Plane, bool) {
+	key := method + " " + requestPath
+	for _, re := range s.compiledPlaneSharedRoutes {
+		if re.MatchString(key) {
+			return "", false
+		}
+	}
 	for _, r := range s.compiledPlaneRoutes {
 		if r.re.MatchString(requestPath) {
 			return r.plane, true

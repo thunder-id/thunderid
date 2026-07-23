@@ -598,3 +598,54 @@ func (suite *SecurityServiceTestSuite) TestProcess_AuthorizationFailure_Insuffic
 	assert.Nil(suite.T(), ctx)
 	assert.ErrorIs(suite.T(), err, errInsufficientPermissions)
 }
+
+// TestClassifyPlane verifies per-plane classification of the management surface, including the
+// shared reads (organization units and user types) that must be served on every plane so the Data
+// Plane can create and place users while their writes stay owned by the Control Plane.
+func TestClassifyPlane(t *testing.T) {
+	service, err := newSecurityService(nil, nil, testPublicPaths, apiPermissionEntries)
+	if err != nil {
+		t.Fatalf("newSecurityService: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		method    string
+		path      string
+		wantPlane Plane
+		wantGated bool
+	}{
+		// Shared reads: not plane-gated (served on cp and dp).
+		{"read OU list is shared", http.MethodGet, "/organization-units", "", false},
+		{"read OU tree is shared", http.MethodGet, "/organization-units/tree", "", false},
+		{"read OU by id is shared", http.MethodGet, "/organization-units/019000", "", false},
+		{"read user types is shared", http.MethodGet, "/user-types", "", false},
+		{"read user type by id is shared", http.MethodGet, "/user-types/Person", "", false},
+
+		// Writes to the same resources stay on the Control Plane.
+		{"create OU is cp", http.MethodPost, "/organization-units", PlaneControl, true},
+		{"update OU is cp", http.MethodPut, "/organization-units/019000", PlaneControl, true},
+		{"delete OU is cp", http.MethodDelete, "/organization-units/019000", PlaneControl, true},
+		{"create user type is cp", http.MethodPost, "/user-types", PlaneControl, true},
+
+		// Data-plane routes.
+		{"list users is dp", http.MethodGet, "/users", PlaneData, true},
+		{"create user is dp", http.MethodPost, "/users", PlaneData, true},
+		{"role assignment is dp", http.MethodPut, "/roles/019000/assignments/users", PlaneData, true},
+
+		// Other control-plane routes are unaffected.
+		{"read applications is cp", http.MethodGet, "/applications", PlaneControl, true},
+		{"read flows is cp", http.MethodGet, "/flows", PlaneControl, true},
+
+		// Unlisted / runtime paths are never plane-gated.
+		{"health is not gated", http.MethodGet, "/health/liveness", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plane, gated := service.classifyPlane(tt.method, tt.path)
+			assert.Equal(t, tt.wantGated, gated, "gated")
+			assert.Equal(t, tt.wantPlane, plane, "plane")
+		})
+	}
+}
