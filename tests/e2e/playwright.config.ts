@@ -37,14 +37,70 @@ dotenv.config({ path: envPath });
 
 const STORAGE_STATE = path.join(__dirname, "playwright/.auth/console-admin.json");
 
-/** Configure number of workers. Default to 1 to avoid auth conflicts. */
-const WORKERS = process.env.PLAYWRIGHT_WORKERS ? parseInt(process.env.PLAYWRIGHT_WORKERS, 10) : 1;
+/** Configure number of workers. Defaults to 1; CI raises this via PLAYWRIGHT_WORKERS. */
+const parsedWorkers = parseInt(process.env.PLAYWRIGHT_WORKERS ?? "", 10);
+const WORKERS = Number.isFinite(parsedWorkers) && parsedWorkers > 0 ? parsedWorkers : 1;
+
+/**
+ * Spec files that mutate global server state and therefore must never run
+ * concurrently with any other instance of themselves or each other:
+ * - cors-allowed-origins mutates the server-wide CORS allowed-origins config
+ *   and asserts on live response headers.
+ * - sample-app-mfa-login reconfigures the shared Sample App's auth flows,
+ *   creates fixed-name flows/sender/user, and binds a fixed mock SMS port.
+ * They run in the chained single-spec projects below; the browser projects
+ * exclude them so the remaining specs can fan out across workers.
+ */
+const SERIAL_SPECS = [
+  { tag: "cors", file: "**/cors-allowed-origins.spec.ts" },
+  { tag: "mfa", file: "**/sample-app-mfa-login.spec.ts" },
+];
+
+const BROWSERS = [
+  { name: "chromium", device: devices["Desktop Chrome"] },
+  { name: "firefox", device: devices["Desktop Firefox"] },
+  { name: "webkit", device: devices["Desktop Safari"] },
+];
+
+/**
+ * One project per (browser, serial spec), each depending on the previous so at
+ * most one serial spec is executing at any moment regardless of worker count.
+ * The chain must span browsers: these specs conflict through shared server
+ * state, so e.g. chromium and firefox may not run the CORS spec concurrently.
+ * Notes on Playwright dependency semantics:
+ * - If a project in the chain fails, the ones after it are skipped for that
+ *   run; the job still fails.
+ * - Selecting a later chain project (e.g. `--project="firefox*"`) also runs
+ *   the earlier browsers' serial projects as dependencies. Intentional; the
+ *   per-browser scripts in package.json accept those few extra tests.
+ */
+const serialProjects = (() => {
+  const projects = [];
+  let previous = "setup";
+  for (const { name, device } of BROWSERS) {
+    for (const { tag, file } of SERIAL_SPECS) {
+      const projectName = `${name}-serial-${tag}`;
+      projects.push({
+        name: projectName,
+        testMatch: file,
+        use: { ...device, storageState: STORAGE_STATE },
+        dependencies: [previous],
+      });
+      previous = projectName;
+    }
+  }
+  return projects;
+})();
 
 export default defineConfig({
   /** Directory containing test files */
   testDir: "./tests",
 
-  /** Run tests sequentially to avoid auth conflicts */
+  /**
+   * Tests within a file always run in order on one worker; with multiple
+   * workers, different spec files run concurrently. Specs that mutate global
+   * state are isolated in the serial project chain (see SERIAL_SPECS).
+   */
   fullyParallel: false,
 
   /** Fail CI builds if test.only() is accidentally committed */
@@ -123,35 +179,19 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"], ignoreHTTPSErrors: true },
     },
 
-    /** Main test project - runs .spec.ts files with authenticated session */
-    {
-      name: "chromium",
+    /** Main test projects - run parallel-safe .spec.ts files with authenticated session */
+    ...BROWSERS.map(({ name, device }) => ({
+      name,
       testMatch: "**/*.spec.ts",
+      testIgnore: SERIAL_SPECS.map(({ file }) => file),
       use: {
-        ...devices["Desktop Chrome"],
+        ...device,
         storageState: STORAGE_STATE,
       },
       dependencies: ["setup"],
-    },
+    })),
 
-    {
-      name: "firefox",
-      testMatch: "**/*.spec.ts",
-      use: {
-        ...devices["Desktop Firefox"],
-        storageState: STORAGE_STATE,
-      },
-      dependencies: ["setup"],
-    },
-
-    {
-      name: "webkit",
-      testMatch: "**/*.spec.ts",
-      use: {
-        ...devices["Desktop Safari"],
-        storageState: STORAGE_STATE,
-      },
-      dependencies: ["setup"],
-    },
+    /** Serial chain for specs that mutate global server state */
+    ...serialProjects,
   ],
 });
