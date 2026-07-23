@@ -89,6 +89,16 @@ const sidebars: SidebarsConfig = {
             {type: 'doc', id: 'getting-started/connect-your-application/flutter', label: 'Flutter', customProps: {icon: 'flutter'}},
           ],
         },
+        {
+          type: 'category',
+          label: 'MCP',
+          className: 'connect-section connect-section--mcp',
+          collapsed: false,
+          collapsible: false,
+          items: [
+            {type: 'doc', id: 'getting-started/connect-your-mcp/python', label: 'Python', customProps: {icon: 'python'}},
+          ],
+        },
       ],
     },
 
