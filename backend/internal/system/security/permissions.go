@@ -139,6 +139,19 @@ var managementRoutePlanes = []planeRoute{
 	{"/export/**", PlaneControl},
 }
 
+// planeSharedRoutes are management routes served on every plane regardless of mode, matched as
+// "METHOD /path" (same glob syntax as apiPermissionEntries). The Data Plane authors no organization
+// units or user types, but it must read them to create and place users, so their reads are shared
+// while their writes stay owned by the Control Plane via managementRoutePlanes. Checked before the
+// path-based classification, so a shared read is never plane-gated even though the same path is
+// otherwise a Control Plane route.
+var planeSharedRoutes = []string{
+	"GET /organization-units",
+	"GET /organization-units/**",
+	"GET /user-types",
+	"GET /user-types/**",
+}
+
 // ---- Resource types ----
 
 // ResourceType defines the category of system resource being acted upon.
