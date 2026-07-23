@@ -143,4 +143,5 @@ export const EXECUTORS_WITH_FIXED_INPUTS = new Set<string>([
   ExecutionTypes.OpenID4VPVerify,
   ExecutionTypes.SSOCheck,
   ExecutionTypes.Session,
+  ExecutionTypes.SessionSignOut,
 ]);
