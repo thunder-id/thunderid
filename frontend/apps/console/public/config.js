@@ -19,13 +19,23 @@
 window.__THUNDERID_RUNTIME_CONFIG__ = {
   brand: {
     product_name: 'ThunderID',
-    documentation: {
-      baseUrl: 'https://thunderid.dev/docs/next',
-      releasesUrl: 'https://thunderid.dev/data/releases.json',
-    },
     favicon: {
       light: 'assets/images/favicon.ico',
       dark: 'assets/images/favicon-inverted.ico',
+    },
+  },
+  // Documentation site used for release info and per-page "Learn more" links. `links` maps a
+  // feature/section id to a path resolved against `baseUrl` (or a full URL). Omit a key, or the
+  // whole `documentation` block, to hide the corresponding link(s).
+  documentation: {
+    baseUrl: 'https://thunderid.dev/docs/next',
+    releasesUrl: 'https://thunderid.dev/data/releases.json',
+    links: {
+      users: '/guides/users',
+      applications: '/guides/applications',
+      agents: '/guides/agents',
+      design: '/guides/design',
+      flows: '/guides/flows',
     },
   },
   client: {

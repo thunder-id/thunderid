@@ -41,7 +41,7 @@ export default function TryoutSecuringMCPPage(): JSX.Element {
   const {config} = useConfig();
   const handleClose = useWelcomeClose();
   const productName = config.brand.product_name;
-  const docsBaseUrl = (config.brand.documentation?.baseUrl ?? '').replace(/\/$/, '');
+  const docsBaseUrl = (config.documentation?.baseUrl ?? '').replace(/\/$/, '');
 
   return (
     <Box sx={{minHeight: '100vh', display: 'flex', flexDirection: 'column'}}>

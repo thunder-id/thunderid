@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import {LearnMoreLink} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle, Stack} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -37,7 +38,8 @@ export default function ResourceServersListPage(): JSX.Element {
           {t(
             'resourceServers:listing.subtitle',
             'Define resource servers and their resources to manage access control.',
-          )}
+          )}{' '}
+          <LearnMoreLink docKey="resourceServers" />
         </PageTitle.SubHeader>
         <PageTitle.Actions>
           <Stack direction="row" spacing={2}>

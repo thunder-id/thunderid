@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import {LearnMoreLink} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -34,7 +35,9 @@ export default function FlowsListPage(): JSX.Element {
       {/* Header */}
       <PageTitle>
         <PageTitle.Header>{t('flows:listing.title')}</PageTitle.Header>
-        <PageTitle.SubHeader>{t('flows:listing.subtitle')}</PageTitle.SubHeader>
+        <PageTitle.SubHeader>
+          {t('flows:listing.subtitle')} <LearnMoreLink docKey="flows" />
+        </PageTitle.SubHeader>
         <PageTitle.Actions>
           <Button
             variant="contained"

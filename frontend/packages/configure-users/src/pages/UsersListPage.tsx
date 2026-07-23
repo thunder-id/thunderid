@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import {LearnMoreLink} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -33,7 +34,9 @@ export default function UsersListPage() {
       {/* Header */}
       <PageTitle>
         <PageTitle.Header>{t('users:title')}</PageTitle.Header>
-        <PageTitle.SubHeader>{t('users:subtitle')}</PageTitle.SubHeader>
+        <PageTitle.SubHeader>
+          {t('users:subtitle')} <LearnMoreLink docKey="users" />
+        </PageTitle.SubHeader>
         <PageTitle.Actions>
           <Button
             variant="contained"

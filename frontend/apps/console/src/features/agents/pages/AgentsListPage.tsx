@@ -17,6 +17,7 @@
  */
 
 import {useGetAgentTypes} from '@thunderid/configure-agent-types';
+import {LearnMoreLink} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {FileCog, Plus} from '@wso2/oxygen-ui-icons-react';
@@ -50,7 +51,8 @@ export default function AgentsListPage(): JSX.Element {
       <PageTitle>
         <PageTitle.Header>{t('agents:listing.title', 'Agents')}</PageTitle.Header>
         <PageTitle.SubHeader>
-          {t('agents:listing.subtitle', 'Manage service identities and machine clients')}
+          {t('agents:listing.subtitle', 'Manage service identities and machine clients')}{' '}
+          <LearnMoreLink docKey="agents" />
         </PageTitle.SubHeader>
         <PageTitle.Actions>
           <Button

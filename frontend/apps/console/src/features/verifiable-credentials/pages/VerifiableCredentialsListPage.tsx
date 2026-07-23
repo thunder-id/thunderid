@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import {LearnMoreLink} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {PageContent, PageTitle, Stack, Button} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -33,7 +34,9 @@ export default function VerifiableCredentialsListPage(): JSX.Element {
     <PageContent>
       <PageTitle>
         <PageTitle.Header>{t('verifiable-credentials:listing.title')}</PageTitle.Header>
-        <PageTitle.SubHeader>{t('verifiable-credentials:listing.subtitle')}</PageTitle.SubHeader>
+        <PageTitle.SubHeader>
+          {t('verifiable-credentials:listing.subtitle')} <LearnMoreLink docKey="credentials" />
+        </PageTitle.SubHeader>
         <PageTitle.Actions>
           <Stack direction="row" spacing={2}>
             <Button

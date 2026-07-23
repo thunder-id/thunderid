@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import {LearnMoreLink} from '@thunderid/components';
 import {PageContent, PageTitle} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -28,7 +29,9 @@ export default function ConnectionsListPage(): JSX.Element {
     <PageContent>
       <PageTitle>
         <PageTitle.Header>{t('listing.title')}</PageTitle.Header>
-        <PageTitle.SubHeader>{t('listing.subtitle')}</PageTitle.SubHeader>
+        <PageTitle.SubHeader>
+          {t('listing.subtitle')} <LearnMoreLink docKey="connections" />
+        </PageTitle.SubHeader>
       </PageTitle>
 
       <ConnectionsList />

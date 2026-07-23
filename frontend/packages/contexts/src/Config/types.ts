@@ -188,14 +188,39 @@ export interface BrandConfig {
   favicon: {light: string; dark: string};
 
   /**
-   * Documentation site URLs.
-   */
-  documentation?: {baseUrl: string; releasesUrl: string};
-
-  /**
    * Design configuration for theming and UI customization.
    */
   design?: DesignConfig;
+}
+
+/**
+ * Documentation configuration interface that defines the documentation site's base URL,
+ * the release feed URL, and per-section "Learn more" link paths.
+ *
+ * @public
+ */
+export interface DocumentationConfig {
+  /**
+   * Base URL of the documentation site. Relative entries in `links` are resolved against it.
+   * @example "https://thunderid.dev/docs/next"
+   */
+  baseUrl?: string;
+
+  /**
+   * URL of the releases feed, used to surface "what's new" information.
+   * @example "https://thunderid.dev/data/releases.json"
+   */
+  releasesUrl?: string;
+
+  /**
+   * Flat map of feature/section id to documentation link. A value starting with `http` is
+   * used as-is; any other value is treated as a path and resolved against `baseUrl`. A key is
+   * plain for a top-level section ("users", "applications") and dot-notated if a sub-page ever
+   * needs its own link ("applications.oauth"), matching the dot-namespaced convention i18n keys
+   * already use in this codebase. A missing key means no link is shown for that section.
+   * @example { users: "/guides/users", applications: "/guides/applications" }
+   */
+  links?: Record<string, string>;
 }
 
 /**
@@ -304,6 +329,9 @@ export interface ProductConfig {
 
   /** Optional design configuration for theming and UI customization */
   design?: DesignConfig;
+
+  /** Optional documentation configuration for "Learn more" links and release info */
+  documentation?: DocumentationConfig;
 
   /** Optional SDK provider overrides. Values here take precedence over computed defaults. */
   sdk?: SdkConfig;

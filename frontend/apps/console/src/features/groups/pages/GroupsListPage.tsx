@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import {LearnMoreLink} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {Stack, Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -33,7 +34,9 @@ export default function GroupsListPage(): JSX.Element {
     <PageContent>
       <PageTitle>
         <PageTitle.Header>{t('groups:listing.title')}</PageTitle.Header>
-        <PageTitle.SubHeader>{t('groups:listing.subtitle')}</PageTitle.SubHeader>
+        <PageTitle.SubHeader>
+          {t('groups:listing.subtitle')} <LearnMoreLink docKey="groups" />
+        </PageTitle.SubHeader>
         <PageTitle.Actions>
           <Stack direction="row" spacing={2}>
             <Button

@@ -64,6 +64,10 @@ function ConfigConsumer() {
       <span data-testid="server-hostname">{ctx.getServerHostname()}</span>
       <span data-testid="server-port">{ctx.getServerPort()}</span>
       <span data-testid="is-http-only">{String(ctx.isHttpOnly())}</span>
+      <span data-testid="documentation-base-url">{ctx.getDocumentationBaseUrl()}</span>
+      <span data-testid="releases-url">{ctx.getReleasesUrl()}</span>
+      <span data-testid="documentation-link-users">{ctx.getDocumentationLink('users')}</span>
+      <span data-testid="documentation-link-missing">{ctx.getDocumentationLink('missing')}</span>
     </div>
   );
 }
@@ -317,6 +321,64 @@ describe('ConfigProvider', () => {
     it('returns empty when not configured', () => {
       renderWithConfig(buildConfig(), ConfigConsumer);
       expect(getTestId('resource-identifier')).toBe('');
+    });
+  });
+
+  // --- documentation ---
+
+  describe('getDocumentationLink', () => {
+    it('returns undefined for everything when documentation is not configured', () => {
+      renderWithConfig(buildConfig(), ConfigConsumer);
+      expect(getTestId('documentation-base-url')).toBe('');
+      expect(getTestId('releases-url')).toBe('');
+      expect(getTestId('documentation-link-users')).toBe('');
+    });
+
+    it('returns undefined for a key with no baseUrl configured', () => {
+      renderWithConfig(buildConfig({documentation: {links: {users: '/guides/users'}}}), ConfigConsumer);
+      expect(getTestId('documentation-link-users')).toBe('');
+    });
+
+    it('returns undefined for a key missing from links', () => {
+      renderWithConfig(buildConfig({documentation: {baseUrl: 'https://thunderid.dev/docs/next'}}), ConfigConsumer);
+      expect(getTestId('documentation-link-missing')).toBe('');
+    });
+
+    it('joins a relative path with baseUrl', () => {
+      renderWithConfig(
+        buildConfig({
+          documentation: {baseUrl: 'https://thunderid.dev/docs/next/', links: {users: '/guides/users'}},
+        }),
+        ConfigConsumer,
+      );
+      expect(getTestId('documentation-link-users')).toBe('https://thunderid.dev/docs/next/guides/users');
+    });
+
+    it('returns an absolute URL from links as-is', () => {
+      renderWithConfig(
+        buildConfig({
+          documentation: {
+            baseUrl: 'https://thunderid.dev/docs/next',
+            links: {users: 'https://example.com/custom-users-guide'},
+          },
+        }),
+        ConfigConsumer,
+      );
+      expect(getTestId('documentation-link-users')).toBe('https://example.com/custom-users-guide');
+    });
+
+    it('exposes baseUrl and releasesUrl directly', () => {
+      renderWithConfig(
+        buildConfig({
+          documentation: {
+            baseUrl: 'https://thunderid.dev/docs/next',
+            releasesUrl: 'https://thunderid.dev/data/releases.json',
+          },
+        }),
+        ConfigConsumer,
+      );
+      expect(getTestId('documentation-base-url')).toBe('https://thunderid.dev/docs/next');
+      expect(getTestId('releases-url')).toBe('https://thunderid.dev/data/releases.json');
     });
   });
 });

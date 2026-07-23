@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import {LearnMoreLink} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -34,7 +35,9 @@ export default function ApplicationsListPage(): JSX.Element {
       {/* Header */}
       <PageTitle>
         <PageTitle.Header>{t('applications:listing.title')}</PageTitle.Header>
-        <PageTitle.SubHeader>{t('applications:listing.subtitle')}</PageTitle.SubHeader>
+        <PageTitle.SubHeader>
+          {t('applications:listing.subtitle')} <LearnMoreLink docKey="applications" />
+        </PageTitle.SubHeader>
         <PageTitle.Actions>
           <Button
             data-testid="application-add-button"

@@ -62,6 +62,11 @@ vi.mock('../../components/FlowsList', () => ({
   default: () => <div data-testid="flows-list">FlowsList Component</div>,
 }));
 
+// Mock useConfig (consumed by LearnMoreLink in the page header)
+vi.mock('@thunderid/contexts', () => ({
+  useConfig: () => ({getDocumentationLink: () => undefined}),
+}));
+
 describe('FlowsListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();

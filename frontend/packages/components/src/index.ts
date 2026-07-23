@@ -17,10 +17,16 @@
  */
 
 // Components
+export {default as ExternalLinkConfirmDialog} from './ExternalLinkConfirm/ExternalLinkConfirmDialog';
+export type {ExternalLinkConfirmDialogProps} from './ExternalLinkConfirm/ExternalLinkConfirmDialog';
+export {default as useExternalLinkConfirmation} from './ExternalLinkConfirm/useExternalLinkConfirmation';
+export type {ExternalLinkConfirmationState} from './ExternalLinkConfirm/useExternalLinkConfirmation';
 export {default as Helmet} from './Helmet/Helmet';
 export type {HelmetProps} from './Helmet/Helmet';
 export {default as I18nTextInput} from './I18nTextInput/I18nTextInput';
 export type {I18nTextInputLabels, I18nTextInputProps} from './I18nTextInput/I18nTextInput';
+export {default as LearnMoreLink} from './LearnMoreLink/LearnMoreLink';
+export type {LearnMoreLinkProps} from './LearnMoreLink/LearnMoreLink';
 export {default as PageLoader} from './PageLoader/PageLoader';
 
 /* -------------------------- LAB -------------------------- */
