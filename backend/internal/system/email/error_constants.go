@@ -35,6 +35,8 @@ var (
 	// ErrorInvalidCredentials is returned when the SMTP username or password is empty but authentication is enabled.
 	ErrorInvalidCredentials = errors.New("invalid credentials: username and password cannot be empty " +
 		"when authentication is enabled")
+	// ErrorUnreachableOrigin is returned when the SMTP origin cannot be reached using a TCP dial.
+	ErrorUnreachableOrigin = errors.New("unreachable origin: unable to reach SMTP origin using TCP dial")
 )
 
 // Server errors for email service
