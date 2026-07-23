@@ -57,7 +57,7 @@ func (s *VonageTestSuite) TestToSenderDTOMapsFields() {
 	})
 	s.Require().NoError(err)
 	s.Equal(ncommon.NotificationSenderTypeMessage, dto.Type)
-	s.Equal(ncommon.MessageProviderTypeVonage, dto.Provider)
+	s.Equal(ncommon.NotificationProviderTypeVonage, dto.Provider)
 	s.Equal("OTP over SMS", dto.Description)
 
 	values, err := propertyValues(dto.Properties)
@@ -74,7 +74,7 @@ func (s *VonageTestSuite) TestCreateMasksSecret() {
 			ID:       "vo-1",
 			Name:     "My Vonage",
 			Type:     ncommon.NotificationSenderTypeMessage,
-			Provider: ncommon.MessageProviderTypeVonage,
+			Provider: ncommon.NotificationProviderTypeVonage,
 			Properties: []cmodels.Property{
 				mustProperty(s.T(), ncommon.VonagePropKeyAPIKey, "a1b2c3d4", false),
 				mustProperty(s.T(), ncommon.VonagePropKeyAPISecret, "sec", true),
@@ -105,7 +105,7 @@ func (s *VonageTestSuite) TestGetRoundTrip() {
 			ID:       "vo-1",
 			Name:     "My Vonage",
 			Type:     ncommon.NotificationSenderTypeMessage,
-			Provider: ncommon.MessageProviderTypeVonage,
+			Provider: ncommon.NotificationProviderTypeVonage,
 			Properties: []cmodels.Property{
 				mustProperty(s.T(), ncommon.VonagePropKeyAPIKey, "a1b2c3d4", false),
 				mustProperty(s.T(), ncommon.VonagePropKeyAPISecret, "sec", true),
@@ -116,7 +116,7 @@ func (s *VonageTestSuite) TestGetRoundTrip() {
 	req := httptest.NewRequest(http.MethodGet, "/connections/vonage/vo-1", nil)
 	req.SetPathValue("id", "vo-1")
 	rr := httptest.NewRecorder()
-	getSMSHandler(s.handler, ncommon.MessageProviderTypeVonage, vonageFromSenderDTO)(rr, req)
+	getSMSHandler(s.handler, ncommon.NotificationProviderTypeVonage, vonageFromSenderDTO)(rr, req)
 
 	s.Equal(http.StatusOK, rr.Code)
 	var resp vonageConnectionResponse

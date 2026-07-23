@@ -291,22 +291,6 @@ type RestSecurityConfig struct {
 	APIKey string `yaml:"api_key" json:"api_key"`
 }
 
-// EmailConfig holds the email configuration details.
-type EmailConfig struct {
-	SMTP SMTPEmailConfig `yaml:"smtp" json:"smtp"`
-}
-
-// SMTPEmailConfig holds the SMTP email configuration details.
-type SMTPEmailConfig struct {
-	Host                 string `yaml:"host"                  json:"host"`
-	Port                 int    `yaml:"port"                  json:"port"`
-	Username             string `yaml:"username"              json:"username"`
-	Password             string `yaml:"password"              json:"password"`
-	FromAddress          string `yaml:"from_address"          json:"from_address"`
-	EnableStartTLS       *bool  `yaml:"enable_start_tls"      json:"enable_start_tls"`
-	EnableAuthentication *bool  `yaml:"enable_authentication" json:"enable_authentication"`
-}
-
 // DeclarativeResources holds the configuration details for the declarative resources.
 type DeclarativeResources struct {
 	Enabled bool `yaml:"enabled" json:"enabled" default:"false"`
@@ -604,7 +588,6 @@ type Config struct {
 	Theme                ThemeConfig                      `yaml:"theme"                 json:"theme"`
 	Layout               LayoutConfig                     `yaml:"layout"                json:"layout"`
 	Translation          TranslationConfig                `yaml:"translation"           json:"translation"`
-	Email                EmailConfig                      `yaml:"email"                 json:"email"`
 	Notification         NotificationConfig               `yaml:"notification"          json:"notification"`
 }
 

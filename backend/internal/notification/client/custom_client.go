@@ -39,12 +39,9 @@ const (
 
 // CustomClient implements the NotificationClientInterface for sending messages via a custom message provider.
 type CustomClient struct {
-	name        string
-	url         string
-	httpMethod  string
-	httpHeaders map[string]string
-	contentType string
-	httpClient  syshttp.HTTPClientInterface
+	name       string
+	config     httpWebhookConfig
+	httpClient syshttp.HTTPClientInterface
 }
 
 // newCustomClient creates a new instance of CustomClient.
@@ -54,29 +51,11 @@ func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (
 	client := &CustomClient{}
 	client.name = sender.Name
 
-	for _, prop := range sender.Properties {
-		value, err := prop.GetValue()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get property value for %s: %w", prop.GetName(), err)
-		}
-
-		switch prop.GetName() {
-		case common.CustomPropKeyURL:
-			client.url = value
-		case common.CustomPropKeyHTTPMethod:
-			client.httpMethod = strings.ToUpper(value)
-		case common.CustomPropKeyHTTPHeaders:
-			headers, err := client.getHeadersFromString(value)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse HTTP headers: %w", err)
-			}
-			client.httpHeaders = headers
-		case common.CustomPropKeyContentType:
-			client.contentType = strings.ToUpper(value)
-		default:
-			logger.Warn(ctx, "Unknown property for Custom client", log.String("property", prop.GetName()))
-		}
+	config, err := parseHTTPWebhookConfig(ctx, sender, logger)
+	if err != nil {
+		return nil, err
 	}
+	client.config = config
 	client.httpClient = syshttp.NewHTTPClientWithTimeout(httpClientTimeout)
 
 	return client, nil
@@ -93,7 +72,7 @@ func (c *CustomClient) IsChannelSupported(channel common.ChannelType) bool {
 }
 
 // Send dispatches a notification via the requested channel.
-func (c *CustomClient) Send(ctx context.Context, channel common.ChannelType, data common.NotificationData) error {
+func (c *CustomClient) Send(ctx context.Context, channel common.ChannelType, data common.MessageData) error {
 	switch channel {
 	case common.ChannelTypeSMS:
 		return c.sendSMS(ctx, data)
@@ -103,20 +82,20 @@ func (c *CustomClient) Send(ctx context.Context, channel common.ChannelType, dat
 }
 
 // sendSMS sends an SMS via the custom webhook.
-func (c *CustomClient) sendSMS(ctx context.Context, data common.NotificationData) error {
+func (c *CustomClient) sendSMS(ctx context.Context, data common.MessageData) error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, customClientLoggerComponentName))
 	logger.Debug(ctx, "Sending SMS via custom client", log.MaskedString("to", data.Recipient))
 
 	var req *http.Request
 	var err error
 
-	if strings.ToUpper(c.contentType) == "JSON" {
-		req, err = http.NewRequest(c.httpMethod, c.url, bytes.NewBufferString(data.Body))
+	if c.config.contentType == "JSON" {
+		req, err = http.NewRequest(c.config.httpMethod, c.config.url, bytes.NewBufferString(data.Body))
 		if err != nil {
 			return fmt.Errorf("failed to create HTTP request: %w", err)
 		}
 		req.Header.Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeJSON)
-	} else if strings.ToUpper(c.contentType) == "FORM" {
+	} else if c.config.contentType == "FORM" {
 		formData := url.Values{}
 		lines := strings.Split(data.Body, "\n")
 		for _, line := range lines {
@@ -125,16 +104,16 @@ func (c *CustomClient) sendSMS(ctx context.Context, data common.NotificationData
 				formData.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
 			}
 		}
-		req, err = http.NewRequest(c.httpMethod, c.url, strings.NewReader(formData.Encode()))
+		req, err = http.NewRequest(c.config.httpMethod, c.config.url, strings.NewReader(formData.Encode()))
 		if err != nil {
 			return fmt.Errorf("failed to create HTTP request: %w", err)
 		}
 		req.Header.Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeFormURLEncoded)
 	} else {
-		return fmt.Errorf("unsupported content type: %s", c.contentType)
+		return fmt.Errorf("unsupported content type: %s", c.config.contentType)
 	}
 
-	for key, value := range c.httpHeaders {
+	for key, value := range c.config.httpHeaders {
 		req.Header.Set(key, value)
 	}
 
@@ -158,20 +137,4 @@ func (c *CustomClient) sendSMS(ctx context.Context, data common.NotificationData
 	}
 
 	return nil
-}
-
-// getHeadersFromString parses a string of HTTP headers into a map.
-func (c *CustomClient) getHeadersFromString(headersString string) (map[string]string, error) {
-	headers := make(map[string]string)
-	for _, header := range strings.Split(headersString, ",") {
-		parts := strings.SplitN(header, ":", 2)
-		if len(parts) == 2 {
-			key := strings.TrimSpace(parts[0])
-			value := strings.TrimSpace(parts[1])
-			headers[key] = value
-		} else {
-			return nil, fmt.Errorf("invalid HTTP header format: %s", header)
-		}
-	}
-	return headers, nil
 }

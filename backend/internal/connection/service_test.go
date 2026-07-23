@@ -93,8 +93,10 @@ func (s *ServiceTestSuite) TestListInstancesAllCategories() {
 	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
 		Return([]ncommon.NotificationSenderDTO{
 			{ID: "s1", Name: "SMS", Type: ncommon.NotificationSenderTypeMessage,
-				Provider: ncommon.MessageProviderTypeCustom},
+				Provider: ncommon.NotificationProviderTypeCustom},
 		}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeEmail).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
 
 	got, svcErr := s.svc.listInstances(context.Background(), "", serverconst.DefaultPageSize, 0)
 	s.Nil(svcErr)
@@ -170,6 +172,8 @@ func (s *ServiceTestSuite) TestListInstancesOffsetPastEnd() {
 	}, (*tidcommon.ServiceError)(nil))
 	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
 		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeEmail).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
 
 	got, svcErr := s.svc.listInstances(context.Background(), "", serverconst.DefaultPageSize, 10)
 	s.Nil(svcErr)
@@ -208,7 +212,7 @@ func (s *ServiceTestSuite) TestListInstancesSMSSkipsIdPs() {
 	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
 		Return([]ncommon.NotificationSenderDTO{
 			{ID: "s1", Name: "SMS", Type: ncommon.NotificationSenderTypeMessage,
-				Provider: ncommon.MessageProviderTypeTwilio},
+				Provider: ncommon.NotificationProviderTypeTwilio},
 		}, (*tidcommon.ServiceError)(nil))
 
 	got, svcErr := s.svc.listInstances(context.Background(), categorySMSProvider,
@@ -223,9 +227,9 @@ func (s *ServiceTestSuite) TestListInstancesSkipsUnregisteredSenderProvider() {
 	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
 		Return([]ncommon.NotificationSenderDTO{
 			{ID: "s1", Name: "SMS", Type: ncommon.NotificationSenderTypeMessage,
-				Provider: ncommon.MessageProviderTypeTwilio},
+				Provider: ncommon.NotificationProviderTypeTwilio},
 			{ID: "s2", Name: "Unregistered", Type: ncommon.NotificationSenderTypeMessage,
-				Provider: ncommon.MessageProviderType("unregistered-provider")},
+				Provider: ncommon.NotificationProviderType("unregistered-provider")},
 		}, (*tidcommon.ServiceError)(nil))
 
 	got, svcErr := s.svc.listInstances(context.Background(), categorySMSProvider,
@@ -242,6 +246,8 @@ func (s *ServiceTestSuite) TestListInstancesSortsByIDWhenTypeAndNameTie() {
 	}, (*tidcommon.ServiceError)(nil))
 	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
 		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeEmail).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
 
 	got, svcErr := s.svc.listInstances(context.Background(), "", serverconst.DefaultPageSize, 0)
 	s.Nil(svcErr)
@@ -251,7 +257,7 @@ func (s *ServiceTestSuite) TestListInstancesSortsByIDWhenTypeAndNameTie() {
 }
 
 func (s *ServiceTestSuite) TestSMSVendorNameUnregisteredProviderReturnsFalse() {
-	name, ok := smsVendorName(ncommon.MessageProviderType("unregistered-provider"))
+	name, ok := smsVendorName(ncommon.NotificationProviderType("unregistered-provider"))
 	s.False(ok)
 	s.Empty(name)
 }
@@ -369,12 +375,12 @@ func (s *ServiceTestSuite) authToken(value string) []cmodels.Property {
 func (s *ServiceTestSuite) TestListSMSByProviderFilters() {
 	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
 		Return([]ncommon.NotificationSenderDTO{
-			{ID: "1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeTwilio},
-			{ID: "2", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeVonage},
-			{ID: "3", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeTwilio},
+			{ID: "1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeTwilio},
+			{ID: "2", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeVonage},
+			{ID: "3", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeTwilio},
 		}, (*tidcommon.ServiceError)(nil))
 
-	got, svcErr := s.svc.listSMSByProvider(context.Background(), ncommon.MessageProviderTypeTwilio)
+	got, svcErr := s.svc.listSMSByProvider(context.Background(), ncommon.NotificationProviderTypeTwilio)
 	s.Nil(svcErr)
 	s.Len(got, 2)
 }
@@ -383,16 +389,38 @@ func (s *ServiceTestSuite) TestListSMSByProviderError() {
 	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
 		Return(([]ncommon.NotificationSenderDTO)(nil), &tidcommon.InternalServerError)
 
-	_, svcErr := s.svc.listSMSByProvider(context.Background(), ncommon.MessageProviderTypeTwilio)
+	_, svcErr := s.svc.listSMSByProvider(context.Background(), ncommon.NotificationProviderTypeTwilio)
 	s.NotNil(svcErr)
+}
+
+func (s *ServiceTestSuite) TestSMSProviderCountsError() {
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
+		Return(([]ncommon.NotificationSenderDTO)(nil), &tidcommon.InternalServerError)
+
+	_, svcErr := s.svc.smsProviderCounts(context.Background())
+	s.NotNil(svcErr)
+}
+
+func (s *ServiceTestSuite) TestSMSProviderCountsIgnoresNonMessage() {
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).Return(
+		[]ncommon.NotificationSenderDTO{
+			{ID: "1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeTwilio},
+			{ID: "2", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeTwilio},
+			{ID: "3", Type: ncommon.NotificationSenderTypeEmail, Provider: ncommon.NotificationProviderTypeVonage},
+		}, (*tidcommon.ServiceError)(nil))
+
+	counts, svcErr := s.svc.smsProviderCounts(context.Background())
+	s.Nil(svcErr)
+	s.Equal(2, counts[ncommon.NotificationProviderTypeTwilio])
+	s.Equal(0, counts[ncommon.NotificationProviderTypeVonage])
 }
 
 func (s *ServiceTestSuite) TestGetSMSByProviderMismatchReturnsNotFound() {
 	s.mockNotif.On("GetSender", mock.Anything, "x").Return(&ncommon.NotificationSenderDTO{
-		ID: "x", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeVonage,
+		ID: "x", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeVonage,
 	}, (*tidcommon.ServiceError)(nil))
 
-	_, svcErr := s.svc.getSMSByProvider(context.Background(), ncommon.MessageProviderTypeTwilio, "x")
+	_, svcErr := s.svc.getSMSByProvider(context.Background(), ncommon.NotificationProviderTypeTwilio, "x")
 	s.Require().NotNil(svcErr)
 	s.Equal(notification.ErrorSenderNotFound.Code, svcErr.Code)
 }
@@ -401,7 +429,7 @@ func (s *ServiceTestSuite) TestGetSMSByProviderError() {
 	s.mockNotif.On("GetSender", mock.Anything, "missing").
 		Return((*ncommon.NotificationSenderDTO)(nil), &notification.ErrorSenderNotFound)
 
-	_, svcErr := s.svc.getSMSByProvider(context.Background(), ncommon.MessageProviderTypeTwilio, "missing")
+	_, svcErr := s.svc.getSMSByProvider(context.Background(), ncommon.NotificationProviderTypeTwilio, "missing")
 	s.Require().NotNil(svcErr)
 	s.Equal(notification.ErrorSenderNotFound.Code, svcErr.Code)
 }
@@ -410,14 +438,14 @@ func (s *ServiceTestSuite) TestDeleteSMSByProviderGetFails() {
 	s.mockNotif.On("GetSender", mock.Anything, "missing").
 		Return((*ncommon.NotificationSenderDTO)(nil), &notification.ErrorSenderNotFound)
 
-	svcErr := s.svc.deleteSMSByProvider(context.Background(), ncommon.MessageProviderTypeTwilio, "missing")
+	svcErr := s.svc.deleteSMSByProvider(context.Background(), ncommon.NotificationProviderTypeTwilio, "missing")
 	s.Require().NotNil(svcErr)
 	s.mockNotif.AssertNotCalled(s.T(), "DeleteSender", mock.Anything, mock.Anything)
 }
 
 func (s *ServiceTestSuite) TestUpdateSMSOmittedSecretKeepsStored() {
 	s.mockNotif.On("GetSender", mock.Anything, "tw-1").Return(&ncommon.NotificationSenderDTO{
-		ID: "tw-1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeTwilio,
+		ID: "tw-1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeTwilio,
 		Properties: s.authToken("stored"),
 	}, (*tidcommon.ServiceError)(nil))
 
@@ -428,9 +456,9 @@ func (s *ServiceTestSuite) TestUpdateSMSOmittedSecretKeepsStored() {
 
 	// Update carries no secret property at all → the stored secret is preserved.
 	dto := ncommon.NotificationSenderDTO{
-		Name: "tw", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeTwilio,
+		Name: "tw", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeTwilio,
 	}
-	_, svcErr := s.svc.updateSMS(context.Background(), ncommon.MessageProviderTypeTwilio, "tw-1", dto)
+	_, svcErr := s.svc.updateSMS(context.Background(), ncommon.NotificationProviderTypeTwilio, "tw-1", dto)
 
 	s.Nil(svcErr)
 	s.Require().Len(captured.Properties, 1)
@@ -441,13 +469,13 @@ func (s *ServiceTestSuite) TestUpdateSMSOmittedSecretKeepsStored() {
 
 func (s *ServiceTestSuite) TestUpdateSMSProviderMismatch() {
 	s.mockNotif.On("GetSender", mock.Anything, "x").Return(&ncommon.NotificationSenderDTO{
-		ID: "x", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeVonage,
+		ID: "x", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeVonage,
 	}, (*tidcommon.ServiceError)(nil))
 
 	dto := ncommon.NotificationSenderDTO{
-		Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeTwilio,
+		Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeTwilio,
 	}
-	_, svcErr := s.svc.updateSMS(context.Background(), ncommon.MessageProviderTypeTwilio, "x", dto)
+	_, svcErr := s.svc.updateSMS(context.Background(), ncommon.NotificationProviderTypeTwilio, "x", dto)
 	s.Require().NotNil(svcErr)
 	s.Equal(notification.ErrorSenderNotFound.Code, svcErr.Code)
 	s.mockNotif.AssertNotCalled(s.T(), "UpdateSender", mock.Anything, mock.Anything, mock.Anything)
@@ -455,11 +483,158 @@ func (s *ServiceTestSuite) TestUpdateSMSProviderMismatch() {
 
 func (s *ServiceTestSuite) TestDeleteSMSByProviderDelegates() {
 	s.mockNotif.On("GetSender", mock.Anything, "tw-1").Return(&ncommon.NotificationSenderDTO{
-		ID: "tw-1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeTwilio,
+		ID: "tw-1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeTwilio,
 	}, (*tidcommon.ServiceError)(nil))
 	s.mockNotif.On("DeleteSender", mock.Anything, "tw-1").Return((*tidcommon.ServiceError)(nil))
 
-	svcErr := s.svc.deleteSMSByProvider(context.Background(), ncommon.MessageProviderTypeTwilio, "tw-1")
+	svcErr := s.svc.deleteSMSByProvider(context.Background(), ncommon.NotificationProviderTypeTwilio, "tw-1")
+	s.Nil(svcErr)
+}
+
+func (s *ServiceTestSuite) TestEmailVendorName() {
+	name, ok := emailVendorName(ncommon.NotificationProviderTypeSMTP)
+	s.True(ok)
+	s.Equal("smtp", name)
+
+	name, ok = emailVendorName(ncommon.NotificationProviderTypeHTTP)
+	s.True(ok)
+	s.Equal("http", name)
+
+	name, ok = emailVendorName(ncommon.NotificationProviderTypeTwilio)
+	s.False(ok)
+	s.Empty(name)
+}
+
+func (s *ServiceTestSuite) TestListInstancesEmailProviderError() {
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeEmail).
+		Return(([]ncommon.NotificationSenderDTO)(nil), &tidcommon.InternalServerError)
+
+	_, svcErr := s.svc.listInstances(context.Background(), categoryEmailProvider, serverconst.DefaultPageSize, 0)
+	s.NotNil(svcErr)
+}
+
+func (s *ServiceTestSuite) TestListInstancesEmailSkipsIdPs() {
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeEmail).
+		Return([]ncommon.NotificationSenderDTO{
+			{ID: "e1", Name: "Email", Type: ncommon.NotificationSenderTypeEmail,
+				Provider: ncommon.NotificationProviderTypeSMTP},
+		}, (*tidcommon.ServiceError)(nil))
+
+	got, svcErr := s.svc.listInstances(context.Background(), categoryEmailProvider,
+		serverconst.DefaultPageSize, 0)
+	s.Nil(svcErr)
+	s.Require().Len(got.Connections, 1)
+	s.Equal("e1", got.Connections[0].ID)
+	s.mockIDP.AssertNotCalled(s.T(), "GetIdentityProviderList", mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestListEmailByProviderFilters() {
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeEmail).
+		Return([]ncommon.NotificationSenderDTO{
+			{ID: "1", Type: ncommon.NotificationSenderTypeEmail, Provider: ncommon.NotificationProviderTypeSMTP},
+			{ID: "2", Type: ncommon.NotificationSenderTypeEmail, Provider: ncommon.NotificationProviderTypeHTTP},
+			{ID: "3", Type: ncommon.NotificationSenderTypeEmail, Provider: ncommon.NotificationProviderTypeSMTP},
+		}, (*tidcommon.ServiceError)(nil))
+
+	got, svcErr := s.svc.listEmailByProvider(context.Background(), ncommon.NotificationProviderTypeSMTP)
+	s.Nil(svcErr)
+	s.Len(got, 2)
+}
+
+func (s *ServiceTestSuite) TestListEmailByProviderError() {
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeEmail).
+		Return(([]ncommon.NotificationSenderDTO)(nil), &tidcommon.InternalServerError)
+
+	_, svcErr := s.svc.listEmailByProvider(context.Background(), ncommon.NotificationProviderTypeSMTP)
+	s.NotNil(svcErr)
+}
+
+func (s *ServiceTestSuite) TestGetEmailByProviderMismatchReturnsNotFound() {
+	s.mockNotif.On("GetSender", mock.Anything, "x").
+		Return(&ncommon.NotificationSenderDTO{
+			Type:     ncommon.NotificationSenderTypeMessage,
+			Provider: ncommon.NotificationProviderTypeTwilio}, (*tidcommon.ServiceError)(nil))
+
+	_, svcErr := s.svc.getEmailByProvider(context.Background(), ncommon.NotificationProviderTypeSMTP, "x")
+	s.NotNil(svcErr)
+	s.Equal(notification.ErrorSenderNotFound.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestGetEmailByProviderError() {
+	s.mockNotif.On("GetSender", mock.Anything, "missing").
+		Return((*ncommon.NotificationSenderDTO)(nil), &notification.ErrorSenderNotFound)
+
+	_, svcErr := s.svc.getEmailByProvider(context.Background(), ncommon.NotificationProviderTypeSMTP, "missing")
+	s.NotNil(svcErr)
+	s.Equal(notification.ErrorSenderNotFound.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestCreateEmailDelegates() {
+	dto := ncommon.NotificationSenderDTO{ID: "new"}
+	s.mockNotif.On("CreateSender", mock.Anything, dto).
+		Return(&dto, (*tidcommon.ServiceError)(nil))
+
+	got, svcErr := s.svc.createEmail(context.Background(), dto)
+	s.Nil(svcErr)
+	s.Equal("new", got.ID)
+}
+
+func (s *ServiceTestSuite) TestUpdateEmailGetFails() {
+	s.mockNotif.On("GetSender", mock.Anything, "missing").
+		Return((*ncommon.NotificationSenderDTO)(nil), &notification.ErrorSenderNotFound)
+
+	dto := ncommon.NotificationSenderDTO{ID: "missing"}
+	_, svcErr := s.svc.updateEmail(context.Background(), ncommon.NotificationProviderTypeSMTP, "missing", dto)
+	s.NotNil(svcErr)
+	s.Equal(notification.ErrorSenderNotFound.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestUpdateEmailDelegates() {
+	existing := &ncommon.NotificationSenderDTO{
+		ID: "e-1", Type: ncommon.NotificationSenderTypeEmail, Provider: ncommon.NotificationProviderTypeSMTP,
+		Properties: []cmodels.Property{
+			mustProperty(s.T(), "password", "old-secret", true),
+		},
+	}
+	s.mockNotif.On("GetSender", mock.Anything, "e-1").Return(existing, (*tidcommon.ServiceError)(nil))
+
+	updated := ncommon.NotificationSenderDTO{
+		ID: "e-1", Type: ncommon.NotificationSenderTypeEmail, Provider: ncommon.NotificationProviderTypeSMTP,
+		Properties: []cmodels.Property{
+			mustProperty(s.T(), "password", maskedSecretValue, true),
+		}}
+
+	// Expect the merge logic to preserve the old-secret
+	merged := updated
+	merged.Properties = []cmodels.Property{
+		mustProperty(s.T(), "password", "old-secret", true),
+	}
+
+	s.mockNotif.On("UpdateSender", mock.Anything, "e-1", mock.Anything).Return(&merged, (*tidcommon.ServiceError)(nil))
+
+	got, svcErr := s.svc.updateEmail(context.Background(), ncommon.NotificationProviderTypeSMTP, "e-1", updated)
+	s.Nil(svcErr)
+	v, _ := got.Properties[0].GetValue()
+	s.Equal("old-secret", v)
+}
+
+func (s *ServiceTestSuite) TestDeleteEmailByProviderGetFails() {
+	s.mockNotif.On("GetSender", mock.Anything, "missing").
+		Return((*ncommon.NotificationSenderDTO)(nil), &notification.ErrorSenderNotFound)
+
+	svcErr := s.svc.deleteEmailByProvider(context.Background(), ncommon.NotificationProviderTypeSMTP, "missing")
+	s.NotNil(svcErr)
+	s.Equal(notification.ErrorSenderNotFound.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestDeleteEmailByProviderDelegates() {
+	existing := &ncommon.NotificationSenderDTO{
+		ID: "e-1", Type: ncommon.NotificationSenderTypeEmail, Provider: ncommon.NotificationProviderTypeSMTP,
+	}
+	s.mockNotif.On("GetSender", mock.Anything, "e-1").Return(existing, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("DeleteSender", mock.Anything, "e-1").Return((*tidcommon.ServiceError)(nil))
+
+	svcErr := s.svc.deleteEmailByProvider(context.Background(), ncommon.NotificationProviderTypeSMTP, "e-1")
 	s.Nil(svcErr)
 }
 

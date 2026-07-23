@@ -98,20 +98,32 @@ func registerRoutes(mux *http.ServeMux, h *handler) {
 		collectionOpts, itemOpts)
 
 	// SMS-backed vendors.
-	registerSMSVendorRoutes(mux, h, "/connections/twilio", ncommon.MessageProviderTypeTwilio,
+	registerSMSVendorRoutes(mux, h, "/connections/twilio", ncommon.NotificationProviderTypeTwilio,
 		createSMSHandler(h, twilioToSenderDTO, twilioFromSenderDTO),
-		getSMSHandler(h, ncommon.MessageProviderTypeTwilio, twilioFromSenderDTO),
-		updateSMSHandler(h, ncommon.MessageProviderTypeTwilio, twilioToSenderDTO, twilioFromSenderDTO),
+		getSMSHandler(h, ncommon.NotificationProviderTypeTwilio, twilioFromSenderDTO),
+		updateSMSHandler(h, ncommon.NotificationProviderTypeTwilio, twilioToSenderDTO, twilioFromSenderDTO),
 		collectionOpts, itemOpts)
-	registerSMSVendorRoutes(mux, h, "/connections/vonage", ncommon.MessageProviderTypeVonage,
+	registerSMSVendorRoutes(mux, h, "/connections/vonage", ncommon.NotificationProviderTypeVonage,
 		createSMSHandler(h, vonageToSenderDTO, vonageFromSenderDTO),
-		getSMSHandler(h, ncommon.MessageProviderTypeVonage, vonageFromSenderDTO),
-		updateSMSHandler(h, ncommon.MessageProviderTypeVonage, vonageToSenderDTO, vonageFromSenderDTO),
+		getSMSHandler(h, ncommon.NotificationProviderTypeVonage, vonageFromSenderDTO),
+		updateSMSHandler(h, ncommon.NotificationProviderTypeVonage, vonageToSenderDTO, vonageFromSenderDTO),
 		collectionOpts, itemOpts)
-	registerSMSVendorRoutes(mux, h, "/connections/"+smsGatewayVendorName, ncommon.MessageProviderTypeCustom,
+	registerSMSVendorRoutes(mux, h, "/connections/"+smsGatewayVendorName, ncommon.NotificationProviderTypeCustom,
 		createSMSHandler(h, smsGatewayToSenderDTO, smsGatewayFromSenderDTO),
-		getSMSHandler(h, ncommon.MessageProviderTypeCustom, smsGatewayFromSenderDTO),
-		updateSMSHandler(h, ncommon.MessageProviderTypeCustom, smsGatewayToSenderDTO, smsGatewayFromSenderDTO),
+		getSMSHandler(h, ncommon.NotificationProviderTypeCustom, smsGatewayFromSenderDTO),
+		updateSMSHandler(h, ncommon.NotificationProviderTypeCustom, smsGatewayToSenderDTO, smsGatewayFromSenderDTO),
+		collectionOpts, itemOpts)
+
+	// Email-backed vendors.
+	registerEmailVendorRoutes(mux, h, "/connections/smtp", ncommon.NotificationProviderTypeSMTP,
+		createEmailHandler(h, smtpToSenderDTO, smtpFromSenderDTO),
+		getEmailHandler(h, ncommon.NotificationProviderTypeSMTP, smtpFromSenderDTO),
+		updateEmailHandler(h, ncommon.NotificationProviderTypeSMTP, smtpToSenderDTO, smtpFromSenderDTO),
+		collectionOpts, itemOpts)
+	registerEmailVendorRoutes(mux, h, "/connections/http", ncommon.NotificationProviderTypeHTTP,
+		createEmailHandler(h, httpEmailToSenderDTO, httpEmailFromSenderDTO),
+		getEmailHandler(h, ncommon.NotificationProviderTypeHTTP, httpEmailFromSenderDTO),
+		updateEmailHandler(h, ncommon.NotificationProviderTypeHTTP, httpEmailToSenderDTO, httpEmailFromSenderDTO),
 		collectionOpts, itemOpts)
 }
 
@@ -144,7 +156,7 @@ func registerVendorRoutes(mux *http.ServeMux, h *handler, base string, idpType p
 // routes for a single SMS-backed vendor, plus their OPTIONS handlers.
 //
 //nolint:dupl // mirrors registerVendorRoutes but scopes deletion by message provider, not IdP type
-func registerSMSVendorRoutes(mux *http.ServeMux, h *handler, base string, provider ncommon.MessageProviderType,
+func registerSMSVendorRoutes(mux *http.ServeMux, h *handler, base string, provider ncommon.NotificationProviderType,
 	create, get, update http.HandlerFunc, collectionOpts, itemOpts middleware.CORSOptions) {
 	mux.HandleFunc(middleware.WithCORS("GET "+base, h.listSMSInstances(provider), collectionOpts))
 	mux.HandleFunc(middleware.WithCORS("POST "+base, create, collectionOpts))
@@ -153,5 +165,21 @@ func registerSMSVendorRoutes(mux *http.ServeMux, h *handler, base string, provid
 	mux.HandleFunc(middleware.WithCORS("GET "+base+"/{id}", get, itemOpts))
 	mux.HandleFunc(middleware.WithCORS("PUT "+base+"/{id}", update, itemOpts))
 	mux.HandleFunc(middleware.WithCORS("DELETE "+base+"/{id}", h.deleteSMSInstance(provider), itemOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base+"/{id}", noContent, itemOpts))
+}
+
+// registerEmailVendorRoutes registers the collection (list/create) and item (get/update/delete)
+// routes for a single email-backed vendor, plus their OPTIONS handlers.
+//
+//nolint:dupl // mirrors registerSMSVendorRoutes but scopes deletion by email provider
+func registerEmailVendorRoutes(mux *http.ServeMux, h *handler, base string, provider ncommon.NotificationProviderType,
+	create, get, update http.HandlerFunc, collectionOpts, itemOpts middleware.CORSOptions) {
+	mux.HandleFunc(middleware.WithCORS("GET "+base, h.listEmailInstances(provider), collectionOpts))
+	mux.HandleFunc(middleware.WithCORS("POST "+base, create, collectionOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base, noContent, collectionOpts))
+
+	mux.HandleFunc(middleware.WithCORS("GET "+base+"/{id}", get, itemOpts))
+	mux.HandleFunc(middleware.WithCORS("PUT "+base+"/{id}", update, itemOpts))
+	mux.HandleFunc(middleware.WithCORS("DELETE "+base+"/{id}", h.deleteEmailInstance(provider), itemOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base+"/{id}", noContent, itemOpts))
 }

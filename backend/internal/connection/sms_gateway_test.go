@@ -58,7 +58,7 @@ func (s *SMSGatewayTestSuite) TestToSenderDTOMapsFields() {
 	})
 	s.Require().NoError(err)
 	s.Equal(ncommon.NotificationSenderTypeMessage, dto.Type)
-	s.Equal(ncommon.MessageProviderTypeCustom, dto.Provider)
+	s.Equal(ncommon.NotificationProviderTypeCustom, dto.Provider)
 	s.Equal("Custom webhook sender", dto.Description)
 
 	values, err := propertyValues(dto.Properties)
@@ -89,7 +89,7 @@ func (s *SMSGatewayTestSuite) TestCreateReturnsPlaintextNonSecretFields() {
 			ID:       "sg-1",
 			Name:     "Prod SMS",
 			Type:     ncommon.NotificationSenderTypeMessage,
-			Provider: ncommon.MessageProviderTypeCustom,
+			Provider: ncommon.NotificationProviderTypeCustom,
 			Properties: []cmodels.Property{
 				mustProperty(s.T(), ncommon.CustomPropKeyURL, "https://sms.example.com/send", false),
 				mustProperty(s.T(), ncommon.CustomPropKeyHTTPMethod, "POST", false),
@@ -123,7 +123,7 @@ func (s *SMSGatewayTestSuite) TestGetRoundTrip() {
 			ID:       "sg-1",
 			Name:     "Prod SMS",
 			Type:     ncommon.NotificationSenderTypeMessage,
-			Provider: ncommon.MessageProviderTypeCustom,
+			Provider: ncommon.NotificationProviderTypeCustom,
 			Properties: []cmodels.Property{
 				mustProperty(s.T(), ncommon.CustomPropKeyURL, "https://sms.example.com/send", false),
 			},
@@ -132,7 +132,7 @@ func (s *SMSGatewayTestSuite) TestGetRoundTrip() {
 	req := httptest.NewRequest(http.MethodGet, "/connections/sms-gateway/sg-1", nil)
 	req.SetPathValue("id", "sg-1")
 	rr := httptest.NewRecorder()
-	getSMSHandler(s.handler, ncommon.MessageProviderTypeCustom, smsGatewayFromSenderDTO)(rr, req)
+	getSMSHandler(s.handler, ncommon.NotificationProviderTypeCustom, smsGatewayFromSenderDTO)(rr, req)
 
 	s.Equal(http.StatusOK, rr.Code)
 	var resp smsGatewayConnectionResponse
@@ -144,13 +144,13 @@ func (s *SMSGatewayTestSuite) TestGetRoundTrip() {
 func (s *SMSGatewayTestSuite) TestGetProviderMismatchReturnsNotFound() {
 	s.mockNotif.On("GetSender", mock.Anything, "tw-1").
 		Return(&ncommon.NotificationSenderDTO{
-			ID: "tw-1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeTwilio,
+			ID: "tw-1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeTwilio,
 		}, (*tidcommon.ServiceError)(nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/connections/sms-gateway/tw-1", nil)
 	req.SetPathValue("id", "tw-1")
 	rr := httptest.NewRecorder()
-	getSMSHandler(s.handler, ncommon.MessageProviderTypeCustom, smsGatewayFromSenderDTO)(rr, req)
+	getSMSHandler(s.handler, ncommon.NotificationProviderTypeCustom, smsGatewayFromSenderDTO)(rr, req)
 
 	s.Equal(http.StatusNotFound, rr.Code)
 }

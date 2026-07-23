@@ -781,23 +781,7 @@ Signing keys are configured as an array. Each key has the following properties:
 
 The key type under `crypto.keys` determines the algorithm in `id_token_signing_alg_values_supported` in the OIDC discovery document. RSA keys advertise `RS256`; ECDSA `P-256`, `P-384`, and `P-521` keys advertise `ES256`, `ES384`, and `ES512`; Ed25519 keys advertise `EdDSA`. If multiple keys are configured, all resulting algorithms are included without duplicates.
 
-## Email Configuration
 
-<ProductName /> sends emails through an SMTP server for features such as magic link authentication and user invitations. This configuration is optional. Without a configured SMTP server, email-dependent features remain unavailable. Add the following configuration to `deployment.yaml` to configure an SMTP server.
-
-```yaml
-email:
-  smtp:
-    host: "smtp.example.com"
-    port: 587
-    username: "your-username"
-    password: "your-password"
-    from_address: "noreply@example.com"
-    enable_start_tls: true
-    enable_authentication: true
-```
-
-For the full property reference and provider-specific examples, see [Configure SMTP Server](../../guides/smtp-server/smtp-server-configuration).
 
 ## Notification Configuration
 

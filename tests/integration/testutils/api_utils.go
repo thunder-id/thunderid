@@ -1582,6 +1582,7 @@ func GetFlowIDByHandle(handle string, flowType string) (string, error) {
 	return "", fmt.Errorf("flow with handle '%s' not found", handle)
 }
 
+
 // senderVendorRegistryMu guards senderVendorRegistry.
 var senderVendorRegistryMu sync.RWMutex
 
@@ -1600,6 +1601,10 @@ func senderVendorPath(provider string) (string, error) {
 		return "vonage", nil
 	case "custom":
 		return "sms-gateway", nil
+	case "smtp":
+		return "smtp", nil
+	case "http":
+		return "http", nil
 	default:
 		return "", fmt.Errorf("unsupported notification sender provider for /connections: %s", provider)
 	}
@@ -1608,15 +1613,22 @@ func senderVendorPath(provider string) (string, error) {
 // senderPropertyToConnectionField maps a legacy NotificationSender property name to its
 // /connections typed camelCase field name, across all sender-backed vendors.
 var senderPropertyToConnectionField = map[string]string{
-	"account_sid":  "accountSid",
-	"auth_token":   "authToken",
-	"api_key":      "apiKey",
-	"api_secret":   "apiSecret",
-	"sender_id":    "senderId",
-	"url":          "url",
-	"http_method":  "httpMethod",
-	"http_headers": "httpHeaders",
-	"content_type": "contentType",
+	"account_sid":           "accountSid",
+	"auth_token":            "authToken",
+	"api_key":               "apiKey",
+	"api_secret":            "apiSecret",
+	"sender_id":             "senderId",
+	"url":                   "url",
+	"http_method":           "httpMethod",
+	"http_headers":          "httpHeaders",
+	"content_type":          "contentType",
+	"host":                  "host",
+	"port":                  "port",
+	"username":              "username",
+	"password":              "password",
+	"from_address":          "fromAddress",
+	"tls":                   "tls",
+	"enable_authentication": "enableAuthentication",
 }
 
 // senderToConnectionBody converts a legacy NotificationSender{Properties: [...]} fixture into

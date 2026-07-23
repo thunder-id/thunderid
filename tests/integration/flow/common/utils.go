@@ -382,8 +382,8 @@ func CreateNotificationSender(senderURL, senderName string) (string, error) {
 	return senderID, nil
 }
 
-// DeleteNotificationSender deletes a notification sender
-func DeleteNotificationSender(senderID string) error {
+// DeleteMessageNotificationSender deletes a message notification sender
+func DeleteMessageNotificationSender(senderID string) error {
 	client := testutils.GetHTTPClient()
 
 	req, err := http.NewRequest("DELETE", testServerURL+"/connections/sms-gateway/"+senderID, nil)

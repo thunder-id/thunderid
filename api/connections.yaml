@@ -44,7 +44,7 @@ paths:
           description: Filter instances by functional category. Omit to return all instances.
           schema:
             type: string
-            enum: [identity-provider, sms-provider]
+            enum: [identity-provider, sms-provider, email-provider]
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
       responses:
@@ -612,6 +612,158 @@ paths:
         "403": { $ref: '#/components/responses/Forbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
 
+
+  /connections/smtp:
+    get:
+      tags: [Connections]
+      summary: List configured SMTP connections
+      responses:
+        "200": { $ref: '#/components/responses/InstanceList' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create an SMTP connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SMTPConnectionCreateRequest' }
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SMTPConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/smtp/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get an SMTP connection
+      responses:
+        "200":
+          description: Connection details (secrets masked)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SMTPConnectionResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update an SMTP connection
+      description: Omit password to keep the stored value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SMTPConnectionUpdateRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SMTPConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete an SMTP connection
+      responses:
+        "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/http:
+    get:
+      tags: [Connections]
+      summary: List configured HTTP email connections
+      responses:
+        "200": { $ref: '#/components/responses/InstanceList' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create an HTTP email connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HTTPConnectionCreateRequest' }
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HTTPConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/http/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get an HTTP email connection
+      responses:
+        "200":
+          description: Connection details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HTTPConnectionResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update an HTTP email connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HTTPConnectionUpdateRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HTTPConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete an HTTP email connection
+      responses:
+        "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
   /connections/oauth:
     get:
       tags: [Connections]
@@ -851,14 +1003,14 @@ components:
           type: string
           description: >-
             Lowercase vendor identifier. `sms-gateway` denotes a generic HTTP webhook SMS sender.
-          enum: [google, github, oidc, oauth, twilio, vonage, sms-gateway]
+          enum: [google, github, oidc, oauth, twilio, vonage, sms-gateway, smtp, http]
           example: "google"
         categories:
           type: array
           minItems: 1
           items:
             type: string
-            enum: [identity-provider, sms-provider]
+            enum: [identity-provider, sms-provider, email-provider]
           example: ["identity-provider"]
 
     ConnectionInstanceSummary:
@@ -1277,3 +1429,98 @@ components:
       properties:
         key: { type: string }
         defaultValue: { type: string }
+
+
+    ConnectionID:
+      type: string
+      format: uuid
+      description: Unique identifier for the connection
+      example: "a1b2c3d4-0000-0000-0000-000000000001"
+    ConnectionName:
+      type: string
+      maxLength: 255
+      description: A human-readable name for the connection
+      example: "SMTP Email Sender"
+    ConnectionDescription:
+      type: string
+      maxLength: 1024
+      description: A brief description of the connection
+      example: "SMTP Email Server Connection"
+    SMTPConnectionCreateRequest:
+      type: object
+      required: [name, host, port, fromAddress]
+      properties:
+        name: { $ref: '#/components/schemas/ConnectionName' }
+        description: { $ref: '#/components/schemas/ConnectionDescription' }
+        host: { type: string, example: "smtp.example.com" }
+        port: { type: string, example: "587" }
+        username: { type: string, example: "user" }
+        password: { type: string, example: "secret" }
+        fromAddress: { type: string, example: "no-reply@example.com" }
+        tls: { type: string, example: "true" }
+        enableAuthentication: { type: string, example: "true" }
+
+    SMTPConnectionUpdateRequest:
+      type: object
+      required: [name, host, port, fromAddress]
+      properties:
+        name: { $ref: '#/components/schemas/ConnectionName' }
+        description: { $ref: '#/components/schemas/ConnectionDescription' }
+        host: { type: string, example: "smtp.example.com" }
+        port: { type: string, example: "587" }
+        username: { type: string, example: "user" }
+        password: { type: string, example: "secret" }
+        fromAddress: { type: string, example: "no-reply@example.com" }
+        tls: { type: string, example: "true" }
+        enableAuthentication: { type: string, example: "true" }
+
+    SMTPConnectionResponse:
+      type: object
+      required: [id, name, type, host, port, fromAddress]
+      properties:
+        id: { $ref: '#/components/schemas/ConnectionID' }
+        name: { $ref: '#/components/schemas/ConnectionName' }
+        description: { $ref: '#/components/schemas/ConnectionDescription' }
+        type: { type: string, example: "smtp" }
+        host: { type: string, example: "smtp.example.com" }
+        port: { type: string, example: "587" }
+        username: { type: string, example: "user" }
+        password: { type: string, example: "secret" }
+        fromAddress: { type: string, example: "no-reply@example.com" }
+        tls: { type: string, example: "true" }
+        enableAuthentication: { type: string, example: "true" }
+
+    HTTPConnectionCreateRequest:
+      type: object
+      required: [name, url]
+      properties:
+        name: { $ref: '#/components/schemas/ConnectionName' }
+        description: { $ref: '#/components/schemas/ConnectionDescription' }
+        url: { type: string, example: "https://api.example.com/send" }
+        httpMethod: { type: string, example: "POST" }
+        httpHeaders: { type: string, description: "Comma-separated \"Key: value\" pairs.", example: "Authorization: Bearer token" }
+        contentType: { type: string, enum: [JSON, FORM], example: "JSON" }
+
+    HTTPConnectionUpdateRequest:
+      type: object
+      required: [name, url]
+      properties:
+        name: { $ref: '#/components/schemas/ConnectionName' }
+        description: { $ref: '#/components/schemas/ConnectionDescription' }
+        url: { type: string, example: "https://api.example.com/send" }
+        httpMethod: { type: string, example: "POST" }
+        httpHeaders: { type: string, description: "Comma-separated \"Key: value\" pairs.", example: "Authorization: Bearer token" }
+        contentType: { type: string, enum: [JSON, FORM], example: "JSON" }
+
+    HTTPConnectionResponse:
+      type: object
+      required: [id, name, type, url]
+      properties:
+        id: { $ref: '#/components/schemas/ConnectionID' }
+        name: { $ref: '#/components/schemas/ConnectionName' }
+        description: { $ref: '#/components/schemas/ConnectionDescription' }
+        type: { type: string, example: "http" }
+        url: { type: string, example: "https://api.example.com/send" }
+        httpMethod: { type: string, example: "POST" }
+        httpHeaders: { type: string, example: "Authorization: Bearer token" }
+        contentType: { type: string, example: "JSON" }

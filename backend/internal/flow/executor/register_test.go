@@ -39,6 +39,8 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
+	"github.com/thunder-id/thunderid/tests/mocks/templatemock"
 )
 
 type BuiltInExecutorRegistrationTestSuite struct {
@@ -66,12 +68,14 @@ func (suite *BuiltInExecutorRegistrationTestSuite) mockFlowFactory() *coremock.F
 
 func (suite *BuiltInExecutorRegistrationTestSuite) depsForBuiltInRegistration() ExecutorDependencies {
 	return ExecutorDependencies{
-		FlowFactory:    suite.mockFlowFactory(),
-		EntityProvider: entityprovidermock.NewEntityProviderInterfaceMock(suite.T()),
-		OAuthSvc:       oauthmock.NewOAuthAuthnServiceInterfaceMock(suite.T()),
-		OIDCSvc:        oidcmock.NewOIDCAuthnServiceInterfaceMock(suite.T()),
-		GithubSvc:      githubmock.NewGithubOAuthAuthnServiceInterfaceMock(suite.T()),
-		GoogleSvc:      googlemock.NewGoogleOIDCAuthnServiceInterfaceMock(suite.T()),
+		FlowFactory:     suite.mockFlowFactory(),
+		EntityProvider:  entityprovidermock.NewEntityProviderInterfaceMock(suite.T()),
+		OAuthSvc:        oauthmock.NewOAuthAuthnServiceInterfaceMock(suite.T()),
+		OIDCSvc:         oidcmock.NewOIDCAuthnServiceInterfaceMock(suite.T()),
+		GithubSvc:       githubmock.NewGithubOAuthAuthnServiceInterfaceMock(suite.T()),
+		GoogleSvc:       googlemock.NewGoogleOIDCAuthnServiceInterfaceMock(suite.T()),
+		NotifSenderSvc:  notificationmock.NewNotificationSenderServiceInterfaceMock(suite.T()),
+		TemplateService: templatemock.NewTemplateServiceInterfaceMock(suite.T()),
 	}
 }
 

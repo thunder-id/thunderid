@@ -26,6 +26,7 @@ export {default as useCreateConnection} from './api/useCreateConnection';
 export {default as useDeleteConnection} from './api/useDeleteConnection';
 export {default as useIdentityProviders} from './api/useIdentityProviders';
 export {default as useSMSProviders} from './api/useSMSProviders';
+export {default as useEmailProviders} from './api/useEmailProviders';
 export {default as useUpdateConnection} from './api/useUpdateConnection';
 
 // Components

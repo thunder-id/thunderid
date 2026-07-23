@@ -27,20 +27,83 @@ type SMSData struct {
 	Body string `json:"body"`
 }
 
-// NotificationData holds the channel-agnostic payload for sending a notification.
-type NotificationData struct {
+// MessageData holds the channel-agnostic payload for sending an SMS or message.
+type MessageData struct {
 	Recipient string
 	Body      string
 }
 
+// EmailData holds the payload for sending an email.
+type EmailData struct {
+	To      []string
+	CC      []string
+	BCC     []string
+	Subject string
+	Body    string
+	IsHTML  bool
+}
+
 // NotificationSenderDTO represents the data transfer object for a notification sender.
 type NotificationSenderDTO struct {
-	ID          string                 `yaml:"id,omitempty"`
-	Name        string                 `yaml:"name"`
-	Description string                 `yaml:"description,omitempty"`
-	Type        NotificationSenderType `yaml:"-"`
-	Provider    MessageProviderType    `yaml:"provider"`
-	Properties  []cmodels.Property     `yaml:"properties,omitempty"`
+	ID          string                   `yaml:"id,omitempty"`
+	Name        string                   `yaml:"name"`
+	Description string                   `yaml:"description,omitempty"`
+	Type        NotificationSenderType   `yaml:"-"`
+	Provider    NotificationProviderType `yaml:"provider"`
+	Properties  []cmodels.Property       `yaml:"properties,omitempty"`
+}
+
+// NotificationSenderRequest represents the request structure for creating or updating a notification sender.
+type NotificationSenderRequest struct {
+	Name        string                `json:"name"`
+	Description string                `json:"description"`
+	Provider    string                `json:"provider"`
+	Properties  []cmodels.PropertyDTO `json:"properties"`
+}
+
+// NotificationSenderResponse represents the response structure for a notification sender.
+type NotificationSenderResponse struct {
+	ID          string                   `json:"id"`
+	Name        string                   `json:"name"`
+	Description string                   `json:"description"`
+	Provider    NotificationProviderType `json:"provider"`
+	Properties  []cmodels.PropertyDTO    `json:"properties"`
+}
+
+// SendOTPRequest represents the request structure for sending an OTP.
+type SendOTPRequest struct {
+	Recipient string `json:"recipient"`
+	SenderID  string `json:"senderId"`
+	Channel   string `json:"channel"`
+}
+
+// SendOTPResponse represents the response structure for OTP send request.
+type SendOTPResponse struct {
+	SessionToken string `json:"sessionToken"`
+	Status       string `json:"status"`
+}
+
+// VerifyOTPRequest represents the request structure for verifying an OTP.
+type VerifyOTPRequest struct {
+	SessionToken string `json:"sessionToken"`
+	OTPCode      string `json:"otpCode"`
+}
+
+// VerifyOTPResponse represents the response structure for OTP verification.
+type VerifyOTPResponse struct {
+	Status string `json:"status"`
+}
+
+// SendOTPDTO represents the service layer data structure for sending an OTP.
+type SendOTPDTO struct {
+	Recipient string
+	SenderID  string
+	Channel   string
+}
+
+// SendOTPResultDTO represents the service layer result for OTP send operation.
+type SendOTPResultDTO struct {
+	SessionToken string
 }
 
 // VerifyOTPDTO represents the service layer data structure for verifying an OTP.
@@ -54,4 +117,15 @@ type VerifyOTPResultDTO struct {
 	Status        OTPVerifyStatus
 	Recipient     string
 	RecipientAttr string
+}
+
+// NotificationSenderRequestWithID represents the request structure for creating a notification sender
+// from file-based config.
+type NotificationSenderRequestWithID struct {
+	ID          string                   `yaml:"id"`
+	Name        string                   `yaml:"name"`
+	Description string                   `yaml:"description,omitempty"`
+	Type        NotificationSenderType   `yaml:"type,omitempty"`
+	Provider    NotificationProviderType `yaml:"provider"`
+	Properties  []cmodels.PropertyDTO    `yaml:"properties,omitempty"`
 }

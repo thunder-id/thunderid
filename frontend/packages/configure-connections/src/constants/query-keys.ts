@@ -31,6 +31,11 @@ const ConnectionQueryKeys = {
   SMS_PROVIDERS: 'sms-providers',
 
   /**
+   * Key for Email provider queries (consumed by useEmailProviders)
+   */
+  EMAIL_PROVIDERS: 'email-providers',
+
+  /**
    * Key for the paginated connection instances list (GET /connections)
    */
   CONNECTIONS: 'connections',

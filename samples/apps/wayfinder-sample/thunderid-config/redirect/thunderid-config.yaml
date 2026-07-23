@@ -397,6 +397,7 @@ nodes:
     type: TASK_EXECUTION
     properties:
       emailTemplate: PASSWORD_RECOVERY
+      senderId: wayfinder-smtp-email-sender
     executor:
       name: EmailExecutor
       mode: send
@@ -639,6 +640,7 @@ nodes:
     type: TASK_EXECUTION
     properties:
       emailTemplate: USER_INVITE
+      senderId: wayfinder-smtp-email-sender
     executor:
       name: EmailExecutor
       mode: send
@@ -759,6 +761,7 @@ nodes:
     type: TASK_EXECUTION
     properties:
       emailTemplate: USER_INVITE
+      senderId: wayfinder-smtp-email-sender
     executor:
       name: EmailExecutor
       mode: send
@@ -948,6 +951,7 @@ nodes:
     type: TASK_EXECUTION
     properties:
       emailTemplate: CIBA_NOTIFICATION
+      senderId: wayfinder-smtp-email-sender
     executor:
       name: EmailExecutor
       mode: send
@@ -1833,3 +1837,36 @@ name: cors
 value:
   allowedOrigins:
     - "http://localhost:5173"
+
+---
+# resource_type: notification_sender
+# Email sender backed by the Wayfinder bundled SMTP server (smtp-server/).
+# The defaults here match the smtp-server/.env.example — no changes required for local development.
+# To use an external SMTP relay, override the values via thunderid.env.
+id: wayfinder-smtp-email-sender
+name: Wayfinder Email Sender
+description: Email sender for the Wayfinder sample, backed by the bundled local SMTP server
+type: EMAIL
+provider: smtp
+properties:
+  - name: host
+    value: "{{.SMTP_HOST}}"
+    isSecret: false
+  - name: port
+    value: "{{.SMTP_PORT}}"
+    isSecret: false
+  - name: username
+    value: "{{.SMTP_USERNAME}}"
+    isSecret: false
+  - name: password
+    value: "{{.SMTP_PASSWORD}}"
+    isSecret: true
+  - name: from_address
+    value: "{{.SMTP_FROM_ADDRESS}}"
+    isSecret: false
+  - name: tls
+    value: "{{.SMTP_TLS}}"
+    isSecret: false
+  - name: enable_authentication
+    value: "{{.SMTP_ENABLE_AUTHENTICATION}}"
+    isSecret: false

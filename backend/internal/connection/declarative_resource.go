@@ -186,6 +186,8 @@ func (e *connectionExporter) GetResourceRulesForResource(
 		return &declarativeresource.ResourceRules{Variables: []string{"AuthToken"}}
 	case "vonage":
 		return &declarativeresource.ResourceRules{Variables: []string{"APISecret"}}
+	case "smtp":
+		return &declarativeresource.ResourceRules{Variables: []string{"Password"}}
 	default:
 		// sms-gateway (and any future no-secret vendor) has nothing to externalize.
 		return &declarativeresource.ResourceRules{}
@@ -262,8 +264,11 @@ func connectionModelFromIDPDTO(dto providers.IDPDTO) (connectionExportModel, err
 func connectionModelFromSenderDTO(dto ncommon.NotificationSenderDTO) (connectionExportModel, error) {
 	vendor, ok := smsVendorName(dto.Provider)
 	if !ok {
-		return connectionExportModel{}, fmt.Errorf(
-			"unsupported message provider for connection export: %s", dto.Provider)
+		vendor, ok = emailVendorName(dto.Provider)
+		if !ok {
+			return connectionExportModel{}, fmt.Errorf(
+				"unsupported message provider for connection export: %s", dto.Provider)
+		}
 	}
 	values, err := rawPropertyValues(dto.Properties)
 	if err != nil {
@@ -277,15 +282,28 @@ func connectionModelFromSenderDTO(dto ncommon.NotificationSenderDTO) (connection
 		Description: dto.Description,
 	}
 	switch dto.Provider {
-	case ncommon.MessageProviderTypeTwilio:
+	case ncommon.NotificationProviderTypeTwilio:
 		model.AccountSID = values[ncommon.TwilioPropKeyAccountSID]
 		model.AuthToken = values[ncommon.TwilioPropKeyAuthToken]
 		model.SenderID = values[ncommon.TwilioPropKeySenderID]
-	case ncommon.MessageProviderTypeVonage:
+	case ncommon.NotificationProviderTypeVonage:
 		model.APIKey = values[ncommon.VonagePropKeyAPIKey]
 		model.APISecret = values[ncommon.VonagePropKeyAPISecret]
 		model.SenderID = values[ncommon.VonagePropKeySenderID]
-	case ncommon.MessageProviderTypeCustom:
+	case ncommon.NotificationProviderTypeCustom:
+		model.URL = values[ncommon.CustomPropKeyURL]
+		model.HTTPMethod = values[ncommon.CustomPropKeyHTTPMethod]
+		model.HTTPHeaders = values[ncommon.CustomPropKeyHTTPHeaders]
+		model.ContentType = values[ncommon.CustomPropKeyContentType]
+	case ncommon.NotificationProviderTypeSMTP:
+		model.Host = values[ncommon.SMTPPropKeyHost]
+		model.Port = values[ncommon.SMTPPropKeyPort]
+		model.Username = values[ncommon.SMTPPropKeyUsername]
+		model.Password = values[ncommon.SMTPPropKeyPassword]
+		model.SenderAddress = values[ncommon.SMTPPropKeyFromAddress]
+		model.TLS = values[ncommon.SMTPPropKeyTLS]
+		model.EnableAuthentication = values[ncommon.SMTPPropKeyEnableAuth]
+	case ncommon.NotificationProviderTypeHTTP:
 		model.URL = values[ncommon.CustomPropKeyURL]
 		model.HTTPMethod = values[ncommon.CustomPropKeyHTTPMethod]
 		model.HTTPHeaders = values[ncommon.CustomPropKeyHTTPHeaders]
@@ -364,6 +382,27 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 		dto, err := vonageToSenderDTO(vonageConnectionRequest{
 			Name: model.Name, Description: model.Description, APIKey: model.APIKey,
 			APISecret: model.APISecret, SenderID: model.SenderID,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		dto.ID = model.ID
+		return nil, dto, nil
+	case "smtp":
+		dto, err := smtpToSenderDTO(smtpConnectionRequest{
+			Name: model.Name, Description: model.Description, Host: model.Host, Port: model.Port,
+			Username: model.Username, Password: model.Password, FromAddress: model.SenderAddress,
+			TLS: model.TLS, EnableAuthentication: model.EnableAuthentication,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		dto.ID = model.ID
+		return nil, dto, nil
+	case "http":
+		dto, err := httpEmailToSenderDTO(httpEmailConnectionRequest{
+			Name: model.Name, Description: model.Description, URL: model.URL,
+			HTTPMethod: model.HTTPMethod, HTTPHeaders: model.HTTPHeaders, ContentType: model.ContentType,
 		})
 		if err != nil {
 			return nil, nil, err

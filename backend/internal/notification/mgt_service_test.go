@@ -266,7 +266,9 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestListSenders() {
 }
 
 func (suite *NotificationSenderMgtServiceTestSuite) TestListSenders_EmptyList() {
-	suite.mockStore.EXPECT().listSenders(mock.Anything).Return([]common.NotificationSenderDTO{}, nil).Once()
+	suite.mockStore.EXPECT().
+		listSenders(mock.Anything).
+		Return([]common.NotificationSenderDTO{}, nil).Once()
 
 	result, err := suite.service.ListSenders(context.Background())
 	suite.Nil(err)
@@ -275,7 +277,9 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestListSenders_EmptyList() 
 }
 
 func (suite *NotificationSenderMgtServiceTestSuite) TestListSenders_StoreError() {
-	suite.mockStore.EXPECT().listSenders(mock.Anything).Return(nil, errors.New("database error")).Once()
+	suite.mockStore.EXPECT().
+		listSenders(mock.Anything).
+		Return(nil, errors.New("database error")).Once()
 
 	result, err := suite.service.ListSenders(context.Background())
 	suite.Nil(result)
@@ -784,7 +788,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) getValidTwilioSender() commo
 		Name:        "Test Twilio Sender",
 		Description: "Test Description",
 		Type:        common.NotificationSenderTypeMessage,
-		Provider:    common.MessageProviderTypeTwilio,
+		Provider:    common.NotificationProviderTypeTwilio,
 		Properties: []cmodels.Property{
 			createTestProperty("account_sid", "AC00112233445566778899aabbccddeeff", true),
 			createTestProperty("auth_token", "test-auth-token", true),
@@ -799,7 +803,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) getValidVonageSender() commo
 		Name:        "Test Vonage Sender",
 		Description: "Test Vonage Description",
 		Type:        common.NotificationSenderTypeMessage,
-		Provider:    common.MessageProviderTypeVonage,
+		Provider:    common.NotificationProviderTypeVonage,
 		Properties: []cmodels.Property{
 			createTestProperty("api_key", "test-api-key", true),
 			createTestProperty("api_secret", "test-api-secret", true),
