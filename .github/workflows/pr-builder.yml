@@ -24,14 +24,42 @@ env:
   PNPM_VERSION: "latest"
 
 jobs:
-  security-audit:
-    name: 🔒 Security Audit
+  # Single job for the fast gate checks (security audit, dependency review, and
+  # change detection for docs/PowerShell) so they occupy one runner slot instead
+  # of four. Runner concurrency is shared across all PRs, so fewer jobs per run
+  # directly reduces queue time on busy periods.
+  preflight:
+    name: 🛡️ Preflight Checks
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      docs-changed: ${{ steps.filter.outputs.docs }}
+      powershell-changed: ${{ steps.filter.outputs.powershell }}
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: 🔍 Detect Docs and PowerShell Changes
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
+        id: filter
+        with:
+          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
+          ref: ${{ github.event_name == 'merge_group' && github.sha || github.event.pull_request.head.sha }}
+          filters: |
+            docs:
+              - 'docs/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+            powershell:
+              - '**.ps1'
+              - '.github/workflows/windows-powershell-validation.yml'
 
       - name: ⚙️ Set up Node.js and pnpm
         uses: ./.github/actions/setup-pnpm
@@ -44,18 +72,6 @@ jobs:
           # CVE ignores are managed via auditConfig.ignoreCves in pnpm-workspace.yaml
           # Remove `--ignore-registry-errors` once pnpm 11 is generally available. Tracker: https://github.com/pnpm/pnpm/issues/11265
           pnpm audit --ignore-registry-errors --audit-level=high
-
-  dependency-review:
-    name: 🔎 Dependency Review
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: 🔎 Dependency Review
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
@@ -154,6 +170,12 @@ jobs:
       - name: 🔍 Run Backend Linter
         run: make lint_backend
 
+      # The frontend build is needed because linting is type-aware: apps resolve
+      # @thunderid/* package types from their built dist output. The Turbo cache
+      # makes it a near no-op when nothing relevant changed.
+      - name: 🗂️ Set up Turbo Cache
+        uses: ./.github/actions/setup-turbo-cache
+
       - name: 🧩 Install Dependencies & Build Frontend
         run: |
           make build_frontend
@@ -170,8 +192,7 @@ jobs:
 
   build:
     name: 🛠️ Build Product
-    needs: [detect-code-changes]
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -266,45 +287,9 @@ jobs:
           path: backend/coverage_unit.out
           if-no-files-found: error
 
-  detect-code-changes:
-    name: 🔍 Detect Code Changes
-    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      should-run: ${{ steps.filter.outputs.code }}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - name: 🔍 Detect non-docs file changes
-        id: filter
-        # TODO: Temporarily always treat as code changes to unblock docs-only PRs hanging on the
-        # codecov/patch status check. Revisit once the workflow_run-based fix is in place.
-        # env:
-        #   BASE_SHA: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
-        run: |
-          # git fetch --depth=1 origin "$BASE_SHA"
-          # CHANGED=$(git diff --name-only "$BASE_SHA" HEAD)
-          # echo "Changed files:"
-          # echo "$CHANGED"
-          # NON_DOCS=$(echo "$CHANGED" | grep -v '^docs/' | grep -v -i 'readme\.md' | grep -c . || true)
-          # echo "Non-docs changed file count: $NON_DOCS"
-          # if [ "$NON_DOCS" -gt 0 ]; then
-          #   echo "code=true" >> $GITHUB_OUTPUT
-          # else
-          #   echo "code=false" >> $GITHUB_OUTPUT
-          # fi
-          echo "code=true" >> $GITHUB_OUTPUT
-      # - name: ✅ Code changes detected
-      #   if: steps.filter.outputs.code == 'true'
-      #   run: echo "Non-documentation files changed - frontend and E2E tests will run"
-      # - name: ⏭️ Docs-only changes
-      #   if: steps.filter.outputs.code != 'true'
-      #   run: echo "Only documentation changes detected - skipping frontend and E2E tests"
-
   test-frontend-packages:
     name: 🧪 Frontend Packages Tests
-    needs: [detect-code-changes]
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -341,8 +326,7 @@ jobs:
 
   test-frontend-gate-app:
     name: 🧪 Gate App Tests with Coverage
-    needs: [detect-code-changes]
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -390,8 +374,7 @@ jobs:
 
   test-frontend-console-app:
     name: 🧪 Console App Tests with Coverage
-    needs: [detect-code-changes]
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -518,8 +501,7 @@ jobs:
 
   build_samples:
     name: 🛠️ Build Sample Apps
-    needs: [detect-code-changes]
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -546,7 +528,7 @@ jobs:
 
   test-integration:
     name: 🧪 Integration Tests (${{ matrix.database }})
-    needs: [build, build_samples, detect-code-changes]
+    needs: [build, build_samples]
     if: ${{ always() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -674,25 +656,20 @@ jobs:
 
   test-e2e:
     name: 🎭 Playwright E2E Tests
-    needs: [build, build_samples, detect-code-changes]
-    if: ${{ always() && (needs.build.result == 'success' && needs.build_samples.result == 'success' && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true')) }}
+    needs: [build, build_samples]
+    if: ${{ always() && needs.build.result == 'success' && needs.build_samples.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - name: ⚙️ Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 'lts/*'
+          persist-credentials: false
 
-      - name: 📦 Install pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - name: ⚙️ Set up Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
         with:
-          run_install: false
-          cache_dependency_path: pnpm-lock.yaml
-          version: ${{ env.PNPM_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: 📥 Download Built Distribution
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -1040,7 +1017,7 @@ jobs:
           ADMIN_PASSWORD: ${{ secrets.PLAYWRIGHT_ADMIN_PASSWORD || 'admin' }}
           TEST_USER_USERNAME: ${{ secrets.PLAYWRIGHT_TEST_USER_USERNAME || 'testuser' }}
           TEST_USER_PASSWORD: ${{ secrets.PLAYWRIGHT_TEST_USER_PASSWORD || 'admin' }}
-          PLAYWRIGHT_WORKERS: ${{ vars.PLAYWRIGHT_WORKERS || 1 }}
+          PLAYWRIGHT_WORKERS: ${{ vars.PLAYWRIGHT_WORKERS || 4 }}
           DEBUG_AUTH: ${{ vars.PLAYWRIGHT_DEBUG_AUTH || 'false' }}
           # MFA Test Configuration
           SAMPLE_APP_ID: ${{ steps.extract-app-id.outputs.sample_app_id }}
@@ -1059,62 +1036,10 @@ jobs:
           retention-days: 30
 
 
-  detect-powershell-changes:
-    name: 🔍 Detect PowerShell Changes
-    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    outputs:
-      should-run: ${{ steps.filter.outputs.powershell }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
-        id: filter
-        with:
-          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
-          ref: ${{ github.event_name == 'merge_group' && github.sha || github.event.pull_request.head.sha }}
-          filters: |
-            powershell:
-              - '**.ps1'
-              - '.github/workflows/windows-powershell-validation.yml'
-      - name: ✅ PowerShell files detected
-        if: steps.filter.outputs.powershell == 'true'
-        run: echo "PowerShell files changed - validation will run"
-      - name: ⏭️ No PowerShell changes
-        if: steps.filter.outputs.powershell != 'true'
-        run: echo "No PowerShell changes - skipping validation"
-
-  detect-docs-changes:
-    name: 🔍 Detect Documentation Changes
-    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      should-run: ${{ steps.filter.outputs.docs }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
-        id: filter
-        with:
-          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
-          ref: ${{ github.event_name == 'merge_group' && github.sha || github.event.pull_request.head.sha }}
-          filters: |
-            docs:
-              - 'docs/**'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'pnpm-workspace.yaml'
-      - name: ✅ Documentation changes detected
-        if: steps.filter.outputs.docs == 'true'
-        run: echo "Documentation files changed - docs build will run"
-      - name: ⏭️ No documentation changes
-        if: steps.filter.outputs.docs != 'true'
-        run: echo "No documentation changes - skipping docs build"
-
   build-docs:
     name: 📚 Build Documentation
-    needs: [detect-docs-changes]
-    if: ${{ always() && needs.detect-docs-changes.outputs.should-run == 'true' }}
+    needs: [preflight]
+    if: ${{ always() && needs.preflight.outputs.docs-changed == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -1131,8 +1056,8 @@ jobs:
 
   validate-windows:
     name: 🪟 Validate Windows PowerShell
-    needs: detect-powershell-changes
-    if: needs.detect-powershell-changes.outputs.should-run == 'true'
+    needs: preflight
+    if: always() && needs.preflight.outputs.powershell-changed == 'true'
     uses: ./.github/workflows/windows-powershell-validation.yml
 
   cleanup-turbo-cache:
