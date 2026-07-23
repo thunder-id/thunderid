@@ -779,7 +779,13 @@ Signing keys are configured as an array. Each key has the following properties:
   key_file: "config/certs/signing.key"
 ```
 
-The key type under `crypto.keys` determines the algorithm in `id_token_signing_alg_values_supported` in the OIDC discovery document. RSA keys advertise `RS256`; ECDSA `P-256`, `P-384`, and `P-521` keys advertise `ES256`, `ES384`, and `ES512`; Ed25519 keys advertise `EdDSA`. If multiple keys are configured, all resulting algorithms are included without duplicates.
+The key type under `crypto.keys` determines the algorithm in `id_token_signing_alg_values_supported` in the OIDC discovery document. RSA keys advertise `RS256`; ECDSA `P-256`, `P-384`, and `P-521` keys advertise `ES256`, `ES384`, and `ES512`; Ed25519 keys advertise `EdDSA`; ML-DSA-44, ML-DSA-65, and ML-DSA-87 keys advertise `ML-DSA-44`, `ML-DSA-65`, and `ML-DSA-87` respectively. If multiple keys are configured, all resulting algorithms are included without duplicates.
+
+**ML-DSA (Post-Quantum) Keys:**
+
+ML-DSA private keys under `crypto.keys[].key_file` must be encoded as [RFC 9881](https://datatracker.ietf.org/doc/html/rfc9881) PKCS#8, since ML-DSA support in Go's standard `crypto/x509` and PKCS#8 tooling is still maturing. All three RFC 9881 private key encodings are accepted (`seed`, `expandedKey`, or the combined `both` form), with `seed` preferred when present.
+
+Standard library certificate parsing cannot read an ML-DSA public key from the certificate, so <ProductName /> derives it at runtime from the configured private key instead. This happens automatically: `cert_file` and `key_file` for an ML-DSA key pair work the same as for any other algorithm, with no extra configuration required.
 
 ## Email Configuration
 

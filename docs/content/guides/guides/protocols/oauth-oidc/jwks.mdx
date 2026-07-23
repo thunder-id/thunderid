@@ -34,6 +34,13 @@ curl https://{{productSlug}}.example.com/oauth2/jwks
       "crv": "P-256",
       "x": "WKn-ZIDIDvZRT5ZAakBPsCYR0V6cZF9NyfTQk6c2eXg",
       "y": "y77t-RvAHRKTsSGdIYUfweuOvwrvDD-Q3Hi5rew0haE"
+    },
+    {
+      "kty": "AKP",
+      "use": "sig",
+      "kid": "thunder-mldsa-2026-01",
+      "alg": "ML-DSA-65",
+      "pub": "cG9zdC1xdWFudHVtLXB1YmxpYy1rZXktYnl0ZXM..."
     }
   ]
 }
@@ -48,8 +55,8 @@ The endpoint is public and idempotent: cache the response in line with your tole
 |---|---|
 | Endpoint | `GET /oauth2/jwks` |
 | Discovery field | `jwks_uri` in [Server Metadata](../server-metadata) |
-| Supported key types | RSA, EC (P-256, P-384, P-521), OKP (Ed25519 / EdDSA) |
-| Signing algorithms covered | `RS256`, `RS512`, `PS256`, `ES256`, `ES384`, `ES512`, `EdDSA` |
+| Supported key types | RSA, EC (P-256, P-384, P-521), OKP (Ed25519 / EdDSA), AKP (ML-DSA, [RFC 9964](https://datatracker.ietf.org/doc/html/rfc9964)) |
+| Signing algorithms covered | `RS256`, `RS512`, `PS256`, `ES256`, `ES384`, `ES512`, `EdDSA`, `ML-DSA-44`, `ML-DSA-65`, `ML-DSA-87` |
 | Private keys | Never returned: the document contains only public material |
 | Key rotation | New keys appear in the document before they're used for signing; old keys remain published while there are still valid tokens signed by them |
 
