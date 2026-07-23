@@ -3073,6 +3073,7 @@ const translations = {
   // ============================================================================
   validations: {
     'form.field.required': '{{field}} is required.',
+    'field.email.invalid': 'Please enter a valid email address.',
   },
 
   // ============================================================================

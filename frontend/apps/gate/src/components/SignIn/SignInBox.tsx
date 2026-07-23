@@ -39,31 +39,41 @@ export default function SignInBox(): JSX.Element {
 
   const [formInputs, setFormInputs] = useState<Record<string, string>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   const validateForm = (components: EmbeddedFlowComponent[]): boolean => {
     const errors: Record<string, string> = {};
+    const touchedFields: Record<string, boolean> = {};
     let isValid = true;
 
     components.forEach((component: EmbeddedFlowComponent) => {
       if (
         ((component.type as EmbeddedFlowComponentType) === EmbeddedFlowComponentType.TextInput ||
           (component.type as EmbeddedFlowComponentType) === EmbeddedFlowComponentType.PasswordInput ||
+          component.type === 'EMAIL_INPUT' ||
           component.type === 'PHONE_INPUT' ||
           component.type === 'OTP_INPUT') &&
-        component.required &&
         component.ref &&
         typeof component.ref === 'string' &&
         typeof component.label === 'string'
       ) {
         const value = formInputs[component.ref] ?? '';
-        if (!value.trim()) {
-          errors[component.ref] = `${t('validations:form.field.required', {field: t(resolve(component.label)!)})}`;
+        if (component.required && !value.trim()) {
+          const fieldLabel = t(resolve(component.label)!, component.label);
+          errors[component.ref] =
+            `${t('validations:form.field.required', {defaultValue: '{{field}} is required.', field: fieldLabel})}`;
+          touchedFields[component.ref] = true;
+          isValid = false;
+        } else if (component.type === 'EMAIL_INPUT' && value.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+          errors[component.ref] = `${t('validations:field.email.invalid', 'Please enter a valid email address.')}`;
+          touchedFields[component.ref] = true;
           isValid = false;
         }
       }
     });
 
     setFieldErrors(errors);
+    setTouched((prev) => ({...prev, ...touchedFields}));
     return isValid;
   };
 
@@ -71,6 +81,7 @@ export default function SignInBox(): JSX.Element {
     setFormInputs((prev) => ({...prev, [field]: value}));
     if (fieldErrors[field]) {
       setFieldErrors((prev) => ({...prev, [field]: ''}));
+      setTouched((prev) => ({...prev, [field]: false}));
     }
   };
 
@@ -112,6 +123,7 @@ export default function SignInBox(): JSX.Element {
                           component={component}
                           index={index}
                           values={formInputs}
+                          touched={touched}
                           fieldErrors={fieldErrors}
                           isLoading={isLoading}
                           additionalData={additionalData}
