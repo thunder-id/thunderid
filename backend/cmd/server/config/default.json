@@ -125,7 +125,7 @@
   },
   "oauth": {
     "refresh_token": {
-      "renew_on_grant": false,
+      "renew_on_grant": true,
       "revoke_previous_on_renew": true,
       "validity_period": 86400
     },
@@ -156,6 +156,16 @@
     },
     "logout" : {
       "enabled" : true
+    },
+    "revocation": {
+      "token_family": {
+        "on_refresh_reuse": true,
+        "on_explicit_revoke": true,
+        "on_code_replay": true
+      }
+    },
+    "token_exchange": {
+      "token_family": "none"
     }
   },
   "flow": {

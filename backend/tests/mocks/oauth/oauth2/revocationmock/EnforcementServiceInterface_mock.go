@@ -38,16 +38,16 @@ func (_m *EnforcementServiceInterfaceMock) EXPECT() *EnforcementServiceInterface
 }
 
 // EnsureNotRevoked provides a mock function for the type EnforcementServiceInterfaceMock
-func (_mock *EnforcementServiceInterfaceMock) EnsureNotRevoked(ctx context.Context, jti string) error {
-	ret := _mock.Called(ctx, jti)
+func (_mock *EnforcementServiceInterfaceMock) EnsureNotRevoked(ctx context.Context, jti string, tokenFamilyID string) error {
+	ret := _mock.Called(ctx, jti, tokenFamilyID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for EnsureNotRevoked")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = returnFunc(ctx, jti)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = returnFunc(ctx, jti, tokenFamilyID)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -62,11 +62,12 @@ type EnforcementServiceInterfaceMock_EnsureNotRevoked_Call struct {
 // EnsureNotRevoked is a helper method to define mock.On call
 //   - ctx context.Context
 //   - jti string
-func (_e *EnforcementServiceInterfaceMock_Expecter) EnsureNotRevoked(ctx interface{}, jti interface{}) *EnforcementServiceInterfaceMock_EnsureNotRevoked_Call {
-	return &EnforcementServiceInterfaceMock_EnsureNotRevoked_Call{Call: _e.mock.On("EnsureNotRevoked", ctx, jti)}
+//   - tokenFamilyID string
+func (_e *EnforcementServiceInterfaceMock_Expecter) EnsureNotRevoked(ctx interface{}, jti interface{}, tokenFamilyID interface{}) *EnforcementServiceInterfaceMock_EnsureNotRevoked_Call {
+	return &EnforcementServiceInterfaceMock_EnsureNotRevoked_Call{Call: _e.mock.On("EnsureNotRevoked", ctx, jti, tokenFamilyID)}
 }
 
-func (_c *EnforcementServiceInterfaceMock_EnsureNotRevoked_Call) Run(run func(ctx context.Context, jti string)) *EnforcementServiceInterfaceMock_EnsureNotRevoked_Call {
+func (_c *EnforcementServiceInterfaceMock_EnsureNotRevoked_Call) Run(run func(ctx context.Context, jti string, tokenFamilyID string)) *EnforcementServiceInterfaceMock_EnsureNotRevoked_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -76,9 +77,14 @@ func (_c *EnforcementServiceInterfaceMock_EnsureNotRevoked_Call) Run(run func(ct
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -89,7 +95,7 @@ func (_c *EnforcementServiceInterfaceMock_EnsureNotRevoked_Call) Return(err erro
 	return _c
 }
 
-func (_c *EnforcementServiceInterfaceMock_EnsureNotRevoked_Call) RunAndReturn(run func(ctx context.Context, jti string) error) *EnforcementServiceInterfaceMock_EnsureNotRevoked_Call {
+func (_c *EnforcementServiceInterfaceMock_EnsureNotRevoked_Call) RunAndReturn(run func(ctx context.Context, jti string, tokenFamilyID string) error) *EnforcementServiceInterfaceMock_EnsureNotRevoked_Call {
 	_c.Call.Return(run)
 	return _c
 }

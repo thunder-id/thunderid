@@ -283,11 +283,25 @@ const (
 	// jwt-bearer-grant (ID-JAG) access token, so downstream consumers can distinguish a federated
 	// principal from a local one.
 	ClaimIDP string = "idp"
+	// ClaimTokenFamilyID identifies the token family (one authorization grant) a token belongs to.
+	// A single tfid is minted per grant during the login flow and rides every access and refresh
+	// token of that grant, unchanged across refresh rotation, so revocation can target a whole
+	// family at once. Revocation-only and not a client-managed identifier: it rides the token JWTs
+	// but is not part of any client-facing API.
+	ClaimTokenFamilyID string = "tfid"
 )
 
 // OIDC subject types.
 const (
 	SubjectTypePublic string = "public"
+)
+
+// Token-exchange token family modes (oauth.token_exchange.token_family).
+const (
+	// TokenExchangeTokenFamilyNone issues an exchanged token with no token family id (independent).
+	TokenExchangeTokenFamilyNone string = "none"
+	// TokenExchangeTokenFamilyInherit copies the subject token's token family id onto the exchanged token.
+	TokenExchangeTokenFamilyInherit string = "inherit"
 )
 
 // User attribute constants.

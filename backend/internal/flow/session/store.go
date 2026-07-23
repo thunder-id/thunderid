@@ -252,7 +252,7 @@ func (st *store) buildSessionContextFromRow(row map[string]interface{}) (*Sessio
 func (st *store) Record(ctx context.Context, p Participant) error {
 	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(ctx, queryUpsertParticipant,
-			p.SessionID, st.deploymentID, p.AppID, p.FirstJoinedAt, p.LastActiveAt)
+			p.SessionID, st.deploymentID, p.AppID, p.FirstJoinedAt, p.LastActiveAt, p.TokenFamilyID)
 		if err != nil {
 			return fmt.Errorf("failed to record session participant: %w", err)
 		}
@@ -316,6 +316,7 @@ func buildParticipantFromRow(row map[string]interface{}) (Participant, error) {
 	return Participant{
 		SessionID:     sessionID,
 		AppID:         appID,
+		TokenFamilyID: parseNullableString(row["tfid"]),
 		FirstJoinedAt: firstJoinedAt,
 		LastActiveAt:  lastActiveAt,
 	}, nil

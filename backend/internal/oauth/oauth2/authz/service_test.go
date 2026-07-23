@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -40,6 +41,7 @@ import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -48,6 +50,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowexecmock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
 )
 
 func authorizeServiceCfgFromRuntime() oauthconfig.Config {
@@ -857,6 +860,62 @@ func (suite *AuthorizeServiceTestSuite) TestGetAuthorizationCodeDetails_AlreadyC
 
 	assert.Nil(suite.T(), result)
 	assert.ErrorIs(suite.T(), err, errAuthorizationCodeAlreadyConsumed)
+}
+
+func (suite *AuthorizeServiceTestSuite) TestGetAuthorizationCodeDetails_ReplayRevokesTokenFamily() {
+	// A replay of an already-consumed code: the code is gone from the store, but the replay marker
+	// written at first redemption still carries the grant's tfid, so the whole family is revoked.
+	suite.mockAuthzCodeStore.EXPECT().GetAuthorizationCode(mock.Anything, "code").
+		Return(nil, errAuthorizationCodeNotFound)
+	suite.mockAuthzCodeStore.EXPECT().ConsumedTokenFamily(mock.Anything, "code").
+		Return("tfid-replay", true, nil)
+
+	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(suite.T())
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-replay", revocation.RevocationReasonCodeReplay).
+		Return(nil)
+
+	svc := suite.newService()
+	svc.criteriaRevoker = revoker
+	svc.cfg.OAuth.Revocation.TokenFamily.OnCodeReplay = true
+
+	result, err := svc.GetAuthorizationCodeDetails(context.Background(), "client-id", "code")
+
+	assert.Nil(suite.T(), result)
+	assert.ErrorIs(suite.T(), err, errAuthorizationCodeNotFound)
+	revoker.AssertExpectations(suite.T())
+}
+
+func (suite *AuthorizeServiceTestSuite) TestCreateAuthorizationCode_MintsFallbackTokenFamilyID() {
+	// A non-SSO flow issues no token family id, so the code must mint one to anchor a revocable family.
+	authCtx := &authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{
+			ClientID:    "test-client",
+			RedirectURI: "https://client.example.com/callback",
+		},
+	}
+	claims := &assertionClaims{userID: "user-1"}
+
+	code, err := createAuthorizationCode(authorizeServiceCfgFromRuntime(), authCtx, claims, time.Now())
+
+	assert.NoError(suite.T(), err)
+	assert.NotEmpty(suite.T(), code.TokenFamilyID)
+}
+
+func (suite *AuthorizeServiceTestSuite) TestCreateAuthorizationCode_PreservesIncomingTokenFamilyID() {
+	// An SSO flow already minted the tfid at the session node; the code must carry that same value so
+	// its session-participant linkage stays consistent.
+	authCtx := &authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{
+			ClientID:    "test-client",
+			RedirectURI: "https://client.example.com/callback",
+		},
+	}
+	claims := &assertionClaims{userID: "user-1", tokenFamilyID: "tfid-from-sso"}
+
+	code, err := createAuthorizationCode(authorizeServiceCfgFromRuntime(), authCtx, claims, time.Now())
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "tfid-from-sso", code.TokenFamilyID)
 }
 
 func (suite *AuthorizeServiceTestSuite) TestGetAuthorizationCodeDetails_Success() {

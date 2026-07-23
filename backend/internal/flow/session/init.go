@@ -29,7 +29,7 @@ import (
 // receive only the Service and never hold a store. Timeouts fall back per field to the built-in
 // defaults so an unset (zero) value never makes sessions expire immediately.
 func Initialize(dbProvider provider.DBProviderInterface, deploymentID string,
-	timeouts Timeouts) (Service, error) {
+	timeouts Timeouts, criteriaRevoker CriteriaRevoker) (Service, error) {
 	transactioner, err := dbProvider.GetRuntimePersistentDBTransactioner()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get runtime persistent DB transactioner for the SSO session service: %w", err)
@@ -45,10 +45,11 @@ func Initialize(dbProvider provider.DBProviderInterface, deploymentID string,
 
 	store := newStore(dbProvider, deploymentID)
 	return &service{
-		store:         store,
-		resolver:      newResolver(store),
-		transactioner: transactioner,
-		timeouts:      timeouts,
-		logger:        log.GetLogger().With(log.String(log.LoggerKeyComponentName, "SSOSessionService")),
+		store:           store,
+		resolver:        newResolver(store),
+		transactioner:   transactioner,
+		criteriaRevoker: criteriaRevoker,
+		timeouts:        timeouts,
+		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "SSOSessionService")),
 	}, nil
 }

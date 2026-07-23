@@ -25,6 +25,7 @@ package revocation
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
@@ -33,10 +34,12 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// Initialize wires the revocation feature: it constructs the shared enforcement service (read path)
-// and registers the RFC 7009 revocation endpoint (write path). It returns the enforcement service (to
-// inject into the hot paths — refresh grant, token exchange, introspection) and the refresh-token
-// revoker (to inject into the refresh grant for single-use rotation).
+// Initialize wires the revocation feature and registers the RFC 7009 revocation endpoint. It returns
+// the enforcement service (the read path, injected into the hot paths: refresh grant, token exchange,
+// introspection) and the revocation service (the write path, covering single-token revocation via
+// RevokeRefreshToken and token-family revocation via RevokeTokenFamily). Consumers depend on the narrow
+// RefreshTokenRevokerInterface / CriteriaRevokerInterface subsets of the revocation service.
+// tokenFamilyRevocationTTL bounds each token-family deny-list entry; pass the refresh-token lifetime.
 func Initialize(
 	mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface,
@@ -44,12 +47,26 @@ func Initialize(
 	authnProvider providers.AuthnProviderManager,
 	discoveryService discovery.DiscoveryServiceInterface,
 	observabilitySvc providers.ObservabilityProvider,
-) (EnforcementServiceInterface, RefreshTokenRevokerInterface) {
-	enforcementService := newEnforcementService(observabilitySvc)
-	revocationService := newRevocationService(jwtService, newRevokedTokenStore(), observabilitySvc)
+	tokenFamilyRevocationTTL time.Duration,
+	revokeTokenFamilyOnExplicit bool,
+) (EnforcementServiceInterface, RevocationServiceInterface) {
+	store := newRevocationStore()
+	enforcementService := newEnforcementService(observabilitySvc, store)
+	criteriaRevoker := newCriteriaRevoker(store, tokenFamilyRevocationTTL)
+	revocationService := newRevocationService(jwtService, store, criteriaRevoker,
+		revokeTokenFamilyOnExplicit, observabilitySvc)
 	revocationHandler := newRevocationHandler(revocationService)
 	registerRoutes(mux, revocationHandler, actorProvider, authnProvider, jwtService, discoveryService)
 	return enforcementService, revocationService
+}
+
+// InitializeCriteriaRevoker builds a standalone criteria revoker for consumers wired at the composition
+// root that cannot receive the one from Initialize (which is created inside the OAuth engine after
+// those consumers are constructed) — notably the SSO session service, which revokes a session's
+// families on sign-out. The criteria revoker is a stateless writer to the criteria deny list, so a
+// separate instance shares no mutable state and is safe. tokenFamilyRevocationTTL bounds each entry.
+func InitializeCriteriaRevoker(tokenFamilyRevocationTTL time.Duration) CriteriaRevokerInterface {
+	return newCriteriaRevoker(newRevocationStore(), tokenFamilyRevocationTTL)
 }
 
 // registerRoutes registers the routes for the token revocation endpoint.

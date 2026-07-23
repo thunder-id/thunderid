@@ -86,6 +86,11 @@ type Participant struct {
 	SessionID string
 	// AppID is the participating application's id.
 	AppID string
+	// TokenFamilyID is the token family id (tfid) minted for this application's most recent grant in
+	// the session. It links the session to the grant's tokens so logout can revoke the whole family.
+	// Refreshed on each re-authorization (latest grant wins); empty for participants recorded before
+	// tfid was introduced.
+	TokenFamilyID string
 	// FirstJoinedAt is when the application first joined the session (write-once).
 	FirstJoinedAt time.Time
 	// LastActiveAt is refreshed each time the application reuses the session.

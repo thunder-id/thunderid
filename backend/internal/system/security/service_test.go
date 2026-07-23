@@ -65,7 +65,7 @@ func (suite *SecurityServiceTestSuite) SetupTest() {
 	suite.mockRevocation = &RevocationEnforcerInterfaceMock{}
 	// Default to "not revoked" so existing authentication paths pass; Maybe() keeps it optional for
 	// tests where authentication never yields a security context.
-	suite.mockRevocation.On("EnsureNotRevoked", mock.Anything, mock.Anything).Return(nil).Maybe()
+	suite.mockRevocation.On("EnsureNotRevoked", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	var err error
 	suite.service, err = newSecurityService(
@@ -233,7 +233,7 @@ func (suite *SecurityServiceTestSuite) TestProcess_RevokedToken() {
 
 	mockRevocation := &RevocationEnforcerInterfaceMock{}
 	revokedErr := errors.New("token has been revoked")
-	mockRevocation.On("EnsureNotRevoked", mock.Anything, "jti-123").Return(revokedErr)
+	mockRevocation.On("EnsureNotRevoked", mock.Anything, "jti-123", mock.Anything).Return(revokedErr)
 
 	service, err := newSecurityService(
 		[]AuthenticatorInterface{suite.mockAuth1}, mockRevocation, testPublicPaths, apiPermissionEntries)
@@ -243,6 +243,30 @@ func (suite *SecurityServiceTestSuite) TestProcess_RevokedToken() {
 
 	assert.Nil(suite.T(), ctx)
 	// A revoked token is surfaced as an invalid token so the response does not disclose the reason.
+	assert.Equal(suite.T(), errInvalidToken, err)
+	mockRevocation.AssertExpectations(suite.T())
+}
+
+// Test Process rejects a request whose token family has been revoked, even when its own jti is clean.
+func (suite *SecurityServiceTestSuite) TestProcess_RevokedTokenFamily() {
+	req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
+
+	suite.testCtx.revocationID = "jti-clean"
+	suite.testCtx.tokenFamilyID = "tfid-revoked"
+	suite.mockAuth1.On("CanHandle", req).Return(true)
+	suite.mockAuth1.On("Authenticate", req).Return(suite.testCtx, nil)
+
+	mockRevocation := &RevocationEnforcerInterfaceMock{}
+	mockRevocation.On("EnsureNotRevoked", mock.Anything, "jti-clean", "tfid-revoked").
+		Return(errors.New("token family has been revoked"))
+
+	service, err := newSecurityService(
+		[]AuthenticatorInterface{suite.mockAuth1}, mockRevocation, testPublicPaths, apiPermissionEntries)
+	suite.Require().NoError(err)
+
+	ctx, err := service.Process(req)
+
+	assert.Nil(suite.T(), ctx)
 	assert.Equal(suite.T(), errInvalidToken, err)
 	mockRevocation.AssertExpectations(suite.T())
 }
@@ -257,7 +281,7 @@ func (suite *SecurityServiceTestSuite) TestProcess_NotRevokedToken() {
 	suite.mockAuth1.On("Authenticate", req).Return(suite.testCtx, nil)
 
 	mockRevocation := &RevocationEnforcerInterfaceMock{}
-	mockRevocation.On("EnsureNotRevoked", mock.Anything, "jti-456").Return(nil)
+	mockRevocation.On("EnsureNotRevoked", mock.Anything, "jti-456", mock.Anything).Return(nil)
 
 	service, err := newSecurityService(
 		[]AuthenticatorInterface{suite.mockAuth1}, mockRevocation, testPublicPaths, apiPermissionEntries)

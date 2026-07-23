@@ -39,10 +39,11 @@ const testClientID = "test-client-id"
 
 type RevocationServiceTestSuite struct {
 	suite.Suite
-	jwtServiceMock *jwtmock.JWTServiceInterfaceMock
-	storeMock      *RevokedTokenStoreInterfaceMock
-	obsMock        *observabilitymock.ObservabilityServiceInterfaceMock
-	service        RevocationServiceInterface
+	jwtServiceMock      *jwtmock.JWTServiceInterfaceMock
+	storeMock           *revocationStoreInterfaceMock
+	criteriaRevokerMock *CriteriaRevokerInterfaceMock
+	obsMock             *observabilitymock.ObservabilityServiceInterfaceMock
+	service             RevocationServiceInterface
 }
 
 func TestRevocationServiceTestSuite(t *testing.T) {
@@ -51,9 +52,10 @@ func TestRevocationServiceTestSuite(t *testing.T) {
 
 func (s *RevocationServiceTestSuite) SetupTest() {
 	s.jwtServiceMock = jwtmock.NewJWTServiceInterfaceMock(s.T())
-	s.storeMock = NewRevokedTokenStoreInterfaceMock(s.T())
+	s.storeMock = newRevocationStoreInterfaceMock(s.T())
+	s.criteriaRevokerMock = NewCriteriaRevokerInterfaceMock(s.T())
 	s.obsMock = observabilitymock.NewObservabilityServiceInterfaceMock(s.T())
-	s.service = newRevocationService(s.jwtServiceMock, s.storeMock, s.obsMock)
+	s.service = newRevocationService(s.jwtServiceMock, s.storeMock, s.criteriaRevokerMock, true, s.obsMock)
 }
 
 // buildToken constructs a JWT-shaped string with the given claims. DecodeJWT only base64-decodes the
@@ -80,6 +82,25 @@ func (s *RevocationServiceTestSuite) TestRevokeToken_Success() {
 	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
+}
+
+func (s *RevocationServiceTestSuite) TestRevokeToken_RevokesTokenFamily() {
+	token := buildToken(map[string]interface{}{
+		"jti":       "jti-fam",
+		"client_id": testClientID,
+		"tfid":      "tfid-77",
+		"exp":       float64(time.Now().Add(time.Hour).Unix()),
+	})
+	s.jwtServiceMock.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+	s.storeMock.On("InsertRevokedToken", mock.Anything, mock.Anything).Return(nil)
+	s.criteriaRevokerMock.On("RevokeTokenFamily", mock.Anything, "tfid-77", RevocationReasonExplicitTokenFamily).
+		Return(nil)
+	s.obsMock.On("IsEnabled").Return(false)
+
+	revokeOutcome, err := s.service.RevokeToken(context.Background(), token, "", testClientID)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), RevokeOutcomeRevoked, revokeOutcome)
+	s.criteriaRevokerMock.AssertExpectations(s.T())
 }
 
 func (s *RevocationServiceTestSuite) TestRevokeToken_PublishesAuditEvent() {

@@ -23,6 +23,7 @@ import (
 	"errors"
 	"slices"
 
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
@@ -43,6 +44,7 @@ type tokenExchangeGrantHandler struct {
 	actorProvider       providers.ActorProvider
 	resourceService     providers.ResourceServerProvider
 	serverConfigService serverconfig.ServerConfigService
+	cfg                 oauthconfig.Config
 }
 
 // newTokenExchangeGrantHandler creates a new instance of tokenExchangeGrantHandler.
@@ -53,6 +55,7 @@ func newTokenExchangeGrantHandler(
 	actorProvider providers.ActorProvider,
 	resourceService providers.ResourceServerProvider,
 	serverConfigService serverconfig.ServerConfigService,
+	cfg oauthconfig.Config,
 ) GrantHandlerInterface {
 	return &tokenExchangeGrantHandler{
 		tokenBuilder:        tokenBuilder,
@@ -61,6 +64,7 @@ func newTokenExchangeGrantHandler(
 		actorProvider:       actorProvider,
 		resourceService:     resourceService,
 		serverConfigService: serverConfigService,
+		cfg:                 cfg,
 	}
 }
 
@@ -255,6 +259,19 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		finalAudiences = []string{targetRS.Identifier}
 	}
 
+	// Resolve how the exchanged token relates to the subject token's revocation family: inherit joins
+	// the subject's family (both revoked together); none (the default, and the empty value) issues an
+	// independent token with no tfid. An unrecognized value is treated as none and surfaced.
+	var exchangedTokenFamilyID string
+	switch h.cfg.OAuth.TokenExchange.TokenFamily {
+	case constants.TokenExchangeTokenFamilyInherit:
+		exchangedTokenFamilyID = subjectClaims.TokenFamilyID
+	case constants.TokenExchangeTokenFamilyNone, "":
+	default:
+		logger.Warn(ctx, "Unrecognized oauth.token_exchange.token_family mode; issuing an independent token",
+			log.String("mode", h.cfg.OAuth.TokenExchange.TokenFamily))
+	}
+
 	// Build access token using token builder
 	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, &tokenservice.AccessTokenBuildContext{
@@ -268,6 +285,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		ActorClaims:       actorClaims,
 		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
 		DPoPJkt:           dpop.GetJkt(ctx),
+		TokenFamilyID:     exchangedTokenFamilyID,
 	})
 	if err != nil {
 		logger.Error(ctx, "Failed to generate token", log.Error(err))

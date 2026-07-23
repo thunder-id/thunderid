@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -69,19 +70,21 @@ func (suite *InitTestSuite) TearDownTest() {
 func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
-	enforcementService, refreshTokenRevoker := Initialize(
-		mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService, nil)
+	enforcementService, revocationService := Initialize(
+		mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService, nil, time.Hour, true)
 
 	assert.NotNil(suite.T(), enforcementService)
 	assert.Implements(suite.T(), (*EnforcementServiceInterface)(nil), enforcementService)
-	assert.NotNil(suite.T(), refreshTokenRevoker)
-	assert.Implements(suite.T(), (*RefreshTokenRevokerInterface)(nil), refreshTokenRevoker)
+	assert.NotNil(suite.T(), revocationService)
+	assert.Implements(suite.T(), (*RevocationServiceInterface)(nil), revocationService)
+	assert.Implements(suite.T(), (*RefreshTokenRevokerInterface)(nil), revocationService)
+	assert.Implements(suite.T(), (*CriteriaRevokerInterface)(nil), revocationService)
 }
 
 func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 	mux := http.NewServeMux()
 
-	Initialize(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService, nil)
+	Initialize(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService, nil, time.Hour, true)
 
 	// The pattern includes the method because of CORS middleware wrapping.
 	_, pattern := mux.Handler(&http.Request{Method: "POST", URL: &url.URL{Path: "/oauth2/revoke"}})

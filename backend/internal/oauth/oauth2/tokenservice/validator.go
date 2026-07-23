@@ -131,7 +131,8 @@ func (tv *tokenValidator) ValidateAccessToken(ctx context.Context, token string)
 	scopes := extractScopesFromClaims(claims, false)
 
 	jti, _ := extractStringClaim(claims, constants.ClaimJTI)
-	if err := tv.ensureNotRevoked(ctx, jti); err != nil {
+	tokenFamilyID, _ := extractStringClaim(claims, constants.ClaimTokenFamilyID)
+	if err := tv.ensureNotRevoked(ctx, jti, tokenFamilyID); err != nil {
 		return nil, err
 	}
 
@@ -173,6 +174,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 	attributeCacheID, _ := extractStringClaim(claims, "aci")
 	actorSub, _ := extractStringClaim(claims, "act_sub")
 	jti, _ := extractStringClaim(claims, "jti")
+	tokenFamilyID, _ := extractStringClaim(claims, constants.ClaimTokenFamilyID)
 
 	// Extract claims request if present
 	var claimsRequest *oauth2model.ClaimsRequest
@@ -197,7 +199,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 		dpopJkt = s
 	}
 
-	if err := tv.ensureNotRevoked(ctx, jti); err != nil {
+	if err := tv.ensureNotRevoked(ctx, jti, tokenFamilyID); err != nil {
 		return nil, err
 	}
 
@@ -215,6 +217,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 		ActorSub:         actorSub,
 		JTI:              jti,
 		Exp:              exp,
+		TokenFamilyID:    tokenFamilyID,
 	}, nil
 }
 
@@ -253,7 +256,8 @@ func (tv *tokenValidator) ValidateSubjectToken(
 		if err != nil {
 			return nil, err
 		}
-		if err := tv.ensureNotRevoked(ctx, selfClaims.JTI); err != nil {
+		selfTokenFamilyID, _ := extractStringClaim(claims, constants.ClaimTokenFamilyID)
+		if err := tv.ensureNotRevoked(ctx, selfClaims.JTI, selfTokenFamilyID); err != nil {
 			return nil, err
 		}
 		return selfClaims, nil
@@ -337,7 +341,8 @@ func (tv *tokenValidator) ValidateToken(ctx context.Context, token string) (map[
 	}
 
 	jti, _ := extractStringClaim(claims, constants.ClaimJTI)
-	if err := tv.ensureNotRevoked(ctx, jti); err != nil {
+	tokenFamilyID, _ := extractStringClaim(claims, constants.ClaimTokenFamilyID)
+	if err := tv.ensureNotRevoked(ctx, jti, tokenFamilyID); err != nil {
 		return nil, err
 	}
 
@@ -587,10 +592,11 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 	}
 
 	// Only self-issued tokens participate in deny-list (revocation) enforcement; an external
-	// issuer's jti has no meaning in this server's deny list.
-	var jti string
+	// issuer's jti and token family id have no meaning in this server's deny list.
+	var jti, tokenFamilyID string
 	if tv.isSelfIssuer(iss) {
 		jti, _ = extractStringClaim(claims, "jti")
+		tokenFamilyID, _ = extractStringClaim(claims, constants.ClaimTokenFamilyID)
 	}
 
 	return &SubjectTokenClaims{
@@ -602,6 +608,7 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 		NestedAct:      nestedAct,
 		CnfJkt:         cnfJkt,
 		JTI:            jti,
+		TokenFamilyID:  tokenFamilyID,
 	}, nil
 }
 
@@ -689,9 +696,9 @@ func (tv *tokenValidator) isAuthAssertion(
 	return false
 }
 
-func (tv *tokenValidator) ensureNotRevoked(ctx context.Context, jti string) error {
+func (tv *tokenValidator) ensureNotRevoked(ctx context.Context, jti, tokenFamilyID string) error {
 	if tv.enforcementService != nil {
-		return tv.enforcementService.EnsureNotRevoked(ctx, jti)
+		return tv.enforcementService.EnsureNotRevoked(ctx, jti, tokenFamilyID)
 	}
 	return nil
 }

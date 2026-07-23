@@ -49,5 +49,6 @@ type RefreshTokenGrantHandlerInterface interface {
 		claimsRequest *model.ClaimsRequest,
 		claimsLocales string,
 		attributeCacheID string,
+		tokenFamilyID string,
 	) *model.ErrorResponse
 }

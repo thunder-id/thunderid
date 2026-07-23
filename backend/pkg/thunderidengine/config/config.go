@@ -218,6 +218,8 @@ type OAuthConfig struct {
 	DPoP              DPoPConfig              `yaml:"dpop"                        json:"dpop"`
 	AuthClass         AuthClassConfig         `yaml:"auth_class"                  json:"auth_class"`
 	CIBA              CIBAConfig              `yaml:"ciba"                        json:"ciba"`
+	Revocation        RevocationConfig        `yaml:"revocation"                  json:"revocation"`
+	TokenExchange     TokenExchangeConfig     `yaml:"token_exchange"              json:"token_exchange"`
 	// AllowWildcardRedirectURI enables wildcard pattern matching for redirect URIs.
 	// When false (default), only exact redirect URI matching is performed.
 	AllowWildcardRedirectURI bool `yaml:"allow_wildcard_redirect_uri" json:"allow_wildcard_redirect_uri"`
@@ -242,6 +244,31 @@ type OAuthTokenRevocationConfig struct {
 type LogoutConfig struct {
 	// Enabled controls whether the OAuth logout endpoint is active.
 	Enabled bool `yaml:"enabled" json:"enabled"`
+}
+
+// RevocationConfig holds grant-scoped (token family) revocation settings.
+type RevocationConfig struct {
+	TokenFamily TokenFamilyRevocationConfig `yaml:"token_family" json:"token_family"`
+}
+
+// TokenFamilyRevocationConfig toggles the triggers that revoke a whole token family (one authorization
+// grant). Each defaults to on (set in default.json), matching the fail-closed security posture.
+type TokenFamilyRevocationConfig struct {
+	// OnRefreshReuse revokes the family when a rotated (already-revoked) refresh token is replayed.
+	OnRefreshReuse bool `yaml:"on_refresh_reuse"   json:"on_refresh_reuse"`
+	// OnExplicitRevoke revokes the family when a token carrying a tfid is revoked via RFC 7009, so a
+	// login's access tokens drop with its refresh token.
+	OnExplicitRevoke bool `yaml:"on_explicit_revoke" json:"on_explicit_revoke"`
+	// OnCodeReplay revokes the family when an authorization code is redeemed twice (replay).
+	OnCodeReplay bool `yaml:"on_code_replay"     json:"on_code_replay"`
+}
+
+// TokenExchangeConfig holds RFC 8693 token-exchange settings.
+type TokenExchangeConfig struct {
+	// TokenFamily selects how an exchanged token relates to the subject token's token family:
+	// "none" (default) issues an independent token with no tfid; "inherit" copies the subject
+	// token's tfid so the exchanged token is revoked with that token family.
+	TokenFamily string `yaml:"token_family" json:"token_family"`
 }
 
 // FlowConfig holds the configuration details for the flow service.

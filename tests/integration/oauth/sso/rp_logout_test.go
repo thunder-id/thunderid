@@ -72,6 +72,29 @@ func (ts *SSOLogoutTestSuite) TestRPInitiatedLogoutEndsSession() {
 	ts.Empty(reAuthStep.Assertion, "no assertion should be issued when credentials are still required")
 }
 
+// TestRPInitiatedLogoutRevokesTokenFamily proves that signing out revokes the login's token family:
+// after logout the access token issued for that session is rejected by introspection, even though it
+// has not yet expired.
+func (ts *SSOLogoutTestSuite) TestRPInitiatedLogoutRevokesTokenFamily() {
+	client := ts.newSessionClient()
+
+	tokens := ts.loginTokens(client, logoutUsername, "logout_revoke_state_1")
+	ts.Require().NotEmpty(tokens.AccessToken, "login should issue an access token")
+	ts.Require().True(ts.introspectActive(client, tokens.AccessToken),
+		"the access token should be active right after login")
+
+	executionID, logoutID := ts.initiateLogout(client, tokens.IDToken, postLogoutRedirectURI, "logout_revoke_state_2")
+	ts.Require().NotEmpty(executionID)
+	ts.Require().NotEmpty(logoutID)
+
+	step := ts.flowExecute(client, map[string]interface{}{"executionId": executionID})
+	ts.Require().Equal("COMPLETE", step.FlowStatus, "the sign-out flow should complete")
+	ts.completeLogout(client, logoutID)
+
+	ts.False(ts.introspectActive(client, tokens.AccessToken),
+		"signing out must revoke the session's token family, so its access token is no longer active")
+}
+
 // initiateLogout posts to the end_session_endpoint and returns the sign-out flow executionId and the
 // logoutId carried on the gate sign-out redirect.
 func (ts *SSOLogoutTestSuite) initiateLogout(

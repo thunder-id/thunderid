@@ -31,9 +31,13 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// RevocationServiceInterface defines the OAuth2 token revocation service (RFC 7009).
+// RevocationServiceInterface is the OAuth2 revocation write service. It covers single-token revocation
+// (the RFC 7009 endpoint and single-use refresh rotation, recorded on the JTI deny list) and
+// token-family revocation (recorded on the criteria deny list). The enforcement service is the
+// matching read path.
 type RevocationServiceInterface interface {
 	RefreshTokenRevokerInterface
+	CriteriaRevokerInterface
 
 	// RevokeToken revokes the presented token on behalf of the authenticated client.
 	//
@@ -59,25 +63,33 @@ type RefreshTokenRevokerInterface interface {
 
 // revocationService implements RevocationServiceInterface.
 type revocationService struct {
-	jwtService       jwt.JWTServiceInterface
-	store            RevokedTokenStoreInterface
-	observabilitySvc providers.ObservabilityProvider
-	logger           *log.Logger
+	jwtService        jwt.JWTServiceInterface
+	store             revocationStoreInterface
+	criteriaRevoker   CriteriaRevokerInterface
+	revokeTokenFamily bool
+	observabilitySvc  providers.ObservabilityProvider
+	logger            *log.Logger
 }
 
 // newRevocationService creates a new revocationService (internal use). It returns
-// RevocationServiceInterface; the same instance is handed to the refresh grant narrowed to the
-// embedded RefreshTokenRevokerInterface subset, so the grant cannot invoke the full revocation API.
+// RevocationServiceInterface; consumers receive it narrowed to the embedded RefreshTokenRevokerInterface
+// or CriteriaRevokerInterface subset, so they cannot invoke the full revocation API (e.g. RevokeToken).
+// When revokeTokenFamily is true, an explicit revocation of a token carrying a token family id also revokes
+// the whole family (so a login's access tokens drop with its refresh token).
 func newRevocationService(
 	jwtService jwt.JWTServiceInterface,
-	store RevokedTokenStoreInterface,
+	store revocationStoreInterface,
+	criteriaRevoker CriteriaRevokerInterface,
+	revokeTokenFamily bool,
 	observabilitySvc providers.ObservabilityProvider,
 ) RevocationServiceInterface {
 	return &revocationService{
-		jwtService:       jwtService,
-		store:            store,
-		observabilitySvc: observabilitySvc,
-		logger:           log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RevocationService")),
+		jwtService:        jwtService,
+		store:             store,
+		criteriaRevoker:   criteriaRevoker,
+		revokeTokenFamily: revokeTokenFamily,
+		observabilitySvc:  observabilitySvc,
+		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RevocationService")),
 	}
 }
 
@@ -129,6 +141,17 @@ func (s *revocationService) RevokeToken(
 		return RevokeOutcomeRevoked, fmt.Errorf("failed to record token revocation: %w", err)
 	}
 
+	// When the revoked token carries a token family id, drop the whole family so revoking a login's
+	// refresh token also invalidates the access tokens issued from that same login (RFC 7009 §2.1).
+	if s.revokeTokenFamily && s.criteriaRevoker != nil {
+		if tokenFamilyID, _ := payload[constants.ClaimTokenFamilyID].(string); tokenFamilyID != "" {
+			if err := s.criteriaRevoker.RevokeTokenFamily(ctx, tokenFamilyID,
+				RevocationReasonExplicitTokenFamily); err != nil {
+				return RevokeOutcomeRevoked, fmt.Errorf("failed to revoke token family: %w", err)
+			}
+		}
+	}
+
 	s.publishTokenRevokedEvent(ctx, authenticatedClientID, jti)
 	return RevokeOutcomeRevoked, nil
 }
@@ -151,6 +174,15 @@ func (s *revocationService) RevokeRefreshToken(ctx context.Context, jti string, 
 	}
 	s.logger.Debug(ctx, "Revoked refresh token")
 	return nil
+}
+
+// RevokeTokenFamily revokes the whole token family (one authorization grant) identified by the given
+// token family id. It delegates to the criteria deny-list writer the service composes, so the refresh
+// grant, the authorization service, and session sign-out revoke families through the same service that
+// backs the RFC 7009 endpoint's explicit-revoke family cascade.
+func (s *revocationService) RevokeTokenFamily(ctx context.Context, tokenFamilyID string,
+	reason RevocationReason) error {
+	return s.criteriaRevoker.RevokeTokenFamily(ctx, tokenFamilyID, reason)
 }
 
 // extractExpiryTime returns the token's exp claim as a time, falling back to now when absent

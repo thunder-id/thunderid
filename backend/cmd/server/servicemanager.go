@@ -75,6 +75,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dcr"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/openid4vci"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
@@ -317,7 +318,15 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	cors.InitializeDynamicMatcher(serverConfigService)
 
 	flowConfig := flowconfig.FromServerRuntime()
-	sessionService, sessionCfg := initSessionService(ctx, serverConfigService, runtime.Config.Server.Identifier, logger)
+	// The SSO session service revokes a session's token families on sign-out. The criteria revoker is
+	// built here (the OAuth engine's own revoker is created later, so it cannot be shared) and adapted
+	// to the session service's consumer interface with the sign-out reason fixed.
+	tokenFamilyRevocationTTL := time.Duration(runtime.Config.OAuth.RefreshToken.ValidityPeriod) * time.Second
+	sessionCriteriaRev := sessionCriteriaRevoker{
+		revoker: revocation.InitializeCriteriaRevoker(tokenFamilyRevocationTTL),
+	}
+	sessionService, sessionCfg := initSessionService(ctx, serverConfigService,
+		runtime.Config.Server.Identifier, sessionCriteriaRev, logger)
 	flowConfig.Session = sessionCfg
 	flowFactory, execRegistry, interceptorRegistry, graphBuilder := initializeFlowCoreAndExecutor(ctx, logger,
 		cacheManager, executor.ExecutorDependencies{
@@ -519,12 +528,23 @@ func unregisterServices() {
 // initSessionService reads the effective SSO session configuration from the server-config section and
 // builds the session service, returning both so the caller can thread the config into flowexec too.
 func initSessionService(ctx context.Context, svc serverconfig.ServerConfigService, deploymentID string,
-	logger *log.Logger) (flowsession.Service, flowsession.Config) {
+	criteriaRevoker flowsession.CriteriaRevoker, logger *log.Logger) (flowsession.Service, flowsession.Config) {
 	cfg := readSessionConfig(ctx, svc, logger)
 	sessionService, err := flowsession.Initialize(dbprovider.GetDBProvider(), deploymentID,
-		flowsession.NewTimeouts(cfg.IdleTimeoutSeconds, cfg.AbsoluteTimeoutSeconds))
+		flowsession.NewTimeouts(cfg.IdleTimeoutSeconds, cfg.AbsoluteTimeoutSeconds), criteriaRevoker)
 	fatalOnError(ctx, logger, err, "Failed to initialize SSO session service")
 	return sessionService, cfg
+}
+
+// sessionCriteriaRevoker adapts the OAuth criteria revoker to the SSO session service's consumer
+// interface, fixing the revocation reason to session sign-out.
+type sessionCriteriaRevoker struct {
+	revoker revocation.CriteriaRevokerInterface
+}
+
+// RevokeTokenFamily revokes the given token family with the session-logout reason.
+func (a sessionCriteriaRevoker) RevokeTokenFamily(ctx context.Context, tokenFamilyID string) error {
+	return a.revoker.RevokeTokenFamily(ctx, tokenFamilyID, revocation.RevocationReasonSessionLogout)
 }
 
 // readSessionConfig reads the effective SSO session lifetime configuration from the server-config

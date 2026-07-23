@@ -96,6 +96,7 @@ func (tb *tokenBuilder) BuildAccessToken(
 		Audiences:        tokenCtx.Audiences,
 		ClaimsRequest:    tokenCtx.ClaimsRequest,
 		ClaimsLocales:    tokenCtx.ClaimsLocales,
+		TokenFamilyID:    tokenCtx.TokenFamilyID,
 	}
 
 	token, iat, err := tb.jwtService.GenerateJWT(
@@ -241,6 +242,10 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 
 	dpop.SetCnfJkt(claims, ctx.DPoPJkt)
 
+	if ctx.TokenFamilyID != "" {
+		claims[constants.ClaimTokenFamilyID] = ctx.TokenFamilyID
+	}
+
 	return claims, nil
 }
 
@@ -346,6 +351,10 @@ func (tb *tokenBuilder) buildRefreshTokenClaims(ctx *RefreshTokenBuildContext) (
 
 	if ctx.DPoPJkt != "" {
 		claims[constants.ClaimDPoPJkt] = ctx.DPoPJkt
+	}
+
+	if ctx.TokenFamilyID != "" {
+		claims[constants.ClaimTokenFamilyID] = ctx.TokenFamilyID
 	}
 
 	return claims, nil

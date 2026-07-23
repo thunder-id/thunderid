@@ -230,6 +230,12 @@ func (a *authAssertExecutor) generateAuthAssertion(
 		jwtClaims[oauth2const.ClaimAuthorizationRequestID] = authReqID
 	}
 
+	// Carry the token family id (minted by the Session node) so the authorization code, and in turn
+	// the grant's access and refresh tokens, are stamped with it for family-scoped revocation.
+	if tokenFamilyID, exists := ctx.RuntimeData[common.RuntimeKeyTokenFamilyID]; exists && tokenFamilyID != "" {
+		jwtClaims[oauth2const.ClaimTokenFamilyID] = tokenFamilyID
+	}
+
 	requiredAttributes := a.getRequiredUserAttributes(ctx)
 
 	metadata := core.BuildGetAttributesMetadata(ctx)

@@ -6,6 +6,7 @@ package authz
 
 import (
 	"context"
+	"time"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -99,6 +100,78 @@ func (_c *AuthorizationCodeStoreInterfaceMock_ConsumeAuthorizationCode_Call) Ret
 }
 
 func (_c *AuthorizationCodeStoreInterfaceMock_ConsumeAuthorizationCode_Call) RunAndReturn(run func(ctx context.Context, authCode string) (bool, error)) *AuthorizationCodeStoreInterfaceMock_ConsumeAuthorizationCode_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ConsumedTokenFamily provides a mock function for the type AuthorizationCodeStoreInterfaceMock
+func (_mock *AuthorizationCodeStoreInterfaceMock) ConsumedTokenFamily(ctx context.Context, authCode string) (string, bool, error) {
+	ret := _mock.Called(ctx, authCode)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ConsumedTokenFamily")
+	}
+
+	var r0 string
+	var r1 bool
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, bool, error)); ok {
+		return returnFunc(ctx, authCode)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
+		r0 = returnFunc(ctx, authCode)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) bool); ok {
+		r1 = returnFunc(ctx, authCode)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string) error); ok {
+		r2 = returnFunc(ctx, authCode)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
+}
+
+// AuthorizationCodeStoreInterfaceMock_ConsumedTokenFamily_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ConsumedTokenFamily'
+type AuthorizationCodeStoreInterfaceMock_ConsumedTokenFamily_Call struct {
+	*mock.Call
+}
+
+// ConsumedTokenFamily is a helper method to define mock.On call
+//   - ctx context.Context
+//   - authCode string
+func (_e *AuthorizationCodeStoreInterfaceMock_Expecter) ConsumedTokenFamily(ctx interface{}, authCode interface{}) *AuthorizationCodeStoreInterfaceMock_ConsumedTokenFamily_Call {
+	return &AuthorizationCodeStoreInterfaceMock_ConsumedTokenFamily_Call{Call: _e.mock.On("ConsumedTokenFamily", ctx, authCode)}
+}
+
+func (_c *AuthorizationCodeStoreInterfaceMock_ConsumedTokenFamily_Call) Run(run func(ctx context.Context, authCode string)) *AuthorizationCodeStoreInterfaceMock_ConsumedTokenFamily_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthorizationCodeStoreInterfaceMock_ConsumedTokenFamily_Call) Return(s string, b bool, err error) *AuthorizationCodeStoreInterfaceMock_ConsumedTokenFamily_Call {
+	_c.Call.Return(s, b, err)
+	return _c
+}
+
+func (_c *AuthorizationCodeStoreInterfaceMock_ConsumedTokenFamily_Call) RunAndReturn(run func(ctx context.Context, authCode string) (string, bool, error)) *AuthorizationCodeStoreInterfaceMock_ConsumedTokenFamily_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -224,6 +297,75 @@ func (_c *AuthorizationCodeStoreInterfaceMock_InsertAuthorizationCode_Call) Retu
 }
 
 func (_c *AuthorizationCodeStoreInterfaceMock_InsertAuthorizationCode_Call) RunAndReturn(run func(ctx context.Context, authzCode AuthorizationCode) error) *AuthorizationCodeStoreInterfaceMock_InsertAuthorizationCode_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// MarkConsumedTokenFamily provides a mock function for the type AuthorizationCodeStoreInterfaceMock
+func (_mock *AuthorizationCodeStoreInterfaceMock) MarkConsumedTokenFamily(ctx context.Context, authCode string, tokenFamilyID string, ttl time.Duration) error {
+	ret := _mock.Called(ctx, authCode, tokenFamilyID, ttl)
+
+	if len(ret) == 0 {
+		panic("no return value specified for MarkConsumedTokenFamily")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, time.Duration) error); ok {
+		r0 = returnFunc(ctx, authCode, tokenFamilyID, ttl)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// AuthorizationCodeStoreInterfaceMock_MarkConsumedTokenFamily_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'MarkConsumedTokenFamily'
+type AuthorizationCodeStoreInterfaceMock_MarkConsumedTokenFamily_Call struct {
+	*mock.Call
+}
+
+// MarkConsumedTokenFamily is a helper method to define mock.On call
+//   - ctx context.Context
+//   - authCode string
+//   - tokenFamilyID string
+//   - ttl time.Duration
+func (_e *AuthorizationCodeStoreInterfaceMock_Expecter) MarkConsumedTokenFamily(ctx interface{}, authCode interface{}, tokenFamilyID interface{}, ttl interface{}) *AuthorizationCodeStoreInterfaceMock_MarkConsumedTokenFamily_Call {
+	return &AuthorizationCodeStoreInterfaceMock_MarkConsumedTokenFamily_Call{Call: _e.mock.On("MarkConsumedTokenFamily", ctx, authCode, tokenFamilyID, ttl)}
+}
+
+func (_c *AuthorizationCodeStoreInterfaceMock_MarkConsumedTokenFamily_Call) Run(run func(ctx context.Context, authCode string, tokenFamilyID string, ttl time.Duration)) *AuthorizationCodeStoreInterfaceMock_MarkConsumedTokenFamily_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 time.Duration
+		if args[3] != nil {
+			arg3 = args[3].(time.Duration)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthorizationCodeStoreInterfaceMock_MarkConsumedTokenFamily_Call) Return(err error) *AuthorizationCodeStoreInterfaceMock_MarkConsumedTokenFamily_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *AuthorizationCodeStoreInterfaceMock_MarkConsumedTokenFamily_Call) RunAndReturn(run func(ctx context.Context, authCode string, tokenFamilyID string, ttl time.Duration) error) *AuthorizationCodeStoreInterfaceMock_MarkConsumedTokenFamily_Call {
 	_c.Call.Return(run)
 	return _c
 }
