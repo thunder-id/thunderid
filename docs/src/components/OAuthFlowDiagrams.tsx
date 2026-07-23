@@ -196,6 +196,28 @@ export function OIDCFlowDiagram() {
   );
 }
 
+export function RPInitiatedLogoutDiagram() {
+  return (
+    <SequenceDiagram
+      actors={['User Agent', 'Application', 'ThunderID']}
+      gaps={[360, 360]}
+      ariaLabel="RP-Initiated Logout flow: the user signs out of the application, the application clears its local session and redirects the browser to the end_session_endpoint, ThunderID validates the request and runs the sign-out flow to confirm and terminate the SSO session, then redirects the browser to the post-logout redirect URI."
+      rows={[
+        { from: 0, to: 1, label: 'Sign out' },
+        { note: 'Application clears its local session', between: [1, 1] },
+        { from: 1, to: 0, label: ['302 Redirect to', '/oauth2/logout'] },
+        { from: 0, to: 2, label: 'GET /oauth2/logout', sublabel: ['id_token_hint,', 'post_logout_redirect_uri, state'] },
+        { note: 'Validate request, run the sign-out flow', between: [2, 2] },
+        { from: 2, to: 0, label: 'Sign-out confirmation page' },
+        { from: 0, to: 2, label: 'Confirm sign-out' },
+        { note: 'Terminate SSO session, clear session cookie', between: [2, 2] },
+        { from: 2, to: 0, label: ['302 Redirect to', 'post_logout_redirect_uri?state=...'] },
+        { from: 0, to: 1, label: 'Land on the post-logout page' },
+      ]}
+    />
+  );
+}
+
 export function UserInfoDiagram() {
   return (
     <SequenceDiagram

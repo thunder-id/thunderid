@@ -38,6 +38,20 @@ A session expires when it passes either deadline. After expiry, the next sign-in
 
 Flow SSO applies to browser-based authentication. <ProductName /> references each session with a per-flow cookie that carries only an opaque handle, never user data. Because the cookie is the reference, SSO reuse happens within a browser: a user who authenticates in one browser does not gain a session in another.
 
+## Ending a Session
+
+Signing a user out of an application does not, on its own, end their <ProductName /> session. Because SSO reuses the session, the next sign-in would find it still valid and skip authentication. To sign the user out fully, terminate the session at <ProductName /> as well.
+
+A session is terminated by running the application's **sign-out flow**, which ends the session and clears its per-flow cookie. Terminating a session is idempotent: ending an already-ended or expired session is not an error. An application enables sign-out under its **Flows** tab; see [Build a Sign-Out Flow](../../guides/flows/build-a-flow.mdx#go-further).
+
+There are two ways to run the sign-out flow, matching the two [integration models](./integration-models.mdx):
+
+- **Redirect-based (OIDC).** A browser-based application redirects the user to the `end_session_endpoint`, which runs the sign-out flow and returns the browser to the application. See [RP-Initiated Logout](../../guides/protocols/oauth-oidc/rp-initiated-logout.mdx).
+- **App-native.** An application that drives flows directly runs the sign-out flow through the Flow Execution API. See [Build a Sign-Out Flow](../../guides/flows/build-a-flow.mdx#go-further).
+
+A session also ends on its own when it passes the idle or absolute timeout, as described above.
+
 ## Related
 
 - [Single Sign-On for Flows](../../guides/flows/single-sign-on.mdx) shows how to add the SSO nodes to a flow in the Console Flow Builder.
+- [RP-Initiated Logout](../../guides/protocols/oauth-oidc/rp-initiated-logout.mdx) shows how a browser-based application ends the session over OIDC.
