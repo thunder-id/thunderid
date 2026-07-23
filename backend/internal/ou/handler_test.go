@@ -504,6 +504,13 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPostRequest
 				"name": "` + testOUNameFinance + `",
 				"themeId": "theme-123",
 				"layoutId": "layout-456",
+				"authFlowId": "auth-flow-123",
+				"registrationFlowId": "reg-flow-123",
+				"isRegistrationFlowEnabled": true,
+				"recoveryFlowId": "recovery-flow-123",
+				"isRecoveryFlowEnabled": true,
+				"signOutFlowId": "signout-flow-123",
+				"isSignOutFlowEnabled": true,
 				"logoUrl": "https://example.com/logo.png"
 			}`,
 			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
@@ -514,15 +521,29 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPostRequest
 								req.Name == testOUNameFinance &&
 								req.ThemeID == "theme-123" &&
 								req.LayoutID == "layout-456" &&
+								req.AuthFlowID == "auth-flow-123" &&
+								req.RegistrationFlowID == "reg-flow-123" &&
+								req.IsRegistrationFlowEnabled &&
+								req.RecoveryFlowID == "recovery-flow-123" &&
+								req.IsRecoveryFlowEnabled &&
+								req.SignOutFlowID == "signout-flow-123" &&
+								req.IsSignOutFlowEnabled &&
 								req.LogoURL == "https://example.com/logo.png"
 						})).
 					Return(providers.OrganizationUnit{
-						ID:       "ou-1",
-						Handle:   "finance",
-						Name:     testOUNameFinance,
-						ThemeID:  "theme-123",
-						LayoutID: "layout-456",
-						LogoURL:  "https://example.com/logo.png",
+						ID:                        "ou-1",
+						Handle:                    "finance",
+						Name:                      testOUNameFinance,
+						ThemeID:                   "theme-123",
+						LayoutID:                  "layout-456",
+						AuthFlowID:                "auth-flow-123",
+						RegistrationFlowID:        "reg-flow-123",
+						IsRegistrationFlowEnabled: true,
+						RecoveryFlowID:            "recovery-flow-123",
+						IsRecoveryFlowEnabled:     true,
+						SignOutFlowID:             "signout-flow-123",
+						IsSignOutFlowEnabled:      true,
+						LogoURL:                   "https://example.com/logo.png",
 					}, nil).
 					Once()
 			},
@@ -533,6 +554,13 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPostRequest
 				suite.Equal("ou-1", resp.ID)
 				suite.Equal("theme-123", resp.ThemeID)
 				suite.Equal("layout-456", resp.LayoutID)
+				suite.Equal("auth-flow-123", resp.AuthFlowID)
+				suite.Equal("reg-flow-123", resp.RegistrationFlowID)
+				suite.True(resp.IsRegistrationFlowEnabled)
+				suite.Equal("recovery-flow-123", resp.RecoveryFlowID)
+				suite.True(resp.IsRecoveryFlowEnabled)
+				suite.Equal("signout-flow-123", resp.SignOutFlowID)
+				suite.True(resp.IsSignOutFlowEnabled)
 				suite.Equal("https://example.com/logo.png", resp.LogoURL)
 			},
 		},
@@ -884,6 +912,13 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPutRequest(
 				"name": "` + testOUNameFinance + `",
 				"themeId": "theme-new",
 				"layoutId": "layout-new",
+				"authFlowId": "auth-flow-new",
+				"registrationFlowId": "reg-flow-new",
+				"isRegistrationFlowEnabled": true,
+				"recoveryFlowId": "recovery-flow-new",
+				"isRecoveryFlowEnabled": true,
+				"signOutFlowId": "signout-flow-new",
+				"isSignOutFlowEnabled": true,
 				"logoUrl": "https://example.com/new-logo.png"
 			}`,
 			setJSONHeader:  true,
@@ -898,16 +933,30 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPutRequest(
 								req.Name == testOUNameFinance &&
 								req.ThemeID == "theme-new" &&
 								req.LayoutID == "layout-new" &&
+								req.AuthFlowID == "auth-flow-new" &&
+								req.RegistrationFlowID == "reg-flow-new" &&
+								req.IsRegistrationFlowEnabled &&
+								req.RecoveryFlowID == "recovery-flow-new" &&
+								req.IsRecoveryFlowEnabled &&
+								req.SignOutFlowID == "signout-flow-new" &&
+								req.IsSignOutFlowEnabled &&
 								req.LogoURL == "https://example.com/new-logo.png"
 						}),
 					).
 					Return(providers.OrganizationUnit{
-						ID:       defaultOURequestID,
-						Handle:   "finance",
-						Name:     testOUNameFinance,
-						ThemeID:  "theme-new",
-						LayoutID: "layout-new",
-						LogoURL:  "https://example.com/new-logo.png",
+						ID:                        defaultOURequestID,
+						Handle:                    "finance",
+						Name:                      testOUNameFinance,
+						ThemeID:                   "theme-new",
+						LayoutID:                  "layout-new",
+						AuthFlowID:                "auth-flow-new",
+						RegistrationFlowID:        "reg-flow-new",
+						IsRegistrationFlowEnabled: true,
+						RecoveryFlowID:            "recovery-flow-new",
+						IsRecoveryFlowEnabled:     true,
+						SignOutFlowID:             "signout-flow-new",
+						IsSignOutFlowEnabled:      true,
+						LogoURL:                   "https://example.com/new-logo.png",
 					}, nil).
 					Once()
 			},
@@ -917,6 +966,13 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPutRequest(
 				suite.NoError(json.Unmarshal(recorder.Body.Bytes(), &resp))
 				suite.Equal("theme-new", resp.ThemeID)
 				suite.Equal("layout-new", resp.LayoutID)
+				suite.Equal("auth-flow-new", resp.AuthFlowID)
+				suite.Equal("reg-flow-new", resp.RegistrationFlowID)
+				suite.True(resp.IsRegistrationFlowEnabled)
+				suite.Equal("recovery-flow-new", resp.RecoveryFlowID)
+				suite.True(resp.IsRecoveryFlowEnabled)
+				suite.Equal("signout-flow-new", resp.SignOutFlowID)
+				suite.True(resp.IsSignOutFlowEnabled)
 				suite.Equal("https://example.com/new-logo.png", resp.LogoURL)
 			},
 		},

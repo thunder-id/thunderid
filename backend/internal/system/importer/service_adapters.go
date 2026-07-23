@@ -127,17 +127,24 @@ func (s *importService) importOrganizationUnit(
 	}
 
 	createReq := providers.OrganizationUnitRequestWithID{
-		ID:              req.ID,
-		Handle:          req.Handle,
-		Name:            req.Name,
-		Description:     req.Description,
-		Parent:          req.Parent,
-		ThemeID:         req.ThemeID,
-		LayoutID:        req.LayoutID,
-		LogoURL:         req.LogoURL,
-		TosURI:          req.TosURI,
-		PolicyURI:       req.PolicyURI,
-		CookiePolicyURI: req.CookiePolicyURI,
+		ID:                        req.ID,
+		Handle:                    req.Handle,
+		Name:                      req.Name,
+		Description:               req.Description,
+		Parent:                    req.Parent,
+		ThemeID:                   req.ThemeID,
+		LayoutID:                  req.LayoutID,
+		AuthFlowID:                req.AuthFlowID,
+		RegistrationFlowID:        req.RegistrationFlowID,
+		IsRegistrationFlowEnabled: req.IsRegistrationFlowEnabled,
+		RecoveryFlowID:            req.RecoveryFlowID,
+		IsRecoveryFlowEnabled:     req.IsRecoveryFlowEnabled,
+		SignOutFlowID:             req.SignOutFlowID,
+		IsSignOutFlowEnabled:      req.IsSignOutFlowEnabled,
+		LogoURL:                   req.LogoURL,
+		TosURI:                    req.TosURI,
+		PolicyURI:                 req.PolicyURI,
+		CookiePolicyURI:           req.CookiePolicyURI,
 	}
 	updateReq := createReq
 

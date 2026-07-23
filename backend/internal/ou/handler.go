@@ -275,16 +275,23 @@ func (ouh *organizationUnitHandler) sanitizeOrganizationUnitRequest(
 	request OrganizationUnitRequest,
 ) providers.OrganizationUnitRequestWithID {
 	return providers.OrganizationUnitRequestWithID{
-		Handle:          sysutils.SanitizeString(request.Handle),
-		Name:            sysutils.SanitizeString(request.Name),
-		Description:     sysutils.SanitizeString(request.Description),
-		Parent:          request.Parent,
-		ThemeID:         request.ThemeID,
-		LayoutID:        request.LayoutID,
-		LogoURL:         request.LogoURL,
-		TosURI:          request.TosURI,
-		PolicyURI:       request.PolicyURI,
-		CookiePolicyURI: request.CookiePolicyURI,
+		Handle:                    sysutils.SanitizeString(request.Handle),
+		Name:                      sysutils.SanitizeString(request.Name),
+		Description:               sysutils.SanitizeString(request.Description),
+		Parent:                    request.Parent,
+		ThemeID:                   request.ThemeID,
+		LayoutID:                  request.LayoutID,
+		AuthFlowID:                request.AuthFlowID,
+		RegistrationFlowID:        request.RegistrationFlowID,
+		IsRegistrationFlowEnabled: request.IsRegistrationFlowEnabled,
+		RecoveryFlowID:            request.RecoveryFlowID,
+		IsRecoveryFlowEnabled:     request.IsRecoveryFlowEnabled,
+		SignOutFlowID:             request.SignOutFlowID,
+		IsSignOutFlowEnabled:      request.IsSignOutFlowEnabled,
+		LogoURL:                   request.LogoURL,
+		TosURI:                    request.TosURI,
+		PolicyURI:                 request.PolicyURI,
+		CookiePolicyURI:           request.CookiePolicyURI,
 	}
 }
 

@@ -34,6 +34,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const storeLoggerComponentName = "OrganizationUnitStore"
@@ -205,6 +206,13 @@ func (s *organizationUnitStore) CreateOrganizationUnit(ctx context.Context, ou p
 		ou.Description,
 		ou.ThemeID,
 		ou.LayoutID,
+		ou.AuthFlowID,
+		ou.RegistrationFlowID,
+		utils.BoolToNumString(ou.IsRegistrationFlowEnabled),
+		ou.RecoveryFlowID,
+		utils.BoolToNumString(ou.IsRecoveryFlowEnabled),
+		ou.SignOutFlowID,
+		utils.BoolToNumString(ou.IsSignOutFlowEnabled),
 		string(ouMetadataBytes),
 		s.deploymentID,
 		ou.CreatedAt,
@@ -403,6 +411,13 @@ func (s *organizationUnitStore) UpdateOrganizationUnit(ctx context.Context, ou p
 		ou.Description,
 		ou.ThemeID,
 		ou.LayoutID,
+		ou.AuthFlowID,
+		ou.RegistrationFlowID,
+		utils.BoolToNumString(ou.IsRegistrationFlowEnabled),
+		ou.RecoveryFlowID,
+		utils.BoolToNumString(ou.IsRecoveryFlowEnabled),
+		ou.SignOutFlowID,
+		utils.BoolToNumString(ou.IsSignOutFlowEnabled),
 		string(ouMetadataBytes),
 		ou.UpdatedAt,
 		s.deploymentID,
@@ -607,6 +622,38 @@ func buildOrganizationUnitFromResultRow(
 		}
 	}
 
+	authFlowID := ""
+	if v, ok := row["auth_flow_id"]; ok && v != nil {
+		if s, ok := v.(string); ok {
+			authFlowID = s
+		}
+	}
+
+	registrationFlowID := ""
+	if v, ok := row["registration_flow_id"]; ok && v != nil {
+		if s, ok := v.(string); ok {
+			registrationFlowID = s
+		}
+	}
+
+	recoveryFlowID := ""
+	if v, ok := row["recovery_flow_id"]; ok && v != nil {
+		if s, ok := v.(string); ok {
+			recoveryFlowID = s
+		}
+	}
+
+	signOutFlowID := ""
+	if v, ok := row["signout_flow_id"]; ok && v != nil {
+		if s, ok := v.(string); ok {
+			signOutFlowID = s
+		}
+	}
+
+	isRegistrationFlowEnabled := parseBoolColumn(row, "is_registration_flow_enabled")
+	isRecoveryFlowEnabled := parseBoolColumn(row, "is_recovery_flow_enabled")
+	isSignOutFlowEnabled := parseBoolColumn(row, "is_signout_flow_enabled")
+
 	// Extract OU Metadata data
 	ouMetadataData, err := parseOUMetadata(row)
 	if err != nil {
@@ -645,20 +692,44 @@ func buildOrganizationUnitFromResultRow(
 	}
 
 	return providers.OrganizationUnit{
-		ID:              ou.ID,
-		Handle:          ou.Handle,
-		Name:            ou.Name,
-		Description:     ou.Description,
-		Parent:          parentID,
-		ThemeID:         themeID,
-		LayoutID:        layoutID,
-		LogoURL:         logoURL,
-		TosURI:          tosURI,
-		PolicyURI:       policyURI,
-		CookiePolicyURI: cookiePolicyURI,
-		CreatedAt:       createdAt,
-		UpdatedAt:       updatedAt,
+		ID:                        ou.ID,
+		Handle:                    ou.Handle,
+		Name:                      ou.Name,
+		Description:               ou.Description,
+		Parent:                    parentID,
+		ThemeID:                   themeID,
+		LayoutID:                  layoutID,
+		AuthFlowID:                authFlowID,
+		RegistrationFlowID:        registrationFlowID,
+		IsRegistrationFlowEnabled: isRegistrationFlowEnabled,
+		RecoveryFlowID:            recoveryFlowID,
+		IsRecoveryFlowEnabled:     isRecoveryFlowEnabled,
+		SignOutFlowID:             signOutFlowID,
+		IsSignOutFlowEnabled:      isSignOutFlowEnabled,
+		LogoURL:                   logoURL,
+		TosURI:                    tosURI,
+		PolicyURI:                 policyURI,
+		CookiePolicyURI:           cookiePolicyURI,
+		CreatedAt:                 createdAt,
+		UpdatedAt:                 updatedAt,
 	}, nil
+}
+
+// parseBoolColumn extracts a boolean value from a numeric string column ("1"/"0"),
+// handling both string and []byte driver representations. Returns false when absent.
+func parseBoolColumn(row map[string]interface{}, key string) bool {
+	v, ok := row[key]
+	if !ok || v == nil {
+		return false
+	}
+	switch val := v.(type) {
+	case string:
+		return utils.NumStringToBool(val)
+	case []byte:
+		return utils.NumStringToBool(string(val))
+	default:
+		return false
+	}
 }
 
 // parseTimeField parses a time field from the database result.

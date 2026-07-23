@@ -1507,6 +1507,46 @@ func (_c *ConfigurableOUServiceMock_SetDependencyRegistry_Call) RunAndReturn(run
 	return _c
 }
 
+// SetOUFlowResolver provides a mock function for the type ConfigurableOUServiceMock
+func (_mock *ConfigurableOUServiceMock) SetOUFlowResolver(resolver OUFlowResolver) {
+	_mock.Called(resolver)
+	return
+}
+
+// ConfigurableOUServiceMock_SetOUFlowResolver_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetOUFlowResolver'
+type ConfigurableOUServiceMock_SetOUFlowResolver_Call struct {
+	*mock.Call
+}
+
+// SetOUFlowResolver is a helper method to define mock.On call
+//   - resolver OUFlowResolver
+func (_e *ConfigurableOUServiceMock_Expecter) SetOUFlowResolver(resolver interface{}) *ConfigurableOUServiceMock_SetOUFlowResolver_Call {
+	return &ConfigurableOUServiceMock_SetOUFlowResolver_Call{Call: _e.mock.On("SetOUFlowResolver", resolver)}
+}
+
+func (_c *ConfigurableOUServiceMock_SetOUFlowResolver_Call) Run(run func(resolver OUFlowResolver)) *ConfigurableOUServiceMock_SetOUFlowResolver_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 OUFlowResolver
+		if args[0] != nil {
+			arg0 = args[0].(OUFlowResolver)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ConfigurableOUServiceMock_SetOUFlowResolver_Call) Return() *ConfigurableOUServiceMock_SetOUFlowResolver_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *ConfigurableOUServiceMock_SetOUFlowResolver_Call) RunAndReturn(run func(resolver OUFlowResolver)) *ConfigurableOUServiceMock_SetOUFlowResolver_Call {
+	_c.Run(run)
+	return _c
+}
+
 // SetOUGroupResolver provides a mock function for the type ConfigurableOUServiceMock
 func (_mock *ConfigurableOUServiceMock) SetOUGroupResolver(resolver OUGroupResolver) {
 	_mock.Called(resolver)
