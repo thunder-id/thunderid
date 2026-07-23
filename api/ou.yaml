@@ -1476,6 +1476,31 @@ components:
           type: string
           format: uuid
           description: "Layout configuration ID for the organization unit"
+        authFlowId:
+          type: string
+          format: uuid
+          description: "Authentication flow ID for the organization unit"
+        registrationFlowId:
+          type: string
+          format: uuid
+          description: "Registration flow ID for the organization unit"
+        isRegistrationFlowEnabled:
+          type: boolean
+          description: "Whether the registration flow is enabled for the organization unit"
+        recoveryFlowId:
+          type: string
+          format: uuid
+          description: "Recovery flow ID for the organization unit"
+        isRecoveryFlowEnabled:
+          type: boolean
+          description: "Whether the recovery flow is enabled for the organization unit"
+        signOutFlowId:
+          type: string
+          format: uuid
+          description: "Sign-out flow ID for the organization unit"
+        isSignOutFlowEnabled:
+          type: boolean
+          description: "Whether the sign-out flow is enabled for the organization unit"
         logoUrl:
           type: string
           format: uri
@@ -1580,6 +1605,31 @@ components:
           type: string
           format: uuid
           description: "Layout configuration ID for the organization unit"
+        authFlowId:
+          type: string
+          format: uuid
+          description: "Authentication flow ID for the organization unit"
+        registrationFlowId:
+          type: string
+          format: uuid
+          description: "Registration flow ID for the organization unit"
+        isRegistrationFlowEnabled:
+          type: boolean
+          description: "Whether the registration flow is enabled for the organization unit"
+        recoveryFlowId:
+          type: string
+          format: uuid
+          description: "Recovery flow ID for the organization unit"
+        isRecoveryFlowEnabled:
+          type: boolean
+          description: "Whether the recovery flow is enabled for the organization unit"
+        signOutFlowId:
+          type: string
+          format: uuid
+          description: "Sign-out flow ID for the organization unit"
+        isSignOutFlowEnabled:
+          type: boolean
+          description: "Whether the sign-out flow is enabled for the organization unit"
         logoUrl:
           type: string
           format: uri
@@ -1621,6 +1671,31 @@ components:
           type: string
           format: uuid
           description: "Layout configuration ID for the organization unit"
+        authFlowId:
+          type: string
+          format: uuid
+          description: "Authentication flow ID for the organization unit"
+        registrationFlowId:
+          type: string
+          format: uuid
+          description: "Registration flow ID for the organization unit"
+        isRegistrationFlowEnabled:
+          type: boolean
+          description: "Whether the registration flow is enabled for the organization unit"
+        recoveryFlowId:
+          type: string
+          format: uuid
+          description: "Recovery flow ID for the organization unit"
+        isRecoveryFlowEnabled:
+          type: boolean
+          description: "Whether the recovery flow is enabled for the organization unit"
+        signOutFlowId:
+          type: string
+          format: uuid
+          description: "Sign-out flow ID for the organization unit"
+        isSignOutFlowEnabled:
+          type: boolean
+          description: "Whether the sign-out flow is enabled for the organization unit"
         logoUrl:
           type: string
           format: uri

@@ -21,22 +21,32 @@ package ou
 import (
 	"context"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // OrganizationUnitRequest represents the request body for creating an organization unit.
 type OrganizationUnitRequest struct {
-	Handle          string  `json:"handle"                    native:"required,min=3,max=50"`
-	Name            string  `json:"name"                      native:"required,min=2,max=100"`
-	Description     string  `json:"description,omitempty"`
-	Parent          *string `json:"parent"                    native:"omitempty,max=255"`
-	ThemeID         string  `json:"themeId,omitempty"`
-	LayoutID        string  `json:"layoutId,omitempty"`
-	LogoURL         string  `json:"logoUrl,omitempty"         native:"omitempty,url,max=2048"`
-	TosURI          string  `json:"tosUri,omitempty"          native:"omitempty,url,max=2048"`
-	PolicyURI       string  `json:"policyUri,omitempty"       native:"omitempty,url,max=2048"`
-	CookiePolicyURI string  `json:"cookiePolicyUri,omitempty" native:"omitempty,url,max=2048"`
+	Handle                    string  `json:"handle"                    native:"required,min=3,max=50"`
+	Name                      string  `json:"name"                      native:"required,min=2,max=100"`
+	Description               string  `json:"description,omitempty"`
+	Parent                    *string `json:"parent"                    native:"omitempty,max=255"`
+	ThemeID                   string  `json:"themeId,omitempty"`
+	LayoutID                  string  `json:"layoutId,omitempty"`
+	AuthFlowID                string  `json:"authFlowId,omitempty"`
+	RegistrationFlowID        string  `json:"registrationFlowId,omitempty"`
+	IsRegistrationFlowEnabled bool    `json:"isRegistrationFlowEnabled"`
+	RecoveryFlowID            string  `json:"recoveryFlowId,omitempty"`
+	IsRecoveryFlowEnabled     bool    `json:"isRecoveryFlowEnabled"`
+	SignOutFlowID             string  `json:"signOutFlowId,omitempty"`
+	IsSignOutFlowEnabled      bool    `json:"isSignOutFlowEnabled"`
+	LogoURL                   string  `json:"logoUrl,omitempty"         native:"omitempty,url,max=2048"`
+	TosURI                    string  `json:"tosUri,omitempty"          native:"omitempty,url,max=2048"`
+	PolicyURI                 string  `json:"policyUri,omitempty"       native:"omitempty,url,max=2048"`
+	CookiePolicyURI           string  `json:"cookiePolicyUri,omitempty" native:"omitempty,url,max=2048"`
 }
 
 // User represents a user with basic information for OU endpoints.
@@ -110,4 +120,11 @@ type RoleListResponse struct {
 type OURoleResolver interface {
 	GetRoleCountByOUID(ctx context.Context, ouID string) (int, error)
 	GetRoleListByOUID(ctx context.Context, ouID string, limit, offset int) ([]Role, error)
+}
+
+// OUFlowResolver validates that a flow ID exists and matches the expected flow type, for
+// validating an organization unit's default flow fields. Defined locally rather than importing
+// internal/flow/mgt directly to avoid an import cycle (flow/mgt -> flow/executor -> ou).
+type OUFlowResolver interface {
+	IsValidFlow(ctx context.Context, flowID string, flowType providers.FlowType) (bool, *tidcommon.ServiceError)
 }
