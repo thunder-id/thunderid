@@ -3844,3 +3844,77 @@ func TestUserService_GetUserUsages_RegistryError(t *testing.T) {
 	require.Nil(t, result)
 	require.NotNil(t, err)
 }
+
+func TestGetUserMetadata_Success(t *testing.T) {
+	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	expectedSchema := &entitytype.EntityType{
+		Name:   testUserType,
+		Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+	}
+	entityTypeMock.On("GetSelfUserTypeSchema", mock.Anything, entitytype.TypeCategoryUser, testUserType).
+		Return(expectedSchema, (*tidcommon.ServiceError)(nil)).Once()
+
+	entityServiceMock := entitymock.NewEntityServiceInterfaceMock(t)
+	entityUser := &providers.Entity{
+		ID:         svcTestUserID123,
+		Category:   providers.EntityCategoryUser,
+		Type:       testUserType,
+		Attributes: json.RawMessage(`{"username":"test"}`),
+	}
+	entityServiceMock.On("GetEntity", mock.Anything, svcTestUserID123).
+		Return(entityUser, nil).Once()
+
+	service := &userService{
+		entityService:     entityServiceMock,
+		entityTypeService: entityTypeMock,
+		authzService:      newAllowAllAuthz(t),
+	}
+
+	schema, svcErr := service.GetUserMetadata(context.Background(), svcTestUserID123)
+	require.Nil(t, svcErr)
+	require.NotNil(t, schema)
+	require.Equal(t, testUserType, schema.Name)
+}
+
+func TestGetUserMetadata_GetUserError(t *testing.T) {
+	entityServiceMock := entitymock.NewEntityServiceInterfaceMock(t)
+	entityServiceMock.On("GetEntity", mock.Anything, svcTestUserID123).
+		Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound).Once()
+
+	service := &userService{
+		entityService: entityServiceMock,
+		authzService:  newAllowAllAuthz(t),
+	}
+
+	schema, svcErr := service.GetUserMetadata(context.Background(), svcTestUserID123)
+	require.Nil(t, schema)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorUserNotFound.Code, svcErr.Code)
+}
+
+func TestGetUserMetadata_GetSelfUserTypeSchemaError(t *testing.T) {
+	entityServiceMock := entitymock.NewEntityServiceInterfaceMock(t)
+	entityUser := &providers.Entity{
+		ID:         svcTestUserID123,
+		Category:   providers.EntityCategoryUser,
+		Type:       testUserType,
+		Attributes: json.RawMessage(`{"username":"test"}`),
+	}
+	entityServiceMock.On("GetEntity", mock.Anything, svcTestUserID123).
+		Return(entityUser, nil).Once()
+
+	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	entityTypeMock.On("GetSelfUserTypeSchema", mock.Anything, entitytype.TypeCategoryUser, testUserType).
+		Return((*entitytype.EntityType)(nil), &entitytype.ErrorEntityTypeNotFound).Once()
+
+	service := &userService{
+		entityService:     entityServiceMock,
+		entityTypeService: entityTypeMock,
+		authzService:      newAllowAllAuthz(t),
+	}
+
+	schema, svcErr := service.GetUserMetadata(context.Background(), svcTestUserID123)
+	require.Nil(t, schema)
+	require.NotNil(t, svcErr)
+	require.Equal(t, entitytype.ErrorEntityTypeNotFound.Code, svcErr.Code)
+}

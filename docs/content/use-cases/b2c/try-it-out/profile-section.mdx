@@ -22,7 +22,7 @@ Complete [Set Up Your Environment](../setup#set-up-your-environment) before star
 <details open>
   <summary>Redirect-based</summary>
 
-In the redirect-based pattern, the consumer app renders the profile screen itself. Profile attributes are read directly from the ID token, and updates go through <ProductName />'s self-service endpoints: `/users/me` for attribute changes and `/users/me/update-credentials` for password changes. These endpoints act on the signed-in user's own record, so no extra permissions are needed; the access token alone is enough.
+In the redirect-based pattern, the consumer app renders the profile screen itself. Profile attributes are read directly from the ID token, and updates go through <ProductName />'s self-service endpoints: `/users/me` for attribute changes, `/users/me/meta` for schema metadata, and `/users/me/update-credentials` for password changes. These endpoints act on the signed-in user's own record, so no extra permissions are needed; the access token alone is enough.
 
 **Try the Use Case**
 

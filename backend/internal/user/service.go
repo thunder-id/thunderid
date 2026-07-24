@@ -59,6 +59,7 @@ type UserServiceInterface interface {
 	UpdateUser(ctx context.Context, userID string, user *User) (*User, *tidcommon.ServiceError)
 	UpdateUserAttributes(ctx context.Context, userID string,
 		attributes json.RawMessage) (*User, *tidcommon.ServiceError)
+	GetUserMetadata(ctx context.Context, userID string) (*entitytype.EntityType, *tidcommon.ServiceError)
 	UpdateUserCredentials(ctx context.Context, userID string,
 		credentials json.RawMessage) *tidcommon.ServiceError
 	DeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError
@@ -434,6 +435,23 @@ func (us *userService) GetUser(
 
 	logger.Debug(ctx, "Successfully retrieved user", log.MaskedString(log.LoggerKeyUserID, userID))
 	return &user, nil
+}
+
+// GetUserMetadata retrieves the schema metadata for the authenticated user's type.
+func (us *userService) GetUserMetadata(
+	ctx context.Context, userID string,
+) (*entitytype.EntityType, *tidcommon.ServiceError) {
+	user, svcErr := us.GetUser(ctx, userID, false)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	schema, svcErr := us.entityTypeService.GetSelfUserTypeSchema(ctx, entitytype.TypeCategoryUser, user.Type)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	return schema, nil
 }
 
 // GetUserGroups retrieves groups of a user with pagination.

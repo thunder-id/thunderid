@@ -51,11 +51,12 @@ Your app reads profile attributes from the ID token and calls the self-service e
 
 For direct API access, profile attributes are read and updated through the self-service endpoints:
 
-| Operation         | Endpoint                             | Method |
-| ----------------- | ------------------------------------ | ------ |
-| Read profile      | `/users/me`                          | GET    |
-| Update attributes | `/users/me`                          | PATCH  |
-| Change password   | `/users/me/update-credentials`       | POST   |
+| Operation            | Endpoint                       | Method |
+| -------------------- | ------------------------------ | ------ |
+| Read profile         | `/users/me`                    | GET    |
+| Read schema metadata | `/users/me/meta`               | GET    |
+| Update attributes    | `/users/me`                    | PATCH  |
+| Change password      | `/users/me/update-credentials` | POST   |
 
 See the [APIs reference](../../../../apis).
 

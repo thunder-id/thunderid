@@ -203,3 +203,20 @@ func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentials() {
 	s.Require().NoError(json.NewDecoder(verifyResp.Body).Decode(&userResp))
 	s.Equal(s.userID, userResp.ID)
 }
+
+func (s *SelfUserEndpointsSuite) TestSelfUserGetMetadata() {
+	resp, err := s.doUserRequest(http.MethodGet, "/users/me/meta", nil)
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+
+	s.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var res map[string]interface{}
+	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&res))
+
+	schema, ok := res["schema"].(map[string]interface{})
+	s.Require().True(ok, "response should contain schema map")
+	s.Require().NotNil(schema["username"])
+	s.Require().NotNil(schema["email"])
+}
+
