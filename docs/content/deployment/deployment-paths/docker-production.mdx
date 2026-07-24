@@ -17,11 +17,11 @@ This guide covers Docker-specific hardening steps for running <ProductName /> in
 Always pin to a specific release tag rather than `latest`:
 
 ```bash
-# Avoid — resolves to a different image after each release
+# Avoid: resolves to a different image after each release
 ghcr.io/thunder-id/thunderid:latest
 
-# Prefer — explicit and reproducible
-ghcr.io/thunder-id/thunderid:latest
+# Prefer: explicit and reproducible
+ghcr.io/thunder-id/thunderid:<version>
 ```
 
 Pinning ensures upgrades are intentional and your deployment is reproducible across environments.
@@ -61,14 +61,15 @@ Without a volume, all data inside the container is lost when it is stopped or re
 docker run -d \
   --name thunderid \
   --restart unless-stopped \
-  -v thunderid-data:/opt/thunder/database \
+  -v thunderid-data:/opt/thunderid/database \
   ghcr.io/thunder-id/thunderid:latest
 ```
 
-Also mount the security directory to keep TLS certificates and the encryption key outside the container lifecycle:
+Also mount the named volumes that setup populates, so the TLS certificates, encryption key, and Direct Auth Secret persist outside the container lifecycle:
 
 ```bash
--v $(pwd)/security:/opt/thunder/config/resources/security
+-v thunderid-certs:/opt/thunderid/config/certs \
+-v thunderid-secrets:/opt/thunderid/config/secrets
 ```
 
 ## Terminate TLS at a Reverse Proxy
@@ -117,7 +118,7 @@ services:
     expose:
       - "8090"
     volumes:
-      - ./deployment.yaml:/opt/thunder/deployment.yaml
+      - ./deployment.yaml:/opt/thunderid/deployment.yaml
 ```
 
 ## Set Resource Constraints
@@ -149,7 +150,7 @@ services:
   thunderid:
     image: ghcr.io/thunder-id/thunderid:latest
     healthcheck:
-      test: ["CMD", "curl", "-fsk", "https://localhost:8090/health"]
+      test: ["CMD", "curl", "-fsk", "https://localhost:8090/health/liveness"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -163,7 +164,7 @@ Never pass secrets as inline environment variables or in `docker run` commands: 
 **Use an environment file:**
 
 ```bash
-# .env  — add to .gitignore
+# .env (add to .gitignore)
 DB_HOST=postgres.example.com
 DB_USER=thunderid_user
 DB_PASS=<secure-password>

@@ -40,7 +40,7 @@ database:
     type: "postgres"
     postgres:
       hostname: "your-db-host"
-      port: "5432"
+      port: 5432
       name: "configdb"
       username: "dbuser"
       password: "dbpassword"
@@ -53,7 +53,7 @@ database:
     type: "postgres"
     postgres:
       hostname: "your-db-host"
-      port: "5432"
+      port: 5432
       name: "runtime_transient"
       username: "dbuser"
       password: "dbpassword"
@@ -66,7 +66,7 @@ database:
     type: "postgres"
     postgres:
       hostname: "your-db-host"
-      port: "5432"
+      port: 5432
       name: "entitydb"
       username: "dbuser"
       password: "dbpassword"
@@ -79,7 +79,7 @@ database:
     type: "postgres"
     postgres:
       hostname: "your-db-host"
-      port: "5432"
+      port: 5432
       name: "runtime_persistent"
       username: "dbuser"
       password: "dbpassword"
@@ -134,11 +134,15 @@ When deploying with Docker, mount the certificates as volumes:
 ```bash
 docker run --rm \
   -p 8090:8090 \
-  -v $(pwd)/deployment.yaml:/opt/thunder/deployment.yaml \
-  -v $(pwd)/certs/server.cert:/opt/thunder/config/certs/server.cert \
-  -v $(pwd)/certs/server.key:/opt/thunder/config/certs/server.key \
+  -v $(pwd)/deployment.yaml:/opt/thunderid/deployment.yaml \
+  -v thunderid-certs:/opt/thunderid/config/certs \
+  -v thunderid-secrets:/opt/thunderid/config/secrets \
+  -v $(pwd)/config/certs/server.cert:/opt/thunderid/config/certs/server.cert \
+  -v $(pwd)/config/certs/server.key:/opt/thunderid/config/certs/server.key \
   ghcr.io/thunder-id/thunderid:latest
 ```
+
+The `thunderid-certs` and `thunderid-secrets` volumes are populated by `./setup.sh`. The file mounts override the TLS certificate and key.
 
 ## Generate a Unique Encryption Key
 
