@@ -19,6 +19,7 @@
 import {useMutation, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
+import {getErrorMessage} from '@thunderid/utils';
 import {useTranslation} from 'react-i18next';
 
 export interface UpdateUserCredentialsVariables {
@@ -50,8 +51,8 @@ export default function useUpdateUserCredentials(): UseMutationResult<void, Erro
     onSuccess: () => {
       showToast(t('updateCredentials.success'), 'success');
     },
-    onError: () => {
-      showToast(t('updateCredentials.error'), 'error');
+    onError: (error: Error) => {
+      showToast(getErrorMessage(error, t, 'updateCredentials.error'), 'error');
     },
   });
 }

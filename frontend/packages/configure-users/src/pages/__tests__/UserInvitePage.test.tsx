@@ -1047,8 +1047,13 @@ describe('UserInvitePage', () => {
       // Render with loading=false first so buttons are enabled
       const {rerender} = render(<UserInvitePage />);
 
+      // The form validates asynchronously (mode: onChange + zod resolver), so wait for the button to
+      // become enabled before clicking.
+      const emailButton = screen.getByRole('button', {name: /send email/i});
+      await waitFor(() => expect(emailButton).toBeEnabled());
+
       // After clicking, re-render with isLoading=true to simulate the SDK entering loading state
-      await userEvent.click(screen.getByRole('button', {name: /send email/i}));
+      await userEvent.click(emailButton);
 
       mockInviteUserRenderProps = {...mockInviteUserRenderProps, isLoading: true};
       rerender(<UserInvitePage />);

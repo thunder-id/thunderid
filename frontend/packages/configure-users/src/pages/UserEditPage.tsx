@@ -59,6 +59,7 @@ import QuickCopySection from '../components/edit-user/QuickCopySection';
 import UserDeleteDialog from '../components/UserDeleteDialog';
 import UserConstants from '../constants/user-constants';
 import useUserRoutes from '../hooks/useUserRoutes';
+import {dropNonConformingOptionalAttributes} from '../utils/dropNonConformingAttributes';
 
 interface TabPanelProps {
   children?: ReactNode;
@@ -166,13 +167,19 @@ export default function UserEditPage() {
     const organizationUnitId = schemaOuId ?? user?.ouId;
     if (!userId || !organizationUnitId || !user?.type) return;
 
+    // Drop stale optional attribute values so an untouched mismatch doesn't block the update.
+    const attributes = dropNonConformingOptionalAttributes(
+      editedUser.attributes ?? user.attributes ?? {},
+      userTypeDetails?.schema,
+    );
+
     try {
       await updateUserMutation.mutateAsync({
         userId,
         data: {
           ouId: organizationUnitId,
           type: user.type,
-          attributes: editedUser.attributes ?? user.attributes,
+          attributes,
         },
       });
       setEditedUser({});
@@ -181,7 +188,7 @@ export default function UserEditPage() {
     } catch (err) {
       logger.error('Failed to update user', {error: err});
     }
-  }, [schemaOuId, user, userId, editedUser, updateUserMutation, refetch, logger]);
+  }, [schemaOuId, user, userId, editedUser, userTypeDetails, updateUserMutation, refetch, logger]);
 
   const hasChanges = Object.keys(editedUser).length > 0;
 

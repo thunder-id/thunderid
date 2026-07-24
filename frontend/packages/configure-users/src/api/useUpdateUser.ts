@@ -20,6 +20,7 @@ import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/rea
 import {useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import type {User} from '@thunderid/types';
+import {getErrorMessage} from '@thunderid/utils';
 import {useTranslation} from 'react-i18next';
 import UserQueryKeys from '../constants/user-query-keys';
 import type {UpdateUserRequest} from '../models/users';
@@ -70,8 +71,8 @@ export default function useUpdateUser(): UseMutationResult<User, Error, UpdateUs
       });
       showToast(t('update.success'), 'success');
     },
-    onError: () => {
-      showToast(t('update.error'), 'error');
+    onError: (error: Error) => {
+      showToast(getErrorMessage(error, t, 'update.error'), 'error');
     },
   });
 }

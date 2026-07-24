@@ -546,6 +546,52 @@ describe('UserEditPage', () => {
       });
     });
 
+    it('drops a staged optional attribute whose value no longer matches the schema', async () => {
+      const user = userEvent.setup();
+      // department is optional and typed number, but the staged value is the string 'sales'.
+      mockUseGetUserType.mockReturnValue({
+        data: {...mockSchemaData, schema: {...mockSchemaData.schema, department: {type: 'number'}}},
+        isLoading: false,
+        error: null,
+      });
+
+      render(<UserEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      await user.click(screen.getByRole('button', {name: 'Save'}));
+
+      await waitFor(() => {
+        expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
+          userId: 'user123',
+          data: {ouId: 'test-ou', type: 'Employee', attributes: {}},
+        });
+      });
+    });
+
+    it('keeps a required attribute even when its value no longer matches the schema', async () => {
+      const user = userEvent.setup();
+      // department is required, so the mismatched value is kept for the backend to reject.
+      mockUseGetUserType.mockReturnValue({
+        data: {...mockSchemaData, schema: {...mockSchemaData.schema, department: {type: 'number', required: true}}},
+        isLoading: false,
+        error: null,
+      });
+
+      render(<UserEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      await user.click(screen.getByRole('button', {name: 'Save'}));
+
+      await waitFor(() => {
+        expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
+          userId: 'user123',
+          data: {ouId: 'test-ou', type: 'Employee', attributes: {department: 'sales'}},
+        });
+      });
+    });
+
     it('uses schema organization unit when updating user', async () => {
       const user = userEvent.setup();
       mockUseGetUser.mockReturnValue({

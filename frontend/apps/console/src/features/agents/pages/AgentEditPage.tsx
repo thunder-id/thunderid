@@ -17,6 +17,8 @@
  */
 
 import {PageLoadingAnimation, ResourceAvatar, UnsavedChangesBar} from '@thunderid/components';
+import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-types';
+import {dropNonConformingOptionalAttributes} from '@thunderid/configure-users';
 import {useLogger} from '@thunderid/logger/react';
 import {
   Alert,
@@ -77,6 +79,13 @@ export default function AgentEditPage(): JSX.Element {
   const {data: agent, isLoading, error, isError, refetch} = useGetAgent(agentId ?? '');
   const updateAgent = useUpdateAgent();
 
+  // The agent's type schema, used to drop stale attribute values on save.
+  const {data: agentTypesData, isLoading: isTypesLoading} = useGetAgentTypes();
+  const matchedSchema = agentTypesData?.types?.find((s) => s.name === agent?.type);
+  const {data: agentTypeDetails, isLoading: isTypeLoading} = useGetAgentType(matchedSchema?.id);
+  // Block save until the schema settles, else stale values bypass sanitization.
+  const isSchemaResolving = isTypesLoading || isTypeLoading;
+
   const [activeTab, setActiveTab] = useState(0);
   const [editedAgent, setEditedAgent] = useState<Partial<Agent>>({});
   // Bumped on Save/Reset to force EditAgentAttributes to remount with a clean form — it keeps
@@ -131,19 +140,22 @@ export default function AgentEditPage(): JSX.Element {
     const {certificate, ...updatedData} = {...agent, ...editedAgent} as Agent & {certificate?: unknown};
     void certificate;
 
+    // Drop stale optional attribute values so an untouched mismatch doesn't block the update.
+    const attributes = dropNonConformingOptionalAttributes(updatedData.attributes ?? {}, agentTypeDetails?.schema);
+
     try {
-      await updateAgent.mutateAsync({agentId, data: updatedData});
+      await updateAgent.mutateAsync({agentId, data: {...updatedData, attributes}});
       setEditedAgent({});
       setAttributesResetKey((key) => key + 1);
       await refetch();
     } catch {
       logger.error('Failed to update agent');
     }
-  }, [agent, agentId, editedAgent, updateAgent, refetch, logger]);
+  }, [agent, agentId, editedAgent, agentTypeDetails, updateAgent, refetch, logger]);
 
   const hasChanges = useMemo(() => Object.keys(editedAgent).length > 0, [editedAgent]);
 
-  if (isLoading) {
+  if (isLoading || isSchemaResolving) {
     return <PageLoadingAnimation />;
   }
 

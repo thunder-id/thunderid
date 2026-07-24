@@ -86,3 +86,6 @@ export {default as ViewUserTypePage} from './pages/ViewUserTypePage';
 // Routes
 export type {UserTypeRoutePaths} from './hooks/useUserTypeRoutes';
 export {defaultUserTypeRoutePaths, default as useUserTypeRoutes} from './hooks/useUserTypeRoutes';
+
+// Utils
+export {default as getBreakingSchemaChanges} from './utils/getBreakingSchemaChanges';

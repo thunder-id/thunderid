@@ -240,6 +240,13 @@ func (s *entityService) UpdateEntity(
 	}
 	s.logger.Debug(ctx, "Updating entity", log.MaskedString("id", entityID))
 
+	// Drop stale attributes no longer in the schema so they don't block the update.
+	cleanedAttrs, err := s.stripUndeclaredAttributes(ctx, entity.Category, entity.Type, entity.Attributes)
+	if err != nil {
+		return nil, err
+	}
+	entity.Attributes = cleanedAttrs
+
 	// Validate entity attributes and uniqueness via schema (excludes self for uniqueness).
 	if err := s.validateEntityType(ctx, entity.Category, entity.Type, entity.Attributes, entityID, true); err != nil {
 		return nil, err
@@ -304,6 +311,12 @@ func (s *entityService) UpdateAttributes(ctx context.Context, entityID string, a
 
 	// Load entity to get its category and type for schema validation and credential extraction.
 	existing, err := s.store.GetEntity(ctx, entityID)
+	if err != nil {
+		return err
+	}
+
+	// Drop stale attributes no longer in the schema so they don't block the update.
+	attributes, err = s.stripUndeclaredAttributes(ctx, existing.Category, existing.Type, attributes)
 	if err != nil {
 		return err
 	}
@@ -674,6 +687,55 @@ func (s *entityService) validateCredentialKeys(
 		}
 	}
 	return nil
+}
+
+// stripUndeclaredAttributes drops top-level attribute keys not declared in the entity type's current
+// schema, so a schema changed after an entity was created (attribute renamed or removed) does not
+// block updates. Only used on update; create still rejects undeclared attributes.
+func (s *entityService) stripUndeclaredAttributes(
+	ctx context.Context, category providers.EntityCategory, entityType string, attributes json.RawMessage,
+) (json.RawMessage, error) {
+	if !usesEntityType(category) || s.entityTypeService == nil || len(attributes) == 0 {
+		return attributes, nil
+	}
+
+	attrInfos, svcErr := s.entityTypeService.GetAttributes(ctx,
+		entitytype.TypeCategory(category), entityType, true, true, false)
+	if svcErr != nil {
+		return nil, fmt.Errorf("failed to get schema attributes: %s", svcErr.ErrorDescription)
+	}
+	// No declared attributes means an unconstrained schema, which Schema.Validate never rejects.
+	if len(attrInfos) == 0 {
+		return attributes, nil
+	}
+
+	declared := make(map[string]struct{}, len(attrInfos))
+	for _, a := range attrInfos {
+		declared[a.Attribute] = struct{}{}
+	}
+
+	var attrs map[string]json.RawMessage
+	if err := json.Unmarshal(attributes, &attrs); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal attributes: %w", err)
+	}
+
+	dropped := 0
+	for key := range attrs {
+		if _, ok := declared[key]; !ok {
+			delete(attrs, key)
+			dropped++
+		}
+	}
+	if dropped == 0 {
+		return attributes, nil
+	}
+
+	s.logger.Debug(ctx, "Dropping attributes not declared in schema on update", log.Int("count", dropped))
+	cleaned, err := json.Marshal(attrs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal cleaned attributes: %w", err)
+	}
+	return cleaned, nil
 }
 
 // UpdateSystemCredentials updates system credentials by hashing new plaintext values and

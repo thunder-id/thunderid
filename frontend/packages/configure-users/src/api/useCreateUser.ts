@@ -20,6 +20,7 @@ import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/rea
 import {useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import type {User} from '@thunderid/types';
+import {getErrorMessage} from '@thunderid/utils';
 import {useTranslation} from 'react-i18next';
 import UserQueryKeys from '../constants/user-query-keys';
 import type {CreateUserRequest} from '../models/users';
@@ -59,8 +60,8 @@ export default function useCreateUser(): UseMutationResult<User, Error, CreateUs
       });
       showToast(t('create.success'), 'success');
     },
-    onError: () => {
-      showToast(t('create.error'), 'error');
+    onError: (error: Error) => {
+      showToast(getErrorMessage(error, t, 'create.error'), 'error');
     },
   });
 }

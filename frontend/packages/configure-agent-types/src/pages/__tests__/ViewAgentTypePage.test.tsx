@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {render, screen, waitFor, userEvent} from '@thunderid/test-utils';
+import {render, screen, waitFor, within, userEvent} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {ApiAgentType} from '../../models/agent-type';
@@ -114,6 +114,48 @@ vi.mock('@/components/edit-agent-type/schema-settings/EditSchemaSettings', () =>
         }
       >
         Update Properties
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          onPropertiesChange([
+            {
+              id: '0',
+              name: 'email',
+              displayName: '',
+              type: 'string',
+              required: true,
+              unique: true,
+              credential: false,
+              enum: [],
+              regex: '',
+            },
+            {
+              id: '1',
+              name: 'age',
+              displayName: '',
+              type: 'number',
+              required: false,
+              unique: false,
+              credential: false,
+              enum: [],
+              regex: '',
+            },
+            {
+              id: '2',
+              name: 'nickname',
+              displayName: '',
+              type: 'string',
+              required: false,
+              unique: false,
+              credential: false,
+              enum: [],
+              regex: '',
+            },
+          ])
+        }
+      >
+        Add Optional Field
       </button>
     </div>
   ),
@@ -278,6 +320,9 @@ describe('ViewAgentTypePage', () => {
       const saveButton = await screen.findByRole('button', {name: /^Save$/i});
       await user.click(saveButton);
 
+      // Editing the schema shows a warning; continue.
+      await user.click(await screen.findByRole('button', {name: /^Continue$/i}));
+
       await waitFor(() => {
         expect(mockMutateAsync).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -289,6 +334,39 @@ describe('ViewAgentTypePage', () => {
           }),
         );
       });
+    });
+
+    it('warns before saving a breaking schema change and can be cancelled', async () => {
+      const user = userEvent.setup();
+      render(<ViewAgentTypePage />);
+
+      // Update Properties drops email and age, removing attributes is a breaking change.
+      await user.click(screen.getByText('Update Properties'));
+      await user.click(await screen.findByRole('button', {name: /^Save$/i}));
+
+      // The confirmation dialog appears instead of saving immediately and lists the affected attributes.
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText(/Confirm schema changes/i)).toBeInTheDocument();
+      expect(within(dialog).getByText('email')).toBeInTheDocument();
+      expect(within(dialog).getByText('age')).toBeInTheDocument();
+
+      await user.click(within(dialog).getByRole('button', {name: /Cancel/i}));
+
+      expect(mockMutateAsync).not.toHaveBeenCalled();
+    });
+
+    it('does not warn when a schema change is not breaking', async () => {
+      const user = userEvent.setup();
+      render(<ViewAgentTypePage />);
+
+      // Adding a new optional attribute keeps existing ones intact, not a breaking change.
+      await user.click(screen.getByText('Add Optional Field'));
+      await user.click(await screen.findByRole('button', {name: /^Save$/i}));
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalled();
+      });
+      expect(screen.queryByText(/Confirm schema changes/i)).not.toBeInTheDocument();
     });
 
     it('shows a toast on duplicate property names', async () => {
@@ -315,6 +393,7 @@ describe('ViewAgentTypePage', () => {
 
       await user.click(screen.getByText('Update Properties'));
       await user.click(await screen.findByRole('button', {name: /^Save$/i}));
+      await user.click(await screen.findByRole('button', {name: /^Continue$/i}));
 
       await waitFor(() => {
         expect(mockShowToast).toHaveBeenCalledWith('Save failed', 'error');
@@ -329,6 +408,7 @@ describe('ViewAgentTypePage', () => {
 
       await user.click(screen.getByText('Update Properties'));
       await user.click(await screen.findByRole('button', {name: /^Save$/i}));
+      await user.click(await screen.findByRole('button', {name: /^Continue$/i}));
 
       await waitFor(() => {
         expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('Failed to save agent type'), 'error');
