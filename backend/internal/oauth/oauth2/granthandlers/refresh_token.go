@@ -37,21 +37,19 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
-	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 // refreshTokenGrantHandler handles the refresh token grant type.
 type refreshTokenGrantHandler struct {
-	cfg                 oauthconfig.Config
-	jwtService          jwt.JWTServiceInterface
-	tokenBuilder        tokenservice.TokenBuilderInterface
-	tokenValidator      tokenservice.TokenValidatorInterface
-	attrCacheService    attributecache.AttributeCacheServiceInterface
-	resourceService     providers.ResourceServerProvider
-	serverConfigService serverconfig.ServerConfigService
-	refreshRevoker      revocation.RefreshTokenRevokerInterface
+	cfg              oauthconfig.Config
+	jwtService       jwt.JWTServiceInterface
+	tokenBuilder     tokenservice.TokenBuilderInterface
+	tokenValidator   tokenservice.TokenValidatorInterface
+	attrCacheService attributecache.AttributeCacheServiceInterface
+	resourceService  providers.ResourceServerProvider
+	refreshRevoker   revocation.RefreshTokenRevokerInterface
 }
 
 // newRefreshTokenGrantHandler creates a new instance of RefreshTokenGrantHandler.
@@ -61,19 +59,17 @@ func newRefreshTokenGrantHandler(
 	tokenValidator tokenservice.TokenValidatorInterface,
 	attrCacheService attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
-	serverConfigService serverconfig.ServerConfigService,
 	refreshRevoker revocation.RefreshTokenRevokerInterface,
 	cfg oauthconfig.Config,
 ) RefreshTokenGrantHandlerInterface {
 	return &refreshTokenGrantHandler{
-		cfg:                 cfg,
-		jwtService:          jwtService,
-		tokenBuilder:        tokenBuilder,
-		tokenValidator:      tokenValidator,
-		attrCacheService:    attrCacheService,
-		resourceService:     resourceService,
-		serverConfigService: serverConfigService,
-		refreshRevoker:      refreshRevoker,
+		cfg:              cfg,
+		jwtService:       jwtService,
+		tokenBuilder:     tokenBuilder,
+		tokenValidator:   tokenValidator,
+		attrCacheService: attrCacheService,
+		resourceService:  resourceService,
+		refreshRevoker:   refreshRevoker,
 	}
 }
 

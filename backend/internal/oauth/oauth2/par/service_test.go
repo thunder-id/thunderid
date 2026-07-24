@@ -336,7 +336,7 @@ func (s *ServiceTestSuite) TestHandlePAR_ResourceResolutionServerError() {
 	assert.Equal(s.T(), oauth2const.ErrorServerError, errCode)
 }
 
-func (s *ServiceTestSuite) TestHandlePAR_ScopesDownscopedAgainstResourceServers() {
+func (s *ServiceTestSuite) TestHandlePAR_ValidatesResourceAndStoresRawScopes() {
 	store := newParStoreInterfaceMock(s.T())
 	var captured pushedAuthorizationRequest
 	store.EXPECT().Store(mock.Anything, mock.Anything, mock.Anything).
@@ -348,12 +348,6 @@ func (s *ServiceTestSuite) TestHandlePAR_ScopesDownscopedAgainstResourceServers(
 	rsMock.On("GetResourceServerByIdentifier", mock.Anything, "https://api.example.com").
 		Return(&providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"},
 			(*tidcommon.ServiceError)(nil))
-	// "write" is not a permission on rs-1, so the helper should drop it.
-	rsMock.On("ValidatePermissions", mock.Anything, "rs-1",
-		mock.MatchedBy(func(scopes []string) bool {
-			return len(scopes) == 2 && scopes[0] == "read" && scopes[1] == "write"
-		})).
-		Return([]string{"write"}, (*tidcommon.ServiceError)(nil))
 
 	svc := newPARService(store, rsMock, s.testCfg)
 	app := s.newTestApp()
@@ -365,7 +359,59 @@ func (s *ServiceTestSuite) TestHandlePAR_ScopesDownscopedAgainstResourceServers(
 
 	assert.Empty(s.T(), errCode)
 	assert.NotNil(s.T(), resp)
+	// The single target resource server, downscoping, and audience binding are resolved when the
+	// pushed request is redeemed at the authorization endpoint, so raw non-OIDC scopes are stored.
+	assert.Equal(s.T(), []string{"read", "write"}, captured.OAuthParameters.PermissionScopes)
+}
+
+func (s *ServiceTestSuite) TestHandlePAR_NoResourceNoDefaultRejectsAtPush() {
+	store := newParStoreInterfaceMock(s.T())
+	// No default resource server configured: resolving the empty identifier reports not found.
+	rsMock := resourcemock.NewResourceServiceInterfaceMock(s.T())
+	rsMock.On("GetResourceServerByIdentifier", mock.Anything, "").
+		Return((*providers.ResourceServer)(nil), &tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType,
+			Code: "RES-1003",
+		})
+
+	svc := newPARService(store, rsMock, s.testCfg)
+	app := s.newTestApp()
+	params := s.newValidParams()
+	// Permission scope with no explicit resource and no default configured: reject up front.
+	params[oauth2const.RequestParamScope] = "read"
+
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
+
+	assert.Nil(s.T(), resp)
+	assert.Equal(s.T(), oauth2const.ErrorInvalidTarget, errCode)
+}
+
+func (s *ServiceTestSuite) TestHandlePAR_NoResourceWithDefaultSucceedsAtPush() {
+	store := newParStoreInterfaceMock(s.T())
+	var captured pushedAuthorizationRequest
+	store.EXPECT().Store(mock.Anything, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, req pushedAuthorizationRequest, _ int64) { captured = req }).
+		Return("test-uri", nil)
+
+	// Default resource server configured: resolving the empty identifier returns it.
+	rsMock := resourcemock.NewResourceServiceInterfaceMock(s.T())
+	rsMock.On("GetResourceServerByIdentifier", mock.Anything, "").
+		Return(&providers.ResourceServer{ID: "rs-default", Identifier: "https://default.example.com"},
+			(*tidcommon.ServiceError)(nil))
+
+	svc := newPARService(store, rsMock, s.testCfg)
+	app := s.newTestApp()
+	params := s.newValidParams()
+	params[oauth2const.RequestParamScope] = "openid read"
+
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
+
+	assert.Empty(s.T(), errCode)
+	assert.NotNil(s.T(), resp)
+	// Binding and downscoping are deferred to redeem, so the raw non-OIDC scope is stored and the
+	// resource is not materialized at push.
 	assert.Equal(s.T(), []string{"read"}, captured.OAuthParameters.PermissionScopes)
+	assert.Empty(s.T(), captured.OAuthParameters.Resources)
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_FiltersOIDCScopesByAppScopes() {

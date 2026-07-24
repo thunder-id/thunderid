@@ -42,7 +42,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/userinfo"
 	"github.com/thunder-id/thunderid/internal/oauth/scope"
-	"github.com/thunder-id/thunderid/internal/serverconfig"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -65,7 +64,6 @@ func Initialize(
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface,
 	authzService providers.AuthorizationProvider,
 	resourceService providers.ResourceServerProvider,
-	serverConfigService serverconfig.ServerConfigService,
 	i18nService providers.I18nProvider,
 	idpService providers.IDPProvider,
 	dpopVerifier dpop.VerifierInterface,
@@ -104,12 +102,12 @@ func Initialize(
 	if len(cfg.OAuth.AllowedGrantTypes) == 0 ||
 		slices.Contains(cfg.OAuth.AllowedGrantTypes, string(providers.GrantTypeCIBA)) {
 		cibaService = ciba.Initialize(mux, jwtService, actorProvider, authnProvider, flowExecService,
-			discoveryService, resourceService, serverConfigService, cfg)
+			discoveryService, resourceService, cfg)
 	}
 
 	grantHandlerProvider := granthandlers.Initialize(
 		jwtService, oauth2AuthzService, tokenBuilder, tokenValidator,
-		attributeCacheSvc, ouService, authzService, actorProvider, resourceService, serverConfigService,
+		attributeCacheSvc, ouService, authzService, actorProvider, resourceService,
 		cibaService, refreshTokenRevoker, cfg)
 
 	token.Initialize(mux, jwtService, actorProvider, authnProvider, grantHandlerProvider,

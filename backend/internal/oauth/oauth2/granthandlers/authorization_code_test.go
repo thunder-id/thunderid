@@ -39,14 +39,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
-	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
-	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
 )
 
 const (
@@ -83,16 +81,15 @@ func convertToStringSlice(groups interface{}) []string {
 
 type AuthorizationCodeGrantHandlerTestSuite struct {
 	suite.Suite
-	handler                 *authorizationCodeGrantHandler
-	mockJWTService          *jwtmock.JWTServiceInterfaceMock
-	mockTokenBuilder        *tokenservicemock.TokenBuilderInterfaceMock
-	mockAuthzService        *authzmock.AuthorizeServiceInterfaceMock
-	mockAttrCacheService    *attributecachemock.AttributeCacheServiceInterfaceMock
-	mockResourceService     *resourcemock.ResourceServiceInterfaceMock
-	mockServerConfigService *serverconfigmock.ServerConfigServiceMock
-	oauthApp                *providers.OAuthClient
-	testAuthzCode           authz.AuthorizationCode
-	testTokenReq            *model.TokenRequest
+	handler              *authorizationCodeGrantHandler
+	mockJWTService       *jwtmock.JWTServiceInterfaceMock
+	mockTokenBuilder     *tokenservicemock.TokenBuilderInterfaceMock
+	mockAuthzService     *authzmock.AuthorizeServiceInterfaceMock
+	mockAttrCacheService *attributecachemock.AttributeCacheServiceInterfaceMock
+	mockResourceService  *resourcemock.ResourceServiceInterfaceMock
+	oauthApp             *providers.OAuthClient
+	testAuthzCode        authz.AuthorizationCode
+	testTokenReq         *model.TokenRequest
 }
 
 func TestAuthorizationCodeGrantHandlerSuite(t *testing.T) {
@@ -113,30 +110,26 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) SetupTest() {
 	suite.mockAuthzService = authzmock.NewAuthorizeServiceInterfaceMock(suite.T())
 	suite.mockAttrCacheService = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	suite.mockServerConfigService = serverconfigmock.NewServerConfigServiceMock(suite.T())
 
-	// Resolve any explicit resource identifier to an echo RS (ID == Identifier).
+	// Resolve any explicit resource identifier to an echo RS (ID == Identifier); an empty identifier
+	// resolves to the configured default resource server, as the default-aware provider does.
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
 		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
+			if identifier == "" {
+				return &providers.ResourceServer{ID: testDefaultRSID, Identifier: testDefaultRSIdentifier}
+			}
 			return &providers.ResourceServer{ID: identifier, Identifier: identifier}
 		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
-	// Resolve the configured default RS ID (used when no resource is supplied).
-	suite.mockResourceService.On("GetResourceServer", mock.Anything, testDefaultRSID).
-		Return(&providers.ResourceServer{ID: testDefaultRSID, Identifier: testDefaultRSIdentifier}, nil).Maybe()
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil).Maybe()
-	// Default deployment resolves to the configured default resource server.
-	suite.mockServerConfigService.On("GetMergedConfig", mock.Anything, "defaultResourceServer").
-		Return(resource.DefaultResourceServerConfig{ResourceServerID: testDefaultRSID}, nil).Maybe()
 
 	suite.handler = &authorizationCodeGrantHandler{
-		tokenBuilder:        suite.mockTokenBuilder,
-		authzService:        suite.mockAuthzService,
-		attributeCache:      suite.mockAttrCacheService,
-		resourceService:     suite.mockResourceService,
-		serverConfigService: suite.mockServerConfigService,
+		tokenBuilder:    suite.mockTokenBuilder,
+		authzService:    suite.mockAuthzService,
+		attributeCache:  suite.mockAttrCacheService,
+		resourceService: suite.mockResourceService,
 	}
 
 	suite.oauthApp = &providers.OAuthClient{
@@ -177,21 +170,25 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) SetupTest() {
 	}
 }
 
-// stubDefaultResourceServer wires the resource and server-config mocks so that a request carrying no
-// resource resolves to the configured default resource server.
+// stubDefaultResourceServer wires the resource mock so that a request carrying no resource (empty
+// identifier) resolves to the configured default resource server.
 func (suite *AuthorizationCodeGrantHandlerTestSuite) stubDefaultResourceServer() {
-	suite.mockResourceService.On("GetResourceServer", mock.Anything, testDefaultRSID).
-		Return(&providers.ResourceServer{ID: testDefaultRSID, Identifier: testDefaultRSIdentifier}, nil).Maybe()
+	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
+		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
+			if identifier == "" {
+				return &providers.ResourceServer{ID: testDefaultRSID, Identifier: testDefaultRSIdentifier}
+			}
+			return &providers.ResourceServer{ID: identifier, Identifier: identifier}
+		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
+			return nil
+		}).Maybe()
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil).Maybe()
-	suite.mockServerConfigService.On("GetMergedConfig", mock.Anything, "defaultResourceServer").
-		Return(resource.DefaultResourceServerConfig{ResourceServerID: testDefaultRSID}, nil).Maybe()
 }
 
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestNewAuthorizationCodeGrantHandler() {
 	handler := newAuthorizationCodeGrantHandler(
-		suite.mockAuthzService, suite.mockTokenBuilder, suite.mockAttrCacheService, suite.mockResourceService,
-		suite.mockServerConfigService)
+		suite.mockAuthzService, suite.mockTokenBuilder, suite.mockAttrCacheService, suite.mockResourceService)
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
 }
@@ -369,14 +366,12 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_ActorClaim(
 			suite.mockTokenBuilder = tokenservicemock.NewTokenBuilderInterfaceMock(suite.T())
 			suite.mockAttrCacheService = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 			suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
-			suite.mockServerConfigService = serverconfigmock.NewServerConfigServiceMock(suite.T())
 			suite.stubDefaultResourceServer()
 			suite.handler = &authorizationCodeGrantHandler{
-				tokenBuilder:        suite.mockTokenBuilder,
-				authzService:        suite.mockAuthzService,
-				attributeCache:      suite.mockAttrCacheService,
-				resourceService:     suite.mockResourceService,
-				serverConfigService: suite.mockServerConfigService,
+				tokenBuilder:    suite.mockTokenBuilder,
+				authzService:    suite.mockAuthzService,
+				attributeCache:  suite.mockAttrCacheService,
+				resourceService: suite.mockResourceService,
 			}
 
 			oauthApp := &providers.OAuthClient{
@@ -651,14 +646,12 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_WithGroups(
 			suite.mockTokenBuilder = tokenservicemock.NewTokenBuilderInterfaceMock(suite.T())
 			suite.mockAttrCacheService = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 			suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
-			suite.mockServerConfigService = serverconfigmock.NewServerConfigServiceMock(suite.T())
 			suite.stubDefaultResourceServer()
 			suite.handler = &authorizationCodeGrantHandler{
-				tokenBuilder:        suite.mockTokenBuilder,
-				authzService:        suite.mockAuthzService,
-				attributeCache:      suite.mockAttrCacheService,
-				resourceService:     suite.mockResourceService,
-				serverConfigService: suite.mockServerConfigService,
+				tokenBuilder:    suite.mockTokenBuilder,
+				authzService:    suite.mockAuthzService,
+				attributeCache:  suite.mockAttrCacheService,
+				resourceService: suite.mockResourceService,
 			}
 
 			accessTokenAttrs := []string{"email", "username"}
@@ -853,14 +846,12 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_WithEmptyGr
 			suite.mockTokenBuilder = tokenservicemock.NewTokenBuilderInterfaceMock(suite.T())
 			suite.mockAttrCacheService = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 			suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
-			suite.mockServerConfigService = serverconfigmock.NewServerConfigServiceMock(suite.T())
 			suite.stubDefaultResourceServer()
 			suite.handler = &authorizationCodeGrantHandler{
-				tokenBuilder:        suite.mockTokenBuilder,
-				authzService:        suite.mockAuthzService,
-				attributeCache:      suite.mockAttrCacheService,
-				resourceService:     suite.mockResourceService,
-				serverConfigService: suite.mockServerConfigService,
+				tokenBuilder:    suite.mockTokenBuilder,
+				authzService:    suite.mockAuthzService,
+				attributeCache:  suite.mockAttrCacheService,
+				resourceService: suite.mockResourceService,
 			}
 
 			accessTokenAttrs := []string{"email", "username"}

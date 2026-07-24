@@ -28,7 +28,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
-	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -59,7 +58,6 @@ func newGrantHandlerProvider(
 	rbacAuthzService providers.AuthorizationProvider,
 	actorProvider providers.ActorProvider,
 	resourceService providers.ResourceServerProvider,
-	serverConfigService serverconfig.ServerConfigService,
 	cibaService ciba.CIBAServiceInterface,
 	refreshTokenRevoker revocation.RefreshTokenRevokerInterface,
 	cfg oauthconfig.Config,
@@ -68,20 +66,20 @@ func newGrantHandlerProvider(
 	grantProvider := &GrantHandlerProvider{}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeClientCredentials) {
 		grantProvider.clientCredentialsGrantHandler = newClientCredentialsGrantHandler(
-			tokenBuilder, ouService, rbacAuthzService, actorProvider, resourceService, serverConfigService)
+			tokenBuilder, ouService, rbacAuthzService, actorProvider, resourceService)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeAuthorizationCode) {
 		grantProvider.authorizationCodeGrantHandler = newAuthorizationCodeGrantHandler(
-			authzService, tokenBuilder, attrCacheService, resourceService, serverConfigService)
+			authzService, tokenBuilder, attrCacheService, resourceService)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeRefreshToken) {
 		grantProvider.refreshTokenGrantHandler = newRefreshTokenGrantHandler(
 			jwtService, tokenBuilder, tokenValidator, attrCacheService, resourceService,
-			serverConfigService, refreshTokenRevoker, cfg)
+			refreshTokenRevoker, cfg)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeTokenExchange) {
 		grantProvider.tokenExchangeGrantHandler = newTokenExchangeGrantHandler(
-			tokenBuilder, tokenValidator, rbacAuthzService, actorProvider, resourceService, serverConfigService)
+			tokenBuilder, tokenValidator, rbacAuthzService, actorProvider, resourceService)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeCIBA) {
 		grantProvider.cibaGrantHandler = newCIBAGrantHandler(cibaService, tokenBuilder, attrCacheService,
@@ -89,7 +87,7 @@ func newGrantHandlerProvider(
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeJWTBearer) {
 		grantProvider.jwtBearerGrantHandler = newJWTBearerGrantHandler(
-			tokenBuilder, tokenValidator, resourceService, serverConfigService)
+			tokenBuilder, tokenValidator, resourceService)
 	}
 	return grantProvider
 }

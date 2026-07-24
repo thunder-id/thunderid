@@ -36,7 +36,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
-	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -66,14 +65,13 @@ type CIBAServiceInterface interface {
 
 // cibaService implements the CIBAServiceInterface.
 type cibaService struct {
-	cfg                 oauthconfig.Config
-	store               CIBARequestStoreInterface
-	flowExecService     flowexec.FlowExecServiceInterface
-	jwtService          jwt.JWTServiceInterface
-	inboundClient       providers.ActorProvider
-	resourceService     providers.ResourceServerProvider
-	serverConfigService serverconfig.ServerConfigService
-	logger              *log.Logger
+	cfg             oauthconfig.Config
+	store           CIBARequestStoreInterface
+	flowExecService flowexec.FlowExecServiceInterface
+	jwtService      jwt.JWTServiceInterface
+	inboundClient   providers.ActorProvider
+	resourceService providers.ResourceServerProvider
+	logger          *log.Logger
 }
 
 // newCIBAService creates a new instance of cibaService with injected dependencies.
@@ -83,18 +81,16 @@ func newCIBAService(
 	jwtService jwt.JWTServiceInterface,
 	actorProvider providers.ActorProvider,
 	resourceService providers.ResourceServerProvider,
-	serverConfigService serverconfig.ServerConfigService,
 	cfg oauthconfig.Config,
 ) CIBAServiceInterface {
 	return &cibaService{
-		cfg:                 cfg,
-		store:               store,
-		flowExecService:     flowExecService,
-		jwtService:          jwtService,
-		inboundClient:       actorProvider,
-		resourceService:     resourceService,
-		serverConfigService: serverConfigService,
-		logger:              log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIBAService")),
+		cfg:             cfg,
+		store:           store,
+		flowExecService: flowExecService,
+		jwtService:      jwtService,
+		inboundClient:   actorProvider,
+		resourceService: resourceService,
+		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CIBAService")),
 	}
 }
 
@@ -134,12 +130,13 @@ func (s *cibaService) InitiateBackchannelAuth(
 	// OIDC-only (no resource, no permission scopes) stays unbound; a permission-bearing request resolves
 	// an explicit resource or the configured default, rejecting with invalid_target when none applies.
 	targetRS, rsErr := resourceindicators.ResolveAudienceBinding(
-		ctx, s.resourceService, s.serverConfigService, request.Resources, permissionScopes)
+		ctx, s.resourceService, request.Resources, permissionScopes)
 	if rsErr != nil {
 		return nil, &CIBAError{Code: rsErr.Error, Message: rsErr.ErrorDescription}
 	}
 
 	var effectiveResources []string
+	resourceServerIdentifier := ""
 	if targetRS != nil {
 		downscoped, dErr := resourceindicators.DownscopeToResourceServer(
 			ctx, s.resourceService, targetRS.ID, permissionScopes)
@@ -148,6 +145,7 @@ func (s *cibaService) InitiateBackchannelAuth(
 		}
 		permissionScopes = downscoped
 		effectiveResources = []string{targetRS.Identifier}
+		resourceServerIdentifier = targetRS.Identifier
 	}
 	cacheTTL := strconv.FormatInt(s.resolveUserAttributesCacheTTL(oauthApp), 10)
 
@@ -165,6 +163,7 @@ func (s *cibaService) InitiateBackchannelAuth(
 		flowcm.RuntimeKeyAuthorizationRequestID:      authReqID,
 		flowcm.RuntimeKeyClientID:                    oauthApp.ClientID,
 		flowcm.RuntimeKeyRequestedPermissions:        utils.StringifyStringArray(permissionScopes, " "),
+		flowcm.RuntimeKeyResourceServerIdentifier:    resourceServerIdentifier,
 		flowcm.RuntimeKeyRequiredEssentialAttributes: "",
 		flowcm.RuntimeKeyRequiredOptionalAttributes: getRequiredOptionalAttributes(
 			append(oidcScopes, permissionScopes...), oauthApp),

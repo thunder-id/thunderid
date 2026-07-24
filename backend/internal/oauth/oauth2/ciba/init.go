@@ -27,7 +27,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
-	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -44,12 +43,10 @@ func Initialize(
 	flowExecService flowexec.FlowExecServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	resourceService providers.ResourceServerProvider,
-	serverConfigService serverconfig.ServerConfigService,
 	cfg oauthconfig.Config,
 ) CIBAServiceInterface {
 	store := newCIBAStore(cfg)
-	cibaSvc := newCIBAService(store, flowExecService, jwtService, actorProvider, resourceService,
-		serverConfigService, cfg)
+	cibaSvc := newCIBAService(store, flowExecService, jwtService, actorProvider, resourceService, cfg)
 	cibaHandler := newCIBAHandler(cibaSvc)
 	registerRoutes(mux, cibaHandler, actorProvider, authnProvider, jwtService, discoveryService)
 	return cibaSvc

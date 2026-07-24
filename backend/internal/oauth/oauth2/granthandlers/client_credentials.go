@@ -27,19 +27,17 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
-	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // clientCredentialsGrantHandler handles the client credentials grant type.
 type clientCredentialsGrantHandler struct {
-	tokenBuilder        tokenservice.TokenBuilderInterface
-	ouService           providers.OrganizationUnitProvider
-	authzService        providers.AuthorizationProvider
-	actorProvider       providers.ActorProvider
-	resourceService     providers.ResourceServerProvider
-	serverConfigService serverconfig.ServerConfigService
+	tokenBuilder    tokenservice.TokenBuilderInterface
+	ouService       providers.OrganizationUnitProvider
+	authzService    providers.AuthorizationProvider
+	actorProvider   providers.ActorProvider
+	resourceService providers.ResourceServerProvider
 }
 
 // newClientCredentialsGrantHandler creates a new instance of ClientCredentialsGrantHandler.
@@ -49,15 +47,13 @@ func newClientCredentialsGrantHandler(
 	authzService providers.AuthorizationProvider,
 	actorProvider providers.ActorProvider,
 	resourceService providers.ResourceServerProvider,
-	serverConfigService serverconfig.ServerConfigService,
 ) GrantHandlerInterface {
 	return &clientCredentialsGrantHandler{
-		tokenBuilder:        tokenBuilder,
-		ouService:           ouService,
-		authzService:        authzService,
-		actorProvider:       actorProvider,
-		resourceService:     resourceService,
-		serverConfigService: serverConfigService,
+		tokenBuilder:    tokenBuilder,
+		ouService:       ouService,
+		authzService:    authzService,
+		actorProvider:   actorProvider,
+		resourceService: resourceService,
 	}
 }
 
@@ -92,7 +88,7 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	// audience is the app's configured default audiences (falling back to the client_id) and it
 	// carries no scopes.
 	targetRS, errResp := resourceindicators.ResolveAudienceBinding(
-		ctx, h.resourceService, h.serverConfigService, tokenRequest.Resources, scopes)
+		ctx, h.resourceService, tokenRequest.Resources, scopes)
 	if errResp != nil {
 		return nil, errResp
 	}

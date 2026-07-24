@@ -140,6 +140,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		AuthnProvider:     engineCtx.authnProvider,
 		JWTService:        engineCtx.jwtService,
 		AuthAssertGen:     engineCtx.authAssertGen,
+		ResourceService:   engineCtx.resourceProvider,
 	}
 	interceptorDeps := interceptor.InterceptorDependencies{
 		FlowFactory: engineCtx.flowFactory,
@@ -185,13 +186,14 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 
 	engineCtx.dpopVerifier = dpop.Initialize(oauthConfig, jti.Initialize(engineCtx.runtimeStoreProvider))
 
-	// The embedded engine has no server-config store, so no default resource server is available.
-	// Implicit no-resource requests that carry permission scopes are rejected; OIDC-only or
+	// The embedded engine has no server-config store, so no default resource server is available: the
+	// resource provider is passed undecorated. Implicit no-resource requests that carry permission
+	// scopes are rejected (the provider resolves no server for an empty identifier); OIDC-only or
 	// scopeless requests do not need resource-server binding.
 	err = oauth.Initialize(mux, engineCtx.actorProvider, engineCtx.authnProvider, engineCtx.jwtService,
 		engineCtx.jweService, engineCtx.flowExecService, engineCtx.observabilitySvc, engineCtx.runtimeCryptoSvc,
 		engineCtx.ouProvider, engineCtx.attributeCacheService, engineCtx.authzProvider, engineCtx.resourceProvider,
-		nil, engineCtx.i18nProvider, engineCtx.idpProvider, engineCtx.dpopVerifier, engineCtx.runtimeStoreProvider,
+		engineCtx.i18nProvider, engineCtx.idpProvider, engineCtx.dpopVerifier, engineCtx.runtimeStoreProvider,
 		engineCtx.transactioner, oauthConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))

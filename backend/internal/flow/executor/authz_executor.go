@@ -23,6 +23,7 @@ import (
 	"errors"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -39,10 +40,11 @@ const (
 // during flow execution. It enriches the flow context with authorized permissions.
 type authorizationExecutor struct {
 	providers.Executor
-	authzService   providers.AuthorizationProvider
-	entityProvider entityprovider.EntityProviderInterface
-	authnProvider  providers.AuthnProviderManager
-	logger         *log.Logger
+	authzService    providers.AuthorizationProvider
+	entityProvider  entityprovider.EntityProviderInterface
+	authnProvider   providers.AuthnProviderManager
+	resourceService providers.ResourceServerProvider
+	logger          *log.Logger
 }
 
 var _ providers.Executor = (*authorizationExecutor)(nil)
@@ -53,6 +55,7 @@ func newAuthorizationExecutor(
 	authZService providers.AuthorizationProvider,
 	entityProvider entityprovider.EntityProviderInterface,
 	authnProvider providers.AuthnProviderManager,
+	resourceService providers.ResourceServerProvider,
 ) *authorizationExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, authzLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAuthorization))
@@ -61,11 +64,12 @@ func newAuthorizationExecutor(
 		[]providers.Input{}, []providers.Input{}, &providers.ExecutorMeta{})
 
 	return &authorizationExecutor{
-		Executor:       base,
-		authzService:   authZService,
-		entityProvider: entityProvider,
-		authnProvider:  authnProvider,
-		logger:         logger,
+		Executor:        base,
+		authzService:    authZService,
+		entityProvider:  entityProvider,
+		authnProvider:   authnProvider,
+		resourceService: resourceService,
+		logger:          logger,
 	}
 }
 
@@ -110,6 +114,22 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 		return execResp, nil
 	}
 
+	// Resolve the single resource server the permission scopes are evaluated against: the OAuth layer
+	// seeds it in runtime data; a direct /flow/execute request (which does not go through the
+	// authorization endpoint) may supply it as an input; otherwise fall back to the configured default
+	// resource server. Permission evaluation must be scoped to a resource server, so when none can be
+	// resolved the requested permission scopes are dropped rather than evaluated unscoped (which could
+	// authorize a permission the user only holds on a different resource server).
+	resourceServerID := a.resolveResourceServerID(ctx)
+	if resourceServerID == "" {
+		logger.Debug(ctx.Context,
+			"No resource server bound to the request; dropping requested permission scopes",
+			log.Int("permissionCount", len(requestedPerms)))
+		setAuthorizedPermissions(execResp, []string{})
+		execResp.Status = providers.ExecComplete
+		return execResp, nil
+	}
+
 	logger.Debug(ctx.Context, "Determined required permissions", log.Int("count", len(requestedPerms)))
 
 	// Extract user ID and group IDs
@@ -125,7 +145,7 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 		log.Int("permissionCount", len(requestedPerms)))
 
 	authzResp, svcErr := a.authzService.EvaluateAccessBatch(ctx.Context,
-		a.buildAccessEvaluationsRequest(userID, groupIDs, requestedPerms))
+		a.buildAccessEvaluationsRequest(userID, groupIDs, requestedPerms, resourceServerID))
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Authorization service call failed",
 			log.String("error", svcErr.Error.DefaultValue))
@@ -141,6 +161,33 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
+}
+
+// resolveResourceServerID determines the internal ID of the single resource server that permission
+// scopes are evaluated against. The binding is communicated as a resource server identifier: the OAuth
+// layer seeds it in runtime data, and a direct /flow/execute request (which does not go through the
+// authorization endpoint) may supply it as an input. The identifier is resolved to its internal ID
+// through the provider; an empty identifier asks a default-aware provider to resolve the deployment's
+// configured default resource server. Returns "" when none can be resolved (unknown identifier, no
+// default configured, or no resource provider available, for example the embedded engine).
+func (a *authorizationExecutor) resolveResourceServerID(ctx *providers.NodeContext) string {
+	identifier := ctx.RuntimeData[common.RuntimeKeyResourceServerIdentifier]
+	if identifier == "" {
+		identifier = ctx.UserInputs[common.RuntimeKeyResourceServerIdentifier]
+	}
+	if a.resourceService == nil {
+		a.logger.Debug(ctx.Context,
+			"No resource server service available; dropping requested permission scopes")
+		return ""
+	}
+	rs, svcErr := a.resourceService.GetResourceServerByIdentifier(ctx.Context, identifier)
+	if svcErr != nil {
+		a.logger.Debug(ctx.Context,
+			"Resource server did not resolve; dropping requested permission scopes",
+			log.String("identifier", identifier))
+		return ""
+	}
+	return rs.ID
 }
 
 // extractRequestedPermissions extracts requested permissions from the context.
@@ -163,6 +210,7 @@ func (a *authorizationExecutor) buildAccessEvaluationsRequest(
 	entityID string,
 	groupIDs []string,
 	requestedPermissions []string,
+	resourceServerID string,
 ) providers.AccessEvaluationsRequest {
 	evaluations := make([]providers.AccessEvaluationRequest, 0, len(requestedPermissions))
 	for _, permission := range requestedPermissions {
@@ -171,7 +219,8 @@ func (a *authorizationExecutor) buildAccessEvaluationsRequest(
 				ID:       entityID,
 				GroupIDs: groupIDs,
 			},
-			Permission: providers.Permission{Name: permission},
+			ResourceServer: providers.AccessEvaluationResourceServer{ID: resourceServerID},
+			Permission:     providers.Permission{Name: permission},
 		})
 	}
 	return providers.AccessEvaluationsRequest{Evaluations: evaluations}

@@ -243,6 +243,7 @@ func (e *sessionExecutor) loadCheckpoint(ctx *providers.NodeContext, execResp *p
 // classification is implemented.
 var requestScopedSnapshotDenyList = map[string]struct{}{
 	common.RuntimeKeyRequestedPermissions:        {},
+	common.RuntimeKeyResourceServerIdentifier:    {},
 	common.RuntimeKeyRequiredEssentialAttributes: {},
 	common.RuntimeKeyRequiredOptionalAttributes:  {},
 	common.RuntimeKeyRequiredLocales:             {},

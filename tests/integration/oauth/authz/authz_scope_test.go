@@ -35,18 +35,26 @@ const (
 	scopeTestClientSecret = "scope_authz_test_secret_456"
 	scopeTestAppName      = "ScopeAuthzTestApp"
 	scopeTestRedirectURI  = "https://localhost:3000/callback"
+
+	scopeTestResourceServerIdentifier  = "https://oauth-document-mgmt.example.com"
+	scopeTestResourceServerBIdentifier = "https://oauth-document-mgmt-b.example.com"
 )
 
 var (
-	scopeTestOUID           string
-	scopeTestRoleID         string
-	scopeUserWithRole       string
-	scopeUserNoRole         string
-	scopeUserWithGroup      string
-	scopeGroupID            string
-	scopeEntityTypeID       string
-	scopeTestResourceServer string
-	scopeTestEntityType     = testutils.UserType{
+	scopeTestOUID            string
+	scopeTestRoleID          string
+	scopeUserWithRole        string
+	scopeUserNoRole          string
+	scopeUserWithGroup       string
+	scopeGroupID             string
+	scopeEntityTypeID        string
+	scopeTestResourceServer  string
+	scopeTestResourceServerB string
+	scopeUserMultiRS         string
+	scopeUserSplitRS         string
+	scopeMultiRSRoleID       string
+	scopeSplitRSRoleID       string
+	scopeTestEntityType      = testutils.UserType{
 		Name: "authz-test-person",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
@@ -183,6 +191,41 @@ func (ts *OAuthAuthzScopeTestSuite) SetupSuite() {
 		ts.T().Fatalf("Failed to create user with group: %v", err)
 	}
 
+	// Create a user granted the same permissions on BOTH resource servers.
+	userMultiRS := testutils.User{
+		OUID: scopeTestOUID,
+		Type: "authz-test-person",
+		Attributes: json.RawMessage(`{
+			"username": "oauth_multi_rs_user",
+			"password": "SecurePass123!",
+			"email": "oauth_multi_rs@test.com",
+			"given_name": "OAuth",
+			"family_name": "MultiRS"
+		}`),
+	}
+	scopeUserMultiRS, err = testutils.CreateUser(userMultiRS)
+	if err != nil {
+		ts.T().Fatalf("Failed to create multi-resource-server user: %v", err)
+	}
+
+	// Create a user granted read on resource server A and write on resource server B, so the same
+	// permission strings map to different grants depending on the target resource server.
+	userSplitRS := testutils.User{
+		OUID: scopeTestOUID,
+		Type: "authz-test-person",
+		Attributes: json.RawMessage(`{
+			"username": "oauth_split_rs_user",
+			"password": "SecurePass123!",
+			"email": "oauth_split_rs@test.com",
+			"given_name": "OAuth",
+			"family_name": "SplitRS"
+		}`),
+	}
+	scopeUserSplitRS, err = testutils.CreateUser(userSplitRS)
+	if err != nil {
+		ts.T().Fatalf("Failed to create split-resource-server user: %v", err)
+	}
+
 	// Create group and assign user to group
 	group := testutils.Group{
 		Name:        "OAuth_DocumentEditors",
@@ -204,7 +247,7 @@ func (ts *OAuthAuthzScopeTestSuite) SetupSuite() {
 	resourceServer := testutils.ResourceServer{
 		Name:        "OAuth Document Management System",
 		Description: "System for managing documents via OAuth",
-		Identifier:  "https://oauth-document-mgmt.example.com",
+		Identifier:  scopeTestResourceServerIdentifier,
 		OUID:        scopeTestOUID,
 	}
 	actions := []testutils.Action{
@@ -222,6 +265,20 @@ func (ts *OAuthAuthzScopeTestSuite) SetupSuite() {
 	scopeTestResourceServer, err = testutils.CreateResourceServerWithActions(resourceServer, actions)
 	if err != nil {
 		ts.T().Fatalf("Failed to create resource server with actions: %v", err)
+	}
+
+	// Create a second resource server that defines the SAME read/write permission strings. The test
+	// role below grants these on the first resource server only, so a request targeting this second
+	// server must not receive them because permissions must be scoped to the requested resource server.
+	resourceServerB := testutils.ResourceServer{
+		Name:        "OAuth Document Management System B",
+		Description: "A different system that happens to define the same permission strings",
+		Identifier:  scopeTestResourceServerBIdentifier,
+		OUID:        scopeTestOUID,
+	}
+	scopeTestResourceServerB, err = testutils.CreateResourceServerWithActions(resourceServerB, actions)
+	if err != nil {
+		ts.T().Fatalf("Failed to create second resource server with actions: %v", err)
 	}
 
 	// Create role with permissions and assign to first user
@@ -244,6 +301,42 @@ func (ts *OAuthAuthzScopeTestSuite) SetupSuite() {
 	if err != nil {
 		ts.T().Fatalf("Failed to create test role: %v", err)
 	}
+
+	// Role granting read/write on BOTH resource servers, assigned to the multi-RS user.
+	multiRSRole := testutils.Role{
+		Name:        "OAuth_MultiRSEditor",
+		Description: "Can read and write documents on both resource servers (OAuth test)",
+		OUID:        scopeTestOUID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: scopeTestResourceServer, Permissions: []string{"read", "write"}},
+			{ResourceServerID: scopeTestResourceServerB, Permissions: []string{"read", "write"}},
+		},
+		Assignments: []testutils.Assignment{
+			{ID: scopeUserMultiRS, Type: "user"},
+		},
+	}
+	scopeMultiRSRoleID, err = testutils.CreateRole(multiRSRole)
+	if err != nil {
+		ts.T().Fatalf("Failed to create multi-resource-server role: %v", err)
+	}
+
+	// Role granting read on resource server A and write on resource server B, assigned to the split user.
+	splitRSRole := testutils.Role{
+		Name:        "OAuth_SplitRSEditor",
+		Description: "Can read on A and write on B (OAuth test)",
+		OUID:        scopeTestOUID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: scopeTestResourceServer, Permissions: []string{"read"}},
+			{ResourceServerID: scopeTestResourceServerB, Permissions: []string{"write"}},
+		},
+		Assignments: []testutils.Assignment{
+			{ID: scopeUserSplitRS, Type: "user"},
+		},
+	}
+	scopeSplitRSRoleID, err = testutils.CreateRole(splitRSRole)
+	if err != nil {
+		ts.T().Fatalf("Failed to create split-resource-server role: %v", err)
+	}
 }
 
 func (ts *OAuthAuthzScopeTestSuite) TearDownSuite() {
@@ -254,9 +347,27 @@ func (ts *OAuthAuthzScopeTestSuite) TearDownSuite() {
 		}
 	}
 
+	if scopeMultiRSRoleID != "" {
+		if err := testutils.DeleteRole(scopeMultiRSRoleID); err != nil {
+			ts.T().Logf("Failed to delete multi-resource-server role: %v", err)
+		}
+	}
+
+	if scopeSplitRSRoleID != "" {
+		if err := testutils.DeleteRole(scopeSplitRSRoleID); err != nil {
+			ts.T().Logf("Failed to delete split-resource-server role: %v", err)
+		}
+	}
+
 	if scopeTestResourceServer != "" {
 		if err := testutils.DeleteResourceServer(scopeTestResourceServer); err != nil {
 			ts.T().Logf("Failed to delete test resource server: %v", err)
+		}
+	}
+
+	if scopeTestResourceServerB != "" {
+		if err := testutils.DeleteResourceServer(scopeTestResourceServerB); err != nil {
+			ts.T().Logf("Failed to delete second test resource server: %v", err)
 		}
 	}
 
@@ -281,6 +392,18 @@ func (ts *OAuthAuthzScopeTestSuite) TearDownSuite() {
 	if scopeUserWithRole != "" {
 		if err := testutils.DeleteUser(scopeUserWithRole); err != nil {
 			ts.T().Logf("Failed to delete user with role: %v", err)
+		}
+	}
+
+	if scopeUserMultiRS != "" {
+		if err := testutils.DeleteUser(scopeUserMultiRS); err != nil {
+			ts.T().Logf("Failed to delete multi-resource-server user: %v", err)
+		}
+	}
+
+	if scopeUserSplitRS != "" {
+		if err := testutils.DeleteUser(scopeUserSplitRS); err != nil {
+			ts.T().Logf("Failed to delete split-resource-server user: %v", err)
 		}
 	}
 
@@ -445,6 +568,104 @@ func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_WithNoAuthorizedScopes() 
 			scope == "address" || scope == "phone" || scope == "offline_access"
 		ts.Require().True(isOIDCScope, "Scope '%s' should be an OIDC scope", scope)
 	}
+}
+
+// TestOAuthAuthzFlow_CrossResourceServerPermissionIsolation verifies that a user granted
+// read/write on resource server A must NOT receive those permissions when the token is bound to
+// resource server B, even though B defines the same permission strings.
+func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_CrossResourceServerPermissionIsolation() {
+	// The authorized user holds read/write on resource server A only. Bind the token to server B,
+	// which defines the same permission strings but which the user has no grant on.
+	tokenResp, err := ts.obtainTokenWithResource(
+		scopeTestClientID,
+		scopeTestClientSecret,
+		"openid read write",
+		"oauth_authorized_user",
+		scopeTestResourceServerBIdentifier,
+	)
+	ts.Require().NoError(err, "Failed to obtain access token")
+	ts.Require().NotNil(tokenResp, "Token response should not be nil")
+	ts.Require().NotEmpty(tokenResp.AccessToken, "Access token should not be empty")
+
+	claims, err := testutils.DecodeJWT(tokenResp.AccessToken)
+	ts.Require().NoError(err, "Failed to decode access token")
+	ts.Require().NotNil(claims, "Claims should not be nil")
+
+	scopeRaw, ok := claims.Additional["scope"]
+	ts.Require().True(ok, "scope claim should be present in access token")
+	scopeStr, ok := scopeRaw.(string)
+	ts.Require().True(ok, "scope claim should be a string")
+	scopes := strings.Split(scopeStr, " ")
+
+	// read/write are dropped because the user has no grant on resource server B, even though B
+	// defines them. Only the OIDC scope survives.
+	ts.Require().Contains(scopes, "openid", "Token should retain the openid scope")
+	ts.Require().NotContains(scopes, "read", "read must not leak to resource server B")
+	ts.Require().NotContains(scopes, "write", "write must not leak to resource server B")
+
+	// The access token is bound to resource server B.
+	ts.Require().Equal(scopeTestResourceServerBIdentifier, claims.Aud,
+		"Access token audience should be resource server B")
+}
+
+// obtainScopesAndAudience runs the flow for the given user requesting "openid read write" bound to
+// the given resource server, and returns the issued token's scope list and audience.
+func (ts *OAuthAuthzScopeTestSuite) obtainScopesAndAudience(username, resource string) ([]string, string) {
+	tokenResp, err := ts.obtainTokenWithResource(
+		scopeTestClientID, scopeTestClientSecret, "openid read write", username, resource)
+	ts.Require().NoError(err, "Failed to obtain access token")
+	ts.Require().NotNil(tokenResp, "Token response should not be nil")
+	ts.Require().NotEmpty(tokenResp.AccessToken, "Access token should not be empty")
+
+	claims, err := testutils.DecodeJWT(tokenResp.AccessToken)
+	ts.Require().NoError(err, "Failed to decode access token")
+	ts.Require().NotNil(claims, "Claims should not be nil")
+
+	scopeRaw, ok := claims.Additional["scope"]
+	ts.Require().True(ok, "scope claim should be present in access token")
+	scopeStr, ok := scopeRaw.(string)
+	ts.Require().True(ok, "scope claim should be a string")
+	return strings.Split(scopeStr, " "), claims.Aud
+}
+
+// TestOAuthAuthzFlow_GrantedOnBothResourceServers_ResourceA verifies a user granted read/write on
+// both resource servers receives them when targeting resource server A.
+func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_GrantedOnBothResourceServers_ResourceA() {
+	scopes, aud := ts.obtainScopesAndAudience("oauth_multi_rs_user", scopeTestResourceServerIdentifier)
+	ts.Require().Equal(scopeTestResourceServerIdentifier, aud, "Audience should be resource server A")
+	ts.Require().Contains(scopes, "openid")
+	ts.Require().Contains(scopes, "read")
+	ts.Require().Contains(scopes, "write")
+}
+
+// TestOAuthAuthzFlow_GrantedOnBothResourceServers_ResourceB verifies the same user receives read/write
+// when targeting resource server B, even though B defines the identical permission strings.
+func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_GrantedOnBothResourceServers_ResourceB() {
+	scopes, aud := ts.obtainScopesAndAudience("oauth_multi_rs_user", scopeTestResourceServerBIdentifier)
+	ts.Require().Equal(scopeTestResourceServerBIdentifier, aud, "Audience should be resource server B")
+	ts.Require().Contains(scopes, "openid")
+	ts.Require().Contains(scopes, "read")
+	ts.Require().Contains(scopes, "write")
+}
+
+// TestOAuthAuthzFlow_SharedPermissionStringScopedPerResourceServer_A verifies that the colliding
+// permission strings resolve to the user's grant on resource server A only (read granted, write not).
+func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_SharedPermissionStringScopedPerResourceServer_A() {
+	scopes, aud := ts.obtainScopesAndAudience("oauth_split_rs_user", scopeTestResourceServerIdentifier)
+	ts.Require().Equal(scopeTestResourceServerIdentifier, aud, "Audience should be resource server A")
+	ts.Require().Contains(scopes, "openid")
+	ts.Require().Contains(scopes, "read", "read is granted on resource server A")
+	ts.Require().NotContains(scopes, "write", "write is not granted on resource server A")
+}
+
+// TestOAuthAuthzFlow_SharedPermissionStringScopedPerResourceServer_B verifies the mirror case: the same
+// user's grant on resource server B is write only, so read is dropped when targeting B.
+func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_SharedPermissionStringScopedPerResourceServer_B() {
+	scopes, aud := ts.obtainScopesAndAudience("oauth_split_rs_user", scopeTestResourceServerBIdentifier)
+	ts.Require().Equal(scopeTestResourceServerBIdentifier, aud, "Audience should be resource server B")
+	ts.Require().Contains(scopes, "openid")
+	ts.Require().Contains(scopes, "write", "write is granted on resource server B")
+	ts.Require().NotContains(scopes, "read", "read is not granted on resource server B")
 }
 
 // TestOAuthAuthzFlow_FiltersOIDCScopesByApplicationScopes verifies that requested OIDC scopes are

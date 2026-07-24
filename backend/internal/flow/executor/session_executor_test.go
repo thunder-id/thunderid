@@ -284,6 +284,7 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_SanitizesSnapshot() {
 	ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes] = "phone"
 	ctx.RuntimeData[common.RuntimeKeyRequiredLocales] = "en-US"
 	ctx.RuntimeData[common.RuntimeKeyRequestedPermissions] = "openid profile"
+	ctx.RuntimeData[common.RuntimeKeyResourceServerIdentifier] = "rs-a"
 	ctx.RuntimeData["applicationId"] = "app-a"
 	ctx.RuntimeData[common.RuntimeKeyClientID] = "sso_app_a"
 	ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID] = "authz-req-1"
@@ -304,6 +305,7 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_SanitizesSnapshot() {
 	suite.NotContains(rd, common.RuntimeKeyRequiredOptionalAttributes)
 	suite.NotContains(rd, common.RuntimeKeyRequiredLocales)
 	suite.NotContains(rd, common.RuntimeKeyRequestedPermissions)
+	suite.NotContains(rd, common.RuntimeKeyResourceServerIdentifier)
 	suite.NotContains(rd, "applicationId")
 	suite.NotContains(rd, common.RuntimeKeyClientID)
 	suite.NotContains(rd, common.RuntimeKeyAuthorizationRequestID)
