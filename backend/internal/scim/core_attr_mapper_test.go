@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 package scim
 
 import (
@@ -461,4 +479,54 @@ func TestHasPrimary_False(t *testing.T) {
 func TestHasPrimary_Missing(t *testing.T) {
 	arr := []map[string]interface{}{{}}
 	require.False(t, hasPrimary(arr))
+}
+
+// --- translateSCIMFilterAttr ---
+
+func TestTranslateSCIMFilterAttr(t *testing.T) {
+	tests := []struct {
+		name string
+		attr string
+		want string
+	}{
+		{"simple string", "userName", "username"},
+		{"sub-attribute", "name.givenName", "given_name"},
+		{"multi-valued bare key", "emails", "email"},
+		{"multi-valued value sub-key", "emails.value", "email"},
+		{"address sub-attribute", "addresses.streetAddress", "street_address"},
+		{"case insensitive", "USERNAME", "username"},
+		{"unmapped passthrough", "active", "active"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, translateSCIMFilterAttr(tt.attr))
+		})
+	}
+}
+
+// --- isUnsupportedSCIMFilterAttr ---
+
+func TestIsUnsupportedSCIMFilterAttr(t *testing.T) {
+	tests := []struct {
+		name string
+		attr string
+		want bool
+	}{
+		{"emails type sub-key", "emails.type", true},
+		{"phoneNumbers type sub-key", "phoneNumbers.type", true},
+		{"photos type sub-key", "photos.type", true},
+		{"emails primary sub-key", "emails.primary", true},
+		{"phoneNumbers primary sub-key", "phoneNumbers.primary", true},
+		{"photos primary sub-key", "photos.primary", true},
+		{"case insensitive type", "EMAILS.TYPE", true},
+		{"case insensitive primary", "EMAILS.PRIMARY", true},
+		{"emails value sub-key is supported", "emails.value", false},
+		{"emails bare key is supported", "emails", false},
+		{"unrelated attribute", "userName", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isUnsupportedSCIMFilterAttr(tt.attr))
+		})
+	}
 }

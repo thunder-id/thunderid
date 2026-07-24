@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 package scim
 
 import (
@@ -156,6 +174,77 @@ var coreAttrRules = []coreAttrRule{
 		kind:      kindAddrPart,
 		subAttr:   "country",
 	},
+}
+
+// scimToThunderAttrIndex is a pre-built, lowercase-keyed reverse lookup of
+// coreAttrRules, mapping a SCIM filter attribute path (e.g. "username",
+// "emails.value", "name.givenname", "addresses.streetaddress") to its
+// ThunderID attribute name. Built once at package init so filter translation
+// is an O(1) map lookup instead of a per-request scan of coreAttrRules.
+var scimToThunderAttrIndex = buildSCIMToThunderAttrIndex()
+
+func buildSCIMToThunderAttrIndex() map[string]string {
+	index := make(map[string]string)
+	for _, rule := range coreAttrRules {
+		switch rule.kind {
+		case kindSimpleString:
+			index[strings.ToLower(string(rule.scimField))] = rule.candidate
+		case kindMultiComplex:
+			index[strings.ToLower(string(rule.scimField))] = rule.candidate
+			valueKey := rule.valueKey
+			if valueKey == "" {
+				valueKey = scimValueKey
+			}
+			index[strings.ToLower(string(rule.scimField)+"."+valueKey)] = rule.candidate
+		case kindSubAttr:
+			index[strings.ToLower(string(rule.parentField)+"."+rule.subAttr)] = rule.candidate
+		case kindAddrPart:
+			index[strings.ToLower(string(scimFieldAddresses)+"."+rule.subAttr)] = rule.candidate
+		}
+	}
+	return index
+}
+
+// translateSCIMFilterAttr translates a SCIM filter attribute path into its
+// ThunderID attribute name using scimToThunderAttrIndex. Attributes with no
+// core mapping (id, active, custom schema attributes already in ThunderID
+// naming, etc.) are passed through unchanged.
+func translateSCIMFilterAttr(attr string) string {
+	if thunderAttr, ok := scimToThunderAttrIndex[strings.ToLower(attr)]; ok {
+		return thunderAttr
+	}
+	return attr
+}
+
+// scimUnsupportedMultiComplexSubAttrs: sub-attrs ThunderID never stores as a flat
+// field, regardless of scalar/array schema. "value" excluded — wrong only for
+// array schemas, undetectable at filter-parse time.
+var scimUnsupportedMultiComplexSubAttrs = []string{"type", "primary"}
+
+// scimUnsupportedFilterAttrs: filter paths on multi-valued core attrs (emails,
+// phoneNumbers, photos) with no flat equivalent to compare against, e.g.
+// "emails.type". Filtering these errors instead of silently matching nothing.
+var scimUnsupportedFilterAttrs = buildSCIMUnsupportedFilterAttrs()
+
+func buildSCIMUnsupportedFilterAttrs() map[string]struct{} {
+	unsupported := make(map[string]struct{})
+	for _, rule := range coreAttrRules {
+		if rule.kind != kindMultiComplex {
+			continue
+		}
+		for _, subAttr := range scimUnsupportedMultiComplexSubAttrs {
+			unsupported[strings.ToLower(string(rule.scimField)+"."+subAttr)] = struct{}{}
+		}
+	}
+	return unsupported
+}
+
+// isUnsupportedSCIMFilterAttr reports whether attr is a recognized but
+// currently unsupported SCIM filter attribute path (see
+// scimUnsupportedFilterAttrs).
+func isUnsupportedSCIMFilterAttr(attr string) bool {
+	_, ok := scimUnsupportedFilterAttrs[strings.ToLower(attr)]
+	return ok
 }
 
 func mapToCoreAttrs(rawAttrs json.RawMessage) map[string]json.RawMessage {

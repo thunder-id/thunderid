@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	neturl "net/url"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -114,7 +115,8 @@ func TestHandleUsersListRequest_Success(t *testing.T) {
 		ItemsPerPage: 20,
 		Resources:    []SCIMUser{},
 	}
-	mockSvc.On("ListUsers", mock.Anything, 1, 20, testBaseURL).Return(expectedResp, (*tidcommon.ServiceError)(nil))
+	mockSvc.On("ListUsers", mock.Anything, 1, 20, mock.Anything,
+		testBaseURL).Return(expectedResp, (*tidcommon.ServiceError)(nil))
 
 	h := newSCIMUsersHandler(mockSvc, testBaseURL)
 	req := httptest.NewRequest(http.MethodGet, "/scim/v2/Users", nil)
@@ -372,6 +374,19 @@ func TestHandleUsersReplaceRequest_EmptyBody_Returns400(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
+func TestHandleUsersReplaceRequest_InvalidJSON_Returns400(t *testing.T) {
+	h := newSCIMUsersHandler(NewSCIMUsersServiceInterfaceMock(t), testBaseURL)
+	req := httptest.NewRequest(http.MethodPut, "/scim/v2/Users/user-123",
+		bytes.NewBufferString(`not json`))
+	req.SetPathValue("id", "user-123")
+	req.Header.Set("Content-Type", constants.SCIMContentType)
+	rr := httptest.NewRecorder()
+
+	h.HandleUsersReplaceRequest(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
 func TestHandleUsersReplaceRequest_NotFound_Returns404(t *testing.T) {
 	mockSvc := NewSCIMUsersServiceInterfaceMock(t)
 	mockSvc.On("ReplaceUser", mock.Anything, "no-such",
@@ -419,7 +434,9 @@ func TestHandleUsersReplaceRequest_MutabilityViolation_Returns400(t *testing.T) 
 
 func TestHandleUsersListRequest_FilterNotSupported_Returns400(t *testing.T) {
 	h := newSCIMUsersHandler(NewSCIMUsersServiceInterfaceMock(t), testBaseURL)
-	req := httptest.NewRequest(http.MethodGet, `/scim/v2/Users?filter=userName+eq+"alice"`, nil)
+	// Compound "and" expressions are unsupported; only single "eq" is allowed.
+	req := httptest.NewRequest(http.MethodGet,
+		`/scim/v2/Users?filter=userName+eq+"alice"+and+active+eq+true`, nil)
 	rr := httptest.NewRecorder()
 
 	h.HandleUsersListRequest(rr, req)
@@ -430,9 +447,107 @@ func TestHandleUsersListRequest_FilterNotSupported_Returns400(t *testing.T) {
 	require.Equal(t, "invalidFilter", errResp.ScimType)
 }
 
+func TestHandleUsersListRequest_FilterOnMultiValueUnsupportedSubAttr_Returns400(t *testing.T) {
+	// "emails.type"/"emails.primary" have no matching flat ThunderID attribute
+	// — ThunderID only stores the value, never a per-entry type or primary
+	// flag — so they're rejected explicitly instead of silently matching
+	// nothing.
+	tests := []string{
+		`emails.type+eq+"work"`,
+		`emails.primary+eq+true`,
+	}
+	for _, filter := range tests {
+		t.Run(filter, func(t *testing.T) {
+			h := newSCIMUsersHandler(NewSCIMUsersServiceInterfaceMock(t), testBaseURL)
+			req := httptest.NewRequest(http.MethodGet,
+				"/scim/v2/Users?filter="+filter, nil)
+			rr := httptest.NewRecorder()
+
+			h.HandleUsersListRequest(rr, req)
+
+			require.Equal(t, http.StatusBadRequest, rr.Code)
+			var errResp SCIMErrorResponse
+			require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+			require.Equal(t, "invalidFilter", errResp.ScimType)
+		})
+	}
+}
+
+func TestHandleUsersListRequest_FilterOnHyphenatedAttr_Returns400(t *testing.T) {
+	// "-" is valid in an attrPath per RFC 7643 but rejected by the store-layer
+	// key charset; must be caught here as invalidFilter, not surface as a 500.
+	h := newSCIMUsersHandler(NewSCIMUsersServiceInterfaceMock(t), testBaseURL)
+	req := httptest.NewRequest(http.MethodGet,
+		"/scim/v2/Users?filter="+neturl.QueryEscape(`custom-attr eq "x"`), nil)
+	rr := httptest.NewRecorder()
+
+	h.HandleUsersListRequest(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	var errResp SCIMErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+	require.Equal(t, "invalidFilter", errResp.ScimType)
+}
+
+func TestHandleUsersListRequest_FilterTranslatesCoreAttributes(t *testing.T) {
+	tests := []struct {
+		name           string
+		filter         string
+		expectedFilter map[string]interface{}
+	}{
+		{
+			name:           "simple string attribute",
+			filter:         `userName eq "alice"`,
+			expectedFilter: map[string]interface{}{"username": "alice"},
+		},
+		{
+			name:           "sub-attribute of complex object",
+			filter:         `name.givenName eq "Alice"`,
+			expectedFilter: map[string]interface{}{"given_name": "Alice"},
+		},
+		{
+			name:           "multi-valued complex attribute value",
+			filter:         `emails.value eq "alice@example.com"`,
+			expectedFilter: map[string]interface{}{"email": "alice@example.com"},
+		},
+		{
+			name:           "address sub-attribute",
+			filter:         `addresses.streetAddress eq "Main St"`,
+			expectedFilter: map[string]interface{}{"street_address": "Main St"},
+		},
+		{
+			name:           "unmapped attribute passes through unchanged",
+			filter:         `active eq true`,
+			expectedFilter: map[string]interface{}{"active": true},
+		},
+		{
+			name:           "URN-prefixed attribute with numeric version segment",
+			filter:         `urn:thunderid:params:scim:schemas:employee_hier:2.0:User:active eq true`,
+			expectedFilter: map[string]interface{}{"active": true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockSvc := NewSCIMUsersServiceInterfaceMock(t)
+			mockSvc.On("ListUsers", mock.Anything, 1, 20, tt.expectedFilter, testBaseURL).
+				Return(SCIMUserListResponse{}, (*tidcommon.ServiceError)(nil))
+
+			h := newSCIMUsersHandler(mockSvc, testBaseURL)
+			req := httptest.NewRequest(http.MethodGet,
+				"/scim/v2/Users?filter="+neturl.QueryEscape(tt.filter), nil)
+			rr := httptest.NewRecorder()
+
+			h.HandleUsersListRequest(rr, req)
+
+			require.Equal(t, http.StatusOK, rr.Code)
+		})
+	}
+}
+
 func TestHandleUsersListRequest_ServiceError_Returns500(t *testing.T) {
 	mockSvc := NewSCIMUsersServiceInterfaceMock(t)
-	mockSvc.On("ListUsers", mock.Anything, 1, 20, testBaseURL).
+	mockSvc.On("ListUsers", mock.Anything, 1, 20, mock.Anything, testBaseURL).
 		Return(SCIMUserListResponse{}, &ErrorInternalServer)
 
 	h := newSCIMUsersHandler(mockSvc, testBaseURL)
@@ -446,7 +561,7 @@ func TestHandleUsersListRequest_ServiceError_Returns500(t *testing.T) {
 
 func TestHandleUsersListRequest_CustomPagination(t *testing.T) {
 	mockSvc := NewSCIMUsersServiceInterfaceMock(t)
-	mockSvc.On("ListUsers", mock.Anything, 5, 10, testBaseURL).
+	mockSvc.On("ListUsers", mock.Anything, 5, 10, mock.Anything, testBaseURL).
 		Return(SCIMUserListResponse{
 			Schemas:      []string{SCIMListResponseSchemaURN},
 			TotalResults: 0,
@@ -500,4 +615,73 @@ func TestHandleUsersDeleteRequest_PreconditionFailed(t *testing.T) {
 	h.HandleUsersDeleteRequest(rr, req)
 
 	require.Equal(t, http.StatusPreconditionFailed, rr.Code)
+}
+
+// --- parseSCIMFilterForEq direct unit tests ---
+
+func TestParseSCIMFilterForEq_EmptyString_ReturnsNil(t *testing.T) {
+	filters, err := parseSCIMFilterForEq("")
+	require.NoError(t, err)
+	require.Nil(t, filters)
+}
+
+func TestParseSCIMFilterForEq_UnsupportedOperator_ReturnsError(t *testing.T) {
+	tests := []string{
+		`userName ne "alice"`,
+		`userName co "ali"`,
+		`userName sw "al"`,
+		`userName ew "ce"`,
+		`userName pr`,
+		`age gt 5`,
+		`age lt 5`,
+		`age ge 5`,
+		`age le 5`,
+	}
+	for _, filter := range tests {
+		t.Run(filter, func(t *testing.T) {
+			_, err := parseSCIMFilterForEq(filter)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestParseSCIMFilterForEq_MalformedExpression_ReturnsError(t *testing.T) {
+	_, err := parseSCIMFilterForEq("userName")
+	require.Error(t, err)
+}
+
+func TestParseSCIMFilterForEq_InvalidCompValue_ReturnsError(t *testing.T) {
+	_, err := parseSCIMFilterForEq("userName eq null")
+	require.Error(t, err)
+}
+
+// --- parseSCIMCompValue direct unit tests ---
+
+func TestParseSCIMCompValue(t *testing.T) {
+	tests := []struct {
+		name      string
+		raw       string
+		expected  interface{}
+		expectErr bool
+	}{
+		{name: "quoted string", raw: `"alice"`, expected: "alice"},
+		{name: "unterminated quoted string", raw: `"alice`, expectErr: true},
+		{name: "true", raw: "true", expected: true},
+		{name: "false", raw: "false", expected: false},
+		{name: "null", raw: "null", expectErr: true},
+		{name: "integer", raw: "42", expected: int64(42)},
+		{name: "decimal", raw: "3.14", expected: 3.14},
+		{name: "unrecognized", raw: "notavalue", expectErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseSCIMCompValue(tt.raw)
+			if tt.expectErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, got)
+		})
+	}
 }
