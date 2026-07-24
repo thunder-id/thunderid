@@ -85,6 +85,7 @@ func (suite *GrantHandlerProviderTestSuite) SetupTest() {
 		suite.mockServerConfig,
 		suite.mockCIBAService,
 		revocationmock.NewRefreshTokenRevokerInterfaceMock(suite.T()),
+		revocationmock.NewCriteriaRevokerInterfaceMock(suite.T()),
 		testhelpers.OAuthConfig(),
 	)
 }
@@ -103,6 +104,7 @@ func (suite *GrantHandlerProviderTestSuite) TestNewGrantHandlerProvider() {
 		suite.mockServerConfig,
 		suite.mockCIBAService,
 		revocationmock.NewRefreshTokenRevokerInterfaceMock(suite.T()),
+		revocationmock.NewCriteriaRevokerInterfaceMock(suite.T()),
 		testhelpers.OAuthConfig(),
 	)
 	assert.NotNil(suite.T(), provider)

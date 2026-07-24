@@ -65,11 +65,11 @@ func newSyncer(source syncSource, cache *revokedCache, interval time.Duration) *
 // refresh reads a fresh snapshot from the source and atomically replaces the cache. On error the
 // cache is left untouched so the last-known-good snapshot continues to serve lookups.
 func (s *syncer) refresh(ctx context.Context) error {
-	entries, err := s.source.Snapshot(ctx)
+	snapshot, err := s.source.Snapshot(ctx)
 	if err != nil {
 		return err
 	}
-	s.cache.replace(entries)
+	s.cache.replace(snapshot)
 	return nil
 }
 

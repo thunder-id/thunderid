@@ -62,13 +62,20 @@ func (suite *DBSourceTestSuite) TestSnapshot_Success() {
 			{"jti": "jti-1", "expiry_time": expiry},
 			{"jti": "jti-2", "expiry_time": expiry},
 		}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotRevokedTokenFamilies,
+		criterionTypeTokenFamily, mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{
+			{"criterion_value": "tfid-1", "expiry_time": expiry},
+		}, nil)
 
-	entries, err := suite.source.Snapshot(context.Background())
+	snapshot, err := suite.source.Snapshot(context.Background())
 
 	suite.Require().NoError(err)
-	assert.Len(suite.T(), entries, 2)
-	assert.Equal(suite.T(), "jti-1", entries[0].JTI)
-	assert.Equal(suite.T(), expiry, entries[0].ExpiryTime)
+	assert.Len(suite.T(), snapshot.Tokens, 2)
+	assert.Equal(suite.T(), "jti-1", snapshot.Tokens[0].Value)
+	assert.Equal(suite.T(), expiry, snapshot.Tokens[0].ExpiryTime)
+	assert.Len(suite.T(), snapshot.Families, 1)
+	assert.Equal(suite.T(), "tfid-1", snapshot.Families[0].Value)
 }
 
 func (suite *DBSourceTestSuite) TestSnapshot_Empty() {
@@ -76,20 +83,24 @@ func (suite *DBSourceTestSuite) TestSnapshot_Empty() {
 	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotRevokedTokens,
 		mock.Anything, testDeploymentID).
 		Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotRevokedTokenFamilies,
+		criterionTypeTokenFamily, mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{}, nil)
 
-	entries, err := suite.source.Snapshot(context.Background())
+	snapshot, err := suite.source.Snapshot(context.Background())
 
 	suite.Require().NoError(err)
-	assert.Empty(suite.T(), entries)
+	assert.Empty(suite.T(), snapshot.Tokens)
+	assert.Empty(suite.T(), snapshot.Families)
 }
 
 func (suite *DBSourceTestSuite) TestSnapshot_DBClientError() {
 	suite.mockDBProvider.On("GetRuntimePersistentDBClient").Return(nil, errors.New("db client error"))
 
-	entries, err := suite.source.Snapshot(context.Background())
+	snapshot, err := suite.source.Snapshot(context.Background())
 
 	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), entries)
+	assert.Empty(suite.T(), snapshot.Tokens)
 	assert.Contains(suite.T(), err.Error(), "db client error")
 }
 
@@ -99,11 +110,27 @@ func (suite *DBSourceTestSuite) TestSnapshot_QueryError() {
 		mock.Anything, testDeploymentID).
 		Return(nil, errors.New("query error"))
 
-	entries, err := suite.source.Snapshot(context.Background())
+	snapshot, err := suite.source.Snapshot(context.Background())
 
 	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), entries)
+	assert.Empty(suite.T(), snapshot.Tokens)
 	assert.Contains(suite.T(), err.Error(), "error reading revoked token snapshot")
+}
+
+func (suite *DBSourceTestSuite) TestSnapshot_TokenFamilyQueryError() {
+	suite.mockDBProvider.On("GetRuntimePersistentDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotRevokedTokens,
+		mock.Anything, testDeploymentID).
+		Return([]map[string]interface{}{}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, querySnapshotRevokedTokenFamilies,
+		criterionTypeTokenFamily, mock.Anything, testDeploymentID).
+		Return(nil, errors.New("query error"))
+
+	snapshot, err := suite.source.Snapshot(context.Background())
+
+	assert.Error(suite.T(), err)
+	assert.Empty(suite.T(), snapshot.Families)
+	assert.Contains(suite.T(), err.Error(), "error reading revoked token family snapshot")
 }
 
 func (suite *DBSourceTestSuite) TestSnapshot_InvalidJTI() {
@@ -114,10 +141,10 @@ func (suite *DBSourceTestSuite) TestSnapshot_InvalidJTI() {
 			{"jti": "", "expiry_time": time.Now().Add(time.Hour)},
 		}, nil)
 
-	entries, err := suite.source.Snapshot(context.Background())
+	snapshot, err := suite.source.Snapshot(context.Background())
 
 	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), entries)
+	assert.Empty(suite.T(), snapshot.Tokens)
 	assert.Contains(suite.T(), err.Error(), "jti")
 }
 
@@ -129,9 +156,9 @@ func (suite *DBSourceTestSuite) TestSnapshot_InvalidExpiryTime() {
 			{"jti": "jti-1", "expiry_time": 12345},
 		}, nil)
 
-	entries, err := suite.source.Snapshot(context.Background())
+	snapshot, err := suite.source.Snapshot(context.Background())
 
 	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), entries)
-	assert.Contains(suite.T(), err.Error(), "error parsing revoked token snapshot")
+	assert.Empty(suite.T(), snapshot.Tokens)
+	assert.Contains(suite.T(), err.Error(), "error parsing revocation snapshot")
 }

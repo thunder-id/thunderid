@@ -51,11 +51,13 @@ func (s *ParticipantStoreTestSuite) SetupTest() {
 
 func (s *ParticipantStoreTestSuite) TestRecord_Upserts() {
 	now := time.Unix(1700000000, 0).UTC()
-	p := Participant{SessionID: "sess-1", AppID: "app-1", FirstJoinedAt: now, LastActiveAt: now}
+	p := Participant{
+		SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-1", FirstJoinedAt: now, LastActiveAt: now,
+	}
 
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryUpsertParticipant,
-		"sess-1", testDeploymentID, "app-1", now, now).
+		"sess-1", testDeploymentID, "app-1", now, now, "tfid-1").
 		Return(int64(1), nil)
 
 	err := s.store.Record(context.Background(), p)
@@ -67,11 +69,13 @@ func (s *ParticipantStoreTestSuite) TestRecord_Upserts() {
 
 func (s *ParticipantStoreTestSuite) TestRecord_DBError() {
 	now := time.Unix(1700000000, 0).UTC()
-	p := Participant{SessionID: "sess-1", AppID: "app-1", FirstJoinedAt: now, LastActiveAt: now}
+	p := Participant{
+		SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-1", FirstJoinedAt: now, LastActiveAt: now,
+	}
 
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryUpsertParticipant,
-		"sess-1", testDeploymentID, "app-1", now, now).
+		"sess-1", testDeploymentID, "app-1", now, now, "tfid-1").
 		Return(int64(0), errors.New("db down"))
 
 	err := s.store.Record(context.Background(), p)
@@ -84,7 +88,8 @@ func (s *ParticipantStoreTestSuite) TestListBySessionID() {
 	first := time.Unix(1700000000, 0).UTC()
 	second := time.Unix(1700000100, 0).UTC()
 	rows := []map[string]interface{}{
-		{"session_id": "sess-1", "app_id": "app-1", "first_joined_at": first, "last_active_at": first},
+		{"session_id": "sess-1", "app_id": "app-1", "tfid": "tfid-1",
+			"first_joined_at": first, "last_active_at": first},
 		{"session_id": "sess-1", "app_id": "app-2", "first_joined_at": second, "last_active_at": second},
 	}
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
@@ -99,6 +104,8 @@ func (s *ParticipantStoreTestSuite) TestListBySessionID() {
 	s.Equal("app-1", got[0].AppID)
 	s.Equal("app-2", got[1].AppID)
 	s.Equal(first, got[0].FirstJoinedAt)
+	s.Equal("tfid-1", got[0].TokenFamilyID)
+	s.Empty(got[1].TokenFamilyID)
 }
 
 func (s *ParticipantStoreTestSuite) TestListBySessionID_Empty() {

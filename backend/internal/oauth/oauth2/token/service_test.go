@@ -514,21 +514,23 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_WithRefreshToken() {
 
 	tokenRespDTO := &model.TokenResponseDTO{
 		AccessToken: model.TokenDTO{
-			Token:     "access-token-123",
-			TokenType: "Bearer",
-			ExpiresIn: 3600,
-			Scopes:    []string{"openid"},
-			Subject:   "user123",
-			Audiences: []string{"test-audience"},
+			Token:         "access-token-123",
+			TokenType:     "Bearer",
+			ExpiresIn:     3600,
+			Scopes:        []string{"openid"},
+			Subject:       "user123",
+			Audiences:     []string{"test-audience"},
+			TokenFamilyID: "tfid-access-123",
 		},
 		RefreshToken: model.TokenDTO{Token: ""},
 		IDToken:      model.TokenDTO{Token: ""},
 	}
 	suite.mockGrantHandler.On("HandleGrant", mock.Anything, mock.Anything, app).Return(tokenRespDTO, nil)
 
+	// The access token's tfid must be forwarded to refresh-token issuance so both tokens share the family.
 	mockRefreshHandler.
 		On("IssueRefreshToken", mock.Anything, tokenRespDTO, app, "user123", []string{"test-audience"},
-			"authorization_code", []string{"openid"}, (*model.ClaimsRequest)(nil), "", "").
+			"authorization_code", []string{"openid"}, (*model.ClaimsRequest)(nil), "", "", "tfid-access-123").
 		Return(nil)
 
 	svc := suite.newService()
@@ -583,7 +585,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_RefreshTokenIssuance
 
 	mockRefreshHandler.
 		On("IssueRefreshToken", mock.Anything, tokenRespDTO, app, "user123", []string{"test-audience"},
-			"authorization_code", []string{"openid"}, (*model.ClaimsRequest)(nil), "", "").
+			"authorization_code", []string{"openid"}, (*model.ClaimsRequest)(nil), "", "", "").
 		Return(&model.ErrorResponse{
 			Error:            "server_error",
 			ErrorDescription: "Failed to issue refresh token",
@@ -805,7 +807,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_WithRefreshToken_Use
 	mockRefreshHandler.
 		On("IssueRefreshToken", mock.Anything, tokenRespDTO, app, "user123",
 			[]string{"original-audience-1", "original-audience-2"},
-			"authorization_code", []string{"openid"}, (*model.ClaimsRequest)(nil), "", "").
+			"authorization_code", []string{"openid"}, (*model.ClaimsRequest)(nil), "", "", "").
 		Return(nil)
 
 	svc := suite.newService()
@@ -863,7 +865,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_CIBA_RefreshTokenUse
 	mockRefreshHandler.
 		On("IssueRefreshToken", mock.Anything, tokenRespDTO, app, "user-1",
 			[]string{"https://api.example.com"},
-			string(providers.GrantTypeCIBA), []string{"openid", "read"}, (*model.ClaimsRequest)(nil), "", "").
+			string(providers.GrantTypeCIBA), []string{"openid", "read"}, (*model.ClaimsRequest)(nil), "", "", "").
 		Return(nil)
 
 	svc := suite.newService()

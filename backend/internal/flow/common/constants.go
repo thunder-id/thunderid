@@ -233,6 +233,12 @@ const (
 	// cookie. Like RuntimeKeySSOSessionHandle it rides the engine-only EngineData channel, keeping SSO
 	// concepts off the reusable engine contract.
 	RuntimeKeySSOSessionCleared = "ssoSessionCleared"
+	// RuntimeKeyTokenFamilyID carries the token family id (tfid) minted once per login flow execution
+	// by the Session node. It is stamped onto the auth assertion, and from there onto the grant's
+	// access and refresh tokens, so revocation can target a whole family. It is deliberately excluded
+	// from the SSO checkpoint snapshot so each flow execution mints a fresh tfid rather than reusing a
+	// prior one on SSO reuse.
+	RuntimeKeyTokenFamilyID = "tokenFamilyId"
 )
 
 // SSOCheckpointKey scopes a per-checkpoint SSO control key (RuntimeKeySSOSessionPresent,

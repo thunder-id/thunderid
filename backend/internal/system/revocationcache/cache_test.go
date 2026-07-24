@@ -30,35 +30,41 @@ func TestRevokedCache_ReplaceAndIsRevoked(t *testing.T) {
 	c := newRevokedCache()
 	future := time.Now().Add(time.Hour)
 
-	assert.False(t, c.isRevoked("jti-1"), "empty cache reports nothing revoked")
+	assert.False(t, c.isTokenRevoked("jti-1"), "empty cache reports nothing revoked")
 
-	c.replace([]revokedEntry{
-		{JTI: "jti-1", ExpiryTime: future},
-		{JTI: "jti-2", ExpiryTime: future},
+	c.replace(revokedSnapshot{
+		Tokens: []revokedEntry{
+			{Value: "jti-1", ExpiryTime: future},
+			{Value: "jti-2", ExpiryTime: future},
+		},
+		Families: []revokedEntry{{Value: "tfid-1", ExpiryTime: future}},
 	})
 
-	assert.True(t, c.isRevoked("jti-1"))
-	assert.True(t, c.isRevoked("jti-2"))
-	assert.False(t, c.isRevoked("jti-3"))
+	assert.True(t, c.isTokenRevoked("jti-1"))
+	assert.True(t, c.isTokenRevoked("jti-2"))
+	assert.False(t, c.isTokenRevoked("jti-3"))
+	assert.True(t, c.isTokenFamilyRevoked("tfid-1"))
+	assert.False(t, c.isTokenFamilyRevoked("jti-1"), "a jti must not match the family dimension")
+	assert.False(t, c.isTokenRevoked("tfid-1"), "a tfid must not match the token dimension")
 }
 
 func TestRevokedCache_ReplaceSwapsSnapshot(t *testing.T) {
 	c := newRevokedCache()
 	future := time.Now().Add(time.Hour)
 
-	c.replace([]revokedEntry{{JTI: "old", ExpiryTime: future}})
-	assert.True(t, c.isRevoked("old"))
+	c.replace(revokedSnapshot{Tokens: []revokedEntry{{Value: "old", ExpiryTime: future}}})
+	assert.True(t, c.isTokenRevoked("old"))
 
-	c.replace([]revokedEntry{{JTI: "new", ExpiryTime: future}})
-	assert.False(t, c.isRevoked("old"), "prior entries are dropped on replace")
-	assert.True(t, c.isRevoked("new"))
+	c.replace(revokedSnapshot{Tokens: []revokedEntry{{Value: "new", ExpiryTime: future}}})
+	assert.False(t, c.isTokenRevoked("old"), "prior entries are dropped on replace")
+	assert.True(t, c.isTokenRevoked("new"))
 }
 
 func TestRevokedCache_ExpiredEntryNotRevoked(t *testing.T) {
 	c := newRevokedCache()
-	c.replace([]revokedEntry{{JTI: "expired", ExpiryTime: time.Now().Add(-time.Second)}})
+	c.replace(revokedSnapshot{Tokens: []revokedEntry{{Value: "expired", ExpiryTime: time.Now().Add(-time.Second)}}})
 
-	assert.False(t, c.isRevoked("expired"), "an entry past its expiry is treated as not revoked")
+	assert.False(t, c.isTokenRevoked("expired"), "an entry past its expiry is treated as not revoked")
 }
 
 func TestRevokedCache_ConcurrentAccess(t *testing.T) {
@@ -70,14 +76,14 @@ func TestRevokedCache_ConcurrentAccess(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			c.replace([]revokedEntry{{JTI: "jti", ExpiryTime: future}})
+			c.replace(revokedSnapshot{Tokens: []revokedEntry{{Value: "jti", ExpiryTime: future}}})
 		}()
 		go func() {
 			defer wg.Done()
-			_ = c.isRevoked("jti")
+			_ = c.isTokenRevoked("jti")
 		}()
 	}
 	wg.Wait()
 
-	assert.True(t, c.isRevoked("jti"))
+	assert.True(t, c.isTokenRevoked("jti"))
 }

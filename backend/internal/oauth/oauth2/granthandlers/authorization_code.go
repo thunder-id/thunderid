@@ -184,6 +184,7 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		ClaimsLocales:     authCode.ClaimsLocales,
 		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
 		DPoPJkt:           dpop.GetJkt(ctx),
+		TokenFamilyID:     authCode.TokenFamilyID,
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}

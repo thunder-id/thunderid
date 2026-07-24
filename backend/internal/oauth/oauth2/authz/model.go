@@ -55,6 +55,10 @@ type AuthorizationCode struct {
 	Nonce               string
 	CompletedACR        string
 	DPoPJkt             string
+	// TokenFamilyID is the token family id (tfid) minted during the login flow and carried on the flow
+	// assertion. It is stamped onto the access and refresh tokens issued for this code so revocation
+	// can target the whole family. Empty when the login flow issued no tfid (e.g. pre-rollout tokens).
+	TokenFamilyID string
 }
 
 // AuthZPostRequest represents the request body for the authorization POST request.
@@ -89,4 +93,5 @@ type assertionClaims struct {
 	attributeCacheID       string
 	completedACR           string
 	authorizationRequestID string
+	tokenFamilyID          string
 }

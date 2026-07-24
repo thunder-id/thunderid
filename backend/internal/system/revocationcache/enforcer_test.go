@@ -28,19 +28,24 @@ import (
 
 func TestEnforcer_EnsureNotRevoked(t *testing.T) {
 	cache := newRevokedCache()
-	cache.replace([]revokedEntry{{JTI: "revoked-jti", ExpiryTime: time.Now().Add(time.Hour)}})
+	cache.replace(revokedSnapshot{
+		Tokens:   []revokedEntry{{Value: "revoked-jti", ExpiryTime: time.Now().Add(time.Hour)}},
+		Families: []revokedEntry{{Value: "revoked-tfid", ExpiryTime: time.Now().Add(time.Hour)}},
+	})
 	e := newEnforcer(cache)
 
-	assert.NoError(t, e.EnsureNotRevoked(context.Background(), ""),
-		"empty id is a no-op")
-	assert.NoError(t, e.EnsureNotRevoked(context.Background(), "active-jti"),
-		"a jti not on the deny list may proceed")
-	assert.ErrorIs(t, e.EnsureNotRevoked(context.Background(), "revoked-jti"), errTokenRevoked,
+	assert.NoError(t, e.EnsureNotRevoked(context.Background(), "", ""),
+		"empty ids are a no-op")
+	assert.NoError(t, e.EnsureNotRevoked(context.Background(), "active-jti", "active-tfid"),
+		"a token with a clean jti and family may proceed")
+	assert.ErrorIs(t, e.EnsureNotRevoked(context.Background(), "revoked-jti", ""), errTokenRevoked,
 		"a jti on the deny list is rejected")
+	assert.ErrorIs(t, e.EnsureNotRevoked(context.Background(), "active-jti", "revoked-tfid"), errTokenRevoked,
+		"a token whose family is revoked is rejected even with a clean jti")
 }
 
 func TestNoopEnforcer_AlwaysAllows(t *testing.T) {
 	var e EnforcerInterface = noopEnforcer{}
-	assert.NoError(t, e.EnsureNotRevoked(context.Background(), "anything"))
-	assert.NoError(t, e.EnsureNotRevoked(context.Background(), ""))
+	assert.NoError(t, e.EnsureNotRevoked(context.Background(), "anything", ""))
+	assert.NoError(t, e.EnsureNotRevoked(context.Background(), "", ""))
 }

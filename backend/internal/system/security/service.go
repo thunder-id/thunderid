@@ -34,13 +34,13 @@ type SecurityServiceInterface interface {
 	Process(r *http.Request) (context.Context, error)
 }
 
-// RevocationEnforcerInterface rejects tokens whose revocation identifier is on the deny list. It is
+// RevocationEnforcerInterface rejects tokens whose jti or token family id is on the deny list. It is
 // the read-only seam the security layer uses to consult the Resource Server's revocation cache
 // without depending on its implementation.
 type RevocationEnforcerInterface interface {
-	// EnsureNotRevoked returns a non-nil error when the token identified by id has been revoked.
-	// An empty id is a no-op.
-	EnsureNotRevoked(ctx context.Context, id string) error
+	// EnsureNotRevoked returns a non-nil error when the token's jti or its token family id has been
+	// revoked. Empty identifiers are each a no-op.
+	EnsureNotRevoked(ctx context.Context, jti, tokenFamilyID string) error
 }
 
 // securityService orchestrates authentication and authorization for HTTP requests.
@@ -122,10 +122,11 @@ func (s *securityService) Process(r *http.Request) (context.Context, error) {
 		ctx = withSecurityContext(ctx, securityCtx)
 
 		// Reject the request when the presented token has been revoked. This runs after successful
-		// authentication and is format-agnostic: it enforces on the token's revocation identifier. A
-		// revoked token is surfaced as an invalid token (RFC 6750 §3.1) so the response does not
+		// authentication and is format-agnostic: it enforces on the token's jti and its token family
+		// id. A revoked token is surfaced as an invalid token (RFC 6750 §3.1) so the response does not
 		// disclose that the token was specifically revoked.
-		if err := s.revocationEnforcer.EnsureNotRevoked(ctx, securityCtx.revocationID); err != nil {
+		if err := s.revocationEnforcer.EnsureNotRevoked(ctx, securityCtx.revocationID,
+			securityCtx.tokenFamilyID); err != nil {
 			return s.handleAuthError(ctx, isPublic, errInvalidToken)
 		}
 	}

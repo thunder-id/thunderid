@@ -69,6 +69,34 @@ func (suite *AuthorizationCodeStoreTestSuite) TestNewAuthorizationCodeStore() {
 	assert.Implements(suite.T(), (*AuthorizationCodeStoreInterface)(nil), store)
 }
 
+// Tests for the consumed-code replay markers
+
+func (suite *AuthorizationCodeStoreTestSuite) TestMarkAndReadConsumedTokenFamily() {
+	err := suite.store.MarkConsumedTokenFamily(context.Background(), "code-x", "tfid-x", time.Minute)
+	suite.NoError(err)
+
+	tfid, found, err := suite.store.ConsumedTokenFamily(context.Background(), "code-x")
+	suite.NoError(err)
+	suite.True(found)
+	suite.Equal("tfid-x", tfid)
+}
+
+func (suite *AuthorizationCodeStoreTestSuite) TestConsumedTokenFamily_Missing() {
+	tfid, found, err := suite.store.ConsumedTokenFamily(context.Background(), "no-such-code")
+	suite.NoError(err)
+	suite.False(found)
+	suite.Empty(tfid)
+}
+
+func (suite *AuthorizationCodeStoreTestSuite) TestMarkConsumedTokenFamily_EmptyTokenFamilyIsNoOp() {
+	err := suite.store.MarkConsumedTokenFamily(context.Background(), "code-y", "", time.Minute)
+	suite.NoError(err)
+
+	_, found, err := suite.store.ConsumedTokenFamily(context.Background(), "code-y")
+	suite.NoError(err)
+	suite.False(found)
+}
+
 // Tests for InsertAuthorizationCode
 
 func (suite *AuthorizationCodeStoreTestSuite) TestInsertAuthorizationCode_Success() {

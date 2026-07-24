@@ -33,3 +33,22 @@ var queryIsTokenRevoked = dbmodel.DBQuery{
 	ID:    "RVQ-RTS-02",
 	Query: `SELECT 1 FROM "REVOKED_TOKEN" WHERE JTI = $1 AND EXPIRY_TIME > $2 AND DEPLOYMENT_ID = $3`,
 }
+
+// queryInsertRevocationCriterion records a criteria-based (many-token) revocation. The write is
+// idempotent: re-revoking the same (deployment, type, value) refreshes the reason and time bounds
+// rather than inserting a duplicate, enforced by the unique index backing the conflict target.
+var queryInsertRevocationCriterion = dbmodel.DBQuery{
+	ID: "RVQ-RCS-01",
+	Query: `INSERT INTO "REVOCATION_CRITERIA" (ID, CRITERION_TYPE, CRITERION_VALUE, REASON, ` +
+		`REVOKED_AT, EXPIRY_TIME, DEPLOYMENT_ID) VALUES ($1, $2, $3, $4, $5, $6, $7) ` +
+		`ON CONFLICT (DEPLOYMENT_ID, CRITERION_TYPE, CRITERION_VALUE) DO UPDATE SET ` +
+		`REASON = excluded.REASON, REVOKED_AT = excluded.REVOKED_AT, EXPIRY_TIME = excluded.EXPIRY_TIME`,
+}
+
+// queryIsCriterionRevoked checks whether a non-expired criteria entry exists for the given
+// (type, value) pair.
+var queryIsCriterionRevoked = dbmodel.DBQuery{
+	ID: "RVQ-RCS-02",
+	Query: `SELECT 1 FROM "REVOCATION_CRITERIA" WHERE CRITERION_TYPE = $1 AND CRITERION_VALUE = $2 ` +
+		`AND EXPIRY_TIME > $3 AND DEPLOYMENT_ID = $4`,
+}

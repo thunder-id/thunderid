@@ -289,7 +289,7 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_Success() {
 	m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, p Participant) error { recorded = p; return nil })
 
-	sess, sc, err := svc.LoadCheckpoint(context.Background(), "handle-abc", "session", "app-456")
+	sess, sc, err := svc.LoadCheckpoint(context.Background(), "handle-abc", "session", "app-456", "tfid-1")
 	suite.Require().NoError(err)
 
 	suite.Require().NotNil(sess)
@@ -306,7 +306,7 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_Success() {
 func (suite *ServiceTestSuite) TestLoadCheckpoint_NoHandle() {
 	svc, _ := suite.newService()
 
-	_, _, err := svc.LoadCheckpoint(context.Background(), "", "session", "app-456")
+	_, _, err := svc.LoadCheckpoint(context.Background(), "", "session", "app-456", "tfid-1")
 
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "no resolved session handle")
@@ -316,7 +316,7 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_MissingSession() {
 	svc, m := suite.newService()
 	m.store.EXPECT().GetByHandle(mock.Anything, mock.Anything).Return(nil, nil)
 
-	_, _, err := svc.LoadCheckpoint(context.Background(), "handle-abc", "session", "app-456")
+	_, _, err := svc.LoadCheckpoint(context.Background(), "handle-abc", "session", "app-456", "tfid-1")
 
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "resolved session no longer exists")
@@ -328,13 +328,13 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_MissingContext() {
 		Return(&Session{SessionID: "sess-1", HandleID: "handle-abc", State: StateActive}, nil)
 	m.store.EXPECT().GetByCheckpoint(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
-	_, _, err := svc.LoadCheckpoint(context.Background(), "handle-abc", "session", "app-456")
+	_, _, err := svc.LoadCheckpoint(context.Background(), "handle-abc", "session", "app-456", "tfid-1")
 
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "session context for checkpoint")
 }
 
-func (suite *ServiceTestSuite) TestLoadCheckpoint_ParticipantErrorIsNonFatal() {
+func (suite *ServiceTestSuite) TestLoadCheckpoint_ParticipantErrorWithTokenFamilyIsFatal() {
 	svc, m := suite.newService()
 	m.store.EXPECT().GetByHandle(mock.Anything, mock.Anything).
 		Return(&Session{SessionID: "sess-1", HandleID: "handle-abc", State: StateActive}, nil)
@@ -343,9 +343,26 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_ParticipantErrorIsNonFatal() {
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
 	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(errors.New("db down"))
 
-	sess, sc, err := svc.LoadCheckpoint(context.Background(), "handle-abc", "session", "app-456")
+	sess, sc, err := svc.LoadCheckpoint(context.Background(), "handle-abc", "session", "app-456", "tfid-1")
 
-	suite.Require().NoError(err, "a participant-record failure must not fail the load")
+	suite.Require().Error(err, "issuing a token family whose mapping cannot persist must fail the load")
+	suite.Contains(err.Error(), "token family")
+	suite.Nil(sess)
+	suite.Nil(sc)
+}
+
+func (suite *ServiceTestSuite) TestLoadCheckpoint_ParticipantErrorWithoutTokenFamilyIsNonFatal() {
+	svc, m := suite.newService()
+	m.store.EXPECT().GetByHandle(mock.Anything, mock.Anything).
+		Return(&Session{SessionID: "sess-1", HandleID: "handle-abc", State: StateActive}, nil)
+	m.store.EXPECT().GetByCheckpoint(mock.Anything, mock.Anything, mock.Anything).
+		Return(&SessionContext{SessionID: "sess-1"}, nil)
+	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(errors.New("db down"))
+
+	sess, sc, err := svc.LoadCheckpoint(context.Background(), "handle-abc", "session", "app-456", "")
+
+	suite.Require().NoError(err, "with no token family there is nothing to revoke, so the load survives")
 	suite.NotNil(sess)
 	suite.NotNil(sc)
 }
@@ -365,6 +382,41 @@ func (suite *ServiceTestSuite) TestTerminate_DeletesSessionAndPurges() {
 	suite.Require().NoError(err)
 	suite.Require().NotNil(got)
 	suite.Equal("sess-1", got.SessionID, "the terminated session is returned")
+}
+
+func (suite *ServiceTestSuite) TestTerminate_RevokesParticipantFamilies() {
+	m := &serviceMocks{
+		store: newSessionStoreMock(suite.T()),
+		tx:    transactionmock.NewTransactionerMock(suite.T()),
+	}
+	revoker := NewCriteriaRevokerMock(suite.T())
+	svc := &service{
+		store:           m.store,
+		resolver:        newResolver(m.store),
+		transactioner:   m.tx,
+		criteriaRevoker: revoker,
+		timeouts:        DefaultTimeouts(),
+		logger:          log.GetLogger(),
+	}
+
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
+	runTx(m)
+	// Families are revoked before the deletes, one per participant.
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-a"},
+		{SessionID: "sess-1", AppID: "app-2", TokenFamilyID: "tfid-b"},
+	}, nil)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(nil)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-b").Return(nil)
+	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(nil)
+	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil)
+
+	got, err := svc.Terminate(context.Background(), "handle-abc", "flow-1")
+
+	suite.Require().NoError(err)
+	suite.Require().NotNil(got)
+	revoker.AssertExpectations(suite.T())
 }
 
 func (suite *ServiceTestSuite) TestTerminate_NoHandle() {

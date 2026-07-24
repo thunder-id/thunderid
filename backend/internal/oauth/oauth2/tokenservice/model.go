@@ -71,6 +71,9 @@ type AccessTokenBuildContext struct {
 	// subject (used by the jwt-bearer/ID-JAG grant). It is emitted as the `idp` claim so downstream
 	// consumers can distinguish a federated principal from a local one.
 	SourceIDP string
+	// TokenFamilyID, when set, is stamped as the `tfid` claim so the token can be revoked as part of
+	// its authorization grant's family. It is constant across refresh rotation.
+	TokenFamilyID string
 }
 
 // RefreshTokenBuildContext contains all the information needed to build a refresh token.
@@ -86,6 +89,9 @@ type RefreshTokenBuildContext struct {
 	ClaimsLocales        string
 	DPoPJkt              string
 	ActorSub             string
+	// TokenFamilyID, when set, is stamped as the `tfid` claim on the refresh token. It is copied
+	// unchanged across rotation so every token of the grant shares one family id.
+	TokenFamilyID string
 }
 
 // IDJAGBuildContext contains all the information needed to build an ID-JAG (Identity Assertion
@@ -131,6 +137,10 @@ type RefreshTokenClaims struct {
 	// Exp is the refresh token's expiry (exp claim); used to bound the deny-list entry when the token
 	// is revoked on rotation.
 	Exp int64
+	// TokenFamilyID is the token family id (tfid) carried on the refresh token. It is copied onto the
+	// tokens minted during rotation so the family stays intact, and used to revoke the whole family on
+	// reuse. Empty for pre-rollout tokens.
+	TokenFamilyID string
 }
 
 // SubjectTokenClaims represents the validated claims from a subject token (for token exchange).
@@ -147,6 +157,9 @@ type SubjectTokenClaims struct {
 	// JTI is the subject token's unique identifier, populated only for self-issued tokens and used
 	// for deny-list (revocation) enforcement. Empty for externally-issued subject tokens.
 	JTI string
+	// TokenFamilyID is the subject token's token family id (tfid), if any. Token exchange may inherit
+	// it onto the exchanged token so the two share a revocation family.
+	TokenFamilyID string
 }
 
 // IDJAGAssertionClaims represents the validated claims from an ID-JAG assertion presented on the

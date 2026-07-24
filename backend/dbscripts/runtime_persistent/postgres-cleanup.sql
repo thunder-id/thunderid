@@ -78,5 +78,15 @@ BEGIN
         COMMIT;
         EXIT WHEN v_deleted = 0;
     END LOOP;
+
+    LOOP
+        DELETE FROM "REVOCATION_CRITERIA"
+        WHERE ctid IN (
+            SELECT ctid FROM "REVOCATION_CRITERIA" WHERE EXPIRY_TIME < v_now LIMIT p_batch_size
+        );
+        GET DIAGNOSTICS v_deleted = ROW_COUNT;
+        COMMIT;
+        EXIT WHEN v_deleted = 0;
+    END LOOP;
 END;
 $$;

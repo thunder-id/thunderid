@@ -178,3 +178,66 @@ func (_c *RevocationServiceInterfaceMock_RevokeToken_Call) RunAndReturn(run func
 	_c.Call.Return(run)
 	return _c
 }
+
+// RevokeTokenFamily provides a mock function for the type RevocationServiceInterfaceMock
+func (_mock *RevocationServiceInterfaceMock) RevokeTokenFamily(ctx context.Context, tokenFamilyID string, reason RevocationReason) error {
+	ret := _mock.Called(ctx, tokenFamilyID, reason)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RevokeTokenFamily")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, RevocationReason) error); ok {
+		r0 = returnFunc(ctx, tokenFamilyID, reason)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// RevocationServiceInterfaceMock_RevokeTokenFamily_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RevokeTokenFamily'
+type RevocationServiceInterfaceMock_RevokeTokenFamily_Call struct {
+	*mock.Call
+}
+
+// RevokeTokenFamily is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tokenFamilyID string
+//   - reason RevocationReason
+func (_e *RevocationServiceInterfaceMock_Expecter) RevokeTokenFamily(ctx interface{}, tokenFamilyID interface{}, reason interface{}) *RevocationServiceInterfaceMock_RevokeTokenFamily_Call {
+	return &RevocationServiceInterfaceMock_RevokeTokenFamily_Call{Call: _e.mock.On("RevokeTokenFamily", ctx, tokenFamilyID, reason)}
+}
+
+func (_c *RevocationServiceInterfaceMock_RevokeTokenFamily_Call) Run(run func(ctx context.Context, tokenFamilyID string, reason RevocationReason)) *RevocationServiceInterfaceMock_RevokeTokenFamily_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 RevocationReason
+		if args[2] != nil {
+			arg2 = args[2].(RevocationReason)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *RevocationServiceInterfaceMock_RevokeTokenFamily_Call) Return(err error) *RevocationServiceInterfaceMock_RevokeTokenFamily_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *RevocationServiceInterfaceMock_RevokeTokenFamily_Call) RunAndReturn(run func(ctx context.Context, tokenFamilyID string, reason RevocationReason) error) *RevocationServiceInterfaceMock_RevokeTokenFamily_Call {
+	_c.Call.Return(run)
+	return _c
+}

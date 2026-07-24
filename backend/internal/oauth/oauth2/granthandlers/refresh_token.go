@@ -52,6 +52,7 @@ type refreshTokenGrantHandler struct {
 	resourceService     providers.ResourceServerProvider
 	serverConfigService serverconfig.ServerConfigService
 	refreshRevoker      revocation.RefreshTokenRevokerInterface
+	criteriaRevoker     revocation.CriteriaRevokerInterface
 }
 
 // newRefreshTokenGrantHandler creates a new instance of RefreshTokenGrantHandler.
@@ -63,6 +64,7 @@ func newRefreshTokenGrantHandler(
 	resourceService providers.ResourceServerProvider,
 	serverConfigService serverconfig.ServerConfigService,
 	refreshRevoker revocation.RefreshTokenRevokerInterface,
+	criteriaRevoker revocation.CriteriaRevokerInterface,
 	cfg oauthconfig.Config,
 ) RefreshTokenGrantHandlerInterface {
 	return &refreshTokenGrantHandler{
@@ -74,6 +76,7 @@ func newRefreshTokenGrantHandler(
 		resourceService:     resourceService,
 		serverConfigService: serverConfigService,
 		refreshRevoker:      refreshRevoker,
+		criteriaRevoker:     criteriaRevoker,
 	}
 }
 
@@ -125,6 +128,11 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 				Error:            constants.ErrorServerError,
 				ErrorDescription: "Token revocation status could not be verified",
 			}
+		}
+		// A revoked (already-rotated) refresh token presented again is a reuse/replay signal: revoke
+		// the whole token family so the attacker's freshly rotated tokens die too (RFC 9700 §4.14.2).
+		if errors.Is(err, revocation.ErrTokenRevoked) {
+			h.revokeTokenFamilyOnReuse(ctx, tokenRequest.RefreshToken, logger)
 		}
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorInvalidGrant,
@@ -235,6 +243,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 		ClaimsLocales:     refreshTokenClaims.ClaimsLocales,
 		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
 		DPoPJkt:           dpop.GetJkt(ctx),
+		TokenFamilyID:     refreshTokenClaims.TokenFamilyID,
 	}
 	// Replay the on-behalf-of decision frozen at issuance, sourced from the stored marker
 	// rather than the client's current setting.
@@ -285,7 +294,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 			refreshTokenClaims.Sub, audiences,
 			refreshTokenClaims.GrantType, newTokenScopes,
 			refreshTokenClaims.ClaimsRequest, refreshTokenClaims.ClaimsLocales,
-			refreshTokenClaims.AttributeCacheID)
+			refreshTokenClaims.AttributeCacheID, refreshTokenClaims.TokenFamilyID)
 		if errResp != nil && errResp.Error != "" {
 			logger.Error(ctx, "Failed to issue refresh token", log.String("error", errResp.Error))
 			return nil, errResp
@@ -323,6 +332,31 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	return tokenResponse, nil
 }
 
+// revokeTokenFamilyOnReuse revokes the token family of a replayed (already-revoked) refresh token, when
+// enabled. It is best-effort: the refresh grant is rejected as invalid_grant regardless, and a failed
+// family revoke is logged but does not change that outcome. The refresh token's signature was already
+// verified upstream, so its tfid claim is trustworthy; the payload is decoded here only to read it.
+func (h *refreshTokenGrantHandler) revokeTokenFamilyOnReuse(ctx context.Context, refreshToken string,
+	logger *log.Logger) {
+	if h.criteriaRevoker == nil || !h.cfg.OAuth.Revocation.TokenFamily.OnRefreshReuse {
+		return
+	}
+	claims, err := jwt.DecodeJWTPayload(refreshToken)
+	if err != nil {
+		logger.Debug(ctx, "Could not decode replayed refresh token to resolve its token family",
+			log.Error(err))
+		return
+	}
+	tokenFamilyID, _ := claims[constants.ClaimTokenFamilyID].(string)
+	if tokenFamilyID == "" {
+		return
+	}
+	if err := h.criteriaRevoker.RevokeTokenFamily(ctx, tokenFamilyID,
+		revocation.RevocationReasonRefreshReuse); err != nil {
+		logger.Error(ctx, "Failed to revoke token family on refresh token reuse", log.Error(err))
+	}
+}
+
 // IssueRefreshToken generates a new refresh token for the given OAuth application and scopes.
 func (h *refreshTokenGrantHandler) IssueRefreshToken(
 	ctx context.Context,
@@ -333,6 +367,7 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 	claimsRequest *model.ClaimsRequest,
 	claimsLocales string,
 	attributeCacheID string,
+	tokenFamilyID string,
 ) *model.ErrorResponse {
 	tokenCtx := &tokenservice.RefreshTokenBuildContext{
 		ClientID:             oauthApp.ClientID,
@@ -345,6 +380,7 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 		ClaimsRequest:        claimsRequest,
 		ClaimsLocales:        claimsLocales,
 		DPoPJkt:              dpopJktForRefresh(ctx, oauthApp),
+		TokenFamilyID:        tokenFamilyID,
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		tokenCtx.ActorSub = oauthApp.ID

@@ -33,6 +33,11 @@ import (
 // identifier for the enforcement step.
 const claimJTI = "jti"
 
+// claimTokenFamilyID is the token family id claim (tfid); its value lets the enforcement step reject a
+// token whose whole authorization grant has been revoked. It is defined here (not imported from the
+// OAuth package) to keep the security layer decoupled from OAuth internals.
+const claimTokenFamilyID = "tfid"
+
 // jwtAuthenticator handles authentication and authorization using JWT Bearer tokens.
 type jwtAuthenticator struct {
 	jwtService jwt.JWTServiceInterface
@@ -94,6 +99,7 @@ func (h *jwtAuthenticator) Authenticate(r *http.Request) (*SecurityContext, erro
 	// the enforcement step; it may be empty.
 	securityCtx := newSecurityContext(subject, ouID, token, scopes, attributes)
 	securityCtx.revocationID = extractAttribute(attributes, claimJTI)
+	securityCtx.tokenFamilyID = extractAttribute(attributes, claimTokenFamilyID)
 	return securityCtx, nil
 }
 

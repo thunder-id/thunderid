@@ -20,6 +20,7 @@ package granthandlers
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"testing"
 	"time"
@@ -69,6 +70,7 @@ type RefreshTokenGrantHandlerTestSuite struct {
 	mockResourceService  *resourcemock.ResourceServiceInterfaceMock
 	mockServerConfigSvc  *serverconfigmock.ServerConfigServiceMock
 	mockRefreshRevoker   *revocationmock.RefreshTokenRevokerInterfaceMock
+	mockCriteriaRevoker  *revocationmock.CriteriaRevokerInterfaceMock
 	oauthApp             *providers.OAuthClient
 	validRefreshToken    string
 	validClaims          map[string]interface{}
@@ -105,6 +107,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) SetupTest() {
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	suite.mockServerConfigSvc = serverconfigmock.NewServerConfigServiceMock(suite.T())
 	suite.mockRefreshRevoker = revocationmock.NewRefreshTokenRevokerInterfaceMock(suite.T())
+	suite.mockCriteriaRevoker = revocationmock.NewCriteriaRevokerInterfaceMock(suite.T())
 
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
 		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
@@ -159,6 +162,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) rebuildHandlerWithConfig() {
 		suite.mockResourceService,
 		suite.mockServerConfigSvc,
 		suite.mockRefreshRevoker,
+		suite.mockCriteriaRevoker,
 		suite.testCfg,
 	).(*refreshTokenGrantHandler)
 }
@@ -172,9 +176,36 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestNewRefreshTokenGrantHandler(
 		suite.mockTokenBuilder,
 		suite.mockTokenValidator,
 		suite.mockAttrCacheService,
-		suite.mockResourceService, suite.mockServerConfigSvc, suite.mockRefreshRevoker, testhelpers.OAuthConfig())
+		suite.mockResourceService, suite.mockServerConfigSvc, suite.mockRefreshRevoker,
+		suite.mockCriteriaRevoker, testhelpers.OAuthConfig())
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*RefreshTokenGrantHandlerInterface)(nil), handler)
+}
+
+// A replayed (already-revoked) refresh token triggers a family revoke and is rejected as invalid_grant.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_ReuseRevokesTokenFamily() {
+	suite.testCfg.OAuth.Revocation.TokenFamily.OnRefreshReuse = true
+	suite.rebuildHandlerWithConfig()
+
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"jti":"jti-old","tfid":"tfid-reuse"}`))
+	reusedToken := "eyJhbGciOiJub25lIn0." + payload + ".sig"
+	req := &model.TokenRequest{
+		GrantType:    string(providers.GrantTypeRefreshToken),
+		ClientID:     testClientID,
+		RefreshToken: reusedToken,
+	}
+
+	suite.mockTokenValidator.On("ValidateRefreshToken", mock.Anything, reusedToken, testClientID).
+		Return(nil, revocation.ErrTokenRevoked)
+	suite.mockCriteriaRevoker.On("RevokeTokenFamily", mock.Anything, "tfid-reuse",
+		revocation.RevocationReasonRefreshReuse).Return(nil)
+
+	resp, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, errResp.Error)
+	suite.mockCriteriaRevoker.AssertExpectations(suite.T())
 }
 
 func (suite *RefreshTokenGrantHandlerTestSuite) TestValidateGrant_Success() {
@@ -268,6 +299,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_Success() 
 			return ctx.ClientID == testRefreshTokenClientID &&
 				ctx.GrantType == "authorization_code" &&
 				ctx.AccessTokenSubject == testRefreshTokenUserID &&
+				ctx.TokenFamilyID == "tfid-issue-refresh" &&
 				len(ctx.AccessTokenAudiences) == 1 && ctx.AccessTokenAudiences[0] == testRefreshTokenAudience
 		})).Return(&model.TokenDTO{
 		Token:     "new.refresh.token",
@@ -282,7 +314,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_Success() 
 
 	err := suite.handler.IssueRefreshToken(context.Background(), tokenResponse, suite.oauthApp,
 		testRefreshTokenUserID, []string{testRefreshTokenAudience},
-		"authorization_code", []string{"read", "write"}, nil, "", "")
+		"authorization_code", []string{"read", "write"}, nil, "", "", "tfid-issue-refresh")
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), tokenResponse.RefreshToken)
@@ -302,7 +334,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_JWTGenerat
 	tokenResponse := &model.TokenResponseDTO{}
 
 	err := suite.handler.IssueRefreshToken(context.Background(), tokenResponse, suite.oauthApp, "", nil,
-		"authorization_code", []string{"read"}, nil, "", "")
+		"authorization_code", []string{"read"}, nil, "", "", "")
 
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), constants.ErrorServerError, err.Error)
@@ -322,7 +354,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_WithEmptyT
 	tokenResponse := &model.TokenResponseDTO{}
 
 	err := suite.handler.IssueRefreshToken(context.Background(), tokenResponse, suite.oauthApp, "", nil,
-		"authorization_code", []string{"read"}, nil, "", "")
+		"authorization_code", []string{"read"}, nil, "", "", "")
 
 	assert.Nil(suite.T(), err)
 }
@@ -347,7 +379,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_WithClaims
 
 	err := suite.handler.IssueRefreshToken(context.Background(), tokenResponse, suite.oauthApp,
 		testRefreshTokenUserID, []string{testRefreshTokenAudience},
-		"authorization_code", []string{"read"}, nil, "en-US fr-CA ja", "")
+		"authorization_code", []string{"read"}, nil, "en-US fr-CA ja", "", "")
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), tokenResponse.RefreshToken)
@@ -377,7 +409,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_AgentClien
 	tokenResponse := &model.TokenResponseDTO{}
 	err := suite.handler.IssueRefreshToken(context.Background(), tokenResponse, agentApp,
 		testRefreshTokenUserID, []string{testRefreshTokenAudience},
-		"authorization_code", []string{"read"}, nil, "", "")
+		"authorization_code", []string{"read"}, nil, "", "", "")
 
 	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), actAppID, capturedActorSub)
@@ -406,7 +438,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_AppClientW
 	tokenResponse := &model.TokenResponseDTO{}
 	err := suite.handler.IssueRefreshToken(context.Background(), tokenResponse, appApp,
 		testRefreshTokenUserID, []string{testRefreshTokenAudience},
-		"authorization_code", []string{"read"}, nil, "", "")
+		"authorization_code", []string{"read"}, nil, "", "", "")
 
 	assert.Nil(suite.T(), err)
 	assert.Empty(suite.T(), capturedActorSub)
@@ -611,6 +643,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RevokePreviousOn
 		suite.mockAttrCacheService,
 		suite.mockResourceService,
 		suite.mockServerConfigSvc,
+		nil,
 		nil,
 		suite.testCfg,
 	).(*refreshTokenGrantHandler)
@@ -1945,7 +1978,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_PublicClie
 
 	err := suite.handler.IssueRefreshToken(ctx, tokenResponse, suite.oauthApp,
 		testRefreshTokenUserID, []string{testRefreshTokenAudience},
-		"authorization_code", []string{"read"}, nil, "", "")
+		"authorization_code", []string{"read"}, nil, "", "", "")
 
 	assert.Nil(suite.T(), err)
 	suite.mockTokenBuilder.AssertExpectations(suite.T())
@@ -1967,7 +2000,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_Confidenti
 
 	err := suite.handler.IssueRefreshToken(ctx, tokenResponse, suite.oauthApp,
 		testRefreshTokenUserID, []string{testRefreshTokenAudience},
-		"authorization_code", []string{"read"}, nil, "", "")
+		"authorization_code", []string{"read"}, nil, "", "", "")
 
 	assert.Nil(suite.T(), err)
 	suite.mockTokenBuilder.AssertExpectations(suite.T())

@@ -175,6 +175,17 @@ func (c *AuthClassConfig) Validate() error {
 	return nil
 }
 
+// Validate ensures the token-exchange token-family mode is one of the accepted values. An empty value
+// is accepted and treated as the default (no inherited token family).
+func (c *TokenExchangeConfig) Validate() error {
+	switch c.TokenFamily {
+	case "", "none", "inherit":
+		return nil
+	default:
+		return fmt.Errorf("token_exchange: token_family must be empty, \"none\", or \"inherit\", got %q", c.TokenFamily)
+	}
+}
+
 // GetServerURL constructs the server URL from the server configuration.
 // It uses PublicURL if set, otherwise constructs from hostname, port, and scheme.
 func GetServerURL(server *ServerConfig) string {

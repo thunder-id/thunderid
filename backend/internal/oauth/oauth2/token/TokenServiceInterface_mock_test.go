@@ -3,9 +3,8 @@
 package token
 
 import (
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	context "context"
-
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	mock "github.com/stretchr/testify/mock"
 	model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"

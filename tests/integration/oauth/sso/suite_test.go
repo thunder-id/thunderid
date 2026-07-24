@@ -479,10 +479,15 @@ func (ts *SSOLogoutTestSuite) exchangeCode(client *http.Client, code string) *te
 	return &token
 }
 
-// login drives a first-time SSO login to completion (prompting for credentials, establishing the
-// session), and returns the issued id_token. It asserts the initial step prompts for credentials,
-// proving the session did not already exist.
+// login drives a first-time SSO login to completion and returns the issued id_token. See loginTokens.
 func (ts *SSOLogoutTestSuite) login(client *http.Client, username, state string) string {
+	return ts.loginTokens(client, username, state).IDToken
+}
+
+// loginTokens drives a first-time SSO login to completion (prompting for credentials, establishing
+// the session), and returns the issued tokens. It asserts the initial step prompts for credentials,
+// proving the session did not already exist.
+func (ts *SSOLogoutTestSuite) loginTokens(client *http.Client, username, state string) *testutils.TokenResponse {
 	authID, executionID := ts.authorize(client, "openid", state)
 
 	initial := ts.flowExecute(client, map[string]interface{}{"executionId": executionID})
@@ -503,5 +508,27 @@ func (ts *SSOLogoutTestSuite) login(client *http.Client, username, state string)
 
 	token := ts.exchangeCode(client, code)
 	ts.Require().NotEmpty(token.IDToken, "id_token should be issued for openid scope")
-	return token.IDToken
+	return token
+}
+
+// introspectActive reports whether the access token is active per the AS introspection endpoint.
+func (ts *SSOLogoutTestSuite) introspectActive(client *http.Client, accessToken string) bool {
+	form := url.Values{}
+	form.Set("token", accessToken)
+	req, err := http.NewRequest("POST", testutils.TestServerURL+"/oauth2/introspect",
+		strings.NewReader(form.Encode()))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(clientID, clientSecret)
+
+	resp, err := client.Do(req)
+	ts.Require().NoError(err, "introspection request failed")
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, "introspection should return 200")
+
+	var out struct {
+		Active bool `json:"active"`
+	}
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&out), "failed to decode introspection response")
+	return out.Active
 }
