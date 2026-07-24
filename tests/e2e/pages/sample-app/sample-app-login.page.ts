@@ -119,29 +119,23 @@ export class SampleAppLoginPage extends BasePage {
 
     // Check for common logged-in indicators (adjust selectors based on your app)
     const loggedInIndicators = [
-      'button[aria-haspopup="true"]', // Avatar menu button
-      'button:has(> div[class*="MuiAvatar"])', // Avatar button
-      '[role="menuitem"]:has-text("Sign Out")', // May be visible if menu is open
-      '[data-testid="user-profile"]',
-      "text=/welcome|hello/i",
-      ".user-profile",
-      ".logged-in",
-      ".token-container", // Token display container
+      this.page.locator('button[aria-haspopup="true"]'), // Avatar menu button
+      this.page.locator('button:has(> div[class*="MuiAvatar"])'), // Avatar button
+      this.page.locator('[role="menuitem"]:has-text("Sign Out")'), // May be visible if menu is open
+      this.page.locator('[data-testid="user-profile"]'),
+      this.page.getByText(/welcome|hello/i),
+      this.page.locator(".user-profile"),
+      this.page.locator(".logged-in"),
+      this.page.locator(".token-container"), // Token display container
     ];
 
-    // Wait for at least one indicator to appear
-    let found = false;
-    for (const selector of loggedInIndicators) {
-      const element = this.page.locator(selector).first();
-      const count = await element.count();
-      if (count > 0) {
-        const isVisible = await element.isVisible().catch(() => false);
-        if (isVisible) {
-          found = true;
-          break;
-        }
-      }
-    }
+    // Wait (with auto-retry) for at least one indicator to appear
+    const anyLoggedInIndicator = loggedInIndicators.reduce((combined, locator) => combined.or(locator));
+    const found = await anyLoggedInIndicator
+      .first()
+      .waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION })
+      .then(() => true)
+      .catch(() => false);
 
     // If none of the indicators are found, check if we're no longer on login page
     if (!found) {
@@ -182,12 +176,16 @@ export class SampleAppLoginPage extends BasePage {
       )
       .first();
 
-    // Check if avatar button exists (indicates logged in state with menu)
-    const avatarCount = await avatarButton.count();
+    // Fallback: direct logout button (for other app implementations)
+    const logoutButton = this.page
+      .locator('button:has-text("Logout"), button:has-text("Sign Out"), [data-testid="logout-button"]')
+      .first();
 
-    if (avatarCount > 0) {
+    // Wait (with auto-retry) for whichever logout indicator is visible first
+    await avatarButton.or(logoutButton).first().waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
+
+    if (await avatarButton.isVisible().catch(() => false)) {
       // Click avatar to open menu
-      await avatarButton.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
       await avatarButton.click();
 
       // Wait for menu to appear
@@ -204,12 +202,6 @@ export class SampleAppLoginPage extends BasePage {
       await signOutMenuItem.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
       await signOutMenuItem.click();
     } else {
-      // Fallback: Try direct logout button (for other app implementations)
-      const logoutButton = this.page
-        .locator('button:has-text("Logout"), button:has-text("Sign Out"), [data-testid="logout-button"]')
-        .first();
-
-      await logoutButton.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
       await logoutButton.click();
     }
 
@@ -302,5 +294,16 @@ export class SampleAppLoginPage extends BasePage {
 
     // Wait for navigation/response after OTP verification
     await this.page.waitForLoadState("networkidle");
+  }
+
+  /**
+   * Returns the visible OTP error message text, or an empty string if none is present.
+   */
+  async getOTPErrorMessage(): Promise<string> {
+    const text = await this.page
+      .locator(".MuiAlert-message, .MuiAlert-colorError .MuiAlertTitle-root")
+      .textContent()
+      .catch(() => "");
+    return text?.trim() ?? "";
   }
 }

@@ -75,34 +75,21 @@ cd tests/e2e/sample-app-sdk && ./start.sh &
 
 ### Configuration
 
-Copy `.env.example` to `.env` and fill in your values:
+`run-e2e.sh` auto-generates a working `.env` from [`defaults.env`](defaults.env) — the canonical
+fixed dataset also used by CI — on first run, so you normally don't need to create one by hand.
+
+To override specific values (e.g. a different server or different test credentials), copy
+`.env.example` to `.env` and uncomment what you need:
 
 ```bash
 cp .env.example .env
-```
-
-```env
-BASE_URL=https://localhost:8090
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=admin
-TEST_USER_USERNAME=testuser
-TEST_USER_PASSWORD=admin
-ENVIRONMENT=local
-
-# Sample app (used in social login / OAuth flow tests)
-SAMPLE_APP_URL=https://localhost:3000
-SAMPLE_APP_USERNAME=e2e-test-user
-SAMPLE_APP_PASSWORD=e2e-test-password
-
-# Mock SMS server port (used in MFA tests)
-MOCK_SMS_SERVER_PORT=8098
 ```
 
 ---
 
 ## 🛠 CI/CD Configuration
 
-The GitHub Actions workflow is designed to work with repository **Secrets** and **Variables**. The suite uses a priority system: **Secret > Variable > Hardcoded Default**.
+The GitHub Actions workflow is designed to work with repository **Secrets** and **Variables**. The suite uses a priority system: **Secret > Variable > [`defaults.env`](defaults.env)** (the same fixed dataset `run-e2e.sh` uses locally).
 
 ### Required GitHub Settings
 
