@@ -56,8 +56,9 @@ type Service interface {
 	SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (SaveCheckpointResult, error)
 
 	// LoadCheckpoint fetches the session referenced by handle and its checkpoint context, refreshes
-	// the session's last-active timestamp and idle deadline, and records the joining participant
-	// (both best-effort). It errors when the session or its checkpoint context no longer exists.
+	// the session's last-active timestamp and idle deadline (throttled: skipped when the last refresh
+	// is within the activity-refresh window), and records the joining participant (both best-effort). It errors
+	// when the session or its checkpoint context no longer exists.
 	LoadCheckpoint(ctx context.Context, handle, checkpoint, appID string) (*Session, *SessionContext, error)
 
 	// Terminate ends the session referenced by handle: it marks the session ENDED (so it can no
@@ -202,15 +203,24 @@ func (s *service) LoadCheckpoint(ctx context.Context, handle, checkpoint, appID 
 	// Refresh last-active and slide the idle deadline under the optimistic-lock guard — touches
 	// SESSION only. The absolute deadline is left unchanged so it keeps capping total lifetime. A
 	// conflict here is non-fatal: the session loaded successfully.
+	//
+	// Throttle the write: within ActivityRefresh of the last persisted activity refresh, skip it. This
+	// hot path fires on every session reuse, and an unthrottled UPDATE per reuse is the dominant write
+	// load (and, on Postgres, the main source of dead tuples) on the session table. The persisted idle
+	// deadline then lags real activity by at most ActivityRefresh; config validation keeps that below
+	// the idle window so an active session is never skipped past its idle deadline.
 	now := time.Now().UTC()
-	sess.LastActiveAt = now
-	sess.IdleExpiresAt = now.Add(s.timeouts.Idle)
-	if updErr := s.store.Update(ctx, sess); updErr != nil {
-		s.logger.Warn(ctx, "Failed to refresh session last-active timestamp", log.Error(updErr))
+	if now.Sub(sess.LastActiveAt) >= s.timeouts.ActivityRefresh {
+		sess.LastActiveAt = now
+		sess.IdleExpiresAt = now.Add(s.timeouts.Idle)
+		if updErr := s.store.Update(ctx, sess); updErr != nil {
+			s.logger.Warn(ctx, "Failed to refresh session last-active timestamp", log.Error(updErr))
+		}
 	}
 
 	// Record the joining application as a participant. Best-effort: the session loaded fine even if
-	// this fails.
+	// this fails. This is not throttled with the activity refresh above: the upsert also registers an
+	// application joining the session for the first time, which must not be dropped.
 	if partErr := s.recordParticipant(ctx, sess.SessionID, appID, now); partErr != nil {
 		s.logger.Warn(ctx, "Failed to record SSO session participant", log.Error(partErr))
 	}
@@ -311,7 +321,7 @@ func (s *service) establishSession(ctx context.Context, in SaveCheckpointInput) 
 		AuthenticatedAt: now,
 		CreatedAt:       now,
 		LastActiveAt:    now,
-		// The idle deadline slides on each activity touch; the absolute deadline is fixed here and
+		// The idle deadline slides on each activity refresh; the absolute deadline is fixed here and
 		// caps the session's total lifetime. The resolver rejects a session past either deadline.
 		IdleExpiresAt:     now.Add(s.timeouts.Idle),
 		AbsoluteExpiresAt: now.Add(s.timeouts.Absolute),

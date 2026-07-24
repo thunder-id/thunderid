@@ -38,32 +38,44 @@ func TestStateTestSuite(t *testing.T) {
 
 func (s *StateTestSuite) TestNewTimeouts_Defaults() {
 	// Non-positive values fall back to the built-in defaults.
-	got := NewTimeouts(-5, 0)
+	got := NewTimeouts(-5, 0, 0)
 	s.Equal(DefaultTimeouts(), got)
 }
 
 func (s *StateTestSuite) TestNewTimeouts_Overrides() {
-	got := NewTimeouts(60, 600)
+	got := NewTimeouts(60, 600, 0)
 	s.Equal(60*time.Second, got.Idle)
 	s.Equal(600*time.Second, got.Absolute)
 }
 
 func (s *StateTestSuite) TestNewTimeouts_PartialOverride() {
-	got := NewTimeouts(60, 0)
+	got := NewTimeouts(60, 0, 0)
 	s.Equal(60*time.Second, got.Idle)
 	s.Equal(DefaultAbsoluteTimeout, got.Absolute, "unset absolute falls back to default")
 }
 
 func (s *StateTestSuite) TestNewTimeouts_IdleClampedToAbsolute() {
 	// A small configured absolute with a defaulted (larger) idle must not yield idle > absolute.
-	got := NewTimeouts(0, 60)
+	got := NewTimeouts(0, 60, 0)
 	s.Equal(60*time.Second, got.Absolute)
 	s.Equal(60*time.Second, got.Idle, "idle is clamped to the absolute lifetime")
 
 	// An explicit idle larger than absolute is likewise clamped.
-	got = NewTimeouts(600, 300)
+	got = NewTimeouts(600, 300, 0)
 	s.Equal(300*time.Second, got.Idle)
 	s.Equal(300*time.Second, got.Absolute)
+}
+
+func (s *StateTestSuite) TestNewTimeouts_ActivityRefreshInterval() {
+	// An unset interval yields the built-in default.
+	s.Equal(DefaultActivityRefreshInterval, NewTimeouts(0, 0, 0).ActivityRefresh)
+
+	// A configured interval is honored exactly.
+	s.Equal(20*time.Second, NewTimeouts(1800, 28800, 20).ActivityRefresh)
+
+	// A configured interval above half the idle window is honored as-is, not clamped down.
+	s.Equal(1200*time.Second, NewTimeouts(1800, 28800, 1200).ActivityRefresh,
+		"a configured interval is honored, not clamped")
 }
 
 func (s *StateTestSuite) TestSessionContext_PayloadRoundTrip() {

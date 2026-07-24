@@ -294,7 +294,7 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_Success() {
 
 	suite.Require().NotNil(sess)
 	suite.Require().NotNil(sc)
-	// Activity touch: last-active refreshed, idle slid forward, absolute unchanged.
+	// Activity refresh: last-active refreshed, idle slid forward, absolute unchanged.
 	suite.Require().NotNil(updated)
 	suite.False(updated.LastActiveAt.IsZero())
 	suite.True(updated.IdleExpiresAt.After(originalIdle))
@@ -348,6 +348,51 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_ParticipantErrorIsNonFatal() {
 	suite.Require().NoError(err, "a participant-record failure must not fail the load")
 	suite.NotNil(sess)
 	suite.NotNil(sc)
+}
+
+func (suite *ServiceTestSuite) TestLoadCheckpoint_ThrottledRefreshSkipsUpdate() {
+	svc, m := suite.newService()
+	// The last persisted activity refresh is within the activity-refresh window, so the idle-slide
+	// UPDATE is skipped. No Update expectation is set: the store mock fails the test if the throttled
+	// path writes.
+	recent := time.Now().UTC()
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(&Session{
+		SessionID: "sess-1", HandleID: "handle-abc", State: StateActive, LastActiveAt: recent,
+	}, nil)
+	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-1", "session").
+		Return(&SessionContext{SessionID: "sess-1"}, nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+
+	sess, sc, err := svc.LoadCheckpoint(context.Background(), "handle-abc", "session", "app-456")
+	suite.Require().NoError(err)
+
+	suite.Require().NotNil(sess)
+	suite.Require().NotNil(sc)
+	suite.Equal(recent, sess.LastActiveAt, "a throttled load must leave the persisted last-active untouched")
+}
+
+func (suite *ServiceTestSuite) TestLoadCheckpoint_WritesAfterRefreshWindow() {
+	svc, m := suite.newService()
+	// The last persisted activity refresh is older than the activity-refresh window, so the activity refresh persists.
+	stale := time.Now().UTC().Add(-2 * DefaultActivityRefreshInterval)
+	originalIdle := stale.Add(time.Minute)
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(&Session{
+		SessionID: "sess-1", HandleID: "handle-abc", State: StateActive,
+		LastActiveAt: stale, IdleExpiresAt: originalIdle,
+	}, nil)
+	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-1", "session").
+		Return(&SessionContext{SessionID: "sess-1"}, nil)
+	var updated *Session
+	m.store.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, s *Session) error { updated = s; return nil })
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+
+	_, _, err := svc.LoadCheckpoint(context.Background(), "handle-abc", "session", "app-456")
+	suite.Require().NoError(err)
+
+	suite.Require().NotNil(updated, "an activity refresh past the throttle window must persist")
+	suite.True(updated.LastActiveAt.After(stale), "last-active slides forward")
+	suite.True(updated.IdleExpiresAt.After(originalIdle), "idle deadline slides forward")
 }
 
 // --- Terminate ---
