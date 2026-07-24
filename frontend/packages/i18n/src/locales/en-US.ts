@@ -3607,6 +3607,13 @@ const translations = {
     'sso.properties.checkpointLabel': 'Session checkpoint',
     'sso.properties.checkpointDangling': 'The referenced session step no longer exists. Select a valid session step.',
 
+    // Discard unsaved changes dialog
+    'core.dialogs.discardChanges.title': 'Discard unsaved changes?',
+    'core.dialogs.discardChanges.description':
+      'You have unsaved changes to this flow. If you leave now, your changes will be lost.',
+    'core.dialogs.discardChanges.cancelButton': 'Keep editing',
+    'core.dialogs.discardChanges.confirmButton': 'Discard changes',
+
     // Form adapter
     'core.adapters.form.badgeLabel': 'Form',
     'core.adapters.form.placeholder': 'DROP FORM COMPONENTS HERE',
@@ -3615,6 +3622,11 @@ const translations = {
     'core.headerPanel.goBack': 'Go back to Flows',
     'core.headerPanel.autoLayout': 'Auto Layout',
     'core.headerPanel.save': 'Save',
+    'core.headerPanel.unsavedChanges': 'You have unsaved changes',
+    'core.headerPanel.undo': 'Undo',
+    'core.headerPanel.undoTooltip': 'Undo (Ctrl+Z)',
+    'core.headerPanel.redo': 'Redo',
+    'core.headerPanel.redoTooltip': 'Redo (Ctrl+Shift+Z)',
     'core.headerPanel.editTitle': 'Edit flow name',
     'core.headerPanel.saveTitle': 'Save flow name',
     'core.headerPanel.cancelEdit': 'Cancel',

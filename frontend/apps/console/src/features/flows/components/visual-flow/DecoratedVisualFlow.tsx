@@ -20,7 +20,7 @@ import {CollisionPriority} from '@dnd-kit/abstract';
 import {move} from '@dnd-kit/helpers';
 import {DragDropProvider, DragOverlay, type DragDropEventHandlers} from '@dnd-kit/react';
 import {useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
-import {Box, Button, Card, CardContent, Tooltip, Typography, type Theme} from '@wso2/oxygen-ui';
+import {Badge, Box, Button, Card, CardContent, Tooltip, Typography, type Theme} from '@wso2/oxygen-ui';
 import {ArrowLeft, Play, Save, Square} from '@wso2/oxygen-ui-icons-react';
 import {
   type Connection,
@@ -46,6 +46,7 @@ import {
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import CanvasToolbar from './CanvasToolbar';
+import DiscardChangesDialog from './DiscardChangesDialog';
 import FormRequiresViewDialog from './FormRequiresViewDialog';
 import SimulationStepPreview from './SimulationStepPreview';
 import ValidationBadge from './ValidationBadge';
@@ -131,6 +132,26 @@ export interface DecoratedVisualFlowPropsInterface extends Omit<VisualFlowPropsI
    * Extra controls rendered at the bottom of the resource panel, below the resource sections.
    */
   resourcePanelFooter?: ReactNode;
+  /**
+   * Undo the last canvas edit. When provided, undo/redo controls appear in the toolbar.
+   */
+  onUndo?: () => void;
+  /**
+   * Redo the last undone canvas edit.
+   */
+  onRedo?: () => void;
+  /**
+   * Whether an undo step is available.
+   */
+  canUndo?: boolean;
+  /**
+   * Whether a redo step is available.
+   */
+  canRedo?: boolean;
+  /**
+   * Whether the flow has unsaved changes (drives the Save-button indicator).
+   */
+  isDirty?: boolean;
 }
 
 /**
@@ -159,6 +180,11 @@ function DecoratedVisualFlow({
   onFlowTitleChange,
   triggerAutoLayoutOnLoad = false,
   resourcePanelFooter = undefined,
+  onUndo = undefined,
+  onRedo = undefined,
+  canUndo = false,
+  canRedo = false,
+  isDirty = false,
   ...rest
 }: DecoratedVisualFlowPropsInterface): ReactElement {
   useDeleteExecutionResource();
@@ -298,7 +324,7 @@ function DecoratedVisualFlow({
   // Memoized handleSave. Nodes/edges come back from the React Flow store, which
   // holds the decorated display arrays while previewing — strip the simulation
   // styling so it is never persisted into the flow's layout data.
-  const handleSave = useCallback((): void => {
+  const persistCanvas = useCallback((): void => {
     const {viewport} = toObject();
     const canvasData = {
       nodes: stripSimulationNodeClasses(getNodes()),
@@ -392,6 +418,17 @@ function DecoratedVisualFlow({
       startSimulation();
     }
   }, [isSimulationActive, stopSimulation, startSimulation]);
+
+  const handleSave = useCallback((): void => {
+    if (isSimulationActive) {
+      // Saving during preview: exit the preview first so the persisted viewport
+      // is the settled canvas view rather than the preview's zoomed-in camera.
+      stopSimulation();
+      fitView({padding: 0.2, duration: 0}).then(persistCanvas).catch(persistCanvas);
+      return;
+    }
+    persistCanvas();
+  }, [isSimulationActive, stopSimulation, fitView, persistCanvas]);
 
   // Derived presentation state: while simulating, dim everything off the walked
   // path and animate the traversed edges. Returns the original arrays untouched
@@ -705,7 +742,19 @@ function DecoratedVisualFlow({
     [updateNodeData, updateNodeInternals],
   );
 
+  const [isDiscardDialogOpen, setIsDiscardDialogOpen] = useState<boolean>(false);
+
   const handleBackToFlows = useCallback((): void => {
+    if (isDirty) {
+      setIsDiscardDialogOpen(true);
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    navigate('/flows');
+  }, [isDirty, navigate]);
+
+  const handleConfirmDiscard = useCallback((): void => {
+    setIsDiscardDialogOpen(false);
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     navigate(RouteConfig.flows.list());
   }, [navigate]);
@@ -841,7 +890,13 @@ function DecoratedVisualFlow({
 
         {/* Centered toolbar */}
         <Box sx={{flex: 1, display: 'flex', justifyContent: 'center'}}>
-          <CanvasToolbar onAutoLayout={handleAutoLayout} />
+          <CanvasToolbar
+            onAutoLayout={handleAutoLayout}
+            onUndo={onUndo}
+            onRedo={onRedo}
+            canUndo={canUndo}
+            canRedo={canRedo}
+          />
         </Box>
 
         <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
@@ -860,23 +915,48 @@ function DecoratedVisualFlow({
             title={
               hasErrors
                 ? t('flows:core.headerPanel.saveDisabledTooltip', 'Fix validation errors before saving')
-                : isSimulationActive
-                  ? t('flows:core.headerPanel.saveDisabledDuringPreview', 'Stop the preview before saving')
+                : isDirty && onSave
+                  ? t('flows:core.headerPanel.unsavedChanges', 'You have unsaved changes')
                   : ''
             }
           >
             <span>
-              <Button
-                variant="contained"
-                // Saving mid-preview would persist the preview's zoomed-in camera
-                // as the flow's viewport — stop the preview first.
-                disabled={hasErrors || !onSave || isSimulationActive}
-                startIcon={<Save size={18} />}
-                onClick={handleSave}
-                data-testid="save-flow-button"
+              <Badge
+                color="primary"
+                variant="dot"
+                invisible={!isDirty || hasErrors || !onSave}
+                overlap="rectangular"
+                anchorOrigin={{vertical: 'top', horizontal: 'right'}}
+                data-testid="save-dirty-indicator"
+                sx={(theme) => ({
+                  '& .MuiBadge-badge': {
+                    minWidth: 12,
+                    height: 12,
+                    borderRadius: '50%',
+                    // A ring in the header background separates the blue dot from
+                    // the filled Save button so it stays visible.
+                    border: `2px solid ${theme.palette.background.default}`,
+                    boxShadow: `0 0 0 1px ${theme.palette.primary.main}`,
+                    animation: 'save-dirty-pulse 1.8s ease-in-out infinite',
+                  },
+                  '@keyframes save-dirty-pulse': {
+                    '0%, 100%': {transform: 'scale(1)', opacity: 1},
+                    '50%': {transform: 'scale(1.25)', opacity: 0.75},
+                  },
+                })}
               >
-                {t('flows:core.headerPanel.save')}
-              </Button>
+                <Button
+                  variant="contained"
+                  disabled={hasErrors || !onSave}
+                  startIcon={<Save size={18} />}
+                  // Saving during preview stops it first (handleSave), so the
+                  // button stays enabled instead of blocking on the preview.
+                  onClick={handleSave}
+                  data-testid="save-flow-button"
+                >
+                  {t('flows:core.headerPanel.save')}
+                </Button>
+              </Badge>
             </span>
           </Tooltip>
         </Box>
@@ -962,6 +1042,11 @@ function DecoratedVisualFlow({
         scenario={dropScenario}
         onClose={handleContainerDialogClose}
         onConfirm={handleContainerDialogConfirm}
+      />
+      <DiscardChangesDialog
+        open={isDiscardDialogOpen}
+        onClose={() => setIsDiscardDialogOpen(false)}
+        onConfirm={handleConfirmDiscard}
       />
     </Box>
   );

@@ -168,4 +168,41 @@ describe('CanvasToolbar', () => {
 
     expect(mockFitView).toHaveBeenCalledWith({padding: 0.2, duration: 300});
   });
+
+  it('should not render undo/redo controls when no history handlers are provided', () => {
+    render(<CanvasToolbar onAutoLayout={mockOnAutoLayout} />, {wrapper: Wrapper});
+
+    expect(screen.queryByLabelText('Undo')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Redo')).not.toBeInTheDocument();
+  });
+
+  it('should render undo/redo controls when history handlers are provided', () => {
+    render(<CanvasToolbar onAutoLayout={mockOnAutoLayout} onUndo={vi.fn()} onRedo={vi.fn()} canUndo canRedo />, {
+      wrapper: Wrapper,
+    });
+
+    expect(screen.getByRole('button', {name: 'Undo'})).toBeEnabled();
+    expect(screen.getByRole('button', {name: 'Redo'})).toBeEnabled();
+  });
+
+  it('should disable undo/redo when there is nothing to undo/redo', () => {
+    render(<CanvasToolbar onAutoLayout={mockOnAutoLayout} onUndo={vi.fn()} onRedo={vi.fn()} />, {wrapper: Wrapper});
+
+    expect(screen.getByRole('button', {name: 'Undo'})).toBeDisabled();
+    expect(screen.getByRole('button', {name: 'Redo'})).toBeDisabled();
+  });
+
+  it('should call onUndo and onRedo when the buttons are clicked', () => {
+    const onUndo = vi.fn();
+    const onRedo = vi.fn();
+    render(<CanvasToolbar onAutoLayout={mockOnAutoLayout} onUndo={onUndo} onRedo={onRedo} canUndo canRedo />, {
+      wrapper: Wrapper,
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: 'Undo'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Redo'}));
+
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    expect(onRedo).toHaveBeenCalledTimes(1);
+  });
 });
