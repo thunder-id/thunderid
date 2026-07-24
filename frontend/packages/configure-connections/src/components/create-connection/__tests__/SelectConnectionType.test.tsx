@@ -24,19 +24,14 @@ describe('SelectConnectionType', () => {
   const onSelect = vi.fn();
   beforeEach(() => vi.clearAllMocks());
 
-  it('renders the OIDC, OAuth2, and SMS gateway options without a trusted-idp card by default', () => {
+  it('renders the OIDC, OAuth2, trusted-idp, and SMS gateway options', () => {
     render(<SelectConnectionType selectedType={null} onSelect={onSelect} />);
     expect(screen.getByText('What kind of connection do you want to add?')).toBeInTheDocument();
     expect(screen.queryByText('Connection type')).not.toBeInTheDocument();
     expect(screen.getByTestId('connection-type-option-oidc')).toBeInTheDocument();
     expect(screen.getByTestId('connection-type-option-oauth')).toBeInTheDocument();
-    expect(screen.getByTestId('connection-type-option-custom-sms')).toBeInTheDocument();
-    expect(screen.queryByTestId('connection-type-option-trusted-idp')).not.toBeInTheDocument();
-  });
-
-  it('renders the Trusted Token Issuer option only when its key is in customTypes', () => {
-    render(<SelectConnectionType selectedType={null} onSelect={onSelect} customTypes={['trusted-idp']} />);
     expect(screen.getByTestId('connection-type-option-trusted-idp')).toBeInTheDocument();
+    expect(screen.getByTestId('connection-type-option-custom-sms')).toBeInTheDocument();
   });
 
   it('selects the OIDC type when clicked', () => {
@@ -58,13 +53,13 @@ describe('SelectConnectionType', () => {
   });
 
   it('selects the Trusted Token Issuer type when clicked', () => {
-    render(<SelectConnectionType selectedType={null} onSelect={onSelect} customTypes={['trusted-idp']} />);
+    render(<SelectConnectionType selectedType={null} onSelect={onSelect} />);
     fireEvent.click(screen.getByTestId('connection-type-option-trusted-idp'));
     expect(onSelect).toHaveBeenCalledWith('trusted-idp');
   });
 
   it('renders the Trusted Token Issuer option before the coming-soon SMS gateway option', () => {
-    render(<SelectConnectionType selectedType={null} onSelect={onSelect} customTypes={['trusted-idp']} />);
+    render(<SelectConnectionType selectedType={null} onSelect={onSelect} />);
 
     const optionIds = screen.getAllByTestId(/^connection-type-option-/).map((el) => el.getAttribute('data-testid'));
     expect(optionIds.indexOf('connection-type-option-trusted-idp')).toBeLessThan(

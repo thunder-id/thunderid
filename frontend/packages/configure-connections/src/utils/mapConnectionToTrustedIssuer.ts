@@ -16,8 +16,8 @@
  * under the License.
  */
 
+import type {ConnectionResponse} from '../models/connection';
 import type {TrustedIssuer} from '../models/trusted-issuer';
-import type {ConnectionResponse} from '@thunderid/configure-connections';
 
 /**
  * Maps an OIDC connection API response to the narrower trusted-issuer shape this feature works

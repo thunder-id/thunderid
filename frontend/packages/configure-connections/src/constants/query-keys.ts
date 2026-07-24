@@ -49,6 +49,11 @@ const ConnectionQueryKeys = {
    * Key for the resources referencing a connection instance (GET /connections/{type}/{id}/usages)
    */
   CONNECTION_USAGES: 'connection-usages',
+
+  /**
+   * Key for a single trusted issuer (GET /connections/oidc/{id})
+   */
+  TRUSTED_ISSUER: 'trustedIssuer',
 } as const;
 
 export default ConnectionQueryKeys;

@@ -19,10 +19,11 @@
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
-import TrustedIssuerQueryKeys from '../constants/query-keys';
+import ConnectionQueryKeys from '../constants/query-keys';
+import type {ConnectionResponse} from '../models/connection';
+import {ConnectionTypes} from '../models/connection';
 import type {TrustedIssuer} from '../models/trusted-issuer';
 import mapConnectionToTrustedIssuer from '../utils/mapConnectionToTrustedIssuer';
-import {ConnectionTypes, type ConnectionResponse} from '@thunderid/configure-connections';
 
 /**
  * Fetch a single trusted issuer (GET /connections/oidc/{id}). Disabled until an id is provided.
@@ -39,7 +40,7 @@ export default function useTrustedIssuer(id: string | undefined): UseQueryResult
   const {getServerUrl} = useConfig();
 
   return useQuery<TrustedIssuer>({
-    queryKey: [TrustedIssuerQueryKeys.TRUSTED_ISSUER, id],
+    queryKey: [ConnectionQueryKeys.TRUSTED_ISSUER, id],
     enabled: Boolean(id),
     queryFn: async (): Promise<TrustedIssuer> => {
       const serverUrl: string = getServerUrl();

@@ -121,13 +121,17 @@ const ConnectionDetailPage = lazy(() =>
 const ConnectionConfigureWizardPage = lazy(() =>
   import('@thunderid/configure-connections').then((m) => ({default: m.ConnectionConfigureWizardPage})),
 );
-const ConnectionCreateWizardRoute = lazy(() => import('./features/connections/pages/ConnectionCreateWizardRoute'));
+const ConnectionCreateWizardPage = lazy(() =>
+  import('@thunderid/configure-connections').then((m) => ({default: m.ConnectionCreateWizardPage})),
+);
 const LoginFlowBuilderPage = lazy(() => import('./features/login-flow/pages/LoginFlowPage'));
 const CreateRolePage = lazy(() => import('./features/roles/pages/CreateRolePage'));
 const RoleEditPage = lazy(() => import('./features/roles/pages/RoleEditPage'));
 const RolesListPage = lazy(() => import('./features/roles/pages/RolesListPage'));
 const SettingsPage = lazy(() => import('./features/settings/pages/SettingsPage'));
-const TrustedIssuerDetailPage = lazy(() => import('./features/trusted-issuers/pages/TrustedIssuerDetailPage'));
+const TrustedIssuerDetailPage = lazy(() =>
+  import('@thunderid/configure-connections').then((m) => ({default: m.TrustedIssuerDetailPage})),
+);
 const VerifiablePresentationsListPage = lazy(
   () => import('./features/verifiable-presentations/pages/VerifiablePresentationsListPage'),
 );
@@ -376,7 +380,7 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<ConnectionCreateWizardRoute />} />
+                <Route index element={<ConnectionCreateWizardPage />} />
               </Route>
               <Route
                 path={`/${ROUTE_SEGMENTS.connections}/:type/configure`}

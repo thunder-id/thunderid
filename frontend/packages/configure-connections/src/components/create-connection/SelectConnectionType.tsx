@@ -33,13 +33,6 @@ export type SelectableConnectionType = ConnectionType | 'trusted-idp';
 interface SelectConnectionTypeProps {
   selectedType: SelectableConnectionType | null;
   onSelect: (type: SelectableConnectionType) => void;
-  /**
-   * Keys with a wired `customConfigureSteps` slot on the parent wizard (see
-   * `ConnectionCreateWizardPage`). Options that require a custom configure step (e.g.
-   * `'trusted-idp'`) are only rendered when their key is present here — the package can't let a
-   * consumer select a type it has no way to complete.
-   */
-  customTypes?: string[];
 }
 
 interface TypeOption {
@@ -50,18 +43,12 @@ interface TypeOption {
   icon: JSX.Element;
   tagIcon: JSX.Element;
   comingSoon: boolean;
-  /** Whether this option only works when the consumer supplies a matching `customConfigureSteps` entry. */
-  requiresCustomStep?: boolean;
 }
 
-export default function SelectConnectionType({
-  selectedType,
-  onSelect,
-  customTypes = [],
-}: SelectConnectionTypeProps): JSX.Element {
+export default function SelectConnectionType({selectedType, onSelect}: SelectConnectionTypeProps): JSX.Element {
   const {t} = useTranslation('connections');
 
-  const allOptions: TypeOption[] = [
+  const options: TypeOption[] = [
     {
       type: ConnectionTypes.OIDC,
       labelKey: 'wizard.type.oidc.label',
@@ -88,7 +75,6 @@ export default function SelectConnectionType({
       icon: <ShieldCheck size={28} />,
       tagIcon: <ArrowLeftRight size={14} />,
       comingSoon: false,
-      requiresCustomStep: true,
     },
     {
       // Backend support (/connections/sms-gateway) is wired; the console wizard for this
@@ -102,9 +88,6 @@ export default function SelectConnectionType({
       comingSoon: true,
     },
   ];
-  const options: TypeOption[] = allOptions.filter(
-    (option) => !option.requiresCustomStep || customTypes.includes(option.type),
-  );
 
   return (
     <Stack direction="column" spacing={1} data-testid="select-connection-type">

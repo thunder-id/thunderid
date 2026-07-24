@@ -60,9 +60,10 @@ export * from './models/responses';
 
 // Pages
 export {default as ConnectionConfigureWizardPage} from './pages/ConnectionConfigureWizardPage';
-export {default as ConnectionCreateWizardPage, type CustomConfigureStepProps} from './pages/ConnectionCreateWizardPage';
+export {default as ConnectionCreateWizardPage} from './pages/ConnectionCreateWizardPage';
 export {default as ConnectionDetailPage} from './pages/ConnectionDetailPage';
 export {default as ConnectionsListPage} from './pages/ConnectionsListPage';
+export {default as TrustedIssuerDetailPage} from './pages/TrustedIssuerDetailPage';
 
 // Routes
 export type {ConnectionRoutePaths} from './hooks/useConnectionRoutes';
