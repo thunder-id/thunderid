@@ -902,13 +902,15 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_MagicLink_Authentic
 	mockML := magiclinkmock.NewMagicLinkAuthnServiceInterfaceMock(suite.T())
 	provider := Initialize(suite.mockService, nil, nil, mockML, nil, nil)
 
+	expectedPayload := map[string]interface{}{"sub": "user-123"}
 	credentials := map[string]interface{}{
 		"magiclink": map[string]interface{}{
-			"token": "expired-token",
+			"token":   "expired-token",
+			"payload": expectedPayload,
 		},
 	}
 
-	mockML.On("Authenticate", mock.Anything, "expired-token", "").
+	mockML.On("Authenticate", mock.Anything, "expired-token", "", "", "").
 		Return(nil, &tidcommon.ServiceError{
 			Type:             tidcommon.ClientErrorType,
 			Code:             "AUTHN-ML-1002",
@@ -927,13 +929,15 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_MagicLink_ServerErr
 	mockML := magiclinkmock.NewMagicLinkAuthnServiceInterfaceMock(suite.T())
 	provider := Initialize(suite.mockService, nil, nil, mockML, nil, nil)
 
+	expectedPayload := map[string]interface{}{"sub": "user-123"}
 	credentials := map[string]interface{}{
 		"magiclink": map[string]interface{}{
-			"token": "valid-token",
+			"token":   "valid-token",
+			"payload": expectedPayload,
 		},
 	}
 
-	mockML.On("Authenticate", mock.Anything, "valid-token", "").
+	mockML.On("Authenticate", mock.Anything, "valid-token", "", "", "").
 		Return(nil, &tidcommon.ServiceError{
 			Type:             tidcommon.ServerErrorType,
 			Code:             "INTERNAL",
@@ -1001,7 +1005,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenizedAuth_Entit
 	setupMagicLink := func() (authnprovider.AuthnProviderInterface, map[string]interface{}, map[string]interface{}) {
 		mockML := magiclinkmock.NewMagicLinkAuthnServiceInterfaceMock(suite.T())
 		token := map[string]interface{}{"email": "test@example.com"}
-		mockML.On("Authenticate", mock.Anything, "valid-jwt-token", "").
+		expectedPayload := map[string]interface{}{"sub": "test@example.com"}
+		mockML.On("Authenticate", mock.Anything, "valid-jwt-token", "", "", "").
 			Return(&authncommon.AuthnResult{
 				Token:               token,
 				AuthenticatedClaims: map[string]interface{}{"email": "test@example.com"},
@@ -1009,6 +1014,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenizedAuth_Entit
 		creds := map[string]interface{}{
 			"magiclink": map[string]interface{}{
 				"token":            "valid-jwt-token",
+				"payload":          expectedPayload,
 				"subjectAttribute": "",
 			},
 		}
@@ -1070,7 +1076,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenizedAuth_Ident
 	setupMagicLink := func() (authnprovider.AuthnProviderInterface, map[string]interface{}, map[string]interface{}) {
 		mockML := magiclinkmock.NewMagicLinkAuthnServiceInterfaceMock(suite.T())
 		token := map[string]interface{}{"email": "test@example.com"}
-		mockML.On("Authenticate", mock.Anything, "valid-jwt-token", "email").
+		expectedPayload := map[string]interface{}{"sub": "test@example.com"}
+		mockML.On("Authenticate", mock.Anything, "valid-jwt-token", "", "", "email").
 			Return(&authncommon.AuthnResult{
 				Token:               token,
 				AuthenticatedClaims: map[string]interface{}{"email": "test@example.com"},
@@ -1078,6 +1085,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenizedAuth_Ident
 		creds := map[string]interface{}{
 			"magiclink": map[string]interface{}{
 				"token":            "valid-jwt-token",
+				"payload":          expectedPayload,
 				"subjectAttribute": "email",
 			},
 		}

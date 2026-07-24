@@ -35,7 +35,6 @@ import (
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/magiclinkmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
@@ -61,10 +60,10 @@ func newMagicLinkAuthenticatedUser() providers.AuthUser {
 	return authUser
 }
 
-// createTestJWTWithClaims creates a test JWT string with the given executionId and jti
-func createTestJWTWithClaims(executionID, jti string) string {
+// createTestJWTWithClaims creates a test JWT string with the default executionId and given jti
+func createTestJWTWithClaims(jti string) string {
 	header := magicLinkTestJWTHeader
-	payload := fmt.Sprintf(`{"sub":"user-123","executionId":%q,"jti":%q,"exp":9999999999}`, executionID, jti)
+	payload := fmt.Sprintf(`{"sub":"user-123","nonce":%q,"jti":%q,"exp":9999999999}`, magicLinkTestExecutionID, jti)
 
 	headerB64 := base64.RawURLEncoding.EncodeToString([]byte(header))
 	payloadB64 := base64.RawURLEncoding.EncodeToString([]byte(payload))
@@ -75,7 +74,7 @@ func createTestJWTWithClaims(executionID, jti string) string {
 func createRegistrationMagicLinkJWT(executionID, jti, subject string) string {
 	header := magicLinkTestJWTHeader
 	payload := fmt.Sprintf(
-		`{"sub":%q,"email":%q,"registration":true,"executionId":%q,"jti":%q,"exp":9999999999}`,
+		`{"sub":%q,"email":%q,"registration":true,"nonce":%q,"jti":%q,"exp":9999999999}`,
 		subject, subject, executionID, jti)
 
 	headerB64 := base64.RawURLEncoding.EncodeToString([]byte(header))
@@ -193,7 +192,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_Authen
 			"applicationId": magicLinkTestAppID,
 			"type":          "AUTHENTICATION",
 		},
-		map[string]interface{}{"executionId": magicLinkTestExecutionID}, "").Return(
+		map[string]interface{}{"nonce": magicLinkTestExecutionID}, "").Return(
 		"https://example.com/verify?id=flow-123&token=jwt-token-123", nil)
 
 	resp, err := suite.executor.Execute(ctx)
@@ -235,7 +234,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_Regist
 			"applicationId": magicLinkTestAppID,
 			"type":          "REGISTRATION"},
 		map[string]interface{}{
-			"executionId": magicLinkTestExecutionID,
+			"nonce": magicLinkTestExecutionID,
 		}, "").Return(
 		"https://example.com/verify?id=flow-123&token=jwt-token-123", nil)
 
@@ -281,7 +280,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_Regist
 			"applicationId": magicLinkTestAppID,
 			"type":          "REGISTRATION"},
 		map[string]interface{}{
-			"executionId": magicLinkTestExecutionID,
+			"nonce": magicLinkTestExecutionID,
 		}, "").Return(
 		"https://example.com/verify?id=flow-123&token=jwt-token-123", nil)
 
@@ -355,7 +354,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithCu
 			"applicationId": magicLinkTestAppID,
 			"type":          "AUTHENTICATION",
 		},
-		map[string]interface{}{"executionId": magicLinkTestExecutionID}, "").Return(
+		map[string]interface{}{"nonce": magicLinkTestExecutionID}, "").Return(
 		"https://example.com/verify?id=flow-123&token=jwt-token-123", nil)
 
 	resp, err := suite.executor.Execute(ctx)
@@ -397,7 +396,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithCu
 			"applicationId": magicLinkTestAppID,
 			"type":          "AUTHENTICATION",
 		},
-		map[string]interface{}{"executionId": magicLinkTestExecutionID},
+		map[string]interface{}{"nonce": magicLinkTestExecutionID},
 		magicLinkTestMagicLinkURL).Return(magicLinkTestMagicLinkURL+"?id=flow-123&token=jwt-token-123", nil)
 
 	resp, err := suite.executor.Execute(ctx)
@@ -431,7 +430,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Failure_Genera
 			"applicationId": magicLinkTestAppID,
 			"type":          "AUTHENTICATION",
 		},
-		map[string]interface{}{"executionId": magicLinkTestExecutionID}, "").Return(
+		map[string]interface{}{"nonce": magicLinkTestExecutionID}, "").Return(
 		"", &tidcommon.ServiceError{Code: tidcommon.InternalServerError.Code})
 
 	resp, err := suite.executor.Execute(ctx)
@@ -472,7 +471,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Failure_Client
 			"applicationId": magicLinkTestAppID,
 			"type":          "AUTHENTICATION",
 		},
-		map[string]interface{}{"executionId": magicLinkTestExecutionID}, "").
+		map[string]interface{}{"nonce": magicLinkTestExecutionID}, "").
 		Return("", clientErr)
 
 	resp, err := suite.executor.Execute(ctx)
@@ -542,7 +541,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithAu
 			"applicationId": magicLinkTestAppID,
 			"type":          "AUTHENTICATION",
 		},
-		map[string]interface{}{"executionId": magicLinkTestExecutionID}, "").Return(
+		map[string]interface{}{"nonce": magicLinkTestExecutionID}, "").Return(
 		"https://example.com/verify?id=flow-123&token=jwt-token-123", nil)
 
 	resp, err := suite.executor.Execute(ctx)
@@ -558,7 +557,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithAu
 // Test Verify Mode
 
 func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success() {
-	testToken := createTestJWTWithClaims(magicLinkTestExecutionID, "jti-success")
+	testToken := createTestJWTWithClaims("jti-success")
 
 	ctx := &providers.NodeContext{
 		Context:      context.Background(),
@@ -576,7 +575,9 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success() {
 	authenticatedAuthUser := newMagicLinkAuthenticatedUser()
 	suite.mockAuthnProvider.On("AuthenticateUser", ctx.Context, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).Return(
-		authenticatedAuthUser, providers.AuthenticatedClaims{}, (*tidcommon.ServiceError)(nil))
+		authenticatedAuthUser, providers.AuthenticatedClaims{
+			common.RuntimeKeyMagicLinkUsedJti: "jti-success",
+		}, (*tidcommon.ServiceError)(nil))
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -606,7 +607,9 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success_Registra
 
 	suite.mockAuthnProvider.On("AuthenticateUser", ctx.Context, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).Return(
-		providers.AuthUser{}, providers.AuthenticatedClaims{}, (*tidcommon.ServiceError)(nil))
+		providers.AuthUser{}, providers.AuthenticatedClaims{
+			common.RuntimeKeyMagicLinkUsedJti: "jti-registration",
+		}, (*tidcommon.ServiceError)(nil))
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -635,7 +638,9 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success_Registra
 
 	suite.mockAuthnProvider.On("AuthenticateUser", ctx.Context, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).Return(
-		providers.AuthUser{}, providers.AuthenticatedClaims{}, (*tidcommon.ServiceError)(nil))
+		providers.AuthUser{}, providers.AuthenticatedClaims{
+			common.RuntimeKeyMagicLinkUsedJti: "jti-registration",
+		}, (*tidcommon.ServiceError)(nil))
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -719,7 +724,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Failure_TokenNot
 }
 
 func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Failure_InvalidToken() {
-	testToken := createTestJWTWithClaims(magicLinkTestExecutionID, "jti-invalid")
+	testToken := createTestJWTWithClaims("jti-invalid")
 
 	ctx := &providers.NodeContext{
 		Context:      context.Background(),
@@ -751,7 +756,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Failure_InvalidT
 }
 
 func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Failure_ReplayAttack() {
-	testToken := createTestJWTWithClaims(magicLinkTestExecutionID, "jti-replay")
+	testToken := createTestJWTWithClaims("jti-replay")
 
 	ctx := &providers.NodeContext{
 		Context:      context.Background(),
@@ -768,18 +773,27 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Failure_ReplayAt
 
 	suite.mockAuthnProvider.On("AuthenticateUser", ctx.Context, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).Return(
-		providers.AuthUser{}, providers.AuthenticatedClaims{}, (*tidcommon.ServiceError)(nil))
+		providers.AuthUser{}, (providers.AuthenticatedClaims)(nil),
+		&tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType,
+			Code: authnprovidermgr.ErrorAuthenticationFailed.Code,
+			ErrorDescription: tidcommon.I18nMessage{
+				DefaultValue: ErrInvalidMagicLinkToken.ErrorDescription.DefaultValue,
+			},
+		})
 
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), ErrInvalidMagicLinkToken.Error.DefaultValue, resp.Error.Error.DefaultValue)
+	assert.Equal(suite.T(), ErrInvalidMagicLinkToken.ErrorDescription.DefaultValue,
+		resp.Error.ErrorDescription.DefaultValue)
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
 func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success_ReplacesStoredJTI() {
-	testToken := createTestJWTWithClaims(magicLinkTestExecutionID, "jti-new")
+	testToken := createTestJWTWithClaims("jti-new")
 
 	ctx := &providers.NodeContext{
 		Context:      context.Background(),
@@ -798,7 +812,9 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success_Replaces
 	authenticatedAuthUser := newMagicLinkAuthenticatedUser()
 	suite.mockAuthnProvider.On("AuthenticateUser", ctx.Context, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).Return(
-		authenticatedAuthUser, providers.AuthenticatedClaims{}, (*tidcommon.ServiceError)(nil))
+		authenticatedAuthUser, providers.AuthenticatedClaims{
+			common.RuntimeKeyMagicLinkUsedJti: "jti-new",
+		}, (*tidcommon.ServiceError)(nil))
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -810,7 +826,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success_Replaces
 }
 
 func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Failure_AuthenticateUserServerError() {
-	testToken := createTestJWTWithClaims(magicLinkTestExecutionID, "jti-server-error")
+	testToken := createTestJWTWithClaims("jti-server-error")
 
 	ctx := &providers.NodeContext{
 		Context:      context.Background(),
@@ -1095,7 +1111,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_RegistrationFl
 			"type":          "REGISTRATION",
 		},
 		map[string]interface{}{
-			"executionId": magicLinkTestExecutionID,
+			"nonce": magicLinkTestExecutionID,
 		}, "").Return(
 		"https://example.com/verify?id=flow-123&token=jwt-token-123", nil)
 
@@ -1106,52 +1122,6 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_RegistrationFl
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 	suite.mockMagicLinkService.AssertExpectations(suite.T())
-}
-
-func (suite *MagicLinkExecutorTestSuite) TestValidateFlowClaims_FlowIdMismatch() {
-	token := createTestJWTWithClaims("wrong-flow-id", "test-jti-123")
-	ctx := &providers.NodeContext{
-		Context:     context.Background(),
-		ExecutionID: magicLinkTestExecutionID,
-		RuntimeData: make(map[string]string),
-	}
-
-	logger := log.GetLogger()
-	tokenJTI, failure := suite.executor.validateFlowClaims(ctx, token, logger)
-
-	suite.Empty(tokenJTI)
-	suite.Equal(ErrInvalidMagicLinkToken.Error.DefaultValue, failure.Error.DefaultValue)
-}
-
-func (suite *MagicLinkExecutorTestSuite) TestValidateFlowClaims_ReplayAttack() {
-	token := createTestJWTWithClaims(magicLinkTestExecutionID, "test-jti-123")
-	ctx := &providers.NodeContext{
-		Context:     context.Background(),
-		ExecutionID: magicLinkTestExecutionID,
-		RuntimeData: map[string]string{common.RuntimeKeyMagicLinkUsedJti: "test-jti-123"},
-	}
-
-	logger := log.GetLogger()
-	tokenJTI, failure := suite.executor.validateFlowClaims(ctx, token, logger)
-
-	suite.Empty(tokenJTI)
-	suite.Equal(ErrInvalidMagicLinkToken.Error.DefaultValue, failure.Error.DefaultValue)
-}
-
-func (suite *MagicLinkExecutorTestSuite) TestValidateFlowClaims_NewTokenReturnsJTI() {
-	newToken := createTestJWTWithClaims(magicLinkTestExecutionID, "new-jti-456")
-	ctx := &providers.NodeContext{
-		Context:     context.Background(),
-		ExecutionID: magicLinkTestExecutionID,
-		RuntimeData: map[string]string{common.RuntimeKeyMagicLinkUsedJti: "old-jti-123"},
-	}
-
-	logger := log.GetLogger()
-	tokenJTI, failure := suite.executor.validateFlowClaims(ctx, newToken, logger)
-
-	suite.Equal("new-jti-456", tokenJTI)
-	suite.Nil(failure)
-	suite.Equal("old-jti-123", ctx.RuntimeData[common.RuntimeKeyMagicLinkUsedJti])
 }
 
 func (suite *MagicLinkExecutorTestSuite) TestCreateRegistrationMagicLinkJWT_Helper() {
@@ -1166,54 +1136,42 @@ func (suite *MagicLinkExecutorTestSuite) TestCreateRegistrationMagicLinkJWT_Help
 	suite.Contains(token, ".", "Generated token should contain JWT separators")
 }
 
-func (suite *MagicLinkExecutorTestSuite) TestValidateFlowClaims_DecodeFailure() {
-	// Pass a completely malformed token string
-	// nolint:gosec // G101: Test data for negative case, not a real credential
-	token := "not.a.valid.jwt.format"
+func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Failure_InvalidTokenFormat() {
+	// nolint:gosec // test data for negative test case
+	testToken := "invalid.jwt.format"
 
 	ctx := &providers.NodeContext{
-		Context:     context.Background(),
-		ExecutionID: magicLinkTestExecutionID,
+		Context:      context.Background(),
+		ExecutionID:  magicLinkTestExecutionID,
+		FlowType:     providers.FlowTypeAuthentication,
+		ExecutorMode: ExecutorModeVerify,
+		UserInputs: map[string]string{
+			userInputMagicLinkToken: testToken,
+		},
 		RuntimeData: make(map[string]string),
 	}
 
-	logger := log.GetLogger()
-	tokenJTI, failure := suite.executor.validateFlowClaims(ctx, token, logger)
+	suite.mockAuthnProvider.On("AuthenticateUser", ctx.Context, mock.Anything,
+		mock.MatchedBy(func(creds map[string]interface{}) bool {
+			ml, ok := creds["magiclink"].(map[string]interface{})
+			return ok && ml["token"] == testToken && ml["nonce"] == ctx.ExecutionID &&
+				ml["usedJti"] == ctx.RuntimeData[common.RuntimeKeyMagicLinkUsedJti]
+		}), mock.Anything, mock.Anything, mock.Anything).Return(
+		providers.AuthUser{}, (providers.AuthenticatedClaims)(nil),
+		&tidcommon.ServiceError{
+			Type: tidcommon.ClientErrorType,
+			Code: authnprovidermgr.ErrorAuthenticationFailed.Code,
+			ErrorDescription: tidcommon.I18nMessage{
+				DefaultValue: ErrInvalidMagicLinkToken.ErrorDescription.DefaultValue,
+			},
+		})
 
-	suite.Empty(tokenJTI)
-	suite.Equal(ErrInvalidMagicLinkToken.Error.DefaultValue, failure.Error.DefaultValue)
-}
+	resp, err := suite.executor.Execute(ctx)
 
-func (suite *MagicLinkExecutorTestSuite) TestValidateFlowClaims_MissingJTI() {
-	header := magicLinkTestJWTHeader
-	payload := fmt.Sprintf(`{"sub":"user-123","executionId":%q,"exp":9999999999}`, magicLinkTestExecutionID)
-
-	headerB64 := base64.RawURLEncoding.EncodeToString([]byte(header))
-	payloadB64 := base64.RawURLEncoding.EncodeToString([]byte(payload))
-	token := headerB64 + "." + payloadB64 + ".test-signature"
-
-	ctx := &providers.NodeContext{
-		Context:     context.Background(),
-		ExecutionID: magicLinkTestExecutionID,
-		RuntimeData: make(map[string]string),
-	}
-
-	logger := log.GetLogger()
-	tokenJTI, failure := suite.executor.validateFlowClaims(ctx, token, logger)
-
-	suite.Empty(tokenJTI)
-	suite.Equal(ErrInvalidMagicLinkToken.Error.DefaultValue, failure.Error.DefaultValue)
-}
-
-func (suite *MagicLinkExecutorTestSuite) TestGetExecutionPolicy() {
-	policyVerify := suite.executor.GetExecutionPolicy(ExecutorModeVerify)
-	suite.NotNil(policyVerify)
-	suite.True(policyVerify.SkipChallengeValidation)
-	suite.False(policyVerify.AllowSegmentRestart)
-
-	policyGenerate := suite.executor.GetExecutionPolicy(ExecutorModeGenerate)
-	suite.Nil(policyGenerate)
-
-	policyUnknown := suite.executor.GetExecutionPolicy("unknown")
-	suite.Nil(policyUnknown)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), ErrInvalidMagicLinkToken.ErrorDescription.DefaultValue,
+		resp.Error.ErrorDescription.DefaultValue)
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }

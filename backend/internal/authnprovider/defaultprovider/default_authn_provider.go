@@ -520,14 +520,16 @@ func (p *defaultAuthnProvider) authenticateWithMagicLink(
 		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
 			"Invalid magic link payload", "The provided magic link credential is invalid")
 	}
-	token, ok := mlCredential["token"].(string)
+	token, ok := mlCredential[magiclink.CredentialKeyToken].(string)
 	if !ok || token == "" {
 		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
 			"Invalid magic link payload", "token is required")
 	}
-	subjectAttribute, _ := mlCredential["subjectAttribute"].(string)
+	nonce, _ := mlCredential[magiclink.CredentialKeyNonce].(string)
+	usedJTI, _ := mlCredential[magiclink.CredentialKeyUsedJti].(string)
+	subjectAttribute, _ := mlCredential[magiclink.CredentialKeySubjectAttribute].(string)
 
-	result, authErr := p.magicLinkService.Authenticate(ctx, token, subjectAttribute)
+	result, authErr := p.magicLinkService.Authenticate(ctx, token, nonce, usedJTI, subjectAttribute)
 	if authErr != nil {
 		if authErr.Type == tidcommon.ClientErrorType {
 			return nil, newClientError(authnprovidercm.ErrorCodeAuthenticationFailed,

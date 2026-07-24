@@ -30,7 +30,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // MagicLinkAuthnServiceInterface defines the interface for magic link authentication operations.
@@ -43,8 +42,8 @@ type MagicLinkAuthnServiceInterface interface {
 		additionalClaims map[string]interface{},
 		magicLinkURL string,
 	) (string, *tidcommon.ServiceError)
-	Authenticate(ctx context.Context, token string,
-		subjectAttribute string) (*common.AuthnResult, *tidcommon.ServiceError)
+	Authenticate(ctx context.Context, token string, nonce string,
+		usedJTI string, subjectAttribute string) (*common.AuthnResult, *tidcommon.ServiceError)
 }
 
 // magicLinkAuthnService is the default implementation of MagicLinkAuthnServiceInterface.
@@ -115,7 +114,8 @@ func (s *magicLinkAuthnService) GenerateMagicLink(ctx context.Context,
 // A missing local user is NOT an error — the result carries VerifiedIdentifiers instead,
 // allowing callers to handle registration flows.
 func (s *magicLinkAuthnService) Authenticate(ctx context.Context,
-	token string, subjectAttribute string) (*common.AuthnResult, *tidcommon.ServiceError) {
+	token string, nonce string, usedJTI string,
+	subjectAttribute string) (*common.AuthnResult, *tidcommon.ServiceError) {
 	s.logger.Debug(ctx, "Authenticating with magic link token")
 
 	token = strings.TrimSpace(token)
@@ -127,9 +127,32 @@ func (s *magicLinkAuthnService) Authenticate(ctx context.Context,
 		return nil, svcErr
 	}
 
-	subject, svcErr := s.extractSubject(ctx, token)
-	if svcErr != nil {
-		return nil, svcErr
+	payload, decodeErr := jwt.DecodeJWTPayload(token)
+	if decodeErr != nil {
+		s.logger.Debug(ctx, "Failed to decode magic link token payload", log.Error(decodeErr))
+		return nil, &ErrorInvalidToken
+	}
+
+	tokenNonce, ok := payload[ClaimNonce].(string)
+	if !ok || tokenNonce == "" || (nonce != "" && tokenNonce != nonce) {
+		s.logger.Debug(ctx, "Magic link token nonce claim missing, invalid, or mismatched")
+		return nil, &ErrorInvalidToken
+	}
+
+	jtiClaim, ok := payload["jti"].(string)
+	if !ok || jtiClaim == "" {
+		s.logger.Debug(ctx, "Magic link token jti claim missing or invalid")
+		return nil, &ErrorInvalidToken
+	}
+	if usedJTI != "" && usedJTI == jtiClaim {
+		s.logger.Debug(ctx, "Magic link token has already been used", log.String("jti", jtiClaim))
+		return nil, &ErrorInvalidToken
+	}
+
+	subject, ok := payload["sub"].(string)
+	if !ok || subject == "" {
+		s.logger.Debug(ctx, "Subject claim not found or invalid")
+		return nil, &ErrorMalformedTokenClaims
 	}
 
 	subjectAttribute = strings.TrimSpace(subjectAttribute)
@@ -142,8 +165,11 @@ func (s *magicLinkAuthnService) Authenticate(ctx context.Context,
 		log.MaskedString("subject", subject))
 
 	return &common.AuthnResult{
-		Token:               map[string]interface{}{subjectAttribute: subject},
-		AuthenticatedClaims: map[string]interface{}{subjectAttribute: subject},
+		Token: map[string]interface{}{subjectAttribute: subject},
+		AuthenticatedClaims: map[string]interface{}{
+			subjectAttribute:      subject,
+			ClaimMagicLinkUsedJti: jtiClaim,
+		},
 	}, nil
 }
 
@@ -159,24 +185,6 @@ func (s *magicLinkAuthnService) verifyToken(ctx context.Context, token string) *
 		return &ErrorInvalidToken
 	}
 	return nil
-}
-
-// extractSubject retrieves the subject claim from the JWT token payload and returns it as a string.
-// along with any service errors encountered during decoding or extraction.
-func (s *magicLinkAuthnService) extractSubject(ctx context.Context, token string) (string, *tidcommon.ServiceError) {
-	payload, decodeErr := jwt.DecodeJWTPayload(token)
-	if decodeErr != nil {
-		s.logger.Debug(ctx, "Failed to decode magic link token payload", log.Error(decodeErr))
-		return "", &ErrorInvalidToken
-	}
-
-	subject := utils.ConvertInterfaceValueToString(payload["sub"])
-	if subject == "" {
-		s.logger.Debug(ctx, "Subject claim not found or invalid")
-		return "", &ErrorMalformedTokenClaims
-	}
-
-	return subject, nil
 }
 
 // buildMagicLinkURL constructs a magic link URL by appending query parameters to a base URL or default configuration.

@@ -31,7 +31,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -198,7 +197,7 @@ func (m *magicLinkExecutor) InitiateMagicLink(ctx *providers.NodeContext,
 		subject = userID
 	}
 
-	claims := map[string]interface{}{"executionId": ctx.ExecutionID}
+	claims := map[string]interface{}{magiclink.ClaimNonce: ctx.ExecutionID}
 
 	expirySeconds := m.getTokenExpiry(ctx)
 	magicLinkURL := m.getMagicLinkURL(ctx)
@@ -330,8 +329,10 @@ func (m *magicLinkExecutor) executeVerify(ctx *providers.NodeContext) (*provider
 
 	creds := map[string]interface{}{
 		"magiclink": map[string]interface{}{
-			"token":            token,
-			"subjectAttribute": subjectAttribute,
+			magiclink.CredentialKeyToken:            token,
+			magiclink.CredentialKeyNonce:            ctx.ExecutionID,
+			magiclink.CredentialKeyUsedJti:          ctx.RuntimeData[common.RuntimeKeyMagicLinkUsedJti],
+			magiclink.CredentialKeySubjectAttribute: subjectAttribute,
 		},
 	}
 
@@ -350,46 +351,9 @@ func (m *magicLinkExecutor) executeVerify(ctx *providers.NodeContext) (*provider
 		execResp.RuntimeData[key] = utils.ConvertInterfaceValueToString(value)
 	}
 
-	tokenJTI, execErr := m.validateFlowClaims(ctx, token, logger)
-	if execErr != nil {
-		execResp.Status = providers.ExecFailure
-		execResp.Error = execErr
-		return execResp, nil
-	}
-	execResp.RuntimeData[common.RuntimeKeyMagicLinkUsedJti] = tokenJTI
-
 	execResp.Status = providers.ExecComplete
 	logger.Debug(ctx.Context, "Magic link verify completed successfully")
 	return execResp, nil
-}
-
-// validateFlowClaims checks executionId and JTI claims in the magic link JWT token.
-// These are flow-specific concerns and not part of the auth provider contract.
-func (m *magicLinkExecutor) validateFlowClaims(ctx *providers.NodeContext,
-	token string, logger *log.Logger) (string, *tidcommon.ServiceError) {
-	payload, decodeErr := jwt.DecodeJWTPayload(token)
-	if decodeErr != nil {
-		logger.Debug(ctx.Context, "Failed to decode magic link token", log.Error(decodeErr))
-		return "", &ErrInvalidMagicLinkToken
-	}
-
-	executionIDClaim := utils.ConvertInterfaceValueToString(payload["executionId"])
-	if executionIDClaim == "" || executionIDClaim != ctx.ExecutionID {
-		logger.Debug(ctx.Context, "Magic link token executionId mismatch")
-		return "", &ErrInvalidMagicLinkToken
-	}
-
-	jtiClaim := utils.ConvertInterfaceValueToString(payload["jti"])
-	if jtiClaim == "" {
-		return "", &ErrInvalidMagicLinkToken
-	}
-	if usedJti, exists := ctx.RuntimeData[common.RuntimeKeyMagicLinkUsedJti]; exists && usedJti == jtiClaim {
-		logger.Debug(ctx.Context, "Magic link token has already been used", log.String("jti", jtiClaim))
-		return "", &ErrInvalidMagicLinkToken
-	}
-
-	logger.Debug(ctx.Context, "Magic link token validated successfully")
-	return jtiClaim, nil
 }
 
 // resolveDestinationAttribute infers the destination attribute from the first configured node input.

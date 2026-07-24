@@ -21,7 +21,7 @@ package magiclink
 import (
 	"context"
 	"encoding/base64"
-	"fmt"
+	"encoding/json"
 	"net/url"
 	"sync"
 	"testing"
@@ -45,27 +45,31 @@ const (
 	testIssuedAt    = int64(1609459200)
 )
 
-// testValidJWT is a valid JWT with recipient and user_id in the standard subclaim.
-// nolint:gosec // G101: test data, not a real secret
-var testValidJWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
-	"eyJyZWNpcGllbnQiOiJ0ZXN0QGV4YW1wbGUuY29tIiwic3ViIjoidXNlci0xMjMifQ." +
-	"test-signature"
-
-var testMissingSubJWT = "eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9." +
-	"eyJyZWNpcGllbnQiOiAidGVzdEBleGFtcGxlLmNvbSJ9." +
-	"test-signature"
-
 var (
 	testUserID   = "user-123"
 	runtimeMutex sync.Mutex
 )
 
-func createMagicLinkJWTWithSubject(subject string) string {
+func createMagicLinkJWTWithClaims(subject, executionID, jti string) string {
+	payloadMap := make(map[string]interface{})
+	if subject != "" {
+		payloadMap["sub"] = subject
+	}
+	if executionID != "" {
+		payloadMap["nonce"] = executionID
+	}
+	if jti != "" {
+		payloadMap["jti"] = jti
+	}
+	return createMagicLinkJWTWithRawPayload(payloadMap)
+}
+
+func createMagicLinkJWTWithRawPayload(payloadMap map[string]interface{}) string {
 	header := `{"alg":"HS256","typ":"JWT"}`
-	payload := fmt.Sprintf(`{"sub":%q}`, subject)
+	payloadBytes, _ := json.Marshal(payloadMap)
 
 	headerB64 := base64.RawURLEncoding.EncodeToString([]byte(header))
-	payloadB64 := base64.RawURLEncoding.EncodeToString([]byte(payload))
+	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadBytes)
 
 	return headerB64 + "." + payloadB64 + ".test-signature"
 }
@@ -172,7 +176,7 @@ func (suite *MagicLinkServiceTestSuite) TestGenerateMagicLinkJWTGenerationError(
 }
 
 func (suite *MagicLinkServiceTestSuite) TestAuthenticateEmptyToken() {
-	result, err := suite.service.Authenticate(context.Background(), "", "")
+	result, err := suite.service.Authenticate(context.Background(), "", "", "", "")
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(ErrorInvalidToken.Code, err.Code)
@@ -184,7 +188,7 @@ func (suite *MagicLinkServiceTestSuite) TestAuthenticateExpiredToken() {
 	}
 	suite.mockJWTService.On("VerifyJWT", mock.Anything, testToken, tokenAudience, mock.Anything).Return(expiredErr)
 
-	result, err := suite.service.Authenticate(context.Background(), testToken, "")
+	result, err := suite.service.Authenticate(context.Background(), testToken, testExecutionID, "", "")
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(ErrorExpiredToken.Code, err.Code)
@@ -196,20 +200,22 @@ func (suite *MagicLinkServiceTestSuite) TestAuthenticateInvalidToken() {
 			Code: "JWT_INVALID",
 		})
 
-	result, err := suite.service.Authenticate(context.Background(), testToken, "")
+	result, err := suite.service.Authenticate(context.Background(), testToken, testExecutionID, "", "")
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(ErrorInvalidToken.Code, err.Code)
 }
 
 func (suite *MagicLinkServiceTestSuite) TestAuthenticateSuccess() {
-	suite.mockJWTService.On("VerifyJWT", mock.Anything, testValidJWT, tokenAudience, mock.Anything).Return(nil)
+	testJWT := createMagicLinkJWTWithClaims(testUserID, testExecutionID, "jti-123")
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, testJWT, tokenAudience, mock.Anything).Return(nil)
 
-	result, err := suite.service.Authenticate(context.Background(), testValidJWT, "")
+	result, err := suite.service.Authenticate(context.Background(), testJWT, testExecutionID, "", "")
 	suite.Nil(err)
 	suite.NotNil(result)
 	suite.Equal(testUserID, result.Token[common.UserAttributeUserID])
 	suite.Equal(testUserID, result.AuthenticatedClaims[common.UserAttributeUserID])
+	suite.Equal("jti-123", result.AuthenticatedClaims[ClaimMagicLinkUsedJti])
 }
 
 func (suite *MagicLinkServiceTestSuite) TestAuthenticateSuccessWithSubjectAttribute() {
@@ -217,28 +223,78 @@ func (suite *MagicLinkServiceTestSuite) TestAuthenticateSuccessWithSubjectAttrib
 		workEmailAttr  = "workemail"
 		workEmailValue = "johnwork@company.lk"
 	)
-	testWorkEmailJWT := createMagicLinkJWTWithSubject(workEmailValue)
+	testWorkEmailJWT := createMagicLinkJWTWithClaims(workEmailValue, testExecutionID, "jti-work")
 	suite.mockJWTService.On("VerifyJWT", mock.Anything, testWorkEmailJWT, tokenAudience, mock.Anything).Return(nil)
 
-	result, err := suite.service.Authenticate(context.Background(), testWorkEmailJWT, workEmailAttr)
+	result, err := suite.service.Authenticate(
+		context.Background(), testWorkEmailJWT, testExecutionID, "", workEmailAttr)
 	suite.Nil(err)
 	suite.NotNil(result)
 	suite.Equal(workEmailValue, result.Token[workEmailAttr])
 	suite.Equal(workEmailValue, result.AuthenticatedClaims[workEmailAttr])
+	suite.Equal("jti-work", result.AuthenticatedClaims[ClaimMagicLinkUsedJti])
+}
+
+func (suite *MagicLinkServiceTestSuite) TestAuthenticateExecutionIDMismatch() {
+	testJWT := createMagicLinkJWTWithClaims(testUserID, "wrong-exec-id", "jti-123")
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, testJWT, tokenAudience, mock.Anything).Return(nil)
+
+	result, err := suite.service.Authenticate(context.Background(), testJWT, testExecutionID, "", "")
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidToken.Code, err.Code)
+}
+
+func (suite *MagicLinkServiceTestSuite) TestAuthenticateAlreadyUsedJTI() {
+	testJWT := createMagicLinkJWTWithClaims(testUserID, testExecutionID, "jti-used")
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, testJWT, tokenAudience, mock.Anything).Return(nil)
+
+	result, err := suite.service.Authenticate(context.Background(), testJWT, testExecutionID, "jti-used", "")
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidToken.Code, err.Code)
 }
 
 func (suite *MagicLinkServiceTestSuite) TestAuthenticateMissingSubjectClaim() {
+	testMissingSubJWT := createMagicLinkJWTWithClaims("", testExecutionID, "jti-nosub")
 	suite.mockJWTService.On("VerifyJWT", mock.Anything, testMissingSubJWT, tokenAudience, mock.Anything).Return(nil)
 
-	result, err := suite.service.Authenticate(context.Background(), testMissingSubJWT, "")
+	result, err := suite.service.Authenticate(context.Background(), testMissingSubJWT, testExecutionID, "", "")
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(ErrorMalformedTokenClaims.Code, err.Code)
 }
 
-func (suite *MagicLinkServiceTestSuite) TestAuthenticateWhitespaceOnlyToken() {
-	result, err := suite.service.Authenticate(context.Background(), "   ", "")
-	suite.Nil(result)
+func (suite *MagicLinkServiceTestSuite) TestAuthenticateNonStringClaims() {
+	ctx := context.Background()
+
+	// Non-string sub claim (number)
+	tokenNonStringSub := createMagicLinkJWTWithRawPayload(map[string]interface{}{
+		"sub": 12345, "nonce": testExecutionID, "jti": "jti-1",
+	})
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, tokenNonStringSub, tokenAudience, mock.Anything).Return(nil)
+	res, err := suite.service.Authenticate(ctx, tokenNonStringSub, testExecutionID, "", "")
+	suite.Nil(res)
+	suite.NotNil(err)
+	suite.Equal(ErrorMalformedTokenClaims.Code, err.Code)
+
+	// Non-string nonce claim (boolean)
+	tokenNonStringNonce := createMagicLinkJWTWithRawPayload(map[string]interface{}{
+		"sub": testUserID, "nonce": true, "jti": "jti-2",
+	})
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, tokenNonStringNonce, tokenAudience, mock.Anything).Return(nil)
+	res, err = suite.service.Authenticate(ctx, tokenNonStringNonce, testExecutionID, "", "")
+	suite.Nil(res)
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidToken.Code, err.Code)
+
+	// Non-string jti claim (number)
+	tokenNonStringJTI := createMagicLinkJWTWithRawPayload(map[string]interface{}{
+		"sub": testUserID, "nonce": testExecutionID, "jti": 999,
+	})
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, tokenNonStringJTI, tokenAudience, mock.Anything).Return(nil)
+	res, err = suite.service.Authenticate(ctx, tokenNonStringJTI, testExecutionID, "", "")
+	suite.Nil(res)
 	suite.NotNil(err)
 	suite.Equal(ErrorInvalidToken.Code, err.Code)
 }
