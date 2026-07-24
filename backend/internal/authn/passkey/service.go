@@ -255,7 +255,7 @@ func (w *passkeyService) FinishRegistration(ctx context.Context, req *PasskeyReg
 	// Verify the credential using WebAuthn service
 	credential, err := webAuthnService.CreateCredential(webAuthnUser, *sessionData, parsedCredential)
 	if err != nil {
-		logger.Error(ctx, "Failed to verify and create credential", log.String("error", err.Error()))
+		logger.Error(ctx, "Failed to verify and create credential", webAuthnErrorFields(err)...)
 		return nil, &ErrorInvalidAttestationResponse
 	}
 
@@ -478,14 +478,14 @@ func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyA
 
 		_, credential, err = webAuthnService.ValidatePasskeyLogin(userHandler, *sessionData, parsedResponse)
 		if err != nil {
-			logger.Debug(ctx, "Failed to validate passkey assertion", log.String("error", err.Error()))
+			logger.Debug(ctx, "Failed to validate passkey assertion", webAuthnErrorFields(err)...)
 			return nil, &ErrorInvalidSignature
 		}
 	} else {
 		// Username-based flow: Use ValidateLogin with specific user
 		credential, err = webAuthnService.ValidateLogin(webAuthnUser, *sessionData, parsedResponse)
 		if err != nil {
-			logger.Debug(ctx, "Failed to validate WebAuthn assertion", log.String("error", err.Error()))
+			logger.Debug(ctx, "Failed to validate WebAuthn assertion", webAuthnErrorFields(err)...)
 			return nil, &ErrorInvalidSignature
 		}
 	}

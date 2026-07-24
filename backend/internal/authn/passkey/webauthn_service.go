@@ -21,10 +21,13 @@ package passkey
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
+
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 // Wrapper types to abstract the underlying WebAuthn library.
@@ -365,4 +368,21 @@ func parseAttestationResponse(
 	}
 
 	return parsed, nil
+}
+
+// webAuthnErrorFields returns structured log fields describing an error returned by the
+// underlying WebAuthn library. When the error is a go-webauthn protocol.Error, its category,
+// detail and debug info are captured as separate fields so that failures can be diagnosed
+// server-side. Callers log these fields but always return a generic internal ServiceError to
+// clients, so that library-specific details are never exposed externally.
+func webAuthnErrorFields(err error) []log.Field {
+	var protoErr *protocol.Error
+	if errors.As(err, &protoErr) {
+		return []log.Field{
+			log.String("webAuthnErrorType", protoErr.Type),
+			log.String("webAuthnErrorDetail", protoErr.Details),
+			log.String("webAuthnErrorDebug", protoErr.DevInfo),
+		}
+	}
+	return []log.Field{log.String("error", err.Error())}
 }
