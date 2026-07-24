@@ -19,6 +19,7 @@
 import {PageLoadingAnimation, UnsavedChangesBar} from '@thunderid/components';
 import {useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
+import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {Stack, Typography, Button, Alert, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {ArrowLeft} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
@@ -130,8 +131,11 @@ export default function ViewAgentTypePage(): JSX.Element {
   // Effective name (locked to the server-side value)
   const effectiveName = agentType?.name ?? '';
 
-  // Change detection
-  const hasChanges = useMemo(() => editedProperties !== null, [editedProperties]);
+  // Whether there are unsaved changes (deep compare edited vs base)
+  const hasChanges = useMemo(
+    () => editedProperties !== null && !isEqualIgnoringEmpty(editedProperties, baseProperties),
+    [editedProperties, baseProperties],
+  );
 
   const handleBack = async (): Promise<void> => {
     await navigate(listUrl);

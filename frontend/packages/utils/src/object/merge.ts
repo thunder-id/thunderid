@@ -16,13 +16,7 @@
  * under the License.
  */
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null) return false;
-
-  const proto = Object.getPrototypeOf(value) as unknown;
-
-  return proto === Object.prototype || proto === null;
-}
+import isPlainObject from './isPlainObject';
 
 function mergeValue(tgtVal: unknown, srcVal: unknown): unknown {
   if (Array.isArray(srcVal)) {

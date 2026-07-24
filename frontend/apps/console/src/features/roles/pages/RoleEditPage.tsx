@@ -21,6 +21,7 @@ import {PageLoadingAnimation} from '@thunderid/components';
 import {arePermissionsEqual, type ResourcePermissions} from '@thunderid/configure-resource-servers';
 import {useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
+import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
   Box,
   Stack,
@@ -138,7 +139,10 @@ export default function RoleEditPage(): JSX.Element {
     }
   }, [role, roleId, editedRole, updateRole, refetch, logger, showToast, t]);
 
-  const hasChanges = useMemo(() => Object.keys(editedRole).length > 0, [editedRole]);
+  const hasChanges = useMemo(
+    () => Object.entries(editedRole).some(([key, value]) => !isEqualIgnoringEmpty(value, role?.[key as keyof Role])),
+    [editedRole, role],
+  );
 
   const effectiveDescription = 'description' in editedRole ? (editedRole.description ?? '') : (role?.description ?? '');
 

@@ -259,6 +259,50 @@ describe('ResourceDetailPanel', () => {
 
     expect(screen.queryByText(/This is a system resource server and cannot be modified/i)).not.toBeInTheDocument();
   });
+
+  it('hides the Save/Discard bar when the name is typed away and back to original', async () => {
+    const selectedNode: SelectedNode = {
+      type: 'resource',
+      id: 'r-1',
+      data: {id: 'r-1', name: 'Documents', handle: 'documents', permission: 'dark-dodos/documents'},
+    };
+
+    renderWithProviders(
+      <ResourceDetailPanel selectedNode={selectedNode} resourceServer={mockResourceServer} onRefresh={vi.fn()} />,
+    );
+
+    const input = screen.getByDisplayValue('Documents');
+    fireEvent.change(input, {target: {value: 'Docs'}});
+    await waitFor(() => expect(screen.getByRole('button', {name: /Save/i})).toBeInTheDocument());
+
+    fireEvent.change(input, {target: {value: 'Documents'}});
+
+    await waitFor(() => expect(screen.queryByRole('button', {name: /Save/i})).not.toBeInTheDocument());
+  });
+
+  it('shows the bar again after Discard if the field is re-edited to a new value', async () => {
+    const selectedNode: SelectedNode = {
+      type: 'resource',
+      id: 'r-1',
+      data: {id: 'r-1', name: 'Documents', handle: 'documents', permission: 'dark-dodos/documents'},
+    };
+
+    renderWithProviders(
+      <ResourceDetailPanel selectedNode={selectedNode} resourceServer={mockResourceServer} onRefresh={vi.fn()} />,
+    );
+
+    let input = screen.getByDisplayValue('Documents');
+    fireEvent.change(input, {target: {value: 'Docs'}});
+    await waitFor(() => expect(screen.getByRole('button', {name: /Save/i})).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', {name: /Discard/i}));
+    await waitFor(() => expect(screen.queryByRole('button', {name: /Save/i})).not.toBeInTheDocument());
+    expect(screen.getByDisplayValue('Documents')).toBeInTheDocument();
+
+    input = screen.getByDisplayValue('Documents');
+    fireEvent.change(input, {target: {value: 'Renamed Again'}});
+    await waitFor(() => expect(screen.getByRole('button', {name: /Save/i})).toBeInTheDocument());
+  });
 });
 
 describe('ResourceDetailPanel (MCP non-server node)', () => {

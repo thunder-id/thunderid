@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {render, screen} from '@testing-library/react';
+import {render, screen, fireEvent} from '@testing-library/react';
 import {describe, it, expect, vi} from 'vitest';
 import type {Application} from '../../../../models/application';
 import EditCustomizationSettings from '../EditCustomizationSettings';
@@ -202,6 +202,62 @@ describe('EditCustomizationSettings', () => {
       // Should fall back to application values
       const themeCombobox = screen.getByPlaceholderText('applications:edit.customization.theme.placeholder');
       expect(themeCombobox).toHaveValue('Default Theme');
+    });
+  });
+
+  describe('URLs section reset', () => {
+    it('reverts UrlsSection to the application value when sectionResetKey changes', () => {
+      const {rerender} = render(
+        <EditCustomizationSettings
+          application={mockApplication}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+          sectionResetKey={0}
+        />,
+      );
+
+      const tosField = screen.getByPlaceholderText('applications:edit.customization.tosUri.placeholder');
+      fireEvent.change(tosField, {target: {value: 'https://not-yet-saved.example.com/terms'}});
+      expect(tosField).toHaveValue('https://not-yet-saved.example.com/terms');
+
+      // Simulate the page-level Reset: editedApp is cleared and sectionResetKey is bumped.
+      rerender(
+        <EditCustomizationSettings
+          application={mockApplication}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+          sectionResetKey={1}
+        />,
+      );
+
+      const tosFieldAfterReset = screen.getByPlaceholderText('applications:edit.customization.tosUri.placeholder');
+      expect(tosFieldAfterReset).toHaveValue('https://example.com/terms');
+    });
+
+    it('keeps the typed value when sectionResetKey stays the same', () => {
+      const {rerender} = render(
+        <EditCustomizationSettings
+          application={mockApplication}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+          sectionResetKey={0}
+        />,
+      );
+
+      const tosField = screen.getByPlaceholderText('applications:edit.customization.tosUri.placeholder');
+      fireEvent.change(tosField, {target: {value: 'https://not-yet-saved.example.com/terms'}});
+
+      rerender(
+        <EditCustomizationSettings
+          application={mockApplication}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+          sectionResetKey={0}
+        />,
+      );
+
+      const tosFieldAfterRerender = screen.getByPlaceholderText('applications:edit.customization.tosUri.placeholder');
+      expect(tosFieldAfterRerender).toHaveValue('https://not-yet-saved.example.com/terms');
     });
   });
 });

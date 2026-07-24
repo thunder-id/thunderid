@@ -32,6 +32,7 @@ interface EditTokensSettingsProps {
   oauth2Config?: OAuthAgentConfig;
   onFieldChange: (field: keyof Agent, value: unknown) => void;
   onValidationChange?: (hasErrors: boolean) => void;
+  sectionResetKey?: number;
 }
 
 export default function EditTokensSettings({
@@ -40,6 +41,7 @@ export default function EditTokensSettings({
   oauth2Config = undefined,
   onFieldChange,
   onValidationChange = undefined,
+  sectionResetKey = 0,
 }: EditTokensSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const [subTab, setSubTab] = useState(0);
@@ -94,6 +96,7 @@ export default function EditTokensSettings({
                 entityLabel="agent"
                 showUserInfoTab={false}
                 showActorClaim
+                sectionResetKey={sectionResetKey}
               />
             </Stack>
           </DelegationLockNotice>

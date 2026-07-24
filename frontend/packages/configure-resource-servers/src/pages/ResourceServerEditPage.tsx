@@ -19,6 +19,7 @@
 import {PageLoadingAnimation, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
 import {useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
+import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
   Alert,
   Box,
@@ -35,7 +36,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
-import {useState, type JSX, type SyntheticEvent} from 'react';
+import {useMemo, useState, type JSX, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useNavigate, useParams, useSearchParams} from 'react-router';
 import useGetDefaultResourceServer from '../api/useGetDefaultResourceServer';
@@ -100,25 +101,22 @@ export default function ResourceServerEditPage(): JSX.Element {
   };
 
   const handleFieldChange = (field: 'name' | 'description' | 'identifier', value: string): void => {
-    if (!resourceServer) return;
-    const original =
-      field === 'name'
-        ? resourceServer.name
-        : field === 'description'
-          ? (resourceServer.description ?? '')
-          : (resourceServer.identifier ?? '');
-    if (value === original) {
-      setEditedFields((prev) => {
-        const next = {...prev};
-        delete next[field];
-        return next;
-      });
-    } else {
-      setEditedFields((prev) => ({...prev, [field]: value}));
-    }
+    setEditedFields((prev) => ({...prev, [field]: value}));
   };
 
-  const hasChanges = Object.keys(editedFields).length > 0;
+  // Compare each edited field against its saved value, ignoring empty/null differences and
+  // surrounding whitespace, so typing a value back to its original clears the unsaved bar.
+  const hasChanges = useMemo(() => {
+    const norm = (v: unknown): unknown => (typeof v === 'string' ? v.trim() : v);
+    const originalOf: Record<string, unknown> = {
+      name: resourceServer?.name,
+      description: resourceServer?.description,
+      identifier: resourceServer?.identifier,
+    };
+    return Object.entries(editedFields).some(
+      ([key, value]) => !isEqualIgnoringEmpty(norm(value), norm(originalOf[key])),
+    );
+  }, [editedFields, resourceServer]);
 
   const handleSave = (): void => {
     if (!resourceServer) return;
@@ -280,20 +278,12 @@ export default function ResourceServerEditPage(): JSX.Element {
                 value={tempDescription}
                 onChange={(e) => setTempDescription(e.target.value)}
                 onBlur={() => {
-                  const trimmedDescription = tempDescription.trim();
-                  const currentValue = editedFields.description ?? resourceServer.description ?? '';
-                  if (trimmedDescription !== currentValue) {
-                    handleFieldChange('description', trimmedDescription);
-                  }
+                  handleFieldChange('description', tempDescription.trim());
                   setIsEditingDescription(false);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && e.ctrlKey) {
-                    const trimmedDescription = tempDescription.trim();
-                    const currentValue = editedFields.description ?? resourceServer.description ?? '';
-                    if (trimmedDescription !== currentValue) {
-                      handleFieldChange('description', trimmedDescription);
-                    }
+                    handleFieldChange('description', tempDescription.trim());
                     setIsEditingDescription(false);
                   } else if (e.key === 'Escape') {
                     setIsEditingDescription(false);

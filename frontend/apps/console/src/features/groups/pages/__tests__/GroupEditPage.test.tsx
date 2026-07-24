@@ -356,6 +356,30 @@ describe('GroupEditPage', () => {
     });
   });
 
+  it('should hide the action bar when the name is retyped back to its original value', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<GroupEditPage />);
+
+    const editName = async (to: string): Promise<void> => {
+      const h3 = screen.getAllByText(/Test Group|Renamed Group/).find((el) => el.tagName === 'H3');
+      await user.click(h3!.parentElement!.querySelector('button')!);
+      const input = screen.getByRole('textbox');
+      await user.clear(input);
+      await user.type(input, to);
+      await user.keyboard('{Enter}');
+    };
+
+    await editName('Renamed Group');
+    await waitFor(() => {
+      expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
+    });
+
+    await editName('Test Group');
+    await waitFor(() => {
+      expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
+    });
+  });
+
   it('should cancel name editing on Escape', async () => {
     const user = userEvent.setup();
     renderWithProviders(<GroupEditPage />);

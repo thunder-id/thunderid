@@ -19,6 +19,7 @@
 import {PageLoadingAnimation, UnsavedChangesBar} from '@thunderid/components';
 import {useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
+import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
   Box,
   Stack,
@@ -197,11 +198,23 @@ export default function ViewUserTypePage(): JSX.Element {
     }
   }
 
-  // Change detection
-  const hasChanges = useMemo(
-    () => Object.keys(editedUserType).length > 0 || editedProperties !== null,
-    [editedUserType, editedProperties],
-  );
+  // Change detection — compares each edited field against its saved value (fields don't map 1:1
+  // to userType keys, e.g. displayAttribute lives under systemAttributes.display) and the edited
+  // schema properties against the server's, so reverting every edit by hand clears the bar.
+  const hasChanges = useMemo(() => {
+    const originalOf: Record<string, unknown> = {
+      name: userType?.name,
+      ouId: userType?.ouId,
+      allowSelfRegistration: userType?.allowSelfRegistration,
+      displayAttribute: userType?.systemAttributes?.display ?? '',
+    };
+    const fieldsChanged = Object.entries(editedUserType).some(
+      ([key, value]) => !isEqualIgnoringEmpty(value, originalOf[key]),
+    );
+    const propertiesChanged = editedProperties !== null && !isEqualIgnoringEmpty(editedProperties, baseProperties);
+
+    return fieldsChanged || propertiesChanged;
+  }, [editedUserType, editedProperties, userType, baseProperties]);
 
   const handleBack = async (): Promise<void> => {
     await navigate(listUrl);

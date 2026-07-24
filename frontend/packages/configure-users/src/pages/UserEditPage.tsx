@@ -26,6 +26,7 @@ import {
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import type {User} from '@thunderid/types';
+import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
   Box,
   Stack,
@@ -176,14 +177,17 @@ export default function UserEditPage() {
         },
       });
       setEditedUser({});
-      setAttributesResetKey((key) => key + 1);
       await refetch();
+      setAttributesResetKey((key) => key + 1);
     } catch (err) {
       logger.error('Failed to update user', {error: err});
     }
   }, [schemaOuId, user, userId, editedUser, updateUserMutation, refetch, logger]);
 
-  const hasChanges = Object.keys(editedUser).length > 0;
+  const hasChanges = useMemo(
+    () => Object.entries(editedUser).some(([key, value]) => !isEqualIgnoringEmpty(value, user?.[key as keyof User])),
+    [editedUser, user],
+  );
 
   const handleBack = async () => {
     await navigate(routes.list());
