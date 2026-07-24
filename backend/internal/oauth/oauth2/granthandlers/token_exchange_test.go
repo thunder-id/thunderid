@@ -982,6 +982,65 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_InvalidSubjectT
 	assert.Equal(suite.T(), "Invalid subject_token", errResp.ErrorDescription)
 }
 
+// A caller cannot tell an expired token from an untrusted issuer or an audience mismatch when every
+// rejection collapses into one description, so each attributable reason gets its own.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SubjectTokenRejectionReasonIsReported() {
+	testCases := []struct {
+		name                string
+		validationErr       error
+		expectedDescription string
+	}{
+		{
+			name:                "Expired",
+			validationErr:       tokenservice.ErrTokenExpired,
+			expectedDescription: "The subject_token has expired",
+		},
+		{
+			name:                "UntrustedIssuer",
+			validationErr:       fmt.Errorf("%w: unknown issuer", tokenservice.ErrIssuerNotTrusted),
+			expectedDescription: "The subject_token issuer is not registered as a trusted token exchange issuer",
+		},
+		{
+			name:          "AudienceNotAccepted",
+			validationErr: fmt.Errorf("%w: audience mismatch", tokenservice.ErrAudienceNotAccepted),
+			expectedDescription: "The subject_token audience does not contain this server's issuer or the " +
+				"trusted token audience configured for its issuer",
+		},
+		{
+			name:                "UnattributedFailureKeepsGenericDescription",
+			validationErr:       errors.New("something else went wrong"),
+			expectedDescription: "Invalid subject_token",
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+
+			subjectToken := suite.createTestJWT(map[string]interface{}{
+				"sub": "user123",
+				"iss": testCustomIssuer,
+				"exp": float64(time.Now().Unix() + 3600),
+			})
+			tokenRequest := &model.TokenRequest{
+				GrantType:        string(providers.GrantTypeTokenExchange),
+				ClientID:         testClientID,
+				SubjectToken:     subjectToken,
+				SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
+			}
+			suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+				Return(nil, tc.validationErr)
+
+			result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+			assert.Nil(suite.T(), result)
+			assert.NotNil(suite.T(), errResp)
+			assert.Equal(suite.T(), constants.ErrorInvalidRequest, errResp.Error)
+			assert.Equal(suite.T(), tc.expectedDescription, errResp.ErrorDescription)
+		})
+	}
+}
+
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_InvalidSubjectToken_MissingSubClaim() {
 	now := time.Now().Unix()
 	subjectToken := suite.createTestJWT(map[string]interface{}{
@@ -1112,6 +1171,78 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_InvalidActorTok
 	assert.NotNil(suite.T(), errResp)
 	assert.Equal(suite.T(), constants.ErrorInvalidRequest, errResp.Error)
 	assert.Equal(suite.T(), "Invalid actor_token", errResp.ErrorDescription)
+}
+
+// The actor_token rejection reason is reported the same way as the subject_token above.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ActorTokenRejectionReasonIsReported() {
+	testCases := []struct {
+		name                string
+		validationErr       error
+		expectedDescription string
+	}{
+		{
+			name:                "Expired",
+			validationErr:       tokenservice.ErrTokenExpired,
+			expectedDescription: "The actor_token has expired",
+		},
+		{
+			name:                "UntrustedIssuer",
+			validationErr:       fmt.Errorf("%w: unknown issuer", tokenservice.ErrIssuerNotTrusted),
+			expectedDescription: "The actor_token issuer is not registered as a trusted token exchange issuer",
+		},
+		{
+			name:          "AudienceNotAccepted",
+			validationErr: fmt.Errorf("%w: audience mismatch", tokenservice.ErrAudienceNotAccepted),
+			expectedDescription: "The actor_token audience does not contain this server's issuer or the " +
+				"trusted token audience configured for its issuer",
+		},
+		{
+			name:                "UnattributedFailureKeepsGenericDescription",
+			validationErr:       errors.New("something else went wrong"),
+			expectedDescription: "Invalid actor_token",
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+
+			now := time.Now().Unix()
+			subjectToken := suite.createTestJWT(map[string]interface{}{
+				"sub": "user123",
+				"iss": testCustomIssuer,
+				"exp": float64(now + 3600),
+			})
+			actorToken := suite.createTestJWT(map[string]interface{}{
+				"sub": "service456",
+				"iss": testCustomIssuer,
+				"exp": float64(now + 3600),
+			})
+			tokenRequest := &model.TokenRequest{
+				GrantType:        string(providers.GrantTypeTokenExchange),
+				ClientID:         testClientID,
+				SubjectToken:     subjectToken,
+				SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
+				ActorToken:       actorToken,
+				ActorTokenType:   string(constants.TokenTypeIdentifierAccessToken),
+			}
+			suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+				Return(&tokenservice.SubjectTokenClaims{
+					Sub:            testUserID,
+					Iss:            testCustomIssuer,
+					UserAttributes: map[string]interface{}{},
+				}, nil)
+			suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, actorToken, suite.oauthApp).
+				Return(nil, tc.validationErr)
+
+			result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+			assert.Nil(suite.T(), result)
+			assert.NotNil(suite.T(), errResp)
+			assert.Equal(suite.T(), constants.ErrorInvalidRequest, errResp.Error)
+			assert.Equal(suite.T(), tc.expectedDescription, errResp.ErrorDescription)
+		})
+	}
 }
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_InvalidScope() {

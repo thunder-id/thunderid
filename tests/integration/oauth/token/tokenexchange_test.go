@@ -881,5 +881,5 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_SubjectTokenUnsupportedIssue
 	ts.Require().NoError(err)
 	ts.Equal(http.StatusBadRequest, statusCode)
 	ts.Equal("invalid_request", resp.Error)
-	ts.Contains(resp.ErrorDescription, "Invalid subject_token")
+	ts.Contains(resp.ErrorDescription, "issuer is not registered as a trusted token exchange issuer")
 }

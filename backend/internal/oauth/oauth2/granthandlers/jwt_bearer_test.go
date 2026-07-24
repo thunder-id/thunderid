@@ -21,6 +21,7 @@ package granthandlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -254,6 +255,58 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_InvalidAssertion() 
 	assert.NotNil(suite.T(), errResp)
 	assert.Equal(suite.T(), constants.ErrorInvalidGrant, errResp.Error)
 	assert.Equal(suite.T(), "Invalid assertion", errResp.ErrorDescription)
+}
+
+// The reasons the validator attributes are reported so a client can tell an expired assertion from
+// an IdP that was never registered for ID-JAG.
+func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_AssertionRejectionReasonIsReported() {
+	testCases := []struct {
+		name                string
+		validationErr       error
+		expectedDescription string
+	}{
+		{
+			name:                "Expired",
+			validationErr:       tokenservice.ErrTokenExpired,
+			expectedDescription: "The assertion has expired",
+		},
+		{
+			name:                "UntrustedIssuer",
+			validationErr:       fmt.Errorf("%w: unknown issuer", tokenservice.ErrIssuerNotTrusted),
+			expectedDescription: "The assertion issuer is not registered as a trusted ID-JAG issuer",
+		},
+		{
+			name:                "AudienceNotAccepted",
+			validationErr:       fmt.Errorf("%w: audience mismatch", tokenservice.ErrAudienceNotAccepted),
+			expectedDescription: "The assertion audience must be exactly this server's issuer",
+		},
+		{
+			name:                "UnattributedFailureKeepsGenericDescription",
+			validationErr:       errors.New("something else went wrong"),
+			expectedDescription: "Invalid assertion",
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+
+			tokenRequest := &model.TokenRequest{
+				GrantType: string(providers.GrantTypeJWTBearer),
+				ClientID:  testClientID,
+				Assertion: testAssertion,
+			}
+			suite.mockTokenValidator.On("ValidateIDJAGAssertion", mock.Anything, testAssertion, testClientID).
+				Return(nil, tc.validationErr)
+
+			result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+			assert.Nil(suite.T(), result)
+			assert.NotNil(suite.T(), errResp)
+			assert.Equal(suite.T(), constants.ErrorInvalidGrant, errResp.Error)
+			assert.Equal(suite.T(), tc.expectedDescription, errResp.ErrorDescription)
+		})
+	}
 }
 
 // Granted scopes are the intersection of the assertion scopes and the request scope parameter. The

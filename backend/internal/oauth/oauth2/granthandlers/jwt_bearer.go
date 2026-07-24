@@ -20,6 +20,7 @@ package granthandlers
 
 import (
 	"context"
+	"errors"
 	"slices"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -100,9 +101,27 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 		ctx, tokenRequest.Assertion, tokenRequest.ClientID)
 	if err != nil {
 		logger.Debug(ctx, "Failed to validate ID-JAG assertion", log.Error(err))
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorInvalidGrant,
-			ErrorDescription: "Invalid assertion",
+		switch {
+		case errors.Is(err, tokenservice.ErrTokenExpired):
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorInvalidGrant,
+				ErrorDescription: "The assertion has expired",
+			}
+		case errors.Is(err, tokenservice.ErrIssuerNotTrusted):
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorInvalidGrant,
+				ErrorDescription: "The assertion issuer is not registered as a trusted ID-JAG issuer",
+			}
+		case errors.Is(err, tokenservice.ErrAudienceNotAccepted):
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorInvalidGrant,
+				ErrorDescription: "The assertion audience must be exactly this server's issuer",
+			}
+		default:
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorInvalidGrant,
+				ErrorDescription: "Invalid assertion",
+			}
 		}
 	}
 
