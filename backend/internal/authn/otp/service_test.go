@@ -59,7 +59,7 @@ func (suite *OTPAuthnServiceTestSuite) SetupTest() {
 
 func (suite *OTPAuthnServiceTestSuite) TestGenerateOTPEmptyRecipient() {
 	sessionToken, otpValue, _, err := suite.service.GenerateOTP(
-		context.Background(), "", authnprovidercm.UserAttributeUserID)
+		context.Background(), "", authnprovidercm.UserAttributeUserID, nil)
 	suite.Empty(sessionToken)
 	suite.Empty(otpValue)
 	suite.NotNil(err)
@@ -68,7 +68,7 @@ func (suite *OTPAuthnServiceTestSuite) TestGenerateOTPEmptyRecipient() {
 
 func (suite *OTPAuthnServiceTestSuite) TestGenerateOTPWhitespaceRecipient() {
 	sessionToken, otpValue, _, err := suite.service.GenerateOTP(
-		context.Background(), "   ", authnprovidercm.UserAttributeUserID)
+		context.Background(), "   ", authnprovidercm.UserAttributeUserID, nil)
 	suite.Empty(sessionToken)
 	suite.Empty(otpValue)
 	suite.NotNil(err)
@@ -77,20 +77,20 @@ func (suite *OTPAuthnServiceTestSuite) TestGenerateOTPWhitespaceRecipient() {
 
 func (suite *OTPAuthnServiceTestSuite) TestGenerateOTPDefaultsRecipientAttr() {
 	suite.mockNotifOTPSvc.On("GenerateOTP",
-		mock.Anything, testRecipient, authnprovidercm.UserAttributeUserID,
+		mock.Anything, testRecipient, authnprovidercm.UserAttributeUserID, mock.Anything,
 	).Return(testSessionToken, testOTPCode, int64(300), (*tidcommon.ServiceError)(nil)).Once()
 
-	_, _, _, err := suite.service.GenerateOTP(context.Background(), testRecipient, "")
+	_, _, _, err := suite.service.GenerateOTP(context.Background(), testRecipient, "", nil)
 	suite.Nil(err)
 }
 
 func (suite *OTPAuthnServiceTestSuite) TestGenerateOTPSuccess() {
 	suite.mockNotifOTPSvc.On("GenerateOTP",
-		mock.Anything, testRecipient, authnprovidercm.UserAttributeUserID,
+		mock.Anything, testRecipient, authnprovidercm.UserAttributeUserID, mock.Anything,
 	).Return(testSessionToken, testOTPCode, int64(300), (*tidcommon.ServiceError)(nil)).Once()
 
 	sessionToken, otpValue, expirySeconds, err := suite.service.GenerateOTP(
-		context.Background(), testRecipient, authnprovidercm.UserAttributeUserID)
+		context.Background(), testRecipient, authnprovidercm.UserAttributeUserID, nil)
 
 	suite.Nil(err)
 	suite.Equal(testSessionToken, sessionToken)
@@ -100,11 +100,11 @@ func (suite *OTPAuthnServiceTestSuite) TestGenerateOTPSuccess() {
 
 func (suite *OTPAuthnServiceTestSuite) TestGenerateOTPDelegatesError() {
 	suite.mockNotifOTPSvc.On("GenerateOTP",
-		mock.Anything, testRecipient, authnprovidercm.UserAttributeUserID,
+		mock.Anything, testRecipient, authnprovidercm.UserAttributeUserID, mock.Anything,
 	).Return("", "", int64(0), &tidcommon.InternalServerError).Once()
 
 	sessionToken, otpValue, _, err := suite.service.GenerateOTP(
-		context.Background(), testRecipient, authnprovidercm.UserAttributeUserID)
+		context.Background(), testRecipient, authnprovidercm.UserAttributeUserID, nil)
 
 	suite.Empty(sessionToken)
 	suite.Empty(otpValue)

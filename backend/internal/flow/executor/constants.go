@@ -115,6 +115,9 @@ const (
 	propertyKeyCallbackType                            = "callbackType"
 	propertyKeyLoginHintAttribute                      = "loginHintAttribute"
 	propertyKeyMaxOTPAttempts                          = "maxAttempts"
+	propertyKeyOTPLength                               = "otpLength"
+	propertyKeyOTPUseNumericOnly                       = "otpUseNumericOnly"
+	propertyKeyOTPValidityPeriodSeconds                = "otpValidityPeriodSeconds"
 )
 
 // nonSearchableInputs contains the list of user inputs/ attributes that are non-searchable.

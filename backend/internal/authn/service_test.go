@@ -459,7 +459,7 @@ func (suite *AuthenticationServiceTestSuite) TestSendOTPSuccess() {
 	senderID := testSenderID
 	recipient := "+1234567890"
 
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, recipient, "mobile_number").
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, recipient, "mobile_number", mock.Anything).
 		Return(testSessionTkn, "123456", int64(300), nil)
 	suite.mockTemplateService.On("Render",
 		mock.Anything, template.ScenarioOTP, template.TemplateTypeSMS, mock.Anything).
@@ -485,7 +485,7 @@ func (suite *AuthenticationServiceTestSuite) TestSendOTPGenerateError() {
 			Key: "error.test.failed_to_generate_otp", DefaultValue: "Failed to generate OTP"},
 	}
 
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, recipient, "mobile_number").
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, recipient, "mobile_number", mock.Anything).
 		Return("", "", int64(0), svcErr)
 
 	result, err := suite.service.SendOTP(context.Background(), senderID, notifcommon.ChannelTypeSMS, recipient)
@@ -507,7 +507,7 @@ func (suite *AuthenticationServiceTestSuite) TestSendOTPSendError() {
 		},
 	}
 
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, recipient, "mobile_number").
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, recipient, "mobile_number", mock.Anything).
 		Return(testSessionTkn, "123456", int64(300), nil)
 	suite.mockTemplateService.On("Render",
 		mock.Anything, template.ScenarioOTP, template.TemplateTypeSMS, mock.Anything).

@@ -28,6 +28,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -81,6 +82,9 @@ func newOTPExecutor(
 			},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: propertyKeyMaxOTPAttempts},
+				{Property: propertyKeyOTPLength},
+				{Property: propertyKeyOTPUseNumericOnly},
+				{Property: propertyKeyOTPValidityPeriodSeconds},
 			},
 		})
 
@@ -166,7 +170,9 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 		return execResp, nil
 	}
 
-	sessionToken, otpValue, expirySeconds, svcErr := e.otpService.GenerateOTP(ctx.Context, recipient, recipientAttr)
+	otpCfg := e.resolveOTPProperties(ctx)
+	sessionToken, otpValue, expirySeconds, svcErr :=
+		e.otpService.GenerateOTP(ctx.Context, recipient, recipientAttr, otpCfg)
 	if svcErr != nil {
 		return execResp, fmt.Errorf("failed to generate OTP: %s", svcErr.ErrorDescription.DefaultValue)
 	}
@@ -376,6 +382,50 @@ func (e *otpExecutor) validateAttempts(ctx *providers.NodeContext, execResp *pro
 	}
 
 	return attemptCount, nil
+}
+
+// resolveOTPProperties reads flow-level OTP configuration overrides from NodeProperties.
+// Returns nil if no override is specified; otherwise returns an OTPConfig with only
+// the fields that were explicitly set and valid.
+func (e *otpExecutor) resolveOTPProperties(ctx *providers.NodeContext) *notification.OTPConfig {
+	var cfg notification.OTPConfig
+	hasOverride := false
+
+	if v, ok := ctx.NodeProperties[propertyKeyOTPLength]; ok {
+		if n, ok := systemutils.ToInt64(v); ok {
+			if f, isFloat := v.(float64); !isFloat || f == float64(n) {
+				length := int(n)
+				if length >= 4 && length <= 10 {
+					cfg.Length = &length
+					hasOverride = true
+				}
+			}
+		}
+	}
+
+	if v, ok := ctx.NodeProperties[propertyKeyOTPUseNumericOnly]; ok {
+		if numericOnly, ok := systemutils.ToBool(v); ok {
+			cfg.UseNumericOnly = &numericOnly
+			hasOverride = true
+		}
+	}
+
+	if v, ok := ctx.NodeProperties[propertyKeyOTPValidityPeriodSeconds]; ok {
+		if n, ok := systemutils.ToInt64(v); ok {
+			if f, isFloat := v.(float64); !isFloat || f == float64(n) {
+				validity := int(n)
+				if validity >= 30 && validity <= 600 {
+					cfg.ValidityPeriodSeconds = &validity
+					hasOverride = true
+				}
+			}
+		}
+	}
+
+	if !hasOverride {
+		return nil
+	}
+	return &cfg
 }
 
 // getMaxOTPAttempts returns the maximum OTP generation attempts from NodeProperties,

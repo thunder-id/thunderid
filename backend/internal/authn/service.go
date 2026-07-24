@@ -208,7 +208,7 @@ func (as *authenticationService) SendOTP(ctx context.Context, senderID string, c
 	recipient string) (string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, svcLoggerComponentName))
 
-	sessionToken, otpValue, _, svcErr := as.otpService.GenerateOTP(ctx, recipient, "mobile_number")
+	sessionToken, otpValue, _, svcErr := as.otpService.GenerateOTP(ctx, recipient, "mobile_number", nil)
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ServerErrorType {
 			logger.Error(ctx, "Failed to generate OTP", log.String("error", svcErr.Code))
