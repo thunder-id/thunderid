@@ -22,7 +22,9 @@ import {render, screen, fireEvent, waitFor, cleanup, act} from '@thunderid/test-
 import type {Node, Edge} from '@xyflow/react';
 import React from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
+import type {UseResourceAddProps} from '../../../hooks/useResourceAdd';
 import type {Resources} from '../../../models/resources';
+import type {Step} from '../../../models/steps';
 import DecoratedVisualFlow from '../DecoratedVisualFlow';
 
 const mockNavigate = vi.fn();
@@ -76,8 +78,12 @@ vi.mock('../../../hooks/useComponentDelete', () => ({
   }),
 }));
 
+const {mockUseResourceAdd} = vi.hoisted(() => ({
+  mockUseResourceAdd: vi.fn(() => vi.fn()),
+}));
+
 vi.mock('../../../hooks/useResourceAdd', () => ({
-  default: () => vi.fn(),
+  default: mockUseResourceAdd,
 }));
 
 vi.mock('../../../hooks/useGenerateStepElement', () => ({
@@ -138,8 +144,17 @@ vi.mock('../../../utils/resolveCollisions', () => ({
   resolveCollisions: vi.fn((nodes) => nodes),
 }));
 
+const {mockComputeExecutorConnections, mockAutoAssignConnections} = vi.hoisted(() => ({
+  mockComputeExecutorConnections: vi.fn(() => [] as unknown[]),
+  mockAutoAssignConnections: vi.fn(),
+}));
+
 vi.mock('../../../utils/computeExecutorConnections', () => ({
-  default: vi.fn(() => []),
+  default: mockComputeExecutorConnections,
+}));
+
+vi.mock('../../../utils/autoAssignConnections', () => ({
+  default: mockAutoAssignConnections,
 }));
 
 vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
@@ -1646,6 +1661,35 @@ describe('DecoratedVisualFlow', () => {
       await waitFor(() => {
         expect(screen.getByTestId('visual-flow')).toBeInTheDocument();
       });
+    });
+  });
+  describe('Step Load Handling', () => {
+    it('should call autoAssignConnections when step is loaded and executorConnections exist', () => {
+      mockComputeExecutorConnections.mockReturnValue([{id: 'test'}] as unknown[]);
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      const propsPassed = (mockUseResourceAdd.mock.calls[0] as unknown[])[0] as UseResourceAddProps;
+      const step = {id: 'step-1', type: 'execution'} as unknown as Step;
+
+      const loadedStep = propsPassed.onStepLoad(step);
+
+      expect(defaultProps.onStepLoad).toHaveBeenCalledWith(step);
+      expect(mockAutoAssignConnections).toHaveBeenCalledWith([step], [{id: 'test'}]);
+      expect(loadedStep).toEqual(step);
+    });
+
+    it('should not call autoAssignConnections when executorConnections do not exist', () => {
+      // computeExecutorConnections returns [] and metadata is undefined → computedMetadata is undefined
+      mockComputeExecutorConnections.mockReturnValue([]);
+      mockAutoAssignConnections.mockClear();
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      const propsPassed = (mockUseResourceAdd.mock.calls[0] as unknown[])[0] as UseResourceAddProps;
+      const step = {id: 'step-1', type: 'execution'} as unknown as Step;
+
+      propsPassed.onStepLoad(step);
+
+      expect(mockAutoAssignConnections).not.toHaveBeenCalled();
     });
   });
 });
