@@ -422,6 +422,12 @@ jobs:
             --version "$OPENCHOREO_CHART_VERSION" --namespace openchoreo-data-plane --create-namespace \
             --values "https://raw.githubusercontent.com/openchoreo/openchoreo/$OPENCHOREO_REF/install/k3d/single-cluster/values-dp.yaml"
 
+          # cert-manager creates cluster-agent-tls asynchronously after the chart is installed.
+          # Wait for it before reading its CA; otherwise AGENT_CA is empty, the ClusterDataPlane
+          # gets an empty clientCA, and the data-plane cluster-agent cannot authenticate to the
+          # control plane, so no rendered resources ever reach the data plane.
+          kubectl wait --for=create secret/cluster-agent-tls -n openchoreo-data-plane --timeout=120s
+
           AGENT_CA=$(kubectl get secret cluster-agent-tls -n openchoreo-data-plane -o jsonpath='{.data.ca\.crt}' | base64 -d)
           kubectl apply -f - <<EOF
           apiVersion: openchoreo.dev/v1alpha1
