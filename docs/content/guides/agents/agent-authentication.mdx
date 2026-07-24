@@ -121,7 +121,7 @@ All agent access tokens are signed JWTs (`typ: at+jwt`) and share a common set o
 | `act` | Not present. | Present only when an explicit `actor_token` is provided in the request. |
 | `exp`, `iat`, `nbf`, `jti` | Standard JWT lifetime and identity claims. | Standard JWT lifetime and identity claims. |
 
-Custom attributes configured in the agent's **Token** settings are included as additional claims on M2M tokens.
+The agent's **Token** settings control which additional claims appear on M2M tokens: the agent's schema attributes, its system attributes (`name`, `owner`), OU claims (`ouId`, `ouName`, `ouHandle`), and its `groups` and `roles`. Each is opt-in and included only when selected.
 
 ### `act` Claim
 

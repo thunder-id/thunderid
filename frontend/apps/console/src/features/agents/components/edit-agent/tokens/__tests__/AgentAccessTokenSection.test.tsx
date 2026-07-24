@@ -20,7 +20,7 @@
 import userEvent from '@testing-library/user-event';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import type {Agent, AgentInboundAuthConfig} from '../../../../models/agent';
+import type {Agent, AgentInboundAuthConfig, OAuthAgentConfig} from '../../../../models/agent';
 import AgentAccessTokenSection from '../AgentAccessTokenSection';
 
 const {mockUseGetAgentTypes, mockUseGetAgentType} = vi.hoisted(() => ({
@@ -77,6 +77,158 @@ describe('AgentAccessTokenSection', () => {
 
     expect(screen.getByText('department')).toBeInTheDocument();
     expect(screen.queryByText('apiKey')).not.toBeInTheDocument();
+  });
+
+  it('lists the name and owner system attributes alongside the schema attributes', () => {
+    render(
+      <AgentAccessTokenSection
+        agent={{...baseAgent, inboundAuthConfig: baseInboundAuthConfig}}
+        editedAgent={{}}
+        oauth2Config={{grantTypes: ['client_credentials'], responseTypes: []}}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    expect(screen.getByText('department')).toBeInTheDocument();
+    expect(screen.getByText('name')).toBeInTheDocument();
+    expect(screen.getByText('owner')).toBeInTheDocument();
+  });
+
+  it('adds a system attribute to clientConfig when its chip is clicked', async () => {
+    const user = userEvent.setup();
+    render(
+      <AgentAccessTokenSection
+        agent={{...baseAgent, inboundAuthConfig: baseInboundAuthConfig}}
+        editedAgent={{}}
+        oauth2Config={{grantTypes: ['client_credentials'], responseTypes: []}}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    await user.click(screen.getByText('owner'));
+
+    expect(mockOnFieldChange).toHaveBeenCalledWith(
+      'inboundAuthConfig',
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'oauth2',
+          config: expect.objectContaining({
+            token: expect.objectContaining({
+              accessToken: expect.objectContaining({
+                clientConfig: expect.objectContaining({attributes: ['owner']}) as Record<string, unknown>,
+              }) as Record<string, unknown>,
+            }) as Record<string, unknown>,
+          }) as Record<string, unknown>,
+        }),
+      ]),
+    );
+  });
+
+  it('lists the OU attributes as selectable chips', () => {
+    render(
+      <AgentAccessTokenSection
+        agent={{...baseAgent, inboundAuthConfig: baseInboundAuthConfig}}
+        editedAgent={{}}
+        oauth2Config={{grantTypes: ['client_credentials'], responseTypes: []}}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    expect(screen.getByText('ouId')).toBeInTheDocument();
+    expect(screen.getByText('ouName')).toBeInTheDocument();
+    expect(screen.getByText('ouHandle')).toBeInTheDocument();
+  });
+
+  it('adds an OU attribute to clientConfig when its chip is clicked', async () => {
+    const user = userEvent.setup();
+    render(
+      <AgentAccessTokenSection
+        agent={{...baseAgent, inboundAuthConfig: baseInboundAuthConfig}}
+        editedAgent={{}}
+        oauth2Config={{grantTypes: ['client_credentials'], responseTypes: []}}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    await user.click(screen.getByText('ouId'));
+
+    expect(mockOnFieldChange).toHaveBeenCalledWith(
+      'inboundAuthConfig',
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'oauth2',
+          config: expect.objectContaining({
+            token: expect.objectContaining({
+              accessToken: expect.objectContaining({
+                clientConfig: expect.objectContaining({attributes: ['ouId']}) as Record<string, unknown>,
+              }) as Record<string, unknown>,
+            }) as Record<string, unknown>,
+          }) as Record<string, unknown>,
+        }),
+      ]),
+    );
+  });
+
+  it('lists the groups and roles attributes as selectable chips', () => {
+    render(
+      <AgentAccessTokenSection
+        agent={{...baseAgent, inboundAuthConfig: baseInboundAuthConfig}}
+        editedAgent={{}}
+        oauth2Config={{grantTypes: ['client_credentials'], responseTypes: []}}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    expect(screen.getByText('groups')).toBeInTheDocument();
+    expect(screen.getByText('roles')).toBeInTheDocument();
+  });
+
+  it('adds the roles attribute to clientConfig when its chip is clicked', async () => {
+    const user = userEvent.setup();
+    render(
+      <AgentAccessTokenSection
+        agent={{...baseAgent, inboundAuthConfig: baseInboundAuthConfig}}
+        editedAgent={{}}
+        oauth2Config={{grantTypes: ['client_credentials'], responseTypes: []}}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    await user.click(screen.getByText('roles'));
+
+    expect(mockOnFieldChange).toHaveBeenCalledWith(
+      'inboundAuthConfig',
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'oauth2',
+          config: expect.objectContaining({
+            token: expect.objectContaining({
+              accessToken: expect.objectContaining({
+                clientConfig: expect.objectContaining({attributes: ['roles']}) as Record<string, unknown>,
+              }) as Record<string, unknown>,
+            }) as Record<string, unknown>,
+          }) as Record<string, unknown>,
+        }),
+      ]),
+    );
+  });
+
+  it('renders a selected system attribute in the JWT preview', () => {
+    render(
+      <AgentAccessTokenSection
+        agent={{...baseAgent, inboundAuthConfig: baseInboundAuthConfig}}
+        editedAgent={{}}
+        oauth2Config={{
+          grantTypes: ['client_credentials'],
+          responseTypes: [],
+          // Client tokens have no ID token; cast the partial fixture the component reads from.
+          token: {accessToken: {clientConfig: {attributes: ['name']}}} as OAuthAgentConfig['token'],
+        }}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    expect(screen.getByTestId('jwt-preview')).toHaveTextContent('"name":"<name>"');
   });
 
   it('does not show a scopes section', () => {

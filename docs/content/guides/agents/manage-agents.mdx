@@ -70,11 +70,10 @@ The **Flows** tab is available when the agent has an OAuth 2.0 configuration. It
 
 ### Token
 
-The **Token** tab controls token issuance settings:
+The **Token** tab configures token contents and validity across two sub-tabs:
 
-- Access token and ID token validity periods.
-- Custom claims added to issued tokens.
-- Token signing and encryption options.
+- **User**: applies to tokens whose subject is a user the agent acts on behalf of, through the authorization code and on-behalf-of flows. Select the user attributes carried in the access token and ID token, map scopes to claims, select the ID token response format, and set the access token and ID token validity periods. These settings stay frozen until you turn on Delegated mode on the **Flows** tab.
+- **Agent**: applies to the agent's own access token, issued through the `client_credentials` grant. Select the claims it carries, its schema attributes, its system attributes (`name`, `owner`), OU claims (`ouId`, `ouName`, `ouHandle`), and its `groups` and `roles`, and set the token validity period.
 
 ### Advanced Settings
 

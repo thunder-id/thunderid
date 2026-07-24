@@ -18,18 +18,7 @@
 
 import {SettingsCard} from '@thunderid/components';
 import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-types';
-import {
-  Alert,
-  Card,
-  CardContent,
-  Chip,
-  FormControl,
-  FormLabel,
-  Grid,
-  Stack,
-  TextField,
-  Typography,
-} from '@wso2/oxygen-ui';
+import {Card, CardContent, Chip, FormControl, FormLabel, Grid, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {useEffect, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import JwtPreview from '../../../../applications/components/edit-application/token-settings/JwtPreview';
@@ -120,14 +109,15 @@ export default function AgentAccessTokenSection({
     }
   };
 
-  const availableAttributes = (
-    schemaDetails?.schema
-      ? Object.entries(schemaDetails.schema)
-          .filter(
-            ([, fieldDef]) => !((fieldDef.type === 'string' || fieldDef.type === 'number') && fieldDef.credential),
-          )
-          .map(([name]) => name)
-      : []
+  const schemaAttributes = schemaDetails?.schema
+    ? Object.entries(schemaDetails.schema)
+        .filter(([, fieldDef]) => !((fieldDef.type === 'string' || fieldDef.type === 'number') && fieldDef.credential))
+        .map(([name]) => name)
+    : [];
+
+  // Merge agent schema attributes with system attributes (name, owner) into a single chip list.
+  const availableAttributes = Array.from(
+    new Set([...schemaAttributes, ...TokenConstants.ADDITIONAL_AGENT_ATTRIBUTES]),
   ).sort();
 
   const jwtPreview: Record<string, unknown> = {};
@@ -155,7 +145,7 @@ export default function AgentAccessTokenSection({
             <Typography variant="body2" color="text.disabled" sx={{mb: 2}}>
               {t(
                 'agents:edit.tokens.agent.attributes.hint',
-                "Click on this agent's attributes to add them to its access token.",
+                'Click on agent attributes to add them to its access token.',
               )}
             </Typography>
             <Card>
@@ -165,7 +155,7 @@ export default function AgentAccessTokenSection({
                     {t('common:status.loading', 'Loading…')}
                   </Typography>
                 )}
-                {!isLoading && availableAttributes.length > 0 && (
+                {!isLoading && (
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     {availableAttributes.map((attr) => {
                       const isActive = currentAttributes.includes(attr);
@@ -182,14 +172,6 @@ export default function AgentAccessTokenSection({
                       );
                     })}
                   </Stack>
-                )}
-                {!isLoading && availableAttributes.length === 0 && (
-                  <Alert severity="info">
-                    {t(
-                      'agents:edit.tokens.agent.attributes.empty',
-                      'No attributes available. Configure attributes for this agent in the Attributes tab.',
-                    )}
-                  </Alert>
                 )}
               </CardContent>
             </Card>
