@@ -1,0 +1,115 @@
+---
+title: RP-Initiated Logout
+docType: reference
+sidebar_position: 5
+description: OpenID Connect RP-Initiated Logout 1.0 in {{ProductName}}, the end_session_endpoint that terminates a user's Single Sign-On session and returns the browser to your application.
+---
+import { RPInitiatedLogoutDiagram } from '../../../../src/components/OAuthFlowDiagrams';
+
+# RP-Initiated Logout
+
+**OpenID Connect RP-Initiated Logout 1.0** ([RP-Initiated Logout](https://openid.net/specs/openid-connect-rpinitiated-1_0.html)) lets a relying party (your application) end a user's session at the OpenID Provider. <ProductName /> implements it as the `end_session_endpoint` at `GET`/`POST /oauth2/logout`. When your application signs a user out locally, it redirects the browser to this endpoint so <ProductName /> also terminates the [Single Sign-On session](../../flows/single-sign-on.mdx) it established, and then returns the user to a page you choose.
+
+Signing out of your application alone leaves the <ProductName /> session intact, so the next sign-in reuses it and the user is not prompted. RP-Initiated Logout closes that gap: it ends the session at <ProductName /> too, so the next sign-in authenticates the user again.
+
+## How It Works
+
+<RPInitiatedLogoutDiagram />
+
+1. Your application clears its own session, then redirects the browser to `/oauth2/logout`.
+2. <ProductName /> validates the request: it verifies the `id_token_hint`, resolves the client, and checks any `post_logout_redirect_uri` against the client's registered list.
+3. <ProductName /> runs the application's **sign-out flow** to terminate the SSO session and clear the per-flow session cookie. Depending on how the flow is built, this step may prompt the user to confirm; the default sign-out template does.
+4. <ProductName /> redirects the browser to `post_logout_redirect_uri`, appending `state` when the application supplied it. If the application supplied no redirect URI, the browser lands on the default <ProductName /> sign-out page.
+
+The diagram above shows the default sign-out template, which confirms the sign-out before ending the session. A Blank or custom sign-out flow can skip the confirmation.
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect | Behavior |
+|---|---|
+| Endpoint | `GET`/`POST /oauth2/logout` |
+| Discovery | Advertised as `end_session_endpoint` in `/.well-known/openid-configuration`, see [Server Metadata](./server-metadata.mdx) |
+| Session termination | Runs the application's sign-out flow, which ends the SSO session and clears the per-flow cookie, see [Sessions and Single Sign-On](../../../key-concepts/authentication/sessions.mdx) |
+| `id_token_hint` verification | Signature and issuer are verified; expiry is **not** enforced, so an expired ID token is accepted as the hint |
+| Redirect validation | `post_logout_redirect_uri` must exactly match one of the client's registered `postLogoutRedirectUris` |
+| Prerequisite | The application must have a sign-out flow configured and enabled |
+
+</details>
+
+## Request Methods
+
+The endpoint accepts the same request as either an HTTP `GET` or an HTTP `POST`, carrying the same parameters:
+
+- **`GET`** carries the parameters in the query string. This is the usual choice, because signing out is a browser redirect to the endpoint.
+- **`POST`** carries the parameters in an `application/x-www-form-urlencoded` body. Use it when the `id_token_hint` would make the URL too long, or to keep it out of the URL and browser history. Note that a request body can still be recorded by applications, proxies, or middleware, so treat `id_token_hint` as sensitive and redact it from logs.
+
+## Request Parameters
+
+| Parameter | Required | Description |
+|---|---|---|
+| `id_token_hint` | Recommended | An ID token that <ProductName /> previously issued to this client. It identifies the client whose session is ending. The token may be expired. Required whenever `post_logout_redirect_uri` is present. |
+| `client_id` | Optional | The client that is signing out. Used when `id_token_hint` is absent. When both are present, the `client_id` must match the client in `id_token_hint`. |
+| `post_logout_redirect_uri` | Optional | Where to send the browser after sign-out. Must exactly match one of the client's registered `postLogoutRedirectUris`, and requires `id_token_hint`. |
+| `state` | Optional | An opaque value <ProductName /> appends to `post_logout_redirect_uri` on the return, when supplied, for your application to correlate the response. |
+
+### Validation Rules
+
+<ProductName /> rejects the request with `400 Bad Request` when:
+
+- `post_logout_redirect_uri` is supplied without `id_token_hint`.
+- `post_logout_redirect_uri` does not exactly match a URI registered on the client.
+- `id_token_hint` is present but was not signed by <ProductName /> or carries a different issuer.
+- both `id_token_hint` and `client_id` are present and identify different clients.
+- neither `id_token_hint` nor `client_id` is supplied.
+
+## Configure Your Application
+
+RP-Initiated Logout requires two things on the application.
+
+### Enable a Sign-Out Flow
+
+<ProductName /> terminates the SSO session by running the application's sign-out flow, so the application must have one enabled. Without it, the logout request fails. See [Build a Sign-Out Flow](../../flows/build-a-flow.mdx#go-further) to create the flow and assign it under the application's **Flows** tab.
+
+### Register Post-Logout Redirect URIs
+
+For <ProductName /> to return the browser to your application, the `post_logout_redirect_uri` you send must be registered on the application under `postLogoutRedirectUris`. Configure it through the application's OAuth configuration in a [declarative configuration](../../declarative-configurations/what-is-import-and-export.mdx) or through the `/applications` API, see [API Reference](../../../apis.mdx).
+
+```yaml
+postLogoutRedirectUris:
+  - https://app.example.com/signed-out
+```
+
+## Try It in <ProductName />
+
+Redirect the browser to the endpoint when the user signs out of your application:
+
+```http
+GET /oauth2/logout
+  ?id_token_hint=$ID_TOKEN
+  &post_logout_redirect_uri=https://app.example.com/signed-out
+  &state=xyz
+```
+
+The same request as a `POST` sends the parameters in the body instead:
+
+```http
+POST /oauth2/logout
+Content-Type: application/x-www-form-urlencoded
+
+id_token_hint=$ID_TOKEN&post_logout_redirect_uri=https://app.example.com/signed-out&state=xyz
+```
+
+<ProductName /> confirms the sign-out, ends the SSO session, and redirects the browser to:
+
+```http
+https://app.example.com/signed-out?state=xyz
+```
+
+## Related Guides
+
+- [Sessions and Single Sign-On](../../../key-concepts/authentication/sessions.mdx), the session model that logout terminates
+- [Single Sign-On for Flows](../../flows/single-sign-on.mdx), how a session is established in the first place
+- [Build a Sign-Out Flow](../../flows/build-a-flow.mdx#go-further), the flow that RP-Initiated Logout runs
+- [OpenID Connect](./openid-connect.mdx), the identity layer these tokens come from
+- [Server Metadata](./server-metadata.mdx), the `/.well-known/openid-configuration` document that advertises the endpoint

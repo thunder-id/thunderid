@@ -781,6 +781,11 @@ const sidebars: SidebarsConfig = {
                   collapsible: true,
                   items: [
                     {type: 'doc', id: 'guides/protocols/oauth-oidc/openid-connect', label: 'OpenID Connect'},
+                    {
+                      type: 'doc',
+                      id: 'guides/protocols/oauth-oidc/rp-initiated-logout',
+                      label: 'RP-Initiated Logout',
+                    },
                     {type: 'doc', id: 'guides/protocols/oauth-oidc/userinfo', label: 'UserInfo'},
                     {type: 'doc', id: 'guides/protocols/oauth-oidc/claims-and-scopes', label: 'Claims & Scopes'},
                     {type: 'doc', id: 'guides/protocols/oauth-oidc/token-formats', label: 'Token Formats'},

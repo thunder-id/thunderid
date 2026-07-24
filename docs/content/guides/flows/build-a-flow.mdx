@@ -215,6 +215,29 @@ A flow has no effect until it is assigned to an application.
 
 </details>
 
+<details>
+  <summary>Build and configure a sign-out flow</summary>
+
+  A sign-out flow terminates the [Single Sign-On session](../../key-concepts/authentication/sessions.mdx) an authentication flow established, so a user is fully signed out rather than silently signed in again on their next visit. It typically confirms the sign-out with the user, then ends the session. To create one:
+
+  1. In the Console, go to **Flows** → **+ Create New Flow**.
+  2. Select **Sign Out** as the flow type and click **Continue**.
+  3. Choose a template, for example, **Confirm & Sign Out** ("Ask the user to confirm, then terminate their SSO session"), or **Blank** to start from scratch.
+  4. Give the flow a name and click **Create**.
+  5. The canvas opens with the template pre-wired. The **End Session** executor is the node that terminates the session. Customize the steps as needed, then click **Save**.
+
+  To assign the sign-out flow to your application:
+
+  1. Go to **Applications** and open the application.
+  2. Open the **Flows** tab and find the **Sign Out** section.
+  3. Enable the toggle to activate sign-out for the application.
+  4. Select the flow you created from the dropdown.
+  5. Click **Save**.
+
+  Once assigned, the sign-out flow runs when a user logs out of the application. Browser-based applications trigger it over OIDC through the [RP-Initiated Logout](../protocols/oauth-oidc/rp-initiated-logout.mdx) endpoint; app-native applications run it directly through the Flow Execution API by initiating a `SIGNOUT` flow. See [API Reference](../../../apis).
+
+</details>
+
 ## Development Tips
 
 ### Always Wire Failure Outputs
