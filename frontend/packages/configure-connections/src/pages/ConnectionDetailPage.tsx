@@ -292,10 +292,10 @@ export default function ConnectionDetailPage(): JSX.Element | null {
 
           {dirty && (
             <UnsavedChangesBar
-              message={t('detail.saveBar.unsaved')}
-              resetLabel={t('detail.saveBar.discard')}
-              saveLabel={t('detail.saveBar.save')}
-              savingLabel={t('detail.saveBar.saving')}
+              message={t('detail.saveBar.unsaved', 'You have unsaved changes.')}
+              resetLabel={t('detail.saveBar.reset', 'Reset')}
+              saveLabel={t('detail.saveBar.save', 'Save changes')}
+              savingLabel={t('detail.saveBar.saving', 'Saving changes...')}
               isSaving={updateMutation.isPending}
               saveDisabled={!valid}
               onReset={resetEdits}

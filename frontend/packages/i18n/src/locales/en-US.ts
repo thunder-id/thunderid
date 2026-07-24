@@ -1708,7 +1708,7 @@ const translations = {
     'detail.saveBar.unsaved': 'You have unsaved changes',
     'detail.saveBar.save': 'Save changes',
     'detail.saveBar.saving': 'Saving...',
-    'detail.saveBar.discard': 'Discard',
+    'detail.saveBar.reset': 'Reset',
 
     // Per-vendor configure / edit form
     'form.chrome.configure': 'Configure connection',
@@ -1874,7 +1874,7 @@ const translations = {
     'detail.dangerZone.delete.description':
       'Applications relying on assertions from this issuer will stop receiving tokens. This cannot be undone.',
     'detail.saveBar.unsaved': 'You have unsaved changes',
-    'detail.saveBar.discard': 'Discard',
+    'detail.saveBar.reset': 'Reset',
     'detail.saveBar.save': 'Save changes',
 
     // Delete dialog
@@ -4601,7 +4601,7 @@ const translations = {
     'cors.validation.invalid': 'Enter a valid origin (e.g. https://app.example.com) or a valid regular expression.',
     'cors.validation.duplicate': 'This origin is already in the list.',
     'cors.unsavedChanges': 'You have unsaved changes',
-    'cors.discard': 'Discard',
+    'cors.reset': 'Reset',
     'cors.save': 'Save changes',
     'cors.saving': 'Saving…',
     'cors.load.error': 'Failed to load allowed origins.',
