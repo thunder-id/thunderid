@@ -59,8 +59,8 @@ On the **Customization** tab, control how your application looks and what legal 
 | Setting | Description |
 |---------|-------------|
 | **Theme** | The visual theme applied to authentication pages. Select **Default Theme** to use the shared deployment theme, or pick an application-specific theme. |
-| **Terms of Service URI** | Displayed to users during consent, sign-in, sign-up, or recovery flows. |
-| **Privacy Policy URI** | Displayed to users during consent, sign-in, sign-up, or recovery flows. |
+| **Terms of Service URI** | Displayed to users during consent, sign-in, sign-up, or recovery flows. When set, it must be a valid URI; otherwise the update is rejected with `Invalid Terms of Service URI` (`APP-1040`). |
+| **Privacy Policy URI** | Displayed to users during consent, sign-in, sign-up, or recovery flows. When set, it must be a valid URI; otherwise the update is rejected with `Invalid Privacy Policy URI` (`APP-1041`). |
 | **Contacts** | Administrator email addresses for this application. Separate multiple addresses with commas. |
 
 ## Configure What Goes Into Tokens

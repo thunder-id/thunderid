@@ -1420,8 +1420,7 @@ func (suite *ServiceTestSuite) TestValidateApplication_AmbiguousAttestationConfi
 	assert.Equal(suite.T(), &ErrorAmbiguousAttestationConfig, svcErr)
 }
 
-//nolint:dupl // Testing different URL validation scenarios
-func (suite *ServiceTestSuite) TestValidateApplication_InvalidLogoURL() {
+func (suite *ServiceTestSuite) TestValidateApplication_InvalidURLs() {
 	testConfig := &config.Config{}
 	config.ResetServerRuntime()
 	err := config.InitializeServerRuntime("/tmp/test", testConfig)
@@ -1430,21 +1429,34 @@ func (suite *ServiceTestSuite) TestValidateApplication_InvalidLogoURL() {
 
 	service, _ := suite.setupTestService()
 
-	app := &model.ApplicationDTO{
-		Name:    "Test App",
-		OUID:    testOUID,
-		LogoURL: "://invalid",
-		InboundAuthProfile: providers.InboundAuthProfile{
-			AuthFlowID: "edc013d0-e893-4dc0-990c-3e1d203e005b",
-		},
+	cases := []struct {
+		name    string
+		apply   func(*model.ApplicationDTO)
+		wantErr *tidcommon.ServiceError
+	}{
+		{"InvalidLogoURL", func(a *model.ApplicationDTO) { a.LogoURL = "://invalid" }, &ErrorInvalidLogoURL},
+		{"InvalidTosURI", func(a *model.ApplicationDTO) { a.TosURI = "not-a-valid-uri" }, &ErrorInvalidTosURI},
+		{"InvalidPolicyURI", func(a *model.ApplicationDTO) { a.PolicyURI = "not-a-valid-uri" }, &ErrorInvalidPolicyURI},
 	}
 
-	result, inboundAuth, svcErr := service.ValidateApplication(context.Background(), app)
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			app := &model.ApplicationDTO{
+				Name: "Test App",
+				OUID: testOUID,
+				InboundAuthProfile: providers.InboundAuthProfile{
+					AuthFlowID: "edc013d0-e893-4dc0-990c-3e1d203e005b",
+				},
+			}
+			tc.apply(app)
 
-	assert.Nil(suite.T(), result)
-	assert.Nil(suite.T(), inboundAuth)
-	assert.NotNil(suite.T(), svcErr)
-	assert.Equal(suite.T(), &ErrorInvalidLogoURL, svcErr)
+			result, inboundAuth, svcErr := service.ValidateApplication(context.Background(), app)
+
+			assert.Nil(suite.T(), result)
+			assert.Nil(suite.T(), inboundAuth)
+			assert.Equal(suite.T(), tc.wantErr, svcErr)
+		})
+	}
 }
 
 func (suite *ServiceTestSuite) TestCreateApplication_StoreErrorWithRollback() {
