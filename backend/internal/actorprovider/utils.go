@@ -54,12 +54,11 @@ func assembleApplication(
 	app := &providers.Application{
 		ID: client.ID,
 		InboundAuthProfile: providers.InboundAuthProfile{
-			AuthFlowID:           client.AuthFlowID,
-			SignOutFlowID:        client.SignOutFlowID,
-			IsSignOutFlowEnabled: client.IsSignOutFlowEnabled,
-			Assertion:            client.Assertion,
-			LoginConsent:         client.LoginConsent,
-			AllowedUserTypes:     client.AllowedUserTypes,
+			AuthFlowID:       client.AuthFlowID,
+			SignOutFlowID:    client.SignOutFlowID,
+			Assertion:        client.Assertion,
+			LoginConsent:     client.LoginConsent,
+			AllowedUserTypes: client.AllowedUserTypes,
 		},
 	}
 

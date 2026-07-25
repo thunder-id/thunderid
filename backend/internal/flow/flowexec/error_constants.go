@@ -239,17 +239,3 @@ var ErrorAttestationInvalid = tidcommon.ServiceError{
 		DefaultValue: "The provided attestation token is invalid",
 	},
 }
-
-// ErrorSignOutFlowDisabled defines the error response for sign-out flow disabled errors.
-var ErrorSignOutFlowDisabled = tidcommon.ServiceError{
-	Code: "FES-1016",
-	Type: tidcommon.ClientErrorType,
-	Error: tidcommon.I18nMessage{
-		Key:          "error.flowexecservice.signout_not_allowed",
-		DefaultValue: "Sign out not allowed",
-	},
-	ErrorDescription: tidcommon.I18nMessage{
-		Key:          "error.flowexecservice.signout_not_allowed_description",
-		DefaultValue: "Sign out flow is disabled for the application",
-	},
-}

@@ -227,12 +227,6 @@ export interface Application {
   signOutFlowId?: string;
 
   /**
-   * Whether signout flow is enabled
-   * @example true
-   */
-  isSignOutFlowEnabled?: boolean;
-
-  /**
    * User attributes to include
    * @example ['email', 'username', 'given_name', 'family_name', 'roles']
    */

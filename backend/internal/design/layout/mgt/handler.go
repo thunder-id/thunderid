@@ -102,7 +102,12 @@ func (lh *layoutMgtHandler) HandleLayoutPostRequest(w http.ResponseWriter, r *ht
 		return
 	}
 
-	createdLayout, svcErr := lh.layoutMgtService.CreateLayout(ctx, *createRequest)
+	createdLayout, svcErr := lh.layoutMgtService.CreateLayout(ctx, CreateLayoutRequestWithID{
+		Handle:      createRequest.Handle,
+		DisplayName: createRequest.DisplayName,
+		Description: createRequest.Description,
+		Layout:      createRequest.Layout,
+	})
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return

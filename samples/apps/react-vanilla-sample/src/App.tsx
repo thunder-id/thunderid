@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Navigate, Route, BrowserRouter as Router, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, BrowserRouter as Router, Routes, useLocation } from 'react-router';
 import HomePage from './pages/HomePage';
 import InvitePage from './pages/InvitePage';
 import LoginPage from './pages/LoginPage';

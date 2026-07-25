@@ -1560,6 +1560,81 @@ func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_RecoveryFlow
 	assert.Equal(suite.T(), "recovery-1", c.RecoveryFlowID)
 }
 
+func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_AppliesDefaultSignOutFlowWhenEmpty() {
+	originalSignOutHandle := sysconfig.GetServerRuntime().Config.Flow.DefaultSignOutFlowHandle
+	suite.T().Cleanup(func() {
+		sysconfig.GetServerRuntime().Config.Flow.DefaultSignOutFlowHandle = originalSignOutHandle
+	})
+	sysconfig.GetServerRuntime().Config.Flow.DefaultSignOutFlowHandle = testDefaultSignOutFlowHandle
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetFlowByHandle(mock.Anything, testDefaultSignOutFlowHandle, providers.FlowTypeSignOut).
+		Return(&providers.CompleteFlowDefinition{ID: "signout-default"}, nil).Once()
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{ID: "p1", AuthFlowID: "auth-1"}
+	err := svc.resolveFlowDefaults(context.Background(), c)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "signout-default", c.SignOutFlowID)
+}
+
+func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_KeepsConfiguredSignOutFlow() {
+	svc := &inboundClientService{flowMgt: flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())}
+	c := &inboundmodel.InboundClient{ID: "p1", AuthFlowID: "auth-1", SignOutFlowID: "signout-1"}
+	err := svc.resolveFlowDefaults(context.Background(), c)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "signout-1", c.SignOutFlowID)
+}
+
+// The default sign-out flow lookup maps a server error to ErrFKFlowServerError, treats a
+// not-found flow as optional (skipped), and surfaces any other retrieval error.
+func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_DefaultSignOutFlowLookupErrors() {
+	originalSignOutHandle := sysconfig.GetServerRuntime().Config.Flow.DefaultSignOutFlowHandle
+	suite.T().Cleanup(func() {
+		sysconfig.GetServerRuntime().Config.Flow.DefaultSignOutFlowHandle = originalSignOutHandle
+	})
+	sysconfig.GetServerRuntime().Config.Flow.DefaultSignOutFlowHandle = testDefaultSignOutFlowHandle
+
+	tests := []struct {
+		name        string
+		lookupErr   *tidcommon.ServiceError
+		expectedErr error
+	}{
+		{"server error", &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "SRV"}, ErrFKFlowServerError},
+		{"not found is skipped", &flowmgt.ErrorFlowNotFound, nil},
+		{
+			"other retrieval error",
+			&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OTHER"},
+			ErrFKFlowDefinitionRetrievalFailed,
+		},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+			flowMgt.EXPECT().GetFlowByHandle(mock.Anything, testDefaultSignOutFlowHandle, providers.FlowTypeSignOut).
+				Return(nil, tt.lookupErr).Once()
+			svc := &inboundClientService{flowMgt: flowMgt}
+			c := &inboundmodel.InboundClient{ID: "p1", AuthFlowID: "auth-1"}
+			err := svc.resolveFlowDefaults(context.Background(), c)
+			if tt.expectedErr != nil {
+				assert.ErrorIs(suite.T(), err, tt.expectedErr)
+			} else {
+				assert.NoError(suite.T(), err)
+			}
+			assert.Empty(suite.T(), c.SignOutFlowID)
+		})
+	}
+}
+
+// When no default sign-out flow handle is configured, resolution does not attempt a lookup.
+func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_NoDefaultSignOutFlowHandleConfigured() {
+	sysconfig.GetServerRuntime().Config.Flow.DefaultSignOutFlowHandle = ""
+	svc := &inboundClientService{flowMgt: flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())}
+	c := &inboundmodel.InboundClient{ID: "p1", AuthFlowID: "auth-1"}
+	err := svc.resolveFlowDefaults(context.Background(), c)
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), c.SignOutFlowID)
+}
+
 // ----- ResolveInboundAuthProfileHandles -----
 
 func (suite *InboundClientServiceTestSuite) TestResolveInboundAuthProfileHandles_NilFlowMgtIsNoOp() {
@@ -2061,6 +2136,8 @@ func (suite *InboundClientServiceTestSuite) TestGetOAuthClientByClientID_NilEnti
 }
 
 const testServiceEntityID = "ent-1"
+
+const testDefaultSignOutFlowHandle = "default-flow"
 
 func (suite *InboundClientServiceTestSuite) TestGetOAuthClientByClientID_GetEntityNotFound() {
 	id := testServiceEntityID
@@ -2611,10 +2688,9 @@ func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_AutoFil
 	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
 		[]flowmgt.CallTarget{{FlowID: "so-b", FlowType: providers.FlowTypeSignOut}}, nil)
 	svc := &inboundClientService{flowMgt: flowMgt}
-	c := &inboundmodel.InboundClient{AuthFlowID: "auth", IsSignOutFlowEnabled: true}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth"}
 	suite.Require().NoError(svc.reconcileReferencedFlows(context.Background(), c))
 	assert.Equal(suite.T(), "so-b", c.SignOutFlowID)
-	assert.False(suite.T(), c.IsSignOutFlowEnabled)
 }
 
 func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_MatchingBindingPreservesEnableFlag() {

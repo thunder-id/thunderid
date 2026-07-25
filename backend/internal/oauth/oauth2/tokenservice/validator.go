@@ -266,7 +266,8 @@ func (tv *tokenValidator) ValidateSubjectToken(
 	// Not a server-issued token — try external IDP issuers.
 	issuerInfo, resolveErr := tv.resolveExternalIssuer(ctx, iss, claims)
 	if resolveErr != nil {
-		return nil, fmt.Errorf("failed to exchange token for issuer %q: %w", iss, resolveErr)
+		return nil, fmt.Errorf("%w: failed to exchange token for issuer %q: %w",
+			ErrIssuerNotTrusted, iss, resolveErr)
 	}
 
 	svcErr := tv.jwtService.VerifyJWTSignatureWithJWKS(ctx, token, issuerInfo.JWKSURL)
@@ -379,7 +380,7 @@ func (tv *tokenValidator) ValidateIDJAGAssertion(
 
 	issuerInfo, resolveErr := tv.resolveIDJAGIssuer(ctx, iss)
 	if resolveErr != nil {
-		return nil, fmt.Errorf("untrusted assertion issuer %q: %w", iss, resolveErr)
+		return nil, fmt.Errorf("%w: untrusted assertion issuer %q: %w", ErrIssuerNotTrusted, iss, resolveErr)
 	}
 
 	if svcErr := tv.jwtService.VerifyJWTSignatureWithJWKS(ctx, assertion, issuerInfo.JWKSURL); svcErr != nil {
@@ -405,14 +406,15 @@ func (tv *tokenValidator) ValidateIDJAGAssertion(
 	serverIssuer := tv.cfg.JWT.Issuer
 	auds, audErr := extractAudiences(claims)
 	if audErr != nil {
-		return nil, fmt.Errorf("assertion is missing 'aud' claim: %w", audErr)
+		return nil, fmt.Errorf("%w: assertion is missing 'aud' claim: %w", ErrAudienceNotAccepted, audErr)
 	}
 	// The draft permits aud to be a string or an array, but an array MUST contain exactly one element.
 	if len(auds) != 1 {
-		return nil, fmt.Errorf("assertion must have exactly one audience")
+		return nil, fmt.Errorf("%w: assertion must have exactly one audience", ErrAudienceNotAccepted)
 	}
 	if auds[0] != serverIssuer {
-		return nil, fmt.Errorf("assertion audience does not match server issuer %q", serverIssuer)
+		return nil, fmt.Errorf("%w: assertion audience does not match server issuer %q",
+			ErrAudienceNotAccepted, serverIssuer)
 	}
 
 	assertionClientID, err := extractStringClaim(claims, "client_id")
@@ -520,11 +522,12 @@ func (tv *tokenValidator) validateExternalTokenAudience(auds []string, issuerInf
 	}
 
 	if issuerInfo.TrustedTokenAudience != "" {
-		return fmt.Errorf("external token audience does not contain expected server issuer %q or configured "+
-			"trusted token audience", serverIssuer)
+		return fmt.Errorf("%w: external token audience does not contain expected server issuer %q or configured "+
+			"trusted token audience", ErrAudienceNotAccepted, serverIssuer)
 	}
 
-	return fmt.Errorf("external token audience does not contain expected server issuer %q", serverIssuer)
+	return fmt.Errorf("%w: external token audience does not contain expected server issuer %q",
+		ErrAudienceNotAccepted, serverIssuer)
 }
 
 // extractSubjectTokenClaims extracts and validates claims from a decoded subject token.
@@ -644,7 +647,7 @@ func (tv *tokenValidator) validateTimeClaims(claims map[string]interface{}) erro
 		return fmt.Errorf("missing or invalid 'exp' claim: %w", err)
 	}
 	if now >= exp+leeway {
-		return fmt.Errorf("token has expired")
+		return ErrTokenExpired
 	}
 
 	nbf, err := extractInt64Claim(claims, "nbf")

@@ -617,35 +617,59 @@ func (s *importService) importLayout(
 		}
 	}
 
-	createReq := layoutmgt.CreateLayoutRequest{
+	createReq := layoutmgt.CreateLayoutRequestWithID{
+		ID:          req.ID,
 		Handle:      req.Handle,
 		DisplayName: req.DisplayName,
 		Description: req.Description,
 		Layout:      layoutBytes,
 	}
-	updateReq := layoutmgt.UpdateLayoutRequest(createReq)
+	updateReq := layoutmgt.UpdateLayoutRequest{
+		Handle:      req.Handle,
+		DisplayName: req.DisplayName,
+		Description: req.Description,
+		Layout:      layoutBytes,
+	}
 
-	return importDesignResource(options.IsUpsertEnabled(), dryRun, req.ID, req.DisplayName,
-		func() *tidcommon.ServiceError {
+	if dryRun {
+		if options.IsUpsertEnabled() && req.ID != "" {
 			_, svcErr := s.layoutService.GetLayout(ctx, req.ID)
-			return svcErr
-		},
-		func() (string, string, *tidcommon.ServiceError) {
-			updated, svcErr := s.layoutService.UpdateLayout(ctx, req.ID, updateReq)
-			if svcErr != nil {
-				return "", "", svcErr
+			if svcErr == nil {
+				return successOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationUpdate)
 			}
-			return updated.ID, updated.DisplayName, nil
-		},
-		func() (string, string, *tidcommon.ServiceError) {
-			created, svcErr := s.layoutService.CreateLayout(ctx, createReq)
-			if svcErr != nil {
-				return "", "", svcErr
+
+			if !isNotFoundServiceError(svcErr) {
+				return serviceErrorOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationUpdate, svcErr)
 			}
-			return created.ID, created.DisplayName, nil
-		},
-		resourceTypeLayout,
-	)
+		}
+
+		return successOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationCreate)
+	}
+
+	if options.IsUpsertEnabled() && req.ID != "" {
+		updated, svcErr := s.layoutService.UpdateLayout(ctx, req.ID, updateReq)
+		if svcErr == nil {
+			return successOutcome(resourceTypeLayout, updated.ID, updated.DisplayName, operationUpdate)
+		}
+
+		if !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationUpdate, svcErr)
+		}
+
+		created, createErr := s.layoutService.CreateLayout(ctx, createReq)
+		if createErr != nil {
+			return serviceErrorOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationCreate, createErr)
+		}
+
+		return successOutcome(resourceTypeLayout, created.ID, created.DisplayName, operationCreate)
+	}
+
+	created, svcErr := s.layoutService.CreateLayout(ctx, createReq)
+	if svcErr != nil {
+		return serviceErrorOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationCreate, svcErr)
+	}
+
+	return successOutcome(resourceTypeLayout, created.ID, created.DisplayName, operationCreate)
 }
 
 func (s *importService) importUser(
@@ -1052,74 +1076,6 @@ func successOutcome(resourceType, id, name, operation string) ImportItemOutcome 
 		Operation:    operation,
 		Status:       statusSuccess,
 	}
-}
-
-func importDesignResource(
-	upsert bool,
-	dryRun bool,
-	resourceID string,
-	resourceName string,
-	getFn func() *tidcommon.ServiceError,
-	updateFn func() (string, string, *tidcommon.ServiceError),
-	createFn func() (string, string, *tidcommon.ServiceError),
-	resourceType string,
-) ImportItemOutcome {
-	if dryRun {
-		if upsert && resourceID != "" {
-			svcErr := getFn()
-			if svcErr == nil {
-				return successOutcome(resourceType, resourceID, resourceName, operationUpdate)
-			}
-
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(
-					resourceType,
-					resourceID,
-					resourceName,
-					operationUpdate,
-					svcErr,
-				)
-			}
-		}
-
-		return successOutcome(resourceType, resourceID, resourceName, operationCreate)
-	}
-
-	if upsert && resourceID != "" {
-		updatedID, updatedName, svcErr := updateFn()
-		if svcErr == nil {
-			return successOutcome(resourceType, updatedID, updatedName, operationUpdate)
-		}
-
-		if !isNotFoundServiceError(svcErr) {
-			return serviceErrorOutcome(
-				resourceType,
-				resourceID,
-				resourceName,
-				operationUpdate,
-				svcErr,
-			)
-		}
-
-		// ID-preserving create is not supported; return a clear failure when ID is set but not found.
-		return ImportItemOutcome{
-			ResourceType: resourceType,
-			ResourceID:   resourceID,
-			ResourceName: resourceName,
-			Operation:    operationCreate,
-			Status:       statusFailed,
-			Code:         ErrorInvalidImportRequest.Code,
-			Message: fmt.Sprintf("%s with given ID not found; ID-preserving create not supported",
-				resourceType),
-		}
-	}
-
-	createdID, createdName, svcErr := createFn()
-	if svcErr != nil {
-		return serviceErrorOutcome(resourceType, resourceID, resourceName, operationCreate, svcErr)
-	}
-
-	return successOutcome(resourceType, createdID, createdName, operationCreate)
 }
 
 //nolint:dupl // parallel to importCredentialConfiguration; kept separate per resource type.

@@ -46,7 +46,7 @@ func (suite *LayoutInitTestSuite) TestRegisterRoutes() {
 		getLayoutListFunc: func(limit, offset int) (*LayoutList, *tidcommon.ServiceError) {
 			return &LayoutList{Layouts: []Layout{}, Links: []Link{}}, nil
 		},
-		createLayoutFunc: func(layout CreateLayoutRequest) (*Layout, *tidcommon.ServiceError) {
+		createLayoutFunc: func(layout CreateLayoutRequestWithID) (*Layout, *tidcommon.ServiceError) {
 			return &Layout{}, nil
 		},
 		getLayoutFunc: func(id string) (*Layout, *tidcommon.ServiceError) {

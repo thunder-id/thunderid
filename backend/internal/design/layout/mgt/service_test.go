@@ -131,7 +131,7 @@ func (suite *LayoutServiceTestSuite) TestGetLayoutList_InvalidOffset() {
 
 // Test CreateLayout - Success
 func (suite *LayoutServiceTestSuite) TestCreateLayout_Success() {
-	layoutRequest := CreateLayoutRequest{
+	layoutRequest := CreateLayoutRequestWithID{
 		Handle:      "new-layout",
 		DisplayName: "New Layout",
 		Description: "A new layout",
@@ -139,7 +139,8 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_Success() {
 	}
 
 	suite.mockStore.On("IsLayoutHandleConflict", "new-layout", "").Return(false, nil)
-	suite.mockStore.On("CreateLayout", mock.AnythingOfType("string"), layoutRequest).Return(nil)
+	suite.mockStore.On("CreateLayout", mock.AnythingOfType("string"),
+		mock.AnythingOfType("CreateLayoutRequest")).Return(nil)
 
 	result, err := suite.service.CreateLayout(context.Background(), layoutRequest)
 
@@ -151,9 +152,30 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_Success() {
 	assert.NotEmpty(suite.T(), result.ID)
 }
 
+// Test CreateLayout - Honors the provided ID
+func (suite *LayoutServiceTestSuite) TestCreateLayout_HonorsProvidedID() {
+	layoutRequest := CreateLayoutRequestWithID{
+		ID:          "provided-layout-id",
+		Handle:      "new-layout",
+		DisplayName: "New Layout",
+		Description: "A new layout",
+		Layout:      json.RawMessage(`{"structure": "grid"}`),
+	}
+
+	suite.mockStore.On("IsLayoutHandleConflict", "new-layout", "").Return(false, nil)
+	suite.mockStore.On("CreateLayout", "provided-layout-id",
+		mock.AnythingOfType("CreateLayoutRequest")).Return(nil)
+
+	result, err := suite.service.CreateLayout(context.Background(), layoutRequest)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), "provided-layout-id", result.ID)
+}
+
 // Test CreateLayout - Missing Display Name
 func (suite *LayoutServiceTestSuite) TestCreateLayout_MissingDisplayName() {
-	layoutRequest := CreateLayoutRequest{
+	layoutRequest := CreateLayoutRequestWithID{
 		Handle:      "my-layout",
 		DisplayName: "",
 		Description: "A layout without name",
@@ -169,7 +191,7 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_MissingDisplayName() {
 
 // Test CreateLayout - Missing Handle
 func (suite *LayoutServiceTestSuite) TestCreateLayout_MissingHandle() {
-	layoutRequest := CreateLayoutRequest{
+	layoutRequest := CreateLayoutRequestWithID{
 		Handle:      "",
 		DisplayName: "My Layout",
 		Description: "A layout without handle",
@@ -185,7 +207,7 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_MissingHandle() {
 
 // Test CreateLayout - Duplicate Handle
 func (suite *LayoutServiceTestSuite) TestCreateLayout_DuplicateHandle() {
-	layoutRequest := CreateLayoutRequest{
+	layoutRequest := CreateLayoutRequestWithID{
 		Handle:      "existing-layout",
 		DisplayName: "My Layout",
 		Description: "A layout with duplicate handle",
@@ -206,7 +228,7 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_DeclarativeModeEnabled() {
 	runtime := config.GetServerRuntime()
 	runtime.Config.Layout.Store = "declarative"
 
-	layoutRequest := CreateLayoutRequest{
+	layoutRequest := CreateLayoutRequestWithID{
 		Handle:      "declarative-layout",
 		DisplayName: "Declarative Layout",
 		Description: "Should be blocked",
@@ -222,7 +244,7 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_DeclarativeModeEnabled() {
 
 // Test CreateLayout - Invalid Layout JSON
 func (suite *LayoutServiceTestSuite) TestCreateLayout_InvalidJSON() {
-	layoutRequest := CreateLayoutRequest{
+	layoutRequest := CreateLayoutRequestWithID{
 		Handle:      "my-layout",
 		DisplayName: "Layout",
 		Description: "Invalid JSON layout",
@@ -240,7 +262,7 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_InvalidJSON() {
 
 // Test CreateLayout - Store Error
 func (suite *LayoutServiceTestSuite) TestCreateLayout_StoreError() {
-	layoutRequest := CreateLayoutRequest{
+	layoutRequest := CreateLayoutRequestWithID{
 		Handle:      "my-layout",
 		DisplayName: "Layout",
 		Description: "A layout",
@@ -248,7 +270,8 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_StoreError() {
 	}
 
 	suite.mockStore.On("IsLayoutHandleConflict", "my-layout", "").Return(false, nil)
-	suite.mockStore.On("CreateLayout", mock.AnythingOfType("string"), layoutRequest).
+	suite.mockStore.On("CreateLayout", mock.AnythingOfType("string"),
+		mock.AnythingOfType("CreateLayoutRequest")).
 		Return(errors.New("database error"))
 
 	result, err := suite.service.CreateLayout(context.Background(), layoutRequest)
@@ -523,7 +546,7 @@ func (suite *LayoutServiceTestSuite) TestIsLayoutExist_StoreError() {
 
 // Test CreateLayout - Handle conflict check error
 func (suite *LayoutServiceTestSuite) TestCreateLayout_HandleConflictError() {
-	layoutRequest := CreateLayoutRequest{
+	layoutRequest := CreateLayoutRequestWithID{
 		Handle:      "my-layout",
 		DisplayName: "Layout",
 		Description: "A layout",

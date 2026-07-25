@@ -1092,6 +1092,38 @@ describe('ExecutionExtendedProperties', () => {
     });
   });
 
+  describe('Session Sign Out Executor', () => {
+    const signOutResource = {
+      id: 'session-sign-out-executor-1',
+      data: {
+        action: {
+          executor: {
+            name: ExecutionTypes.SessionSignOut,
+          },
+        },
+        properties: {
+          promptOnSignOut: false,
+        },
+      },
+    } as unknown as Resource;
+
+    it('should render session sign out configuration', () => {
+      render(<ExecutionExtendedProperties resource={signOutResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.sessionSignOut.description')).toBeInTheDocument();
+      expect(screen.getByText('flows:core.executions.sessionSignOut.promptOnSignOut.label')).toBeInTheDocument();
+    });
+
+    it('should call onChange without debounce when promptOnSignOut checkbox is toggled', () => {
+      render(<ExecutionExtendedProperties resource={signOutResource} onChange={mockOnChange} />);
+
+      const checkbox = screen.getAllByRole('checkbox')[0];
+      fireEvent.click(checkbox);
+
+      expect(mockOnChange).toHaveBeenCalledWith('data.properties.promptOnSignOut', true, signOutResource);
+    });
+  });
+
   describe('OU Executor', () => {
     const ouResource = {
       id: 'ou-executor-1',

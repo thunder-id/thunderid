@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -102,6 +103,28 @@ func (suite *LogoutServiceTestSuite) TestInitiateSignOutFlow_StoresContextAndIni
 	suite.Equal("app-1", captured.ApplicationID)
 	suite.Equal("SIGNOUT", captured.FlowType)
 	suite.Empty(captured.RuntimeData)
+}
+
+func (suite *LogoutServiceTestSuite) TestInitiateSignOutFlow_PromptRequiredSetsRuntimeData() {
+	store := newLogoutRequestStoreInterfaceMock(suite.T())
+	store.EXPECT().AddRequest(mock.Anything, mock.Anything).Return("logout-1", nil)
+	flowSvc := flowexecmock.NewFlowExecServiceInterfaceMock(suite.T())
+	var captured *flowexec.FlowInitContext
+	flowSvc.EXPECT().InitiateFlow(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, ic *flowexec.FlowInitContext) (string, *tidcommon.ServiceError) {
+			captured = ic
+			return "exec-1", nil
+		})
+	svc := suite.newServiceWithStore(store, flowSvc)
+
+	_, svcErr := svc.InitiateSignOutFlow(context.Background(), &LogoutResolution{
+		AppID: "app-1", PromptRequired: true,
+	})
+
+	suite.Nil(svcErr)
+	// The confirmation requirement is carried to the flow so a conditional prompt node can read it.
+	suite.Require().NotNil(captured)
+	suite.Equal("true", captured.RuntimeData[flowcommon.RuntimeKeyLogoutPromptRequired])
 }
 
 func (suite *LogoutServiceTestSuite) TestCompleteSignOut_ReturnsRedirectWithStateAndConsumes() {
@@ -301,14 +324,34 @@ func makeIDTokenMultiAud(iss string, aud []string, azp string) string {
 		enc(map[string]interface{}{"iss": iss, "aud": aud, "azp": azp}) + ".sig"
 }
 
-func (suite *LogoutServiceTestSuite) TestResolve_RedirectWithoutIDTokenHintRejected() {
-	svc, _, _ := suite.newService()
+func (suite *LogoutServiceTestSuite) TestResolve_ClientIDWithRedirectWithoutIDTokenHint() {
+	svc, _, actor := suite.newService()
+	actor.EXPECT().GetOAuthClientByClientID(mock.Anything, "client-x").
+		Return(clientWithPostLogout("https://rp.example/after"), nil)
 
-	_, err := svc.Resolve(context.Background(), LogoutRequest{
+	res, err := svc.Resolve(context.Background(), LogoutRequest{
 		ClientID: "client-x", PostLogoutRedirectURI: "https://rp.example/after",
 	})
 
-	suite.Require().ErrorIs(err, errIDTokenHintRequired)
+	// id_token_hint is not required: the redirect is confirmed by the client's registered
+	// allow-list, and the missing hint marks the logout for End-User confirmation.
+	suite.Require().NoError(err)
+	suite.Equal("app-1", res.AppID)
+	suite.Equal("https://rp.example/after", res.PostLogoutRedirectURI)
+	suite.True(res.PromptRequired)
+}
+
+func (suite *LogoutServiceTestSuite) TestResolve_UnregisteredRedirectWithoutIDTokenHintRejected() {
+	svc, _, actor := suite.newService()
+	actor.EXPECT().GetOAuthClientByClientID(mock.Anything, "client-x").
+		Return(clientWithPostLogout("https://rp.example/after"), nil)
+
+	// Dropping the mandatory id_token_hint must not weaken redirect-target validation.
+	_, err := svc.Resolve(context.Background(), LogoutRequest{
+		ClientID: "client-x", PostLogoutRedirectURI: "https://evil.example/steal",
+	})
+
+	suite.Require().ErrorIs(err, errInvalidPostLogoutRedirectURI)
 }
 
 func (suite *LogoutServiceTestSuite) TestResolve_UnregisteredRedirectRejected() {
@@ -335,6 +378,8 @@ func (suite *LogoutServiceTestSuite) TestResolve_ClientIDWithoutRedirect() {
 	suite.Require().NoError(err)
 	suite.Equal("app-1", res.AppID)
 	suite.Empty(res.PostLogoutRedirectURI)
+	// No id_token_hint supplied, so the logout must be confirmed with the End-User.
+	suite.True(res.PromptRequired)
 }
 
 func (suite *LogoutServiceTestSuite) TestResolve_NoClientReference() {
@@ -370,6 +415,8 @@ func (suite *LogoutServiceTestSuite) TestResolve_IDTokenHintIdentifiesClient() {
 	suite.Equal("app-1", res.AppID)
 	suite.Equal("https://rp.example/after", res.PostLogoutRedirectURI)
 	suite.Equal("xyz", res.State)
+	// A valid id_token_hint establishes legitimacy, so no confirmation prompt is forced.
+	suite.False(res.PromptRequired)
 }
 
 func (suite *LogoutServiceTestSuite) TestResolve_IDTokenHintPrefersAzpForMultiAudience() {

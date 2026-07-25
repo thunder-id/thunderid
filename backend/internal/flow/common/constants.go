@@ -242,6 +242,14 @@ const (
 	// from the SSO checkpoint snapshot so each flow execution mints a fresh tfid rather than reusing a
 	// prior one on SSO reuse.
 	RuntimeKeyTokenFamilyID = "tokenFamilyId"
+	// RuntimeKeyLogoutPromptRequired is set by the OAuth RP-initiated logout layer when a logout was
+	// requested without a valid id_token_hint. A sign-out flow's session sign-out node reads it to
+	// decide whether the End-User must confirm the logout before the session is terminated.
+	RuntimeKeyLogoutPromptRequired = "logoutPromptRequired"
+	// RuntimeKeyLogoutPromptShown is the session sign-out node's own guard, set when it routes to the
+	// confirmation prompt so that on re-run (after the user confirms) it terminates instead of
+	// prompting again.
+	RuntimeKeyLogoutPromptShown = "logoutPromptShown"
 )
 
 // SSOCheckpointKey scopes a per-checkpoint SSO control key (RuntimeKeySSOSessionPresent,

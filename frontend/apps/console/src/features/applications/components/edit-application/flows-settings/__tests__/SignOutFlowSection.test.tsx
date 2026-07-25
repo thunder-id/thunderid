@@ -29,29 +29,12 @@ vi.mock('../../../../../flows/api/useGetFlows');
 
 type MockedUseGetFlows = ReturnType<typeof useGetFlows>;
 
-// Mock the SettingsCard so the toggle is a simple button
+// Mock the Components
 vi.mock('@thunderid/components', () => ({
-  SettingsCard: ({
-    title,
-    description,
-    enabled = false,
-    onToggle = undefined,
-    children,
-  }: {
-    title: string;
-    description: string;
-    enabled?: boolean;
-    onToggle?: (enabled: boolean) => void;
-    children: React.ReactNode;
-  }) => (
+  SettingsCard: ({title, description, children}: {title: string; description: string; children: React.ReactNode}) => (
     <div data-testid="settings-card">
       <div data-testid="card-title">{title}</div>
       <div data-testid="card-description">{description}</div>
-      {onToggle && (
-        <button type="button" data-testid="toggle-button" onClick={() => onToggle(!enabled)}>
-          Toggle: {enabled ? 'ON' : 'OFF'}
-        </button>
-      )}
       {children}
     </div>
   ),
@@ -63,7 +46,6 @@ describe('SignOutFlowSection', () => {
     id: 'app-123',
     name: 'Test App',
     signOutFlowId: 'signout-flow-1',
-    isSignOutFlowEnabled: true,
   } as Application;
 
   const mockSignOutFlows = [
@@ -89,15 +71,14 @@ describe('SignOutFlowSection', () => {
     expect(useGetFlows).toHaveBeenCalledWith({flowType: 'SIGNOUT'});
   });
 
-  it('should render the autocomplete and toggle', () => {
+  it('should render the autocomplete', () => {
     mockFlows(mockSignOutFlows);
     render(
       <MemoryRouter>
         <SignOutFlowSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />
       </MemoryRouter>,
     );
-    expect(screen.getByPlaceholderText('Select a signout flow')).toBeInTheDocument();
-    expect(screen.getByTestId('toggle-button')).toHaveTextContent('Toggle: ON');
+    expect(screen.getByPlaceholderText('Select a sign-out flow')).toBeInTheDocument();
   });
 
   it('should show a loading indicator while fetching flows', () => {
@@ -121,7 +102,7 @@ describe('SignOutFlowSection', () => {
         />
       </MemoryRouter>,
     );
-    expect(screen.getByPlaceholderText('Select a signout flow')).toHaveValue('Custom SignOut Flow');
+    expect(screen.getByPlaceholderText('Select a sign-out flow')).toHaveValue('Custom SignOut Flow');
   });
 
   it('should show the info alert only when a signout flow is selected', () => {
@@ -145,32 +126,20 @@ describe('SignOutFlowSection', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('should call onFieldChange when the toggle is clicked', async () => {
-    const user = userEvent.setup();
-    mockFlows(mockSignOutFlows);
-    render(
-      <MemoryRouter>
-        <SignOutFlowSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />
-      </MemoryRouter>,
-    );
-    await user.click(screen.getByTestId('toggle-button'));
-    expect(mockOnFieldChange).toHaveBeenCalledWith('isSignOutFlowEnabled', false);
-  });
-
   it('should call onFieldChange with the selected signout flow id', async () => {
     const user = userEvent.setup();
     mockFlows(mockSignOutFlows);
     render(
       <MemoryRouter>
         <SignOutFlowSection
-          application={{...mockApplication, signOutFlowId: undefined, isSignOutFlowEnabled: false}}
+          application={{...mockApplication, signOutFlowId: undefined}}
           editedApp={{}}
           onFieldChange={mockOnFieldChange}
         />
       </MemoryRouter>,
     );
 
-    await user.click(screen.getByPlaceholderText('Select a signout flow'));
+    await user.click(screen.getByPlaceholderText('Select a sign-out flow'));
     await waitFor(() => {
       expect(screen.getByText('Custom SignOut Flow')).toBeInTheDocument();
     });
@@ -190,6 +159,6 @@ describe('SignOutFlowSection', () => {
         />
       </MemoryRouter>,
     );
-    expect(screen.getByPlaceholderText('Select a signout flow')).toBeDisabled();
+    expect(screen.getByPlaceholderText('Select a sign-out flow')).toBeDisabled();
   });
 });

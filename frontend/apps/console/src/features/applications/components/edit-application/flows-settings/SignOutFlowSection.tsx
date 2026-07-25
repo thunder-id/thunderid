@@ -53,7 +53,6 @@ interface SignOutFlowSectionProps {
  * Section component for selecting the signout flow.
  *
  * Provides:
- * - Toggle switch to enable/disable signout
  * - Autocomplete dropdown to select from available signout flows
  * - Loading state while fetching flows
  *
@@ -73,20 +72,17 @@ export default function SignOutFlowSection({
 
   return (
     <SettingsCard
-      title={t('applications:edit.flows.labels.signoutFlow', 'Sign Out')}
+      title={t('applications:edit.flows.labels.signOutFlow', 'Sign Out Flow')}
       description={t(
-        'applications:edit.flows.labels.signoutFlow.description',
-        'Confirm and terminate the SSO session when people sign out of this {{entity}}.',
+        'applications:edit.flows.labels.signOutFlow.description',
+        'Terminate the SSO session when people sign out of this {{entity}}.',
         {entity: entityLabel},
       )}
-      enabled={editedApp.isSignOutFlowEnabled ?? application.isSignOutFlowEnabled ?? false}
-      onToggle={application.isReadOnly ? undefined : (enabled) => onFieldChange('isSignOutFlowEnabled', enabled)}
     >
       {(editedApp.signOutFlowId ?? application.signOutFlowId) && (
         <Alert severity="info" sx={{mb: 2}}>
           <Trans
-            i18nKey="applications:edit.flows.signoutFlow.alert"
-            defaults="Edit the <0>selected signout flow</0> or <1>create a new one</1>."
+            i18nKey="applications:edit.flows.signOutFlow.alert"
             components={[
               <Link
                 key="edit"
@@ -115,9 +111,9 @@ export default function SignOutFlowSection({
         renderInput={(params) => (
           <TextField
             {...params}
-            placeholder={t('applications:edit.flows.signoutFlow.placeholder', 'Select a signout flow')}
+            placeholder={t('applications:edit.flows.signOutFlow.placeholder', 'Select a sign-out flow')}
             helperText={t(
-              'applications:edit.flows.signoutFlow.hint',
+              'applications:edit.flows.signOutFlow.hint',
               'The flow that runs when a user logs out of this {{entity}}.',
               {entity: entityLabel},
             )}

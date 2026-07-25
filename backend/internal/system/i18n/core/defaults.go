@@ -561,8 +561,6 @@ var defaultMessages = map[string]string{
 	"error.flowexecservice.recovery_not_allowed_description": "Recovery flow is disabled for the application",
 	"error.flowexecservice.registration_not_allowed": "Registration not allowed",
 	"error.flowexecservice.registration_not_allowed_description": "Registration flow is disabled for the application",
-	"error.flowexecservice.signout_not_allowed": "Sign out not allowed",
-	"error.flowexecservice.signout_not_allowed_description": "Sign out flow is disabled for the application",
 	"error.flowmetaservice.application_fetch_failed_description": "Failed to retrieve application information",
 	"error.flowmetaservice.application_not_found_description": "The specified application does not exist",
 	"error.flowmetaservice.internal_server_error": "Internal server error",

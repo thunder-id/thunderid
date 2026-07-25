@@ -18,7 +18,7 @@
     "@mui/system": "7.1.0",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-router-dom": "7.15.1"
+    "react-router": "catalog:"
   },
   "devDependencies": {
     "@eslint/js": "9.27.0",
@@ -35,7 +35,7 @@
     "vite": "catalog:"
   },
   "overrides": {
-    "postcss": "8.5.12",
+    "postcss": "8.5.18",
     "flatted": ">=3.4.2",
     "picomatch": ">=4.0.4"
   }

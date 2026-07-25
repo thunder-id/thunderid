@@ -26,6 +26,7 @@ import (
 	"context"
 	"errors"
 
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
@@ -42,7 +43,6 @@ var (
 	errClientRequired               = errors.New("id_token_hint or client_id is required")
 	errInvalidClient                = errors.New("invalid client")
 	errInvalidPostLogoutRedirectURI = errors.New("invalid post_logout_redirect_uri")
-	errIDTokenHintRequired          = errors.New("id_token_hint is required when post_logout_redirect_uri is provided")
 )
 
 // LogoutRequest holds the RP-initiated logout parameters received from the request.
@@ -62,6 +62,10 @@ type LogoutResolution struct {
 	State                 string
 	Headers               map[string][]string
 	QueryParams           map[string][]string
+	// PromptRequired reports whether the sign-out flow must confirm the logout with the End-User.
+	// Per OIDC RP-Initiated Logout the OP MUST ask when no id_token_hint was supplied; it is set
+	// true in that case so a conditional sign-out flow can decide whether to render its prompt.
+	PromptRequired bool
 }
 
 // SignOutInitiation is the result of starting an RP-initiated sign-out: the stored logout-request id
@@ -127,14 +131,19 @@ func (s *logoutService) InitiateSignOutFlow(
 	// JWT with user identity claims into the flow context store.
 	forwardedQueryParams := filterQueryParams(resolution.QueryParams, constants.RequestParamIDTokenHint)
 
-	executionID, svcErr := s.flowExecService.InitiateFlow(ctx, &flowexec.FlowInitContext{
+	initContext := &flowexec.FlowInitContext{
 		ApplicationID: resolution.AppID,
 		FlowType:      string(providers.FlowTypeSignOut),
 		InitiatorRequest: &providers.InitiatorRequest{
 			Headers:     sysutils.FilterSensitiveHeaders(resolution.Headers),
 			QueryParams: forwardedQueryParams,
 		},
-	})
+	}
+	if resolution.PromptRequired {
+		initContext.RuntimeData = map[string]string{flowcommon.RuntimeKeyLogoutPromptRequired: "true"}
+	}
+
+	executionID, svcErr := s.flowExecService.InitiateFlow(ctx, initContext)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -175,13 +184,13 @@ func (s *logoutService) CompleteSignOut(ctx context.Context, logoutID string) (s
 
 // Resolve identifies the client from id_token_hint (preferred) or the client_id parameter, validates
 // any post_logout_redirect_uri against the client's registered list, and returns the logout target.
+//
+// id_token_hint is not required: a request carrying only client_id is accepted, and any
+// post_logout_redirect_uri is still confirmed legitimate by matching the client's registered list
+// (the OP's "other means" of confirming the redirection target per OIDC RP-Initiated Logout). When no
+// id_token_hint is supplied the resolution is marked PromptRequired so the sign-out flow can confirm
+// the logout with the End-User, as the spec requires in that case.
 func (s *logoutService) Resolve(ctx context.Context, req LogoutRequest) (*LogoutResolution, error) {
-	// Per OIDC RP-Initiated Logout, if post_logout_redirect_uri is supplied the id_token_hint MUST be
-	// supplied too; the OP must not redirect to the URI without a valid hint.
-	if req.PostLogoutRedirectURI != "" && req.IDTokenHint == "" {
-		return nil, errIDTokenHintRequired
-	}
-
 	clientID := req.ClientID
 	if req.IDTokenHint != "" {
 		hintClientID, err := s.clientIDFromIDTokenHint(ctx, req.IDTokenHint)
@@ -223,6 +232,7 @@ func (s *logoutService) Resolve(ctx context.Context, req LogoutRequest) (*Logout
 		State:                 req.State,
 		Headers:               req.Headers,
 		QueryParams:           req.QueryParams,
+		PromptRequired:        req.IDTokenHint == "",
 	}, nil
 }
 

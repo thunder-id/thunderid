@@ -121,6 +121,7 @@ export const ExecutionTypes = {
   UserTypeResolver: 'UserTypeResolver',
   SSOCheck: 'SSOCheckExecutor',
   Session: 'SessionExecutor',
+  SessionSignOut: 'SessionSignOutExecutor',
   AuthAssert: 'AuthAssertExecutor',
   Authorization: 'AuthorizationExecutor',
 } as const;

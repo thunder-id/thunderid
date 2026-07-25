@@ -2603,7 +2603,7 @@ const translations = {
     'edit.flows.recoveryFlow.alert':
       'To modify the selected flow, <0>open the flow builder</0>. To create a new flow, visit the <1>Flows page</1>.',
     'edit.flows.labels.signOutFlow': 'Sign Out Flow',
-    'edit.flows.labels.signOutFlow.description': 'Confirm and terminate the SSO session when people sign out.',
+    'edit.flows.labels.signOutFlow.description': 'Choose the flow that handles user sign-out and session termination.',
     'edit.flows.signOutFlow.placeholder': 'Select a sign-out flow',
     'edit.flows.signOutFlow.hint': 'Select the flow that runs when a user signs out of this {{entity}}.',
     'edit.flows.signOutFlow.alert':
@@ -3310,6 +3310,12 @@ const translations = {
     'core.executions.provisioning.assignGroup.placeholder': 'Comma-separated group IDs to assign',
     'core.executions.provisioning.assignRole.label': 'Assign Role',
     'core.executions.provisioning.assignRole.placeholder': 'Comma-separated role IDs to assign',
+
+    // Session sign out executor
+    'core.executions.sessionSignOut.description': 'Configure the session sign out executor settings.',
+    'core.executions.sessionSignOut.promptOnSignOut.label': 'Prompt for Confirmation',
+    'core.executions.sessionSignOut.promptOnSignOut.hint':
+      'Ask the user to confirm before signing out when the logout request has no valid ID token hint.',
     'core.placeholders.dynamicInputPlaceholder.title': 'Dynamic Input',
     'core.placeholders.dynamicInputPlaceholder.hint': 'Resolves input fields passed from runtime.',
 

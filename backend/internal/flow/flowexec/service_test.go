@@ -2036,6 +2036,23 @@ func (s *ServiceTestSuite) TestGetFlowGraph_RegistrationAndRecovery() {
 			expectedCode: ErrorRecoveryFlowDisabled.Code,
 		},
 		{
+			name:     "signout flow configured",
+			flowType: providers.FlowTypeSignOut,
+			client: &inboundmodel.InboundClient{
+				ID:            appID,
+				SignOutFlowID: "signout-graph-1",
+			},
+			expectedGraph: "signout-graph-1",
+		},
+		{
+			name:     "signout flow not configured",
+			flowType: providers.FlowTypeSignOut,
+			client: &inboundmodel.InboundClient{
+				ID: appID,
+			},
+			expectedCode: tidcommon.InternalServerError.Code,
+		},
+		{
 			name:         "empty app id",
 			flowType:     providers.FlowTypeAuthentication,
 			client:       nil,

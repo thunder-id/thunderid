@@ -698,7 +698,6 @@ type InboundClient struct {
 	RecoveryFlowID            string
 	IsRecoveryFlowEnabled     bool
 	SignOutFlowID             string
-	IsSignOutFlowEnabled      bool
 	ThemeID                   string
 	LayoutID                  string
 	Assertion                 *AssertionConfig
@@ -1015,7 +1014,6 @@ type InboundAuthProfile struct {
 	IsRecoveryFlowEnabled     bool                `json:"isRecoveryFlowEnabled"            yaml:"isRecoveryFlowEnabled"            jsonschema:"Enable self-service recovery. Set to true to allow users to recover their accounts (e.g., password reset). Requires recoveryFlowId or recoveryFlowHandle to be set."`
 	SignOutFlowID             string              `json:"signOutFlowId,omitempty"           yaml:"signOutFlowId,omitempty"           jsonschema:"Sign-out flow ID. Optional. Specifies the flow that terminates the SSO session established by the authentication flow."`
 	SignOutFlowHandle         string              `json:"signOutFlowHandle,omitempty"       yaml:"signOutFlowHandle,omitempty"       jsonschema:"Sign-out flow handle. Optional. Alternative to signOutFlowId — resolved to an ID at import time."`
-	IsSignOutFlowEnabled      bool                `json:"isSignOutFlowEnabled"              yaml:"isSignOutFlowEnabled"              jsonschema:"Enable sign-out. Set to true to allow terminating the SSO session for this application. Requires signOutFlowId or signOutFlowHandle to be set."`
 	ThemeID                   string              `json:"themeId,omitempty"                yaml:"themeId,omitempty"                jsonschema:"Theme configuration ID. Optional. Customizes the visual styling of login pages."`
 	LayoutID                  string              `json:"layoutId,omitempty"               yaml:"layoutId,omitempty"               jsonschema:"Layout configuration ID. Optional. Customizes the screen structure and component positioning of login pages."`
 	Assertion                 *AssertionConfig    `json:"assertion,omitempty"              yaml:"assertion,omitempty"              jsonschema:"Assertion configuration. Optional. Customize assertion validity periods and included user attributes."`

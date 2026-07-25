@@ -182,6 +182,10 @@ describe('steps models', () => {
       expect(ExecutionTypes.Session).toBe('SessionExecutor');
     });
 
+    it('should have SessionSignOut type', () => {
+      expect(ExecutionTypes.SessionSignOut).toBe('SessionSignOutExecutor');
+    });
+
     it('should have AuthAssert type', () => {
       expect(ExecutionTypes.AuthAssert).toBe('AuthAssertExecutor');
     });
@@ -190,8 +194,8 @@ describe('steps models', () => {
       expect(ExecutionTypes.Authorization).toBe('AuthorizationExecutor');
     });
 
-    it('should have exactly 25 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(25);
+    it('should have exactly 26 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(26);
     });
   });
 

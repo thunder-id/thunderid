@@ -185,7 +185,6 @@ func parseToApplicationDTO(data []byte) (*model.ApplicationDTO, error) {
 			IsRecoveryFlowEnabled:     appRequest.IsRecoveryFlowEnabled,
 			SignOutFlowID:             appRequest.SignOutFlowID,
 			SignOutFlowHandle:         appRequest.SignOutFlowHandle,
-			IsSignOutFlowEnabled:      appRequest.IsSignOutFlowEnabled,
 			ThemeID:                   appRequest.ThemeID,
 			LayoutID:                  appRequest.LayoutID,
 			Assertion:                 appRequest.Assertion,

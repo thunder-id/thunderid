@@ -34,6 +34,7 @@ import (
 	agentmodel "github.com/thunder-id/thunderid/internal/agent/model"
 	"github.com/thunder-id/thunderid/internal/application"
 	"github.com/thunder-id/thunderid/internal/application/model"
+	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
@@ -351,6 +352,86 @@ func (f *fakeThemeService) UpdateTheme(_ context.Context,
 		Theme:       theme.Theme,
 	}
 	f.updated = append(f.updated, theme)
+	f.byID[id] = updated
+	f.byHandle[updated.Handle] = updated
+	return updated, nil
+}
+
+type fakeLayoutService struct {
+	created   []layoutmgt.CreateLayoutRequestWithID
+	updated   []layoutmgt.UpdateLayoutRequest
+	byID      map[string]*layoutmgt.Layout
+	byHandle  map[string]*layoutmgt.Layout
+	createErr *tidcommon.ServiceError
+	updateErr *tidcommon.ServiceError
+}
+
+func layoutNotFoundErr() *tidcommon.ServiceError {
+	return &tidcommon.ServiceError{
+		Type:  tidcommon.ClientErrorType,
+		Code:  layoutmgt.ErrorLayoutNotFound.Code,
+		Error: tidcommon.I18nMessage{DefaultValue: "not found"},
+	}
+}
+
+func (f *fakeLayoutService) CreateLayout(_ context.Context,
+	layout layoutmgt.CreateLayoutRequestWithID,
+) (*layoutmgt.Layout, *tidcommon.ServiceError) {
+	if f.createErr != nil {
+		return nil, f.createErr
+	}
+
+	id := layout.ID
+	if id == "" {
+		id = "generated-layout-id"
+	}
+
+	created := &layoutmgt.Layout{
+		ID:          id,
+		Handle:      layout.Handle,
+		DisplayName: layout.DisplayName,
+		Description: layout.Description,
+		Layout:      layout.Layout,
+	}
+	f.created = append(f.created, layout)
+	if f.byID == nil {
+		f.byID = map[string]*layoutmgt.Layout{}
+	}
+	if f.byHandle == nil {
+		f.byHandle = map[string]*layoutmgt.Layout{}
+	}
+	f.byID[created.ID] = created
+	f.byHandle[created.Handle] = created
+	return created, nil
+}
+
+func (f *fakeLayoutService) GetLayout(_ context.Context, id string) (*layoutmgt.Layout, *tidcommon.ServiceError) {
+	if existing, ok := f.byID[id]; ok {
+		return existing, nil
+	}
+
+	return nil, layoutNotFoundErr()
+}
+
+func (f *fakeLayoutService) UpdateLayout(_ context.Context,
+	id string, layout layoutmgt.UpdateLayoutRequest,
+) (*layoutmgt.Layout, *tidcommon.ServiceError) {
+	if f.updateErr != nil {
+		return nil, f.updateErr
+	}
+
+	if _, ok := f.byID[id]; !ok {
+		return nil, layoutNotFoundErr()
+	}
+
+	updated := &layoutmgt.Layout{
+		ID:          id,
+		Handle:      layout.Handle,
+		DisplayName: layout.DisplayName,
+		Description: layout.Description,
+		Layout:      layout.Layout,
+	}
+	f.updated = append(f.updated, layout)
 	f.byID[id] = updated
 	f.byHandle[updated.Handle] = updated
 	return updated, nil
@@ -1744,6 +1825,173 @@ func TestImportResources_ThemeUpsertCreatePreservesID(t *testing.T) {
 	assert.Equal(t, "thm-123", resp.Results[0].ResourceID)
 	assert.Len(t, themeSvc.created, 1)
 	assert.Equal(t, "thm-123", themeSvc.created[0].ID)
+}
+
+func layoutImportContent() string {
+	return strings.Join([]string{
+		"resource_type: layout",
+		"id: lay-123",
+		"handle: default-layout",
+		"displayName: Default Layout",
+		"layout:",
+		"  head:",
+		"    stylesheets: []",
+		"",
+	}, "\n")
+}
+
+func newLayoutImportService(layoutSvc *fakeLayoutService) ImportServiceInterface {
+	return newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, layoutSvc, nil, nil, nil, nil, nil, nil,
+	)
+}
+
+// Upsert with an ID that does not exist falls back to a create that preserves the ID.
+func TestImportResources_LayoutUpsertCreatePreservesID(t *testing.T) {
+	layoutSvc := &fakeLayoutService{byID: map[string]*layoutmgt.Layout{}, byHandle: map[string]*layoutmgt.Layout{}}
+	svc := newLayoutImportService(layoutSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: layoutImportContent(),
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Equal(t, "lay-123", resp.Results[0].ResourceID)
+	require.Len(t, layoutSvc.created, 1)
+	assert.Equal(t, "lay-123", layoutSvc.created[0].ID)
+	assert.Empty(t, layoutSvc.updated)
+}
+
+// Upsert with an existing ID updates in place instead of creating.
+func TestImportResources_LayoutUpsertUpdatesExisting(t *testing.T) {
+	layoutSvc := &fakeLayoutService{
+		byID:     map[string]*layoutmgt.Layout{"lay-123": {ID: "lay-123", Handle: "default-layout"}},
+		byHandle: map[string]*layoutmgt.Layout{"default-layout": {ID: "lay-123", Handle: "default-layout"}},
+	}
+	svc := newLayoutImportService(layoutSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: layoutImportContent(),
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Equal(t, "lay-123", resp.Results[0].ResourceID)
+	require.Len(t, layoutSvc.updated, 1)
+	assert.Empty(t, layoutSvc.created)
+}
+
+// A non-not-found error from update surfaces as a failed update outcome without attempting a create.
+//
+//nolint:dupl // Parallel error-path tests differ only by the failing operation and error code.
+func TestImportResources_LayoutUpsertUpdateError(t *testing.T) {
+	layoutSvc := &fakeLayoutService{
+		byID:     map[string]*layoutmgt.Layout{},
+		byHandle: map[string]*layoutmgt.Layout{},
+		updateErr: &tidcommon.ServiceError{
+			Type:  tidcommon.ServerErrorType,
+			Code:  "LAY-5000",
+			Error: tidcommon.I18nMessage{DefaultValue: "update failed"},
+		},
+	}
+	svc := newLayoutImportService(layoutSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: layoutImportContent(),
+		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true)},
+	})
+
+	require.Nil(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Equal(t, "LAY-5000", resp.Results[0].Code)
+	assert.Empty(t, layoutSvc.created)
+}
+
+// When update reports not-found but the fallback create fails, it surfaces as a failed create outcome.
+//
+//nolint:dupl // Parallel error-path tests differ only by the failing operation and error code.
+func TestImportResources_LayoutUpsertCreateError(t *testing.T) {
+	layoutSvc := &fakeLayoutService{
+		byID:     map[string]*layoutmgt.Layout{},
+		byHandle: map[string]*layoutmgt.Layout{},
+		createErr: &tidcommon.ServiceError{
+			Type:  tidcommon.ServerErrorType,
+			Code:  "LAY-5001",
+			Error: tidcommon.I18nMessage{DefaultValue: "create failed"},
+		},
+	}
+	svc := newLayoutImportService(layoutSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: layoutImportContent(),
+		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true)},
+	})
+
+	require.Nil(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Equal(t, "LAY-5001", resp.Results[0].Code)
+	assert.Empty(t, layoutSvc.updated)
+}
+
+// Without upsert, a create that preserves the ID is issued directly.
+func TestImportResources_LayoutCreatePreservesID(t *testing.T) {
+	layoutSvc := &fakeLayoutService{byID: map[string]*layoutmgt.Layout{}, byHandle: map[string]*layoutmgt.Layout{}}
+	svc := newLayoutImportService(layoutSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: layoutImportContent(),
+		Options: &ImportOptions{Upsert: boolPtr(false)},
+	})
+
+	require.Nil(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Equal(t, "lay-123", resp.Results[0].ResourceID)
+	require.Len(t, layoutSvc.created, 1)
+	assert.Equal(t, "lay-123", layoutSvc.created[0].ID)
+}
+
+// Without upsert, a create failure surfaces as a failed create outcome.
+func TestImportResources_LayoutCreateError(t *testing.T) {
+	layoutSvc := &fakeLayoutService{
+		byID:     map[string]*layoutmgt.Layout{},
+		byHandle: map[string]*layoutmgt.Layout{},
+		createErr: &tidcommon.ServiceError{
+			Type:  tidcommon.ServerErrorType,
+			Code:  "LAY-5001",
+			Error: tidcommon.I18nMessage{DefaultValue: "create failed"},
+		},
+	}
+	svc := newLayoutImportService(layoutSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: layoutImportContent(),
+		Options: &ImportOptions{Upsert: boolPtr(false), ContinueOnError: boolPtr(true)},
+	})
+
+	require.Nil(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Equal(t, "LAY-5001", resp.Results[0].Code)
 }
 
 //nolint:dupl // Test pattern repeated across resource types to verify ID preservation behavior

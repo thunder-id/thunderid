@@ -35,6 +35,7 @@ import OUResolverProperties from './execution-properties/OUResolverProperties';
 import PasskeyProperties from './execution-properties/PasskeyProperties';
 import PermissionValidatorProperties from './execution-properties/PermissionValidatorProperties';
 import ProvisioningProperties from './execution-properties/ProvisioningProperties';
+import SessionSignOutProperties from './execution-properties/SessionSignOutProperties';
 import SmsProperties from './execution-properties/SmsProperties';
 import SsoCheckProperties from './execution-properties/SsoCheckProperties';
 import UserTypeResolverProperties from './execution-properties/UserTypeResolverProperties';
@@ -129,6 +130,9 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
       break;
     case ExecutionTypes.SSOCheck:
       executorSpecificProperties = <SsoCheckProperties resource={resource} onChange={onChange} />;
+      break;
+    case ExecutionTypes.SessionSignOut:
+      executorSpecificProperties = <SessionSignOutProperties resource={resource} onChange={onChange} />;
       break;
     case ExecutionTypes.CredentialSetter:
     case ExecutionTypes.AttributeUniquenessValidator:

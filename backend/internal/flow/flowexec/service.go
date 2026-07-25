@@ -681,9 +681,7 @@ func (s *flowExecService) getFlowGraph(ctx context.Context, appID string, flowTy
 	}
 
 	if flowType == providers.FlowTypeSignOut {
-		if !client.IsSignOutFlowEnabled {
-			return "", &ErrorSignOutFlowDisabled
-		} else if client.SignOutFlowID == "" {
+		if client.SignOutFlowID == "" {
 			logger.Error(ctx, "Sign-out flow is not configured for the application",
 				log.String("appID", appID))
 			return "", &tidcommon.InternalServerError

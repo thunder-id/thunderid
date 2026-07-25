@@ -351,7 +351,7 @@ function CustomComponent() {
 
 ~~~jsx
 import { SignedIn, SignedOut } from '@thunderid/react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router'
 
 function App() {
   return (
@@ -396,7 +396,7 @@ import { ProtectedRoute } from '@thunderid/react-router'
 
 ~~~jsx
 import { useThunderID } from '@thunderid/react'
-import { Navigate } from 'react-router-dom'
+import { Navigate } from 'react-router'
 
 function ProtectedRoute({ children }) {
   const { isSignedIn, loading } = useThunderID()

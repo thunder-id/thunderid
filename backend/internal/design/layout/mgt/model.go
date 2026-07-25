@@ -51,6 +51,15 @@ type CreateLayoutRequest struct {
 	Layout      json.RawMessage `json:"layout"`
 }
 
+// CreateLayoutRequestWithID represents the service-level request for creating a layout, including an optional ID.
+type CreateLayoutRequestWithID struct {
+	ID          string          `json:"id,omitempty" yaml:"id,omitempty"`
+	Handle      string          `json:"handle"`
+	DisplayName string          `json:"displayName"`
+	Description string          `json:"description,omitempty"`
+	Layout      json.RawMessage `json:"layout"`
+}
+
 // UpdateLayoutRequest represents the request body for updating a layout configuration.
 type UpdateLayoutRequest struct {
 	Handle      string          `json:"handle"`

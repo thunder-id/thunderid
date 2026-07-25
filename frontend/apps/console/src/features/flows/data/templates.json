@@ -13021,5 +13021,136 @@
       ]
     },
     "nodes": []
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "STARTER",
+    "type": "BASIC_CONDITIONAL",
+    "flowType": "SIGNOUT",
+    "display": {
+      "label": "Confirm Sign Out Without a Hint",
+      "description": "Ask the user to confirm only when no valid id_token_hint was provided, otherwise sign out directly",
+      "image": "assets/images/icons/arrowhead-right-outline.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Conditional Sign Out Flow",
+      "handle": "conditional-signout-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "layout": {
+            "size": {
+              "width": 101,
+              "height": 34
+            },
+            "position": {
+              "x": 62,
+              "y": 278
+            }
+          },
+          "onSuccess": "session_signout"
+        },
+        {
+          "id": "session_signout",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "promptOnSignOut": true
+          },
+          "layout": {
+            "size": {
+              "width": 217,
+              "height": 113
+            },
+            "position": {
+              "x": 463,
+              "y": 240
+            }
+          },
+          "executor": {
+            "name": "SessionSignOutExecutor"
+          },
+          "onSuccess": "end",
+          "onIncomplete": "prompt_confirm"
+        },
+        {
+          "id": "prompt_confirm",
+          "type": "PROMPT",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 300
+            },
+            "position": {
+              "x": 900,
+              "y": 150
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "category": "DISPLAY",
+                "id": "text_signout_title",
+                "label": "{{ t(signout:forms.confirm.title) }}",
+                "resourceType": "ELEMENT",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "category": "DISPLAY",
+                "id": "text_signout_desc",
+                "label": "{{ t(signout:forms.confirm.description) }}",
+                "resourceType": "ELEMENT",
+                "type": "TEXT",
+                "variant": "BODY_1"
+              },
+              {
+                "category": "BLOCK",
+                "components": [
+                  {
+                    "category": "ACTION",
+                    "eventType": "SUBMIT",
+                    "id": "action_confirm",
+                    "label": "{{ t(signout:forms.confirm.actions.submit.label) }}",
+                    "resourceType": "ELEMENT",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_signout",
+                "resourceType": "ELEMENT",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "ref": "action_confirm",
+                "nextNode": "session_signout"
+              }
+            }
+          ]
+        },
+        {
+          "id": "end",
+          "type": "END",
+          "layout": {
+            "size": {
+              "width": 85,
+              "height": 34
+            },
+            "position": {
+              "x": 1400,
+              "y": 278
+            }
+          }
+        }
+      ]
+    },
+    "nodes": []
   }
 ]

@@ -170,6 +170,7 @@
   },
   "flow": {
     "default_auth_flow_handle": "default-flow",
+    "default_signout_flow_handle": "default-flow",
     "user_onboarding_flow_handle": "default-flow",
     "max_version_history": 10,
     "auto_infer_registration": false,

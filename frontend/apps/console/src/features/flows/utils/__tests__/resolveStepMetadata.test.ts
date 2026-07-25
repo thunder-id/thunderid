@@ -248,6 +248,43 @@ describe('resolveStepMetadata', () => {
       expect(properties.maxPerPrompt).toBe(5);
     });
 
+    it('should coerce the sign-out prompt property string to a boolean based on the executor default', () => {
+      const steps: Step[] = [
+        createMockStep({
+          id: 'session-sign-out-step',
+          type: 'TASK_EXECUTION',
+          data: {
+            action: {
+              executor: {name: 'SessionSignOutExecutor'},
+            },
+            properties: {
+              promptOnSignOut: 'true',
+            },
+          },
+        }),
+      ];
+
+      const resources = createMockResources({
+        executors: [
+          createMockStep({
+            type: 'TASK_EXECUTION',
+            data: {
+              action: {
+                executor: {name: 'SessionSignOutExecutor'},
+              },
+              properties: {
+                promptOnSignOut: false,
+              },
+            },
+          }),
+        ],
+      });
+
+      const result = resolveStepMetadata(resources, steps);
+
+      expect(result[0].data.properties!.promptOnSignOut).toBe(true);
+    });
+
     it('should fall back to executor defaults for invalid numeric strings in persisted executor properties', () => {
       const steps: Step[] = [
         createMockStep({

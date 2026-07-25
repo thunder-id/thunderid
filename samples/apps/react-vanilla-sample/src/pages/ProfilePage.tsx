@@ -35,7 +35,7 @@ import ContentCopyRoundedIcon from '@mui/icons-material/ContentCopyRounded';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import Layout from '../components/Layout';
 import useAuth from '../hooks/useAuth';
 import {

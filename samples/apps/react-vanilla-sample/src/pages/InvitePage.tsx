@@ -35,7 +35,7 @@ import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import FingerprintIcon from '@mui/icons-material/Fingerprint';
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import GradientCircularProgress from '../components/GradientCircularProgress';
 import Layout from '../components/Layout';
 import { FlowServerError, submitNativeAuth } from '../services/authService';

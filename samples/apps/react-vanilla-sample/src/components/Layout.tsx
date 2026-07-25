@@ -30,7 +30,7 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded';
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import ThemeToggle from "../theme/ThemeToggle";
 import useAuth from "../hooks/useAuth";
 

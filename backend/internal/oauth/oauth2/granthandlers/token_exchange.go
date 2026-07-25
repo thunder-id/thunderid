@@ -174,15 +174,33 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 	subjectClaims, err := h.tokenValidator.ValidateSubjectToken(ctx, tokenRequest.SubjectToken, oauthApp)
 	if err != nil {
 		logger.Debug(ctx, "Failed to validate subject token", log.Error(err))
-		if errors.Is(err, revocation.ErrEnforcementUnavailable) {
+		switch {
+		case errors.Is(err, revocation.ErrEnforcementUnavailable):
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorServerError,
 				ErrorDescription: "Token revocation status could not be verified",
 			}
-		}
-		return nil, &model.ErrorResponse{
-			Error:            constants.ErrorInvalidRequest,
-			ErrorDescription: "Invalid subject_token",
+		case errors.Is(err, tokenservice.ErrTokenExpired):
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorInvalidRequest,
+				ErrorDescription: "The subject_token has expired",
+			}
+		case errors.Is(err, tokenservice.ErrIssuerNotTrusted):
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorInvalidRequest,
+				ErrorDescription: "The subject_token issuer is not registered as a trusted token exchange issuer",
+			}
+		case errors.Is(err, tokenservice.ErrAudienceNotAccepted):
+			return nil, &model.ErrorResponse{
+				Error: constants.ErrorInvalidRequest,
+				ErrorDescription: "The subject_token audience does not contain this server's issuer or the " +
+					"trusted token audience configured for its issuer",
+			}
+		default:
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorInvalidRequest,
+				ErrorDescription: "Invalid subject_token",
+			}
 		}
 	}
 
@@ -198,15 +216,34 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		actorClaims, err = h.tokenValidator.ValidateSubjectToken(ctx, tokenRequest.ActorToken, oauthApp)
 		if err != nil {
 			logger.Debug(ctx, "Failed to validate actor token", log.Error(err))
-			if errors.Is(err, revocation.ErrEnforcementUnavailable) {
+			// Attribute the actor_token rejection the same way as the subject_token above.
+			switch {
+			case errors.Is(err, revocation.ErrEnforcementUnavailable):
 				return nil, &model.ErrorResponse{
 					Error:            constants.ErrorServerError,
 					ErrorDescription: "Token revocation status could not be verified",
 				}
-			}
-			return nil, &model.ErrorResponse{
-				Error:            constants.ErrorInvalidRequest,
-				ErrorDescription: "Invalid actor_token",
+			case errors.Is(err, tokenservice.ErrTokenExpired):
+				return nil, &model.ErrorResponse{
+					Error:            constants.ErrorInvalidRequest,
+					ErrorDescription: "The actor_token has expired",
+				}
+			case errors.Is(err, tokenservice.ErrIssuerNotTrusted):
+				return nil, &model.ErrorResponse{
+					Error:            constants.ErrorInvalidRequest,
+					ErrorDescription: "The actor_token issuer is not registered as a trusted token exchange issuer",
+				}
+			case errors.Is(err, tokenservice.ErrAudienceNotAccepted):
+				return nil, &model.ErrorResponse{
+					Error: constants.ErrorInvalidRequest,
+					ErrorDescription: "The actor_token audience does not contain this server's issuer or the " +
+						"trusted token audience configured for its issuer",
+				}
+			default:
+				return nil, &model.ErrorResponse{
+					Error:            constants.ErrorInvalidRequest,
+					ErrorDescription: "Invalid actor_token",
+				}
 			}
 		}
 	}

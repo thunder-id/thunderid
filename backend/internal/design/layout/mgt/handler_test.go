@@ -47,7 +47,7 @@ func TestLayoutHandlerTestSuite(t *testing.T) {
 // mockLayoutService implements LayoutMgtServiceInterface for handler tests
 type mockLayoutService struct {
 	getLayoutListFunc   func(limit, offset int) (*LayoutList, *tidcommon.ServiceError)
-	createLayoutFunc    func(layout CreateLayoutRequest) (*Layout, *tidcommon.ServiceError)
+	createLayoutFunc    func(layout CreateLayoutRequestWithID) (*Layout, *tidcommon.ServiceError)
 	getLayoutFunc       func(id string) (*Layout, *tidcommon.ServiceError)
 	updateLayoutFunc    func(id string, layout UpdateLayoutRequest) (*Layout, *tidcommon.ServiceError)
 	deleteLayoutFunc    func(id string) *tidcommon.ServiceError
@@ -62,7 +62,7 @@ func (m *mockLayoutService) GetLayoutList(
 }
 
 func (m *mockLayoutService) CreateLayout(
-	_ context.Context, layout CreateLayoutRequest) (*Layout, *tidcommon.ServiceError) {
+	_ context.Context, layout CreateLayoutRequestWithID) (*Layout, *tidcommon.ServiceError) {
 	return m.createLayoutFunc(layout)
 }
 
@@ -175,7 +175,7 @@ func (suite *LayoutHandlerTestSuite) TestHandleLayoutPostRequest_Success() {
 	}
 
 	mockSvc := &mockLayoutService{
-		createLayoutFunc: func(layout CreateLayoutRequest) (*Layout, *tidcommon.ServiceError) {
+		createLayoutFunc: func(layout CreateLayoutRequestWithID) (*Layout, *tidcommon.ServiceError) {
 			return createdLayout, nil
 		},
 	}
@@ -216,7 +216,7 @@ func (suite *LayoutHandlerTestSuite) TestHandleLayoutPostRequest_InvalidJSON() {
 // Test HandleLayoutPostRequest - Service error
 func (suite *LayoutHandlerTestSuite) TestHandleLayoutPostRequest_ServiceError() {
 	mockSvc := &mockLayoutService{
-		createLayoutFunc: func(layout CreateLayoutRequest) (*Layout, *tidcommon.ServiceError) {
+		createLayoutFunc: func(layout CreateLayoutRequestWithID) (*Layout, *tidcommon.ServiceError) {
 			return nil, &tidcommon.InternalServerError
 		},
 	}

@@ -602,7 +602,7 @@ nodes:
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000006a
 name: Default Sign Out Flow
-handle: console-signout-flow
+handle: default-flow
 flowType: SIGNOUT
 nodes:
 - id: start
@@ -4988,7 +4988,6 @@ authFlowId: 01900000-0000-7000-8000-000000000068
 registrationFlowId: 01900000-0000-7000-8000-000000000069
 isRegistrationFlowEnabled: false
 signOutFlowId: 01900000-0000-7000-8000-00000000006a
-isSignOutFlowEnabled: true
 recoveryFlowId: 01900000-0000-7000-8000-000000000070
 isRecoveryFlowEnabled: false
 allowedUserTypes:

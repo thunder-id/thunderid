@@ -350,7 +350,6 @@ func (ts *SSOLogoutTestSuite) createApplication() string {
 		"authFlowId":                ts.authFlowID,
 		"isRegistrationFlowEnabled": false,
 		"signOutFlowId":             ts.signOutFlowID,
-		"isSignOutFlowEnabled":      true,
 		"allowedUserTypes":          []string{testUserType.Name},
 		"inboundAuthConfig": []map[string]interface{}{
 			{

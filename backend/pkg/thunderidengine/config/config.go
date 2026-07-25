@@ -276,6 +276,7 @@ type TokenExchangeConfig struct {
 // FlowConfig holds the configuration details for the flow service.
 type FlowConfig struct {
 	DefaultAuthFlowHandle    string `yaml:"default_auth_flow_handle"    json:"default_auth_flow_handle"`
+	DefaultSignOutFlowHandle string `yaml:"default_signout_flow_handle" json:"default_signout_flow_handle"`
 	UserOnboardingFlowHandle string `yaml:"user_onboarding_flow_handle" json:"user_onboarding_flow_handle"`
 	MaxVersionHistory        int    `yaml:"max_version_history"         json:"max_version_history"`
 	AutoInferRegistration    bool   `yaml:"auto_infer_registration"     json:"auto_infer_registration"`
