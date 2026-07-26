@@ -106,6 +106,42 @@ func (suite *OriginHandlerTestSuite) TestMergeRegexEntryMarshals() {
 		suite.merge(`[{"regex":"^https://x$"}]`, ""))
 }
 
+// --- ComposeWritable ---
+
+func (suite *OriginHandlerTestSuite) composeWritable(readOnly, existing, incoming string) string {
+	composed := OriginHandler{}.ComposeWritable(suite.decode(readOnly), suite.decode(existing),
+		suite.decode(incoming))
+	out, err := json.Marshal(composed)
+	suite.Require().NoError(err)
+	return string(out)
+}
+
+func (suite *OriginHandlerTestSuite) TestComposeWritableKeepsExistingOrigins() {
+	assert.Equal(suite.T(), `{"allowedOrigins":["https://kept.example.com","https://imported.example.com"]}`,
+		suite.composeWritable("", `["https://kept.example.com"]`, `["https://imported.example.com"]`))
+}
+
+// A nil existing is how a replacing write is composed: the current writable value is not offered, so only
+// the incoming origins survive.
+func (suite *OriginHandlerTestSuite) TestComposeWritableNilExistingDropsCurrentOrigins() {
+	composed := OriginHandler{}.ComposeWritable(suite.decode(""), nil,
+		suite.decode(`["https://imported.example.com"]`))
+	out, err := json.Marshal(composed)
+	suite.Require().NoError(err)
+	assert.Equal(suite.T(), `{"allowedOrigins":["https://imported.example.com"]}`, string(out))
+}
+
+func (suite *OriginHandlerTestSuite) TestComposeWritableSkipsDeclarativeOrigins() {
+	assert.Equal(suite.T(), `{"allowedOrigins":[]}`,
+		suite.composeWritable(`["https://declarative.example.com"]`, "", `["https://declarative.example.com"]`))
+}
+
+func (suite *OriginHandlerTestSuite) TestComposeWritableFlattensExistingShadowCopies() {
+	assert.Equal(suite.T(), `{"allowedOrigins":["https://db.example.com"]}`,
+		suite.composeWritable(`["https://declarative.example.com"]`,
+			`["https://declarative.example.com","https://db.example.com"]`, `["https://db.example.com"]`))
+}
+
 // --- Decode ---
 
 func (suite *OriginHandlerTestSuite) TestDecodeEmptyYieldsEmptyAllowedOrigins() {

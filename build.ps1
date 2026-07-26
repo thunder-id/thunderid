@@ -1546,6 +1546,7 @@ function Run {
     $devServerConfig = @"
 resource_type: server_config
 name: cors
+importBehavior: merge
 value:
   allowedOrigins:
     - "https://localhost:$GATE_APP_DEFAULT_PORT"
