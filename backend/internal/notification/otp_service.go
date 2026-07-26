@@ -45,6 +45,7 @@ type otpSessionData struct {
 	RecipientAttr string `json:"recipientAttr,omitempty"`
 	OTPValue      string `json:"otp_value"`
 	ExpiryTime    int64  `json:"expiry_time"`
+	AttemptCount  int    `json:"attempt_count,omitempty"`
 }
 
 // generatedOTP holds the raw OTP value and its expiry timestamp.
@@ -55,7 +56,7 @@ type generatedOTP struct {
 
 // OTPServiceInterface defines the interface for OTP operations.
 type OTPServiceInterface interface {
-	GenerateOTP(ctx context.Context, recipient, recipientAttr string) (
+	GenerateOTP(ctx context.Context, recipient, recipientAttr, previousSessionToken string) (
 		sessionToken string, otpValue string, expirySeconds int64, svcErr *tidcommon.ServiceError)
 	VerifyOTP(ctx context.Context, request common.VerifyOTPDTO) (
 		*common.VerifyOTPResultDTO, *tidcommon.ServiceError)
@@ -76,13 +77,33 @@ func newOTPService(jwtSvc jwt.JWTServiceInterface) OTPServiceInterface {
 }
 
 // GenerateOTP generates an OTP and session token for the recipient without delivering it.
-func (s *otpService) GenerateOTP(ctx context.Context, recipient, recipientAttr string) (
+func (s *otpService) GenerateOTP(ctx context.Context, recipient, recipientAttr, previousSessionToken string) (
 	string, string, int64, *tidcommon.ServiceError) {
 	logger := s.logger
 
 	recipient = strings.TrimSpace(recipient)
 	if recipient == "" {
 		return "", "", 0, &ErrorInvalidRecipient
+	}
+
+	attemptCount := 1
+	if previousSessionToken != "" {
+		prevData, svcErr := s.verifyAndDecodeSessionToken(ctx, previousSessionToken, logger)
+		if svcErr != nil {
+			return "", "", 0, svcErr
+		}
+		// Validate token binding to current request
+		if prevData.Recipient != recipient || prevData.RecipientAttr != recipientAttr {
+			logger.Debug(ctx, "Previous session token does not match current recipient or attribute")
+			return "", "", 0, &ErrorInvalidSessionToken
+		}
+		attemptCount = prevData.AttemptCount + 1
+	}
+
+	maxAttempts := s.resolveOTPConfig().MaxGenerationAttempts
+	if maxAttempts > 0 && attemptCount > maxAttempts {
+		logger.Debug(ctx, "Maximum OTP generation attempts reached", log.Int("attemptCount", attemptCount))
+		return "", "", 0, &ErrorMaxOTPAttemptsExceeded
 	}
 
 	otp, err := s.generateOTP()
@@ -96,6 +117,7 @@ func (s *otpService) GenerateOTP(ctx context.Context, recipient, recipientAttr s
 		RecipientAttr: recipientAttr,
 		OTPValue:      cryptolib.GenerateThumbprintFromString(otp.Value),
 		ExpiryTime:    otp.ExpiryTimeInMillis,
+		AttemptCount:  attemptCount,
 	}
 
 	sessionToken, err := s.createSessionToken(ctx, sessionData)

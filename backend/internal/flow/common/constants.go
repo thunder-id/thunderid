@@ -185,8 +185,6 @@ const (
 	// RuntimeKeyOTPSessionToken holds the OTP session JWT produced by OTPExecutor in generate mode
 	// and consumed by OTPExecutor in verify mode.
 	RuntimeKeyOTPSessionToken = "otpSessionToken"
-	// RuntimeKeyOTPAttemptCount holds the number of OTP generation attempts for the current flow execution.
-	RuntimeKeyOTPAttemptCount = "attemptCount"
 	// RuntimeKeyMagicLinkUsedJti is the JWT ID claim value of a magic link token that has already been used.
 	RuntimeKeyMagicLinkUsedJti = "magicLinkUsedJti"
 	// RuntimeKeyOAuthState holds the generated OAuth state parameter for CSRF validation.

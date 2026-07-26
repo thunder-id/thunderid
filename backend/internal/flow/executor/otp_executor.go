@@ -20,7 +20,6 @@ package executor
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/thunder-id/thunderid/internal/authn/otp"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
@@ -79,9 +78,6 @@ func newOTPExecutor(
 				ExecutorModeGenerate,
 				ExecutorModeVerify,
 			},
-			SupportedProperties: []providers.ExecutorSupportedProperties{
-				{Property: propertyKeyMaxOTPAttempts},
-			},
 		})
 
 	return &otpExecutor{
@@ -125,14 +121,6 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
 	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	attemptCount, err := e.validateAttempts(ctx, execResp, logger)
-	if err != nil {
-		return execResp, err
-	}
-	if execResp.Status == providers.ExecFailure {
-		return execResp, nil
-	}
-
 	userID, err := e.resolveUserID(ctx, execResp)
 	if err != nil {
 		return execResp, err
@@ -166,13 +154,20 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 		return execResp, nil
 	}
 
-	sessionToken, otpValue, expirySeconds, svcErr := e.otpService.GenerateOTP(ctx.Context, recipient, recipientAttr)
+	previousSessionToken := ctx.RuntimeData[common.RuntimeKeyOTPSessionToken]
+	sessionToken, otpValue, expirySeconds, svcErr := e.otpService.GenerateOTP(
+		ctx.Context, recipient, recipientAttr, previousSessionToken)
 	if svcErr != nil {
+		if svcErr.Code == otp.ErrorMaxOTPAttemptsExceeded.Code {
+			logger.Debug(ctx.Context, "Maximum OTP generation attempts reached")
+			execResp.Status = providers.ExecFailure
+			execResp.Error = &ErrMaxOTPAttemptsReached
+			return execResp, nil
+		}
 		return execResp, fmt.Errorf("failed to generate OTP: %s", svcErr.ErrorDescription.DefaultValue)
 	}
 
 	execResp.RuntimeData[common.RuntimeKeyOTPSessionToken] = sessionToken
-	execResp.RuntimeData[common.RuntimeKeyOTPAttemptCount] = strconv.Itoa(attemptCount + 1)
 	execResp.ForwardedData[common.ForwardedDataKeyTemplateData] = map[string]interface{}{
 		common.ForwardedDataKeyOTPCode:       otpValue,
 		common.ForwardedDataKeyExpiryMinutes: systemutils.SecondsToMinutes(expirySeconds),
@@ -353,48 +348,4 @@ func (e *otpExecutor) getGenerateInputs(ctx *providers.NodeContext) []providers.
 	return []providers.Input{
 		{Identifier: common.AttributeMobileNumber, Type: providers.InputTypePhone, Required: true},
 	}
-}
-
-// validateAttempts checks the OTP generation attempt count against the maximum allowed.
-func (e *otpExecutor) validateAttempts(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
-	logger *log.Logger) (int, error) {
-	attemptCount := 0
-	if countStr := ctx.RuntimeData[common.RuntimeKeyOTPAttemptCount]; countStr != "" {
-		count, err := strconv.Atoi(countStr)
-		if err != nil {
-			return 0, fmt.Errorf("failed to parse attempt count: %w", err)
-		}
-		attemptCount = count
-	}
-
-	if attemptCount >= e.getMaxOTPAttempts(ctx) {
-		logger.Debug(ctx.Context, "Maximum OTP generation attempts reached",
-			log.Int("attemptCount", attemptCount))
-		execResp.Status = providers.ExecFailure
-		execResp.Error = errMaxOTPAttemptsReachedFor(attemptCount)
-		return 0, nil
-	}
-
-	return attemptCount, nil
-}
-
-// getMaxOTPAttempts returns the maximum OTP generation attempts from NodeProperties,
-// falling back to 3 if not set or invalid.
-func (e *otpExecutor) getMaxOTPAttempts(ctx *providers.NodeContext) int {
-	const defaultMaxAttempts = 3
-	switch v := ctx.NodeProperties[propertyKeyMaxOTPAttempts].(type) {
-	case string:
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			return n
-		}
-	case int:
-		if v > 0 {
-			return v
-		}
-	case float64:
-		if n := int(v); n > 0 {
-			return n
-		}
-	}
-	return defaultMaxAttempts
 }

@@ -128,4 +128,17 @@ var (
 			DefaultValue: "An error occurred while resolving the user for the recipient",
 		},
 	}
+	// ErrorMaxOTPAttemptsExceeded is the error returned when maximum OTP attempts are reached.
+	ErrorMaxOTPAttemptsExceeded = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AUTHN-OTP-1009",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authnotpservice.max_otp_attempts_exceeded",
+			DefaultValue: "Maximum OTP attempts reached",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authnotpservice.max_otp_attempts_exceeded_description",
+			DefaultValue: "The maximum number of OTP generation attempts has been reached",
+		},
+	}
 )

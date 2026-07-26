@@ -235,4 +235,17 @@ var (
 				"Remove or reassign them first.",
 		},
 	}
+	// ErrorMaxOTPAttemptsExceeded is the error returned when maximum OTP attempts are reached.
+	ErrorMaxOTPAttemptsExceeded = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "MNS-1017",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationservice.max_otp_attempts_exceeded",
+			DefaultValue: "Maximum OTP attempts reached",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.notificationservice.max_otp_attempts_exceeded_description",
+			DefaultValue: "The maximum number of OTP generation attempts has been reached",
+		},
+	}
 )

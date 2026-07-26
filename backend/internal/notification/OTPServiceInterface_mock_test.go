@@ -40,8 +40,8 @@ func (_m *OTPServiceInterfaceMock) EXPECT() *OTPServiceInterfaceMock_Expecter {
 }
 
 // GenerateOTP provides a mock function for the type OTPServiceInterfaceMock
-func (_mock *OTPServiceInterfaceMock) GenerateOTP(ctx context.Context, recipient string, recipientAttr string) (string, string, int64, *common.ServiceError) {
-	ret := _mock.Called(ctx, recipient, recipientAttr)
+func (_mock *OTPServiceInterfaceMock) GenerateOTP(ctx context.Context, recipient string, recipientAttr string, previousSessionToken string) (string, string, int64, *common.ServiceError) {
+	ret := _mock.Called(ctx, recipient, recipientAttr, previousSessionToken)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GenerateOTP")
@@ -51,26 +51,26 @@ func (_mock *OTPServiceInterfaceMock) GenerateOTP(ctx context.Context, recipient
 	var r1 string
 	var r2 int64
 	var r3 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (string, string, int64, *common.ServiceError)); ok {
-		return returnFunc(ctx, recipient, recipientAttr)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) (string, string, int64, *common.ServiceError)); ok {
+		return returnFunc(ctx, recipient, recipientAttr, previousSessionToken)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) string); ok {
-		r0 = returnFunc(ctx, recipient, recipientAttr)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) string); ok {
+		r0 = returnFunc(ctx, recipient, recipientAttr, previousSessionToken)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) string); ok {
-		r1 = returnFunc(ctx, recipient, recipientAttr)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string) string); ok {
+		r1 = returnFunc(ctx, recipient, recipientAttr, previousSessionToken)
 	} else {
 		r1 = ret.Get(1).(string)
 	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, string, string) int64); ok {
-		r2 = returnFunc(ctx, recipient, recipientAttr)
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string, string, string) int64); ok {
+		r2 = returnFunc(ctx, recipient, recipientAttr, previousSessionToken)
 	} else {
 		r2 = ret.Get(2).(int64)
 	}
-	if returnFunc, ok := ret.Get(3).(func(context.Context, string, string) *common.ServiceError); ok {
-		r3 = returnFunc(ctx, recipient, recipientAttr)
+	if returnFunc, ok := ret.Get(3).(func(context.Context, string, string, string) *common.ServiceError); ok {
+		r3 = returnFunc(ctx, recipient, recipientAttr, previousSessionToken)
 	} else {
 		if ret.Get(3) != nil {
 			r3 = ret.Get(3).(*common.ServiceError)
@@ -88,11 +88,12 @@ type OTPServiceInterfaceMock_GenerateOTP_Call struct {
 //   - ctx context.Context
 //   - recipient string
 //   - recipientAttr string
-func (_e *OTPServiceInterfaceMock_Expecter) GenerateOTP(ctx interface{}, recipient interface{}, recipientAttr interface{}) *OTPServiceInterfaceMock_GenerateOTP_Call {
-	return &OTPServiceInterfaceMock_GenerateOTP_Call{Call: _e.mock.On("GenerateOTP", ctx, recipient, recipientAttr)}
+//   - previousSessionToken string
+func (_e *OTPServiceInterfaceMock_Expecter) GenerateOTP(ctx interface{}, recipient interface{}, recipientAttr interface{}, previousSessionToken interface{}) *OTPServiceInterfaceMock_GenerateOTP_Call {
+	return &OTPServiceInterfaceMock_GenerateOTP_Call{Call: _e.mock.On("GenerateOTP", ctx, recipient, recipientAttr, previousSessionToken)}
 }
 
-func (_c *OTPServiceInterfaceMock_GenerateOTP_Call) Run(run func(ctx context.Context, recipient string, recipientAttr string)) *OTPServiceInterfaceMock_GenerateOTP_Call {
+func (_c *OTPServiceInterfaceMock_GenerateOTP_Call) Run(run func(ctx context.Context, recipient string, recipientAttr string, previousSessionToken string)) *OTPServiceInterfaceMock_GenerateOTP_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -106,10 +107,15 @@ func (_c *OTPServiceInterfaceMock_GenerateOTP_Call) Run(run func(ctx context.Con
 		if args[2] != nil {
 			arg2 = args[2].(string)
 		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -120,7 +126,7 @@ func (_c *OTPServiceInterfaceMock_GenerateOTP_Call) Return(sessionToken string, 
 	return _c
 }
 
-func (_c *OTPServiceInterfaceMock_GenerateOTP_Call) RunAndReturn(run func(ctx context.Context, recipient string, recipientAttr string) (string, string, int64, *common.ServiceError)) *OTPServiceInterfaceMock_GenerateOTP_Call {
+func (_c *OTPServiceInterfaceMock_GenerateOTP_Call) RunAndReturn(run func(ctx context.Context, recipient string, recipientAttr string, previousSessionToken string) (string, string, int64, *common.ServiceError)) *OTPServiceInterfaceMock_GenerateOTP_Call {
 	_c.Call.Return(run)
 	return _c
 }

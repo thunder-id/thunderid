@@ -988,7 +988,7 @@ The executor resolves the OTP recipient in this order:
 **Failure conditions:**
 - User not found for the provided phone number
 - User not identified and no identifying input declared
-- Maximum OTP generation attempts exceeded (default: 3)
+- Maximum OTP generation attempts exceeded: The executor tracks attempts per session using the session token. Each Generate OTP call without a prior session token starts fresh. When a prior session token is provided (via `runtimeData.otpSessionToken`), the server validates the recipient binding and increments the attempt count. If the count exceeds `maxAttempts` (default: 3), the flow fails.
 - OTP service error
 
 </details>

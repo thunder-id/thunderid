@@ -62,8 +62,9 @@ type IDPAuthFinishRequestDTO struct {
 
 // SendOTPAuthRequestDTO is the request to send an OTP for authentication.
 type SendOTPAuthRequestDTO struct {
-	SenderID  string `json:"senderId"  native:"required"`
-	Recipient string `json:"recipient" native:"required"`
+	SenderID         string `json:"senderId"          native:"required"`
+	Recipient        string `json:"recipient"         native:"required"`
+	PriorSessionToken string `json:"priorSessionToken,omitempty"`
 }
 
 // SendOTPAuthResponseDTO is the response after sending an OTP for authentication.

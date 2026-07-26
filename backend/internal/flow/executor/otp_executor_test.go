@@ -29,6 +29,7 @@ import (
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/authn/otp"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/otpmock"
@@ -139,7 +140,7 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Success_UserIdentifiedAnd
 		return hasMobile
 	})).Return(&userID, nil)
 
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, userID, authnprovidercm.UserAttributeUserID).
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, userID, authnprovidercm.UserAttributeUserID, mock.Anything).
 		Return("session-tok-1", "654321", int64(300), (*tidcommon.ServiceError)(nil))
 
 	ctx := &providers.NodeContext{
@@ -162,7 +163,6 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Success_UserIdentifiedAnd
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.Equal(suite.T(), "session-tok-1", resp.RuntimeData[common.RuntimeKeyOTPSessionToken])
-	assert.Equal(suite.T(), "1", resp.RuntimeData[common.RuntimeKeyOTPAttemptCount])
 	fwdData, ok := resp.ForwardedData[common.ForwardedDataKeyTemplateData].(map[string]interface{})
 	assert.True(suite.T(), ok)
 	assert.Equal(suite.T(), "654321", fwdData[common.ForwardedDataKeyOTPCode])
@@ -176,7 +176,7 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_MultipleInputs_Identifies
 		return hasMobile && hasEmail
 	})).Return(&userID, nil)
 
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, userID, authnprovidercm.UserAttributeUserID).
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, userID, authnprovidercm.UserAttributeUserID, mock.Anything).
 		Return("session-tok-2", "111222", int64(300), (*tidcommon.ServiceError)(nil))
 
 	ctx := &providers.NodeContext{
@@ -235,7 +235,7 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Registration_UserNotFound
 		return hasMobile
 	})).Return((*string)(nil), &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeEntityNotFound})
 
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, "+1234567890", common.AttributeMobileNumber).
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, "+1234567890", common.AttributeMobileNumber, mock.Anything).
 		Return("session-reg-1", "777888", int64(300), (*tidcommon.ServiceError)(nil))
 
 	ctx := &providers.NodeContext{
@@ -291,13 +291,25 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Registration_UserNotFound
 }
 
 func (suite *OTPExecutorTestSuite) TestExecuteGenerate_MaxAttemptsReached_ReturnsFailure() {
+	userID := testOTPUserID
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(&userID, nil)
+
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, userID, authnprovidercm.UserAttributeUserID, "prev-session-tok").
+		Return("", "", int64(0), &otp.ErrorMaxOTPAttemptsExceeded)
+
 	ctx := &providers.NodeContext{
 		ExecutionID:  "exec-5",
 		FlowType:     providers.FlowTypeAuthentication,
 		ExecutorMode: ExecutorModeGenerate,
-		UserInputs:   map[string]string{},
+		NodeInputs: []providers.Input{
+			{Ref: "mobile_input", Identifier: common.AttributeMobileNumber,
+				Type: providers.InputTypePhone, Required: true},
+		},
+		UserInputs: map[string]string{
+			common.AttributeMobileNumber: "+1234567890",
+		},
 		RuntimeData: map[string]string{
-			common.RuntimeKeyOTPAttemptCount: "3",
+			common.RuntimeKeyOTPSessionToken: "prev-session-tok",
 		},
 	}
 
@@ -306,27 +318,7 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_MaxAttemptsReached_Return
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
 	assert.NotNil(suite.T(), resp.Error)
-}
-
-func (suite *OTPExecutorTestSuite) TestExecuteGenerate_MaxAttemptsFromNodeProperties() {
-	ctx := &providers.NodeContext{
-		ExecutionID:  "exec-5b",
-		FlowType:     providers.FlowTypeAuthentication,
-		ExecutorMode: ExecutorModeGenerate,
-		NodeProperties: map[string]interface{}{
-			propertyKeyMaxOTPAttempts: "2",
-		},
-		UserInputs: map[string]string{},
-		RuntimeData: map[string]string{
-			common.RuntimeKeyOTPAttemptCount: "2",
-		},
-	}
-
-	resp, err := suite.executor.Execute(ctx)
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
-	assert.NotNil(suite.T(), resp.Error)
+	assert.Equal(suite.T(), ErrMaxOTPAttemptsReached.Code, resp.Error.Code)
 }
 
 // Verify mode tests
@@ -605,7 +597,7 @@ func (suite *OTPExecutorTestSuite) TestResolveUserID_AuthenticatedUser_ReturnsEn
 		RuntimeData: map[string]string{},
 	}
 
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, entityID, authnprovidercm.UserAttributeUserID).
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, entityID, authnprovidercm.UserAttributeUserID, mock.Anything).
 		Return("session-auth-tok", "112233", int64(300), (*tidcommon.ServiceError)(nil))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -704,7 +696,7 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_GenerateOTPError_ReturnsE
 		Code:             "OTP-ERR",
 		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "otp generation failed"},
 	}
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, userID, authnprovidercm.UserAttributeUserID).
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, userID, authnprovidercm.UserAttributeUserID, mock.Anything).
 		Return("", "", int64(0), &svcErr)
 
 	ctx := &providers.NodeContext{
@@ -724,100 +716,13 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_GenerateOTPError_ReturnsE
 	assert.Error(suite.T(), err)
 }
 
-// validateAttempts: invalid count string
-
-func (suite *OTPExecutorTestSuite) TestExecuteGenerate_InvalidAttemptCount_ReturnsError() {
-	ctx := &providers.NodeContext{
-		ExecutionID:  "exec-bad-count",
-		FlowType:     providers.FlowTypeAuthentication,
-		ExecutorMode: ExecutorModeGenerate,
-		UserInputs:   map[string]string{},
-		RuntimeData: map[string]string{
-			common.RuntimeKeyOTPAttemptCount: "not-a-number",
-		},
-	}
-
-	_, err := suite.executor.Execute(ctx)
-
-	assert.Error(suite.T(), err)
-}
-
-// getMaxOTPAttempts: int and float64 NodeProperties
-
-func (suite *OTPExecutorTestSuite) TestExecuteGenerate_MaxAttemptsFromNodeProperties_IntType() {
-	ctx := &providers.NodeContext{
-		ExecutionID:  "exec-max-int",
-		FlowType:     providers.FlowTypeAuthentication,
-		ExecutorMode: ExecutorModeGenerate,
-		NodeProperties: map[string]interface{}{
-			propertyKeyMaxOTPAttempts: 1,
-		},
-		UserInputs: map[string]string{},
-		RuntimeData: map[string]string{
-			common.RuntimeKeyOTPAttemptCount: "1",
-		},
-	}
-
-	resp, err := suite.executor.Execute(ctx)
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
-}
-
-func (suite *OTPExecutorTestSuite) TestExecuteGenerate_MaxAttemptsFromNodeProperties_Float64Type() {
-	ctx := &providers.NodeContext{
-		ExecutionID:  "exec-max-float",
-		FlowType:     providers.FlowTypeAuthentication,
-		ExecutorMode: ExecutorModeGenerate,
-		NodeProperties: map[string]interface{}{
-			propertyKeyMaxOTPAttempts: float64(1),
-		},
-		UserInputs: map[string]string{},
-		RuntimeData: map[string]string{
-			common.RuntimeKeyOTPAttemptCount: "1",
-		},
-	}
-
-	resp, err := suite.executor.Execute(ctx)
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
-}
-
-func (suite *OTPExecutorTestSuite) TestExecuteGenerate_MaxAttemptsFromNodeProperties_InvalidStringFallsBack() {
-	userID := testOTPUserID
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(&userID, nil)
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, userID, authnprovidercm.UserAttributeUserID).
-		Return("session-tok-fb", "999111", int64(300), (*tidcommon.ServiceError)(nil))
-
-	ctx := &providers.NodeContext{
-		ExecutionID:  "exec-max-invalid",
-		FlowType:     providers.FlowTypeAuthentication,
-		ExecutorMode: ExecutorModeGenerate,
-		NodeProperties: map[string]interface{}{
-			propertyKeyMaxOTPAttempts: "not-a-number",
-		},
-		NodeInputs: []providers.Input{
-			{Ref: "mobile_input", Identifier: common.AttributeMobileNumber,
-				Type: providers.InputTypePhone, Required: true},
-		},
-		UserInputs:  map[string]string{common.AttributeMobileNumber: "+1234567890"},
-		RuntimeData: map[string]string{common.RuntimeKeyOTPAttemptCount: "0"},
-	}
-
-	resp, err := suite.executor.Execute(ctx)
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
-}
-
 // resolveOTPDestination: RuntimeData and ForwardedData paths
 
 func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Registration_DestinationFromRuntimeData() {
 	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).
 		Return((*string)(nil), &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeEntityNotFound})
 
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, "+9876543210", common.AttributeMobileNumber).
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, "+9876543210", common.AttributeMobileNumber, mock.Anything).
 		Return("session-rt", "445566", int64(300), (*tidcommon.ServiceError)(nil))
 
 	ctx := &providers.NodeContext{
@@ -845,7 +750,7 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Registration_DestinationF
 	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).
 		Return((*string)(nil), &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeEntityNotFound})
 
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, "+1112223333", common.AttributeMobileNumber).
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, "+1112223333", common.AttributeMobileNumber, mock.Anything).
 		Return("session-fwd", "334455", int64(300), (*tidcommon.ServiceError)(nil))
 
 	ctx := &providers.NodeContext{
@@ -873,7 +778,7 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Registration_DestinationF
 // resolveUserID: userID already in RuntimeData (early return path)
 
 func (suite *OTPExecutorTestSuite) TestExecuteGenerate_UserIDAlreadyInRuntimeData() {
-	suite.mockOTPService.On("GenerateOTP", mock.Anything, testOTPUserID, authnprovidercm.UserAttributeUserID).
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, testOTPUserID, authnprovidercm.UserAttributeUserID, mock.Anything).
 		Return("session-cached", "221100", int64(300), (*tidcommon.ServiceError)(nil))
 
 	ctx := &providers.NodeContext{

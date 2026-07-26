@@ -122,16 +122,24 @@ type OTPConfig struct {
 	Length                int  `yaml:"length"                  json:"length"`
 	UseNumericOnly        bool `yaml:"use_numeric_only"        json:"use_numeric_only"`
 	ValidityPeriodSeconds int  `yaml:"validity_period_seconds" json:"validity_period_seconds"`
+	MaxGenerationAttempts int  `yaml:"max_generation_attempts" json:"max_generation_attempts"`
 }
 
 // Validate ensures OTP configuration values are within accepted bounds.
 func (c *OTPConfig) Validate() error {
+	if c.MaxGenerationAttempts == 0 {
+		c.MaxGenerationAttempts = 3
+	}
 	if c.Length < 4 || c.Length > 10 {
 		return fmt.Errorf("notification.otp.length must be in [4, 10] (got %d)", c.Length)
 	}
 	if c.ValidityPeriodSeconds < 30 || c.ValidityPeriodSeconds > 600 {
 		return fmt.Errorf("notification.otp.validity_period_seconds must be in [30, 600] (got %d)",
 			c.ValidityPeriodSeconds)
+	}
+	if c.MaxGenerationAttempts < 1 || c.MaxGenerationAttempts > 10 {
+		return fmt.Errorf("notification.otp.max_generation_attempts must be in [1, 10] (got %d)",
+			c.MaxGenerationAttempts)
 	}
 	return nil
 }

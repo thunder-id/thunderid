@@ -1496,6 +1496,21 @@ func (suite *ConfigTestSuite) TestOTPConfig_Validate_Defaults() {
 		ValidityPeriodSeconds: 120,
 	}
 	assert.NoError(suite.T(), cfg.Validate())
+	assert.Equal(suite.T(), 3, cfg.MaxGenerationAttempts)
+}
+
+func (suite *ConfigTestSuite) TestOTPConfig_Validate_MaxGenerationAttemptsBelowMin() {
+	cfg := &OTPConfig{Length: 6, ValidityPeriodSeconds: 120, MaxGenerationAttempts: -1}
+	err := cfg.Validate()
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "notification.otp.max_generation_attempts")
+}
+
+func (suite *ConfigTestSuite) TestOTPConfig_Validate_MaxGenerationAttemptsAboveMax() {
+	cfg := &OTPConfig{Length: 6, ValidityPeriodSeconds: 120, MaxGenerationAttempts: 11}
+	err := cfg.Validate()
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "notification.otp.max_generation_attempts")
 }
 
 func (suite *ConfigTestSuite) TestOTPConfig_Validate_LengthBelowMin() {

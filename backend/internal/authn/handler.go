@@ -94,7 +94,7 @@ func (ah *authenticationHandler) HandleSendSMSOTPRequest(w http.ResponseWriter, 
 	}
 
 	sessionToken, svcErr := ah.authService.SendOTP(ctx, otpRequest.SenderID, notifcommon.ChannelTypeSMS,
-		otpRequest.Recipient)
+		otpRequest.Recipient, otpRequest.PriorSessionToken)
 	if svcErr != nil {
 		ah.handleServiceError(ctx, w, svcErr)
 		return

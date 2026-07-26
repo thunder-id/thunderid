@@ -323,7 +323,7 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleSendSMSOTPRequestSuccess(
 	}
 	sessionToken := testSessionTkn
 
-	suite.mockService.On("SendOTP", mock.Anything, otpRequest.SenderID, mock.Anything, otpRequest.Recipient).
+	suite.mockService.On("SendOTP", mock.Anything, otpRequest.SenderID, mock.Anything, otpRequest.Recipient, otpRequest.PriorSessionToken).
 		Return(sessionToken, nil)
 
 	body, _ := json.Marshal(otpRequest)
@@ -367,7 +367,7 @@ func (suite *AuthenticationHandlerTestSuite) TestHandleSendSMSOTPRequestServiceE
 		},
 	}
 
-	suite.mockService.On("SendOTP", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("", serviceError)
+	suite.mockService.On("SendOTP", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("", serviceError)
 
 	body, _ := json.Marshal(otpRequest)
 	req := httptest.NewRequest(http.MethodPost, "/authenticate/otp/send", bytes.NewReader(body))
