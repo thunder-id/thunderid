@@ -57,32 +57,9 @@ const PasskeyAuthPrompt = ({
 
             onAuthenticated(assertion);
         } catch (err) {
-            let displayError: string;
-            
-            if (err instanceof DOMException) {
-                switch (err.name) {
-                    case 'NotAllowedError':
-                        displayError = 'Passkey authentication was cancelled or not allowed. Please try again.';
-                        break;
-                    case 'SecurityError':
-                        displayError = 'Security error. Please ensure you are on a secure (HTTPS) connection.';
-                        break;
-                    case 'NotSupportedError':
-                        displayError = 'Passkeys are not supported on this device.';
-                        break;
-                    case 'InvalidStateError':
-                        displayError = 'No matching passkey found. Please register a passkey first.';
-                        break;
-                    default:
-                        displayError = err.message || 'Failed to authenticate with passkey';
-                }
-            } else if (err instanceof Error) {
-                displayError = err.message;
-            } else {
-                displayError = 'Failed to authenticate with passkey';
-            }
-
-            onError(displayError);
+            // authenticateWithPasskey maps WebAuthn/browser errors to clean messages,
+            // so the error message can be surfaced directly.
+            onError(err instanceof Error ? err.message : 'Failed to authenticate with passkey');
         } finally {
             setAuthenticating(false);
         }

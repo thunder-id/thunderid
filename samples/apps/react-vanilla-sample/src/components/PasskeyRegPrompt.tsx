@@ -55,29 +55,9 @@ const PasskeyRegPrompt = ({
             const credential = await createPasskeyCredential(options);
             onCredentialCreated(credential);
         } catch (err) {
-            let displayError: string;
-            
-            if (err instanceof DOMException) {
-                switch (err.name) {
-                    case 'NotAllowedError':
-                        displayError = 'Passkey creation was cancelled or not allowed. Please try again.';
-                        break;
-                    case 'SecurityError':
-                        displayError = 'Security error. Please ensure you are on a secure (HTTPS) connection.';
-                        break;
-                    case 'NotSupportedError':
-                        displayError = 'Passkeys are not supported on this device.';
-                        break;
-                    default:
-                        displayError = err.message || 'Failed to create passkey';
-                }
-            } else if (err instanceof Error) {
-                displayError = err.message;
-            } else {
-                displayError = 'Failed to create passkey';
-            }
-
-            onError(displayError);
+            // createPasskeyCredential maps WebAuthn/browser errors to clean messages,
+            // so the error message can be surfaced directly.
+            onError(err instanceof Error ? err.message : 'Failed to create passkey');
         } finally {
             setCreating(false);
         }

@@ -97,8 +97,50 @@ export const base64UrlToBuffer = (base64url: string): ArrayBuffer => {
 };
 
 /**
+ * Maps a WebAuthn API error (typically a DOMException thrown by
+ * navigator.credentials.create/get) to a clean, user-facing message, so that raw
+ * browser/spec text such as "The operation either timed out or was not allowed. See:
+ * https://www.w3.org/..." is never shown to the user. This mirrors the message pattern
+ * used for server responses, which surface the localized message.defaultValue.
+ *
+ * @param {unknown} error - The error thrown by the WebAuthn API.
+ * @param {'registration' | 'authentication'} ceremony - The ceremony being performed.
+ * @returns {string} - A clean, user-facing message.
+ */
+const getPasskeyErrorMessage = (
+    error: unknown,
+    ceremony: 'registration' | 'authentication'
+): string => {
+    const action = ceremony === 'registration'
+        ? 'register your passkey'
+        : 'sign in with your passkey';
+
+    if (error instanceof DOMException) {
+        switch (error.name) {
+            case 'NotAllowedError':
+                return `Could not ${action}. The request was cancelled or timed out. Please try again.`;
+            case 'InvalidStateError':
+                return ceremony === 'registration'
+                    ? 'A passkey is already registered on this device for this account.'
+                    : 'No matching passkey was found on this device.';
+            case 'NotSupportedError':
+                return 'Passkeys are not supported on this device or browser.';
+            case 'SecurityError':
+                return `Could not ${action} because of a security restriction on this site.`;
+            case 'AbortError':
+                return `The passkey ${ceremony} request was cancelled.`;
+            case 'ConstraintError':
+                return 'Your device could not satisfy the passkey requirements for this request.';
+            default:
+                return `Could not ${action}. Please try again.`;
+        }
+    }
+    return `Could not ${action}. Please try again.`;
+};
+
+/**
  * Creates a passkey credential using the WebAuthn API.
- * 
+ *
  * @param {PasskeyCreationOptions} options - The passkey creation options from the server.
  * @returns {Promise<PasskeyCredentialResponse>} - The encoded credential response.
  */
@@ -128,13 +170,18 @@ export const createPasskeyCredential = async (
     };
 
     // Call WebAuthn API
-    const credential = await navigator.credentials.create({
-        publicKey: publicKeyOptions,
-    }) as PublicKeyCredential | null;
+    let credential: PublicKeyCredential | null;
+    try {
+        credential = await navigator.credentials.create({
+            publicKey: publicKeyOptions,
+        }) as PublicKeyCredential | null;
+    } catch (error) {
+        throw new Error(getPasskeyErrorMessage(error, 'registration'));
+    }
 
     // Check if credential creation was successful
     if (!credential) {
-        throw new Error('Passkey creation was cancelled or failed. No credential was returned.');
+        throw new Error(getPasskeyErrorMessage(null, 'registration'));
     }
 
     const response = credential.response as AuthenticatorAttestationResponse;
@@ -193,13 +240,18 @@ export const authenticateWithPasskey = async (
     };
 
     // Call WebAuthn API for assertion
-    const credential = await navigator.credentials.get({
-        publicKey: publicKeyOptions,
-    }) as PublicKeyCredential | null;
+    let credential: PublicKeyCredential | null;
+    try {
+        credential = await navigator.credentials.get({
+            publicKey: publicKeyOptions,
+        }) as PublicKeyCredential | null;
+    } catch (error) {
+        throw new Error(getPasskeyErrorMessage(error, 'authentication'));
+    }
 
     // Check if credential retrieval was successful
     if (!credential) {
-        throw new Error('Passkey authentication was cancelled or failed. No credential was returned.');
+        throw new Error(getPasskeyErrorMessage(null, 'authentication'));
     }
 
     const response = credential.response as AuthenticatorAssertionResponse;
