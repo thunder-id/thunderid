@@ -19,7 +19,10 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DatabaseSync } from "../src/sqlite.js";
+import { ensureNodeSqliteSupported } from "../src/node-version.js";
+
+ensureNodeSqliteSupported();
+const { DatabaseSync } = await import("node:sqlite");
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const apiRoot = resolve(__dirname, "..");

@@ -19,7 +19,10 @@
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DatabaseSync } from "./sqlite.js";
+import { ensureNodeSqliteSupported } from "./node-version.js";
+
+ensureNodeSqliteSupported();
+const { DatabaseSync } = await import("node:sqlite");
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const defaultDbPath = resolve(__dirname, "..", "wayfinder.sqlite");
