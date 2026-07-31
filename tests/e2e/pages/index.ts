@@ -3,5 +3,6 @@
 
 export { ConsoleSigninPage } from "./authentication";
 export { UsersPage, type UserFormData } from "./user-management";
+export { UserTypesPage } from "./user-types";
 export { ApplicationsPage, type ApplicationFormData } from "./applications";
 export { SettingsPage } from "./settings";

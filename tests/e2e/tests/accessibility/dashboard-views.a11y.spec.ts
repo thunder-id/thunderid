@@ -14,6 +14,7 @@
  */
 
 import { test, expect, routes } from "../../fixtures/console";
+import { Timeouts } from "../../constants/timeouts";
 import {
   expectNoA11yViolations,
   checkAriaLiveRegions,
@@ -50,6 +51,11 @@ test.describe("Accessibility — Dashboard & Main Views @accessibility", () => {
   test.describe("Dashboard Home", () => {
     test.beforeEach(async ({ authenticatedPage: page }) => {
       await page.goto(routes.home, { waitUntil: "networkidle" });
+
+      // The home route is lazily loaded and its Suspense fallback is a spinner, which can still be
+      // mounted at network idle. Auditing that intermediate DOM makes the results depend on chunk
+      // timing, so wait for the page's own greeting heading first.
+      await page.getByRole("heading", { level: 1 }).first().waitFor({ state: "visible", timeout: Timeouts.FORM_LOAD });
     });
 
     test(
@@ -177,6 +183,11 @@ test.describe("Accessibility — Dashboard & Main Views @accessibility", () => {
   test.describe("User Management Page", () => {
     test.beforeEach(async ({ authenticatedPage: page }) => {
       await page.goto(routes.users, { waitUntil: "networkidle" });
+
+      // The users grid fetches its rows after the page goes network-idle and renders a loading
+      // state until they arrive. Auditing that intermediate DOM makes the results depend on
+      // request timing, so wait for a real row (the admin user always exists) first.
+      await page.locator(".MuiDataGrid-row").first().waitFor({ state: "visible", timeout: Timeouts.FORM_LOAD });
     });
 
     test(

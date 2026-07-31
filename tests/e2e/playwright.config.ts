@@ -36,12 +36,23 @@ const WORKERS = process.env.PLAYWRIGHT_WORKERS ? parseInt(process.env.PLAYWRIGHT
  *   - MFA suite reconfigures the shared sample-app's auth flow and depends on the one notification
  *     sender pointing at the one mock SMS server; parallel workers step on each other's OTPs.
  * These files are excluded from the fan-out projects below and re-added as a serial chain
- * (chromium -> firefox -> webkit) so at most one worker is executing them at any moment.
+ * (chromium -> firefox -> webkit) so at most one worker is executing them at any moment. The chain
+ * also runs after the fan-out, not alongside it: the state these specs reshape is state other specs
+ * read. The MFA suite repoints the shared sample-app application at its own auth flow and reverts it
+ * on teardown, so a sample-app sign-in that starts inside that window resolves a flow that is being
+ * swapped out and gets a 500 from /flow/execute.
  */
 const SERIAL_SPECS = [
   "**/settings/cors-allowed-origins.spec.ts",
   "**/sample-app-authentication/sample-app-mfa-login.spec.ts",
 ];
+
+/**
+ * Specs that have possible collisions in the system, and so must not run while 
+ * anything else is running. They are run in a separate project after all the 
+ * other specs have finished.
+ */
+const ORDERED_LAST_SPECS = ["**/applications/application-user-access.spec.ts"];
 
 export default defineConfig({
   /** Directory containing test files */
@@ -134,12 +145,12 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"], ignoreHTTPSErrors: true },
     },
 
-    /** Main browser projects - run parallel-safe specs. Serial specs are excluded here and
-     *  re-added below in a per-browser chain. */
+    /** Main browser projects - run parallel-safe specs. Serial specs and ORDERED_LAST_SPECS are
+     *  excluded here and re-added below in a per-browser chain / a tail project respectively. */
     {
       name: "chromium",
       testMatch: "**/*.spec.ts",
-      testIgnore: SERIAL_SPECS,
+      testIgnore: [...SERIAL_SPECS, ...ORDERED_LAST_SPECS],
       use: {
         ...devices["Desktop Chrome"],
       },
@@ -149,7 +160,7 @@ export default defineConfig({
     {
       name: "firefox",
       testMatch: "**/*.spec.ts",
-      testIgnore: SERIAL_SPECS,
+      testIgnore: [...SERIAL_SPECS, ...ORDERED_LAST_SPECS],
       use: {
         ...devices["Desktop Firefox"],
       },
@@ -159,7 +170,7 @@ export default defineConfig({
     {
       name: "webkit",
       testMatch: "**/*.spec.ts",
-      testIgnore: SERIAL_SPECS,
+      testIgnore: [...SERIAL_SPECS, ...ORDERED_LAST_SPECS],
       use: {
         ...devices["Desktop Safari"],
       },
@@ -168,9 +179,10 @@ export default defineConfig({
 
     /**
      * Serial chain for CORS + MFA specs. Each browser depends on the previous one so Playwright's
-     * scheduler runs them one at a time even when 6 workers are otherwise fanning out. If a project
-     * in the chain fails, later browsers in the chain are skipped (dependency semantics); the job
-     * still fails and per-test retries still apply.
+     * scheduler runs them one at a time even when 6 workers are otherwise fanning out. The head of
+     * the chain waits for all three fan-out projects, keeping the shared sample-app reconfiguration
+     * out of every other spec's way. If a project in the chain fails, later browsers in the chain
+     * are skipped (dependency semantics); the job still fails and per-test retries still apply.
      */
     {
       name: "serial-chromium",
@@ -178,7 +190,7 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
       },
-      dependencies: ["setup"],
+      dependencies: ["chromium", "firefox", "webkit"],
     },
     {
       name: "serial-firefox",
@@ -195,6 +207,37 @@ export default defineConfig({
         ...devices["Desktop Safari"],
       },
       dependencies: ["serial-firefox"],
+    },
+
+    /**
+     * Runs ORDERED_LAST_SPECS only once every fan-out browser project has finished, so nothing
+     * else can still be mutating the user-type set they read. Depends directly on chromium/
+     * firefox/webkit rather than the serial chain above: SERIAL_SPECS (CORS, MFA) never touch
+     * user types, so there's nothing to wait on there.
+     */
+    {
+      name: "chromium-user-access",
+      testMatch: ORDERED_LAST_SPECS,
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+      dependencies: ["chromium", "firefox", "webkit"],
+    },
+    {
+      name: "firefox-user-access",
+      testMatch: ORDERED_LAST_SPECS,
+      use: {
+        ...devices["Desktop Firefox"],
+      },
+      dependencies: ["chromium", "firefox", "webkit"],
+    },
+    {
+      name: "webkit-user-access",
+      testMatch: ORDERED_LAST_SPECS,
+      use: {
+        ...devices["Desktop Safari"],
+      },
+      dependencies: ["chromium", "firefox", "webkit"],
     },
   ],
 });

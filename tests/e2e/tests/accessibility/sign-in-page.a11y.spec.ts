@@ -11,8 +11,7 @@
  * @see https://www.w3.org/WAI/WCAG22/quickref/
  */
 
-import { test, expect } from "@playwright/test";
-import { ConsoleRoutes } from "../../configs/routes/console-routes";
+import { test, expect } from "../../fixtures/console";
 import {
   expectNoA11yViolations,
   checkKeyboardNavigation,
@@ -39,11 +38,18 @@ const VISIBLE_INTERACTIVE_SELECTOR =
 
 test.describe("Accessibility — Authentication Flows @accessibility", () => {
   test.describe("Sign-In Page", () => {
-    test.beforeEach(async ({ page }) => {
-    // The console is served under /console; requesting it unauthenticated redirects to the gate's
-    // sign-in page, which is what this suite audits. Navigating to "/" instead would land on the
-    // API root and audit its 401 response.
-    await page.goto(ConsoleRoutes.home, { waitUntil: "networkidle" });
+    test.beforeEach(async ({ page, signinPage }) => {
+      // The console is served under /console; requesting it unauthenticated redirects to the gate's
+      // sign-in page, which is what this suite audits. Navigating to "/" instead would land on the
+      // API root and audit its 401 response.
+      await signinPage.gotoHome();
+
+      // That redirect is a document navigation the console shell kicks off after its own load has
+      // already gone network-idle, so `goto` returning is not "the sign-in page is up". Auditing
+      // then tears down axe's injected script mid-analyze ("Execution context was destroyed").
+      // Waiting for the sign-in form pins the audit to the settled gate page.
+      await signinPage.waitForLoginForm();
+      await page.waitForLoadState("networkidle");
     });
 
     test(
@@ -80,12 +86,9 @@ test.describe("Accessibility — Authentication Flows @accessibility", () => {
             "button[type='submit'], input[type='submit'], button:has-text('Sign'), button:has-text('Log')",
           ).first();
 
-          if (await submitButton.isVisible()) {
-            const accessibleName =
-              (await submitButton.getAttribute("aria-label")) ||
-              (await submitButton.textContent());
-            expect(accessibleName).toBeTruthy();
-          }
+          // toHaveAccessibleName computes the real accessible name, so aria-label and the
+          // text content no longer have to be checked one after the other.
+          await expect(submitButton).toHaveAccessibleName(/\S/);
         });
       },
     );
@@ -107,13 +110,8 @@ test.describe("Accessibility — Authentication Flows @accessibility", () => {
         await test.step("Verify focus is received by interactive elements", async () => {
           const firstInput = page.locator("input").first();
 
-          if (await firstInput.isVisible()) {
-            await firstInput.focus();
-            const isFocused = await page.evaluate(
-              () => document.activeElement?.tagName.toLowerCase() === "input",
-            );
-            expect(isFocused).toBe(true);
-          }
+          await firstInput.focus();
+          await expect(firstInput).toBeFocused();
         });
       },
     );
@@ -160,16 +158,14 @@ test.describe("Accessibility — Authentication Flows @accessibility", () => {
             "button[type='submit'], input[type='submit'], button:has-text('Sign'), button:has-text('Log')",
           ).first();
 
-          if (await submitButton.isVisible()) {
-            await submitButton.click();
+          await submitButton.click();
 
-            // Wait for actual error UI to appear instead of arbitrary timeout
-            await page.locator(
-              "[role='alert'], [aria-invalid='true'], .error, .validation-error",
-            ).first().waitFor({ state: "visible", timeout: 5000 }).catch(() => {
-              // If no error element appears, proceed anyway — the page state is still valid to audit
-            });
-          }
+          // Wait for actual error UI to appear instead of arbitrary timeout
+          await page.locator(
+            "[role='alert'], [aria-invalid='true'], .error, .validation-error",
+          ).first().waitFor({ state: "visible", timeout: 5000 }).catch(() => {
+            // If no error element appears, proceed anyway, the page state is still valid to audit
+          });
         });
 
         await test.step("Verify error messages are accessible", async () => {

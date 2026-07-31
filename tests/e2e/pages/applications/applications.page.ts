@@ -31,6 +31,8 @@ export class ApplicationsPage extends BasePage {
   readonly configureDesignStep: Locator;
   readonly configureSignInStep: Locator;
   readonly configureDetailsStep: Locator;
+  readonly userAccessSection: Locator;
+  readonly allowAllUserTypesCheckbox: Locator;
   readonly inbuiltExperienceCard: Locator;
   readonly embeddedExperienceCard: Locator;
   readonly showClientSecretStep: Locator;
@@ -78,6 +80,10 @@ export class ApplicationsPage extends BasePage {
     this.configureDesignStep = page.locator('[data-testid="application-configure-design"]');
     this.configureSignInStep = page.locator('[data-testid="application-configure-sign-in"]');
     this.configureDetailsStep = page.locator('[data-testid="application-configure-details"]');
+    this.userAccessSection = page.locator('[data-testid="application-configure-user-access"]');
+    // The master "Allow all user types to access this application" checkbox is the first
+    // checkbox in the section; per-type checkboxes render below it once expanded.
+    this.allowAllUserTypesCheckbox = this.userAccessSection.getByRole("checkbox").first();
     this.inbuiltExperienceCard = page.locator('div:has(input[value="INBUILT"])');
     this.embeddedExperienceCard = page.locator('div:has(input[value="EMBEDDED"])');
     this.showClientSecretStep = page.locator('[data-testid="application-show-client-secret"]');
@@ -103,12 +109,21 @@ export class ApplicationsPage extends BasePage {
     });
   }
 
-  /** Navigate directly to an application's edit page */
+  /**
+   * Navigate directly to an application's edit page and wait for its tab strip.
+   *
+   * `networkidle` alone is not enough: the page fetches the application after the bundle runs and
+   * renders a spinner until it resolves, and React Query's retry backoff leaves idle gaps that
+   * satisfy `networkidle` while the fetch is still in flight. Anything a caller then waits for with
+   * an element-sized timeout (a tab, a field) is racing that fetch, so the wait belongs here once,
+   * with a page-load budget.
+   */
   async gotoEdit(appId: string): Promise<void> {
     await this.page.goto(`${this.baseUrl}${ConsoleRoutes.applicationDetails(appId)}`, {
       waitUntil: "networkidle",
       timeout: Timeouts.PAGE_LOAD,
     });
+    await this.page.getByRole("tablist").first().waitFor({ state: "visible", timeout: Timeouts.PAGE_LOAD });
   }
 
   /** Verify the applications list page is loaded */
@@ -153,6 +168,27 @@ export class ApplicationsPage extends BasePage {
   async fillAppName(name: string): Promise<void> {
     await this.appNameInput.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
     await this.appNameInput.fill(name);
+  }
+
+  /**
+   * Restrict the application under creation to a single named user type, instead of the
+   * wizard's default of every user type in the system (see UserAccessSection's "Allow all user
+   * types to access this application" master checkbox). Only renders when 2+ user types exist.
+   *
+   * The master checkbox is checked by a seeding effect, not by initial render state, so it
+   * renders unchecked for one paint before the effect runs. `uncheck()` is a silent no-op on an
+   * already-unchecked box, so waiting for the checked state first is load-bearing - skipping it
+   * would leave zero types selected, Next permanently disabled, and the caller hanging on
+   * whatever it awaits next.
+   */
+  async selectOnlyUserType(name: string): Promise<void> {
+    await expect(this.allowAllUserTypesCheckbox).toBeChecked({ timeout: Timeouts.FORM_LOAD });
+    // Unchecking the master clears the selection and auto-expands the per-type list.
+    await this.allowAllUserTypesCheckbox.uncheck();
+    const typeCheckbox = this.userAccessSection.getByRole("checkbox", { name, exact: true });
+    await typeCheckbox.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await typeCheckbox.check();
+    await expect(typeCheckbox).toBeChecked();
   }
 
   /** Click the Next / Continue button in the wizard */

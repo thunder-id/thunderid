@@ -61,7 +61,7 @@ setup("Admin login test", async ({ page, context, signinPage }) => {
       { timeout: 10000 }
     );
     console.log("✅ Redirected to authentication page:", page.url());
-  } catch (e) {
+  } catch {
     console.log("ℹ️ No redirect detected after 10s. Current URL:", page.url());
     if (!(await signinPage.isOnLoginPage())) {
       console.log("⚠️ Not on login page, attempting direct navigation to signin...");

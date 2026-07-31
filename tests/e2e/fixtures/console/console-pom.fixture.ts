@@ -13,6 +13,7 @@
 import { test as base } from "./console-auth.fixture";
 import { ConsoleSigninPage } from "../../pages/authentication";
 import { UsersPage } from "../../pages/user-management";
+import { UserTypesPage } from "../../pages/user-types";
 import { ApplicationsPage } from "../../pages/applications";
 import { SettingsPage } from "../../pages/settings";
 
@@ -21,6 +22,7 @@ const baseUrl = process.env.BASE_URL || "";
 type POMFixtures = {
   signinPage: ConsoleSigninPage;
   usersPage: UsersPage;
+  userTypesPage: UserTypesPage;
   applicationsPage: ApplicationsPage;
   settingsPage: SettingsPage;
 };
@@ -34,6 +36,11 @@ export const test = base.extend<POMFixtures>({
   // Users page requires auth, uses authenticatedPage fixture
   usersPage: async ({ authenticatedPage }, use) => {
     await use(new UsersPage(authenticatedPage, baseUrl));
+  },
+
+  // User types page requires auth, uses authenticatedPage fixture
+  userTypesPage: async ({ authenticatedPage }, use) => {
+    await use(new UserTypesPage(authenticatedPage, baseUrl));
   },
 
   // Applications page requires auth, uses authenticatedPage fixture
@@ -50,5 +57,6 @@ export const test = base.extend<POMFixtures>({
 export { expect } from "@playwright/test";
 export { ConsoleSigninPage } from "../../pages/authentication";
 export { UsersPage, type UserFormData } from "../../pages/user-management";
+export { UserTypesPage } from "../../pages/user-types";
 export { ApplicationsPage, type ApplicationFormData } from "../../pages/applications";
 export { SettingsPage } from "../../pages/settings";

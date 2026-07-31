@@ -64,6 +64,12 @@ export const ConsoleRoutes = {
    */
   userDetails: (userId: string) => `/console/users/${userId}`,
 
+  /** User types list page */
+  userTypes: "/console/user-types",
+
+  /** Create new user type wizard page */
+  userTypeCreate: "/console/user-types/create",
+
   /** Settings page */
   settings: "/console/settings",
 
