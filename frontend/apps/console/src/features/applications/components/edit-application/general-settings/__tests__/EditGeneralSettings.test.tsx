@@ -18,6 +18,7 @@
 
 import {render, screen, fireEvent} from '@testing-library/react';
 import type {Application, OAuth2Config} from '@thunderid/configure-applications';
+import {useState} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import EditGeneralSettings from '../EditGeneralSettings';
 
@@ -50,7 +51,7 @@ vi.mock('../QuickCopySection', () => ({
 }));
 
 vi.mock('../AccessSection', () => ({
-  default: ({
+  default: function MockAccessSection({
     application,
     editedApp,
     oauth2Config,
@@ -58,12 +59,20 @@ vi.mock('../AccessSection', () => ({
     application: Application;
     editedApp: Partial<Application>;
     oauth2Config?: OAuth2Config;
-  }) => (
-    <div data-testid="access-section">
-      AccessSection - App: {application.id}, Edited URL: {editedApp.url ?? 'None'}, OAuth:{' '}
-      {oauth2Config?.clientId ?? 'None'}
-    </div>
-  ),
+  }) {
+    // Mimics AccessSection's real redirect-URI list, which lives in local state — used to prove
+    // that a changed sectionResetKey remounts (rather than just re-renders) the section.
+    const [clicks, setClicks] = useState(0);
+    return (
+      <div data-testid="access-section">
+        AccessSection - App: {application.id}, Edited URL: {editedApp.url ?? 'None'}, OAuth:{' '}
+        {oauth2Config?.clientId ?? 'None'}, Clicks: {clicks}
+        <button type="button" onClick={() => setClicks((c) => c + 1)}>
+          Bump
+        </button>
+      </div>
+    );
+  },
 }));
 
 vi.mock('../DangerZoneSection', () => ({
@@ -308,6 +317,66 @@ describe('EditGeneralSettings', () => {
       );
 
       expect(screen.getByTestId('quick-copy-section')).toHaveTextContent('Copied: None');
+    });
+  });
+
+  describe('Access section reset', () => {
+    it('remounts AccessSection, dropping its local state, when sectionResetKey changes', () => {
+      const {rerender} = render(
+        <EditGeneralSettings
+          application={mockApplication}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+          copiedField={null}
+          onCopyToClipboard={mockOnCopyToClipboard}
+          sectionResetKey={0}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', {name: 'Bump'}));
+      expect(screen.getByTestId('access-section')).toHaveTextContent('Clicks: 1');
+
+      rerender(
+        <EditGeneralSettings
+          application={mockApplication}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+          copiedField={null}
+          onCopyToClipboard={mockOnCopyToClipboard}
+          sectionResetKey={1}
+        />,
+      );
+
+      expect(screen.getByTestId('access-section')).toHaveTextContent('Clicks: 0');
+    });
+
+    it('keeps AccessSection mounted when sectionResetKey stays the same', () => {
+      const {rerender} = render(
+        <EditGeneralSettings
+          application={mockApplication}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+          copiedField={null}
+          onCopyToClipboard={mockOnCopyToClipboard}
+          sectionResetKey={0}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', {name: 'Bump'}));
+      expect(screen.getByTestId('access-section')).toHaveTextContent('Clicks: 1');
+
+      rerender(
+        <EditGeneralSettings
+          application={mockApplication}
+          editedApp={{url: 'https://re-rendered.com'}}
+          onFieldChange={mockOnFieldChange}
+          copiedField={null}
+          onCopyToClipboard={mockOnCopyToClipboard}
+          sectionResetKey={0}
+        />,
+      );
+
+      expect(screen.getByTestId('access-section')).toHaveTextContent('Clicks: 1');
     });
   });
 

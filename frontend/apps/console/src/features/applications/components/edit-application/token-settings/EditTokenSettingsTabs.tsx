@@ -31,6 +31,7 @@ interface EditTokenSettingsTabsProps {
   oauth2Config?: OAuth2Config;
   onFieldChange: (field: keyof Application, value: unknown) => void;
   onValidationChange?: (hasErrors: boolean) => void;
+  sectionResetKey?: number;
 }
 
 /**
@@ -42,6 +43,7 @@ export default function EditTokenSettingsTabs({
   oauth2Config = undefined,
   onFieldChange,
   onValidationChange = undefined,
+  sectionResetKey = 0,
 }: EditTokenSettingsTabsProps): JSX.Element {
   const {t} = useTranslation();
   const [subTab, setSubTab] = useState(0);
@@ -83,6 +85,7 @@ export default function EditTokenSettingsTabs({
             )}
           >
             <ClientAccessTokenSection
+              key={sectionResetKey}
               oauth2Config={oauth2Config}
               inboundAuthConfig={application.inboundAuthConfig}
               onFieldChange={onFieldChange}
@@ -131,6 +134,7 @@ export default function EditTokenSettingsTabs({
             <EditTokenSettings
               application={userTabApplication}
               oauth2Config={oauth2Config}
+              sectionResetKey={sectionResetKey}
               onFieldChange={onFieldChange}
               onValidationChange={setUserTabHasError}
             />

@@ -20,6 +20,7 @@ import {PageLoadingAnimation, ResourceAvatar, UnsavedChangesBar} from '@thunderi
 import {OAuth2GrantTypes, TokenEndpointAuthMethods, useGetApplication} from '@thunderid/configure-applications';
 import type {Application, OAuth2Config} from '@thunderid/configure-applications';
 import {useLogger} from '@thunderid/logger/react';
+import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
   Box,
   Stack,
@@ -112,6 +113,10 @@ export default function ApplicationEditPage() {
 
   const [activeTab, setActiveTab] = useState(0);
   const [editedApp, setEditedApp] = useState<Partial<Application>>({});
+  // Bumped on Save/Reset to force AccessSection/McpAccessSection/UrlsSection to remount with a
+  // clean form — they keep local state (redirect URI list, react-hook-form defaults) that a
+  // `setEditedApp({})` alone wouldn't reset.
+  const [sectionResetKey, setSectionResetKey] = useState(0);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -180,12 +185,20 @@ export default function ApplicationEditPage() {
       });
       setEditedApp({});
       await refetch();
+      // Bumped only after refetch resolves to prevent stale data being passed to the remounted sections.
+      setSectionResetKey((key) => key + 1);
     } catch {
       logger.error('Failed to update application');
     }
   }, [application, applicationId, editedApp, updateApplication, refetch, logger]);
 
-  const hasChanges = useMemo(() => Object.keys(editedApp).length > 0, [editedApp]);
+  const hasChanges = useMemo(
+    () =>
+      Object.entries(editedApp).some(
+        ([key, value]) => !isEqualIgnoringEmpty(value, application?.[key as keyof Application]),
+      ),
+    [editedApp, application],
+  );
 
   if (isLoading) {
     return <PageLoadingAnimation />;
@@ -284,6 +297,7 @@ export default function ApplicationEditPage() {
                   handleBack().catch(() => null);
                 }}
                 onValidationChange={setMcpAccessInvalid}
+                sectionResetKey={sectionResetKey}
               />
             ),
           },
@@ -304,6 +318,7 @@ export default function ApplicationEditPage() {
                 editedApp={editedApp}
                 onFieldChange={handleFieldChange}
                 onValidationChange={setCustomizationSettingsInvalid}
+                sectionResetKey={sectionResetKey}
               />
             ),
             hidden: isMcpM2mOnly,
@@ -313,6 +328,7 @@ export default function ApplicationEditPage() {
             label: t('applications:edit.page.tabs.token'),
             panel: (
               <EditTokenSettings
+                sectionResetKey={sectionResetKey}
                 application={application}
                 oauth2Config={oauth2Config}
                 onFieldChange={handleFieldChange}
@@ -595,6 +611,7 @@ export default function ApplicationEditPage() {
                 }}
                 onValidationChange={setGeneralSettingsInvalid}
                 showUserAccessConfig={userAccessUnlocked}
+                sectionResetKey={sectionResetKey}
               />
             </TabPanel>
 
@@ -617,6 +634,7 @@ export default function ApplicationEditPage() {
                   editedApp={editedApp}
                   onFieldChange={handleFieldChange}
                   onValidationChange={setCustomizationSettingsInvalid}
+                  sectionResetKey={sectionResetKey}
                 />
               </SettingsLockNotice>
             </TabPanel>
@@ -624,6 +642,7 @@ export default function ApplicationEditPage() {
             {/* Token Tab */}
             <TabPanel value={activeTab} index={hasIntegrationGuides ? 4 : 3}>
               <EditTokenSettingsTabs
+                sectionResetKey={sectionResetKey}
                 application={application}
                 oauth2Config={oauth2Config}
                 onFieldChange={handleFieldChange}
@@ -672,6 +691,7 @@ export default function ApplicationEditPage() {
             setAdvancedSettingsInvalid(false);
             setCustomizationSettingsInvalid(false);
             setGeneralSettingsInvalid(false);
+            setSectionResetKey((key) => key + 1);
           }}
           onSave={() => {
             handleSave().catch(() => null);

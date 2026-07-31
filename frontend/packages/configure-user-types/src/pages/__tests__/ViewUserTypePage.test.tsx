@@ -325,6 +325,29 @@ describe('ViewUserTypePage', () => {
         expect(screen.getByText('Updated Schema')).toBeInTheDocument();
       });
     });
+
+    it('hides the unsaved-changes bar when the name is retyped back to its original value', async () => {
+      const user = userEvent.setup();
+      render(<ViewUserTypePage />);
+
+      await user.click(screen.getByRole('button', {name: /edit user type name/i}));
+      let nameInput = screen.getByRole('textbox', {name: /user type name/i});
+      await user.clear(nameInput);
+      await user.type(nameInput, 'Renamed Schema{Enter}');
+
+      await waitFor(() => {
+        expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', {name: /edit user type name/i}));
+      nameInput = screen.getByRole('textbox', {name: /user type name/i});
+      await user.clear(nameInput);
+      await user.type(nameInput, 'Employee Schema{Enter}');
+
+      await waitFor(() => {
+        expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
+      });
+    });
   });
 
   describe('General Tab', () => {

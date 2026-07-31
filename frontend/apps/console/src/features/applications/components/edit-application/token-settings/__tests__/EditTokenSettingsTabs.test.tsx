@@ -19,14 +19,35 @@
 import userEvent from '@testing-library/user-event';
 import type {Application} from '@thunderid/configure-applications';
 import {render, screen} from '@thunderid/test-utils';
+import {useState} from 'react';
 import {describe, it, expect, vi} from 'vitest';
 import EditTokenSettingsTabs from '../EditTokenSettingsTabs';
 
 vi.mock('../ClientAccessTokenSection', () => ({
-  default: () => <div data-testid="client-token-section" />,
+  default: vi.fn(() => {
+    const [clicks, setClicks] = useState(0);
+    return (
+      <div data-testid="client-token-section">
+        Clicks: {clicks}
+        <button type="button" data-testid="client-token-section-bump" onClick={() => setClicks((c) => c + 1)}>
+          Bump
+        </button>
+      </div>
+    );
+  }),
 }));
 vi.mock('../EditTokenSettings', () => ({
-  default: () => <div data-testid="user-token-section" />,
+  default: vi.fn(({sectionResetKey}: {sectionResetKey?: number}) => {
+    const [clicks, setClicks] = useState(0);
+    return (
+      <div data-testid="user-token-section">
+        Clicks: {clicks}, Key: {sectionResetKey}
+        <button type="button" data-testid="user-token-section-bump" onClick={() => setClicks((c) => c + 1)}>
+          Bump
+        </button>
+      </div>
+    );
+  }),
 }));
 
 const application: Application = {id: 'app-1', name: 'Test App'};
@@ -103,5 +124,61 @@ describe('EditTokenSettingsTabs', () => {
 
     expect(screen.getByTestId('user-token-section')).toBeInTheDocument();
     expect(screen.queryByText(userLockMessage)).not.toBeInTheDocument();
+  });
+
+  it('remounts ClientAccessTokenSection when sectionResetKey changes', async () => {
+    const user = userEvent.setup();
+    const {rerender} = render(
+      <EditTokenSettingsTabs
+        application={application}
+        oauth2Config={{grantTypes: ['client_credentials'], responseTypes: []}}
+        onFieldChange={onFieldChange}
+        sectionResetKey={0}
+      />,
+    );
+
+    await user.click(screen.getByTestId('client-token-section-bump'));
+    expect(screen.getByTestId('client-token-section')).toHaveTextContent('Clicks: 1');
+
+    rerender(
+      <EditTokenSettingsTabs
+        application={application}
+        oauth2Config={{grantTypes: ['client_credentials'], responseTypes: []}}
+        onFieldChange={onFieldChange}
+        sectionResetKey={1}
+      />,
+    );
+
+    // A fresh key means a fresh mount, so the local click count is gone.
+    expect(screen.getByTestId('client-token-section')).toHaveTextContent('Clicks: 0');
+  });
+
+  it('does not remount EditTokenSettings, but forwards the updated sectionResetKey, when it changes', async () => {
+    const user = userEvent.setup();
+    const {rerender} = render(
+      <EditTokenSettingsTabs
+        application={application}
+        oauth2Config={{grantTypes: ['authorization_code'], responseTypes: []}}
+        onFieldChange={onFieldChange}
+        sectionResetKey={0}
+      />,
+    );
+
+    await user.click(screen.getByRole('tab', {name: 'User'}));
+    await user.click(screen.getByTestId('user-token-section-bump'));
+    expect(screen.getByTestId('user-token-section')).toHaveTextContent('Clicks: 1');
+
+    rerender(
+      <EditTokenSettingsTabs
+        application={application}
+        oauth2Config={{grantTypes: ['authorization_code'], responseTypes: []}}
+        onFieldChange={onFieldChange}
+        sectionResetKey={1}
+      />,
+    );
+
+    // EditTokenSettings resets its own form in place on a new key, so it must not remount here
+    // (the click count survives) while still receiving the updated key as a prop.
+    expect(screen.getByTestId('user-token-section')).toHaveTextContent('Clicks: 1, Key: 1');
   });
 });

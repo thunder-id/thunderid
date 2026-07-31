@@ -20,7 +20,7 @@ import {SettingsCard} from '@thunderid/components';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import type {User} from '@thunderid/types';
 import {Box, CircularProgress, Typography} from '@wso2/oxygen-ui';
-import {useEffect, useRef, type JSX} from 'react';
+import {useEffect, type JSX} from 'react';
 import {useForm, useWatch} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import AttributesSummarySection from './AttributesSummarySection';
@@ -38,16 +38,6 @@ type AttributeFormData = Record<string, unknown>;
 
 const filterAttributes = (data: AttributeFormData): AttributeFormData =>
   Object.fromEntries(Object.entries(data).filter(([, v]) => v !== '' && v !== undefined && v !== null));
-
-// Order-independent equality check — the watched form values and the original attributes can
-// have their keys in different orders, which would make a plain JSON.stringify comparison
-// report a false difference even when nothing actually changed.
-const areAttributesEqual = (a: AttributeFormData, b: AttributeFormData): boolean => {
-  const aKeys = Object.keys(a);
-  const bKeys = Object.keys(b);
-  if (aKeys.length !== bKeys.length) return false;
-  return aKeys.every((key) => JSON.stringify(a[key]) === JSON.stringify(b[key]));
-};
 
 /**
  * Every field edit stages directly into the page's shared editedUser state via onFieldChange —
@@ -74,17 +64,9 @@ export default function EditUserAttributes({user, editedUser, onFieldChange}: Ed
   });
 
   const watchedValues = useWatch({control});
-  // Frozen at mount (the parent remounts this component via a `key` on Save/Reset) — the
-  // baseline every subsequent watched value is compared against to detect a real edit.
-  const baselineRef = useRef(filterAttributes(attributes));
 
   useEffect(() => {
-    const filtered = filterAttributes(watchedValues);
-    // react-hook-form's useWatch fires again shortly after mount as each dynamically-rendered
-    // field registers, even without any user interaction — only propagate once the values
-    // actually diverge from the baseline, or the Save/Reset bar would show up unprompted.
-    if (areAttributesEqual(filtered, baselineRef.current)) return;
-    onFieldChange('attributes', filtered);
+    onFieldChange('attributes', filterAttributes(watchedValues));
   }, [watchedValues, onFieldChange]);
 
   if (isLoading) {

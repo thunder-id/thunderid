@@ -286,6 +286,29 @@ describe('RoleEditPage', () => {
     });
   });
 
+  describe('General field revert', () => {
+    it('hides the save bar when the name is retyped back to its original value', async () => {
+      const user = userEvent.setup();
+      render(<RoleEditPage />);
+
+      await user.click(screen.getByRole('button', {name: /edit.page.editName/i}));
+      let nameInput = screen.getByRole('textbox');
+      await user.clear(nameInput);
+      await user.type(nameInput, 'Renamed Role');
+      await user.tab();
+
+      expect(screen.getByRole('button', {name: /edit.page.save/i})).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', {name: /edit.page.editName/i}));
+      nameInput = screen.getByRole('textbox');
+      await user.clear(nameInput);
+      await user.type(nameInput, 'Admin Role');
+      await user.tab();
+
+      expect(screen.queryByRole('button', {name: /edit.page.save/i})).not.toBeInTheDocument();
+    });
+  });
+
   describe('Permissions staged save', () => {
     it('shows the save bar when permissions change and saves them in one PUT', async () => {
       const user = userEvent.setup();

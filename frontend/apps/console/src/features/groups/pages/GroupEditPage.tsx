@@ -19,6 +19,7 @@
 import {PageLoadingAnimation} from '@thunderid/components';
 import {useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
+import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
   Box,
   Stack,
@@ -119,7 +120,10 @@ export default function GroupEditPage(): JSX.Element {
     }
   }, [group, groupId, editedGroup, updateGroup, refetch, logger, showToast, t]);
 
-  const hasChanges = useMemo(() => Object.keys(editedGroup).length > 0, [editedGroup]);
+  const hasChanges = useMemo(
+    () => Object.entries(editedGroup).some(([key, value]) => !isEqualIgnoringEmpty(value, group?.[key as keyof Group])),
+    [editedGroup, group],
+  );
 
   // Resolve the effective description accounting for user edits (including clearing).
   // 'description' in editedGroup means the user has touched the field; otherwise fall back to server value.

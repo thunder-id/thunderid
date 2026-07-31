@@ -20,6 +20,7 @@ import {PageLoadingAnimation, UnsavedChangesBar} from '@thunderid/components';
 import {getBreakingSchemaChanges} from '@thunderid/configure-user-types';
 import {useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
+import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
   Stack,
   Typography,
@@ -146,8 +147,11 @@ export default function ViewAgentTypePage(): JSX.Element {
   // Effective name (locked to the server-side value)
   const effectiveName = agentType?.name ?? '';
 
-  // Change detection
-  const hasChanges = useMemo(() => editedProperties !== null, [editedProperties]);
+  // Whether there are unsaved changes (deep compare edited vs base)
+  const hasChanges = useMemo(
+    () => editedProperties !== null && !isEqualIgnoringEmpty(editedProperties, baseProperties),
+    [editedProperties, baseProperties],
+  );
 
   const handleBack = async (): Promise<void> => {
     await navigate(listUrl);

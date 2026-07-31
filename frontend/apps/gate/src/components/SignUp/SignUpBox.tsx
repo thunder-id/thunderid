@@ -29,7 +29,7 @@ import {
 import {EMAIL_REGEX} from '@thunderid/utils';
 import {Box, Button, Alert, Typography, AlertTitle, CircularProgress} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
-import {useRef, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import RouteConfig from '../../configs/RouteConfig';
@@ -56,6 +56,13 @@ export default function SignUpBox(): JSX.Element {
   const componentsRef = useRef<EmbeddedFlowComponent[]>([]);
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const formInputsRef = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    const timers = debounceTimers.current;
+    return () => {
+      Object.values(timers).forEach(clearTimeout);
+    };
+  }, []);
 
   const validateFieldFormat = (field: string, value: string): void => {
     const component = componentsRef.current.find(

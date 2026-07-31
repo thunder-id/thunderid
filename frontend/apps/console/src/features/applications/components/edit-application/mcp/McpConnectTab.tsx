@@ -57,6 +57,12 @@ export interface McpConnectTabProps {
   onFieldChange: (field: keyof Application, value: unknown) => void;
 
   /**
+   * Bumped by the parent on Save/Reset to force McpAccessSection to remount and drop its local
+   * redirect URI list state.
+   */
+  sectionResetKey?: number;
+
+  /**
    * Whether the application is read-only, disabling all inputs and actions
    */
   isReadOnly: boolean;
@@ -111,6 +117,7 @@ export default function McpConnectTab({
   application,
   oauth2Config = undefined,
   onFieldChange,
+  sectionResetKey = 0,
   isReadOnly,
   onDeleteSuccess = undefined,
   onValidationChange = undefined,
@@ -251,6 +258,7 @@ export default function McpConnectTab({
 
         {!isM2m && (
           <McpAccessSection
+            key={sectionResetKey}
             application={application}
             oauth2Config={oauth2Config}
             onFieldChange={onFieldChange}

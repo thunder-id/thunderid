@@ -2558,4 +2558,41 @@ describe('SignInBox', () => {
     expect(screen.queryByText('Please enter a valid email address.')).not.toBeInTheDocument();
     vi.useRealTimers();
   });
+
+  it('clears pending debounce timers on unmount', () => {
+    vi.useFakeTimers();
+    mockSignInRenderProps = createMockSignInRenderProps({
+      components: [
+        {
+          id: 'block-1',
+          type: 'BLOCK',
+          components: [
+            {
+              id: 'email-input',
+              type: 'EMAIL_INPUT',
+              ref: 'email',
+              label: 'Email',
+              required: false,
+            },
+            {
+              id: 'submit-btn',
+              type: 'ACTION',
+              eventType: 'SUBMIT',
+              label: 'Continue',
+              variant: 'PRIMARY',
+            },
+          ],
+        },
+      ],
+    });
+    const {unmount} = render(<SignInBox />);
+
+    fireEvent.change(screen.getByLabelText(/Email/), {target: {value: 'abc'}});
+    const pendingWhileMounted = vi.getTimerCount();
+
+    unmount();
+
+    expect(vi.getTimerCount()).toBeLessThan(pendingWhileMounted);
+    vi.useRealTimers();
+  });
 });

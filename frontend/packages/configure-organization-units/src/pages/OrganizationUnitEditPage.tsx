@@ -18,6 +18,7 @@
 
 import {PageLoadingAnimation, ResourceAvatar, UnsavedChangesBar} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
+import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
   Box,
   Stack,
@@ -137,6 +138,23 @@ export default function OrganizationUnitEditPage({
     setEditedOU((prev) => ({...prev, [field]: value}));
   }, []);
 
+  const commitDescription = useCallback(
+    (value: string): void => {
+      const trimmedDescription = value.trim();
+      if (trimmedDescription === (organizationUnit?.description ?? '')) {
+        setEditedOU((prev) => {
+          if (!('description' in prev)) return prev;
+          const next = {...prev};
+          delete next.description;
+          return next;
+        });
+      } else {
+        handleFieldChange('description', trimmedDescription || null);
+      }
+    },
+    [organizationUnit, handleFieldChange],
+  );
+
   const handleSave = useCallback(async (): Promise<void> => {
     if (!organizationUnit || !id) return;
 
@@ -171,7 +189,13 @@ export default function OrganizationUnitEditPage({
     }
   }, [organizationUnit, id, editedOU, updateOrganizationUnit, resetTreeState, refetch, logger]);
 
-  const hasChanges = useMemo(() => Object.keys(editedOU).length > 0, [editedOU]);
+  const hasChanges = useMemo(
+    () =>
+      Object.entries(editedOU).some(
+        ([key, value]) => !isEqualIgnoringEmpty(value, organizationUnit?.[key as keyof OrganizationUnit]),
+      ),
+    [editedOU, organizationUnit],
+  );
 
   const handleDeleteSuccess = (): void => {
     resetTreeState();
@@ -321,18 +345,12 @@ export default function OrganizationUnitEditPage({
                 value={tempDescription}
                 onChange={(e) => setTempDescription(e.target.value)}
                 onBlur={() => {
-                  const trimmedDescription = tempDescription.trim();
-                  if (trimmedDescription !== (organizationUnit.description ?? '')) {
-                    handleFieldChange('description', trimmedDescription || null);
-                  }
+                  commitDescription(tempDescription);
                   setIsEditingDescription(false);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && e.ctrlKey) {
-                    const trimmedDescription = tempDescription.trim();
-                    if (trimmedDescription !== (organizationUnit.description ?? '')) {
-                      handleFieldChange('description', trimmedDescription || null);
-                    }
+                    commitDescription(tempDescription);
                     setIsEditingDescription(false);
                   } else if (e.key === 'Escape') {
                     setTempDescription(

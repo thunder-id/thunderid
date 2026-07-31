@@ -72,7 +72,9 @@ describe('ParentSettingsSection', () => {
 
     renderWithProviders(<ParentSettingsSection organizationUnit={mockOrganizationUnit} />);
 
-    expect(screen.getByText(t('organizationUnits:edit.general.sections.parentOUSettings.title'))).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', {name: t('organizationUnits:edit.general.sections.parentOUSettings.title')}),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(t('organizationUnits:edit.general.sections.parentOUSettings.description')),
     ).toBeInTheDocument();

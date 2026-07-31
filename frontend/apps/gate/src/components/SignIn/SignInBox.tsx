@@ -21,7 +21,7 @@ import {useTemplateLiteralResolver} from '@thunderid/hooks';
 import {EmbeddedFlowComponentType, SignIn, type EmbeddedFlowComponent} from '@thunderid/react';
 import {EMAIL_REGEX, TemplateLiteralType} from '@thunderid/utils';
 import {Box, Alert, CircularProgress} from '@wso2/oxygen-ui';
-import {useRef, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 
@@ -35,6 +35,13 @@ export default function SignInBox(): JSX.Element {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const componentsRef = useRef<EmbeddedFlowComponent[]>([]);
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  useEffect(() => {
+    const timers = debounceTimers.current;
+    return () => {
+      Object.values(timers).forEach(clearTimeout);
+    };
+  }, []);
 
   const collectInputComponents = (components: EmbeddedFlowComponent[]): void => {
     const fields: EmbeddedFlowComponent[] = [];

@@ -19,6 +19,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import {render, screen, userEvent, waitFor} from '@thunderid/test-utils';
 import type {User} from '@thunderid/types';
+import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {Controller, type Control} from 'react-hook-form';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import EditUserAttributes from '../EditUserAttributes';
@@ -113,10 +114,17 @@ describe('EditUserAttributes', () => {
     expect(screen.getByText('No schema available for editing')).toBeInTheDocument();
   });
 
-  it('does not call onFieldChange on initial mount', () => {
+  it('stages the original attributes on mount without reporting a spurious change', async () => {
     render(<EditUserAttributes user={baseUser} editedUser={{}} onFieldChange={mockOnFieldChange} />);
 
-    expect(mockOnFieldChange).not.toHaveBeenCalled();
+    // The page treats staged values equal to the original (via isEqualIgnoringEmpty) as "no
+    // change", so mounting must not stage anything that differs from user.attributes.
+    await waitFor(() => {
+      expect(mockOnFieldChange).toHaveBeenCalledWith('attributes', baseUser.attributes);
+    });
+    expect(mockOnFieldChange.mock.calls.every(([, value]) => isEqualIgnoringEmpty(value, baseUser.attributes))).toBe(
+      true,
+    );
   });
 
   it('stages the merged attributes into the shared editedUser state as the user types', async () => {
@@ -132,6 +140,24 @@ describe('EditUserAttributes', () => {
         'attributes',
         expect.objectContaining({email: 'new@b.com', count: 5}),
       );
+    });
+  });
+
+  it('restores the original attributes when the user manually reverts an edit', async () => {
+    const user = userEvent.setup();
+    render(<EditUserAttributes user={baseUser} editedUser={{}} onFieldChange={mockOnFieldChange} />);
+
+    const input = screen.getByLabelText('email-input');
+    await user.clear(input);
+    await user.type(input, 'new@b.com');
+    await waitFor(() => {
+      expect(mockOnFieldChange).toHaveBeenLastCalledWith('attributes', expect.objectContaining({email: 'new@b.com'}));
+    });
+
+    await user.clear(input);
+    await user.type(input, 'a@b.com');
+    await waitFor(() => {
+      expect(mockOnFieldChange).toHaveBeenLastCalledWith('attributes', baseUser.attributes);
     });
   });
 
