@@ -25,7 +25,6 @@ import {useTranslation} from 'react-i18next';
 import {useParams} from 'react-router';
 import '@xyflow/react/dist/style.css';
 
-import {EXECUTOR_TO_IDP_TYPE_MAP} from '../components/resource-property-panel/extended-properties/execution-properties/constants';
 import SsoDisableConfirmDialog from '../components/SsoDisableConfirmDialog';
 import SsoToggle from '../components/SsoToggle';
 import CompactStacksContext from '../context/CompactStacksContext';
@@ -50,10 +49,9 @@ import FlowConstants from '@/features/flows/constants/FlowConstants';
 import useFlowConfig from '@/features/flows/hooks/useFlowConfig';
 import useFlowEvents from '@/features/flows/hooks/useFlowEvents';
 import useValidationStatus from '@/features/flows/hooks/useValidationStatus';
-import {ExecutionTypes, StepTypes, type StepData} from '@/features/flows/models/steps';
+
 import {GRAPH_VALIDATION_RULES} from '@/features/flows/validation/validation-rules';
 
-const SMS_EXECUTORS = new Set<string>([ExecutionTypes.SMSExecutor]);
 
 function FlowBuilder() {
   const {flowId} = useParams<{flowId: string}>();
@@ -123,82 +121,8 @@ function FlowBuilder() {
     onNeedsAutoLayout: setNeedsAutoLayout,
   });
 
-  // Auto-assign connections for executor nodes with placeholder IDP/sender IDs
-  const {data: identityProviders, isPending: isIdentityProvidersPending} = useIdentityProviders();
-  const {data: smsProviders, isPending: isSMSProvidersPending} = useSMSProviders();
-  const hasAutoAssignedRef = useRef<boolean>(false);
-
-  useEffect(() => {
-    if (nodes.length === 0 || hasAutoAssignedRef.current) {
-      return;
-    }
-
-    // Wait until both data sources are available
-    if (!identityProviders || !smsProviders) {
-      return;
-    }
-
-    setNodes((currentNodes: Node[]) => {
-      let changed = false;
-
-      const updated = currentNodes.map((node: Node) => {
-        if (node.type !== StepTypes.Execution) return node;
-
-        const stepData = node.data as StepData | undefined;
-        const executorName = (stepData?.action as {executor?: {name?: string}} | undefined)?.executor?.name;
-        if (!executorName) return node;
-
-        const {senderId: currentSenderId = '', idpId: currentIdpId = ''} =
-          (stepData?.properties as Record<string, string> | undefined) ?? {};
-
-        // Handle SMS executors - auto-assign senderId
-        if (SMS_EXECUTORS.has(executorName) && smsProviders) {
-          if (currentSenderId === '{{SENDER_ID}}' || currentSenderId === '') {
-            if (smsProviders.length === 1) {
-              changed = true;
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  properties: {
-                    ...(stepData?.properties ?? {}),
-                    senderId: smsProviders[0].id,
-                  },
-                },
-              };
-            }
-          }
-          return node;
-        }
-
-        // Handle IDP executors - auto-assign idpId
-        const idpType = EXECUTOR_TO_IDP_TYPE_MAP[executorName];
-        if (!idpType || !identityProviders) return node;
-
-        if (currentIdpId !== '{{IDP_ID}}' && currentIdpId !== '') return node;
-
-        const matching = identityProviders.filter((idp) => idp.type === idpType);
-        if (matching.length !== 1) return node;
-
-        changed = true;
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            properties: {...(stepData?.properties ?? {}), idpId: matching[0].id},
-          },
-        };
-      });
-
-      if (changed) {
-        hasAutoAssignedRef.current = true;
-        return updated;
-      }
-
-      return currentNodes;
-    });
-  }, [identityProviders, smsProviders, nodes.length, setNodes]);
-
+  const {isPending: isIdentityProvidersPending} = useIdentityProviders();
+  const {isPending: isSMSProvidersPending} = useSMSProviders();
   // Element addition hook
   const {handleAddElementToView, handleAddElementToForm} = useElementAddition({
     setNodes,
@@ -331,6 +255,7 @@ function FlowBuilder() {
     setOpenValidationPanel,
     onSaved: handleSaved,
   });
+
 
   // SSO toggle orchestration (enable/disable transformations, placement mode)
   const sso = useSsoToggle({

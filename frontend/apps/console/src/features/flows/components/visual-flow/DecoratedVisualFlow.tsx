@@ -79,6 +79,7 @@ import {type Template} from '../../models/templates';
 import type {Widget} from '../../models/widget';
 import applyAutoLayout, {hasUnpositionedNodes} from '../../utils/applyAutoLayout';
 import {EXECUTION_STACK_NODE_TYPE, getExecutionStackWidth} from '../../utils/compactGraphTransforms';
+import autoAssignConnections from '../../utils/autoAssignConnections';
 import computeExecutorConnections from '../../utils/computeExecutorConnections';
 import generateResourceId from '../../utils/generateResourceId';
 import {resolveCollisions} from '../../utils/resolveCollisions';
@@ -299,11 +300,22 @@ function DecoratedVisualFlow({
     pendingDropRef.current = null;
   }, []);
 
+  const handleStepLoad = useCallback(
+    (step: Step): Step => {
+      const loadedStep = onStepLoad(step);
+      if (computedMetadata?.executorConnections) {
+        autoAssignConnections([loadedStep], computedMetadata.executorConnections);
+      }
+      return loadedStep;
+    },
+    [onStepLoad, computedMetadata],
+  );
+
   const handleContainerDialogConfirm = useContainerDialogConfirm({
     dropScenario,
     handleContainerDialogClose,
     generateStepElement,
-    onStepLoad,
+    onStepLoad: handleStepLoad,
     setNodes,
     setEdges,
     onResourceDropOnCanvas,
@@ -315,7 +327,7 @@ function DecoratedVisualFlow({
   const handleOnAdd = useResourceAdd({
     onTemplateLoad,
     onWidgetLoad,
-    onStepLoad,
+    onStepLoad: handleStepLoad,
     setNodes,
     setEdges,
     generateStepElement,
@@ -329,7 +341,7 @@ function DecoratedVisualFlow({
   });
 
   const {addCanvasNode, addToView, addToForm, addToViewAtIndex, addToFormAtIndex} = useDragDropHandlers({
-    onStepLoad,
+    onStepLoad: handleStepLoad,
     setNodes,
     setEdges,
     onResourceDropOnCanvas,

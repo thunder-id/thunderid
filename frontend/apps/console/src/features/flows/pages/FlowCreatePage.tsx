@@ -18,6 +18,7 @@
 
 import {useLogger} from '@thunderid/logger/react';
 import {Alert, Box, Button, CircularProgress, IconButton, LinearProgress, Stack, AppBreadcrumbs} from '@wso2/oxygen-ui';
+import {useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
 import {X} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useMemo, useState} from 'react';
@@ -30,6 +31,7 @@ import SelectFlowTemplate from '../components/create-flow/SelectFlowTemplate';
 import SelectFlowType from '../components/create-flow/SelectFlowType';
 import useFlowRoutes from '../hooks/useFlowRoutes';
 import type {FlowType} from '../models/flows';
+import {ExecutionTypes} from '../models/steps';
 import type {FlowTemplate} from '../models/templates';
 
 const FlowCreateStep = {
@@ -48,6 +50,8 @@ export default function FlowCreatePage(): JSX.Element {
   const flowRoutes = useFlowRoutes();
   const logger = useLogger('FlowCreatePage');
   const createFlow = useCreateFlow();
+  const {data: identityProviders} = useIdentityProviders();
+  const {data: smsProviders} = useSMSProviders();
 
   const [currentStep, setCurrentStep] = useState<FlowCreateStep>(FlowCreateStep.TYPE);
   const [selectedType, setSelectedType] = useState<FlowType | null>(null);
@@ -81,11 +85,26 @@ export default function FlowCreatePage(): JSX.Element {
     }
     if (currentStep === FlowCreateStep.CONFIGURE) {
       if (!selectedType || !selectedTemplate) return;
+
+      let nodesToSave = selectedTemplate.config.nodes;
+
+      const smsProvider = smsProviders?.length === 1 ? smsProviders[0] : null;
+      if (smsProvider || identityProviders?.length) {
+        nodesToSave = structuredClone(nodesToSave);
+        nodesToSave.forEach((node) => {
+          if (!node.executor?.name) return;
+          const props = node.properties as Record<string, string> | undefined;
+          if (node.executor.name === ExecutionTypes.SMSExecutor && smsProvider && (!props?.senderId || props.senderId === '{{SENDER_ID}}')) {
+            node.properties = {...node.properties, senderId: smsProvider.id};
+          }
+        });
+      }
+
       const flowRequest = {
         name: nameValue.name,
         handle: nameValue.handle,
         flowType: selectedType,
-        nodes: selectedTemplate.config.nodes,
+        nodes: nodesToSave,
       };
       setError(null);
       createFlow.mutate(flowRequest, {
