@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
+import {useIdentityProviders, useSMSProviders, useEmailProviders} from '@thunderid/configure-connections';
 import {Alert, Box, Snackbar, Stack} from '@wso2/oxygen-ui';
 import type {Edge, Node} from '@xyflow/react';
 import {useEdgesState, useNodesState, useUpdateNodeInternals} from '@xyflow/react';
@@ -111,6 +111,7 @@ function LoginFlowBuilder() {
   // Auto-assign connections for executor nodes with placeholder IDP/sender IDs
   const {data: identityProviders} = useIdentityProviders();
   const {data: smsProviders} = useSMSProviders();
+  const {data: emailProviders} = useEmailProviders();
   const hasAutoAssignedRef = useRef<boolean>(false);
 
   useEffect(() => {
@@ -118,8 +119,8 @@ function LoginFlowBuilder() {
       return;
     }
 
-    // Wait until both data sources are available
-    if (!identityProviders || !smsProviders) {
+    // Wait until all data sources are available
+    if (!identityProviders || !smsProviders || !emailProviders) {
       return;
     }
 
@@ -156,6 +157,26 @@ function LoginFlowBuilder() {
           return node;
         }
 
+        // Handle Email executors - auto-assign senderId
+        if (executorName === ExecutionTypes.EmailExecutor && emailProviders) {
+          if (currentSenderId === '{{SENDER_ID}}' || currentSenderId === '') {
+            if (emailProviders.length === 1) {
+              changed = true;
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  properties: {
+                    ...(stepData?.properties ?? {}),
+                    senderId: emailProviders[0].id,
+                  },
+                },
+              };
+            }
+          }
+          return node;
+        }
+
         // Handle IDP executors - auto-assign idpId
         const idpType = EXECUTOR_TO_IDP_TYPE_MAP[executorName];
         if (!idpType || !identityProviders) return node;
@@ -182,7 +203,7 @@ function LoginFlowBuilder() {
 
       return currentNodes;
     });
-  }, [identityProviders, smsProviders, nodes.length, setNodes]);
+  }, [identityProviders, smsProviders, emailProviders, nodes.length, setNodes]);
 
   // Element addition hook
   const {handleAddElementToView, handleAddElementToForm} = useElementAddition({

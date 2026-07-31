@@ -118,12 +118,14 @@ func (s *InitTestSuite) TestRouteTable() {
 
 	twilioDTO := &ncommon.NotificationSenderDTO{
 		ID: "tw-1", Name: "TW", Type: ncommon.NotificationSenderTypeMessage,
-		Provider: ncommon.MessageProviderTypeTwilio,
+		Provider: ncommon.NotificationProviderTypeTwilio,
 	}
 	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
 		Return([]ncommon.NotificationSenderDTO{*twilioDTO}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeEmail).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
 	s.mockNotif.On("CreateSender", mock.Anything, mock.MatchedBy(func(dto ncommon.NotificationSenderDTO) bool {
-		return dto.Provider == ncommon.MessageProviderTypeTwilio
+		return dto.Provider == ncommon.NotificationProviderTypeTwilio
 	})).Return(twilioDTO, (*tidcommon.ServiceError)(nil))
 	s.mockNotif.On("GetSender", mock.Anything, "tw-1").
 		Return(twilioDTO, (*tidcommon.ServiceError)(nil))
@@ -134,16 +136,44 @@ func (s *InitTestSuite) TestRouteTable() {
 
 	smsGatewayDTO := &ncommon.NotificationSenderDTO{
 		ID: "sg-1", Name: "SG", Type: ncommon.NotificationSenderTypeMessage,
-		Provider: ncommon.MessageProviderTypeCustom,
+		Provider: ncommon.NotificationProviderTypeCustom,
 	}
 	s.mockNotif.On("CreateSender", mock.Anything, mock.MatchedBy(func(dto ncommon.NotificationSenderDTO) bool {
-		return dto.Provider == ncommon.MessageProviderTypeCustom
+		return dto.Provider == ncommon.NotificationProviderTypeCustom
 	})).Return(smsGatewayDTO, (*tidcommon.ServiceError)(nil))
 	s.mockNotif.On("GetSender", mock.Anything, "sg-1").
 		Return(smsGatewayDTO, (*tidcommon.ServiceError)(nil))
 	s.mockNotif.On("UpdateSender", mock.Anything, "sg-1", mock.Anything).
 		Return(smsGatewayDTO, (*tidcommon.ServiceError)(nil))
 	s.mockNotif.On("DeleteSender", mock.Anything, "sg-1").
+		Return((*tidcommon.ServiceError)(nil))
+
+	smtpDTO := &ncommon.NotificationSenderDTO{
+		ID: "smtp-1", Name: "SMTP", Type: ncommon.NotificationSenderTypeEmail,
+		Provider: ncommon.NotificationProviderTypeSMTP,
+	}
+	s.mockNotif.On("CreateSender", mock.Anything, mock.MatchedBy(func(dto ncommon.NotificationSenderDTO) bool {
+		return dto.Provider == ncommon.NotificationProviderTypeSMTP
+	})).Return(smtpDTO, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("GetSender", mock.Anything, "smtp-1").
+		Return(smtpDTO, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("UpdateSender", mock.Anything, "smtp-1", mock.Anything).
+		Return(smtpDTO, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("DeleteSender", mock.Anything, "smtp-1").
+		Return((*tidcommon.ServiceError)(nil))
+
+	httpEmailDTO := &ncommon.NotificationSenderDTO{
+		ID: "http-1", Name: "HTTP", Type: ncommon.NotificationSenderTypeEmail,
+		Provider: ncommon.NotificationProviderTypeHTTP,
+	}
+	s.mockNotif.On("CreateSender", mock.Anything, mock.MatchedBy(func(dto ncommon.NotificationSenderDTO) bool {
+		return dto.Provider == ncommon.NotificationProviderTypeHTTP
+	})).Return(httpEmailDTO, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("GetSender", mock.Anything, "http-1").
+		Return(httpEmailDTO, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("UpdateSender", mock.Anything, "http-1", mock.Anything).
+		Return(httpEmailDTO, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("DeleteSender", mock.Anything, "http-1").
 		Return((*tidcommon.ServiceError)(nil))
 
 	body, _ := json.Marshal(githubConnectionRequest{
@@ -154,6 +184,12 @@ func (s *InitTestSuite) TestRouteTable() {
 	})
 	smsGatewayBody, _ := json.Marshal(smsGatewayConnectionRequest{
 		Name: "SG", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+	})
+	smtpBody, _ := json.Marshal(smtpConnectionRequest{
+		Name: "SMTP", Host: "smtp.example.com", Port: "587", FromAddress: "noreply@example.com",
+	})
+	httpEmailBody, _ := json.Marshal(httpEmailConnectionRequest{
+		Name: "HTTP", URL: "https://email.example.com/send", HTTPMethod: "POST",
 	})
 
 	cases := []struct {
@@ -184,6 +220,20 @@ func (s *InitTestSuite) TestRouteTable() {
 		{http.MethodPut, "/connections/sms-gateway/sg-1", smsGatewayBody, http.StatusOK},
 		{http.MethodDelete, "/connections/sms-gateway/sg-1", nil, http.StatusNoContent},
 		{http.MethodOptions, "/connections/sms-gateway/sg-1", nil, http.StatusNoContent},
+		{http.MethodPost, "/connections/smtp-email", smtpBody, http.StatusCreated},
+		{http.MethodGet, "/connections/smtp-email", nil, http.StatusOK},
+		{http.MethodOptions, "/connections/smtp-email", nil, http.StatusNoContent},
+		{http.MethodGet, "/connections/smtp-email/smtp-1", nil, http.StatusOK},
+		{http.MethodPut, "/connections/smtp-email/smtp-1", smtpBody, http.StatusOK},
+		{http.MethodDelete, "/connections/smtp-email/smtp-1", nil, http.StatusNoContent},
+		{http.MethodOptions, "/connections/smtp-email/smtp-1", nil, http.StatusNoContent},
+		{http.MethodPost, "/connections/http-email", httpEmailBody, http.StatusCreated},
+		{http.MethodGet, "/connections/http-email", nil, http.StatusOK},
+		{http.MethodOptions, "/connections/http-email", nil, http.StatusNoContent},
+		{http.MethodGet, "/connections/http-email/http-1", nil, http.StatusOK},
+		{http.MethodPut, "/connections/http-email/http-1", httpEmailBody, http.StatusOK},
+		{http.MethodDelete, "/connections/http-email/http-1", nil, http.StatusNoContent},
+		{http.MethodOptions, "/connections/http-email/http-1", nil, http.StatusNoContent},
 	}
 	for _, tc := range cases {
 		req := httptest.NewRequest(tc.method, tc.path, bytes.NewReader(tc.body))

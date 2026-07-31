@@ -58,7 +58,7 @@ func (suite *CustomClientTestSuite) SetupSuite() {
 func (suite *CustomClientTestSuite) getValidCustomSenderJSON() common.NotificationSenderDTO {
 	return common.NotificationSenderDTO{
 		Name:     "Test Custom",
-		Provider: common.MessageProviderTypeCustom,
+		Provider: common.NotificationProviderTypeCustom,
 		Properties: []cmodels.Property{
 			createProperty("url", "https://api.example.com/sms", false),
 			createProperty("http_method", "POST", false),
@@ -71,7 +71,7 @@ func (suite *CustomClientTestSuite) getValidCustomSenderJSON() common.Notificati
 func (suite *CustomClientTestSuite) getValidCustomSenderFORM() common.NotificationSenderDTO {
 	return common.NotificationSenderDTO{
 		Name:     "Test Custom Form",
-		Provider: common.MessageProviderTypeCustom,
+		Provider: common.NotificationProviderTypeCustom,
 		Properties: []cmodels.Property{
 			createProperty("url", "https://api.example.com/sms", false),
 			createProperty("http_method", "POST", false),
@@ -119,14 +119,14 @@ func (suite *CustomClientTestSuite) TestSendSMS_JSON_Success() {
 
 	// Replace the URL with test server URL
 	customClient := client.(*CustomClient)
-	customClient.url = server.URL
+	customClient.config.url = server.URL
 
-	data := common.NotificationData{
+	data := common.MessageData{
 		Recipient: "+15559876543",
 		Body:      `{"message":"Test message"}`,
 	}
 
-	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
+	err := client.(MessageClientInterface).Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.NoError(err)
 }
@@ -149,14 +149,14 @@ func (suite *CustomClientTestSuite) TestSendSMS_FORM_Success() {
 
 	// Replace the URL with test server URL
 	customClient := client.(*CustomClient)
-	customClient.url = server.URL
+	customClient.config.url = server.URL
 
-	data := common.NotificationData{
+	data := common.MessageData{
 		Recipient: "+15559876543",
 		Body:      "to=+15559876543\nmessage=Test message",
 	}
 
-	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
+	err := client.(MessageClientInterface).Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.NoError(err)
 }
@@ -176,14 +176,14 @@ func (suite *CustomClientTestSuite) TestSendSMS_Error() {
 
 	// Replace the URL with test server URL
 	customClient := client.(*CustomClient)
-	customClient.url = server.URL
+	customClient.config.url = server.URL
 
-	data := common.NotificationData{
+	data := common.MessageData{
 		Recipient: "+15559876543",
 		Body:      `{"message":"Test"}`,
 	}
 
-	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
+	err := client.(MessageClientInterface).Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.Error(err)
 	suite.Contains(err.Error(), "status: 400")
@@ -195,14 +195,14 @@ func (suite *CustomClientTestSuite) TestSendSMS_NetworkError() {
 
 	// Use an invalid URL to force a network error
 	customClient := client.(*CustomClient)
-	customClient.url = "http://invalid-custom-url.local:99999"
+	customClient.config.url = "http://invalid-custom-url.local:99999"
 
-	data := common.NotificationData{
+	data := common.MessageData{
 		Recipient: "+15559876543",
 		Body:      `{"message":"Test"}`,
 	}
 
-	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
+	err := client.(MessageClientInterface).Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.Error(err)
 }
@@ -210,7 +210,7 @@ func (suite *CustomClientTestSuite) TestSendSMS_NetworkError() {
 func (suite *CustomClientTestSuite) TestSendSMS_UnsupportedContentType() {
 	sender := common.NotificationSenderDTO{
 		Name:     "Test Custom",
-		Provider: common.MessageProviderTypeCustom,
+		Provider: common.NotificationProviderTypeCustom,
 		Properties: []cmodels.Property{
 			createProperty("url", "https://api.example.com/sms", false),
 			createProperty("http_method", "POST", false),
@@ -219,40 +219,15 @@ func (suite *CustomClientTestSuite) TestSendSMS_UnsupportedContentType() {
 	}
 	client, _ := newCustomClient(context.Background(), sender)
 
-	data := common.NotificationData{
+	data := common.MessageData{
 		Recipient: "+15559876543",
 		Body:      `<message>Test</message>`,
 	}
 
-	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
+	err := client.(MessageClientInterface).Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.Error(err)
 	suite.Contains(err.Error(), "unsupported content type")
-}
-
-func (suite *CustomClientTestSuite) TestGetHeadersFromString_Success() {
-	sender := suite.getValidCustomSenderJSON()
-	client, _ := newCustomClient(context.Background(), sender)
-	customClient := client.(*CustomClient)
-
-	headers, err := customClient.getHeadersFromString("Authorization:Bearer token,X-Api-Key:key123")
-
-	suite.NoError(err)
-	suite.Equal(2, len(headers))
-	suite.Equal("Bearer token", headers["Authorization"])
-	suite.Equal("key123", headers["X-Api-Key"])
-}
-
-func (suite *CustomClientTestSuite) TestGetHeadersFromString_InvalidFormat() {
-	sender := suite.getValidCustomSenderJSON()
-	client, _ := newCustomClient(context.Background(), sender)
-	customClient := client.(*CustomClient)
-
-	headers, err := customClient.getHeadersFromString("InvalidHeader")
-
-	suite.Error(err)
-	suite.Nil(headers)
-	suite.Contains(err.Error(), "invalid HTTP header format")
 }
 
 func (suite *CustomClientTestSuite) TestNewCustomClient_WithUnknownProperty() {
@@ -269,7 +244,7 @@ func (suite *CustomClientTestSuite) TestNewCustomClient_WithUnknownProperty() {
 func (suite *CustomClientTestSuite) TestNewCustomClient_InvalidHeaders() {
 	sender := common.NotificationSenderDTO{
 		Name:     "Test Custom",
-		Provider: common.MessageProviderTypeCustom,
+		Provider: common.NotificationProviderTypeCustom,
 		Properties: []cmodels.Property{
 			createProperty("url", "https://api.example.com/sms", false),
 			createProperty("http_method", "POST", false),

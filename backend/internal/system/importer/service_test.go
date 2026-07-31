@@ -264,6 +264,20 @@ func (f *fakeSenderService) GetSender(
 	return nil, &notification.ErrorSenderNotFound
 }
 
+func (f *fakeSenderService) GetSenderByName(
+	_ context.Context, name string,
+) (*ncommon.NotificationSenderDTO, *tidcommon.ServiceError) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	for _, v := range f.byID {
+		if v.Name == name {
+			return v, nil
+		}
+	}
+	return nil, &notification.ErrorSenderNotFound
+}
+
 func (f *fakeSenderService) UpdateSender(
 	_ context.Context, id string, sender ncommon.NotificationSenderDTO,
 ) (*ncommon.NotificationSenderDTO, *tidcommon.ServiceError) {

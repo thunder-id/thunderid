@@ -53,6 +53,7 @@ export type ConnectionCategory =
 export const ConnectionInstanceCategories = {
   IDENTITY_PROVIDER: 'identity-provider',
   SMS_PROVIDER: 'sms-provider',
+  EMAIL_PROVIDER: 'email-provider',
 } as const;
 
 export type ConnectionInstanceCategory =

@@ -1,0 +1,11 @@
+resource_type: connection
+id: decl-smtp-1
+name: Declarative SMTP Sender
+description: A declarative SMTP sender
+type: smtp-email
+host: smtp.example.com
+port: "587"
+username: user
+password: password
+fromAddress: no-reply@example.com
+tls: "yes"

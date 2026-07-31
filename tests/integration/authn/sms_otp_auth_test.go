@@ -117,7 +117,7 @@ func (suite *SMSOTPAuthTestSuite) SetupSuite() {
 	}
 
 	senderID, err := suite.createNotificationSender(customSender)
-	suite.Require().NoError(err, "Failed to create notification sender")
+	suite.Require().NoError(err, "Failed to create message notification sender")
 	suite.senderID = senderID
 
 	smsOTPEntityType.OUID = suite.ouID

@@ -59,7 +59,7 @@ func twilioToSenderDTO(req twilioConnectionRequest) (*ncommon.NotificationSender
 		Name:        req.Name,
 		Description: req.Description,
 		Type:        ncommon.NotificationSenderTypeMessage,
-		Provider:    ncommon.MessageProviderTypeTwilio,
+		Provider:    ncommon.NotificationProviderTypeTwilio,
 		Properties:  props,
 	}, nil
 }
@@ -73,7 +73,7 @@ func twilioFromSenderDTO(dto ncommon.NotificationSenderDTO) (twilioConnectionRes
 		ID:          dto.ID,
 		Name:        dto.Name,
 		Description: dto.Description,
-		Type:        string(ncommon.MessageProviderTypeTwilio),
+		Type:        string(ncommon.NotificationProviderTypeTwilio),
 		AccountSID:  values[ncommon.TwilioPropKeyAccountSID],
 		AuthToken:   values[ncommon.TwilioPropKeyAuthToken],
 		SenderID:    values[ncommon.TwilioPropKeySenderID],

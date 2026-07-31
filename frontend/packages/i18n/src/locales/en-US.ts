@@ -3237,6 +3237,10 @@ const translations = {
     'core.executions.email.emailTemplate.label': 'Email Template',
     'core.executions.email.emailTemplate.placeholder': 'e.g., UserInvite',
     'core.executions.email.emailTemplate.hint': 'The email template scenario to use when sending the email.',
+    'core.executions.email.sender.label': 'Notification Sender',
+    'core.executions.email.sender.placeholder': 'Select a notification sender',
+    'core.executions.email.sender.noSenders':
+      'No notification senders available. Please create a notification sender first.',
 
     // SMS executor
     'core.executions.sms.description': 'Configure the SMS executor settings.',

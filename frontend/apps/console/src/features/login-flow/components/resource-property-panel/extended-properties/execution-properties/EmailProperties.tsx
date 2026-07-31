@@ -16,7 +16,8 @@
  * under the License.
  */
 
-import {FormHelperText, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
+import {useEmailProviders, type ConnectionInstance} from '@thunderid/configure-connections';
+import {Alert, FormHelperText, FormLabel, MenuItem, Select, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {CommonResourcePropertiesPropsInterface} from './types';
@@ -24,11 +25,16 @@ import type {StepData} from '@/features/flows/models/steps';
 
 function EmailProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
   const {t} = useTranslation();
+  const {data: notificationSenders, isLoading: isLoadingSenders} = useEmailProviders();
 
   const properties = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;
     return stepData?.properties ?? {};
   }, [resource]);
+
+  const hasSenders = (notificationSenders?.length ?? 0) > 0;
+  const emailSenderId = (properties.senderId as string) || '';
+  const isSenderPlaceholder = emailSenderId === '' || emailSenderId === '{{SENDER_ID}}';
 
   return (
     <Stack gap={2}>
@@ -48,6 +54,31 @@ function EmailProperties({resource, onChange}: CommonResourcePropertiesPropsInte
         />
         <FormHelperText>{t('flows:core.executions.email.emailTemplate.hint')}</FormHelperText>
       </div>
+
+      <div>
+        <FormLabel htmlFor="email-sender-select">{t('flows:core.executions.email.sender.label')}</FormLabel>
+        <Select
+          id="email-sender-select"
+          value={isSenderPlaceholder ? '' : emailSenderId}
+          onChange={(e) => onChange('data.properties.senderId', e.target.value, resource)}
+          displayEmpty
+          fullWidth
+          disabled={isLoadingSenders || !hasSenders}
+        >
+          <MenuItem value="" disabled>
+            {isLoadingSenders ? t('common:status.loading') : t('flows:core.executions.email.sender.placeholder')}
+          </MenuItem>
+          {notificationSenders?.map((sender: ConnectionInstance) => (
+            <MenuItem key={sender.id} value={sender.id}>
+              {sender.name}
+            </MenuItem>
+          ))}
+        </Select>
+      </div>
+
+      {!isLoadingSenders && !hasSenders && (
+        <Alert severity="warning">{t('flows:core.executions.email.sender.noSenders')}</Alert>
+      )}
     </Stack>
   );
 }

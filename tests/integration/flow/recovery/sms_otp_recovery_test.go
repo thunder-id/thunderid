@@ -114,10 +114,10 @@ func (ts *SMSOTPRecoveryFlowTestSuite) SetupSuite() {
 	ts.Require().NoError(ts.mockSMSServer.Start(), "Failed to start mock SMS notification server")
 	time.Sleep(100 * time.Millisecond)
 
-	// Create notification sender pointing at the mock server
+	// Create message notification sender pointing at the mock server
 	senderID, err := testutils.CreateNotificationSender(testutils.NotificationSender{
 		Name:        "SMS Recovery Test Sender",
-		Description: "Notification sender for SMS OTP recovery flow testing",
+		Description: "Message notification sender for SMS OTP recovery flow testing",
 		Provider:    "custom",
 		Properties: []testutils.SenderProperty{
 			{Name: "url", Value: ts.mockSMSServer.GetSendSMSURL(), IsSecret: false},
@@ -125,7 +125,7 @@ func (ts *SMSOTPRecoveryFlowTestSuite) SetupSuite() {
 			{Name: "content_type", Value: "JSON", IsSecret: false},
 		},
 	})
-	ts.Require().NoError(err, "Failed to create SMS notification sender")
+	ts.Require().NoError(err, "Failed to create message notification sender")
 	ts.smsSenderID = senderID
 	ts.config.CreatedSenderIDs = append(ts.config.CreatedSenderIDs, senderID)
 
@@ -177,7 +177,7 @@ func (ts *SMSOTPRecoveryFlowTestSuite) TearDownSuite() {
 	}
 	for _, senderID := range ts.config.CreatedSenderIDs {
 		if err := testutils.DeleteNotificationSender(senderID); err != nil {
-			ts.T().Logf("teardown: failed to delete notification sender %s: %v", senderID, err)
+			ts.T().Logf("teardown: failed to delete message notification sender %s: %v", senderID, err)
 		}
 	}
 	if ts.mockSMSServer != nil {

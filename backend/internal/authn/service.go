@@ -210,7 +210,22 @@ func (as *authenticationService) SendOTP(ctx context.Context, senderID string, c
 	recipient string) (string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, svcLoggerComponentName))
 
-	sessionToken, otpValue, _, svcErr := as.otpService.GenerateOTP(ctx, recipient, "mobile_number")
+	var attributeName string
+	var templateType template.TemplateType
+
+	switch channel {
+	case notifcommon.ChannelTypeEmail:
+		attributeName = "email_address"
+		templateType = template.TemplateTypeEmail
+	case notifcommon.ChannelTypeSMS:
+		attributeName = "mobile_number"
+		templateType = template.TemplateTypeSMS
+	default:
+		logger.Error(ctx, "Unsupported channel type for OTP", log.String("channel", string(channel)))
+		return "", &tidcommon.InternalServerError
+	}
+
+	sessionToken, otpValue, _, svcErr := as.otpService.GenerateOTP(ctx, recipient, attributeName)
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ServerErrorType {
 			logger.Error(ctx, "Failed to generate OTP", log.String("error", svcErr.Code))
@@ -222,7 +237,7 @@ func (as *authenticationService) SendOTP(ctx context.Context, senderID string, c
 	otpCfg := config.GetServerRuntime().Config.Notification.OTP
 	expiryMinutes := strconv.FormatInt(int64(otpCfg.ValidityPeriodSeconds)/60, 10)
 	templateData := template.TemplateData{"otpCode": otpValue, "expiryMinutes": expiryMinutes}
-	rendered, renderErr := as.templateService.Render(ctx, template.ScenarioOTP, template.TemplateTypeSMS, templateData)
+	rendered, renderErr := as.templateService.Render(ctx, template.ScenarioOTP, templateType, templateData)
 	if renderErr != nil {
 		if renderErr.Type == tidcommon.ServerErrorType {
 			logger.Error(ctx, "Failed to render OTP template", log.String("error", renderErr.Code))
@@ -231,8 +246,23 @@ func (as *authenticationService) SendOTP(ctx context.Context, senderID string, c
 		return "", renderErr
 	}
 
-	notifData := notifcommon.NotificationData{Recipient: recipient, Body: rendered.Body}
-	if sendErr := as.notifSenderSvc.Send(ctx, channel, senderID, notifData); sendErr != nil {
+	var sendErr *tidcommon.ServiceError
+	switch channel {
+	case notifcommon.ChannelTypeEmail:
+		sendErr = as.notifSenderSvc.SendEmail(ctx, senderID, notifcommon.EmailData{
+			To:      []string{recipient},
+			Subject: rendered.Subject,
+			Body:    rendered.Body,
+			IsHTML:  rendered.IsHTML,
+		})
+	case notifcommon.ChannelTypeSMS:
+		sendErr = as.notifSenderSvc.SendMessage(ctx, channel, senderID, notifcommon.MessageData{
+			Recipient: recipient,
+			Body:      rendered.Body,
+		})
+	}
+
+	if sendErr != nil {
 		if sendErr.Type == tidcommon.ServerErrorType {
 			logger.Error(ctx, "Failed to send OTP notification", log.String("error", sendErr.Code))
 			return "", &tidcommon.InternalServerError

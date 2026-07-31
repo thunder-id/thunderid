@@ -52,6 +52,9 @@ const {
   mockEdgeStyle,
   mockUseFlowConfig,
   getDefaultFlowConfigMock,
+  mockUseIdentityProviders,
+  mockUseSMSProviders,
+  mockUseEmailProviders,
 } = vi.hoisted(() => {
   const setFlowCompletionConfigsFn = vi.fn();
   const isVerboseModeObj = {value: true};
@@ -78,6 +81,9 @@ const {
     mockEdgeStyle: edgeStyleObj,
     // Note: This mock reads values dynamically at call time
     mockUseFlowConfig: vi.fn(),
+    mockUseIdentityProviders: vi.fn(() => ({data: [], isLoading: false})),
+    mockUseSMSProviders: vi.fn(() => ({data: [], isLoading: false})),
+    mockUseEmailProviders: vi.fn(() => ({data: [], isLoading: false})),
     // Helper to get the default implementation that reads current values
     getDefaultFlowConfigMock: () => ({
       setFlowCompletionConfigs: setFlowCompletionConfigsFn,
@@ -504,8 +510,9 @@ vi.mock('@/features/flows/api/useGetFlowById', () => ({
 
 vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
-  useIdentityProviders: () => ({data: [], isLoading: false}),
-  useSMSProviders: () => ({data: [], isLoading: false}),
+  useIdentityProviders: () => mockUseIdentityProviders(),
+  useSMSProviders: () => mockUseSMSProviders(),
+  useEmailProviders: () => mockUseEmailProviders(),
 }));
 
 // Mock utility functions
@@ -6382,5 +6389,101 @@ describe('Verbose Mode Node and Edge Filtering', () => {
     render(<LoginFlowBuilder />);
 
     expect(screen.getByTestId('edges-count')).toHaveTextContent('1');
+  });
+
+  describe('Notification Senders Auto-assignment', () => {
+    beforeEach(() => {
+      mockUseNodesState.mockReturnValue([[], mockSetNodes, vi.fn()]);
+      (mockUseSMSProviders as ReturnType<typeof vi.fn>).mockImplementation(() => ({data: [], isLoading: false}));
+      (mockUseEmailProviders as ReturnType<typeof vi.fn>).mockImplementation(() => ({data: [], isLoading: false}));
+    });
+
+    it('should auto-assign senderId for SMS executor if there is exactly 1 message sender', () => {
+      const smsExecutorNode: Node = {
+        id: 'sms-exec-1',
+        type: 'TASK_EXECUTION',
+        position: {x: 0, y: 0},
+        data: {
+          action: {
+            executor: {
+              name: 'SMSExecutor',
+            },
+          },
+          properties: {
+            senderId: '{{SENDER_ID}}',
+          },
+        },
+      };
+
+      mockUseNodesState.mockReturnValue([[smsExecutorNode], mockSetNodes, vi.fn()]);
+
+      (mockUseSMSProviders as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        return {data: [{id: 'message-sender-1'}], isLoading: false};
+      });
+
+      render(<LoginFlowBuilder />);
+
+      render(<LoginFlowBuilder />);
+
+      expect(mockSetNodes).toHaveBeenCalled();
+      let finalNodes: Node[] = [];
+      for (const call of mockSetNodes.mock.calls) {
+        if (typeof call[0] === 'function') {
+          const updater = call[0] as unknown as (nodes: Node[]) => Node[];
+          const res = updater([smsExecutorNode]);
+          if (res && res.length > 0 && res[0].id === 'sms-exec-1') {
+            finalNodes = res;
+          }
+        }
+      }
+
+      expect(finalNodes.length).toBeGreaterThan(0);
+      const firstNodeData = finalNodes[0].data as unknown as {properties: {senderId: string}};
+      expect(firstNodeData.properties.senderId).toBe('message-sender-1');
+    });
+
+    it('should auto-assign senderId for Email executor if there is exactly 1 email sender', () => {
+      const emailExecutorNode: Node = {
+        id: 'email-exec-1',
+        type: 'TASK_EXECUTION',
+        position: {x: 0, y: 0},
+        data: {
+          action: {
+            executor: {
+              name: 'EmailExecutor',
+            },
+          },
+          properties: {
+            senderId: '',
+          },
+        },
+      };
+
+      mockUseNodesState.mockReturnValue([[emailExecutorNode], mockSetNodes, vi.fn()]);
+
+      (mockUseEmailProviders as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        return {data: [{id: 'email-sender-1'}], isLoading: false};
+      });
+
+      render(<LoginFlowBuilder />);
+
+      render(<LoginFlowBuilder />);
+
+      expect(mockSetNodes).toHaveBeenCalled();
+      let finalNodes: Node[] = [];
+      for (const call of mockSetNodes.mock.calls) {
+        if (typeof call[0] === 'function') {
+          const updater = call[0] as unknown as (nodes: Node[]) => Node[];
+          const res = updater([emailExecutorNode]);
+          if (res && res.length > 0 && res[0].id === 'email-exec-1') {
+            finalNodes = res;
+          }
+        }
+      }
+
+      expect(finalNodes.length).toBeGreaterThan(0);
+      const firstNodeData = finalNodes[0].data as unknown as {properties: {senderId: string}};
+      expect(firstNodeData.properties.senderId).toBe('email-sender-1');
+    });
   });
 });

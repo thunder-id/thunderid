@@ -292,7 +292,7 @@ func (s *notificationStore) buildSenderFromResultRow(
 		Name:        name,
 		Description: description,
 		Type:        common.NotificationSenderType(_type),
-		Provider:    common.MessageProviderType(provider),
+		Provider:    common.NotificationProviderType(provider),
 		Properties:  []cmodels.Property{},
 	}
 

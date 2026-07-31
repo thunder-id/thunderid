@@ -51,12 +51,23 @@ type connectionExportModel struct {
 	//nolint:lll // long struct tag: both yaml and json keys needed for declarative load/export and import
 	AttributeConfiguration *providers.AttributeConfiguration `yaml:"attributeConfiguration,omitempty" json:"attributeConfiguration,omitempty"`
 
-	// SMS-backed vendor fields (twilio, vonage, sms-gateway).
-	AccountSID  string `yaml:"accountSid,omitempty"  json:"accountSid,omitempty"`
-	AuthToken   string `yaml:"authToken,omitempty"   json:"authToken,omitempty"`
-	APIKey      string `yaml:"apiKey,omitempty"      json:"apiKey,omitempty"`
-	APISecret   string `yaml:"apiSecret,omitempty"   json:"apiSecret,omitempty"`
-	SenderID    string `yaml:"senderId,omitempty"    json:"senderId,omitempty"`
+	// Email-backed vendor fields (smtp).
+	Host                 string `yaml:"host,omitempty"                 json:"host,omitempty"`
+	Port                 string `yaml:"port,omitempty"                 json:"port,omitempty"`
+	Username             string `yaml:"username,omitempty"             json:"username,omitempty"`
+	Password             string `yaml:"password,omitempty"             json:"password,omitempty"`
+	FromAddress          string `yaml:"fromAddress,omitempty"          json:"fromAddress,omitempty"`
+	TLS                  string `yaml:"tls,omitempty"                  json:"tls,omitempty"`
+	EnableAuthentication string `yaml:"enableAuthentication,omitempty" json:"enableAuthentication,omitempty"`
+
+	// SMS-backed vendor fields (twilio, vonage).
+	AccountSID string `yaml:"accountSid,omitempty"  json:"accountSid,omitempty"`
+	AuthToken  string `yaml:"authToken,omitempty"   json:"authToken,omitempty"`
+	APIKey     string `yaml:"apiKey,omitempty"      json:"apiKey,omitempty"`
+	APISecret  string `yaml:"apiSecret,omitempty"   json:"apiSecret,omitempty"`
+	SenderID   string `yaml:"senderId,omitempty"    json:"senderId,omitempty"`
+
+	// Shared HTTP-backed vendor fields (http-email, sms-gateway).
 	URL         string `yaml:"url,omitempty"         json:"url,omitempty"`
 	HTTPMethod  string `yaml:"httpMethod,omitempty"  json:"httpMethod,omitempty"`
 	HTTPHeaders string `yaml:"httpHeaders,omitempty" json:"httpHeaders,omitempty"`

@@ -88,7 +88,7 @@ func (c *TwilioClient) IsChannelSupported(channel common.ChannelType) bool {
 }
 
 // Send dispatches a notification via the requested channel.
-func (c *TwilioClient) Send(ctx context.Context, channel common.ChannelType, data common.NotificationData) error {
+func (c *TwilioClient) Send(ctx context.Context, channel common.ChannelType, data common.MessageData) error {
 	switch channel {
 	case common.ChannelTypeSMS:
 		return c.sendSMS(ctx, data)
@@ -98,7 +98,7 @@ func (c *TwilioClient) Send(ctx context.Context, channel common.ChannelType, dat
 }
 
 // sendSMS sends an SMS via the Twilio API.
-func (c *TwilioClient) sendSMS(ctx context.Context, data common.NotificationData) error {
+func (c *TwilioClient) sendSMS(ctx context.Context, data common.MessageData) error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, twilioLoggerComponentName))
 	logger.Debug(ctx, "Sending SMS via Twilio", log.MaskedString("to", data.Recipient))
 

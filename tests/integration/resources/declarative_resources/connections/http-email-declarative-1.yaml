@@ -1,0 +1,9 @@
+resource_type: connection
+id: decl-http-email-1
+name: Declarative HTTP Email Sender
+description: A declarative HTTP email sender
+type: http-email
+url: https://api.example.com/send
+httpMethod: POST
+httpHeaders: "Authorization: Bearer token"
+contentType: JSON

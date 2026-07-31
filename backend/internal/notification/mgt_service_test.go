@@ -784,7 +784,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) getValidTwilioSender() commo
 		Name:        "Test Twilio Sender",
 		Description: "Test Description",
 		Type:        common.NotificationSenderTypeMessage,
-		Provider:    common.MessageProviderTypeTwilio,
+		Provider:    common.NotificationProviderTypeTwilio,
 		Properties: []cmodels.Property{
 			createTestProperty("account_sid", "AC00112233445566778899aabbccddeeff", true),
 			createTestProperty("auth_token", "test-auth-token", true),
@@ -799,7 +799,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) getValidVonageSender() commo
 		Name:        "Test Vonage Sender",
 		Description: "Test Vonage Description",
 		Type:        common.NotificationSenderTypeMessage,
-		Provider:    common.MessageProviderTypeVonage,
+		Provider:    common.NotificationProviderTypeVonage,
 		Properties: []cmodels.Property{
 			createTestProperty("api_key", "test-api-key", true),
 			createTestProperty("api_secret", "test-api-secret", true),

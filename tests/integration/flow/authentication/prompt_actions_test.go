@@ -319,7 +319,7 @@ func (ts *PromptActionsAndMFAFlowTestSuite) SetupSuite() {
 	ts.config.CreatedUserIDs = userIDs
 	ts.T().Logf("Test users created with IDs: %v", ts.config.CreatedUserIDs)
 
-	// Create notification sender
+	// Create message notification sender
 	customSender := testutils.NotificationSender{
 		Name:        "Prompt Actions Test SMS Sender",
 		Description: "Sender for prompt actions flow testing",
@@ -344,7 +344,7 @@ func (ts *PromptActionsAndMFAFlowTestSuite) SetupSuite() {
 	}
 
 	senderID, err := testutils.CreateNotificationSender(customSender)
-	ts.Require().NoError(err, "Failed to create notification sender")
+	ts.Require().NoError(err, "Failed to create message notification sender")
 	promptActionsTestSenderID = senderID
 	ts.config.CreatedSenderIDs = append(ts.config.CreatedSenderIDs, senderID)
 
@@ -396,10 +396,10 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TearDownSuite() {
 		}
 	}
 
-	// Delete notification senders
+	// Delete message notification senders
 	for _, senderID := range ts.config.CreatedSenderIDs {
 		if err := testutils.DeleteNotificationSender(senderID); err != nil {
-			ts.T().Logf("Failed to delete notification sender during teardown: %v", err)
+			ts.T().Logf("Failed to delete message notification sender during teardown: %v", err)
 		}
 	}
 

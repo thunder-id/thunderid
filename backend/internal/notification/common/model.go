@@ -19,28 +19,37 @@
 // Package common contains the common models and constants for notification package.
 package common
 
-import "github.com/thunder-id/thunderid/internal/system/cmodels"
+import (
+	"errors"
+	"strings"
 
-// SMSData represents the data structure for a SMS message.
-type SMSData struct {
-	To   string `json:"to"`
-	Body string `json:"body"`
-}
+	"github.com/thunder-id/thunderid/internal/system/cmodels"
+)
 
-// NotificationData holds the channel-agnostic payload for sending a notification.
-type NotificationData struct {
+// MessageData holds the channel-agnostic payload for sending an SMS or message.
+type MessageData struct {
 	Recipient string
 	Body      string
 }
 
+// EmailData holds the payload for sending an email.
+type EmailData struct {
+	To      []string
+	CC      []string
+	BCC     []string
+	Subject string
+	Body    string
+	IsHTML  bool
+}
+
 // NotificationSenderDTO represents the data transfer object for a notification sender.
 type NotificationSenderDTO struct {
-	ID          string                 `yaml:"id,omitempty"`
-	Name        string                 `yaml:"name"`
-	Description string                 `yaml:"description,omitempty"`
-	Type        NotificationSenderType `yaml:"-"`
-	Provider    MessageProviderType    `yaml:"provider"`
-	Properties  []cmodels.Property     `yaml:"properties,omitempty"`
+	ID          string                   `yaml:"id,omitempty"`
+	Name        string                   `yaml:"name"`
+	Description string                   `yaml:"description,omitempty"`
+	Type        NotificationSenderType   `yaml:"-"`
+	Provider    NotificationProviderType `yaml:"provider"`
+	Properties  []cmodels.Property       `yaml:"properties,omitempty"`
 }
 
 // VerifyOTPDTO represents the service layer data structure for verifying an OTP.
@@ -54,4 +63,41 @@ type VerifyOTPResultDTO struct {
 	Status        OTPVerifyStatus
 	Recipient     string
 	RecipientAttr string
+}
+
+// Validate cleans and validates the email data payload.
+func (e *EmailData) Validate() error {
+	trimSlice := func(s []string) []string {
+		if s == nil {
+			return nil
+		}
+		res := make([]string, len(s))
+		for i, v := range s {
+			res[i] = strings.TrimSpace(v)
+		}
+		return res
+	}
+
+	e.Subject = strings.TrimSpace(e.Subject)
+	e.To = trimSlice(e.To)
+	e.CC = trimSlice(e.CC)
+	e.BCC = trimSlice(e.BCC)
+
+	if len(e.To) == 0 || len(e.To[0]) == 0 {
+		return errors.New("recipient address cannot be empty")
+	}
+
+	for _, addressList := range [][]string{e.To, e.CC, e.BCC} {
+		for _, address := range addressList {
+			if strings.ContainsAny(address, CRLF) {
+				return errors.New("recipient address contains invalid characters")
+			}
+		}
+	}
+
+	if strings.ContainsAny(e.Subject, CRLF) {
+		return errors.New("subject contains invalid characters")
+	}
+
+	return nil
 }

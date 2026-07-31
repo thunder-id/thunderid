@@ -65,7 +65,7 @@ func smsGatewayToSenderDTO(req smsGatewayConnectionRequest) (*ncommon.Notificati
 		Name:        req.Name,
 		Description: req.Description,
 		Type:        ncommon.NotificationSenderTypeMessage,
-		Provider:    ncommon.MessageProviderTypeCustom,
+		Provider:    ncommon.NotificationProviderTypeCustom,
 		Properties:  props,
 	}, nil
 }

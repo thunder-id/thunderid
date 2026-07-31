@@ -190,6 +190,12 @@ export const VALIDATION_RULES: ValidationRuleDefinition[] = [
     fields: [],
     generalMessageKey: 'flows:core.validation.fields.executor.general',
   },
+  // Email executor
+  {
+    match: (r) => (r as {data?: StepData}).data?.action?.executor?.name === ExecutionTypes.EmailExecutor,
+    fields: [{name: 'data.properties.senderId', errorMessageKey: 'flows:core.validation.fields.input.senderId'}],
+    generalMessageKey: 'flows:core.validation.fields.executor.general',
+  },
 
   // ---------------------------------------------------------------------------
   // Node Validation Rules

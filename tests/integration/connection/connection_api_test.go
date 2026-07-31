@@ -158,20 +158,45 @@ type smsGatewayConnectionRequest struct {
 	HTTPMethod string `json:"httpMethod,omitempty"`
 }
 
+type smtpConnectionRequest struct {
+	Name                 string `json:"name"`
+	Host                 string `json:"host"`
+	Port                 string `json:"port"`
+	Username             string `json:"username,omitempty"`
+	Password             string `json:"password,omitempty"`
+	FromAddress          string `json:"fromAddress"`
+	TLS                  string `json:"tls,omitempty"`
+	EnableAuthentication string `json:"enableAuthentication,omitempty"`
+}
+
+type httpEmailConnectionRequest struct {
+	Name        string `json:"name"`
+	URL         string `json:"url"`
+	HTTPMethod  string `json:"httpMethod,omitempty"`
+	HTTPHeaders string `json:"httpHeaders,omitempty"`
+	ContentType string `json:"contentType,omitempty"`
+}
+
 // connectionResponse is a superset response shape covering all vendors' fields, used to
 // decode any vendor's response without a per-vendor struct.
 type connectionResponse struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Type         string `json:"type"`
-	ClientID     string `json:"clientId,omitempty"`
-	ClientSecret string `json:"clientSecret,omitempty"`
-	AccountSID   string `json:"accountSid,omitempty"`
-	AuthToken    string `json:"authToken,omitempty"`
-	APIKey       string `json:"apiKey,omitempty"`
-	APISecret    string `json:"apiSecret,omitempty"`
-	SenderID     string `json:"senderId,omitempty"`
-	URL          string `json:"url,omitempty"`
+	ID                   string `json:"id"`
+	Name                 string `json:"name"`
+	Type                 string `json:"type"`
+	ClientID             string `json:"clientId,omitempty"`
+	ClientSecret         string `json:"clientSecret,omitempty"`
+	AccountSID           string `json:"accountSid,omitempty"`
+	AuthToken            string `json:"authToken,omitempty"`
+	APIKey               string `json:"apiKey,omitempty"`
+	APISecret            string `json:"apiSecret,omitempty"`
+	SenderID             string `json:"senderId,omitempty"`
+	URL                  string `json:"url,omitempty"`
+	Host                 string `json:"host,omitempty"`
+	Port                 string `json:"port,omitempty"`
+	FromAddress          string `json:"fromAddress,omitempty"`
+	Password             string `json:"password,omitempty"`
+	TLS                  string `json:"tls,omitempty"`
+	EnableAuthentication string `json:"enableAuthentication,omitempty"`
 }
 
 const maskedSecretValue = "******"
@@ -321,6 +346,42 @@ func (s *ConnectionAPITestSuite) TestSMSGatewayCRUDRoundTrip() {
 	s.Equal("https://sms.example.com/send", fetched.URL)
 }
 
+func (s *ConnectionAPITestSuite) TestSMTPCRUDRoundTrip() {
+	created := s.createConnection("smtp-email", smtpConnectionRequest{
+		Name: "Test SMTP", Host: "smtp.example.com", Port: "587",
+		Username: "smtp-user", Password: "smtp-password", FromAddress: "noreply@example.com",
+	})
+	defer s.deleteConnection("smtp-email", created.ID)
+
+	s.Equal("smtp-email", created.Type)
+	s.Equal(maskedSecretValue, created.Password)
+
+	res, err := doRequest(http.MethodGet, "/connections/smtp-email/"+created.ID, nil)
+	s.Require().NoError(err)
+	s.Equal(http.StatusOK, res.status)
+	var fetched connectionResponse
+	s.Require().NoError(res.decode(&fetched))
+	s.Equal("Test SMTP", fetched.Name)
+	s.Equal(maskedSecretValue, fetched.Password)
+}
+
+func (s *ConnectionAPITestSuite) TestHTTPEmailCRUDRoundTrip() {
+	created := s.createConnection("http-email", httpEmailConnectionRequest{
+		Name: "Test HTTP Email", URL: "https://email.example.com/send", HTTPMethod: "POST",
+	})
+	defer s.deleteConnection("http-email", created.ID)
+
+	s.Equal("http-email", created.Type)
+	s.Equal("https://email.example.com/send", created.URL)
+
+	res, err := doRequest(http.MethodGet, "/connections/http-email/"+created.ID, nil)
+	s.Require().NoError(err)
+	s.Equal(http.StatusOK, res.status)
+	var fetched connectionResponse
+	s.Require().NoError(res.decode(&fetched))
+	s.Equal("https://email.example.com/send", fetched.URL)
+}
+
 // --- Cross-cutting behaviors ---
 
 func (s *ConnectionAPITestSuite) TestCrossVendorIsolationReturnsNotFound() {
@@ -405,7 +466,10 @@ func (s *ConnectionAPITestSuite) TestListConnectionsFiltersByCategory() {
 		Name: "List Category Sender", AccountSID: "AC00000000000000000000000000000002",
 		AuthToken: "tok", SenderID: "+15005550008",
 	})
-	defer s.deleteConnection("twilio", sender.ID)
+	emailSender := s.createConnection("smtp-email", smtpConnectionRequest{
+		Name: "List Category Email Sender", Host: "smtp.example.com", Port: "587", FromAddress: "noreply@example.com",
+	})
+	defer s.deleteConnection("smtp-email", emailSender.ID)
 
 	res, err := doRequest(http.MethodGet, "/connections?category=identity-provider&limit=100", nil)
 	s.Require().NoError(err)
@@ -414,6 +478,7 @@ func (s *ConnectionAPITestSuite) TestListConnectionsFiltersByCategory() {
 	s.Require().NoError(res.decode(&list))
 	s.True(containsID(list.Connections, idp.ID))
 	s.False(containsID(list.Connections, sender.ID))
+	s.False(containsID(list.Connections, emailSender.ID))
 
 	res, err = doRequest(http.MethodGet, "/connections?category=sms-provider&limit=100", nil)
 	s.Require().NoError(err)
@@ -421,6 +486,15 @@ func (s *ConnectionAPITestSuite) TestListConnectionsFiltersByCategory() {
 	s.Require().NoError(res.decode(&list))
 	s.True(containsID(list.Connections, sender.ID))
 	s.False(containsID(list.Connections, idp.ID))
+	s.False(containsID(list.Connections, emailSender.ID))
+
+	res, err = doRequest(http.MethodGet, "/connections?category=email-provider&limit=100", nil)
+	s.Require().NoError(err)
+	s.Equal(http.StatusOK, res.status)
+	s.Require().NoError(res.decode(&list))
+	s.True(containsID(list.Connections, emailSender.ID))
+	s.False(containsID(list.Connections, idp.ID))
+	s.False(containsID(list.Connections, sender.ID))
 }
 
 func (s *ConnectionAPITestSuite) TestListConnectionsInvalidCategoryReturnsBadRequest() {

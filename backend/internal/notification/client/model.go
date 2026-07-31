@@ -16,9 +16,17 @@
  * under the License.
  */
 
-package email
+package client
 
-// Initialize creates and returns the configured email client.
-func Initialize() (EmailClientInterface, error) {
-	return NewSMTPClientFromConfig()
+const (
+	contentTypeJSON = "JSON"
+	contentTypeForm = "FORM"
+)
+
+// httpTransportConfig holds the configuration for HTTP transport/client instances.
+type httpTransportConfig struct {
+	url         string
+	httpMethod  string
+	httpHeaders map[string]string
+	contentType string
 }

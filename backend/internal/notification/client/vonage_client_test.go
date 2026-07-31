@@ -59,7 +59,7 @@ func (suite *VonageClientTestSuite) SetupSuite() {
 func (suite *VonageClientTestSuite) getValidVonageSender() common.NotificationSenderDTO {
 	return common.NotificationSenderDTO{
 		Name:     "Test Vonage",
-		Provider: common.MessageProviderTypeVonage,
+		Provider: common.NotificationProviderTypeVonage,
 		Properties: []cmodels.Property{
 			createProperty("api_key", "test-api-key", true),
 			createProperty("api_secret", "test-api-secret", true),
@@ -114,12 +114,12 @@ func (suite *VonageClientTestSuite) TestSendSMS_Success() {
 	vonageClient := client.(*VonageClient)
 	vonageClient.url = server.URL
 
-	data := common.NotificationData{
+	data := common.MessageData{
 		Recipient: "+15559876543",
 		Body:      "Test message",
 	}
 
-	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
+	err := client.(MessageClientInterface).Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.NoError(err)
 }
@@ -141,13 +141,13 @@ func (suite *VonageClientTestSuite) TestSendSMS_PropagatesCorrelationID() {
 	vonageClient := client.(*VonageClient)
 	vonageClient.url = server.URL
 
-	data := common.NotificationData{
+	data := common.MessageData{
 		Recipient: "+15559876543",
 		Body:      "Test message",
 	}
 
 	ctx := sysContext.WithTraceID(context.Background(), "trace-xyz")
-	err := client.Send(ctx, common.ChannelTypeSMS, data)
+	err := client.(MessageClientInterface).Send(ctx, common.ChannelTypeSMS, data)
 
 	suite.NoError(err)
 	suite.Equal("trace-xyz", gotCorrelationID)
@@ -172,12 +172,12 @@ func (suite *VonageClientTestSuite) TestSendSMS_Error() {
 	vonageClient := client.(*VonageClient)
 	vonageClient.url = server.URL
 
-	data := common.NotificationData{
+	data := common.MessageData{
 		Recipient: "+15559876543",
 		Body:      "Test message",
 	}
 
-	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
+	err := client.(MessageClientInterface).Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.Error(err)
 	suite.Contains(err.Error(), "status: 401")
@@ -191,12 +191,12 @@ func (suite *VonageClientTestSuite) TestSendSMS_NetworkError() {
 	vonageClient := client.(*VonageClient)
 	vonageClient.url = "http://invalid-vonage-url.local:99999"
 
-	data := common.NotificationData{
+	data := common.MessageData{
 		Recipient: "+15559876543",
 		Body:      "Test message",
 	}
 
-	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
+	err := client.(MessageClientInterface).Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.Error(err)
 }

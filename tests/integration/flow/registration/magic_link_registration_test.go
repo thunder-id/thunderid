@@ -196,6 +196,7 @@ type MagicLinkRegistrationTestSuite struct {
 	reusedTokenAppID string
 	userSchemaID     string
 	originalPatchSet bool
+	emailSenderID    string
 }
 
 func TestMagicLinkRegistrationTestSuite(t *testing.T) {
@@ -209,17 +210,6 @@ func (ts *MagicLinkRegistrationTestSuite) SetupSuite() {
 	ts.Require().NoError(ts.mockSMTP.Start(), "Failed to start mock SMTP server")
 
 	patch := map[string]interface{}{
-		"email": map[string]interface{}{
-			"smtp": map[string]interface{}{
-				"host":                  "localhost",
-				"port":                  ts.mockSMTP.GetPort(),
-				"username":              "",
-				"password":              "",
-				"from_address":          "no-reply@example.com",
-				"enable_start_tls":      false,
-				"enable_authentication": false,
-			},
-		},
 		"jwt": map[string]interface{}{
 			"leeway": 1,
 		},
@@ -237,6 +227,21 @@ func (ts *MagicLinkRegistrationTestSuite) SetupSuite() {
 		ts.T().Fatalf("Failed to re-obtain admin token after restart: %v", err)
 	}
 
+	senderID, err := testutils.CreateNotificationSender(testutils.NotificationSender{
+		Name:        "Email Magic Link Reg Test Sender",
+		Description: "Email notification sender for Magic Link Registration flow testing",
+		Provider:    "smtp",
+		Properties: []testutils.SenderProperty{
+			{Name: "host", Value: "localhost", IsSecret: false},
+			{Name: "port", Value: fmt.Sprintf("%d", ts.mockSMTP.GetPort()), IsSecret: false},
+			{Name: "from_address", Value: "no-reply@example.com", IsSecret: false},
+			{Name: "enable_start_tls", Value: "false", IsSecret: false},
+			{Name: "enable_authentication", Value: "false", IsSecret: false},
+		},
+	})
+	ts.Require().NoError(err, "Failed to create Email notification sender")
+	ts.emailSenderID = senderID
+
 	ouID, err := testutils.CreateOrganizationUnit(magicLinkRegTestOU)
 	ts.Require().NoError(err, "Failed to create test organization unit")
 	ts.ouID = ouID
@@ -245,6 +250,15 @@ func (ts *MagicLinkRegistrationTestSuite) SetupSuite() {
 	schemaID, err := testutils.CreateUserType(magicLinkRegTestUserSchema)
 	ts.Require().NoError(err, "Failed to create test user schema")
 	ts.userSchemaID = schemaID
+
+	ts.modifyFlowNode(&magicLinkRegistrationFlow, "email_magic_link", func(node map[string]interface{}) {
+		props, ok := node["properties"].(map[string]interface{})
+		if !ok {
+			props = make(map[string]interface{})
+			node["properties"] = props
+		}
+		props["senderId"] = ts.emailSenderID
+	})
 
 	flowID, err := testutils.CreateFlow(magicLinkRegistrationFlow)
 	ts.Require().NoError(err, "Failed to create magic link registration flow")
@@ -382,6 +396,9 @@ func (ts *MagicLinkRegistrationTestSuite) TearDownSuite() {
 	if ts.mockSMTP != nil {
 		_ = ts.mockSMTP.Stop()
 	}
+	if ts.emailSenderID != "" {
+		_ = testutils.DeleteNotificationSender(ts.emailSenderID)
+	}
 	if ts.originalPatchSet {
 		if err := testutils.UpdateDeploymentConfig("../../resources/deployment.yaml"); err != nil {
 			ts.T().Logf("teardown: failed to restore deployment config: %v", err)
@@ -397,16 +414,25 @@ func (ts *MagicLinkRegistrationTestSuite) TearDownSuite() {
 
 // modifyFlowNode safely finds a node by ID in a Flow and applies a modifier function to it.
 func (ts *MagicLinkRegistrationTestSuite) modifyFlowNode(flow *testutils.Flow, nodeID string, modifier func(node map[string]interface{})) {
-	nodesArray, ok := flow.Nodes.([]interface{})
-	ts.Require().True(ok, "flow.Nodes is not a slice of interfaces")
-
-	for _, n := range nodesArray {
-		node, ok := n.(map[string]interface{})
-		ts.Require().True(ok, "flow node is not a map[string]interface{}")
-		if node["id"] == nodeID {
-			modifier(node)
-			return
+	switch nodes := flow.Nodes.(type) {
+	case []interface{}:
+		for _, n := range nodes {
+			node, ok := n.(map[string]interface{})
+			ts.Require().True(ok, "flow node is not a map[string]interface{}")
+			if node["id"] == nodeID {
+				modifier(node)
+				return
+			}
 		}
+	case []map[string]interface{}:
+		for _, node := range nodes {
+			if node["id"] == nodeID {
+				modifier(node)
+				return
+			}
+		}
+	default:
+		ts.Require().FailNow("flow.Nodes is neither []interface{} nor []map[string]interface{}")
 	}
 	ts.Require().FailNow(fmt.Sprintf("Node with ID %s not found in flow", nodeID))
 }

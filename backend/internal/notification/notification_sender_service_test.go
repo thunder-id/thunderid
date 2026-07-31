@@ -76,7 +76,7 @@ func (suite *NotificationSenderServiceTestSuite) getValidSender() *common.Notifi
 		ID:       "sender-001",
 		Name:     "Test SMS Sender",
 		Type:     common.NotificationSenderTypeMessage,
-		Provider: common.MessageProviderTypeTwilio,
+		Provider: common.NotificationProviderTypeTwilio,
 		Properties: []cmodels.Property{
 			createTestProperty("account_sid", "AC00112233445566778899aabbccddeeff", true),
 			createTestProperty("auth_token", "test-token", true),
@@ -89,13 +89,13 @@ func (suite *NotificationSenderServiceTestSuite) TestSendSMS_Success() {
 	sender := suite.getValidSender()
 	suite.mockSenderMgtSvc.On("GetSender", mock.Anything, "sender-001").Return(sender, nil).Once()
 
-	mm := clientmock.NewNotificationClientInterfaceMock(suite.T())
+	mm := clientmock.NewMessageClientInterfaceMock(suite.T())
 	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(true).Once()
 	mm.EXPECT().Send(mock.Anything, common.ChannelTypeSMS, mock.Anything).Return(nil).Once()
 	suite.mockClientFactory.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
 
-	err := suite.service.Send(context.Background(), common.ChannelTypeSMS, "sender-001",
-		common.NotificationData{Recipient: "+94714627887", Body: "Test message"})
+	err := suite.service.SendMessage(context.Background(), common.ChannelTypeSMS, "sender-001",
+		common.MessageData{Recipient: "+94714627887", Body: "Test message"})
 	suite.Nil(err)
 }
 
@@ -103,8 +103,8 @@ func (suite *NotificationSenderServiceTestSuite) TestSendSMS_GetSenderError() {
 	suite.mockSenderMgtSvc.On("GetSender", mock.Anything, "sender-001").
 		Return(nil, &ErrorSenderNotFound).Once()
 
-	err := suite.service.Send(context.Background(), common.ChannelTypeSMS, "sender-001",
-		common.NotificationData{Recipient: "+94714627887", Body: "Test message"})
+	err := suite.service.SendMessage(context.Background(), common.ChannelTypeSMS, "sender-001",
+		common.MessageData{Recipient: "+94714627887", Body: "Test message"})
 	suite.NotNil(err)
 	suite.Equal(ErrorSenderNotFound.Code, err.Code)
 }
@@ -116,8 +116,11 @@ func (suite *NotificationSenderServiceTestSuite) TestSendSMS_WrongSenderType() {
 	}
 	suite.mockSenderMgtSvc.On("GetSender", mock.Anything, "email-sender-001").Return(sender, nil).Once()
 
-	err := suite.service.Send(context.Background(), common.ChannelTypeSMS, "email-sender-001",
-		common.NotificationData{Recipient: "+94714627887", Body: "Test message"})
+	mm := clientmock.NewNotificationClientInterfaceMock(suite.T())
+	suite.mockClientFactory.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
+
+	err := suite.service.SendMessage(context.Background(), common.ChannelTypeSMS, "email-sender-001",
+		common.MessageData{Recipient: "+94714627887", Body: "Test message"})
 	suite.NotNil(err)
 	suite.Equal(ErrorRequestedSenderIsNotOfExpectedType.Code, err.Code)
 }
@@ -128,8 +131,8 @@ func (suite *NotificationSenderServiceTestSuite) TestSendSMS_GetClientError() {
 	suite.mockClientFactory.EXPECT().GetClient(mock.Anything, mock.Anything).
 		Return(nil, &tidcommon.InternalServerError).Once()
 
-	err := suite.service.Send(context.Background(), common.ChannelTypeSMS, "sender-001",
-		common.NotificationData{Recipient: "+94714627887", Body: "Test message"})
+	err := suite.service.SendMessage(context.Background(), common.ChannelTypeSMS, "sender-001",
+		common.MessageData{Recipient: "+94714627887", Body: "Test message"})
 	suite.NotNil(err)
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
@@ -138,12 +141,12 @@ func (suite *NotificationSenderServiceTestSuite) TestSendSMS_UnsupportedChannel(
 	sender := suite.getValidSender()
 	suite.mockSenderMgtSvc.On("GetSender", mock.Anything, "sender-001").Return(sender, nil).Once()
 
-	mm := clientmock.NewNotificationClientInterfaceMock(suite.T())
+	mm := clientmock.NewMessageClientInterfaceMock(suite.T())
 	mm.EXPECT().IsChannelSupported(common.ChannelType("email")).Return(false).Once()
 	suite.mockClientFactory.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
 
-	err := suite.service.Send(context.Background(), common.ChannelType("email"), "sender-001",
-		common.NotificationData{Recipient: "user@example.com", Body: "Test message"})
+	err := suite.service.SendMessage(context.Background(), common.ChannelType("email"), "sender-001",
+		common.MessageData{Recipient: "user@example.com", Body: "Test message"})
 	suite.NotNil(err)
 	suite.Equal(ErrorUnsupportedChannel.Code, err.Code)
 }
@@ -152,13 +155,92 @@ func (suite *NotificationSenderServiceTestSuite) TestSendSMS_ClientSendError() {
 	sender := suite.getValidSender()
 	suite.mockSenderMgtSvc.On("GetSender", mock.Anything, "sender-001").Return(sender, nil).Once()
 
-	mm := clientmock.NewNotificationClientInterfaceMock(suite.T())
+	mm := clientmock.NewMessageClientInterfaceMock(suite.T())
 	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(true).Once()
 	mm.EXPECT().Send(mock.Anything, common.ChannelTypeSMS, mock.Anything).Return(errors.New("network error")).Once()
 	suite.mockClientFactory.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
 
-	err := suite.service.Send(context.Background(), common.ChannelTypeSMS, "sender-001",
-		common.NotificationData{Recipient: "+94714627887", Body: "Test message"})
+	err := suite.service.SendMessage(context.Background(), common.ChannelTypeSMS, "sender-001",
+		common.MessageData{Recipient: "+94714627887", Body: "Test message"})
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (suite *NotificationSenderServiceTestSuite) getValidEmailSender() *common.NotificationSenderDTO {
+	return &common.NotificationSenderDTO{
+		ID:       "email-sender-001",
+		Name:     "Test Email Sender",
+		Type:     common.NotificationSenderTypeEmail,
+		Provider: common.NotificationProviderTypeSMTP,
+		Properties: []cmodels.Property{
+			createTestProperty("host", "smtp.example.com", true),
+			createTestProperty("port", "587", true),
+		},
+	}
+}
+
+func (suite *NotificationSenderServiceTestSuite) TestSendEmail_Success() {
+	sender := suite.getValidEmailSender()
+	suite.mockSenderMgtSvc.On("GetSender", mock.Anything, "email-sender-001").Return(sender, nil).Once()
+
+	mm := clientmock.NewEmailClientInterfaceMock(suite.T())
+	mm.EXPECT().Send(mock.Anything, mock.Anything).Return(nil).Once()
+	suite.mockClientFactory.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
+
+	err := suite.service.SendEmail(context.Background(), "email-sender-001",
+		common.EmailData{To: []string{"user@example.com"}, Subject: "Test", Body: "Test email"})
+	suite.Nil(err)
+}
+
+func (suite *NotificationSenderServiceTestSuite) TestSendEmail_GetSenderError() {
+	suite.mockSenderMgtSvc.On("GetSender", mock.Anything, "email-sender-001").
+		Return(nil, &ErrorSenderNotFound).Once()
+
+	err := suite.service.SendEmail(context.Background(), "email-sender-001",
+		common.EmailData{To: []string{"user@example.com"}, Subject: "Test", Body: "Test email"})
+	suite.NotNil(err)
+	suite.Equal(ErrorSenderNotFound.Code, err.Code)
+}
+
+func (suite *NotificationSenderServiceTestSuite) TestSendEmail_WrongSenderType() {
+	sender := &common.NotificationSenderDTO{
+		ID:   "sms-sender-001",
+		Type: common.NotificationSenderTypeMessage,
+	}
+	suite.mockSenderMgtSvc.On("GetSender", mock.Anything, "sms-sender-001").Return(sender, nil).Once()
+
+	// Return a MessageClient instead of an EmailClient
+	mm := clientmock.NewMessageClientInterfaceMock(suite.T())
+	suite.mockClientFactory.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
+
+	err := suite.service.SendEmail(context.Background(), "sms-sender-001",
+		common.EmailData{To: []string{"user@example.com"}, Subject: "Test", Body: "Test email"})
+	suite.NotNil(err)
+	suite.Equal(ErrorRequestedSenderIsNotOfExpectedType.Code, err.Code)
+}
+
+func (suite *NotificationSenderServiceTestSuite) TestSendEmail_GetClientError() {
+	sender := suite.getValidEmailSender()
+	suite.mockSenderMgtSvc.On("GetSender", mock.Anything, "email-sender-001").Return(sender, nil).Once()
+	suite.mockClientFactory.EXPECT().GetClient(mock.Anything, mock.Anything).
+		Return(nil, &tidcommon.InternalServerError).Once()
+
+	err := suite.service.SendEmail(context.Background(), "email-sender-001",
+		common.EmailData{To: []string{"user@example.com"}, Subject: "Test", Body: "Test email"})
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (suite *NotificationSenderServiceTestSuite) TestSendEmail_ClientSendError() {
+	sender := suite.getValidEmailSender()
+	suite.mockSenderMgtSvc.On("GetSender", mock.Anything, "email-sender-001").Return(sender, nil).Once()
+
+	mm := clientmock.NewEmailClientInterfaceMock(suite.T())
+	mm.EXPECT().Send(mock.Anything, mock.Anything).Return(errors.New("smtp network error")).Once()
+	suite.mockClientFactory.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
+
+	err := suite.service.SendEmail(context.Background(), "email-sender-001",
+		common.EmailData{To: []string{"user@example.com"}, Subject: "Test", Body: "Test email"})
 	suite.NotNil(err)
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }

@@ -59,7 +59,7 @@ func vonageToSenderDTO(req vonageConnectionRequest) (*ncommon.NotificationSender
 		Name:        req.Name,
 		Description: req.Description,
 		Type:        ncommon.NotificationSenderTypeMessage,
-		Provider:    ncommon.MessageProviderTypeVonage,
+		Provider:    ncommon.NotificationProviderTypeVonage,
 		Properties:  props,
 	}, nil
 }
@@ -73,7 +73,7 @@ func vonageFromSenderDTO(dto ncommon.NotificationSenderDTO) (vonageConnectionRes
 		ID:          dto.ID,
 		Name:        dto.Name,
 		Description: dto.Description,
-		Type:        string(ncommon.MessageProviderTypeVonage),
+		Type:        string(ncommon.NotificationProviderTypeVonage),
 		APIKey:      values[ncommon.VonagePropKeyAPIKey],
 		APISecret:   values[ncommon.VonagePropKeyAPISecret],
 		SenderID:    values[ncommon.VonagePropKeySenderID],
