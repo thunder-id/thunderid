@@ -53,7 +53,7 @@ func Initialize(
 
 	// Step 3: Load declarative resources into store (if applicable)
 	if storeMode == serverconst.StoreModeComposite || storeMode == serverconst.StoreModeDeclarative {
-		if err := loadDeclarativeResources(entityTypeStore, entityTypeService); err != nil {
+		if err := loadDeclarativeResources(entityTypeStore, entityTypeService, ouService); err != nil {
 			return nil, nil, err
 		}
 	}

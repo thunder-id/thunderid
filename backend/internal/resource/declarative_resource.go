@@ -28,6 +28,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -201,7 +202,10 @@ func (e *resourceServerExporter) GetResourceRules() *declarativeresource.Resourc
 // Works in both declarative-only and composite modes:
 // - In declarative mode: resourceStore is a fileBasedResourceStore
 // - In composite mode: resourceStore is a compositeResourceStore (contains both file and DB stores)
-func loadDeclarativeResources(resourceStore resourceStoreInterface, resourceService ResourceServiceInterface) error {
+func loadDeclarativeResources(
+	resourceStore resourceStoreInterface, resourceService ResourceServiceInterface,
+	ouService oupkg.OrganizationUnitServiceInterface,
+) error {
 	var fileStore resourceStoreInterface
 	var dbStore resourceStoreInterface
 
@@ -231,7 +235,7 @@ func loadDeclarativeResources(resourceStore resourceStoreInterface, resourceServ
 		DirectoryName: "resource_servers",
 		Parser:        parseAndValidateResourceServerWrapper(resourceService),
 		Validator: func(data interface{}) error {
-			return validateResourceServerWrapper(data, fileStore, dbStore, resourceService)
+			return validateResourceServerWrapper(data, fileStore, dbStore, resourceService, ouService)
 		},
 		IDExtractor: func(data interface{}) string {
 			return data.(*providers.ResourceServer).ID
@@ -452,6 +456,7 @@ func validateResourceServerWrapper(
 	fileStore resourceStoreInterface,
 	dbStore resourceStoreInterface,
 	service ResourceServiceInterface,
+	ouService oupkg.OrganizationUnitServiceInterface,
 ) error {
 	rs, ok := data.(*providers.ResourceServer)
 	if !ok {
@@ -470,6 +475,16 @@ func validateResourceServerWrapper(
 		if svcErr := service.ResolveResourceServerOUHandle(context.Background(), rs); svcErr != nil {
 			return fmt.Errorf("organization unit with handle %q not found for resource server '%s'",
 				rs.OUHandle, rs.Name)
+		}
+	}
+	if ouService != nil && rs.OUID != "" {
+		exists, svcErr := ouService.IsOrganizationUnitExists(context.Background(), rs.OUID)
+		if svcErr != nil {
+			return fmt.Errorf("failed to verify organization unit %q for resource server '%s': %s",
+				rs.OUID, rs.Name, svcErr.Error.DefaultValue)
+		}
+		if !exists {
+			return fmt.Errorf("organization unit %q not found for resource server '%s'", rs.OUID, rs.Name)
 		}
 	}
 

@@ -59,7 +59,9 @@ func Initialize(
 
 	// Step 3: Load declarative resources into store (if applicable)
 	if fileStore != nil {
-		if err := loadDeclarativeResources(fileStore, dbStore, roleService); err != nil {
+		if err := loadDeclarativeResources(
+			fileStore, dbStore, roleService, entityService, ouService, groupService, resourceService,
+		); err != nil {
 			return nil, nil, nil, nil, err
 		}
 	}

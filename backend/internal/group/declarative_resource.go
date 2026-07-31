@@ -256,6 +256,17 @@ func validateGroupWrapper(
 			return fmt.Errorf("organization unit with handle %q not found for group '%s': %w",
 				grp.OUHandle, grp.Name, err)
 		}
+
+		if grp.OUID != "" {
+			exists, svcErr := ouService.IsOrganizationUnitExists(context.Background(), grp.OUID)
+			if svcErr != nil {
+				return fmt.Errorf("failed to check existence of organization unit with ID %q: %s",
+					grp.OUID, svcErr.Error.DefaultValue)
+			}
+			if !exists {
+				return fmt.Errorf("organization unit with ID %q not found for group '%s'", grp.OUID, grp.Name)
+			}
+		}
 	}
 
 	if grp.OUID == "" {

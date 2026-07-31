@@ -49,7 +49,7 @@ func Initialize(
 	// Load declarative resources if applicable (declarative or composite mode)
 	storeMode := getResourceStoreMode()
 	if storeMode == serverconst.StoreModeDeclarative || storeMode == serverconst.StoreModeComposite {
-		if err := loadDeclarativeResources(resourceStore, resourceService); err != nil {
+		if err := loadDeclarativeResources(resourceStore, resourceService, ouService); err != nil {
 			return nil, nil, fmt.Errorf("failed to load declarative resources: %w", err)
 		}
 	}

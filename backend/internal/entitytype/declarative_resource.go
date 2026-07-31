@@ -27,6 +27,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/entitytype/model"
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -125,7 +126,9 @@ func (e *entityTypeExporter) GetResourceRules() *declarativeresource.ResourceRul
 // - In declarative mode: entityTypeStore is a fileBasedStore
 // - In composite mode: entityTypeStore is a compositeEntityTypeStore (contains both file and DB stores)
 func loadDeclarativeResources(
-	entityTypeStore entityTypeStoreInterface, service EntityTypeServiceInterface) error {
+	entityTypeStore entityTypeStoreInterface, service EntityTypeServiceInterface,
+	ouService oupkg.OrganizationUnitServiceInterface,
+) error {
 	var fileStore entityTypeStoreInterface
 
 	// Determine store type and extract file store
@@ -150,7 +153,7 @@ func loadDeclarativeResources(
 		ResourceType:  "EntityType",
 		DirectoryName: "user_types",
 		Parser:        parseToEntityTypeDTOWrapper,
-		Validator:     validateEntityTypeWrapper(service),
+		Validator:     validateEntityTypeWrapper(service, ouService),
 		IDExtractor: func(data interface{}) string {
 			return data.(*EntityType).ID
 		},
@@ -217,7 +220,9 @@ func parseToEntityTypeDTO(data []byte) (*EntityType, error) {
 
 // validateEntityTypeWrapper wraps validateEntityType to match ResourceConfig.Validator signature.
 // When a service is provided, OU handles are resolved before validation runs.
-func validateEntityTypeWrapper(service EntityTypeServiceInterface) func(interface{}) error {
+func validateEntityTypeWrapper(
+	service EntityTypeServiceInterface, ouService oupkg.OrganizationUnitServiceInterface,
+) func(interface{}) error {
 	return func(dto interface{}) error {
 		schemaDTO, ok := dto.(*EntityType)
 		if !ok {
@@ -229,6 +234,17 @@ func validateEntityTypeWrapper(service EntityTypeServiceInterface) func(interfac
 					schemaDTO.OUHandle, schemaDTO.Name)
 			}
 		}
+		if ouService != nil && schemaDTO.OUID != "" {
+			exists, svcErr := ouService.IsOrganizationUnitExists(context.Background(), schemaDTO.OUID)
+			if svcErr != nil {
+				return fmt.Errorf("failed to verify organization unit %q for entity type '%s': %s",
+					schemaDTO.OUID, schemaDTO.Name, svcErr.Error.DefaultValue)
+			}
+			if !exists {
+				return fmt.Errorf("organization unit %q not found for entity type '%s'", schemaDTO.OUID, schemaDTO.Name)
+			}
+		}
+
 		return validateEntityType(schemaDTO)
 	}
 }

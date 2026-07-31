@@ -1,6 +1,6 @@
 resource_type: user
 id: decl-user-1
-type: person
+type: Declarative Test Schema
 ouId: decl-ou-1
 attributes:
   username: decl-user-1

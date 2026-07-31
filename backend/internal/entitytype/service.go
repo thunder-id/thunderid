@@ -84,6 +84,7 @@ type EntityTypeServiceInterface interface {
 		ctx context.Context, category TypeCategory, names []string,
 	) (map[string]string, *tidcommon.ServiceError)
 	ResolveEntityTypeHandles(ctx context.Context, entityType *EntityType) *tidcommon.ServiceError
+	IsEntityTypeExists(ctx context.Context, category TypeCategory, name string) (bool, *tidcommon.ServiceError)
 }
 
 // entityTypeService is the default implementation of the EntityTypeServiceInterface.
@@ -355,6 +356,32 @@ func (us *entityTypeService) GetEntityTypeByName(
 	}
 
 	return &entityType, nil
+}
+
+// IsEntityTypeExists checks whether an entity type with the given name exists within a category,
+// without enforcing authorization. Used for reference validation (e.g. by the declarative
+// resource loader) where no authenticated actor is available in the context.
+func (us *entityTypeService) IsEntityTypeExists(
+	ctx context.Context, category TypeCategory, name string,
+) (bool, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
+
+	if svcErr := validateCategory(category); svcErr != nil {
+		return false, svcErr
+	}
+	if name == "" {
+		return false, invalidEntityTypeRequestErr(category, "schema name must not be empty")
+	}
+
+	_, err := us.entityTypeStore.GetEntityTypeByName(ctx, category, name)
+	if err != nil {
+		if errors.Is(err, ErrEntityTypeNotFound) {
+			return false, nil
+		}
+		return false, logAndReturnServerError(ctx, logger, "Failed to check entity type existence", err)
+	}
+
+	return true, nil
 }
 
 // UpdateEntityType updates an entity type by its ID within the given category.

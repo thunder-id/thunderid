@@ -28,6 +28,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+
 	"github.com/thunder-id/thunderid/internal/system/config"
 )
 
@@ -163,7 +165,7 @@ func TestValidateEntityTypeWrapper(t *testing.T) {
 
 		mockSvc.EXPECT().ResolveEntityTypeHandles(mock.Anything, schema).Return(nil).Once()
 
-		validator := validateEntityTypeWrapper(mockSvc)
+		validator := validateEntityTypeWrapper(mockSvc, nil)
 		err := validator(schema)
 
 		assert.NoError(t, err)
@@ -184,7 +186,7 @@ func TestValidateEntityTypeWrapper(t *testing.T) {
 				return nil
 			}).Once()
 
-		validator := validateEntityTypeWrapper(mockSvc)
+		validator := validateEntityTypeWrapper(mockSvc, nil)
 		err := validator(schema)
 
 		assert.NoError(t, err)
@@ -203,7 +205,7 @@ func TestValidateEntityTypeWrapper(t *testing.T) {
 		mockSvc.EXPECT().ResolveEntityTypeHandles(mock.Anything, schema).
 			Return(&ErrorInvalidRequestFormat).Once()
 
-		validator := validateEntityTypeWrapper(mockSvc)
+		validator := validateEntityTypeWrapper(mockSvc, nil)
 		err := validator(schema)
 
 		assert.Error(t, err)
@@ -214,11 +216,54 @@ func TestValidateEntityTypeWrapper(t *testing.T) {
 		mockSvc := NewEntityTypeServiceInterfaceMock(t)
 		invalidData := "not a schema"
 
-		validator := validateEntityTypeWrapper(mockSvc)
+		validator := validateEntityTypeWrapper(mockSvc, nil)
 		err := validator(invalidData)
 
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid type: expected *EntityType")
+	})
+	t.Run("ou existence check error", func(t *testing.T) {
+		mockSvc := NewEntityTypeServiceInterfaceMock(t)
+		schema := &EntityType{
+			ID:     "schema-1",
+			Name:   "Valid Schema",
+			OUID:   "ou-1",
+			Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+		}
+
+		mockSvc.EXPECT().ResolveEntityTypeHandles(mock.Anything, schema).Return(nil).Once()
+
+		ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+		ouSvcMock.On("IsOrganizationUnitExists", mock.Anything, "ou-1").
+			Return(false, &tidcommon.InternalServerError)
+
+		validator := validateEntityTypeWrapper(mockSvc, ouSvcMock)
+		err := validator(schema)
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to verify organization unit")
+	})
+
+	t.Run("ou not found", func(t *testing.T) {
+		mockSvc := NewEntityTypeServiceInterfaceMock(t)
+		schema := &EntityType{
+			ID:     "schema-1",
+			Name:   "Valid Schema",
+			OUID:   "missing-ou",
+			Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+		}
+
+		mockSvc.EXPECT().ResolveEntityTypeHandles(mock.Anything, schema).Return(nil).Once()
+
+		ouSvcMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+		ouSvcMock.On("IsOrganizationUnitExists", mock.Anything, "missing-ou").
+			Return(false, nil)
+
+		validator := validateEntityTypeWrapper(mockSvc, ouSvcMock)
+		err := validator(schema)
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "organization unit \"missing-ou\" not found")
 	})
 }
 
@@ -392,7 +437,7 @@ func TestLoadDeclarativeResources(t *testing.T) {
 		mockSvc := NewEntityTypeServiceInterfaceMock(t)
 		mockSvc.On("ResolveEntityTypeHandles", mock.Anything, mock.Anything).Return(nil).Maybe()
 
-		err = loadDeclarativeResources(compositeStore, mockSvc)
+		err = loadDeclarativeResources(compositeStore, mockSvc, nil)
 		assert.True(t, err == nil || err != nil, "Function should complete regardless of directory presence")
 	})
 
@@ -407,7 +452,7 @@ func TestLoadDeclarativeResources(t *testing.T) {
 		mockSvc := NewEntityTypeServiceInterfaceMock(t)
 		mockSvc.On("ResolveEntityTypeHandles", mock.Anything, mock.Anything).Return(nil).Maybe()
 
-		err = loadDeclarativeResources(fileStore, mockSvc)
+		err = loadDeclarativeResources(fileStore, mockSvc, nil)
 		_ = err // Don't assert on error as it depends on file system state
 	})
 
@@ -421,7 +466,7 @@ func TestLoadDeclarativeResources(t *testing.T) {
 
 		mockSvc := NewEntityTypeServiceInterfaceMock(t)
 
-		err = loadDeclarativeResources(dbStore, mockSvc)
+		err = loadDeclarativeResources(dbStore, mockSvc, nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid store type")
 	})
@@ -475,6 +520,6 @@ func TestLoadDeclarativeResources_WithNilService(t *testing.T) {
 	dbStore, _, _ := newEntityTypeStore()
 	compositeStore := newCompositeEntityTypeStore(fileStore, dbStore)
 
-	err = loadDeclarativeResources(compositeStore, nil)
+	err = loadDeclarativeResources(compositeStore, nil, nil)
 	_ = err // outcome depends on file system state; important that it doesn't panic
 }

@@ -26,9 +26,14 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/group"
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const (
@@ -151,13 +156,16 @@ func (e *roleExporter) GetResourceRules() *declarativeresource.ResourceRules {
 // The service parameter is optional (can be nil) and is used to resolve ou_handle to ou_id.
 func loadDeclarativeResources(
 	fileStore *fileBasedStore, dbStore roleStoreInterface, service RoleServiceInterface,
+	entityService entity.EntityServiceInterface, ouService oupkg.OrganizationUnitServiceInterface,
+	groupService group.GroupServiceInterface, resourceService resourcepkg.ResourceServiceInterface,
 ) error {
 	resourceConfig := declarativeresource.ResourceConfig{
 		ResourceType:  "Role",
 		DirectoryName: "roles",
 		Parser:        parseToRoleWrapper,
 		Validator: func(data interface{}) error {
-			return validateRoleWrapper(data, fileStore, dbStore, service)
+			return validateRoleWrapper(
+				data, fileStore, dbStore, service, entityService, ouService, groupService, resourceService)
 		},
 		IDExtractor: func(data interface{}) string {
 			// Use safe type assertion to prevent panic
@@ -238,6 +246,8 @@ func parseToRole(data []byte) (*RoleWithPermissionsAndAssignments, error) {
 // When a service is provided, OU handles are resolved before validation runs.
 func validateRoleWrapper(
 	data interface{}, fileStore *fileBasedStore, dbStore roleStoreInterface, service RoleServiceInterface,
+	entityService entity.EntityServiceInterface, ouService oupkg.OrganizationUnitServiceInterface,
+	groupService group.GroupServiceInterface, resourceService resourcepkg.ResourceServiceInterface,
 ) error {
 	role, ok := data.(*RoleWithPermissionsAndAssignments)
 	if !ok {
@@ -250,29 +260,17 @@ func validateRoleWrapper(
 	if role.Name == "" {
 		return fmt.Errorf("role name is required")
 	}
-	if service != nil {
-		if svcErr := service.ResolveRoleOUHandle(context.Background(), role); svcErr != nil {
-			return fmt.Errorf("organization unit with handle %q not found for role '%s'",
-				role.OUHandle, role.Name)
-		}
-	}
-	if role.OUID == "" {
-		return fmt.Errorf("ouId or ouHandle is required for role '%s'", role.Name)
+
+	if err := validateRoleOU(role, service, ouService); err != nil {
+		return err
 	}
 
-	for _, assignment := range role.Assignments {
-		if assignment.ID == "" {
-			return fmt.Errorf("assignment ID is required")
-		}
-		if assignment.Type != assigneeTypeEntity && assignment.Type != AssigneeTypeGroup {
-			return fmt.Errorf("invalid assignment type '%s'", assignment.Type)
-		}
+	if err := validateRoleAssignments(role, entityService, groupService); err != nil {
+		return err
 	}
 
-	for _, resourcePerms := range role.Permissions {
-		if resourcePerms.ResourceServerID == "" {
-			return fmt.Errorf("resource server ID is required")
-		}
+	if err := validateRolePermissions(role, resourceService); err != nil {
+		return err
 	}
 
 	if fileStore != nil {
@@ -292,6 +290,110 @@ func validateRoleWrapper(
 		}
 	}
 
+	return nil
+}
+
+// validateRoleOU resolves the role's ou_handle (when service is provided) and confirms the
+// resulting ou_id refers to an existing organization unit.
+func validateRoleOU(
+	role *RoleWithPermissionsAndAssignments, service RoleServiceInterface,
+	ouService oupkg.OrganizationUnitServiceInterface,
+) error {
+	if service != nil {
+		if svcErr := service.ResolveRoleOUHandle(context.Background(), role); svcErr != nil {
+			return fmt.Errorf("organization unit with handle %q not found for role '%s'",
+				role.OUHandle, role.Name)
+		}
+	}
+	if ouService != nil && role.OUID != "" {
+		exists, svcErr := ouService.IsOrganizationUnitExists(context.Background(), role.OUID)
+		if svcErr != nil {
+			return fmt.Errorf("failed to check organization unit existence for role '%s': %s",
+				role.Name, svcErr.Error.DefaultValue)
+		}
+		if !exists {
+			return fmt.Errorf("organization unit with ID %q not found for role '%s'", role.OUID, role.Name)
+		}
+	}
+
+	if role.OUID == "" {
+		return fmt.Errorf("ouId or ouHandle is required for role '%s'", role.Name)
+	}
+
+	return nil
+}
+
+// validateRoleAssignments checks assignment shape, then, when the relevant service is available,
+// confirms each assignment ID resolves to a real entity or group.
+//
+// This does not reuse the API path's validateAssignmentIDs: that function cross-checks each
+// assignment's claimed category (user/app/agent) against the entity's actual category, but by
+// the time declarative resources reach validation, parseToRole has already collapsed those public
+// types into the generic internal assigneeTypeEntity, discarding the specific category. Reusing it
+// here would compare "entity" against the entity's real category and always mismatch.
+func validateRoleAssignments(
+	role *RoleWithPermissionsAndAssignments, entityService entity.EntityServiceInterface,
+	groupService group.GroupServiceInterface,
+) error {
+	var entityIDs, groupIDs []string
+	for _, assignment := range role.Assignments {
+		if assignment.ID == "" {
+			return fmt.Errorf("assignment ID is required")
+		}
+		switch assignment.Type {
+		case assigneeTypeEntity:
+			entityIDs = append(entityIDs, assignment.ID)
+		case AssigneeTypeGroup:
+			groupIDs = append(groupIDs, assignment.ID)
+		default:
+			return fmt.Errorf("invalid assignment type '%s'", assignment.Type)
+		}
+	}
+	entityIDs = utils.UniqueStrings(entityIDs)
+	groupIDs = utils.UniqueStrings(groupIDs)
+
+	if entityService != nil && len(entityIDs) > 0 {
+		entities, err := entityService.GetEntitiesByIDs(context.Background(), entityIDs)
+		if err != nil {
+			return fmt.Errorf("failed to verify assignment entities for role '%s': %w", role.Name, err)
+		}
+		if len(entities) != len(entityIDs) {
+			return fmt.Errorf("role '%s' references a nonexistent entity assignment", role.Name)
+		}
+	}
+
+	if groupService != nil && len(groupIDs) > 0 {
+		if svcErr := groupService.ValidateGroupIDs(context.Background(), groupIDs); svcErr != nil {
+			return fmt.Errorf("failed to verify assignment groups for role '%s': %s",
+				role.Name, svcErr.Error.DefaultValue)
+		}
+	}
+
+	return nil
+}
+
+// validateRolePermissions checks that each permission entry has a resource server ID, then, when
+// resourceService is available, confirms the permissions are known to that resource server.
+func validateRolePermissions(
+	role *RoleWithPermissionsAndAssignments, resourceService resourcepkg.ResourceServiceInterface,
+) error {
+	for _, resourcePerms := range role.Permissions {
+		if resourcePerms.ResourceServerID == "" {
+			return fmt.Errorf("resource server ID is required")
+		}
+		if resourceService != nil && len(resourcePerms.Permissions) > 0 {
+			invalidPerms, svcErr := resourceService.ValidatePermissions(
+				context.Background(), resourcePerms.ResourceServerID, resourcePerms.Permissions)
+			if svcErr != nil {
+				return fmt.Errorf("failed to validate permissions for role '%s': %s",
+					role.Name, svcErr.Error.DefaultValue)
+			}
+			if len(invalidPerms) > 0 {
+				return fmt.Errorf("role '%s' references unknown permissions %v for resource server '%s'",
+					role.Name, invalidPerms, resourcePerms.ResourceServerID)
+			}
+		}
+	}
 	return nil
 }
 

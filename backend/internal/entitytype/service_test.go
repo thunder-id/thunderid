@@ -643,6 +643,63 @@ func TestGetEntityTypeByNameRequiresName(t *testing.T) {
 	require.Equal(t, ErrorInvalidEntityTypeRequest.Code, svcErr.Code)
 }
 
+func TestIsEntityTypeExistsReturnsTrueWhenFound(t *testing.T) {
+	storeMock := newEntityTypeStoreInterfaceMock(t)
+	storeMock.
+		On("GetEntityTypeByName", context.Background(), TypeCategoryUser, "employee").
+		Return(EntityType{ID: "schema-id", Name: "employee"}, nil).
+		Once()
+
+	service := &entityTypeService{entityTypeStore: storeMock}
+
+	exists, svcErr := service.IsEntityTypeExists(context.Background(), TypeCategoryUser, "employee")
+
+	require.Nil(t, svcErr)
+	require.True(t, exists)
+}
+
+func TestIsEntityTypeExistsReturnsFalseWhenNotFound(t *testing.T) {
+	storeMock := newEntityTypeStoreInterfaceMock(t)
+	storeMock.
+		On("GetEntityTypeByName", context.Background(), TypeCategoryUser, "employee").
+		Return(EntityType{}, ErrEntityTypeNotFound).
+		Once()
+
+	service := &entityTypeService{entityTypeStore: storeMock}
+
+	exists, svcErr := service.IsEntityTypeExists(context.Background(), TypeCategoryUser, "employee")
+
+	require.Nil(t, svcErr)
+	require.False(t, exists)
+}
+
+func TestIsEntityTypeExistsReturnsInternalErrorOnStoreFailure(t *testing.T) {
+	storeMock := newEntityTypeStoreInterfaceMock(t)
+	storeMock.
+		On("GetEntityTypeByName", context.Background(), TypeCategoryUser, "employee").
+		Return(EntityType{}, errors.New("db failure")).
+		Once()
+
+	service := &entityTypeService{entityTypeStore: storeMock}
+
+	exists, svcErr := service.IsEntityTypeExists(context.Background(), TypeCategoryUser, "employee")
+
+	require.False(t, exists)
+	require.NotNil(t, svcErr)
+	require.Equal(t, tidcommon.InternalServerError, *svcErr)
+}
+
+func TestIsEntityTypeExistsRequiresName(t *testing.T) {
+	storeMock := newEntityTypeStoreInterfaceMock(t)
+	service := &entityTypeService{entityTypeStore: storeMock}
+
+	exists, svcErr := service.IsEntityTypeExists(context.Background(), TypeCategoryUser, "")
+
+	require.False(t, exists)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorInvalidEntityTypeRequest.Code, svcErr.Code)
+}
+
 func TestValidateEntityReturnsTrueWhenValidationPasses(t *testing.T) {
 	storeMock := newEntityTypeStoreInterfaceMock(t)
 	storeMock.
