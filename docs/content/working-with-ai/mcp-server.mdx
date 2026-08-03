@@ -202,6 +202,7 @@ Once connected, your AI assistant can work with <ProductName /> resources direct
 | Toolset | Description |
 |---------|-------------|
 | `applications` | Create, configure, and manage OAuth applications with pre-built templates for SPA, Mobile, Server, and M2M |
+| `groups` | Create, retrieve, list, update, and delete groups, and manage group members |
 | `flows` | Design and modify authentication and registration flows |
 | `themes` | Browse and inspect login page themes, colors, and typography |
 | `organization_units` | List organization units |
@@ -211,10 +212,176 @@ Once connected, your AI assistant can work with <ProductName /> resources direct
 **Example prompts:**
 
 - "Create a new single-page application for my React project"
+- "Create a new group named 'Engineering' and add members to it"
 - "Show me the current authentication flow"
 - "Add a second factor step to the default login flow"
 - "What colors and typography does the default theme use?"
 - "Integrate authentication with <ProductName /> for this application"
+
+## Group Management Tools
+
+The MCP server provides seven tools for managing groups and group memberships in <ProductName />:
+
+### `thunderid_create_group`
+
+Create a new group under a specified Organization Unit (OU).
+
+- **Annotations**: Title: `Create Group`, Idempotent: `false`
+- **Input Parameters**:
+  - `name` (`string`, required): Name of the group (min 3, max 64 characters).
+  - `ouId` (`string`, required): Organization Unit ID under which the group is created.
+  - `description` (`string`, optional): Description of the group.
+  - `members` (`array`, optional): Initial list of members. Each member object requires:
+    - `id` (`string`, required): Unique identifier of the member principal.
+    - `type` (`string`, required): Type of member principal. Allowed values: `"user"`, `"app"`, `"agent"`, or `"group"`.
+
+**Example payload:**
+
+```json
+{
+  "name": "Engineering",
+  "ouId": "ou_root",
+  "description": "Software engineering team",
+  "members": [
+    {
+      "id": "usr_12345",
+      "type": "user"
+    },
+    {
+      "id": "app_67890",
+      "type": "app"
+    }
+  ]
+}
+```
+
+### `thunderid_get_group`
+
+Retrieve full details of a group by its unique ID, including its member list and Organization Unit details.
+
+- **Annotations**: Title: `Get Group`, Read-only: `true`
+- **Input Parameters**:
+  - `id` (`string`, required): The unique identifier of the group.
+
+**Example payload:**
+
+```json
+{
+  "id": "grp_12345"
+}
+```
+
+### `thunderid_list_groups`
+
+List all groups with pagination options and optional member display names.
+
+- **Annotations**: Title: `List Groups`, Read-only: `true`
+- **Input Parameters**:
+  - `limit` (`integer`, optional): Maximum number of groups to return (defaults to maximum page size).
+  - `offset` (`integer`, optional): Number of records to skip for pagination.
+  - `includeDisplay` (`boolean`, optional): Whether to include member display names in the response.
+
+**Example payload:**
+
+```json
+{
+  "limit": 20,
+  "offset": 0,
+  "includeDisplay": true
+}
+```
+
+### `thunderid_update_group`
+
+Update an existing group's basic details, such as name, description, and Organization Unit assignment.
+
+- **Annotations**: Title: `Update Group`, Idempotent: `true`
+- **Input Parameters**:
+  - `id` (`string`, required): The unique identifier of the group.
+  - `name` (`string`, required): Updated name of the group.
+  - `ouId` (`string`, required): Organization Unit ID.
+  - `description` (`string`, optional): Updated description of the group.
+
+**Example payload:**
+
+```json
+{
+  "id": "grp_12345",
+  "name": "Engineering & Product",
+  "ouId": "ou_root",
+  "description": "Combined engineering and product group"
+}
+```
+
+### `thunderid_delete_group`
+
+Delete a group by its unique ID.
+
+- **Annotations**: Title: `Delete Group`, Idempotent: `true`
+- **Input Parameters**:
+  - `id` (`string`, required): The unique identifier of the group to delete.
+
+**Example payload:**
+
+```json
+{
+  "id": "grp_12345"
+}
+```
+
+### `thunderid_add_group_member`
+
+Add one or more members (users, applications, agents, or sub-groups) to a group.
+
+- **Annotations**: Title: `Add Group Member`, Idempotent: `false`
+- **Input Parameters**:
+  - `groupId` (`string`, required): The unique identifier of the target group.
+  - `members` (`array`, required): Array of members to add to the group. Each member object requires:
+    - `id` (`string`, required): Unique identifier of the member.
+    - `type` (`string`, required): Member type (`"user"`, `"app"`, `"agent"`, or `"group"`).
+
+**Example payload:**
+
+```json
+{
+  "groupId": "grp_12345",
+  "members": [
+    {
+      "id": "usr_99999",
+      "type": "user"
+    },
+    {
+      "id": "agent_007",
+      "type": "agent"
+    }
+  ]
+}
+```
+
+### `thunderid_remove_group_member`
+
+Remove one or more members from a group.
+
+- **Annotations**: Title: `Remove Group Member`, Idempotent: `true`
+- **Input Parameters**:
+  - `groupId` (`string`, required): The unique identifier of the target group.
+  - `members` (`array`, required): Array of members to remove from the group. Each member object requires:
+    - `id` (`string`, required): Unique identifier of the member.
+    - `type` (`string`, required): Member type (`"user"`, `"app"`, `"agent"`, or `"group"`).
+
+**Example payload:**
+
+```json
+{
+  "groupId": "grp_12345",
+  "members": [
+    {
+      "id": "usr_99999",
+      "type": "user"
+    }
+  ]
+}
+```
 
 ## Use Cases
 
