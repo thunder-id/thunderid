@@ -225,6 +225,20 @@ func validateClientAssertion(ctx context.Context,
 		return fmt.Errorf("no certificate configured for client assertion validation")
 	}
 
+	// FAPI 2.0 Security Profile Section 5.3.2.1: the client assertion's 'aud' claim must be the
+	// authorization server's issuer identifier as a single string.
+	payload, err := jwt.DecodeJWTPayload(clientAssertion)
+	if err != nil {
+		return fmt.Errorf("failed to decode client assertion payload: %w", err)
+	}
+	aud, ok := payload[constants.ClaimAud].(string)
+	if !ok {
+		return fmt.Errorf("client assertion 'aud' claim must be a single string")
+	}
+	if aud != issuer {
+		return fmt.Errorf("client assertion 'aud' claim %q does not match the issuer", aud)
+	}
+
 	if oauthApp.Certificate.Type == cert.CertificateTypeJWKSURI {
 		if err := jwtService.VerifyJWTWithJWKS(ctx, clientAssertion, oauthApp.Certificate.Value, issuer,
 			clientID); err != nil {

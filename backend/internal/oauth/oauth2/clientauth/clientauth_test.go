@@ -556,7 +556,7 @@ func buildTestRSAJWKS(kid string) string {
 func buildFakeJWTWithSub(subject string) string {
 	return buildTestJWT(
 		map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
-		map[string]any{"sub": subject, "aud": "https://token"},
+		map[string]any{"sub": subject, "aud": testIssuer},
 	)
 }
 
@@ -1039,8 +1039,11 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_InvalidJWKSJSON() 
 		},
 	}
 
+	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
+		map[string]any{"sub": "test-client", "aud": testIssuer})
+
 	err := validateClientAssertion(context.Background(), oauthApp, suite.mockJwtService, testIssuer,
-		"test-client", "some.jwt.token")
+		"test-client", fakeJWT)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "invalid JWKS certificate format")
 }
@@ -1055,10 +1058,31 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_InvalidJWTFormat()
 		},
 	}
 
+	// Valid, decodable payload (so the 'aud' check passes) but an undecodable header segment,
+	// so the failure surfaces at header decoding.
+	payloadB64 := base64.RawURLEncoding.EncodeToString(
+		[]byte(`{"sub":"test-client","aud":"` + testIssuer + `"}`))
+	fakeJWT := "!!!." + payloadB64 + ".fake-signature"
+
 	err := validateClientAssertion(context.Background(), oauthApp, suite.mockJwtService, testIssuer,
-		"test-client", "invalid-jwt")
+		"test-client", fakeJWT)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "failed to decode header")
+}
+
+func (suite *ClientAuthTestSuite) TestValidateClientAssertion_UndecodablePayload() {
+	oauthApp := &providers.OAuthClient{
+		ClientID: "test-client",
+		Certificate: &providers.Certificate{
+			Type:  "jwks",
+			Value: buildTestRSAJWKS("test-kid"),
+		},
+	}
+
+	err := validateClientAssertion(context.Background(), oauthApp, suite.mockJwtService, testIssuer,
+		"test-client", "not-a-decodable-jwt")
+	assert.NotNil(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "failed to decode client assertion payload")
 }
 
 func (suite *ClientAuthTestSuite) TestValidateClientAssertion_MissingKidInHeader() {
@@ -1071,7 +1095,8 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_MissingKidInHeader
 		},
 	}
 
-	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "typ": "JWT"}, map[string]any{"sub": "test-client"})
+	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "typ": "JWT"},
+		map[string]any{"sub": "test-client", "aud": testIssuer})
 
 	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testIssuer, "test-client", fakeJWT)
@@ -1090,7 +1115,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_EmptyKidInHeader()
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "", "typ": "JWT"},
-		map[string]any{"sub": "test-client"})
+		map[string]any{"sub": "test-client", "aud": testIssuer})
 
 	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testIssuer, "test-client", fakeJWT)
@@ -1109,7 +1134,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_KidNotAString() {
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": 12345, "typ": "JWT"},
-		map[string]any{"sub": "test-client"})
+		map[string]any{"sub": "test-client", "aud": testIssuer})
 
 	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testIssuer, "test-client", fakeJWT)
@@ -1128,7 +1153,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_NoMatchingKidInJWK
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
-		map[string]any{"sub": "test-client"})
+		map[string]any{"sub": "test-client", "aud": testIssuer})
 
 	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testIssuer, "test-client", fakeJWT)
@@ -1153,7 +1178,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_InvalidJWKCannotCo
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
-		map[string]any{"sub": "test-client"})
+		map[string]any{"sub": "test-client", "aud": testIssuer})
 
 	// JWK-to-public-key conversion now happens inside the JWT service's crypto provider
 	// rather than locally, so the invalid JWK surfaces as a verification failure.
@@ -1187,7 +1212,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_VerificationFails(
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
-		map[string]any{"sub": "test-client"})
+		map[string]any{"sub": "test-client", "aud": testIssuer})
 
 	suite.mockJwtService.EXPECT().
 		VerifyJWTWithPublicKey(
@@ -1219,7 +1244,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_Success() {
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
-		map[string]any{"sub": "test-client"})
+		map[string]any{"sub": "test-client", "aud": testIssuer})
 
 	suite.mockJwtService.EXPECT().
 		VerifyJWTWithPublicKey(
@@ -1248,7 +1273,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_EmptyJWKSKeys() {
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
-		map[string]any{"sub": "test-client"})
+		map[string]any{"sub": "test-client", "aud": testIssuer})
 
 	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testIssuer, "test-client", fakeJWT)
@@ -1280,7 +1305,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_MultipleKeysMatche
 	}
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "kid-2", "typ": "JWT"},
-		map[string]any{"sub": "test-client"})
+		map[string]any{"sub": "test-client", "aud": testIssuer})
 
 	suite.mockJwtService.EXPECT().
 		VerifyJWTWithPublicKey(
@@ -1294,6 +1319,64 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_MultipleKeysMatche
 	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testIssuer, "test-client", fakeJWT)
 	assert.Nil(suite.T(), err)
+}
+
+// Per FAPI 2.0 Security Profile Section 5.3.2.1 the client assertion's 'aud' must be the issuer as a
+// single string. A single-element array containing the issuer must be rejected.
+func (suite *ClientAuthTestSuite) TestValidateClientAssertion_ArrayAudSingleElement_Rejected() {
+	oauthApp := &providers.OAuthClient{
+		ClientID: "test-client",
+		Certificate: &providers.Certificate{
+			Type:  "jwks",
+			Value: buildTestRSAJWKS("test-kid"),
+		},
+	}
+
+	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
+		map[string]any{"sub": "test-client", "aud": []string{testIssuer}})
+
+	err := validateClientAssertion(context.Background(),
+		oauthApp, suite.mockJwtService, testIssuer, "test-client", fakeJWT)
+	assert.NotNil(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "'aud' claim must be a single string")
+}
+
+// A multi-element array 'aud' containing the issuer must also be rejected.
+func (suite *ClientAuthTestSuite) TestValidateClientAssertion_ArrayAudMultiElement_Rejected() {
+	oauthApp := &providers.OAuthClient{
+		ClientID: "test-client",
+		Certificate: &providers.Certificate{
+			Type:  "jwks",
+			Value: buildTestRSAJWKS("test-kid"),
+		},
+	}
+
+	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
+		map[string]any{"sub": "test-client", "aud": []string{testIssuer, "https://other"}})
+
+	err := validateClientAssertion(context.Background(),
+		oauthApp, suite.mockJwtService, testIssuer, "test-client", fakeJWT)
+	assert.NotNil(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "'aud' claim must be a single string")
+}
+
+// A string 'aud' that does not match the issuer must be rejected.
+func (suite *ClientAuthTestSuite) TestValidateClientAssertion_StringAudMismatch_Rejected() {
+	oauthApp := &providers.OAuthClient{
+		ClientID: "test-client",
+		Certificate: &providers.Certificate{
+			Type:  "jwks",
+			Value: buildTestRSAJWKS("test-kid"),
+		},
+	}
+
+	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
+		map[string]any{"sub": "test-client", "aud": "https://wrong-issuer"})
+
+	err := validateClientAssertion(context.Background(),
+		oauthApp, suite.mockJwtService, testIssuer, "test-client", fakeJWT)
+	assert.NotNil(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "does not match the issuer")
 }
 
 // A private_key_jwt client authenticating with the issuer identifier as its assertion audience
