@@ -71,7 +71,7 @@ Add `index.html` to load the landing page of the application.
     <div class="card">
         <h1>Welcome to My Spring Boot Sample App</h1>
         <p>Sign in to continue</p>
-        <a href="/oauth2/authorization/thunderid" class="login-btn">Login with ThunderID</a>
+        <a href="/oauth2/authorization/thunderid" class="login-btn">Login with {{ProductName}}</a>
     </div>
 </body>
 </html>
@@ -91,6 +91,9 @@ Add `home.html` to display the logged in user's details.
     <div class="card">
         <div class="card-header">
             <h1>Welcome to My Spring Boot Sample App</h1>
+            <form th:action="@{/logout}" method="post">
+                <button type="submit">Logout</button>
+            </form>
         </div>
         <p class="welcome">Logged in as <span th:text="${userName}"></span></p>
 
