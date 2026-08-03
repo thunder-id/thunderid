@@ -15,6 +15,7 @@ import nodeSdkSidebar from './content/sdks/node/sidebar';
 import nuxtSdkSidebar from './content/sdks/nuxt/sidebar';
 import reactSdkSidebar from './content/sdks/react/sidebar';
 import reactRouterSdkSidebar from './content/sdks/react-router/sidebar';
+import springSecurityIntegrationSidebar from './content/sdks/spring-security/sidebar';
 import tanstackRouterSdkSidebar from './content/sdks/tanstack-router/sidebar';
 import vueSdkSidebar from './content/sdks/vue/sidebar';
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
@@ -1014,6 +1015,7 @@ const sidebars: SidebarsConfig = {
   iosSdkSidebar,
   androidSdkSidebar,
   flutterSdkSidebar,
+  springSecurityIntegrationSidebar,
   communitySidebar: [
     // Community Section
     {
