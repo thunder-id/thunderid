@@ -215,7 +215,15 @@ function renderFormSubComponent(
   }
 
   if (sub.type === 'RICH_TEXT') {
-    return <RichTextAdapter key={sub.id ?? compIndex} component={sub} resolve={ctx.resolve} />;
+    return (
+      <RichTextAdapter
+        key={sub.id ?? compIndex}
+        component={sub}
+        resolve={ctx.resolve}
+        values={ctx.values}
+        onSubmit={ctx.onSubmit}
+      />
+    );
   }
 
   if (
@@ -356,6 +364,17 @@ function TriggerBlockAdapter({component, index, ...ctx}: TriggerBlockAdapterProp
               resolve={ctx.resolve}
               onSubmit={ctx.onSubmit}
               values={ctx.values}
+            />
+          );
+        }
+        if (sub.type === 'RICH_TEXT') {
+          return (
+            <RichTextAdapter
+              key={sub.id ?? actionIndex}
+              component={sub}
+              resolve={ctx.resolve}
+              values={ctx.values}
+              onSubmit={ctx.onSubmit}
             />
           );
         }

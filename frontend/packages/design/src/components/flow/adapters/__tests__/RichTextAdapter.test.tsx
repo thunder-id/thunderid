@@ -6,7 +6,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 
-import {cleanup} from '@testing-library/react';
+import {cleanup, fireEvent} from '@testing-library/react';
 import {describe, it, expect, vi, afterEach} from 'vitest';
 import type {FlowComponent} from '../../../../models/flow';
 import renderWithProviders from '../../../../test/renderWithProviders';
@@ -18,10 +18,13 @@ afterEach(() => {
 
 vi.mock('@wso2/oxygen-ui', () => ({
   Alert: ({children}: any) => children,
-  Box: ({sx, dangerouslySetInnerHTML}: any) => (
+  Box: ({id, sx, onClick, dangerouslySetInnerHTML}: any) => (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       data-testid="rich-text-box"
+      id={id}
       data-align={sx?.textAlign}
+      onClick={onClick}
       // eslint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={dangerouslySetInnerHTML}
     />
@@ -148,6 +151,60 @@ describe('RichTextAdapter', () => {
       const box = getByTestId('rich-text-box');
       expect(box).toBeInTheDocument();
       expect(box.innerHTML).toContain('Sign up');
+    });
+  });
+
+  describe('recovery URL handling', () => {
+    const recoveryLabel =
+      '<p data-component-ref="recovery-link"><a href="#" data-action-ref="action_forgot_password">Forgot password?</a></p>';
+    const recoveryComponent: FlowComponent = {
+      id: 'recovery-richtext',
+      type: 'RICH_TEXT',
+      label: recoveryLabel,
+      action: {ref: 'action_forgot_password'},
+    };
+    const resolveRecovery = (enabled: boolean) => (template: string | undefined) =>
+      template?.includes('isRecoveryFlowEnabled') ? String(enabled) : template;
+
+    it('returns null when the recovery flow is disabled', () => {
+      const {queryByTestId} = renderWithProviders(
+        <RichTextAdapter component={recoveryComponent} resolve={resolveRecovery(false)} />,
+      );
+      expect(queryByTestId('rich-text-box')).not.toBeInTheDocument();
+    });
+
+    it('renders the recovery link when the recovery flow is enabled', () => {
+      const {getByTestId} = renderWithProviders(
+        <RichTextAdapter component={recoveryComponent} resolve={resolveRecovery(true)} />,
+      );
+      expect(getByTestId('rich-text-box').innerHTML).toContain('Forgot password?');
+    });
+
+    it('dispatches the synthesized action with the supplied values on click', () => {
+      const onSubmit = vi.fn();
+      const {getByTestId} = renderWithProviders(
+        <RichTextAdapter
+          component={recoveryComponent}
+          resolve={resolveRecovery(true)}
+          values={{username: 'alice'}}
+          onSubmit={onSubmit}
+        />,
+      );
+
+      fireEvent.click(getByTestId('rich-text-box').querySelector('a')!);
+
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({id: 'action_forgot_password', ref: 'action_forgot_password'}),
+        {username: 'alice'},
+      );
+    });
+
+    it('does not throw when clicked without an onSubmit handler', () => {
+      const {getByTestId} = renderWithProviders(
+        <RichTextAdapter component={recoveryComponent} resolve={resolveRecovery(true)} />,
+      );
+
+      expect(() => fireEvent.click(getByTestId('rich-text-box').querySelector('a')!)).not.toThrow();
     });
   });
 
