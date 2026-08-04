@@ -386,7 +386,7 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 
 	effectiveAcrValues := requestvalidator.ResolveACRValues(oauthParams.AcrValues, app.AcrValues)
 	essentialAttributes, optionalAttributes := getRequiredAttributes(
-		oauthParams.StandardScopes, oauthParams.ClaimsRequest, oauthParams.ResponseType, app)
+		oauthParams.StandardScopes, oauthParams.ClaimsRequest, app)
 
 	authRequestCtx := authRequestContext{
 		OAuthParameters: *oauthParams,
@@ -805,8 +805,8 @@ func createAuthorizationCode(
 }
 
 // getRequiredAttributes determines the essential and optional user attributes required based on OIDC scopes,
-// claims parameter, response type, and app configuration.
-func getRequiredAttributes(oidcScopes []string, claimsRequest *oauth2model.ClaimsRequest, responseType string,
+// claims parameter, and app configuration.
+func getRequiredAttributes(oidcScopes []string, claimsRequest *oauth2model.ClaimsRequest,
 	app *providers.OAuthClient) (essentialAttributes, optionalAttributes string) {
 	if app == nil {
 		return "", ""
@@ -822,7 +822,7 @@ func getRequiredAttributes(oidcScopes []string, claimsRequest *oauth2model.Claim
 
 	// Process OIDC-related attributes only if openid scope is present
 	if slices.Contains(oidcScopes, oauth2const.ScopeOpenID) {
-		appendOIDCAttributes(oidcScopes, claimsRequest, responseType, app,
+		appendOIDCAttributes(oidcScopes, claimsRequest, app,
 			essentialAttributesMap, optionalAttributesMap)
 	}
 
@@ -853,7 +853,7 @@ func appendAccessTokenAttributes(app *providers.OAuthClient, attributesMap map[s
 }
 
 // appendOIDCAttributes appends OIDC-related attributes from scopes and claims parameters.
-func appendOIDCAttributes(oidcScopes []string, claimsRequest *oauth2model.ClaimsRequest, responseType string,
+func appendOIDCAttributes(oidcScopes []string, claimsRequest *oauth2model.ClaimsRequest,
 	app *providers.OAuthClient, essentialAttributes, optionalAttributes map[string]bool) {
 	var idTokenAllowedSet map[string]bool
 	if app.Token != nil {
@@ -864,7 +864,7 @@ func appendOIDCAttributes(oidcScopes []string, claimsRequest *oauth2model.Claims
 	appendAttributesFromClaimsParameter(claimsRequest, idTokenAllowedSet, userInfoAllowedSet,
 		essentialAttributes, optionalAttributes)
 
-	appendAttributesFromScopes(oidcScopes, responseType, app, idTokenAllowedSet, userInfoAllowedSet,
+	appendAttributesFromScopes(oidcScopes, app, idTokenAllowedSet, userInfoAllowedSet,
 		optionalAttributes)
 }
 
@@ -927,11 +927,11 @@ func appendAttributesFromClaimsParameter(claimsRequest *oauth2model.ClaimsReques
 }
 
 // appendAttributesFromScopes appends user attributes based on OIDC scopes and app configuration.
-func appendAttributesFromScopes(oidcScopes []string, responseType string, app *providers.OAuthClient,
+func appendAttributesFromScopes(oidcScopes []string, app *providers.OAuthClient,
 	idTokenAllowedSet, userInfoAllowedSet map[string]bool, optionalAttributes map[string]bool) {
 	for _, scope := range oidcScopes {
 		scopeAttributes := resolveScopeAttributes(scope, app.ScopeClaims)
-		appendAttributesForScope(scopeAttributes, responseType,
+		appendAttributesForScope(scopeAttributes,
 			idTokenAllowedSet, userInfoAllowedSet, optionalAttributes)
 	}
 }
@@ -953,23 +953,20 @@ func resolveScopeAttributes(scope string, scopeAttributesMapping map[string][]st
 	return nil
 }
 
-// appendAttributesForScope appends attributes for a particular scope based on response type and
-// allowed attributes in app config.
+// appendAttributesForScope appends attributes for a particular scope, allow-listed for either the
+// ID token or the UserInfo endpoint.
 // When using scopes, all attributes are treated as optional since there is no way to determine
 // which attributes are essential vs optional.
-func appendAttributesForScope(scopeAttributes []string, responseType string,
+func appendAttributesForScope(scopeAttributes []string,
 	idTokenAllowedSet, userInfoAllowedSet, optionalAttributes map[string]bool) {
 	for _, attribute := range scopeAttributes {
-		if responseType == string(providers.ResponseTypeIDToken) {
-			// If response type does not issue an access token, add claim to id token
-			if idTokenAllowedSet != nil && idTokenAllowedSet[attribute] {
-				optionalAttributes[attribute] = true
-			}
-		} else {
-			// If response type issues an access token, add claim to userinfo
-			if userInfoAllowedSet != nil && userInfoAllowedSet[attribute] {
-				optionalAttributes[attribute] = true
-			}
+		// A scope claim may be surfaced from the UserInfo endpoint or, when allow-listed for the ID
+		// token, embedded in the ID token, so cache the attributes needed by either sink.
+		if idTokenAllowedSet != nil && idTokenAllowedSet[attribute] {
+			optionalAttributes[attribute] = true
+		}
+		if userInfoAllowedSet != nil && userInfoAllowedSet[attribute] {
+			optionalAttributes[attribute] = true
 		}
 	}
 }

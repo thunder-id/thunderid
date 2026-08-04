@@ -1463,7 +1463,6 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_NilApp() {
 	essential, optional := getRequiredAttributes(
 		[]string{"openid", "profile"},
 		nil,
-		string(providers.ResponseTypeCode),
 		nil,
 	)
 
@@ -1481,7 +1480,6 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_NilTokenConfig
 	essential, optional := getRequiredAttributes(
 		[]string{"openid", "profile"},
 		nil,
-		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1503,7 +1501,6 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_AccessTokenOnl
 	essential, optional := getRequiredAttributes(
 		[]string{},
 		nil,
-		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1536,7 +1533,6 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_CodeFlowWithSc
 	essential, optional := getRequiredAttributes(
 		[]string{"openid", "email"},
 		nil,
-		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1551,13 +1547,15 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_CodeFlowWithSc
 	assert.Len(suite.T(), parts, 3)
 }
 
-func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_ImplicitFlowWithScopes() {
+func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_CodeFlowIDTokenOnlyScopeAttribute() {
+	// Regression: in the code flow, a scope attribute allow-listed only for the ID token (and not for
+	// UserInfo) must still be resolved and cached so it can be surfaced in the ID token.
 	app := &providers.OAuthClient{
 		ID:       "test-app",
 		ClientID: "test-client",
 		Token: &providers.OAuthTokenConfig{
 			IDToken: &providers.IDTokenConfig{
-				UserAttributes: []string{"email", "email_verified", "name"},
+				UserAttributes: []string{"email", "email_verified"},
 			},
 		},
 	}
@@ -1565,13 +1563,10 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_ImplicitFlowWi
 	essential, optional := getRequiredAttributes(
 		[]string{"openid", "email"},
 		nil,
-		string(providers.ResponseTypeIDToken),
 		app,
 	)
 
 	assert.Empty(suite.T(), essential)
-	// In implicit flow, email scope claims go to id_token
-	assert.NotEmpty(suite.T(), optional)
 	assert.Contains(suite.T(), optional, "email")
 	assert.Contains(suite.T(), optional, "email_verified")
 
@@ -1608,7 +1603,6 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_WithClaimsPara
 	essential, optional := getRequiredAttributes(
 		[]string{"openid"},
 		claimsRequest,
-		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1653,7 +1647,6 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_ClaimsParamete
 	essential, optional := getRequiredAttributes(
 		[]string{"openid"},
 		claimsRequest,
-		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1695,7 +1688,6 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_DeduplicatesCl
 	essential, optional := getRequiredAttributes(
 		[]string{"openid"},
 		claimsRequest,
-		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1724,7 +1716,6 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_CustomScopeMap
 	essential, optional := getRequiredAttributes(
 		[]string{"openid", "organization"},
 		nil,
-		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1769,7 +1760,6 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_ComplexScenari
 	essential, optional := getRequiredAttributes(
 		[]string{"openid", "custom"},
 		claimsRequest,
-		string(providers.ResponseTypeCode),
 		app,
 	)
 
@@ -1807,7 +1797,6 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_NoOpenIDScope(
 	essential, optional := getRequiredAttributes(
 		[]string{"profile"}, // OIDC scope but no openid
 		nil,
-		string(providers.ResponseTypeCode),
 		app,
 	)
 

@@ -708,6 +708,20 @@ func (suite *CIBAServiceTestSuite) TestGetRequiredOptionalAttributes_ScopeDerive
 	suite.ElementsMatch([]string{"user_id", "email", "name"}, strings.Fields(optional))
 }
 
+func (suite *CIBAServiceTestSuite) TestGetRequiredOptionalAttributes_ScopeDerivedFromIDTokenAllowList() {
+	// Regression: a scope attribute allow-listed only for the ID token (and not for UserInfo) must
+	// still be resolved and cached so the CIBA-issued ID token can surface it.
+	app := &providers.OAuthClient{
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{
+				UserAttributes: []string{"email", "email_verified"},
+			},
+		},
+	}
+	optional := getRequiredOptionalAttributes([]string{"openid", "email"}, app)
+	suite.ElementsMatch([]string{"email", "email_verified"}, strings.Fields(optional))
+}
+
 func (suite *CIBAServiceTestSuite) TestGetRequiredOptionalAttributes_ScopeDerivedSkippedWithoutOpenID() {
 	app := &providers.OAuthClient{
 		UserInfo: &providers.UserInfoConfig{

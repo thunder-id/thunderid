@@ -20,9 +20,9 @@ import (
 // never carries an OIDC `claims` request parameter. Because essential attributes only originate from
 // the claims parameter, the CIBA essential set is always empty and is therefore set to "" at the
 // call site; the optional set is the access-token attributes plus the scope-derived OIDC attributes
-// filtered against the UserInfo allowed set. The output therefore matches authorization_code for the
-// same client config and scope. The format (space-separated) is what the assertion executor expects
-// via strings.Fields on the required-attribute runtime keys.
+// allow-listed for either the ID token or the UserInfo endpoint. The output therefore matches
+// authorization_code for the same client config and scope. The format (space-separated) is what the
+// assertion executor expects via strings.Fields on the required-attribute runtime keys.
 func getRequiredOptionalAttributes(scopes []string, app *providers.OAuthClient) string {
 	if app == nil {
 		return ""
@@ -37,19 +37,33 @@ func getRequiredOptionalAttributes(scopes []string, app *providers.OAuthClient) 
 	}
 
 	if slices.Contains(scopes, oauth2const.ScopeOpenID) {
+		var idTokenAllowed map[string]bool
+		if app.Token != nil {
+			idTokenAllowed = buildIDTokenAllowedSet(app.Token.IDToken)
+		}
 		userInfoAllowed := buildUserInfoAllowedSet(app.UserInfo)
-		if userInfoAllowed != nil {
-			for _, scope := range scopes {
-				for _, attr := range resolveScopeAttributes(scope, app.ScopeClaims) {
-					if userInfoAllowed[attr] {
-						optionalAttributes[attr] = true
-					}
+		for _, scope := range scopes {
+			for _, attr := range resolveScopeAttributes(scope, app.ScopeClaims) {
+				if idTokenAllowed[attr] || userInfoAllowed[attr] {
+					optionalAttributes[attr] = true
 				}
 			}
 		}
 	}
 
 	return strings.Join(slices.Collect(maps.Keys(optionalAttributes)), " ")
+}
+
+// buildIDTokenAllowedSet creates a set of attributes the ID token is allowed to carry.
+func buildIDTokenAllowedSet(idTokenConfig *providers.IDTokenConfig) map[string]bool {
+	if idTokenConfig == nil || len(idTokenConfig.UserAttributes) == 0 {
+		return nil
+	}
+	allowedSet := make(map[string]bool, len(idTokenConfig.UserAttributes))
+	for _, attr := range idTokenConfig.UserAttributes {
+		allowedSet[attr] = true
+	}
+	return allowedSet
 }
 
 // buildUserInfoAllowedSet creates a set of attributes the UserInfo endpoint is allowed to return.
