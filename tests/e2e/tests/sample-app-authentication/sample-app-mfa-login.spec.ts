@@ -31,7 +31,6 @@
  * Required environment variables:
  * - SAMPLE_APP_URL: URL of the sample app (e.g., https://localhost:3000)
  * - SERVER_URL: URL of the server (default: https://localhost:8090)
- * - SAMPLE_APP_ID: Application ID in the Server
  * - ADMIN_USERNAME: Admin username (default: "admin")
  * - ADMIN_PASSWORD: Admin password (default: "admin")
  * - SAMPLE_APP_USERNAME: Test user username (default: "e2e-test-user")
@@ -40,17 +39,14 @@
  * - AUTO_SETUP_MFA: Enable automatic setup (default: "true")
  */
 
-import type { APIRequestContext } from "@playwright/test";
-import { test, expect } from "../../fixtures/sample-app";
+import { test, expect, UsersApi } from "../../fixtures/sample-app";
 import { MockSMSServer } from "../../utils/mock-sms-server";
 import { MFASetup, SetupResult } from "../../utils/server-setup";
 import { Timeouts } from "../../constants/timeouts";
+import { TestDataFactory } from "../../utils/test-data";
+import { SampleAppClientIds } from "../../constants/sample-apps";
 
 const sampleAppUrl = process.env.SAMPLE_APP_URL;
-const serverUrl = process.env.SERVER_URL || "https://localhost:8090";
-const applicationId = process.env.SAMPLE_APP_ID || "";
-const adminUsername = process.env.ADMIN_USERNAME || "admin";
-const adminPassword = process.env.ADMIN_PASSWORD || "admin";
 const username = process.env.SAMPLE_APP_USERNAME || "e2e-test-user";
 const password = process.env.SAMPLE_APP_PASSWORD || "e2e-test-password";
 const mockSMSPort = process.env.MOCK_SMS_SERVER_PORT ? parseInt(process.env.MOCK_SMS_SERVER_PORT, 10) : 8098;
@@ -69,56 +65,26 @@ async function waitForSMS(
   return null;
 }
 
-// Best-effort lookup of a just-registered user's id so afterAll can clean it up. A failed
-// lookup here is not a functional defect, so it only logs - it never fails the calling test.
-async function captureCreatedUserId(
-  request: APIRequestContext,
-  adminToken: string,
-  regUsername: string,
-  createdUserIds: string[]
-): Promise<void> {
-  if (!adminToken) {
-    console.log("⚠️  Could not retrieve user ID for cleanup: no admin token available");
-    return;
-  }
-
-  try {
-    const userResponse = await request.get(`${serverUrl}/users?filter=username eq "${regUsername}"`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
-      ignoreHTTPSErrors: true,
-    });
-    if (!userResponse.ok()) {
-      console.log("⚠️  Could not retrieve user ID for cleanup: user lookup failed");
-      return;
-    }
-
-    const userData = await userResponse.json();
-    if (!userData.users || userData.users.length === 0) {
-      console.log("⚠️  Could not retrieve user ID for cleanup: user not found");
-      return;
-    }
-
-    const userId = userData.users[0].id;
-    createdUserIds.push(userId);
-    console.log(`✓ User ID ${userId} added to cleanup list`);
-  } catch (error) {
-    console.log(`⚠️  Could not retrieve user ID for cleanup: ${error}`);
-  }
-}
-
 // Skip tests if SAMPLE_APP_URL is not provided
 const describeOrSkip = sampleAppUrl ? test.describe : test.describe.skip;
 
 describeOrSkip("Sample App - MFA Authentication with SMS OTP", () => {
+  // Every test in this suite drives the sample app as its own dedicated application
+  // (constants/sample-apps.ts), rather than the shared REACT_SDK_SAMPLE default-login uses.
+  test.use({ sampleAppClientId: SampleAppClientIds.MFA });
+
   // Mock SMS server instance - shared across tests in this suite
   let mockSMSServer: MockSMSServer;
   // MFA setup result - contains IDs and cleanup functions
   let setupResult: SetupResult | null = null;
-  // Store created user IDs for cleanup
-  let createdUserIds: string[] = [];
+  // Generated at describe scope, same as user-creation.spec.ts, so afterAll can see the
+  // username TC003 registers through the sample app's Sign Up flow.
+  const registeredUser = TestDataFactory.createUser();
 
   // Setup: Start mock SMS server and configure MFA before all tests
   test.beforeAll(async ({ request }) => {
+    test.setTimeout(Timeouts.SUITE_SETUP);
+
     console.log("\n=== MFA Test Suite Setup ===");
 
     // Step 1: Start Mock SMS Server
@@ -136,31 +102,23 @@ describeOrSkip("Sample App - MFA Authentication with SMS OTP", () => {
 
     // Step 2: Automated MFA Setup (if enabled)
     if (autoSetup) {
-      if (!applicationId) {
-        console.log("⚠️  SAMPLE_APP_ID not provided - skipping automated setup");
-        console.log("⚠️  Please configure the server manually as per README-MFA.md");
-      } else {
-        console.log("\nPerforming automated server MFA setup...");
-        const setup = new MFASetup(request, {
-          serverUrl: serverUrl,
-          mockSmsUrl: mockSMSServer.getSendSMSURL(),
-          adminUsername,
-          adminPassword,
-          applicationId,
-          testUser: {
-            username,
-            password,
-            email: "e2e@example.com",
-            mobile_number: "+12345678920",
-            given_name: "E2E Test User",
-          },
-        });
+      console.log("\nPerforming automated server MFA setup...");
+      const setup = new MFASetup(request, {
+        clientId: SampleAppClientIds.MFA,
+        mockSmsUrl: mockSMSServer.getSendSMSURL(),
+        testUser: {
+          username,
+          password,
+          email: "e2e@example.com",
+          mobile_number: "+12345678920",
+          given_name: "E2E Test User",
+        },
+      });
 
-        // A failure here means the server is not wired for MFA, so every test below would either
-        // skip or fail far from the real cause. Fail the suite immediately instead of swallowing it.
-        setupResult = await setup.setup();
-        console.log("✓ Automated setup completed successfully");
-      }
+      // A failure here means the server is not wired for MFA, so every test below would either
+      // skip or fail far from the real cause. Fail the suite immediately instead of swallowing it.
+      setupResult = await setup.setup();
+      console.log("✓ Automated setup completed successfully");
     } else {
       console.log("⚠️  Automated setup disabled (AUTO_SETUP_MFA=false)");
       console.log("⚠️  Ensure the server is configured manually as per README-MFA.md");
@@ -171,56 +129,17 @@ describeOrSkip("Sample App - MFA Authentication with SMS OTP", () => {
 
   // Teardown: Stop mock SMS server and cleanup server resources after all tests
   test.afterAll(async ({ request }) => {
+    test.setTimeout(Timeouts.SUITE_SETUP);
     console.log("\n=== MFA Test Suite Teardown ===");
 
-    // Cleanup created test users
-    if (createdUserIds.length > 0 && serverUrl && adminUsername && adminPassword) {
-      console.log(`Cleaning up ${createdUserIds.length} created test user(s)...`);
+    // Cleanup the user TC003 registered, if it ran
+    const deleted = await new UsersApi(request).deleteByUsername(registeredUser.username);
+    console.log(`Teardown: removed ${deleted} user(s) matching ${registeredUser.username}`);
 
-      // Get admin token for cleanup
-      try {
-        const tokenResponse = await request.post(`${serverUrl}/oauth2/token`, {
-          form: {
-            grant_type: "password",
-            username: adminUsername,
-            password: adminPassword,
-          },
-          ignoreHTTPSErrors: true,
-        });
-
-        if (tokenResponse.ok()) {
-          const tokenData = await tokenResponse.json();
-          const adminToken = tokenData.access_token;
-
-          // Delete each created user
-          for (const userId of createdUserIds) {
-            try {
-              const deleteResponse = await request.delete(`${serverUrl}/users/${userId}`, {
-                headers: {
-                  Authorization: `Bearer ${adminToken}`,
-                },
-                ignoreHTTPSErrors: true,
-              });
-
-              if (deleteResponse.ok()) {
-                console.log(`✓ Deleted test user: ${userId}`);
-              } else {
-                console.log(`⚠️  Failed to delete test user ${userId}: ${deleteResponse.status()}`);
-              }
-            } catch (error) {
-              console.log(`⚠️  Error deleting test user ${userId}: ${error}`);
-            }
-          }
-        }
-      } catch (error) {
-        console.log(`⚠️  Error during user cleanup: ${error}`);
-      }
-    }
-
-    // Cleanup server resources
+    // Cleanup server resources. `request` here is this hook's own fixture instance, still live -
+    // unlike the beforeAll-scoped one the original `setup` was constructed with.
     if (setupResult && autoSetup) {
-      const setup = new MFASetup(null as any, {} as any);
-      await setup.cleanup(setupResult.cleanupFunctions);
+      await MFASetup.cleanup(request, setupResult.cleanupFunctions);
     }
 
     // Stop mock SMS server
@@ -354,18 +273,18 @@ describeOrSkip("Sample App - MFA Authentication with SMS OTP", () => {
   test("TC003: Complete MFA registration flow with mobile number and subsequent login", async ({
     sampleAppLoginPage,
     page,
-    request,
   }) => {
     console.log("\n--- TC003: MFA Registration and Login Flow ---");
 
-    // Generate unique test user credentials
-    const timestamp = Date.now();
-    const regUsername = `reg-user-${timestamp}`;
-    const regPassword = "RegUser@123";
-    const regGivenName = "Registration";
-    const regFamilyName = "Test";
-    const regEmail = `reg-user-${timestamp}@example.com`;
-    const regMobile = `+1234567${timestamp.toString().slice(-4)}`;
+    // registeredUser (username/password/given_name/family_name/email) is generated at describe
+    // scope so afterAll can clean it up. mobile_number has no TestDataFactory equivalent, so it's
+    // generated here from a fresh timestamp suffix, the same way TestDataFactory does internally.
+    const regUsername = registeredUser.username;
+    const regPassword = registeredUser.password;
+    const regGivenName = registeredUser.given_name;
+    const regFamilyName = registeredUser.family_name;
+    const regEmail = registeredUser.email;
+    const regMobile = `+1234567${Date.now().toString().slice(-4)}`;
 
     // ========== REGISTRATION FLOW ==========
 
@@ -505,10 +424,6 @@ describeOrSkip("Sample App - MFA Authentication with SMS OTP", () => {
     console.log("\n[LOGIN] Step 18: Verifying successful MFA authentication...");
     await sampleAppLoginPage.verifyLoggedIn();
     console.log("✓ MFA authentication successful - Newly registered user logged in");
-
-    // Step 19: Retrieve created user ID for cleanup
-    console.log("\n[CLEANUP] Step 19: Retrieving created user ID for cleanup...");
-    await captureCreatedUserId(request, setupResult?.adminToken ?? "", regUsername, createdUserIds);
 
     console.log("\n--- TC003 Completed Successfully ---");
     console.log("Summary: User registered with mobile number and successfully logged in with MFA");

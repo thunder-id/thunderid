@@ -101,7 +101,7 @@ To customize the CI environment, add the following to **Settings > Secrets and v
 | `PLAYWRIGHT_ADMIN_PASSWORD`     | **Secret** | Admin Password      | `admin`                  |
 | `PLAYWRIGHT_TEST_USER_USERNAME` | Variable   | Test User Login     | `testuser`               |
 | `PLAYWRIGHT_TEST_USER_PASSWORD` | **Secret** | Test User Password  | `admin`                  |
-| `PLAYWRIGHT_WORKERS`            | Variable   | Parallel Processing | `1`                      |
+| `PLAYWRIGHT_WORKERS`            | Variable   | Parallel Processing | `6`                      |
 | `PLAYWRIGHT_DEBUG_AUTH`         | Variable   | Auth Debug Logs     | `false`                  |
 
 ---

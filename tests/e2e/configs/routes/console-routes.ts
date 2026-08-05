@@ -69,6 +69,21 @@ export const ConsoleRoutes = {
 
   /** User profile settings page */
   profile: "/console/settings/profile",
+
+  /** Welcome screen (landing page shown on first login) */
+  welcome: "/console/welcome",
+
+  /** Wayfinder "Secured Web Application" tryout page (embeds the Wayfinder sample setup) */
+  welcomeTryoutApp: "/console/welcome/tryout/securing-application",
+
+  /** Agents list page */
+  agents: "/console/agents",
+
+  /**
+   * Agent details page
+   * @param agentId - The agent identifier
+   */
+  agentDetails: (agentId: string) => `/console/agents/${agentId}`,
 } as const;
 
 export type ConsoleRoute = (typeof ConsoleRoutes)[keyof typeof ConsoleRoutes];

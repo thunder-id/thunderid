@@ -4,71 +4,118 @@
 /**
  * User Management E2E Tests
  *
- * Tests for user CRUD operations in the Console.
- * Uses Page Object Model pattern via fixtures.
+ * Covers the two Console onboarding wizards: Create User and Invite User.
+ * Both users are created through the UI and removed via the Users API afterwards.
  *
  * Required environment variables:
  * - BASE_URL: Console base URL
- * - TEST_USER_USERNAME: Base username for test user creation
- * - ADMIN_USERNAME: Admin credentials for authentication
- * - ADMIN_PASSWORD: Admin password for authentication
+ * - ADMIN_USERNAME / ADMIN_PASSWORD: admin credentials (console sign-in + API teardown)
+ *
+ * Optional:
+ * - SERVER_URL: backend base URL (default https://localhost:8090)
+ * - TEST_USER_PASSWORD: password for generated test users (default TestPassword@123)
  */
 
-import { test, type UserFormData } from "../../fixtures/console";
+import { ConsoleRoutes, expect, test, UsersApi, UsersPage } from "../../fixtures/console";
+import { Timeouts } from "../../constants/timeouts";
+import { TestDataFactory } from "../../utils/test-data";
 
-const baseUsername = process.env.TEST_USER_USERNAME as string;
+const baseUrl = process.env.BASE_URL;
+if (!baseUrl) {
+  throw new Error("BASE_URL environment variable is required");
+}
 
-/**
- * Generates unique test data for user creation
- * @param suffix - Optional suffix to identify test case
- */
-const generateTestData = (suffix: string = ""): UserFormData => {
-  const timestamp = Date.now();
-  const randomSuffix = Math.floor(Math.random() * 1000);
-  const uniqueSuffix = suffix ? `${suffix}_${timestamp}_${randomSuffix}` : `${timestamp}_${randomSuffix}`;
+test.describe("User Management - Create and Invite User", () => {
+  // Generated at describe scope so afterAll can see the names. Each browser project runs
+  // this file in its own worker, so concurrent chromium/firefox/webkit runs get distinct
+  // usernames and cannot collide.
+  const createdUser = TestDataFactory.createUser();
+  const invitedUser = TestDataFactory.createUser();
 
-  return {
-    username: `${baseUsername}${uniqueSuffix}`,
-    email: `${baseUsername}${uniqueSuffix}@example.com`,
-    given_name: `Testfname${suffix}`,
-    family_name: `Testlname${suffix}`,
-  };
-};
+  test.afterAll(async ({ request }) => {
+    // beforeAll/afterAll cannot take custom test-scoped fixtures, so construct the shared
+    // helper directly here - same class the usersApi fixture uses inside the tests below.
+    const usersApi = new UsersApi(request);
+    for (const username of [createdUser.username, invitedUser.username]) {
+      const deleted = await usersApi.deleteByUsername(username);
+      console.log(`Teardown: removed ${deleted} user(s) matching ${username}`);
+    }
+  });
 
-test.describe("User Management - CRUD Operations", () => {
-  test.describe("Create User Operations", () => {
-    /** TC001: Verify user can be created with all required fields */
-    test("TC001: Create new user with all required fields", async ({ usersPage }) => {
-      const testData = generateTestData("001");
+  /** TC001: Verify user can be created with all required fields */
+  test("TC001: Create new user with all required fields", async ({ usersPage, usersApi }) => {
+    await test.step("Open the Create User wizard", async () => {
+      await usersPage.openAddUserWizard("create");
+    });
 
-      await test.step("Navigate to Create User Wizard", async () => {
-        console.log("Navigating directly to create user wizard...");
-        await usersPage.gotoCreateUserWizard();
-        console.log("Successfully accessed create user wizard");
-        await usersPage.screenshot("debug-create-user-wizard-loaded");
+    await test.step("Fill in the user details", async () => {
+      await usersPage.fillUserForm(createdUser);
+    });
+
+    await test.step("Submit and close the completion screen", async () => {
+      await usersPage.submitForm();
+      await expect(
+        usersPage.page
+          .locator("h1, h2, h3, h4, h5, h6")
+          .filter({ hasText: /user added successfully/i })
+          .first()
+      ).toBeVisible({ timeout: Timeouts.FORM_LOAD });
+      await usersPage.closeWizard();
+      await usersPage.page.waitForURL(`**${ConsoleRoutes.users}`, { timeout: Timeouts.PAGE_LOAD });
+    });
+
+    await test.step("Verify the new user via the Users API", async () => {
+      const user = await usersApi.findByUsername(createdUser.username);
+      expect(user?.attributes.email).toBe(createdUser.email);
+    });
+  });
+
+  /** TC002: Verify user can be invited with an invite link */
+  test("TC002: Invite new user with an invite link", async ({ usersPage, usersApi, isolatedPage }) => {
+    let inviteLink = "";
+
+    await test.step("Open the Invite User wizard", async () => {
+      await usersPage.openAddUserWizard("invite");
+    });
+
+    await test.step("Fill in the invitee's details", async () => {
+      await usersPage.fillUserForm(invitedUser);
+      await usersPage.clickNextButton();
+    });
+
+    await test.step("Generate the invite link", async () => {
+      await usersPage.clickGetInviteLink();
+      await expect(usersPage.copyInviteLinkButton.first()).toBeVisible({ timeout: Timeouts.ELEMENT_VISIBILITY });
+      inviteLink = await usersPage.getInviteLink();
+      expect(inviteLink).toMatch(/^https?:\/\//);
+    });
+
+    await test.step("Close the invite wizard", async () => {
+      await usersPage.closeWizard();
+      await usersPage.page.waitForURL(`**${ConsoleRoutes.users}`, { timeout: Timeouts.PAGE_LOAD });
+    });
+
+    await test.step("Follow the invite link and complete registration", async () => {
+      // isolatedPage is a fresh browser context to avoid existing session cookies from main text context
+      await isolatedPage.goto(inviteLink, { timeout: Timeouts.PAGE_LOAD });
+
+      await new UsersPage(isolatedPage, baseUrl).completeRegistrationFlow(invitedUser);
+
+      // The completion step renders only TEXT components ("Welcome Aboard!" plus a confirmation
+      // message - see the registration_complete node in
+      // backend/cmd/server/bootstrap/01-default-resources.yaml): no form, no submit button. Assert
+      // the actual completion copy first - a blank/broken page would also satisfy the
+      // no-submit-button check below, so that check alone can't tell "completed" from "crashed".
+      await expect(isolatedPage.getByText(/welcome aboard/i)).toBeVisible({ timeout: Timeouts.FORM_LOAD });
+      await expect(isolatedPage.locator('form button[type="submit"]')).toHaveCount(0, {
+        timeout: Timeouts.FORM_LOAD,
       });
+    });
 
-      await test.step("Select user type and continue", async () => {
-        console.log("Selecting user type...");
-        await usersPage.selectUserTypeAndContinue();
-        console.log("User type selected, advanced to details step");
-        await usersPage.screenshot("debug-user-details-step");
-      });
-
-      await test.step("Fill in user details", async () => {
-        console.log("Filling user details:", testData);
-        await usersPage.fillUserForm(testData);
-        console.log("User details filled");
-        await usersPage.screenshot("debug-form-filled");
-      });
-
-      await test.step("Submit user creation form", async () => {
-        console.log("Submitting user creation form...");
-        await usersPage.submitForm();
-        console.log("User creation form submitted");
-        await usersPage.page.waitForLoadState("networkidle");
-        await usersPage.screenshot("debug-after-creation");
-      });
+    await test.step("Verify the registered user via the Users API", async () => {
+      // Using the API as UI defaults to 10 results per page
+      const user = await usersApi.findByUsername(invitedUser.username);
+      expect(user?.attributes.email).toBe(invitedUser.email);
     });
   });
 });

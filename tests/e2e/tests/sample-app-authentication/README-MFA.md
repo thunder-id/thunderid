@@ -23,7 +23,6 @@ The tests now support **automated setup** of all MFA prerequisites! Simply confi
 ```bash
 # 1. Configure environment variables in tests/e2e/.env
 SAMPLE_APP_URL=https://localhost:3000
-SAMPLE_APP_ID=<your-application-id>
 SERVER_URL=https://localhost:8090
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin
@@ -36,6 +35,7 @@ npm test tests/sample-app-authentication/sample-app-mfa-login.spec.ts
 ```
 
 The automated setup will:
+
 - ✅ Authenticate as admin
 - ✅ Create notification sender pointing to mock SMS server
 - ✅ Create MFA authentication flow with SMS OTP
@@ -49,7 +49,6 @@ The automated setup will:
 
 1. ✅ **Server running** at `https://localhost:8090`
 2. ✅ **Sample app running** (e.g., at `https://localhost:3000`)
-3. ✅ **Application ID** - Get from server setup
 
 ### Full Requirements (Manual Setup)
 
@@ -82,7 +81,6 @@ Or add directly to your `tests/e2e/.env` file:
 ```env
 # Required for automated setup
 SAMPLE_APP_URL=https://localhost:3000
-SAMPLE_APP_ID=<your-application-id>
 SERVER_URL=https://localhost:8090
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin
@@ -92,13 +90,6 @@ SAMPLE_APP_PASSWORD=e2e-test-password
 # Optional
 MOCK_SMS_SERVER_PORT=8098
 AUTO_SETUP_MFA=true  # Set to false to disable automated setup
-```
-
-**Getting your Application ID:**
-```bash
-# Authenticate as admin first, then:
-curl -k 'https://localhost:8090/applications' \
-  -H "Authorization: Bearer <admin-token>" | jq '.applications[] | {id, name}'
 ```
 
 2. **Run Tests**
@@ -498,6 +489,7 @@ FLOW_ID=$(echo $FLOW_RESPONSE | jq -r '.id')
 ```
 
 ### Create a User with Mobile No
+
 ```bash
 USER_RESPONSE=$(curl --location 'https://localhost:8090/users' \
 --header 'Content-Type: application/json' \
@@ -518,6 +510,7 @@ USER_RESPONSE=$(curl --location 'https://localhost:8090/users' \
 ### Update the sample application
 
 Follow these steps:
+
 1. Fetch all applications from the server
 2. Find the "React SDK Sample" application
 3. Get its full configuration
@@ -551,17 +544,16 @@ curl -k -X PUT "https://localhost:8090/applications/$APP_ID" \
 
 ## Environment Variables Reference
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `SAMPLE_APP_URL` | Yes | - | URL of the sample app (e.g., `https://localhost:3000`) |
-| `SAMPLE_APP_ID` | Yes* | - | Application ID in the server (*required for automated setup) |
-| `SERVER_URL` | No | `https://localhost:8090` | URL of the server |
-| `ADMIN_USERNAME` | No | `admin` | Admin username for the server |
-| `ADMIN_PASSWORD` | No | `admin` | Admin password for the server |
-| `SAMPLE_APP_USERNAME` | No | `e2e-test-user` | Test user username |
-| `SAMPLE_APP_PASSWORD` | No | `e2e-test-password` | Test user password |
-| `MOCK_SMS_SERVER_PORT` | No | `8098` | Port for mock SMS server |
-| `AUTO_SETUP_MFA` | No | `true` | Enable/disable automated setup |
+| Variable               | Required | Default                  | Description                                            |
+| ---------------------- | -------- | ------------------------ | ------------------------------------------------------ |
+| `SAMPLE_APP_URL`       | Yes      | -                        | URL of the sample app (e.g., `https://localhost:3000`) |
+| `SERVER_URL`           | No       | `https://localhost:8090` | URL of the server                                      |
+| `ADMIN_USERNAME`       | No       | `admin`                  | Admin username for the server                          |
+| `ADMIN_PASSWORD`       | No       | `admin`                  | Admin password for the server                          |
+| `SAMPLE_APP_USERNAME`  | No       | `e2e-test-user`          | Test user username                                     |
+| `SAMPLE_APP_PASSWORD`  | No       | `e2e-test-password`      | Test user password                                     |
+| `MOCK_SMS_SERVER_PORT` | No       | `8098`                   | Port for mock SMS server                               |
+| `AUTO_SETUP_MFA`       | No       | `true`                   | Enable/disable automated setup                         |
 
 ## Running the Tests
 
@@ -601,9 +593,11 @@ npm run test:debug tests/sample-app-authentication/sample-app-mfa-login.spec.ts
 ## Test Cases
 
 ### TC001: Complete MFA Login Flow
+
 **Test**: `TC001: Complete MFA login flow with username/password + SMS OTP`
 
 **Steps:**
+
 1. Navigate to sample app home page
 2. Verify home page loaded
 3. Click "Sign In" button
@@ -622,6 +616,7 @@ npm run test:debug tests/sample-app-authentication/sample-app-mfa-login.spec.ts
 16. Verify logout successful
 
 **Validates:**
+
 - Complete MFA authentication flow
 - Password authentication (first factor)
 - OTP page loading after password authentication
@@ -632,6 +627,7 @@ npm run test:debug tests/sample-app-authentication/sample-app-mfa-login.spec.ts
 - Successful login after both factors
 
 **Notes:**
+
 - Test automatically skips if `SAMPLE_APP_URL` is not set
 - Test skips with warning if OTP page doesn't load (MFA not configured)
 - Mock SMS server runs on port 8098 by default
@@ -639,9 +635,11 @@ npm run test:debug tests/sample-app-authentication/sample-app-mfa-login.spec.ts
 - With automated setup, all prerequisites are handled automatically
 
 ### TC002: OTP Required After Password
+
 **Test**: `TC002: Verify OTP is required after password authentication`
 
 **Steps:**
+
 1. Navigate to sample app home page
 2. Verify home page loaded
 3. Click "Sign In" button
@@ -652,19 +650,23 @@ npm run test:debug tests/sample-app-authentication/sample-app-mfa-login.spec.ts
 8. Confirm user is not logged in yet (OTP input visible)
 
 **Validates:**
+
 - Second factor (OTP) is required after password authentication
 - Cannot bypass OTP verification
 - Authentication incomplete without OTP
 - MFA flow enforces second factor
 
 **Notes:**
+
 - Test automatically skips if MFA not configured
 - Verifies OTP input is visible, confirming user hasn't proceeded
 
 ### TC003: Incorrect OTP Validation
+
 **Test**: `TC003: Verify incorrect OTP shows error`
 
 **Steps:**
+
 1. Navigate to sample app home page
 2. Verify home page loaded
 3. Click "Sign In" button and complete password authentication
@@ -677,6 +679,7 @@ npm run test:debug tests/sample-app-authentication/sample-app-mfa-login.spec.ts
 10. Verify error message displayed OR user remains on OTP page
 
 **Validates:**
+
 - Invalid OTP is rejected by the system
 - Error message displayed to user (if implemented)
 - User remains on OTP page when OTP is incorrect
@@ -684,6 +687,7 @@ npm run test:debug tests/sample-app-authentication/sample-app-mfa-login.spec.ts
 - System validates OTP correctness
 
 **Notes:**
+
 - Test checks for either error message or remaining on OTP page
 - Logs warning if user proceeds (potential security issue)
 - Test automatically skips if MFA not configured
@@ -695,18 +699,24 @@ npm run test:debug tests/sample-app-authentication/sample-app-mfa-login.spec.ts
 The `MFASetup` utility (`utils/server-setup/mfa-setup.ts`) automates the complete MFA configuration:
 
 **Setup Process:**
-1. **Admin Authentication** - Obtains admin token via flow execution
-2. **Notification Sender Creation** - Creates custom SMS sender pointing to mock server
-3. **MFA Flow Creation** - Creates complete authentication flow with SMS OTP nodes
-4. **Test User Creation** - Creates user with mobile number attribute
-5. **Application Update** - Attaches MFA flow to the application
+
+1. **Notification Sender Creation** - Creates custom SMS sender pointing to mock server
+2. **MFA Flow Creation** - Creates complete authentication flow with SMS OTP nodes
+3. **Test User Creation** - Creates user with mobile number attribute
+4. **Application Update** - Attaches MFA flow to the application
+
+Admin authentication happens transparently: every backend call goes through the `*Api` helpers
+(`utils/users-api`, `utils/connections-api`, `utils/flows-api`, ...), which acquire and cache an
+admin bearer token internally. `MFASetup` itself never obtains or carries admin credentials.
 
 **Cleanup Process:**
+
 - All created resources are automatically deleted after tests complete
 - Cleanup functions are registered during setup
 - Cleanup runs even if tests fail (in `afterAll` hook)
 
 **Features:**
+
 - Handles existing resources gracefully (e.g., user already exists)
 - Provides detailed console logging for debugging
 - Can be disabled with `AUTO_SETUP_MFA=false`
@@ -726,6 +736,7 @@ The tests use a TypeScript-based mock SMS server that:
   - `GET /health` - Health check
 
 **OTP Extraction Logic:**
+
 - Searches for numeric sequences of 4-8 digits
 - Prioritizes 6-digit codes (most common)
 - Handles multiple SMS message formats
@@ -735,6 +746,7 @@ The tests use a TypeScript-based mock SMS server that:
 **`SampleAppLoginPage`** provides methods for:
 
 **Basic Login:**
+
 - `goto(url)` - Navigate to sample app
 - `verifyHomePageLoaded()` - Check home page
 - `clickSignInButton()` - Start login flow
@@ -746,6 +758,7 @@ The tests use a TypeScript-based mock SMS server that:
 - `verifyLoggedOut()` - Verify logout
 
 **MFA/OTP Methods:**
+
 - `verifyOTPPageLoaded()` - Check OTP verification page
 - `fillOTP(otp)` - Enter OTP code
 - `clickVerifyOTP()` - Submit OTP
@@ -762,7 +775,6 @@ The tests use a TypeScript-based mock SMS server that:
 │             │                 │
 │ ┌───────────▼─────────────┐ │
 │ │  Automated ThunderID Setup│ │
-│ │  - Admin Auth           │ │
 │ │  - Create Sender        │ │
 │ │  - Create MFA Flow      │ │
 │ │  - Create Test User     │ │
@@ -816,24 +828,13 @@ The tests use a TypeScript-based mock SMS server that:
 
 ### Automated Setup Issues
 
-#### Setup Fails - Application ID Not Found
-
-**Issue**: `SAMPLE_APP_ID not provided - skipping automated setup`
-
-**Solutions**:
-1. Ensure `SAMPLE_APP_ID` is set in `.env` file
-2. Get application ID from the server:
-   ```bash
-   curl -k 'https://localhost:8090/applications' \
-     -H "Authorization: Bearer <admin-token>"
-   ```
-3. Or use manual setup with `AUTO_SETUP_MFA=false`
-
 #### Setup Fails - Admin Authentication Error
 
-**Issue**: `Admin authentication failed`
+**Issue**: `Admin authentication failed` (surfaces from the shared `*Api` helpers' token
+acquisition - see `utils/api-request` - not from `MFASetup` itself)
 
 **Solutions**:
+
 1. Verify server is running at `SERVER_URL`
 2. Check `ADMIN_USERNAME` and `ADMIN_PASSWORD` are correct
 3. Verify application has basic authentication flow configured
@@ -844,6 +845,7 @@ The tests use a TypeScript-based mock SMS server that:
 **Issue**: Failed to create notification sender, flow, or user
 
 **Solutions**:
+
 1. Check server logs for detailed error messages
 2. Verify admin user has necessary permissions
 3. Check if resources already exist (setup handles this gracefully)
@@ -865,7 +867,8 @@ The tests use a TypeScript-based mock SMS server that:
 
 **Issue**: Tests show as "skipped" in results
 
-**Solutions**: 
+**Solutions**:
+
 - Ensure `SAMPLE_APP_URL` is set in `.env` file
 - Tests automatically skip if URL is not provided
 - Verify sample app is running and accessible
@@ -875,6 +878,7 @@ The tests use a TypeScript-based mock SMS server that:
 **Issue**: Error starting mock SMS server - port already in use
 
 **Solutions**:
+
 1. Change the port in `.env`:
    ```env
    MOCK_SMS_SERVER_PORT=8099
@@ -889,6 +893,7 @@ The tests use a TypeScript-based mock SMS server that:
 **Issue**: Test fails because `lastMessage` is null
 
 **Solutions**:
+
 1. Verify notification sender configuration points to `http://localhost:8098/send-sms`
 2. Check server logs for SMS sending errors
 3. Verify MFA flow has correct `senderId` in OTP nodes
@@ -899,6 +904,7 @@ The tests use a TypeScript-based mock SMS server that:
 **Issue**: Test times out waiting for OTP input page
 
 **Solutions**:
+
 1. Verify MFA flow is configured correctly with OTP prompt
 2. Check that password authentication succeeded
 3. Verify application is using MFA flow (not basic password-only flow)
@@ -909,6 +915,7 @@ The tests use a TypeScript-based mock SMS server that:
 **Issue**: Correct OTP entered but authentication fails
 
 **Solutions**:
+
 1. Verify OTP executor has correct `senderId` in verify node
 2. Check OTP is being extracted correctly from SMS
 3. Verify test user has mobile number attribute
@@ -919,6 +926,7 @@ The tests use a TypeScript-based mock SMS server that:
 **Issue**: User not found or authentication fails
 
 **Solutions**:
+
 1. Verify test user exists in the server
 2. Ensure user has `mobile_number` attribute
 3. Check user is in correct organization unit
@@ -944,6 +952,7 @@ The tests use a TypeScript-based mock SMS server that:
 ## Support
 
 For issues or questions:
+
 1. Check server logs: `tail -f backend/server.log`
 2. Review test trace files: `test-results/*/trace.zip`
 3. Run tests in debug mode: `npm run test:debug`

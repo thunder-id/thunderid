@@ -61,7 +61,7 @@ setup("Admin login test", async ({ page, context, signinPage }) => {
       { timeout: 10000 }
     );
     console.log("✅ Redirected to authentication page:", page.url());
-  } catch (e) {
+  } catch {
     console.log("ℹ️ No redirect detected after 10s. Current URL:", page.url());
     if (!(await signinPage.isOnLoginPage())) {
       console.log("⚠️ Not on login page, attempting direct navigation to signin...");
@@ -105,7 +105,12 @@ setup("Admin login test", async ({ page, context, signinPage }) => {
   console.log("✅ Login verified via URL check");
 
   console.log("⏳ Waiting for authentication to be fully established...");
-  await page.waitForLoadState("networkidle");
+  // The SDK writes its session into this sessionStorage key once the token exchange completes -
+  // the same key setupAuthentication()'s checkTokensExpired() reads on later runs - so this is
+  // the actual signal to wait for before this file captures storage below.
+  await page.waitForFunction(() => Object.keys(sessionStorage).some(key => key.includes("session_data-instance_0")), {
+    timeout: Timeouts.PAGE_LOAD,
+  });
 
   // Check storage availability (using raw page evaluate as this is somewhat internal state check)
   await page.evaluate(() => {

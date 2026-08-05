@@ -34,4 +34,10 @@ export const Timeouts = {
 
   /** Timeout for login redirects */
   REDIRECT: 20000,
+
+  /**
+   * Budget for a suite-level beforeAll/afterAll that provisions server state (mock servers,
+   * connections, flows, application rewiring) rather than running a single test.
+   */
+  SUITE_SETUP: 60 * 1000,
 } as const;

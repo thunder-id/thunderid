@@ -12,9 +12,10 @@
  * await settingsPage.addAllowedOrigin("https://app.example.com");
  */
 
-import { Page, Locator, expect } from "@playwright/test";
+import { Page, Locator } from "@playwright/test";
 import { ConsoleRoutes } from "../../configs/routes/console-routes";
 import { BasePage } from "../base.page";
+import { UnsavedChangesBar } from "../components/unsaved-changes-bar";
 import { Timeouts } from "../../constants/timeouts";
 
 // Matches the placeholder rendered on each editable (custom) origin input.
@@ -25,12 +26,11 @@ export class SettingsPage extends BasePage {
 
   readonly corsTab: Locator;
   readonly addOriginButton: Locator;
-  readonly saveButton: Locator;
-  readonly discardButton: Locator;
   // Editable (custom) origin inputs and their delete buttons render in the same row order,
   // so the Nth input aligns with the Nth remove button. Read-only rows carry neither.
   readonly originInputs: Locator;
   readonly removeButtons: Locator;
+  readonly unsavedChangesBar: UnsavedChangesBar;
 
   constructor(page: Page, baseUrl: string) {
     super(page);
@@ -38,16 +38,17 @@ export class SettingsPage extends BasePage {
 
     this.corsTab = page.getByRole("tab", { name: /cors/i });
     this.addOriginButton = page.getByRole("button", { name: /add origin/i });
-    this.saveButton = page.getByRole("button", { name: /save changes/i });
-    this.discardButton = page.getByRole("button", { name: /discard/i });
     this.originInputs = page.getByPlaceholder(ORIGIN_PLACEHOLDER);
     this.removeButtons = page.getByRole("button", { name: /remove origin/i });
+    // CorsSection passes saveLabel={t('settings:cors.save', 'Save changes')} and
+    // resetLabel={t('settings:cors.reset', 'Reset')}.
+    this.unsavedChangesBar = new UnsavedChangesBar(page, "Save changes", "Reset");
   }
 
-  /** Navigate to the Settings (CORS) page. */
+  /** Navigate to the Settings (CORS) page. The waitFor below is the real readiness gate, so the
+   *  navigation itself doesn't need to also wait for network idle. */
   async goto() {
     await this.page.goto(`${this.baseUrl}${ConsoleRoutes.settings}`, {
-      waitUntil: "networkidle",
       timeout: Timeouts.PAGE_LOAD,
     });
     await this.corsTab.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
@@ -75,7 +76,7 @@ export class SettingsPage extends BasePage {
     const input = this.originInputs.last();
     await input.fill(origin);
     await input.blur();
-    await this.save();
+    await this.unsavedChangesBar.save();
   }
 
   /** Remove a custom allowed origin (no-op if absent) and persist. */
@@ -85,13 +86,6 @@ export class SettingsPage extends BasePage {
       return;
     }
     await this.removeButtons.nth(index).click();
-    await this.save();
-  }
-
-  /** Click Save changes and wait for the unsaved-changes bar to clear (success). */
-  private async save() {
-    await expect(this.saveButton).toBeEnabled({ timeout: Timeouts.ELEMENT_VISIBILITY });
-    await this.saveButton.click();
-    await expect(this.saveButton).toBeHidden({ timeout: Timeouts.ELEMENT_VISIBILITY });
+    await this.unsavedChangesBar.save();
   }
 }

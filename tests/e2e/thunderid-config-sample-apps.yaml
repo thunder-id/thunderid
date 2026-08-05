@@ -1,0 +1,95 @@
+---
+# Dedicated clone of the React SDK sample app's own declaration (see
+# samples/apps/react-sdk-sample/thunderid-config/thunderid-config.yaml), used only by
+# sample-app-mfa-login.spec.ts. The sample app serves one physical page but can boot as any
+# application whose clientId its runtime.json names (see constants/sample-apps.ts and the
+# sampleAppClientId fixture option) - giving MFA its own application lets it rewire this app's
+# auth/registration flow bindings without contending with the default-login suite over the one
+# shared REACT_SDK_SAMPLE app.
+#
+# Imported after the sample-app configs (samples/apps/react-sdk-sample and vanilla-sample), which
+# provision the Customer user type and the react-sdk-sample-signout-flow this document references.
+resource_type: application
+id: 6e35c100-3fee-48f3-99e0-f21ecb670904
+ouHandle: default
+name: E2E Sample App (MFA)
+description: Dedicated sample-app clone for MFA E2E testing; do not use outside tests/e2e/tests/sample-app-authentication/sample-app-mfa-login.spec.ts
+type: browser
+authFlowHandle: default-flow
+isRegistrationFlowEnabled: true
+registrationFlowHandle: default-flow
+isRecoveryFlowEnabled: false
+signOutFlowHandle: react-sdk-sample-signout-flow
+isSignOutFlowEnabled: true
+assertion:
+  validityPeriod: 3600
+loginConsent:
+  validityPeriod: 0
+allowedUserTypes:
+  - Customer
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: E2E_SAMPLE_MFA
+      redirectUris:
+        - https://localhost:3000
+      postLogoutRedirectUris:
+        - https://localhost:3000
+      grantTypes:
+        - authorization_code
+      responseTypes:
+        - code
+      tokenEndpointAuthMethod: none
+      pkceRequired: true
+      publicClient: true
+      requirePushedAuthorizationRequests: false
+      token:
+        accessToken:
+          userConfig:
+            validityPeriod: 3600
+            attributes:
+              - given_name
+              - family_name
+              - email
+              - groups
+              - name
+        idToken:
+          validityPeriod: 3600
+          userAttributes:
+            - given_name
+            - family_name
+            - email
+            - groups
+            - name
+          responseType: JWT
+      userInfo:
+        responseType: JSON
+        userAttributes:
+          - given_name
+          - family_name
+          - email
+          - groups
+          - name
+      scopeClaims:
+        email:
+          - email
+          - email_verified
+        group:
+          - groups
+        phone:
+          - phone_number
+          - phone_number_verified
+        profile:
+          - name
+          - given_name
+          - family_name
+          - picture
+
+---
+resource_type: server_config
+# Allows the sample apps' browser origins to reach the API during E2E tests. CORS origins come only from
+# the server-config "cors" section (no default ships), so the E2E setup imports them here.
+name: cors
+value:
+  allowedOrigins:
+    - "https://localhost:3000"

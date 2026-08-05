@@ -885,7 +885,8 @@ jobs:
     defaults:
       run:
         shell: bash
-    timeout-minutes: 30
+    # Provisions and runs against two servers in sequence (core, then a fresh one for @wayfinder).
+    timeout-minutes: 40
     steps:
       - name: 🔧 Install Required OS Utilities
         # jq/lsof/unzip are used by the bash setup steps below. No build toolchain
@@ -950,6 +951,15 @@ jobs:
           echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> "$GITHUB_ENV"
           echo "✅ Resolved admin credentials (Secret > Variable > defaults.env)"
 
+      - name: 📋 Load E2E Default Configuration
+        run: |
+          # Loads tests/e2e/defaults.env (the canonical fixed dataset, shared with run-e2e.sh
+          # for local runs) as DEFAULT_* so later steps can fall back to it.
+          while IFS='=' read -r key value; do
+            case "$key" in ''|'#'*) continue ;; esac
+            echo "DEFAULT_${key}=${value}" >> "$GITHUB_ENV"
+          done < tests/e2e/defaults.env
+
       - name: 🚀 Start the Server
         run: |
           cd tests/e2e/server
@@ -981,179 +991,58 @@ jobs:
           echo "Server started successfully!"
       
       - name: 🔑 Obtain Admin Access Token
-        run: |
-          # The server runs with security enabled, so the management /import and
-          # /applications calls below need an admin token.
-          # Obtain one via OAuth2 authorization code + PKCE through the CONSOLE app,
-          # authenticating the bootstrapped admin user.
-          SERVER_URL="https://localhost:8090"
-          CONSOLE_REDIRECT_URI="https://localhost:8090/console"
-          # Tokens are bound to a single resource server (RFC 8707), so the CONSOLE app targets the
-          # bootstrapped System resource server, mirroring the console runtime config.
-          CONSOLE_RESOURCE="https://localhost:8090/mcp"
-          CODE_VERIFIER=$(openssl rand -hex 32 | cut -c1-43)
-          CODE_CHALLENGE=$(printf '%s' "$CODE_VERIFIER" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
+        id: admin-token
+        uses: ./.github/actions/obtain-admin-token
+        with:
+          admin-username: ${{ env.ADMIN_USERNAME }}
+          admin-password: ${{ env.ADMIN_PASSWORD }}
 
-          curl -sk -o /dev/null -D /tmp/authz_headers.txt -G "$SERVER_URL/oauth2/authorize" \
-            --data-urlencode "client_id=CONSOLE" \
-            --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
-            --data-urlencode "scope=system" \
-            --data-urlencode "response_type=code" \
-            --data-urlencode "resource=$CONSOLE_RESOURCE" \
-            --data-urlencode "code_challenge=$CODE_CHALLENGE" \
-            --data-urlencode "code_challenge_method=S256"
+      - name: 📦 Import Vanilla Sample Resources
+        uses: ./.github/actions/import-declarative-config
+        with:
+          config-path: samples/apps/vanilla-sample/thunderid-config/basic/thunderid-config.yaml
+          admin-token: ${{ steps.admin-token.outputs.token }}
+          label: Vanilla Sample resources
+          variables-json: |
+            {
+              "SAMPLE_APP_FLOW_SECRET": "sample-app-flow-secret",
+              "SAMPLE_APP_GOOGLE_CLIENT_ID": "test-google-client-id",
+              "SAMPLE_APP_GOOGLE_CLIENT_SECRET": "test-google-client-secret",
+              "SAMPLE_APP_GOOGLE_REDIRECT_URI": "https://localhost:3000/",
+              "SAMPLE_APP_GOOGLE_SCOPES": "openid,email,profile",
+              "SAMPLE_APP_GITHUB_CLIENT_ID": "test-github-client-id",
+              "SAMPLE_APP_GITHUB_CLIENT_SECRET": "test-github-client-secret",
+              "SAMPLE_APP_GITHUB_REDIRECT_URI": "https://localhost:3000/",
+              "SAMPLE_APP_SMS_SENDER_ID": "test-sms-sender-id"
+            }
 
-          LOCATION=$(grep -i "^location:" /tmp/authz_headers.txt | tr -d '\r' | sed 's/^[Ll]ocation: //')
-          AUTH_ID=$(echo "$LOCATION" | sed 's/.*[?&]authId=\([^&]*\).*/\1/')
-          EXEC_ID=$(echo "$LOCATION" | sed 's/.*[?&]executionId=\([^&]*\).*/\1/')
-          if [ -z "$AUTH_ID" ] || [ -z "$EXEC_ID" ]; then
-            echo "❌ Failed to parse authId/executionId from authorize redirect: $LOCATION"
-            exit 1
-          fi
+      - name: 📦 Import React SDK Sample Resources
+        uses: ./.github/actions/import-declarative-config
+        with:
+          config-path: samples/apps/react-sdk-sample/thunderid-config/thunderid-config.yaml
+          admin-token: ${{ steps.admin-token.outputs.token }}
+          label: React SDK Sample resources
+          variables-json: |
+            {
+              "REACT_SDK_SAMPLE_CLIENT_ID": "REACT_SDK_SAMPLE",
+              "REACT_SDK_SAMPLE_REDIRECT_URIS": ["https://localhost:3000"],
+              "REACT_SDK_SAMPLE_POST_LOGOUT_REDIRECT_URIS": ["https://localhost:3000"]
+            }
 
-          # The console login flow runs an SSO check before the credentials prompt. This bootstrap is a
-          # fresh, cookie-less login (no SSO session), so the first execute advances the flow past the
-          # SSO check to the credentials prompt and mints a challenge token; the second submits the admin
-          # credentials with that token.
-          PROMPT_RESP=$(curl -sk -X POST "$SERVER_URL/flow/execute" \
-            -H "Content-Type: application/json" \
-            -d "{\"executionId\": \"$EXEC_ID\"}")
-          CHALLENGE_TOKEN=$(echo "$PROMPT_RESP" | jq -r '.challengeToken // empty')
-          FLOW_PAYLOAD=$(jq -n \
-            --arg executionId "$EXEC_ID" \
-            --arg challengeToken "$CHALLENGE_TOKEN" \
-            --arg username "$ADMIN_USERNAME" \
-            --arg password "$ADMIN_PASSWORD" \
-            '{executionId: $executionId, challengeToken: $challengeToken, inputs: {username: $username, password: $password}, action: "action_001"}')
-          FLOW_RESP=$(curl -sk -X POST "$SERVER_URL/flow/execute" \
-            -H "Content-Type: application/json" \
-            -d "$FLOW_PAYLOAD")
-          ASSERTION=$(echo "$FLOW_RESP" | jq -r '.assertion // empty')
-          if [ -z "$ASSERTION" ]; then
-            echo "❌ Flow execution did not return an assertion: $FLOW_RESP"
-            exit 1
-          fi
+      - name: 📦 Import E2E Admin App
+        uses: ./.github/actions/import-declarative-config
+        with:
+          config-path: tests/e2e/thunderid-config.yaml
+          admin-token: ${{ steps.admin-token.outputs.token }}
+          label: E2E admin app
 
-          CALLBACK_RESP=$(curl -sk -X POST "$SERVER_URL/oauth2/auth/callback" \
-            -H "Content-Type: application/json" \
-            -d "{\"authId\": \"$AUTH_ID\", \"assertion\": \"$ASSERTION\"}")
-          AUTH_CODE=$(echo "$CALLBACK_RESP" | jq -r '.redirect_uri // empty' | sed 's/.*[?&]code=\([^&]*\).*/\1/')
-          if [ -z "$AUTH_CODE" ]; then
-            echo "❌ Callback did not return an authorization code: $CALLBACK_RESP"
-            exit 1
-          fi
+      - name: 📦 Import E2E Sample-App Infrastructure
+        uses: ./.github/actions/import-declarative-config
+        with:
+          config-path: tests/e2e/thunderid-config-sample-apps.yaml
+          admin-token: ${{ steps.admin-token.outputs.token }}
+          label: E2E sample-app infrastructure
 
-          TOKEN_RESP=$(curl -sk -X POST "$SERVER_URL/oauth2/token" \
-            -H "Content-Type: application/x-www-form-urlencoded" \
-            --data-urlencode "grant_type=authorization_code" \
-            --data-urlencode "code=$AUTH_CODE" \
-            --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
-            --data-urlencode "client_id=CONSOLE" \
-            --data-urlencode "code_verifier=$CODE_VERIFIER")
-          ADMIN_TOKEN=$(echo "$TOKEN_RESP" | jq -r '.access_token // empty')
-          if [ -z "$ADMIN_TOKEN" ]; then
-            echo "❌ Failed to obtain admin access token: $TOKEN_RESP"
-            exit 1
-          fi
-          echo "::add-mask::$ADMIN_TOKEN"
-          echo "ADMIN_TOKEN=$ADMIN_TOKEN" >> "$GITHUB_ENV"
-          echo "✅ Obtained admin access token."
-
-      - name: 📦 Import Sample App Resources
-        run: |
-          echo "Importing Vanilla Sample declarative resources..."
-          YAML_CONTENT=$(cat samples/apps/vanilla-sample/thunderid-config/basic/thunderid-config.yaml)
-          HTTP_STATUS=$(curl -k -s -o /tmp/import_response.json -w "%{http_code}" \
-            -X POST https://localhost:8090/import \
-            -H 'Content-Type: application/json' \
-            -H "Authorization: Bearer $ADMIN_TOKEN" \
-            -d "{
-              \"content\": $(echo "$YAML_CONTENT" | jq -Rs .),
-              \"variables\": {
-                \"SAMPLE_APP_FLOW_SECRET\": \"sample-app-flow-secret\",
-                \"SAMPLE_APP_GOOGLE_CLIENT_ID\": \"test-google-client-id\",
-                \"SAMPLE_APP_GOOGLE_CLIENT_SECRET\": \"test-google-client-secret\",
-                \"SAMPLE_APP_GOOGLE_REDIRECT_URI\": \"https://localhost:3000/\",
-                \"SAMPLE_APP_GOOGLE_SCOPES\": \"openid,email,profile\",
-                \"SAMPLE_APP_GITHUB_CLIENT_ID\": \"test-github-client-id\",
-                \"SAMPLE_APP_GITHUB_CLIENT_SECRET\": \"test-github-client-secret\",
-                \"SAMPLE_APP_GITHUB_REDIRECT_URI\": \"https://localhost:3000/\",
-                \"SAMPLE_APP_SMS_SENDER_ID\": \"test-sms-sender-id\"
-              },
-              \"options\": {\"upsert\": true}
-            }")
-          echo "Import HTTP status: $HTTP_STATUS"
-          cat /tmp/import_response.json | jq . || cat /tmp/import_response.json
-          if [ "$HTTP_STATUS" != "200" ]; then
-            echo "❌ Failed to import Vanilla Sample resources (HTTP $HTTP_STATUS)"
-            exit 1
-          fi
-          echo "✅ Vanilla Sample resources imported successfully"
-
-          echo "Importing React SDK Sample declarative resources..."
-          YAML_CONTENT=$(cat samples/apps/react-sdk-sample/thunderid-config/thunderid-config.yaml)
-          HTTP_STATUS=$(curl -k -s -o /tmp/import_response.json -w "%{http_code}" \
-            -X POST https://localhost:8090/import \
-            -H 'Content-Type: application/json' \
-            -H "Authorization: Bearer $ADMIN_TOKEN" \
-            -d "{
-              \"content\": $(echo "$YAML_CONTENT" | jq -Rs .),
-              \"variables\": {
-                \"REACT_SDK_SAMPLE_CLIENT_ID\": \"REACT_SDK_SAMPLE\",
-                \"REACT_SDK_SAMPLE_REDIRECT_URIS\": [\"https://localhost:3000\"],
-                \"REACT_SDK_SAMPLE_POST_LOGOUT_REDIRECT_URIS\": [\"https://localhost:3000\"]
-              },
-              \"options\": {\"upsert\": true}
-            }")
-          echo "Import HTTP status: $HTTP_STATUS"
-          cat /tmp/import_response.json | jq . || cat /tmp/import_response.json
-          if [ "$HTTP_STATUS" != "200" ]; then
-            echo "❌ Failed to import React SDK Sample resources (HTTP $HTTP_STATUS)"
-            exit 1
-          fi
-          echo "✅ React SDK Sample resources imported successfully"
-
-          echo "Importing E2E test infrastructure resources..."
-          YAML_CONTENT=$(cat tests/e2e/thunderid-config.yaml)
-          HTTP_STATUS=$(curl -k -s -o /tmp/import_response.json -w "%{http_code}" \
-            -X POST https://localhost:8090/import \
-            -H 'Content-Type: application/json' \
-            -H "Authorization: Bearer $ADMIN_TOKEN" \
-            -d "{
-              \"content\": $(echo "$YAML_CONTENT" | jq -Rs .),
-              \"options\": {\"upsert\": true}
-            }")
-          echo "Import HTTP status: $HTTP_STATUS"
-          cat /tmp/import_response.json | jq . || cat /tmp/import_response.json
-          if [ "$HTTP_STATUS" != "200" ]; then
-            echo "❌ Failed to import E2E test infrastructure resources (HTTP $HTTP_STATUS)"
-            exit 1
-          fi
-          echo "✅ E2E test infrastructure resources imported successfully"
-
-      - name: 🔍 Extract Sample App ID
-        id: extract-app-id
-        run: |
-          echo "Fetching applications from the server..."
-
-          # Get applications list
-          APPS_RESPONSE=$(curl -s -k -H "Authorization: Bearer $ADMIN_TOKEN" https://localhost:8090/applications)
-
-          # Extract Sample App ID using jq (uses "Sample App" from vanilla sample,
-          # which is unaffected by MFA test setup/teardown)
-          SAMPLE_APP_ID=$(echo "$APPS_RESPONSE" | jq -r '(.applications // [])[] | select(.name == "Sample App") | .id')
-
-          if [ -z "$SAMPLE_APP_ID" ] || [ "$SAMPLE_APP_ID" == "null" ]; then
-            echo "⚠️  Warning: Sample App not found in applications list"
-            echo "Available applications:"
-            echo "$APPS_RESPONSE" | jq -r '(.applications // [])[] | "  - \(.name) (\(.id))"'
-            echo "sample_app_id=" >> $GITHUB_OUTPUT
-            exit 1
-          else
-            echo "✓ Sample App ID extracted: $SAMPLE_APP_ID"
-            echo "sample_app_id=$SAMPLE_APP_ID" >> $GITHUB_OUTPUT
-          fi
-      
       - name: 🔄 Restart the Server with Security Enabled
         run: |
           cd tests/e2e/server
@@ -1268,38 +1157,28 @@ jobs:
       - name: 📦 Install E2E Dependencies
         run: pnpm install --frozen-lockfile --filter @thunderid/e2e
 
-      - name: 📋 Load E2E Default Configuration
-        run: |
-          # Loads tests/e2e/defaults.env (the canonical fixed dataset, shared with run-e2e.sh
-          # for local runs) as DEFAULT_* so the step below can fall back to it.
-          while IFS='=' read -r key value; do
-            case "$key" in ''|'#'*) continue ;; esac
-            echo "DEFAULT_${key}=${value}" >> "$GITHUB_ENV"
-          done < tests/e2e/defaults.env
-
-
-      # Pull requests run the Chromium projects only, and the merge queue runs all
+      # Pull requests run the Chromium project only, and the merge queue runs all
       # three browsers, so nothing reaches main without the full matrix. On a pull
-      # request that is 45 of the 133 tests, and it also collapses the serial
-      # project chain (the CORS and MFA specs, which cannot overlap) from three
-      # sequential browsers to one, which is the part of the suite that no amount
-      # of workers can shorten.
+      # request that is 68 of the 174 tests.
 
-      - name: 🎭 Run Playwright E2E Tests
+      # The Wayfinder specs (tagged @wayfinder) import a config bundle that replaces the
+      # server-wide CORS allowlist and default resource server (full-replace import semantics),
+      # so they must not share a server with anything that depends on either setting; run them
+      # separately, below, against their own freshly provisioned server.
+      - name: 🎭 Run Playwright E2E Tests (core)
         run: |
           if [ -n "$PLAYWRIGHT_PROJECT_FILTER" ]; then
             echo "Running Playwright projects matching '$PLAYWRIGHT_PROJECT_FILTER'"
-            pnpm test --project="$PLAYWRIGHT_PROJECT_FILTER"
+            pnpm test --project="$PLAYWRIGHT_PROJECT_FILTER" --grep-invert @wayfinder --pass-with-no-tests
           else
             echo "Running every Playwright project"
-            pnpm test
+            pnpm test --grep-invert @wayfinder --pass-with-no-tests
           fi
         working-directory: tests/e2e
         env:
-          # Matches the chromium and serial-chromium projects; setup comes along as
-          # their dependency. Empty on merge_group and workflow_dispatch, which run
-          # every project.
-          PLAYWRIGHT_PROJECT_FILTER: ${{ github.event_name == 'pull_request' && '*chromium*' || '' }}
+          # setup comes along as the chromium project's dependency. Empty on
+          # merge_group and workflow_dispatch, which run every project.
+          PLAYWRIGHT_PROJECT_FILTER: ${{ github.event_name == 'pull_request' && 'chromium' || '' }}
           # Configuration Priority: Secret > Variable > tests/e2e/defaults.env (loaded above as DEFAULT_*)
           # ADMIN_USERNAME/ADMIN_PASSWORD were already resolved once by the "Resolve Admin
           # Credentials" step above and reused for server bootstrap and token acquisition; reuse
@@ -1312,7 +1191,6 @@ jobs:
           PLAYWRIGHT_WORKERS: ${{ vars.PLAYWRIGHT_WORKERS || env.DEFAULT_PLAYWRIGHT_WORKERS }}
           DEBUG_AUTH: ${{ vars.PLAYWRIGHT_DEBUG_AUTH || env.DEFAULT_DEBUG_AUTH }}
           # MFA Test Configuration
-          SAMPLE_APP_ID: ${{ steps.extract-app-id.outputs.sample_app_id }}
           SAMPLE_APP_URL: ${{ env.DEFAULT_SAMPLE_APP_URL }}
           SERVER_URL: ${{ env.DEFAULT_SERVER_URL }}
           AUTO_SETUP_MFA: ${{ vars.AUTO_SETUP_MFA || env.DEFAULT_AUTO_SETUP_MFA }}
@@ -1325,6 +1203,133 @@ jobs:
         with:
           name: playwright-report
           path: tests/e2e/playwright-report/
+          retention-days: 30
+
+      - name: 🛑 Stop the Server
+        if: ${{ !cancelled() }}
+        run: |
+          kill $SERVER_PID 2>/dev/null || true
+          sleep 2
+          if lsof -ti tcp:8090 >/dev/null 2>&1; then
+            kill -9 $(lsof -ti tcp:8090) 2>/dev/null || true
+          fi
+          sleep 3
+          rm -rf tests/e2e/server
+
+      # A fresh server for the Wayfinder specs: same distribution zip, re-extracted so the CORS
+      # allowlist and default resource server the previous phase set are gone, and importing only
+      # the E2E admin app so there is no `Customer` user type for the Wayfinder bundle's own
+      # `Customer` user type to collide with. Runs regardless of the core phase's result - a
+      # different server, so the core phase's failure tells us nothing about this one (mirrors
+      # run-e2e.sh's run_phase, which does the same for the same reason).
+      - name: 📂 Extract Fresh Server for Wayfinder Tests
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p tests/e2e/server
+          unzip target/dist/$PRODUCT_NAME_LOWER-*.zip -d tests/e2e/server
+          cd tests/e2e/server
+          EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "$PRODUCT_NAME_LOWER-*" | head -n 1)
+          if [ -n "$EXTRACTED_DIR" ]; then
+            mv "$EXTRACTED_DIR"/* .
+            rmdir "$EXTRACTED_DIR"
+          fi
+          chmod +x setup.sh start.sh
+
+      - name: 🚀 Start the Server (Wayfinder)
+        if: ${{ !cancelled() }}
+        run: |
+          cd tests/e2e/server
+          ./setup.sh
+          setsid ./start.sh > "$GITHUB_WORKSPACE/server-wayfinder.log" 2>&1 < /dev/null &
+          SERVER_PID=$!
+          echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+          disown $SERVER_PID 2>/dev/null || true
+          echo "Waiting for server to be ready on https://localhost:8090..."
+          for i in {1..60}; do
+            if curl -s -k https://localhost:8090/health/liveness > /dev/null; then
+              echo "Server is UP!"
+              break
+            fi
+            echo "Still waiting ($i/60)..."
+            sleep 2
+          done
+          if ! curl -s -k https://localhost:8090/health/liveness > /dev/null; then
+            echo "Server failed to start within 2 minutes"
+            exit 1
+          fi
+          echo "Server started successfully!"
+
+      - name: 🔑 Obtain Admin Access Token (Wayfinder)
+        if: ${{ !cancelled() }}
+        id: admin-token-wayfinder
+        uses: ./.github/actions/obtain-admin-token
+        with:
+          admin-username: ${{ env.ADMIN_USERNAME }}
+          admin-password: ${{ env.ADMIN_PASSWORD }}
+
+      - name: 📦 Import E2E Admin App (Wayfinder)
+        if: ${{ !cancelled() }}
+        uses: ./.github/actions/import-declarative-config
+        with:
+          config-path: tests/e2e/thunderid-config.yaml
+          admin-token: ${{ steps.admin-token-wayfinder.outputs.token }}
+          label: E2E admin app
+
+      - name: 🚀 Start Wayfinder Sample App
+        if: ${{ !cancelled() }}
+        run: |
+          cd samples/apps/wayfinder-sample/frontend
+          cp .env.example .env
+          npm install
+          setsid npm run dev > "$GITHUB_WORKSPACE/wayfinder-app.log" 2>&1 < /dev/null &
+          disown $! 2>/dev/null || true
+          echo "Waiting for Wayfinder sample app on http://localhost:5173..."
+          for i in {1..60}; do
+            if curl -s http://localhost:5173 > /dev/null; then
+              echo "Wayfinder sample app is up!"
+              break
+            fi
+            sleep 2
+          done
+          if ! curl -s http://localhost:5173 > /dev/null; then
+            echo "❌ Wayfinder sample app failed to start within 2 minutes"
+            echo "--- wayfinder-app.log ---"
+            cat "$GITHUB_WORKSPACE/wayfinder-app.log" || true
+            exit 1
+          fi
+
+      - name: 🎭 Run Playwright E2E Tests (Wayfinder)
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -n "$PLAYWRIGHT_PROJECT_FILTER" ]; then
+            echo "Running Playwright projects matching '$PLAYWRIGHT_PROJECT_FILTER'"
+            pnpm test --project="$PLAYWRIGHT_PROJECT_FILTER" --output=test-results-wayfinder --grep @wayfinder --pass-with-no-tests
+          else
+            echo "Running every Playwright project"
+            pnpm test --output=test-results-wayfinder --grep @wayfinder --pass-with-no-tests
+          fi
+        working-directory: tests/e2e
+        env:
+          # wayfinder-sample-setup.spec.ts and tests/wayfinder/** run through their own dedicated
+          # projects (see playwright.config.ts), not the plain chromium/firefox/webkit ones - a
+          # bare 'chromium' filter would match neither and silently run zero Wayfinder tests.
+          PLAYWRIGHT_PROJECT_FILTER: ${{ github.event_name == 'pull_request' && 'wayfinder-*' || '' }}
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-wayfinder
+          PLAYWRIGHT_JSON_OUTPUT_FILE: test-results-wayfinder/test-results.json
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE: test-results-wayfinder/junit.xml
+          BASE_URL: ${{ secrets.PLAYWRIGHT_BASE_URL || vars.PLAYWRIGHT_BASE_URL || env.DEFAULT_BASE_URL }}
+          ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
+          ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
+          WAYFINDER_APP_URL: http://localhost:5173
+          PLAYWRIGHT_WORKERS: ${{ vars.PLAYWRIGHT_WORKERS || env.DEFAULT_PLAYWRIGHT_WORKERS }}
+          DEBUG_AUTH: ${{ vars.PLAYWRIGHT_DEBUG_AUTH || env.DEFAULT_DEBUG_AUTH }}
+          SERVER_URL: ${{ env.DEFAULT_SERVER_URL }}
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-wayfinder
+          path: tests/e2e/playwright-report-wayfinder/
           retention-days: 30
 
 

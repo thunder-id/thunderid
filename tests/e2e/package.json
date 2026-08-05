@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "pretest": "pnpm run clean-reports",
-    "clean-reports": "rm -rf blob-report playwright-report test-results",
+    "clean-reports": "rm -rf blob-report blob-report-wayfinder playwright-report playwright-report-wayfinder test-results test-results-wayfinder",
     "test": "playwright test",
     "test:chromium": "playwright test --project=chromium",
     "test:firefox": "playwright test --project=firefox",

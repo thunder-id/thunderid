@@ -195,7 +195,7 @@ const DEFAULT_OPTIONS: Required<A11yOptions> = {
  */
 async function createAxeBuilder(
   page: Page,
-  options: Required<A11yOptions>,
+  options: Required<A11yOptions>
 ): Promise<{ builder: AxeBuilder; skipped: boolean }> {
   let builder = new AxeBuilder({ page });
 
@@ -256,9 +256,9 @@ async function createAxeBuilder(
  */
 function mapViolations(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  rawViolations: any[],
+  rawViolations: any[]
 ): A11yViolationSummary[] {
-  return rawViolations.map((violation) => ({
+  return rawViolations.map(violation => ({
     ruleId: violation.id,
     description: violation.description,
     impact: violation.impact as A11ySeverity,
@@ -268,9 +268,7 @@ function mapViolations(
       .slice(0, 5)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .map((node: any) => node.target?.join(", ") ?? "unknown"),
-    wcagTags: (violation.tags ?? []).filter(
-      (tag: string) => tag.startsWith("wcag") || tag.startsWith("best-practice"),
-    ),
+    wcagTags: (violation.tags ?? []).filter((tag: string) => tag.startsWith("wcag") || tag.startsWith("best-practice")),
   }));
 }
 
@@ -279,7 +277,7 @@ function mapViolations(
  */
 function partitionViolations(
   violations: A11yViolationSummary[],
-  failOnSeverity: A11ySeverity,
+  failOnSeverity: A11ySeverity
 ): { failing: A11yViolationSummary[]; warnings: A11yViolationSummary[] } {
   const threshold = SEVERITY_ORDER[failOnSeverity];
 
@@ -293,7 +291,7 @@ function partitionViolations(
 
       return acc;
     },
-    { failing: [] as A11yViolationSummary[], warnings: [] as A11yViolationSummary[] },
+    { failing: [] as A11yViolationSummary[], warnings: [] as A11yViolationSummary[] }
   );
 }
 
@@ -322,16 +320,13 @@ export function formatViolation(violation: A11yViolationSummary): string {
 /**
  * Generates a complete report string from a list of violations.
  */
-function generateReportString(
-  violations: A11yViolationSummary[],
-  pageUrl: string,
-  label: string,
-): string {
+function generateReportString(violations: A11yViolationSummary[], pageUrl: string, label: string): string {
   if (violations.length === 0) {
     return `✅ No ${label} accessibility violations found on: ${pageUrl}`;
   }
 
-  const header = `\n🔍 Accessibility Audit Report — ${label}\n` +
+  const header =
+    `\n🔍 Accessibility Audit Report: ${label}\n` +
     `   Page: ${pageUrl}\n` +
     `   Violations: ${violations.length}\n` +
     `   Total affected nodes: ${violations.reduce((sum, v) => sum + v.nodeCount, 0)}\n` +
@@ -359,16 +354,12 @@ function generateReportString(
  * console.log(`Found ${result.violations.length} violations`);
  * if (!result.passes) { /* handle failures *\/ }
  */
-export async function checkA11yWithReport(
-  page: Page,
-  options: A11yOptions = {},
-): Promise<A11yAuditResult> {
+export async function checkA11yWithReport(page: Page, options: A11yOptions = {}): Promise<A11yAuditResult> {
   const mergedOptions: Required<A11yOptions> = {
     ...DEFAULT_OPTIONS,
     ...options,
     // If tags were explicitly passed, keep audit tag-scoped unless caller explicitly opts into all rules.
-    runAllRules:
-      options.runAllRules ?? (options.tags !== undefined ? false : DEFAULT_OPTIONS.runAllRules),
+    runAllRules: options.runAllRules ?? (options.tags !== undefined ? false : DEFAULT_OPTIONS.runAllRules),
   };
   const { builder, skipped } = await createAxeBuilder(page, mergedOptions);
 
@@ -433,16 +424,13 @@ export async function checkA11yWithReport(
 export async function expectNoA11yViolations(
   page: Page,
   options: A11yOptions = {},
-  testInfo?: TestInfo,
+  testInfo?: TestInfo
 ): Promise<void> {
   const result = await checkA11yWithReport(page, options);
   const pageUrl = page.url();
 
-  const runAllRules =
-    options.runAllRules ?? (options.tags !== undefined ? false : DEFAULT_OPTIONS.runAllRules);
-  const auditScope = runAllRules
-    ? "all enabled axe-core rules"
-    : (options.tags ?? DEFAULT_OPTIONS.tags).join(", ");
+  const runAllRules = options.runAllRules ?? (options.tags !== undefined ? false : DEFAULT_OPTIONS.runAllRules);
+  const auditScope = runAllRules ? "all enabled axe-core rules" : (options.tags ?? DEFAULT_OPTIONS.tags).join(", ");
 
   // Log warnings (below threshold)
   if (result.warningViolations.length > 0) {
@@ -466,7 +454,7 @@ export async function expectNoA11yViolations(
         warningViolations: result.warningViolations,
       },
       null,
-      2,
+      2
     );
 
     await testInfo.attach("a11y-audit-report", {
@@ -477,20 +465,11 @@ export async function expectNoA11yViolations(
 
   // Fail on violations above threshold
   if (!result.passes) {
-    const failureReport = generateReportString(
-      result.failingViolations,
-      pageUrl,
-      "FAILURES",
-    );
+    const failureReport = generateReportString(result.failingViolations, pageUrl, "FAILURES");
 
-    const summary = result.failingViolations
-      .map((v) => `${v.impact}: ${v.ruleId} (${v.nodeCount} nodes)`)
-      .join(", ");
+    const summary = result.failingViolations.map(v => `${v.impact}: ${v.ruleId} (${v.nodeCount} nodes)`).join(", ");
 
-    throw new Error(
-      `Accessibility violations found on ${pageUrl}:\n` +
-        `${summary}\n\n${failureReport}`,
-    );
+    throw new Error(`Accessibility violations found on ${pageUrl}:\n` + `${summary}\n\n${failureReport}`);
   }
 
   // Success
@@ -514,7 +493,7 @@ export async function expectNoA11yViolations(
  */
 export async function checkKeyboardNavigation(
   page: Page,
-  expectedFocusableCount: number = 1,
+  expectedFocusableCount: number = 1
 ): Promise<{
   focusedElements: Array<{ tagName: string; role: string | null; ariaLabel: string | null }>;
   focusStopped: boolean;
@@ -584,8 +563,7 @@ export async function checkKeyboardNavigation(
 
   if (focusedElements.length < expectedFocusableCount) {
     console.warn(
-      `⚠️ Expected at least ${expectedFocusableCount} focusable elements, ` +
-        `but only found ${focusedElements.length}`,
+      `⚠️ Expected at least ${expectedFocusableCount} focusable elements, ` + `but only found ${focusedElements.length}`
     );
   } else {
     console.log(`✅ Keyboard navigation: ${focusedElements.length} focusable elements found`);
@@ -600,9 +578,7 @@ export async function checkKeyboardNavigation(
  * @param page - Playwright Page to check
  * @returns Array of live region details
  */
-export async function checkAriaLiveRegions(
-  page: Page,
-): Promise<Array<{ politeness: string; text: string }>> {
+export async function checkAriaLiveRegions(page: Page): Promise<Array<{ politeness: string; text: string }>> {
   const liveRegions = await page.locator("[aria-live]").all();
   const results: Array<{ politeness: string; text: string }> = [];
 

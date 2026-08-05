@@ -1,7 +1,8 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import { createServer, IncomingMessage, Server, ServerResponse } from "http";
+import { IncomingMessage, ServerResponse } from "http";
+import { MockHttpServer } from "./mock-server/base";
 
 /**
  * Represents a captured SMS message with extracted OTP
@@ -38,31 +39,23 @@ export interface SMSMessage {
  * await mockServer.stop();
  * ```
  */
-export class MockSMSServer {
-  private server: Server | null = null;
+export class MockSMSServer extends MockHttpServer {
+  protected readonly logPrefix = "[Mock SMS Server]";
   private messages: SMSMessage[] = [];
-  private port: number;
 
   constructor(port: number = 8098) {
-    this.port = port;
+    super(port);
   }
 
-  private readBody(req: IncomingMessage): Promise<string> {
-    return new Promise(resolve => {
-      let data = "";
-      req.setEncoding("utf8");
-      req.on("data", (chunk: string) => { data += chunk; });
-      req.on("end", () => resolve(data));
-    });
+  protected onStarted(): void {
+    console.log(`${this.logPrefix} SMS endpoint: ${this.getSendSMSURL()}`);
   }
 
-  private sendJSON(res: ServerResponse, status: number, body: unknown): void {
-    const payload = JSON.stringify(body);
-    res.writeHead(status, { "Content-Type": "application/json" });
-    res.end(payload);
+  protected onInternalError(res: ServerResponse): void {
+    this.sendJSON(res, 500, { error: "Internal server error" });
   }
 
-  private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  protected async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const { method, url } = req;
 
     if (method === "POST" && url === "/send-sms") {
@@ -75,7 +68,7 @@ export class MockSMSServer {
     } else if (method === "POST" && url === "/clear") {
       const clearedCount = this.messages.length;
       this.messages = [];
-      console.log(`[Mock SMS Server] Cleared ${clearedCount} message(s)`);
+      console.log(`${this.logPrefix} Cleared ${clearedCount} message(s)`);
       this.sendJSON(res, 200, { count: clearedCount, status: "cleared" });
     } else if (method === "GET" && url === "/health") {
       this.sendJSON(res, 200, { messagesCount: this.messages.length, status: "ok" });
@@ -97,7 +90,7 @@ export class MockSMSServer {
       this.messages.push(smsMessage);
 
       console.log(
-        `[Mock SMS Server] Message received: "${messageBody.substring(0, 50)}${messageBody.length > 50 ? "..." : ""}" | OTP: ${otp || "none"}`
+        `${this.logPrefix} Message received: "${messageBody.substring(0, 50)}${messageBody.length > 50 ? "..." : ""}" | OTP: ${otp || "none"}`
       );
 
       this.sendJSON(res, 200, {
@@ -106,7 +99,7 @@ export class MockSMSServer {
         timestamp: smsMessage.timestamp.toISOString(),
       });
     } catch (error) {
-      console.error("[Mock SMS Server] Error handling SMS:", error);
+      console.error(`${this.logPrefix} Error handling SMS:`, error);
       this.sendJSON(res, 500, { error: "Failed to process SMS message", success: false });
     }
   }
@@ -152,69 +145,19 @@ export class MockSMSServer {
    */
   private calculateOTPScore(sequence: string): number {
     switch (sequence.length) {
-      case 6: return 100;
-      case 4: return 80;
-      case 5: return 70;
-      case 8: return 60;
-      case 7: return 50;
-      default: return 0;
+      case 6:
+        return 100;
+      case 4:
+        return 80;
+      case 5:
+        return 70;
+      case 8:
+        return 60;
+      case 7:
+        return 50;
+      default:
+        return 0;
     }
-  }
-
-  /**
-   * Start the mock SMS server
-   *
-   * @returns Promise that resolves when server is listening
-   */
-  async start(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      try {
-        this.server = createServer((req, res) => {
-          this.handleRequest(req, res).catch(err => {
-            console.error("[Mock SMS Server] Unhandled error:", err);
-            this.sendJSON(res, 500, { error: "Internal server error" });
-          });
-        });
-
-        this.server.on("error", (error: Error) => {
-          console.error("[Mock SMS Server] Failed to start:", error);
-          reject(error);
-        });
-
-        this.server.listen(this.port, () => {
-          console.log(`[Mock SMS Server] Started on http://localhost:${this.port}`);
-          console.log(`[Mock SMS Server] SMS endpoint: http://localhost:${this.port}/send-sms`);
-          resolve();
-        });
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-
-  /**
-   * Stop the mock SMS server
-   *
-   * @returns Promise that resolves when server is closed
-   */
-  async stop(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (!this.server) {
-        resolve();
-        return;
-      }
-
-      this.server.close(err => {
-        if (err) {
-          console.error("[Mock SMS Server] Error stopping server:", err);
-          reject(err);
-        } else {
-          console.log("[Mock SMS Server] Stopped");
-          this.server = null;
-          resolve();
-        }
-      });
-    });
   }
 
   /**
@@ -223,16 +166,7 @@ export class MockSMSServer {
    * @returns Full URL to the /send-sms endpoint
    */
   getSendSMSURL(): string {
-    return `http://localhost:${this.port}/send-sms`;
-  }
-
-  /**
-   * Get base URL of the mock server
-   *
-   * @returns Base URL
-   */
-  getURL(): string {
-    return `http://localhost:${this.port}`;
+    return `${this.getURL()}/send-sms`;
   }
 
   /**
@@ -267,14 +201,5 @@ export class MockSMSServer {
    */
   getMessageCount(): number {
     return this.messages.length;
-  }
-
-  /**
-   * Check if server is running
-   *
-   * @returns true if server is listening
-   */
-  isRunning(): boolean {
-    return this.server !== null && this.server.listening;
   }
 }

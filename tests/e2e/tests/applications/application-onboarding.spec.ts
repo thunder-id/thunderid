@@ -12,24 +12,8 @@
  * - ADMIN_PASSWORD: Admin password for authentication
  */
 
-import { test, expect } from "../../fixtures/console";
+import { test, expect, ApplicationsApi } from "../../fixtures/console";
 import { TestDataFactory } from "../../utils/test-data";
-import { getAdminToken } from "../../utils/authentication";
-
-const serverUrl = process.env.SERVER_URL || "https://localhost:8090";
-
-async function deleteApplication(request: import("@playwright/test").APIRequestContext, appId: string): Promise<void> {
-  try {
-    const token = await getAdminToken(request);
-    await request.delete(`${serverUrl}/applications/${appId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      ignoreHTTPSErrors: true,
-    });
-    console.log(`Cleaned up test app: ${appId}`);
-  } catch (e) {
-    console.warn(`Failed to clean up test app ${appId}:`, e);
-  }
-}
 
 test.describe("Application Onboarding", () => {
   test.describe("Applications List Page", () => {
@@ -59,15 +43,18 @@ test.describe("Application Onboarding", () => {
     const createdAppIds: string[] = [];
 
     test.afterAll(async ({ request }) => {
+      const applicationsApi = new ApplicationsApi(request);
       for (const appId of createdAppIds) {
-        await deleteApplication(request, appId);
+        const deleted = await applicationsApi.deleteById(appId);
+        console.log(deleted ? `Cleaned up test app: ${appId}` : `Failed to clean up test app ${appId}`);
       }
     });
 
     /** TC002: Full INBUILT wizard flow */
-    test("TC002: Create application - full INBUILT wizard flow", async ({ applicationsPage }) => {
+    test("TC002: Create application - full INBUILT wizard flow", async ({ applicationsPage, applicationsApi }) => {
       const appData = TestDataFactory.createApplication({ name: `TestApp_INBUILT_${Date.now()}` });
       let createdAppUrl: string;
+      let createdAppId: string;
 
       await test.step("Navigate to Applications page, select a template and open wizard", async () => {
         console.log("Navigating to applications list...");
@@ -79,10 +66,13 @@ test.describe("Application Onboarding", () => {
         await applicationsPage.screenshot("tc002-wizard-opened");
       });
 
-      await test.step("Step 1 [configure-name]: Fill app name and click Next", async () => {
+      await test.step("Step 1 [configure-name]: Fill app name, restrict to Person, and click Next", async () => {
         await applicationsPage.waitForStep("application-configure-name");
         console.log("Step 1 visible - filling app name:", appData.name);
         await applicationsPage.fillAppName(appData.name);
+        // Pin to a single user type instead of the wizard's "allow all" default, so this test
+        // cannot race with specs that create/delete other user types (e.g. user-type-creation.spec.ts).
+        await applicationsPage.selectOnlyUserType("Person");
         await applicationsPage.clickNext();
         console.log("Clicked Next on Step 1");
         await applicationsPage.screenshot("tc002-step1-done");
@@ -105,16 +95,23 @@ test.describe("Application Onboarding", () => {
 
       await test.step("Step 4: Wait for wizard completion (secret screen or edit page)", async () => {
         createdAppUrl = await applicationsPage.completeWizardCreation();
-        createdAppIds.push(createdAppUrl.split("/").pop()!);
+        createdAppId = createdAppUrl.split("/").pop()!;
+        createdAppIds.push(createdAppId);
         await applicationsPage.screenshot("tc002-wizard-done");
         console.log("Wizard complete, edit URL:", createdAppUrl);
       });
 
       await test.step("Verify created app edit page is reachable", async () => {
-        await applicationsPage.page.goto(createdAppUrl, { waitUntil: "networkidle" });
+        await applicationsPage.page.goto(createdAppUrl);
         expect(applicationsPage.page.url()).toMatch(/\/console\/applications\/[^/]+$/);
         console.log("Created app edit page still reachable:", createdAppUrl);
         await applicationsPage.screenshot("tc002-app-verified");
+      });
+
+      await test.step("Verify only Person was granted via the application detail API", async () => {
+        const app = await applicationsApi.get(createdAppId);
+        expect(app.allowedUserTypes).toEqual(["Person"]);
+        console.log("Application restricted to Person user type, correct");
       });
     });
 
@@ -174,7 +171,10 @@ test.describe("Application Onboarding", () => {
     });
 
     /** TC005: Created application persists after navigation */
-    test("TC005: Created application persists in list after navigation", async ({ applicationsPage }) => {
+    test("TC005: Created application persists in list after navigation", async ({
+      applicationsPage,
+      applicationsApi,
+    }) => {
       const appData = TestDataFactory.createApplication({ name: `TestApp_PERSIST_${Date.now()}` });
       let createdAppUrl: string;
 
@@ -186,6 +186,9 @@ test.describe("Application Onboarding", () => {
 
         await applicationsPage.waitForStep("application-configure-name");
         await applicationsPage.fillAppName(appData.name);
+        // Pin to a single user type instead of the wizard's "allow all" default, so this test
+        // cannot race with specs that create/delete other user types (e.g. user-type-creation.spec.ts).
+        await applicationsPage.selectOnlyUserType("Person");
         await applicationsPage.clickNext();
         await applicationsPage.handleOptionalOuStep();
 
@@ -199,10 +202,14 @@ test.describe("Application Onboarding", () => {
         console.log("Application created, edit URL:", createdAppUrl);
       });
 
+      await test.step("Verify only Person was granted via the application detail API", async () => {
+        const app = await applicationsApi.get(createdAppIds[createdAppIds.length - 1]);
+        expect(app.allowedUserTypes).toEqual(["Person"]);
+        console.log("Application restricted to Person user type — correct");
+      });
+
       await test.step("Navigate away then back to applications", async () => {
-        await applicationsPage.page.goto(`${process.env.BASE_URL || ""}/console/dashboard`, {
-          waitUntil: "networkidle",
-        });
+        await applicationsPage.page.goto(`${process.env.BASE_URL || ""}/console/dashboard`);
         console.log("Navigated away to dashboard");
         await applicationsPage.goto();
         await applicationsPage.verifyPageLoaded();
@@ -210,7 +217,7 @@ test.describe("Application Onboarding", () => {
       });
 
       await test.step("Verify app edit page still reachable after navigation", async () => {
-        await applicationsPage.page.goto(createdAppUrl, { waitUntil: "networkidle" });
+        await applicationsPage.page.goto(createdAppUrl);
         expect(applicationsPage.page.url()).toMatch(/\/console\/applications\/[^/]+$/);
         console.log("App still reachable after navigation:", createdAppUrl);
         await applicationsPage.screenshot("tc005-app-persists");

@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         browser: [chromium, firefox, webkit]
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -24,7 +24,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: tests/e2e/package-lock.json
 
       - name: Install dependencies
@@ -51,7 +51,7 @@ jobs:
           ADMIN_PASSWORD: ${{ secrets.PLAYWRIGHT_ADMIN_PASSWORD != '' && secrets.PLAYWRIGHT_ADMIN_PASSWORD || 'admin' }}
           TEST_USER_USERNAME: ${{ vars.PLAYWRIGHT_TEST_USER_USERNAME != '' && vars.PLAYWRIGHT_TEST_USER_USERNAME || 'testuser' }}
           TEST_USER_PASSWORD: ${{ secrets.PLAYWRIGHT_TEST_USER_PASSWORD != '' && secrets.PLAYWRIGHT_TEST_USER_PASSWORD || 'admin' }}
-          PLAYWRIGHT_WORKERS: ${{ vars.PLAYWRIGHT_WORKERS != '' && vars.PLAYWRIGHT_WORKERS || '1' }}
+          PLAYWRIGHT_WORKERS: ${{ vars.PLAYWRIGHT_WORKERS != '' && vars.PLAYWRIGHT_WORKERS || '6' }}
           DEBUG_AUTH: ${{ vars.PLAYWRIGHT_DEBUG_AUTH != '' && vars.PLAYWRIGHT_DEBUG_AUTH || 'false' }}
         run: npm run test:${{ matrix.browser }}
 
@@ -81,7 +81,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: tests/e2e/package-lock.json
 
       - name: Install dependencies
