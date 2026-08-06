@@ -40,8 +40,8 @@ func (_m *MagicLinkAuthnServiceInterfaceMock) EXPECT() *MagicLinkAuthnServiceInt
 }
 
 // Authenticate provides a mock function for the type MagicLinkAuthnServiceInterfaceMock
-func (_mock *MagicLinkAuthnServiceInterfaceMock) Authenticate(ctx context.Context, token string, subjectAttribute string) (*common.AuthnResult, *common0.ServiceError) {
-	ret := _mock.Called(ctx, token, subjectAttribute)
+func (_mock *MagicLinkAuthnServiceInterfaceMock) Authenticate(ctx context.Context, token string, nonce string, usedJTI string, subjectAttribute string) (*common.AuthnResult, *common0.ServiceError) {
+	ret := _mock.Called(ctx, token, nonce, usedJTI, subjectAttribute)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Authenticate")
@@ -49,18 +49,18 @@ func (_mock *MagicLinkAuthnServiceInterfaceMock) Authenticate(ctx context.Contex
 
 	var r0 *common.AuthnResult
 	var r1 *common0.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*common.AuthnResult, *common0.ServiceError)); ok {
-		return returnFunc(ctx, token, subjectAttribute)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string) (*common.AuthnResult, *common0.ServiceError)); ok {
+		return returnFunc(ctx, token, nonce, usedJTI, subjectAttribute)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *common.AuthnResult); ok {
-		r0 = returnFunc(ctx, token, subjectAttribute)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string) *common.AuthnResult); ok {
+		r0 = returnFunc(ctx, token, nonce, usedJTI, subjectAttribute)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*common.AuthnResult)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common0.ServiceError); ok {
-		r1 = returnFunc(ctx, token, subjectAttribute)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, string) *common0.ServiceError); ok {
+		r1 = returnFunc(ctx, token, nonce, usedJTI, subjectAttribute)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common0.ServiceError)
@@ -77,12 +77,14 @@ type MagicLinkAuthnServiceInterfaceMock_Authenticate_Call struct {
 // Authenticate is a helper method to define mock.On call
 //   - ctx context.Context
 //   - token string
+//   - nonce string
+//   - usedJTI string
 //   - subjectAttribute string
-func (_e *MagicLinkAuthnServiceInterfaceMock_Expecter) Authenticate(ctx interface{}, token interface{}, subjectAttribute interface{}) *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call {
-	return &MagicLinkAuthnServiceInterfaceMock_Authenticate_Call{Call: _e.mock.On("Authenticate", ctx, token, subjectAttribute)}
+func (_e *MagicLinkAuthnServiceInterfaceMock_Expecter) Authenticate(ctx interface{}, token interface{}, nonce interface{}, usedJTI interface{}, subjectAttribute interface{}) *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call {
+	return &MagicLinkAuthnServiceInterfaceMock_Authenticate_Call{Call: _e.mock.On("Authenticate", ctx, token, nonce, usedJTI, subjectAttribute)}
 }
 
-func (_c *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call) Run(run func(ctx context.Context, token string, subjectAttribute string)) *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call {
+func (_c *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call) Run(run func(ctx context.Context, token string, nonce string, usedJTI string, subjectAttribute string)) *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -96,10 +98,20 @@ func (_c *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call) Run(run func(ctx
 		if args[2] != nil {
 			arg2 = args[2].(string)
 		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		var arg4 string
+		if args[4] != nil {
+			arg4 = args[4].(string)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -110,7 +122,7 @@ func (_c *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call) Return(authnResu
 	return _c
 }
 
-func (_c *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call) RunAndReturn(run func(ctx context.Context, token string, subjectAttribute string) (*common.AuthnResult, *common0.ServiceError)) *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call {
+func (_c *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call) RunAndReturn(run func(ctx context.Context, token string, nonce string, usedJTI string, subjectAttribute string) (*common.AuthnResult, *common0.ServiceError)) *MagicLinkAuthnServiceInterfaceMock_Authenticate_Call {
 	_c.Call.Return(run)
 	return _c
 }

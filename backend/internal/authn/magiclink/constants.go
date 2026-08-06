@@ -9,4 +9,16 @@ const (
 
 	// tokenAudience is the audience claim for magic link tokens.
 	tokenAudience = "magiclink-svc"
+
+	// ClaimMagicLinkUsedJti is the authenticated claim key for the used magic link JTI.
+	ClaimMagicLinkUsedJti = "magicLinkUsedJti"
+
+	// CredentialKeyUsedJti is the credential map key for the magic link used JTI.
+	CredentialKeyUsedJti = "usedJti"
+
+	// CredentialKeyToken is the credential map key for the magic link token.
+	CredentialKeyToken = "token"
+
+	// CredentialKeySubjectAttribute is the credential map key for the magic link subject attribute.
+	CredentialKeySubjectAttribute = "subjectAttribute"
 )
