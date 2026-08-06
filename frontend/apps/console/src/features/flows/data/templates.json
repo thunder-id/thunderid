@@ -4467,7 +4467,7 @@
               }
             ]
           },
-          "onSuccess": "generate_otp",
+          "onSuccess": "attribute_collect",
           "onIncomplete": "choose_auth"
         },
         {
@@ -4536,7 +4536,7 @@
           "executor": {
             "name": "ProvisioningExecutor"
           },
-          "onSuccess": "generate_otp",
+          "onSuccess": "attribute_collect",
           "layout": {
             "size": {
               "width": 200,
@@ -4599,6 +4599,32 @@
               "y": -14
             }
           }
+        },
+        {
+          "id": "attribute_collect",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1275,
+              "y": 546
+            }
+          },
+          "executor": {
+            "name": "AttributeCollector",
+            "inputs": [
+              {
+                "ref": "input_mobile",
+                "type": "PHONE_INPUT",
+                "identifier": "mobile_number",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "generate_otp"
         },
         {
           "id": "generate_otp",
@@ -9626,7 +9652,7 @@
           "executor": {
             "name": "CredentialsAuthExecutor"
           },
-          "onSuccess": "generate_otp",
+          "onSuccess": "prompt_mobile",
           "onIncomplete": "choose_auth"
         },
         {
@@ -14360,6 +14386,10 @@
               "type": "ID"
             },
             {
+              "key": "MOBILE_PROMPT_STEP_ID",
+              "type": "ID"
+            },
+            {
               "key": "SMS_SEND_EXECUTOR_ID",
               "type": "ID"
             },
@@ -14471,6 +14501,37 @@
                 "executor": {
                   "name": "CredentialsAuthExecutor"
                 },
+                "onSuccess": "{{MOBILE_PROMPT_STEP_ID}}",
+                "onFailure": "",
+                "onIncomplete": ""
+              }
+            }
+          },
+          {
+            "id": "{{MOBILE_PROMPT_STEP_ID}}",
+            "type": "TASK_EXECUTION",
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1010,
+              "y": 291
+            },
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "AttributeCollector",
+                  "inputs": [
+                    {
+                      "ref": "mobile_number",
+                      "type": "PHONE_INPUT",
+                      "identifier": "mobile_number",
+                      "required": true
+                    }
+                  ]
+                },
                 "onSuccess": "{{SMS_SEND_EXECUTOR_ID}}",
                 "onFailure": "",
                 "onIncomplete": ""
@@ -14493,7 +14554,15 @@
                 "type": "EXECUTOR",
                 "executor": {
                   "name": "OTPExecutor",
-                  "mode": "generate"
+                  "mode": "generate",
+                  "inputs": [
+                    {
+                      "ref": "mobile_number",
+                      "type": "PHONE_INPUT",
+                      "identifier": "mobile_number",
+                      "required": true
+                    }
+                  ]
                 },
                 "onSuccess": "{{SMS_EXECUTOR_ID}}",
                 "onFailure": "",
