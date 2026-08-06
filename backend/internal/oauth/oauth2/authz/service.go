@@ -265,6 +265,9 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 	// Extract claims_locales parameter.
 	claimsLocales := queryParams.Get(oauth2const.RequestParamClaimsLocales)
 
+	// Extract ui_locales parameter.
+	uiLocales := queryParams.Get(oauth2const.RequestParamUILocales)
+
 	nonce := queryParams.Get(oauth2const.RequestParamNonce)
 	acrValues := queryParams.Get(oauth2const.RequestParamAcrValues)
 	maxAge := queryParams.Get(oauth2const.RequestParamMaxAge)
@@ -320,6 +323,7 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 		Resources:           resources,
 		ClaimsRequest:       claimsRequest,
 		ClaimsLocales:       claimsLocales,
+		UILocales:           uiLocales,
 		Nonce:               nonce,
 		AcrValues:           acrValues,
 		MaxAge:              maxAge,
@@ -450,6 +454,9 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	queryParams[oauth2const.AuthID] = identifier
 	queryParams[oauth2const.AppID] = app.ID
 	queryParams[oauth2const.ExecutionID] = executionID
+	if oauthParams.UILocales != "" {
+		queryParams[oauth2const.RequestParamUILocales] = oauthParams.UILocales
+	}
 
 	// Add insecure warning if the redirect URI is not using TLS.
 	// TODO: May require another redirection to a warn consent page when it directly goes to a federated IDP.

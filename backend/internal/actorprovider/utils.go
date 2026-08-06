@@ -6,6 +6,9 @@ package actorprovider
 import (
 	"context"
 	"encoding/json"
+	"sort"
+
+	"golang.org/x/text/language"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -71,9 +74,10 @@ func assembleApplication(
 	return app
 }
 
-// BuildApplicationMetadata composes display metadata from inbound-client properties and actor records.
+// BuildApplicationMetadata composes display metadata from inbound-client properties and actor
+// records, using lang to resolve a per-language client name when one is available.
 func BuildApplicationMetadata(
-	id string, entity *providers.Entity, props map[string]interface{},
+	id string, entity *providers.Entity, props map[string]interface{}, lang string,
 ) *ApplicationMetadata {
 	meta := &ApplicationMetadata{ID: id}
 	if entity != nil && len(entity.SystemAttributes) > 0 {
@@ -84,6 +88,9 @@ func BuildApplicationMetadata(
 			}
 			if desc, ok := attrs["description"].(string); ok {
 				meta.Description = desc
+			}
+			if localized := resolveLocalizedName(attrs["nameLangMap"], lang); localized != "" {
+				meta.Name = localized
 			}
 		}
 	}
@@ -102,6 +109,59 @@ func BuildApplicationMetadata(
 		}
 	}
 	return meta
+}
+
+// resolveLocalizedName picks nameLangMap[lang], falling back to its base language then to
+// English. Returns "" if none match, leaving the caller's default name untouched.
+func resolveLocalizedName(nameLangMap interface{}, lang string) string {
+	raw, ok := nameLangMap.(map[string]interface{})
+	if !ok || len(raw) == 0 {
+		return ""
+	}
+
+	requested, err := language.Parse(lang)
+	if err != nil {
+		return ""
+	}
+	if v := matchByBaseLanguage(raw, requested); v != "" {
+		return v
+	}
+	if en, err := language.Parse("en"); err == nil {
+		return matchByBaseLanguage(raw, en)
+	}
+	return ""
+}
+
+// matchByBaseLanguage prefers an exact tag match (e.g. "fr-CA" over "fr"), else falls back
+// to a base-language match. Sorted iteration keeps the fallback deterministic.
+func matchByBaseLanguage(raw map[string]interface{}, want language.Tag) string {
+	codes := make([]string, 0, len(raw))
+	for code := range raw {
+		codes = append(codes, code)
+	}
+	sort.Strings(codes)
+
+	wantBase, _ := want.Base()
+	baseMatch := ""
+	for _, code := range codes {
+		v, ok := raw[code].(string)
+		if !ok || v == "" {
+			continue
+		}
+		tag, err := language.Parse(code)
+		if err != nil {
+			continue
+		}
+		if tag.String() == want.String() {
+			return v
+		}
+		if baseMatch == "" {
+			if base, _ := tag.Base(); base.String() == wantBase.String() {
+				baseMatch = v
+			}
+		}
+	}
+	return baseMatch
 }
 
 // readEntitySystemAttributes unmarshals system attributes from an actor record.

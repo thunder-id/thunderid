@@ -91,7 +91,7 @@ func (fms *flowMetaService) GetFlowMetadata(
 		return nil, &ErrorInvalidType
 	}
 
-	ouID, svcErr := fms.populateTypeMetadata(ctx, metaType, id, response)
+	ouID, svcErr := fms.populateTypeMetadata(ctx, metaType, id, lang, response)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -142,6 +142,7 @@ func (fms *flowMetaService) populateTypeMetadata(
 	ctx context.Context,
 	metaType MetaType,
 	id string,
+	lang string,
 	response *FlowMetadataResponse,
 ) (string, *tidcommon.ServiceError) {
 	if metaType == MetaTypeOU {
@@ -171,7 +172,7 @@ func (fms *flowMetaService) populateTypeMetadata(
 
 	response.IsRegistrationFlowEnabled = client.IsRegistrationFlowEnabled
 	response.IsRecoveryFlowEnabled = client.IsRecoveryFlowEnabled
-	response.Application = actorprovider.BuildApplicationMetadata(client.ID, entity, client.Properties)
+	response.Application = actorprovider.BuildApplicationMetadata(client.ID, entity, client.Properties, lang)
 
 	ouList, ouErr := fms.ouService.GetOrganizationUnitList(ctx, 1, 0, nil)
 	if ouErr != nil {
