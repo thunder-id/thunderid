@@ -103,6 +103,11 @@ export interface ConfigureApplicationDetailsProps {
    * Callback function to broadcast whether this step is ready to proceed.
    */
   onReadyChange?: (isReady: boolean) => void;
+
+  /**
+   * Application names already in use, so a duplicate name can be flagged before submission.
+   */
+  existingAppNames?: string[];
 }
 
 /**
@@ -128,17 +133,21 @@ export default function ConfigureApplicationDetails({
   selectedUserTypes,
   onUserTypesChange,
   onReadyChange = undefined,
+  existingAppNames = [],
 }: ConfigureApplicationDetailsProps): JSX.Element {
   const {t} = useTranslation();
   const {data: organizationUnit, isLoading: isOuLoading} = useGetOrganizationUnit(resolvedOuId, Boolean(resolvedOuId));
 
+  // Exact match, mirroring the server's uniqueness check.
+  const isDuplicateName: boolean = appName !== '' && existingAppNames.includes(appName);
+
   useEffect((): void => {
     if (!onReadyChange) return;
-    const nameReady = appName.trim().length > 0;
+    const nameReady = appName.trim().length > 0 && !isDuplicateName;
     const ouReady = !hasMultipleOUs || selectedOuId.length > 0;
     const userAccessReady = userTypes.length < 2 || selectedUserTypes.length > 0;
     onReadyChange(nameReady && ouReady && userAccessReady);
-  }, [appName, hasMultipleOUs, selectedOuId, userTypes, selectedUserTypes, onReadyChange]);
+  }, [appName, isDuplicateName, hasMultipleOUs, selectedOuId, userTypes, selectedUserTypes, onReadyChange]);
 
   // Default to "allow all" the first time user types load, mirroring the master checkbox's
   // default-checked state in UserAccessSection. Seeds at most once — otherwise this would fight
@@ -206,6 +215,7 @@ export default function ConfigureApplicationDetails({
         appLogo={appLogo}
         onLogoSelect={onLogoSelect}
         showTitle={false}
+        existingAppNames={existingAppNames}
       />
 
       {(showOuDefaults || showUserAccess) && (

@@ -45,6 +45,11 @@ export interface ConfigureNameProps {
    * @defaultValue true
    */
   showTitle?: boolean;
+
+  /**
+   * Application names already in use, so a duplicate can be flagged before submission
+   */
+  existingAppNames?: string[];
 }
 
 /**
@@ -96,8 +101,12 @@ export default function ConfigureName({
   onLogoSelect,
   onReadyChange = undefined,
   showTitle = true,
+  existingAppNames = [],
 }: ConfigureNameProps): JSX.Element {
   const {t} = useTranslation();
+
+  // Exact match, mirroring the server's uniqueness check.
+  const isDuplicateName: boolean = appName !== '' && existingAppNames.includes(appName);
 
   /**
    * Default to a generated entity avatar the first time this step is reached, so the logo
@@ -121,11 +130,11 @@ export default function ConfigureName({
    * Broadcast readiness whenever appName changes.
    */
   useEffect((): void => {
-    const isReady: boolean = appName.trim().length > 0;
+    const isReady: boolean = appName.trim().length > 0 && !isDuplicateName;
     if (onReadyChange) {
       onReadyChange(isReady);
     }
-  }, [appName, onReadyChange]);
+  }, [appName, isDuplicateName, onReadyChange]);
 
   return (
     <Stack direction="column" spacing={4} data-testid="application-configure-name">
@@ -155,6 +164,8 @@ export default function ConfigureName({
               value={appName}
               onChange={(e: ChangeEvent<HTMLInputElement>): void => onAppNameChange(e.target.value)}
               placeholder={t('applications:onboarding.configure.name.placeholder')}
+              error={isDuplicateName}
+              helperText={isDuplicateName ? t('applications:errors.APP-1020') : undefined}
               inputProps={{
                 'data-testid': 'app-name-input',
               }}

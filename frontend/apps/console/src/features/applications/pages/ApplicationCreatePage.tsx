@@ -36,6 +36,7 @@ import ConfigureApplicationDetails from '../components/create-application/Config
 import ConfigureDesign from '../components/create-application/ConfigureDesign';
 import ConfigureDetails from '../components/create-application/ConfigureDetails';
 import ConfigureMcpClientType from '../components/create-application/mcp/ConfigureMcpClientType';
+import ApplicationConstants from '../constants/application-constants';
 import TemplateConstants from '../constants/template-constants';
 import useApplicationCreate from '../contexts/ApplicationCreate/useApplicationCreate';
 import {
@@ -169,7 +170,22 @@ export default function ApplicationCreatePage(): JSX.Element {
     [applicationsData],
   );
 
+  // Application names already in use, so the details step can flag a duplicate before submission.
+  const existingAppNames = useMemo(
+    (): string[] => (applicationsData?.applications ?? []).map((app) => app.name).filter(Boolean),
+    [applicationsData],
+  );
+
   const [selectedUserTypes, setSelectedUserTypes] = useState<string[]>([]);
+  // Names the server rejected as duplicates (APP-1020) that weren't in the fetched existingAppNames
+  // (e.g. beyond the pagination limit). Treated as additional existing names so the details step
+  // flags them and blocks readiness until the name is edited, avoiding a resubmit-and-fail loop.
+  const [rejectedAppNames, setRejectedAppNames] = useState<string[]>([]);
+
+  const knownAppNames = useMemo(
+    (): string[] => [...existingAppNames, ...rejectedAppNames],
+    [existingAppNames, rejectedAppNames],
+  );
 
   const createFlow = useCreateFlow();
   const {data: idpData} = useIdentityProviders();
@@ -660,6 +676,16 @@ export default function ApplicationCreatePage(): JSX.Element {
         });
       },
       onError: (err: Error) => {
+        // The client-side pre-check can miss names beyond the fetched list; when the backend rejects
+        // a name as a duplicate, record it so the details step flags it and stays un-ready until the
+        // name is edited (preventing a resubmit-and-fail loop), then return there.
+        // getApplicationErrorMessage resolves the errors.APP-1020 message for this case (and the
+        // generic message otherwise).
+        const errorCode = (err as {response?: {data?: {code?: string}}})?.response?.data?.code;
+        if (errorCode === ApplicationConstants.DUPLICATE_APP_NAME_ERROR_CODE) {
+          setRejectedAppNames((prev) => (prev.includes(appName) ? prev : [...prev, appName]));
+          setCurrentStep(ApplicationCreateFlowStep.DETAILS);
+        }
         setError(
           getApplicationErrorMessage(
             err,
@@ -813,6 +839,7 @@ export default function ApplicationCreatePage(): JSX.Element {
             selectedUserTypes={selectedUserTypes}
             onUserTypesChange={handleUserTypesChange}
             onReadyChange={handleDetailsStepReadyChange}
+            existingAppNames={knownAppNames}
           />
         );
 
