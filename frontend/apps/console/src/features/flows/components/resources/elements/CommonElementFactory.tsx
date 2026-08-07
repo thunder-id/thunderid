@@ -95,7 +95,7 @@ function CommonElementFactory({
     return <PhoneNumberInputAdapter resource={resource} />;
   }
   if (resource.type === ElementTypes.OtpInput) {
-    return <OTPInputAdapter resource={resource} />;
+    return <OTPInputAdapter resource={resource} stepId={stepId} />;
   }
   if (
     resource.type === ElementTypes.TextInput ||

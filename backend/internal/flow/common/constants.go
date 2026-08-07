@@ -86,6 +86,9 @@ const (
 	DataOpenID4VPRequestURI = "openid4vpRequestUri"
 	// DataOpenID4VPWalletURI is the openid4vp:// authorization URI for the wallet.
 	DataOpenID4VPWalletURI = "openid4vpWalletUri"
+	// DataOTPLength is the character length of the OTP minted by the OTP executor in generate mode,
+	// surfaced so the client renders the matching number of input boxes.
+	DataOTPLength = "otpLength"
 )
 
 // Error assertion claims.

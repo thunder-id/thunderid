@@ -164,6 +164,9 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 
 	execResp.RuntimeData[common.RuntimeKeyOTPSessionToken] = sessionToken
 	execResp.RuntimeData[common.RuntimeKeyOTPAttemptCount] = strconv.Itoa(attemptCount + 1)
+	// Published from the generated value rather than the configured otpLength property, since the
+	// property is clamped and may fall back to the server default.
+	execResp.AdditionalData[common.DataOTPLength] = strconv.Itoa(len(otpValue))
 	execResp.ForwardedData[common.ForwardedDataKeyTemplateData] = map[string]interface{}{
 		common.ForwardedDataKeyOTPCode:       otpValue,
 		common.ForwardedDataKeyExpiryMinutes: systemutils.SecondsToMinutes(expirySeconds),

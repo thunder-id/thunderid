@@ -77,6 +77,8 @@ export interface FlowFieldProps {
   onInputChange: (field: string, value: string) => void;
   /** Blur handler for triggering validation when a field loses focus */
   onBlur?: (field: string) => void;
+  /** Additional step data from the flow response */
+  additionalData?: Record<string, unknown>;
 }
 
 /**

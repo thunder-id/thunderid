@@ -7,7 +7,7 @@ import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {FlowFieldProps} from '../../../models/flow';
 
-const OTP_LENGTH = 6;
+const DEFAULT_OTP_LENGTH = 6;
 
 export default function OtpInputAdapter({
   component,
@@ -18,15 +18,21 @@ export default function OtpInputAdapter({
   resolve,
   onInputChange,
   onBlur,
+  additionalData,
 }: FlowFieldProps): JSX.Element | null {
   const {t} = useTranslation();
   const {ref} = component;
 
   if (!ref || typeof ref !== 'string') return null;
 
+  // The server reports the length of the code it generated, so the box count matches the OTP the
+  // user received. Falls back to the common six digits when the step carries no length.
+  const reportedLength = Number(additionalData?.['otpLength']);
+  const otpLength = Number.isInteger(reportedLength) && reportedLength > 0 ? reportedLength : DEFAULT_OTP_LENGTH;
+
   const hasError = !!(touched?.[ref] && fieldErrors?.[ref]);
   const otpValue = values[ref] ?? '';
-  const otpDigits = otpValue.padEnd(OTP_LENGTH, ' ').split('').slice(0, OTP_LENGTH);
+  const otpDigits = otpValue.padEnd(otpLength, ' ').split('').slice(0, otpLength);
 
   const focusDigit = (idx: number) => {
     const input = document.querySelector<HTMLInputElement>(`input[aria-label="OTP digit ${idx + 1}"]`);
@@ -64,16 +70,16 @@ export default function OtpInputAdapter({
               if (!/^\d*$/.test(value)) return;
               const newOtp = otpDigits.map((d, i) => (i === idx ? value : d));
               onInputChange(ref, newOtp.join(''));
-              if (value && idx < OTP_LENGTH - 1) focusDigit(idx + 1);
+              if (value && idx < otpLength - 1) focusDigit(idx + 1);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Backspace' && !otpDigits[idx].trim() && idx > 0) focusDigit(idx - 1);
             }}
             onPaste={(e) => {
               e.preventDefault();
-              const digits = e.clipboardData.getData('text/plain').replace(/\D/g, '').slice(0, OTP_LENGTH);
+              const digits = e.clipboardData.getData('text/plain').replace(/\D/g, '').slice(0, otpLength);
               onInputChange(ref, digits);
-              focusDigit(Math.min(digits.length, OTP_LENGTH - 1));
+              focusDigit(Math.min(digits.length, otpLength - 1));
             }}
             error={hasError}
             disabled={isLoading}
