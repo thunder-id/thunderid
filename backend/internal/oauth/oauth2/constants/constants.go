@@ -46,6 +46,7 @@ const (
 	RequestParamAssertion           string = "assertion"
 	RequestParamClaims              string = "claims"
 	RequestParamClaimsLocales       string = "claims_locales"
+	RequestParamUILocales           string = "ui_locales"
 	RequestParamNonce               string = "nonce"
 	RequestParamPrompt              string = "prompt"
 	RequestParamRequestURI          string = "request_uri"

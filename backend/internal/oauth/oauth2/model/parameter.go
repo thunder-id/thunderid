@@ -26,6 +26,7 @@ type OAuthParameters struct {
 	Resources           []string
 	ClaimsRequest       *ClaimsRequest
 	ClaimsLocales       string
+	UILocales           string
 	Nonce               string
 	AcrValues           string
 	MaxAge              string

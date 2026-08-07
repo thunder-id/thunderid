@@ -106,14 +106,14 @@ func (s *UtilsTestSuite) TestBuildApplication_EntityNotFound() {
 }
 
 func (s *UtilsTestSuite) TestBuildApplicationMetadata_NilEntityAndProps() {
-	meta := BuildApplicationMetadata("app-1", nil, nil)
+	meta := BuildApplicationMetadata("app-1", nil, nil, "en")
 	s.Equal("app-1", meta.ID)
 	s.Empty(meta.Name)
 }
 
 func (s *UtilsTestSuite) TestBuildApplicationMetadata_InvalidEntityJSON() {
 	entity := &providers.Entity{SystemAttributes: []byte("not-json")}
-	meta := BuildApplicationMetadata("app-1", entity, nil)
+	meta := BuildApplicationMetadata("app-1", entity, nil, "en")
 	s.Equal("app-1", meta.ID)
 	s.Empty(meta.Name)
 }
@@ -169,7 +169,7 @@ func (s *UtilsTestSuite) TestBuildApplicationMetadata() {
 		"policy_uri": "https://policy",
 	}
 
-	meta := BuildApplicationMetadata("app-1", entity, props)
+	meta := BuildApplicationMetadata("app-1", entity, props, "en")
 
 	assert.Equal(s.T(), "app-1", meta.ID)
 	assert.Equal(s.T(), "App", meta.Name)
@@ -178,6 +178,49 @@ func (s *UtilsTestSuite) TestBuildApplicationMetadata() {
 	assert.Equal(s.T(), "https://app", meta.URL)
 	assert.Equal(s.T(), "https://tos", meta.TosURI)
 	assert.Equal(s.T(), "https://policy", meta.PolicyURI)
+}
+
+func (s *UtilsTestSuite) TestBuildApplicationMetadata_LocalizedName() {
+	attrs, _ := json.Marshal(map[string]interface{}{
+		"name": "Acme",
+		"nameLangMap": map[string]interface{}{
+			"hi": "एक्मे",
+			"ar": "أكمي",
+		},
+	})
+	entity := &providers.Entity{SystemAttributes: attrs}
+
+	s.Run("exact language match", func() {
+		meta := BuildApplicationMetadata("app-1", entity, nil, "hi")
+		s.Equal("एक्मे", meta.Name)
+	})
+
+	s.Run("base-language match for a regional tag", func() {
+		meta := BuildApplicationMetadata("app-1", entity, nil, "ar-SA")
+		s.Equal("أكمي", meta.Name)
+	})
+
+	s.Run("unmatched language falls back to the default name", func() {
+		meta := BuildApplicationMetadata("app-1", entity, nil, "fr")
+		s.Equal("Acme", meta.Name)
+	})
+}
+
+func (s *UtilsTestSuite) TestBuildApplicationMetadata_LocalizedNameExactTagPreferredOverBase() {
+	attrs, _ := json.Marshal(map[string]interface{}{
+		"name": "Acme",
+		"nameLangMap": map[string]interface{}{
+			"fr":    "Acme France",
+			"fr-CA": "Acme Canada",
+		},
+	})
+	entity := &providers.Entity{SystemAttributes: attrs}
+
+	// Repeated to catch map-iteration-order nondeterminism.
+	for i := 0; i < 20; i++ {
+		meta := BuildApplicationMetadata("app-1", entity, nil, "fr-CA")
+		s.Equal("Acme Canada", meta.Name)
+	}
 }
 
 func (s *UtilsTestSuite) TestReadEntitySystemAttributes_NilEntity() {
