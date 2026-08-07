@@ -30,7 +30,7 @@ async function globalSetup() {
   }
 
   // Ensure auth directory exists
-  const authDir = path.join(__dirname, "../playwright/.auth");
+  const authDir = path.join(__dirname, "playwright/.auth");
   if (!fs.existsSync(authDir)) {
     fs.mkdirSync(authDir, { recursive: true });
   }

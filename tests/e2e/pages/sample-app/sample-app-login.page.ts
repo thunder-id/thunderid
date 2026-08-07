@@ -4,15 +4,16 @@
 /**
  * Sample App Login Page Object
  *
- * Page Object Model for the React Vanilla Sample App login functionality.
- * Provides methods to interact with login form and verify authentication.
+ * Page Object Model for the React SDK Sample App login functionality. Home-page chrome
+ * (sign-in button, post-login landing) is specific to this app's SDK-rendered button; the login
+ * form and logout flow are shared gate behavior, inherited from GateLoginPage.
  */
 
 import { Page, expect } from "@playwright/test";
-import { BasePage } from "../base.page";
+import { GateLoginPage } from "../gate-login.page";
 import { Timeouts } from "../../constants/timeouts";
 
-export class SampleAppLoginPage extends BasePage {
+export class SampleAppLoginPage extends GateLoginPage {
   constructor(page: Page) {
     super(page);
   }
@@ -42,87 +43,15 @@ export class SampleAppLoginPage extends BasePage {
     await signInButton.click();
   }
 
-  async verifyLoginPageLoaded() {
-    await this.page.waitForSelector('input[name="username"], input[placeholder*="username" i]', {
-      timeout: Timeouts.NETWORK_IDLE,
-      state: "visible",
-    });
-  }
-
   /**
-   * Fill in the login form
-   * @param username - Username to enter
-   * @param password - Password to enter
+   * Navigate to the sample app and click through to the sign-in form.
+   * @param url - Sample app URL
    */
-  async fillLoginForm(username: string, password: string) {
-    // Fill username
-    const usernameInput = this.page.locator('input[name="username"], input[placeholder*="username" i]').first();
-    await usernameInput.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
-    await usernameInput.fill(username);
-
-    // Fill password
-    const passwordInput = this.page.locator('input[name="password"], input[placeholder*="password" i]').first();
-    await passwordInput.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
-    await passwordInput.fill(password);
-  }
-
-  /**
-   * Click the login/sign in button
-   */
-  async clickLogin() {
-    // Try multiple selector strategies for the login button
-    const loginButton = this.page
-      .locator(
-        'button[type="submit"], button:has-text("Sign In"), button:has-text("Login"), button:has-text("Sign in")'
-      )
-      .first();
-
-    await loginButton.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
-    await loginButton.click();
-  }
-
-  /**
-   * Perform complete login flow
-   * @param username - Username to login with
-   * @param password - Password to login with
-   */
-  async login(username: string, password: string) {
-    await this.fillLoginForm(username, password);
-    await this.clickLogin();
-
-    // Wait for navigation/response after login
-    await this.page.waitForLoadState("networkidle");
-  }
-
-  /**
-   * Verify user is logged in successfully
-   * Checks for common indicators like avatar, profile information, or welcome message
-   */
-  async verifyLoggedIn() {
-    // Wait for login to complete - look for logged-in state indicators
-    await this.page.waitForLoadState("networkidle");
-
-    // Check for common logged-in indicators (adjust selectors based on your app)
-    const loggedInIndicators = [
-      this.page.locator('button[aria-haspopup="true"]'), // Avatar menu button
-      this.page.locator('button:has(> div[class*="MuiAvatar"])'), // Avatar button
-      this.page.locator('[role="menuitem"]:has-text("Sign Out")'), // May be visible if menu is open
-      this.page.locator('[data-testid="user-profile"]'),
-      this.page.getByText(/welcome|hello/i),
-      this.page.locator(".user-profile"),
-      this.page.locator(".logged-in"),
-      this.page.locator(".token-container"), // Token display container
-    ];
-
-    // Require at least one indicator to appear. This must assert rather than probe: a sign-in that
-    // fails client-side (for example a blocked cross-origin token read) still leaves the app on a
-    // page with no login form, so tolerating a missing indicator would report success for a broken
-    // sign-in and push the failure into whatever assertion happens to run next.
-    const anyLoggedInIndicator = loggedInIndicators.reduce((combined, locator) => combined.or(locator));
-    await expect(anyLoggedInIndicator.first()).toBeVisible({ timeout: Timeouts.DEFAULT_ACTION });
-
-    // Take a screenshot for verification
-    await this.screenshot("logged-in-state");
+  async gotoLoginPage(url: string) {
+    await this.goto(url);
+    await this.verifyHomePageLoaded();
+    await this.clickSignInButton();
+    await this.verifyLoginPageLoaded();
   }
 
   /**
@@ -131,61 +60,6 @@ export class SampleAppLoginPage extends BasePage {
    */
   async verifyUserInfo(userInfo: string) {
     await expect(this.page.locator(`text=${userInfo}`)).toBeVisible({ timeout: Timeouts.DEFAULT_ACTION });
-  }
-
-  /**
-   * Click logout button
-   * The logout option is in a dropdown menu accessed via Avatar button
-   */
-  async logout() {
-    // First, look for the avatar/menu button to open the menu
-    const avatarButton = this.page
-      .locator(
-        'button[aria-haspopup="true"], button[aria-controls="account-menu"], button:has(> div[class*="MuiAvatar"])'
-      )
-      .first();
-
-    // Fallback: direct logout button (for other app implementations)
-    const logoutButton = this.page
-      .locator('button:has-text("Logout"), button:has-text("Sign Out"), [data-testid="logout-button"]')
-      .first();
-
-    // Wait (with auto-retry) for whichever logout indicator is visible first
-    await avatarButton.or(logoutButton).first().waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
-
-    if (await avatarButton.isVisible().catch(() => false)) {
-      // Click avatar to open menu
-      await avatarButton.click();
-
-      // Wait for menu to appear
-      await this.page.waitForSelector('#account-menu, [role="menu"]', {
-        state: "visible",
-        timeout: Timeouts.DEFAULT_ACTION,
-      });
-
-      // Click the Sign Out menu item
-      const signOutMenuItem = this.page
-        .locator('[role="menuitem"]:has-text("Sign Out"), [role="menuitem"]:has-text("Logout")')
-        .first();
-
-      await signOutMenuItem.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
-      await signOutMenuItem.dispatchEvent("click");
-    } else {
-      await logoutButton.click();
-    }
-
-    // RP-initiated logout redirects to the gate's sign-out confirmation flow before the
-    // post-logout redirect back to the app; confirm it if it appears.
-    const confirmSignOutButton = this.page.getByRole("button", { name: "Sign out" });
-    const confirmed = await confirmSignOutButton
-      .waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION })
-      .then(() => true)
-      .catch(() => false);
-    if (confirmed) {
-      await confirmSignOutButton.click();
-    }
-
-    await this.page.waitForLoadState("networkidle");
   }
 
   /**
@@ -267,15 +141,13 @@ export class SampleAppLoginPage extends BasePage {
   }
 
   /**
-   * Complete OTP verification step
+   * Complete OTP verification step. Callers verify the result themselves (verifyLoggedIn(),
+   * getOTPErrorMessage(), etc.), so there's no wait here beyond the click.
    * @param otp - OTP code to verify
    */
   async verifyOTP(otp: string) {
     await this.fillOTP(otp);
     await this.clickVerifyOTP();
-
-    // Wait for navigation/response after OTP verification
-    await this.page.waitForLoadState("networkidle");
   }
 
   /**

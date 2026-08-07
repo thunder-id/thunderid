@@ -28,20 +28,37 @@ dotenv.config({ path: envPath });
  */
 const WORKERS = process.env.PLAYWRIGHT_WORKERS ? parseInt(process.env.PLAYWRIGHT_WORKERS, 10) : 6;
 
+const BROWSERS = [
+  { id: "chromium", device: devices["Desktop Chrome"] },
+  { id: "firefox", device: devices["Desktop Firefox"] },
+  { id: "webkit", device: devices["Desktop Safari"] },
+];
+
 /**
- * Specs that mutate global, non-partitionable server state and cannot run in parallel with themselves
- * across browsers:
- *   - CORS allowed-origins is a server-wide list; the console does read-modify-write on Save, so
- *     concurrent workers overwrite each other's list.
- *   - MFA suite reconfigures the shared sample-app's auth flow and depends on the one notification
- *     sender pointing at the one mock SMS server; parallel workers step on each other's OTPs.
- * These files are excluded from the fan-out projects below and re-added as a serial chain
- * (chromium -> firefox -> webkit) so at most one worker is executing them at any moment.
+ * Specs that mutate global, non-partitionable server state: the CORS allowed-origins list and
+ * the shared sample app's flow bindings and server-wide notification-sender setting. Running
+ * them in more than one browser project at a time is racy, so they run on chromium only.
+ *
+ * They assert server behavior (flow COMPLETE, Access-Control-Allow-Origin, a scope update
+ * surviving a reload), so one run is the whole coverage; the shared form and unsaved-changes UI is
+ * exercised cross-browser by the applications and accessibility specs.
  */
-const SERIAL_SPECS = [
+const SERVER_STATE_SPECS = [
   "**/settings/cors-allowed-origins.spec.ts",
   "**/sample-app-authentication/sample-app-mfa-login.spec.ts",
 ];
+
+/**
+ * wayfinder-sample-setup.spec.ts imports the Wayfinder config bundle (replacing the server-wide
+ * default resource server and CORS allowed-origins list, same non-partitionable-state reasoning
+ * as SERVER_STATE_SPECS above); tests/wayfinder/** exercises the standalone Wayfinder sample app
+ * against data that import creates (the seed user, the "Wayfinder" OAuth client). Both run
+ * chromium-only via their own dedicated projects below rather than SERVER_STATE_SPECS, because
+ * the tryout specs additionally need to run strictly *after* the setup spec finishes - a plain
+ * testIgnore exclusion has no ordering mechanism, only a project `dependencies:` graph does.
+ */
+const WAYFINDER_SETUP_SPEC = "**/welcome/wayfinder-sample-setup.spec.ts";
+const WAYFINDER_TRYOUT_SPECS = ["**/wayfinder/*.spec.ts"];
 
 export default defineConfig({
   /** Directory containing test files */
@@ -134,67 +151,40 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"], ignoreHTTPSErrors: true },
     },
 
-    /** Main browser projects - run parallel-safe specs. Serial specs are excluded here and
-     *  re-added below in a per-browser chain. */
-    {
-      name: "chromium",
+    /**
+     * Every spec runs in one flat fan-out; the server-state specs (see SERVER_STATE_SPECS) are
+     * excluded from the non-chromium projects instead of being duplicated and serialized. The
+     * Wayfinder setup/tryout specs are excluded from every browser project unconditionally - they
+     * run exclusively through the two dedicated projects below.
+     */
+    ...BROWSERS.map(browser => ({
+      name: browser.id,
       testMatch: "**/*.spec.ts",
-      testIgnore: SERIAL_SPECS,
-      use: {
-        ...devices["Desktop Chrome"],
-      },
+      testIgnore: [
+        WAYFINDER_SETUP_SPEC,
+        ...WAYFINDER_TRYOUT_SPECS,
+        ...(browser.id === "chromium" ? [] : SERVER_STATE_SPECS),
+      ],
+      use: { ...browser.device },
       dependencies: ["setup"],
-    },
-
-    {
-      name: "firefox",
-      testMatch: "**/*.spec.ts",
-      testIgnore: SERIAL_SPECS,
-      use: {
-        ...devices["Desktop Firefox"],
-      },
-      dependencies: ["setup"],
-    },
-
-    {
-      name: "webkit",
-      testMatch: "**/*.spec.ts",
-      testIgnore: SERIAL_SPECS,
-      use: {
-        ...devices["Desktop Safari"],
-      },
-      dependencies: ["setup"],
-    },
+    })),
 
     /**
-     * Serial chain for CORS + MFA specs. Each browser depends on the previous one so Playwright's
-     * scheduler runs them one at a time even when 6 workers are otherwise fanning out. If a project
-     * in the chain fails, later browsers in the chain are skipped (dependency semantics); the job
-     * still fails and per-test retries still apply.
+     * tests/wayfinder/** reads data (the seed user, the "Wayfinder" OAuth client) that only
+     * exists once wayfinder-sample-setup.spec.ts's import has completed, so wayfinder-tryout must
+     * not start until wayfinder-setup finishes
      */
     {
-      name: "serial-chromium",
-      testMatch: SERIAL_SPECS,
-      use: {
-        ...devices["Desktop Chrome"],
-      },
+      name: "wayfinder-setup",
+      testMatch: WAYFINDER_SETUP_SPEC,
+      use: { ...devices["Desktop Chrome"] },
       dependencies: ["setup"],
     },
     {
-      name: "serial-firefox",
-      testMatch: SERIAL_SPECS,
-      use: {
-        ...devices["Desktop Firefox"],
-      },
-      dependencies: ["serial-chromium"],
-    },
-    {
-      name: "serial-webkit",
-      testMatch: SERIAL_SPECS,
-      use: {
-        ...devices["Desktop Safari"],
-      },
-      dependencies: ["serial-firefox"],
+      name: "wayfinder-tryout",
+      testMatch: WAYFINDER_TRYOUT_SPECS,
+      use: { ...devices["Desktop Chrome"] },
+      dependencies: ["wayfinder-setup"],
     },
   ],
 });

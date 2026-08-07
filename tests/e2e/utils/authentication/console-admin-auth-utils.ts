@@ -127,95 +127,6 @@ export function createStorageInitScript(authState: AuthState): string {
 }
 
 /**
- * Verify that authentication is working by checking storage and session state
- */
-export async function verifyAuthState(page: Page, baseUrl: string, debug: boolean = false): Promise<boolean> {
-  const localStorage = await page.evaluate(() => {
-    const items: Record<string, string> = {};
-    for (let i = 0; i < window.localStorage.length; i++) {
-      const key = window.localStorage.key(i);
-      if (key) {
-        items[key] = window.localStorage.getItem(key) || "";
-      }
-    }
-    return items;
-  });
-
-  const sessionStorage = await page.evaluate(() => {
-    const items: Record<string, string> = {};
-    for (let i = 0; i < window.sessionStorage.length; i++) {
-      const key = window.sessionStorage.key(i);
-      if (key) {
-        items[key] = window.sessionStorage.getItem(key) || "";
-      }
-    }
-    return items;
-  });
-
-  const isSessionActive = localStorage["thunderid-session-active"] === "true";
-  const hasSessionData = Object.keys(sessionStorage).some(key => key.includes("session_data-instance_0"));
-
-  // Check if tokens exist and are not expired
-  let tokensValid = false;
-  let accessToken: string | undefined;
-  const sessionDataKey = Object.keys(sessionStorage).find(key => key.includes("session_data-instance_0"));
-  if (sessionDataKey) {
-    try {
-      const sessionData = JSON.parse(sessionStorage[sessionDataKey]);
-      if (sessionData.access_token && sessionData.created_at && sessionData.expires_in) {
-        const expirationTime = sessionData.created_at + sessionData.expires_in * 1000;
-        tokensValid = Date.now() < expirationTime;
-        accessToken = sessionData.access_token;
-        if (debug) {
-          const timeLeft = Math.round((expirationTime - Date.now()) / 1000 / 60);
-          console.log(`🔍 [DEBUG] Token expires in: ${timeLeft} minutes`);
-          if (!tokensValid) {
-            console.log("⚠️ [DEBUG] ACCESS TOKEN EXPIRED! Need to re-run auth.setup.ts");
-          }
-        }
-      }
-    } catch {
-      if (debug) console.log("🔍 [DEBUG] Could not parse session data");
-    }
-  }
-
-  if (debug) {
-    console.log("🔍 [DEBUG] localStorage keys:", Object.keys(localStorage));
-    console.log("🔍 [DEBUG] sessionStorage keys:", Object.keys(sessionStorage));
-    console.log(
-      `🔍 [DEBUG] Session active: ${isSessionActive}, Has session data: ${hasSessionData}, Tokens valid: ${tokensValid}`
-    );
-  }
-
-  console.log(
-    `🔍 Auth verification: session active: ${isSessionActive}, has session data: ${hasSessionData}, tokens valid: ${tokensValid}`
-  );
-
-  if (!isSessionActive || !hasSessionData || !tokensValid) {
-    return false;
-  }
-
-  // The checks above are all client-side and can't detect a token the server has already
-  // rejected (e.g. an in-flight request interrupted by a crashed worker leaving the session in
-  // a bad state)
-  try {
-    const response = await page.request.get(`${baseUrl}/oauth2/userinfo`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      ignoreHTTPSErrors: true,
-    });
-    if (!response.ok()) {
-      if (debug) console.log(`⚠️ [DEBUG] Server rejected stored token: ${response.status()}`);
-      return false;
-    }
-  } catch (error) {
-    if (debug) console.log("⚠️ [DEBUG] Server verification request failed:", error);
-    return false;
-  }
-
-  return true;
-}
-
-/**
  * Setup authentication for a test by loading and injecting auth state.
  * If auth file doesn't exist or tokens are expired, performs inline login.
  */
@@ -271,27 +182,16 @@ export async function setupAuthentication(
   // Restore cookies if any exist
   await restoreCookies(context, authState, debug);
 
-  // CRITICAL: Add init script to inject storage BEFORE page loads
+  // CRITICAL: Add init script to inject storage BEFORE page loads. checkTokensExpired above
+  // already confirmed the token isn't expired, and the test itself navigates to its real target
+  // route right after this fixture resolves - that navigation is what applies this init script,
+  // so there's no need to load the console here too just to re-check what it would find.
   const initScript = createStorageInitScript(authState);
   if (initScript) {
     await context.addInitScript(initScript);
     if (debug) {
       console.log("🔍 [DEBUG] Added init script to inject storage on page load");
     }
-  }
-
-  // Navigate to base URL - storage will be injected automatically
-  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-
-  if (debug) {
-    console.log("🔍 [DEBUG] Page URL after navigation:", page.url());
-  }
-
-  // Verify authentication is working
-  const isValid = await verifyAuthState(page, baseUrl, debug);
-  if (!isValid) {
-    console.log("⚠️ Auth verification failed, performing inline login...");
-    await performInlineLogin(page, baseUrl, authPath, debug);
   }
 }
 
@@ -360,7 +260,7 @@ Please ensure they are set in your .env file or the test environment configurati
   console.log("🔐 Performing inline login...");
 
   // Navigate to console page (will redirect to login)
-  await page.goto(`${baseUrl}/console`, { waitUntil: "networkidle" });
+  await page.goto(`${baseUrl}/console`, { timeout: Timeouts.PAGE_LOAD });
 
   // Wait for login form
   await page.waitForSelector('input[name="username"], input[type="text"]', { timeout: Timeouts.FORM_LOAD });
@@ -384,9 +284,13 @@ Please ensure they are set in your .env file or the test environment configurati
     .or(page.getByRole("button", { name: /sign in|login|submit/i }));
   await signInButton.first().click();
 
-  // Wait for redirect to console page
+  // Wait for redirect to console page, then for the SDK to actually write the session it
+  // establishes there - checkTokensExpired() above reads this same sessionStorage key, and
+  // saveAuthState() below would otherwise capture storage before the token exists.
   await page.waitForURL("**/console/**", { timeout: Timeouts.REDIRECT });
-  await page.waitForLoadState("networkidle");
+  await page.waitForFunction(() => Object.keys(sessionStorage).some(key => key.includes("session_data-instance_0")), {
+    timeout: Timeouts.PAGE_LOAD,
+  });
 
   console.log("✅ Inline login successful!");
 

@@ -10,94 +10,69 @@
  *
  * Required environment variables:
  * - BASE_URL: Console base URL
- * - SERVER_URL: Server API base URL (defaults to https://localhost:8090)
  * - ADMIN_USERNAME: Admin username (defaults to admin)
  * - ADMIN_PASSWORD: Admin password (defaults to admin)
- * - SAMPLE_APP_ID: Application ID used to obtain admin token
- * - DEFAULT_OU_ID: (optional) OU ID for the test application; fetched from the API when not set
+ *
+ * Optional:
+ * - SERVER_URL: backend base URL (default https://localhost:8090)
  */
 
-import { test, expect } from "../../fixtures/console";
+import { test, expect, ApplicationsApi, UserTypesApi } from "../../fixtures/console";
 import { TestDataFactory } from "../../utils/test-data";
-import { getAdminToken } from "../../utils/authentication";
-
-const serverUrl = process.env.SERVER_URL || "https://localhost:8090";
-const defaultOuId = process.env.DEFAULT_OU_ID || "";
 
 test.describe("Application Edit", () => {
   let testAppId: string;
   let testAppName: string;
   let suiteOuId: string;
+  /** TC012's own application, cleared once the UI delete succeeds; the hook removes it otherwise. */
+  let deleteTestAppId: string | undefined;
 
   test.beforeAll(async ({ request }) => {
-    if (!process.env.SAMPLE_APP_ID) throw new Error("SAMPLE_APP_ID env var is required for Application Edit tests");
-
     console.log("\n=== Application Edit Suite Setup ===");
     const appData = TestDataFactory.createApplication({ name: `TestApp_EDIT_${Date.now()}` });
     testAppName = appData.name;
 
-    const adminToken = await getAdminToken(request);
+    // Reuse the Person user type's organization unit, the same way UsersApi.createUser
+    // resolves one, rather than re-deriving it from the organization-units list.
+    const personType = await new UserTypesApi(request).findByName("Person");
+    if (!personType?.ouId) throw new Error("Person user type not found or missing organization unit");
+    suiteOuId = personType.ouId;
 
-    let resolvedOuId = defaultOuId;
-    if (!resolvedOuId) {
-      const ouResponse = await request.get(`${serverUrl}/organization-units?limit=1`, {
-        headers: { Authorization: `Bearer ${adminToken}` },
-        ignoreHTTPSErrors: true,
-      });
-      if (ouResponse.ok()) {
-        const ouData = await ouResponse.json();
-        resolvedOuId = ouData.organizationUnits?.[0]?.id ?? "";
-      }
-    }
-    if (!resolvedOuId) throw new Error("Could not determine an OU ID for Application Edit tests");
-    suiteOuId = resolvedOuId;
-
-    const createResponse = await request.post(`${serverUrl}/applications`, {
-      data: {
-        name: appData.name,
-        description: appData.description,
-        ouId: resolvedOuId,
-        type: "fullstack",
-        inboundAuthConfig: [
-          {
-            type: "oauth2",
-            config: { clientType: "PUBLIC", redirectUris: ["http://localhost:3000/callback"] },
-          },
-        ],
-      },
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-        "Content-Type": "application/json",
-      },
-      ignoreHTTPSErrors: true,
+    const created = await new ApplicationsApi(request).create({
+      name: appData.name,
+      description: appData.description,
+      ouId: suiteOuId,
+      type: "fullstack",
+      inboundAuthConfig: [
+        {
+          type: "oauth2",
+          config: { clientType: "PUBLIC", redirectUris: ["http://localhost:3000/callback"] },
+        },
+      ],
     });
-
-    if (!createResponse.ok()) {
-      throw new Error(`Failed to create test application: ${await createResponse.text()}`);
-    }
-
-    const created = await createResponse.json();
     testAppId = created.id;
     console.log(`Test application created: ${testAppName} (${testAppId})`);
   });
 
   test.afterAll(async ({ request }) => {
     console.log("\n=== Application Edit Suite Cleanup ===");
+
+    if (deleteTestAppId) {
+      const deleted = await new ApplicationsApi(request).deleteById(deleteTestAppId).catch(() => false);
+      if (deleted) {
+        console.log(`Test application deleted: ${deleteTestAppId}`);
+      } else {
+        console.warn(`Failed to delete test application ${deleteTestAppId}`);
+      }
+    }
+
     if (!testAppId) return;
 
-    const adminToken = await getAdminToken(request);
-
-    const deleteResponse = await request.delete(`${serverUrl}/applications/${testAppId}`, {
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-      },
-      ignoreHTTPSErrors: true,
-    });
-
-    if (deleteResponse.ok()) {
+    const deleted = await new ApplicationsApi(request).deleteById(testAppId);
+    if (deleted) {
       console.log(`Test application deleted: ${testAppId}`);
     } else {
-      console.warn(`Failed to delete test application ${testAppId}: ${await deleteResponse.text()}`);
+      console.warn(`Failed to delete test application ${testAppId}`);
     }
   });
 
@@ -276,7 +251,7 @@ test.describe("Application Edit", () => {
     });
 
     await test.step("Reload page and verify new name persists", async () => {
-      await applicationsPage.page.reload({ waitUntil: "networkidle" });
+      await applicationsPage.page.reload();
       const persistedHeading = applicationsPage.page.locator("h3").filter({ hasText: newName });
       await expect(persistedHeading.first()).toBeVisible();
       console.log("New name persists after page reload:", newName);
@@ -286,80 +261,52 @@ test.describe("Application Edit", () => {
   });
 
   /** TC012: Delete application from Danger Zone */
-  test("TC012: Delete application from Danger Zone", async ({ applicationsPage, request }) => {
-    let deleteTestAppId: string | undefined;
+  test("TC012: Delete application from Danger Zone", async ({ applicationsPage, applicationsApi }) => {
     let deleteTestAppName: string = "";
 
-    try {
-      await test.step("Create a dedicated application for delete test", async () => {
-        const appData = TestDataFactory.createApplication({ name: `TestApp_DELETE_${Date.now()}` });
-        deleteTestAppName = appData.name;
-        const adminToken = await getAdminToken(request);
+    await test.step("Create a dedicated application for delete test", async () => {
+      const appData = TestDataFactory.createApplication({ name: `TestApp_DELETE_${Date.now()}` });
+      deleteTestAppName = appData.name;
 
-        const createResponse = await request.post(`${serverUrl}/applications`, {
-          data: {
-            name: appData.name,
-            description: appData.description,
-            ouId: suiteOuId,
-            type: "fullstack",
-          },
-          headers: {
-            Authorization: `Bearer ${adminToken}`,
-            "Content-Type": "application/json",
-          },
-          ignoreHTTPSErrors: true,
-        });
-
-        expect(createResponse.ok()).toBeTruthy();
-
-        const created = await createResponse.json();
-        deleteTestAppId = created.id;
-        if (!deleteTestAppId) throw new Error("Delete test app creation failed — cannot proceed with delete test");
-        console.log(`Created delete test app: ${deleteTestAppId}`);
+      const created = await applicationsApi.create({
+        name: appData.name,
+        description: appData.description,
+        ouId: suiteOuId,
+        type: "fullstack",
       });
+      deleteTestAppId = created.id;
+      console.log(`Created delete test app: ${deleteTestAppId}`);
+    });
 
-      await test.step("Navigate to application edit page", async () => {
-        await applicationsPage.gotoEdit(deleteTestAppId!);
-        await applicationsPage.screenshot("tc012-before-delete");
-      });
+    await test.step("Navigate to application edit page", async () => {
+      await applicationsPage.gotoEdit(deleteTestAppId!);
+      await applicationsPage.screenshot("tc012-before-delete");
+    });
 
-      await test.step("Click General tab", async () => {
-        await applicationsPage.clickTab("General");
-      });
+    await test.step("Click General tab", async () => {
+      await applicationsPage.clickTab("General");
+    });
 
-      await test.step("Click Delete Application and confirm", async () => {
-        await applicationsPage.clickDeleteApplication();
-        await applicationsPage.confirmDelete();
-        console.log("Delete confirmed");
-        deleteTestAppId = undefined;
-      });
+    await test.step("Click Delete Application and confirm", async () => {
+      await applicationsPage.clickDeleteApplication();
+      await applicationsPage.confirmDelete();
+      console.log("Delete confirmed");
+    });
 
-      await test.step("Verify redirected to applications list", async () => {
-        await applicationsPage.page.waitForURL(/\/console\/applications$/, { timeout: 15000 });
-        await applicationsPage.verifyPageLoaded();
-        console.log("Redirected to applications list after delete");
-        await applicationsPage.screenshot("tc012-after-delete");
-      });
+    await test.step("Verify redirected to applications list", async () => {
+      await applicationsPage.page.waitForURL(/\/console\/applications$/, { timeout: 15000 });
+      await applicationsPage.verifyPageLoaded();
+      console.log("Redirected to applications list after delete");
+      await applicationsPage.screenshot("tc012-after-delete");
+    });
 
-      await test.step("Verify deleted app no longer appears in list", async () => {
-        const deletedRow = applicationsPage.page
-          .locator('[data-testid="applications-list"]')
-          .getByText(deleteTestAppName);
-        await expect(deletedRow).not.toBeVisible();
-        console.log("Deleted app not found in list — correct");
-      });
-    } finally {
-      if (deleteTestAppId) {
-        const adminToken = await getAdminToken(request).catch(() => null);
-        if (adminToken) {
-          await request
-            .delete(`${serverUrl}/applications/${deleteTestAppId}`, {
-              headers: { Authorization: `Bearer ${adminToken}` },
-              ignoreHTTPSErrors: true,
-            })
-            .catch(() => {});
-        }
-      }
-    }
+    await test.step("Verify deleted app no longer appears in list", async () => {
+      const deletedRow = applicationsPage.page
+        .locator('[data-testid="applications-list"]')
+        .getByText(deleteTestAppName);
+      await expect(deletedRow).not.toBeVisible();
+      console.log("Deleted app not found in list, correct");
+      deleteTestAppId = undefined;
+    });
   });
 });

@@ -1,0 +1,61 @@
+name: 'Import Declarative Config into ThunderID'
+description: 'POSTs a declarative config YAML file to /import with upsert enabled, and fails if the HTTP call fails or any resource in it fails to import'
+author: 'The ThunderID Authors'
+
+inputs:
+  config-path:
+    description: 'Path to the declarative config YAML file, relative to the repo root'
+    required: true
+  admin-token:
+    description: 'Admin bearer token to authenticate the import call'
+    required: true
+  label:
+    description: 'Human-readable label for log messages (defaults to config-path)'
+    required: false
+    default: ''
+  variables-json:
+    description: "JSON object to send as the import request's \"variables\" map"
+    required: false
+    default: '{}'
+  server-url:
+    description: 'Base URL of the running ThunderID server'
+    required: false
+    default: 'https://localhost:8090'
+
+runs:
+  using: composite
+  steps:
+    - name: 📦 Import Declarative Config
+      shell: bash
+      env:
+        CONFIG_PATH: ${{ inputs.config-path }}
+        ADMIN_TOKEN: ${{ inputs.admin-token }}
+        LABEL_INPUT: ${{ inputs.label }}
+        VARIABLES_JSON: ${{ inputs.variables-json }}
+        SERVER_URL: ${{ inputs.server-url }}
+      run: |
+        LABEL="${LABEL_INPUT:-$CONFIG_PATH}"
+
+        echo "Importing $LABEL..."
+        YAML_CONTENT=$(cat "$CONFIG_PATH")
+        BODY=$(jq -n \
+          --arg content "$YAML_CONTENT" \
+          --argjson variables "$VARIABLES_JSON" \
+          '{content: $content, variables: $variables, options: {upsert: true}}')
+        HTTP_STATUS=$(curl -k -s -o /tmp/import_response.json -w "%{http_code}" \
+          -X POST "$SERVER_URL/import" \
+          -H 'Content-Type: application/json' \
+          -H "Authorization: Bearer $ADMIN_TOKEN" \
+          -d "$BODY")
+        echo "Import HTTP status: $HTTP_STATUS"
+        cat /tmp/import_response.json | jq . || cat /tmp/import_response.json
+        if [ "$HTTP_STATUS" != "200" ]; then
+          echo "❌ Failed to import $LABEL (HTTP $HTTP_STATUS)"
+          exit 1
+        fi
+        FAILED_COUNT=$(jq -r '.summary.failed // 0' /tmp/import_response.json)
+        if [ "$FAILED_COUNT" != "0" ]; then
+          echo "❌ Import of $LABEL had $FAILED_COUNT failed resource(s)"
+          exit 1
+        fi
+        echo "✅ $LABEL imported successfully"

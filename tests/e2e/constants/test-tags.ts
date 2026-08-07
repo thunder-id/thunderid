@@ -44,6 +44,9 @@ export const TestTags = {
 
   /** Accessibility (a11y) related tests */
   ACCESSIBILITY: "@accessibility",
+
+  /** Wayfinder sample setup / welcome screen related tests */
+  WAYFINDER: "@wayfinder",
 } as const;
 
 export type TestTag = (typeof TestTags)[keyof typeof TestTags];

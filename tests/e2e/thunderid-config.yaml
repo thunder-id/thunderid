@@ -12,16 +12,7 @@ type: fullstack
 # directly via the Flow Execution API. Test-only credential.
 flowSecret: e2e-admin-native-app-secret
 authFlowHandle: default-flow
+# The admin user is bootstrap-provisioned as Person (see backend/cmd/server/bootstrap), which is
+# also what this file can rely on existing before any sample-app config is imported.
 allowedUserTypes:
-  - Customer
-
----
-resource_type: server_config
-# Allows the sample apps' browser origins to reach the API during E2E tests. CORS origins come only from
-# the server-config "cors" section (no default ships), so the E2E setup imports them here.
-name: cors
-value:
-  allowedOrigins:
-    - "https://localhost:3000"
-    - "http://localhost:5173"
-    - "http://localhost:6274"
+  - Person

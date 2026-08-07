@@ -1,381 +1,381 @@
 [
-    {
-        "id": "start",
-        "type": "START",
-        "layout": {
-            "size": {
-                "width": 101,
-                "height": 34
-            },
-            "position": {
-                "x": 62,
-                "y": 87
-            }
-        },
-        "onSuccess": "prompt_credentials"
+  {
+    "id": "start",
+    "type": "START",
+    "layout": {
+      "size": {
+        "width": 101,
+        "height": 34
+      },
+      "position": {
+        "x": 62,
+        "y": 87
+      }
     },
-    {
-        "id": "prompt_credentials",
-        "type": "PROMPT",
-        "layout": {
-            "size": {
-                "width": 350,
-                "height": 560
-            },
-            "position": {
-                "x": 562,
-                "y": 62
-            }
+    "onSuccess": "prompt_credentials"
+  },
+  {
+    "id": "prompt_credentials",
+    "type": "PROMPT",
+    "layout": {
+      "size": {
+        "width": 350,
+        "height": 560
+      },
+      "position": {
+        "x": 562,
+        "y": 62
+      }
+    },
+    "meta": {
+      "components": [
+        {
+          "category": "DISPLAY",
+          "id": "text_001",
+          "label": "{{ t(signin:heading) }}",
+          "resourceType": "ELEMENT",
+          "type": "TEXT",
+          "variant": "HEADING_1"
         },
-        "meta": {
-            "components": [
-                {
-                    "category": "DISPLAY",
-                    "id": "text_001",
-                    "label": "{{ t(signin:heading) }}",
-                    "resourceType": "ELEMENT",
-                    "type": "TEXT",
-                    "variant": "HEADING_1"
-                },
-                {
-                    "category": "BLOCK",
-                    "id": "block_001",
-                    "resourceType": "ELEMENT",
-                    "type": "BLOCK",
-                    "components": [
-                        {
-                            "category": "FIELD",
-                            "hint": "",
-                            "id": "input_001",
-                            "inputType": "text",
-                            "label": "{{ t(elements:fields.username.label) }}",
-                            "placeholder": "{{ t(elements:fields.username.placeholder) }}",
-                            "ref": "username",
-                            "required": true,
-                            "resourceType": "ELEMENT",
-                            "type": "TEXT_INPUT"
-                        },
-                        {
-                            "category": "FIELD",
-                            "hint": "",
-                            "id": "input_002",
-                            "inputType": "text",
-                            "label": "{{ t(elements:fields.password.label) }}",
-                            "placeholder": "{{ t(elements:fields.password.placeholder) }}",
-                            "ref": "password",
-                            "required": true,
-                            "resourceType": "ELEMENT",
-                            "type": "PASSWORD_INPUT"
-                        },
-                        {
-                            "category": "ACTION",
-                            "eventType": "SUBMIT",
-                            "id": "action_001",
-                            "label": "{{ t(elements:buttons.submit.text) }}",
-                            "resourceType": "ELEMENT",
-                            "type": "ACTION",
-                            "variant": "PRIMARY"
-                        }
-                    ]
-                },
-                {
-                    "action": {
-                        "ref": "action_signup"
-                    },
-                    "category": "DISPLAY",
-                    "id": "rich_text_signup",
-                    "resourceType": "ELEMENT",
-                    "type": "RICH_TEXT",
-                    "label": "<p data-component-ref=\"self-sign-up-link\" class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Don't have an account? </span><a href=\"#\" data-action-ref=\"action_signup\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Sign up</span></a></p>"
-                }
-            ]
-        },
-        "prompts": [
+        {
+          "category": "BLOCK",
+          "id": "block_001",
+          "resourceType": "ELEMENT",
+          "type": "BLOCK",
+          "components": [
             {
-                "inputs": [
-                    {
-                        "ref": "input_001",
-                        "type": "TEXT_INPUT",
-                        "identifier": "username",
-                        "required": true
-                    },
-                    {
-                        "ref": "input_002",
-                        "type": "PASSWORD_INPUT",
-                        "identifier": "password",
-                        "required": true
-                    }
-                ],
-                "action": {
-                    "ref": "action_001",
-                    "nextNode": "credentials_auth"
-                }
+              "category": "FIELD",
+              "hint": "",
+              "id": "input_001",
+              "inputType": "text",
+              "label": "{{ t(elements:fields.username.label) }}",
+              "placeholder": "{{ t(elements:fields.username.placeholder) }}",
+              "ref": "username",
+              "required": true,
+              "resourceType": "ELEMENT",
+              "type": "TEXT_INPUT"
             },
             {
-                "action": {
-                    "ref": "action_signup",
-                    "nextNode": "call_registration"
-                }
-            }
-        ]
-    },
-    {
-        "id": "credentials_auth",
-        "type": "TASK_EXECUTION",
-        "layout": {
-            "size": {
-                "width": 217,
-                "height": 113
+              "category": "FIELD",
+              "hint": "",
+              "id": "input_002",
+              "inputType": "text",
+              "label": "{{ t(elements:fields.password.label) }}",
+              "placeholder": "{{ t(elements:fields.password.placeholder) }}",
+              "ref": "password",
+              "required": true,
+              "resourceType": "ELEMENT",
+              "type": "PASSWORD_INPUT"
             },
-            "position": {
-                "x": 1062,
-                "y": 62
+            {
+              "category": "ACTION",
+              "eventType": "SUBMIT",
+              "id": "action_001",
+              "label": "{{ t(elements:buttons.submit.text) }}",
+              "resourceType": "ELEMENT",
+              "type": "ACTION",
+              "variant": "PRIMARY"
             }
+          ]
         },
-        "executor": {
-            "name": "CredentialsAuthExecutor",
-            "inputs": [
-                {
-                    "ref": "input_001",
-                    "type": "TEXT_INPUT",
-                    "identifier": "username",
-                    "required": true
-                },
-                {
-                    "ref": "input_002",
-                    "type": "PASSWORD_INPUT",
-                    "identifier": "password",
-                    "required": true
-                }
-            ]
-        },
-        "onSuccess": "authorization_check"
-    },
-    {
-        "id": "authorization_check",
-        "type": "TASK_EXECUTION",
-        "layout": {
-            "size": {
-                "width": 200,
-                "height": 113
-            },
-            "position": {
-                "x": 1562,
-                "y": 62
-            }
-        },
-        "executor": {
-            "name": "AuthorizationExecutor"
-        },
-        "onSuccess": "generate_otp"
-    },
-    {
-        "id": "generate_otp",
-        "type": "TASK_EXECUTION",
-        "layout": {
-            "size": {
-                "width": 200,
-                "height": 113
-            },
-            "position": {
-                "x": 2062,
-                "y": 62
-            }
-        },
-        "executor": {
-            "name": "OTPExecutor",
-            "mode": "generate",
-            "inputs": [
-                {
-                    "ref": "input_mobile",
-                    "type": "PHONE_INPUT",
-                    "identifier": "mobileNumber",
-                    "required": true
-                }
-            ]
-        },
-        "onSuccess": "sms_send"
-    },
-    {
-        "id": "sms_send",
-        "type": "TASK_EXECUTION",
-        "layout": {
-            "size": {
-                "width": 200,
-                "height": 113
-            },
-            "position": {
-                "x": 2392,
-                "y": 62
-            }
-        },
-        "properties": {
-            "senderId": "{{SENDER_ID}}",
-            "smsTemplate": "OTP"
-        },
-        "executor": {
-            "name": "SMSExecutor"
-        },
-        "onSuccess": "view_s2t2"
-    },
-    {
-        "id": "verify_otp",
-        "type": "TASK_EXECUTION",
-        "layout": {
-            "size": {
-                "width": 200,
-                "height": 113
-            },
-            "position": {
-                "x": 3062,
-                "y": 62
-            }
-        },
-        "executor": {
-            "name": "OTPExecutor",
-            "mode": "verify",
-            "inputs": [
-                {
-                    "ref": "otp_input_24ux",
-                    "type": "OTP_INPUT",
-                    "identifier": "otp",
-                    "required": false
-                }
-            ]
-        },
-        "onSuccess": "auth_assert"
-    },
-    {
-        "id": "auth_assert",
-        "type": "TASK_EXECUTION",
-        "layout": {
-            "size": {
-                "width": 244,
-                "height": 113
-            },
-            "position": {
-                "x": 3562,
-                "y": 62
-            }
-        },
-        "executor": {
-            "name": "AuthAssertExecutor"
-        },
-        "onSuccess": "end"
-    },
-    {
-        "id": "call_registration",
-        "type": "CALL",
-        "flow": {
-            "ref": "{{REGISTRATION_FLOW_ID}}"
-        },
-        "onSuccess": "auth_assert"
-    },
-    {
-        "id": "end",
-        "type": "END",
-        "layout": {
-            "size": {
-                "width": 85,
-                "height": 34
-            },
-            "position": {
-                "x": 4062,
-                "y": 87
-            }
+        {
+          "action": {
+            "ref": "action_signup"
+          },
+          "category": "DISPLAY",
+          "id": "rich_text_signup",
+          "resourceType": "ELEMENT",
+          "type": "RICH_TEXT",
+          "label": "<p data-component-ref=\"self-sign-up-link\" class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Don't have an account? </span><a href=\"#\" data-action-ref=\"action_signup\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Sign up</span></a></p>"
         }
+      ]
     },
-    {
-        "id": "view_s2t2",
-        "type": "PROMPT",
-        "layout": {
-            "size": {
-                "width": 350,
-                "height": 522
-            },
-            "position": {
-                "x": 2591,
-                "y": 37
-            }
+    "prompts": [
+      {
+        "inputs": [
+          {
+            "ref": "input_001",
+            "type": "TEXT_INPUT",
+            "identifier": "username",
+            "required": true
+          },
+          {
+            "ref": "input_002",
+            "type": "PASSWORD_INPUT",
+            "identifier": "password",
+            "required": true
+          }
+        ],
+        "action": {
+          "ref": "action_001",
+          "nextNode": "credentials_auth"
+        }
+      },
+      {
+        "action": {
+          "ref": "action_signup",
+          "nextNode": "call_registration"
+        }
+      }
+    ]
+  },
+  {
+    "id": "credentials_auth",
+    "type": "TASK_EXECUTION",
+    "layout": {
+      "size": {
+        "width": 217,
+        "height": 113
+      },
+      "position": {
+        "x": 1062,
+        "y": 62
+      }
+    },
+    "executor": {
+      "name": "CredentialsAuthExecutor",
+      "inputs": [
+        {
+          "ref": "input_001",
+          "type": "TEXT_INPUT",
+          "identifier": "username",
+          "required": true
         },
-        "meta": {
-            "components": [
-                {
-                    "category": "DISPLAY",
-                    "id": "text_nwu6",
-                    "label": "Verify OTP",
-                    "resourceType": "ELEMENT",
-                    "type": "TEXT",
-                    "variant": "HEADING_3"
-                },
-                {
-                    "category": "BLOCK",
-                    "id": "block_gwme",
-                    "resourceType": "ELEMENT",
-                    "type": "BLOCK",
-                    "components": [
-                        {
-                            "category": "FIELD",
-                            "hint": "",
-                            "id": "otp_input_24ux",
-                            "inputType": "text",
-                            "label": "Enter the code sent to your mobile",
-                            "placeholder": "",
-                            "ref": "otp",
-                            "required": false,
-                            "resourceType": "ELEMENT",
-                            "type": "OTP_INPUT"
-                        },
-                        {
-                            "category": "ACTION",
-                            "eventType": "TRIGGER",
-                            "id": "action_s76e",
-                            "label": "Verify",
-                            "resourceType": "ELEMENT",
-                            "type": "ACTION",
-                            "variant": "PRIMARY"
-                        },
-                        {
-                            "category": "ACTION",
-                            "eventType": "SUBMIT",
-                            "id": "resend_6o42",
-                            "label": "Resend OTP",
-                            "resourceType": "ELEMENT",
-                            "type": "RESEND"
-                        }
-                    ]
-                }
-            ]
-        },
-        "prompts": [
-            {
-                "inputs": [
-                    {
-                        "ref": "otp_input_24ux",
-                        "type": "OTP_INPUT",
-                        "identifier": "otp",
-                        "required": false
-                    }
-                ],
-                "action": {
-                    "ref": "action_s76e",
-                    "nextNode": "verify_otp"
-                }
-            },
-            {
-                "inputs": [
-                    {
-                        "ref": "otp_input_24ux",
-                        "type": "OTP_INPUT",
-                        "identifier": "otp",
-                        "required": false
-                    }
-                ],
-                "action": {
-                    "ref": "resend_6o42",
-                    "nextNode": "generate_otp"
-                }
-            }
-        ]
+        {
+          "ref": "input_002",
+          "type": "PASSWORD_INPUT",
+          "identifier": "password",
+          "required": true
+        }
+      ]
+    },
+    "onSuccess": "authorization_check"
+  },
+  {
+    "id": "authorization_check",
+    "type": "TASK_EXECUTION",
+    "layout": {
+      "size": {
+        "width": 200,
+        "height": 113
+      },
+      "position": {
+        "x": 1562,
+        "y": 62
+      }
+    },
+    "executor": {
+      "name": "AuthorizationExecutor"
+    },
+    "onSuccess": "generate_otp"
+  },
+  {
+    "id": "generate_otp",
+    "type": "TASK_EXECUTION",
+    "layout": {
+      "size": {
+        "width": 200,
+        "height": 113
+      },
+      "position": {
+        "x": 2062,
+        "y": 62
+      }
+    },
+    "executor": {
+      "name": "OTPExecutor",
+      "mode": "generate",
+      "inputs": [
+        {
+          "ref": "input_mobile",
+          "type": "PHONE_INPUT",
+          "identifier": "mobileNumber",
+          "required": true
+        }
+      ]
+    },
+    "onSuccess": "sms_send"
+  },
+  {
+    "id": "sms_send",
+    "type": "TASK_EXECUTION",
+    "layout": {
+      "size": {
+        "width": 200,
+        "height": 113
+      },
+      "position": {
+        "x": 2392,
+        "y": 62
+      }
+    },
+    "properties": {
+      "senderId": "{{SENDER_ID}}",
+      "smsTemplate": "OTP"
+    },
+    "executor": {
+      "name": "SMSExecutor"
+    },
+    "onSuccess": "view_s2t2"
+  },
+  {
+    "id": "verify_otp",
+    "type": "TASK_EXECUTION",
+    "layout": {
+      "size": {
+        "width": 200,
+        "height": 113
+      },
+      "position": {
+        "x": 3062,
+        "y": 62
+      }
+    },
+    "executor": {
+      "name": "OTPExecutor",
+      "mode": "verify",
+      "inputs": [
+        {
+          "ref": "otp_input_24ux",
+          "type": "OTP_INPUT",
+          "identifier": "otp",
+          "required": false
+        }
+      ]
+    },
+    "onSuccess": "auth_assert"
+  },
+  {
+    "id": "auth_assert",
+    "type": "TASK_EXECUTION",
+    "layout": {
+      "size": {
+        "width": 244,
+        "height": 113
+      },
+      "position": {
+        "x": 3562,
+        "y": 62
+      }
+    },
+    "executor": {
+      "name": "AuthAssertExecutor"
+    },
+    "onSuccess": "end"
+  },
+  {
+    "id": "call_registration",
+    "type": "CALL",
+    "flow": {
+      "ref": "{{REGISTRATION_FLOW_ID}}"
+    },
+    "onSuccess": "auth_assert"
+  },
+  {
+    "id": "end",
+    "type": "END",
+    "layout": {
+      "size": {
+        "width": 85,
+        "height": 34
+      },
+      "position": {
+        "x": 4062,
+        "y": 87
+      }
     }
+  },
+  {
+    "id": "view_s2t2",
+    "type": "PROMPT",
+    "layout": {
+      "size": {
+        "width": 350,
+        "height": 522
+      },
+      "position": {
+        "x": 2591,
+        "y": 37
+      }
+    },
+    "meta": {
+      "components": [
+        {
+          "category": "DISPLAY",
+          "id": "text_nwu6",
+          "label": "Verify OTP",
+          "resourceType": "ELEMENT",
+          "type": "TEXT",
+          "variant": "HEADING_3"
+        },
+        {
+          "category": "BLOCK",
+          "id": "block_gwme",
+          "resourceType": "ELEMENT",
+          "type": "BLOCK",
+          "components": [
+            {
+              "category": "FIELD",
+              "hint": "",
+              "id": "otp_input_24ux",
+              "inputType": "text",
+              "label": "Enter the code sent to your mobile",
+              "placeholder": "",
+              "ref": "otp",
+              "required": false,
+              "resourceType": "ELEMENT",
+              "type": "OTP_INPUT"
+            },
+            {
+              "category": "ACTION",
+              "eventType": "TRIGGER",
+              "id": "action_s76e",
+              "label": "Verify",
+              "resourceType": "ELEMENT",
+              "type": "ACTION",
+              "variant": "PRIMARY"
+            },
+            {
+              "category": "ACTION",
+              "eventType": "SUBMIT",
+              "id": "resend_6o42",
+              "label": "Resend OTP",
+              "resourceType": "ELEMENT",
+              "type": "RESEND"
+            }
+          ]
+        }
+      ]
+    },
+    "prompts": [
+      {
+        "inputs": [
+          {
+            "ref": "otp_input_24ux",
+            "type": "OTP_INPUT",
+            "identifier": "otp",
+            "required": false
+          }
+        ],
+        "action": {
+          "ref": "action_s76e",
+          "nextNode": "verify_otp"
+        }
+      },
+      {
+        "inputs": [
+          {
+            "ref": "otp_input_24ux",
+            "type": "OTP_INPUT",
+            "identifier": "otp",
+            "required": false
+          }
+        ],
+        "action": {
+          "ref": "resend_6o42",
+          "nextNode": "generate_otp"
+        }
+      }
+    ]
+  }
 ]

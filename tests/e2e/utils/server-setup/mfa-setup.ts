@@ -5,23 +5,33 @@
  * MFA Setup Utilities
  *
  * Automated setup for MFA testing prerequisites:
- * - Admin authentication
  * - Notification sender creation
  * - MFA flow creation
  * - Test user creation
  * - Application configuration
+ *
+ * All backend calls go through the `*Api` helpers (which themselves go through `send`/`sendOk`,
+ * owning the admin bearer token and `ignoreHTTPSErrors`), so nothing here handles auth headers
+ * directly. Resources are looked up by name/handle before creating - the notification sender and
+ * both flows are shared, name-addressed resources, and the sender's URL is a server-wide setting,
+ * so nothing may run this setup concurrently with itself. The calling spec is therefore restricted
+ * to a single browser project (see SERVER_STATE_SPECS in playwright.config.ts). It does not
+ * contend with social login or default login: MFA rewires its own dedicated application
+ * (constants/sample-apps.ts) instead of sharing `REACT_SDK_SAMPLE`.
  */
 
-import { APIRequestContext, request as playwrightRequest } from "@playwright/test";
+import type { APIRequestContext } from "@playwright/test";
+import { UsersApi } from "../users-api";
+import { ConnectionsApi } from "../connections-api";
+import { FlowsApi } from "../flows-api";
+import { rewireApplicationFlows, restoreApplicationFlows } from "./application-flows";
 import mfaFlowNodesTemplate from "./mfa-flow-nodes.json";
 import mfaRegistrationFlowNodesTemplate from "./mfa-registration-flow-nodes.json";
 
 export interface SetupConfig {
-  serverUrl: string;
+  /** clientId of the application to rewire (constants/sample-apps.ts). */
+  clientId: string;
   mockSmsUrl: string;
-  adminUsername: string;
-  adminPassword: string;
-  applicationId: string;
   testUser: {
     username: string;
     password: string;
@@ -32,19 +42,12 @@ export interface SetupConfig {
 }
 
 export interface SetupResult {
-  adminToken: string;
   notificationSenderId: string;
   authFlowId: string;
   registrationFlowId: string;
   userId: string;
   applicationId: string;
-  cleanupFunctions: Array<() => Promise<void>>;
-  resourcesCreated: {
-    notificationSender: boolean;
-    authFlow: boolean;
-    registrationFlow: boolean;
-    user: boolean;
-  };
+  cleanupFunctions: Array<(request: APIRequestContext) => Promise<void>>;
 }
 
 export class MFASetup {
@@ -59,105 +62,89 @@ export class MFASetup {
   async setup(): Promise<SetupResult> {
     console.log("\n=== MFA Setup Started ===");
 
-    const cleanupFunctions: Array<() => Promise<void>> = [];
-    const resourcesCreated = {
-      notificationSender: false,
-      authFlow: false,
-      registrationFlow: false,
-      user: false,
-    };
+    const cleanupFunctions: Array<(request: APIRequestContext) => Promise<void>> = [];
 
     try {
-      // Step 1: Get admin token
-      const adminToken = await this.getAdminToken();
-      console.log("✓ Admin authentication successful");
-
-      // Step 2: Create notification sender
-      const notificationSenderId = await this.createOrGetNotificationSender(adminToken);
-      if (notificationSenderId.startsWith("created:")) {
-        const id = notificationSenderId.replace("created:", "");
-        console.log(`✓ Notification sender created: ${id}`);
-        cleanupFunctions.push(() => this.deleteNotificationSender(adminToken, id));
-        resourcesCreated.notificationSender = true;
+      // Step 1: Create notification sender
+      const sender = await this.createOrGetNotificationSender();
+      if (sender.created) {
+        console.log(`✓ Notification sender created: ${sender.id}`);
+        cleanupFunctions.push(request => this.deleteNotificationSender(request, sender.id));
       } else {
-        console.log(`✓ Using existing notification sender: ${notificationSenderId}`);
+        console.log(`✓ Using existing notification sender: ${sender.id}`);
       }
-      const senderId = notificationSenderId.replace("created:", "");
 
-      // Step 3: Create MFA registration flow. It is created before the authentication flow because
+      // Step 2: Create MFA registration flow. It is created before the authentication flow because
       // the authentication flow's call_registration node has to reference this flow's id.
-      const regFlowId = await this.createOrGetMFARegistrationFlow(adminToken);
-      if (regFlowId.startsWith("created:")) {
-        const id = regFlowId.replace("created:", "");
-        console.log(`✓ MFA registration flow created: ${id}`);
-        cleanupFunctions.push(() => this.deleteFlow(adminToken, id));
-        resourcesCreated.registrationFlow = true;
+      const regFlow = await this.createOrGetMFARegistrationFlow();
+      if (regFlow.created) {
+        console.log(`✓ MFA registration flow created: ${regFlow.id}`);
+        cleanupFunctions.push(request => this.deleteFlow(request, regFlow.id));
       } else {
-        console.log(`✓ Using existing MFA registration flow: ${regFlowId}`);
+        console.log(`✓ Using existing MFA registration flow: ${regFlow.id}`);
       }
-      const actualRegFlowId = regFlowId.replace("created:", "");
 
-      // Step 4: Create MFA authentication flow
-      const authFlowId = await this.createOrGetMFAAuthFlow(adminToken, senderId, actualRegFlowId);
-      if (authFlowId.startsWith("created:")) {
-        const id = authFlowId.replace("created:", "");
-        console.log(`✓ MFA authentication flow created: ${id}`);
-        cleanupFunctions.push(() => this.deleteFlow(adminToken, id));
-        resourcesCreated.authFlow = true;
+      // Step 3: Create MFA authentication flow
+      const authFlow = await this.createOrGetMFAAuthFlow(sender.id, regFlow.id);
+      if (authFlow.created) {
+        console.log(`✓ MFA authentication flow created: ${authFlow.id}`);
+        cleanupFunctions.push(request => this.deleteFlow(request, authFlow.id));
       } else {
-        console.log(`✓ Using existing MFA authentication flow: ${authFlowId}`);
+        console.log(`✓ Using existing MFA authentication flow: ${authFlow.id}`);
       }
-      const actualAuthFlowId = authFlowId.replace("created:", "");
 
-      // Step 5: Create test user
-      const userResult = await this.createOrGetTestUser(adminToken);
-      if (userResult.startsWith("created:")) {
-        const id = userResult.replace("created:", "");
-        console.log(`✓ Test user created: ${id}`);
-        cleanupFunctions.push(() => this.deleteUser(adminToken, id));
-        resourcesCreated.user = true;
+      // Step 4: Create test user
+      const user = await this.createOrGetTestUser();
+      if (user.created) {
+        console.log(`✓ Test user created: ${user.id}`);
+        cleanupFunctions.push(request => this.deleteUser(request, user.id));
       } else {
-        console.log(`✓ Using existing test user: ${userResult}`);
+        console.log(`✓ Using existing test user: ${user.id}`);
       }
-      const userId = userResult.replace("created:", "");
 
-      // Step 6: Update application with MFA flows
-      const { appId: actualAppId, originalFlows } = await this.updateApplicationFlows(
-        adminToken,
-        actualAuthFlowId,
-        actualRegFlowId
-      );
+      // Step 5: Update application with MFA flows
+      const { appId, originalFlows } = await rewireApplicationFlows(this.request, this.config.clientId, {
+        authFlowId: authFlow.id,
+        registrationFlowId: regFlow.id,
+        recoveryFlowId: null,
+        isRegistrationFlowEnabled: true,
+      });
       console.log(`✓ Application updated with MFA flows`);
-      cleanupFunctions.push(() => this.revertApplicationFlows(adminToken, actualAppId, originalFlows));
+      cleanupFunctions.push(request => restoreApplicationFlows(request, appId, originalFlows));
       console.log("=== MFA Setup Completed ===\n");
 
       return {
-        adminToken,
-        notificationSenderId: senderId,
-        authFlowId: actualAuthFlowId,
-        registrationFlowId: actualRegFlowId,
-        userId,
-        applicationId: actualAppId,
+        notificationSenderId: sender.id,
+        authFlowId: authFlow.id,
+        registrationFlowId: regFlow.id,
+        userId: user.id,
+        applicationId: appId,
         cleanupFunctions,
-        resourcesCreated,
       };
     } catch (error) {
       console.error("✗ MFA Setup failed:", error);
       // Run cleanup for any resources created before failure
-      await this.cleanup(cleanupFunctions);
+      await MFASetup.cleanup(this.request, cleanupFunctions);
       throw error;
     }
   }
 
   /**
-   * Cleanup all created resources
+   * Cleanup all created resources, most-recently-created first.
+   *
+   * Static, and takes the request context to use: `afterAll` must pass its own live `request`,
+   * not the `beforeAll`-scoped one that created the `MFASetup` instance and closed once
+   * `beforeAll` returned. No setup config is needed to tear down.
    */
-  async cleanup(cleanupFunctions: Array<() => Promise<void>>): Promise<void> {
+  static async cleanup(
+    request: APIRequestContext,
+    cleanupFunctions: Array<(request: APIRequestContext) => Promise<void>>
+  ): Promise<void> {
     console.log("\n=== MFA Cleanup Started ===");
 
-    for (const cleanup of cleanupFunctions.reverse()) {
+    for (const cleanupFn of [...cleanupFunctions].reverse()) {
       try {
-        await cleanup();
+        await cleanupFn(request);
       } catch (error) {
         console.error("⚠️  Cleanup error (non-fatal):", error);
       }
@@ -167,583 +154,136 @@ export class MFASetup {
   }
 
   /**
-   * Get admin authentication token
-   */
-  private async getAdminToken(): Promise<string> {
-    // Use the native app declared in tests/e2e/thunderid-config.yaml with a fixed UUID.
-    // It uses only client_credentials so it is not subject to the redirect-based flow guard,
-    // but as a backend app it must present its Flow Secret to initiate a flow.
-    const adminAppId = "019e3a5c-0501-7f3e-a66e-66fc7918c3a7";
-    const adminFlowSecret = "e2e-admin-native-app-secret";
-
-    // Step 1: Start authentication flow
-    const flowResponse = await this.request.post(`${this.config.serverUrl}/flow/execute`, {
-      data: {
-        applicationId: adminAppId,
-        flowType: "AUTHENTICATION",
-      },
-      headers: { "Flow-Secret": adminFlowSecret },
-      ignoreHTTPSErrors: true,
-    });
-
-    if (!flowResponse.ok()) {
-      throw new Error(`Failed to start authentication flow: ${await flowResponse.text()}`);
-    }
-
-    const flowData = await flowResponse.json();
-    const executionId = flowData.executionId;
-    const challengeToken = flowData.challengeToken;
-
-    // Step 2: Submit credentials
-    const authResponse = await this.request.post(`${this.config.serverUrl}/flow/execute`, {
-      data: {
-        executionId: executionId,
-        challengeToken: challengeToken,
-        inputs: {
-          username: this.config.adminUsername,
-          password: this.config.adminPassword,
-          requested_permissions: "system",
-          // Scope the permission evaluation to the System resource server (identifier from
-          // backend/cmd/server/bootstrap/01-default-resources.yaml). Direct /flow/execute calls
-          // do not pass through the OAuth layer, so the target resource server must be declared here.
-          resource_server_identifier: "https://localhost:8090/mcp",
-        },
-        action: "action_001",
-      },
-      ignoreHTTPSErrors: true,
-    });
-
-    if (!authResponse.ok()) {
-      throw new Error(`Admin authentication failed: ${await authResponse.text()}`);
-    }
-
-    const authData = await authResponse.json();
-    return authData.assertion;
-  }
-
-  /**
    * Create or get existing notification sender for SMS
    */
-  private async createOrGetNotificationSender(adminToken: string): Promise<string> {
+  private async createOrGetNotificationSender(): Promise<{ id: string; created: boolean }> {
     const senderName = "E2E Mock SMS Sender";
+    const connectionsApi = new ConnectionsApi(this.request);
 
-    // Try to create the notification sender
-    const response = await this.request.post(`${this.config.serverUrl}/connections/sms-gateway`, {
-      data: {
-        name: senderName,
-        description: "Mock SMS sender for e2e MFA testing",
-        url: this.config.mockSmsUrl,
-        httpMethod: "POST",
-        contentType: "JSON",
-      },
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      ignoreHTTPSErrors: true,
+    const existing = await connectionsApi.findByName("sms-gateway", senderName);
+    if (existing) {
+      // A sender left over from an earlier run may point at a stale mock SMS URL (e.g. a
+      // different MOCK_SMS_SERVER_PORT, or a run that crashed before its own cleanup ran).
+      // Reconcile it so this run's mock server actually receives the webhook.
+      const detail = await connectionsApi.get("sms-gateway", existing.id);
+      if (detail.url !== this.config.mockSmsUrl) {
+        await connectionsApi.update("sms-gateway", existing.id, {
+          name: senderName,
+          description: "Mock SMS sender for e2e MFA testing",
+          url: this.config.mockSmsUrl,
+          httpMethod: "POST",
+          contentType: "JSON",
+        });
+      }
+      return { id: existing.id, created: false };
+    }
+
+    const sender = await connectionsApi.create("sms-gateway", {
+      name: senderName,
+      description: "Mock SMS sender for e2e MFA testing",
+      url: this.config.mockSmsUrl,
+      httpMethod: "POST",
+      contentType: "JSON",
     });
-
-    if (response.ok()) {
-      const data = await response.json();
-      return `created:${data.id}`;
-    }
-
-    // Check if it's a duplicate error
-    const errorText = await response.text();
-    if (errorText.includes("MNS-1005") || errorText.includes("Duplicate sender name")) {
-      const existingId = await this.getExistingNotificationSender(adminToken, senderName);
-      return existingId; // Return without "created:" prefix
-    }
-
-    throw new Error(`Failed to create notification sender: ${errorText}`);
-  }
-
-  /**
-   * Get existing notification sender by name
-   */
-  private async getExistingNotificationSender(adminToken: string, name: string): Promise<string> {
-    const response = await this.request.get(`${this.config.serverUrl}/connections/sms-gateway`, {
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-      },
-      ignoreHTTPSErrors: true,
-    });
-
-    if (!response.ok()) {
-      throw new Error(`Failed to fetch notification senders: ${await response.text()}`);
-    }
-
-    const data = await response.json();
-    const sender = data?.find((s: any) => s.name == name);
-
-    if (!sender) {
-      console.log(data);
-      throw new Error(`Notification sender '${name}' exists but could not be found in the list`);
-    }
-
-    return sender.id;
+    return { id: sender.id, created: true };
   }
 
   /**
    * Create or get existing MFA authentication flow
    */
   private async createOrGetMFAAuthFlow(
-    adminToken: string,
     senderId: string,
     registrationFlowId: string
-  ): Promise<string> {
+  ): Promise<{ id: string; created: boolean }> {
     const flowHandle = "e2e-mfa-auth-flow";
     const flowName = "E2E MFA Authentication Flow";
     const nodes = this.getMFAFlowNodes(senderId, registrationFlowId);
+    const flowsApi = new FlowsApi(this.request);
 
-    const response = await this.request.post(`${this.config.serverUrl}/flows`, {
-      data: {
-        handle: flowHandle,
-        name: flowName,
-        flowType: "AUTHENTICATION",
-        activeVersion: 3,
-        nodes,
-      },
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-        "Content-Type": "application/json",
-      },
-      ignoreHTTPSErrors: true,
-    });
-
-    if (response.ok()) {
-      const data = await response.json();
-      return `created:${data.id}`;
-    }
-
-    // Check if it's a duplicate error
-    const errorText = await response.text();
-    if (errorText.includes("duplicate") || errorText.includes("already exists") || response.status() === 409) {
-      const existingId = await this.getExistingFlow(adminToken, flowHandle, "AUTHENTICATION");
+    const existing = await flowsApi.findByHandle(flowHandle, "AUTHENTICATION");
+    if (existing) {
       // A leftover flow from an earlier run still points its call_registration node at that run's
       // registration flow, which no longer matches the one just created. Overwrite its nodes so the
       // reused flow references the current registration flow.
-      await this.updateFlowNodes(adminToken, existingId, flowHandle, flowName, "AUTHENTICATION", nodes);
-      return existingId; // Return without "created:" prefix
+      await flowsApi.update(existing.id, { handle: flowHandle, name: flowName, flowType: "AUTHENTICATION", nodes });
+      return { id: existing.id, created: false };
     }
 
-    throw new Error(`Failed to create MFA authentication flow: ${errorText}`);
-  }
-
-  /**
-   * Overwrite an existing flow's node definitions.
-   */
-  private async updateFlowNodes(
-    adminToken: string,
-    flowId: string,
-    handle: string,
-    name: string,
-    flowType: string,
-    nodes: any[]
-  ): Promise<void> {
-    const response = await this.request.put(`${this.config.serverUrl}/flows/${flowId}`, {
-      data: { handle, name, flowType, nodes },
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-        "Content-Type": "application/json",
-      },
-      ignoreHTTPSErrors: true,
+    const created = await flowsApi.create({
+      handle: flowHandle,
+      name: flowName,
+      flowType: "AUTHENTICATION",
+      nodes,
     });
-
-    if (!response.ok()) {
-      throw new Error(`Failed to update flow ${flowId}: ${await response.text()}`);
-    }
+    return { id: created.id, created: true };
   }
 
   /**
    * Create or get existing MFA registration flow
    */
-  private async createOrGetMFARegistrationFlow(adminToken: string): Promise<string> {
+  private async createOrGetMFARegistrationFlow(): Promise<{ id: string; created: boolean }> {
     const flowHandle = "e2e-mfa-reg-flow";
+    const flowsApi = new FlowsApi(this.request);
 
-    const response = await this.request.post(`${this.config.serverUrl}/flows`, {
-      data: {
-        handle: flowHandle,
-        name: "E2E MFA Registration Flow",
-        flowType: "REGISTRATION",
-        nodes: this.getMFARegistrationFlowNodes(),
-      },
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-        "Content-Type": "application/json",
-      },
-      ignoreHTTPSErrors: true,
+    const existing = await flowsApi.findByHandle(flowHandle, "REGISTRATION");
+    if (existing) {
+      return { id: existing.id, created: false };
+    }
+
+    const created = await flowsApi.create({
+      handle: flowHandle,
+      name: "E2E MFA Registration Flow",
+      flowType: "REGISTRATION",
+      nodes: this.getMFARegistrationFlowNodes(),
     });
-
-    if (response.ok()) {
-      const data = await response.json();
-      return `created:${data.id}`;
-    }
-
-    // Check if it's a duplicate error
-    const errorText = await response.text();
-    if (errorText.includes("duplicate") || errorText.includes("already exists") || response.status() === 409) {
-      const existingId = await this.getExistingFlow(adminToken, flowHandle, "REGISTRATION");
-      return existingId; // Return without "created:" prefix
-    }
-
-    throw new Error(`Failed to create MFA registration flow: ${errorText}`);
-  }
-
-  /**
-   * Get existing flow by handle
-   */
-  private async getExistingFlow(adminToken: string, handle: string, flowType?: string): Promise<string> {
-    let filterQuery = `handle eq "${handle}"`;
-    if (flowType) {
-      filterQuery += ` and flowType eq "${flowType}"`;
-    }
-
-    const response = await this.request.get(
-      `${this.config.serverUrl}/flows?filter=${encodeURIComponent(filterQuery)}`,
-      {
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-        },
-        ignoreHTTPSErrors: true,
-      }
-    );
-
-    if (!response.ok()) {
-      throw new Error(`Failed to fetch flows: ${await response.text()}`);
-    }
-
-    const data = await response.json();
-    const flow = flowType
-      ? data.flows?.find((f: any) => f.handle === handle && f.flowType === flowType)
-      : data.flows?.find((f: any) => f.handle === handle);
-
-    if (!flow) {
-      throw new Error(
-        `Flow '${handle}' ${flowType ? `with type '${flowType}'` : ""} exists but could not be found in the list`
-      );
-    }
-
-    return flow.id;
+    return { id: created.id, created: true };
   }
 
   /**
    * Create or get existing test user with mobile number
    */
-  private async createOrGetTestUser(adminToken: string): Promise<string> {
-    // Get organization unit from Person user type
-    const schemasResponse = await this.request.get(`${this.config.serverUrl}/user-types`, {
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-      },
-      ignoreHTTPSErrors: true,
+  private async createOrGetTestUser(): Promise<{ id: string; created: boolean }> {
+    const usersApi = new UsersApi(this.request);
+
+    const existing = await usersApi.findByUsername(this.config.testUser.username);
+    if (existing) {
+      return { id: existing.id, created: false };
+    }
+
+    const user = await usersApi.createUser({
+      username: this.config.testUser.username,
+      password: this.config.testUser.password,
+      given_name: this.config.testUser.given_name,
+      email: this.config.testUser.email,
+      mobile_number: this.config.testUser.mobile_number,
     });
-
-    if (!schemasResponse.ok()) {
-      throw new Error(`Failed to fetch user types: ${await schemasResponse.text()}`);
-    }
-
-    const schemasData = await schemasResponse.json();
-    const personSchema = schemasData.types?.find((s: any) => s.name === "Person");
-
-    if (!personSchema || !personSchema.ouId) {
-      throw new Error("Person user type not found or missing organization unit");
-    }
-
-    const defaultOuId = personSchema.ouId;
-
-    // Create user
-    const response = await this.request.post(`${this.config.serverUrl}/users`, {
-      data: {
-        type: "Person",
-        ouId: defaultOuId,
-        attributes: {
-          username: this.config.testUser.username,
-          password: this.config.testUser.password,
-          given_name: this.config.testUser.given_name,
-          email: this.config.testUser.email,
-          mobile_number: this.config.testUser.mobile_number,
-        },
-      },
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-        "Content-Type": "application/json",
-      },
-      ignoreHTTPSErrors: true,
-    });
-
-    if (response.ok()) {
-      const data = await response.json();
-      return `created:${data.id}`;
-    }
-
-    const errorText = await response.text();
-    // User might already exist, try to get existing user
-    if (response.status() === 409 || errorText.includes("already exists")) {
-      const existingId = await this.getExistingUser(adminToken);
-      return existingId; // Return without "created:" prefix
-    }
-
-    throw new Error(`Failed to create test user: ${errorText}`);
+    return { id: user.id, created: true };
   }
 
   /**
-   * Get existing user by username
+   * Delete the test user
    */
-  private async getExistingUser(adminToken: string): Promise<string> {
-    const response = await this.request.get(
-      `${this.config.serverUrl}/users?filter=username eq "${this.config.testUser.username}"`,
-      {
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-        },
-        ignoreHTTPSErrors: true,
-      }
-    );
-
-    if (!response.ok()) {
-      throw new Error(`Failed to fetch existing user: ${await response.text()}`);
-    }
-
-    const data = await response.json();
-    if (!data.users || data.users.length === 0) {
-      throw new Error("User exists but could not be found");
-    }
-
-    return data.users[0].id;
-  }
-
-  /**
-   * Update application with MFA authentication and registration flows.
-   * Returns the app id together with its prior flow bindings
-   */
-  private async updateApplicationFlows(
-    adminToken: string,
-    authFlowId: string,
-    registrationFlowId: string
-  ): Promise<{
-    appId: string;
-    originalFlows: {
-      authFlowId: string;
-      registrationFlowId: string;
-      recoveryFlowId: string | null;
-      isRegistrationFlowEnabled: boolean;
-    };
-  }> {
-    if (!authFlowId || !registrationFlowId) {
-      throw new Error(`Cannot update application flows: missing ${!authFlowId ? "authFlowId" : "registrationFlowId"}`);
-    }
-
-    // First, get all applications and find the one with clientId = "REACT_SDK_SAMPLE"
-    const listResponse = await this.request.get(`${this.config.serverUrl}/applications`, {
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-      },
-      ignoreHTTPSErrors: true,
-    });
-
-    if (!listResponse.ok()) {
-      throw new Error(`Failed to fetch applications: ${await listResponse.text()}`);
-    }
-
-    const listData = await listResponse.json();
-    const targetApp = listData.applications?.find((app: any) => app.clientId === "REACT_SDK_SAMPLE");
-
-    if (!targetApp) {
-      throw new Error(`Application with clientId "REACT_SDK_SAMPLE" not found`);
-    }
-
-    const actualAppId = targetApp.id;
-
-    // Get current application details
-    const getResponse = await this.request.get(`${this.config.serverUrl}/applications/${actualAppId}`, {
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-      },
-      ignoreHTTPSErrors: true,
-    });
-
-    if (!getResponse.ok()) {
-      throw new Error(`Failed to fetch application: ${await getResponse.text()}`);
-    }
-
-    const appData = await getResponse.json();
-    const originalFlows = {
-      authFlowId: appData.authFlowId,
-      registrationFlowId: appData.registrationFlowId,
-      recoveryFlowId: appData.recoveryFlowId ?? null,
-      isRegistrationFlowEnabled: appData.isRegistrationFlowEnabled,
-    };
-
-    // Update with new flow IDs. recoveryFlowId is cleared to avoid conflicts
-    // with MFA registration flow, and isRegistrationFlowEnabled is set to true.
-    const updatedApp = {
-      ...appData,
-      authFlowId: authFlowId,
-      registrationFlowId: registrationFlowId,
-      recoveryFlowId: null,
-      isRegistrationFlowEnabled: true,
-    };
-
-    const updateResponse = await this.request.put(`${this.config.serverUrl}/applications/${actualAppId}`, {
-      data: updatedApp,
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-        "Content-Type": "application/json",
-      },
-      ignoreHTTPSErrors: true,
-    });
-
-    if (!updateResponse.ok()) {
-      throw new Error(`Failed to update application: ${await updateResponse.text()}`);
-    }
-
-    return { appId: actualAppId, originalFlows };
-  }
-
-  /**
-   * Restore an application's flow bindings to what they were before MFA setup rewired them.
-   */
-  private async revertApplicationFlows(
-    adminToken: string,
-    appId: string,
-    originalFlows: {
-      authFlowId: string;
-      registrationFlowId: string;
-      recoveryFlowId: string | null;
-      isRegistrationFlowEnabled: boolean;
-    }
-  ): Promise<void> {
-    // This runs during cleanup (afterAll), where the beforeAll-scoped `this.request` fixture
-    // can no longer be used, so a fresh request context is created here (as the other cleanup
-    // methods below already do).
-    let requestContext: APIRequestContext | null = null;
-    try {
-      requestContext = await playwrightRequest.newContext({ ignoreHTTPSErrors: true });
-
-      const getResponse = await requestContext.get(`${this.config.serverUrl}/applications/${appId}`, {
-        headers: { Authorization: `Bearer ${adminToken}` },
-      });
-
-      if (!getResponse.ok()) {
-        console.log(`⚠️  Could not fetch application for revert: ${await getResponse.text()}`);
-        return;
-      }
-
-      const appData = await getResponse.json();
-      const revertedApp = { ...appData, ...originalFlows };
-
-      const updateResponse = await requestContext.put(`${this.config.serverUrl}/applications/${appId}`, {
-        data: revertedApp,
-        headers: { Authorization: `Bearer ${adminToken}`, "Content-Type": "application/json" },
-      });
-
-      if (updateResponse.ok()) {
-        console.log(`✓ Application flows reverted: ${appId}`);
-      } else {
-        console.log(`⚠️  Could not revert application flows: ${await updateResponse.text()}`);
-      }
-    } catch (error) {
-      console.log(`⚠️  Error reverting application flows: ${error}`);
-    } finally {
-      if (requestContext) {
-        await requestContext.dispose();
-      }
-    }
+  private async deleteUser(request: APIRequestContext, userId: string): Promise<void> {
+    const deleted = await new UsersApi(request).deleteById(userId);
+    console.log(deleted ? `✓ User deleted: ${userId}` : `⚠️  Could not delete user: ${userId}`);
   }
 
   /**
    * Delete notification sender
    */
-  private async deleteNotificationSender(adminToken: string, senderId: string): Promise<void> {
-    let requestContext: APIRequestContext | null = null;
-    try {
-      // Create a new request context for cleanup
-      requestContext = await playwrightRequest.newContext({
-        ignoreHTTPSErrors: true,
-      });
-
-      const response = await requestContext.delete(`${this.config.serverUrl}/connections/sms-gateway/${senderId}`, {
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-        },
-      });
-
-      if (response.ok()) {
-        console.log(`✓ Notification sender deleted: ${senderId}`);
-      } else {
-        console.log(`⚠️  Could not delete notification sender: ${await response.text()}`);
-      }
-    } catch (error) {
-      console.log(`⚠️  Error deleting notification sender: ${error}`);
-    } finally {
-      if (requestContext) {
-        await requestContext.dispose();
-      }
-    }
+  private async deleteNotificationSender(request: APIRequestContext, senderId: string): Promise<void> {
+    const deleted = await new ConnectionsApi(request).deleteById("sms-gateway", senderId);
+    console.log(
+      deleted ? `✓ Notification sender deleted: ${senderId}` : `⚠️  Could not delete notification sender: ${senderId}`
+    );
   }
 
   /**
    * Delete flow
    */
-  private async deleteFlow(adminToken: string, flowId: string): Promise<void> {
-    let requestContext: APIRequestContext | null = null;
-    try {
-      // Create a new request context for cleanup
-      requestContext = await playwrightRequest.newContext({
-        ignoreHTTPSErrors: true,
-      });
-
-      const response = await requestContext.delete(`${this.config.serverUrl}/flows/${flowId}`, {
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-        },
-      });
-
-      if (response.ok()) {
-        console.log(`✓ Flow deleted: ${flowId}`);
-      } else {
-        console.log(`⚠️  Could not delete flow: ${await response.text()}`);
-      }
-    } catch (error) {
-      console.log(`⚠️  Error deleting flow: ${error}`);
-    } finally {
-      if (requestContext) {
-        await requestContext.dispose();
-      }
-    }
-  }
-
-  /**
-   * Delete user
-   */
-  private async deleteUser(adminToken: string, userId: string): Promise<void> {
-    let requestContext: APIRequestContext | null = null;
-    try {
-      // Create a new request context for cleanup
-      requestContext = await playwrightRequest.newContext({
-        ignoreHTTPSErrors: true,
-      });
-
-      const response = await requestContext.delete(`${this.config.serverUrl}/users/${userId}`, {
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-        },
-      });
-
-      if (response.ok()) {
-        console.log(`✓ User deleted: ${userId}`);
-      } else {
-        console.log(`⚠️  Could not delete user: ${await response.text()}`);
-      }
-    } catch (error) {
-      console.log(`⚠️  Error deleting user: ${error}`);
-    } finally {
-      if (requestContext) {
-        await requestContext.dispose();
-      }
-    }
+  private async deleteFlow(request: APIRequestContext, flowId: string): Promise<void> {
+    const deleted = await new FlowsApi(request).deleteById(flowId);
+    console.log(deleted ? `✓ Flow deleted: ${flowId}` : `⚠️  Could not delete flow: ${flowId}`);
   }
 
   /**

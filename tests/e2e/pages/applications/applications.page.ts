@@ -31,6 +31,8 @@ export class ApplicationsPage extends BasePage {
   readonly configureDesignStep: Locator;
   readonly configureSignInStep: Locator;
   readonly configureDetailsStep: Locator;
+  readonly userAccessSection: Locator;
+  readonly allowAllUserTypesCheckbox: Locator;
   readonly inbuiltExperienceCard: Locator;
   readonly embeddedExperienceCard: Locator;
   readonly showClientSecretStep: Locator;
@@ -80,6 +82,10 @@ export class ApplicationsPage extends BasePage {
     this.configureDesignStep = page.locator('[data-testid="application-configure-design"]');
     this.configureSignInStep = page.locator('[data-testid="application-configure-sign-in"]');
     this.configureDetailsStep = page.locator('[data-testid="application-configure-details"]');
+    this.userAccessSection = page.locator('[data-testid="application-configure-user-access"]');
+    // The master "Allow all user types to access this application" checkbox is the first
+    // checkbox in the section; per-type checkboxes render below it once expanded.
+    this.allowAllUserTypesCheckbox = this.userAccessSection.getByRole("checkbox").first();
     this.inbuiltExperienceCard = page.locator('div:has(input[value="INBUILT"])');
     this.embeddedExperienceCard = page.locator('div:has(input[value="EMBEDDED"])');
     this.showClientSecretStep = page.locator('[data-testid="application-show-client-secret"]');
@@ -97,20 +103,20 @@ export class ApplicationsPage extends BasePage {
     this.deleteApplicationButton = page.locator('[data-testid="delete-application-button"]');
   }
 
-  /** Navigate to the applications list page */
+  /**
+   * Navigate to the applications list page. */
   async goto(): Promise<void> {
     await this.page.goto(`${this.baseUrl}${ConsoleRoutes.applications}`, {
-      waitUntil: "networkidle",
       timeout: Timeouts.PAGE_LOAD,
     });
   }
 
-  /** Navigate directly to an application's edit page */
+  /** Navigate directly to an application's edit page. */
   async gotoEdit(appId: string): Promise<void> {
     await this.page.goto(`${this.baseUrl}${ConsoleRoutes.applicationDetails(appId)}`, {
-      waitUntil: "networkidle",
       timeout: Timeouts.PAGE_LOAD,
     });
+    await this.page.getByRole("tablist").first().waitFor({ state: "visible", timeout: Timeouts.PAGE_LOAD });
   }
 
   /** Verify the applications list page is loaded */
@@ -121,7 +127,6 @@ export class ApplicationsPage extends BasePage {
     }
     expect(url).toContain(ConsoleRoutes.applications);
     await expect(this.applicationsList).toBeVisible({ timeout: Timeouts.ELEMENT_VISIBILITY });
-    await this.page.waitForLoadState("networkidle");
   }
 
   /** Click the Add Application button to open the template gallery */
@@ -135,7 +140,8 @@ export class ApplicationsPage extends BasePage {
   async searchApplications(name: string): Promise<void> {
     await this.searchInput.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
     await this.searchInput.first().fill(name);
-    await this.page.waitForLoadState("networkidle");
+    // Let the debounced filter fire before the caller reads the (now filtered) list.
+    await this.page.waitForTimeout(Timeouts.SEARCH_DEBOUNCE);
   }
 
   /** Get a locator for an application row by its name */
@@ -157,6 +163,27 @@ export class ApplicationsPage extends BasePage {
     await this.appNameInput.fill(name);
   }
 
+  /**
+   * Restrict the application under creation to a single named user type, instead of the
+   * wizard's default of every user type in the system (see UserAccessSection's "Allow all user
+   * types to access this application" master checkbox). Only renders when 2+ user types exist.
+   *
+   * The master checkbox is checked by a seeding effect, not by initial render state, so it
+   * renders unchecked for one paint before the effect runs. `uncheck()` is a silent no-op on an
+   * already-unchecked box, so waiting for the checked state first is load-bearing - skipping it
+   * would leave zero types selected, Next permanently disabled, and the caller hanging on
+   * whatever it awaits next.
+   */
+  async selectOnlyUserType(name: string): Promise<void> {
+    await expect(this.allowAllUserTypesCheckbox).toBeChecked({ timeout: Timeouts.FORM_LOAD });
+    // Unchecking the master clears the selection and auto-expands the per-type list.
+    await this.allowAllUserTypesCheckbox.uncheck();
+    const typeCheckbox = this.userAccessSection.getByRole("checkbox", { name, exact: true });
+    await typeCheckbox.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await typeCheckbox.check();
+    await expect(typeCheckbox).toBeChecked();
+  }
+
   /** Click the Next / Continue button in the wizard */
   async clickNext(): Promise<void> {
     const btn = this.nextButton.first();
@@ -167,15 +194,28 @@ export class ApplicationsPage extends BasePage {
   }
 
   /**
-   * Handle the optional Organization Unit selection step that appears when the server has multiple OUs.
-   * If the step is not visible it returns immediately; otherwise selects the first OU and advances.
+   * Handle the Organization Unit selection step, which the wizard only renders when the server has
+   * multiple OUs. Selects the first OU and advances when present; returns immediately when not.
+   *
+   * Races the OU step against the step that follows it rather than waiting for the OU step alone
+   * to time out: on a single-OU server the OU step never appears, so a bare `waitFor` there would
+   * burn its whole timeout on every call before falling through. Whichever panel renders first
+   * settles it.
+   *
+   * @param nextStepTestId - data-testid of the step the wizard shows instead, when there is no OU
+   *   step to render.
    */
-  async handleOptionalOuStep(): Promise<void> {
-    try {
-      await this.configureOrganizationUnitStep.waitFor({ state: "visible", timeout: 5000 });
-    } catch {
+  async handleOptionalOuStep(nextStepTestId: string = "application-configure-sign-in"): Promise<void> {
+    const nextStep = this.page.locator(`[data-testid="${nextStepTestId}"]`);
+    await this.configureOrganizationUnitStep
+      .or(nextStep)
+      .first()
+      .waitFor({ state: "visible", timeout: Timeouts.FORM_LOAD });
+
+    if (!(await this.configureOrganizationUnitStep.isVisible())) {
       return;
     }
+
     // Wait for the tree to finish loading
     await this.page
       .locator('[data-testid="application-configure-organization-unit"] [role="progressbar"]')
@@ -218,11 +258,11 @@ export class ApplicationsPage extends BasePage {
     return this.clientSecretValue.innerText();
   }
 
-  /** Click the Continue / Done button on the client secret step */
+  /**
+   * Click the Continue / Done button on the client secret step. */
   async clickDoneAfterCreate(): Promise<void> {
     await this.clientSecretContinue.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
     await this.clientSecretContinue.click();
-    await this.page.waitForLoadState("networkidle");
   }
 
   /**
@@ -263,11 +303,16 @@ export class ApplicationsPage extends BasePage {
     await newInput.blur();
   }
 
-  /** Click Save on the edit page */
+  /**
+   * Click Save on the edit page. The floating action bar (Save/Reset) only renders while the form
+   * has unsaved changes (see ApplicationEditPage's `hasChanges`), so it - and this Save button
+   * with it - unmounts once the save succeeds and the edited diff clears.
+   */
   async saveChanges(): Promise<void> {
-    await this.saveButton.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
-    await this.saveButton.first().click();
-    await this.page.waitForLoadState("networkidle");
+    const button = this.saveButton.first();
+    await button.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await button.click();
+    await expect(button).toBeHidden({ timeout: Timeouts.ELEMENT_VISIBILITY });
   }
 
   /** Click the Delete Application button in the Danger Zone */
@@ -277,7 +322,7 @@ export class ApplicationsPage extends BasePage {
     await this.deleteApplicationButton.first().click();
   }
 
-  /** Confirm the delete dialog */
+  /** Confirm the delete dialog. A successful delete navigates back to the applications list. */
   async confirmDelete(): Promise<void> {
     const dialog = this.page.getByRole("dialog");
     await dialog.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
@@ -286,6 +331,6 @@ export class ApplicationsPage extends BasePage {
       .or(dialog.getByRole("button", { name: /confirm/i }));
     await confirmButton.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
     await confirmButton.first().click();
-    await this.page.waitForLoadState("networkidle");
+    await this.page.waitForURL(new RegExp(`${ConsoleRoutes.applications}$`), { timeout: Timeouts.PAGE_LOAD });
   }
 }
