@@ -1,0 +1,68 @@
+---
+title: Agent-to-Agent Delegation
+docType: guide
+sidebar_position: 7
+persona: iam
+description: An agent delegates a sub-task to another agent in {{ProductName}} with token exchange, downscoping the token and recording each actor in a nested act claim.
+---
+
+# Agent-to-Agent Delegation
+
+An agent can hand a sub-task to another agent. It exchanges a token for a new one issued to the worker agent, narrowed to the sub-task, while keeping the original subject (the user, when a user started the chain). Each exchange records the acting agent in the `act` (actor) claim, and when several agents delegate in turn, that claim nests so the full path from the original subject to the last actor stays in the token.
+
+## Configure the agents
+
+Every agent that mints or receives a delegated token needs the token exchange grant.
+
+- **Console:** on each agent's **Advanced** tab, with Delegated mode on, add the **Token Exchange** grant.
+- **API:** add `urn:ietf:params:oauth:grant-type:token-exchange` to each agent's `grantTypes`.
+
+Grant each worker only the scopes its sub-task needs, through its roles. See [Groups and roles](../../manage-agents#groups-and-roles).
+
+## Delegate a task to a worker agent
+
+The worker requests its own token from the token endpoint, presenting the subject's token as `subject_token` and the acting agent's token as `actor_token`, and requesting a narrower scope:
+
+```bash
+curl -X POST https://localhost:8090/oauth2/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -u '<WORKER_CLIENT_ID>:<WORKER_CLIENT_SECRET>' \
+  -d 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange' \
+  -d 'subject_token=<SUBJECT_ACCESS_TOKEN>' \
+  -d 'subject_token_type=urn:ietf:params:oauth:token-type:jwt' \
+  -d 'actor_token=<CALLING_AGENT_ACCESS_TOKEN>' \
+  -d 'actor_token_type=urn:ietf:params:oauth:token-type:jwt' \
+  -d 'scope=flights:search'
+```
+
+<ProductName /> enforces downscoping: the issued scope is always a subset of the `subject_token` scope, so a worker never gains authority the subject did not have. Bind the worker's token to a specific downstream API with a `resource` (RFC 8707), as shown in [Agent Access on Behalf of Users](../on-behalf-of-user). See [Token Exchange](../../../protocols/oauth-oidc/token-exchange) for the full request and its parameters.
+
+The issued token keeps the subject and records the agent passed as `actor_token`:
+
+```json
+{ "sub": "<subject-id>", "act": { "sub": "<acting-agent-id>", "iss": "<issuer>" } }
+```
+
+## The nested act claim
+
+Each exchange builds `act` only from the `actor_token` presented in the request. It does not merge an actor already inside the `subject_token`. So if a worker delegates further and presents only its own token as the actor, the new token records just that most recent agent, and the earlier agent drops out:
+
+```json
+{ "sub": "<subject-id>", "act": { "sub": "<second-worker-id>" } }
+```
+
+To keep the whole path, present an `actor_token` that already carries the earlier agent as a nested `act`. <ProductName /> preserves that nesting, so the outermost `act` is the most recent actor and each inner `act` is the one before it, down to the original subject in `sub`:
+
+```json
+{
+  "sub": "<subject-id>",
+  "act": {
+    "sub": "<second-worker-id>",
+    "act": { "sub": "<primary-agent-id>" }
+  }
+}
+```
+
+That layered `actor_token` is built with an earlier exchange: exchange the worker's own token as `subject_token` against the primary's token as `actor_token`, which yields a token whose `sub` is the worker and whose `act` is the primary. Then pass that token as the `actor_token` in the final exchange. Preserving a multi-hop chain is therefore something the delegating code does deliberately, not an automatic result of every exchange.
+
+A resource reads `sub` to apply the subject's permissions and walks the `act` chain to see every agent that handled the request.

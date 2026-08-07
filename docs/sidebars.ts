@@ -17,9 +17,20 @@ import reactSdkSidebar from './content/sdks/react/sidebar';
 import reactRouterSdkSidebar from './content/sdks/react-router/sidebar';
 import tanstackRouterSdkSidebar from './content/sdks/tanstack-router/sidebar';
 import vueSdkSidebar from './content/sdks/vue/sidebar';
+import productConfig from './docusaurus.product.config';
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
 // TODO: Use `@wso2/oxygen-ui-icons` in the sidebar. Currently, there's only a React wrapper available, so we need to create custom SVG icons for the sidebar until we have a web component version of the icons.
+
+// Raw HTML sidebar items are emitted verbatim, so Docusaurus does not prepend the
+// site baseUrl to asset URLs inside them. Derive it the same way docusaurus.config.ts
+// does and interpolate it, so icons resolve on base-path deployments too.
+const baseUrl =
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+  process.env.DOCUSAURUS_BASE_URL ||
+  (productConfig.documentation.deployment.production.baseUrl
+    ? `/${productConfig.documentation.deployment.production.baseUrl}/`
+    : '/');
 
 /**
  * Creating a sidebar enables you to:
@@ -54,6 +65,7 @@ const sidebars: SidebarsConfig = {
       className: 'sidebar-section',
       items: [
         {type: 'doc', id: 'getting-started/get-thunderid', label: 'Get ThunderID'},
+        {type: 'html', value: 'What are you building?', className: 'sidebar-connect-label'},
         {
           type: 'category',
           label: 'Application',
@@ -79,9 +91,9 @@ const sidebars: SidebarsConfig = {
           collapsible: true,
           items: [
             {type: 'doc', id: 'getting-started/connect-your-agent/langchain', label: 'LangChain', customProps: {icon: 'langchain'}},
-            {type: 'html', className: 'menu__list-item', value: '<div class="sidebar-coming-soon"><span class="sidebar-cs-icon"><img src="/assets/images/agent/google-adk.svg" alt="" aria-hidden="true" /></span>Google ADK<span class="sidebar-coming-soon-badge">Soon</span></div>'},
+            {type: 'html', className: 'menu__list-item', value: `<div class="sidebar-coming-soon"><span class="sidebar-cs-icon"><img src="${baseUrl}assets/images/agent/google-adk.svg" alt="" aria-hidden="true" /></span>Google ADK<span class="sidebar-coming-soon-badge">Soon</span></div>`},
             {type: 'html', className: 'menu__list-item', value: '<div class="sidebar-coming-soon"><span class="sidebar-cs-icon"><svg viewBox="0 0 512 512" fill="currentColor" aria-hidden="true"><path d="M256 48 496 464H16Z"/></svg></span>Vercel AI SDK<span class="sidebar-coming-soon-badge">Soon</span></div>'},
-            {type: 'html', className: 'menu__list-item', value: '<div class="sidebar-coming-soon"><span class="sidebar-cs-icon"><img src="/assets/images/agent/crewai.svg" alt="" aria-hidden="true" /></span>CrewAI<span class="sidebar-coming-soon-badge">Soon</span></div>'},
+            {type: 'html', className: 'menu__list-item', value: `<div class="sidebar-coming-soon"><span class="sidebar-cs-icon"><img src="${baseUrl}assets/images/agent/crewai.svg" alt="" aria-hidden="true" /></span>CrewAI<span class="sidebar-coming-soon-badge">Soon</span></div>`},
           ],
         },
         {
@@ -432,18 +444,48 @@ const sidebars: SidebarsConfig = {
         {
           type: 'category',
           label: 'Agents',
+          link: {type: 'doc', id: 'guides/agents/index'},
           collapsed: true,
           collapsible: true,
           items: [
             {
-              type: 'doc',
-              id: 'guides/agents/manage-agents',
+              type: 'category',
               label: 'Manage Agents',
+              link: {type: 'doc', id: 'guides/agents/manage-agents'},
+              collapsed: true,
+              collapsible: true,
+              items: [
+                {
+                  type: 'doc',
+                  id: 'guides/agents/agent-schema',
+                  label: 'Agent Schema',
+                },
+              ],
             },
             {
-              type: 'doc',
-              id: 'guides/agents/agent-authentication',
-              label: 'Agent Authentication',
+              type: 'category',
+              label: 'Authentication',
+              key: 'agent-authentication',
+              link: {type: 'doc', id: 'guides/agents/authentication/index'},
+              collapsed: true,
+              collapsible: true,
+              items: [
+                {
+                  type: 'doc',
+                  id: 'guides/agents/authentication/agent-own-token',
+                  label: 'Agent Token',
+                },
+                {
+                  type: 'doc',
+                  id: 'guides/agents/authentication/on-behalf-of-user',
+                  label: 'On Behalf of a User',
+                },
+                {
+                  type: 'doc',
+                  id: 'guides/agents/authentication/agent-to-agent',
+                  label: 'Agent to Agent',
+                },
+              ],
             },
           ],
         },

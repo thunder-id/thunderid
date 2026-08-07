@@ -679,18 +679,57 @@
         {
           "type": "category",
           "label": "Agents",
+          "link": {
+            "type": "doc",
+            "id": "guides/agents/index"
+          },
           "collapsed": true,
           "collapsible": true,
           "items": [
             {
-              "type": "doc",
-              "id": "guides/agents/manage-agents",
-              "label": "Manage Agents"
+              "type": "category",
+              "label": "Manage Agents",
+              "link": {
+                "type": "doc",
+                "id": "guides/agents/manage-agents"
+              },
+              "collapsed": true,
+              "collapsible": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "guides/agents/agent-schema",
+                  "label": "Agent Schema"
+                }
+              ]
             },
             {
-              "type": "doc",
-              "id": "guides/agents/agent-authentication",
-              "label": "Agent Authentication"
+              "type": "category",
+              "label": "Authentication",
+              "key": "agent-authentication",
+              "link": {
+                "type": "doc",
+                "id": "guides/agents/authentication/index"
+              },
+              "collapsed": true,
+              "collapsible": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "guides/agents/authentication/agent-own-token",
+                  "label": "Agent Token"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/agents/authentication/on-behalf-of-user",
+                  "label": "On Behalf of a User"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/agents/authentication/agent-to-agent",
+                  "label": "Agent to Agent"
+                }
+              ]
             }
           ]
         },

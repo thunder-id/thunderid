@@ -1,0 +1,166 @@
+---
+title: Agent Access on Behalf of Users
+docType: guide
+sidebar_position: 6
+persona: iam
+description: Configure an agent in {{ProductName}} to act on behalf of a user by signing them in, requesting out-of-band approval, or exchanging an existing user token, with the actor claim and refresh.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Agent Access on Behalf of Users
+
+An agent can hold an access token that represents a user instead of itself. The token names the user in the `sub` claim and the agent in the `act` (actor) claim, so any resource that receives it sees both the user who authorized the action and the agent that carried it out. <ProductName /> issues these tokens once the agent runs in delegated mode.
+
+## Turn on Delegated mode
+
+Delegated mode lets an agent act on behalf of a user; with it off, an agent acts only as itself. In the Console, open the agent's **Advanced** tab and turn on **Delegated mode**, then set up the delegated flow: add the **Authorized redirect URIs**, on the **Flows** tab pick the **Authentication**, **Registration**, and **Recovery** flows that decide how users authenticate (enterprise SSO, social login, passkeys, OTP, and where step-up applies), and restrict **Allowed User Types** if only certain user types may sign in through this agent.
+
+:::note
+Flows are designed in the flow builder, not here. See [Login and Registration Flows](../../../flows/build-a-flow) to build them; this page only selects which flow the agent uses.
+:::
+
+Through the API there is no single switch; each method below adds the grant it needs.
+
+## Choose what the user token carries
+
+Once **Delegated mode** is on, the **User** token becomes editable on the **Tokens** tab (under **Issued to**, alongside the Agent token). Open it to choose which of the user's attributes the access token carries and to set the validity periods for the access, ID, and refresh tokens. The agent's actor (`act`) claim is shown here too. Through the API, configure these in the agent's OAuth token settings; see the [Agents API Reference](../../../../apis#tag/agents).
+
+## Get a token for the user
+
+An agent gets a token that represents the user in one of three ways: by signing a present user in, by asking an absent user to approve out of band, or by exchanging a user token that already exists. Choose the method that fits.
+
+<DelegationMethodSelector />
+
+<DelegationContent value="signin">
+
+The agent has no token for the user yet, so it signs the user in through the flow configured for the agent and receives a token that names the user as `sub` and the agent as `act`. Turning on Delegated mode already added the `authorization_code` grant and turned on PKCE, so there is no extra grant to enable.
+
+<Tabs groupId="agent-config">
+<TabItem value="console" label="Console" default>
+
+The user signs in through the agent's **Authentication** flow, and <ProductName /> returns the token to the redirect URI. Nothing more to configure here.
+
+</TabItem>
+<TabItem value="api" label="API">
+
+Confirm `authorization_code` is in `grantTypes` (with `code` in `responseTypes`) and `pkceRequired` is `true`, then run the standard code exchange:
+
+```bash
+curl -X POST https://localhost:8090/oauth2/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -u '<CLIENT_ID>:<CLIENT_SECRET>' \
+  -d 'grant_type=authorization_code' \
+  -d 'code=<AUTH_CODE>' \
+  -d 'redirect_uri=<REDIRECT_URI>' \
+  -d 'code_verifier=<PKCE_VERIFIER>'
+```
+
+See [Authorization Code](../../../protocols/oauth-oidc/authorization-code) for the flow and its parameters.
+
+</TabItem>
+</Tabs>
+
+The issued token names the user as `sub` and the agent as `act`. The `act` claim appears on the access token only, never the ID token.
+
+```json
+{
+  "sub": "<user-id>",
+  "act": { "sub": "<agent-id>" }
+}
+```
+
+</DelegationContent>
+
+<DelegationContent value="approval">
+
+The agent cannot open a browser for the user, so it requests approval over a back channel with CIBA (Client-Initiated Backchannel Authentication): the user approves on their own device. Add the CIBA grant alongside the authorization code grant:
+
+- **Console:** on the **Advanced** tab, with Delegated mode on, add the **CIBA** grant.
+- **API:** add `urn:openid:params:grant-type:ciba` to the agent's `grantTypes`.
+
+The backchannel request and approval flow is the same as for any client. See [Backchannel Authentication (CIBA)](../../../protocols/oauth-oidc/backchannel-authentication), using this agent as the client.
+
+</DelegationContent>
+
+<DelegationContent value="exchange">
+
+When a user token already exists, exchange it for a new one scoped to a specific downstream API, using OAuth token exchange ([RFC 8693](https://www.rfc-editor.org/rfc/rfc8693)). The new token keeps the user as `sub`, records the agent as `act`, and carries only the authority the task needs.
+
+<Tabs groupId="agent-config">
+<TabItem value="console" label="Console" default>
+
+On the **Advanced** tab, with Delegated mode on, add the **Token Exchange** grant.
+
+</TabItem>
+<TabItem value="api" label="API">
+
+Add `urn:ietf:params:oauth:grant-type:token-exchange` to `grantTypes`, then:
+
+```bash
+curl -X POST https://localhost:8090/oauth2/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -u '<CLIENT_ID>:<CLIENT_SECRET>' \
+  -d 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange' \
+  -d 'subject_token=<USER_ACCESS_TOKEN>' \
+  -d 'subject_token_type=urn:ietf:params:oauth:token-type:jwt' \
+  -d 'actor_token=<AGENT_ACCESS_TOKEN>' \
+  -d 'actor_token_type=urn:ietf:params:oauth:token-type:jwt' \
+  -d 'resource=https://api.example.com/invoices' \
+  -d 'scope=invoices:read'
+```
+
+</TabItem>
+</Tabs>
+
+- `subject_token` is the user's token; the issued token keeps its `sub` (the user), and the user's scopes in it are the ceiling for the exchange.
+- `actor_token` is the agent's own token; the agent is recorded in the new token's `act` claim.
+- `resource` (RFC 8707) sets the new token's audience to that [Resource Server](../../../resource-servers) and downscopes the permission scopes to the scopes it defines. The subject and actor tokens do not need to be bound to this resource.
+- The issued permission scopes are the intersection of the scopes requested (or all of the subject token's scopes when no `scope` is sent), the subject token's scopes, the scopes the target resource server defines, and the scopes the agent itself is authorized for. Anything outside that intersection is dropped, not rejected.
+- The RFC 8693 `audience` parameter is accepted but does not set the token's `aud`. Use `resource` to control the audience.
+- With no `resource` and no permission scopes, the token is not bound to a resource server: its audience falls back to the agent's default audience (its client ID), and only OIDC scopes such as `openid` remain.
+- See [Token Exchange](../../../protocols/oauth-oidc/token-exchange) for the full request and its parameters.
+
+To confine an agent to specific operations, such as allowing a read but denying a delete, grant it only the scopes its task needs. See [Groups and roles](../../manage-agents#groups-and-roles).
+
+</DelegationContent>
+
+## Refresh the token
+
+An agent using the `authorization_code` grant can also hold a refresh token, so it keeps acting for the user without sending them back through sign-in. Enable it like the other delegated grants:
+
+- **Console:** on the **Advanced** tab, with Delegated mode on, add the `refresh_token` grant in **Grant Types**.
+- **API:** add `refresh_token` to the agent's `grantTypes`.
+
+The exchange call, and the rules for narrowing scope and preserving the resource binding, are the same as for any client. See [Refresh Token](../../../protocols/oauth-oidc/refresh-token) for the request and its rules. The reissued token keeps the agent as the actor.
+
+## What the token carries
+
+The token an agent holds for a user is a signed JWT (`typ: at+jwt`). Three claims identify who is involved, and it helps to keep them apart:
+
+- `sub` is the principal the token represents. In a delegated token this is the user.
+- `act` is the actor that exercises the token: the agent acting for the user, identified by the agent's resource ID (not its client ID). It nests further actors when an agent delegates to another agent.
+- `client_id` is the OAuth client that authenticated to obtain the token, which is always the agent.
+
+A resource reads `sub` to apply the user's permissions and `act` to see which agent carried the request. The full claim set:
+
+| Claim | Value |
+|---|---|
+| `sub` | The user's subject identifier. |
+| `iss` | The <ProductName /> instance URL. |
+| `aud` | The resolved resource server, or the agent's default audience (its client ID when none is set) when the request carries no permission scopes or `resource`. |
+| `scope` | A subset of the user's scopes, never more than the user's own token held. |
+| `client_id` | The agent's client ID. |
+| `act` | The agent acting for the user, on the access token only and never the ID token. It is appended automatically on the `authorization_code` grant, and built from the `actor_token` on a token exchange. |
+| `exp`, `iat`, `nbf`, `jti` | Standard JWT lifetime and identity claims. |
+
+## Troubleshooting
+
+The common token-endpoint errors, `invalid_client`, `unauthorized_client`, `invalid_target`, and a `403` from the resource, mean the same here as for the agent token; see [Troubleshooting](../agent-own-token#troubleshooting). The errors specific to acting for a user are:
+
+| Error | Likely cause |
+|---|---|
+| `invalid_request` | On a token exchange, the `subject_token` is missing or its `subject_token_type` is unsupported. Pass the user's token as `subject_token` with `subject_token_type` set to `urn:ietf:params:oauth:token-type:jwt`. |
+| `invalid_scope` | On a refresh, a requested `scope` is broader than the original grant. On a token exchange, scopes were requested but the subject token carries none; scopes the subject token does not hold are otherwise dropped, not rejected. |
+| `authorization_pending`, `slow_down`, `expired_token`, `access_denied` | Backchannel (CIBA) polling outcomes while waiting for the user to approve. See [Backchannel Authentication (CIBA)](../../../protocols/oauth-oidc/backchannel-authentication). |

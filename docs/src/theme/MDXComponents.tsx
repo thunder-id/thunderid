@@ -19,6 +19,7 @@ import {
 import {AgentInteractionsDiagram} from '@site/src/components/AgentInteractionsDiagram';
 import {LangTabs, Lang} from '@site/src/components/AgentLang';
 import {AgentModeSelector, Mode} from '@site/src/components/AgentMode';
+import {DelegationMethodSelector, DelegationContent} from '@site/src/components/AgentDelegationMode';
 import {AgentOwnTokenFlow, AgentOboFlow} from '@site/src/components/AgentQuickstartFlow';
 import {
   AIAgentIdentityRoadmap as AIAgentIdentityExplorer,
@@ -159,6 +160,8 @@ export default {
   Lang,
   AgentModeSelector,
   Mode,
+  DelegationMethodSelector,
+  DelegationContent,
   AgentInteractionsDiagram,
   BuildAFlowDiagram,
   FlowNodeTypesRoadmap,

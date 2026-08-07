@@ -1,0 +1,47 @@
+---
+title: Agent Schema
+docType: guide
+sidebar_position: 3
+persona: iam
+description: The agent schema in {{ProductName}} defines the attributes every agent carries. View the built-in default schema and change which attributes an agent holds.
+---
+
+# Agent Schema
+
+The agent schema defines the set of attributes every agent carries. There is one built-in schema, shared by all agents, and each agent holds its own values for the attributes the schema defines. Attributes describe and classify an agent, for example which model it runs or what function it serves, and any attribute can be added to the agent's tokens for a downstream service to read.
+
+## Why an agent has a schema
+
+- **Consistent metadata.** Every agent is described by the same fields, so agents are classified and governed the same way across the organization.
+- **Token claims.** Selected attributes are added to the agent's access token, so a resource can act on them, for example route by `modelProvider` or restrict by `function`.
+- **Secrets.** An attribute marked as a credential is stored hashed and never returned, so an agent can carry a sensitive value without exposing it.
+
+## Attributes an agent can have
+
+Each attribute in the schema has:
+
+- a **name** and a **display name**;
+- a **type**: string, number, boolean, or enum;
+- **required**: whether every agent must set a value;
+- **unique**: whether the value must be unique across agents;
+- **credential**: whether the value is stored hashed and hidden (string or number only);
+- for a string, an optional **regex pattern**; for an enum, the list of **allowed values**.
+
+## The default schema
+
+The built-in schema defines three optional attributes:
+
+| Attribute | Type | Values |
+|---|---|---|
+| `modelProvider` | enum | `openai`, `anthropic`, `gemini`, `mistral`, `custom` |
+| `model` | string | free text, for example the model name |
+| `function` | enum | `task-automation`, `rag-retrieval`, `code-gen`, `data-analysis`, `orchestrator`, `sub-agent`, `assistant`, `custom` |
+
+None are required, so an agent can set any, all, or none of them. Set the values per agent on the **Attributes** tab. See [Attribute values](../manage-agents#attribute-values).
+
+## Change the schema
+
+- **Console:** click **Schema** on the **Agents** list. Add or edit attributes, set each one's type, display name, required, unique, and credential flags, a regex pattern (string) or allowed values (enum), then save from the unsaved-changes bar.
+- **API:** manage the schema through the agent-type endpoints. See the [Agent Types section of the API Reference](../../../apis#tag/agent-types).
+
+Because the schema is shared by all agents, a change to it applies to every agent at once.

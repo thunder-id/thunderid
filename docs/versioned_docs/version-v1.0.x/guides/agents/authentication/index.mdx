@@ -1,0 +1,48 @@
+---
+title: Agent Authentication
+docType: guide
+sidebar_position: 4
+persona: iam
+description: Configure the credential an agent authenticates with in {{ProductName}}, a client secret or a private key JWT.
+---
+
+# Agent Authentication
+
+Agent authentication is how an agent proves which agent it is to <ProductName />. Because an agent runs unattended and acts on its own behalf, it presents its own credential on every token request, and that credential is what ties each request and every action back to that specific agent.
+
+## Prove the agent's identity
+
+The agent authenticates to <ProductName /> with one of these methods. This credential is what ties every request back to that specific agent, so choose the strength that matches how sensitive the agent's work is.
+
+| Method | How the agent authenticates | Use when |
+|---|---|---|
+| Client secret (`client_secret_basic` or `client_secret_post`) | A shared secret | Standard server-side agents |
+| Private key JWT (`private_key_jwt`) | A signed assertion, with no shared secret | Higher-security agents |
+
+### Use a client secret
+
+A client secret is issued when the agent has an OAuth 2.0 configuration, which the Console provisions by default at registration (through the API, when the create request includes an `inboundAuthConfig`). To replace it, either for routine rotation or after a suspected leak:
+
+- **Console:** on the **Credentials** tab, click **Regenerate secret**. The new secret is shown once, and the old one stops working immediately.
+- **API:** there is no dedicated regeneration endpoint. Fetch the agent with `GET /agents/{id}`, set a new `clientSecret` in its `oauth2` inbound auth config, and write it back with `PUT /agents/{id}`.
+
+Rotating the secret refreshes the agent's credential only. It does not change the agent's identity, its ID, or the access it has been granted.
+
+See [Client Authentication Methods](../../protocols/oauth-oidc/client-authentication-methods) for how the agent presents the secret (`client_secret_basic` or `client_secret_post`).
+
+### Use a private key JWT
+
+For agents that should not hold a shared secret at all, the agent can authenticate by signing an assertion with a private key that only it possesses.
+
+- **Console:** on the **Advanced** tab, set **Client Authentication Method** to `private_key_jwt`, then on the **Credentials** tab provide the **Certificate**: an inline JWKS (JSON Web Key Set) or a JWKS URI. The agent signs a JWT assertion with its private key, and <ProductName /> verifies it against the public keys in that JWKS.
+- **API:** set `tokenEndpointAuthMethod` to `private_key_jwt` and supply the certificate (a JWKS or a JWKS URI) in the agent's OAuth configuration.
+
+An agent using `private_key_jwt` must have a certificate and no client secret. The API rejects the method if no certificate is set or a client secret is still present, so when switching an agent from a secret, provide the certificate and clear the secret in the same update.
+
+See [Client Authentication Methods](../../protocols/oauth-oidc/client-authentication-methods) for the `private_key_jwt` assertion, and [JWKS](../../protocols/oauth-oidc/jwks) for the certificate formats.
+
+:::note[Agents are confidential clients]
+<ProductName /> agents are confidential clients, each holding its own credential (a client secret or a signed key). Because an agent runs unattended and acts on its own behalf, it must prove its own identity to the authorization server, and only a client-held credential can do that. This is what makes an agent's actions attributable to it.
+
+A public client (no secret) cannot prove its own identity, so it cannot use the `client_credentials` grant and can act only in user-delegated flows. `tokenEndpointAuthMethod: none` is therefore allowed only for a public client that has no secret and no `client_credentials` grant. Both surfaces enforce this: the Console offers `none` but disables it unless the agent uses `authorization_code` without `client_credentials`, and the API rejects the `client_credentials` and `none` combination.
+:::

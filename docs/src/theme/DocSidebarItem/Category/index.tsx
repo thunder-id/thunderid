@@ -6,7 +6,7 @@ import type {Props} from '@theme/DocSidebarItem/Category';
 import DocSidebarItems from '@theme/DocSidebarItems';
 import OriginalDocSidebarItemCategory from '@theme-original/DocSidebarItem/Category';
 import {Box} from '@wso2/oxygen-ui';
-import {Bot, MonitorSmartphone, Server} from '@wso2/oxygen-ui-icons-react';
+import {Bot, ChevronDown, MonitorSmartphone, Server} from '@wso2/oxygen-ui-icons-react';
 import React from 'react';
 import {ConnectType, applyConnectType, useConnectType} from '@site/src/utils/connectType';
 
@@ -41,11 +41,11 @@ const cardSx = {
   fontSize: '0.9rem',
   fontWeight: 600,
   gap: '0.65rem',
-  margin: '0.1rem var(--ifm-menu-link-padding-horizontal, 0.75rem) 0.5rem',
+  margin: '0.1rem 0 0.5rem var(--ifm-menu-link-padding-horizontal, 0.75rem)',
   padding: '0.65rem 0.75rem',
   textAlign: 'left',
   transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
-  width: 'calc(100% - 2 * var(--ifm-menu-link-padding-horizontal, 0.75rem))',
+  width: 'calc(100% - var(--ifm-menu-link-padding-horizontal, 0.75rem))',
   '&:hover': {
     borderColor: 'color-mix(in srgb, var(--ifm-color-primary) 55%, transparent)',
     boxShadow: '0 0 0 3px color-mix(in srgb, var(--ifm-color-primary) 10%, transparent)',
@@ -97,6 +97,13 @@ const badgeSx = {
   textTransform: 'uppercase',
 };
 
+const chevronSx = {
+  color: 'var(--ifm-color-content-secondary)',
+  display: 'inline-flex',
+  flexShrink: 0,
+  transition: 'transform 0.2s ease',
+};
+
 function ConnectSection({item, ...rest}: OriginalProps): React.ReactElement {
   const {items, label, className} = item;
   const type = connectTypeFromClassName(className)!;
@@ -105,19 +112,25 @@ function ConnectSection({item, ...rest}: OriginalProps): React.ReactElement {
   const expanded = !comingSoon && active === type;
 
   return (
-    <li className="menu__list-item">
+    <li className={`menu__list-item connect-section connect-section--${type}`}>
       <Box
         component={comingSoon ? 'div' : 'button'}
         type={comingSoon ? undefined : 'button'}
         aria-expanded={comingSoon ? undefined : expanded}
-        onClick={comingSoon ? undefined : () => applyConnectType(type)}
+        onClick={comingSoon ? undefined : () => applyConnectType(expanded ? null : type)}
         sx={{...cardSx, ...(expanded ? cardActiveSx : {}), ...(comingSoon ? cardDisabledSx : {})}}
       >
         <Box className="cts-opt-icon" component="span" sx={iconBoxSx}>
           <Icon aria-hidden size={20} />
         </Box>
         <Box component="span" sx={{flex: 1}}>{label}</Box>
-        {comingSoon && <Box component="span" sx={badgeSx}>Soon</Box>}
+        {comingSoon ? (
+          <Box component="span" sx={badgeSx}>Soon</Box>
+        ) : (
+          <Box component="span" sx={{...chevronSx, transform: expanded ? 'rotate(180deg)' : 'none'}}>
+            <ChevronDown aria-hidden size={14} />
+          </Box>
+        )}
       </Box>
 
       {!comingSoon && (

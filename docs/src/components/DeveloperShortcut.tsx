@@ -84,7 +84,9 @@ export default function DeveloperShortcut({
   const isMobile = windowSize === 'mobile';
   const docsUrl = useDocsUrl();
 
-  const selected = useConnectType();
+  // The sidebar can clear the shared state to collapse every card; the home-page
+  // selector always shows one path, so fall back to the default when it is null.
+  const selected = useConnectType() ?? 'app';
 
   const handleSelect = useCallback((type: ConnectType, comingSoon: boolean) => {
     if (comingSoon) return;
