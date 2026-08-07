@@ -22,7 +22,6 @@ function QuickstartPanel({isVisible}: {isVisible: boolean}): JSX.Element {
     >
       {/* Developer shortcut — primary path, with install OR section */}
       <DeveloperShortcut showInstallPath />
-
     </Box>
   );
 }
@@ -120,7 +119,7 @@ function BrowseTopics(): JSX.Element {
       <Typography component="h2" variant="h5" sx={{fontWeight: 700, mb: 2, fontSize: '1.2rem', color: 'text.primary'}}>
         Explore the platform
       </Typography>
-      <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr 1fr', md: 'repeat(4, 1fr)'}, gap: 1.5}}>
+      <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', sm: '1fr 1fr', md: 'repeat(4, 1fr)'}, gap: 1.5}}>
         {BROWSE_TOPICS.map((topic) => (
           <Box
             key={topic.label}
