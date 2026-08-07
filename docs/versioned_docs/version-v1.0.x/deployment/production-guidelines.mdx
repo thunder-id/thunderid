@@ -246,6 +246,40 @@ To change origins without a restart, update the same section with `PUT /server-c
 
   Anchor regex patterns with `^` and `$`. <ProductName /> logs a startup warning for unanchored patterns because they can match unintended origins.
 
+## Harden the Content Security Policy
+
+<ProductName /> sends a Content Security Policy (CSP) header on its Console and Gate UIs to restrict where the browser loads scripts, styles, images, and fonts from. The policy is stored in the server-config `csp` section. It ships in report-only mode so you can discover what your deployment loads before you enforce it.
+
+Roll out enforcement in three steps:
+
+1. Keep `reportOnly: true` and open the Console and Gate in a browser. Violations are logged to the browser console without blocking any resource.
+2. For each reported resource, add its origin to the matching directive. External images go in `img-src`, fonts in `font-src`, and external stylesheets in `style-src-elem`.
+3. Set `reportOnly: false` to enforce the policy once the browser console reports no violations.
+
+Create `config/resources/server_configs/csp.yaml`:
+
+```yaml
+name: csp
+value:
+  reportOnly: false
+  paths:
+    - location: "/console/"
+      directives:
+        img-src:
+          - "'self'"
+          - "https://cdn.example.com"
+```
+
+To change the policy without a restart, update the same section with `PUT /server-config/csp`. Runtime values are merged with the declarative file.
+
+**Guidelines:**
+
+- Listing a directive replaces its baseline value, so include `'self'` when you still need same-origin resources.
+- When you add an external logo, font, or stylesheet URL in the Console, allow its origin in the matching directive. The Console shows the directive to update next to each field.
+- Keep the policy as narrow as your applications allow. Avoid broad sources such as `https:` or `'unsafe-inline'` once you know the exact origins you need.
+
+See [Content Security Policy](../configuration#content-security-policy) for the full field reference and the deny-first baseline.
+
 ## Configure Caching
 
 <ProductName /> supports two cache backends: in-memory and Redis.

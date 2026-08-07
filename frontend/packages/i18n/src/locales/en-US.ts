@@ -133,6 +133,16 @@ const translations = {
     'externalLink.title': 'You are leaving {{productName}}',
     'externalLink.message': 'This link leads to an external site. Please verify the destination before proceeding:',
 
+    // Content Security Policy hints shown next to fields that load external resources.
+    'csp.hint.image':
+      "This image loads from {{origin}}. Add {{origin}} to the img-src directive of your server's Content Security Policy so it is not blocked.",
+    'csp.hint.stylesheet':
+      "This stylesheet loads from {{origin}}. Add {{origin}} to the style-src-elem directive of your server's Content Security Policy so it is not blocked.",
+    'csp.hint.font':
+      "This font loads from {{origin}}. Add {{origin}} to the style-src-elem directive, and the origin that serves its font files to the font-src directive, of your server's Content Security Policy so it is not blocked.",
+    'csp.hint.fontGoogle':
+      "Google Fonts loads its stylesheet from fonts.googleapis.com and its font files from fonts.gstatic.com. Add fonts.googleapis.com to the style-src-elem directive and fonts.gstatic.com to the font-src directive of your server's Content Security Policy so this font is not blocked.",
+
     // Navigation
     'navigation.home': 'Home',
     'navigation.dashboard': 'Dashboard',

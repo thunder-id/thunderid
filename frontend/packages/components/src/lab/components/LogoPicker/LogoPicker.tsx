@@ -35,6 +35,7 @@ import {
 import {Link2, Plus, Shuffle, X} from '@wso2/oxygen-ui-icons-react';
 import {useState, useCallback, useEffect, useMemo, useRef, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
+import CspOriginHint from '../../../CspOriginHint/CspOriginHint';
 import AvatarSwatchGrid from '../AvatarPicker/AvatarSwatchGrid';
 import EmojiPicker from '../EmojiPicker/EmojiPicker';
 import generateIconSuggestions from '../EmojiPicker/utils/generateIconSuggestions';
@@ -424,6 +425,7 @@ export default function LogoPicker({
               'Direct link to a PNG, SVG or JPG. For best results, use a square image less than 1MB in size.',
             )}
           </FormHelperText>
+          <CspOriginHint value={urlInput} resourceType="image" />
         </Stack>
       </Stack>
 

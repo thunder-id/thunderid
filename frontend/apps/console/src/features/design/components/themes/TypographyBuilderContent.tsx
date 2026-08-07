@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CspOriginHint} from '@thunderid/components';
 import {
   BROWSER_SAFE_FONTS,
   DEFAULT_FONT_STACK,
@@ -136,29 +137,28 @@ export default function TypographyBuilderContent({draft, onUpdate}: TypographyBu
   const importURL = getFontImportURL(draft) ?? '';
   const typo = draft.typography;
 
-  // FontImporter only loads this into the GatePreview iframe, a separate document from this panel.
   useFontStylesheetLink(importURL || undefined);
 
   const [fontMode, setFontMode] = useState<'web-safe' | 'import'>(importURL ? 'import' : 'web-safe');
 
-  // Values for the inactive mode aren't in the theme, so stash them here to restore on toggle-back.
   const [stashedWebSafeFamily, setStashedWebSafeFamily] = useState(importURL ? '' : fontFamily);
   const [stashedImport, setStashedImport] = useState<{family: string; url: string}>(
     importURL ? {family: fontFamily, url: importURL} : {family: '', url: ''},
   );
 
-  // Re-sync the toggle when the draft changes from outside (e.g. a Revert), in either direction.
-  // handleFontModeChange pre-syncs these to the values it's about to apply, so this block only
-  // ever fires for changes it didn't cause itself.
+  // Re-sync the toggle and stashed values when the draft is reverted or changed from outside.
   const [prevImportURL, setPrevImportURL] = useState(importURL);
   const [prevFontFamily, setPrevFontFamily] = useState(fontFamily);
   if (importURL !== prevImportURL || fontFamily !== prevFontFamily) {
     setPrevImportURL(importURL);
     setPrevFontFamily(fontFamily);
-    if (importURL && fontMode !== 'import') {
+    if (importURL) {
       setFontMode('import');
-    } else if (!importURL && fontMode === 'import') {
+      setStashedImport({family: fontFamily, url: importURL});
+    } else {
       setFontMode('web-safe');
+      setStashedWebSafeFamily(fontFamily);
+      setStashedImport({family: '', url: ''});
     }
   }
 
@@ -181,19 +181,18 @@ export default function TypographyBuilderContent({draft, onUpdate}: TypographyBu
     let nextFamily: string;
     let nextURL: string;
     if (value === 'web-safe') {
-      // Leaving import mode: remember its values, then restore the remembered web-safe font.
+      // Leaving import mode: remember its values and restore.
       setStashedImport({family: fontFamily, url: importURL});
       nextFamily = stashedWebSafeFamily;
       nextURL = '';
     } else {
-      // Leaving web-safe mode: remember its font, then restore the remembered import values.
+      // Leaving web-safe mode: remember its font and restore.
       setStashedWebSafeFamily(fontFamily);
       nextFamily = stashedImport.family;
       nextURL = stashedImport.url;
     }
     applyFont(nextFamily, nextURL);
-    // Pre-sync so the re-sync block above doesn't mistake this intentional toggle for an
-    // external draft change and immediately flip the mode back.
+    // Pre-sync so the re-sync doesn't flip the mode with this intentional toggle.
     setPrevFontFamily(nextFamily);
     setPrevImportURL(nextURL);
     setFontMode(value);
@@ -260,9 +259,11 @@ export default function TypographyBuilderContent({draft, onUpdate}: TypographyBu
                 value={importURL}
                 onChange={(e) => {
                   const newUrl = e.target.value;
-                  // Clearing the URL clears the family too, since a family with nothing to load it
-                  // from is meaningless.
-                  applyFont(newUrl ? fontFamily : '', newUrl);
+                  const newFamily = newUrl ? fontFamily : '';
+                  applyFont(newFamily, newUrl);
+                  // Pre-sync so the re-sync effect doesn't flip mode when clearing the field.
+                  setPrevFontFamily(newFamily);
+                  setPrevImportURL(newUrl);
                 }}
                 placeholder={t(
                   'themes.forms.typography_builder.fields.font_import_url.placeholder',
@@ -274,6 +275,7 @@ export default function TypographyBuilderContent({draft, onUpdate}: TypographyBu
                 )}
               />
             </FormControl>
+            <CspOriginHint value={importURL} resourceType="font" />
             <FormControl fullWidth>
               <FormLabel htmlFor="font-family-input">
                 {t('themes.forms.typography_builder.fields.font_family_input.label', 'Font Family')}
@@ -283,7 +285,13 @@ export default function TypographyBuilderContent({draft, onUpdate}: TypographyBu
                 id="font-family-input"
                 size="small"
                 value={fontFamily}
-                onChange={(e) => applyFont(e.target.value, importURL)}
+                onChange={(e) => {
+                  const newFamily = e.target.value;
+                  applyFont(newFamily, importURL);
+                  // Pre-sync so the re-sync effect doesn't flip mode while typing a family name.
+                  setPrevFontFamily(newFamily);
+                  setPrevImportURL(importURL);
+                }}
                 placeholder={t('themes.forms.typography_builder.fields.font_family_input.placeholder', 'E.g. Poppins')}
                 helperText={t(
                   'themes.forms.typography_builder.fields.font_family_input.helper_text',

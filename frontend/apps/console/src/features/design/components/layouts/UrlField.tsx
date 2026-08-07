@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CspOriginHint} from '@thunderid/components';
 import {isValidStylesheetUrl, isInsecureStylesheetUrl, type UrlStylesheet} from '@thunderid/design';
 import {FormControl, FormLabel, TextField} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
@@ -45,6 +46,7 @@ function UrlField({sheet, onUpdate}: UrlFieldProps): JSX.Element {
           formHelperText: isInsecure ? {sx: {color: 'warning.main'}} : undefined,
         }}
       />
+      <CspOriginHint value={sheet.href} resourceType="stylesheet" />
     </FormControl>
   );
 }

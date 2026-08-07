@@ -1,22 +1,19 @@
 resource_type: server_config
 name: csp
 value:
-  # Enforcing. Applies only to /console/ and /gate/; all other responses (APIs, OAuth2) get no CSP
-  # header. Each path policy's directives replace the matching baseline directive for that path.
+  # Enforcing. Each path policy's directives replace the matching baseline directive for that path.
   reportOnly: false
   paths:
-    # Console application.
     - location: "/console/"
       directives:
-        # Governs <style> elements and stylesheet links.
         style-src-elem:
           - "'self'"
           - "https://fonts.googleapis.com"
-          - "'unsafe-inline'" # Needed for the embedded Monaco editor (Custom CSS, JWT claims, Import/Export viewers), which has no CSP nonce support (monaco-editor#271).
+          - "'unsafe-inline'" # Needed for the embedded Monaco editor, which has no CSP nonce support.
         # Governs inline style="" attributes; these can't carry a nonce at all per spec.
         style-src-attr:
           - "'self'"
-          - "'unsafe-inline'" # Needed for React/MUI's style={{}} usage.
+          - "'unsafe-inline'"
         img-src:
           - "'self'"
           - "data:" # Inline library images.
@@ -30,22 +27,18 @@ value:
           - "https://thunderid.dev" # Console welcome page's release metadata fetch.
           - "https://fonts.googleapis.com" # GatePreview iframe preconnect.
           - "https://fonts.gstatic.com" # GatePreview iframe preconnect.
-        # Controls allowed sources for worker scripts.
         worker-src:
           - "'self'"
           - "blob:" # Monaco instantiates web workers, which the build may emit as blob URLs.
-    # Gate application.
     - location: "/gate/"
       directives:
-        # Governs <style> elements and stylesheet links.
         style-src-elem:
           - "'self'"
           - "https://fonts.googleapis.com"
-          # No 'unsafe-inline': Gate doesn't embed Monaco, so it keeps the strict nonce-only policy.
         # Governs inline style="" attributes; these can't carry a nonce at all per spec.
         style-src-attr:
           - "'self'"
-          - "'unsafe-inline'" # Needed for React/MUI's style={{}} usage.
+          - "'unsafe-inline'"
         img-src:
           - "'self'"
           - "data:"

@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CspOriginHint} from '@thunderid/components';
 import {FormControl, FormLabel, MenuItem, Select} from '@wso2/oxygen-ui';
 import {memo, useCallback, useMemo, type ReactElement} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -235,6 +236,7 @@ function ResourceProperties({
               propertyValue={(resource as Element & {src?: string}).src ?? ''}
               onChange={(_key, value, res) => handleChange('src', value, res, true)}
             />
+            <CspOriginHint value={(resource as Element & {src?: string}).src ?? ''} resourceType="image" />
             <TextPropertyField
               resource={resource}
               propertyKey="alt"

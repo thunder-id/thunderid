@@ -29,10 +29,10 @@ const INPUT_ELEMENT_TYPES = new Set<string>([
 /**
  * Extended node type with custom properties used by the canvas
  */
-type CanvasNode = Node<StepData> & {
+interface CanvasNode extends Node<StepData> {
   resourceType?: string;
   category?: string;
-};
+}
 
 /**
  * React Flow canvas data structure
@@ -210,7 +210,7 @@ function findRichTextComponentByActionRef(components: Element[] | undefined, act
   }
 
   for (const component of components) {
-    const richAction = (component as Element & {action?: {ref?: string}}).action;
+    const richAction = (component as {action?: {ref?: string}}).action;
     if (component.type === ElementTypes.RichText && richAction?.ref === actionRef) {
       return component;
     }
@@ -401,7 +401,7 @@ function transformNodeToCanvas(apiNode: FlowNode): CanvasNode {
  */
 function generateEdgesFromNodes(apiNodes: FlowNode[]): Edge[] {
   const edges: Edge[] = [];
-  const nodeIds = new Set(apiNodes.map((node) => node.id));
+  const nodeIds = new Set<string>(apiNodes.map((node) => node.id));
 
   apiNodes.forEach((node) => {
     const stepType = NODE_TO_STEP_TYPE_MAP[node.type] ?? node.type;

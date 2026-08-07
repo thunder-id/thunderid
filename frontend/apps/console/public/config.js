@@ -24,6 +24,7 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
       'verifiableCredentials.presentations': '',
       settings: '',
       importExport: '',
+      'deployment.csp': 'deployment/configuration/#content-security-policy',
       'applications.templates.react.docs': 'getting-started/connect-your-application/react/',
       'applications.templates.react.playground': '',
       'applications.templates.react.llmPrompt.redirectBased':

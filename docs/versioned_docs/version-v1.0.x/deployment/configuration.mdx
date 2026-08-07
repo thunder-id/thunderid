@@ -885,6 +885,90 @@ Anchor every regex with `^` and `$` and escape literal dots. Unanchored patterns
 The `null` origin is shared by sandboxed iframes, `file://` and `data:` documents, and some redirects, so allowing `"null"` cannot identify the caller. List it only when you intend to trust those contexts. With credentialed responses, it lets any such page make authenticated requests.
 :::
 
+## Content Security Policy
+
+:::note RUNNING FROM SOURCE WITH MAKE RUN
+CSP headers are not enforced in development. The policy is applied only when static assets are served through the backend server binary.
+:::
+
+Controls where the browser may load scripts, styles, images, fonts, and other resources for the <ProductName /> Console and Gate UIs. The policy is deny-first: any resource that is not explicitly allowed is blocked.
+
+The CSP header is sent only on <ProductName /> Console (`/console/`) and Gate (`/gate/`) responses.
+
+| Field | Description |
+|-------|-------------|
+| `reportOnly` | When `true` (the default), the browser reports violations to its console but still loads the resource, using the `Content-Security-Policy-Report-Only` header. Set it to `false` to enforce the policy and block disallowed resources. |
+| `reportUri` | Optional endpoint the browser posts violation reports to, mapped to the `report-uri` directive. Use a relative path or an `http`/`https` URL. |
+| `directives` | Map of directive name (for example `img-src`) to its list of allowed sources. A directive you list here replaces that directive's baseline value on every CSP path. |
+| `paths` | List of per-path overrides. Each entry has a `location` prefix (for example `/console/`) and its own `directives`. The longest matching `location` applies, and its directives override `directives`, which override the baseline. |
+
+### Deny-First Baseline
+
+Every directive you do not configure falls back to this baseline:
+
+```text
+default-src 'none';
+script-src 'self';
+style-src 'self';
+img-src 'self';
+connect-src 'self';
+frame-ancestors 'none';
+base-uri 'none';
+form-action 'self'
+```
+
+A resource type without a matching directive (for example `font-src`) falls back to `default-src 'none'` and is blocked. On HTML responses, <ProductName /> Gate gets a fresh per-request nonce to the `script-src` and `style-src-elem` directives so its own inline scripts and styles load.
+
+:::warning Overrides replace, not extend
+Listing a directive replaces its baseline value completely. Include `'self'` in your list when you still need same-origin resources. For example, `img-src: ["https://cdn.example.com"]` blocks same-origin images until you add `'self'`.
+:::
+
+### Configure the Policy
+
+Set the policy in either of these ways:
+
+- **Declarative** - create `config/resources/server_configs/csp.yaml`, then restart.
+  ```yaml
+  name: csp
+  value:
+    reportOnly: false
+    paths:
+      - location: "/console/"
+        directives:
+          img-src:
+            - "'self'"
+            - "https://cdn.example.com"
+          style-src-elem:
+            - "'self'"
+            - "https://fonts.googleapis.com"
+          font-src:
+            - "'self'"
+            - "https://fonts.gstatic.com"
+  ```
+- **Runtime** - send the new value to `PUT /server-config/csp`; it is applied immediately:
+  ```http
+  PUT /server-config/csp
+  Content-Type: application/json
+
+  {
+    "reportOnly": false,
+    "paths": [
+      {
+        "location": "/console/",
+        "directives": {"img-src": ["'self'", "https://cdn.example.com"]}
+      }
+    ]
+  }
+  ```
+
+Directives at the top level of `directives` apply to every CSP path, while a `paths` entry applies only to requests under its `location` and overrides the top-level value for that directive.
+
+A `PUT` replaces the entire runtime layer, so include every runtime value you want to keep. <ProductName /> then merges that layer with the declarative `csp.yaml` per directive and path, and any directive you configure in neither layer stays at the deny-first baseline.
+
+:::note
+Directive names must match the pattern `^[a-z][a-z0-9-]*$`, and no source may contain whitespace, a semicolon, or a comma. An invalid value is rejected with `SCF-1003` ("Invalid server configuration value").
+:::
+
 ## Default Resource Server
 
 Sets the resource server for permission-bearing token requests that omit the `resource` parameter. It is stored in the server-config `defaultResourceServer` section, not in `deployment.yaml`. When no default is configured, a request that contains permission scopes but omits `resource` fails with `invalid_target`. OIDC-only and scopeless requests are not bound to a resource server, so they use the application's default audience (`token.accessToken.defaultAudience`), or the `client_id` when it is unset.
