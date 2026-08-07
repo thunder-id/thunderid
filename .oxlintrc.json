@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "import",
+    "typescript",
+    "react",
+    "jsx-a11y",
+    "vitest"
+  ],
+  "categories": {
+    "correctness": "warn"
+  },
+  "rules": {
+    "no-console": "error",
+    "no-new": "error",
+    "import/no-cycle": "error",
+    "@typescript-eslint/no-explicit-any": "error",
+    "react/no-danger": "error",
+    "react/jsx-no-useless-fragment": "error",
+    "react/no-array-index-key": "error",
+    "react/react-in-jsx-scope": "off",
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "warn",
+    "vitest/expect-expect": "error"
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/build/**",
+    "**/node_modules/**",
+    "**/coverage/**"
+  ]
+}
