@@ -1,0 +1,22 @@
+# Control Plane additions to the baseline.
+#
+# This file sits alongside the shared 01-default-resources.yaml, which the bootstrap reads as one
+# bundle. It is installed only into the Control Plane image, so the hybrid server's baseline is
+# exactly what it was.
+#
+# Every tenant a Control Plane provisions gets this, and it promotes down to that tenant's Data Plane
+# with the rest of its configuration.
+
+# Which resource server a token binds to when the request names none.
+#
+# A token is always bound to exactly one resource server. A client that sends the resource indicator
+# names it; one that does not falls back to this, and without it the request is refused with
+# invalid_target. The Data Plane console is the one that matters: it sends no indicator, so this is
+# what lets it finish a login.
+#
+# It points by id, not by identifier. Ids are remapped per tenant, so this and the resource server it
+# names are rewritten together and stay pointing at each other, on the Control Plane and on every
+# Data Plane the tenant is applied to.
+resource_type: server_config
+name: defaultResourceServer
+value: {"resourceServerId":"01900000-0000-7000-8000-000000000020"}

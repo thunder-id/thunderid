@@ -5,6 +5,7 @@
 package serverconfig
 
 import (
+	"context"
 	"encoding/json"
 
 	mock "github.com/stretchr/testify/mock"
@@ -159,16 +160,16 @@ func (_c *ServerConfigHandlerInterfaceMock_Merge_Call) RunAndReturn(run func(rea
 }
 
 // Validate provides a mock function for the type ServerConfigHandlerInterfaceMock
-func (_mock *ServerConfigHandlerInterfaceMock) Validate(incoming any, readOnly any, writable any) error {
-	ret := _mock.Called(incoming, readOnly, writable)
+func (_mock *ServerConfigHandlerInterfaceMock) Validate(ctx context.Context, incoming any, readOnly any, writable any) error {
+	ret := _mock.Called(ctx, incoming, readOnly, writable)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Validate")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(any, any, any) error); ok {
-		r0 = returnFunc(incoming, readOnly, writable)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, any, any, any) error); ok {
+		r0 = returnFunc(ctx, incoming, readOnly, writable)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -181,18 +182,19 @@ type ServerConfigHandlerInterfaceMock_Validate_Call struct {
 }
 
 // Validate is a helper method to define mock.On call
+//   - ctx context.Context
 //   - incoming any
 //   - readOnly any
 //   - writable any
-func (_e *ServerConfigHandlerInterfaceMock_Expecter) Validate(incoming interface{}, readOnly interface{}, writable interface{}) *ServerConfigHandlerInterfaceMock_Validate_Call {
-	return &ServerConfigHandlerInterfaceMock_Validate_Call{Call: _e.mock.On("Validate", incoming, readOnly, writable)}
+func (_e *ServerConfigHandlerInterfaceMock_Expecter) Validate(ctx interface{}, incoming interface{}, readOnly interface{}, writable interface{}) *ServerConfigHandlerInterfaceMock_Validate_Call {
+	return &ServerConfigHandlerInterfaceMock_Validate_Call{Call: _e.mock.On("Validate", ctx, incoming, readOnly, writable)}
 }
 
-func (_c *ServerConfigHandlerInterfaceMock_Validate_Call) Run(run func(incoming any, readOnly any, writable any)) *ServerConfigHandlerInterfaceMock_Validate_Call {
+func (_c *ServerConfigHandlerInterfaceMock_Validate_Call) Run(run func(ctx context.Context, incoming any, readOnly any, writable any)) *ServerConfigHandlerInterfaceMock_Validate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 any
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(any)
+			arg0 = args[0].(context.Context)
 		}
 		var arg1 any
 		if args[1] != nil {
@@ -202,10 +204,15 @@ func (_c *ServerConfigHandlerInterfaceMock_Validate_Call) Run(run func(incoming 
 		if args[2] != nil {
 			arg2 = args[2].(any)
 		}
+		var arg3 any
+		if args[3] != nil {
+			arg3 = args[3].(any)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -216,7 +223,7 @@ func (_c *ServerConfigHandlerInterfaceMock_Validate_Call) Return(err error) *Ser
 	return _c
 }
 
-func (_c *ServerConfigHandlerInterfaceMock_Validate_Call) RunAndReturn(run func(incoming any, readOnly any, writable any) error) *ServerConfigHandlerInterfaceMock_Validate_Call {
+func (_c *ServerConfigHandlerInterfaceMock_Validate_Call) RunAndReturn(run func(ctx context.Context, incoming any, readOnly any, writable any) error) *ServerConfigHandlerInterfaceMock_Validate_Call {
 	_c.Call.Return(run)
 	return _c
 }

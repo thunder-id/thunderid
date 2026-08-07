@@ -67,10 +67,13 @@ RUN test -f frontend/apps/cp-console/dist/index.html
 # Runtime stage
 FROM alpine:3.19
 
+# postgresql-client rather than sqlite: these planes run against PostgreSQL, because several pods of
+# one deployment share a database and SQLite cannot be shared. psql is here so an operator can reach
+# that database from the container.
 RUN apk add --no-cache \
     ca-certificates \
     lsof \
-    sqlite \
+    postgresql-client \
     bash \
     curl \
     openssl \
@@ -97,6 +100,10 @@ RUN cd /tmp/dist && \
 # ./thunderid, so the binary keeps that name.
 COPY --from=builder /app/target/out/thunderid-cp /opt/thunderid/thunderid
 COPY --from=builder /app/backend/cmd/cpserver/deployment.yaml /opt/thunderid/deployment.yaml
+
+# The Control Plane's additions to the baseline, alongside the packaged bundle rather than replacing
+# it: bootstrap reads the directory as one, so a tenant is provisioned from both files together.
+COPY --from=builder /app/backend/cmd/cpserver/bootstrap/ /opt/thunderid/bootstrap/
 
 # Serve the Control Plane console in place of the packaged one. The gate is dropped with it: it is the
 # runtime login UI, and this plane serves no runtime traffic.

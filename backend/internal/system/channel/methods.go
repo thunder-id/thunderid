@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 
 	"github.com/thunder-id/thunderid/internal/system/importer"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -52,6 +53,17 @@ func RegisterDataPlaneMethods(router *Router, runner ImportRunner, dpID string) 
 		if err := json.Unmarshal(params, &req); err != nil {
 			return nil, NewError(CodeInvalidParams, "invalid import params: "+err.Error())
 		}
+		// An applied configuration is seeded, not requested by anyone, so it runs privileged, as the
+		// bootstrap of the same resources does. Without it a deployment cannot accept its own first
+		// apply: the bundle carries the user, group and role that would authorize importing it, so
+		// nothing on a deployment that has never been applied to grants the permission to write them.
+		//
+		// The claim being acted on is the handshake, not the call. This router is reachable only over
+		// the connection the data plane dialed out and authenticated with its own token, and is not
+		// mounted on any HTTP route, so nothing a user sends can arrive here. Imports over the
+		// management API keep the authorization they have; only what a control plane applies is
+		// privileged.
+		ctx = security.WithRuntimeContext(ctx)
 		resp, svcErr := runner.ImportResources(ctx, &req)
 		if svcErr != nil {
 			return nil, serviceErrorToRPC(svcErr)

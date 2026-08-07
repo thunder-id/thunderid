@@ -53,7 +53,10 @@ server:
         # startup instead: under Kubernetes, from a Secret through secretKeyRef. The variable wins
         # over anything set here.
         #
-        # A mounted secret file works too, as token: "file:///var/run/secrets/openbao/token".
+        # A mounted secret file works too: set token to a file: URL pointing at it, and the server
+        # reads the token from there instead. Written out here it would be read at startup, because
+        # substitution scans this whole file including comments, so the form is described rather
+        # than shown.
         token: ""
         # The authority that signed the vault's certificate, when it is not one the system trusts.
         ca_file: ""

@@ -154,7 +154,7 @@ export interface GateClientConfig {
 export interface EnvManagerConfig {
   /**
    * Full public URL of the environment manager service.
-   * @example "https://localhost:9099"
+   * @example "https://localhost:8095"
    */
   public_url?: string;
 }

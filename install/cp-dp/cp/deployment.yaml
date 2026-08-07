@@ -32,6 +32,14 @@ server:
   system_deployment_id: "root"
 
   security:
+    # Permissions this plane's management APIs require, prefixed. A token from the trusted issuer
+    # carries "tenant_instance:system" rather than a bare "system", because the scope names the
+    # instance it grants against, so the permissions checked here have to match it.
+    #
+    # Every system permission takes the prefix: tenant_instance:system, tenant_instance:system:ou,
+    # tenant_instance:system:user, and so on. Leaving it unset keeps the unprefixed names.
+    system_permission_prefix: "tenant_instance"
+
     environment_manager:
       # Environments and their captured versions. This is the version history that promotion
       # compares against, so it must be durable: back it with a PersistentVolumeClaim, not the
@@ -43,9 +51,6 @@ server:
       issuer: "https://idp.example.com/oauth2/token"
       jwks_url: "https://idp.example.com/oauth2/jwks"
       audience: "thunderid-cp"
-
-    # Generated into config/secrets/direct_auth_secret by the setup job and read from there.
-    direct_auth_secret: "file://config/secrets/direct_auth_secret"
 
 tls:
   min_version: "1.3"

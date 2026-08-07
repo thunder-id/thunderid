@@ -332,6 +332,11 @@ func (s *Service) CaptureVersion(ctx context.Context, envID, note string) (model
 	if err != nil {
 		return model.Version{}, fmt.Errorf("export failed: %w", err)
 	}
+	// The default resource server's identifier is this deployment's audience. Captured verbatim it
+	// would travel to every environment the bundle is promoted to, so each of them would name the
+	// audience of the environment it was captured from. Templated here, resolved per target on apply.
+	exported.Resources = bundle.TemplateDeploymentURL(exported.Resources)
+
 	secretKeys, err := client.SecretKeys(ctx)
 	if err != nil {
 		return model.Version{}, fmt.Errorf("listing secrets failed: %w", err)
@@ -443,6 +448,11 @@ type ApplyResult struct {
 func (s *Service) resolveVariables(ctx context.Context, env model.Environment,
 	version model.Version) map[string]string {
 	values := map[string]string{}
+	// The deployment's own URL, which the captured bundle refers to in place of the audience it was
+	// captured with. It sits underneath the configured variables so an operator can still override it.
+	if url := strings.TrimSpace(env.Target.BaseURL); url != "" {
+		values[bundle.DeploymentURLVariable] = strings.TrimRight(url, "/")
+	}
 	for k, v := range version.Variables {
 		values[k] = v
 	}

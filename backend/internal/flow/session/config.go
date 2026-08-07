@@ -19,6 +19,7 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 )
@@ -66,7 +67,7 @@ func (ConfigHandler) Decode(raw json.RawMessage) (any, error) {
 }
 
 // Validate checks that the incoming value is a coherent session config.
-func (ConfigHandler) Validate(incoming, _, _ any) error {
+func (ConfigHandler) Validate(_ context.Context, incoming, _, _ any) error {
 	cfg, _ := incoming.(Config)
 	return cfg.Validate()
 }

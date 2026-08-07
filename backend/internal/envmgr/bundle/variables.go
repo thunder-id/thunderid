@@ -282,3 +282,44 @@ func sortedKeys(set map[string]bool) []string {
 	sort.Strings(out)
 	return out
 }
+
+// DeploymentURLVariable is the placeholder a captured bundle carries in place of the deployment's own
+// base URL, resolved to each target's URL when the bundle is applied.
+const DeploymentURLVariable = "DEPLOYMENT_URL"
+
+// defaultResourceServerPattern finds the id the defaultResourceServer setting points at.
+var defaultResourceServerPattern = regexp.MustCompile(
+	`(?s)resource_type:\s*server_config.*?name:\s*defaultResourceServer.*?resourceServerId"?\s*:\s*"([^"]+)"`)
+
+// identifierLinePattern matches a resource server's identifier line and splits its origin from the
+// rest of the URL.
+var identifierLinePattern = regexp.MustCompile(
+	`(?m)^(\s*identifier:\s*"?)([a-zA-Z][a-zA-Z0-9+.-]*://[^/"\s]+)([^"\s]*)("?)\s*$`)
+
+// TemplateDeploymentURL replaces the origin of the default resource server's identifier with a
+// placeholder, so each environment resolves it to its own.
+//
+// That identifier is an audience: it is what a token issued by the deployment is bound to. Promoted
+// verbatim, every environment would name the same audience as the one the bundle was captured from,
+// and a token minted for one would name the audience of all of them. Only the origin is replaced, so
+// the path an operator chose is kept.
+//
+// Only the resource server the deployment's own default points at is touched. Every other one is
+// configuration an operator authored and is promoted as it stands.
+func TemplateDeploymentURL(resources string) string {
+	m := defaultResourceServerPattern.FindStringSubmatch(resources)
+	if m == nil {
+		return resources
+	}
+	targetID := m[1]
+
+	docs := strings.Split(resources, "\n---")
+	for i, doc := range docs {
+		if !strings.Contains(doc, "resource_type: resource_server") || !strings.Contains(doc, targetID) {
+			continue
+		}
+		docs[i] = identifierLinePattern.ReplaceAllString(doc,
+			"${1}{{."+DeploymentURLVariable+"}}${3}${4}")
+	}
+	return strings.Join(docs, "\n---")
+}

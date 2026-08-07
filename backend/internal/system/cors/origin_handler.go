@@ -18,7 +18,10 @@
 
 package cors
 
-import "encoding/json"
+import (
+	"context"
+	"encoding/json"
+)
 
 // OriginConfig is the cors server-config section value.
 type OriginConfig struct {
@@ -44,7 +47,7 @@ func (OriginHandler) Decode(raw json.RawMessage) (any, error) {
 }
 
 // Validate checks that incoming carries a valid set of origin entries.
-func (OriginHandler) Validate(incoming, _, _ any) error {
+func (OriginHandler) Validate(_ context.Context, incoming, _, _ any) error {
 	cfg, _ := incoming.(OriginConfig)
 	return Validate(cfg.AllowedOrigins)
 }

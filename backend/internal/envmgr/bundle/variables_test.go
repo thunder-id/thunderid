@@ -113,3 +113,82 @@ func TestStripCredentialLinesRemovesOnlyTheNamedCredentialFields(t *testing.T) {
 		t.Fatalf("only the named credential should be removed, got %q", stripped)
 	}
 }
+
+// A deployment's default resource server identifier is the audience its tokens are bound to. Captured
+// verbatim it would travel to every environment promoted to, so each would name the audience of the
+// one it was captured from. Only the origin is replaced, so an operator's chosen path survives.
+func TestTemplateDeploymentURLReplacesOnlyTheOrigin(t *testing.T) {
+	resources := `resource_type: resource_server
+id: rs-1
+name: System
+identifier: "https://dev.example.com/mcp"
+---
+resource_type: server_config
+name: defaultResourceServer
+value: {"resourceServerId":"rs-1"}`
+
+	got := TemplateDeploymentURL(resources)
+
+	if !strings.Contains(got, `identifier: "{{.DEPLOYMENT_URL}}/mcp"`) {
+		t.Fatalf("expected the origin templated and the path kept, got:\n%s", got)
+	}
+}
+
+// Only the resource server the default points at is this deployment's own. Every other one is
+// configuration an operator authored, and promoting it changed would be rewriting their work.
+func TestTemplateDeploymentURLLeavesOtherResourceServersAlone(t *testing.T) {
+	resources := `resource_type: resource_server
+id: rs-1
+name: System
+identifier: "https://dev.example.com/mcp"
+---
+resource_type: resource_server
+id: rs-2
+name: Payments
+identifier: "https://payments.example.com/api"
+---
+resource_type: server_config
+name: defaultResourceServer
+value: {"resourceServerId":"rs-1"}`
+
+	got := TemplateDeploymentURL(resources)
+
+	if !strings.Contains(got, `identifier: "https://payments.example.com/api"`) {
+		t.Fatalf("an authored resource server must be promoted as it stands, got:\n%s", got)
+	}
+	if !strings.Contains(got, `identifier: "{{.DEPLOYMENT_URL}}/mcp"`) {
+		t.Fatalf("expected the deployment's own identifier templated, got:\n%s", got)
+	}
+}
+
+// A bundle from a deployment with no default configured has no audience of its own to template.
+func TestTemplateDeploymentURLIsAnIdentityWithoutADefault(t *testing.T) {
+	resources := `resource_type: resource_server
+id: rs-1
+identifier: "https://dev.example.com/mcp"`
+
+	if got := TemplateDeploymentURL(resources); got != resources {
+		t.Fatalf("expected the bundle unchanged, got:\n%s", got)
+	}
+}
+
+// The templated placeholder has to be a variable the apply actually resolves, or every promotion
+// would report it missing.
+func TestTemplatedDeploymentURLIsARequiredVariable(t *testing.T) {
+	resources := TemplateDeploymentURL(`resource_type: resource_server
+id: rs-1
+identifier: "https://dev.example.com/mcp"
+---
+resource_type: server_config
+name: defaultResourceServer
+value: {"resourceServerId":"rs-1"}`)
+
+	scalars, _ := RequiredVariables(resources)
+
+	for _, name := range scalars {
+		if name == DeploymentURLVariable {
+			return
+		}
+	}
+	t.Fatalf("expected %s among the required variables, got %v", DeploymentURLVariable, scalars)
+}

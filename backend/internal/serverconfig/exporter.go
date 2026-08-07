@@ -72,9 +72,14 @@ func (e *serverConfigExporter) GetAllResourceIDs(ctx context.Context) ([]string,
 		// value into whatever it is imported to, wiping a setting that deployment made for itself. The
 		// default resource server is the case that bites: an empty one leaves a data plane unable to
 		// issue a token for a login that asks for a permission scope.
+		// A section this deployment does not serve is skipped, not fatal. The supported names are the
+		// same everywhere, but a plane registers a handler only for what it is responsible for: a
+		// control plane serves no SSO session lifetime, because that is the data plane's. Failing here
+		// would abandon every other section too, so a control plane would export no configuration at
+		// all, and the default resource server would never reach the data plane that needs it.
 		layers, layerErr := e.service.GetConfig(ctx, name)
 		if layerErr != nil {
-			return nil, layerErr
+			continue
 		}
 		if isZeroConfig(layers.Merged) {
 			continue

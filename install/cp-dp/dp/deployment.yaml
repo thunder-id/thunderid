@@ -60,8 +60,19 @@ server:
         # Lower it where that window matters more than the traffic.
         cache_ttl_seconds: 600
 
-    # Generated into config/secrets/direct_auth_secret by the setup job and read from there.
-    direct_auth_secret: "file://config/secrets/direct_auth_secret"
+    # direct_auth_secret is deliberately not set here.
+    #
+    # It gates the Direct APIs: the /auth, /register/passkey and /access routes, where an application
+    # calls this deployment directly instead of redirecting a browser to the gate. Callers present it
+    # in the Direct-Auth-Secret header, and without it every one of those routes answers 401. That is
+    # the secure default, and it is what a deployment using only the redirect based OAuth2 flow wants.
+    #
+    # To use those APIs, add direct_auth_secret here as a template placeholder reading an environment
+    # variable, the way the database passwords below do, and inject it from a Secret. Written out
+    # unconditionally it would be one more variable every deployment has to set, and a placeholder
+    # with nothing behind it stops the server starting.
+    #
+    # It has nothing to do with the Control Plane channel, which authenticates with its own token.
 
 tls:
   min_version: "1.3"

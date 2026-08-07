@@ -19,6 +19,7 @@
 package resource
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -67,34 +68,34 @@ func (suite *DefaultResourceServerConfigHandlerTestSuite) TestDecodeMalformedJSO
 
 func (suite *DefaultResourceServerConfigHandlerTestSuite) TestValidateUnsetAccepted() {
 	h := NewDefaultResourceServerConfigHandler(NewResourceServiceInterfaceMock(suite.T()))
-	assert.NoError(suite.T(), h.Validate(DefaultResourceServerConfig{}, nil, nil))
+	assert.NoError(suite.T(), h.Validate(context.Background(), DefaultResourceServerConfig{}, nil, nil))
 }
 
 func (suite *DefaultResourceServerConfigHandlerTestSuite) TestValidateKnownIDAccepted() {
 	mockSvc := NewResourceServiceInterfaceMock(suite.T())
 	mockSvc.EXPECT().GetResourceServer(mock.Anything, "rs-1").Return(&providers.ResourceServer{ID: "rs-1"}, nil)
 	h := NewDefaultResourceServerConfigHandler(mockSvc)
-	assert.NoError(suite.T(), h.Validate(DefaultResourceServerConfig{ResourceServerID: "rs-1"}, nil, nil))
+	assert.NoError(suite.T(), h.Validate(context.Background(), DefaultResourceServerConfig{ResourceServerID: "rs-1"}, nil, nil))
 }
 
 func (suite *DefaultResourceServerConfigHandlerTestSuite) TestValidateUnknownIDRejected() {
 	mockSvc := NewResourceServiceInterfaceMock(suite.T())
 	mockSvc.EXPECT().GetResourceServer(mock.Anything, "missing").Return(nil, &ErrorResourceServerNotFound)
 	h := NewDefaultResourceServerConfigHandler(mockSvc)
-	assert.Error(suite.T(), h.Validate(DefaultResourceServerConfig{ResourceServerID: "missing"}, nil, nil))
+	assert.Error(suite.T(), h.Validate(context.Background(), DefaultResourceServerConfig{ResourceServerID: "missing"}, nil, nil))
 }
 
 func (suite *DefaultResourceServerConfigHandlerTestSuite) TestValidateInternalErrorRejected() {
 	mockSvc := NewResourceServiceInterfaceMock(suite.T())
 	mockSvc.EXPECT().GetResourceServer(mock.Anything, "rs-1").Return(nil, &tidcommon.InternalServerError)
 	h := NewDefaultResourceServerConfigHandler(mockSvc)
-	err := h.Validate(DefaultResourceServerConfig{ResourceServerID: "rs-1"}, nil, nil)
+	err := h.Validate(context.Background(), DefaultResourceServerConfig{ResourceServerID: "rs-1"}, nil, nil)
 	assert.ErrorIs(suite.T(), err, errDefaultResourceServerLookupFailed)
 }
 
 func (suite *DefaultResourceServerConfigHandlerTestSuite) TestValidateRejectsWriteWhenDeclarativeSet() {
 	h := NewDefaultResourceServerConfigHandler(NewResourceServiceInterfaceMock(suite.T()))
-	err := h.Validate(
+	err := h.Validate(context.Background(),
 		DefaultResourceServerConfig{ResourceServerID: "rs-2"},
 		DefaultResourceServerConfig{ResourceServerID: "rs-1"},
 		DefaultResourceServerConfig{},
@@ -104,7 +105,7 @@ func (suite *DefaultResourceServerConfigHandlerTestSuite) TestValidateRejectsWri
 
 func (suite *DefaultResourceServerConfigHandlerTestSuite) TestValidateRejectsClearWhenDeclarativeSet() {
 	h := NewDefaultResourceServerConfigHandler(NewResourceServiceInterfaceMock(suite.T()))
-	err := h.Validate(
+	err := h.Validate(context.Background(),
 		DefaultResourceServerConfig{},
 		DefaultResourceServerConfig{ResourceServerID: "rs-1"},
 		DefaultResourceServerConfig{},

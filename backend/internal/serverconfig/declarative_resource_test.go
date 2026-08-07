@@ -63,7 +63,7 @@ func newTestFileStore(t *testing.T) *fileBasedStore {
 func TestValidateServerConfigDoc_OK(t *testing.T) {
 	handler := NewServerConfigHandlerInterfaceMock(t)
 	handler.EXPECT().Decode(corsValue).Return("decoded", nil)
-	handler.EXPECT().Validate("decoded", nil, nil).Return(nil)
+	handler.EXPECT().Validate(mock.Anything, "decoded", nil, nil).Return(nil)
 
 	err := validateServerConfigDoc(&serverConfigDoc{Name: ConfigNameCORS, Value: corsValue},
 		newTestFileStore(t), map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: handler})
@@ -94,7 +94,8 @@ func TestValidateServerConfigDoc_NoHandler(t *testing.T) {
 func TestValidateServerConfigDoc_HandlerRejects(t *testing.T) {
 	handler := NewServerConfigHandlerInterfaceMock(t)
 	handler.EXPECT().Decode(corsValue).Return("decoded", nil)
-	handler.EXPECT().Validate(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("bad value"))
+	handler.EXPECT().Validate(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(errors.New("bad value"))
 
 	err := validateServerConfigDoc(&serverConfigDoc{Name: ConfigNameCORS, Value: corsValue},
 		newTestFileStore(t), map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: handler})

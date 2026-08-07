@@ -37,16 +37,19 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
     base: '/console',
     client_id: 'FlMp9nOYYkqwRierCHBlJfdwsaYa',
     resource_identifier: 'https://localhost:8095',
+    // System scopes carry the tenant_instance prefix, matching security.system_permission_prefix in
+    // the Control Plane's deployment.yaml. A scope names the instance it grants against, so a bare
+    // "system" from the trusted issuer would not satisfy the permissions this plane checks.
     scopes: [
       'openid',
       'profile',
       'email',
       'ou',
-      'system',
-      'system:user',
-      'system:group',
-      'system:ou:view',
-      'system:usertype:view',
+      'tenant_instance:system',
+      'tenant_instance:system:user',
+      'tenant_instance:system:group',
+      'tenant_instance:system:ou:view',
+      'tenant_instance:system:usertype:view',
     ],
   },
   server: {
@@ -55,12 +58,12 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
   // Environment manager service, which holds configuration versions and drives promotion between
   // environments. Omit this block to hide the Promotions feature.
   env_manager: {
-    public_url: 'http://localhost:9099',
+    public_url: 'https://localhost:8095',
   },
   trusted_issuer: {
     type: 'generic',
     public_url: 'https://api.asgardeo.io/t/b1zt/oauth2/token',
     client_id: 'FlMp9nOYYkqwRierCHBlJfdwsaYa',
-    scopes: ['openid', 'profile', 'email', 'system'],
+    scopes: ['openid', 'profile', 'email', 'tenant_instance:system'],
   },
 };

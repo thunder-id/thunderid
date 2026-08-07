@@ -21,6 +21,14 @@ server:
   system_deployment_id: "root"
 
   security:
+    # Permissions this plane's management APIs require, prefixed. A token from the trusted issuer
+    # carries "tenant_instance:system" rather than a bare "system", because the scope names the
+    # instance it grants against, so the permissions checked here have to match it.
+    #
+    # Every system permission takes the prefix: tenant_instance:system, tenant_instance:system:ou,
+    # tenant_instance:system:user, and so on. Leaving it unset keeps the unprefixed names.
+    system_permission_prefix: "tenant_instance"
+
     environment_manager:
       # Where environments and their captured versions are kept. Back it with a volume: losing it
       # loses the version history that promotion compares against.
@@ -32,10 +40,6 @@ server:
       issuer: ""
       jwks_url: ""
       audience: "thunderid-cp"
-
-    # Gates the Direct API endpoints. The secret is generated into config/secrets/direct_auth_secret
-    # by setup.sh and read from there at load time. Callers present it in the Direct-Auth-Secret header.
-    direct_auth_secret: "file://config/secrets/direct_auth_secret"
 
 tls:
   min_version: "1.3"

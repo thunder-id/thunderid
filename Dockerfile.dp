@@ -61,10 +61,13 @@ RUN mkdir -p target/out && \
 # Runtime stage
 FROM alpine:3.19
 
+# postgresql-client rather than sqlite: these planes run against PostgreSQL, because several pods of
+# one deployment share a database and SQLite cannot be shared. psql is here so an operator can reach
+# that database from the container.
 RUN apk add --no-cache \
     ca-certificates \
     lsof \
-    sqlite \
+    postgresql-client \
     bash \
     curl \
     openssl \
@@ -91,6 +94,12 @@ RUN cd /tmp/dist && \
 # ./thunderid, so the binary keeps that name.
 COPY --from=builder /app/target/out/thunderid-dp /opt/thunderid/thunderid
 COPY --from=builder /app/backend/cmd/dpserver/deployment.yaml /opt/thunderid/deployment.yaml
+
+# No baseline resources. A Data Plane is fed by a Control Plane: its organization units, user types,
+# applications, flows and themes all arrive on the first apply, and seeding any of them here would
+# leave a second copy for that apply to sit alongside. The packaged bundle is removed rather than
+# replaced, so a Data Plane starts empty and the apply makes it whole.
+RUN rm -rf /opt/thunderid/bootstrap
 
 # Where the file-mode secret store and any other per-deployment state is kept. Mount a volume over it
 # in file mode: the store is this instance's own, and losing it loses every credential applied so far.

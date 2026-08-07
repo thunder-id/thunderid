@@ -159,7 +159,7 @@ func (s *serverConfigService) SetConfig(ctx context.Context,
 		return svcErr
 	}
 
-	if err := handler.Validate(incoming, readOnly, writable); err != nil {
+	if err := handler.Validate(ctx, incoming, readOnly, writable); err != nil {
 		s.logger.Debug(ctx, "Config value validation failed", log.String("name", string(name)), log.Error(err))
 		return &ErrorInvalidConfigValue
 	}
