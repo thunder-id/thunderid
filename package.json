@@ -36,12 +36,14 @@
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
-    "turbo": "catalog:",
+    "@oxlint/binding-darwin-arm64": "1.77.0",
+    "eslint": "catalog:",
+    "oxlint": "1.77.0",
     "playwright": "catalog:",
     "prettier": "catalog:",
     "rimraf": "catalog:",
-    "eslint": "catalog:",
     "tslib": "catalog:",
+    "turbo": "catalog:",
     "typescript": "catalog:"
   },
   "devEngines": {
