@@ -168,16 +168,13 @@ jobs:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          # We need to fetch all branches and commits so that Turbo's --affected has a base to compare against.
+          # We need the full history so that Turbo's --affected can diff against the PR or merge-group base commit.
           fetch-depth: 0
 
       - name: ⚙️ Set up Node.js and pnpm
         uses: ./.github/actions/setup-pnpm
         with:
           node-version: ${{ env.NODE_VERSION }}
-
-      - name: 🔄 Fetch main branch for Turbo affected base
-        run: git fetch origin main:main --update-head-ok || true
 
       - name: ⚙️ Set up Go Environment
         uses: ./.github/actions/setup-go
@@ -202,7 +199,7 @@ jobs:
         run: |
           pnpm turbo run lint --affected --filter=!./tests/**
         env:
-          TURBO_SCM_BASE: main
+          TURBO_SCM_BASE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
 
       - name: 🎨 Check Frontend Formatting
         run: |
