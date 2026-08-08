@@ -27,6 +27,8 @@ interface BlockContext {
   onSubmit: (action: EmbeddedFlowComponent, inputs: Record<string, string>) => void;
   onValidate?: (components: EmbeddedFlowComponent[]) => boolean;
   passwordAutoComplete?: 'current-password' | 'new-password';
+  /** Additional step data from the flow response */
+  additionalData?: Record<string, unknown>;
   blockComponents?: EmbeddedFlowComponent[];
   /** When true, non-primary submit buttons use onClick instead of form submit */
   hasMultipleSubmits?: boolean;
@@ -185,6 +187,7 @@ function renderFormSubComponent(
     resolve: ctx.resolve,
     onInputChange: ctx.onInputChange,
     onBlur: ctx.onBlur,
+    additionalData: ctx.additionalData,
   };
 
   if (

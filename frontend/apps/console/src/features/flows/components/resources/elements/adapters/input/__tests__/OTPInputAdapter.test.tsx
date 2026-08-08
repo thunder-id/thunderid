@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen} from '@testing-library/react';
+import {ReactFlowProvider, type Edge, type Node} from '@xyflow/react';
 import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import OTPInputAdapter from '../OTPInputAdapter';
@@ -35,6 +36,13 @@ describe('OTPInputAdapter', () => {
       ...overrides,
     }) as FlowElement;
 
+  const renderAdapter = (resource: FlowElement, nodes: Node[] = [], edges: Edge[] = []) =>
+    render(
+      <ReactFlowProvider initialNodes={nodes} initialEdges={edges}>
+        <OTPInputAdapter resource={resource} stepId="prompt" />
+      </ReactFlowProvider>,
+    );
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -43,7 +51,7 @@ describe('OTPInputAdapter', () => {
     it('should render InputLabel component', () => {
       const resource = createMockElement();
 
-      const {container} = render(<OTPInputAdapter resource={resource} />);
+      const {container} = renderAdapter(resource);
 
       expect(container.querySelector('.MuiInputLabel-root')).toBeInTheDocument();
     });
@@ -51,7 +59,7 @@ describe('OTPInputAdapter', () => {
     it('should render label text', () => {
       const resource = createMockElement({label: 'Verification Code'});
 
-      render(<OTPInputAdapter resource={resource} />);
+      renderAdapter(resource);
 
       expect(screen.getByText('Verification Code')).toBeInTheDocument();
     });
@@ -59,10 +67,30 @@ describe('OTPInputAdapter', () => {
     it('should render 6 input boxes for OTP', () => {
       const resource = createMockElement();
 
-      const {container} = render(<OTPInputAdapter resource={resource} />);
+      const {container} = renderAdapter(resource);
 
       const inputs = container.querySelectorAll('.MuiOutlinedInput-root');
       expect(inputs).toHaveLength(6);
+    });
+
+    it('should render the length configured on the upstream Generate OTP node', () => {
+      const resource = createMockElement();
+      const nodes: Node[] = [
+        {
+          id: 'generate',
+          position: {x: 0, y: 0},
+          data: {
+            action: {executor: {name: 'OTPExecutor', mode: 'generate'}},
+            properties: {otpLength: 8},
+          },
+        },
+        {id: 'prompt', position: {x: 0, y: 0}, data: {}},
+      ];
+      const edges: Edge[] = [{id: 'generate-prompt', source: 'generate', target: 'prompt'}];
+
+      const {container} = renderAdapter(resource, nodes, edges);
+
+      expect(container.querySelectorAll('.MuiOutlinedInput-root')).toHaveLength(8);
     });
   });
 
@@ -70,7 +98,7 @@ describe('OTPInputAdapter', () => {
     it('should show required indicator when required is true', () => {
       const resource = createMockElement({required: true});
 
-      const {container} = render(<OTPInputAdapter resource={resource} />);
+      const {container} = renderAdapter(resource);
 
       expect(container.querySelector('.MuiFormLabel-asterisk')).toBeInTheDocument();
     });
@@ -78,7 +106,7 @@ describe('OTPInputAdapter', () => {
     it('should not show required indicator when required is false', () => {
       const resource = createMockElement({required: false});
 
-      const {container} = render(<OTPInputAdapter resource={resource} />);
+      const {container} = renderAdapter(resource);
 
       expect(container.querySelector('.MuiFormLabel-asterisk')).not.toBeInTheDocument();
     });
@@ -88,7 +116,7 @@ describe('OTPInputAdapter', () => {
     it('should render hint when provided', () => {
       const resource = createMockElement({hint: 'Check your email for the code'});
 
-      render(<OTPInputAdapter resource={resource} />);
+      renderAdapter(resource);
 
       expect(screen.getByTestId('hint')).toHaveTextContent('Check your email for the code');
     });
@@ -96,7 +124,7 @@ describe('OTPInputAdapter', () => {
     it('should not render hint when not provided', () => {
       const resource = createMockElement({hint: undefined});
 
-      render(<OTPInputAdapter resource={resource} />);
+      renderAdapter(resource);
 
       expect(screen.queryByTestId('hint')).not.toBeInTheDocument();
     });
@@ -104,7 +132,7 @@ describe('OTPInputAdapter', () => {
     it('should not render hint when empty', () => {
       const resource = createMockElement({hint: ''});
 
-      render(<OTPInputAdapter resource={resource} />);
+      renderAdapter(resource);
 
       expect(screen.queryByTestId('hint')).not.toBeInTheDocument();
     });
@@ -114,7 +142,7 @@ describe('OTPInputAdapter', () => {
     it('should render placeholder on OTP inputs when provided', () => {
       const resource = createMockElement({placeholder: '0'});
 
-      const {container} = render(<OTPInputAdapter resource={resource} />);
+      const {container} = renderAdapter(resource);
 
       const inputs = container.querySelectorAll('input');
       inputs.forEach((input) => {
@@ -125,7 +153,7 @@ describe('OTPInputAdapter', () => {
     it('should render empty placeholder when not provided', () => {
       const resource = createMockElement({placeholder: undefined});
 
-      const {container} = render(<OTPInputAdapter resource={resource} />);
+      const {container} = renderAdapter(resource);
 
       const inputs = container.querySelectorAll('input');
       inputs.forEach((input) => {
@@ -138,7 +166,7 @@ describe('OTPInputAdapter', () => {
     it('should apply input type to OTP fields', () => {
       const resource = createMockElement({inputType: 'number'});
 
-      const {container} = render(<OTPInputAdapter resource={resource} />);
+      const {container} = renderAdapter(resource);
 
       const inputs = container.querySelectorAll('input');
       inputs.forEach((input) => {
@@ -151,7 +179,7 @@ describe('OTPInputAdapter', () => {
     it('should apply className when provided', () => {
       const resource = createMockElement({classes: 'custom-otp'});
 
-      const {container} = render(<OTPInputAdapter resource={resource} />);
+      const {container} = renderAdapter(resource);
 
       expect(container.firstChild).toHaveClass('custom-otp');
     });
@@ -159,7 +187,7 @@ describe('OTPInputAdapter', () => {
     it('should apply styles to inputs when provided', () => {
       const resource = createMockElement({styles: {width: '40px'}});
 
-      const {container} = render(<OTPInputAdapter resource={resource} />);
+      const {container} = renderAdapter(resource);
 
       const outlinedInputs = container.querySelectorAll('.MuiOutlinedInput-root');
       outlinedInputs.forEach((input) => {
@@ -172,7 +200,7 @@ describe('OTPInputAdapter', () => {
     it('should handle empty label', () => {
       const resource = createMockElement({label: ''});
 
-      const {container} = render(<OTPInputAdapter resource={resource} />);
+      const {container} = renderAdapter(resource);
 
       const label = container.querySelector('.MuiInputLabel-root');
       expect(label).toHaveTextContent('');
@@ -181,7 +209,7 @@ describe('OTPInputAdapter', () => {
     it('should handle undefined label', () => {
       const resource = createMockElement({label: undefined});
 
-      const {container} = render(<OTPInputAdapter resource={resource} />);
+      const {container} = renderAdapter(resource);
 
       const label = container.querySelector('.MuiInputLabel-root');
       expect(label).toHaveTextContent('');

@@ -339,6 +339,36 @@ describe('SignInBox', () => {
     expect(screen.getAllByRole('textbox')).toHaveLength(6);
   });
 
+  it('renders OTP_INPUT with the digit count reported by the step', () => {
+    mockSignInRenderProps = createMockSignInRenderProps({
+      additionalData: {otpLength: '8'},
+      components: [
+        {
+          id: 'block-1',
+          type: 'BLOCK',
+          components: [
+            {
+              id: 'otp-input',
+              type: 'OTP_INPUT',
+              ref: 'otp',
+              label: 'Enter OTP',
+              required: true,
+            },
+            {
+              id: 'submit-btn',
+              type: 'ACTION',
+              eventType: 'SUBMIT',
+              label: 'Verify',
+              variant: 'PRIMARY',
+            },
+          ],
+        },
+      ],
+    });
+    render(<SignInBox />);
+    expect(screen.getAllByRole('textbox')).toHaveLength(8);
+  });
+
   it('renders TRIGGER action buttons for social login', () => {
     mockSignInRenderProps = createMockSignInRenderProps({
       components: [
