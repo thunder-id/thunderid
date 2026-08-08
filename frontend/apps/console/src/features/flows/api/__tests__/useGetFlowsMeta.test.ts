@@ -93,6 +93,63 @@ describe('useGetFlowsMeta', () => {
       expect(result.current.data.widgets).toEqual(widgets);
     });
 
+    it('should include the required provisioning executor in registration blank template', () => {
+      const {result} = renderHook(() => useGetFlowsMeta({flowType: 'REGISTRATION'}));
+
+      const blankTemplate = result.current.data.templates.find((template) => template.type === 'BLANK');
+
+      expect(blankTemplate?.config.nodes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'start',
+            onSuccess: 'user_type_resolver',
+          }),
+          expect.objectContaining({
+            id: 'user_type_resolver',
+            type: 'TASK_EXECUTION',
+            executor: {name: 'UserTypeResolver'},
+            onSuccess: 'view_prompt',
+            onIncomplete: 'prompt_usertype',
+          }),
+          expect.objectContaining({
+            id: 'provisioning',
+            type: 'TASK_EXECUTION',
+            executor: {name: 'ProvisioningExecutor'},
+            onSuccess: 'END',
+          }),
+          expect.objectContaining({
+            id: 'prompt_usertype',
+            prompts: [
+              expect.objectContaining({
+                inputs: [
+                  expect.objectContaining({
+                    identifier: 'userType',
+                    type: 'SELECT',
+                    required: true,
+                  }),
+                ],
+                action: {
+                  ref: 'action_usertype',
+                  nextNode: 'user_type_resolver',
+                },
+              }),
+            ],
+          }),
+          expect.objectContaining({
+            id: 'view_prompt',
+            prompts: [
+              expect.objectContaining({
+                action: {
+                  ref: 'action_continue',
+                  nextNode: 'provisioning',
+                },
+              }),
+            ],
+          }),
+        ]),
+      );
+    });
+
     it('should return an empty executors array', () => {
       const {result} = renderHook(() => useGetFlowsMeta());
 
