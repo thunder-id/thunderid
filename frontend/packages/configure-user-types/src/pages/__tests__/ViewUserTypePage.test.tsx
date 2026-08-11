@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any */
-import {render, screen, waitFor, within, userEvent} from '@thunderid/test-utils';
+import {render, screen, waitFor, within, userEvent, fireEvent} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import UserTypeConstraints from '../../constants/user-type-constraints';
@@ -331,8 +331,8 @@ describe('ViewUserTypePage', () => {
 
       await user.click(screen.getByRole('button', {name: /edit user type name/i}));
       const nameInput = screen.getByRole('textbox', {name: /user type name/i});
-      await user.clear(nameInput);
-      await user.type(nameInput, `${'a'.repeat(UserTypeConstraints.NAME_MAX_LENGTH + 1)}{Enter}`);
+      fireEvent.change(nameInput, {target: {value: 'a'.repeat(UserTypeConstraints.NAME_MAX_LENGTH + 1)}});
+      fireEvent.keyDown(nameInput, {key: 'Enter'});
 
       await waitFor(() => {
         expect(screen.getByText('Employee Schema')).toBeInTheDocument();
