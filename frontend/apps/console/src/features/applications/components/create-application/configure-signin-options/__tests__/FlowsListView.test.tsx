@@ -223,17 +223,12 @@ describe('FlowsListView', () => {
       expect(mockOnClearSelection).toHaveBeenCalled();
     });
 
-    it('should show selected flow value in autocomplete', async () => {
-      const user = userEvent.setup();
-      renderExpanded({
+    it('should show selected flow value in autocomplete', () => {
+      renderComponent({
         selectedAuthFlow: mockFlows[1],
       });
 
-      const autocomplete = screen.getByRole('combobox');
-      await user.click(autocomplete);
-
-      // Open the dropdown to see options
-      expect(screen.getByText('Google OAuth Flow')).toBeInTheDocument();
+      expect(screen.getByRole('combobox')).toHaveValue('Google OAuth Flow');
     });
 
     it('should display flow options when opened', async () => {

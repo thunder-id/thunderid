@@ -5,7 +5,7 @@ import {QueryErrorNotice, ResourceAvatar} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {getDisplayNameForCode, toFlagEmoji, useGetLanguages} from '@thunderid/i18n';
 import {useLogger} from '@thunderid/logger/react';
-import {Chip, DataGrid, IconButton, ListingTable, Tooltip, useTheme} from '@wso2/oxygen-ui';
+import {Chip, DataGrid, IconButton, ListingTable, Tooltip} from '@wso2/oxygen-ui';
 import {Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -15,7 +15,6 @@ import TranslationDeleteDialog from '@/components/TranslationDeleteDialog';
 import useTranslationRoutes from '@/hooks/useTranslationRoutes';
 
 export default function TranslationsList(): JSX.Element {
-  const theme = useTheme();
   const {t} = useTranslation('translations');
   const navigate = useNavigate();
   const logger = useLogger('TranslationsList');
@@ -122,7 +121,7 @@ export default function TranslationsList(): JSX.Element {
         ),
       },
     ],
-    [handleDeleteClick, handleEditClick, t, theme],
+    [handleDeleteClick, handleEditClick, t],
   );
 
   if (error) {
@@ -155,6 +154,8 @@ export default function TranslationsList(): JSX.Element {
             pageSizeOptions={[5, 10, 25]}
             rowHeight={56}
             disableRowSelectionOnClick
+            // Filtering is not wired end to end, so the column filter panel stays hidden.
+            disableColumnFilter
             localeText={dataGridLocaleText}
             autoHeight
             sx={{

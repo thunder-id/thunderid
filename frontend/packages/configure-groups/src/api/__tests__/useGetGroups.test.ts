@@ -90,4 +90,61 @@ describe('useGetGroups', () => {
       expect(result.current.error?.message).toBe('Network error');
     });
   });
+
+  it('should keep the previous page data while fetching a new page', async () => {
+    const nextPageData: GroupListResponse = {
+      totalResults: 2,
+      startIndex: 11,
+      count: 2,
+      groups: [
+        {id: 'g3', name: 'Group Three', ouId: 'ou1'},
+        {id: 'g4', name: 'Group Four', ouId: 'ou2'},
+      ],
+    };
+    let resolveNextPage: ((value: {data: GroupListResponse}) => void) | undefined;
+    mockHttpRequest.mockImplementation((request: {url: string}) => {
+      if (request.url.includes('offset=0')) {
+        return Promise.resolve({data: mockGroupsData});
+      }
+
+      if (request.url.includes('offset=10')) {
+        return new Promise((resolve) => {
+          resolveNextPage = resolve;
+        });
+      }
+
+      throw new Error(`Unexpected groups request: ${request.url}`);
+    });
+
+    const {result, rerender} = renderHook(({offset}: {offset: number}) => useGetGroups({limit: 10, offset}), {
+      initialProps: {offset: 0},
+    });
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(mockGroupsData);
+    });
+
+    rerender({offset: 10});
+
+    expect(result.current.data).toEqual(mockGroupsData);
+    expect(result.current.isFetching).toBe(true);
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: 'https://localhost:8090/groups?limit=10&offset=10&include=display',
+        }),
+      );
+      expect(resolveNextPage).toBeDefined();
+    });
+
+    if (!resolveNextPage) {
+      throw new Error('The next-page request was not captured');
+    }
+    resolveNextPage({data: nextPageData});
+
+    await waitFor(() => {
+      expect(result.current.isFetching).toBe(false);
+      expect(result.current.data).toEqual(nextPageData);
+    });
+  });
 });

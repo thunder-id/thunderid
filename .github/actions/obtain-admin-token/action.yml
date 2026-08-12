@@ -1,0 +1,107 @@
+name: 'Obtain ThunderID Admin Access Token'
+description: 'Authenticates as the bootstrapped admin user via OAuth2 authorization code + PKCE through the CONSOLE app, and outputs the resulting access token'
+author: 'The ThunderID Authors'
+
+inputs:
+  admin-username:
+    description: 'Admin username to authenticate as'
+    required: true
+  admin-password:
+    description: 'Admin password to authenticate with'
+    required: true
+  server-url:
+    description: 'Base URL of the running ThunderID server'
+    required: false
+    default: 'https://localhost:8090'
+
+outputs:
+  token:
+    description: 'The obtained admin access token'
+    value: ${{ steps.obtain-token.outputs.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: 🔑 Obtain Admin Access Token
+      id: obtain-token
+      shell: bash
+      env:
+        SERVER_URL: ${{ inputs.server-url }}
+        ADMIN_USERNAME: ${{ inputs.admin-username }}
+        ADMIN_PASSWORD: ${{ inputs.admin-password }}
+      run: |
+        # The server runs with security enabled, so the management /import and
+        # /applications calls below need an admin token.
+        # Obtain one via OAuth2 authorization code + PKCE through the CONSOLE app,
+        # authenticating the bootstrapped admin user.
+        CONSOLE_REDIRECT_URI="$SERVER_URL/console"
+        # Tokens are bound to a single resource server (RFC 8707), so the CONSOLE app targets the
+        # bootstrapped System resource server, mirroring the console runtime config.
+        CONSOLE_RESOURCE="$SERVER_URL/mcp"
+        CODE_VERIFIER=$(openssl rand -hex 32 | cut -c1-43)
+        CODE_CHALLENGE=$(printf '%s' "$CODE_VERIFIER" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
+
+        curl -sk -o /dev/null -D /tmp/authz_headers.txt -G "$SERVER_URL/oauth2/authorize" \
+          --data-urlencode "client_id=CONSOLE" \
+          --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
+          --data-urlencode "scope=system" \
+          --data-urlencode "response_type=code" \
+          --data-urlencode "resource=$CONSOLE_RESOURCE" \
+          --data-urlencode "code_challenge=$CODE_CHALLENGE" \
+          --data-urlencode "code_challenge_method=S256"
+
+        LOCATION=$(grep -i "^location:" /tmp/authz_headers.txt | tr -d '\r' | sed 's/^[Ll]ocation: //')
+        AUTH_ID=$(echo "$LOCATION" | sed -n 's/.*[?&]authId=\([^&]*\).*/\1/p')
+        EXEC_ID=$(echo "$LOCATION" | sed -n 's/.*[?&]executionId=\([^&]*\).*/\1/p')
+        if [ -z "$AUTH_ID" ] || [ -z "$EXEC_ID" ]; then
+          echo "❌ Failed to parse authId/executionId from authorize redirect: $LOCATION"
+          exit 1
+        fi
+
+        # The console login flow runs an SSO check before the credentials prompt. This bootstrap is a
+        # fresh, cookie-less login (no SSO session), so the first execute advances the flow past the
+        # SSO check to the credentials prompt and mints a challenge token; the second submits the admin
+        # credentials with that token.
+        PROMPT_RESP=$(curl -sk -X POST "$SERVER_URL/flow/execute" \
+          -H "Content-Type: application/json" \
+          -d "{\"executionId\": \"$EXEC_ID\"}")
+        CHALLENGE_TOKEN=$(echo "$PROMPT_RESP" | jq -r '.challengeToken // empty')
+        FLOW_PAYLOAD=$(jq -n \
+          --arg executionId "$EXEC_ID" \
+          --arg challengeToken "$CHALLENGE_TOKEN" \
+          --arg username "$ADMIN_USERNAME" \
+          --arg password "$ADMIN_PASSWORD" \
+          '{executionId: $executionId, challengeToken: $challengeToken, inputs: {username: $username, password: $password}, action: "action_001"}')
+        FLOW_RESP=$(curl -sk -X POST "$SERVER_URL/flow/execute" \
+          -H "Content-Type: application/json" \
+          -d "$FLOW_PAYLOAD")
+        ASSERTION=$(echo "$FLOW_RESP" | jq -r '.assertion // empty')
+        if [ -z "$ASSERTION" ]; then
+          echo "❌ Flow execution did not return an assertion: $FLOW_RESP"
+          exit 1
+        fi
+
+        CALLBACK_RESP=$(curl -sk -X POST "$SERVER_URL/oauth2/auth/callback" \
+          -H "Content-Type: application/json" \
+          -d "{\"authId\": \"$AUTH_ID\", \"assertion\": \"$ASSERTION\"}")
+        AUTH_CODE=$(echo "$CALLBACK_RESP" | jq -r '.redirect_uri // empty' | sed 's/.*[?&]code=\([^&]*\).*/\1/')
+        if [ -z "$AUTH_CODE" ]; then
+          echo "❌ Callback did not return an authorization code: $CALLBACK_RESP"
+          exit 1
+        fi
+
+        TOKEN_RESP=$(curl -sk -X POST "$SERVER_URL/oauth2/token" \
+          -H "Content-Type: application/x-www-form-urlencoded" \
+          --data-urlencode "grant_type=authorization_code" \
+          --data-urlencode "code=$AUTH_CODE" \
+          --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
+          --data-urlencode "client_id=CONSOLE" \
+          --data-urlencode "code_verifier=$CODE_VERIFIER")
+        ADMIN_TOKEN=$(echo "$TOKEN_RESP" | jq -r '.access_token // empty')
+        if [ -z "$ADMIN_TOKEN" ]; then
+          echo "❌ Failed to obtain admin access token: $TOKEN_RESP"
+          exit 1
+        fi
+        echo "::add-mask::$ADMIN_TOKEN"
+        echo "token=$ADMIN_TOKEN" >> "$GITHUB_OUTPUT"
+        echo "✅ Obtained admin access token."

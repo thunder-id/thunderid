@@ -474,14 +474,14 @@ func (p *provisioningExecutor) buildMissingInputs(
 			}
 			input := providers.Input{
 				Identifier:  attr.Attribute,
-				Type:        providers.InputTypeText,
+				Type:        inputTypeForSchemaType(attr.Type),
 				DisplayName: attr.DisplayName,
 			}
 			if inNodeInputs {
 				input = nodeInp
 				input.Identifier = attr.Attribute
 				if input.Type == "" {
-					input.Type = providers.InputTypeText
+					input.Type = inputTypeForSchemaType(attr.Type)
 				}
 				if input.DisplayName == "" {
 					input.DisplayName = attr.DisplayName
@@ -578,7 +578,8 @@ func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, attr 
 // returning identifying (non-credential) and credential attributes as separate maps.
 // Schema is the whitelist for both maps.
 // Credential values are resolved from non-empty UserInputs then non-empty RuntimeData only.
-// Non-credential values additionally fall back to AuthenticatedUser.Attributes.
+// Non-credential values additionally fall back to AuthenticatedUser.Attributes, and are converted
+// from the engine's string representation to the type declared by the schema attribute.
 func (p *provisioningExecutor) getAttributesForProvisioning(
 	ctx *providers.NodeContext,
 ) (identifyingAttrs map[string]interface{}, credentialAttrs map[string]interface{}, err error) {
@@ -603,9 +604,9 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 			}
 		} else {
 			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
-				identifyingAttrs[a.Attribute] = value
+				identifyingAttrs[a.Attribute] = convertToSchemaType(value, a.Type)
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
-				identifyingAttrs[a.Attribute] = runtimeValue
+				identifyingAttrs[a.Attribute] = convertToSchemaType(runtimeValue, a.Type)
 			}
 		}
 	}

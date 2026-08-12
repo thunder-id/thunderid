@@ -22,7 +22,7 @@ type idpBackedVendor struct {
 // idpBackedVendors is the set of connection types backed by the identity-provider service.
 // The generic "oidc" connection covers custom OIDC providers;
 // "oauth" covers OAuth 2.0 providers that don't implement OIDC discovery and have no id_token,
-// relying on userInfoEndpoint instead.
+// taking user attributes from the provider's own profile API instead.
 var idpBackedVendors = []idpBackedVendor{
 	{name: "google", idpType: providers.IDPTypeGoogle},
 	{name: "github", idpType: providers.IDPTypeGitHub},

@@ -5,6 +5,7 @@ import {render, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {TokenEndpointAuthMethods} from '@thunderid/configure-applications';
 import {AuthenticatorTypes} from '@thunderid/configure-connections';
+import {AllowedOriginTypes, createRow} from '@thunderid/configure-settings';
 import {LoggerProvider, LogLevel} from '@thunderid/logger';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import ApplicationCreateContext, {
@@ -574,6 +575,91 @@ describe('ConfigureDetails', () => {
 
     await waitFor(() => {
       expect(onReadyChange).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('CORS readiness guard', () => {
+    // A malformed origin used to be dropped on submit without a word, so the step has to block on it.
+    const corsTemplate = (): ApplicationTemplate => ({
+      ...createTemplate('Browser App', []),
+      capabilities: {cors: true},
+    });
+
+    it('blocks the step while a CORS row is invalid, and releases it once the row is corrected', async () => {
+      const onReadyChange = vi.fn();
+      renderWithContext(
+        {
+          technology: TechnologyApplicationTemplate.REACT,
+          platform: PlatformApplicationTemplate.BROWSER,
+          onReadyChange,
+        },
+        {
+          selectedTemplateConfig: corsTemplate(),
+          corsOrigins: [createRow(AllowedOriginTypes.ORIGIN, 'https://example.com/path')],
+        },
+      );
+
+      const user = userEvent.setup();
+      await user.type(
+        screen.getByPlaceholderText('applications:onboarding.configure.details.hostingUrl.placeholder'),
+        'https://example.com',
+      );
+
+      // The URL config is valid, so only the malformed origin can be holding readiness back.
+      await waitFor(() => {
+        expect(onReadyChange).toHaveBeenLastCalledWith(false);
+      });
+    });
+
+    it('does not block the step when every CORS row is valid', async () => {
+      const onReadyChange = vi.fn();
+      renderWithContext(
+        {
+          technology: TechnologyApplicationTemplate.REACT,
+          platform: PlatformApplicationTemplate.BROWSER,
+          onReadyChange,
+        },
+        {
+          selectedTemplateConfig: corsTemplate(),
+          corsOrigins: [createRow(AllowedOriginTypes.REGEX, '^https://[a-z]+\\.example\\.com$')],
+        },
+      );
+
+      const user = userEvent.setup();
+      await user.type(
+        screen.getByPlaceholderText('applications:onboarding.configure.details.hostingUrl.placeholder'),
+        'https://example.com',
+      );
+
+      await waitFor(() => {
+        expect(onReadyChange).toHaveBeenLastCalledWith(true);
+      });
+    });
+
+    it('ignores rows left over from a template that no longer shows the editor', async () => {
+      const onReadyChange = vi.fn();
+      renderWithContext(
+        {
+          technology: TechnologyApplicationTemplate.REACT,
+          platform: PlatformApplicationTemplate.BROWSER,
+          onReadyChange,
+        },
+        {
+          // No cors capability, so the editor is hidden and its stale rows must not block the step.
+          selectedTemplateConfig: createTemplate('Browser App', []),
+          corsOrigins: [createRow(AllowedOriginTypes.ORIGIN, 'https://example.com/path')],
+        },
+      );
+
+      const user = userEvent.setup();
+      await user.type(
+        screen.getByPlaceholderText('applications:onboarding.configure.details.hostingUrl.placeholder'),
+        'https://example.com',
+      );
+
+      await waitFor(() => {
+        expect(onReadyChange).toHaveBeenLastCalledWith(true);
+      });
     });
   });
 

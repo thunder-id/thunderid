@@ -228,9 +228,10 @@ func (s *oidcAuthnService) Authenticate(ctx context.Context, idpID string,
 		return nil, &authncm.ErrorSubClaimNotFound
 	}
 
-	// Fetch user info if additional scopes are configured so callers get the full attribute set.
+	// Fetch user info if a UserInfo endpoint and additional scopes are configured, so callers get the
+	// full attribute set. The identity itself comes from the ID token, so a failed fetch is not fatal.
 	oauthConfig, svcErr := s.GetOAuthClientConfig(ctx, idpID)
-	if svcErr == nil && len(oauthConfig.Scopes) > 1 {
+	if svcErr == nil && oauthConfig.OAuthEndpoints.UserInfoEndpoint != "" && len(oauthConfig.Scopes) > 1 {
 		userInfo, infoErr := s.FetchUserInfo(ctx, idpID, tokenResp.AccessToken)
 		if infoErr == nil {
 			if userInfoSub, ok := userInfo["sub"].(string); !ok || userInfoSub == sub {

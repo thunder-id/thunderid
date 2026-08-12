@@ -4,7 +4,8 @@
 /**
  * Settings Page Object Model (CORS allowed origins)
  *
- * Encapsulates the Settings > CORS panel: adding/removing custom allowed origins and saving.
+ * Encapsulates the Settings > CORS panel: adding/removing custom allowed origins (as exact origins
+ * or as regex patterns) and saving.
  *
  * @example
  * const settingsPage = new SettingsPage(page, baseUrl);
@@ -12,25 +13,24 @@
  * await settingsPage.addAllowedOrigin("https://app.example.com");
  */
 
-import { Page, Locator, expect } from "@playwright/test";
+import { Page, Locator } from "@playwright/test";
 import { ConsoleRoutes } from "../../configs/routes/console-routes";
 import { BasePage } from "../base.page";
+import { UnsavedChangesBar } from "../components/unsaved-changes-bar";
 import { Timeouts } from "../../constants/timeouts";
 
-// Matches the placeholder rendered on each editable (custom) origin input.
-const ORIGIN_PLACEHOLDER = "https://app.example.com";
+// Marks each editable (custom) origin row. Read-only rows carry no test id.
+const ROW_TEST_ID = "cors-origin-row";
 
 export class SettingsPage extends BasePage {
   readonly baseUrl: string;
 
   readonly corsTab: Locator;
   readonly addOriginButton: Locator;
-  readonly saveButton: Locator;
-  readonly discardButton: Locator;
-  // Editable (custom) origin inputs and their delete buttons render in the same row order,
-  // so the Nth input aligns with the Nth remove button. Read-only rows carry neither.
-  readonly originInputs: Locator;
-  readonly removeButtons: Locator;
+  // Editable (custom) origin rows. Each row owns its own value field, type selector, and remove
+  // button, so controls are always resolved within a row rather than by position across the page.
+  readonly originRows: Locator;
+  readonly unsavedChangesBar: UnsavedChangesBar;
 
   constructor(page: Page, baseUrl: string) {
     super(page);
@@ -38,60 +38,77 @@ export class SettingsPage extends BasePage {
 
     this.corsTab = page.getByRole("tab", { name: /cors/i });
     this.addOriginButton = page.getByRole("button", { name: /add origin/i });
-    this.saveButton = page.getByRole("button", { name: /save changes/i });
-    this.discardButton = page.getByRole("button", { name: /discard/i });
-    this.originInputs = page.getByPlaceholder(ORIGIN_PLACEHOLDER);
-    this.removeButtons = page.getByRole("button", { name: /remove origin/i });
+    this.originRows = page.locator(`[data-componentid="${ROW_TEST_ID}"]`);
+    // CorsSection passes saveLabel={t('settings:cors.save', 'Save changes')} and
+    // resetLabel={t('settings:cors.reset', 'Reset')}.
+    this.unsavedChangesBar = new UnsavedChangesBar(page, "Save changes", "Reset");
   }
 
-  /** Navigate to the Settings (CORS) page. */
+  /** Navigate to the Settings (CORS) page. The waitFor below is the real readiness gate, so the
+   *  navigation itself doesn't need to also wait for network idle. */
   async goto() {
     await this.page.goto(`${this.baseUrl}${ConsoleRoutes.settings}`, {
-      waitUntil: "networkidle",
       timeout: Timeouts.PAGE_LOAD,
     });
     await this.corsTab.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
   }
 
-  /** Index of the editable row holding the given origin, or -1 if absent. */
-  private async indexOfOrigin(origin: string): Promise<number> {
-    const count = await this.originInputs.count();
-    for (let i = 0; i < count; i++) {
-      if ((await this.originInputs.nth(i).inputValue()) === origin) {
-        return i;
-      }
-    }
-    return -1;
+  /**
+   * The value field of the given editable row. Resolved by role rather than by position: the row's
+   * type selector renders its own `aria-hidden` native input ahead of this one, so the first `input`
+   * in the row is the selector's, not the field the test means to type into.
+   */
+  private valueField(row: Locator): Locator {
+    return row.getByRole("textbox");
   }
 
-  /** Whether a custom (editable) origin with the given value is currently listed. */
-  async hasCustomOrigin(origin: string): Promise<boolean> {
-    return (await this.indexOfOrigin(origin)) !== -1;
+  /**
+   * The editable row holding the given value, whether it is an exact origin or a pattern, or
+   * `undefined` when no row holds it. Values are compared as strings rather than interpolated into a
+   * selector, so a pattern's backslashes stay literal instead of being read as selector escapes.
+   */
+  private async rowFor(value: string): Promise<Locator | undefined> {
+    for (const row of await this.originRows.all()) {
+      if ((await this.valueField(row).inputValue()) === value) {
+        return row;
+      }
+    }
+    return undefined;
+  }
+
+  /** Whether a custom (editable) entry with the given value is currently listed. */
+  async hasCustomOrigin(value: string): Promise<boolean> {
+    return (await this.rowFor(value)) !== undefined;
   }
 
   /** Add a custom allowed origin and persist it. */
   async addAllowedOrigin(origin: string) {
     await this.addOriginButton.click();
-    const input = this.originInputs.last();
-    await input.fill(origin);
-    await input.blur();
-    await this.save();
+    const field = this.valueField(this.originRows.last());
+    await field.fill(origin);
+    await field.blur();
+    await this.unsavedChangesBar.save();
   }
 
-  /** Remove a custom allowed origin (no-op if absent) and persist. */
-  async removeAllowedOrigin(origin: string) {
-    const index = await this.indexOfOrigin(origin);
-    if (index === -1) {
+  /** Add a custom allowed origin as a regex pattern and persist it. */
+  async addAllowedOriginRegex(pattern: string) {
+    await this.addOriginButton.click();
+    const row = this.originRows.last();
+    await row.getByRole("combobox", { name: /entry type/i }).click();
+    await this.page.getByRole("option", { name: /^regex$/i }).click();
+    const field = this.valueField(row);
+    await field.fill(pattern);
+    await field.blur();
+    await this.unsavedChangesBar.save();
+  }
+
+  /** Remove a custom allowed entry (no-op if absent) and persist. */
+  async removeAllowedOrigin(value: string) {
+    const row = await this.rowFor(value);
+    if (row === undefined) {
       return;
     }
-    await this.removeButtons.nth(index).click();
-    await this.save();
-  }
-
-  /** Click Save changes and wait for the unsaved-changes bar to clear (success). */
-  private async save() {
-    await expect(this.saveButton).toBeEnabled({ timeout: Timeouts.ELEMENT_VISIBILITY });
-    await this.saveButton.click();
-    await expect(this.saveButton).toBeHidden({ timeout: Timeouts.ELEMENT_VISIBILITY });
+    await row.getByRole("button", { name: /remove origin/i }).click();
+    await this.unsavedChangesBar.save();
   }
 }

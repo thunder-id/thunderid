@@ -177,13 +177,13 @@
       "enabled": true
     },
     {
-      "key": "THUNDERID_CLIENT_ID",
+      "key": "ASGARDEO_CLIENT_ID",
       "value": "",
       "type": "secret",
       "enabled": true
     },
     {
-      "key": "THUNDERID_CLIENT_SECRET",
+      "key": "ASGARDEO_CLIENT_SECRET",
       "value": "",
       "type": "secret",
       "enabled": true
@@ -225,13 +225,13 @@
       "enabled": true
     },
     {
-      "key": "demoThunderIDUserSub",
+      "key": "demoAsgardeoUserSub",
       "value": "",
       "type": "secret",
       "enabled": true
     },
     {
-      "key": "demoThunderIDUserEmail",
+      "key": "demoAsgardeoUserEmail",
       "value": "",
       "type": "default",
       "enabled": true

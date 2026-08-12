@@ -506,6 +506,37 @@ describe('ResourceServerEditPage', () => {
     expect(screen.queryByRole('button', {name: 'Set as default'})).not.toBeInTheDocument();
   });
 
+  it('does not offer Set as default for an MCP server, which is not an eligible type', () => {
+    mockUseGetResourceServer.mockReturnValue({
+      data: mockMcpResourceServer,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderWithProviders(<ResourceServerEditPage />);
+
+    expect(screen.queryByRole('button', {name: 'Set as default'})).not.toBeInTheDocument();
+  });
+
+  // The backend accepts an MCP default, so this state is reachable through the API or declarative
+  // config. The console must report it rather than hide it.
+  it('still shows the badge for an MCP server that is already the default', () => {
+    mockUseGetResourceServer.mockReturnValue({
+      data: mockMcpResourceServer,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    mockUseGetDefaultResourceServer.mockReturnValue({
+      data: {readOnly: {}, writable: {}, merged: {resourceServerId: 'rs-1'}},
+    });
+
+    renderWithProviders(<ResourceServerEditPage />);
+
+    expect(screen.getByText('Default resource server')).toBeInTheDocument();
+  });
+
   it('shows the name text field when the edit icon button is clicked', async () => {
     renderWithProviders(<ResourceServerEditPage />);
 

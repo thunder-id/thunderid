@@ -59,7 +59,7 @@ vi.mock('@thunderid/utils', async (importOriginal) => {
 });
 
 describe('CreateOrganizationUnitPage', () => {
-  let t: (key: string) => string;
+  let t: (key: string, options?: Record<string, unknown>) => string;
 
   beforeAll(() => {
     ({t} = renderHook(() => useTranslation()).result.current);
@@ -158,6 +158,59 @@ describe('CreateOrganizationUnitPage', () => {
       const createButton = screen.getByText(t('common:actions.create'));
       expect(createButton).not.toBeDisabled();
     });
+  });
+
+  it('should accept a single character name and its generated handle', async () => {
+    renderWithProviders(<CreateOrganizationUnitPage />);
+
+    const nameInput = screen.getByLabelText(/Name/i);
+    fireEvent.change(nameInput, {target: {value: 'W'}});
+
+    expect(screen.getByLabelText(/Handle/i)).toHaveValue('w');
+
+    await waitFor(() => {
+      expect(screen.getByText(t('common:actions.create', {defaultValue: 'Create'}))).not.toBeDisabled();
+    });
+  });
+
+  it('should reject a handle longer than the maximum length', async () => {
+    renderWithProviders(<CreateOrganizationUnitPage />);
+
+    fireEvent.change(screen.getByLabelText(/Name/i), {target: {value: 'Workforce'}});
+    fireEvent.change(screen.getByLabelText(/Handle/i), {target: {value: 'a'.repeat(101)}});
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          t('organizationUnits:edit.general.handle.validations.maxLength', {
+            max: 100,
+            defaultValue: 'Handle cannot exceed 100 characters',
+          }),
+        ),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(t('common:actions.create', {defaultValue: 'Create'}))).toBeDisabled();
+  });
+
+  it('should reject a name longer than the maximum length', async () => {
+    renderWithProviders(<CreateOrganizationUnitPage />);
+
+    const nameInput = screen.getByLabelText(/Name/i);
+    fireEvent.change(nameInput, {target: {value: 'a'.repeat(101)}});
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          t('organizationUnits:edit.general.name.validations.maxLength', {
+            max: 100,
+            defaultValue: 'Name cannot exceed 100 characters',
+          }),
+        ),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(t('common:actions.create', {defaultValue: 'Create'}))).toBeDisabled();
   });
 
   it('should call mutate on form submit', async () => {

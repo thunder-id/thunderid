@@ -126,6 +126,7 @@ describe('RouteConfig', () => {
     expect(RouteConfig.welcome.getStarted()).toBe('/welcome/get-started');
     expect(RouteConfig.welcome.getStartedApplicationsTypes()).toBe('/welcome/get-started/applications/types');
     expect(RouteConfig.welcome.getStartedApplicationsCreate()).toBe('/welcome/get-started/applications/create');
+    expect(RouteConfig.welcome.getStartedAgentsCreate()).toBe('/welcome/get-started/agents/create');
     expect(RouteConfig.welcome.tryoutSecuringApplication()).toBe('/welcome/tryout/securing-application');
     expect(RouteConfig.welcome.tryoutAiAgents()).toBe('/welcome/tryout/ai-agents');
     expect(RouteConfig.welcome.tryoutMcp()).toBe('/welcome/tryout/mcp');

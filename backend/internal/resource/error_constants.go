@@ -312,4 +312,8 @@ var (
 
 	// errDefaultResourceServerLookupFailed is returned when resource server lookup fails.
 	errDefaultResourceServerLookupFailed = errors.New("failed to resolve default resource server")
+
+	// errDependencyRegistryNotSet is returned when a cascade delete is attempted before the
+	// dependency registry has been injected.
+	errDependencyRegistryNotSet = errors.New("dependency registry not set")
 )

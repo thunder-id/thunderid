@@ -82,9 +82,7 @@ describe('AllowedUserTypesSection', () => {
     );
 
     expect(screen.getByText('Allowed User Types')).toBeInTheDocument();
-    expect(
-      screen.getByText('Restrict which user types can authenticate or register through this agent.'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Restrict which user types can sign up through this agent.')).toBeInTheDocument();
   });
 
   it('renders existing allowedUserTypes as chips', () => {
@@ -191,7 +189,7 @@ describe('AllowedUserTypesSection', () => {
       );
 
       expect(
-        screen.getByText('Select at least one user type that can sign in through this agent.'),
+        screen.getByText('Select at least one user type that can sign up through this agent.'),
       ).toBeInTheDocument();
     });
 
@@ -206,7 +204,7 @@ describe('AllowedUserTypesSection', () => {
       );
 
       expect(
-        screen.queryByText('Select at least one user type that can sign in through this agent.'),
+        screen.queryByText('Select at least one user type that can sign up through this agent.'),
       ).not.toBeInTheDocument();
     });
   });

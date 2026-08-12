@@ -27,6 +27,7 @@
   },
   "defaults": {
     "name": "Nuxt Application",
+    "signInApproach": "EMBEDDED",
     "inboundAuthConfig": [
       {
         "type": "oauth2",

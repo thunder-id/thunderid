@@ -1,9 +1,9 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useThunderID} from '@thunderid/react';
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
+import {useThunderID} from '@thunderid/react';
 import I18nQueryKeys from '../constants/i18n-query-keys';
 import type {UpdateTranslationVariables} from '../models/requests';
 import type {TranslationResponse} from '../models/responses';

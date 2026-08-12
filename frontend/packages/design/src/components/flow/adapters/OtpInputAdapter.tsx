@@ -8,6 +8,10 @@ import {useTranslation} from 'react-i18next';
 import type {FlowFieldProps} from '../../../models/flow';
 
 const DEFAULT_OTP_LENGTH = 6;
+const NUMERIC_OTP_CHARS = /^[0-9]*$/;
+const ALPHANUMERIC_OTP_CHARS = /^[0-9A-Z]*$/;
+const NON_NUMERIC_OTP_CHARS = /[^0-9]/g;
+const NON_ALPHANUMERIC_OTP_CHARS = /[^0-9A-Z]/g;
 
 export default function OtpInputAdapter({
   component,
@@ -29,6 +33,14 @@ export default function OtpInputAdapter({
   // user received. Falls back to the common six digits when the step carries no length.
   const reportedLength = Number(additionalData?.['otpLength']);
   const otpLength = Number.isInteger(reportedLength) && reportedLength > 0 ? reportedLength : DEFAULT_OTP_LENGTH;
+
+  // The server reports whether the code it generated is digits only. Anything else, including an
+  // older server that omits the flag, keeps the numeric-only behaviour.
+  const numericOnly = additionalData?.['otpNumericOnly'] !== 'false';
+  const allowedPattern = numericOnly ? NUMERIC_OTP_CHARS : ALPHANUMERIC_OTP_CHARS;
+  const disallowedPattern = numericOnly ? NON_NUMERIC_OTP_CHARS : NON_ALPHANUMERIC_OTP_CHARS;
+  // Alphanumeric codes are minted from an uppercase charset and verified case-sensitively.
+  const normalize = (input: string): string => (numericOnly ? input : input.toUpperCase());
 
   const hasError = !!(touched?.[ref] && fieldErrors?.[ref]);
   const otpValue = values[ref] ?? '';
@@ -60,14 +72,15 @@ export default function OtpInputAdapter({
             slotProps={{
               htmlInput: {
                 maxLength: 1,
+                inputMode: numericOnly ? 'numeric' : 'text',
                 style: {textAlign: 'center', fontSize: '1.5rem'},
                 'aria-label': `OTP digit ${idx + 1}`,
               },
             }}
             value={digit.trim()}
             onChange={(e) => {
-              const {value} = e.target;
-              if (!/^\d*$/.test(value)) return;
+              const value = normalize(e.target.value);
+              if (!allowedPattern.test(value)) return;
               const newOtp = otpDigits.map((d, i) => (i === idx ? value : d));
               onInputChange(ref, newOtp.join(''));
               if (value && idx < otpLength - 1) focusDigit(idx + 1);
@@ -77,7 +90,9 @@ export default function OtpInputAdapter({
             }}
             onPaste={(e) => {
               e.preventDefault();
-              const digits = e.clipboardData.getData('text/plain').replace(/\D/g, '').slice(0, otpLength);
+              const digits = normalize(e.clipboardData.getData('text/plain'))
+                .replace(disallowedPattern, '')
+                .slice(0, otpLength);
               onInputChange(ref, digits);
               focusDigit(Math.min(digits.length, otpLength - 1));
             }}

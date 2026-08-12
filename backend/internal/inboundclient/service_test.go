@@ -2025,16 +2025,13 @@ func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_ResolvesAllF
 	assert.Equal(suite.T(), "so-1", c.SignOutFlowID)
 }
 
-// Registration/recovery/signout resolve to empty when no explicit or OU override exists
-// (their server-default handles are intentionally unconfigured).
+// SignOut resolves to empty when no explicit or OU override exists (its server-default handle
+// is intentionally unconfigured). Registration/recovery are skipped entirely because their
+// enable flags are false — the caller has not asked for those bindings.
 func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_NonAuthFlowsEmptyWhenNoOverride() {
 	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
 	flowMgt.EXPECT().ResolveEffectiveFlowID(
 		mock.Anything, "auth-1", "", providers.FlowTypeAuthentication).Return("auth-1", nil).Once()
-	flowMgt.EXPECT().ResolveEffectiveFlowID(
-		mock.Anything, "", "", providers.FlowTypeRegistration).Return("", nil).Once()
-	flowMgt.EXPECT().ResolveEffectiveFlowID(
-		mock.Anything, "", "", providers.FlowTypeRecovery).Return("", nil).Once()
 	flowMgt.EXPECT().ResolveEffectiveFlowID(
 		mock.Anything, "", "", providers.FlowTypeSignOut).Return("", nil).Once()
 	svc := &inboundClientService{flowMgt: flowMgt}
@@ -2046,6 +2043,31 @@ func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_NonAuthFlows
 	assert.Empty(suite.T(), c.RecoveryFlowID)
 	assert.False(suite.T(), c.IsRecoveryFlowEnabled)
 	assert.Empty(suite.T(), c.SignOutFlowID)
+}
+
+// When the enable flag is false, an incoming registration/recovery flow ID is cleared and no
+// default resolution runs.
+func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_DisabledFlagClearsFlowIDs() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().ResolveEffectiveFlowID(
+		mock.Anything, "auth-1", "", providers.FlowTypeAuthentication).Return("auth-1", nil).Once()
+	flowMgt.EXPECT().ResolveEffectiveFlowID(
+		mock.Anything, "", "", providers.FlowTypeSignOut).Return("", nil).Once()
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{
+		ID:                        "p1",
+		AuthFlowID:                "auth-1",
+		RegistrationFlowID:        "reg-1",
+		IsRegistrationFlowEnabled: false,
+		RecoveryFlowID:            "rec-1",
+		IsRecoveryFlowEnabled:     false,
+	}
+	err := svc.resolveFlowDefaults(context.Background(), c)
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), c.RegistrationFlowID)
+	assert.False(suite.T(), c.IsRegistrationFlowEnabled)
+	assert.Empty(suite.T(), c.RecoveryFlowID)
+	assert.False(suite.T(), c.IsRecoveryFlowEnabled)
 }
 
 // ResolveEffectiveFlowID errors are mapped to the correct sentinel errors for each flow type.
@@ -2075,18 +2097,27 @@ func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_ResolveError
 				flowMgt.EXPECT().ResolveEffectiveFlowID(
 					mock.Anything, mock.Anything, "", providers.FlowTypeAuthentication).Return("auth-1", nil).Once()
 			}
-			if tt.flowType == providers.FlowTypeRecovery || tt.flowType == providers.FlowTypeSignOut {
+			if tt.flowType == providers.FlowTypeSignOut {
+				// The IsRegistrationFlowEnabled / IsRecoveryFlowEnabled flags are true in the
+				// test client below, so both reg and recovery resolves precede the sign-out call.
 				flowMgt.EXPECT().ResolveEffectiveFlowID(
 					mock.Anything, mock.Anything, "", providers.FlowTypeRegistration).Return("", nil).Once()
-			}
-			if tt.flowType == providers.FlowTypeSignOut {
 				flowMgt.EXPECT().ResolveEffectiveFlowID(
 					mock.Anything, mock.Anything, "", providers.FlowTypeRecovery).Return("", nil).Once()
+			}
+			if tt.flowType == providers.FlowTypeRecovery {
+				flowMgt.EXPECT().ResolveEffectiveFlowID(
+					mock.Anything, mock.Anything, "", providers.FlowTypeRegistration).Return("", nil).Once()
 			}
 			flowMgt.EXPECT().ResolveEffectiveFlowID(
 				mock.Anything, mock.Anything, "", tt.flowType).Return("", tt.resolveErr).Once()
 			svc := &inboundClientService{flowMgt: flowMgt}
-			c := &inboundmodel.InboundClient{ID: "p1", AuthFlowID: "auth-1"}
+			c := &inboundmodel.InboundClient{
+				ID:                        "p1",
+				AuthFlowID:                "auth-1",
+				IsRegistrationFlowEnabled: true,
+				IsRecoveryFlowEnabled:     true,
+			}
 			err := svc.resolveFlowDefaults(context.Background(), c)
 			assert.ErrorIs(suite.T(), err, tt.expectedErr)
 		})
@@ -2177,6 +2208,39 @@ func (suite *InboundClientServiceTestSuite) TestResolveInboundAuthProfileHandles
 	assert.Equal(suite.T(), "existing-reg", profile.RegistrationFlowID)
 	assert.Equal(suite.T(), "existing-rec", profile.RecoveryFlowID)
 	flowMgt.AssertNotCalled(suite.T(), "GetFlowByHandle", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *InboundClientServiceTestSuite) TestCreateInboundClient_DisabledRegistrationClearsID() {
+	store := newInboundClientStoreInterfaceMock(suite.T())
+	store.EXPECT().IsDeclarative(mock.Anything, "p1").Return(false)
+	store.EXPECT().CreateInboundClient(mock.Anything, mock.MatchedBy(func(c inboundmodel.InboundClient) bool {
+		return c.RegistrationFlowID == "" && !c.IsRegistrationFlowEnabled
+	})).Return(nil)
+
+	svc := newServiceForTest(store)
+	client := ptrInboundClient()
+	client.RegistrationFlowID = "reg-stale"
+	client.IsRegistrationFlowEnabled = false
+	err := svc.CreateInboundClient(context.Background(), client, nil, false)
+
+	assert.NoError(suite.T(), err)
+}
+
+func (suite *InboundClientServiceTestSuite) TestUpdateInboundClient_DisabledRecoveryClearsID() {
+	store := newInboundClientStoreInterfaceMock(suite.T())
+	store.EXPECT().IsDeclarative(mock.Anything, "p1").Return(false)
+	store.EXPECT().UpdateInboundClient(mock.Anything, mock.MatchedBy(func(c inboundmodel.InboundClient) bool {
+		return c.RecoveryFlowID == "" && !c.IsRecoveryFlowEnabled
+	})).Return(nil)
+	store.EXPECT().GetOAuthProfileByEntityID(mock.Anything, "p1").Return(nil, ErrInboundClientNotFound)
+
+	svc := newInboundClientService(store, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, nil, nil, nil)
+	client := ptrInboundClient()
+	client.RecoveryFlowID = "rec-stale"
+	client.IsRecoveryFlowEnabled = false
+	err := svc.UpdateInboundClient(context.Background(), client, nil, false, "")
+
+	assert.NoError(suite.T(), err)
 }
 
 func (suite *InboundClientServiceTestSuite) TestCreateInboundClient_WithoutRecoveryFlow() {
@@ -3101,29 +3165,25 @@ func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_NilFlow
 	assert.NoError(suite.T(), svc.reconcileReferencedFlows(context.Background(), c))
 }
 
-func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_AutoFillsMissingRegistration() {
+func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_DoesNotAutoFillMissingRegistration() {
 	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
 	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
 		[]flowmgt.CallTarget{{FlowID: "reg-b", FlowType: providers.FlowTypeRegistration}}, nil)
 	svc := &inboundClientService{flowMgt: flowMgt}
-	c := &inboundmodel.InboundClient{
-		AuthFlowID:                "auth",
-		IsRegistrationFlowEnabled: true,
-	}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth"}
 	suite.Require().NoError(svc.reconcileReferencedFlows(context.Background(), c))
-	assert.Equal(suite.T(), "reg-b", c.RegistrationFlowID)
-	assert.False(suite.T(), c.IsRegistrationFlowEnabled,
-		"auto-fill must force the enable flag to false regardless of its previous value")
+	assert.Empty(suite.T(), c.RegistrationFlowID, "reconcile must not auto-fill RegistrationFlowID")
+	assert.False(suite.T(), c.IsRegistrationFlowEnabled)
 }
 
-func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_AutoFillsMissingRecovery() {
+func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_DoesNotAutoFillMissingRecovery() {
 	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
 	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(
 		[]flowmgt.CallTarget{{FlowID: "rec-b", FlowType: providers.FlowTypeRecovery}}, nil)
 	svc := &inboundClientService{flowMgt: flowMgt}
-	c := &inboundmodel.InboundClient{AuthFlowID: "auth", IsRecoveryFlowEnabled: true}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth"}
 	suite.Require().NoError(svc.reconcileReferencedFlows(context.Background(), c))
-	assert.Equal(suite.T(), "rec-b", c.RecoveryFlowID)
+	assert.Empty(suite.T(), c.RecoveryFlowID, "reconcile must not auto-fill RecoveryFlowID")
 	assert.False(suite.T(), c.IsRecoveryFlowEnabled)
 }
 

@@ -448,6 +448,13 @@ func (f *fileBasedResourceStore) GetActionList(
 
 	actions := []providers.Action{}
 
+	// A nil resID selects resource server level actions (actions not attached to any resource),
+	// mirroring the RESOURCE_ID IS NULL semantics of the database store. Declarative resource
+	// servers declare actions only under resources, so there are never any at the server level.
+	if resID == nil {
+		return actions, nil
+	}
+
 	// Iterate through all resource servers
 	for _, item := range list {
 		if rs, ok := item.Data.(*providers.ResourceServer); ok {
@@ -460,8 +467,8 @@ func (f *fileBasedResourceStore) GetActionList(
 			for _, res := range rs.Resources {
 				resUUID := fmt.Sprintf("%s_%s", rs.ID, res.Handle)
 
-				// If resID is specified, only get actions from that resource
-				if resID != nil && resUUID != *resID {
+				// Only get actions from the requested resource
+				if resUUID != *resID {
 					continue
 				}
 

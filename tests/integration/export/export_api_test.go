@@ -19,12 +19,23 @@ import (
 
 const (
 	testServerURL = "https://localhost:8095"
+
+	vcExportConfigHandle     = "export_test_credential"
+	vcExportConfigVCT        = "https://credentials.thunderid.local/ExportTestCredential"
+	vcExportDefinitionHandle = "export_test_presentation"
+
+	// Seeded from resources/declarative_resources; declarative resources are
+	// excluded from wildcard export because they already live in configuration.
+	vcExportDeclarativeConfigID     = "decl-credential-config-1"
+	vcExportDeclarativeDefinitionID = "decl-presentation-def-1"
 )
 
 // ExportAPITestSuite is a test suite for export API tests.
 type ExportAPITestSuite struct {
 	suite.Suite
-	ouID string
+	ouID           string
+	vcConfigID     string
+	vcDefinitionID string
 }
 
 // TestExportAPITestSuite runs the export API test suite.
@@ -44,10 +55,56 @@ func (ts *ExportAPITestSuite) SetupSuite() {
 		ts.T().Fatalf("Failed to create test organization unit: %v", err)
 	}
 	ts.ouID = ouID
+
+	validity := 3600
+	configID, err := testutils.CreateCredentialConfiguration(testutils.CredentialConfiguration{
+		Handle:      vcExportConfigHandle,
+		OUID:        ouID,
+		Name:        "Export Test Credential",
+		Description: "Credential configuration for export testing",
+		Format:      "dc+sd-jwt",
+		VCT:         vcExportConfigVCT,
+		Claims: []testutils.ClaimMapping{
+			{Name: "given_name", DisplayName: "Given Name"},
+			{Name: "family_name", DisplayName: "Family Name"},
+		},
+		ValiditySeconds: &validity,
+	})
+	if err != nil {
+		ts.T().Fatalf("Failed to create test credential configuration: %v", err)
+	}
+	ts.vcConfigID = configID
+
+	enforceTrustedIssuer := false
+	definitionID, err := testutils.CreatePresentationDefinition(testutils.PresentationDefinition{
+		Handle:               vcExportDefinitionHandle,
+		OUID:                 ouID,
+		Name:                 "Export Test Presentation",
+		Description:          "Presentation definition for export testing",
+		VCT:                  vcExportConfigVCT,
+		Format:               "dc+sd-jwt",
+		RequestedClaims:      []string{"given_name", "family_name"},
+		MandatoryClaims:      []string{"given_name"},
+		EnforceTrustedIssuer: &enforceTrustedIssuer,
+	})
+	if err != nil {
+		ts.T().Fatalf("Failed to create test presentation definition: %v", err)
+	}
+	ts.vcDefinitionID = definitionID
 }
 
 // TearDownSuite tears down the test suite.
 func (ts *ExportAPITestSuite) TearDownSuite() {
+	if ts.vcDefinitionID != "" {
+		if err := testutils.DeletePresentationDefinition(ts.vcDefinitionID); err != nil {
+			ts.T().Logf("Failed to delete test presentation definition: %v", err)
+		}
+	}
+	if ts.vcConfigID != "" {
+		if err := testutils.DeleteCredentialConfiguration(ts.vcConfigID); err != nil {
+			ts.T().Logf("Failed to delete test credential configuration: %v", err)
+		}
+	}
 	if ts.ouID != "" {
 		if err := testutils.DeleteOrganizationUnit(ts.ouID); err != nil {
 			ts.T().Logf("Failed to delete test organization unit: %v", err)
@@ -522,6 +579,101 @@ func (ts *ExportAPITestSuite) TestExportWithInvalidIdentityProviderID() {
 	ts.Require().Error(err)
 }
 
+// TestCredentialConfigurationExport exports a credential configuration by ID and
+// verifies the emitted document carries the fields an import would need.
+func (ts *ExportAPITestSuite) TestCredentialConfigurationExport() {
+	yamlContent, err := ts.exportResourcesYAML(ExportRequest{
+		CredentialConfigurations: []string{ts.vcConfigID},
+	})
+	ts.Require().NoError(err)
+	ts.Require().NotEmpty(yamlContent)
+
+	ts.Assert().Contains(yamlContent, "resource_type: credential_configuration")
+	ts.Assert().Contains(yamlContent, "handle: "+vcExportConfigHandle)
+	ts.Assert().Contains(yamlContent, "vct: "+vcExportConfigVCT)
+	ts.Assert().Contains(yamlContent, "format: dc+sd-jwt")
+	ts.Assert().Contains(yamlContent, "name: given_name")
+	ts.Assert().Contains(yamlContent, "name: family_name")
+}
+
+// TestPresentationDefinitionExport exports a presentation definition by ID and
+// verifies the emitted document carries its claim sets.
+func (ts *ExportAPITestSuite) TestPresentationDefinitionExport() {
+	yamlContent, err := ts.exportResourcesYAML(ExportRequest{
+		PresentationDefinitions: []string{ts.vcDefinitionID},
+	})
+	ts.Require().NoError(err)
+	ts.Require().NotEmpty(yamlContent)
+
+	ts.Assert().Contains(yamlContent, "resource_type: presentation_definition")
+	ts.Assert().Contains(yamlContent, "handle: "+vcExportDefinitionHandle)
+	ts.Assert().Contains(yamlContent, "vct: "+vcExportConfigVCT)
+	ts.Assert().Contains(yamlContent, "given_name")
+	ts.Assert().Contains(yamlContent, "family_name")
+}
+
+// TestVCResourcesExportYAML exports both VC resource types in a single request.
+func (ts *ExportAPITestSuite) TestVCResourcesExportYAML() {
+	yamlContent, err := ts.exportResourcesYAML(ExportRequest{
+		CredentialConfigurations: []string{ts.vcConfigID},
+		PresentationDefinitions:  []string{ts.vcDefinitionID},
+	})
+	ts.Require().NoError(err)
+	ts.Require().NotEmpty(yamlContent)
+
+	ts.Assert().Contains(yamlContent, "resource_type: credential_configuration")
+	ts.Assert().Contains(yamlContent, "resource_type: presentation_definition")
+	ts.Assert().Contains(yamlContent, "handle: "+vcExportConfigHandle)
+	ts.Assert().Contains(yamlContent, "handle: "+vcExportDefinitionHandle)
+}
+
+// TestCredentialConfigurationExportWithWildcard exports every runtime credential
+// configuration and verifies declarative ones are excluded: they are already
+// under configuration management and must not be re-exported.
+func (ts *ExportAPITestSuite) TestCredentialConfigurationExportWithWildcard() {
+	yamlContent, err := ts.exportResourcesYAML(ExportRequest{
+		CredentialConfigurations: []string{"*"},
+	})
+	ts.Require().NoError(err)
+	ts.Require().NotEmpty(yamlContent)
+
+	ts.Assert().Contains(yamlContent, "handle: "+vcExportConfigHandle)
+	ts.Assert().NotContains(yamlContent, vcExportDeclarativeConfigID,
+		"declarative credential configurations must be excluded from wildcard export")
+}
+
+// TestPresentationDefinitionExportWithWildcard exports every runtime presentation
+// definition and verifies declarative ones are excluded.
+func (ts *ExportAPITestSuite) TestPresentationDefinitionExportWithWildcard() {
+	yamlContent, err := ts.exportResourcesYAML(ExportRequest{
+		PresentationDefinitions: []string{"*"},
+	})
+	ts.Require().NoError(err)
+	ts.Require().NotEmpty(yamlContent)
+
+	ts.Assert().Contains(yamlContent, "handle: "+vcExportDefinitionHandle)
+	ts.Assert().NotContains(yamlContent, vcExportDeclarativeDefinitionID,
+		"declarative presentation definitions must be excluded from wildcard export")
+}
+
+// TestExportWithInvalidCredentialConfigurationID tests export with an unknown
+// credential configuration ID.
+func (ts *ExportAPITestSuite) TestExportWithInvalidCredentialConfigurationID() {
+	_, err := ts.exportResourcesYAML(ExportRequest{
+		CredentialConfigurations: []string{"11111111-2222-3333-4444-555555555555"},
+	})
+	ts.Require().Error(err)
+}
+
+// TestExportWithInvalidPresentationDefinitionID tests export with an unknown
+// presentation definition ID.
+func (ts *ExportAPITestSuite) TestExportWithInvalidPresentationDefinitionID() {
+	_, err := ts.exportResourcesYAML(ExportRequest{
+		PresentationDefinitions: []string{"11111111-2222-3333-4444-555555555555"},
+	})
+	ts.Require().Error(err)
+}
+
 // Helper functions
 
 func (ts *ExportAPITestSuite) createApplication(app Application) (string, error) {
@@ -737,7 +889,6 @@ func idpToConnectionBody(idp IDP) map[string]interface{} {
 		"token_endpoint":         "tokenEndpoint",
 		"userinfo_endpoint":      "userInfoEndpoint",
 		"jwks_endpoint":          "jwksEndpoint",
-		"logout_endpoint":        "logoutEndpoint",
 		"issuer":                 "issuer",
 	}
 	body := map[string]interface{}{"name": idp.Name, "description": idp.Description}

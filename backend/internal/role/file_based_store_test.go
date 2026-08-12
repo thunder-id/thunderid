@@ -426,3 +426,24 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetAllPermissionsForAssignees_Enum
 	suite.Len(result, 1)
 	suite.Equal([]string{"system:user"}, result[0].Permissions)
 }
+
+// Declarative role permissions are immutable, so the cascade hooks report nothing and remove
+// nothing rather than attempting to mutate the file store.
+func (suite *RoleFileBasedStoreTestSuite) TestCascadeHooksAreNoOps() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID:   "declarative-role",
+		Name: "Declarative",
+		OUID: "ou1",
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: "rs1", Permissions: []string{"system:user"}},
+		},
+	})
+
+	referenced, err := suite.store.GetReferencedPermissions(context.Background())
+	suite.NoError(err)
+	suite.Empty(referenced)
+
+	deleted, err := suite.store.DeleteRolePermission(context.Background(), "rs1", "system:user")
+	suite.NoError(err)
+	suite.Equal(int64(0), deleted)
+}

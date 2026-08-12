@@ -32,7 +32,7 @@ I have a Node.js application and I want to integrate {{productName}} authenticat
 - Use signOut(sessionId) to get the OIDC end-session URL, then clear the local cookie and redirect
 
 ## Implementation Steps
-1. Create a new project: mkdir my-node-app && cd my-node-app && npm init -y
+1. Create a new project: mkdir my-node-service && cd my-node-service && npm init -y
 2. Install @thunderid/node: npm install @thunderid/node
 3. Create index.js with ThunderIDNodeClient initialization
 4. Add /login route: generate session ID cookie and redirect to {{productName}} auth URL

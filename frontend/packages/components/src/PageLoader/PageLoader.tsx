@@ -7,7 +7,7 @@ import type {JSX} from 'react';
 export default function PageLoader(): JSX.Element {
   return (
     <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh'}}>
-      <CircularProgress />
+      <CircularProgress aria-label="Loading content" />
     </Box>
   );
 }

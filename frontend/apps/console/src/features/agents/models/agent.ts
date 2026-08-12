@@ -37,8 +37,6 @@ export interface Agent {
   authFlowId?: string;
   registrationFlowId?: string;
   isRegistrationFlowEnabled?: boolean;
-  recoveryFlowId?: string;
-  isRecoveryFlowEnabled?: boolean;
   assertion?: AssertionConfig;
   loginConsent?: AgentLoginConsentConfig;
   isReadOnly?: boolean;
@@ -87,8 +85,6 @@ export interface UpdateAgentRequest {
   authFlowId?: string;
   registrationFlowId?: string;
   isRegistrationFlowEnabled?: boolean;
-  recoveryFlowId?: string;
-  isRecoveryFlowEnabled?: boolean;
 }
 
 export interface AgentGroup {

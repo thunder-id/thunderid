@@ -9,6 +9,7 @@ import {memo, useCallback, type ReactElement} from 'react';
 import {useTranslation} from 'react-i18next';
 import CommonResourceProperties from './CommonResourceProperties';
 import PanelActionButton from './PanelActionButton';
+import useFlowPlugins from '../../hooks/useFlowPlugins';
 import useInteractionState from '../../hooks/useInteractionState';
 import useUIPanelState from '../../hooks/useUIPanelState';
 import {type Element} from '../../models/elements';
@@ -34,6 +35,7 @@ function ResourcePropertyPanel({open = false, onComponentDelete}: ResourceProper
 
   const {resourcePropertiesPanelHeading, setIsOpenResourcePropertiesPanel} = useUIPanelState();
   const {lastInteractedStepId, lastInteractedResource} = useInteractionState();
+  const {emitNodeElementDelete} = useFlowPlugins();
 
   const handleClose = useCallback(() => {
     setIsOpenResourcePropertiesPanel(false);
@@ -47,11 +49,15 @@ function ResourcePropertyPanel({open = false, onComponentDelete}: ResourceProper
         // Deletion may fail silently if the node doesn't exist or is protected
       });
     } else {
+      // Same order as the widget toolbar delete: plugins react to the element first,
+      // then the element is removed from the step.
+      emitNodeElementDelete(lastInteractedStepId ?? '', lastInteractedResource as Element);
       onComponentDelete(lastInteractedStepId, lastInteractedResource as Element);
     }
     setIsOpenResourcePropertiesPanel(false);
   }, [
     deleteElements,
+    emitNodeElementDelete,
     lastInteractedResource,
     lastInteractedStepId,
     onComponentDelete,

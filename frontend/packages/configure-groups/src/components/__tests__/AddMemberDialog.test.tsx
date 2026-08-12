@@ -48,18 +48,23 @@ vi.mock('@wso2/oxygen-ui', async () => {
   };
 });
 
-const mockUseGetUsers = vi.fn();
-const mockUseGetApplications = vi.fn();
-const mockUseGetGroups = vi.fn();
-vi.mock('@thunderid/configure-users', () => ({
-  useGetUsers: (...args: unknown[]): unknown => mockUseGetUsers(...args),
+interface MockQueryResult {
+  data?: Record<string, unknown> | null;
+  isLoading?: boolean;
+  error?: Error;
+}
+
+const mockUseGetUsers = vi.fn<() => MockQueryResult>();
+const mockUseGetApplications = vi.fn<() => MockQueryResult>();
+const mockUseGetAgents = vi.fn<() => MockQueryResult>();
+const mockUseGetAllCandidates = vi.fn();
+const mockUseGetAllGroupMembers = vi.fn();
+const mockUseGetGroups = vi.fn<() => MockQueryResult>();
+vi.mock('../../api/useGetAllCandidates', () => ({
+  default: (...args: unknown[]): unknown => mockUseGetAllCandidates(...args),
 }));
-vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
-  useGetApplications: (...args: unknown[]): unknown => mockUseGetApplications(...args),
-}));
-vi.mock('../../api/useGetGroups', () => ({
-  default: (...args: unknown[]): unknown => mockUseGetGroups(...args),
+vi.mock('../../api/useGetAllGroupMembers', () => ({
+  default: (...args: unknown[]): unknown => mockUseGetAllGroupMembers(...args),
 }));
 
 describe('AddMemberDialog', () => {
@@ -71,6 +76,20 @@ describe('AddMemberDialog', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseGetAllCandidates.mockImplementation(({itemsKey}: {itemsKey: string}) => {
+      const responses: Record<string, MockQueryResult> = {
+        users: mockUseGetUsers(),
+        applications: mockUseGetApplications(),
+        agents: mockUseGetAgents(),
+        groups: mockUseGetGroups(),
+      };
+      const response = responses[itemsKey];
+      return {
+        data: response?.data?.[itemsKey] ?? [],
+        isLoading: response?.isLoading ?? false,
+        error: response?.error,
+      };
+    });
     mockUseGetUsers.mockReturnValue({
       data: {
         totalResults: 2,
@@ -94,6 +113,17 @@ describe('AddMemberDialog', () => {
       },
       isLoading: false,
     });
+    mockUseGetAgents.mockReturnValue({
+      data: {
+        totalResults: 2,
+        count: 2,
+        agents: [
+          {id: 'agent-1', name: 'Automation Agent'},
+          {id: 'agent-2', name: 'Support Agent'},
+        ],
+      },
+      isLoading: false,
+    });
     mockUseGetGroups.mockReturnValue({
       data: {
         totalResults: 3,
@@ -106,6 +136,11 @@ describe('AddMemberDialog', () => {
         ],
       },
       isLoading: false,
+    });
+    mockUseGetAllGroupMembers.mockReturnValue({
+      data: {totalResults: 0, startIndex: 1, count: 0, members: [], links: []},
+      isLoading: false,
+      refetch: vi.fn(),
     });
   });
 
@@ -130,6 +165,61 @@ describe('AddMemberDialog', () => {
 
     expect(screen.getByTestId('user-u1')).toBeInTheDocument();
     expect(screen.getByTestId('user-u2')).toBeInTheDocument();
+  });
+
+  it('should hide members that are already assigned to the group in every tab', async () => {
+    const user = userEvent.setup();
+    mockUseGetAllGroupMembers.mockReturnValue({
+      data: {
+        totalResults: 4,
+        startIndex: 1,
+        count: 4,
+        members: [
+          {id: 'u1', type: 'user'},
+          {id: 'a1', type: 'app'},
+          {id: 'agent-1', type: 'agent'},
+          {id: 'g1', type: 'group'},
+        ],
+        links: [],
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(<AddMemberDialog {...defaultProps} groupId="g1" />);
+
+    expect(screen.queryByTestId('user-u1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('user-u2')).toBeInTheDocument();
+
+    await user.click(screen.getByText('Apps'));
+    expect(screen.queryByTestId('user-a1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('user-a2')).toBeInTheDocument();
+
+    await user.click(screen.getByText('Agents'));
+    expect(screen.queryByTestId('user-agent-1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('user-agent-2')).toBeInTheDocument();
+
+    await user.click(screen.getByText('Groups'));
+    expect(screen.queryByTestId('user-g1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('user-g2')).toBeInTheDocument();
+  });
+
+  it('should block additions and show retry when current members cannot be loaded', async () => {
+    const user = userEvent.setup();
+    const refetchMembers = vi.fn();
+    mockUseGetAllGroupMembers.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('Network error'),
+      refetch: refetchMembers,
+    });
+
+    renderWithProviders(<AddMemberDialog {...defaultProps} groupId="g1" />);
+
+    expect(screen.getByText('Failed to load current group members. Please try again.')).toBeInTheDocument();
+    expect(screen.getByText('Add Selected').closest('button')).toBeDisabled();
+
+    await user.click(screen.getByText('Refresh'));
+    expect(refetchMembers).toHaveBeenCalledTimes(1);
   });
 
   it('should render apps in the grid when Apps tab is selected', async () => {
@@ -281,11 +371,17 @@ describe('AddMemberDialog', () => {
     expect(defaultProps.onClose).toHaveBeenCalled();
   });
 
-  it('should call useGetUsers with pagination params', () => {
+  it('should load all candidate collections with only the active tab enabled', () => {
     renderWithProviders(<AddMemberDialog {...defaultProps} />);
 
-    expect(mockUseGetUsers).toHaveBeenCalledWith({limit: 10, offset: 0});
-    expect(mockUseGetApplications).toHaveBeenCalledWith({limit: 10, offset: 0});
+    expect(mockUseGetAllCandidates).toHaveBeenCalledWith({path: '/users', itemsKey: 'users', enabled: true});
+    expect(mockUseGetAllCandidates).toHaveBeenCalledWith({
+      path: '/applications',
+      itemsKey: 'applications',
+      enabled: false,
+    });
+    expect(mockUseGetAllCandidates).toHaveBeenCalledWith({path: '/agents', itemsKey: 'agents', enabled: false});
+    expect(mockUseGetAllCandidates).toHaveBeenCalledWith({path: '/groups', itemsKey: 'groups', enabled: false});
   });
 
   it('should show error alert when users fetch fails', () => {

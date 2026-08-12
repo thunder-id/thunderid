@@ -11,9 +11,9 @@ import AddCustomConnectionCard from './AddCustomConnectionCard';
 import ConnectionCard from './ConnectionCard';
 import ConnectionCategoryFilters, {type CategoryFilterValue} from './ConnectionCategoryFilters';
 import useConnections from '../api/useConnections';
-import {CONNECTION_VENDOR_META} from '../config/connectionVendorMeta';
+import {CONNECTION_VENDOR_META, getAvailableConnectionCategories} from '../config/connectionVendorMeta';
 import useConnectionRoutes from '../hooks/useConnectionRoutes';
-import type {ConnectionCardModel} from '../models/connection';
+import type {ConnectionCardModel, ConnectionCategory} from '../models/connection';
 import buildConnectionCards from '../utils/buildConnectionCards';
 
 const SKELETON_COUNT = 6;
@@ -33,10 +33,21 @@ export default function ConnectionsList(): JSX.Element {
     [connectionsQuery.data?.connections, routes],
   );
 
+  const availableCategories: ConnectionCategory[] = useMemo(() => getAvailableConnectionCategories(cards), [cards]);
+
+  // Reset a selection whose last card disappeared.
+  if (category !== 'all' && !availableCategories.includes(category)) {
+    setCategory('all');
+  }
+
+  // Avoid a stale filtered render before React applies the reset.
+  const activeCategory: CategoryFilterValue =
+    category === 'all' || availableCategories.includes(category) ? category : 'all';
+
   const filteredCards: ConnectionCardModel[] = useMemo(() => {
     const term: string = search.trim().toLowerCase();
     return cards.filter((card) => {
-      const matchesCategory: boolean = category === 'all' || card.categories.includes(category);
+      const matchesCategory: boolean = activeCategory === 'all' || card.categories.includes(activeCategory);
       if (!matchesCategory) {
         return false;
       }
@@ -48,7 +59,7 @@ export default function ConnectionsList(): JSX.Element {
         .toLowerCase();
       return haystack.includes(term);
     });
-  }, [cards, category, search, t]);
+  }, [activeCategory, cards, search, t]);
 
   const handleAction = (card: ConnectionCardModel): void => {
     if (!card.navTarget) {
@@ -63,7 +74,7 @@ export default function ConnectionsList(): JSX.Element {
   };
 
   const isLoading: boolean = connectionsQuery.isLoading;
-  const hasFilters: boolean = search.trim() !== '' || category !== 'all';
+  const hasFilters: boolean = search.trim() !== '' || activeCategory !== 'all';
 
   return (
     <Stack direction="column" spacing={3} data-testid="connections-list">
@@ -84,7 +95,7 @@ export default function ConnectionsList(): JSX.Element {
             },
           }}
         />
-        <ConnectionCategoryFilters selected={category} onSelect={setCategory} />
+        <ConnectionCategoryFilters categories={availableCategories} selected={activeCategory} onSelect={setCategory} />
         <Stack direction="row" alignItems="center" justifyContent="space-between">
           <Typography variant="body2" color="text.secondary">
             {isLoading ? t('listing.loading') : t('listing.showingCount', {count: filteredCards.length})}

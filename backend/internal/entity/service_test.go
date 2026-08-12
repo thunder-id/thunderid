@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
@@ -114,6 +116,7 @@ func (s *ServiceTestSuite) TestUpdateEntity_NilEntity() {
 
 func (s *ServiceTestSuite) TestUpdateEntity_StoreFails() {
 	e := testEntity("e5")
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
 	s.store.On("UpdateEntity", mock.Anything, e).Return(s.testErr)
 	_, err := s.svc.UpdateEntity(s.ctx, e.ID, e)
 	s.Error(err)
@@ -121,8 +124,9 @@ func (s *ServiceTestSuite) TestUpdateEntity_StoreFails() {
 
 func (s *ServiceTestSuite) TestUpdateEntity_GetAfterUpdateFails() {
 	e := testEntity("e6")
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
 	s.store.On("UpdateEntity", mock.Anything, e).Return(nil)
-	s.store.On("GetEntity", mock.Anything, e.ID).Return(providers.Entity{}, s.testErr)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(providers.Entity{}, s.testErr).Once()
 	_, err := s.svc.UpdateEntity(s.ctx, e.ID, e)
 	s.Error(err)
 }
@@ -283,6 +287,65 @@ func (s *ServiceTestSuite) TestUpdateSystemCredentials_Delegates() {
 		Return(&entityWithCredentials{Entity: existingEntity, SchemaCredentials: nil, SystemCredentials: nil}, nil)
 	s.store.On("UpdateSystemCredentials", mock.Anything, "e1", mock.AnythingOfType("json.RawMessage")).Return(nil)
 	s.NoError(s.svc.UpdateSystemCredentials(s.ctx, "e1", creds))
+}
+
+// A password change stamps the entity so the refresh grant can reject tokens established before it.
+// The stamp merges into the existing blob: the column is written wholesale and its other keys belong
+// to the service that owns the entity.
+func (s *ServiceTestSuite) TestUpdateCredentials_StampsCredentialMarkerPreservingOtherKeys() {
+	e := testEntity("e-pw")
+	e.SystemAttributes = json.RawMessage(`{"name":"App name"}`)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e}, nil)
+	s.store.On("UpdateCredentials", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).Return(nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).
+		Run(func(args mock.Arguments) {
+			written, _ = args.Get(2).(json.RawMessage)
+		}).Return(nil)
+
+	s.NoError(s.svc.UpdateCredentials(s.ctx, e.ID, json.RawMessage(`{"password":"new-secret"}`)))
+
+	var attrs map[string]interface{}
+	s.Require().NoError(json.Unmarshal(written, &attrs))
+	s.Equal("App name", attrs["name"], "unrelated system attributes must survive the stamp")
+	s.NotEmpty(attrs[authnprovidercm.SystemAttrCredentialUpdatedAt])
+}
+
+// A client secret rotation stamps the entity, in the same transaction as the credential write.
+func (s *ServiceTestSuite) TestUpdateSystemCredentials_StampsOnClientSecretRotation() {
+	e := testEntity("e-cs")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e}, nil)
+	s.store.On("UpdateSystemCredentials", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).
+		Return(nil)
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).
+		Return(nil)
+
+	s.NoError(s.svc.UpdateSystemCredentials(s.ctx, e.ID, json.RawMessage(`{"clientSecret":"rotated"}`)))
+
+	s.store.AssertCalled(s.T(), "UpdateSystemAttributes", mock.Anything, e.ID,
+		mock.AnythingOfType("json.RawMessage"))
+}
+
+// Enrolling a passkey adds an authentication option rather than replacing one, so it must not
+// invalidate outstanding tokens. The same holds for the flow secret, which authenticates flow
+// initiation rather than the client.
+func (s *ServiceTestSuite) TestUpdateSystemCredentials_NoStampForOtherCredentialTypes() {
+	for _, creds := range []string{`{"passkey":[{"value":"v1"}]}`, `{"flowSecret":"rotated"}`} {
+		e := testEntity("e-other")
+		s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+			Return(&entityWithCredentials{Entity: e}, nil).Once()
+		s.store.On("UpdateSystemCredentials", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).
+			Return(nil).Once()
+
+		s.NoError(s.svc.UpdateSystemCredentials(s.ctx, e.ID, json.RawMessage(creds)))
+
+		s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, e.ID,
+			mock.AnythingOfType("json.RawMessage"))
+	}
 }
 
 func (s *ServiceTestSuite) TestGetCredentialsByType_NoCredentials() {
@@ -470,6 +533,7 @@ func (s *ServiceTestSuite) TestUpdateEntity_NilEntity_ViaOldPath() {
 
 func (s *ServiceTestSuite) TestUpdateEntity_UpdateFails_ViaOldPath() {
 	e := testEntity("uc1")
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
 	s.store.On("UpdateEntity", mock.Anything, e).Return(s.testErr)
 	_, err := s.svc.UpdateEntity(s.ctx, e.ID, e)
 	s.Error(err)
@@ -477,8 +541,9 @@ func (s *ServiceTestSuite) TestUpdateEntity_UpdateFails_ViaOldPath() {
 
 func (s *ServiceTestSuite) TestUpdateEntity_GetAfterUpdateFails_ViaOldPath() {
 	e := testEntity("uc3")
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
 	s.store.On("UpdateEntity", mock.Anything, e).Return(nil)
-	s.store.On("GetEntity", mock.Anything, e.ID).Return(providers.Entity{}, s.testErr)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(providers.Entity{}, s.testErr).Once()
 	_, err := s.svc.UpdateEntity(s.ctx, e.ID, e)
 	s.Error(err)
 }
@@ -613,4 +678,72 @@ func (s *ServiceTestSuite) TestGetTransitiveEntityGroups_ProviderError() {
 	_, err := s.svc.GetTransitiveEntityGroups(s.ctx, "user1")
 
 	s.ErrorIs(err, s.testErr)
+}
+
+// A system-attribute blob the server cannot parse must fail the credential write rather than silently
+// replacing the blob, which would drop the keys belonging to whichever service owns the entity.
+func (s *ServiceTestSuite) TestSetCredentialUpdatedAt_CorruptBlobErrors() {
+	_, err := setCredentialUpdatedAt(json.RawMessage(`not json`), time.Now().UTC())
+	s.Error(err)
+}
+
+// An absent blob is normal for an entity that has never carried system attributes.
+func (s *ServiceTestSuite) TestSetCredentialUpdatedAt_EmptyBlobStartsFresh() {
+	marked, err := setCredentialUpdatedAt(nil, time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC))
+	s.Require().NoError(err)
+
+	var attrs map[string]interface{}
+	s.Require().NoError(json.Unmarshal(marked, &attrs))
+	s.Equal("2026-08-12T10:00:00Z", attrs[authnprovidercm.SystemAttrCredentialUpdatedAt])
+}
+
+// A service that rebuilds an entity's whole system-attribute blob, such as an application rename,
+// must not drop the credential-change marker this package owns.
+func (s *ServiceTestSuite) TestUpdateSystemAttributes_PreservesCredentialMarker() {
+	e := testEntity("e-preserve")
+	e.SystemAttributes = json.RawMessage(`{"name":"Old","credentialUpdatedAt":"2026-08-12T10:00:00Z"}`)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID, json.RawMessage(`{"name":"New"}`)))
+
+	var attrs map[string]interface{}
+	s.Require().NoError(json.Unmarshal(written, &attrs))
+	s.Equal("New", attrs["name"], "the caller's own keys are replaced")
+	s.Equal("2026-08-12T10:00:00Z", attrs[authnprovidercm.SystemAttrCredentialUpdatedAt])
+}
+
+// UpdateEntity replaces the blob too, so it carries the marker across as well.
+func (s *ServiceTestSuite) TestUpdateEntity_PreservesCredentialMarker() {
+	stored := testEntity("e-preserve-2")
+	stored.SystemAttributes = json.RawMessage(`{"credentialUpdatedAt":"2026-08-12T10:00:00Z"}`)
+	s.store.On("GetEntity", mock.Anything, stored.ID).Return(*stored, nil)
+	s.store.On("UpdateEntity", mock.Anything, mock.Anything).Return(nil)
+
+	incoming := testEntity("e-preserve-2")
+	incoming.SystemAttributes = json.RawMessage(`{"name":"Renamed"}`)
+	_, err := s.svc.UpdateEntity(s.ctx, incoming.ID, incoming)
+	s.Require().NoError(err)
+
+	var attrs map[string]interface{}
+	s.Require().NoError(json.Unmarshal(incoming.SystemAttributes, &attrs))
+	s.Equal("Renamed", attrs["name"])
+	s.Equal("2026-08-12T10:00:00Z", attrs[authnprovidercm.SystemAttrCredentialUpdatedAt])
+}
+
+// An entity with no marker recorded is written through untouched.
+func (s *ServiceTestSuite) TestUpdateSystemAttributes_NoMarkerPassesThrough() {
+	e := testEntity("e-nomarker")
+	e.SystemAttributes = json.RawMessage(`{"name":"Old"}`)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+
+	var written json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).
+		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
+
+	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID, json.RawMessage(`{"name":"New"}`)))
+	s.JSONEq(`{"name":"New"}`, string(written))
 }

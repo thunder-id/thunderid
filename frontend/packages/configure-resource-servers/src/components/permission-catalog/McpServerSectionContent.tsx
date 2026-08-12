@@ -16,6 +16,7 @@ interface CatalogSubsectionProps {
   resourceServerId: string;
   selected: ResourcePermissions[];
   readOnly: boolean;
+  delimiter: string;
   onChange: (selected: ResourcePermissions[]) => void;
 }
 
@@ -25,6 +26,7 @@ function CatalogSubsection({
   resourceServerId,
   selected,
   readOnly,
+  delimiter,
   onChange,
 }: CatalogSubsectionProps): JSX.Element | null {
   if (actions.length === 0) return null;
@@ -52,7 +54,7 @@ function CatalogSubsection({
           depth={1}
           checked={isPermissionSelected(selected, resourceServerId, action.permission)}
           disabled={readOnly}
-          onToggle={() => onChange(togglePermission(selected, resourceServerId, action.permission))}
+          onToggle={() => onChange(togglePermission(selected, resourceServerId, action.permission, delimiter))}
         />
       ))}
     </>
@@ -110,6 +112,7 @@ export default function McpServerSectionContent({
         resourceServerId={server.id}
         selected={selected}
         readOnly={readOnly}
+        delimiter={delimiter}
         onChange={onChange}
       />
       <CatalogSubsection
@@ -118,6 +121,7 @@ export default function McpServerSectionContent({
         resourceServerId={server.id}
         selected={selected}
         readOnly={readOnly}
+        delimiter={delimiter}
         onChange={onChange}
       />
       {resources.map((resource) => (

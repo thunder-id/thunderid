@@ -9,6 +9,7 @@ import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import RouteConfig from '../../../configs/RouteConfig';
+import {TechnologyApplicationTemplate} from '../../applications/models/application-templates';
 import useWelcomeClose from '../hooks/useWelcomeClose';
 
 const MotionBox = motion.create(Box);
@@ -28,25 +29,27 @@ export default function GetStartedPage(): JSX.Element {
       description: t('common:welcome.getStarted.options.onboardApp.description', {productName}),
       action: () => void navigate(RouteConfig.welcome.getStartedApplicationsTypes()),
       actionLabel: t('common:welcome.getStarted.options.onboardApp.action'),
-      disabled: false,
     },
     {
       id: 'secure-ai-agent',
       icon: <Bot size={36} />,
       title: t('common:welcome.getStarted.options.secureAiAgent.title'),
       description: t('common:welcome.getStarted.options.secureAiAgent.description'),
-      action: undefined,
-      actionLabel: t('common:welcome.getStarted.options.comingSoon'),
-      disabled: true,
+      action: () => void navigate(RouteConfig.welcome.getStartedAgentsCreate()),
+      actionLabel: t('common:welcome.getStarted.options.secureAiAgent.action'),
     },
     {
       id: 'secure-mcp',
       icon: <MCP size={36} />,
       title: t('common:welcome.getStarted.options.secureMcp.title'),
       description: t('common:welcome.getStarted.options.secureMcp.description'),
-      action: undefined,
-      actionLabel: t('common:welcome.getStarted.options.comingSoon'),
-      disabled: true,
+      // The MCP client application template drives its own creation wizard, so deep-link straight
+      // into it rather than dropping the user back on the full template gallery.
+      action: () =>
+        void navigate(
+          `${RouteConfig.welcome.getStartedApplicationsTypes()}?type=${TechnologyApplicationTemplate.MCP_CLIENT}`,
+        ),
+      actionLabel: t('common:welcome.getStarted.options.secureMcp.action'),
     },
   ];
 
@@ -145,7 +148,7 @@ export default function GetStartedPage(): JSX.Element {
                       textAlign: 'center',
                       gap: 2,
                       transition: 'all 0.2s',
-                      ...(option.disabled ? {opacity: 0.55} : {'&:hover': {boxShadow: 2, borderColor: 'primary.main'}}),
+                      '&:hover': {boxShadow: 2, borderColor: 'primary.main'},
                     }}
                   >
                     <Box
@@ -168,12 +171,7 @@ export default function GetStartedPage(): JSX.Element {
                     <Typography variant="body2" color="text.secondary" sx={{flex: 1}}>
                       {option.description}
                     </Typography>
-                    <Button
-                      variant="contained"
-                      onClick={option.action}
-                      disabled={option.disabled}
-                      sx={{mt: 1, minWidth: 160}}
-                    >
+                    <Button variant="contained" onClick={option.action} sx={{mt: 1, minWidth: 160}}>
                       {option.actionLabel}
                     </Button>
                   </Box>

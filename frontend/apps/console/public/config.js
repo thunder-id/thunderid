@@ -29,8 +29,6 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
       'applications.templates.react.playground': '',
       'applications.templates.react.llmPrompt.redirectBased':
         'getting-started/connect-your-application/prompts/react/redirect-based.txt',
-      'applications.templates.react.llmPrompt.embedded':
-        'getting-started/connect-your-application/prompts/react/embedded.txt',
       'applications.templates.nextjs.docs': 'getting-started/connect-your-application/nextjs/',
       'applications.templates.nextjs.playground': '',
       'applications.templates.nextjs.llmPrompt.redirectBased':
@@ -47,8 +45,6 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
       'applications.templates.vue.playground': '',
       'applications.templates.vue.llmPrompt.redirectBased':
         'getting-started/connect-your-application/prompts/vue/redirect-based.txt',
-      'applications.templates.vue.llmPrompt.embedded':
-        'getting-started/connect-your-application/prompts/vue/embedded.txt',
       'applications.templates.express.docs': 'getting-started/connect-your-application/express/',
       'applications.templates.express.playground': '',
       'applications.templates.express.llmPrompt.redirectBased':
@@ -65,8 +61,6 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
       'applications.templates.browser.playground': '',
       'applications.templates.browser.llmPrompt.redirectBased':
         'getting-started/connect-your-application/prompts/browser/redirect-based.txt',
-      'applications.templates.browser.llmPrompt.embedded':
-        'getting-started/connect-your-application/prompts/browser/embedded.txt',
       'applications.templates.android.docs': 'getting-started/connect-your-application/android/',
       'applications.templates.android.llmPrompt.redirectBased':
         'getting-started/connect-your-application/prompts/android/redirect-based.txt',

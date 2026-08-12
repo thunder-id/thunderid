@@ -339,3 +339,26 @@ describe('BlockAdapter: RESEND inside a form block', () => {
     expect(screen.getByRole('button', {name: 'Verify'})).toBeTruthy();
   });
 });
+
+describe('BlockAdapter: BOOLEAN_INPUT inside a form block', () => {
+  const activeCheckbox = {id: 'input_003', type: 'BOOLEAN_INPUT', ref: 'active', label: 'Active'};
+  const booleanBlock = {
+    id: 'block_002',
+    type: 'BLOCK',
+    components: [usernameInput, activeCheckbox, submitAction],
+  };
+
+  it('renders a boolean attribute as a checkbox rather than a text field', () => {
+    renderBlock(booleanBlock, {values: {...BLOCK_VALUES, active: 'false'}});
+
+    const checkbox: HTMLInputElement = screen.getByRole('checkbox', {name: 'Active'});
+    expect(checkbox.checked).toBe(false);
+  });
+
+  it('reflects a checked boolean value', () => {
+    renderBlock(booleanBlock, {values: {...BLOCK_VALUES, active: 'true'}});
+
+    const checkbox: HTMLInputElement = screen.getByRole('checkbox', {name: 'Active'});
+    expect(checkbox.checked).toBe(true);
+  });
+});

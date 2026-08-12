@@ -17,7 +17,7 @@ The **Application ID** and **Client ID** are shown on the application's General 
 - **Application ID** - the internal <ProductName /> identifier for this application.
 - **Client ID** - the OAuth 2.0 identifier your SDK or client configuration needs.
 
-## Control Who Can Sign In
+## Control Who Can Register
 
 Under **Access** on the General tab, you can configure which users can register with this application and provide the application's URL and redirect URIs. The **Allowed User Types** and **Authorized Redirect URIs** settings apply to applications that let users sign in and are hidden for applications that use only the `client_credentials` grant.
 
@@ -26,6 +26,10 @@ Under **Access** on the General tab, you can configure which users can register 
 | **Allowed User Types** | Restricts self-service registration to users of the selected types. If none are selected, self-service registration is unavailable for this application. This setting does not block existing users from signing in. |
 | **Application URL** | The homepage URL of your application. |
 | **Authorized Redirect URIs** | The URLs <ProductName /> sends users back to after authentication. Register every URI your application uses.
+
+:::note
+When first-time users sign in with a social identity provider, your application must allow exactly one user type with **Allow Self Registration** enabled. Sign-in fails if none or more than one of the allowed user types has this setting enabled. Existing users are unaffected. See [Connect an IdP to an Application](../../identity-providers/connect-idp-to-application).
+:::
 
 ## Use Wildcard Redirect URIs
 
@@ -119,7 +123,7 @@ Client secrets are only present on confidential clients: Full-stack App and Back
 If you need to invalidate the current client secret, open the General tab and click **Regenerate Client Secret** in the **Danger Zone**.
 
 :::warning
-The current client secret is immediately invalidated. Any running clients using the old secret will lose access. Update your application configuration right away.
+The current client secret is immediately invalidated. Any running clients using the old secret will lose access. Refresh tokens issued before the rotation are rejected, so their users must sign in again. Update your application configuration right away.
 :::
 
 ## Review OAuth 2.0 Configuration

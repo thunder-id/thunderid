@@ -23,8 +23,8 @@ I have a Flutter application (Dart) and I want to integrate {{productName}}'s au
 - Use `applicationId`, NOT a client ID or redirect URI — this SDK only supports app-native authentication
 
 ## Implementation Steps
-1. Create a new Flutter project: `flutter create my_app`
-2. Add `thunderid_flutter` to `pubspec.yaml` and run `flutter pub get`
+1. Create a new Flutter project: `flutter create my_flutter_app`
+2. Add the package, which writes a version constraint to `pubspec.yaml` and records the resolved version in `pubspec.lock`: `flutter pub add thunderid_flutter`
 3. Wrap your root widget with `ThunderIDProvider` in `lib/main.dart`, configured with `baseUrl`, `scopes`, and `applicationId`
 4. Build a root screen that checks `thunder.initialized`/`thunder.isLoading` and routes to an auth or home screen based on `thunder.isSignedIn`
 5. Build an auth screen using the `SignIn`/`SignUp` widgets, passing the `applicationId`

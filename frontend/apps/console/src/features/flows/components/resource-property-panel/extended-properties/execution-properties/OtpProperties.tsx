@@ -69,7 +69,7 @@ function OtpProperties({resource, onChange}: CommonResourcePropertiesPropsInterf
         <FormControlLabel
           control={
             <Checkbox
-              checked={!!properties.otpUseNumericOnly}
+              checked={(properties.otpUseNumericOnly ?? true) as boolean}
               onChange={(e) => handleBooleanPropertyChange('otpUseNumericOnly', e.target.checked)}
               size="small"
             />

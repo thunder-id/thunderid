@@ -119,6 +119,32 @@ reviews:
           `:paramName` segment) — only the domain's own top-level path needs to trace back to
           `RouteConfig`.
 
+    - path: "frontend/packages/**/rolldown.config.js"
+      instructions: |
+        This file's `external` array is built from `Object.keys(pkg.dependencies)` and
+        `Object.keys(pkg.peerDependencies)`, which only matches a dependency's bare specifier. rolldown
+        matches `external` entries by exact string, so an import of a subpath of that dependency (e.g.
+        `@thunderid/logger/react`, `@hookform/resolvers/zod`) is NOT covered by the bare name and gets
+        inlined into this package's own `dist` output instead of staying external. For a dependency
+        backed by a React context, this silently creates a second `createContext()` instance inside this
+        package's bundle, causing a `use<Thing> must be used within a <Thing>Provider` crash that only
+        reproduces in production (dev aliases workspace packages to source, masking the bug).
+
+        Cross-reference this package's `package.json` `dependencies`/`peerDependencies` against every
+        subpath import actually used in `src/` (e.g. `grep -r "from '@thunderid/" src` or similar for
+        other scoped packages). For each dependency subpath imported, check that the exact subpath string
+        (e.g. `'@thunderid/logger/react'`) is listed as its own literal entry in the `external` array,
+        following the `// Peer dep subpaths are not matched by exact string - add them explicitly.`
+        convention established in `frontend/packages/configure-resource-servers/rolldown.config.js`.
+
+        Flag a missing subpath entry as a **major issue**:
+
+        "🔴 **Un-externalized dependency subpath**: `<subpath>` is imported in this package's source but
+        is not listed as an explicit string in `external`. Only the bare `<package>` name is covered by
+        the dependency-keys spread above, so this subpath will be inlined into this package's dist
+        output — for a context-providing dependency this creates a duplicate context instance and breaks
+        at runtime in production only. Add `'<subpath>'` to the `external` array."
+
     - path: "frontend/packages/configure-*/**/*.{ts,tsx}"
       instructions: |
         Route destination guidance for reusable packages. A `@thunderid/configure-*` package must

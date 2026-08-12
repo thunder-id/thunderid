@@ -180,7 +180,7 @@ No extra agent configuration is needed. An agent can authenticate with its own c
 Acting for a user requires a little extra agent configuration. Open **Agents** → select your agent, then:
 
 1. On the **Flows** tab, turn on **Delegated mode**. This automatically enables the `authorization_code` grant the on-behalf-of flow needs.
-2. On the **Advanced Settings** tab, set the **Allowed user types** (for example, **Person**) so users can authenticate through this agent, and under **Redirect URIs** add `http://localhost:6274/callback` (this must match `REDIRECT_URI` in your `.env`).
+2. On the **Advanced Settings** tab, set the **Allowed user types** (for example, **Person**) so users of that type can sign up through this agent, and under **Redirect URIs** add `http://localhost:6274/callback` (this must match `REDIRECT_URI` in your `.env`).
 3. Click **Save**.
 
 </Mode>

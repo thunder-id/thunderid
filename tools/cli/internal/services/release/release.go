@@ -140,14 +140,14 @@ func Download(version, destDir string, onProgress ProgressFunc) error {
 	}
 
 	if onProgress != nil {
-		onProgress(-1, fmt.Sprintf("Downloading Thunder v%s for %s/%s", version, runtime.GOOS, runtime.GOARCH))
+		onProgress(-1, fmt.Sprintf("Downloading "+product.Name+" v%s for %s/%s", version, runtime.GOOS, runtime.GOARCH))
 	}
 
 	zipPath := filepath.Join(os.TempDir(), assetName)
 	if err := downloadFile(found.DownloadURL, zipPath, func(received, total int64) {
 		if total > 0 && onProgress != nil {
 			pct := int(float64(received) / float64(total) * 100)
-			onProgress(pct, fmt.Sprintf("Downloading Thunder v%s", version))
+			onProgress(pct, fmt.Sprintf("Downloading "+product.Name+" v%s", version))
 		}
 	}); err != nil {
 		return err

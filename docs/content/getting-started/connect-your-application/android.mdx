@@ -26,7 +26,7 @@ Use this guide to add <ProductName /> authentication to an Android application u
 ## What You Will Learn
 
 <TutorialHeroItem icon={<Boxes />}>Create a new Android Studio project</TutorialHeroItem>
-<TutorialHeroItem icon={<Package />}>Install the <code>dev.thunderid:compose</code> Gradle dependency</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>Install the <code>com.github.thunder-id:android-sdks</code> Gradle dependency</TutorialHeroItem>
 <TutorialHeroItem icon={<LogIn />}>Add working sign-in and sign-out using Jetpack Compose components</TutorialHeroItem>
 <TutorialHeroItem icon={<BookOpen />}>Display the signed-in user's name</TutorialHeroItem>
 
@@ -34,7 +34,7 @@ Use this guide to add <ProductName /> authentication to an Android application u
 
 <TutorialHeroItem icon={<Clock />}>About 15 minutes</TutorialHeroItem>
 <TutorialHeroItem icon={<Hexagon />}>Android Studio, installed and up to date</TutorialHeroItem>
-<TutorialHeroItem icon={<FileCode />}>API 24 (Android 7.0) deployment target</TutorialHeroItem>
+<TutorialHeroItem icon={<FileCode />}>API 26 (Android 8.0) deployment target</TutorialHeroItem>
 
 </TutorialHero>
 
@@ -60,14 +60,17 @@ Once it's running, the console is available at [https://localhost:8090/console](
     If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
     :::
 
-2. Navigate to **Applications**, and click **Add Application**.
+2. Navigate to **Applications**.
+3. Click **Add Application**.
+4. From the **Choose a type** page, select **Android**.
+5. Enter a name (e.g. `My Android App`).
+6. Select how you want to sign in users (e.g., email/password, social login, etc.).
+7. Select Theme settings.
+8. Leave **Sign-In Approach** set to **Bring Your Own UI** (the default for Android applications).
+9. Click **Create**.
 
-3. Under **Application Type**, select **Mobile App**.
-4. Enter a name (e.g. `My Android App`) and create an application. The rest of the settings can stay at their defaults.
-5. Copy the **Application ID** from the **General** tab, under **Quick Copy**.
-
-:::info App-Native Authentication
-This quickstart uses app-native authentication through the Flow Execution API. The Android SDK renders the sign-in and sign-up forms natively in your app, so you only need the **Application ID**, no OAuth 2.0 Client ID and no redirect URI.
+:::warning
+Copy the **Application ID** from the **General** tab, under **Quick Copy**. You'll need it when configuring the SDK.
 :::
 
 ## Create an Android App
@@ -80,29 +83,33 @@ If you already have an existing Android project, skip this step.
 
 ## Install the <ProductName /> Compose SDK
 
-Add the <ProductName /> Maven repository to your `settings.gradle.kts`:
+Add the [JitPack](https://jitpack.io) repository to your `settings.gradle.kts`:
 
 ```kotlin title="settings.gradle.kts" showLineNumbers
 dependencyResolutionManagement {
     repositories {
-        maven("https://maven.thunderid.dev/releases")
+        google()
+        mavenCentral()
+        maven("https://jitpack.io")
     }
 }
 ```
 
-Then add the `dev.thunderid:compose` dependency to your app's `build.gradle.kts`. This includes the core `dev.thunderid:android` client as a dependency.
+Then add the dependency to your app's `build.gradle.kts`, using the [latest release tag](https://github.com/thunder-id/android-sdks/releases) of the `android-sdks` repository:
 
 ```kotlin title="build.gradle.kts" showLineNumbers
 dependencies {
-    implementation("dev.thunderid:compose:0.1.0")
+    implementation("com.github.thunder-id:android-sdks:<latest-release-tag>")
 }
 ```
 
 :::note
-If you use Groovy-based Gradle scripts (`build.gradle`) instead of the Kotlin DSL, add the dependency as:
+If you use Groovy-based Gradle scripts (`build.gradle`) instead of the Kotlin DSL, add the dependency inside your existing `dependencies` block as:
 
 ```groovy
-implementation 'dev.thunderid:compose:0.1.0'
+dependencies {
+    implementation 'com.github.thunder-id:android-sdks:<latest-release-tag>'
+}
 ```
 :::
 
@@ -128,7 +135,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 ThunderIDProvider(
                     config = ThunderIDConfig(
-                        baseUrl = "https://localhost:8090",
+                        baseUrl = "https://10.0.2.2:8090",
                         scopes = listOf("openid", "profile", "email"),
                         applicationId = "<your-application-id>"
                     )
@@ -143,6 +150,8 @@ class MainActivity : ComponentActivity() {
 
 :::warning Configuration
 Replace `<your-application-id>` with the **Application ID** from your <ProductName /> application settings.
+
+On the Android Emulator, `localhost` refers to the emulator itself, not your host machine, so `baseUrl` uses the special alias `10.0.2.2` to reach the host's `localhost:8090` instead. If you're running on a physical device, use your host machine's LAN IP address (e.g. `https://192.168.1.100:8090`) rather than `10.0.2.2`.
 :::
 
 ### Configuration Parameters
@@ -268,7 +277,7 @@ fun HomeView() {
 
 ## Run the App
 
-In Android Studio, select an API 24+ emulator or device and press **Run** (▶).
+In Android Studio, select an API 26+ emulator or device and press **Run** (▶).
 
 :::note Test credentials
 You'll need a user to sign in with. If you haven't created one yet, open <ConsoleUrl />, navigate to **Users**, and add a test user with an email and password.

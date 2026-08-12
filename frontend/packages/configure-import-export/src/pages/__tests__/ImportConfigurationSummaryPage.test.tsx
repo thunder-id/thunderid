@@ -537,7 +537,7 @@ describe('ImportConfigurationSummaryPage', () => {
       render(<ImportConfigurationSummaryPage />);
 
       await waitFor(() => {
-        expect(screen.getByRole('button', {name: /Retry Import Test/})).toBeInTheDocument();
+        expect(screen.getByRole('button', {name: 'Retry'})).toBeInTheDocument();
       });
     });
 
@@ -600,7 +600,7 @@ describe('ImportConfigurationSummaryPage', () => {
       render(<ImportConfigurationSummaryPage />);
 
       await waitFor(() => {
-        expect(screen.getByRole('button', {name: /Retry Import Test/})).toBeInTheDocument();
+        expect(screen.getByRole('button', {name: 'Retry'})).toBeInTheDocument();
       });
     });
   });
@@ -1022,6 +1022,35 @@ describe('ImportConfigurationSummaryPage', () => {
 
       await waitFor(() => {
         expect(mockShowToast).toHaveBeenCalledWith('Import completed with 1 failed resource.', 'warning');
+      });
+    });
+
+    it('pluralizes the success toast when more than one resource is imported', async () => {
+      mockLocationState.configContent = noTemplateState.configContent;
+      mockLocationState.envData = noTemplateState.envData;
+      mockMutateAsync
+        .mockResolvedValueOnce({
+          results: [],
+          summary: {imported: 2, totalDocuments: 2, failed: 0, importedAt: new Date(0).toISOString()},
+        })
+        .mockResolvedValueOnce({
+          results: [],
+          summary: {imported: 2, totalDocuments: 2, failed: 0, importedAt: new Date(0).toISOString()},
+        });
+
+      render(<ImportConfigurationSummaryPage />);
+
+      await userEvent.click(screen.getByText('Test'));
+
+      const importButton = await waitFor(() => {
+        const button = getImportConfigurationButton();
+        expect(button).not.toBeDisabled();
+        return button;
+      });
+      await userEvent.click(importButton);
+
+      await waitFor(() => {
+        expect(mockShowToast).toHaveBeenCalledWith('Import completed successfully. 2 resources imported.', 'success');
       });
     });
 

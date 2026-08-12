@@ -13,6 +13,7 @@ const __dirname = dirname(__filename);
 const OUTPUT_FILE = join(__dirname, '..', 'static', 'data', 'contributors.json');
 
 const GITHUB_REPO = DocusaurusProductConfig.project.source.github.fullName;
+const PROJECT_NAME = DocusaurusProductConfig.project.name;
 const GITHUB_REPO_API_URL = `https://api.github.com/repos/${GITHUB_REPO}`;
 const GITHUB_CONTRIBUTORS_API_URL = `${GITHUB_REPO_API_URL}/contributors`;
 
@@ -34,7 +35,7 @@ const IGNORED_LOGINS = new Set(
 
 function getGitHubHeaders() {
   return {
-    'User-Agent': 'Thunder-Docs-Contributors-Generator',
+    'User-Agent': `${PROJECT_NAME}-Docs-Contributors-Generator`,
     ...(process.env.GITHUB_TOKEN ? {Authorization: `token ${process.env.GITHUB_TOKEN}`} : {}),
   };
 }

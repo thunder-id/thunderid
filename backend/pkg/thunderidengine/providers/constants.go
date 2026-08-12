@@ -398,6 +398,8 @@ const (
 	InputTypeNumber = "NUMBER_INPUT"
 	// InputTypeDate represents a date input type.
 	InputTypeDate = "DATE_INPUT"
+	// InputTypeBoolean represents a boolean (checkbox) input type.
+	InputTypeBoolean = "BOOLEAN_INPUT"
 
 	// TODO: Add support for other sensitive input types:
 	// - Passkey credential fields (credentialId, clientDataJSON, authenticatorData, signature, userHandle)
@@ -419,6 +421,7 @@ var ValidInputTypes = map[string]bool{
 	InputTypeOUSelect: true,
 	InputTypeNumber:   true,
 	InputTypeDate:     true,
+	InputTypeBoolean:  true,
 }
 
 // ExecutorType defines the type of an executor in the flow execution.

@@ -54,6 +54,34 @@ describe('getUserErrorMessage', () => {
     );
   });
 
+  it('should interpolate params carried by a flow envelope message', () => {
+    const error = Object.assign(new Error('flow failed'), {
+      error: {
+        code: 'FET-1061',
+        message: {key: 'flows.executor.errors.attribute_not_unique', params: {attribute: 'email'}},
+      },
+    });
+    const t = vi.fn((key: string, options?: {attribute?: string; defaultValue?: string}) =>
+      key === 'common:errors.FET-1061' ? `A user already exists with the provided ${options?.attribute}.` : '',
+    );
+
+    expect(getUserErrorMessage(error, t, 'create.error')).toBe('A user already exists with the provided email.');
+  });
+
+  it('should read flow envelope params from the description when the message carries none', () => {
+    const error = Object.assign(new Error('flow failed'), {
+      error: {
+        code: 'FET-1061',
+        description: {key: 'flows.executor.errors.attribute_not_unique_desc', params: {attribute: 'mobileNumber'}},
+      },
+    });
+    const t = vi.fn((key: string, options?: {attribute?: string; defaultValue?: string}) =>
+      key === 'common:errors.FET-1061' ? `A user already exists with the provided ${options?.attribute}.` : '',
+    );
+
+    expect(getUserErrorMessage(error, t, 'create.error')).toBe('A user already exists with the provided mobileNumber.');
+  });
+
   it('should resolve a flow-shaped code from the shared catalog when the feature namespace has no entry', () => {
     const error = Object.assign(new Error('flow failed'), {code: 'SSE-4030'});
     const t = vi.fn((key: string) =>

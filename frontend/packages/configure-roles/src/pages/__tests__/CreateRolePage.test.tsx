@@ -471,4 +471,66 @@ describe('CreateRolePage', () => {
       });
     });
   });
+
+  describe('submit guards', () => {
+    const submitWithName = (name: string): ReturnType<typeof vi.fn> => {
+      const mockMutateAsync = vi.fn().mockResolvedValue({});
+      vi.mocked(useCreateRole).mockReturnValue({
+        mutate: vi.fn(),
+        mutateAsync: mockMutateAsync,
+        isPending: false,
+        isError: false,
+        isSuccess: false,
+        error: null,
+        data: undefined,
+        reset: vi.fn(),
+        context: undefined,
+        failureCount: 0,
+        failureReason: null,
+        isIdle: true,
+        isPaused: false,
+        status: 'idle',
+        submittedAt: 0,
+        variables: undefined,
+      } as unknown as ReturnType<typeof useCreateRole>);
+
+      vi.mocked(useRoleCreate).mockReturnValue({
+        currentStep: RoleCreateFlowStep.PERMISSIONS,
+        setCurrentStep: mockSetCurrentStep,
+        name,
+        setName: mockSetName,
+        ouId: '',
+        setOuId: mockSetOuId,
+        error: null,
+        setError: mockSetError,
+        permissions: [],
+        setPermissions: mockSetPermissions,
+        reset: vi.fn(),
+      } as unknown as ReturnType<typeof useRoleCreate>);
+
+      render(<CreateRolePage />);
+
+      fireEvent.click(screen.getByRole('button', {name: /continue/i}));
+
+      return mockMutateAsync;
+    };
+
+    it('should refuse a name that is only whitespace', async () => {
+      const mockMutateAsync = submitWithName('   ');
+
+      await vi.waitFor(() => {
+        expect(mockSetError).toHaveBeenCalledWith('Role name is required');
+      });
+      expect(mockMutateAsync).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a name longer than the maximum length', async () => {
+      const mockMutateAsync = submitWithName('a'.repeat(101));
+
+      await vi.waitFor(() => {
+        expect(mockSetError).toHaveBeenCalledWith('Role name cannot exceed 100 characters');
+      });
+      expect(mockMutateAsync).not.toHaveBeenCalled();
+    });
+  });
 });

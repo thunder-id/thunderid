@@ -61,14 +61,17 @@ Once it's running, the console is available at [https://localhost:8090/console](
     If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
     :::
 
-2. Navigate to **Applications**, and click **Add Application**.
+2. Navigate to **Applications**.
+3. Click **Add Application**.
+4. From the **Choose a type** page, select **iOS**.
+5. Enter a name (e.g. `My iOS App`).
+6. Select how you want to sign in users (e.g., email/password, social login, etc.).
+7. Select Theme settings.
+8. Leave **Sign-In Approach** set to **Bring Your Own UI** (the default for iOS applications).
+9. Click **Create**.
 
-3. Under **Application Type**, select **Mobile App**.
-4. Enter a name (e.g. `My iOS App`) and create an application. The rest of the settings can stay at their defaults.
-5. Copy the **Application ID** from the **General** tab, under **Quick Copy**.
-
-:::info App-Native Authentication
-This quickstart uses app-native authentication through the Flow Execution API. The iOS SDK renders the sign-in and sign-up forms natively in your app, so you only need the **Application ID**, no OAuth 2.0 Client ID and no redirect URI.
+:::warning
+Copy the **Application ID** from the **General** tab, under **Quick Copy**. You'll need it when configuring the SDK.
 :::
 
 ## Create an iOS App
@@ -84,18 +87,10 @@ If you already have an existing iOS project, skip this step.
 In Xcode, go to **File > Add Package Dependencies** and enter the package URL:
 
 ```text
-https://github.com/thunderid/thunderid-ios-sdk
+https://github.com/thunder-id/ios-sdks
 ```
 
-When prompted to choose package products, select **<ProductName />SwiftUI**. This includes the core `<ProductName />` client as a dependency.
-
-:::note
-If you manage dependencies with CocoaPods, add the following to your `Podfile` instead:
-
-```ruby
-pod 'ThunderIDSwiftUI'
-```
-:::
+When prompted for a version rule, select **Up to Next Major Version** starting at the [latest release tag](https://github.com/thunder-id/ios-sdks/releases). When prompted to choose package products, select **<ProductName />SwiftUI**. This includes the core `<ProductName />` client as a dependency.
 
 ## Initialize the SDK
 

@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useQuery, type UseQueryResult} from '@tanstack/react-query';
+import {keepPreviousData, useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import ResourceServerQueryKeys from '../constants/resource-server-query-keys';
@@ -17,6 +17,7 @@ export default function useGetResourceServers(params?: {
 
   return useQuery<ResourceServerListResponse>({
     queryKey: [ResourceServerQueryKeys.RESOURCE_SERVERS, {limit, offset}],
+    placeholderData: keepPreviousData,
     queryFn: async (): Promise<ResourceServerListResponse> => {
       const serverUrl = getServerUrl();
       const queryParams = new URLSearchParams({

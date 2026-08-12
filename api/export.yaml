@@ -204,6 +204,16 @@ components:
           items:
             type: string
           description: IDs of themes to export, or ["*"] for all.
+        credentialConfigurations:
+          type: array
+          items:
+            type: string
+          description: IDs of OpenID4VCI credential configurations to export, or ["*"] for all.
+        presentationDefinitions:
+          type: array
+          items:
+            type: string
+          description: IDs of OpenID4VP presentation definitions to export, or ["*"] for all.
         options:
           $ref: '#/components/schemas/ExportOptions'
 

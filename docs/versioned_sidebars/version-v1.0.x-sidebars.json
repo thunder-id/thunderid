@@ -1362,6 +1362,24 @@
       ]
     }
   ],
+  "springSecurityIntegrationSidebar": [
+    {
+      "type": "doc",
+      "id": "sdks/spring-security/overview"
+    },
+    {
+      "type": "category",
+      "label": "Guides",
+      "collapsed": false,
+      "items": [
+        {
+          "type": "doc",
+          "id": "sdks/spring-security/guides/handling-authentication",
+          "label": "Handling Authentication"
+        }
+      ]
+    }
+  ],
   "expressSdkSidebar": [
     {
       "type": "doc",

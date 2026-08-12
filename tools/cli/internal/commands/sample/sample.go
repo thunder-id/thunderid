@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,6 +30,7 @@ type Options struct {
 	Config    map[string]string // key/value pairs to write into the target service's .env
 	EnvTarget string            // sample sub-dir to write the .env into (e.g. "ai-agent")
 	Features  []string          // feature tags, e.g. ["ai"] — drive optional services and frontend flags
+	Port      int               // port the running product is bound to; 0 = the default port
 }
 
 // hasFeature reports whether tag is present in opts.Features.
@@ -207,10 +210,15 @@ func runWithResult(
 		return nil, "", "", fmt.Errorf("could not read env file: %w", err)
 	}
 
-	// Stop the product.
+	// Stop the product. The REPL may have moved it off the default port after a
+	// conflict, so every port operation below follows opts.Port when it is set.
+	port := opts.Port
+	if port <= 0 {
+		port = health.DefaultPort
+	}
 	progress("Stopping " + product.Name + "...")
-	setup.KillPort(health.DefaultPort)
-	setup.WaitForPortFree(health.DefaultPort, 15*time.Second)
+	setup.KillPort(port)
+	setup.WaitForPortFree(port, 15*time.Second)
 
 	// Find ThunderID root and write resource files.
 	thunderRoot, err := setup.FindThunderRoot(installPath)
@@ -224,13 +232,13 @@ func runWithResult(
 
 	// Start the product.
 	progress("Starting " + product.Name + "...")
-	proc, err := setup.StartBackground(installPath, false)
+	proc, err := setup.StartBackgroundOnPort(installPath, false, opts.Port)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("could not start %s: %w", product.Name, err)
 	}
 
 	// Wait for the product to be ready.
-	serverURL, ready := health.ResolveBaseURL(health.DefaultPort, 60*time.Second)
+	serverURL, ready := health.ResolveBaseURL(port, 60*time.Second)
 	if !ready {
 		return proc, meta.sampleURL, "",
 			fmt.Errorf("%s did not become ready within 60 seconds — check logs at %s",
@@ -251,8 +259,11 @@ func runWithResult(
 
 	// Write service .env files so each process starts with the right credentials.
 	aiEnabled := hasFeature(opts, "ai")
-	if err := writeFrontendEnv(sampleDir, serverURL, aiEnabled); err != nil {
+	if err := writeFrontendEnv(sampleDir, serverURL, vars, aiEnabled); err != nil {
 		return proc, meta.sampleURL, serverURL, fmt.Errorf("could not write frontend env: %w", err)
+	}
+	if err := writeBaseURLEnvs(sampleDir, serverURL); err != nil {
+		return proc, meta.sampleURL, serverURL, fmt.Errorf("could not write service env: %w", err)
 	}
 	if aiEnabled && opts.EnvTarget != "" {
 		if err := writeServiceEnv(sampleDir, serverURL, vars, opts); err != nil {
@@ -275,6 +286,14 @@ func runWithResult(
 	progress("Starting " + sampleName + " services...")
 	if err := startSampleServices(sampleDir, aiEnabled); err != nil {
 		return proc, meta.sampleURL, serverURL, fmt.Errorf("could not start sample: %w", err)
+	}
+
+	// `npm run dev` keeps running when a single workspace exits, so a crashed
+	// service is invisible to the parent process. Confirm each one is accepting
+	// connections before reporting the sample as ready.
+	progress("Waiting for " + sampleName + " services...")
+	if err := waitForSampleServices(sampleDir, aiEnabled, sampleReadyTimeout); err != nil {
+		return proc, meta.sampleURL, serverURL, err
 	}
 
 	return proc, meta.sampleURL, serverURL, nil
@@ -341,22 +360,11 @@ func SampleDir(installPath, sampleName string) string {
 	return filepath.Join(filepath.Dir(installPath), "samples", sampleName)
 }
 
-// ReadServiceEnv reads key/value pairs from <sampleDir>/<envTarget>/.env.
-// Returns an empty map if the file does not exist.
-// Provider-specific API keys (ANTHROPIC_API_KEY, GOOGLE_API_KEY) are reverse-mapped
-// to the generic LLM_API_KEY so the REPL can pre-populate the prompt on subsequent runs.
+// ReadServiceEnv reads key/value pairs from <sampleDir>/<envTarget>/.env so the
+// REPL can pre-populate its prompts on subsequent runs. Returns an empty map if
+// the file does not exist.
 func ReadServiceEnv(sampleDir, envTarget string) map[string]string {
 	vals, _ := parseEnvFile(filepath.Join(sampleDir, envTarget, ".env"))
-	if _, ok := vals["LLM_API_KEY"]; !ok {
-		provider := strings.ToLower(vals["LLM_PROVIDER"])
-		if provider == "gemini" || provider == "google" {
-			if v := vals["GOOGLE_API_KEY"]; v != "" {
-				vals["LLM_API_KEY"] = v
-			}
-		} else if v := vals["ANTHROPIC_API_KEY"]; v != "" {
-			vals["LLM_API_KEY"] = v
-		}
-	}
 	return vals
 }
 
@@ -443,44 +451,105 @@ func splitYAML(content string) []string {
 	return docs
 }
 
-// writeFrontendEnv writes frontend/.env with Thunder client config and the
+// writeFrontendEnv updates frontend/.env with ThunderID client config and the
 // VITE_AI_FEATURES_ENABLED flag so the React dev server picks up the right mode.
-func writeFrontendEnv(sampleDir, thunderURL string, aiEnabled bool) error {
-	enabled := "false"
-	if aiEnabled {
-		enabled = "true"
+// Keys the sample ships (VITE_THUNDER_APP_ID, VITE_AUTH_IS_REDIRECT_BASED, ...)
+// are preserved.
+func writeFrontendEnv(sampleDir, baseURL string, vars map[string]string, aiEnabled bool) error {
+	path := filepath.Join(sampleDir, "frontend", ".env")
+	env, err := parseEnvFile(path)
+	if err != nil {
+		return err
 	}
-	content := "VITE_THUNDER_CLIENT_ID=WAYFINDER\n" +
-		"VITE_THUNDER_BASE_URL=" + thunderURL + "\n" +
-		"VITE_AI_FEATURES_ENABLED=" + enabled + "\n"
-	return os.WriteFile(filepath.Join(sampleDir, "frontend", ".env"), []byte(content), 0o644)
+	clientID := vars["WAYFINDER_CLIENT_ID"]
+	if clientID == "" {
+		clientID = "WAYFINDER"
+	}
+	env["VITE_THUNDER_CLIENT_ID"] = clientID
+	env["VITE_THUNDER_BASE_URL"] = baseURL
+	env["VITE_AI_FEATURES_ENABLED"] = strconv.FormatBool(aiEnabled)
+	return writeEnvFile(path, env)
 }
 
-// writeServiceEnv writes <opts.EnvTarget>/.env combining standard Thunder
-// credentials (from the thunderid.env vars map) with every key/value in opts.Config.
-func writeServiceEnv(sampleDir, thunderURL string, vars map[string]string, opts Options) error {
-	var b strings.Builder
-	b.WriteString("THUNDER_BASE_URL=" + thunderURL + "\n")
-	if v := vars["AGENT_CLIENT_ID"]; v != "" {
-		b.WriteString("AGENT_ID=" + v + "\n")
-	}
-	if v := vars["AGENT_CLIENT_SECRET"]; v != "" {
-		b.WriteString("AGENT_SECRET=" + v + "\n")
-	}
-	b.WriteString("AGENT_REDIRECT_URI=http://localhost:5173/agent-callback\n")
-	b.WriteString("AGENT_ACCESS_SCOPE=agent:access\n")
-	for k, v := range opts.Config {
-		if k == "LLM_API_KEY" {
-			provider := strings.ToLower(opts.Config["LLM_PROVIDER"])
-			if provider == "gemini" || provider == "google" {
-				k = "GOOGLE_API_KEY"
-			} else {
-				k = "ANTHROPIC_API_KEY"
-			}
+// baseURLServices are sample services whose .env ships with the default
+// ThunderID URL baked in. They need rewriting whenever the product runs on a
+// different port, or their token validation points at the wrong server.
+var baseURLServices = []string{"backend", "lounge"}
+
+// writeBaseURLEnvs points every such service at the URL the product actually
+// came up on. Services the sample does not ship are skipped.
+func writeBaseURLEnvs(sampleDir, baseURL string) error {
+	for _, service := range baseURLServices {
+		path := filepath.Join(sampleDir, service, ".env")
+		if _, err := os.Stat(path); err != nil {
+			continue
 		}
-		b.WriteString(k + "=" + v + "\n")
+		env, err := parseEnvFile(path)
+		if err != nil {
+			return err
+		}
+		env["THUNDER_BASE_URL"] = baseURL
+		if err := writeEnvFile(path, env); err != nil {
+			return err
+		}
 	}
-	return os.WriteFile(filepath.Join(sampleDir, opts.EnvTarget, ".env"), []byte(b.String()), 0o644)
+	return nil
+}
+
+// writeServiceEnv updates <opts.EnvTarget>/.env with the ThunderID credentials from
+// the thunderid.env vars map plus every key/value in opts.Config. Keys are written
+// under the names the sample reads; keys already in the file that the CLI has no
+// value for (MCP_SERVER_URL, UPGRADE_SCHEDULER_ENABLED, ...) are preserved.
+func writeServiceEnv(sampleDir, baseURL string, vars map[string]string, opts Options) error {
+	path := filepath.Join(sampleDir, opts.EnvTarget, ".env")
+	env, err := parseEnvFile(path)
+	if err != nil {
+		return err
+	}
+
+	env["THUNDER_BASE_URL"] = baseURL
+	setIfNotEmpty(env, "AGENT_ID", vars["AGENT_CLIENT_ID"])
+	setIfNotEmpty(env, "AGENT_SECRET", vars["AGENT_CLIENT_SECRET"])
+	setIfNotEmpty(env, "UPGRADE_AGENT_ID", vars["UPGRADE_AGENT_CLIENT_ID"])
+	setIfNotEmpty(env, "UPGRADE_AGENT_SECRET", vars["UPGRADE_AGENT_CLIENT_SECRET"])
+	env["AGENT_REDIRECT_URI"] = "http://localhost:5173/agent-callback"
+	env["AGENT_ACCESS_SCOPE"] = "agent:access"
+
+	// The upgrade scheduler polls for pending upgrades over CIBA, which needs the
+	// email or SMS flow configured. A try-out has neither, so it stays off unless
+	// the operator turned it on themselves.
+	if _, ok := env["UPGRADE_SCHEDULER_ENABLED"]; !ok {
+		env["UPGRADE_SCHEDULER_ENABLED"] = "false"
+	}
+
+	for k, v := range opts.Config {
+		env[k] = v
+	}
+	return writeEnvFile(path, env)
+}
+
+// setIfNotEmpty assigns value to key only when the source variable was populated,
+// so a missing entry in thunderid.env leaves any existing value alone.
+func setIfNotEmpty(env map[string]string, key, value string) {
+	if value != "" {
+		env[key] = value
+	}
+}
+
+// writeEnvFile writes KEY=VALUE lines sorted by key, so repeated runs produce an
+// identical file instead of reshuffling with Go's map iteration order.
+func writeEnvFile(path string, env map[string]string) error {
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var b strings.Builder
+	for _, k := range keys {
+		b.WriteString(k + "=" + env[k] + "\n")
+	}
+	return os.WriteFile(path, []byte(b.String()), 0o644)
 }
 
 // sampleServicePorts returns the localhost ports the sample's dev services bind,
@@ -498,6 +567,53 @@ func sampleServicePorts(aiEnabled bool) []int {
 		ports = append(ports, 8790) // ai-agent
 	}
 	return ports
+}
+
+// sampleReadyTimeout bounds how long the sample's services get to bind their
+// ports. A cold `npm run dev` builds the frontend first, so this is generous.
+const sampleReadyTimeout = 120 * time.Second
+
+// serviceCheck is one readiness probe: the port a service binds and the name to
+// report when it never opens.
+type serviceCheck struct {
+	port int
+	name string
+}
+
+// readinessChecks returns the services that must be up for the sample's
+// walkthroughs to work. The SMTP inbox and lounge kiosk are optional extras, so
+// they are started but not gated on.
+func readinessChecks(aiEnabled bool) []serviceCheck {
+	checks := []serviceCheck{
+		{port: 5173, name: "frontend"},
+		{port: 8787, name: "backend API"},
+	}
+	if aiEnabled {
+		checks = append(checks, serviceCheck{port: 8790, name: "ai-agent"})
+	}
+	return checks
+}
+
+// waitForSampleServices blocks until every required service accepts connections.
+func waitForSampleServices(sampleDir string, aiEnabled bool, timeout time.Duration) error {
+	logPath := filepath.Join(sampleDir, "logs", "sample.log")
+	return waitForServices(readinessChecks(aiEnabled), logPath, timeout)
+}
+
+// waitForServices polls each check until its port opens, and reports the offending
+// service with the tail of its log once the shared deadline passes.
+func waitForServices(checks []serviceCheck, logPath string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for _, check := range checks {
+		for !setup.IsPortInUse(check.port) {
+			if time.Now().After(deadline) {
+				return fmt.Errorf("%s did not start on port %d — see %s\n%s",
+					check.name, check.port, logPath, tailLog(logPath, 20))
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+	return nil
 }
 
 // startSampleServices launches the sample services in the background via npm.
@@ -561,9 +677,9 @@ func tailLog(path string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-func printSummary(sampleName, thunderURL, sampleURL string, features []string) {
+func printSummary(sampleName, baseURL, sampleURL string, features []string) {
 	fmt.Println()
-	fmt.Printf("  ✓ %s is ready at %s\n", product.Name, thunderURL)
+	fmt.Printf("  ✓ %s is ready at %s\n", product.Name, baseURL)
 	fmt.Printf("  ✓ Wayfinder is running at %s\n", sampleURL)
 	fmt.Println()
 

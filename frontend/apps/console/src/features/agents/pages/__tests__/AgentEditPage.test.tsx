@@ -3,9 +3,10 @@
 
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import userEvent from '@testing-library/user-event';
-import {render, screen, waitFor} from '@thunderid/test-utils';
+import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
+import AgentConstants from '../../constants/agent-constants';
 import AgentEditPage from '../AgentEditPage';
 
 const {
@@ -362,6 +363,22 @@ describe('AgentEditPage', () => {
       await waitFor(() => {
         expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
       });
+    });
+
+    it('discards a rename that exceeds the maximum length', async () => {
+      const user = userEvent.setup();
+      render(<AgentEditPage />);
+
+      const editIcons = screen.getAllByRole('button').filter((button) => button.querySelector('svg'));
+      const nameEditButton = editIcons.find((button) => button.parentElement?.textContent?.includes('Test Agent'));
+      if (!nameEditButton) throw new Error('name edit button for "Test Agent" not found');
+      await user.click(nameEditButton);
+      const input = screen.getByRole('textbox');
+      fireEvent.change(input, {target: {value: 'a'.repeat(AgentConstants.NAME_MAX_LENGTH + 1)}});
+      fireEvent.keyDown(input, {key: 'Enter'});
+
+      expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
+      expect(screen.getByText('Test Agent')).toBeInTheDocument();
     });
 
     it('keeps the bar visible when only one of two edited fields is reverted', async () => {

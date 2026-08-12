@@ -154,25 +154,31 @@ func (suite *ValueUtilTestSuite) TestToBool_Failure() {
 	}
 }
 
-func (suite *ValueUtilTestSuite) TestSecondsToMinutes() {
+func (suite *ValueUtilTestSuite) TestFormatExpiryDuration() {
 	testCases := []struct {
 		name     string
 		seconds  int64
 		expected string
 	}{
-		{"Zero seconds", 0, "0"},
-		{"30 seconds rounds down to 0", 30, "0"},
-		{"60 seconds", 60, "1"},
-		{"90 seconds rounds down to 1", 90, "1"},
-		{"120 seconds", 120, "2"},
-		{"300 seconds", 300, "5"},
-		{"3600 seconds", 3600, "60"},
-		{"86400 seconds", 86400, "1440"},
+		{"Zero seconds", 0, "0 seconds"},
+		{"Negative seconds", -30, "0 seconds"},
+		{"One second is singular", 1, "1 second"},
+		{"Sub minute stays in seconds", 30, "30 seconds"},
+		{"59 seconds stays in seconds", 59, "59 seconds"},
+		{"60 seconds is singular minute", 60, "1 minute"},
+		{"90 seconds is not a whole minute", 90, "90 seconds"},
+		{"120 seconds", 120, "2 minutes"},
+		{"300 seconds", 300, "5 minutes"},
+		{"600 seconds", 600, "10 minutes"},
+		{"3600 seconds is singular hour", 3600, "1 hour"},
+		{"5400 seconds is not a whole hour", 5400, "90 minutes"},
+		{"7200 seconds", 7200, "2 hours"},
+		{"86400 seconds", 86400, "24 hours"},
 	}
 
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
-			result := SecondsToMinutes(tc.seconds)
+			result := FormatExpiryDuration(tc.seconds)
 			assert.Equal(suite.T(), tc.expected, result)
 		})
 	}

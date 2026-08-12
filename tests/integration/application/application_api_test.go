@@ -82,7 +82,7 @@ var (
 	appToUpdate = Application{
 		Name:                      "Updated App",
 		Description:               "Updated Description",
-		IsRegistrationFlowEnabled: false,
+		IsRegistrationFlowEnabled: true,
 		Template:                  "mobile",
 		URL:                       "https://appToUpdate.example.com",
 		LogoURL:                   "https://appToUpdate.example.com/logo.png",
@@ -3633,17 +3633,16 @@ func (ts *ApplicationAPITestSuite) TestApplicationCreateWithDefaultAuthFlowID() 
 }
 
 // TestApplicationCreateWithoutRegistrationFlowID tests creating an application without a
-// RegistrationFlowID when its AuthFlowID transitively references a registration flow. The server
-// must auto-fill RegistrationFlowID with the reachable target and force IsRegistrationFlowEnabled
-// to false.
+// RegistrationFlowID when the caller left IsRegistrationFlowEnabled=false. The server must
+// persist the disabled binding (empty ID) even if the AuthFlowID transitively references a
+// registration flow.
 func (ts *ApplicationAPITestSuite) TestApplicationCreateWithoutRegistrationFlowID() {
 	app := Application{
-		OUID:                      testOUID,
-		Name:                      "No Registration Flow Test",
-		Description:               "Test that registration flow is auto-filled from the referenced auth flow",
-		IsRegistrationFlowEnabled: true,
-		AuthFlowID:                defaultAuthFlowID,
-		Certificate:               nil,
+		OUID:        testOUID,
+		Name:        "No Registration Flow Test",
+		Description: "Test that a disabled registration binding is not auto-filled from the auth flow",
+		AuthFlowID:  defaultAuthFlowID,
+		Certificate: nil,
 	}
 
 	appID, err := createApplication(app)
@@ -3653,10 +3652,9 @@ func (ts *ApplicationAPITestSuite) TestApplicationCreateWithoutRegistrationFlowI
 	retrievedApp, err := getApplicationByID(appID)
 	ts.Require().NoError(err)
 
-	ts.Assert().Equal(defaultRegistrationFlowID, retrievedApp.RegistrationFlowID,
-		"auto-fill must populate RegistrationFlowID from the auth flow's reachable target")
-	ts.Assert().False(retrievedApp.IsRegistrationFlowEnabled,
-		"auto-fill must force IsRegistrationFlowEnabled to false")
+	ts.Assert().Empty(retrievedApp.RegistrationFlowID,
+		"disabled registration binding must not be auto-filled from the auth flow's reachable target")
+	ts.Assert().False(retrievedApp.IsRegistrationFlowEnabled)
 }
 
 // TestApplicationCreateWithDuplicateClientID tests creating application with duplicate client ID

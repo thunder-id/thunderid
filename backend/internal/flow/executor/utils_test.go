@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -81,6 +82,70 @@ func (s *UtilsTestSuite) TestGetAuthnServiceName() {
 		s.Run(tt.name, func() {
 			result := getAuthnServiceName(tt.executorName)
 			s.Equal(tt.expectedName, result)
+		})
+	}
+}
+
+func (s *UtilsTestSuite) TestInputTypeForSchemaType() {
+	tests := []struct {
+		name         string
+		schemaType   string
+		expectedType string
+	}{
+		{"Boolean attribute is prompted as a checkbox", entitytypemodel.TypeBoolean, providers.InputTypeBoolean},
+		{"Number attribute is prompted as a number input", entitytypemodel.TypeNumber, providers.InputTypeNumber},
+		{"String attribute is prompted as text", entitytypemodel.TypeString, providers.InputTypeText},
+		{"Unknown type falls back to text", "geo", providers.InputTypeText},
+		{"Empty type falls back to text", "", providers.InputTypeText},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			s.Equal(tt.expectedType, inputTypeForSchemaType(tt.schemaType))
+		})
+	}
+}
+
+func (s *UtilsTestSuite) TestSchemaTypeForInputType() {
+	tests := []struct {
+		name         string
+		inputType    string
+		expectedType string
+	}{
+		{"Checkbox maps to boolean", providers.InputTypeBoolean, entitytypemodel.TypeBoolean},
+		{"Number input maps to number", providers.InputTypeNumber, entitytypemodel.TypeNumber},
+		{"Text input needs no conversion", providers.InputTypeText, ""},
+		{"Unset input type needs no conversion", "", ""},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			s.Equal(tt.expectedType, schemaTypeForInputType(tt.inputType))
+		})
+	}
+}
+
+func (s *UtilsTestSuite) TestConvertToSchemaType() {
+	tests := []struct {
+		name          string
+		value         string
+		schemaType    string
+		expectedValue interface{}
+	}{
+		{"Checked box becomes true", "true", entitytypemodel.TypeBoolean, true},
+		{"Unchecked box becomes false", "false", entitytypemodel.TypeBoolean, false},
+		{"Boolean accepts alternate spellings", "TRUE", entitytypemodel.TypeBoolean, true},
+		{"Unparseable boolean is left for schema validation to reject", "yes", entitytypemodel.TypeBoolean, "yes"},
+		{"Number becomes a float", "42", entitytypemodel.TypeNumber, float64(42)},
+		{"Fractional number becomes a float", "1.5", entitytypemodel.TypeNumber, 1.5},
+		{"Unparseable number is left for schema validation to reject", "many", entitytypemodel.TypeNumber, "many"},
+		{"String attribute is untouched", "true", entitytypemodel.TypeString, "true"},
+		{"Unknown schema type is untouched", "true", "", "true"},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			s.Equal(tt.expectedValue, convertToSchemaType(tt.value, tt.schemaType))
 		})
 	}
 }

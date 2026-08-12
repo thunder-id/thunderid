@@ -1,8 +1,11 @@
 # Playwright
 node_modules/
 /test-results/
+/test-results-wayfinder/
 /playwright-report/
+/playwright-report-wayfinder/
 /blob-report/
+/blob-report-wayfinder/
 /playwright/.cache/
 /playwright/.auth/
 playwright/.auth

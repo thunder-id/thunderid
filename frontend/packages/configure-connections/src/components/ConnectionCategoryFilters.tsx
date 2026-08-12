@@ -4,20 +4,25 @@
 import {Chip, Stack} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {AVAILABLE_CONNECTION_CATEGORIES} from '../config/connectionVendorMeta';
 import type {ConnectionCategory} from '../models/connection';
 
 export type CategoryFilterValue = ConnectionCategory | 'all';
 
 interface ConnectionCategoryFiltersProps {
+  /** Categories to offer as chips, in display order. Empty renders the `all` chip on its own. */
+  categories: ConnectionCategory[];
   selected: CategoryFilterValue;
   onSelect: (value: CategoryFilterValue) => void;
 }
 
-export default function ConnectionCategoryFilters({selected, onSelect}: ConnectionCategoryFiltersProps): JSX.Element {
+export default function ConnectionCategoryFilters({
+  categories,
+  selected,
+  onSelect,
+}: ConnectionCategoryFiltersProps): JSX.Element {
   const {t} = useTranslation('connections');
 
-  const values: CategoryFilterValue[] = ['all', ...AVAILABLE_CONNECTION_CATEGORIES];
+  const values: CategoryFilterValue[] = ['all', ...categories];
 
   return (
     <Stack

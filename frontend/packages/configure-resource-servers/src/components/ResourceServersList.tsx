@@ -251,6 +251,8 @@ export default function ResourceServersList(): JSX.Element {
             onPaginationModelChange={setPaginationModel}
             pageSizeOptions={[5, 10, 25]}
             disableRowSelectionOnClick
+            // Filtering is not wired end to end, so the column filter panel stays hidden.
+            disableColumnFilter
             localeText={dataGridLocaleText}
             autoHeight
             sx={{'& .MuiDataGrid-row': {cursor: 'pointer'}}}

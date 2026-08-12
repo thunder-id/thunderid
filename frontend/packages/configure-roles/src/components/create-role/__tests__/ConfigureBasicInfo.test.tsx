@@ -107,6 +107,32 @@ describe('ConfigureBasicInfo', () => {
     expect(nameInput).toHaveValue('Updated Name');
   });
 
+  describe('length validation', () => {
+    it('should show a maximum length error when the name is too long', () => {
+      renderComponent({...defaultProps, name: 'a'.repeat(101)});
+
+      expect(screen.getByText('Role name cannot exceed 100 characters')).toBeInTheDocument();
+    });
+
+    it('should not show a length error when the name is empty', () => {
+      renderComponent({...defaultProps, name: ''});
+
+      expect(screen.queryByText('Role name cannot exceed 100 characters')).not.toBeInTheDocument();
+    });
+
+    it('should not show a length error for a single character name', () => {
+      renderComponent({...defaultProps, name: 'A'});
+
+      expect(screen.queryByText('Role name cannot exceed 100 characters')).not.toBeInTheDocument();
+    });
+
+    it('should not show a length error when the name is within bounds', () => {
+      renderComponent({...defaultProps, name: 'My Role'});
+
+      expect(screen.queryByText('Role name cannot exceed 100 characters')).not.toBeInTheDocument();
+    });
+  });
+
   describe('onReadyChange callback', () => {
     it('should call onReadyChange with true when name is not empty', () => {
       const mockOnReadyChange = vi.fn();
@@ -125,6 +151,20 @@ describe('ConfigureBasicInfo', () => {
     it('should call onReadyChange with false when name contains only whitespace', () => {
       const mockOnReadyChange = vi.fn();
       renderComponent({...defaultProps, name: '   ', onReadyChange: mockOnReadyChange});
+
+      expect(mockOnReadyChange).toHaveBeenCalledWith(false);
+    });
+
+    it('should call onReadyChange with true for a single character name', () => {
+      const mockOnReadyChange = vi.fn();
+      renderComponent({...defaultProps, name: 'A', onReadyChange: mockOnReadyChange});
+
+      expect(mockOnReadyChange).toHaveBeenCalledWith(true);
+    });
+
+    it('should call onReadyChange with false when name is longer than the maximum length', () => {
+      const mockOnReadyChange = vi.fn();
+      renderComponent({...defaultProps, name: 'a'.repeat(101), onReadyChange: mockOnReadyChange});
 
       expect(mockOnReadyChange).toHaveBeenCalledWith(false);
     });

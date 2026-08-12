@@ -202,7 +202,7 @@ func replLoop(version, installPath string, proc *exec.Cmd, verbose, isFirstRun b
 			if upgraded {
 				return // upgrade ran its own REPL internally
 			}
-			// Already latest or cancelled — Thunder is still running; reattach.
+			// Already latest or cancelled — ThunderID is still running; reattach.
 			continue
 		}
 

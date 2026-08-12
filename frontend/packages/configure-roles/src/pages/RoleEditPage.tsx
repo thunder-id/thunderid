@@ -31,6 +31,7 @@ import EditAssignmentsSettings from '../components/edit-role/assignments-setting
 import EditGeneralSettings from '../components/edit-role/general-settings/EditGeneralSettings';
 import EditPermissionsSettings from '../components/edit-role/permissions-settings/EditPermissionsSettings';
 import RoleDeleteDialog from '../components/RoleDeleteDialog';
+import RoleConstraints from '../constants/role-constraints';
 import type {Role} from '../models/role';
 
 interface TabPanelProps {
@@ -213,7 +214,12 @@ export default function RoleEditPage(): JSX.Element {
                 onBlur={() => {
                   const trimmed = tempName.trim();
                   const current = (editedRole.name ?? role.name).trim();
-                  if (trimmed && trimmed !== current) {
+                  // The API rejects names outside these bounds, so an out of range rename is discarded here.
+                  if (
+                    trimmed !== current &&
+                    trimmed.length >= RoleConstraints.NAME_MIN_LENGTH &&
+                    trimmed.length <= RoleConstraints.NAME_MAX_LENGTH
+                  ) {
                     handleFieldChange('name', trimmed);
                   }
                   setIsEditingName(false);

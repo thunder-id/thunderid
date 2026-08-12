@@ -54,9 +54,7 @@ Start a local <ProductName /> instance. Pick the method that works best for you:
 
 Once it's running, the console is available at [https://localhost:8090/console](https://localhost:8090/console).
 
-## Create an Agent
-
-Agents are <ProductName />'s machine identities, distinct from user-facing applications. A background service like this one authenticates as an agent, not as an application.
+## Create an Application
 
 1. Sign in to the Console.
 
@@ -64,11 +62,19 @@ Agents are <ProductName />'s machine identities, distinct from user-facing appli
     If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
     :::
 
-2. Navigate to **Agents** and click **Add Agent**.
-3. Enter an **Agent name** (e.g. `node-service-quickstart`) and select an **Owner**, then click **Create agent**.
-4. <ProductName /> displays the agent's **Client Secret** once. Copy it now; it cannot be retrieved again.
-5. Open the agent's **Advanced** tab, enable the `client_credentials` grant type, and set the **Client authentication method** to `client_secret_basic`.
-6. Copy the **Client ID** from the **General** tab.
+2. Navigate to **Applications**.
+3. Click **Add Application**.
+4. From the **Choose a type** page, select **Backend Service**.
+5. Enter a name (e.g. `My Node.js Service`).
+6. Click **Create**.
+
+:::info Machine-to-Machine
+Backend Service applications are pre-configured for the `client_credentials` grant with `client_secret_basic` authentication. No OAuth 2.0 redirect URI or extra setup is needed.
+:::
+
+:::note Note
+Copy the **Client ID** from the **General** tab, and the **Client Secret** from the window that pops up when the application is created; it's shown only once (if lost, regenerate it from the application's **Credentials** tab).
+:::
 
 ## Create a Node.js Project
 
@@ -123,8 +129,8 @@ const client = new ThunderIDNodeClient();
 
 await client.initialize({
   baseUrl: 'https://localhost:8090',
-  clientId: '<your-agent-client-id>',
-  clientSecret: '<your-agent-client-secret>',
+  clientId: '<your-client-id>',
+  clientSecret: '<your-client-secret>',
   grantType: 'client_credentials',
 });
 
@@ -135,7 +141,7 @@ console.log(`Authenticated with scope: ${scope}`);
 ```
 
 :::warning Configuration
-Replace `<your-agent-client-id>` and `<your-agent-client-secret>` with the **Client ID** and **Client Secret** from your <ProductName /> agent.
+Replace `<your-client-id>` and `<your-client-secret>` with the **Client ID** and **Client Secret** from your <ProductName /> application.
 :::
 
 ### Configuration Parameters
@@ -143,8 +149,8 @@ Replace `<your-agent-client-id>` and `<your-agent-client-secret>` with the **Cli
 | Parameter | Description |
 |-----------|-------------|
 | `baseUrl` | Your <ProductName /> instance URL (e.g., `https://localhost:8090`) |
-| `clientId` | The Client ID from your <ProductName /> agent |
-| `clientSecret` | The Client Secret from your <ProductName /> agent |
+| `clientId` | The Client ID from your <ProductName /> application |
+| `clientSecret` | The Client Secret from your <ProductName /> application |
 | `grantType` | Set to `'client_credentials'` to authenticate the service as itself, with no user and no browser redirect |
 
 ## Call Business Logic With the Token
@@ -158,8 +164,8 @@ const client = new ThunderIDNodeClient();
 
 await client.initialize({
   baseUrl: 'https://localhost:8090',
-  clientId: '<your-agent-client-id>',
-  clientSecret: '<your-agent-client-secret>',
+  clientId: '<your-client-id>',
+  clientSecret: '<your-client-secret>',
   grantType: 'client_credentials',
 });
 

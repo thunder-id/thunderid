@@ -5,6 +5,7 @@ import {render, screen, fireEvent} from '@testing-library/react';
 import {ReactFlowProvider} from '@xyflow/react';
 import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
+import FlowPluginContext, {type FlowPluginContextProps} from '../../../context/FlowPluginContext';
 import InteractionContext from '../../../context/InteractionContext';
 import UIPanelContext from '../../../context/UIPanelContext';
 import type {Base} from '../../../models/base';
@@ -38,6 +39,7 @@ vi.mock('../CommonResourceProperties', () => ({
 describe('ResourcePropertyPanel', () => {
   const mockSetIsOpenResourcePropertiesPanel = vi.fn();
   const mockOnComponentDelete = vi.fn();
+  const mockEmitNodeElementDelete = vi.fn().mockReturnValue(true);
 
   const mockBaseResource: Base = {
     id: 'resource-1',
@@ -90,9 +92,13 @@ describe('ResourcePropertyPanel', () => {
     function Wrapper({children}: {children: ReactNode}) {
       return (
         <ReactFlowProvider>
-          <UIPanelContext.Provider value={uiPanelValue}>
-            <InteractionContext.Provider value={interactionValue}>{children}</InteractionContext.Provider>
-          </UIPanelContext.Provider>
+          <FlowPluginContext.Provider
+            value={{emitNodeElementDelete: mockEmitNodeElementDelete} as unknown as FlowPluginContextProps}
+          >
+            <UIPanelContext.Provider value={uiPanelValue}>
+              <InteractionContext.Provider value={interactionValue}>{children}</InteractionContext.Provider>
+            </UIPanelContext.Provider>
+          </FlowPluginContext.Provider>
         </ReactFlowProvider>
       );
     }
@@ -174,6 +180,32 @@ describe('ResourcePropertyPanel', () => {
 
       expect(mockOnComponentDelete).toHaveBeenCalledWith('step-1', mockBaseResource);
       expect(mockSetIsOpenResourcePropertiesPanel).toHaveBeenCalledWith(false);
+    });
+
+    it('should emit onNodeElementDelete before removing the component', () => {
+      render(<ResourcePropertyPanel open onComponentDelete={mockOnComponentDelete} />, {wrapper: createWrapper()});
+
+      fireEvent.click(screen.getByRole('button', {name: 'Delete', hidden: true}));
+
+      expect(mockEmitNodeElementDelete).toHaveBeenCalledWith('step-1', mockBaseResource);
+      expect(mockEmitNodeElementDelete.mock.invocationCallOrder[0]).toBeLessThan(
+        mockOnComponentDelete.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('should not emit onNodeElementDelete when resource is a Step', () => {
+      const stepResource: Base = {
+        ...mockBaseResource,
+        resourceType: ResourceTypes.Step,
+      };
+
+      render(<ResourcePropertyPanel open onComponentDelete={mockOnComponentDelete} />, {
+        wrapper: createWrapper({}, {lastInteractedResource: stepResource}),
+      });
+
+      fireEvent.click(screen.getByRole('button', {name: 'Delete', hidden: true}));
+
+      expect(mockEmitNodeElementDelete).not.toHaveBeenCalled();
     });
 
     it('should not render delete button when lastInteractedResource is null', () => {

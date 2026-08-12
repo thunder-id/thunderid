@@ -70,7 +70,7 @@ type RoleResponse struct {
 
 // CreateRoleRequest represents the request body for creating a role.
 type CreateRoleRequest struct {
-	Name        string                `json:"name"                  native:"required,min=3,max=64"`
+	Name        string                `json:"name"                  native:"required,min=1,max=100"`
 	Description string                `json:"description,omitempty"`
 	OUID        string                `json:"ouId"                  native:"required"`
 	Permissions []ResourcePermissions `json:"permissions"`
@@ -90,7 +90,7 @@ type CreateRoleResponse struct {
 
 // UpdateRoleRequest represents the request body for updating a role.
 type UpdateRoleRequest struct {
-	Name        string                `json:"name"                  native:"required,min=3,max=64"`
+	Name        string                `json:"name"                  native:"required,min=1,max=100"`
 	Description string                `json:"description,omitempty"`
 	OUID        string                `json:"ouId"                  native:"required"`
 	Permissions []ResourcePermissions `json:"permissions"`

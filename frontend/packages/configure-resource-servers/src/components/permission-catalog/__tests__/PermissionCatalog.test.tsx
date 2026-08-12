@@ -232,6 +232,43 @@ describe('PermissionCatalog', () => {
     });
   });
 
+  it('unticking an action also drops the resource scopes that would still confer it', async () => {
+    const user = userEvent.setup();
+    // The state a cascade leaves behind: the resource scopes plus every action.
+    const onChange = renderCatalog({
+      selected: [
+        {
+          resourceServerId: 'rs-1',
+          permissions: ['bookings', 'bookings:reservations', 'bookings:reservations:update'],
+        },
+      ],
+    });
+    await user.click(screen.getByRole('button', {name: 'Booking API'}));
+    await waitFor(() => expect(screen.getByText('Bookings')).toBeInTheDocument());
+    // Drill down to the Update action on the nested Reservations resource.
+    await user.click(screen.getByRole('button', {name: 'bookings'}));
+    await user.click(await screen.findByRole('button', {name: 'reservations'}));
+    await user.click(await screen.findByRole('checkbox', {name: 'bookings:reservations:update'}));
+    // Both 'bookings:reservations' and 'bookings' cover the action, so neither may survive.
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith([]);
+    });
+  });
+
+  it('unticking an action leaves sibling permissions untouched', async () => {
+    const user = userEvent.setup();
+    const onChange = renderCatalog({
+      selected: [{resourceServerId: 'rs-1', permissions: ['bookings', 'bookings:create', 'health:ping']}],
+    });
+    await user.click(screen.getByRole('button', {name: 'Booking API'}));
+    await waitFor(() => expect(screen.getByText('Bookings')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', {name: 'bookings'}));
+    await user.click(await screen.findByRole('checkbox', {name: 'bookings:create'}));
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith([{resourceServerId: 'rs-1', permissions: ['health:ping']}]);
+    });
+  });
+
   it('clicking a fully-selected resource checkbox clears the subtree', async () => {
     const user = userEvent.setup();
     const fullySelected: ResourcePermissions[] = [

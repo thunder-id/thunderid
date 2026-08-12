@@ -6,6 +6,7 @@ package granthandlers
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -28,7 +30,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
+	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
@@ -41,6 +45,7 @@ const testRefreshTokenUserID = "test-user-id"
 const testRefreshTokenAudience = "test-audience"
 const testRefreshTokenClientID = "test-client-id"
 const testRS01URI = "https://rs01.example.com"
+const testAppEntityID = "app-entity-id"
 const testRS02URI = "https://rs02.example.com"
 
 func boolPtr(b bool) *bool { return &b }
@@ -54,6 +59,8 @@ type RefreshTokenGrantHandlerTestSuite struct {
 	mockTokenValidator   *tokenservicemock.TokenValidatorInterfaceMock
 	mockAttrCacheService *attributecachemock.AttributeCacheServiceInterfaceMock
 	mockResourceService  *resourcemock.ResourceServiceInterfaceMock
+	mockAuthzService     *authzmock.AuthorizationProviderMock
+	mockActorProvider    *actorprovidermock.ActorProviderMock
 	mockRefreshRevoker   *revocationmock.RefreshTokenRevokerInterfaceMock
 	mockCriteriaRevoker  *revocationmock.CriteriaRevokerInterfaceMock
 	oauthApp             *providers.OAuthClient
@@ -90,6 +97,8 @@ func (suite *RefreshTokenGrantHandlerTestSuite) SetupTest() {
 	suite.mockTokenValidator = tokenservicemock.NewTokenValidatorInterfaceMock(suite.T())
 	suite.mockAttrCacheService = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	suite.mockAuthzService = authzmock.NewAuthorizationProviderMock(suite.T())
+	suite.mockActorProvider = actorprovidermock.NewActorProviderMock(suite.T())
 	suite.mockRefreshRevoker = revocationmock.NewRefreshTokenRevokerInterfaceMock(suite.T())
 	suite.mockCriteriaRevoker = revocationmock.NewCriteriaRevokerInterfaceMock(suite.T())
 
@@ -101,6 +110,8 @@ func (suite *RefreshTokenGrantHandlerTestSuite) SetupTest() {
 		}).Maybe()
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil).Maybe()
+
+	suite.installPermissiveAuthzStubs()
 
 	suite.rebuildHandlerWithConfig()
 
@@ -142,6 +153,32 @@ func (suite *RefreshTokenGrantHandlerTestSuite) SetupTest() {
 	}
 }
 
+// allowAllEvaluations authorizes every permission in the evaluation request.
+func allowAllEvaluations(_ context.Context,
+	request providers.AccessEvaluationsRequest) *providers.AccessEvaluationsResponse {
+	evaluations := make([]providers.AccessEvaluationResponse, 0, len(request.Evaluations))
+	for range request.Evaluations {
+		evaluations = append(evaluations, providers.AccessEvaluationResponse{Decision: true})
+	}
+	return &providers.AccessEvaluationsResponse{Evaluations: evaluations}
+}
+
+// installPermissiveAuthzStubs defaults the subject to one that still exists, has had no credential
+// change, and still holds every permission scope on the refresh token, so tests that are not about
+// re-authorization or credential changes keep exercising the scopes they set up.
+func (suite *RefreshTokenGrantHandlerTestSuite) installPermissiveAuthzStubs() {
+	suite.mockActorProvider.On("GetActor", mock.Anything).
+		Return(func(actorID string) *providers.Entity {
+			return &providers.Entity{ID: actorID}
+		}, nil).Maybe()
+	suite.mockActorProvider.On("GetActorGroups", mock.Anything).
+		Return([]providers.EntityGroup{}, nil).Maybe()
+	suite.mockAuthzService.On("EvaluateAccessBatch", mock.Anything, mock.Anything).
+		Return(allowAllEvaluations, nil).Maybe()
+	suite.mockActorProvider.On("GetInboundClientByID", mock.Anything, mock.Anything).
+		Return(&providers.InboundClient{}, nil).Maybe()
+}
+
 func (suite *RefreshTokenGrantHandlerTestSuite) rebuildHandlerWithConfig() {
 	suite.handler = newRefreshTokenGrantHandler(
 		suite.mockJWTService,
@@ -149,6 +186,8 @@ func (suite *RefreshTokenGrantHandlerTestSuite) rebuildHandlerWithConfig() {
 		suite.mockTokenValidator,
 		suite.mockAttrCacheService,
 		suite.mockResourceService,
+		suite.mockAuthzService,
+		suite.mockActorProvider,
 		suite.mockRefreshRevoker,
 		suite.mockCriteriaRevoker,
 		suite.testCfg,
@@ -164,7 +203,8 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestNewRefreshTokenGrantHandler(
 		suite.mockTokenBuilder,
 		suite.mockTokenValidator,
 		suite.mockAttrCacheService,
-		suite.mockResourceService, suite.mockRefreshRevoker,
+		suite.mockResourceService, suite.mockAuthzService,
+		suite.mockActorProvider, suite.mockRefreshRevoker,
 		suite.mockCriteriaRevoker, testhelpers.OAuthConfig())
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*RefreshTokenGrantHandlerInterface)(nil), handler)
@@ -405,7 +445,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_AgentClien
 
 func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_AppClientWithoutFlagOmitsActorSub() {
 	appApp := &providers.OAuthClient{
-		ID:                      "app-entity-id",
+		ID:                      testAppEntityID,
 		ClientID:                testRefreshTokenClientID,
 		EntityCategory:          "app",
 		IncludeActClaim:         false,
@@ -470,7 +510,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_NoActorSubMarker
 	// Freeze-at-issuance: a refresh token issued without the marker must not gain an act claim
 	// even if the client now opts into act claims.
 	appWithFlagOn := &providers.OAuthClient{
-		ID:                      "app-entity-id",
+		ID:                      testAppEntityID,
 		ClientID:                testRefreshTokenClientID,
 		EntityCategory:          "app",
 		IncludeActClaim:         true,
@@ -630,6 +670,8 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RevokePreviousOn
 		suite.mockTokenValidator,
 		suite.mockAttrCacheService,
 		suite.mockResourceService,
+		suite.mockAuthzService,
+		suite.mockActorProvider,
 		nil,
 		nil,
 		suite.testCfg,
@@ -2042,4 +2084,561 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_DownscopeValidat
 	assert.Nil(suite.T(), response)
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), constants.ErrorServerError, err.Error)
+}
+
+// resetAuthzMocks replaces the permissive authorization stubs installed by SetupTest, so a test can
+// assert on the evaluation itself rather than have the catch-all expectation shadow it.
+func (suite *RefreshTokenGrantHandlerTestSuite) resetAuthzMocks() {
+	suite.mockAuthzService = authzmock.NewAuthorizationProviderMock(suite.T())
+	suite.mockActorProvider = actorprovidermock.NewActorProviderMock(suite.T())
+	suite.mockActorProvider.On("GetActor", mock.Anything).
+		Return(func(actorID string) *providers.Entity {
+			return &providers.Entity{ID: actorID}
+		}, nil).Maybe()
+	suite.rebuildHandlerWithConfig()
+}
+
+// A permission scope the subject no longer holds is dropped from the refreshed access token, even
+// though it is still carried by the refresh token from the original grant.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_DropsScopesNoLongerAuthorized() {
+	suite.resetAuthzMocks()
+	suite.refreshClaimsValid()
+
+	suite.mockActorProvider.On("GetActorGroups", testRefreshTokenUserID).
+		Return([]providers.EntityGroup{}, nil)
+	mockEvaluateAccessBatch(suite.mockAuthzService, testRefreshTokenUserID, testRefreshTokenAudience,
+		[]string{"read", "write"}, []string{"read"})
+
+	var grantedScopes []string
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			grantedScopes = ctx.Scopes
+			return true
+		})).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+
+	req := &model.TokenRequest{
+		GrantType:    string(providers.GrantTypeRefreshToken),
+		ClientID:     testRefreshTokenClientID,
+		RefreshToken: suite.validRefreshToken,
+	}
+	response, err := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	suite.Require().NotNil(response)
+	assert.Equal(suite.T(), []string{"read"}, grantedScopes)
+	suite.mockAuthzService.AssertExpectations(suite.T())
+}
+
+// The rotated refresh token carries the narrowed scopes, so a revoked permission does not come back
+// on the next refresh.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RotatedRefreshTokenCarriesNarrowedScopes() {
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.resetAuthzMocks()
+	suite.refreshClaimsValid()
+
+	suite.mockActorProvider.On("GetActorGroups", testRefreshTokenUserID).
+		Return([]providers.EntityGroup{}, nil)
+	mockEvaluateAccessBatch(suite.mockAuthzService, testRefreshTokenUserID, testRefreshTokenAudience,
+		[]string{"read", "write"}, []string{"read"})
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+	var refreshScopes []string
+	suite.mockTokenBuilder.On("BuildRefreshToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.RefreshTokenBuildContext) bool {
+			refreshScopes = ctx.Scopes
+			return true
+		})).Return(&model.TokenDTO{
+		Token: "new.refresh.token", IssuedAt: time.Now().Unix(), ExpiresIn: 86400,
+	}, nil)
+
+	req := &model.TokenRequest{
+		GrantType:    string(providers.GrantTypeRefreshToken),
+		ClientID:     testRefreshTokenClientID,
+		RefreshToken: suite.validRefreshToken,
+	}
+	response, err := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	suite.Require().NotNil(response)
+	assert.Equal(suite.T(), []string{"read"}, refreshScopes)
+}
+
+// Permissions held through a group are evaluated, so the subject's transitive group memberships are
+// resolved and passed to the authorization service.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_EvaluatesWithSubjectGroups() {
+	suite.resetAuthzMocks()
+	suite.refreshClaimsValid()
+
+	suite.mockActorProvider.On("GetActorGroups", testRefreshTokenUserID).
+		Return([]providers.EntityGroup{{ID: "group-1"}, {ID: "group-2"}, {ID: ""}}, nil)
+
+	var evaluatedGroupIDs []string
+	suite.mockAuthzService.On("EvaluateAccessBatch", mock.Anything, mock.MatchedBy(
+		func(req providers.AccessEvaluationsRequest) bool {
+			suite.Require().NotEmpty(req.Evaluations)
+			evaluatedGroupIDs = req.Evaluations[0].Subject.GroupIDs
+			return true
+		})).Return(allowAllEvaluations, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), []string{"group-1", "group-2"}, evaluatedGroupIDs)
+}
+
+// OIDC scopes are not permission scopes, so they survive even when the subject holds no permissions
+// on the bound resource server.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_OIDCScopesSurviveDeauthorization() {
+	suite.resetAuthzMocks()
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken, testRefreshTokenClientID).
+		Return(&tokenservice.RefreshTokenClaims{
+			Sub:       testRefreshTokenUserID,
+			Audiences: []string{testRefreshTokenAudience},
+			Scopes:    []string{"openid", "read"},
+			GrantType: "authorization_code",
+			Iat:       int64(suite.validClaims["iat"].(float64)),
+		}, nil)
+
+	suite.mockActorProvider.On("GetActorGroups", testRefreshTokenUserID).
+		Return([]providers.EntityGroup{}, nil)
+	mockEvaluateAccessBatch(suite.mockAuthzService, testRefreshTokenUserID, testRefreshTokenAudience,
+		[]string{"read"}, []string{})
+
+	var grantedScopes []string
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			grantedScopes = ctx.Scopes
+			return true
+		})).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+	suite.mockTokenBuilder.On("BuildIDToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.id.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+
+	req := &model.TokenRequest{
+		GrantType:    string(providers.GrantTypeRefreshToken),
+		ClientID:     testRefreshTokenClientID,
+		RefreshToken: suite.validRefreshToken,
+	}
+	response, err := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	suite.Require().NotNil(response)
+	assert.Equal(suite.T(), []string{"openid"}, grantedScopes)
+	assert.Equal(suite.T(), "new.id.token", response.IDToken.Token)
+}
+
+// A token bound to the client rather than a resource server carries no permission scopes, so there is
+// nothing to re-evaluate and the authorization service is not called.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_NoReauthorizationWithoutResourceServer() {
+	suite.resetAuthzMocks()
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken, testRefreshTokenClientID).
+		Return(&tokenservice.RefreshTokenClaims{
+			Sub:       testRefreshTokenUserID,
+			Audiences: []string{testRefreshTokenClientID},
+			Scopes:    []string{"openid"},
+			GrantType: "authorization_code",
+			Iat:       int64(suite.validClaims["iat"].(float64)),
+		}, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+	suite.mockTokenBuilder.On("BuildIDToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.id.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+
+	req := &model.TokenRequest{
+		GrantType:    string(providers.GrantTypeRefreshToken),
+		ClientID:     testRefreshTokenClientID,
+		RefreshToken: suite.validRefreshToken,
+	}
+	_, err := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	suite.mockAuthzService.AssertNotCalled(suite.T(), "EvaluateAccessBatch", mock.Anything, mock.Anything)
+}
+
+// The authorization decision cannot be skipped when it is unavailable: a failing evaluation must not
+// fall back to the scopes frozen in the refresh token.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_AuthorizationFailureFailsClosed() {
+	suite.resetAuthzMocks()
+	suite.refreshClaimsValid()
+
+	suite.mockActorProvider.On("GetActorGroups", testRefreshTokenUserID).
+		Return([]providers.EntityGroup{}, nil)
+	suite.mockAuthzService.On("EvaluateAccessBatch", mock.Anything, mock.Anything).
+		Return(nil, &tidcommon.ServiceError{
+			Type:  tidcommon.ServerErrorType,
+			Code:  "AUTHZ-5000",
+			Error: tidcommon.I18nMessage{DefaultValue: "authorization engine unavailable"},
+		})
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), response)
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorServerError, err.Error)
+}
+
+// Group memberships feed the authorization decision, so failing to resolve them must fail closed too.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_GroupResolutionFailureFailsClosed() {
+	suite.resetAuthzMocks()
+	suite.refreshClaimsValid()
+
+	suite.mockActorProvider.On("GetActorGroups", testRefreshTokenUserID).
+		Return(nil, &tidcommon.ServiceError{
+			Type:  tidcommon.ServerErrorType,
+			Code:  "ENTITY-5000",
+			Error: tidcommon.I18nMessage{DefaultValue: "group lookup failed"},
+		})
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), response)
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorServerError, err.Error)
+}
+
+// resetActorMocks installs fresh authorization stubs without a catch-all GetActor, so a test can
+// control what the credential-change check sees.
+func (suite *RefreshTokenGrantHandlerTestSuite) resetActorMocks() {
+	suite.mockAuthzService = authzmock.NewAuthorizationProviderMock(suite.T())
+	suite.mockActorProvider = actorprovidermock.NewActorProviderMock(suite.T())
+	suite.mockActorProvider.On("GetActorGroups", mock.Anything).
+		Return([]providers.EntityGroup{}, nil).Maybe()
+	suite.mockAuthzService.On("EvaluateAccessBatch", mock.Anything, mock.Anything).
+		Return(allowAllEvaluations, nil).Maybe()
+	suite.rebuildHandlerWithConfig()
+}
+
+// entityMarkedAt returns an entity whose credential last changed at the given time.
+func entityMarkedAt(id string, at time.Time) *providers.Entity {
+	attrs, _ := json.Marshal(map[string]interface{}{
+		authnprovidercm.SystemAttrCredentialUpdatedAt: at.UTC().Format(time.RFC3339),
+	})
+	return &providers.Entity{ID: id, SystemAttributes: attrs}
+}
+
+// A refresh token established before the user's password was reset is no longer honored.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RejectsTokenPredatingPasswordReset() {
+	suite.resetActorMocks()
+	suite.refreshClaimsValid()
+	suite.mockActorProvider.On("GetActor", testRefreshTokenUserID).
+		Return(entityMarkedAt(testRefreshTokenUserID, time.Now()), nil)
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), response)
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
+}
+
+// A token established after the reset is the one the user got by re-authenticating, so it stands.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_AllowsTokenIssuedAfterPasswordReset() {
+	suite.resetActorMocks()
+	suite.refreshClaimsValid()
+	suite.mockActorProvider.On("GetActor", testRefreshTokenUserID).
+		Return(entityMarkedAt(testRefreshTokenUserID, time.Now().Add(-2*time.Hour)), nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), response)
+}
+
+// A client secret rotation invalidates the tokens issued to that client, not just the user's.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RejectsTokenPredatingClientSecretRotation() {
+	suite.resetActorMocks()
+	suite.refreshClaimsValid()
+	appWithID := *suite.oauthApp
+	appWithID.ID = testAppEntityID
+	suite.mockActorProvider.On("GetActor", testRefreshTokenUserID).
+		Return(&providers.Entity{ID: testRefreshTokenUserID}, nil)
+	suite.mockActorProvider.On("GetActor", appWithID.ID).
+		Return(entityMarkedAt(appWithID.ID, time.Now()), nil)
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, &appWithID)
+
+	assert.Nil(suite.T(), response)
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
+}
+
+// An application can map sub to a user attribute, so the token carries a value that is not an entity
+// ID. Rejecting those would break every refresh for such an application, so the subject-derived checks
+// are skipped instead.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_SkipsChecksForMappedSubject() {
+	suite.resetActorMocks()
+	suite.refreshClaimsValid()
+	suite.mockActorProvider.On("GetActor", testRefreshTokenUserID).
+		Return(nil, &tidcommon.ServiceError{
+			Type:  tidcommon.ClientErrorType,
+			Code:  "ACP-1002",
+			Error: tidcommon.I18nMessage{DefaultValue: "Entity not found"},
+		})
+	suite.mockActorProvider.On("GetInboundClientByID", mock.Anything, mock.Anything).
+		Return(&providers.InboundClient{
+			SubjectAttribute: map[string]string{"employee": "external_id"},
+		}, nil)
+	suite.mockActorProvider.On("GetActor", testAppEntityID).
+		Return(&providers.Entity{ID: testAppEntityID}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+
+	appWithID := *suite.oauthApp
+	appWithID.ID = testAppEntityID
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, &appWithID)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), response)
+	suite.mockAuthzService.AssertNotCalled(suite.T(), "EvaluateAccessBatch", mock.Anything, mock.Anything)
+}
+
+// When the client maps no subject, the token can only have carried an entity ID, so a missing entity
+// means the subject is gone and the grant dies with it.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_RejectsWhenSubjectNoLongerExists() {
+	suite.resetActorMocks()
+	suite.refreshClaimsValid()
+	suite.mockActorProvider.On("GetActor", testRefreshTokenUserID).
+		Return(nil, &tidcommon.ServiceError{
+			Type:  tidcommon.ClientErrorType,
+			Code:  "ACP-1002",
+			Error: tidcommon.I18nMessage{DefaultValue: "Entity not found"},
+		})
+	suite.mockActorProvider.On("GetInboundClientByID", mock.Anything, mock.Anything).
+		Return(&providers.InboundClient{}, nil)
+	suite.mockActorProvider.On("GetActor", testAppEntityID).
+		Return(&providers.Entity{ID: testAppEntityID}, nil).Maybe()
+
+	appWithID := *suite.oauthApp
+	appWithID.ID = testAppEntityID
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, &appWithID)
+
+	assert.Nil(suite.T(), response)
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
+}
+
+// A failed lookup must not be read as "no credential change recorded".
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_CredentialLookupFailureFailsClosed() {
+	suite.resetActorMocks()
+	suite.refreshClaimsValid()
+	suite.mockActorProvider.On("GetActor", testRefreshTokenUserID).
+		Return(nil, &tidcommon.ServiceError{
+			Type:  tidcommon.ServerErrorType,
+			Code:  "ACP-5000",
+			Error: tidcommon.I18nMessage{DefaultValue: "entity store unavailable"},
+		})
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), response)
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorServerError, err.Error)
+}
+
+// A marker the server cannot read is a data fault, not a recorded change. The refresh proceeds
+// rather than locking the entity out, so these cases must not reject.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_UnreadableCredentialMarkerAllowsRefresh() {
+	for _, systemAttributes := range []string{
+		`{"credentialUpdatedAt":"not-a-timestamp"}`,
+		`{"credentialUpdatedAt":12345}`,
+		`{"credentialUpdatedAt":""}`,
+		`not json at all`,
+	} {
+		suite.resetActorMocks()
+		suite.refreshClaimsValid()
+		suite.mockActorProvider.On("GetActor", testRefreshTokenUserID).
+			Return(&providers.Entity{
+				ID:               testRefreshTokenUserID,
+				SystemAttributes: json.RawMessage(systemAttributes),
+			}, nil)
+		suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+			Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+		}, nil).Once()
+
+		response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+		assert.Nil(suite.T(), err, "unreadable marker %q must not reject the refresh", systemAttributes)
+		assert.NotNil(suite.T(), response)
+	}
+}
+
+// A subject entity without an ID cannot be an authorization subject. Evaluating one would authorize
+// nothing and strip every permission scope, so the granted scopes are kept instead.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_SkipsReauthorizationForSubjectWithoutID() {
+	suite.resetActorMocks()
+	suite.refreshClaimsValid()
+	suite.mockActorProvider.On("GetActor", testRefreshTokenUserID).
+		Return(&providers.Entity{}, nil)
+
+	var grantedScopes []string
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			grantedScopes = ctx.Scopes
+			return true
+		})).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+
+	req := &model.TokenRequest{
+		GrantType:    string(providers.GrantTypeRefreshToken),
+		ClientID:     testRefreshTokenClientID,
+		RefreshToken: suite.validRefreshToken,
+	}
+	_, err := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), []string{"read", "write"}, grantedScopes, "scopes must be kept, not stripped")
+	suite.mockAuthzService.AssertNotCalled(suite.T(), "EvaluateAccessBatch", mock.Anything, mock.Anything)
+}
+
+// Without an actor provider there is nothing to resolve the subject or the client against, so both
+// subject-derived checks are skipped rather than failing the grant.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_NoActorProviderSkipsSubjectChecks() {
+	suite.handler = newRefreshTokenGrantHandler(
+		suite.mockJWTService, suite.mockTokenBuilder, suite.mockTokenValidator,
+		suite.mockAttrCacheService, suite.mockResourceService, nil, nil,
+		suite.mockRefreshRevoker, suite.mockCriteriaRevoker, suite.testCfg,
+	).(*refreshTokenGrantHandler)
+	suite.refreshClaimsValid()
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), response)
+}
+
+// A token with no subject has nothing to resolve, so the checks are skipped.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_EmptySubjectSkipsChecks() {
+	suite.resetActorMocks()
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken, testRefreshTokenClientID).
+		Return(&tokenservice.RefreshTokenClaims{
+			Sub:       "",
+			Audiences: []string{testRefreshTokenAudience},
+			Scopes:    []string{"read"},
+			GrantType: "authorization_code",
+			Iat:       int64(suite.validClaims["iat"].(float64)),
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), response)
+	suite.mockActorProvider.AssertNotCalled(suite.T(), "GetActor", mock.Anything)
+}
+
+// The client authenticated moments ago, so a failed client lookup is an outage rather than a deleted
+// client. It must not be read as "no credential change recorded".
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_ClientLookupFailureFailsClosed() {
+	suite.resetActorMocks()
+	suite.refreshClaimsValid()
+	appWithID := *suite.oauthApp
+	appWithID.ID = testAppEntityID
+	suite.mockActorProvider.On("GetActor", testRefreshTokenUserID).
+		Return(&providers.Entity{ID: testRefreshTokenUserID}, nil)
+	suite.mockActorProvider.On("GetActor", testAppEntityID).
+		Return(nil, &tidcommon.ServiceError{
+			Type:  tidcommon.ServerErrorType,
+			Code:  "ACP-5000",
+			Error: tidcommon.I18nMessage{DefaultValue: "entity store unavailable"},
+		})
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, &appWithID)
+
+	assert.Nil(suite.T(), response)
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorServerError, err.Error)
+}
+
+// Deciding whether an unresolvable subject is a mapped value or a deleted entity depends on reading
+// the client's mapping. A failed read cannot be resolved either way, so the grant fails closed.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_SubjectMappingLookupFailureFailsClosed() {
+	suite.resetActorMocks()
+	suite.refreshClaimsValid()
+	appWithID := *suite.oauthApp
+	appWithID.ID = testAppEntityID
+	suite.mockActorProvider.On("GetActor", testRefreshTokenUserID).
+		Return(nil, &tidcommon.ServiceError{
+			Type:  tidcommon.ClientErrorType,
+			Code:  "ACP-1002",
+			Error: tidcommon.I18nMessage{DefaultValue: "Entity not found"},
+		})
+	suite.mockActorProvider.On("GetInboundClientByID", mock.Anything, testAppEntityID).
+		Return(nil, &tidcommon.ServiceError{
+			Type:  tidcommon.ServerErrorType,
+			Code:  "ACP-5000",
+			Error: tidcommon.I18nMessage{DefaultValue: "inbound client store unavailable"},
+		})
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, &appWithID)
+
+	assert.Nil(suite.T(), response)
+	suite.Require().NotNil(err)
+	assert.Equal(suite.T(), constants.ErrorServerError, err.Error)
+}
+
+// A client that cannot be identified cannot be shown to map nothing, so an unresolvable subject is
+// skipped rather than rejected.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_UnidentifiableClientSkipsSubjectChecks() {
+	suite.resetActorMocks()
+	suite.refreshClaimsValid()
+	suite.mockActorProvider.On("GetActor", testRefreshTokenUserID).
+		Return(nil, &tidcommon.ServiceError{
+			Type:  tidcommon.ClientErrorType,
+			Code:  "ACP-1002",
+			Error: tidcommon.I18nMessage{DefaultValue: "Entity not found"},
+		})
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+
+	// suite.oauthApp carries no entity ID, so the mapping cannot be read.
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), response)
+	suite.mockActorProvider.AssertNotCalled(suite.T(), "GetInboundClientByID", mock.Anything, mock.Anything)
+}
+
+// An entity carrying other system attributes but no marker has had no credential change recorded.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_SystemAttributesWithoutMarkerAllowRefresh() {
+	suite.resetActorMocks()
+	suite.refreshClaimsValid()
+	suite.mockActorProvider.On("GetActor", testRefreshTokenUserID).
+		Return(&providers.Entity{
+			ID:               testRefreshTokenUserID,
+			SystemAttributes: json.RawMessage(`{"name":"Some App","clientId":"abc"}`),
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600,
+	}, nil)
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), response)
 }

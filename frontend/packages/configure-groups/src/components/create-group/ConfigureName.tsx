@@ -5,8 +5,9 @@ import {NameSuggestion, OrganizationUnitSummaryChip} from '@thunderid/components
 import {OrganizationUnitTreeConstants} from '@thunderid/configure-organization-units';
 import {Typography, Stack, TextField, FormControl, FormLabel} from '@wso2/oxygen-ui';
 import type {ChangeEvent, JSX} from 'react';
-import {useEffect} from 'react';
+import {useEffect, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
+import GroupConstraints from '../../constants/group-constraints';
 
 /**
  * Props for the {@link ConfigureName} component.
@@ -62,11 +63,29 @@ export default function ConfigureName({
 }: ConfigureNameProps): JSX.Element {
   const {t} = useTranslation();
 
+  const trimmedLength = name.trim().length;
+
   useEffect((): void => {
     if (onReadyChange) {
-      onReadyChange(name.trim().length > 0);
+      onReadyChange(
+        trimmedLength >= GroupConstraints.NAME_MIN_LENGTH && trimmedLength <= GroupConstraints.NAME_MAX_LENGTH,
+      );
     }
-  }, [name, onReadyChange]);
+  }, [trimmedLength, onReadyChange]);
+
+  // An empty field is not an error yet; the user has simply not filled it in.
+  const nameError = useMemo((): string | null => {
+    if (trimmedLength === 0) {
+      return null;
+    }
+    if (trimmedLength > GroupConstraints.NAME_MAX_LENGTH) {
+      return t('groups:create.form.name.maxLength', {
+        max: GroupConstraints.NAME_MAX_LENGTH,
+        defaultValue: `Group name cannot exceed ${GroupConstraints.NAME_MAX_LENGTH} characters`,
+      });
+    }
+    return null;
+  }, [trimmedLength, t]);
 
   return (
     <Stack direction="column" spacing={4} data-testid="configure-name">
@@ -92,6 +111,8 @@ export default function ConfigureName({
           value={name}
           onChange={(e: ChangeEvent<HTMLInputElement>): void => onNameChange(e.target.value)}
           placeholder={t('groups:create.form.name.placeholder')}
+          error={Boolean(nameError)}
+          helperText={nameError ?? undefined}
           inputProps={{
             'data-testid': 'group-name-input',
           }}

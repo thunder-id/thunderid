@@ -154,6 +154,26 @@ func (rs *resourceService) ensureNoBlockingDependencies(
 	return &ErrorCannotDelete
 }
 
+// cascadeDeleteDependents removes the references that other resources (such as role permissions)
+// hold on the deleted target. It is called inside the delete transaction, after the target row is
+// gone, so that providers resolving references against this service no longer see the target and
+// roll back with the delete when cleanup fails.
+func (rs *resourceService) cascadeDeleteDependents(ctx context.Context, resourceType, id string) error {
+	if rs.dependencyRegistry == nil {
+		rs.logger.Error(ctx, "Dependency registry not set; cannot cascade-delete dependents",
+			log.String("resourceType", resourceType), log.String("id", id))
+		return errDependencyRegistryNotSet
+	}
+
+	if _, err := rs.dependencyRegistry.CascadeDelete(ctx, resourceType, id); err != nil {
+		rs.logger.Error(ctx, "Failed to cascade-delete dependents",
+			log.String("resourceType", resourceType), log.String("id", id), log.Error(err))
+		return err
+	}
+
+	return nil
+}
+
 // GetResourceDependencies implements resourcedependency.Provider. A resource server is blocked from
 // deletion while it still has resources or resource-server-level actions; a resource is blocked while
 // it still has sub-resources or actions. These dependents live in the same store, so their existence
@@ -519,7 +539,7 @@ func (rs *resourceService) DeleteResourceServer(ctx context.Context, id string) 
 			rs.logger.Error(ctx, "Failed to delete resource server", log.Error(err))
 			return err
 		}
-		return nil
+		return rs.cascadeDeleteDependents(txCtx, resourcedependency.ResourceTypeResourceServer, id)
 	}); err != nil {
 		return &tidcommon.InternalServerError
 	}
@@ -854,7 +874,7 @@ func (rs *resourceService) DeleteResource(
 			rs.logger.Error(ctx, "Failed to delete resource", log.Error(err))
 			return err
 		}
-		return nil
+		return rs.cascadeDeleteDependents(txCtx, resourcedependency.ResourceTypeResource, id)
 	}); err != nil {
 		return &tidcommon.InternalServerError
 	}
@@ -1218,7 +1238,7 @@ func (rs *resourceService) DeleteAction(
 			rs.logger.Error(ctx, "Failed to delete action", log.Error(err))
 			return err
 		}
-		return nil
+		return rs.cascadeDeleteDependents(txCtx, resourcedependency.ResourceTypeAction, id)
 	}); err != nil {
 		return &tidcommon.InternalServerError
 	}

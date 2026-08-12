@@ -338,3 +338,23 @@ func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignments_FileAssignments
 	suite.Error(err)
 	suite.Equal(testErr, err)
 }
+
+// Only database-backed role permissions are prunable, so both cascade hooks must bypass the file
+// store entirely rather than consulting or mutating declarative roles.
+func (suite *CompositeRoleStoreTestSuite) TestCascadeHooks_UseDatabaseStoreOnly() {
+	referenced := []ResourcePermissions{{ResourceServerID: "rs1", Permissions: []string{"read"}}}
+	suite.mockDBStore.On("GetReferencedPermissions", mock.Anything).Return(referenced, nil)
+	suite.mockDBStore.On("DeleteRolePermission", mock.Anything, "rs1", "read").Return(int64(2), nil)
+
+	result, err := suite.store.GetReferencedPermissions(context.Background())
+	suite.NoError(err)
+	suite.Equal(referenced, result)
+
+	deleted, err := suite.store.DeleteRolePermission(context.Background(), "rs1", "read")
+	suite.NoError(err)
+	suite.Equal(int64(2), deleted)
+
+	suite.mockFileStore.AssertNotCalled(suite.T(), "GetReferencedPermissions", mock.Anything)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "DeleteRolePermission",
+		mock.Anything, mock.Anything, mock.Anything)
+}

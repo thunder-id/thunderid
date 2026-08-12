@@ -3,39 +3,16 @@
 
 import {QueryErrorNotice, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
 import {getErrorMessage} from '@thunderid/utils';
-import {Box, Button, Divider, Skeleton, Stack, TextField, Typography} from '@wso2/oxygen-ui';
+import {Box, Button, Divider, Skeleton, Stack, Typography} from '@wso2/oxygen-ui';
 import {InfoIcon, Plus} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
-import {useCallback} from 'react';
+import {useCallback, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
-import OriginRow from './OriginRow';
+import AllowedOriginRow from './AllowedOriginRow';
 import useGetCorsConfig from '../../api/useGetCorsConfig';
 import useUpdateCorsConfig from '../../api/useUpdateCorsConfig';
 import useAllowedOriginsDraft from '../../hooks/useAllowedOriginsDraft';
-import type {AllowedOrigin} from '../../models/responses';
-
-const ROW_ACTION_WIDTH = 40;
-
-/** Renders an allowed origin for display: a literal string as-is, a regex entry as its pattern. */
-function originText(entry: AllowedOrigin): string {
-  return typeof entry === 'string' ? entry : entry.regex;
-}
-
-/** A single non-editable origin row: a muted read-only field plus a spacer that aligns with editable rows. */
-function OriginDisplayRow({value}: {value: string}): JSX.Element {
-  return (
-    <Stack direction="row" spacing={1} alignItems="center">
-      <TextField
-        fullWidth
-        size="small"
-        value={value}
-        slotProps={{input: {readOnly: true}}}
-        sx={{flex: 1, opacity: 0.65}}
-      />
-      <Box aria-hidden sx={{width: ROW_ACTION_WIDTH, flex: 'none'}} />
-    </Stack>
-  );
-}
+import {toRows} from '../../utils/allowedOriginRows';
 
 export default function CorsSection(): JSX.Element {
   const {t} = useTranslation();
@@ -51,8 +28,22 @@ export default function CorsSection(): JSX.Element {
     [t],
   );
 
-  const readOnlyOrigins: AllowedOrigin[] = data?.readOnly.allowedOrigins ?? [];
-  const hasReadOnlyOrigins: boolean = readOnlyOrigins.length > 0;
+  const readOnlyEntriesKey = JSON.stringify(data?.readOnly.allowedOrigins ?? []);
+  const readOnlyRows = useMemo(
+    () => toRows(data?.readOnly.allowedOrigins ?? []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [readOnlyEntriesKey],
+  );
+  const hasReadOnlyOrigins: boolean = readOnlyRows.length > 0;
+
+  const rowLabels = {
+    originPlaceholder: t('settings:cors.originPlaceholder', 'https://app.example.com'),
+    regexPlaceholder: t('settings:cors.regexPlaceholder', '^https://[a-z0-9-]+\\.example\\.com$'),
+    typeLabel: t('settings:cors.type.label', 'Entry type'),
+    originOptionLabel: t('settings:cors.type.origin', 'Origin'),
+    regexOptionLabel: t('settings:cors.type.regex', 'Regex'),
+    removeLabel: t('settings:cors.removeOrigin', 'Remove origin'),
+  };
 
   // A previous save error is stale once the draft changes again.
   const clearSaveError = (): void => {
@@ -98,26 +89,37 @@ export default function CorsSection(): JSX.Element {
     body = (
       <>
         <Stack spacing={1}>
-          {readOnlyOrigins.map((entry, index) => (
-            // eslint-disable-next-line react/no-array-index-key
-            <OriginDisplayRow key={`readonly-${index}`} value={originText(entry)} />
+          {readOnlyRows.map((row) => (
+            <AllowedOriginRow
+              key={row.id}
+              locked
+              type={row.type}
+              value={row.value}
+              lockedLabel={t('settings:cors.lockedOrigin', "Managed declaratively and can't be edited here.")}
+              {...rowLabels}
+            />
           ))}
-          {origins.draft.map((value, index) => (
-            <OriginRow
-              // eslint-disable-next-line react/no-array-index-key
-              key={`origin-${index}`}
-              value={value}
-              error={origins.errors[index]}
-              placeholder={t('settings:cors.originPlaceholder')}
-              removeLabel={t('settings:cors.removeOrigin')}
+          {origins.draft.map((row) => (
+            <AllowedOriginRow
+              key={row.id}
+              testId="cors-origin-row"
+              type={row.type}
+              value={row.value}
+              error={origins.errors[row.id]}
+              warning={origins.warnings[row.id]}
+              {...rowLabels}
+              onTypeChange={(type) => {
+                clearSaveError();
+                origins.changeRowType(row.id, type);
+              }}
               onChange={(next) => {
                 clearSaveError();
-                origins.changeRow(index, next);
+                origins.changeRow(row.id, next);
               }}
-              onBlur={() => origins.blurRow(index)}
+              onBlur={() => origins.blurRow(row.id)}
               onRemove={() => {
                 clearSaveError();
-                origins.removeRow(index);
+                origins.removeRow(row.id);
               }}
             />
           ))}

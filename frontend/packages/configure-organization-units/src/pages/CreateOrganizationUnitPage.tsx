@@ -12,6 +12,7 @@ import {useTranslation} from 'react-i18next';
 import {useNavigate, useLocation} from 'react-router';
 import {z} from 'zod';
 import useCreateOrganizationUnit from '../api/useCreateOrganizationUnit';
+import OrganizationUnitConstraints from '../constants/organization-unit-constraints';
 import OrganizationUnitTreeConstants from '../constants/organization-unit-tree-constants';
 import useOrganizationUnit from '../contexts/useOrganizationUnit';
 import useOrganizationUnitRoutes from '../hooks/useOrganizationUnitRoutes';
@@ -21,13 +22,36 @@ import type {CreateOrganizationUnitRequest} from '../models/requests';
  * Creates a Zod schema for the create organization unit form with i18n support.
  * Validates name and handle fields.
  */
-const createFormSchema = (t: (key: string) => string) =>
+const createFormSchema = (t: (key: string, options?: Record<string, unknown>) => string) =>
   z.object({
-    name: z.string().trim().min(1, t('organizationUnits:edit.general.name.validations.required')),
+    name: z
+      .string()
+      .trim()
+      .min(
+        OrganizationUnitConstraints.NAME_MIN_LENGTH,
+        t('organizationUnits:edit.general.name.validations.required', {defaultValue: 'Name is required'}),
+      )
+      .max(
+        OrganizationUnitConstraints.NAME_MAX_LENGTH,
+        t('organizationUnits:edit.general.name.validations.maxLength', {
+          max: OrganizationUnitConstraints.NAME_MAX_LENGTH,
+          defaultValue: `Name cannot exceed ${OrganizationUnitConstraints.NAME_MAX_LENGTH} characters`,
+        }),
+      ),
     handle: z
       .string()
       .trim()
-      .min(1, t('organizationUnits:edit.general.handle.validations.required'))
+      .min(
+        OrganizationUnitConstraints.HANDLE_MIN_LENGTH,
+        t('organizationUnits:edit.general.handle.validations.required', {defaultValue: 'Handle is required'}),
+      )
+      .max(
+        OrganizationUnitConstraints.HANDLE_MAX_LENGTH,
+        t('organizationUnits:edit.general.handle.validations.maxLength', {
+          max: OrganizationUnitConstraints.HANDLE_MAX_LENGTH,
+          defaultValue: `Handle cannot exceed ${OrganizationUnitConstraints.HANDLE_MAX_LENGTH} characters`,
+        }),
+      )
       .regex(/^[a-z0-9-]+$/, t('organizationUnits:edit.general.handle.validations.format')),
     parentId: z.string().nullable(),
   });

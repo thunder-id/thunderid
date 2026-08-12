@@ -573,6 +573,50 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_TemplateRenderFailure_Re
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
+func (suite *SMSExecutorTestSuite) TestExecute_SendMode_TemplateDataIncludesRuntimeData() {
+	ctx := &providers.NodeContext{
+		ExecutionID:  "test-flow-id",
+		ExecutorMode: ExecutorModeSend,
+		Application:  providers.Application{Name: "MyApp"},
+		UserInputs: map[string]string{
+			common.AttributeMobileNumber: "+94714627887",
+		},
+		RuntimeData: map[string]string{
+			common.RuntimeKeyBindingMessage: "Approve sign-in",
+		},
+		ForwardedData: map[string]interface{}{
+			common.ForwardedDataKeyTemplateData: map[string]interface{}{
+				"inviteLink": "https://localhost:5190/gate/invite?executionId=test",
+			},
+		},
+		NodeProperties: map[string]interface{}{
+			propertyKeyNotificationSenderID: "sender-uuid-001",
+			propertyKeySMSTemplate:          string(template.ScenarioCIBANotification),
+		},
+	}
+
+	suite.mockBaseExecutor.On("GetRequiredInputs", mock.Anything).Return([]providers.Input{
+		{Identifier: common.AttributeMobileNumber, Type: providers.InputTypePhone, Required: true},
+	}).Maybe()
+	suite.mockTemplateService.On("Render", mock.Anything, template.ScenarioCIBANotification,
+		template.TemplateTypeSMS,
+		template.TemplateData{
+			common.RuntimeKeyBindingMessage: "Approve sign-in",
+			"appName":                       "MyApp",
+			"inviteLink":                    "https://localhost:5190/gate/invite?executionId=test",
+		},
+	).Return(&template.RenderedTemplate{Body: testRenderedSMSBody}, nil)
+	suite.mockSMSSenderSvc.On("Send",
+		mock.Anything, mock.Anything, "sender-uuid-001",
+		notifcm.NotificationData{Recipient: "+94714627887", Body: testRenderedSMSBody},
+	).Return(nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+}
+
 func TestSMSExecutorSuite(t *testing.T) {
 	suite.Run(t, new(SMSExecutorTestSuite))
 }

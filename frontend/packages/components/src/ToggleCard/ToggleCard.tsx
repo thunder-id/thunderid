@@ -57,7 +57,7 @@ export interface ToggleCardProps {
 /**
  * A single checkbox presented as a titled, described row — optionally wrapped in its own
  * bordered card. Shared by any wizard step that offers a single yes/no toggle (e.g. "Allow all
- * user types to access this application", "Allow Self Registration").
+ * user types to sign up for this application", "Allow Self Registration").
  */
 export default function ToggleCard({
   checked,

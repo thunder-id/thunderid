@@ -8,6 +8,7 @@ import {
   togglePermission,
   mergePermissions,
   removePermissions,
+  ancestorPermissions,
   getSubtreeSelectionState,
   arePermissionsEqual,
 } from '../permissionSelection';
@@ -29,14 +30,33 @@ describe('permissionSelection utils', () => {
     });
   });
 
+  describe('ancestorPermissions', () => {
+    it('lists every enclosing resource permission', () => {
+      expect(ancestorPermissions('bookings:reservations:update', ':')).toEqual(['bookings', 'bookings:reservations']);
+    });
+
+    it('returns nothing for a flat permission', () => {
+      expect(ancestorPermissions('list', ':')).toEqual([]);
+    });
+
+    it('honours the resource server delimiter', () => {
+      expect(ancestorPermissions('flights-delete', '-')).toEqual(['flights']);
+      expect(ancestorPermissions('flights-delete', ':')).toEqual([]);
+    });
+
+    it('returns nothing when the delimiter is unknown', () => {
+      expect(ancestorPermissions('bookings:create', '')).toEqual([]);
+    });
+  });
+
   describe('togglePermission', () => {
     it('adds a permission for a new server', () => {
-      const result = togglePermission([], 'rs-1', 'bookings');
+      const result = togglePermission([], 'rs-1', 'bookings', ':');
       expect(result).toEqual([{resourceServerId: 'rs-1', permissions: ['bookings']}]);
     });
 
     it('adds a permission to an existing server entry', () => {
-      const result = togglePermission(base, 'rs-2', 'payments:charge');
+      const result = togglePermission(base, 'rs-2', 'payments:charge', ':');
       expect(result.find((e) => e.resourceServerId === 'rs-2')?.permissions).toEqual([
         'payments:refund',
         'payments:charge',
@@ -44,19 +64,48 @@ describe('permissionSelection utils', () => {
     });
 
     it('removes a permission that is already selected', () => {
-      const result = togglePermission(base, 'rs-1', 'bookings');
+      const result = togglePermission(base, 'rs-1', 'bookings', ':');
       expect(result.find((e) => e.resourceServerId === 'rs-1')?.permissions).toEqual(['bookings:create']);
     });
 
+    it('also removes the resource permissions that would still confer it', () => {
+      const list = [
+        {
+          resourceServerId: 'rs-1',
+          permissions: ['bookings', 'bookings:reservations', 'bookings:reservations:update', 'payments:refund'],
+        },
+      ];
+      const result = togglePermission(list, 'rs-1', 'bookings:reservations:update', ':');
+      expect(result[0].permissions).toEqual(['payments:refund']);
+    });
+
+    it('strips ancestors under a non-colon delimiter', () => {
+      const list = [{resourceServerId: 'rs-1', permissions: ['flights', 'flights-create', 'flights-delete']}];
+      const result = togglePermission(list, 'rs-1', 'flights-delete', '-');
+      expect(result[0].permissions).toEqual(['flights-create']);
+    });
+
+    it('leaves resources whose permission merely shares a prefix', () => {
+      const list = [{resourceServerId: 'rs-1', permissions: ['bookings-archive', 'bookings:create']}];
+      const result = togglePermission(list, 'rs-1', 'bookings:create', ':');
+      expect(result[0].permissions).toEqual(['bookings-archive']);
+    });
+
+    it('does not strip ancestors when adding a permission', () => {
+      const list = [{resourceServerId: 'rs-1', permissions: ['bookings']}];
+      const result = togglePermission(list, 'rs-1', 'bookings:create', ':');
+      expect(result[0].permissions).toEqual(['bookings', 'bookings:create']);
+    });
+
     it('drops the server entry entirely when its last permission is removed', () => {
-      const result = togglePermission(base, 'rs-2', 'payments:refund');
+      const result = togglePermission(base, 'rs-2', 'payments:refund', ':');
       expect(result.find((e) => e.resourceServerId === 'rs-2')).toBeUndefined();
       expect(result).toHaveLength(1);
     });
 
     it('does not mutate the input', () => {
       const snapshot: ResourcePermissions[] = JSON.parse(JSON.stringify(base)) as ResourcePermissions[];
-      togglePermission(base, 'rs-1', 'bookings');
+      togglePermission(base, 'rs-1', 'bookings', ':');
       expect(base).toEqual(snapshot);
     });
   });

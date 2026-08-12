@@ -2097,3 +2097,113 @@ func (suite *RoleStoreTestSuite) TestDeleteAssignmentsByAssignee() {
 		suite.Equal(int64(0), deleted)
 	})
 }
+
+func (suite *RoleStoreTestSuite) TestGetReferencedPermissions() {
+	suite.Run("groups permissions by resource server", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetReferencedPermissions,
+			testDeploymentID).Return([]map[string]interface{}{
+			{"resource_server_id": "rs1", "permission": "read"},
+			{"resource_server_id": "rs1", "permission": "write"},
+			{"resource_server_id": "rs2", "permission": "list"},
+		}, nil).Once()
+
+		referenced, err := suite.store.GetReferencedPermissions(context.Background())
+
+		suite.NoError(err)
+		suite.Equal([]ResourcePermissions{
+			{ResourceServerID: "rs1", Permissions: []string{"read", "write"}},
+			{ResourceServerID: "rs2", Permissions: []string{"list"}},
+		}, referenced)
+	})
+
+	suite.Run("no rows returns empty", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetReferencedPermissions,
+			testDeploymentID).Return([]map[string]interface{}{}, nil).Once()
+
+		referenced, err := suite.store.GetReferencedPermissions(context.Background())
+
+		suite.NoError(err)
+		suite.Empty(referenced)
+	})
+
+	suite.Run("db client error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("client error")).Once()
+
+		referenced, err := suite.store.GetReferencedPermissions(context.Background())
+
+		suite.Error(err)
+		suite.Nil(referenced)
+	})
+
+	suite.Run("query error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetReferencedPermissions,
+			testDeploymentID).Return(nil, errors.New("db error")).Once()
+
+		referenced, err := suite.store.GetReferencedPermissions(context.Background())
+
+		suite.Error(err)
+		suite.Nil(referenced)
+	})
+
+	suite.Run("malformed resource server id errors", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetReferencedPermissions,
+			testDeploymentID).Return([]map[string]interface{}{
+			{"resource_server_id": 42, "permission": "read"},
+		}, nil).Once()
+
+		referenced, err := suite.store.GetReferencedPermissions(context.Background())
+
+		suite.Error(err)
+		suite.Nil(referenced)
+	})
+
+	suite.Run("malformed permission errors", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetReferencedPermissions,
+			testDeploymentID).Return([]map[string]interface{}{
+			{"resource_server_id": "rs1", "permission": 42},
+		}, nil).Once()
+
+		referenced, err := suite.store.GetReferencedPermissions(context.Background())
+
+		suite.Error(err)
+		suite.Nil(referenced)
+	})
+}
+
+func (suite *RoleStoreTestSuite) TestDeleteRolePermission() {
+	suite.Run("success returns rows affected", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteRolePermissionByValue,
+			"rs1", "read", testDeploymentID).Return(int64(3), nil).Once()
+
+		deleted, err := suite.store.DeleteRolePermission(context.Background(), "rs1", "read")
+
+		suite.NoError(err)
+		suite.Equal(int64(3), deleted)
+	})
+
+	suite.Run("db client error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("client error")).Once()
+
+		deleted, err := suite.store.DeleteRolePermission(context.Background(), "rs1", "read")
+
+		suite.Error(err)
+		suite.Equal(int64(0), deleted)
+	})
+
+	suite.Run("db error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteRolePermissionByValue,
+			"rs1", "read", testDeploymentID).Return(int64(0), errors.New("db error")).Once()
+
+		deleted, err := suite.store.DeleteRolePermission(context.Background(), "rs1", "read")
+
+		suite.Error(err)
+		suite.Equal(int64(0), deleted)
+	})
+}

@@ -23,13 +23,11 @@
  * - ADMIN_PASSWORD: Admin password (default: "admin")
  */
 
-import { test } from "../../fixtures/sample-app";
-import { getAdminToken } from "../../utils/authentication";
+import { test, UsersApi } from "../../fixtures/sample-app";
 import { TestDataFactory } from "../../utils/test-data";
 import { TestTags } from "../../constants/test-tags";
 
 const sampleAppUrl = process.env.SAMPLE_APP_URL;
-const serverUrl = process.env.SERVER_URL || "https://localhost:8090";
 
 // Skip tests if SAMPLE_APP_URL is not provided
 const describeOrSkip = sampleAppUrl ? test.describe : test.describe.skip;
@@ -40,40 +38,10 @@ describeOrSkip("Sample App - Login and Logout", { tag: [TestTags.AUTHENTICATION]
 
   test.beforeAll(async ({ request }) => {
     console.log("\n=== Login Test Suite Setup ===");
-    const adminToken = await getAdminToken(request);
-
-    const userTypesResponse = await request.get(`${serverUrl}/user-types`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
-      ignoreHTTPSErrors: true,
-    });
-    if (!userTypesResponse.ok()) {
-      throw new Error(`Failed to fetch user types: ${await userTypesResponse.text()}`);
-    }
-    const userTypesData = await userTypesResponse.json();
-    const personType = userTypesData.types?.find((t: any) => t.name === "Person");
-    if (!personType?.ouId) {
-      throw new Error("Person user type not found or missing organization unit");
-    }
-
-    const createResponse = await request.post(`${serverUrl}/users`, {
-      data: {
-        type: "Person",
-        ouId: personType.ouId,
-        attributes: {
-          username: testUser.username,
-          password: testUser.password,
-          given_name: testUser.given_name,
-          email: testUser.email,
-        },
-      },
-      headers: { Authorization: `Bearer ${adminToken}` },
-      ignoreHTTPSErrors: true,
-    });
-    if (!createResponse.ok()) {
-      throw new Error(`Failed to create test user: ${await createResponse.text()}`);
-    }
-    const createdUser = await createResponse.json();
-    userId = createdUser.id;
+    // beforeAll/afterAll cannot take custom test-scoped fixtures, so construct the shared
+    // helper directly here - same class the fixture uses inside test bodies elsewhere.
+    const user = await new UsersApi(request).createUser(testUser);
+    userId = user.id;
     console.log(`✓ Test user created: ${userId}`);
     console.log("=========================\n");
   });
@@ -82,15 +50,11 @@ describeOrSkip("Sample App - Login and Logout", { tag: [TestTags.AUTHENTICATION]
     if (!userId) return;
 
     console.log("\n=== Login Test Suite Teardown ===");
-    const adminToken = await getAdminToken(request);
-    const deleteResponse = await request.delete(`${serverUrl}/users/${userId}`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
-      ignoreHTTPSErrors: true,
-    });
-    if (deleteResponse.ok()) {
+    const deleted = await new UsersApi(request).deleteById(userId);
+    if (deleted) {
       console.log(`✓ Test user deleted: ${userId}`);
     } else {
-      console.log(`⚠️  Failed to delete test user ${userId}: ${deleteResponse.status()}`);
+      console.log(`⚠️  Failed to delete test user ${userId}`);
     }
     console.log("===============================\n");
   });

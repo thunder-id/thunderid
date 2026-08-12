@@ -18,18 +18,22 @@ I have a Vue 3 application and I want to integrate {{productName}}'s authenticat
 ## IMPORTANT Configuration Rules
 - Register ThunderIDPlugin via app.use(ThunderIDPlugin) in src/main.js
 - Import ThunderIDPlugin from '@thunderid/vue'
-- Wrap the app root in App.vue with <ThunderIDProvider client-id="..." base-url="...">
-- Pass configuration as kebab-case attributes: `client-id` and `base-url`
+- Store client-id and base-url in a .env file as VITE_-prefixed vars (Vite only exposes env vars to client code when prefixed VITE_)
+- NEVER reference `import.meta` inside a Vue template expression (e.g. in `:client-id="import.meta.env.X"`) — Vue's template compiler cannot parse it and will throw a JS parsing error. Always read import.meta.env.* into a const inside <script setup>, then bind the const in the template.
+- Wrap the app root in App.vue with <ThunderIDProvider :client-id="..." :base-url="..."> using kebab-case attribute names bound to the consts above
 - Import UI components (SignInButton, SignOutButton, SignedIn, SignedOut, UserDropdown) from '@thunderid/vue'
 - Use <UserDropdown /> inside <SignedIn> to display the signed-in user's profile and sign-out option
 
 ## Implementation Steps
 1. Create a Vue 3 app: npm create vite@latest my-vue-app -- --template vue
-2. Navigate into the project: cd my-vue-app && npm install
-3. Install @thunderid/vue: npm install @thunderid/vue
-4. Register ThunderIDPlugin in src/main.js with app.use(ThunderIDPlugin)
-5. Wrap app content with <ThunderIDProvider client-id="{{clientId}}" base-url="https://localhost:8090"> in src/App.vue
-6. Add SignInButton inside SignedOut and UserDropdown inside SignedIn conditional wrappers
-7. Run: npm run dev
+2. cd my-vue-app
+3. npm install
+4. npm install @thunderid/vue
+5. Verify the install succeeded: confirm node_modules/vite exists and node_modules/.bin/vite resolves (not a broken symlink) before proceeding. If npm install reports success but node_modules/vite is missing, delete node_modules and package-lock.json and reinstall.
+6. Create .env with VITE_THUNDERID_CLIENT_ID and VITE_THUNDERID_BASE_URL
+7. Register ThunderIDPlugin in src/main.js with app.use(ThunderIDPlugin)
+8. In src/App.vue, read the env vars into consts in <script setup>, then wrap the template in <ThunderIDProvider :client-id="..." :base-url="...">
+9. Add SignInButton inside SignedOut and UserDropdown inside SignedIn
+10. Run: npm run dev — confirm it starts without compile errors before reporting success
 
 Please provide complete, working code with proper configuration for {{productName}} authentication using the @thunderid/vue SDK.

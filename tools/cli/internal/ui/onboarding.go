@@ -121,5 +121,7 @@ func (m *ReplModel) selectOnboarding() tea.Cmd {
 
 	m.tryingOut = true
 	m.input.Blur()
-	return makeTryCmd(item.sampleName, m.installPath, m.verbose, sample.Options{})
+	return makeTryCmd(item.sampleName, m.installPath, m.verbose, sample.Options{
+		Features: item.sampleFeatures, Port: m.effectivePort(),
+	})
 }

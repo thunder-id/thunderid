@@ -28,9 +28,9 @@ describe('useGetRoles', () => {
   let mockGetServerUrl: ReturnType<typeof vi.fn>;
 
   const mockRoleListResponse: RoleListResponse = {
-    totalResults: 2,
+    totalResults: 12,
     startIndex: 0,
-    count: 2,
+    count: 10,
     roles: [
       {
         id: 'role-1',
@@ -44,6 +44,11 @@ describe('useGetRoles', () => {
         description: 'Read-only role',
         ouId: 'ou-2',
       },
+      ...Array.from({length: 8}, (_, index) => ({
+        id: `role-${index + 3}`,
+        name: `Role ${index + 3}`,
+        ouId: 'ou-1',
+      })),
     ],
   };
 
@@ -92,9 +97,9 @@ describe('useGetRoles', () => {
     });
 
     expect(result.current.data).toEqual(mockRoleListResponse);
-    expect(result.current.data?.roles).toHaveLength(2);
-    expect(result.current.data?.totalResults).toBe(2);
-    expect(result.current.data?.count).toBe(2);
+    expect(result.current.data?.roles).toHaveLength(10);
+    expect(result.current.data?.totalResults).toBe(12);
+    expect(result.current.data?.count).toBe(10);
   });
 
   it('should use default pagination parameters (limit=30, offset=0)', async () => {
@@ -331,5 +336,62 @@ describe('useGetRoles', () => {
     await result.current.refetch();
 
     expect(mockHttpRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it('should keep previous page data while fetching the next page', async () => {
+    const nextPageData: RoleListResponse = {
+      totalResults: 12,
+      startIndex: 10,
+      count: 2,
+      roles: [
+        {id: 'role-11', name: 'Editor Role', ouId: 'ou-1'},
+        {id: 'role-12', name: 'Auditor Role', ouId: 'ou-2'},
+      ],
+    };
+    let resolveNextPage: ((value: {data: RoleListResponse}) => void) | undefined;
+    mockHttpRequest.mockImplementation((request: {url: string}): unknown => {
+      if (request.url.includes('offset=0')) {
+        return Promise.resolve({data: mockRoleListResponse});
+      }
+
+      if (request.url.includes('offset=10')) {
+        return new Promise((resolve) => {
+          resolveNextPage = resolve;
+        });
+      }
+
+      throw new Error(`Unexpected roles request: ${request.url}`);
+    });
+
+    const {result, rerender} = renderHook(({offset}: {offset: number}) => useGetRoles({limit: 10, offset}), {
+      initialProps: {offset: 0},
+    });
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(mockRoleListResponse);
+    });
+
+    rerender({offset: 10});
+
+    expect(result.current.data).toEqual(mockRoleListResponse);
+    expect(result.current.isFetching).toBe(true);
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: 'https://api.test.com/roles?limit=10&offset=10&include=display',
+        }),
+      );
+      expect(resolveNextPage).toBeDefined();
+    });
+
+    if (!resolveNextPage) {
+      throw new Error('The next-page request was not captured');
+    }
+    resolveNextPage({data: nextPageData});
+
+    await waitFor(() => {
+      expect(result.current.isFetching).toBe(false);
+      expect(result.current.data).toEqual(nextPageData);
+    });
   });
 });

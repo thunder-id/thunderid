@@ -119,21 +119,7 @@ func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRe
 	}
 	scenario := template.ScenarioType(tmplStr)
 
-	templateData := template.TemplateData{"appName": ctx.Application.Name}
-	if ctx.ForwardedData != nil {
-		if fwdTemplateData, ok := ctx.ForwardedData[common.ForwardedDataKeyTemplateData]; ok {
-			switch data := fwdTemplateData.(type) {
-			case map[string]interface{}:
-				for k, v := range data {
-					templateData[k] = fmt.Sprintf("%v", v)
-				}
-			case map[string]string:
-				for k, v := range data {
-					templateData[k] = v
-				}
-			}
-		}
-	}
+	templateData := e.resolveTemplateData(ctx)
 
 	rendered, svcErr := e.templateService.Render(ctx.Context, scenario, template.TemplateTypeSMS, templateData)
 	if svcErr != nil {
@@ -156,6 +142,34 @@ func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRe
 	execResp.AdditionalData[common.DataSMSSent] = dataValueTrue
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
+}
+
+// resolveTemplateData extracts template data from RuntimeData, Context, and ForwardedData.
+func (e *smsExecutor) resolveTemplateData(ctx *providers.NodeContext) template.TemplateData {
+	templateData := template.TemplateData{}
+
+	for k, v := range ctx.RuntimeData {
+		templateData[k] = v
+	}
+
+	templateData["appName"] = ctx.Application.Name
+
+	if ctx.ForwardedData != nil {
+		if fwdTemplateData, ok := ctx.ForwardedData[common.ForwardedDataKeyTemplateData]; ok {
+			switch data := fwdTemplateData.(type) {
+			case map[string]interface{}:
+				for k, v := range data {
+					templateData[k] = fmt.Sprintf("%v", v)
+				}
+			case map[string]string:
+				for k, v := range data {
+					templateData[k] = v
+				}
+			}
+		}
+	}
+
+	return templateData
 }
 
 // resolveRecipientMobile retrieves the recipient mobile number from user inputs, runtime data,

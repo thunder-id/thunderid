@@ -113,4 +113,33 @@ var (
 			DefaultValue: "The token response received from the identity provider is invalid",
 		},
 	}
+	// ErrorUserProfileRetrievalFailed is the error when the provider's profile endpoint rejects the request.
+	ErrorUserProfileRetrievalFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AUTH-OAUTH-1009",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authoauthservice.user_profile_retrieval_failed",
+			DefaultValue: "Failed to retrieve the user profile",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.authoauthservice.user_profile_retrieval_failed_description",
+			DefaultValue: "The identity provider rejected the request to the configured user profile " +
+				"endpoint. Verify the endpoint URL and that the configured scopes grant access to it",
+		},
+	}
+	// ErrorNoUserProfileSource is the error when no profile endpoint is configured and the access
+	// token carries no subject.
+	ErrorNoUserProfileSource = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AUTH-OAUTH-1010",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authoauthservice.no_user_profile_source",
+			DefaultValue: "No user profile source available",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.authoauthservice.no_user_profile_source_description",
+			DefaultValue: "The identity provider has no user profile endpoint configured and the access " +
+				"token carries no subject identifier. Configure a user profile endpoint on the connection",
+		},
+	}
 )

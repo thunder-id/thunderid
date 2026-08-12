@@ -22,7 +22,6 @@ type oidcConnectionRequest struct {
 	TokenEndpoint         string   `json:"tokenEndpoint"`
 	UserInfoEndpoint      string   `json:"userInfoEndpoint,omitempty"`
 	JwksEndpoint          string   `json:"jwksEndpoint,omitempty"`
-	LogoutEndpoint        string   `json:"logoutEndpoint,omitempty"`
 	Issuer                string   `json:"issuer,omitempty"`
 	Scopes                []string `json:"scopes,omitempty"`
 	Prompt                string   `json:"prompt,omitempty"`
@@ -46,7 +45,6 @@ type oidcConnectionResponse struct {
 	TokenEndpoint         string   `json:"tokenEndpoint,omitempty"`
 	UserInfoEndpoint      string   `json:"userInfoEndpoint,omitempty"`
 	JwksEndpoint          string   `json:"jwksEndpoint,omitempty"`
-	LogoutEndpoint        string   `json:"logoutEndpoint,omitempty"`
 	Issuer                string   `json:"issuer,omitempty"`
 	Scopes                []string `json:"scopes,omitempty"`
 	Prompt                string   `json:"prompt,omitempty"`
@@ -72,7 +70,6 @@ func oidcToIDPDTO(req oidcConnectionRequest) (*providers.IDPDTO, error) {
 		{idp.PropTokenEndpoint, req.TokenEndpoint, false},
 		{idp.PropUserInfoEndpoint, req.UserInfoEndpoint, false},
 		{idp.PropJwksEndpoint, req.JwksEndpoint, false},
-		{idp.PropLogoutEndpoint, req.LogoutEndpoint, false},
 		{idp.PropIssuer, req.Issuer, false},
 		{idp.PropScopes, joinScopes(req.Scopes), false},
 		{idp.PropPrompt, req.Prompt, false},
@@ -129,7 +126,6 @@ func oidcFromIDPDTO(dto providers.IDPDTO) (oidcConnectionResponse, error) {
 		TokenEndpoint:         values[idp.PropTokenEndpoint],
 		UserInfoEndpoint:      values[idp.PropUserInfoEndpoint],
 		JwksEndpoint:          values[idp.PropJwksEndpoint],
-		LogoutEndpoint:        values[idp.PropLogoutEndpoint],
 		Issuer:                values[idp.PropIssuer],
 		Scopes:                splitScopes(values[idp.PropScopes]),
 		Prompt:                values[idp.PropPrompt],

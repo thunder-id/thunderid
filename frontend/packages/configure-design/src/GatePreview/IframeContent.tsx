@@ -23,6 +23,7 @@ import {useEffect, useMemo, type JSX} from 'react';
 import PreviewThemeProvider from './PreviewThemeProvider';
 import {resolveAnchorActionRef, resolveHoverTarget} from './richTextClickResolution';
 import ElementInspector from '../components/layouts/ElementInspector';
+import {applyBorderStylesToTheme} from '../utils/applyBorderStylesToTheme';
 
 /**
  * MUI's extendTheme only accepts 'light' or 'dark' for defaultColorScheme.
@@ -57,6 +58,19 @@ function IframeBodyBackground({iframeDoc}: {iframeDoc: Document}): null {
     const {body} = iframeDoc;
     body.style.setProperty('background', background ?? '');
   }, [iframeDoc, muiTheme]);
+
+  return null;
+}
+
+/**
+ * Sets the document direction (RTL/LTR) on the iframe based on theme direction.
+ */
+function IframeDirection({iframeDoc, theme}: {iframeDoc: Document; theme: Theme | undefined}): null {
+  useEffect(() => {
+    const themeRecord = theme as unknown as Record<string, unknown>;
+    const direction = theme ? ((themeRecord['direction'] as string) ?? 'ltr') : 'ltr';
+    iframeDoc.documentElement.setAttribute('dir', direction);
+  }, [iframeDoc, theme]);
 
   return null;
 }
@@ -136,6 +150,9 @@ export default function IframeContent({
   const hasTheme = Boolean(theme && Object.keys(theme).length > 0);
   const showThemelessBranding = themelessBranding && !hasTheme;
 
+  // Apply border styles from theme.border to component overrides
+  const themeWithBorders = useMemo(() => applyBorderStylesToTheme(theme), [theme]);
+
   const themeTypography = (hasTheme ? theme : baseTheme)?.typography as {fontFamily?: string} | undefined;
   const fontFamily = themeTypography?.fontFamily;
   const fontImportURL = getFontImportURL(hasTheme ? theme : baseTheme);
@@ -188,7 +205,7 @@ export default function IframeContent({
       <FontImporter fontFamily={fontFamily} importURL={fontImportURL} targetDocument={iframeDoc} />
       <DesignProvider
         shouldResolveDesignInternally={false}
-        design={hasTheme ? ({theme: sanitizeThemeForMui(theme!)} as DesignResolveResponse) : undefined}
+        design={hasTheme ? ({theme: sanitizeThemeForMui(themeWithBorders!)} as DesignResolveResponse) : undefined}
       >
         <PreviewThemeProvider
           colorScheme={colorScheme}
@@ -196,6 +213,7 @@ export default function IframeContent({
           baseTheme={baseTheme}
         >
           <IframeBodyBackground iframeDoc={iframeDoc} />
+          <IframeDirection iframeDoc={iframeDoc} theme={themeWithBorders} />
           <ElementInspector enabled={inspectorEnabled} onSelectSelector={onSelectSelector}>
             <AuthPageLayout isLoading={false} variant="SignIn" background={pageBackground}>
               {showThemelessBranding && <ParticleBackground opacity={0.5} />}

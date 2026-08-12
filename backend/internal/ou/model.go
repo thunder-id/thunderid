@@ -12,8 +12,8 @@ import (
 
 // OrganizationUnitRequest represents the request body for creating an organization unit.
 type OrganizationUnitRequest struct {
-	Handle                    string  `json:"handle"                    native:"required,min=3,max=50"`
-	Name                      string  `json:"name"                      native:"required,min=2,max=100"`
+	Handle                    string  `json:"handle"                    native:"required,min=1,max=100"`
+	Name                      string  `json:"name"                      native:"required,min=1,max=100"`
 	Description               string  `json:"description,omitempty"`
 	Parent                    *string `json:"parent"                    native:"omitempty,max=255"`
 	ThemeID                   string  `json:"themeId,omitempty"`

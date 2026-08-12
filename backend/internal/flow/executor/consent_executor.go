@@ -326,7 +326,7 @@ func (e *consentExecutor) getRequiredAttributes(ctx *providers.NodeContext) (
 }
 
 // buildAugmentedAvailableAttributes returns an AttributesResponse value augmented with
-// special attribute keys (groups, userType, ouId, ouName, ouHandle) that are present by
+// special attribute keys (groups, roles, userType, ouId, ouName, ouHandle) that are present by
 // construction in the authenticated user context but are never included in AttributesResponse
 // by authentication providers.
 //
@@ -366,6 +366,7 @@ func (e *consentExecutor) buildAugmentedAvailableAttributes(
 	}
 	if entityRef.EntityID != "" {
 		augmented[oauth2const.UserAttributeGroups] = &providers.AttributeResponse{}
+		augmented[oauth2const.UserAttributeRoles] = &providers.AttributeResponse{}
 	}
 
 	return &providers.AttributesResponse{

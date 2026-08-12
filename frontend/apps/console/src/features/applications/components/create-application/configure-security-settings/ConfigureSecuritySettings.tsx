@@ -21,8 +21,8 @@ export interface ConfigureSecuritySettingsProps {
  * `ApplicationCreatePage`'s `visibleSteps`) when the Details step chose to snapshot the
  * organization unit's sign-in default instead. Sign Up and Recovery are no longer configured
  * here either; they're inherited from the organization unit's defaults or left unset and
- * configured later from the application's edit page. Who can access the application (user types)
- * is configured on the Access step alongside the sign-in experience.
+ * configured later from the application's edit page. Which user types can sign up through the
+ * application is configured on the Access step alongside the sign-in experience.
  */
 export default function ConfigureSecuritySettings({
   onReadyChange = undefined,

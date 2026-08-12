@@ -3,8 +3,8 @@
 
 import {render, screen} from '@testing-library/react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import PreDeleteProperties from '../PreDeleteProperties';
 import {REVOCATION_MODES} from '../constants';
+import PreDeleteProperties from '../PreDeleteProperties';
 import type {Resource} from '@/features/flows/models/resources';
 
 vi.mock('react-i18next', () => ({

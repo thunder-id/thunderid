@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -1676,12 +1677,12 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleErrorClientError() {
 	require.Equal(t, ErrorGroupNameConflict.Code, body.Code)
 }
 
-func (suite *GroupHandlerTestSuite) TestGroupHandler_ValidationError_NameTooShort() {
+func (suite *GroupHandlerTestSuite) TestGroupHandler_ValidationError_NameTooLong() {
 	serviceMock := NewGroupServiceInterfaceMock(suite.T())
 	handler := newGroupHandler(serviceMock)
 
-	// Fails validation because the name string has a length of 2 (violates min=3)
-	body := `{"name":"ab", "ouId":"ou-001"}`
+	// Fails validation because the name string has a length of 101 (violates max=100)
+	body := fmt.Sprintf(`{"name":%q, "ouId":"ou-001"}`, strings.Repeat("a", 101))
 	req := httptest.NewRequest(http.MethodPost, "/groups", strings.NewReader(body))
 	w := httptest.NewRecorder()
 

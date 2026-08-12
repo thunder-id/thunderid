@@ -3,6 +3,7 @@
 
 import {useGetApplications} from '@thunderid/configure-applications';
 import {AuthenticatorTypes} from '@thunderid/configure-connections';
+import type {AllowedOriginDraftRow} from '@thunderid/configure-settings';
 import type {LayoutConfig, Theme} from '@thunderid/design';
 import type {PropsWithChildren} from 'react';
 import {useState, useMemo, useCallback} from 'react';
@@ -72,7 +73,7 @@ const INITIAL_STATE: {
   isSignOutFlowEnabled: boolean;
   redirectUris: string[];
   postLogoutRedirectUris: string[];
-  corsOrigins: string[];
+  corsOrigins: AllowedOriginDraftRow[];
   ouDefaults: OrganizationUnitDefaultsSelection;
   selectedTechnology: TechnologyApplicationTemplate | null;
   selectedPlatform: PlatformApplicationTemplate | null;
@@ -185,7 +186,7 @@ export default function ApplicationCreateProvider({children}: ApplicationCreateP
   const [isSignOutFlowEnabled, setIsSignOutFlowEnabled] = useState<boolean>(INITIAL_STATE.isSignOutFlowEnabled);
   const [redirectUris, setRedirectUris] = useState<string[]>(INITIAL_STATE.redirectUris);
   const [postLogoutRedirectUris, setPostLogoutRedirectUris] = useState<string[]>(INITIAL_STATE.postLogoutRedirectUris);
-  const [corsOrigins, setCorsOrigins] = useState<string[]>(INITIAL_STATE.corsOrigins);
+  const [corsOrigins, setCorsOrigins] = useState<AllowedOriginDraftRow[]>(INITIAL_STATE.corsOrigins);
   const [ouDefaults, setOuDefaults] = useState<OrganizationUnitDefaultsSelection>(INITIAL_STATE.ouDefaults);
   const [selectedTechnology, setSelectedTechnology] = useState<TechnologyApplicationTemplate | null>(
     INITIAL_STATE.selectedTechnology,

@@ -3,7 +3,6 @@
 
 import {Stack} from '@wso2/oxygen-ui';
 import {useCallback, useMemo, type ReactNode} from 'react';
-import PreDeleteProperties from './execution-properties/PreDeleteProperties';
 import ConsentProperties from './execution-properties/ConsentProperties';
 import {EXECUTOR_TO_IDP_TYPE_MAP, EXECUTORS_WITH_FIXED_INPUTS} from './execution-properties/constants';
 import EmailProperties from './execution-properties/EmailProperties';
@@ -20,6 +19,7 @@ import OUExecutorProperties from './execution-properties/OUExecutorProperties';
 import OUResolverProperties from './execution-properties/OUResolverProperties';
 import PasskeyProperties from './execution-properties/PasskeyProperties';
 import PermissionValidatorProperties from './execution-properties/PermissionValidatorProperties';
+import PreDeleteProperties from './execution-properties/PreDeleteProperties';
 import ProvisioningProperties from './execution-properties/ProvisioningProperties';
 import SessionSignOutProperties from './execution-properties/SessionSignOutProperties';
 import SmsProperties from './execution-properties/SmsProperties';

@@ -153,6 +153,32 @@ describe('ConfigureName', () => {
     expect(input).toHaveValue('Updated Name');
   });
 
+  describe('length validation', () => {
+    it('should show a maximum length error when the name is too long', () => {
+      renderComponent({name: 'a'.repeat(101)});
+
+      expect(screen.getByText('Group name cannot exceed 100 characters')).toBeInTheDocument();
+    });
+
+    it('should not show a length error when the name is empty', () => {
+      renderComponent({name: ''});
+
+      expect(screen.queryByText('Group name cannot exceed 100 characters')).not.toBeInTheDocument();
+    });
+
+    it('should not show a length error for a single character name', () => {
+      renderComponent({name: 'A'});
+
+      expect(screen.queryByText('Group name cannot exceed 100 characters')).not.toBeInTheDocument();
+    });
+
+    it('should not show a length error when the name is within bounds', () => {
+      renderComponent({name: 'My Group'});
+
+      expect(screen.queryByText('Group name cannot exceed 100 characters')).not.toBeInTheDocument();
+    });
+  });
+
   describe('onReadyChange callback', () => {
     it('should call onReadyChange with true when name is not empty', () => {
       const mockOnReadyChange = vi.fn();
@@ -171,6 +197,20 @@ describe('ConfigureName', () => {
     it('should call onReadyChange with false when name contains only whitespace', () => {
       const mockOnReadyChange = vi.fn();
       renderComponent({name: '   ', onReadyChange: mockOnReadyChange});
+
+      expect(mockOnReadyChange).toHaveBeenCalledWith(false);
+    });
+
+    it('should call onReadyChange with true for a single character name', () => {
+      const mockOnReadyChange = vi.fn();
+      renderComponent({name: 'A', onReadyChange: mockOnReadyChange});
+
+      expect(mockOnReadyChange).toHaveBeenCalledWith(true);
+    });
+
+    it('should call onReadyChange with false when name is longer than the maximum length', () => {
+      const mockOnReadyChange = vi.fn();
+      renderComponent({name: 'a'.repeat(101), onReadyChange: mockOnReadyChange});
 
       expect(mockOnReadyChange).toHaveBeenCalledWith(false);
     });

@@ -231,7 +231,6 @@ func connectionModelFromIDPDTO(dto providers.IDPDTO) (connectionExportModel, err
 		TokenEndpoint:          values[idp.PropTokenEndpoint],
 		UserInfoEndpoint:       values[idp.PropUserInfoEndpoint],
 		JwksEndpoint:           values[idp.PropJwksEndpoint],
-		LogoutEndpoint:         values[idp.PropLogoutEndpoint],
 		Issuer:                 values[idp.PropIssuer],
 		TrustedTokenAudience:   values[idp.PropTrustedTokenAudience],
 		AttributeConfiguration: dto.AttributeConfiguration,
@@ -314,7 +313,7 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 			ClientSecret: model.ClientSecret, RedirectURI: model.RedirectURI,
 			AuthorizationEndpoint: model.AuthorizationEndpoint, TokenEndpoint: model.TokenEndpoint,
 			UserInfoEndpoint: model.UserInfoEndpoint, JwksEndpoint: model.JwksEndpoint,
-			LogoutEndpoint: model.LogoutEndpoint, Issuer: model.Issuer, Scopes: model.Scopes,
+			Issuer: model.Issuer, Scopes: model.Scopes,
 			Prompt: model.Prompt, TokenExchangeEnabled: model.TokenExchangeEnabled,
 			TrustedTokenAudience: model.TrustedTokenAudience, AttributeConfiguration: model.AttributeConfiguration,
 		})
@@ -328,8 +327,8 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 			Name: model.Name, Description: model.Description, ClientID: model.ClientID,
 			ClientSecret: model.ClientSecret, RedirectURI: model.RedirectURI,
 			AuthorizationEndpoint: model.AuthorizationEndpoint, TokenEndpoint: model.TokenEndpoint,
-			UserInfoEndpoint: model.UserInfoEndpoint, LogoutEndpoint: model.LogoutEndpoint,
-			Scopes: model.Scopes, Prompt: model.Prompt, AttributeConfiguration: model.AttributeConfiguration,
+			UserInfoEndpoint: model.UserInfoEndpoint, Scopes: model.Scopes, Prompt: model.Prompt,
+			AttributeConfiguration: model.AttributeConfiguration,
 		})
 		if err != nil {
 			return nil, nil, err

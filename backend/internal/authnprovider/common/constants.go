@@ -11,6 +11,10 @@ const (
 	UserAttributeSub = "sub"
 )
 
+// SystemAttrCredentialUpdatedAt is the entity system-attribute key recording when the entity's
+// authentication credential last changed: a user's password, or a client secret.
+const SystemAttrCredentialUpdatedAt = "credentialUpdatedAt" // #nosec G101 -- attribute key, not a secret
+
 // Credential type keys used in the credentials map passed to the authentication providers.
 const (
 	// CredentialTypeProvisionedEntityID identifies an entity provisioned earlier in the same flow.

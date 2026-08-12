@@ -49,6 +49,22 @@ const resolveComponentMetadata = (resources: Resources, components?: Element[]):
       updatedComponent.components = updatedComponent.components.map(updateComponentResourceType);
     }
 
+    if (updatedComponent.variants?.length) {
+      const selectedVariant = updatedComponent.variants.find(
+        (variant: Element) => variant.variant === updatedComponent.variant,
+      );
+      const defaultVariant =
+        selectedVariant ??
+        updatedComponent.variants.find(
+          (variant: Element) => variant.variant === updatedComponent.display?.defaultVariant,
+        ) ??
+        updatedComponent.variants[0];
+
+      updatedComponent = safeMerge<Element>({}, defaultVariant, updatedComponent, {
+        variant: defaultVariant.variant,
+      });
+    }
+
     return updatedComponent;
   };
 

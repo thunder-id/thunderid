@@ -17,6 +17,7 @@ import {useNavigate} from 'react-router';
 import useCreateUserType from '../api/useCreateUserType';
 import ConfigureName from '../components/create-user-type/ConfigureName';
 import ConfigureProperties from '../components/create-user-type/ConfigureProperties';
+import UserTypeConstraints from '../constants/user-type-constraints';
 import useUserTypeCreate from '../contexts/UserTypeCreate/useUserTypeCreate';
 import useUserTypeRoutes from '../hooks/useUserTypeRoutes';
 import {UserTypeCreateFlowStep} from '../models/user-type-create-flow';
@@ -178,8 +179,19 @@ export default function CreateUserTypePage(): JSX.Element {
     setError(null);
 
     // Validate
-    if (!name.trim()) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
       setError(t('userTypes:validationErrors.nameRequired', 'Please enter a user type name'));
+      return;
+    }
+
+    if (trimmedName.length > UserTypeConstraints.NAME_MAX_LENGTH) {
+      setError(
+        t('userTypes:createWizard.name.maxLength', {
+          max: UserTypeConstraints.NAME_MAX_LENGTH,
+          defaultValue: `User type name cannot exceed ${UserTypeConstraints.NAME_MAX_LENGTH} characters`,
+        }),
+      );
       return;
     }
 

@@ -1451,7 +1451,8 @@ func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_Emp
 	assert.Contains(suite.T(), result.Attributes, "ouName")
 	assert.Contains(suite.T(), result.Attributes, "ouHandle")
 	assert.Contains(suite.T(), result.Attributes, "groups")
-	assert.Len(suite.T(), result.Attributes, 5)
+	assert.Contains(suite.T(), result.Attributes, "roles")
+	assert.Len(suite.T(), result.Attributes, 6)
 }
 
 func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_NoSpecialContext() {
@@ -1473,6 +1474,7 @@ func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_NoS
 	assert.True(suite.T(), result.Attributes["phone"] == nil)
 	assert.NotContains(suite.T(), result.Attributes, "userType")
 	assert.NotContains(suite.T(), result.Attributes, "groups")
+	assert.NotContains(suite.T(), result.Attributes, "roles")
 	assert.NotContains(suite.T(), result.Attributes, "ouId")
 }
 
@@ -1491,13 +1493,19 @@ func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_Wit
 			name:             "EntityType only",
 			entityType:       testUserTypeInternal,
 			expectedContains: []string{"userType", "email"},
-			expectedAbsent:   []string{"ouId", "ouName", "ouHandle", "groups"},
+			expectedAbsent:   []string{"ouId", "ouName", "ouHandle", "groups", "roles"},
 		},
 		{
 			name:             "OUID only",
 			ouID:             "ou-456",
 			expectedContains: []string{"ouId", "ouName", "ouHandle", "email"},
-			expectedAbsent:   []string{"userType", "groups"},
+			expectedAbsent:   []string{"userType", "groups", "roles"},
+		},
+		{
+			name:             "EntityID only",
+			entityID:         testUserID,
+			expectedContains: []string{"groups", "roles", "email"},
+			expectedAbsent:   []string{"userType", "ouId", "ouName", "ouHandle"},
 		},
 	}
 
@@ -1527,7 +1535,7 @@ func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_Wit
 	}
 }
 
-func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_WithGroups() {
+func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_WithGroupsAndRoles() {
 	availableAttrs := &providers.AttributesResponse{
 		Attributes: map[string]*providers.AttributeResponse{
 			"email": nil,
@@ -1541,6 +1549,7 @@ func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_Wit
 
 	assert.NotNil(suite.T(), result)
 	assert.Contains(suite.T(), result.Attributes, "groups")
+	assert.Contains(suite.T(), result.Attributes, "roles")
 	assert.NotContains(suite.T(), result.Attributes, "userType")
 	assert.NotContains(suite.T(), result.Attributes, "ouId")
 	assert.Contains(suite.T(), result.Attributes, "email")
@@ -1567,8 +1576,9 @@ func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_All
 	assert.Contains(suite.T(), result.Attributes, "ouName")
 	assert.Contains(suite.T(), result.Attributes, "ouHandle")
 	assert.Contains(suite.T(), result.Attributes, "groups")
-	// Total: 1 original + 5 special
-	assert.Len(suite.T(), result.Attributes, 6)
+	assert.Contains(suite.T(), result.Attributes, "roles")
+	// Total: 1 original + 6 special
+	assert.Len(suite.T(), result.Attributes, 7)
 }
 
 func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_DoesNotMutateOriginal() {
@@ -1591,6 +1601,7 @@ func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_Doe
 	assert.Len(suite.T(), availableAttrs.Attributes, originalLen)
 	assert.NotContains(suite.T(), availableAttrs.Attributes, "userType")
 	assert.NotContains(suite.T(), availableAttrs.Attributes, "groups")
+	assert.NotContains(suite.T(), availableAttrs.Attributes, "roles")
 	assert.NotContains(suite.T(), availableAttrs.Attributes, "ouId")
 }
 
@@ -1700,6 +1711,7 @@ func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_Wit
 	assert.Contains(suite.T(), result.Attributes, "email")
 	assert.Contains(suite.T(), result.Attributes, "phone")
 	assert.Contains(suite.T(), result.Attributes, "groups")
+	assert.Contains(suite.T(), result.Attributes, "roles")
 }
 
 func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_NilAvailableAttrs_ReturnsNil() {

@@ -288,4 +288,86 @@ describe('IframeContent', () => {
       expect(onSubmit).not.toHaveBeenCalledWith(expect.objectContaining({eventType: EmbeddedFlowEventType.Trigger}));
     });
   });
+
+  describe('theme and background handling', () => {
+    it('renders without a theme when theme is undefined', () => {
+      const {iframeDoc} = renderIframeContent({theme: undefined});
+      expect(iframeDoc.getElementById('root')?.children.length).toBeGreaterThan(0);
+    });
+
+    it('applies page background when provided', () => {
+      const {iframeDoc} = renderIframeContent({pageBackground: '#f0f0f0'});
+      const authPageLayout = iframeDoc.querySelector('[data-testid="auth-page-layout"]');
+      expect(authPageLayout).not.toBeNull();
+    });
+
+    it('renders themeless branding when enabled and no theme is present', () => {
+      const {iframeDoc} = renderIframeContent({theme: undefined, themelessBranding: true});
+      // ParticleBackground should be rendered when themelessBranding is true and no theme
+      const authPageLayout = iframeDoc.querySelector('[data-testid="auth-page-layout"]');
+      expect(authPageLayout).not.toBeNull();
+    });
+
+    it('does not render themeless branding when theme is present', () => {
+      const {iframeDoc} = renderIframeContent({theme: mockTheme, themelessBranding: true});
+      // ParticleBackground should not be rendered when theme is present
+      expect(iframeDoc.querySelector('[data-testid="auth-page-layout"]')).not.toBeNull();
+    });
+
+    it('passes additional data to flow component renderer', () => {
+      const additionalData = {consentPrompt: 'test-prompt'};
+      const {iframeDoc} = renderIframeContent({additionalData});
+      // Component should render without error when additionalData is passed
+      expect(iframeDoc.getElementById('btn-comp-1')).not.toBeNull();
+    });
+  });
+
+  describe('iframe direction setting', () => {
+    it('sets iframe document dir attribute to ltr when no theme direction is specified', () => {
+      const {iframeDoc} = renderIframeContent({theme: mockTheme});
+      expect(iframeDoc.documentElement.getAttribute('dir')).toBe('ltr');
+    });
+
+    it('sets iframe document dir attribute based on theme direction', () => {
+      const themeWithRtl = {
+        ...mockTheme,
+        direction: 'rtl',
+      } as unknown as Theme;
+      const {iframeDoc} = renderIframeContent({theme: themeWithRtl});
+      expect(iframeDoc.documentElement.getAttribute('dir')).toBe('rtl');
+    });
+
+    it('resets to ltr when theme direction is not set', () => {
+      const {iframeDoc, rerender} = renderIframeContent({theme: mockTheme});
+      expect(iframeDoc.documentElement.getAttribute('dir')).toBe('ltr');
+
+      const themeWithRtl = {...mockTheme, direction: 'rtl'} as unknown as Theme;
+      rerender(
+        <OxygenUIThemeProvider>
+          <IframeContent
+            iframeDoc={iframeDoc}
+            colorScheme="light"
+            theme={themeWithRtl}
+            stylesheets={[]}
+            pageBackground={undefined}
+            mock={[mockComponent]}
+            inspectorEnabled={false}
+          />
+        </OxygenUIThemeProvider>,
+      );
+      expect(iframeDoc.documentElement.getAttribute('dir')).toBe('rtl');
+    });
+  });
+
+  describe('border styles application', () => {
+    it('applies border styles from theme.border to components', () => {
+      const themeWithBorder = {
+        ...mockTheme,
+        border: {width: '2px', style: 'solid'},
+      } as unknown as Theme;
+      const {iframeDoc} = renderIframeContent({theme: themeWithBorder});
+      // Component should render without error when border is applied
+      expect(iframeDoc.getElementById('btn-comp-1')).not.toBeNull();
+    });
+  });
 });

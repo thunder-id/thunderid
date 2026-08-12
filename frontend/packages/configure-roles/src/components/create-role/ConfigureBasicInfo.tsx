@@ -5,8 +5,9 @@ import {NameSuggestion, OrganizationUnitSummaryChip} from '@thunderid/components
 import {OrganizationUnitTreeConstants} from '@thunderid/configure-organization-units';
 import {Typography, Stack, TextField, FormControl, FormLabel} from '@wso2/oxygen-ui';
 import type {ChangeEvent, JSX} from 'react';
-import {useEffect} from 'react';
+import {useEffect, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
+import RoleConstraints from '../../constants/role-constraints';
 
 export interface ConfigureBasicInfoProps {
   name: string;
@@ -55,11 +56,29 @@ export default function ConfigureBasicInfo({
 }: ConfigureBasicInfoProps): JSX.Element {
   const {t} = useTranslation();
 
+  const trimmedLength = name.trim().length;
+
   useEffect((): void => {
     if (onReadyChange) {
-      onReadyChange(name.trim().length > 0);
+      onReadyChange(
+        trimmedLength >= RoleConstraints.NAME_MIN_LENGTH && trimmedLength <= RoleConstraints.NAME_MAX_LENGTH,
+      );
     }
-  }, [name, onReadyChange]);
+  }, [trimmedLength, onReadyChange]);
+
+  // An empty field is not an error yet; the user has simply not filled it in.
+  const nameError = useMemo((): string | null => {
+    if (trimmedLength === 0) {
+      return null;
+    }
+    if (trimmedLength > RoleConstraints.NAME_MAX_LENGTH) {
+      return t('roles:create.form.name.maxLength', {
+        max: RoleConstraints.NAME_MAX_LENGTH,
+        defaultValue: `Role name cannot exceed ${RoleConstraints.NAME_MAX_LENGTH} characters`,
+      });
+    }
+    return null;
+  }, [trimmedLength, t]);
 
   return (
     <Stack direction="column" spacing={4}>
@@ -85,6 +104,8 @@ export default function ConfigureBasicInfo({
           value={name}
           onChange={(e: ChangeEvent<HTMLInputElement>): void => onNameChange(e.target.value)}
           placeholder={t('roles:create.form.name.placeholder')}
+          error={Boolean(nameError)}
+          helperText={nameError ?? undefined}
         />
 
         <NameSuggestion onSelect={onNameChange} />

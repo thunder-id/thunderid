@@ -548,7 +548,7 @@
           "response": []
         },
         {
-          "name": "06 - Create ThunderID OAuth IDP",
+          "name": "06 - Create Asgardeo OAuth IDP",
           "event": [
             {
               "listen": "test",
@@ -561,7 +561,7 @@
                   "    // Store the IDP id",
                   "    pm.environment.set(\"thunderidIDPId\", response.id);",
                   "    ",
-                  "    console.log(\"✓ ThunderID IDP created\");",
+                  "    console.log(\"\u2713 Asgardeo IDP created\");",
                   "    console.log(\"  ID:\", response.id);",
                   "    console.log(\"  Name:\", response.name);",
                   "} else if (pm.response.code === 409) {",
@@ -594,7 +594,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"name\": \"ThunderID OAuth\",\n    \"description\": \"Login with ThunderID\",\n    \"clientId\": \"{{THUNDERID_CLIENT_ID}}\",\n    \"clientSecret\": \"{{THUNDERID_CLIENT_SECRET}}\",\n    \"redirectUri\": \"{{FED_IDP_REDIRECT_URI}}\",\n    \"scopes\": [\"openid\", \"custom\", \"email\", \"groups\", \"profile\"],\n    \"authorizationEndpoint\": \"{{THUNDERID_BASE_URI}}/oauth2/authorize\",\n    \"tokenEndpoint\": \"{{THUNDERID_BASE_URI}}/oauth2/token\",\n    \"userInfoEndpoint\": \"{{THUNDERID_BASE_URI}}/oauth2/userinfo\",\n    \"logoutEndpoint\": \"{{THUNDERID_BASE_URI}}/oidc/logout\"\n}",
+              "raw": "{\n    \"name\": \"Asgardeo Prod\",\n    \"description\": \"Login with Asgardeo\",\n    \"clientId\": \"{{ASGARDEO_CLIENT_ID}}\",\n    \"clientSecret\": \"{{ASGARDEO_CLIENT_SECRET}}\",\n    \"redirectUri\": \"{{FED_IDP_REDIRECT_URI}}\",\n    \"scopes\": [\"openid\", \"custom\", \"email\", \"groups\", \"profile\"],\n    \"authorizationEndpoint\": \"{{THUNDERID_BASE_URI}}/oauth2/authorize\",\n    \"tokenEndpoint\": \"{{THUNDERID_BASE_URI}}/oauth2/token\",\n    \"userInfoEndpoint\": \"{{THUNDERID_BASE_URI}}/oauth2/userinfo\",\n    \"logoutEndpoint\": \"{{THUNDERID_BASE_URI}}/oidc/logout\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -720,7 +720,7 @@
           "response": []
         },
         {
-          "name": "10 - Create ThunderID User",
+          "name": "10 - Create Asgardeo User",
           "request": {
             "method": "POST",
             "header": [
@@ -735,7 +735,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"ouId\": \"{{demoOuId}}\",\n    \"type\": \"{{demoSchemaName}}\",\n    \"attributes\": {\n        \"sub\": \"{{demoThunderIDUserSub}}\",\n        \"email\": \"{{demoThunderIDUserEmail}}\",\n        \"userSource\": \"ThunderID\"\n    }\n}",
+              "raw": "{\n    \"ouId\": \"{{demoOuId}}\",\n    \"type\": \"{{demoSchemaName}}\",\n    \"attributes\": {\n        \"sub\": \"{{demoAsgardeoUserSub}}\",\n        \"email\": \"{{demoAsgardeoUserEmail}}\",\n        \"userSource\": \"Asgardeo\"\n    }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1636,7 +1636,7 @@
           ]
         },
         {
-          "name": "03.05 - ThunderID Login",
+          "name": "03.05 - Asgardeo Login",
           "item": [
             {
               "name": "01 - Start",

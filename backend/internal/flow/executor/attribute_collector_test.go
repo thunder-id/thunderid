@@ -491,6 +491,29 @@ func (suite *AttributeCollectorTestSuite) TestGetInputAttributes_FromRuntimeData
 	assert.Equal(suite.T(), "runtime@example.com", result["email"])
 }
 
+// TestGetInputAttributes_ConvertsByInputType verifies that values collected for typed inputs are
+// converted from the engine's string representation, so a boolean or number attribute satisfies
+// schema validation when the collected profile is persisted.
+func (suite *AttributeCollectorTestSuite) TestGetInputAttributes_ConvertsByInputType() {
+	ctx := &providers.NodeContext{
+		UserInputs:  map[string]string{"active": "true", "age": "42", "email": "test@example.com"},
+		RuntimeData: map[string]string{"verified": "false"},
+		NodeInputs: []providers.Input{
+			{Identifier: "active", Type: providers.InputTypeBoolean, Required: true},
+			{Identifier: "verified", Type: providers.InputTypeBoolean, Required: true},
+			{Identifier: "age", Type: providers.InputTypeNumber, Required: true},
+			{Identifier: "email", Type: providers.InputTypeText, Required: true},
+		},
+	}
+
+	result := suite.executor.getInputAttributes(ctx)
+
+	assert.Equal(suite.T(), true, result["active"])
+	assert.Equal(suite.T(), false, result["verified"])
+	assert.Equal(suite.T(), float64(42), result["age"])
+	assert.Equal(suite.T(), "test@example.com", result["email"])
+}
+
 func (suite *AttributeCollectorTestSuite) TestGetInputAttributes_SkipUserID() {
 	ctx := &providers.NodeContext{
 		UserInputs:  map[string]string{"userID": testUserID, "email": "test@example.com"},

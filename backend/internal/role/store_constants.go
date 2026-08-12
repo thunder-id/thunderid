@@ -69,6 +69,22 @@ var (
 		Query: `DELETE FROM "ROLE_PERMISSION" WHERE ROLE_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
+	// queryGetReferencedPermissions retrieves the distinct permissions referenced by any role,
+	// grouped by resource server (used to detect permissions orphaned by a resource deletion).
+	queryGetReferencedPermissions = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-27",
+		Query: `SELECT DISTINCT RESOURCE_SERVER_ID, PERMISSION FROM "ROLE_PERMISSION" ` +
+			`WHERE DEPLOYMENT_ID = $1`,
+	}
+
+	// queryDeleteRolePermissionByValue deletes a single permission from every role that holds it
+	// (used to cascade-delete permissions orphaned by a resource, action or resource server deletion).
+	queryDeleteRolePermissionByValue = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-28",
+		Query: `DELETE FROM "ROLE_PERMISSION" ` +
+			`WHERE RESOURCE_SERVER_ID = $1 AND PERMISSION = $2 AND DEPLOYMENT_ID = $3`,
+	}
+
 	// queryCreateRoleAssignment creates a new role assignment.
 	queryCreateRoleAssignment = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-10",

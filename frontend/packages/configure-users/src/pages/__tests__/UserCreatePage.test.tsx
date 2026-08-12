@@ -9,6 +9,10 @@ import UserCreatePage from '../UserCreatePage';
 
 const mockNavigate = vi.fn();
 const mockHandleSubmit = vi.fn();
+const mockHandleInputChange = vi.fn();
+
+// Mutable form values the InviteUser mock reads at render time
+let mockValues: Record<string, string> = {};
 
 // Mock react-router
 vi.mock('react-router', async () => {
@@ -66,6 +70,15 @@ vi.mock('@thunderid/react', async (importOriginal) => {
           actions: undefined,
         },
         {
+          id: 'active-field',
+          type: 'BOOLEAN_INPUT',
+          label: 'Active',
+          ref: 'active',
+          required: true,
+          components: undefined,
+          actions: undefined,
+        },
+        {
           id: 'submit-btn',
           type: 'ACTION',
           label: 'Create User',
@@ -74,16 +87,16 @@ vi.mock('@thunderid/react', async (importOriginal) => {
           components: undefined,
           actions: undefined,
         },
-      ];
+      ] as EmbeddedFlowComponent[];
 
       const renderProps: InviteUserRenderProps = {
         components: mockComponents,
-        values: {},
+        values: mockValues,
         fieldErrors: {},
         touched: {},
         error: null,
         isLoading: false,
-        handleInputChange: vi.fn(),
+        handleInputChange: mockHandleInputChange,
         handleInputBlur: vi.fn(),
         handleSubmit: mockHandleSubmit,
         resetFlow: vi.fn(),
@@ -100,6 +113,7 @@ vi.mock('@thunderid/react', async (importOriginal) => {
 describe('UserCreatePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockValues = {};
     mockNavigate.mockResolvedValue(undefined);
     mockHandleSubmit.mockResolvedValue(undefined);
   });
@@ -202,5 +216,38 @@ describe('UserCreatePage', () => {
 
     // Email label should be translated and visible
     expect(screen.getByLabelText('Email')).toBeInTheDocument();
+  });
+
+  describe('boolean attributes', () => {
+    it('renders a boolean attribute as a checkbox rather than a text field', () => {
+      render(<UserCreatePage />);
+
+      expect(screen.getByRole('checkbox', {name: 'Active'})).toBeInTheDocument();
+    });
+
+    it('seeds a boolean attribute with its unchecked value', async () => {
+      render(<UserCreatePage />);
+
+      await waitFor(() => {
+        expect(mockHandleInputChange).toHaveBeenCalledWith('active', 'false');
+      });
+    });
+
+    it('reports a checked boolean attribute as true', async () => {
+      const user = userEvent.setup();
+      mockValues = {active: 'false'};
+      render(<UserCreatePage />);
+
+      await user.click(screen.getByRole('checkbox', {name: 'Active'}));
+
+      expect(mockHandleInputChange).toHaveBeenCalledWith('active', 'true');
+    });
+
+    it('reflects a boolean attribute that is already true', () => {
+      mockValues = {active: 'true'};
+      render(<UserCreatePage />);
+
+      expect(screen.getByRole('checkbox', {name: 'Active'})).toBeChecked();
+    });
   });
 });

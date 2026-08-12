@@ -14,7 +14,7 @@ I have an iOS application (Swift, SwiftUI) and I want to integrate {{productName
 ## Configuration
 - **Application ID**: {{applicationId}}
 - **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
-- **SDK**: ThunderIDSwiftUI (Swift Package Manager) or ThunderIDSwiftUI CocoaPod
+- **SDK**: ThunderIDSwiftUI (Swift Package Manager) — package URL `https://github.com/thunder-id/ios-sdks`, no CocoaPods support yet
 
 ## IMPORTANT Configuration Rules
 - Apply the `.thunderIDProvider(config:)` modifier to the root view in your app's entry point (the type conforming to `App`), configured with `ThunderIDConfig(baseUrl, scopes, applicationId)`
@@ -24,7 +24,7 @@ I have an iOS application (Swift, SwiftUI) and I want to integrate {{productName
 
 ## Implementation Steps
 1. Create a new Xcode project using the iOS > App template with SwiftUI and Swift
-2. Add the `ThunderIDSwiftUI` package via File > Add Package Dependencies (or the `ThunderIDSwiftUI` CocoaPod)
+2. Add the `ThunderIDSwiftUI` package via File > Add Package Dependencies, using package URL `https://github.com/thunder-id/ios-sdks` and the latest release tag from https://github.com/thunder-id/ios-sdks/releases
 3. Apply `.thunderIDProvider(config:)` to your root view, configured with `baseUrl`, `scopes`, and `applicationId`
 4. Build a root view that checks `state.isInitialized` and renders a `SignedIn`/fallback split
 5. Build an auth view using the `SignIn` view, passing the `applicationId`

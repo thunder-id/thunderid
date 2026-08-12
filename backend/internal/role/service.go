@@ -7,6 +7,7 @@ package role
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -17,6 +18,7 @@ import (
 	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -46,6 +48,9 @@ type RoleServiceInterface interface {
 	ResolveRoleOUHandle(
 		ctx context.Context, role *RoleWithPermissionsAndAssignments,
 	) *tidcommon.ServiceError
+	GetResourceDependencies(
+		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
+	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
 }
 
 // roleService is the default implementation of the RoleServiceInterface.
@@ -697,4 +702,54 @@ func (rs *roleService) isRoleDeclarative(ctx context.Context, roleID string) boo
 	}
 
 	return isDeclarative
+}
+
+// GetResourceDependencies implements resourcedependency.Provider. Role permissions are cleaned up
+// via cascade rather than surfaced as blocking usages, so no dependencies are reported here.
+func (rs *roleService) GetResourceDependencies(
+	_ context.Context, _, _ string) ([]resourcedependency.ResourceDependency, error) {
+	return []resourcedependency.ResourceDependency{}, nil
+}
+
+// CascadeDeleteDependencies implements resourcedependency.CascadeDeleter. When a resource server,
+// resource or action is deleted, the permissions it contributed can no longer be resolved, so they
+// are removed from every role holding them. Permissions are stored as opaque strings scoped to a
+// resource server rather than as references to the resource that defines them, so the orphans are
+// found by re-validating the referenced permissions against the resource service. This also clears
+// any permission orphaned by an earlier deletion. Must be called after the target has been deleted,
+// so the deleted permissions no longer validate.
+func (rs *roleService) CascadeDeleteDependencies(
+	ctx context.Context, resourceType, _ string) (int, error) {
+	switch resourceType {
+	case resourcedependency.ResourceTypeResourceServer,
+		resourcedependency.ResourceTypeResource,
+		resourcedependency.ResourceTypeAction:
+	default:
+		return 0, nil
+	}
+
+	referenced, err := rs.roleStore.GetReferencedPermissions(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get permissions referenced by roles: %w", err)
+	}
+
+	deleted := 0
+	for _, resPerm := range referenced {
+		invalid, svcErr := rs.resourceService.ValidatePermissions(
+			ctx, resPerm.ResourceServerID, resPerm.Permissions)
+		if svcErr != nil {
+			return deleted, fmt.Errorf("failed to validate permissions of resource server %s: %s",
+				resPerm.ResourceServerID, svcErr.Error.DefaultValue)
+		}
+
+		for _, permission := range invalid {
+			removed, err := rs.roleStore.DeleteRolePermission(ctx, resPerm.ResourceServerID, permission)
+			if err != nil {
+				return deleted, fmt.Errorf("failed to delete orphaned role permission: %w", err)
+			}
+			deleted += int(removed)
+		}
+	}
+
+	return deleted, nil
 }

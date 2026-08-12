@@ -250,8 +250,8 @@ attributes:
   model: claude-sonnet-5
   modelProvider: anthropic
   function: assistant
-# Only these user types may sign in through the Concierge. Required: an empty list makes the login
-# flow fail with "auth not available".
+# The user types the Concierge works with: who may sign up through it, and whose schema the user
+# attributes in the tokens below are validated against.
 allowedUserTypes:
   - Person
 inboundAuthConfig:

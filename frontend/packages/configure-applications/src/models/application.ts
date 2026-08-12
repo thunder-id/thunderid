@@ -234,7 +234,7 @@ export interface Application {
   userAttributes?: string[];
 
   /**
-   * Allowed user types that can access this application
+   * Allowed user types that can sign up through this application
    * @example ['person', 'person_2', 'person_3']
    */
   allowedUserTypes?: string[];

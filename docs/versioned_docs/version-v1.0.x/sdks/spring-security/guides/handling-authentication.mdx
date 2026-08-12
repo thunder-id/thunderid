@@ -1,0 +1,218 @@
+---
+title: Handling Authentication
+docType: guide
+description: Set up sign-in and sign-out flows in a Spring Boot application using the {{ProductName}}
+---
+
+Set up sign-in and sign-out flows in a Spring Boot application using <ProductName /> with Spring Security. You will configure the OAuth2 client, redirect URLs to the identity provider for sign-in, handle the authorization code callback, and implement OIDC logout.
+
+## Prerequisites
+- Working setup of <ProductName />
+- Java 17 or later
+- Maven 3.6+
+- A favorite text editor or IDE
+
+## Configure an Application in <ProductName />
+1. Sign in to the <ProductName /> Console and navigate to **Applications** > **Add Application**.
+2. Select **Custom** as the template type, enter a name, and click **Finish**.
+3. Copy the Client ID and Client Secret values (the Client Secret is not shown again), then click **Continue**.
+4. Set the allowed user type to **Person**, the Authorized Redirect URI to `http://localhost:8080/login/oauth2/code/thunderid`, and the Post Logout Redirect URI to `http://localhost:8080/`.
+
+## Create a Spring Boot application using Spring Initializr
+1. Navigate to `https://start.spring.io`
+2. Choose either Gradle or Maven.
+3. Click **Dependencies** and add **Spring Web**, **Thymeleaf**, **Spring Boot DevTools**, and **OAuth2 Client**.
+4. Click **Generate**.
+
+Download the resulting ZIP file, extract and open the project using your favorite IDE.
+
+Create a Spring MVC Controller by adding `AppController.java` into src/main/java directory.
+
+```java
+package com.example.thunderid.spb;
+
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+
+@Controller
+public class AppController {
+
+    @GetMapping("/")
+    public String index() {
+        return "index";
+    }
+
+    @GetMapping("/home")
+    public String home(Model model, Authentication authentication) {
+        DefaultOidcUser oidcUser = (DefaultOidcUser) authentication.getPrincipal();
+        model.addAttribute("userName", oidcUser.getName());
+        model.addAttribute("IDTokenClaims", oidcUser.getAttributes());
+        return "home";
+    }
+}
+```
+
+Create Thymeleaf templates to generate the views for controllers in the src/main/resources/templates/ location.
+
+Add `index.html` to load the landing page of the application.
+
+```html
+<!DOCTYPE html>
+<!-- index.html -->
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="UTF-8" />
+    <title>Welcome</title>
+</head>
+<body>
+    <div class="card">
+        <h1>Welcome to My Spring Boot Sample App</h1>
+        <p>Sign in to continue</p>
+        <a href="/oauth2/authorization/thunderid" class="login-btn">Login with {{ProductName}}</a>
+    </div>
+</body>
+</html>
+```
+
+Add `home.html` to display the logged in user's details.
+
+```html
+<!DOCTYPE html>
+<!-- home.html -->
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>Home</title>
+</head>
+<body>
+    <div class="card">
+        <div class="card-header">
+            <h1>Welcome to My Spring Boot Sample App</h1>
+            <form th:action="@{/logout}" method="post">
+                <button type="submit">Logout</button>
+            </form>
+        </div>
+        <p class="welcome">Logged in as <span th:text="${userName}"></span></p>
+
+        <h2>ID Token Claims</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Claim</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr th:each="claim : ${IDTokenClaims}">
+                    <td th:text="${claim.key}"></td>
+                    <td th:text="${claim.value}"></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
+```
+
+Create a SecurityConfig class in src/main/java directory to control which routes are public and set the authentication redirect URL.
+
+```java
+package com.example.thunderid.spb;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.oauth2.client.oidc.web.logout.OidcClientInitiatedLogoutSuccessHandler;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.web.SecurityFilterChain;
+
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http, ClientRegistrationRepository clientRegistrationRepository) throws Exception {
+        OidcClientInitiatedLogoutSuccessHandler logoutSuccessHandler =
+            new OidcClientInitiatedLogoutSuccessHandler(clientRegistrationRepository);
+        logoutSuccessHandler.setPostLogoutRedirectUri("{baseUrl}/");
+
+        http
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/").permitAll() // public landing page
+                .anyRequest().authenticated()
+            )
+            .oauth2Login(oauth2 -> oauth2
+                .defaultSuccessUrl("/home", true) // redirect here after login
+            )
+            .logout(logout -> logout
+                .logoutSuccessHandler(logoutSuccessHandler)
+            );
+        return http.build();
+    }
+}
+```
+
+## Configure Spring OAuth2 Client
+
+Add following configuration parameters to application.properties file located in src/main/resources directory, replace the placeholders in the following code with the Client ID and Client Secret values you copied during the application registration in the <ProductName /> console.
+
+```properties
+#OAuth Application Properties
+spring.security.oauth2.client.registration.thunderid.client-name=ThunderID
+spring.security.oauth2.client.registration.thunderid.client-id=<your-app-client-id>
+spring.security.oauth2.client.registration.thunderid.client-secret=<your-app-client-secret>
+spring.security.oauth2.client.registration.thunderid.redirect-uri={baseUrl}/login/oauth2/code/thunderid
+spring.security.oauth2.client.registration.thunderid.authorization-grant-type=authorization_code
+spring.security.oauth2.client.registration.thunderid.scope=openid
+#ThunderID Properties
+spring.security.oauth2.client.provider.thunderid.issuer-uri=https://localhost:8090
+```
+
+:::important
+If you face any certificate issues, the main reason will be the self signed certificate of <ProductName />. You can follow the steps below to create a custom truststore and point that to the application.
+:::
+
+1. Export the certificate from the running <ProductName /> server:
+```bash
+openssl s_client -connect localhost:8090 -showcerts </dev/null 2>/dev/null \
+  | openssl x509 -outform PEM > thunderid.crt
+```
+
+2. Import it into a custom truststore:
+```bash
+keytool -importcert \
+  -alias thunderid-local \
+  -file thunderid.crt \
+  -keystore ./thunderid-truststore.jks \
+  -storepass changeit \
+  -noprompt
+```
+
+3. Configure the JVM to use the truststore in `pom.xml`:
+```xml
+<plugin>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-maven-plugin</artifactId>
+    <configuration>
+        <jvmArguments>
+            -Djavax.net.ssl.trustStore=/path/to/thunderid-truststore.jks
+            -Djavax.net.ssl.trustStorePassword=changeit
+        </jvmArguments>
+    </configuration>
+</plugin>
+```
+
+Run the application and verify that it is working properly by accessing the landing page and Home page.
+```bash
+./mvnw spring-boot:run
+```
+
+## Related Guides
+
+- [Manage Applications](../../../../guides/applications/manage-applications) - Create, update, and delete applications
+- [OAuth & OIDC](../../../../guides/protocols/oauth-oidc) - Protocol-by-protocol reference for OAuth 2.1 and OpenID Connect features
+- [Flows](../../../../guides/flows/what-are-flows) - Build and assign custom authentication and registration flows

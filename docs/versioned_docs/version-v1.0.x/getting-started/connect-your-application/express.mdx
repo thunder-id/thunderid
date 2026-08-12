@@ -58,12 +58,19 @@ Once it's running, the console is available at [https://localhost:8090/console](
     If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
     :::
 
-2. Navigate to **Applications**, and click **Add Application**.
+2. Navigate to **Applications**.
+3. Click **Add Application**.
+4. From the **Choose a type** page, select **Express**.
+5. Enter a name (e.g. `My Express App`).
+6. Click **Create**.
+7. Select how you want to sign in users (e.g., email/password, social login, etc.).
+8. Select Theme settings.
+9. Leave **Sign-In Approach** set to **Redirect to <ProductName /> Gate** (the default for Express applications).
+10. In the Configuration step, add `http://localhost:3000/login` to the list of **Authorized Redirect URIs**.
 
-3. Under **Technology**, select **Express**.
-4. Enter a name (e.g. `My Express App`) and create an application. The rest of the settings can stay at their defaults.
-5. Copy both the **Client ID** and **Client Secret** from the window that pops up. The Client ID can also be found in the **General** tab.
-6. Under **General**, add `http://localhost:3000/login` to the list of **Authorized Redirect URIs**.
+:::note Note
+Copy both the **Client ID** and **Client Secret** from the window that pops up when the application is created. The Client ID can also be found in the **General** tab.
+:::
 
 ## Create an Express App
 

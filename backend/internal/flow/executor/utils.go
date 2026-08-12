@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -105,6 +107,50 @@ func findInputByType(inputs []providers.Input, inputType string) (providers.Inpu
 		}
 	}
 	return providers.Input{}, false
+}
+
+// inputTypeForSchemaType maps an entity type schema attribute type to the flow input type used to
+// prompt for it. Types without a dedicated input type are prompted as text.
+func inputTypeForSchemaType(schemaType string) string {
+	switch schemaType {
+	case entitytypemodel.TypeBoolean:
+		return providers.InputTypeBoolean
+	case entitytypemodel.TypeNumber:
+		return providers.InputTypeNumber
+	default:
+		return providers.InputTypeText
+	}
+}
+
+// schemaTypeForInputType maps a flow input type back to the schema type its collected value should
+// be converted to, for callers whose inputs come from the flow definition rather than from a schema.
+// An empty result means the value needs no conversion.
+func schemaTypeForInputType(inputType string) string {
+	switch inputType {
+	case providers.InputTypeBoolean:
+		return entitytypemodel.TypeBoolean
+	case providers.InputTypeNumber:
+		return entitytypemodel.TypeNumber
+	default:
+		return ""
+	}
+}
+
+// convertToSchemaType converts a collected input value, which the engine always carries as a string,
+// to the type declared by its schema attribute. Values that fail to parse are returned unchanged so
+// that schema validation reports them instead of a zero value being silently substituted.
+func convertToSchemaType(value string, schemaType string) interface{} {
+	switch schemaType {
+	case entitytypemodel.TypeBoolean:
+		if parsed, err := strconv.ParseBool(value); err == nil {
+			return parsed
+		}
+	case entitytypemodel.TypeNumber:
+		if parsed, err := strconv.ParseFloat(value, 64); err == nil {
+			return parsed
+		}
+	}
+	return value
 }
 
 // isAuthenticationWithoutLocalUserAllowed returns the value of the AllowAuthenticationWithoutLocalUser

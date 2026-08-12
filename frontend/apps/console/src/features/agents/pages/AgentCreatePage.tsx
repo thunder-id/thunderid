@@ -17,7 +17,7 @@ import {Home} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useState, useCallback, useEffect, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate} from 'react-router';
+import {useLocation, useNavigate} from 'react-router';
 import RouteConfig from '../../../configs/RouteConfig';
 import useCreateAgent from '../api/useCreateAgent';
 import ConfigureAgentDetails from '../components/create-agent/ConfigureAgentDetails';
@@ -31,6 +31,8 @@ import {AgentCreateFlowStep} from '../models/agent-create-flow';
 export default function AgentCreatePage(): JSX.Element {
   const {t} = useTranslation();
   const navigate = useNavigate();
+  const {pathname} = useLocation();
+  const isWelcomeFlow = pathname.startsWith('/welcome');
   const logger = useLogger('AgentCreatePage');
   const createAgent = useCreateAgent();
 
@@ -140,8 +142,36 @@ export default function AgentCreatePage(): JSX.Element {
   const isLastStep = currentStep === activeSteps[activeSteps.length - 1];
 
   const handleClose = (): void => {
-    void navigate(RouteConfig.agents.list());
+    void navigate(isWelcomeFlow ? RouteConfig.home.list() : RouteConfig.agents.list());
   };
+
+  // Leaving the wizard backwards, as opposed to dismissing it: the welcome flow reached it from
+  // the Get Started page, so that's where Back belongs there.
+  const handleBackOutOfWizard = (): void => {
+    void navigate(isWelcomeFlow ? RouteConfig.welcome.getStarted() : RouteConfig.agents.list());
+  };
+
+  const prefixCrumbs = isWelcomeFlow
+    ? [
+        {key: 'welcome', label: t('common:welcome.header'), onClick: () => void navigate(RouteConfig.welcome.root())},
+        {
+          key: 'new',
+          label: t('common:welcome.createProject.breadcrumb'),
+          onClick: () => void navigate(RouteConfig.welcome.createProject()),
+        },
+        {
+          key: 'get-started',
+          label: t('common:welcome.getStarted.breadcrumb'),
+          onClick: () => void navigate(RouteConfig.welcome.getStarted()),
+        },
+      ]
+    : [
+        {
+          key: 'agents',
+          label: t('agents:listing.title', 'Agents'),
+          onClick: () => void navigate(RouteConfig.agents.list()),
+        },
+      ];
 
   // Resolves an error through the `agents` catalog. `t` defaults to the `common` namespace, so
   // this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with `agents:`, per
@@ -409,7 +439,7 @@ export default function AgentCreatePage(): JSX.Element {
         )}
         value={selectedOuId ?? ''}
         onChange={handleOuIdChange}
-        onBack={handleClose}
+        onBack={handleBackOutOfWizard}
         onContinue={handleNextStep}
         backLabel={t('common:actions.back', 'Back')}
         continueLabel={t('common:actions.continue', 'Continue')}
@@ -421,11 +451,14 @@ export default function AgentCreatePage(): JSX.Element {
     <FullScreenCreationWizardLayout
       onClose={handleClose}
       progress={getStepProgress()}
-      breadcrumbItems={getBreadcrumbSteps().map((step, index, array) => ({
-        key: step,
-        label: steps[step]?.label ?? step,
-        onClick: index < array.length - 1 ? () => setCurrentStep(step) : undefined,
-      }))}
+      breadcrumbItems={[
+        ...prefixCrumbs,
+        ...getBreadcrumbSteps().map((step, index, array) => ({
+          key: step,
+          label: steps[step]?.label ?? step,
+          onClick: index < array.length - 1 ? () => setCurrentStep(step) : undefined,
+        })),
+      ]}
       footer={
         <Stack
           direction="row"

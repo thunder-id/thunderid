@@ -6,6 +6,7 @@ import {cn} from '@thunderid/utils';
 import {Box, Button} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import CheckboxAdapter from './CheckboxAdapter';
 import DividerAdapter from './DividerAdapter';
 import OtpInputAdapter from './OtpInputAdapter';
 import PasswordInputAdapter from './PasswordInputAdapter';
@@ -194,7 +195,8 @@ function renderFormSubComponent(
     (sub.type as EmbeddedFlowComponentType) === EmbeddedFlowComponentType.TextInput ||
     sub.type === 'TEXT_INPUT' ||
     sub.type === 'EMAIL_INPUT' ||
-    sub.type === 'PHONE_INPUT'
+    sub.type === 'PHONE_INPUT' ||
+    sub.type === 'NUMBER_INPUT'
   ) {
     return <TextInputAdapter key={sub.id ?? compIndex} {...fieldProps} />;
   }
@@ -218,6 +220,10 @@ function renderFormSubComponent(
 
   if (sub.type === 'SELECT') {
     return <SelectAdapter key={sub.id ?? compIndex} {...fieldProps} />;
+  }
+
+  if (sub.type === 'BOOLEAN_INPUT') {
+    return <CheckboxAdapter key={sub.id ?? compIndex} {...fieldProps} />;
   }
 
   if (sub.type === 'RICH_TEXT') {

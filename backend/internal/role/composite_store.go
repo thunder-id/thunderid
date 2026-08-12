@@ -358,6 +358,18 @@ func (c *compositeRoleStore) DeleteAssignmentsByAssignee(
 	return c.dbStore.DeleteAssignmentsByAssignee(ctx, assigneeType, assigneeID)
 }
 
+// GetReferencedPermissions returns the permissions referenced by database-backed roles only.
+// Declarative roles are immutable, so their permissions are never pruned.
+func (c *compositeRoleStore) GetReferencedPermissions(ctx context.Context) ([]ResourcePermissions, error) {
+	return c.dbStore.GetReferencedPermissions(ctx)
+}
+
+// DeleteRolePermission removes the permission from the database store only.
+func (c *compositeRoleStore) DeleteRolePermission(
+	ctx context.Context, resourceServerID, permission string) (int64, error) {
+	return c.dbStore.DeleteRolePermission(ctx, resourceServerID, permission)
+}
+
 // AddAssignments adds assignments to a role in the database store only.
 func (c *compositeRoleStore) AddAssignments(ctx context.Context, id string, assignments []RoleAssignment) error {
 	return c.dbStore.AddAssignments(ctx, id, assignments)

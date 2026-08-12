@@ -381,19 +381,33 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionListAndCounts_WithData() 
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), rootActionID, action.ID)
 
+	childID := fmt.Sprintf("%s_%s", rs.ID, rs.Resources[1].Handle)
+
+	// A nil resource ID selects resource server level actions, of which there are none because
+	// declarative resource servers declare actions only under resources.
 	actions, err := s.store.GetActionList(s.ctx, "rs-data", nil, "", 10, 0)
 	assert.NoError(s.T(), err)
-	assert.Len(s.T(), actions, 2)
+	assert.Empty(s.T(), actions)
 
 	actions, err = s.store.GetActionList(s.ctx, "rs-data", &rootID, "", 10, 0)
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), actions, 1)
+	assert.Equal(s.T(), "read", actions[0].Handle)
+
+	actions, err = s.store.GetActionList(s.ctx, "rs-data", &childID, "", 10, 0)
+	assert.NoError(s.T(), err)
+	assert.Len(s.T(), actions, 1)
+	assert.Equal(s.T(), "write", actions[0].Handle)
 
 	count, err := s.store.GetActionListCount(s.ctx, "rs-data", nil, "")
 	assert.NoError(s.T(), err)
-	assert.Equal(s.T(), 2, count)
+	assert.Equal(s.T(), 0, count)
 
 	count, err = s.store.GetActionListCount(s.ctx, "rs-data", &rootID, "")
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), 1, count)
+
+	count, err = s.store.GetActionListCount(s.ctx, "rs-data", &childID, "")
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), 1, count)
 }
@@ -422,35 +436,37 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionList_FilterByKind() {
 	err := fileStore.Create("rs-mcp", rs)
 	assert.NoError(s.T(), err)
 
+	rootID := fmt.Sprintf("%s_%s", rs.ID, rs.Resources[0].Handle)
+
 	// Empty kind returns all actions.
-	all, err := s.store.GetActionList(s.ctx, "rs-mcp", nil, "", 10, 0)
+	all, err := s.store.GetActionList(s.ctx, "rs-mcp", &rootID, "", 10, 0)
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), all, 2)
 
 	// Tool kind returns only the tool action.
-	tools, err := s.store.GetActionList(s.ctx, "rs-mcp", nil, providers.ActionKindTool, 10, 0)
+	tools, err := s.store.GetActionList(s.ctx, "rs-mcp", &rootID, providers.ActionKindTool, 10, 0)
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), tools, 1)
 	assert.Equal(s.T(), "create_user", tools[0].Handle)
 	assert.Equal(s.T(), providers.ActionKindTool, tools[0].Kind)
 
 	// Resource kind returns only the resource action.
-	resources, err := s.store.GetActionList(s.ctx, "rs-mcp", nil, providers.ActionKindResource, 10, 0)
+	resources, err := s.store.GetActionList(s.ctx, "rs-mcp", &rootID, providers.ActionKindResource, 10, 0)
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), resources, 1)
 	assert.Equal(s.T(), "user_list", resources[0].Handle)
 	assert.Equal(s.T(), providers.ActionKindResource, resources[0].Kind)
 
 	// The count honors the kind filter and matches the filtered list length.
-	allCount, err := s.store.GetActionListCount(s.ctx, "rs-mcp", nil, "")
+	allCount, err := s.store.GetActionListCount(s.ctx, "rs-mcp", &rootID, "")
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), len(all), allCount)
 
-	toolCount, err := s.store.GetActionListCount(s.ctx, "rs-mcp", nil, providers.ActionKindTool)
+	toolCount, err := s.store.GetActionListCount(s.ctx, "rs-mcp", &rootID, providers.ActionKindTool)
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), len(tools), toolCount)
 
-	resourceCount, err := s.store.GetActionListCount(s.ctx, "rs-mcp", nil, providers.ActionKindResource)
+	resourceCount, err := s.store.GetActionListCount(s.ctx, "rs-mcp", &rootID, providers.ActionKindResource)
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), len(resources), resourceCount)
 }

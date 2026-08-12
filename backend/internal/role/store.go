@@ -48,6 +48,11 @@ type roleStoreInterface interface {
 	GetAllPermissionsForAssignees(
 		ctx context.Context, entityID string, groupIDs []string) ([]ResourcePermissions, error)
 	GetUserRoles(ctx context.Context, entityID string, groupIDs []string) ([]string, error)
+	// GetReferencedPermissions returns the distinct permissions referenced by any role, grouped by
+	// resource server. Used to detect permissions left dangling by a resource deletion.
+	GetReferencedPermissions(ctx context.Context) ([]ResourcePermissions, error)
+	// DeleteRolePermission removes the given permission from every role that holds it.
+	DeleteRolePermission(ctx context.Context, resourceServerID, permission string) (int64, error)
 	// GetEntityRoleIDs returns the set of role IDs assigned to the entity directly or via
 	// group membership. Unlike GetUserRoles this does not require the role to exist in the
 	// underlying store; it returns raw assignee->role bindings. Used by the composite store
@@ -406,6 +411,51 @@ func (s *roleStore) DeleteAssignmentsByAssignee(
 		ctx, queryDeleteRoleAssignmentsByAssignee, assigneeType, assigneeID, s.deploymentID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to delete assignments for assignee: %w", err)
+	}
+	return rowsAffected, nil
+}
+
+// GetReferencedPermissions returns the distinct permissions referenced by any role, grouped by
+// resource server.
+func (s *roleStore) GetReferencedPermissions(ctx context.Context) ([]ResourcePermissions, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := dbClient.QueryContext(ctx, queryGetReferencedPermissions, s.deploymentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get referenced permissions: %w", err)
+	}
+
+	byResourceServer := make(map[string][]string)
+	for _, row := range results {
+		resourceServerID, ok := row["resource_server_id"].(string)
+		if !ok {
+			return nil, fmt.Errorf("failed to parse resource_server_id as string")
+		}
+		permission, ok := row["permission"].(string)
+		if !ok {
+			return nil, fmt.Errorf("failed to parse permission as string")
+		}
+		byResourceServer[resourceServerID] = append(byResourceServer[resourceServerID], permission)
+	}
+
+	return resourcePermissionsFromMap(byResourceServer), nil
+}
+
+// DeleteRolePermission removes the given permission from every role that holds it.
+func (s *roleStore) DeleteRolePermission(
+	ctx context.Context, resourceServerID, permission string) (int64, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return 0, err
+	}
+
+	rowsAffected, err := dbClient.ExecuteContext(
+		ctx, queryDeleteRolePermissionByValue, resourceServerID, permission, s.deploymentID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete role permission: %w", err)
 	}
 	return rowsAffected, nil
 }

@@ -333,6 +333,91 @@ func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_AttributesFrom
 	assert.Empty(suite.T(), execResp.Inputs)
 }
 
+// TestHasRequiredInputs_PromptsBooleanAttributeAsCheckbox verifies that a missing boolean schema
+// attribute is prompted with a boolean input type rather than as free text, so the client can
+// render a control that produces a value the schema accepts.
+func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_PromptsBooleanAttributeAsCheckbox() {
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: "username", Type: model.TypeString, Required: true},
+			{Attribute: "active", Type: model.TypeBoolean, Required: true},
+			{Attribute: "age", Type: model.TypeNumber, Required: true},
+		}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeRegistration,
+		NodeInputs:  []providers.Input{},
+		UserInputs:  map[string]string{},
+		RuntimeData: map[string]string{userTypeKey: testUserType},
+	}
+
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	result := suite.executor.HasRequiredInputs(ctx, execResp)
+
+	assert.False(suite.T(), result)
+	promptedTypes := make(map[string]string, len(execResp.Inputs))
+	for _, input := range execResp.Inputs {
+		promptedTypes[input.Identifier] = input.Type
+	}
+	assert.Equal(suite.T(), providers.InputTypeText, promptedTypes["username"])
+	assert.Equal(suite.T(), providers.InputTypeBoolean, promptedTypes["active"])
+	assert.Equal(suite.T(), providers.InputTypeNumber, promptedTypes["age"])
+}
+
+// TestGetAttributesForProvisioning_ConvertsToSchemaTypes verifies that collected values, which the
+// engine carries as strings, reach the store as the types the schema declares.
+func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_ConvertsToSchemaTypes() {
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: "username", Type: model.TypeString, Required: true},
+			{Attribute: "active", Type: model.TypeBoolean, Required: true},
+			{Attribute: "verified", Type: model.TypeBoolean, Required: true},
+			{Attribute: "age", Type: model.TypeNumber, Required: true},
+		}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		UserInputs: map[string]string{
+			"username": "testuser",
+			"active":   "true",
+			"age":      "42",
+		},
+		RuntimeData: map[string]string{userTypeKey: testUserType, "verified": "false"},
+		NodeInputs:  []providers.Input{},
+	}
+
+	result, _, _ := suite.executor.getAttributesForProvisioning(ctx)
+
+	assert.Equal(suite.T(), "testuser", result["username"])
+	assert.Equal(suite.T(), true, result["active"])
+	assert.Equal(suite.T(), false, result["verified"])
+	assert.Equal(suite.T(), float64(42), result["age"])
+}
+
+// TestGetAttributesForProvisioning_UnparseableBooleanIsPassedThrough verifies that a value that
+// does not parse is left as-is, so schema validation reports it instead of a zero value being
+// silently substituted.
+func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_UnparseableBooleanIsPassedThrough() {
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: "active", Type: model.TypeBoolean, Required: true},
+		}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		UserInputs:  map[string]string{"active": "affirmative"},
+		RuntimeData: map[string]string{userTypeKey: testUserType},
+		NodeInputs:  []providers.Input{},
+	}
+
+	result, _, _ := suite.executor.getAttributesForProvisioning(ctx)
+
+	assert.Equal(suite.T(), "affirmative", result["active"])
+}
+
 // TestGetAttributesForProvisioning_SchemaEmpty_ReturnsEmpty verifies that when the schema
 // is unavailable (no userTypeKey → getUserType returns ""), an empty map is returned.
 func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_SchemaEmpty_ReturnsEmpty() {

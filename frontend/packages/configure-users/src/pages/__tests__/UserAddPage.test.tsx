@@ -40,6 +40,7 @@ let simulateInviteUserError = false;
 const mockInviteUserError = new Error('Invite user failed');
 
 let capturedOnFlowChange: ((response: unknown) => void) | null = null;
+let capturedOnError: ((error: Error) => void) | null = null;
 
 const defaultRenderProps: TestInviteUserRenderProps = {
   additionalData: undefined,
@@ -95,8 +96,9 @@ vi.mock('@thunderid/react', async (importOriginal) => {
       onError?: (error: Error) => void;
       onFlowChange?: (response: unknown) => void;
     }) => {
-      // Capture onFlowChange so tests can invoke it
+      // Capture onFlowChange and onError so tests can invoke them
       capturedOnFlowChange = onFlowChange ?? null;
+      capturedOnError = onError ?? null;
 
       if (simulateInviteUserError && onError) {
         setTimeout(() => {
@@ -236,6 +238,26 @@ const ouSelect = (ref: string, label: string, opts?: {required?: boolean; id?: s
     id: opts?.id ?? `ou-${ref}`,
   }) as unknown as EmbeddedFlowComponent;
 
+/** Build a numeric input component */
+const numberInput = (ref: string, label: string, opts?: {required?: boolean; id?: string}): EmbeddedFlowComponent =>
+  ({
+    type: 'NUMBER_INPUT',
+    ref,
+    label,
+    required: opts?.required ?? false,
+    id: opts?.id ?? `number-${ref}`,
+  }) as unknown as EmbeddedFlowComponent;
+
+/** Build a boolean (checkbox) component */
+const booleanInput = (ref: string, label: string, opts?: {required?: boolean; id?: string}): EmbeddedFlowComponent =>
+  ({
+    type: 'BOOLEAN_INPUT',
+    ref,
+    label,
+    required: opts?.required ?? false,
+    id: opts?.id ?? `boolean-${ref}`,
+  }) as unknown as EmbeddedFlowComponent;
+
 /** Build a submit action component */
 const submitAction = (label: string, opts?: {variant?: string; id?: string}): EmbeddedFlowComponent =>
   ({
@@ -276,6 +298,7 @@ describe('UserAddPage', () => {
     vi.clearAllMocks();
     simulateInviteUserError = false;
     capturedOnFlowChange = null;
+    capturedOnError = null;
     mockInviteUserRenderProps = {...defaultRenderProps};
     Object.assign(mockInviteUserError, {message: 'Invite user failed', response: undefined});
   });
@@ -499,6 +522,56 @@ describe('UserAddPage', () => {
       // The text input should NOT render because the block has no submit action
       expect(screen.queryByLabelText(/name/i)).not.toBeInTheDocument();
     });
+
+    it('should render a NUMBER_INPUT field as a numeric input', () => {
+      mockInviteUserRenderProps.components = [
+        heading('Number Step'),
+        block([numberInput('age', 'Age', {required: true}), submitAction('Next')]),
+      ];
+
+      render(<UserAddPage />);
+
+      const input = screen.getByLabelText(/age/i);
+      expect(input).toBeInTheDocument();
+      expect(input).toHaveAttribute('type', 'number');
+    });
+
+    it('should render a BOOLEAN_INPUT field as a checkbox', () => {
+      mockInviteUserRenderProps.components = [
+        heading('Boolean Step'),
+        block([booleanInput('active', 'Active', {required: true}), submitAction('Next')]),
+      ];
+
+      render(<UserAddPage />);
+
+      expect(screen.getByRole('checkbox', {name: 'Active'})).toBeInTheDocument();
+    });
+
+    it('should seed a BOOLEAN_INPUT field with its unchecked value', async () => {
+      mockInviteUserRenderProps.components = [
+        heading('Boolean Step'),
+        block([booleanInput('active', 'Active', {required: true}), submitAction('Next')]),
+      ];
+
+      render(<UserAddPage />);
+
+      await waitFor(() => {
+        expect(mockHandleInputChange).toHaveBeenCalledWith('active', 'false');
+      });
+    });
+
+    it('should report a checked BOOLEAN_INPUT field as true', async () => {
+      mockInviteUserRenderProps.components = [
+        heading('Boolean Step'),
+        block([booleanInput('active', 'Active', {required: true}), submitAction('Next')]),
+      ];
+
+      render(<UserAddPage />);
+
+      await userEvent.click(screen.getByRole('checkbox', {name: 'Active'}));
+
+      expect(mockHandleInputChange).toHaveBeenCalledWith('active', 'true');
+    });
   });
 
   /* ----- Display-only prompt state ----- */
@@ -651,6 +724,121 @@ describe('UserAddPage', () => {
       }
 
       // Re-render to reflect state change
+      rerender(<UserAddPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('An error occurred. Please try again.')).toBeInTheDocument();
+      });
+    });
+
+    it('should show the mapped message for a known flow executor error code', async () => {
+      mockInviteUserRenderProps.components = [
+        heading('Step 1'),
+        block([textInput('name', 'Name'), submitAction('Next')]),
+      ];
+
+      const {rerender} = render(<UserAddPage />);
+
+      // FET-1080 is the provisioning attribute conflict raised when a unique attribute is taken.
+      if (capturedOnFlowChange) {
+        capturedOnFlowChange({
+          flowStatus: 'ERROR',
+          error: {
+            code: 'FET-1080',
+            message: {
+              key: 'flows.executor.errors.provisioning_attribute_conflict',
+              defaultValue: 'A user with the provided attributes already exists',
+            },
+            description: {
+              key: 'flows.executor.errors.provisioning_attribute_conflict_desc',
+              defaultValue: 'User provisioning failed because one or more unique attribute values are already taken',
+            },
+          },
+        });
+      }
+      rerender(<UserAddPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('A user with the same unique attribute value already exists.')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('An error occurred. Please try again.')).not.toBeInTheDocument();
+    });
+
+    it('should name the conflicting attribute for a parameterized flow executor error', async () => {
+      mockInviteUserRenderProps.components = [
+        heading('Step 1'),
+        block([textInput('email', 'Email'), submitAction('Next')]),
+      ];
+
+      const {rerender} = render(<UserAddPage />);
+
+      // FET-1061 is raised by the uniqueness check on the invite path. It re-prompts rather than
+      // failing the flow, so it arrives through onFlowChange without an ERROR status.
+      if (capturedOnFlowChange) {
+        capturedOnFlowChange({
+          error: {
+            code: 'FET-1061',
+            message: {
+              key: 'flows.executor.errors.attribute_not_unique',
+              defaultValue: 'User already exists with the provided email',
+              params: {attribute: 'email'},
+            },
+          },
+        });
+      }
+      rerender(<UserAddPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('A user already exists with the provided email.')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('An error occurred. Please try again.')).not.toBeInTheDocument();
+    });
+
+    it('should keep the mapped message when onError follows onFlowChange for the same failure', async () => {
+      mockInviteUserRenderProps.components = [
+        heading('Step 1'),
+        block([textInput('name', 'Name'), submitAction('Next')]),
+      ];
+
+      const {rerender} = render(<UserAddPage />);
+
+      // The SDK reports a flow failure through both callbacks: onFlowChange receives the full
+      // envelope, then onError receives it flattened into a plain Error with the code stripped.
+      if (capturedOnFlowChange) {
+        capturedOnFlowChange({
+          flowStatus: 'ERROR',
+          error: {
+            code: 'FET-1080',
+            message: {
+              key: 'flows.executor.errors.provisioning_attribute_conflict',
+              defaultValue: 'A user with the provided attributes already exists',
+            },
+          },
+        });
+      }
+      if (capturedOnError) {
+        capturedOnError(new Error('A user with the provided attributes already exists'));
+      }
+      rerender(<UserAddPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('A user with the same unique attribute value already exists.')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('An error occurred. Please try again.')).not.toBeInTheDocument();
+    });
+
+    it('should fall back to the generic message when onError reports a failure on its own', async () => {
+      mockInviteUserRenderProps.components = [
+        heading('Step 1'),
+        block([textInput('name', 'Name'), submitAction('Next')]),
+      ];
+
+      const {rerender} = render(<UserAddPage />);
+
+      // A thrown network failure never reaches onFlowChange, so onError must still surface something.
+      if (capturedOnError) {
+        capturedOnError(new Error('Network request failed'));
+      }
       rerender(<UserAddPage />);
 
       await waitFor(() => {

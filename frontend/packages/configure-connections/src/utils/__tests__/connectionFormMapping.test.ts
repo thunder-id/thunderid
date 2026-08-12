@@ -13,6 +13,7 @@ import {
 
 const GOOGLE_FIELDS = CONNECTION_FORM_FIELDS.google;
 const OIDC_FIELDS = CONNECTION_FORM_FIELDS.oidc;
+const OAUTH_FIELDS = CONNECTION_FORM_FIELDS.oauth;
 const TWILIO_FIELDS = CONNECTION_FORM_FIELDS.twilio;
 const SMS_GATEWAY_FIELDS = CONNECTION_FORM_FIELDS['sms-gateway'];
 const REDIRECT = 'https://id.acme.io/oauth/callback/google';
@@ -231,6 +232,23 @@ describe('validateConnectionForm', () => {
     expect(errors.name).toBe('connections:validation.required');
     expect(errors.clientId).toBe('connections:validation.required');
     expect(errors.clientSecret).toBe('connections:validation.required');
+  });
+
+  it('does not require the OAuth 2 user profile endpoint', () => {
+    const errors = validateConnectionForm(
+      {
+        name: 'n',
+        clientId: 'c',
+        clientSecret: 's',
+        redirectUri: REDIRECT,
+        authorizationEndpoint: 'https://i/a',
+        tokenEndpoint: 'https://i/t',
+        userInfoEndpoint: '',
+      },
+      OAUTH_FIELDS,
+      'create',
+    );
+    expect(errors).not.toHaveProperty('userInfoEndpoint');
   });
 
   it('does not require the secret on edit', () => {

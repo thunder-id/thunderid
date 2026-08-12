@@ -31,6 +31,7 @@ import EditGeneralSettings from '../components/edit-organization-unit/general-se
 import EditGroups from '../components/edit-organization-unit/group-settings/EditGroupSettings';
 import EditUsers from '../components/edit-organization-unit/user-settings/EditUserSettings';
 import OrganizationUnitDeleteDialog from '../components/OrganizationUnitDeleteDialog';
+import OrganizationUnitConstraints from '../constants/organization-unit-constraints';
 import OrganizationUnitTreeConstants from '../constants/organization-unit-tree-constants';
 import useOrganizationUnit from '../contexts/useOrganizationUnit';
 import useOrganizationUnitRoutes from '../hooks/useOrganizationUnitRoutes';
@@ -133,6 +134,20 @@ export default function OrganizationUnitEditPage({
       setEditedOU((prev) => ({...prev, [field]: value}));
     },
     [updateOrganizationUnit],
+  );
+
+  const commitName = useCallback(
+    (value: string): void => {
+      const trimmedName = value.trim();
+      // The API rejects names outside these bounds, so an out of range rename is discarded here.
+      if (
+        trimmedName.length >= OrganizationUnitConstraints.NAME_MIN_LENGTH &&
+        trimmedName.length <= OrganizationUnitConstraints.NAME_MAX_LENGTH
+      ) {
+        handleFieldChange('name', trimmedName);
+      }
+    },
+    [handleFieldChange],
   );
 
   const commitDescription = useCallback(
@@ -297,16 +312,12 @@ export default function OrganizationUnitEditPage({
                 value={tempName}
                 onChange={(e) => setTempName(e.target.value)}
                 onBlur={() => {
-                  if (tempName.trim()) {
-                    handleFieldChange('name', tempName.trim());
-                  }
+                  commitName(tempName);
                   setIsEditingName(false);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    if (tempName.trim()) {
-                      handleFieldChange('name', tempName.trim());
-                    }
+                    commitName(tempName);
                     setIsEditingName(false);
                   } else if (e.key === 'Escape') {
                     setTempName(editedOU.name ?? organizationUnit.name);

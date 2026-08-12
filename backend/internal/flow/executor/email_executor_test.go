@@ -827,8 +827,8 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_UsesNodePropertiesAndF
 		ForwardedData: map[string]interface{}{
 			userAttributeEmail: "forwarded@example.com",
 			common.ForwardedDataKeyTemplateData: map[string]interface{}{
-				"magicLink":     "https://localhost:5190/gate/signin?token=abc",
-				"expiryMinutes": "5",
+				"magicLink":  "https://localhost:5190/gate/signin?token=abc",
+				"expiryTime": "5 minutes",
 			},
 		},
 		RuntimeData: map[string]string{},
@@ -842,8 +842,8 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_UsesNodePropertiesAndF
 		template.ScenarioUserInvite,
 		template.TemplateTypeEmail,
 		template.TemplateData{
-			"magicLink":     "https://localhost:5190/gate/signin?token=abc",
-			"expiryMinutes": "5",
+			"magicLink":  "https://localhost:5190/gate/signin?token=abc",
+			"expiryTime": "5 minutes",
 		},
 	).Return(&template.RenderedTemplate{
 		Subject: "Sign in to your account",

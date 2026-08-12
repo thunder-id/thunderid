@@ -62,7 +62,9 @@ const CreateResourceServerPage = lazy(() =>
 );
 
 const AgentCreatePage = lazy(() => import('./features/agents/pages/AgentCreatePage'));
-const AgentEditPage = lazy(() => import('./features/agents/pages/AgentEditPage'));
+const AgentEditPage = lazy(() =>
+  import('./lib/monaco-setup').then(() => import('./features/agents/pages/AgentEditPage')),
+);
 const AgentsListPage = lazy(() => import('./features/agents/pages/AgentsListPage'));
 const ApplicationCreatePage = lazy(() => import('./features/applications/pages/ApplicationCreatePage'));
 const ApplicationEditPage = lazy(() =>
@@ -443,6 +445,15 @@ export default function App(): JSX.Element {
                 >
                   <Route path="get-started/applications/types" element={<ApplicationTemplateSelectPage />} />
                   <Route path="get-started/applications/create" element={<ApplicationCreatePage />} />
+                </Route>
+                <Route
+                  element={
+                    <AgentCreateProvider>
+                      <Outlet />
+                    </AgentCreateProvider>
+                  }
+                >
+                  <Route path="get-started/agents/create" element={<AgentCreatePage />} />
                 </Route>
                 <Route path="tryout/securing-application" element={<TryoutSecuringApplicationPage />} />
                 <Route path="tryout/ai-agents" element={<TryoutSecuringAIAgentsPage />} />

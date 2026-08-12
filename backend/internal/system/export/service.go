@@ -7,6 +7,7 @@ import (
 	"context"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,21 +28,23 @@ const (
 	formatYAML = "yaml"
 	formatJSON = "json"
 
-	resourceTypeApplication    = "application"
-	resourceTypeConnection     = "connection"
-	resourceTypeUserType       = "user_type"
-	resourceTypeAgentType      = "agent_type"
-	resourceTypeOU             = "organization_unit"
-	resourceTypeUser           = "user"
-	resourceTypeGroup          = "group"
-	resourceTypeResourceServer = "resource_server"
-	resourceTypeRole           = "role"
-	resourceTypeFlow           = "flow"
-	resourceTypeTranslation    = "translation"
-	resourceTypeLayout         = "layout"
-	resourceTypeTheme          = "theme"
-	resourceTypeAgent          = "agent"
-	resourceTypeServerConfig   = "server_config"
+	resourceTypeApplication             = "application"
+	resourceTypeConnection              = "connection"
+	resourceTypeUserType                = "user_type"
+	resourceTypeAgentType               = "agent_type"
+	resourceTypeOU                      = "organization_unit"
+	resourceTypeUser                    = "user"
+	resourceTypeGroup                   = "group"
+	resourceTypeResourceServer          = "resource_server"
+	resourceTypeRole                    = "role"
+	resourceTypeFlow                    = "flow"
+	resourceTypeTranslation             = "translation"
+	resourceTypeLayout                  = "layout"
+	resourceTypeTheme                   = "theme"
+	resourceTypeAgent                   = "agent"
+	resourceTypeServerConfig            = "server_config"
+	resourceTypeCredentialConfiguration = "credential_configuration" //nolint:gosec
+	resourceTypePresentationDefinition  = "presentation_definition"
 )
 
 // parameterizerInterface defines the interface for template parameterization.
@@ -49,6 +52,34 @@ type parameterizerInterface interface {
 	ToParameterizedYAML(ctx context.Context, obj interface{},
 		resourceType string, resourceName string,
 		rules *declarativeresource.ResourceRules) (string, map[string]string, error)
+	VarPrefix(resourceName string) string
+}
+
+// varNameAllocator hands out a unique template variable prefix per exported resource. Resource
+// names that normalize to the same prefix (for example "My-App", "My App" and "My_App", or an
+// application and a connection sharing a name) would otherwise share .env entries and silently
+// overwrite each other's values.
+type varNameAllocator struct {
+	parameterizer parameterizerInterface
+	taken         map[string]struct{}
+}
+
+func newVarNameAllocator(param parameterizerInterface) *varNameAllocator {
+	return &varNameAllocator{parameterizer: param, taken: make(map[string]struct{})}
+}
+
+// nameFor claims a variable prefix for the given resource name and returns the name to use for
+// variable naming, numerically suffixed when the prefix is already claimed by another resource.
+func (a *varNameAllocator) nameFor(resourceName string) string {
+	candidate := resourceName
+	for i := 2; ; i++ {
+		prefix := a.parameterizer.VarPrefix(candidate)
+		if _, claimed := a.taken[prefix]; !claimed {
+			a.taken[prefix] = struct{}{}
+			return candidate
+		}
+		candidate = resourceName + "_" + strconv.Itoa(i)
+	}
 }
 
 // ExportServiceInterface defines the interface for the export service.
@@ -104,24 +135,27 @@ func (es *exportService) ExportResources(
 	var exportErrors []declarativeresource.ExportError
 	allVariables := make(map[string]string)
 	resourceCounts := make(map[string]int)
+	varNames := newVarNameAllocator(es.parameterizer)
 
 	// Map resource types to their IDs from the request
 	resourceMap := map[string][]string{
-		resourceTypeApplication:    request.Applications,
-		resourceTypeConnection:     request.Connections,
-		resourceTypeUserType:       request.UserTypes,
-		resourceTypeAgentType:      request.AgentTypes,
-		resourceTypeOU:             request.OrganizationUnits,
-		resourceTypeUser:           request.Users,
-		resourceTypeGroup:          request.Groups,
-		resourceTypeResourceServer: request.ResourceServers,
-		resourceTypeRole:           request.Roles,
-		resourceTypeFlow:           request.Flows,
-		resourceTypeTranslation:    request.Translations,
-		resourceTypeLayout:         request.Layouts,
-		resourceTypeTheme:          request.Themes,
-		resourceTypeAgent:          request.Agents,
-		resourceTypeServerConfig:   request.ServerConfigs,
+		resourceTypeApplication:             request.Applications,
+		resourceTypeConnection:              request.Connections,
+		resourceTypeUserType:                request.UserTypes,
+		resourceTypeAgentType:               request.AgentTypes,
+		resourceTypeOU:                      request.OrganizationUnits,
+		resourceTypeUser:                    request.Users,
+		resourceTypeGroup:                   request.Groups,
+		resourceTypeResourceServer:          request.ResourceServers,
+		resourceTypeRole:                    request.Roles,
+		resourceTypeFlow:                    request.Flows,
+		resourceTypeTranslation:             request.Translations,
+		resourceTypeLayout:                  request.Layouts,
+		resourceTypeTheme:                   request.Themes,
+		resourceTypeAgent:                   request.Agents,
+		resourceTypeServerConfig:            request.ServerConfigs,
+		resourceTypeCredentialConfiguration: request.CredentialConfigurations,
+		resourceTypePresentationDefinition:  request.PresentationDefinitions,
 	}
 
 	// Export resources using the registry
@@ -144,7 +178,7 @@ func (es *exportService) ExportResources(
 			continue
 		}
 
-		files, vars, errors := es.exportResourcesWithExporter(ctx, exporter, resourceIDs, options)
+		files, vars, errors := es.exportResourcesWithExporter(ctx, exporter, resourceIDs, options, varNames)
 		exportFiles = append(exportFiles, files...)
 		for k, v := range vars {
 			allVariables[k] = v
@@ -239,6 +273,7 @@ func (es *exportService) exportResourcesWithExporter(
 	exporter declarativeresource.ResourceExporter,
 	resourceIDs []string,
 	options *ExportOptions,
+	varNames *varNameAllocator,
 ) ([]ExportFile, map[string]string, []declarativeresource.ExportError) {
 	logger := log.GetLogger().With(log.String("component", "ExportService"))
 	resourceType := exporter.GetResourceType()
@@ -294,7 +329,7 @@ func (es *exportService) exportResourcesWithExporter(
 		}
 
 		templateContent, vars, err := es.generateTemplateFromStruct(ctx,
-			resource, exporter.GetParameterizerType(), validatedName, exporter)
+			resource, exporter.GetParameterizerType(), varNames.nameFor(validatedName), exporter)
 		if err != nil {
 			logger.Warn(ctx, "Failed to generate template from struct",
 				log.String("resourceType", resourceType),

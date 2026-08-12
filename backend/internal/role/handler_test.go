@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -163,9 +164,9 @@ func (suite *RoleHandlerTestSuite) TestHandleRolePostRequest_ServiceError() {
 	suite.Equal(http.StatusBadRequest, w.Code)
 }
 
-func (suite *RoleHandlerTestSuite) TestHandleRolePostRequest_ValidationError_NameTooShort() {
+func (suite *RoleHandlerTestSuite) TestHandleRolePostRequest_ValidationError_NameTooLong() {
 	request := CreateRoleRequest{
-		Name: "ad",
+		Name: strings.Repeat("a", 101),
 		OUID: "ou-tenancy-1",
 	}
 

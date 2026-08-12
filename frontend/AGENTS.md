@@ -17,6 +17,23 @@ Gate consumes ThunderID's published SDK packages — `@thunderid/react` and `@th
 [javascript-sdks](https://github.com/thunder-id/javascript-sdks) repository. Clone that repository only to develop or
 debug the SDK itself, or to test against unreleased SDK changes.
 
+### rolldown External Subpaths
+
+Every package's `rolldown.config.js` builds `external` from `Object.keys(pkg.dependencies)` and
+`Object.keys(pkg.peerDependencies)`, which only matches a dependency's bare specifier (e.g. `@thunderid/logger`).
+rolldown matches `external` by exact string, so an import of a **subpath** of that dependency (e.g.
+`@thunderid/logger/react`, `@hookform/resolvers/zod`) is not covered and gets inlined into this package's own `dist`
+output instead of staying external. For a dependency backed by a React context (e.g. `@thunderid/logger`), this silently
+creates a second `createContext()` instance in this package's bundle, so the copy's `useContext` never sees the value
+the host app's provider supplies — a `use<Thing> must be used within a <Thing>Provider` crash that reproduces in
+production only (dev aliases workspace packages to source, masking it) and never in tests.
+
+When scaffolding a new `frontend/packages/*` package, or adding an import of a subpath (`somepkg/subpath`) from an
+existing dependency: add that exact subpath as a string literal to the package's `rolldown.config.js` `external` array,
+next to the existing `// Peer dep subpaths are not matched by exact string - add them explicitly.` entries (see
+`packages/configure-resource-servers/rolldown.config.js`). Do this for every subpath actually imported by the package's
+source, not just `@thunderid/logger/react`.
+
 ## Route Configuration — Never Hardcode a Path
 
 Every route destination is centralized in a per-app `RouteConfig` (`frontend/apps/console/src/configs/RouteConfig.ts`,

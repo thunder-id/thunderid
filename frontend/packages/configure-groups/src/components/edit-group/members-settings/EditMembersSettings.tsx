@@ -106,6 +106,7 @@ export default function EditMembersSettings({group}: EditMembersSettingsProps): 
             setAddError(null);
           }}
           onAdd={handleAddMembers}
+          groupId={group.id}
           excludeGroupId={group.id}
           error={addError}
           onErrorDismiss={() => setAddError(null)}

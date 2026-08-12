@@ -114,7 +114,8 @@ export interface ConfigureApplicationDetailsProps {
  * First step of the application creation wizard: pick an organization unit (only shown when more
  * than one exists), name the application, choose which of that organization unit's configured
  * defaults (sign in / sign up / recovery / sign out flow, theme, layout) to snapshot into the new
- * application instead of building each one from scratch, and pick which user types can access it.
+ * application instead of building each one from scratch, and pick which user types can sign up
+ * through it.
  */
 export default function ConfigureApplicationDetails({
   hasMultipleOUs,

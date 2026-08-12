@@ -83,6 +83,7 @@ const (
 	ResourceTypeOU                 = "organizationUnit"
 	ResourceTypeResourceServer     = "resourceServer"
 	ResourceTypeResource           = "resource"
+	ResourceTypeAction             = "action"
 )
 
 // SummarizeBlockingUsages renders a deterministic, human-readable summary of blocking dependencies

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -395,4 +396,428 @@ func (ts *RefreshTokenTestSuite) TestRefreshTokenGrantWithoutOpenIDScope() {
 		"Refresh response should contain an access token")
 	ts.Empty(refreshResponse.IDToken,
 		"Refresh response should not contain an ID token without openid scope")
+}
+
+// This suite covers what happens to an already-issued refresh token when the authorization behind it
+// changes: role and permission edits must narrow the scopes it can mint, and a credential change must
+// stop it minting at all. Each scenario runs end to end, from an authorization code flow through the
+// mutation to a refresh.
+//
+// Every scenario owns the state it mutates (its own user, role, or application), so the mutations
+// cannot leak into another scenario's expectations.
+
+const (
+	refreshSecClientID     = "refresh_security_test_client"
+	refreshSecClientSecret = "refresh_security_test_secret"
+	refreshSecRedirectURI  = "https://localhost:3000"
+	refreshSecPassword     = "testpass123"
+	refreshSecResource     = "https://refresh-security.example.com"
+	refreshSecUserType     = "refresh-security-person"
+)
+
+type RefreshSecurityTestSuite struct {
+	suite.Suite
+	ouID             string
+	entityTypeID     string
+	authFlowID       string
+	resourceServerID string
+	applicationID    string
+	createdUserIDs   []string
+	createdRoleIDs   []string
+	createdAppIDs    []string
+}
+
+func TestRefreshSecurityTestSuite(t *testing.T) {
+	suite.Run(t, new(RefreshSecurityTestSuite))
+}
+
+func (ts *RefreshSecurityTestSuite) SetupSuite() {
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle:      "refresh-security-test-ou",
+		Name:        "Refresh Security Test OU",
+		Description: "Organization unit for refresh token security integration testing",
+	})
+	ts.Require().NoError(err, "Failed to create test organization unit")
+	ts.ouID = ouID
+
+	userType := refreshTokenTestUserType
+	userType.Name = refreshSecUserType
+	userType.OUID = ouID
+	entityTypeID, err := testutils.CreateUserType(userType)
+	ts.Require().NoError(err, "Failed to create test user type")
+	ts.entityTypeID = entityTypeID
+
+	// Reuse the authentication flow shape from the refresh token suite: it already runs the
+	// AuthorizationExecutor, which is what resolves permission scopes at the authorization endpoint.
+	flow := refreshTokenTestAuthFlow
+	flow.Name = "Refresh Security Test Auth Flow"
+	flow.Handle = "auth_flow_refresh_security_test"
+	flowID, err := testutils.CreateFlow(flow)
+	ts.Require().NoError(err, "Failed to create test authentication flow")
+	ts.authFlowID = flowID
+
+	resourceServerID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:        "Refresh Security Resource Server",
+		Description: "Resource server for refresh token security integration tests",
+		Identifier:  refreshSecResource,
+		OUID:        ouID,
+	}, []testutils.Action{
+		{Name: "Read Documents", Handle: "read", Description: "Permission to read documents"},
+		{Name: "Write Documents", Handle: "write", Description: "Permission to write documents"},
+	})
+	ts.Require().NoError(err, "Failed to create resource server")
+	ts.resourceServerID = resourceServerID
+
+	ts.applicationID = ts.createApplication("RefreshSecurityTestApp", refreshSecClientID, refreshSecClientSecret)
+}
+
+func (ts *RefreshSecurityTestSuite) TearDownSuite() {
+	for _, appID := range ts.createdAppIDs {
+		_ = testutils.DeleteApplication(appID)
+	}
+	for _, roleID := range ts.createdRoleIDs {
+		_ = testutils.DeleteRole(roleID)
+	}
+	for _, userID := range ts.createdUserIDs {
+		_ = testutils.DeleteUser(userID)
+	}
+	if ts.resourceServerID != "" {
+		_ = testutils.DeleteResourceServer(ts.resourceServerID)
+	}
+	if ts.authFlowID != "" {
+		_ = testutils.DeleteFlow(ts.authFlowID)
+	}
+	if ts.entityTypeID != "" {
+		_ = testutils.DeleteUserType(ts.entityTypeID)
+	}
+	if ts.ouID != "" {
+		_ = testutils.DeleteOrganizationUnit(ts.ouID)
+	}
+}
+
+// createApplication registers an application wired to the suite's flow, with the grants the refresh
+// scenarios need.
+func (ts *RefreshSecurityTestSuite) createApplication(name, clientID, clientSecret string) string {
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name:                      name,
+		Description:               "Application for refresh token security integration tests",
+		OUID:                      ts.ouID,
+		Type:                      "fullstack",
+		AuthFlowID:                ts.authFlowID,
+		IsRegistrationFlowEnabled: false,
+		AllowedUserTypes:          []string{refreshSecUserType},
+		InboundAuthConfig: []map[string]interface{}{
+			{
+				"type": "oauth2",
+				"config": map[string]interface{}{
+					"clientId":                clientID,
+					"clientSecret":            clientSecret,
+					"redirectUris":            []string{refreshSecRedirectURI},
+					"grantTypes":              []string{"authorization_code", "refresh_token"},
+					"responseTypes":           []string{"code"},
+					"tokenEndpointAuthMethod": "client_secret_basic",
+				},
+			},
+		},
+	})
+	ts.Require().NoError(err, "Failed to create application")
+	ts.createdAppIDs = append(ts.createdAppIDs, appID)
+	return appID
+}
+
+// updateApplication replaces the application, optionally rotating its client secret. An empty secret
+// leaves the stored one intact, so the update touches only the system attributes.
+func (ts *RefreshSecurityTestSuite) updateApplication(appID, name, clientID, clientSecret string) error {
+	oauthConfig := map[string]interface{}{
+		"clientId":                clientID,
+		"redirectUris":            []string{refreshSecRedirectURI},
+		"grantTypes":              []string{"authorization_code", "refresh_token"},
+		"responseTypes":           []string{"code"},
+		"tokenEndpointAuthMethod": "client_secret_basic",
+	}
+	if clientSecret != "" {
+		oauthConfig["clientSecret"] = clientSecret
+	}
+	return testutils.UpdateApplication(appID, testutils.Application{
+		ID:                        appID,
+		Name:                      name,
+		Description:               "Application for refresh token security integration tests",
+		OUID:                      ts.ouID,
+		Type:                      "fullstack",
+		AuthFlowID:                ts.authFlowID,
+		IsRegistrationFlowEnabled: false,
+		AllowedUserTypes:          []string{refreshSecUserType},
+		InboundAuthConfig: []map[string]interface{}{
+			{"type": "oauth2", "config": oauthConfig},
+		},
+	})
+}
+
+// createUser registers a user of the suite's type and tracks it for cleanup.
+func (ts *RefreshSecurityTestSuite) createUser(username string) string {
+	userID, err := testutils.CreateUser(testutils.User{
+		OUID: ts.ouID,
+		Type: refreshSecUserType,
+		Attributes: json.RawMessage(fmt.Sprintf(`{
+			"username": "%s",
+			"password": "%s",
+			"email": "%s@example.com",
+			"given_name": "Refresh",
+			"family_name": "Security"
+		}`, username, refreshSecPassword, username)),
+	})
+	ts.Require().NoError(err, "Failed to create test user")
+	ts.createdUserIDs = append(ts.createdUserIDs, userID)
+	return userID
+}
+
+// createRole grants the given permissions on the suite's resource server to the given user.
+func (ts *RefreshSecurityTestSuite) createRole(name, userID string, permissions []string) string {
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name:        name,
+		Description: "Role for refresh token security integration tests",
+		OUID:        ts.ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: ts.resourceServerID, Permissions: permissions},
+		},
+		Assignments: []testutils.Assignment{{ID: userID, Type: "user"}},
+	})
+	ts.Require().NoError(err, "Failed to create test role")
+	ts.createdRoleIDs = append(ts.createdRoleIDs, roleID)
+	return roleID
+}
+
+// obtainTokens runs the full authorization code flow and returns the token response.
+func (ts *RefreshSecurityTestSuite) obtainTokens(
+	clientID, clientSecret, username, scope string,
+) *testutils.TokenResponse {
+	resp, err := testutils.InitiateAuthorizationFlowWithResource(
+		clientID, refreshSecRedirectURI, "code", scope, "test-state", refreshSecResource)
+	ts.Require().NoError(err, "Failed to initiate authorization flow")
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusFound, resp.StatusCode, "Expected redirect from authorization endpoint")
+
+	authID, executionID, err := testutils.ExtractAuthData(resp.Header.Get("Location"))
+	ts.Require().NoError(err, "Failed to extract auth data")
+
+	initialStep, err := testutils.ExecuteAuthenticationFlow(executionID, nil, "")
+	ts.Require().NoError(err, "Failed to initiate authentication flow")
+
+	flowStep, err := testutils.ExecuteAuthenticationFlow(executionID, map[string]string{
+		"username": username,
+		"password": refreshSecPassword,
+	}, "action_001", initialStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to execute authentication flow")
+	ts.Require().Equal("COMPLETE", flowStep.FlowStatus, "Authentication flow should complete")
+
+	authzResp, err := testutils.CompleteAuthorization(authID, flowStep.Assertion)
+	ts.Require().NoError(err, "Failed to complete authorization")
+
+	code, err := testutils.ExtractAuthorizationCode(authzResp.RedirectURI)
+	ts.Require().NoError(err, "Failed to extract authorization code")
+
+	result, err := testutils.RequestTokenWithResource(
+		clientID, clientSecret, code, refreshSecRedirectURI, "authorization_code", refreshSecResource)
+	ts.Require().NoError(err, "Failed to exchange code for tokens")
+	ts.Require().Equal(http.StatusOK, result.StatusCode,
+		"Token request should succeed. Response: %s", string(result.Body))
+	ts.Require().NotEmpty(result.Token.RefreshToken, "Refresh token should not be empty")
+
+	return result.Token
+}
+
+// accessTokenScopes returns the scopes carried by the given access token.
+func (ts *RefreshSecurityTestSuite) accessTokenScopes(accessToken string) []string {
+	claims, err := testutils.DecodeJWT(accessToken)
+	ts.Require().NoError(err, "Failed to decode access token")
+
+	scopeRaw, ok := claims.Additional["scope"]
+	if !ok {
+		return nil
+	}
+	scopeStr, ok := scopeRaw.(string)
+	ts.Require().True(ok, "scope claim should be a string")
+	if scopeStr == "" {
+		return nil
+	}
+	return strings.Split(scopeStr, " ")
+}
+
+// Baseline: with the grant untouched, a refresh keeps minting the permission scopes. Without this the
+// negative cases below could pass for the wrong reason.
+func (ts *RefreshSecurityTestSuite) TestRefresh_NoChange_KeepsPermissionScopes() {
+	userID := ts.createUser("refresh_sec_baseline")
+	ts.createRole("RefreshSec_Baseline", userID, []string{"read", "write"})
+
+	tokens := ts.obtainTokens(refreshSecClientID, refreshSecClientSecret, "refresh_sec_baseline", "openid read write")
+	ts.Require().Contains(ts.accessTokenScopes(tokens.AccessToken), "read", "initial token should carry read")
+
+	refreshed, err := testutils.RefreshAccessToken(refreshSecClientID, refreshSecClientSecret, tokens.RefreshToken)
+	ts.Require().NoError(err, "Refresh should succeed")
+
+	scopes := ts.accessTokenScopes(refreshed.AccessToken)
+	ts.Assert().Contains(scopes, "read", "refreshed token should retain read")
+	ts.Assert().Contains(scopes, "write", "refreshed token should retain write")
+}
+
+// Unassigning the role must stop the refresh token minting the permissions it granted.
+func (ts *RefreshSecurityTestSuite) TestRefresh_RoleUnassigned_DropsPermissionScopes() {
+	userID := ts.createUser("refresh_sec_unassign")
+	roleID := ts.createRole("RefreshSec_Unassign", userID, []string{"read", "write"})
+
+	tokens := ts.obtainTokens(refreshSecClientID, refreshSecClientSecret, "refresh_sec_unassign", "openid read write")
+	ts.Require().Contains(ts.accessTokenScopes(tokens.AccessToken), "read", "initial token should carry read")
+
+	ts.Require().NoError(testutils.RemoveRoleAssignments(roleID, []testutils.Assignment{
+		{ID: userID, Type: "user"},
+	}), "Failed to unassign role")
+
+	refreshed, err := testutils.RefreshAccessToken(refreshSecClientID, refreshSecClientSecret, tokens.RefreshToken)
+	ts.Require().NoError(err, "Refresh should still succeed, with narrowed scopes")
+
+	scopes := ts.accessTokenScopes(refreshed.AccessToken)
+	ts.Assert().NotContains(scopes, "read", "refreshed token must not carry read after unassignment")
+	ts.Assert().NotContains(scopes, "write", "refreshed token must not carry write after unassignment")
+	ts.Assert().Contains(scopes, "openid", "OIDC scopes are not permissions and must survive")
+}
+
+// Deleting the role entirely has the same effect as unassigning it.
+func (ts *RefreshSecurityTestSuite) TestRefresh_RoleDeleted_DropsPermissionScopes() {
+	userID := ts.createUser("refresh_sec_roledelete")
+	roleID := ts.createRole("RefreshSec_RoleDelete", userID, []string{"read", "write"})
+
+	tokens := ts.obtainTokens(refreshSecClientID, refreshSecClientSecret, "refresh_sec_roledelete", "openid read write")
+	ts.Require().Contains(ts.accessTokenScopes(tokens.AccessToken), "read", "initial token should carry read")
+
+	ts.Require().NoError(testutils.DeleteRole(roleID), "Failed to delete role")
+
+	refreshed, err := testutils.RefreshAccessToken(refreshSecClientID, refreshSecClientSecret, tokens.RefreshToken)
+	ts.Require().NoError(err, "Refresh should still succeed, with narrowed scopes")
+
+	scopes := ts.accessTokenScopes(refreshed.AccessToken)
+	ts.Assert().NotContains(scopes, "read", "refreshed token must not carry read after role deletion")
+	ts.Assert().NotContains(scopes, "write", "refreshed token must not carry write after role deletion")
+}
+
+// Stripping one permission from the role narrows the refreshed token to the permissions that remain.
+func (ts *RefreshSecurityTestSuite) TestRefresh_RolePermissionRemoved_DropsThatScopeOnly() {
+	userID := ts.createUser("refresh_sec_permstrip")
+	roleID := ts.createRole("RefreshSec_PermStrip", userID, []string{"read", "write"})
+
+	tokens := ts.obtainTokens(refreshSecClientID, refreshSecClientSecret, "refresh_sec_permstrip", "openid read write")
+	ts.Require().Contains(ts.accessTokenScopes(tokens.AccessToken), "write", "initial token should carry write")
+
+	ts.Require().NoError(testutils.UpdateRole(roleID, testutils.Role{
+		Name:        "RefreshSec_PermStrip",
+		Description: "Role for refresh token security integration tests",
+		OUID:        ts.ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: ts.resourceServerID, Permissions: []string{"read"}},
+		},
+		Assignments: []testutils.Assignment{{ID: userID, Type: "user"}},
+	}), "Failed to strip permission from role")
+
+	refreshed, err := testutils.RefreshAccessToken(refreshSecClientID, refreshSecClientSecret, tokens.RefreshToken)
+	ts.Require().NoError(err, "Refresh should still succeed, with narrowed scopes")
+
+	scopes := ts.accessTokenScopes(refreshed.AccessToken)
+	ts.Assert().Contains(scopes, "read", "the retained permission must still be minted")
+	ts.Assert().NotContains(scopes, "write", "the removed permission must not be minted")
+}
+
+// A password reset must stop the refresh tokens established before it.
+func (ts *RefreshSecurityTestSuite) TestRefresh_PasswordReset_RejectsToken() {
+	userID := ts.createUser("refresh_sec_password")
+	ts.createRole("RefreshSec_Password", userID, []string{"read"})
+
+	tokens := ts.obtainTokens(refreshSecClientID, refreshSecClientSecret, "refresh_sec_password", "openid read")
+
+	ts.Require().NoError(testutils.UpdateUserCredentials(userID, map[string]string{
+		"password": "new-testpass456",
+	}), "Failed to reset user password")
+
+	_, err := testutils.RefreshAccessToken(refreshSecClientID, refreshSecClientSecret, tokens.RefreshToken)
+	ts.Require().Error(err, "Refresh must be rejected after a password reset")
+	ts.Assert().Contains(err.Error(), "invalid_grant", "Rejection should be invalid_grant")
+}
+
+// A client secret rotation must stop the refresh tokens issued under the old secret.
+func (ts *RefreshSecurityTestSuite) TestRefresh_ClientSecretRotated_RejectsToken() {
+	const (
+		rotateClientID     = "refresh_security_rotate_client"
+		rotateClientSecret = "refresh_security_rotate_secret"
+	)
+	appID := ts.createApplication("RefreshSecurityRotateApp", rotateClientID, rotateClientSecret)
+	userID := ts.createUser("refresh_sec_rotate")
+	ts.createRole("RefreshSec_Rotate", userID, []string{"read"})
+
+	tokens := ts.obtainTokens(rotateClientID, rotateClientSecret, "refresh_sec_rotate", "openid read")
+
+	ts.Require().NoError(testutils.UpdateApplication(appID, testutils.Application{
+		ID:                        appID,
+		Name:                      "RefreshSecurityRotateApp",
+		Description:               "Application for refresh token security integration tests",
+		OUID:                      ts.ouID,
+		Type:                      "fullstack",
+		AuthFlowID:                ts.authFlowID,
+		IsRegistrationFlowEnabled: false,
+		AllowedUserTypes:          []string{refreshSecUserType},
+		InboundAuthConfig: []map[string]interface{}{
+			{
+				"type": "oauth2",
+				"config": map[string]interface{}{
+					"clientId":                rotateClientID,
+					"clientSecret":            "rotated-secret-value",
+					"redirectUris":            []string{refreshSecRedirectURI},
+					"grantTypes":              []string{"authorization_code", "refresh_token"},
+					"responseTypes":           []string{"code"},
+					"tokenEndpointAuthMethod": "client_secret_basic",
+				},
+			},
+		},
+	}), "Failed to rotate client secret")
+
+	_, err := testutils.RefreshAccessToken(rotateClientID, "rotated-secret-value", tokens.RefreshToken)
+	ts.Require().Error(err, "Refresh must be rejected after a client secret rotation")
+	ts.Assert().Contains(err.Error(), "invalid_grant", "Rejection should be invalid_grant")
+}
+
+// An unrelated application edit rebuilds the whole system-attribute blob, so the marker written by a
+// secret rotation must survive it. Losing it would revive the refresh tokens the rotation invalidated.
+func (ts *RefreshSecurityTestSuite) TestRefresh_ClientSecretRotatedThenAppRenamed_StillRejectsToken() {
+	const (
+		renameClientID = "refresh_security_rename_client"
+		renameSecret   = "refresh_security_rename_secret"
+		rotatedSecret  = "rotated-secret-after-rename"
+	)
+	appID := ts.createApplication("RefreshSecurityRenameApp", renameClientID, renameSecret)
+	userID := ts.createUser("refresh_sec_rename")
+	ts.createRole("RefreshSec_Rename", userID, []string{"read"})
+
+	tokens := ts.obtainTokens(renameClientID, renameSecret, "refresh_sec_rename", "openid read")
+
+	ts.Require().NoError(ts.updateApplication(appID, "RefreshSecurityRenameApp", renameClientID, rotatedSecret),
+		"Failed to rotate client secret")
+	// The rename supplies no secret, so it only rewrites the system attributes.
+	ts.Require().NoError(ts.updateApplication(appID, "RefreshSecurityRenamedApp", renameClientID, ""),
+		"Failed to rename application")
+
+	_, err := testutils.RefreshAccessToken(renameClientID, rotatedSecret, tokens.RefreshToken)
+	ts.Require().Error(err, "Refresh must stay rejected after an unrelated application edit")
+	ts.Assert().Contains(err.Error(), "invalid_grant", "Rejection should be invalid_grant")
+}
+
+// A deleted user cannot hold a valid grant. The application maps no subject, so the token can only
+// have carried an entity ID, and a missing entity means the subject is gone.
+func (ts *RefreshSecurityTestSuite) TestRefresh_UserDeleted_RejectsToken() {
+	userID := ts.createUser("refresh_sec_userdelete")
+	ts.createRole("RefreshSec_UserDelete", userID, []string{"read"})
+
+	tokens := ts.obtainTokens(refreshSecClientID, refreshSecClientSecret, "refresh_sec_userdelete", "openid read")
+
+	ts.Require().NoError(testutils.DeleteUser(userID), "Failed to delete user")
+
+	_, err := testutils.RefreshAccessToken(refreshSecClientID, refreshSecClientSecret, tokens.RefreshToken)
+	ts.Require().Error(err, "Refresh must be rejected after the user is deleted")
+	ts.Assert().Contains(err.Error(), "invalid_grant", "Rejection should be invalid_grant")
 }

@@ -2039,7 +2039,7 @@ components:
           type: array
           items:
             type: string
-          description: User types allowed to authenticate against this agent.
+          description: User types that can sign up through this agent.
           example: ["employee", "contractor"]
         subjectAttribute:
           type: object

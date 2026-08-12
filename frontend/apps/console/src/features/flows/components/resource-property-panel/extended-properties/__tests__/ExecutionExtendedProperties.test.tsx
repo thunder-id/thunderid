@@ -797,12 +797,32 @@ describe('ExecutionExtendedProperties', () => {
       expect(mockOnChange).toHaveBeenCalledWith('data.properties.otpLength', 10, otpResource);
     });
 
-    it('should still commit booleans immediately', () => {
+    it('should default the numeric-only checkbox to checked when the property is unset', () => {
+      render(<ExecutionExtendedProperties resource={otpResource} onChange={mockOnChange} />);
+
+      expect(screen.getByRole('checkbox')).toBeChecked();
+    });
+
+    it('should render the numeric-only checkbox unchecked when explicitly set to false', () => {
+      const alphanumericOtpResource = {
+        ...otpResource,
+        data: {
+          ...(otpResource as unknown as {data: object}).data,
+          properties: {otpLength: 6, otpValidityPeriodSeconds: 120, otpUseNumericOnly: false},
+        },
+      } as unknown as Resource;
+
+      render(<ExecutionExtendedProperties resource={alphanumericOtpResource} onChange={mockOnChange} />);
+
+      expect(screen.getByRole('checkbox')).not.toBeChecked();
+    });
+
+    it('should commit false immediately when the default-checked numeric-only box is unchecked', () => {
       render(<ExecutionExtendedProperties resource={otpResource} onChange={mockOnChange} />);
 
       fireEvent.click(screen.getByRole('checkbox'));
 
-      expect(mockOnChange).toHaveBeenCalledWith('data.properties.otpUseNumericOnly', true, otpResource);
+      expect(mockOnChange).toHaveBeenCalledWith('data.properties.otpUseNumericOnly', false, otpResource);
     });
   });
 

@@ -42,7 +42,7 @@ const MIN_CONTENT_HEIGHT = 700;
 function buildIframeInitialHTML(nonce: string | undefined): string {
   return [
     '<!DOCTYPE html><html style="height:100%"><head>',
-    `<style${nonce ? ` nonce="${nonce}"` : ''}>body{margin:0;height:100%}#root,#root>*{height:100%}</style>`,
+    `<style${nonce ? ` nonce="${nonce}"` : ''}>*,*::before,*::after{box-sizing:border-box}body{margin:0;height:100%}#root,#root>*{height:100%}</style>`,
     '</head><body><div id="root"></div></body></html>',
   ].join('');
 }

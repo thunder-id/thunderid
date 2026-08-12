@@ -8,8 +8,9 @@
  *
  * @example
  * const usersPage = new UsersPage(page, baseUrl);
- * await usersPage.goto();
- * await usersPage.createUser({ username: 'test', email: 'test@test.com' });
+ * await usersPage.openAddUserWizard("create");
+ * await usersPage.fillUserForm({ username: 'test', email: 'test@test.com' });
+ * await usersPage.submitForm();
  */
 
 import { Page, Locator, expect } from "@playwright/test";
@@ -22,15 +23,16 @@ export type UserFormData = {
   email: string;
   given_name?: string;
   family_name?: string;
+  password?: string;
 };
+
+export type AddUserMode = "create" | "invite";
 
 export class UsersPage extends BasePage {
   readonly baseUrl: string;
 
   // Page Locators
   readonly addUserButton: Locator;
-  readonly userTable: Locator;
-  readonly searchInput: Locator;
 
   // Wizard Locators (Step 1: Select User Type)
   readonly userTypeHeading: Locator;
@@ -38,7 +40,16 @@ export class UsersPage extends BasePage {
   readonly onboardingModeHeading: Locator;
   readonly userTypeSelect: Locator;
   readonly continueButton: Locator;
-  readonly createUserActionButton: Locator;
+  readonly nextButton: Locator;
+
+  // Invite flow locators
+  readonly getInviteLinkButton: Locator;
+  readonly copyInviteLinkButton: Locator;
+
+  // The wizard's content column: holds both the current step's panel and that step's
+  // action buttons. Scoping submitButton to this avoids the header
+  // AppBreadcrumbs (which renders "Add User" / "Create User" crumbs before the content).
+  readonly wizardContent: Locator;
 
   // Form Locators (Step 2: User Details)
   readonly usernameInput: Locator;
@@ -47,12 +58,14 @@ export class UsersPage extends BasePage {
   readonly familyNameInput: Locator;
   readonly passwordInput: Locator;
   readonly submitButton: Locator;
-  readonly cancelButton: Locator;
+  readonly closeButton: Locator;
   readonly formHeading: Locator;
 
-  // Messages
-  readonly successMessage: Locator;
-  readonly errorMessage: Locator;
+  // Delete flow locators (User Details page: General tab, Danger Zone)
+  readonly deleteUserButton: Locator;
+  readonly deleteConfirmDialog: Locator;
+  readonly deleteConfirmButton: Locator;
+  readonly deleteCancelButton: Locator;
 
   constructor(page: Page, baseUrl: string) {
     super(page);
@@ -71,90 +84,81 @@ export class UsersPage extends BasePage {
     this.organizationUnitHeading = page
       .locator("h1, h2, h3, h4, h5, h6")
       .filter({ hasText: /select an organization unit/i });
+
+    // Wizard: onboarding-mode heading ("Add User") - the step offering the Create/Invite cards
     this.onboardingModeHeading = page.locator("h1, h2, h3, h4, h5, h6").filter({ hasText: /^add user$/i });
 
     // Wizard: User type dropdown
-    this.userTypeSelect = page
-      .locator('[data-testid="user-type-select"]')
-      .or(page.locator("#user-type-select"))
-      .or(page.getByRole("combobox"))
-      .or(page.locator('[aria-haspopup="listbox"]'));
+    this.userTypeSelect = page.getByRole("combobox");
 
     // Wizard: Continue button
     this.continueButton = page.getByRole("button", { name: /continue/i });
-    this.createUserActionButton = page.getByRole("button", { name: /^create user$/i });
+    this.nextButton = page.getByRole("button", { name: /^next$/i });
 
-    // User table
-    this.userTable = page.locator('table, [role="table"], [data-testid*="user-list"]');
+    // Invite flow: link generation step
+    this.getInviteLinkButton = page.getByRole("button", { name: /get invite link/i });
+    this.copyInviteLinkButton = page.getByRole("button", { name: /^copy$/i });
 
-    // Search input
-    this.searchInput = page.locator('input[placeholder*="search" i], input[type="search"]');
+    // The onboarding flow renders each interactive step as a <Box component="form">.
+    this.wizardContent = page.locator("form");
 
     // Form fields - support both embedded flow (by id/label) and traditional form (by name)
-    this.usernameInput = page.locator('input#username')
+    this.usernameInput = page
+      .locator("input#username")
       .or(page.locator('input[name="username"]'))
       .or(page.getByLabel(/username/i));
 
-    this.emailInput = page.locator('input#email')
-      .or(page.locator('input[name="email"]'))
-      .or(page.getByLabel(/email/i));
+    this.emailInput = page.locator("input#email").or(page.locator('input[name="email"]')).or(page.getByLabel(/email/i));
 
-    this.givenNameInput = page.locator('input#given_name')
+    this.givenNameInput = page
+      .locator("input#given_name")
       .or(page.locator('input[name="given_name"]'))
       .or(page.getByLabel(/first.*name|given.*name/i));
 
-    this.familyNameInput = page.locator('input#family_name')
+    this.familyNameInput = page
+      .locator("input#family_name")
       .or(page.locator('input[name="family_name"]'))
       .or(page.getByLabel(/last.*name|family.*name/i));
-    this.passwordInput = page.locator('input#password')
+    this.passwordInput = page
+      .locator("input#password")
       .or(page.locator('input[name="password"]'))
       .or(page.getByLabel(/^password$/i));
 
-    // Form buttons
-    this.submitButton = page.getByRole("button", { name: /create.*user|add.*user|submit|save/i });
-    this.cancelButton = page.getByRole("button", { name: /cancel|close/i });
+    // Form buttons - support multiple button naming conventions
+    // The actual button label comes from the embedded flow, so we support common patterns.
+    // Scoped to wizardContent: the unscoped regex also matches the header breadcrumb's
+    // "Add User" crumb (which resets the wizard back to step 1), and that crumb sits earlier
+    // in the DOM than the step's own submit button, so an unscoped .first() would click it.
+    this.submitButton = this.wizardContent
+      .getByRole("button", { name: /create.*user|add.*user|submit|save|finish|next|continue|confirm/i })
+      .or(this.wizardContent.locator('button[size="large"]:not(:has-text("Cancel"))')
+        .or(this.wizardContent.locator('button:not(:has-text("Cancel")):not(:has-text("Close"))').nth(-1)));
+    this.closeButton = page.getByRole("button", { name: /cancel|close/i });
 
     // Form heading (Step 2: "Enter user details")
     this.formHeading = page
       .locator("h1, h2, h3, h4, h5, h6")
       .filter({ hasText: /enter.*user.*details|user.*details/i });
 
-    // Messages
-    this.successMessage = page.locator('[class*="success"], [role="status"]');
-    this.errorMessage = page.locator('[class*="error"], [role="alert"]');
+    // Danger Zone "Delete" button on the user details page. The details page renders it
+    // alone until the dialog opens, so it's unambiguous without extra scoping.
+    this.deleteUserButton = page.getByRole("button", { name: /^delete$/i });
+
+    // Delete confirmation dialog, and its buttons scoped to it so they don't clash with
+    // the Danger Zone button underneath.
+    this.deleteConfirmDialog = page.getByRole("dialog");
+    this.deleteConfirmButton = this.deleteConfirmDialog.getByRole("button", { name: /^delete$/i });
+    this.deleteCancelButton = this.deleteConfirmDialog.getByRole("button", { name: /^cancel$/i });
   }
 
-  /** Navigate to users management page */
+  /**
+   * Navigate to users management page. Callers follow this with their own explicit visibility
+   * wait (clickAddUser(), etc.), so there's no need to also wait for network idle here.
+   */
   async goto() {
     await this.page.goto(`${this.baseUrl}${ConsoleRoutes.users}`, {
-      waitUntil: "networkidle",
       timeout: Timeouts.PAGE_LOAD,
     });
-  }
-
-  /** Navigate directly to create user wizard (bypassing selection page) */
-  async gotoCreateUserWizard() {
-    await this.page.goto(`${this.baseUrl}${ConsoleRoutes.users}/add/create`, {
-      waitUntil: "networkidle",
-      timeout: Timeouts.PAGE_LOAD,
-    });
-    // Wait for the wizard to fully load
-    await this.waitForUserForm();
-  }
-
-  /** Check if currently on users page */
-  async isOnUsersPage(): Promise<boolean> {
-    const url = this.page.url();
-    return url.includes(ConsoleRoutes.users) && !url.includes(ConsoleRoutes.signin);
-  }
-
-  /** Verify page loaded successfully */
-  async verifyPageLoaded() {
-    const url = this.page.url();
-    if (url.includes(ConsoleRoutes.signin)) {
-      throw new Error("Authentication failed: Redirected to signin page");
-    }
-    expect(url).toContain(ConsoleRoutes.users);
   }
 
   /** Click the Add User button */
@@ -164,26 +168,108 @@ export class UsersPage extends BasePage {
     await this.addUserButton.first().click();
   }
 
-  /** Click the Create User option card on the Add User selection page */
-  async clickCreateUserOption() {
-    const createUserCard = this.page
-      .locator('[data-testid="add-user-type-select"]')
-      .locator(':has-text("Create User")');
+  /**
+   * Navigate to the users list, open the Add User wizard, and drive it up to the mode-specific
+   * step: the details form for "create", the email prompt for "invite".
+   *
+   * The onboarding flow is a single wizard at /users/add: user type -> (org unit) ->
+   * Create/Invite choice -> mode-specific steps. There is no separate chooser route any more.
+   */
+  async openAddUserWizard(mode: AddUserMode) {
+    await this.goto();
+    await this.clickAddUser();
+    await this.page.waitForURL(`**${ConsoleRoutes.users}/add`, { timeout: Timeouts.PAGE_LOAD });
+    await this.waitForWizardStep();
 
-    await createUserCard.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
-    await createUserCard.first().click();
+    await this.selectUserTypeAndContinue();
+    await this.chooseOnboardingMode(mode);
+    await this.waitForDetailsStep();
   }
 
-  /** Wait for the wizard to load (Step 1: Select User Type) */
-  async waitForUserForm() {
-    await this.waitForAnyVisibleLocator(
-      [this.userTypeHeading, this.organizationUnitHeading, this.onboardingModeHeading, this.formHeading],
-      Timeouts.FORM_LOAD,
-    );
+  /** Click the "Create User" or "Invite User" card on the onboarding-mode step */
+  async chooseOnboardingMode(mode: AddUserMode) {
+    const card = this.page.getByRole("button", { name: mode === "create" ? /^create user/i : /^invite user/i });
+    await card.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await card.first().click();
+
+    await this.waitForStepTransition(this.onboardingModeHeading);
   }
 
-  /** Select the first available user type and advance to Step 2 */
-  async selectUserTypeAndContinue() {
+  /**
+   * Wait for the wizard to leave the step owned by `heading`: the heading going away is the
+   * signal, with a network settle as fallback for steps whose heading text stays put. The
+   * trailing pause lets the step transition animation finish.
+   */
+  private async waitForStepTransition(heading: Locator) {
+    try {
+      await heading.first().waitFor({ state: "hidden", timeout: Timeouts.FORM_LOAD });
+    } catch {
+      await this.page.waitForLoadState("networkidle", { timeout: Timeouts.FORM_LOAD }).catch(() => {});
+    }
+    await this.page.waitForTimeout(300);
+  }
+
+  /** Click Next to advance the invite flow past the details step */
+  async clickNextButton() {
+    await this.nextButton.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await this.nextButton.first().click();
+  }
+
+  /** Click "Get Invite Link" to generate the invite link on the final invite step */
+  async clickGetInviteLink() {
+    await this.getInviteLinkButton.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await this.getInviteLinkButton.first().click();
+  }
+
+  /** Read the generated invite link's value (rendered next to the Copy button) */
+  async getInviteLink(): Promise<string> {
+    await this.copyInviteLinkButton.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    const linkValue = await this.copyInviteLinkButton.first().locator("xpath=..").locator("p").first().textContent();
+    return (linkValue ?? "").trim();
+  }
+
+  /**
+   * Complete a (possibly multi-step) embedded registration/accept-invite form,
+   * submitting until no required fields remain or maxSteps is reached.
+   */
+  async completeRegistrationFlow(data: UserFormData, maxSteps: number = 10) {
+    const submitButton = this.page.locator('form button[type="submit"]');
+    // The flow disables its submit button for exactly as long as a step's POST is in flight
+    // (SubmitButtonAdapter's `disabled={isLoading}`), so no disabled submit button means the step
+    // settled - either as the next step, or as the completion screen, which has no submit at all.
+    const busySubmitButton = this.page.locator('form button[type="submit"][disabled]');
+
+    // The gate's `load` event fires before the SPA validates the invite token and renders the
+    // flow's first step, so the loop's instant `isVisible()` gate below would break on iteration 0.
+    await this.page.locator("input[required]").first().waitFor({ state: "visible", timeout: Timeouts.PAGE_LOAD });
+
+    for (let step = 0; step < maxSteps; step += 1) {
+      const hasMoreFields = await this.page
+        .locator("input[required]")
+        .first()
+        .isVisible()
+        .catch(() => false);
+      if (!hasMoreFields) break;
+
+      await this.fillUserForm(data);
+      await submitButton.first().waitFor({ state: "visible", timeout: Timeouts.FORM_LOAD });
+      // waitForLoadState("networkidle") does not work here: the lifecycle event is latched per
+      // document, and this flow never navigates, so after the initial load every call returns
+      // immediately and the loop races the step's XHR. Wait for the step's POST, then for the
+      // re-render it triggers.
+      await Promise.all([
+        this.page.waitForResponse(
+          response => response.url().includes("/flow/execute") && response.request().method() === "POST",
+          { timeout: Timeouts.PAGE_LOAD }
+        ),
+        submitButton.first().click(),
+      ]);
+      await expect(busySubmitButton).toHaveCount(0, { timeout: Timeouts.FORM_LOAD });
+    }
+  }
+
+  /** Select the first available user type and advance past the (optional) org unit step */
+  private async selectUserTypeAndContinue() {
     // Wait for user type select to be visible
     await this.userTypeSelect.first().waitFor({ state: "visible", timeout: Timeouts.FORM_LOAD });
 
@@ -199,106 +285,124 @@ export class UsersPage extends BasePage {
     await this.continueButton.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
     await this.clickContinueButton();
 
-    // Wait for the page to transition - wait until the user type heading disappears or changes
-    try {
-      await this.userTypeHeading.first().waitFor({ state: "hidden", timeout: Timeouts.FORM_LOAD });
-    } catch {
-      // Heading might not disappear, just wait for page to settle
-      await this.page.waitForLoadState("networkidle", {timeout: Timeouts.FORM_LOAD}).catch(() => {});
-    }
-
-    // Wait a moment for animations to complete
-    await this.page.waitForTimeout(300);
+    await this.waitForStepTransition(this.userTypeHeading);
 
     // Handle Organization Unit step if it appears
-    if (await this.isLocatorVisible(this.organizationUnitHeading)) {
+    const hasOuStep = await this.organizationUnitHeading
+      .first()
+      .isVisible()
+      .catch(() => false);
+    if (hasOuStep) {
       await this.continueButton.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
       await this.clickContinueButton();
 
-      // Wait for organization unit heading to disappear
-      try {
-        await this.organizationUnitHeading.first().waitFor({ state: "hidden", timeout: Timeouts.FORM_LOAD });
-      } catch {
-        await this.page.waitForLoadState("networkidle", {timeout: Timeouts.FORM_LOAD}).catch(() => {});
-      }
-      await this.page.waitForTimeout(300);
+      await this.waitForStepTransition(this.organizationUnitHeading);
     }
-
-    // Handle Create User action button if it appears (onboarding mode selection)
-    if (await this.isLocatorVisible(this.createUserActionButton)) {
-      await this.createUserActionButton.first().click();
-
-      // Wait for page to settle after clicking
-      try {
-        await this.createUserActionButton.first().waitFor({ state: "hidden", timeout: Timeouts.FORM_LOAD });
-      } catch {
-        await this.page.waitForLoadState("networkidle", {timeout: Timeouts.FORM_LOAD}).catch(() => {});
-      }
-      await this.page.waitForTimeout(300);
-    }
-
-    // Wait for details step to load
-    await this.waitForDetailsStep();
   }
 
   /** Fill the user form (Step 2: User Details) */
   async fillUserForm(data: UserFormData) {
-    // Fill known fields by name/label
-    if (
-      await this.usernameInput
-        .first()
-        .isVisible()
-        .catch(() => false)
-    ) {
-      await this.usernameInput.first().fill(data.username);
-    }
-    if (
-      await this.emailInput
-        .first()
-        .isVisible()
-        .catch(() => false)
-    ) {
-      await this.emailInput.first().fill(data.email);
-    }
-    if (
-      data.given_name &&
-      (await this.givenNameInput
-        .first()
-        .isVisible()
-        .catch(() => false))
-    ) {
-      await this.givenNameInput.first().fill(data.given_name);
-    }
-    if (
-      data.family_name &&
-      (await this.familyNameInput
-        .first()
-        .isVisible()
-        .catch(() => false))
-    ) {
-      await this.familyNameInput.first().fill(data.family_name);
-    }
+    // One password value per call. Computing it inside the fill loop below would give a
+    // password + confirm-password pair two different values milliseconds apart.
+    const password = data.password ?? `Test@${Date.now()}`;
+
+    await this.fillIfVisible(this.usernameInput, data.username);
+    await this.fillIfVisible(this.emailInput, data.email);
+    await this.fillIfVisible(this.givenNameInput, data.given_name);
+    await this.fillIfVisible(this.familyNameInput, data.family_name);
+    await this.fillIfVisible(this.passwordInput, password);
 
     // Fill any remaining empty required text/password inputs with generated values
-    // (dynamic schema fields that aren't covered by the known field locators)
+    // (dynamic schema fields that aren't covered by the known field locators, including
+    // an injected Confirm Password field)
     const requiredInputs = this.page.locator('input[required]:not([type="checkbox"]):not([type="radio"])');
     const count = await requiredInputs.count();
     for (let i = 0; i < count; i++) {
       const input = requiredInputs.nth(i);
       const currentValue = await input.inputValue();
-      if (!currentValue) {
-        const name = (await input.getAttribute("name")) ?? `field_${i}`;
-        const type = await input.getAttribute("type");
-        const value = type === "password" ? `Test@${Date.now()}` : `test_${name}_${Date.now()}`;
-        await input.fill(value);
-      }
+      if (currentValue) continue;
+
+      const name = (await input.getAttribute("name")) ?? `field_${i}`;
+      const type = await input.getAttribute("type");
+      // `type` alone isn't enough: a password field with its show/hide toggle on renders as text.
+      const isPassword = type === "password" || /password/i.test(name);
+      await input.fill(isPassword ? password : `test_${name}_${Date.now()}`);
     }
   }
 
   /** Submit the form (clicks "Create User" on the last step) */
   async submitForm() {
-    await expect(this.submitButton.first()).toBeEnabled({ timeout: Timeouts.ELEMENT_VISIBILITY });
-    await this.submitButton.first().click();
+    const submitBtn = this.submitButton.first();
+
+    // Wait for button to be visible first
+    try {
+      await submitBtn.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    } catch (error) {
+      // If button not found by standard selectors, try to find any large contained button
+      const allButtons = this.page.locator('button[size="large"]');
+      const count = await allButtons.count();
+
+      if (count > 0) {
+        // Try the last button (usually submit in wizards)
+        await allButtons.last().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+        await allButtons.last().click();
+        return;
+      }
+
+      throw new Error(`Could not find submit button. ${error}`);
+    }
+
+    // Check if enabled and click
+    await expect(submitBtn).toBeEnabled({ timeout: Timeouts.ELEMENT_VISIBILITY });
+    await submitBtn.click();
+  }
+
+  /** Close the wizard. Both wizards route back to the users list from their close button. */
+  async closeWizard() {
+    await this.closeButton.first().click();
+  }
+
+  /**
+   * Navigate directly to a user's details page by id.
+   *
+   * The users list sorts oldest-first and has no search box, so a freshly created test
+   * user can land on the last page of the grid. Going straight to its details page by id
+   * avoids relying on grid pagination.
+   */
+  async gotoUserDetails(userId: string) {
+    await this.page.goto(`${this.baseUrl}${ConsoleRoutes.userDetails(userId)}`, {
+      timeout: Timeouts.PAGE_LOAD,
+    });
+  }
+
+  /** Open the delete confirmation dialog from the user details page's Danger Zone. */
+  async clickDeleteUser() {
+    await this.deleteUserButton.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await this.deleteUserButton.click();
+  }
+
+  /**
+   * Confirm deletion in the dialog. The Delete button stays disabled until the usages
+   * check (blocking-agent lookup) resolves, so wait for it to become enabled first.
+   */
+  async confirmDeleteUser() {
+    await expect(this.deleteConfirmButton).toBeEnabled({ timeout: Timeouts.ELEMENT_VISIBILITY });
+    await this.deleteConfirmButton.click();
+  }
+
+  /** Cancel deletion from the dialog, leaving the user intact. */
+  async cancelDeleteUser() {
+    await this.deleteCancelButton.click();
+  }
+
+  private async fillIfVisible(locator: Locator, value?: string) {
+    if (!value) return;
+    const first = locator.first();
+    // Absent fields are skipped: the console wizards and the gate's flow share these helpers and
+    // render different subsets. fill() waits for a field that is present to become editable.
+    if (await first.isVisible().catch(() => false)) {
+      await first.fill(value);
+    }
   }
 
   private async clickContinueButton() {
@@ -306,9 +410,19 @@ export class UsersPage extends BasePage {
     await this.continueButton.first().click();
   }
 
+  /** Wait until a wizard step has actually rendered. */
+  private async waitForWizardStep() {
+    await this.waitForAnyVisibleLocator(
+      [this.userTypeHeading, this.organizationUnitHeading, this.wizardContent, this.formHeading],
+      Timeouts.FORM_LOAD
+    );
+  }
+
   private async waitForDetailsStep() {
     // Strategy 1: Wait for specific typed text input fields to be visible (form is interactive)
-    const typedInputs = this.page.locator('input[type="text"], input[type="email"], input[type="password"], input[type="tel"], textarea');
+    const typedInputs = this.page.locator(
+      'input[type="text"], input[type="email"], input[type="password"], input[type="tel"], textarea'
+    );
 
     try {
       await typedInputs.first().waitFor({ state: "visible", timeout: Timeouts.FORM_LOAD / 2 });
@@ -329,86 +443,61 @@ export class UsersPage extends BasePage {
       } catch {
         // Strategy 3: Fallback with detailed error reporting
         await this.waitForAnyVisibleLocator(
-          [this.formHeading, this.usernameInput, this.emailInput, this.givenNameInput, this.familyNameInput, this.passwordInput, anyInputs, anyTextfields],
-          Timeouts.FORM_LOAD,
+          [
+            this.formHeading,
+            this.usernameInput,
+            this.emailInput,
+            this.givenNameInput,
+            this.familyNameInput,
+            this.passwordInput,
+            anyInputs,
+            anyTextfields,
+          ],
+          Timeouts.FORM_LOAD
         );
       }
     }
   }
 
-  private async isLocatorVisible(locator: Locator): Promise<boolean> {
-    return locator.first().isVisible();
-  }
-
   private async waitForAnyVisibleLocator(locators: Locator[], timeout: number) {
     try {
-      await Promise.any(
-        locators.map((locator) => locator.first().waitFor({ state: "visible", timeout })),
-      );
+      await Promise.any(locators.map(locator => locator.first().waitFor({ state: "visible", timeout })));
     } catch (error) {
       // Provide debug information about what's actually on the page
       const pageContent = await this.page.content();
-      const hasInputs = pageContent.includes('<input');
-      const hasFormControl = pageContent.includes('FormControl');
-      const hasTextField = pageContent.includes('TextField');
+      const hasInputs = pageContent.includes("<input");
+      const hasFormControl = pageContent.includes("FormControl");
+      const hasTextField = pageContent.includes("TextField");
 
       // Try to find any inputs on the page and log their details
-      const allInputs = await this.page.locator('input').all();
+      const allInputs = await this.page.locator("input").all();
       const inputDetails = await Promise.all(
-        allInputs.slice(0, 5).map(async (input) => {
+        allInputs.slice(0, 5).map(async input => {
           try {
-            const type = await input.getAttribute('type');
-            const id = await input.getAttribute('id');
-            const name = await input.getAttribute('name');
+            const type = await input.getAttribute("type");
+            const id = await input.getAttribute("id");
+            const name = await input.getAttribute("name");
             const visible = await input.isVisible().catch(() => false);
-            return {type, id, name, visible};
+            return { type, id, name, visible };
           } catch {
             return null;
           }
-        }),
+        })
       );
 
-      const headingContent = await this.page.locator('h1, h2, h3, h4, h5, h6').first().textContent().catch(() => '');
+      const headingContent = await this.page
+        .locator("h1, h2, h3, h4, h5, h6")
+        .first()
+        .textContent()
+        .catch(() => "");
 
       throw new Error(
         `Timed out after ${timeout}ms while waiting for the next visible user-creation step. ` +
-        `Debug: hasInputs=${hasInputs}, hasFormControl=${hasFormControl}, hasTextField=${hasTextField}. ` +
-        `Found ${allInputs.length} inputs: ${JSON.stringify(inputDetails.filter(Boolean))}. ` +
-        `Heading: "${headingContent}". ` +
-        `Error: ${error instanceof Error ? error.message : String(error)}`
+          `Debug: hasInputs=${hasInputs}, hasFormControl=${hasFormControl}, hasTextField=${hasTextField}. ` +
+          `Found ${allInputs.length} inputs: ${JSON.stringify(inputDetails.filter(Boolean))}. ` +
+          `Heading: "${headingContent}". ` +
+          `Error: ${error instanceof Error ? error.message : String(error)}`
       );
     }
-  }
-
-  /** Cancel the form */
-  async cancelForm() {
-    await this.cancelButton.first().click();
-  }
-
-  /** Create a new user (complete wizard flow) */
-  async createUser(data: UserFormData) {
-    await this.clickAddUser();
-    await this.waitForUserForm();
-    await this.selectUserTypeAndContinue();
-    await this.fillUserForm(data);
-    await this.submitForm();
-  }
-
-  /** Search for a user */
-  async searchUser(query: string) {
-    await this.searchInput.first().fill(query);
-    // Using network idle after triggering search.
-    // This is acceptable here because the users page is expected not to keep long-lived
-    // connections (e.g., websockets) and search is the primary network activity.
-    // If additional long-running requests are introduced, prefer a more targeted wait
-    // such as page.waitForResponse() for the search API or waiting for the results
-    // table locator to update instead of relying on 'networkidle'.
-    await this.page.waitForLoadState("networkidle");
-  }
-
-  /** Get user count */
-  async getUserCount(): Promise<number> {
-    const rows = this.page.locator('table tbody tr, [role="row"]');
-    return await rows.count();
   }
 }

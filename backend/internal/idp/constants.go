@@ -15,7 +15,6 @@ const (
 	PropTokenEndpoint         = "token_endpoint"
 	PropUserInfoEndpoint      = "userinfo_endpoint"
 	PropUserEmailEndpoint     = "user_email_endpoint"
-	PropLogoutEndpoint        = "logout_endpoint"
 	PropJwksEndpoint          = "jwks_endpoint"
 	PropPrompt                = "prompt"
 	PropIssuer                = "issuer"
@@ -78,11 +77,10 @@ var idpPropertyConfigs = map[providers.IDPType]idpPropertyConfig{
 			PropRedirectURI,
 			PropAuthorizationEndpoint,
 			PropTokenEndpoint,
-			PropUserInfoEndpoint,
 		},
 		Optional: []string{
 			PropScopes,
-			PropLogoutEndpoint,
+			PropUserInfoEndpoint,
 			PropPrompt,
 		},
 		Defaults: map[string]string{},
@@ -98,7 +96,6 @@ var idpPropertyConfigs = map[providers.IDPType]idpPropertyConfig{
 		Optional: []string{
 			PropScopes,
 			PropUserInfoEndpoint,
-			PropLogoutEndpoint,
 			PropJwksEndpoint,
 			PropPrompt,
 			PropIssuer,
@@ -119,7 +116,6 @@ var idpPropertyConfigs = map[providers.IDPType]idpPropertyConfig{
 			PropTokenEndpoint,
 			PropScopes,
 			PropUserInfoEndpoint,
-			PropLogoutEndpoint,
 			PropJwksEndpoint,
 			PropPrompt,
 			PropIssuer,
@@ -144,7 +140,6 @@ var idpPropertyConfigs = map[providers.IDPType]idpPropertyConfig{
 			PropUserInfoEndpoint,
 			PropUserEmailEndpoint,
 			PropScopes,
-			PropLogoutEndpoint,
 			PropPrompt,
 		},
 		Defaults: map[string]string{

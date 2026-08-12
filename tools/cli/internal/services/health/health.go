@@ -14,7 +14,7 @@ import (
 // DefaultPort is the port ThunderID listens on by default.
 const DefaultPort = 8090
 
-// ResolveBaseURL polls until Thunder responds on https or http, returning the
+// ResolveBaseURL polls until ThunderID responds on https or http, returning the
 // confirmed base URL and true. Returns ("", false) if neither scheme responds
 // within timeout. Each individual probe is capped to min(2s, remaining budget)
 // so the function never overruns its deadline.
@@ -40,7 +40,7 @@ func ResolveBaseURL(port int, timeout time.Duration) (string, bool) {
 	return "", false
 }
 
-// CheckReady returns true if Thunder is responding on the readiness endpoint.
+// CheckReady returns true if ThunderID is responding on the readiness endpoint.
 func CheckReady(baseURL string) bool {
 	return checkReadyIn(baseURL, 2*time.Second)
 }

@@ -500,6 +500,78 @@ func (_c *roleStoreInterfaceMock_DeleteRole_Call) RunAndReturn(run func(ctx cont
 	return _c
 }
 
+// DeleteRolePermission provides a mock function for the type roleStoreInterfaceMock
+func (_mock *roleStoreInterfaceMock) DeleteRolePermission(ctx context.Context, resourceServerID string, permission string) (int64, error) {
+	ret := _mock.Called(ctx, resourceServerID, permission)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteRolePermission")
+	}
+
+	var r0 int64
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (int64, error)); ok {
+		return returnFunc(ctx, resourceServerID, permission)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) int64); ok {
+		r0 = returnFunc(ctx, resourceServerID, permission)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, resourceServerID, permission)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// roleStoreInterfaceMock_DeleteRolePermission_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteRolePermission'
+type roleStoreInterfaceMock_DeleteRolePermission_Call struct {
+	*mock.Call
+}
+
+// DeleteRolePermission is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceServerID string
+//   - permission string
+func (_e *roleStoreInterfaceMock_Expecter) DeleteRolePermission(ctx interface{}, resourceServerID interface{}, permission interface{}) *roleStoreInterfaceMock_DeleteRolePermission_Call {
+	return &roleStoreInterfaceMock_DeleteRolePermission_Call{Call: _e.mock.On("DeleteRolePermission", ctx, resourceServerID, permission)}
+}
+
+func (_c *roleStoreInterfaceMock_DeleteRolePermission_Call) Run(run func(ctx context.Context, resourceServerID string, permission string)) *roleStoreInterfaceMock_DeleteRolePermission_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *roleStoreInterfaceMock_DeleteRolePermission_Call) Return(n int64, err error) *roleStoreInterfaceMock_DeleteRolePermission_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *roleStoreInterfaceMock_DeleteRolePermission_Call) RunAndReturn(run func(ctx context.Context, resourceServerID string, permission string) (int64, error)) *roleStoreInterfaceMock_DeleteRolePermission_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetAllPermissionsForAssignees provides a mock function for the type roleStoreInterfaceMock
 func (_mock *roleStoreInterfaceMock) GetAllPermissionsForAssignees(ctx context.Context, entityID string, groupIDs []string) ([]role.ResourcePermissions, error) {
 	ret := _mock.Called(ctx, entityID, groupIDs)
@@ -730,6 +802,68 @@ func (_c *roleStoreInterfaceMock_GetEntityRoleIDs_Call) Return(strings []string,
 }
 
 func (_c *roleStoreInterfaceMock_GetEntityRoleIDs_Call) RunAndReturn(run func(ctx context.Context, entityID string, groupIDs []string) ([]string, error)) *roleStoreInterfaceMock_GetEntityRoleIDs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetReferencedPermissions provides a mock function for the type roleStoreInterfaceMock
+func (_mock *roleStoreInterfaceMock) GetReferencedPermissions(ctx context.Context) ([]role.ResourcePermissions, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetReferencedPermissions")
+	}
+
+	var r0 []role.ResourcePermissions
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) ([]role.ResourcePermissions, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) []role.ResourcePermissions); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]role.ResourcePermissions)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// roleStoreInterfaceMock_GetReferencedPermissions_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetReferencedPermissions'
+type roleStoreInterfaceMock_GetReferencedPermissions_Call struct {
+	*mock.Call
+}
+
+// GetReferencedPermissions is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *roleStoreInterfaceMock_Expecter) GetReferencedPermissions(ctx interface{}) *roleStoreInterfaceMock_GetReferencedPermissions_Call {
+	return &roleStoreInterfaceMock_GetReferencedPermissions_Call{Call: _e.mock.On("GetReferencedPermissions", ctx)}
+}
+
+func (_c *roleStoreInterfaceMock_GetReferencedPermissions_Call) Run(run func(ctx context.Context)) *roleStoreInterfaceMock_GetReferencedPermissions_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *roleStoreInterfaceMock_GetReferencedPermissions_Call) Return(resourcePermissionss []role.ResourcePermissions, err error) *roleStoreInterfaceMock_GetReferencedPermissions_Call {
+	_c.Call.Return(resourcePermissionss, err)
+	return _c
+}
+
+func (_c *roleStoreInterfaceMock_GetReferencedPermissions_Call) RunAndReturn(run func(ctx context.Context) ([]role.ResourcePermissions, error)) *roleStoreInterfaceMock_GetReferencedPermissions_Call {
 	_c.Call.Return(run)
 	return _c
 }

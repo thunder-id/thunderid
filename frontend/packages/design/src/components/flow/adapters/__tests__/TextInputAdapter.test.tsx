@@ -40,6 +40,16 @@ describe('TextInputAdapter', () => {
     expect(input?.getAttribute('type')).toBe('email');
   });
 
+  it('renders number type for NUMBER_INPUT', () => {
+    const numberProps = {
+      ...baseProps,
+      component: {...baseProps.component, type: 'NUMBER_INPUT', ref: 'age', label: 'Age'},
+    };
+    renderWithProviders(<TextInputAdapter {...numberProps} />);
+    const input = document.querySelector('input[name="age"]');
+    expect(input?.getAttribute('type')).toBe('number');
+  });
+
   it('applies product prefix CSS class names', () => {
     renderWithProviders(<TextInputAdapter {...baseProps} />);
     const formControl = document.querySelector(`.${TEST_CN_PREFIX}Flow--textInput`);

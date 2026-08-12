@@ -18,7 +18,9 @@ import {
   Typography,
   Button,
   TextField,
+  Checkbox,
   FormControl,
+  FormControlLabel,
   FormLabel,
   Select,
   MenuItem,
@@ -41,6 +43,19 @@ type FlowSubComponent = EmbeddedFlowComponent & {
   required?: boolean;
   variant?: string;
 };
+
+/** Collects the refs of every boolean field in a component tree. */
+function collectBooleanRefs(comps: EmbeddedFlowComponent[]): string[] {
+  const refs: string[] = [];
+  comps.forEach((comp) => {
+    if (comp.type === 'BOOLEAN_INPUT' && typeof comp.ref === 'string') {
+      refs.push(comp.ref);
+    }
+    const nested = (comp as FlowSubComponent).components;
+    if (nested) refs.push(...collectBooleanRefs(nested));
+  });
+  return refs;
+}
 
 function UserCreateStepContent({
   renderProps,
@@ -92,6 +107,20 @@ function UserCreateStepContent({
     [rawHandleInputChange, onFieldChange],
   );
 
+  // Seed boolean fields with their unchecked value. A boolean answer is meaningful even when the
+  // user never touches the field, and without a seeded value a required boolean attribute is absent
+  // from the submission and can never be satisfied. Seeding goes through the raw handler so it does
+  // not clear a create error the user has not acted on yet.
+  useEffect(() => {
+    if (!components?.length) return;
+    const current = values as Record<string, unknown> | undefined;
+    collectBooleanRefs(components).forEach((ref) => {
+      if (current?.[ref] === undefined) {
+        rawHandleInputChange(ref, 'false');
+      }
+    });
+  }, [components, values, rawHandleInputChange]);
+
   const renderComponent = (component: EmbeddedFlowComponent, index: number): JSX.Element | null => {
     // Render text components
     if (String(component.type) === String(EmbeddedFlowComponentType.Text) || component.type === 'TEXT') {
@@ -118,6 +147,7 @@ function UserCreateStepContent({
       component.type === 'EMAIL_INPUT' ||
       component.type === 'TEXT_INPUT' ||
       component.type === 'PHONE_INPUT' ||
+      component.type === 'NUMBER_INPUT' ||
       component.type === 'PASSWORD_INPUT'
     ) {
       const ref = component.ref;
@@ -133,6 +163,7 @@ function UserCreateStepContent({
       if (component.type === 'EMAIL_INPUT') inputType = 'email';
       if (component.type === 'PASSWORD_INPUT') inputType = 'password';
       if (component.type === 'PHONE_INPUT') inputType = 'tel';
+      if (component.type === 'NUMBER_INPUT') inputType = 'number';
 
       return (
         <FormControl key={component.id ?? index} fullWidth required={required}>
@@ -187,6 +218,33 @@ function UserCreateStepContent({
               );
             })}
           </Select>
+        </FormControl>
+      );
+    }
+
+    // Render BOOLEAN_INPUT
+    if (component.type === 'BOOLEAN_INPUT') {
+      const ref = component.ref;
+      const label = typeof component.label === 'string' ? component.label : '';
+      const required = (component as FlowSubComponent).required ?? false;
+
+      if (!ref) return null;
+
+      const checked = (values as Record<string, unknown>)?.[ref] === 'true';
+
+      return (
+        <FormControl key={component.id ?? index} required={required}>
+          <FormControlLabel
+            control={
+              <Checkbox
+                id={ref}
+                size="small"
+                checked={checked}
+                onChange={(e) => handleInputChange(ref, String(e.target.checked))}
+              />
+            }
+            label={t(resolve(label) ?? label)}
+          />
         </FormControl>
       );
     }

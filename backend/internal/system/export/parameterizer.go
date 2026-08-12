@@ -640,15 +640,17 @@ func (p *parameterizer) propertyToYAMLNode(propValue reflect.Value, resourceName
 // generatePropertyVarName generates a context-aware variable name for a property
 // e.g., "Export Test IDP" + "client_id" -> "EXPORT_TEST_IDP_CLIENT_ID"
 func (p *parameterizer) generatePropertyVarName(resourceName, propertyName string) string {
-	// Convert resource name: replace spaces with underscores and convert to snake_case
-	resourcePrefix := strings.ReplaceAll(resourceName, " ", "_")
-	resourcePrefix = p.toSnakeCase(resourcePrefix)
-
 	// Convert property name to snake_case
 	propName := p.toSnakeCase(propertyName)
 
 	// Combine them
-	return resourcePrefix + "_" + propName
+	return p.sanitizeVarName(p.VarPrefix(resourceName) + "_" + propName)
+}
+
+// VarPrefix returns the variable name prefix derived from a resource name, e.g. "My App" ->
+// "MY_APP". Callers use it to detect resource names that normalize to the same prefix.
+func (p *parameterizer) VarPrefix(resourceName string) string {
+	return p.sanitizeVarName(p.toSnakeCase(strings.ReplaceAll(resourceName, " ", "_")))
 }
 
 // handleInterfaceValue handles interface{} types by JSON-encoding them.
@@ -1146,15 +1148,43 @@ func (p *parameterizer) pathToVariableName(appName, path string) string {
 	parts := strings.Split(path, ".")
 	lastPart := parts[len(parts)-1]
 
-	// Convert appName: replace spaces with underscores, convert camelCase to snake_case, then uppercase
-	appPrefix := strings.ReplaceAll(appName, " ", "_")
-	appPrefix = p.toSnakeCase(appPrefix)
-
 	// Convert field name from camelCase/PascalCase to snake_case
 	fieldName := p.toSnakeCase(lastPart)
 
 	// Prepend app prefix to field name
-	return appPrefix + "_" + fieldName
+	return p.sanitizeVarName(p.VarPrefix(appName) + "_" + fieldName)
+}
+
+// sanitizeVarName replaces characters that are not valid in a Go template field name (for
+// example the hyphen in "MY-APP") with underscores, collapsing consecutive underscores, so that
+// the exported placeholders can be parsed again on import. A leading digit is also prefixed
+// with an underscore.
+// Trailing underscores are trimmed so that a prefix keyed by varNameAllocator matches the name
+// that ends up in the placeholder: "MY_APP" and "MY_APP_" are distinct prefixes but both would
+// render as MY_APP_CLIENT_ID once joined with a property name. A leading underscore is kept,
+// since that is the escape for a name starting with a digit.
+func (p *parameterizer) sanitizeVarName(name string) string {
+	var result strings.Builder
+	lastWasUnderscore := false
+	for _, r := range name {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			result.WriteRune(r)
+			lastWasUnderscore = false
+		default:
+			if !lastWasUnderscore {
+				result.WriteRune('_')
+				lastWasUnderscore = true
+			}
+		}
+	}
+
+	sanitized := strings.TrimRight(result.String(), "_")
+	if sanitized != "" && sanitized[0] >= '0' && sanitized[0] <= '9' {
+		return "_" + sanitized
+	}
+
+	return sanitized
 }
 
 // toSnakeCase converts camelCase/PascalCase to UPPER_SNAKE_CASE

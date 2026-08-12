@@ -58,17 +58,18 @@ Once it's running, the console is available at [https://localhost:8090/console](
     If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
     :::
 
-2. Navigate to **Applications**, and click **Add Application**.
+2. Navigate to **Applications**.
+3. Click **Add Application**.
+4. From the **Choose a type** page, select **JavaScript**.
+5. Enter a name (e.g. `My JavaScript App`).
+6. Click **Create**.
+7. Select how you want to sign in users (e.g., email/password, social login, etc.).
+8. Select Theme settings and other options.
+9. In the Configuration step, click on the banner to add Vite's development server URL to the list of **Authorized Redirect URIs** & **CORS Allowed Origins**. The default is `http://localhost:5173` (adjust the port if your dev server uses a different one).
 
-3. Under **Technology**, select **JavaScript**.
-4. Enter a name (e.g. `My JavaScript App`) and create an application. The rest of the settings can stay at their defaults.
-5. Copy the **Client ID** from the **General** tab. You'll need it when configuring the SDK.
-6. Under **General**, add `http://localhost:5173` to the list of **Authorized Redirect URIs**.
-7. The Browser SDK calls the <ProductName /> API directly from the browser, so you need to allow your app's origin:
-    1. In the left navigation, navigate to **Settings**.
-    2. Under the **System** section, open the **CORS** tab.
-    3. Enter `http://localhost:5173` (or the relevant URL for your setup).
-    4. Click **Add Origin**.
+:::note Note
+Copy the **Client ID** from the **General** tab. You'll need it when configuring the SDK.
+:::
 
 ## Create a JavaScript App
 

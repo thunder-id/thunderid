@@ -4,8 +4,9 @@
 import {NameSuggestion, OrganizationUnitSummaryChip} from '@thunderid/components';
 import {OrganizationUnitTreeConstants} from '@thunderid/configure-organization-units';
 import {FormControl, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
-import {useEffect, type ChangeEvent, type JSX} from 'react';
+import {useEffect, useMemo, type ChangeEvent, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import AgentConstants from '../../constants/agent-constants';
 
 export interface ConfigureNameProps {
   agentName: string;
@@ -51,9 +52,22 @@ export default function ConfigureName({
 }: ConfigureNameProps): JSX.Element {
   const {t} = useTranslation();
 
+  const trimmedLength = agentName.trim().length;
+
   useEffect((): void => {
-    onReadyChange?.(agentName.trim().length > 0);
-  }, [agentName, onReadyChange]);
+    onReadyChange?.(trimmedLength >= AgentConstants.NAME_MIN_LENGTH && trimmedLength <= AgentConstants.NAME_MAX_LENGTH);
+  }, [trimmedLength, onReadyChange]);
+
+  // An empty field is not an error yet; the user has simply not filled it in.
+  const nameError = useMemo((): string | null => {
+    if (trimmedLength > AgentConstants.NAME_MAX_LENGTH) {
+      return t('agents:createWizard.name.maxLength', {
+        max: AgentConstants.NAME_MAX_LENGTH,
+        defaultValue: `Agent name cannot exceed ${AgentConstants.NAME_MAX_LENGTH} characters`,
+      });
+    }
+    return null;
+  }, [trimmedLength, t]);
 
   return (
     <Stack direction="column" spacing={4} data-testid="configure-agent-name">
@@ -79,6 +93,8 @@ export default function ConfigureName({
           value={agentName}
           onChange={(e: ChangeEvent<HTMLInputElement>): void => onAgentNameChange(e.target.value)}
           placeholder={t('agents:createWizard.name.placeholder', 'e.g. Billing Service')}
+          error={Boolean(nameError)}
+          helperText={nameError ?? undefined}
           inputProps={{'data-testid': 'agent-name-input'}}
         />
 

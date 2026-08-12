@@ -76,7 +76,7 @@ type ApplicationProcessedDTO struct {
 // ApplicationRequest represents the request structure for creating or updating an application.
 type ApplicationRequest struct {
 	OUID        string          `json:"ouId,omitempty" yaml:"ouId,omitempty"`
-	Name        string          `json:"name" yaml:"name" native:"required,min=3,max=100"`
+	Name        string          `json:"name" yaml:"name" native:"required,min=1,max=100"`
 	Description string          `json:"description" yaml:"description"`
 	Type        ApplicationType `json:"type,omitempty" yaml:"type,omitempty"`
 	Template    string          `json:"template,omitempty" yaml:"template,omitempty"`

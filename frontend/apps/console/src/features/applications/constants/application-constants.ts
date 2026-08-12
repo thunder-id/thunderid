@@ -14,6 +14,14 @@ const ApplicationConstants = {
    * Backend error code (HTTP 400 body code) returned when an application name is already in use.
    */
   DUPLICATE_APP_NAME_ERROR_CODE: 'APP-1020',
+
+  /**
+   * Length rules the API enforces on the application name, mirrored here so the console can
+   * validate before the request is sent. Keep in sync with
+   * `backend/internal/application/model/application.go`.
+   */
+  NAME_MIN_LENGTH: 1,
+  NAME_MAX_LENGTH: 100,
 } as const;
 
 export default ApplicationConstants;

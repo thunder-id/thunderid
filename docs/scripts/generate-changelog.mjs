@@ -38,7 +38,7 @@ const ignoredContributorUsernames = [
 
 function getGitHubHeaders() {
   return {
-    'User-Agent': 'Thunder-Docs-Changelog-Generator',
+    'User-Agent': `${PROJECT_NAME}-Docs-Changelog-Generator`,
     ...(process.env.GITHUB_TOKEN ? {Authorization: `token ${process.env.GITHUB_TOKEN}`} : {}),
   };
 }

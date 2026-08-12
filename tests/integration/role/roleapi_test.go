@@ -1480,6 +1480,103 @@ func (suite *RoleAPITestSuite) TestAddAssignments_DeclarativeRole() {
 	suite.True(found, "Assigned user should appear in the declarative role's assignment list")
 }
 
+// Deleting an action that a role grants must remove that permission from the role, rather than
+// leaving a reference that can no longer be resolved. Refs #4806.
+func (suite *RoleAPITestSuite) TestDeleteAction_CascadesToRolePermissions() {
+	rs := testutils.ResourceServer{
+		Name:        "Cascade Action Test System",
+		Description: "Resource server for action cascade testing",
+		Identifier:  "cascade-action-test-system",
+		OUID:        testOUID,
+	}
+	rsID, err := testutils.CreateResourceServerWithActions(rs, nil)
+	suite.Require().NoError(err)
+	defer func() { _ = testutils.DeleteResourceServer(rsID) }()
+
+	_, err = testutils.CreateAction(rsID, testutils.Action{
+		Name:   "Kept Action",
+		Handle: "kept",
+	})
+	suite.Require().NoError(err)
+	deletedActionID, err := testutils.CreateAction(rsID, testutils.Action{
+		Name:   "Deleted Action",
+		Handle: "deleted",
+	})
+	suite.Require().NoError(err)
+
+	role, err := suite.createRole(CreateRoleRequest{
+		Name:        "Cascade Action Role",
+		Description: "Role holding a permission that gets deleted",
+		OUID:        testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: rsID, Permissions: []string{"kept", "deleted"}},
+		},
+	})
+	suite.Require().NoError(err)
+	defer func() { _ = suite.deleteRole(role.ID) }()
+
+	suite.Require().NoError(testutils.DeleteAction(rsID, deletedActionID))
+
+	// The deleted action's permission must be gone, the surviving one untouched.
+	updated, err := suite.getRole(role.ID)
+	suite.Require().NoError(err)
+	suite.Require().Len(updated.Permissions, 1)
+	suite.Equal(rsID, updated.Permissions[0].ResourceServerID)
+	suite.Equal([]string{"kept"}, updated.Permissions[0].Permissions)
+
+	// The role must remain editable. The Console edits a role by sending back the permissions it
+	// read, so re-sending the fetched set must not trip permission validation.
+	_, err = suite.updateRole(role.ID, UpdateRoleRequest{
+		Name:        "Cascade Action Role Updated",
+		Description: "Role updated after its permission was deleted",
+		OUID:        testOUID,
+		Permissions: updated.Permissions,
+	})
+	suite.NoError(err, "Role permissions should be updatable after an assigned action is deleted")
+}
+
+// Deleting a resource server must remove every role permission scoped to it, so that viewing the
+// role afterwards does not fail to resolve the missing resource server. Refs #4806.
+func (suite *RoleAPITestSuite) TestDeleteResourceServer_CascadesToRolePermissions() {
+	rs := testutils.ResourceServer{
+		Name:        "Cascade Server Test System",
+		Description: "Resource server for server cascade testing",
+		Identifier:  "cascade-server-test-system",
+		OUID:        testOUID,
+	}
+	rsID, err := testutils.CreateResourceServerWithActions(rs, []testutils.Action{
+		{Name: "Doomed Action", Handle: "doomed"},
+	})
+	suite.Require().NoError(err)
+
+	role, err := suite.createRole(CreateRoleRequest{
+		Name:        "Cascade Server Role",
+		Description: "Role scoped to a resource server that gets deleted",
+		OUID:        testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: rsID, Permissions: []string{"doomed"}},
+			{ResourceServerID: testResourceServer2ID, Permissions: []string{testPermission3}},
+		},
+	})
+	suite.Require().NoError(err)
+	defer func() { _ = suite.deleteRole(role.ID) }()
+
+	// Actions must go before the resource server, matching the reported reproduction steps.
+	actions, err := testutils.GetActionsByResourceServer(rsID)
+	suite.Require().NoError(err)
+	for _, actionID := range actions {
+		suite.Require().NoError(testutils.DeleteAction(rsID, actionID))
+	}
+	suite.Require().NoError(testutils.DeleteResourceServer(rsID))
+
+	// Viewing the role must succeed and retain only the surviving resource server's permissions.
+	updated, err := suite.getRole(role.ID)
+	suite.Require().NoError(err, "Role should be viewable after its resource server is deleted")
+	suite.Require().Len(updated.Permissions, 1)
+	suite.Equal(testResourceServer2ID, updated.Permissions[0].ResourceServerID)
+	suite.Equal([]string{testPermission3}, updated.Permissions[0].Permissions)
+}
+
 // Helper methods
 
 func (suite *RoleAPITestSuite) createRole(request CreateRoleRequest) (*Role, error) {

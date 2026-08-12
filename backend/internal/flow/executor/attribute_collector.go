@@ -352,7 +352,9 @@ func (a *attributeCollector) getUpdatedUserObject(ctx *providers.NodeContext,
 	return true, updatedUser, nil
 }
 
-// getInputAttributes retrieves the input attributes from the context.
+// getInputAttributes retrieves the input attributes from the context. Values are converted from the
+// engine's string representation to the type implied by the input type, so that non-string
+// attributes satisfy schema validation when the collected profile is persisted.
 func (a *attributeCollector) getInputAttributes(ctx *providers.NodeContext) map[string]interface{} {
 	attributesMap := make(map[string]interface{})
 	requiredInputAttrs := a.getInputs(ctx)
@@ -363,11 +365,12 @@ func (a *attributeCollector) getInputAttributes(ctx *providers.NodeContext) map[
 			continue
 		}
 
+		schemaType := schemaTypeForInputType(inputAttr.Type)
 		value, exists := ctx.UserInputs[inputAttr.Identifier]
 		if exists {
-			attributesMap[inputAttr.Identifier] = value
+			attributesMap[inputAttr.Identifier] = convertToSchemaType(value, schemaType)
 		} else if runtimeValue, exists := ctx.RuntimeData[inputAttr.Identifier]; exists {
-			attributesMap[inputAttr.Identifier] = runtimeValue
+			attributesMap[inputAttr.Identifier] = convertToSchemaType(runtimeValue, schemaType)
 		}
 	}
 

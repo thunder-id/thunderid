@@ -70,16 +70,12 @@ const PROMPT_FIELD: ConnectionFieldDef = {
   visibility: 'edit',
 };
 
-const LOGOUT_ENDPOINT_FIELD: ConnectionFieldDef = {
-  name: 'logoutEndpoint',
-  labelKey: 'connections:form.fields.logoutEndpoint.label',
-  hintKey: 'connections:form.fields.logoutEndpoint.hint',
-  kind: 'url',
-  placeholder: 'https://idp.example.com/logout',
-  visibility: 'edit',
-};
-
-const oauthFields = (namePlaceholder: string, clientIdPlaceholder: string): ConnectionFieldDef[] => [
+const oauthFields = (
+  namePlaceholder: string,
+  clientIdPlaceholder: string,
+  scopesHintKey = 'connections:form.fields.scopes.hint',
+  scopesPlaceholder = 'openid email profile',
+): ConnectionFieldDef[] => [
   NAME_FIELD(namePlaceholder),
   {
     name: 'clientId',
@@ -105,9 +101,9 @@ const oauthFields = (namePlaceholder: string, clientIdPlaceholder: string): Conn
   {
     name: 'scopes',
     labelKey: 'connections:form.fields.scopes.label',
-    hintKey: 'connections:form.fields.scopes.hint',
+    hintKey: scopesHintKey,
     kind: 'scopes',
-    placeholder: 'openid email profile',
+    placeholder: scopesPlaceholder,
     visibility: 'edit',
   },
   PROMPT_FIELD,
@@ -138,7 +134,12 @@ const TRUSTED_TOKEN_AUDIENCE_FIELD: ConnectionFieldDef = {
  */
 export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]> = {
   [ConnectionTypes.GOOGLE]: oauthFields('Google Workspace', '1234567890-abc.apps.googleusercontent.com'),
-  [ConnectionTypes.GITHUB]: oauthFields('GitHub OAuth', 'Iv1.0123456789abcdef'),
+  [ConnectionTypes.GITHUB]: oauthFields(
+    'GitHub OAuth',
+    'Iv1.0123456789abcdef',
+    'connections:form.fields.scopes.githubHint',
+    'user:email',
+  ),
   [ConnectionTypes.OIDC]: [
     NAME_FIELD('Acme Workforce OIDC'),
     {
@@ -198,7 +199,6 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
       requiredWhen: 'tokenExchangeEnabled',
       visibility: 'edit',
     },
-    LOGOUT_ENDPOINT_FIELD,
     {
       name: 'redirectUri',
       labelKey: 'connections:form.fields.redirectUri.label',
@@ -252,13 +252,11 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
     },
     {
       name: 'userInfoEndpoint',
-      labelKey: 'connections:form.fields.userInfoEndpoint.label',
-      hintKey: 'connections:form.fields.userInfoEndpoint.hint',
+      labelKey: 'connections:form.fields.userProfileEndpoint.label',
+      hintKey: 'connections:form.fields.userProfileEndpoint.hint',
       kind: 'url',
-      required: true,
-      placeholder: 'https://idp.example.com/userinfo',
+      placeholder: 'https://api.example.com/user',
     },
-    LOGOUT_ENDPOINT_FIELD,
     {
       name: 'redirectUri',
       labelKey: 'connections:form.fields.redirectUri.label',

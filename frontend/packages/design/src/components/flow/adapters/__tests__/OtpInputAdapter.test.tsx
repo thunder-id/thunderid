@@ -66,6 +66,84 @@ describe('OtpInputAdapter', () => {
     expect(onInputChange).toHaveBeenCalledWith('otp', '12345678');
   });
 
+  it('rejects a letter when the step reports a numeric-only code', () => {
+    const onInputChange = vi.fn();
+    const {container} = renderWithProviders(
+      <OtpInputAdapter {...baseProps} onInputChange={onInputChange} additionalData={{otpNumericOnly: 'true'}} />,
+    );
+
+    fireEvent.change(digitBoxes(container)[0], {target: {value: 'a'}});
+
+    expect(onInputChange).not.toHaveBeenCalled();
+  });
+
+  it('rejects a letter when the step reports no character set', () => {
+    const onInputChange = vi.fn();
+    const {container} = renderWithProviders(<OtpInputAdapter {...baseProps} onInputChange={onInputChange} />);
+
+    fireEvent.change(digitBoxes(container)[0], {target: {value: 'a'}});
+
+    expect(onInputChange).not.toHaveBeenCalled();
+  });
+
+  it('accepts a letter when the step reports an alphanumeric code', () => {
+    const onInputChange = vi.fn();
+    const {container} = renderWithProviders(
+      <OtpInputAdapter {...baseProps} onInputChange={onInputChange} additionalData={{otpNumericOnly: 'false'}} />,
+    );
+
+    fireEvent.change(digitBoxes(container)[0], {target: {value: 'K'}});
+
+    expect(onInputChange).toHaveBeenCalledWith('otp', 'K     ');
+  });
+
+  it('upper-cases a lowercase letter for an alphanumeric code', () => {
+    const onInputChange = vi.fn();
+    const {container} = renderWithProviders(
+      <OtpInputAdapter {...baseProps} onInputChange={onInputChange} additionalData={{otpNumericOnly: 'false'}} />,
+    );
+
+    fireEvent.change(digitBoxes(container)[0], {target: {value: 'k'}});
+
+    expect(onInputChange).toHaveBeenCalledWith('otp', 'K     ');
+  });
+
+  it('strips surrounding text when pasting a numeric code', () => {
+    const onInputChange = vi.fn();
+    const {container} = renderWithProviders(<OtpInputAdapter {...baseProps} onInputChange={onInputChange} />);
+
+    const pasteEvent = new Event('paste', {bubbles: true, cancelable: true});
+    Object.defineProperty(pasteEvent, 'clipboardData', {value: {getData: () => 'Your code is 123456'}});
+    fireEvent(digitBoxes(container)[0], pasteEvent);
+
+    expect(onInputChange).toHaveBeenCalledWith('otp', '123456');
+  });
+
+  it('upper-cases and keeps letters when pasting an alphanumeric code', () => {
+    const onInputChange = vi.fn();
+    const {container} = renderWithProviders(
+      <OtpInputAdapter {...baseProps} onInputChange={onInputChange} additionalData={{otpNumericOnly: 'false'}} />,
+    );
+
+    const pasteEvent = new Event('paste', {bubbles: true, cancelable: true});
+    Object.defineProperty(pasteEvent, 'clipboardData', {value: {getData: () => 'k7gx2m'}});
+    fireEvent(digitBoxes(container)[0], pasteEvent);
+
+    expect(onInputChange).toHaveBeenCalledWith('otp', 'K7GX2M');
+  });
+
+  it('marks the boxes numeric only when the code is digits only', () => {
+    const {container} = renderWithProviders(<OtpInputAdapter {...baseProps} />);
+    expect(digitBoxes(container)[0].getAttribute('inputmode')).toBe('numeric');
+  });
+
+  it('marks the boxes text when the code is alphanumeric', () => {
+    const {container} = renderWithProviders(
+      <OtpInputAdapter {...baseProps} additionalData={{otpNumericOnly: 'false'}} />,
+    );
+    expect(digitBoxes(container)[0].getAttribute('inputmode')).toBe('text');
+  });
+
   it('returns null when ref is missing', () => {
     const noRefProps = {...baseProps, component: {...baseProps.component, ref: undefined}};
     const {container} = renderWithProviders(<OtpInputAdapter {...noRefProps} />);

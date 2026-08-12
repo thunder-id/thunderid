@@ -139,6 +139,14 @@ type usecaseConfigRequestMsg struct {
 	features   []string
 }
 
+// sampleTryRequestMsg starts a use case that needs no configuration. The slash
+// commands are built before the REPL knows which port the product ended up on,
+// so the run is dispatched from Update, where the model can supply it.
+type sampleTryRequestMsg struct {
+	sampleName string
+	features   []string
+}
+
 // walkthroughPane is one tab in the post-sample walkthrough overlay.
 type walkthroughPane struct {
 	Title string
@@ -361,7 +369,6 @@ func NewReplModel(version string, proc *exec.Cmd, installPath string, verbose bo
 	var commands []SlashCommand
 	for _, u := range Usecases {
 		u := u
-		ip := installPath
 		if u.ComingSoon {
 			commands = append(commands, SlashCommand{
 				Name:        u.Command,
@@ -394,7 +401,12 @@ func NewReplModel(version string, proc *exec.Cmd, installPath string, verbose bo
 				Description: u.Title,
 				Section:     "Try",
 				AsyncAction: func(_ string) tea.Cmd {
-					return makeTryCmd(u.SampleName, ip, verbose, sample.Options{})
+					return func() tea.Msg {
+						return sampleTryRequestMsg{
+							sampleName: u.SampleName,
+							features:   u.SampleFeatures,
+						}
+					}
 				},
 			})
 		}
@@ -605,6 +617,20 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.onboardingList.SetSize(msg.Width, onboardingListHeight)
+
+	// Bracketed paste arrives as its own message rather than as key presses, so the
+	// overlay inputs need it routed explicitly — the command input already receives
+	// it from the catch-all at the end of Update. Without this, pasting into the API
+	// key prompt does nothing, and the value is too long to retype comfortably.
+	case tea.PasteMsg:
+		var tiCmd tea.Cmd
+		switch {
+		case m.showUsecaseConfig && m.ucStep < len(m.ucInputs) && len(m.ucInputs[m.ucStep].Choices) == 0:
+			m.ucText, tiCmd = m.ucText.Update(msg)
+		case m.integrateCollecting:
+			m.integrateInput, tiCmd = m.integrateInput.Update(msg)
+		}
+		cmds = append(cmds, tiCmd)
 
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
@@ -820,6 +846,11 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 			}
 		}
 
+	case sampleTryRequestMsg:
+		cmds = append(cmds, makeTryCmd(msg.sampleName, m.installPath, m.verbose, sample.Options{
+			Features: msg.features, Port: m.effectivePort(),
+		}))
+
 	case usecaseConfigRequestMsg:
 		m.ucInputs = msg.inputs
 		m.ucSampleName = msg.sampleName
@@ -828,9 +859,10 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 
 		// Capture msg fields for the completion closure.
 		sampleName, ip, envTarget, features := msg.sampleName, m.installPath, msg.envTarget, msg.features
+		port := m.effectivePort()
 		m.ucComplete = func(values map[string]string) tea.Cmd {
 			return makeTryCmd(sampleName, ip, m.verbose, sample.Options{
-				Config: values, EnvTarget: envTarget, Features: features,
+				Config: values, EnvTarget: envTarget, Features: features, Port: port,
 			})
 		}
 

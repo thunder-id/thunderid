@@ -72,6 +72,31 @@ func matchAction(expected providers.Action) interface{} {
 	})
 }
 
+// recordingCascadeDeleter is a dependency provider test double that records the cascade-delete
+// calls it receives, so tests can assert what a deletion cascaded to and in which order.
+type recordingCascadeDeleter struct {
+	calls []string
+	order *[]string
+	err   error
+}
+
+func (r *recordingCascadeDeleter) GetResourceDependencies(
+	_ context.Context, _, _ string) ([]resourcedependency.ResourceDependency, error) {
+	return []resourcedependency.ResourceDependency{}, nil
+}
+
+func (r *recordingCascadeDeleter) CascadeDeleteDependencies(
+	_ context.Context, resourceType, id string) (int, error) {
+	r.calls = append(r.calls, resourceType+":"+id)
+	if r.order != nil {
+		*r.order = append(*r.order, "cascade")
+	}
+	if r.err != nil {
+		return 0, r.err
+	}
+	return 1, nil
+}
+
 // Test Suite
 type ResourceServiceTestSuite struct {
 	suite.Suite
@@ -79,6 +104,14 @@ type ResourceServiceTestSuite struct {
 	mockOU            *oumock.OrganizationUnitServiceInterfaceMock
 	mockTransactioner *fakeTransactioner
 	service           ResourceServiceInterface
+}
+
+// registerCascadeDeleter re-registers the dependency registry with the given cascade deleter
+// alongside the service's own provider, and returns it for assertions.
+func (suite *ResourceServiceTestSuite) registerCascadeDeleter(
+	deleter *recordingCascadeDeleter) *recordingCascadeDeleter {
+	suite.service.SetDependencyRegistry(resourcedependency.Initialize(suite.service, deleter))
+	return deleter
 }
 
 func TestResourceServiceTestSuite(t *testing.T) {
@@ -796,6 +829,62 @@ func (suite *ResourceServiceTestSuite) TestDeleteResourceServer_Success() {
 	err := suite.service.DeleteResourceServer(context.Background(), "rs-123")
 
 	suite.Nil(err)
+}
+
+// Deleting a resource server must cascade so that references to it (such as role permissions) are
+// cleaned up instead of being left dangling.
+func (suite *ResourceServiceTestSuite) TestDeleteResourceServer_CascadesToDependents() {
+	order := []string{}
+	deleter := suite.registerCascadeDeleter(&recordingCascadeDeleter{order: &order})
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything,
+		"rs-123").Return(providers.ResourceServer{}, nil)
+	suite.mockStore.On("CheckResourceServerHasDependencies", mock.Anything,
+		"rs-123").Return(false, nil)
+	suite.mockStore.On("DeleteResourceServer", mock.Anything, "rs-123").Return(nil).
+		Run(func(_ mock.Arguments) { order = append(order, "delete") })
+
+	err := suite.service.DeleteResourceServer(context.Background(), "rs-123")
+
+	suite.Nil(err)
+	suite.Equal([]string{"resourceServer:rs-123"}, deleter.calls)
+	// The cascade resolves references against this service, so it must run after the target is gone.
+	suite.Equal([]string{"delete", "cascade"}, order)
+}
+
+func (suite *ResourceServiceTestSuite) TestDeleteResourceServer_CascadeFailureAbortsDelete() {
+	suite.registerCascadeDeleter(&recordingCascadeDeleter{err: errors.New("cascade error")})
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything,
+		"rs-123").Return(providers.ResourceServer{}, nil)
+	suite.mockStore.On("CheckResourceServerHasDependencies", mock.Anything,
+		"rs-123").Return(false, nil)
+	suite.mockStore.On("DeleteResourceServer", mock.Anything, "rs-123").Return(nil)
+
+	err := suite.service.DeleteResourceServer(context.Background(), "rs-123")
+
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+// Deletion must not silently skip cleanup when the registry was never injected, so the delete is
+// rolled back rather than leaving dependents dangling.
+func (suite *ResourceServiceTestSuite) TestDeleteResourceServer_FailsWhenRegistryMissing() {
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything,
+		"rs-123").Return(providers.ResourceServer{}, nil)
+	suite.mockStore.On("CheckResourceServerHasDependencies", mock.Anything,
+		"rs-123").Return(false, nil)
+	// Drop the registry once the blocking check has passed, isolating the cascade's own guard.
+	suite.mockStore.On("DeleteResourceServer", mock.Anything, "rs-123").Return(nil).
+		Run(func(_ mock.Arguments) { suite.service.SetDependencyRegistry(nil) })
+
+	svcErr := suite.service.DeleteResourceServer(context.Background(), "rs-123")
+
+	suite.NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (suite *ResourceServiceTestSuite) TestDeleteResourceServer_IdempotentWhenNotExists() {
@@ -1746,6 +1835,46 @@ func (suite *ResourceServiceTestSuite) TestDeleteResource_Success() {
 	err := suite.service.DeleteResource(context.Background(), "rs-123", "res-123")
 
 	suite.Nil(err)
+}
+
+// Deleting a resource must cascade so that role permissions granting it are cleaned up.
+func (suite *ResourceServiceTestSuite) TestDeleteResource_CascadesToDependents() {
+	order := []string{}
+	deleter := suite.registerCascadeDeleter(&recordingCascadeDeleter{order: &order})
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything,
+		"rs-123").Return(providers.ResourceServer{}, nil)
+	suite.mockStore.On("GetResource", mock.Anything,
+		"res-123", "rs-123").Return(providers.Resource{}, nil)
+	suite.mockStore.On("CheckResourceHasDependencies", mock.Anything,
+		"res-123").Return(false, nil)
+	suite.mockStore.On("DeleteResource", mock.Anything, "res-123", "rs-123").Return(nil).
+		Run(func(_ mock.Arguments) { order = append(order, "delete") })
+
+	err := suite.service.DeleteResource(context.Background(), "rs-123", "res-123")
+
+	suite.Nil(err)
+	suite.Equal([]string{"resource:res-123"}, deleter.calls)
+	suite.Equal([]string{"delete", "cascade"}, order)
+}
+
+func (suite *ResourceServiceTestSuite) TestDeleteResource_CascadeFailureAbortsDelete() {
+	suite.registerCascadeDeleter(&recordingCascadeDeleter{err: errors.New("cascade error")})
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything,
+		"rs-123").Return(providers.ResourceServer{}, nil)
+	suite.mockStore.On("GetResource", mock.Anything,
+		"res-123", "rs-123").Return(providers.Resource{}, nil)
+	suite.mockStore.On("CheckResourceHasDependencies", mock.Anything,
+		"res-123").Return(false, nil)
+	suite.mockStore.On("DeleteResource", mock.Anything, "res-123", "rs-123").Return(nil)
+
+	err := suite.service.DeleteResource(context.Background(), "rs-123", "res-123")
+
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *ResourceServiceTestSuite) TestDeleteResource_HasDependencies() {
@@ -3384,6 +3513,44 @@ func (suite *ResourceServiceTestSuite) TestDeleteActionAtResourceServer_Success(
 	err := suite.service.DeleteAction(context.Background(), "rs-123", nil, "action-123")
 
 	suite.Nil(err)
+}
+
+// Deleting an action must cascade so that role permissions granting it are cleaned up.
+func (suite *ResourceServiceTestSuite) TestDeleteActionAtResourceServer_CascadesToDependents() {
+	order := []string{}
+	deleter := suite.registerCascadeDeleter(&recordingCascadeDeleter{order: &order})
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything,
+		"rs-123").Return(providers.ResourceServer{}, nil)
+	suite.mockStore.On("IsActionExist", mock.Anything,
+		"action-123", "rs-123", (*string)(nil)).Return(true, nil)
+	suite.mockStore.On("DeleteAction", mock.Anything,
+		"action-123", "rs-123", (*string)(nil)).Return(nil).
+		Run(func(_ mock.Arguments) { order = append(order, "delete") })
+
+	err := suite.service.DeleteAction(context.Background(), "rs-123", nil, "action-123")
+
+	suite.Nil(err)
+	suite.Equal([]string{"action:action-123"}, deleter.calls)
+	suite.Equal([]string{"delete", "cascade"}, order)
+}
+
+func (suite *ResourceServiceTestSuite) TestDeleteActionAtResourceServer_CascadeFailureAbortsDelete() {
+	suite.registerCascadeDeleter(&recordingCascadeDeleter{err: errors.New("cascade error")})
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything,
+		"rs-123").Return(providers.ResourceServer{}, nil)
+	suite.mockStore.On("IsActionExist", mock.Anything,
+		"action-123", "rs-123", (*string)(nil)).Return(true, nil)
+	suite.mockStore.On("DeleteAction", mock.Anything,
+		"action-123", "rs-123", (*string)(nil)).Return(nil)
+
+	err := suite.service.DeleteAction(context.Background(), "rs-123", nil, "action-123")
+
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (suite *ResourceServiceTestSuite) TestDeleteActionAtResourceServer_MissingID() {

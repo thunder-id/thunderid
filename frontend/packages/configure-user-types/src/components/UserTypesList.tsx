@@ -205,6 +205,8 @@ export default function UserTypesList() {
             }}
             pageSizeOptions={[5, 10, 25, 50]}
             disableRowSelectionOnClick
+            // Filtering is not wired end to end, so the column filter panel stays hidden.
+            disableColumnFilter
             localeText={dataGridLocaleText}
             autoHeight
             sx={{

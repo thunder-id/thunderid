@@ -51,7 +51,7 @@ type MfaChannel = 'email' | 'sms';
  * @param idSuffix - Node ID suffix, empty when this is the only MFA channel, `_email`/`_sms` when
  *   both channels are enabled and each needs its own independent chain (see `mfa_choose_channel`)
  * @param smsOtpSenderId - SMS provider connection ID, required when channel is 'sms'
- * @param onVerified - ID of the node to continue to once the OTP is verified (`auth_assert`)
+ * @param onVerified - ID of the node to continue to once the OTP is verified (`authorization_check`)
  * @returns The chain's nodes and the ID of its entry node (where a first factor should route to)
  */
 function buildMfaChannelChain(
@@ -171,8 +171,8 @@ function buildMfaChannelChain(
  * email it, show a "check your email" wait screen, then verify the link once clicked. Mirrors the
  * working "Magic Link Authentication Flow" template (see `flows/data/templates.json`), adapted to
  * route into whichever continuation every other first factor uses (`onVerified` — either
- * `auth_assert` directly, or the MFA subgraph's entry) instead of hardcoding straight to
- * `auth_assert`, so Multi-Factor Login still layers on top of it like any other first factor.
+ * `authorization_check` directly, or the MFA subgraph's entry) instead of hardcoding straight to
+ * it, so Multi-Factor Login still layers on top of it like any other first factor.
  *
  * @param onVerified - ID of the node to continue to once the magic link is verified
  * @returns The chain's nodes. Its entry node is `magic_link_prompt_email`, where the
@@ -629,14 +629,14 @@ export default function generateFlowGraph(options: FlowGeneratorOptions): Create
   });
 
   // 3. MFA Subgraph — every first factor below routes its success here instead of straight to
-  // auth_assert when MFA is enabled. See buildMfaChannelChain for why no phone/email input is
-  // collected: the recipient resolves from the already-authenticated user.
+  // authorization_check when MFA is enabled. See buildMfaChannelChain for why no phone/email input
+  // is collected: the recipient resolves from the already-authenticated user.
   const mfaNodes: FlowNode[] = [];
-  let postAuthNodeId = 'auth_assert';
+  let postAuthNodeId = 'authorization_check';
 
   if (hasEmailOtpMfa && hasSmsOtpMfa) {
-    const emailChain = buildMfaChannelChain('email', '_email', undefined, 'auth_assert');
-    const smsChain = buildMfaChannelChain('sms', '_sms', smsOtpSenderId, 'auth_assert');
+    const emailChain = buildMfaChannelChain('email', '_email', undefined, 'authorization_check');
+    const smsChain = buildMfaChannelChain('sms', '_sms', smsOtpSenderId, 'authorization_check');
 
     mfaNodes.push(
       {
@@ -677,11 +677,11 @@ export default function generateFlowGraph(options: FlowGeneratorOptions): Create
     );
     postAuthNodeId = 'mfa_choose_channel';
   } else if (hasEmailOtpMfa) {
-    const emailChain = buildMfaChannelChain('email', '', undefined, 'auth_assert');
+    const emailChain = buildMfaChannelChain('email', '', undefined, 'authorization_check');
     mfaNodes.push(...emailChain.nodes);
     postAuthNodeId = emailChain.entryNodeId;
   } else if (hasSmsOtpMfa) {
-    const smsChain = buildMfaChannelChain('sms', '', smsOtpSenderId, 'auth_assert');
+    const smsChain = buildMfaChannelChain('sms', '', smsOtpSenderId, 'authorization_check');
     mfaNodes.push(...smsChain.nodes);
     postAuthNodeId = smsChain.entryNodeId;
   }
@@ -804,6 +804,19 @@ export default function generateFlowGraph(options: FlowGeneratorOptions): Create
   // MFA Subgraph nodes, built above — appended once every first-factor executor has been wired
   // to route into them.
   nodes.push(...mfaNodes);
+
+  // Authorization Executor — evaluates the OAuth request's requested permission scopes against the
+  // authenticated user's roles and groups, recording the permitted subset as authorized_permissions.
+  // AuthAssertExecutor only ever asserts permissions that passed this evaluation, so every completed
+  // authentication path must route through here for resource scopes to reach the issued token.
+  nodes.push({
+    id: 'authorization_check',
+    type: FlowNodeType.TASK_EXECUTION,
+    executor: {
+      name: 'AuthorizationExecutor',
+    },
+    onSuccess: 'auth_assert',
+  });
 
   // Auth Assert Executor (Common completion step)
   nodes.push({

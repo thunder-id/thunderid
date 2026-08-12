@@ -121,8 +121,7 @@ export default function InviteMembersCard(): JSX.Element {
   const totalResults = data?.totalResults ?? 0;
   const users = data?.users ?? [];
   const extraCount = totalResults > AVATAR_LIMIT ? totalResults - AVATAR_LIMIT : 0;
-  // totalResults <= 1 means only the admin — treat as empty
-  const isEmpty = !isLoading && totalResults <= 1;
+  const isEmpty = !isLoading && users.length === 0;
 
   const preview = (
     <Box sx={{minHeight: 32, display: 'flex', alignItems: 'center'}}>

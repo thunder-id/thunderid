@@ -66,11 +66,6 @@
       "llm_prompt": {
         "docsUrl": "{{applications.templates.browser.llmPrompt.redirectBased}}"
       }
-    },
-    "EMBEDDED": {
-      "llm_prompt": {
-        "docsUrl": "{{applications.templates.browser.llmPrompt.embedded}}"
-      }
     }
   }
 }

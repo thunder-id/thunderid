@@ -18,6 +18,7 @@ import {useNavigate} from 'react-router';
 import useCreateRole from '../api/useCreateRole';
 import ConfigureBasicInfo from '../components/create-role/ConfigureBasicInfo';
 import ConfigurePermissions from '../components/create-role/ConfigurePermissions';
+import RoleConstraints from '../constants/role-constraints';
 import useRoleCreate from '../contexts/RoleCreate/useRoleCreate';
 import type {CreateRoleRequest} from '../models/requests';
 import {RoleCreateFlowStep} from '../models/role-create-flow';
@@ -92,8 +93,20 @@ export default function CreateRolePage(): JSX.Element {
   const handleSubmit = async (): Promise<void> => {
     setError(null);
 
-    if (!name.trim()) {
+    const trimmedName = name.trim();
+
+    if (!trimmedName) {
       setError(t('create.form.name.required', 'Role name is required'));
+      return;
+    }
+
+    if (trimmedName.length > RoleConstraints.NAME_MAX_LENGTH) {
+      setError(
+        t('create.form.name.maxLength', {
+          max: RoleConstraints.NAME_MAX_LENGTH,
+          defaultValue: `Role name cannot exceed ${RoleConstraints.NAME_MAX_LENGTH} characters`,
+        }),
+      );
       return;
     }
 
@@ -104,7 +117,7 @@ export default function CreateRolePage(): JSX.Element {
     }
 
     const requestData: CreateRoleRequest = {
-      name: name.trim(),
+      name: trimmedName,
       ouId: selectedOuId,
       ...(permissions.length > 0 ? {permissions} : {}),
     };

@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -35,6 +34,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/template"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const svcLoggerComponentName = "AuthenticationService"
@@ -202,7 +202,7 @@ func (as *authenticationService) SendOTP(ctx context.Context, senderID string, c
 	recipient string) (string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, svcLoggerComponentName))
 
-	sessionToken, otpValue, _, svcErr := as.otpService.GenerateOTP(ctx, recipient, "mobile_number", nil)
+	sessionToken, otpValue, expirySeconds, svcErr := as.otpService.GenerateOTP(ctx, recipient, "mobile_number", nil)
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ServerErrorType {
 			logger.Error(ctx, "Failed to generate OTP", log.String("error", svcErr.Code))
@@ -211,9 +211,10 @@ func (as *authenticationService) SendOTP(ctx context.Context, senderID string, c
 		return "", svcErr
 	}
 
-	otpCfg := config.GetServerRuntime().Config.Notification.OTP
-	expiryMinutes := strconv.FormatInt(int64(otpCfg.ValidityPeriodSeconds)/60, 10)
-	templateData := template.TemplateData{"otpCode": otpValue, "expiryMinutes": expiryMinutes}
+	templateData := template.TemplateData{
+		"otpCode":    otpValue,
+		"expiryTime": systemutils.FormatExpiryDuration(expirySeconds),
+	}
 	rendered, renderErr := as.templateService.Render(ctx, template.ScenarioOTP, template.TemplateTypeSMS, templateData)
 	if renderErr != nil {
 		if renderErr.Type == tidcommon.ServerErrorType {

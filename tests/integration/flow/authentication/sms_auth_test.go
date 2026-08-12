@@ -500,6 +500,11 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowWithMobileNumber() {
 	ts.Require().Equal("8", otpFlowStep.Data.AdditionalData["otpLength"],
 		"OTP step should report the configured OTP length")
 
+	// The generate node leaves otpUseNumericOnly at the numeric-only server default, so the OTP step
+	// must report that the client should restrict input to digits.
+	ts.Require().Equal("true", otpFlowStep.Data.AdditionalData["otpNumericOnly"],
+		"OTP step should report the OTP character set")
+
 	// Wait for SMS to be sent
 	time.Sleep(500 * time.Millisecond)
 

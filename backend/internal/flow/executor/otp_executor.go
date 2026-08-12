@@ -167,9 +167,10 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 	// Published from the generated value rather than the configured otpLength property, since the
 	// property is clamped and may fall back to the server default.
 	execResp.AdditionalData[common.DataOTPLength] = strconv.Itoa(len(otpValue))
+	execResp.AdditionalData[common.DataOTPNumericOnly] = strconv.FormatBool(isNumericOTP(otpValue))
 	execResp.ForwardedData[common.ForwardedDataKeyTemplateData] = map[string]interface{}{
-		common.ForwardedDataKeyOTPCode:       otpValue,
-		common.ForwardedDataKeyExpiryMinutes: systemutils.SecondsToMinutes(expirySeconds),
+		common.ForwardedDataKeyOTPCode:    otpValue,
+		common.ForwardedDataKeyExpiryTime: systemutils.FormatExpiryDuration(expirySeconds),
 	}
 	execResp.Status = providers.ExecComplete
 
@@ -410,6 +411,16 @@ func (e *otpExecutor) resolveOTPProperties(ctx *providers.NodeContext) *notifcom
 		return nil
 	}
 	return &cfg
+}
+
+// isNumericOTP reports whether the OTP consists solely of ASCII digits.
+func isNumericOTP(otpValue string) bool {
+	for _, r := range otpValue {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // getMaxOTPAttempts returns the maximum OTP generation attempts from NodeProperties,

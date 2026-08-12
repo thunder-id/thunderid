@@ -13,8 +13,8 @@ import NodeLogo from '../icons/NodeLogo';
 import NuxtLogo from '../icons/NuxtLogo';
 import ReactLogo from '../icons/ReactLogo';
 import VueLogo from '../icons/VueLogo';
-import useIsDarkMode from '@site/src/hooks/useIsDarkMode';
 import {useDocsUrl} from '@site/src/hooks/useDocsUrl';
+import useIsDarkMode from '@site/src/hooks/useIsDarkMode';
 
 const SDKS = [
   {

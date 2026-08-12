@@ -15,7 +15,7 @@ body: |
   	    <td style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #3a87ed; background: #f0f4ff; border: 1px solid #c0d0f0; border-radius: 6px; padding: 12px 24px;">{{ctx(otpCode)}}</td>
   	  </tr>
   	</table>
-  	<p>This code will expire in {{ctx(expiryMinutes)}} minutes.</p>
+  	<p>This code will expire in {{ctx(expiryTime)}}.</p>
   	<p>If you did not request this, you can safely ignore this email.</p>
   </body>
   </html>

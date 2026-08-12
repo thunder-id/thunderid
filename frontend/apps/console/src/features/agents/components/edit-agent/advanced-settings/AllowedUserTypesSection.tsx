@@ -25,7 +25,7 @@ export default function AllowedUserTypesSection({
   const {t} = useTranslation();
   const {data: userTypesData, isLoading} = useGetUserTypes();
 
-  // Allowed user types only matter when a person can actually sign in through this agent —
+  // Allowed user types only matter when a person can actually sign in or sign up through this agent —
   // same dependency the redirect URI section has on authorization_code.
   const isApplicable = Boolean(oauth2Config && deriveOAuth2Flags(oauth2Config).hasAuthorizationCodeGrant);
 
@@ -43,7 +43,7 @@ export default function AllowedUserTypesSection({
       title={t('agents:edit.flows.allowedUserTypes.title', 'Allowed User Types')}
       description={t(
         'agents:edit.flows.allowedUserTypes.description',
-        'Restrict which user types can authenticate or register through this agent.',
+        'Restrict which user types can sign up through this agent.',
       )}
     >
       <FormControl fullWidth>
@@ -69,12 +69,9 @@ export default function AllowedUserTypesSection({
                 isMissingRequiredType
                   ? t(
                       'agents:edit.flows.allowedUserTypes.required',
-                      'Select at least one user type that can sign in through this agent.',
+                      'Select at least one user type that can sign up through this agent.',
                     )
-                  : t(
-                      'agents:edit.flows.allowedUserTypes.hint',
-                      'Only these user types can authenticate or register through this agent.',
-                    )
+                  : t('agents:edit.flows.allowedUserTypes.hint', 'Users of these types can sign up through this agent.')
               }
             />
           )}

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -441,12 +442,12 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPostRequest
 			},
 		},
 		{
-			name: "declarative validation failure - handle too short",
-			body: `{"handle": "fi", "name": "Finance Services"}`,
+			name: "declarative validation failure - handle too long",
+			body: fmt.Sprintf(`{"handle": %q, "name": "Finance Services"}`, strings.Repeat("f", 101)),
 			assert: func(recorder *httptest.ResponseRecorder) {
 				if recorder.Code == http.StatusCreated {
 					suite.T().Log("⚠️ Warning: Request passed validation. " +
-						"Ensure your model.go struct fields have `validate:\"min=3\"` tags attached!")
+						"Ensure your model.go struct fields have `native:\"max=100\"` tags attached!")
 					return
 				}
 				suite.Equal(http.StatusBadRequest, recorder.Code)
@@ -454,6 +455,22 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPostRequest
 			},
 			assertService: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
 				serviceMock.AssertNotCalled(suite.T(), "CreateOrganizationUnit", mock.Anything)
+			},
+		},
+		{
+			name: "accepts a single character handle",
+			body: `{"handle": "w", "name": "Workforce"}`,
+			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.
+					On("CreateOrganizationUnit", mock.Anything,
+						mock.MatchedBy(func(req providers.OrganizationUnitRequestWithID) bool {
+							return req.Handle == "w" && req.Name == "Workforce"
+						})).
+					Return(providers.OrganizationUnit{ID: "ou-1", Handle: "w", Name: "Workforce"}, nil).
+					Once()
+			},
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusCreated, recorder.Code)
 			},
 		},
 		{

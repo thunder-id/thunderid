@@ -58,12 +58,18 @@ Once it's running, the console is available at [https://localhost:8090/console](
     If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
     :::
 
-2. Navigate to **Applications**, and click **Add Application**.
+2. Navigate to **Applications**.
+3. Click **Add Application**.
+4. From the **Choose a type** page, select **Nuxt**.
+5. Enter a name (e.g. `My Nuxt App`).
+6. Select how you want to sign in users (e.g., email/password, social login, etc.).
+7. Select Theme settings.
+8. Set **Sign-In Approach** to **Bring Your Own UI**.
+9. Click **Create**.
 
-3. Under **Technology**, select **Nuxt**.
-4. Enter a name (e.g. `My Nuxt App`) and create an application. The rest of the settings can stay at their defaults.
-5. Copy both the **Client ID** and **Client Secret** from the window that pops up. The Client ID can also be found in the **General** tab.
-6. Under **General**, add `http://localhost:3000/api/auth/callback` to the list of **Authorized Redirect URIs**.
+:::note Note
+Copy the **Application ID** from the **General** tab, under **Quick Copy**. Also copy the **Client Secret** from the window that pops up when the application is created; if lost, you can regenerate it from the application's **Credentials** tab.
+:::
 
 ## Create a Nuxt App
 
@@ -123,16 +129,12 @@ export default defineNuxtConfig({
 
 That's all the `nuxt.config.ts` change needed. The module reads all configuration from environment variables.
 
-:::info
-The module automatically registers `/api/auth/callback` as a Nitro server route. Make sure the authorized redirect URL in your <ProductName /> application settings is set to `http://localhost:3000/api/auth/callback`. You do **not** need to create the callback route yourself.
-:::
-
 ## Set Environment Variables
 
 Create a `.env` file in your project root with the following:
 
 :::warning Configuration
-Replace `<your-client-id>` and `<your-client-secret>` with the values from your <ProductName /> application.
+Replace `<your-application-id>` and `<your-client-secret>` with the values from your <ProductName /> application.
 
 Generate a random string for `THUNDERID_SESSION_SECRET` (at least 32 characters):
 
@@ -143,7 +145,9 @@ openssl rand -base64 32
 
 ```dotenv title=".env" showLineNumbers
 NUXT_PUBLIC_THUNDERID_BASE_URL=https://localhost:8090
-NUXT_PUBLIC_THUNDERID_CLIENT_ID=<your-client-id>
+NUXT_PUBLIC_THUNDERID_APPLICATION_ID=<your-application-id>
+NUXT_PUBLIC_THUNDERID_SIGN_IN_URL=/signin
+NUXT_PUBLIC_THUNDERID_SIGN_UP_URL=/signup
 THUNDERID_CLIENT_SECRET=<your-client-secret>
 THUNDERID_SESSION_SECRET=<a-random-secret-for-session-signing>
 # DANGER: Disables ALL TLS verification. Only for local development with self-signed certs. NEVER use in production.
@@ -163,8 +167,28 @@ The `<ThunderIDRoot>` component mounts the full authentication provider tree. Wr
 ```
 
 :::info Auto-imports
-The `@thunderid/nuxt` module auto-registers all components and auto-imports all composables. You do **not** need to import them manually.
+The `@thunderid/nuxt` module auto-registers all components (under the `ThunderID` prefix, e.g. `<ThunderIDSignedIn>`) and auto-imports all composables. You do **not** need to import them manually.
 :::
+
+## Add Sign-In and Sign-Up Pages
+
+The `<ThunderIDSignIn />` and `<ThunderIDSignUp />` components render the sign-in and sign-up forms natively, using the Flow Execution API. Create the routes configured above as `NUXT_PUBLIC_THUNDERID_SIGN_IN_URL` and `NUXT_PUBLIC_THUNDERID_SIGN_UP_URL`:
+
+```vue title="app/pages/signin.vue" showLineNumbers
+<template>
+  <main>
+    <ThunderIDSignIn />
+  </main>
+</template>
+```
+
+```vue title="app/pages/signup.vue" showLineNumbers
+<template>
+  <main>
+    <ThunderIDSignUp after-sign-up-url="/" />
+  </main>
+</template>
+```
 
 ## Build with <ProductName /> Components
 
@@ -173,15 +197,19 @@ Update your home page with <ProductName /> authentication components:
 ```vue title="app/pages/index.vue" {3-8} showLineNumbers
 <template>
   <main>
-    <SignedIn>
-      <UserDropdown />
-    </SignedIn>
-    <SignedOut>
-      <SignInButton>Sign In</SignInButton>
-    </SignedOut>
+    <ThunderIDSignedIn>
+      <ThunderIDUserDropdown />
+    </ThunderIDSignedIn>
+    <ThunderIDSignedOut>
+      <ThunderIDSignInButton>Sign In</ThunderIDSignInButton>
+    </ThunderIDSignedOut>
   </main>
 </template>
 ```
+
+:::info
+`<ThunderIDSignInButton />` navigates to the local `NUXT_PUBLIC_THUNDERID_SIGN_IN_URL` route you created above, rather than redirecting to a <ProductName />-hosted page.
+:::
 
 ## Run Your App
 
@@ -208,7 +236,7 @@ You'll need a user to sign in with. If you haven't created one yet, open <Consol
 :::tip Success
 Visit your app at 🌐 [http://localhost:3000](http://localhost:3000)
 
-You should see the `<SignInButton />` button. Click it to be redirected to the <ProductName />-hosted sign-in page. Login with your test user, then return to your app with the user dropdown displayed.
+You should see the `<ThunderIDSignInButton />` button. Click it, you'll land on your application's own `/signin` page. Login with your test user, then return to your application with the user dropdown displayed.
 :::
 
 </Stepper>

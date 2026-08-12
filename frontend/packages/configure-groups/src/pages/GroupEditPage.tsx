@@ -28,6 +28,7 @@ import EditAdvancedSettings from '../components/edit-group/advanced-settings/Edi
 import EditGeneralSettings from '../components/edit-group/general-settings/EditGeneralSettings';
 import EditMembersSettings from '../components/edit-group/members-settings/EditMembersSettings';
 import GroupDeleteDialog from '../components/GroupDeleteDialog';
+import GroupConstraints from '../constants/group-constraints';
 import type {Group} from '../models/group';
 
 interface TabPanelProps {
@@ -82,6 +83,22 @@ export default function GroupEditPage(): JSX.Element {
       setEditedGroup((prev) => ({...prev, [field]: value}));
     },
     [updateGroup],
+  );
+
+  const commitName = useCallback(
+    (value: string, currentName: string): void => {
+      const trimmedName = value.trim();
+      // The API rejects names outside these bounds, so an out of range rename is discarded here.
+      if (
+        trimmedName === currentName ||
+        trimmedName.length < GroupConstraints.NAME_MIN_LENGTH ||
+        trimmedName.length > GroupConstraints.NAME_MAX_LENGTH
+      ) {
+        return;
+      }
+      handleFieldChange('name', trimmedName);
+    },
+    [handleFieldChange],
   );
 
   const handleSave = useCallback(async (): Promise<void> => {
@@ -192,20 +209,12 @@ export default function GroupEditPage(): JSX.Element {
                 value={tempName}
                 onChange={(e) => setTempName(e.target.value)}
                 onBlur={() => {
-                  const trimmedName = tempName.trim();
-                  const currentName = (editedGroup.name ?? group.name).trim();
-                  if (trimmedName && trimmedName !== currentName) {
-                    handleFieldChange('name', trimmedName);
-                  }
+                  commitName(tempName, (editedGroup.name ?? group.name).trim());
                   setIsEditingName(false);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    const trimmedName = tempName.trim();
-                    const currentName = (editedGroup.name ?? group.name).trim();
-                    if (trimmedName && trimmedName !== currentName) {
-                      handleFieldChange('name', trimmedName);
-                    }
+                    commitName(tempName, (editedGroup.name ?? group.name).trim());
                     setIsEditingName(false);
                   } else if (e.key === 'Escape') {
                     setTempName(editedGroup.name ?? group.name);

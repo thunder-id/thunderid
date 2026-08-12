@@ -256,9 +256,10 @@ export const ECOSYSTEM_ITEMS: EcosystemItem[] = [
     icon: SpringSecurityLogo,
     packageName: 'io.thunderid:spring-security',
     category: 'integration',
-    description: '{{ProductName}} integration for Spring Security — secure Java and Kotlin back ends with minimal configuration.',
+    description:
+      '{{ProductName}} integration for Spring Security — secure Java and Kotlin back ends with minimal configuration.',
     ctaLabel: '',
-    soon: true,
+    href: '/docs/next/sdks/spring-security/overview',
   },
   {
     id: 'ios',

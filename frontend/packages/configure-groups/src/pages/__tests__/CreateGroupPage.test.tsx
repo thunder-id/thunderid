@@ -1,12 +1,38 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {screen, waitFor} from '@testing-library/react';
+import {fireEvent, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {renderWithProviders} from '@thunderid/test-utils';
+import type {ComponentProps, JSX} from 'react';
+import {useEffect} from 'react';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
+import type ConfigureNameComponent from '../../components/create-group/ConfigureName';
+import GroupConstraints from '../../constants/group-constraints';
 import GroupCreateProvider from '../../contexts/GroupCreate/GroupCreateProvider';
 import CreateGroupPage from '../CreateGroupPage';
+
+// The wizard's own gate lives in ConfigureName. Flipping this reports the step ready whatever the name
+// is, which is the only way to reach the submit guards, since they exist in case that gate regresses.
+const mockNameStep = {forceReady: false};
+vi.mock('../../components/create-group/ConfigureName', async (importOriginal) => {
+  const actual = await importOriginal<{default: typeof ConfigureNameComponent}>();
+
+  function ConfigureNameStub({
+    onReadyChange = undefined,
+    ...rest
+  }: ComponentProps<typeof ConfigureNameComponent>): JSX.Element {
+    const {forceReady} = mockNameStep;
+
+    useEffect((): void => {
+      if (forceReady) onReadyChange?.(true);
+    }, [forceReady, onReadyChange]);
+
+    return <actual.default {...rest} onReadyChange={forceReady ? undefined : onReadyChange} />;
+  }
+
+  return {default: ConfigureNameStub};
+});
 
 const mockNavigate = vi.fn();
 vi.mock('react-router', async () => {
@@ -86,6 +112,7 @@ function renderPage() {
 describe('CreateGroupPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockNameStep.forceReady = false;
     mockNavigate.mockResolvedValue(undefined);
     mockMutateAsync.mockResolvedValue({});
   });
@@ -352,6 +379,50 @@ describe('CreateGroupPage', () => {
     // Should not throw - error is caught gracefully
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/groups');
+    });
+  });
+
+  describe('submit guards', () => {
+    const submitWithName = async (value: string): Promise<void> => {
+      const user = userEvent.setup();
+      renderPage();
+
+      fireEvent.change(screen.getByPlaceholderText('Enter group name'), {target: {value}});
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', {name: 'Continue'})).not.toBeDisabled();
+      });
+
+      await user.click(screen.getByRole('button', {name: 'Continue'}));
+    };
+
+    const expectSubmitRefused = async (message: string): Promise<void> => {
+      await waitFor(() => {
+        const alerts = screen.getAllByRole('alert');
+        expect(alerts.some((alert) => alert.textContent?.includes(message))).toBe(true);
+      });
+      expect(mockMutateAsync).not.toHaveBeenCalled();
+    };
+
+    beforeEach(() => {
+      mockNameStep.forceReady = true;
+      mockUseHasMultipleOUs.mockReturnValue({
+        hasMultipleOUs: false,
+        isLoading: false,
+        ouList: [{id: 'ou-single', name: 'Default OU'}],
+      });
+    });
+
+    it('should refuse a name that is only whitespace', async () => {
+      await submitWithName('   ');
+
+      await expectSubmitRefused('Group name is required');
+    });
+
+    it('should refuse a name longer than the maximum length', async () => {
+      await submitWithName('a'.repeat(GroupConstraints.NAME_MAX_LENGTH + 1));
+
+      await expectSubmitRefused(`Group name cannot exceed ${GroupConstraints.NAME_MAX_LENGTH} characters`);
     });
   });
 });

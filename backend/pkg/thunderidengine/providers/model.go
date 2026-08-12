@@ -65,8 +65,8 @@ type OrganizationUnit struct {
 // in import/declarative paths where preserving IDs is required.
 type OrganizationUnitRequestWithID struct {
 	ID                        string  `json:"id"                           yaml:"id"                           native:"required"`
-	Handle                    string  `json:"handle"                       yaml:"handle"                       native:"required,min=3,max=50"`
-	Name                      string  `json:"name"                         yaml:"name"                         native:"required,min=2,max=100"`
+	Handle                    string  `json:"handle"                       yaml:"handle"                       native:"required,min=1,max=100"`
+	Name                      string  `json:"name"                         yaml:"name"                         native:"required,min=1,max=100"`
 	Description               string  `json:"description,omitempty"        yaml:"description,omitempty"`
 	Parent                    *string `json:"parent"                       yaml:"parent"`
 	ThemeID                   string  `json:"themeId,omitempty"            yaml:"themeId,omitempty"`
@@ -1033,7 +1033,7 @@ type InboundAuthProfile struct {
 	LayoutID                  string              `json:"layoutId,omitempty"               yaml:"layoutId,omitempty"               jsonschema:"Layout configuration ID. Optional. Customizes the screen structure and component positioning of login pages."`
 	Assertion                 *AssertionConfig    `json:"assertion,omitempty"              yaml:"assertion,omitempty"              jsonschema:"Assertion configuration. Optional. Customize assertion validity periods and included user attributes."`
 	LoginConsent              *LoginConsentConfig `json:"loginConsent,omitempty"           yaml:"loginConsent,omitempty"           jsonschema:"Login consent configuration settings."`
-	AllowedUserTypes          []string            `json:"allowedUserTypes,omitempty"           yaml:"allowedUserTypes,omitempty"           jsonschema:"Allowed user types. Optional. Restricts which user types can authenticate to and register against this resource."`
+	AllowedUserTypes          []string            `json:"allowedUserTypes,omitempty"           yaml:"allowedUserTypes,omitempty"           jsonschema:"Allowed user types. Optional. Restricts which user types can register or sign up through this resource."`
 	SubjectAttribute          map[string]string   `json:"subjectAttribute,omitempty"           yaml:"subjectAttribute,omitempty"           jsonschema:"Per-user-type mapping of the schema attribute to use as the token subject (sub) claim, keyed by user type name. The attribute must be unique, required, and string-typed in that user type's schema. When no entry applies, the user's ID is used as the subject."`
 	PasskeyAllowedOrigins     []string            `json:"passkeyAllowedOrigins,omitempty"      yaml:"passkeyAllowedOrigins,omitempty"      jsonschema:"Allowed origins for WebAuthn/passkey operations for this application. Optional. When set, overrides the server-level passkey allowed origins for flow-based passkey operations."`
 	Attestation               *AttestationConfig  `json:"attestation,omitempty"                yaml:"attestation,omitempty"                jsonschema:"Platform attestation configuration. Optional. Enables a mobile client to initiate flows directly by proving its binary identity (e.g. Google Play Integrity), regardless of protocol. The service account credentials are write-only and never returned in responses."`

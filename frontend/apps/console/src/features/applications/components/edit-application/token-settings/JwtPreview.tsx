@@ -6,7 +6,7 @@ import {JsonLogo, JwtLogo} from '@thunderid/components';
 import {getCspNonce} from '@thunderid/design';
 import {Stack, Typography, Box} from '@wso2/oxygen-ui';
 import type {editor as MonacoEditor, IDisposable, IRange} from 'monaco-editor';
-import {useRef, useEffect, useState} from 'react';
+import {useRef, useEffect, useState, useCallback} from 'react';
 
 /**
  * Descriptions for standard JWT claims, shown as hover tooltips in the preview.
@@ -76,7 +76,7 @@ export default function JwtPreview({payload, defaultClaims = [], header = undefi
   const sizeListenerRef = useRef<IDisposable | null>(null);
   const [measuredPayloadHeight, setMeasuredPayloadHeight] = useState<number | null>(null);
 
-  const applyDecorations = () => {
+  const applyDecorations = useCallback(() => {
     if (format === 'json') return;
     const editorInstance = editorRef.current;
     const monacoInstance = monacoRef.current;
@@ -112,7 +112,7 @@ export default function JwtPreview({payload, defaultClaims = [], header = undefi
     });
 
     decorationIdsRef.current = editorInstance.deltaDecorations(decorationIdsRef.current, newDecorations);
-  };
+  }, [format]);
 
   // Keep defaultClaimsRef in sync so the content-change listener always sees latest claims
   useEffect(() => {
@@ -121,7 +121,7 @@ export default function JwtPreview({payload, defaultClaims = [], header = undefi
     if (editorRef.current && monacoRef.current) {
       applyDecorations();
     }
-  }, [defaultClaims]);
+  }, [defaultClaims, applyDecorations]);
 
   const handleMount: OnMount = (editorInstance, monacoInstance) => {
     editorRef.current = editorInstance;

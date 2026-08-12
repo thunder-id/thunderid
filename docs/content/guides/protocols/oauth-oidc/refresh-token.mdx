@@ -41,6 +41,23 @@ Response (rotation enabled):
 }
 ```
 
+## Authorization on Refresh
+
+Each refresh re-evaluates the subject's authorization rather than replaying the decision made when the refresh token was issued.
+
+| Change since the refresh token was issued | Effect on the refresh |
+|---|---|
+| A role is unassigned from the subject, deleted, or stripped of a permission | The affected permission scopes are dropped from the new access token |
+| The subject loses a group membership that granted a role | The affected permission scopes are dropped from the new access token |
+| A permission is removed from the resource server | The scope is dropped from the new access token |
+| The user's password is reset | The refresh fails with `invalid_grant` |
+| The client secret is rotated | The refresh fails with `invalid_grant` |
+| The user is deleted | The refresh fails with `invalid_grant` |
+
+OIDC scopes such as `openid`, `profile`, and `email` are not permission scopes, so authorization changes never remove them.
+
+Access tokens issued earlier are unaffected and remain valid until they expire. Clients must handle a refreshed access token that carries fewer scopes than the previous one, and an `invalid_grant` response that requires the user to sign in again.
+
 <details>
 <summary>How <ProductName /> Implements It</summary>
 
@@ -53,6 +70,8 @@ Response (rotation enabled):
 | Audience preservation | The new access token keeps the refresh token's single audience when `resource` is omitted |
 | Resource validation | When supplied, `resource` must match the refresh token's audience. A mismatch returns `invalid_target` |
 | Scope narrowing | The `scope` parameter may request a subset of the originally granted scopes. Asking for a wider scope returns `invalid_scope` |
+| Authorization re-evaluation | Permission scopes are re-evaluated against the subject's current role and group assignments on every refresh. Scopes the subject no longer holds are dropped |
+| Credential changes | Each entity records when its password or client secret last changed. A refresh token established at or before that instant is rejected with `invalid_grant` |
 | DPoP binding | A DPoP-bound refresh token continues to require a DPoP proof on refresh; the new access token inherits the `cnf.jkt` binding |
 
 ### What Changes Between the Original and Refreshed Token
@@ -62,7 +81,7 @@ Response (rotation enabled):
 | `sub` | Unchanged |
 | `iss` | Unchanged |
 | `aud` | Preserved. A supplied `resource` must match this value |
-| `scope` | Preserved by default; narrowed when `scope` is supplied |
+| `scope` | Preserved by default. Narrowed when `scope` is supplied, and narrowed further to the permissions the subject currently holds |
 | `exp` / `iat` | New values |
 | `cnf.jkt` (DPoP) | Preserved |
 | `auth_time` | Not carried into refreshed tokens |

@@ -5,7 +5,12 @@ import {GithubIcon, GoogleIcon, ResourceAvatar} from '@thunderid/components';
 import {MessageSquare, Send} from '@wso2/oxygen-ui-icons-react';
 import {CONNECTION_CATEGORIES} from '../constants/connection-categories';
 import ConnectionConstants from '../constants/connection-constants';
-import {type ConnectionCategory, ConnectionTypes, type ConnectionVendorMeta} from '../models/connection';
+import {
+  type ConnectionCardModel,
+  type ConnectionCategory,
+  ConnectionTypes,
+  type ConnectionVendorMeta,
+} from '../models/connection';
 
 const AVATAR_SIZE = 48;
 
@@ -112,17 +117,16 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
 ];
 
 /**
- * Categories actually represented by the vendor catalog, in display order. Drives the listing
- * filter chips so categories with no connections (e.g. Email, CRM) are not shown.
+ * Categories that at least one of the given listing cards belongs to, in display order. Drives the
+ * listing filter chips: a category with no card (e.g. Email, or Enterprise before any OIDC connection
+ * is created) would render an empty grid, so its chip is not shown at all.
  *
- * `trusted-idp` is always included even though it has no vendor catalog entry — trusted issuer
- * cards are synthesized directly from connection instances by `buildConnectionCards`, not from
- * `CONNECTION_VENDOR_META`.
+ * Derived from the built cards rather than from `CONNECTION_VENDOR_META` because the catalog alone
+ * cannot say which categories are populated — `presentation: 'custom'` vendors and trusted issuers
+ * only produce cards once instances exist.
  */
-export const AVAILABLE_CONNECTION_CATEGORIES: ConnectionCategory[] = CONNECTION_CATEGORIES.filter(
-  (category) =>
-    category === 'trusted-idp' || CONNECTION_VENDOR_META.some((vendor) => vendor.categories.includes(category)),
-);
+export const getAvailableConnectionCategories = (cards: ConnectionCardModel[]): ConnectionCategory[] =>
+  CONNECTION_CATEGORIES.filter((category) => cards.some((card) => card.categories.includes(category)));
 
 /**
  * Vendor meta keyed by backend connection type (for the wired vendors only).

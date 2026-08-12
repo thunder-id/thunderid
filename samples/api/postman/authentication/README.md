@@ -10,7 +10,7 @@ Individual authentication endpoints that can be used independently for specific 
 - **SMS OTP Login** - Send and verify SMS OTP
 - **Google Login** - Social login with Google
 - **GitHub Login** - Social login with GitHub
-- **ThunderID Login** - OAuth-based login with ThunderID
+- **Asgardeo Login** - OAuth-based login with Asgardeo
 
 ### 2. Authenticate with Flow Native APIs
 Orchestrated authentication flows using flow execution engine:
@@ -40,7 +40,7 @@ User self-registration flows:
 │   ├── 03.02 - SMS OTP Login
 │   ├── 03.03 - Google Login
 │   ├── 03.04 - GitHub Login
-│   └── 03.05 - ThunderID Login
+│   └── 03.05 - Asgardeo Login
 ├── 04 - Authenticate with Flow Native APIs
 │   ├── 04.01 - Login With Username & Password
 │   ├── 04.02 - Login With Username & Password (Verbose)
@@ -59,7 +59,7 @@ User self-registration flows:
 3. External service credentials (for social login demos):
    - Google OAuth credentials
    - GitHub OAuth credentials
-   - ThunderID OAuth credentials (optional)
+   - Asgardeo OAuth credentials (optional)
    - SMS notification sender webhook URL (for SMS OTP demos)
 
 ## Environment Setup
@@ -70,35 +70,46 @@ Import the `environment.json` file into Postman and fill in the required values.
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `baseUrl` | ThunderID management API base URL | `https://localhost:8090` |
-| `ADMIN_USERNAME` | Admin user username | `admin` |
-| `ADMIN_PASSWORD` | Admin user password | `admin` |
+| `scheme` | Server scheme | `https` |
+| `host` | Server host | `localhost` |
+| `port` | Server port | `8090` |
+| `baseUrl` | Server base URL | `{{scheme}}://{{host}}:{{port}}` (`https://localhost:8090`) |
 
-### Service Integration Credentials (Setup Phase)
+### Management Token App (for obtaining access tokens)
 
-#### Google IDP (Optional)
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `MGT_TOKEN_APP_CLIENT_ID` | Client ID of the management app | `CONSOLE` |
+| `MGT_TOKEN_APP_REDIRECT_URI` | Redirect URI for the management app | `https://localhost:8090/console` |
+| `MGT_TOKEN_SCOPE` | OAuth scopes to request | `system` |
+| `ADMIN_USERNAME` | Admin username for authentication | `admin` |
+| `ADMIN_PASSWORD` | Admin password for authentication | `admin` |
+
+### Identity Provider Credentials
+
+#### Google IDP
 
 | Variable | Description |
 |----------|-------------|
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
 
-#### GitHub IDP (Optional)
+#### GitHub IDP
 
 | Variable | Description |
 |----------|-------------|
 | `GITHUB_CLIENT_ID` | GitHub OAuth client ID |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth client secret |
 
-#### ThunderID IDP (Optional)
+#### Asgardeo IDP (Optional)
 
 | Variable | Description |
 |----------|-------------|
-| `THUNDERID_CLIENT_ID` | ThunderID OAuth client ID |
-| `THUNDERID_CLIENT_SECRET` | ThunderID OAuth client secret |
-| `THUNDERID_BASE_URI` | ThunderID organization base URI (Ex: https://localhost:8090) |
+| `ASGARDEO_CLIENT_ID` | Asgardeo OAuth client ID |
+| `ASGARDEO_CLIENT_SECRET` | Asgardeo OAuth client secret |
+| `THUNDERID_BASE_URI` | Asgardeo organization base URI (Ex: https://localhost:8090) |
 
-Note: Replace `your-org` with your actual organization name.
+Note: Replace `your-org` with your actual Asgardeo organization name.
 
 #### Federated IDP Configuration (Common for all IDPs)
 
@@ -144,12 +155,12 @@ Note: Replace `your-org` with your actual organization name.
 | `demoGithubUserSub` | GitHub user subject identifier (unique id from GitHub) |
 | `demoGithubUserEmail` | GitHub user email |
 
-#### ThunderID User
+#### Asgardeo User
 
 | Variable | Description |
 |----------|-------------|
-| `demoThunderIDUserSub` | ThunderID user subject identifier (unique id from ThunderID) |
-| `demoThunderIDUserEmail` | ThunderID user email |
+| `demoAsgardeoUserSub` | Asgardeo user subject identifier (unique id from Asgardeo) |
+| `demoAsgardeoUserEmail` | Asgardeo user email |
 
 ### Resource IDs (for the Created Resources)
 
@@ -163,7 +174,7 @@ These variables will be auto-populated during the resource setup phase:
 | `demoSchemaName` | Created demo user schema name |
 | `googleIDPId` | Created Google IDP ID |
 | `githubIDPId` | Created GitHub IDP ID |
-| `thunderidIDPId` | Created ThunderID IDP ID |
+| `thunderidIDPId` | Created Asgardeo IDP ID |
 | `messageNotificationSenderId` | Created SMS notification sender ID |
 | `loginApplicationId` | Created demo application ID |
 | `basicAuthFlowGraphId` | Created basic authentication flow graph ID |
@@ -194,7 +205,7 @@ These variables are automatically populated during the demo execution:
 | `first_factor_assertion` | First factor authentication assertion for MFA flows |
 | `google_session_token` | Google authentication session token |
 | `github_session_token` | GitHub authentication session token |
-| `thunderid_session_token` | ThunderID authentication session token |
+| `thunderid_session_token` | Asgardeo authentication session token |
 | `exec_flow_id` | Flow execution ID for flow-native APIs |
 | `exec_challenge_token` | Challenge token for flow execution |
 | `auth_std_auth_id` | OAuth standard flow auth ID |
@@ -226,7 +237,7 @@ Run the requests in `02 - Setup Resources` folder to create:
 - Demo organization unit
 - User schema
 - Notification sender (for SMS OTP)
-- Identity providers (Google, GitHub, ThunderID)
+- Identity providers (Google, GitHub, Asgardeo)
 - Demo users
 - Demo application
 - Authentication and registration flows
@@ -242,6 +253,6 @@ Choose any of the authentication demo folders:
 ## Notes
 
 - The collection includes a pre-request script that automatically refreshes the access token when it's about to expire.
-- For social login demos (Google, GitHub, ThunderID), you'll need to complete the OAuth flow in a browser and provide the authorization code manually.
+- For social login demos (Google, GitHub, Asgardeo), you'll need to complete the OAuth flow in a browser and provide the authorization code manually.
 - SMS OTP demos require a webhook endpoint to receive OTP messages. You can use services like [webhook.site](https://webhook.site/) for testing.
 - Some requests may return `201` (created) or `409` (already exists) depending on whether resources already exist

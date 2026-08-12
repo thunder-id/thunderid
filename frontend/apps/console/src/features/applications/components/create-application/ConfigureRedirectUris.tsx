@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {isValidOrigin} from '@thunderid/configure-settings';
+import {AllowedOriginTypes, createRow, rowKey, type AllowedOriginDraftRow} from '@thunderid/configure-settings';
 import {
   Alert,
   Box,
@@ -19,6 +19,7 @@ import {Plus, Trash} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
+import CorsOriginsEditor from './CorsOriginsEditor';
 import DevServerLogo from './DevServerLogo';
 import useApplicationCreate from '../../contexts/ApplicationCreate/useApplicationCreate';
 
@@ -56,12 +57,6 @@ interface UriListEditorProps {
   onUrisChange: (uris: string[]) => void;
   /** Whether an empty row is an error (redirect URIs are required, post-logout ones are optional). */
   required: boolean;
-  /** Value format validator. Defaults to the permissive URI-format check. */
-  isValidValue?: (value: string) => boolean;
-  /** Already-translated "value must not be empty" error message. */
-  emptyValueMessage?: string;
-  /** Already-translated "value is not a valid format" error message. */
-  invalidValueMessage?: string;
 }
 
 function UriListEditor({
@@ -72,9 +67,6 @@ function UriListEditor({
   uris,
   onUrisChange,
   required,
-  isValidValue = isValidUriFormat,
-  emptyValueMessage = '',
-  invalidValueMessage = '',
 }: UriListEditorProps): JSX.Element {
   const {t} = useTranslation();
   const [errors, setErrors] = useState<Record<number, string>>({});
@@ -84,9 +76,7 @@ function UriListEditor({
       if (required) {
         setErrors((prev) => ({
           ...prev,
-          [index]:
-            emptyValueMessage ||
-            t('applications:edit.general.redirectUris.error.empty', 'Invalid Redirect: URI must not be empty.'),
+          [index]: t('applications:edit.general.redirectUris.error.empty', 'Invalid Redirect: URI must not be empty.'),
         }));
         return false;
       }
@@ -97,12 +87,13 @@ function UriListEditor({
       });
       return false;
     }
-    if (!isValidValue(uri)) {
+    if (!isValidUriFormat(uri)) {
       setErrors((prev) => ({
         ...prev,
-        [index]:
-          invalidValueMessage ||
-          t('applications:edit.general.redirectUris.error.invalid', 'Invalid Redirect: Please enter a valid URL.'),
+        [index]: t(
+          'applications:edit.general.redirectUris.error.invalid',
+          'Invalid Redirect: Please enter a valid URL.',
+        ),
       }));
       return false;
     }
@@ -198,8 +189,8 @@ interface DevServerBannerProps {
   showCors: boolean;
   redirectUris: string[];
   onRedirectUrisChange: (uris: string[]) => void;
-  corsOrigins: string[];
-  onCorsOriginsChange: (origins: string[]) => void;
+  corsOrigins: AllowedOriginDraftRow[];
+  onCorsOriginsChange: (origins: AllowedOriginDraftRow[]) => void;
 }
 
 /**
@@ -221,8 +212,10 @@ function DevServerBanner({
     if (!redirectUris.includes(devServer.url)) {
       onRedirectUrisChange([...redirectUris, devServer.url]);
     }
-    if (showCors && !corsOrigins.includes(devServer.url)) {
-      onCorsOriginsChange([...corsOrigins, devServer.url]);
+    // The dev server URL is always an exact origin, never a pattern.
+    const devServerRow = createRow(AllowedOriginTypes.ORIGIN, devServer.url);
+    if (showCors && !corsOrigins.some((row) => rowKey(row) === rowKey(devServerRow))) {
+      onCorsOriginsChange([...corsOrigins, devServerRow]);
     }
   };
 
@@ -347,25 +340,7 @@ export default function ConfigureRedirectUris(): JSX.Element {
         />
       )}
 
-      {showCors && (
-        <UriListEditor
-          title={t('applications:onboarding.configure.details.corsOrigins.title', 'CORS Allowed Origins')}
-          description={t(
-            'applications:onboarding.configure.details.corsOrigins.description',
-            'Origins allowed to make cross-origin requests to the token and userinfo endpoints.',
-          )}
-          placeholder={t('applications:onboarding.configure.details.corsOrigins.placeholder', 'https://example.com')}
-          addLabel={t('applications:onboarding.configure.details.corsOrigins.addOrigin', 'Add Origin')}
-          uris={corsOrigins}
-          onUrisChange={setCorsOrigins}
-          required={false}
-          isValidValue={isValidOrigin}
-          invalidValueMessage={t(
-            'applications:onboarding.configure.details.corsOrigins.error.invalid',
-            'Enter a valid origin, e.g. https://app.example.com.',
-          )}
-        />
-      )}
+      {showCors && <CorsOriginsEditor rows={corsOrigins} onRowsChange={setCorsOrigins} />}
     </Stack>
   );
 }

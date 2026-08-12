@@ -318,6 +318,19 @@ func (f *fileBasedStore) DeleteAssignmentsByAssignee(
 	return 0, nil
 }
 
+// GetReferencedPermissions returns no permissions for the file-based store: declarative role
+// permissions are immutable, so they are never pruned.
+func (f *fileBasedStore) GetReferencedPermissions(_ context.Context) ([]ResourcePermissions, error) {
+	return []ResourcePermissions{}, nil
+}
+
+// DeleteRolePermission is a no-op for the file-based store: declarative role permissions are
+// immutable, so there is nothing to remove.
+func (f *fileBasedStore) DeleteRolePermission(
+	_ context.Context, _, _ string) (int64, error) {
+	return 0, nil
+}
+
 // AddAssignments is not supported in file-based store.
 func (f *fileBasedStore) AddAssignments(ctx context.Context, id string, assignments []RoleAssignment) error {
 	return errors.New("AddAssignments is not supported in file-based store")

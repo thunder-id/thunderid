@@ -151,9 +151,11 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Success_UserIdentifiedAnd
 	assert.Equal(suite.T(), "session-tok-1", resp.RuntimeData[common.RuntimeKeyOTPSessionToken])
 	assert.Equal(suite.T(), "1", resp.RuntimeData[common.RuntimeKeyOTPAttemptCount])
 	assert.Equal(suite.T(), "6", resp.AdditionalData[common.DataOTPLength])
+	assert.Equal(suite.T(), "true", resp.AdditionalData[common.DataOTPNumericOnly])
 	fwdData, ok := resp.ForwardedData[common.ForwardedDataKeyTemplateData].(map[string]interface{})
 	assert.True(suite.T(), ok)
 	assert.Equal(suite.T(), "654321", fwdData[common.ForwardedDataKeyOTPCode])
+	assert.Equal(suite.T(), "5 minutes", fwdData[common.ForwardedDataKeyExpiryTime])
 }
 
 func (suite *OTPExecutorTestSuite) TestExecuteGenerate_PublishesConfiguredOTPLength() {
@@ -217,6 +219,40 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_PublishedLengthFollowsGen
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "6", resp.AdditionalData[common.DataOTPLength])
+}
+
+// The otpUseNumericOnly property is merged with the server default inside the OTP service, so the
+// published flag must come from the generated value rather than the property.
+func (suite *OTPExecutorTestSuite) TestExecuteGenerate_PublishesNumericOnlyFalseForAlphanumericOTP() {
+	userID := testOTPUserID
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(&userID, nil)
+
+	suite.mockOTPService.On("GenerateOTP",
+		mock.Anything, userID, authnprovidercm.UserAttributeUserID,
+		mock.Anything).
+		Return("session-tok-alnum", "K7GX2M", int64(300), (*tidcommon.ServiceError)(nil))
+
+	ctx := &providers.NodeContext{
+		ExecutionID:  "exec-otp-alnum",
+		FlowType:     providers.FlowTypeAuthentication,
+		ExecutorMode: ExecutorModeGenerate,
+		NodeInputs: []providers.Input{
+			{Ref: "mobile_input", Identifier: common.AttributeMobileNumber,
+				Type: providers.InputTypePhone, Required: true},
+		},
+		NodeProperties: map[string]interface{}{propertyKeyOTPUseNumericOnly: false},
+		UserInputs: map[string]string{
+			common.AttributeMobileNumber: "+1234567890",
+		},
+		RuntimeData: map[string]string{},
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), "6", resp.AdditionalData[common.DataOTPLength])
+	assert.Equal(suite.T(), "false", resp.AdditionalData[common.DataOTPNumericOnly])
 }
 
 func (suite *OTPExecutorTestSuite) TestExecuteGenerate_MultipleInputs_IdentifiesUserByAllAttrs() {
@@ -317,6 +353,7 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Registration_UserNotFound
 	fwdData, ok := resp.ForwardedData[common.ForwardedDataKeyTemplateData].(map[string]interface{})
 	assert.True(suite.T(), ok)
 	assert.Equal(suite.T(), "777888", fwdData[common.ForwardedDataKeyOTPCode])
+	assert.Equal(suite.T(), "5 minutes", fwdData[common.ForwardedDataKeyExpiryTime])
 }
 
 func (suite *OTPExecutorTestSuite) TestExecuteGenerate_Registration_UserNotFound_NoPhoneValue_ReturnsInputRequired() {

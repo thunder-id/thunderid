@@ -43,7 +43,7 @@ describe('UserAccessSection', () => {
       />,
     );
 
-    expect(screen.getByText('Allow all user types to access this application')).toBeInTheDocument();
+    expect(screen.getByText('Allow all user types to sign up for this application')).toBeInTheDocument();
   });
 
   it('checks the master checkbox when every user type is selected', () => {

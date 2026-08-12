@@ -43,7 +43,7 @@ This creates the `Customer` user type and the `React SDK Sample` application und
 
 ### 2. Configure the Application
 
-Open `dist/runtime.json` and set the `clientId` to the value you used in `thunderid-config/thunderid.env`:
+Open `public/runtime.json` and set the `clientId` to the value you used in `thunderid-config/thunderid.env`:
 
 ```json
 {

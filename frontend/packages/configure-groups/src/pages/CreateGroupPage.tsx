@@ -17,6 +17,7 @@ import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import useCreateGroup from '../api/useCreateGroup';
 import ConfigureName from '../components/create-group/ConfigureName';
+import GroupConstraints from '../constants/group-constraints';
 import useGroupCreate from '../contexts/GroupCreate/useGroupCreate';
 import {GroupCreateFlowStep} from '../models/group-create-flow';
 import type {CreateGroupRequest} from '../models/requests';
@@ -91,8 +92,20 @@ export default function CreateGroupPage(): JSX.Element {
   const handleSubmit = async (): Promise<void> => {
     setError(null);
 
-    if (!name.trim()) {
+    const trimmedName = name.trim();
+
+    if (!trimmedName) {
       setError(t('create.form.name.required', 'Group name is required'));
+      return;
+    }
+
+    if (trimmedName.length > GroupConstraints.NAME_MAX_LENGTH) {
+      setError(
+        t('create.form.name.maxLength', {
+          max: GroupConstraints.NAME_MAX_LENGTH,
+          defaultValue: `Group name cannot exceed ${GroupConstraints.NAME_MAX_LENGTH} characters`,
+        }),
+      );
       return;
     }
 
@@ -103,7 +116,7 @@ export default function CreateGroupPage(): JSX.Element {
     }
 
     const requestData: CreateGroupRequest = {
-      name: name.trim(),
+      name: trimmedName,
       ouId: resolvedOuId,
     };
 

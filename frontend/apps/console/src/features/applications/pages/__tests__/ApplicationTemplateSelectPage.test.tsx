@@ -130,7 +130,9 @@ describe('ApplicationTemplateSelectPage', () => {
     expect(setSelectedTemplateConfig).toHaveBeenCalled();
     // React uses the default flow whose first step is ORGANIZATION_UNIT.
     expect(setCurrentStep).toHaveBeenCalledWith(ApplicationCreateFlowStep.ORGANIZATION_UNIT);
-    expect(mockNavigate).toHaveBeenCalledWith(`/applications/create?type=${TechnologyApplicationTemplate.REACT}`);
+    expect(mockNavigate).toHaveBeenCalledWith(`/applications/create?type=${TechnologyApplicationTemplate.REACT}`, {
+      replace: false,
+    });
   });
 
   it('seeds a platform template and clears technology when a platform card is clicked', async () => {
@@ -144,7 +146,9 @@ describe('ApplicationTemplateSelectPage', () => {
 
     expect(setSelectedPlatform).toHaveBeenCalledWith(PlatformApplicationTemplate.BACKEND);
     expect(setSelectedTechnology).toHaveBeenCalledWith(null);
-    expect(mockNavigate).toHaveBeenCalledWith(`/applications/create?type=${PlatformApplicationTemplate.BACKEND}`);
+    expect(mockNavigate).toHaveBeenCalledWith(`/applications/create?type=${PlatformApplicationTemplate.BACKEND}`, {
+      replace: false,
+    });
   });
 
   it('advances to ORGANIZATION_UNIT first for the MCP client template', async () => {
@@ -157,7 +161,9 @@ describe('ApplicationTemplateSelectPage', () => {
 
     // mcp-client flow: ORGANIZATION_UNIT → DETAILS → CLIENT_TYPE → COMPLETE; first step is ORGANIZATION_UNIT.
     expect(setCurrentStep).toHaveBeenCalledWith(ApplicationCreateFlowStep.ORGANIZATION_UNIT);
-    expect(mockNavigate).toHaveBeenCalledWith(`/applications/create?type=${TechnologyApplicationTemplate.MCP_CLIENT}`);
+    expect(mockNavigate).toHaveBeenCalledWith(`/applications/create?type=${TechnologyApplicationTemplate.MCP_CLIENT}`, {
+      replace: false,
+    });
   });
 
   it('navigates back to the Get Started page when in the welcome flow', () => {
@@ -177,6 +183,7 @@ describe('ApplicationTemplateSelectPage', () => {
 
     expect(mockNavigate).toHaveBeenCalledWith(
       `/welcome/get-started/applications/create?type=${TechnologyApplicationTemplate.REACT}`,
+      {replace: false},
     );
   });
 
@@ -194,7 +201,9 @@ describe('ApplicationTemplateSelectPage', () => {
     fireEvent.keyDown(screen.getByTestId(`template-card-${TechnologyApplicationTemplate.REACT}`), {key: 'Enter'});
 
     expect(setSelectedTechnology).toHaveBeenCalledWith(TechnologyApplicationTemplate.REACT);
-    expect(mockNavigate).toHaveBeenCalledWith(`/applications/create?type=${TechnologyApplicationTemplate.REACT}`);
+    expect(mockNavigate).toHaveBeenCalledWith(`/applications/create?type=${TechnologyApplicationTemplate.REACT}`, {
+      replace: false,
+    });
   });
 
   it('selects a template when Space is pressed on a card', () => {
@@ -205,7 +214,9 @@ describe('ApplicationTemplateSelectPage', () => {
     fireEvent.keyDown(screen.getByTestId(`template-card-${TechnologyApplicationTemplate.REACT}`), {key: ' '});
 
     expect(setSelectedTechnology).toHaveBeenCalledWith(TechnologyApplicationTemplate.REACT);
-    expect(mockNavigate).toHaveBeenCalledWith(`/applications/create?type=${TechnologyApplicationTemplate.REACT}`);
+    expect(mockNavigate).toHaveBeenCalledWith(`/applications/create?type=${TechnologyApplicationTemplate.REACT}`, {
+      replace: false,
+    });
   });
 
   it('ignores keys other than Enter and Space', () => {
@@ -227,7 +238,20 @@ describe('ApplicationTemplateSelectPage', () => {
     await vi.waitFor(() => {
       expect(setSelectedTechnology).toHaveBeenCalledWith(TechnologyApplicationTemplate.REACT);
     });
-    expect(mockNavigate).toHaveBeenCalledWith(`/applications/create?type=${TechnologyApplicationTemplate.REACT}`);
+    // Replaces the pass-through gallery entry so going back from the wizard reaches the entry
+    // point rather than bouncing forward again.
+    expect(mockNavigate).toHaveBeenCalledWith(`/applications/create?type=${TechnologyApplicationTemplate.REACT}`, {
+      replace: true,
+    });
+  });
+
+  it('does not render the template gallery while passing through on a deep link', () => {
+    mockSearchParams = new URLSearchParams({type: TechnologyApplicationTemplate.REACT});
+
+    renderPage();
+
+    expect(screen.queryByRole('heading', {name: 'Choose a type'})).not.toBeInTheDocument();
+    expect(screen.queryByTestId(`template-card-${TechnologyApplicationTemplate.REACT}`)).not.toBeInTheDocument();
   });
 
   it('ignores an unknown type query param', () => {

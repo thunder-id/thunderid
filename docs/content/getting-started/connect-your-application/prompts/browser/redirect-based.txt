@@ -45,8 +45,8 @@ I have a vanilla JavaScript application and I want to integrate {{productName}}'
 - `picture` - Profile picture URL
 
 ## Implementation Steps
-1. Create a vanilla JS app using Vite by running: `npm create vite@latest js-demo -- --template vanilla`
-2. Navigate into the project directory: `cd js-demo`
+1. Create a vanilla JS app using Vite by running: `npm create vite@latest my-js-app -- --template vanilla`
+2. Navigate into the project directory: `cd my-js-app`
 3. Install dependencies: `npm install`
 4. Install @thunderid/browser package: `npm install @thunderid/browser`
 5. Create src/auth.js to initialize ThunderIDBrowserClient with clientId and baseUrl

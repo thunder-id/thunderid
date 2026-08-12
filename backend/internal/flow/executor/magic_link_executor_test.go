@@ -191,7 +191,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_Authen
 	// Assert the correct values are inside the template data
 	expectedURL := "https://example.com/verify?id=flow-123&token=jwt-token-123"
 	assert.Equal(suite.T(), expectedURL, templateData["magicLink"])
-	assert.Equal(suite.T(), "5", templateData["expiryMinutes"])
+	assert.Equal(suite.T(), "5 minutes", templateData["expiryTime"])
 	assert.Equal(suite.T(), magicLinkTestUserID, resp.RuntimeData[userAttributeUserID])
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 	suite.mockMagicLinkService.AssertExpectations(suite.T())
@@ -233,7 +233,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_Regist
 	assert.True(suite.T(), ok, "Template data should be present in ForwardedData")
 	expectedURL := "https://example.com/verify?id=flow-123&token=jwt-token-123"
 	assert.Equal(suite.T(), expectedURL, templateData["magicLink"])
-	assert.Equal(suite.T(), "5", templateData["expiryMinutes"])
+	assert.Equal(suite.T(), "5 minutes", templateData["expiryTime"])
 	assert.Equal(suite.T(), magicLinkTestEmail, resp.RuntimeData[userAttributeEmail])
 	assert.Equal(suite.T(), userAttributeEmail, resp.RuntimeData[common.RuntimeKeyMagicLinkDestinationAttribute])
 	suite.mockEntityProvider.AssertExpectations(suite.T())
@@ -351,7 +351,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithCu
 
 	templateData, ok := resp.ForwardedData[common.ForwardedDataKeyTemplateData].(map[string]interface{})
 	assert.True(suite.T(), ok)
-	assert.Equal(suite.T(), "10", templateData["expiryMinutes"])
+	assert.Equal(suite.T(), "10 minutes", templateData["expiryTime"])
 
 	suite.mockMagicLinkService.AssertExpectations(suite.T())
 }

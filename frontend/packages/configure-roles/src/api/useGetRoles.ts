@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useQuery, type UseQueryResult} from '@tanstack/react-query';
+import {keepPreviousData, useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import RoleQueryKeys from '../constants/role-query-keys';
@@ -21,6 +21,7 @@ export default function useGetRoles(params?: RoleListParams): UseQueryResult<Rol
 
   return useQuery<RoleListResponse>({
     queryKey: [RoleQueryKeys.ROLES, {limit, offset}],
+    placeholderData: keepPreviousData,
     queryFn: async (): Promise<RoleListResponse> => {
       const serverUrl: string = getServerUrl();
       const queryParams: URLSearchParams = new URLSearchParams({

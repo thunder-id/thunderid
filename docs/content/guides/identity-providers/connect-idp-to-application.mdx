@@ -31,6 +31,14 @@ Applications in <ProductName /> do not reference IdPs directly. The connection r
 By default, federated sign-in maps the external identity to a local user, which must already exist in the user store or the sign-in step fails. To sign in a first-time federated user, enable **Allow Authentication Without Local User** (`allowAuthenticationWithoutLocalUser`) on the social login executor and add a **Provisioning** executor to create the local account. See [Federated Authentication](../../flows/advanced-configurations#federated-authentication).
 :::
 
+:::note Configure a user type for first-time social sign-in
+Your application must allow exactly one user type with **Allow Self Registration** enabled. Sign-in fails if none or more than one of the allowed user types has this setting enabled.
+
+Under the application's **Access** settings, select the user type you want to assign to first-time users. If you select other user types, ensure only one has **Allow Self Registration** enabled under **User Types**. Existing users are unaffected.
+
+A **User Type Resolver** step selects the user type when several are eligible, but only in registration flows, where it prompts the user to choose. In authentication flows it does not resolve a type, so adding it to a sign-in flow does not lift this requirement.
+:::
+
 <Stepper stepNode="h2" as="h2">
 
 ## Step 1: Open the Flow Designer

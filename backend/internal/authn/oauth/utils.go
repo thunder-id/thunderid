@@ -55,8 +55,6 @@ func parseIDPConfig(idp *providers.IDPDTO) (*OAuthClientConfig, error) {
 			oAuthClientConfig.OAuthEndpoints.UserInfoEndpoint = value
 		case idpPkg.PropUserEmailEndpoint:
 			oAuthClientConfig.OAuthEndpoints.UserEmailEndpoint = value
-		case idpPkg.PropLogoutEndpoint:
-			oAuthClientConfig.OAuthEndpoints.LogoutEndpoint = value
 		case idpPkg.PropJwksEndpoint:
 			oAuthClientConfig.OAuthEndpoints.JwksEndpoint = value
 		case idpPkg.PropIssuer, idpPkg.PropTokenExchangeEnabled:
@@ -168,7 +166,7 @@ func sendUserInfoRequest(httpReq *http.Request, httpClient httpservice.HTTPClien
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		logger.Error(ctx, "Userinfo endpoint returned an error response",
 			log.Int("statusCode", resp.StatusCode), log.String("response", string(body)))
-		return nil, &tidcommon.InternalServerError
+		return nil, &ErrorUserProfileRetrievalFailed
 	}
 
 	body, err := io.ReadAll(resp.Body)

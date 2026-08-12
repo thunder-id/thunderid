@@ -185,7 +185,7 @@ export function CatalogResourceNode({
             depth={depth + 1}
             checked={isPermissionSelected(selected, resourceServerId, action.permission)}
             disabled={readOnly}
-            onToggle={() => onChange(togglePermission(selected, resourceServerId, action.permission))}
+            onToggle={() => onChange(togglePermission(selected, resourceServerId, action.permission, delimiter))}
           />
         ))}
         {childResources.map((child) => (
@@ -271,7 +271,7 @@ function DefaultServerSectionContent({
           depth={1}
           checked={isPermissionSelected(selected, server.id, action.permission)}
           disabled={readOnly}
-          onToggle={() => onChange(togglePermission(selected, server.id, action.permission))}
+          onToggle={() => onChange(togglePermission(selected, server.id, action.permission, delimiter))}
         />
       ))}
       {resources.map((resource) => (
@@ -444,7 +444,8 @@ function UnknownServerGroups({
               depth={1}
               checked
               disabled={readOnly}
-              onToggle={() => onChange(togglePermission(selected, entry.resourceServerId, permission))}
+              // The server is gone, so its delimiter is unknowable and no ancestor can be derived.
+              onToggle={() => onChange(togglePermission(selected, entry.resourceServerId, permission, ''))}
             />
           ))}
         </Box>

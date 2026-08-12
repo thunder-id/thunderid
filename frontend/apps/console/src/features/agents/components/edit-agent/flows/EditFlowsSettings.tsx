@@ -8,7 +8,6 @@ import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import SettingsLockNotice from '../../../../applications/components/common/SettingsLockNotice';
 import AuthenticationFlowSection from '../../../../applications/components/edit-application/flows-settings/AuthenticationFlowSection';
-import RecoveryFlowSection from '../../../../applications/components/edit-application/flows-settings/RecoveryFlowSection';
 import RegistrationFlowSection from '../../../../applications/components/edit-application/flows-settings/RegistrationFlowSection';
 import type {Agent, OAuthAgentConfig} from '../../../models/agent';
 
@@ -28,8 +27,8 @@ export default function EditFlowsSettings({
   const {t} = useTranslation();
   const isUnlocked = oauth2Config?.grantTypes?.includes(OAuth2GrantTypes.AUTHORIZATION_CODE) ?? false;
 
-  // Agents share the inbound-client shape with applications (auth_flow_id, registration/recovery
-  // flow config), so the same components are reused with an entity-label override. Forcing
+  // Agents share the inbound-client shape with applications (auth_flow_id, registration flow
+  // config), so the same components are reused with an entity-label override. Forcing
   // isReadOnly disables every input via their existing disabled={application.isReadOnly} wiring
   // when Delegated mode isn't on, without needing new props on the shared components.
   const appLikeAgent = {...agent, isReadOnly: (agent.isReadOnly ?? false) || !isUnlocked} as unknown as Application;
@@ -53,12 +52,6 @@ export default function EditFlowsSettings({
             entityLabel="agent"
           />
           <RegistrationFlowSection
-            application={appLikeAgent}
-            editedApp={appLikeEditedAgent}
-            onFieldChange={appHandleFieldChange}
-            entityLabel="agent"
-          />
-          <RecoveryFlowSection
             application={appLikeAgent}
             editedApp={appLikeEditedAgent}
             onFieldChange={appHandleFieldChange}

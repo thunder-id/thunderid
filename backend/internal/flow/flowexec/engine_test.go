@@ -611,6 +611,150 @@ func (s *EngineTestSuite) TestResolveStepForRedirection_AppendsInputs() {
 	s.Len(flowStep.Data.Inputs, 2)
 }
 
+func (s *EngineTestSuite) TestReplayPromptInputs_RestoresInputsForPausedPrompt() {
+	t := s.T()
+	mockCurrentNode := coremock.NewNodeInterfaceMock(t)
+	mockCurrentNode.On("GetID").Return("prompt-attrs").Maybe()
+
+	fe := &flowEngine{logger: log.GetLogger()}
+	ctx := &EngineContext{
+		Context:             context.Background(),
+		CurrentNode:         mockCurrentNode,
+		CurrentPromptNodeID: "prompt-attrs",
+		CurrentPromptInputs: []providers.Input{{Identifier: "given_name", Required: true}},
+	}
+
+	fe.replayPromptInputs(ctx)
+
+	replayed, ok := ctx.ForwardedData[common.ForwardedDataKeyInputs].([]providers.Input)
+	s.True(ok)
+	s.Len(replayed, 1)
+	s.Equal("given_name", replayed[0].Identifier)
+}
+
+func (s *EngineTestSuite) TestReplayPromptInputs_SkipsDifferentNode() {
+	t := s.T()
+	mockCurrentNode := coremock.NewNodeInterfaceMock(t)
+	mockCurrentNode.On("GetID").Return("some-other-node").Maybe()
+
+	fe := &flowEngine{logger: log.GetLogger()}
+	ctx := &EngineContext{
+		Context:             context.Background(),
+		CurrentNode:         mockCurrentNode,
+		CurrentPromptNodeID: "prompt-attrs",
+		CurrentPromptInputs: []providers.Input{{Identifier: "given_name", Required: true}},
+	}
+
+	fe.replayPromptInputs(ctx)
+
+	s.Nil(ctx.ForwardedData)
+}
+
+func (s *EngineTestSuite) TestReplayPromptInputs_SkipsWhenActionSelected() {
+	t := s.T()
+	mockCurrentNode := coremock.NewNodeInterfaceMock(t)
+	mockCurrentNode.On("GetID").Return("prompt-attrs").Maybe()
+
+	fe := &flowEngine{logger: log.GetLogger()}
+	ctx := &EngineContext{
+		Context:             context.Background(),
+		CurrentNode:         mockCurrentNode,
+		CurrentAction:       "action_google",
+		CurrentPromptNodeID: "prompt-attrs",
+		CurrentPromptInputs: []providers.Input{{Identifier: "username", Required: true}},
+	}
+
+	fe.replayPromptInputs(ctx)
+
+	// Selecting an action advances the flow: the prompt must evaluate against that action's own
+	// inputs, so an action declaring none must not be blocked by the previous rendering.
+	s.Nil(ctx.ForwardedData)
+}
+
+func (s *EngineTestSuite) TestReplayPromptInputs_KeepsFreshForwardedInputs() {
+	t := s.T()
+	mockCurrentNode := coremock.NewNodeInterfaceMock(t)
+	mockCurrentNode.On("GetID").Return("prompt-attrs").Maybe()
+
+	fe := &flowEngine{logger: log.GetLogger()}
+	fresh := []providers.Input{{Identifier: "family_name", Required: true}}
+	ctx := &EngineContext{
+		Context:             context.Background(),
+		CurrentNode:         mockCurrentNode,
+		CurrentPromptNodeID: "prompt-attrs",
+		CurrentPromptInputs: []providers.Input{{Identifier: "given_name", Required: true}},
+		ForwardedData:       map[string]interface{}{common.ForwardedDataKeyInputs: fresh},
+	}
+
+	fe.replayPromptInputs(ctx)
+
+	// An upstream executor ran in this traversal, so its inputs win over the recorded ones.
+	replayed, ok := ctx.ForwardedData[common.ForwardedDataKeyInputs].([]providers.Input)
+	s.True(ok)
+	s.Len(replayed, 1)
+	s.Equal("family_name", replayed[0].Identifier)
+}
+
+func (s *EngineTestSuite) TestSwitchContextToCallee_DropsCallerPausedPrompt() {
+	t := s.T()
+	mockCallNode := coremock.NewNodeInterfaceMock(t)
+	mockCallNode.On("GetID").Return("call_mfa").Maybe()
+
+	// The callee's first prompt reuses the caller's prompt ID: node IDs are graph-local, so
+	// conventional names collide across flows.
+	mockStartNode := coremock.NewNodeInterfaceMock(t)
+	mockStartNode.On("GetID").Return("prompt_credentials").Maybe()
+
+	mockCalleeGraph := coremock.NewGraphInterfaceMock(t)
+	mockCalleeGraph.On("GetType").Return(providers.FlowTypeAuthentication).Maybe()
+	mockCalleeGraph.On("GetStartNode").Return(mockStartNode, nil).Maybe()
+
+	fe := &flowEngine{logger: log.GetLogger()}
+	ctx := &EngineContext{
+		Context:             context.Background(),
+		CurrentNode:         mockCallNode,
+		CurrentPromptNodeID: "prompt_credentials",
+		CurrentPromptInputs: []providers.Input{{Identifier: "given_name", Required: true}},
+	}
+
+	_, svcErr := fe.switchContextToCallee(ctx, &common.NodeResponse{}, mockCalleeGraph, log.GetLogger())
+	s.Nil(svcErr)
+
+	s.Empty(ctx.CurrentPromptNodeID)
+	s.Nil(ctx.CurrentPromptInputs)
+
+	// The callee's colliding prompt must not inherit the caller's inputs.
+	ctx.CurrentNode = mockStartNode
+	fe.replayPromptInputs(ctx)
+	s.Nil(ctx.ForwardedData)
+}
+
+func (s *EngineTestSuite) TestPopFrame_DropsCalleePausedPrompt() {
+	t := s.T()
+	mockCallerNode := coremock.NewNodeInterfaceMock(t)
+	mockCallerNode.On("GetID").Return("prompt_credentials").Maybe()
+
+	fe := &flowEngine{logger: log.GetLogger()}
+	ctx := &EngineContext{
+		Context:     context.Background(),
+		CurrentNode: mockCallerNode,
+	}
+	ctx.pushFrame("call_mfa")
+
+	// The callee paused on a prompt whose ID collides with a node in the caller graph.
+	ctx.CurrentPromptNodeID = "prompt_credentials"
+	ctx.CurrentPromptInputs = []providers.Input{{Identifier: "given_name", Required: true}}
+
+	s.NotNil(ctx.popFrame())
+
+	s.Empty(ctx.CurrentPromptNodeID)
+	s.Nil(ctx.CurrentPromptInputs)
+
+	// Back in the caller, the callee's record must not replay into the colliding node.
+	fe.replayPromptInputs(ctx)
+	s.Nil(ctx.ForwardedData)
+}
+
 func (s *EngineTestSuite) TestResolveStepDetailsForPrompt_WithMeta() {
 	fe := &flowEngine{}
 
@@ -2285,9 +2429,13 @@ func (s *EngineTestSuite) TestHandleIncompleteResponse_ViewType() {
 		Type:   common.NodeResponseTypeView,
 		Inputs: []providers.Input{{Identifier: "username", Required: true}},
 	}
+	mockCurrentNode.On("GetID").Return("prompt-node").Maybe()
+
 	err := fe.handleIncompleteResponse(ctx, nodeResp, flowStep, log.GetLogger())
 	s.Nil(err)
 	s.Equal(providers.FlowStatusIncomplete, flowStep.Status)
+	s.Equal("prompt-node", ctx.CurrentPromptNodeID)
+	s.Len(ctx.CurrentPromptInputs, 1)
 }
 
 func (s *EngineTestSuite) TestHandleIncompleteResponse_RedirectionError() {

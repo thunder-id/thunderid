@@ -58,12 +58,18 @@ Once it's running, the console is available at [https://localhost:8090/console](
     If you used the default setup, sign in to the Console as `admin` with the password generated during setup and printed to the setup output (unless you supplied your own).
     :::
 
-2. Navigate to **Applications**, and click **Add Application**.
+2. Navigate to **Applications**.
+3. Click **Add Application**.
+4. From the **Choose a type** page, select **Next.js**.
+5. Enter a name (e.g. `My Next.js App`).
+6. Select how you want to sign in users (e.g., email/password, social login, etc.).
+7. Select Theme settings.
+8. Leave **Sign-In Approach** set to **Bring Your Own UI** (the default for Next.js applications).
+9. Click **Create**.
 
-3. Under **Technology**, select **Next.js**.
-4. Enter a name (e.g. `My Next.js App`) and create an application. The rest of the settings can stay at their defaults.
-5. Copy both the **Client ID** and **Client Secret** from the window that pops up. The Client ID can also be found in the **General** tab.
-6. Under **General**, add `http://localhost:3000` to the list of **Authorized Redirect URIs**.
+:::note Note
+Copy the **Application ID** from the **General** tab, under **Quick Copy**. Also copy the **Flow Secret** from the window that pops up when the application is created; it's shown only once (if lost, regenerate it from the application's **Credentials** tab).
+:::
 
 ## Create a Next.js App
 
@@ -108,10 +114,10 @@ Install the <ProductName /> Next.js SDK in your project:
 
 ## Set Environment Variables
 
-Create a `.env.local` file in your project root with the following:
+Create a `.env` file in your project root with the following:
 
 :::warning Configuration
-Replace `<your-client-id>` and `<your-client-secret>` with the values from your <ProductName /> application.
+Replace `<your-application-id>` and `<your-flow-secret>` with the values from your <ProductName /> application.
 
 Generate a random string for `THUNDERID_SECRET` (at least 32 characters):
 
@@ -120,10 +126,12 @@ openssl rand -base64 32
 ```
 :::
 
-```dotenv title=".env.local" showLineNumbers
+```dotenv title=".env" showLineNumbers
 NEXT_PUBLIC_THUNDERID_BASE_URL=https://localhost:8090
-NEXT_PUBLIC_THUNDERID_CLIENT_ID=<your-client-id>
-THUNDERID_CLIENT_SECRET=<your-client-secret>
+NEXT_PUBLIC_THUNDERID_APPLICATION_ID=<your-application-id>
+THUNDERID_FLOW_SECRET=<your-flow-secret>
+NEXT_PUBLIC_THUNDERID_SIGN_IN_URL=/signin
+NEXT_PUBLIC_THUNDERID_SIGN_UP_URL=/signup
 THUNDERID_SECRET=<a-random-secret-for-session-signing>
 # DANGER: Disables ALL TLS verification. Only for local development with self-signed certs. NEVER use in production.
 NODE_TLS_REJECT_UNAUTHORIZED=0
@@ -132,10 +140,6 @@ NODE_TLS_REJECT_UNAUTHORIZED=0
 ## Add `ThunderIDProvider` to Your Layout
 
 Wrap your root layout with `ThunderIDProvider` from the server export. This enables authentication across your entire app.
-
-:::info
-`ThunderIDProvider` handles the OAuth callback automatically, so no manual callback route is needed. Make sure the authorized redirect URL in your <ProductName /> application settings is set to `http://localhost:3000`.
-:::
 
 ```tsx title="app/layout.tsx" {3,32} showLineNumbers
 import type { Metadata } from "next";
@@ -201,6 +205,39 @@ export const config = {
 }
 ```
 
+## Add Sign-In and Sign-Up Pages
+
+The `<SignIn />` and `<SignUp />` components render the sign-in and sign-up forms natively, using the Flow Execution API. Create the routes configured above as `NEXT_PUBLIC_THUNDERID_SIGN_IN_URL` and `NEXT_PUBLIC_THUNDERID_SIGN_UP_URL`:
+
+```tsx title="app/signin/page.tsx" showLineNumbers
+"use client";
+import { useRouter } from "next/navigation";
+import { SignIn } from "@thunderid/nextjs";
+
+export default function SignInPage() {
+  const router = useRouter();
+
+  return (
+    <section className="flex flex-col items-center justify-center min-h-screen py-2">
+      <SignIn onSuccess={() => router.push("/")} />
+    </section>
+  );
+}
+```
+
+```tsx title="app/signup/page.tsx" showLineNumbers
+"use client";
+import { SignUp } from "@thunderid/nextjs";
+
+export default function SignUpPage() {
+  return (
+    <section className="flex flex-col items-center justify-center min-h-screen py-2">
+      <SignUp afterSignUpUrl="/" />
+    </section>
+  );
+}
+```
+
 ## Build with <ProductName /> components
 
 Update your home page with <ProductName /> authentication components:
@@ -221,6 +258,10 @@ export default function Home() {
   );
 }
 ```
+
+:::info
+`<SignInButton />` navigates to the local `NEXT_PUBLIC_THUNDERID_SIGN_IN_URL` route you created above, rather than redirecting to a <ProductName />-hosted page.
+:::
 
 ## Run Your App
 
@@ -243,7 +284,7 @@ Start the development server:
 Visit your app at [http://localhost:3000](http://localhost:3000)
 
 :::tip Success
-You should see the sign-in button. Click it to be redirected to the <ProductName />-hosted sign-in page. Authenticate with the test user you created in step 2, then return to your app with the user dropdown displayed.
+You should see the sign-in button. Click it, you'll land on your application's own `/signin` page. Authenticate with the test user you created in step 2, then return to your application with the user dropdown displayed.
 :::
 
 </Stepper>

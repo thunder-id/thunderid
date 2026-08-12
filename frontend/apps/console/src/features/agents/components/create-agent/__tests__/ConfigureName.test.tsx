@@ -102,6 +102,32 @@ describe('ConfigureName', () => {
     expect(mockOnAgentNameChange).toHaveBeenCalledWith('');
   });
 
+  describe('length validation', () => {
+    it('should show a maximum length error when the name is too long', () => {
+      renderComponent({agentName: 'a'.repeat(101)});
+
+      expect(screen.getByText('Agent name cannot exceed 100 characters')).toBeInTheDocument();
+    });
+
+    it('should not show a length error when the name is empty', () => {
+      renderComponent({agentName: ''});
+
+      expect(screen.queryByText('Agent name cannot exceed 100 characters')).not.toBeInTheDocument();
+    });
+
+    it('should not show a length error for a single character name', () => {
+      renderComponent({agentName: 'A'});
+
+      expect(screen.queryByText('Agent name cannot exceed 100 characters')).not.toBeInTheDocument();
+    });
+
+    it('should not show a length error when the name is at the maximum length', () => {
+      renderComponent({agentName: 'a'.repeat(100)});
+
+      expect(screen.queryByText('Agent name cannot exceed 100 characters')).not.toBeInTheDocument();
+    });
+  });
+
   describe('onReadyChange callback', () => {
     it('should call onReadyChange with true when agentName is not empty', () => {
       const mockOnReadyChange = vi.fn();
@@ -120,6 +146,20 @@ describe('ConfigureName', () => {
     it('should call onReadyChange with false when agentName contains only whitespace', () => {
       const mockOnReadyChange = vi.fn();
       renderComponent({agentName: '   ', onReadyChange: mockOnReadyChange});
+
+      expect(mockOnReadyChange).toHaveBeenCalledWith(false);
+    });
+
+    it('should call onReadyChange with true for a single character name', () => {
+      const mockOnReadyChange = vi.fn();
+      renderComponent({agentName: 'A', onReadyChange: mockOnReadyChange});
+
+      expect(mockOnReadyChange).toHaveBeenCalledWith(true);
+    });
+
+    it('should call onReadyChange with false when agentName exceeds the maximum length', () => {
+      const mockOnReadyChange = vi.fn();
+      renderComponent({agentName: 'a'.repeat(101), onReadyChange: mockOnReadyChange});
 
       expect(mockOnReadyChange).toHaveBeenCalledWith(false);
     });

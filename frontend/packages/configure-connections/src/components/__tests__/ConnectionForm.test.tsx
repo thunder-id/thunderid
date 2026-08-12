@@ -106,6 +106,17 @@ describe('ConnectionForm', () => {
     expect(screen.getByText(/Space-separated scopes to request during sign-in\. Defaults to/)).toBeInTheDocument();
   });
 
+  it('shows the GitHub scopes default instead of the OIDC scopes default', () => {
+    render(<ConnectionForm {...baseProps} type="github" mode="edit" hasStoredSecret vendorDisplayName="GitHub" />);
+
+    expect(getConnectionField('scopes')).toHaveAttribute('placeholder', 'user:email');
+    const helperText = document.getElementById('connection-field-scopes-helper-text');
+    expect(helperText).toHaveTextContent(
+      'Space-separated scopes to request during sign-in. Defaults to user:email if not set.',
+    );
+    expect(helperText).not.toHaveTextContent('openid email profile');
+  });
+
   describe('OIDC create', () => {
     const oidcCreateProps = {
       ...baseProps,

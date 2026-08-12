@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -18,6 +19,11 @@ const (
 	oauth2DiscoveryEndpoint = "/.well-known/oauth-authorization-server"
 	oidcDiscoveryEndpoint   = "/.well-known/openid-configuration"
 	testServerURL           = testutils.TestServerURL
+	// oidcCIBAGrantType is the OpenID Connect CIBA grant type identifier (providers.GrantTypeCIBA).
+	oidcCIBAGrantType = "urn:openid:params:grant-type:ciba"
+	// cibaBackchannelAuthEndpointPath is the backchannel authentication endpoint path
+	// (oauth2const.OAuth2BackchannelAuthEndpoint).
+	cibaBackchannelAuthEndpointPath = "/oauth2/bc-authorize"
 )
 
 // OAuth2AuthorizationServerMetadata represents OAuth2 Authorization Server Metadata (RFC 8414)
@@ -29,6 +35,9 @@ type OAuth2AuthorizationServerMetadata struct {
 	RevocationEndpoint                         string   `json:"revocation_endpoint,omitempty"`
 	IntrospectionEndpoint                      string   `json:"introspection_endpoint,omitempty"`
 	RegistrationEndpoint                       string   `json:"registration_endpoint,omitempty"`
+	BackchannelAuthenticationEndpoint          string   `json:"backchannel_authentication_endpoint,omitempty"`
+	BackchannelTokenDeliveryModesSupported     []string `json:"backchannel_token_delivery_modes_supported,omitempty"`
+	BackchannelUserCodeParameterSupported      bool     `json:"backchannel_user_code_parameter_supported"`
 	ResponseTypesSupported                     []string `json:"response_types_supported"`
 	GrantTypesSupported                        []string `json:"grant_types_supported"`
 	TokenEndpointAuthMethodsSupported          []string `json:"token_endpoint_auth_methods_supported"`
@@ -225,6 +234,34 @@ func (ts *DiscoveryTestSuite) TestOIDCDiscovery_AcrValuesSupported() {
 	}
 	ts.ElementsMatch(expectedACRs, metadata.AcrValuesSupported,
 		"acr_values_supported must contain exactly the ACR values from the ACR-AMR config")
+}
+
+// TestOIDCDiscovery_CIBAMetadata verifies the OIDC discovery document advertises CIBA support in
+// poll-only mode: the backchannel authentication endpoint, poll-only delivery mode, no user_code
+// parameter support, and the CIBA grant type in grant_types_supported. Ping/push delivery is not
+// implemented, so only "poll" must appear.
+func (ts *DiscoveryTestSuite) TestOIDCDiscovery_CIBAMetadata() {
+	req, err := http.NewRequest("GET", testServerURL+oidcDiscoveryEndpoint, nil)
+	ts.Require().NoError(err)
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	ts.Equal(http.StatusOK, resp.StatusCode)
+
+	var metadata OIDCProviderMetadata
+	err = json.NewDecoder(resp.Body).Decode(&metadata)
+	ts.Require().NoError(err)
+
+	ts.Contains(metadata.GrantTypesSupported, oidcCIBAGrantType,
+		"grant_types_supported must include the CIBA grant type")
+	ts.NotEmpty(metadata.BackchannelAuthenticationEndpoint, "BackchannelAuthenticationEndpoint should be present")
+	ts.True(strings.HasSuffix(metadata.BackchannelAuthenticationEndpoint, cibaBackchannelAuthEndpointPath),
+		"BackchannelAuthenticationEndpoint should end with the bc-authorize path")
+	ts.Equal([]string{"poll"}, metadata.BackchannelTokenDeliveryModesSupported,
+		"only poll-mode delivery is implemented")
+	ts.False(metadata.BackchannelUserCodeParameterSupported, "user_code is not supported")
 }
 
 // TestOIDCDiscovery_OPTIONS_Success tests OPTIONS request for CORS

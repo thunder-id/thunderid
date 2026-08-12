@@ -23,7 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
 )
 
-// LogDir returns the directory where Thunder background logs are written
+// LogDir returns the directory where ThunderID background logs are written
 // (e.g. ./thunderid/v0.41.0/logs/).
 func LogDir(installPath string) string {
 	return filepath.Join(installPath, "logs")
@@ -228,12 +228,12 @@ func parseAdminCredentials(output string) *AdminCredentials {
 	return creds
 }
 
-// StartBackground starts Thunder detached from the terminal on the default port.
+// StartBackground starts ThunderID detached from the terminal on the default port.
 func StartBackground(installPath string, verbose bool) (*exec.Cmd, error) {
 	return StartBackgroundOnPort(installPath, verbose, 0)
 }
 
-// StartBackgroundOnPort starts Thunder detached from the terminal with an optional custom port.
+// StartBackgroundOnPort starts ThunderID detached from the terminal with an optional custom port.
 // Pass port=0 to use the default. Logs go to the state directory.
 // The returned *exec.Cmd has already been started; call cmd.Process.Kill() to stop it.
 func StartBackgroundOnPort(installPath string, verbose bool, port int) (*exec.Cmd, error) {
@@ -268,7 +268,7 @@ func StartBackgroundOnPort(installPath string, verbose bool, port int) (*exec.Cm
 		} else {
 			binary := filepath.Join(root, "thunder")
 			if _, err := os.Stat(binary); err != nil {
-				return nil, fmt.Errorf("no start.sh or thunder binary found in %s", root)
+				return nil, fmt.Errorf("no start.sh or "+product.Name+" binary found in %s", root)
 			}
 			cmd = exec.Command(binary)
 		}
@@ -293,7 +293,7 @@ func StartBackgroundOnPort(installPath string, verbose bool, port int) (*exec.Cm
 	return cmd, nil
 }
 
-// Start finds and runs the Thunder start script or binary with inherited stdio.
+// Start finds and runs the ThunderID start script or binary with inherited stdio.
 func Start(installPath string, args []string) error {
 	root, err := FindThunderRoot(installPath)
 	if err != nil {
@@ -323,7 +323,7 @@ func Start(installPath string, args []string) error {
 		} else {
 			binary := filepath.Join(root, "thunder")
 			if _, err := os.Stat(binary); err != nil {
-				return fmt.Errorf("no start.sh or thunder binary found in %s", root)
+				return fmt.Errorf("no start.sh or "+product.Name+" binary found in %s", root)
 			}
 			cmd = exec.Command(binary, args...)
 			cmd.Dir = root

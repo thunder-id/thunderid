@@ -53,7 +53,7 @@ type CreateAgentRequest struct {
 	OUID        string          `json:"ouId" native:"required"`
 	OUHandle    string          `json:"ouHandle,omitempty"`
 	Type        string          `json:"type" native:"required"`
-	Name        string          `json:"name" native:"required,min=3,max=100"`
+	Name        string          `json:"name" native:"required,min=1,max=100"`
 	Description string          `json:"description,omitempty"`
 	LogoURL     string          `json:"logoUrl,omitempty"`
 	Owner       string          `json:"owner,omitempty"`

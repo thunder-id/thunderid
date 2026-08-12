@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {AllowedOriginDraftRow} from '@thunderid/configure-settings';
 import type {LayoutConfig, Theme} from '@thunderid/design';
 import type {Context} from 'react';
 import {createContext} from 'react';
@@ -309,16 +310,17 @@ export interface ApplicationCreateContextType {
 
   /**
    * CORS allowed origins entered in the Configuration step, for templates whose Configuration
-   * step offers a CORS editor. These are merged into the deployment's CORS allow-list on submit.
+   * step offers a CORS editor. Each row carries the type the admin chose (exact origin or regex),
+   * and they are merged into the deployment's CORS allow-list on submit.
    * @remark Needed for the Configuration step.
    */
-  corsOrigins: string[];
+  corsOrigins: AllowedOriginDraftRow[];
 
   /**
    * Sets the CORS allowed origins.
    * @remark Needed for the Configuration step.
    */
-  setCorsOrigins: (origins: string[]) => void;
+  setCorsOrigins: (origins: AllowedOriginDraftRow[]) => void;
 
   /**
    * Per-item "use the organization unit's default" selection, backing the Details step's

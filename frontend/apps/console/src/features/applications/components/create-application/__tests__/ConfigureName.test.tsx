@@ -369,4 +369,38 @@ describe('ConfigureName', () => {
       expect(mockOnReadyChange).toHaveBeenCalledWith(true);
     });
   });
+
+  describe('length validation', () => {
+    const maxLengthMessage = 'Application name cannot exceed 100 characters';
+
+    it('should show an inline error and block readiness when the name is too long', () => {
+      const mockOnReadyChange = vi.fn();
+      renderComponent({appName: 'a'.repeat(101), onReadyChange: mockOnReadyChange});
+
+      expect(screen.getByText(maxLengthMessage)).toBeInTheDocument();
+      expect(mockOnReadyChange).toHaveBeenCalledWith(false);
+    });
+
+    it('should not show a length error when the name is empty', () => {
+      renderComponent({appName: ''});
+
+      expect(screen.queryByText(maxLengthMessage)).not.toBeInTheDocument();
+    });
+
+    it('should accept a single character name', () => {
+      const mockOnReadyChange = vi.fn();
+      renderComponent({appName: 'A', onReadyChange: mockOnReadyChange});
+
+      expect(screen.queryByText(maxLengthMessage)).not.toBeInTheDocument();
+      expect(mockOnReadyChange).toHaveBeenCalledWith(true);
+    });
+
+    it('should accept a name at the maximum length', () => {
+      const mockOnReadyChange = vi.fn();
+      renderComponent({appName: 'a'.repeat(100), onReadyChange: mockOnReadyChange});
+
+      expect(screen.queryByText(maxLengthMessage)).not.toBeInTheDocument();
+      expect(mockOnReadyChange).toHaveBeenCalledWith(true);
+    });
+  });
 });

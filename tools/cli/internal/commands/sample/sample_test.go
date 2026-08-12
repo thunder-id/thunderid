@@ -4,11 +4,13 @@
 package sample
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
 )
@@ -187,5 +189,256 @@ func TestWriteResourcesCommentedResourceType(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(thunderIDRoot, "config", "resources")); !os.IsNotExist(err) {
 		t.Error("commented resource_type must not be written")
+	}
+}
+
+// serviceDir creates <root>/<service> and returns the path of its .env.
+func serviceDir(t *testing.T, root, service string) string {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(root, service), 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", service, err)
+	}
+	return filepath.Join(root, service, ".env")
+}
+
+// readEnv parses a written .env back into a map.
+func readEnv(t *testing.T, path string) map[string]string {
+	t.Helper()
+	vals, err := parseEnvFile(path)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	return vals
+}
+
+// sampleVars mirrors the variables the wayfinder thunderid.env supplies.
+var sampleVars = map[string]string{
+	"WAYFINDER_CLIENT_ID":         "WAYFINDER",
+	"AGENT_CLIENT_ID":             "WAYFINDER-CONCIERGE",
+	"AGENT_CLIENT_SECRET":         "agent-secret",
+	"UPGRADE_AGENT_CLIENT_ID":     "WAYFINDER-UPGRADE-AGENT",
+	"UPGRADE_AGENT_CLIENT_SECRET": "upgrade-secret",
+}
+
+// The agent reads its API key from LLM_API_KEY for every provider. Renaming it to
+// a provider-specific variable leaves the agent without a key and it exits at
+// startup, so the name must survive verbatim.
+func TestWriteServiceEnvUsesSampleKeyNames(t *testing.T) {
+	for _, provider := range []string{"anthropic", "gemini", "google"} {
+		t.Run(provider, func(t *testing.T) {
+			sampleDir := t.TempDir()
+			envPath := serviceDir(t, sampleDir, "ai-agent")
+			opts := Options{
+				EnvTarget: "ai-agent",
+				Config:    map[string]string{"LLM_PROVIDER": provider, "LLM_API_KEY": "secret-key"},
+			}
+
+			if err := writeServiceEnv(sampleDir, "https://localhost:8090", sampleVars, opts); err != nil {
+				t.Fatalf("writeServiceEnv: %v", err)
+			}
+
+			env := readEnv(t, envPath)
+			if env["LLM_API_KEY"] != "secret-key" {
+				t.Errorf("LLM_API_KEY: got %q, want %q", env["LLM_API_KEY"], "secret-key")
+			}
+			for _, renamed := range []string{"GOOGLE_API_KEY", "ANTHROPIC_API_KEY"} {
+				if _, ok := env[renamed]; ok {
+					t.Errorf("%s must not be written — the sample reads LLM_API_KEY", renamed)
+				}
+			}
+			if env["LLM_PROVIDER"] != provider {
+				t.Errorf("LLM_PROVIDER: got %q, want %q", env["LLM_PROVIDER"], provider)
+			}
+		})
+	}
+}
+
+// The upgrade scheduler authenticates with its own CIBA-only client, which the
+// sample reads from UPGRADE_AGENT_ID / UPGRADE_AGENT_SECRET.
+func TestWriteServiceEnvWritesAgentCredentials(t *testing.T) {
+	sampleDir := t.TempDir()
+	envPath := serviceDir(t, sampleDir, "ai-agent")
+	opts := Options{EnvTarget: "ai-agent"}
+
+	if err := writeServiceEnv(sampleDir, "https://localhost:9443", sampleVars, opts); err != nil {
+		t.Fatalf("writeServiceEnv: %v", err)
+	}
+
+	env := readEnv(t, envPath)
+	want := map[string]string{
+		"THUNDER_BASE_URL":     "https://localhost:9443",
+		"AGENT_ID":             "WAYFINDER-CONCIERGE",
+		"AGENT_SECRET":         "agent-secret",
+		"UPGRADE_AGENT_ID":     "WAYFINDER-UPGRADE-AGENT",
+		"UPGRADE_AGENT_SECRET": "upgrade-secret",
+		"AGENT_ACCESS_SCOPE":   "agent:access",
+	}
+	for k, v := range want {
+		if env[k] != v {
+			t.Errorf("%s: got %q, want %q", k, env[k], v)
+		}
+	}
+}
+
+// A try-out has no CIBA email or SMS flow configured, so the upgrade scheduler
+// must be off unless the operator turned it on themselves.
+func TestWriteServiceEnvDisablesUpgradeScheduler(t *testing.T) {
+	t.Run("absent", func(t *testing.T) {
+		sampleDir := t.TempDir()
+		envPath := serviceDir(t, sampleDir, "ai-agent")
+
+		if err := writeServiceEnv(sampleDir, "https://localhost:8090", sampleVars, Options{EnvTarget: "ai-agent"}); err != nil {
+			t.Fatalf("writeServiceEnv: %v", err)
+		}
+
+		if got := readEnv(t, envPath)["UPGRADE_SCHEDULER_ENABLED"]; got != "false" {
+			t.Errorf("UPGRADE_SCHEDULER_ENABLED: got %q, want false", got)
+		}
+	})
+
+	t.Run("operator opted in", func(t *testing.T) {
+		sampleDir := t.TempDir()
+		envPath := serviceDir(t, sampleDir, "ai-agent")
+		if err := os.WriteFile(envPath, []byte("UPGRADE_SCHEDULER_ENABLED=true\n"), 0o644); err != nil {
+			t.Fatalf("write env: %v", err)
+		}
+
+		if err := writeServiceEnv(sampleDir, "https://localhost:8090", sampleVars, Options{EnvTarget: "ai-agent"}); err != nil {
+			t.Fatalf("writeServiceEnv: %v", err)
+		}
+
+		if got := readEnv(t, envPath)["UPGRADE_SCHEDULER_ENABLED"]; got != "true" {
+			t.Errorf("an explicit opt-in must be preserved: got %q", got)
+		}
+	})
+}
+
+// Keys the sample ships defaults for must survive the rewrite; keys the CLI owns
+// must be refreshed rather than kept from an earlier run.
+func TestWriteServiceEnvPreservesShippedKeys(t *testing.T) {
+	sampleDir := t.TempDir()
+	envPath := serviceDir(t, sampleDir, "ai-agent")
+	shipped := "MCP_SERVER_URL=http://localhost:8787/mcp\n" +
+		"UPGRADE_SCHEDULER_ENABLED=false\n" +
+		"THUNDER_BASE_URL=https://localhost:8090\n"
+	if err := os.WriteFile(envPath, []byte(shipped), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+
+	opts := Options{EnvTarget: "ai-agent"}
+	if err := writeServiceEnv(sampleDir, "https://localhost:9443", sampleVars, opts); err != nil {
+		t.Fatalf("writeServiceEnv: %v", err)
+	}
+
+	env := readEnv(t, envPath)
+	if env["MCP_SERVER_URL"] != "http://localhost:8787/mcp" {
+		t.Errorf("MCP_SERVER_URL was dropped: %q", env["MCP_SERVER_URL"])
+	}
+	if env["UPGRADE_SCHEDULER_ENABLED"] != "false" {
+		t.Errorf("UPGRADE_SCHEDULER_ENABLED was dropped: %q", env["UPGRADE_SCHEDULER_ENABLED"])
+	}
+	if env["THUNDER_BASE_URL"] != "https://localhost:9443" {
+		t.Errorf("THUNDER_BASE_URL: got %q, want the current URL", env["THUNDER_BASE_URL"])
+	}
+}
+
+func TestWriteFrontendEnv(t *testing.T) {
+	sampleDir := t.TempDir()
+	envPath := serviceDir(t, sampleDir, "frontend")
+	if err := os.WriteFile(envPath, []byte("VITE_THUNDER_APP_ID=wayfinder-app\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+
+	if err := writeFrontendEnv(sampleDir, "https://localhost:9443", sampleVars, true); err != nil {
+		t.Fatalf("writeFrontendEnv: %v", err)
+	}
+
+	env := readEnv(t, envPath)
+	if env["VITE_THUNDER_CLIENT_ID"] != "WAYFINDER" {
+		t.Errorf("client id: got %q, want the id from thunderid.env", env["VITE_THUNDER_CLIENT_ID"])
+	}
+	if env["VITE_THUNDER_BASE_URL"] != "https://localhost:9443" {
+		t.Errorf("base URL: got %q", env["VITE_THUNDER_BASE_URL"])
+	}
+	if env["VITE_AI_FEATURES_ENABLED"] != "true" {
+		t.Errorf("AI flag: got %q, want true", env["VITE_AI_FEATURES_ENABLED"])
+	}
+	if env["VITE_THUNDER_APP_ID"] != "wayfinder-app" {
+		t.Errorf("VITE_THUNDER_APP_ID was dropped: %q", env["VITE_THUNDER_APP_ID"])
+	}
+
+	if err := writeFrontendEnv(sampleDir, "https://localhost:9443", nil, false); err != nil {
+		t.Fatalf("writeFrontendEnv without vars: %v", err)
+	}
+	env = readEnv(t, envPath)
+	if env["VITE_THUNDER_CLIENT_ID"] != "WAYFINDER" {
+		t.Errorf("client id fallback: got %q", env["VITE_THUNDER_CLIENT_ID"])
+	}
+	if env["VITE_AI_FEATURES_ENABLED"] != "false" {
+		t.Errorf("AI flag: got %q, want false", env["VITE_AI_FEATURES_ENABLED"])
+	}
+}
+
+// The backend validates tokens against THUNDER_BASE_URL, which ships with the
+// default port baked in — it has to follow the port the product actually uses.
+func TestWriteBaseURLEnvs(t *testing.T) {
+	sampleDir := t.TempDir()
+	backendEnv := serviceDir(t, sampleDir, "backend")
+	if err := os.WriteFile(backendEnv, []byte("THUNDER_BASE_URL=https://localhost:8090\nAUTHORIZATION_MODE=scope\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+
+	if err := writeBaseURLEnvs(sampleDir, "https://localhost:9443"); err != nil {
+		t.Fatalf("writeBaseURLEnvs: %v", err)
+	}
+
+	env := readEnv(t, backendEnv)
+	if env["THUNDER_BASE_URL"] != "https://localhost:9443" {
+		t.Errorf("THUNDER_BASE_URL: got %q, want the resolved URL", env["THUNDER_BASE_URL"])
+	}
+	if env["AUTHORIZATION_MODE"] != "scope" {
+		t.Errorf("AUTHORIZATION_MODE was dropped: %q", env["AUTHORIZATION_MODE"])
+	}
+	// The lounge is absent here — a missing service must not fail the run.
+	if _, err := os.Stat(filepath.Join(sampleDir, "lounge", ".env")); !os.IsNotExist(err) {
+		t.Error("lounge env must not be created when the service is absent")
+	}
+}
+
+// `npm run dev` survives a single workspace crashing, so readiness is decided by
+// the ports rather than by the parent process.
+func TestWaitForServices(t *testing.T) {
+	listener, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = listener.Close() }()
+	openPort := listener.Addr().(*net.TCPAddr).Port
+
+	if err := waitForServices([]serviceCheck{{port: openPort, name: "frontend"}}, "", time.Second); err != nil {
+		t.Fatalf("open port must be reported ready: %v", err)
+	}
+
+	closed, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	deadPort := closed.Addr().(*net.TCPAddr).Port
+	_ = closed.Close()
+
+	logPath := filepath.Join(t.TempDir(), "sample.log")
+	if err := os.WriteFile(logPath, []byte("Error: Please set an API key\n"), 0o644); err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+
+	err = waitForServices([]serviceCheck{{port: deadPort, name: "ai-agent"}}, logPath, 100*time.Millisecond)
+	if err == nil {
+		t.Fatal("a service that never binds its port must fail the run")
+	}
+	if !strings.Contains(err.Error(), "ai-agent") {
+		t.Errorf("error must name the service: %v", err)
+	}
+	if !strings.Contains(err.Error(), "Please set an API key") {
+		t.Errorf("error must include the log tail: %v", err)
 	}
 }

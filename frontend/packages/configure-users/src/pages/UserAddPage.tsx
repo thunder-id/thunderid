@@ -24,7 +24,9 @@ import {
   Alert,
   AlertTitle,
   TextField,
+  Checkbox,
   FormControl,
+  FormControlLabel,
   FormLabel,
   Select,
   MenuItem,
@@ -210,6 +212,8 @@ function InviteUserStepContent({
                 comp.type === 'PHONE_INPUT' ||
                 comp.type === 'PASSWORD_INPUT' ||
                 comp.type === 'SELECT' ||
+                comp.type === 'BOOLEAN_INPUT' ||
+                comp.type === 'NUMBER_INPUT' ||
                 comp.type === 'OU_SELECT') &&
               comp.ref
             ) {
@@ -224,6 +228,11 @@ function InviteUserStepContent({
               }
 
               const labelText = typeof comp.label === 'string' ? comp.label : comp.ref;
+              if (comp.type === 'BOOLEAN_INPUT') {
+                // A required boolean is satisfied by either answer, so it carries no min-length rule.
+                shape[comp.ref] = fieldSchema;
+                return;
+              }
               if (comp.required) {
                 fieldSchema = (fieldSchema as z.ZodString).min(
                   1,
@@ -263,7 +272,11 @@ function InviteUserStepContent({
     const labelText = typeof label === 'string' ? label : '';
     const placeholderText = typeof placeholder === 'string' ? placeholder : '';
 
-    if (String(type) === String(EmbeddedFlowComponentType.TextInput) || type === 'TEXT_INPUT') {
+    if (
+      String(type) === String(EmbeddedFlowComponentType.TextInput) ||
+      type === 'TEXT_INPUT' ||
+      type === 'NUMBER_INPUT'
+    ) {
       return (
         <FormControl key={component.id ?? index} required={required}>
           <FormLabel htmlFor={ref}>{resolve(labelText) ?? labelText}</FormLabel>
@@ -277,7 +290,7 @@ function InviteUserStepContent({
                 fullWidth
                 size="small"
                 id={ref}
-                type="text"
+                type={type === 'NUMBER_INPUT' ? 'number' : 'text'}
                 placeholder={resolve(placeholderText) ?? placeholderText}
                 autoComplete="off"
                 required={required}
@@ -403,6 +416,40 @@ function InviteUserStepContent({
       );
     }
 
+    if (type === 'BOOLEAN_INPUT') {
+      return (
+        <FormControl key={component.id ?? index} required={required}>
+          <Controller
+            name={ref}
+            control={formControl}
+            render={({field}) => (
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    id={ref}
+                    size="small"
+                    disabled={isFormLoading}
+                    checked={field.value === 'true'}
+                    onChange={(e) => {
+                      const next = String(e.target.checked);
+                      field.onChange(next);
+                      handleInputChangeFn(ref, next);
+                    }}
+                  />
+                }
+                label={resolve(labelText) ?? labelText}
+              />
+            )}
+          />
+          {hint && (
+            <Typography variant="caption" color="text.secondary">
+              {hint}
+            </Typography>
+          )}
+        </FormControl>
+      );
+    }
+
     if (type === 'OU_SELECT') {
       return (
         <FormControl key={component.id ?? index} fullWidth required={required}>
@@ -512,6 +559,29 @@ function InviteUserStepContent({
       reset({});
     }
   }, [components, values, reset]);
+
+  // Seed boolean fields with their unchecked value. A boolean answer is meaningful even when the
+  // user never touches the field, and without a seeded value a required boolean attribute is
+  // absent from the submission and can never be satisfied.
+  useEffect(() => {
+    if (!components?.length) return;
+
+    const findBooleanRefs = (comps: EmbeddedFlowComponent[]): string[] => {
+      const refs: string[] = [];
+      for (const comp of comps) {
+        if (comp.type === 'BOOLEAN_INPUT' && comp.ref) refs.push(comp.ref);
+        if (comp.components) refs.push(...findBooleanRefs(comp.components));
+      }
+      return refs;
+    };
+
+    findBooleanRefs(components as EmbeddedFlowComponent[]).forEach((booleanRef) => {
+      if (values?.[booleanRef] === undefined) {
+        setValue(booleanRef, 'false', {shouldValidate: true});
+        handleInputChange(booleanRef, 'false');
+      }
+    });
+  }, [components, values, setValue, handleInputChange]);
 
   // Pre-select the root OU (user type's OU) when the OU_SELECT step renders.
   useEffect(() => {
@@ -1036,13 +1106,18 @@ export default function UserAddPage(): JSX.Element {
             return;
           }
           logger.error('User onboarding error', {error: err});
+          // onFlowChange runs first and sees the full error envelope, including the code. The SDK
+          // flattens that envelope into a plain Error before onError, so only fill in here when
+          // onFlowChange had nothing to report (for example, a thrown network failure).
           setFlowError(
-            getUserErrorMessage(
-              err,
-              (key, options) => t(key.includes(':') ? key : `users:${key}`, options),
-              'errors.failed.description',
-              'An error occurred. Please try again.',
-            ),
+            (current) =>
+              current ??
+              getUserErrorMessage(
+                err,
+                (key, options) => t(key.includes(':') ? key : `users:${key}`, options),
+                'errors.failed.description',
+                'An error occurred. Please try again.',
+              ),
           );
         }}
         onFlowChange={(response) => {
@@ -1054,12 +1129,14 @@ export default function UserAddPage(): JSX.Element {
             setFlowError(null);
             return;
           }
-          const messageKey = (response.error as unknown as Record<string, unknown>)?.['message'] as
-            | Record<string, unknown>
-            | undefined;
-          const key = messageKey?.['key'] as string | undefined;
-          const localizedFallback = t('users:errors.failed.description', 'An error occurred. Please try again.');
-          setFlowError(key ? t(key, localizedFallback) : localizedFallback);
+          setFlowError(
+            getUserErrorMessage(
+              response as unknown as Error,
+              (key, options) => t(key.includes(':') ? key : `users:${key}`, options),
+              'errors.failed.description',
+              'An error occurred. Please try again.',
+            ),
+          );
         }}
       >
         {(renderProps: InviteUserRenderProps) => (

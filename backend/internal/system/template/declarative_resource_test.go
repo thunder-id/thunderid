@@ -137,7 +137,7 @@ displayName: SMS OTP Verification
 scenario: OTP
 type: sms
 contentType: text/plain
-body: "Your verification code is: {{ctx(otp)}}. This code will expire in {{ctx(expiryMinutes)}} minutes."
+body: "Your verification code is: {{ctx(otp)}}. This code will expire in {{ctx(expiryTime)}}."
 `)
 	err = os.WriteFile(filepath.Join(resourceDir, "sms-otp.yaml"), yamlData, 0o600)
 	suite.NoError(err)
@@ -155,6 +155,7 @@ body: "Your verification code is: {{ctx(otp)}}. This code will expire in {{ctx(e
 	suite.Equal(ScenarioOTP, tmpl.Scenario)
 	suite.Equal(TemplateTypeSMS, tmpl.Type)
 	suite.Empty(tmpl.Subject)
+	suite.Equal("Your verification code is: {{ctx(otp)}}. This code will expire in {{ctx(expiryTime)}}.", tmpl.Body)
 }
 
 func (suite *TemplateDeclarativeResourceTestSuite) TestValidateTemplateDTO_InvalidType() {

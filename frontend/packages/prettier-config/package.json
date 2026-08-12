@@ -1,7 +1,7 @@
 {
   "private": false,
   "name": "@thunderid/prettier-config",
-  "version": "0.0.9",
+  "version": "1.0.0",
   "description": "Sharable Prettier configuration for ThunderID projects",
   "keywords": [
     "thunderid",

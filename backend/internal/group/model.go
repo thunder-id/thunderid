@@ -90,7 +90,7 @@ type MembersRequest struct {
 // CreateGroupRequest represents the request body for creating a group.
 type CreateGroupRequest struct {
 	ID          string   `json:"-"`
-	Name        string   `json:"name" native:"required,min=3,max=64"`
+	Name        string   `json:"name" native:"required,min=1,max=100"`
 	Description string   `json:"description,omitempty"`
 	OUID        string   `json:"ouId" native:"required"`
 	Members     []Member `json:"members,omitempty" native:"dive"`
@@ -98,7 +98,7 @@ type CreateGroupRequest struct {
 
 // UpdateGroupRequest represents the request body for updating a group.
 type UpdateGroupRequest struct {
-	Name        string `json:"name" native:"required,min=3,max=64"`
+	Name        string `json:"name" native:"required,min=1,max=100"`
 	Description string `json:"description,omitempty"`
 	OUID        string `json:"ouId" native:"required"`
 }
@@ -123,7 +123,7 @@ type MemberListResponse struct {
 
 // CreateGroupByPathRequest represents the request body for creating a group under a specific OU path.
 type CreateGroupByPathRequest struct {
-	Name        string   `json:"name" native:"required,min=3,max=64"`
+	Name        string   `json:"name" native:"required,min=1,max=100"`
 	Description string   `json:"description,omitempty"`
 	Members     []Member `json:"members,omitempty"`
 }

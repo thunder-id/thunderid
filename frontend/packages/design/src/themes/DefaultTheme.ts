@@ -4,7 +4,7 @@
 import {createOxygenTheme, OxygenTheme, type OxygenThemeType} from '@wso2/oxygen-ui';
 
 /**
- * DefaultTheme - The default theme for Thunder ID applications
+ * DefaultTheme - The default theme for ThunderID applications
  * Features: Electric blue primary, indigo secondary, deep purple dark backgrounds with ambient glow
  * Evokes intelligence, creativity, and cutting-edge AI aesthetics
  */

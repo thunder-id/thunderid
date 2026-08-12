@@ -213,9 +213,9 @@ func (m *magicLinkExecutor) InitiateMagicLink(ctx *providers.NodeContext,
 	}
 
 	execResp.ForwardedData[common.ForwardedDataKeyTemplateData] = map[string]interface{}{
-		"magicLink":     generatedURL,
-		"expiryMinutes": utils.SecondsToMinutes(expirySeconds),
-		"appName":       ctx.Application.Name,
+		"magicLink":  generatedURL,
+		"expiryTime": utils.FormatExpiryDuration(expirySeconds),
+		"appName":    ctx.Application.Name,
 	}
 
 	execResp.Status = providers.ExecComplete

@@ -128,6 +128,19 @@ const translations = {
     'errors.DCR-1002': 'This resource is managed declaratively and cannot be modified.',
     'errors.DCR-1003': 'This resource is managed declaratively and cannot be deleted.',
 
+    // Backend error code translations for flow executor failures (per the flow execution error envelope).
+    'errors.FET-1002': 'Could not check whether a matching user already exists. Please try again.',
+    'errors.FET-1003': 'The provided details match more than one existing user.',
+    'errors.FET-1006': 'The user was created but could not be signed in.',
+    'errors.FET-1007': 'A user with these details already exists.',
+    'errors.FET-1020': 'Provide at least one user attribute to continue.',
+    'errors.FET-1021': 'Something went wrong while creating the user. Please try again.',
+    'errors.FET-1022': 'The user was created but group or role assignment failed.',
+    'errors.FET-1023': 'Select an organization unit before continuing.',
+    'errors.FET-1024': 'A user with these details already exists in the selected organization unit.',
+    'errors.FET-1061': 'A user already exists with the provided {{attribute}}.',
+    'errors.FET-1080': 'A user with the same unique attribute value already exists.',
+
     // External links
     learnMore: 'Learn more',
     'externalLink.title': 'You are leaving {{productName}}',
@@ -243,9 +256,11 @@ const translations = {
     'welcome.getStarted.options.secureAiAgent.title': 'Secure an AI Agent',
     'welcome.getStarted.options.secureAiAgent.description':
       'Protect your AI agents with token-based access control and scope enforcement.',
-    'welcome.getStarted.options.secureMcp.title': 'Secure MCP Server / Client',
+    'welcome.getStarted.options.secureAiAgent.action': 'Add Agent',
+    'welcome.getStarted.options.secureMcp.title': 'Secure an MCP Client',
     'welcome.getStarted.options.secureMcp.description':
-      'Authorize MCP clients to access your MCP server with fine-grained permissions.',
+      'Register your MCP client and authorize it with fine-grained, scoped permissions.',
+    'welcome.getStarted.options.secureMcp.action': 'Add MCP Client',
     'welcome.getStarted.options.comingSoon': 'Coming Soon',
     'welcome.getStarted.options.skip.title': 'Skip for now',
     'welcome.getStarted.options.skip.description':
@@ -298,9 +313,9 @@ const translations = {
     'welcome.applicationTryout.scenarios.signup.sampleFields.familyName': 'Last name',
     'welcome.applicationTryout.scenarios.signup.sampleFields.mobileNumber': 'Mobile number',
     'welcome.applicationTryout.scenarios.signup.step4':
-      'Fill in the registration form using these sample details and click Submit.',
+      'Fill in the registration form using these sample details and click Continue.',
     'welcome.applicationTryout.scenarios.signup.step5':
-      '{{productName}} will create a Customer user and assign the Traveler role. The browser shows a confirmation screen with a link to redirect back to the Wayfinder app.',
+      '{{productName}} will create a Customer user and assign the Traveler role. The browser returns to the Wayfinder app signed in as the new user.',
     'welcome.applicationTryout.scenarios.profile.description':
       'Explore the self-service profile page - view account details, edit attributes, and change your password.',
     'welcome.applicationTryout.scenarios.profile.step1': 'Sign in as John at <a>http://localhost:5173</a>.',
@@ -882,6 +897,7 @@ const translations = {
     'createWizard.name.title': "Let's collect some details about your user type",
     'createWizard.name.fieldLabel': 'User Type Name',
     'createWizard.name.placeholder': 'Enter your user type name',
+    'createWizard.name.maxLength': 'User type name cannot exceed {{max}} characters',
     'createWizard.general.subtitle': 'Set registration preferences for this user type.',
     'createWizard.properties.title': 'Define your schema properties',
     'createWizard.properties.subtitle': 'Add the fields that make up this user type',
@@ -1056,6 +1072,7 @@ const translations = {
     'createWizard.name.title': "Let's collect some details about your agent",
     'createWizard.name.fieldLabel': 'Agent name',
     'createWizard.name.placeholder': 'e.g. Billing Service',
+    'createWizard.name.maxLength': 'Agent name cannot exceed {{max}} characters',
     'createWizard.agentDetails.title': 'Agent attributes',
     'createWizard.agentDetails.subtitle': 'Provide values for the attributes defined by the agent schema.',
     'createWizard.owner.title': 'Owner',
@@ -1231,12 +1248,11 @@ const translations = {
 
     // Edit page - Flows tab
     'edit.flows.allowedUserTypes.title': 'Allowed User Types',
-    'edit.flows.allowedUserTypes.description':
-      'Restrict which user types can authenticate or register through this agent.',
+    'edit.flows.allowedUserTypes.description': 'Restrict which user types can sign up through this agent.',
     'edit.flows.allowedUserTypes.label': 'User Types',
     'edit.flows.allowedUserTypes.placeholder': 'Select or add user types',
-    'edit.flows.allowedUserTypes.hint': 'Only these user types can authenticate or register through this agent.',
-    'edit.flows.allowedUserTypes.required': 'Select at least one user type that can sign in through this agent.',
+    'edit.flows.allowedUserTypes.hint': 'Users of these types can sign up through this agent.',
+    'edit.flows.allowedUserTypes.required': 'Select at least one user type that can sign up through this agent.',
     'edit.flows.delegationLock.message':
       'These settings are frozen for this agent. Select "On behalf of a user" in the Advanced tab to unlock and start using them.',
 
@@ -1415,9 +1431,11 @@ const translations = {
     'edit.general.handle.hint': 'A unique identifier for this organization unit',
     'edit.general.handle.validations.required': 'Handle is required',
     'edit.general.handle.validations.format': 'Handle must be lowercase alphanumeric with hyphens only',
+    'edit.general.handle.validations.maxLength': 'Handle cannot exceed {{max}} characters',
     'edit.general.name.label': 'Name',
     'edit.general.name.placeholder': 'e.g., Engineering Department',
     'edit.general.name.validations.required': 'Name is required',
+    'edit.general.name.validations.maxLength': 'Name cannot exceed {{max}} characters',
     'edit.general.description.label': 'Description',
     'edit.general.description.placeholder': 'Enter a description for this organization unit',
     'edit.general.parent.label': 'Parent Organization Unit',
@@ -1540,6 +1558,7 @@ const translations = {
     'create.form.name.label': 'Group Name',
     'create.form.name.placeholder': 'Enter group name',
     'create.form.name.required': 'Group name is required',
+    'create.form.name.maxLength': 'Group name cannot exceed {{max}} characters',
     'create.form.description.label': 'Description',
     'create.form.description.placeholder': 'Enter group description',
     'create.form.organizationUnit.label': 'Organization Unit',
@@ -1660,6 +1679,7 @@ const translations = {
     'create.form.name.label': 'Role Name',
     'create.form.name.placeholder': 'Enter role name',
     'create.form.name.required': 'Role name is required',
+    'create.form.name.maxLength': 'Role name cannot exceed {{max}} characters',
     'create.form.description.label': 'Description',
     'create.form.description.placeholder': 'Enter role description',
     'create.form.organizationUnit.label': 'Organization Unit',
@@ -1887,6 +1907,8 @@ const translations = {
     'form.fields.scopes.label': 'Scopes',
     'form.fields.scopes.hint':
       'Space-separated scopes to request during sign-in. Defaults to <code>openid email profile</code> if not set.',
+    'form.fields.scopes.githubHint':
+      'Space-separated scopes to request during sign-in. Defaults to <code>user:email</code> if not set.',
     'form.fields.scopes.placeholder': 'openid email profile',
     'form.fields.authorizationEndpoint.label': 'Authorization endpoint',
     'form.fields.authorizationEndpoint.hint': 'Authorization endpoint used to start the OAuth2 sign-in flow.',
@@ -1894,10 +1916,11 @@ const translations = {
     'form.fields.tokenEndpoint.hint': 'Token endpoint used to exchange the authorization code for tokens.',
     'form.fields.userInfoEndpoint.label': 'UserInfo endpoint',
     'form.fields.userInfoEndpoint.hint': 'Endpoint used to fetch additional profile claims for the signed-in user.',
+    'form.fields.userProfileEndpoint.label': 'User profile endpoint',
+    'form.fields.userProfileEndpoint.hint':
+      "The provider's own profile API, called with the access token, for example https://api.github.com/user. Leave it empty only if the provider issues a JWT access token carrying a sub claim, which then supplies the subject and no other attributes. For an OpenID Connect provider, create an OIDC connection instead.",
     'form.fields.jwksEndpoint.label': 'JWKS endpoint',
     'form.fields.jwksEndpoint.hint': 'Endpoint that exposes signing keys for verifying identity tokens.',
-    'form.fields.logoutEndpoint.label': 'Logout endpoint',
-    'form.fields.logoutEndpoint.hint': 'Endpoint the provider uses to end the user session on logout.',
     'form.fields.prompt.label': 'Prompt',
     'form.fields.prompt.hint':
       "Optional prompt value forwarded to the provider's authorization request, e.g. select_account or consent.",
@@ -2277,6 +2300,7 @@ const translations = {
     'onboarding.configure.name.fieldLabel': 'Name & Logo',
     'onboarding.configure.name.placeholder': 'Enter your application name',
     'onboarding.configure.name.logoAriaLabel': 'Change application logo',
+    'onboarding.configure.name.maxLength': 'Application name cannot exceed {{max}} characters',
     'onboarding.configure.applicationDetails.title': "Let's collect some details about your application",
     'onboarding.configure.applicationDetails.ouDefaults.title': 'Use organization defaults',
     'onboarding.configure.applicationDetails.ouDefaults.subtitle':
@@ -2287,8 +2311,8 @@ const translations = {
     'onboarding.configure.applicationDetails.ouDefaults.design.title': 'Design',
     'onboarding.configure.applicationDetails.ouDefaults.design.description':
       'Use the same theme & layout as {{ouName}}',
-    'onboarding.configure.applicationDetails.userAccess.title': 'Allow all user types to access this application',
-    'onboarding.configure.applicationDetails.userAccess.subtitle': 'Every user type can sign in to this application',
+    'onboarding.configure.applicationDetails.userAccess.title': 'Allow all user types to sign up for this application',
+    'onboarding.configure.applicationDetails.userAccess.subtitle': 'Users can sign up as any user type',
     'onboarding.configure.applicationDetails.userAccess.placeholder': 'Select user types',
     'onboarding.mcp.clientType.title': 'Client Type',
     'onboarding.mcp.clientType.subtitle': 'How will this client obtain tokens?',
@@ -2613,13 +2637,22 @@ const translations = {
     'clientSecret.clientSecretLabel': 'Client Secret',
     'clientSecret.purpose': 'Used to authenticate your application at the OAuth 2 token endpoint.',
     'clientSecret.copied': 'Copied to clipboard',
-    'clientSecret.copySecret': 'Copy Secret',
+    'clientSecret.copySecret': 'Copy Client Secret',
     'clientSecret.securityReminder.title': 'Security Reminder',
     'clientSecret.securityReminder.description':
       'Your client secret is a confidential key used to authenticate your application. It should be treated with the same level of security as a password. Never expose it in browser console, version control, or logs.',
     'flowSecret.label': 'Flow Secret',
     'flowSecret.purpose':
       'Used to authenticate your server when it starts a sign-in flow directly via the Flow Execution API.',
+    'flowSecret.saveTitle': 'Save Your Flow Secret',
+    'flowSecret.saveSubtitle': "This is the only time you'll see this secret. Store it somewhere safe.",
+    'flowSecret.copySecret': 'Copy Flow Secret',
+    'flowSecret.securityReminder.description':
+      'Your Flow Secret is a confidential key used to authenticate your application when it starts a sign-in flow. It should be treated with the same level of security as a password. Never expose it in browser console, version control, or logs.',
+    'secrets.saveTitle': 'Save Your Secrets',
+    'secrets.saveSubtitle': "This is the only time you'll see these secrets. Store them somewhere safe.",
+    'secrets.securityReminder.description':
+      'These secrets are confidential keys used to authenticate your application. They should be treated with the same level of security as passwords. Never expose them in browser console, version control, or logs.',
     'view.title': 'Application Details',
     'view.subtitle': 'View application details and configuration',
     'view.sections.basicInformation': 'Basic Information',
@@ -2812,7 +2845,7 @@ const translations = {
 
     // Access tab
     'edit.access.sections.userTypes.title': 'Allowed User Types',
-    'edit.access.sections.userTypes.description': 'Choose which user types can authenticate with this application.',
+    'edit.access.sections.userTypes.description': 'Choose which user types can sign up through this application.',
     'edit.access.sections.applicationAccess.title': 'Application Access',
     'edit.access.sections.applicationAccess.description': 'Configure where this application is accessed from.',
 
@@ -2866,12 +2899,15 @@ const translations = {
     'onboarding.configure.details.devServer.addToRedirect': 'Add it to redirect URIs',
     'onboarding.configure.details.corsOrigins.title': 'CORS Allowed Origins',
     'onboarding.configure.details.corsOrigins.description':
-      'Origins allowed to make cross-origin requests to the token and userinfo endpoints.',
+      'Origins allowed to make cross-origin requests to the token and userinfo endpoints. Each entry is either an exact origin or a regular expression.',
     'onboarding.configure.details.corsOrigins.placeholder': 'https://example.com',
+    'onboarding.configure.details.corsOrigins.regexPlaceholder': '^https://[a-z0-9-]+\\.example\\.com$',
     'onboarding.configure.details.corsOrigins.addOrigin': 'Add Origin',
-    'onboarding.configure.details.corsOrigins.error.invalid': 'Enter a valid origin, e.g. https://app.example.com.',
+    'onboarding.configure.details.corsOrigins.removeOrigin': 'Remove Origin',
+    'onboarding.configure.details.corsOrigins.saveError':
+      'The application was created, but its allowed origins were not saved. Add them under Settings, CORS.',
     'edit.general.allowedUserTypes.placeholder': 'Select user types',
-    'edit.general.allowedUserTypes.hint': 'Users of these types can authenticate with this application',
+    'edit.general.allowedUserTypes.hint': 'Users of these types can sign up through this application',
     'edit.general.applicationUrl.hint': 'The homepage URL of your application',
     'edit.general.sections.dangerZone.title': 'Danger Zone',
     'edit.general.sections.dangerZone.description': 'Actions in this section are irreversible. Proceed with caution.',
@@ -3252,25 +3288,25 @@ const translations = {
     'summary.importTest.running': 'Running pre-flight dry-run...',
     'summary.importTest.runningShort': 'Running...',
     'summary.importTest.test': 'Test',
-    'summary.importTest.retry': 'Retry Import Test',
+    'summary.importTest.retry': 'Retry',
     'summary.importTest.passed': 'Import test passed. {{imported}} of {{totalDocuments}} resources validated.',
-    'summary.importTest.failedCount': 'Import test failed for {{count}} resource',
-    'summary.importTest.failedCount_plural': 'Import test failed for {{count}} resources',
+    'summary.importTest.failedCount_one': 'Import test failed for {{count}} resource',
+    'summary.importTest.failedCount_other': 'Import test failed for {{count}} resources',
     'summary.importTest.failedWithMessage': 'Import test failed: {{message}}',
     'summary.importTest.failures': 'Import Test failures',
-    'summary.import.tooltip.missingVariables':
+    'summary.import.tooltip.missingVariables_one':
       'Cannot import: {{count}} environment variable is missing. Edit the environment variables above to fix.',
-    'summary.import.tooltip.missingVariables_plural':
+    'summary.import.tooltip.missingVariables_other':
       'Cannot import: {{count}} environment variables are missing. Edit the environment variables above to fix.',
     'summary.import.tooltip.configUnavailable':
       'Cannot import: configuration content is unavailable. Re-upload the configuration file.',
     'summary.import.tooltip.runTestFirst': 'Cannot import: run pre-flight dry-run and ensure it passes.',
     'summary.import.action': 'Import Configuration',
     'summary.import.importing': 'Importing...',
-    'summary.import.completedWithFailures': 'Import completed with {{count}} failed resource.',
-    'summary.import.completedWithFailures_plural': 'Import completed with {{count}} failed resources.',
-    'summary.import.completedSuccessfully': 'Import completed successfully. {{count}} resource imported.',
-    'summary.import.completedSuccessfully_plural': 'Import completed successfully. {{count}} resources imported.',
+    'summary.import.completedWithFailures_one': 'Import completed with {{count}} failed resource.',
+    'summary.import.completedWithFailures_other': 'Import completed with {{count}} failed resources.',
+    'summary.import.completedSuccessfully_one': 'Import completed successfully. {{count}} resource imported.',
+    'summary.import.completedSuccessfully_other': 'Import completed successfully. {{count}} resources imported.',
     'summary.import.failedRetry': 'Import failed. Please try again.',
     'summary.importTest.itemFailedGeneric': 'This resource failed to import.',
 
@@ -5153,13 +5189,23 @@ const translations = {
     'tabs.ariaLabel': 'Settings sections',
     'tabs.cors': 'CORS',
     'cors.card.title': 'Allowed origins',
-    'cors.card.description': 'Manage which origins are allowed to access your APIs.',
+    'cors.card.description':
+      'Manage which origins are allowed to access your APIs. Each entry is either an exact origin or a regular expression.',
     'cors.readOnlyHint': "Some origins are read-only because they're managed declaratively.",
     'cors.addOrigin': 'Add origin',
     'cors.originPlaceholder': 'https://app.example.com',
+    'cors.regexPlaceholder': '^https://[a-z0-9-]+\\.example\\.com$',
     'cors.removeOrigin': 'Remove origin',
-    'cors.validation.invalid': 'Enter a valid origin (e.g. https://app.example.com) or a valid regular expression.',
-    'cors.validation.duplicate': 'This origin is already in the list.',
+    'cors.lockedOrigin': "Managed declaratively and can't be edited here.",
+    'cors.type.label': 'Entry type',
+    'cors.type.origin': 'Origin',
+    'cors.type.regex': 'Regex',
+    'cors.validation.invalidOrigin':
+      'Enter a valid origin, e.g. https://app.example.com. Paths, query strings, and fragments are not allowed.',
+    'cors.validation.invalidRegex': 'Enter a valid regular expression.',
+    'cors.validation.unanchoredRegex':
+      'This pattern is not anchored with ^ and $, so it also matches any origin that merely contains it.',
+    'cors.validation.duplicate': 'This entry is already in the list.',
     'cors.unsavedChanges': 'You have unsaved changes',
     'cors.reset': 'Reset',
     'cors.save': 'Save changes',

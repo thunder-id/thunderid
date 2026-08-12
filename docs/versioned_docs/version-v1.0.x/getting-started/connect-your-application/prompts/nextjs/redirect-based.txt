@@ -14,24 +14,28 @@ I have a Next.js application (App Router) and I want to integrate {{productName}
 ## Configuration
 - **Client ID**: {{clientId}}
 - **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **Client Secret**: `<your-client-secret>`
 - **SDK**: @thunderid/nextjs
 
 ## IMPORTANT Configuration Rules
 - Use environment variables for configuration (NOT props on the provider)
-- Required env vars: NEXT_PUBLIC_THUNDERID_BASE_URL, NEXT_PUBLIC_THUNDERID_CLIENT_ID, THUNDERID_CLIENT_SECRET, THUNDERID_SECRET, NODE_TLS_REJECT_UNAUTHORIZED=0
+- Required env vars: NEXT_PUBLIC_THUNDERID_BASE_URL, NEXT_PUBLIC_THUNDERID_CLIENT_ID, THUNDERID_CLIENT_SECRET, THUNDERID_SECRET
+- NODE_TLS_REJECT_UNAUTHORIZED=0 is only needed against a local ThunderID instance using a self-signed certificate; scope it to local development, never production, and disable ALL TLS verification only for that reason
+- Never ask the developer to type or paste the Client Secret into this conversation. If it is not supplied above, add a `THUNDERID_CLIENT_SECRET` placeholder to `.env` and tell the developer to fill it in locally before running the app
 - Import ThunderIDProvider from '@thunderid/nextjs/server' (NOT from '@thunderid/nextjs')
 - Import middleware utilities from '@thunderid/nextjs/server'
 - Import UI components from '@thunderid/nextjs'
 - The ThunderIDProvider handles the OAuth callback automatically — no manual callback route is needed
 
 ## Implementation Steps
-1. Create a Next.js app: npx create-next-app@latest nextjs-demo
-2. Navigate into the project: cd nextjs-demo
+1. Create a Next.js app: npx create-next-app@latest my-nextjs-app
+2. Navigate into the project: cd my-nextjs-app
 3. Install @thunderid/nextjs: npm install @thunderid/nextjs
-4. Create .env.local with NEXT_PUBLIC_THUNDERID_BASE_URL, NEXT_PUBLIC_THUNDERID_CLIENT_ID, THUNDERID_CLIENT_SECRET, THUNDERID_SECRET, NODE_TLS_REJECT_UNAUTHORIZED=0
-5. Wrap root layout with <ThunderIDProvider> from '@thunderid/nextjs/server'
-6. Create proxy.ts with thunderIDProxy and createRouteMatcher from '@thunderid/nextjs/server' for route protection
-7. Add SignedIn, UserDropdown, SignedOut, SignInButton components to pages
-8. Run: npm run dev
+4. If the client secret was not provided, add a `THUNDERID_CLIENT_SECRET` placeholder to `.env` and tell the developer to fill it in before running the app
+5. Create .env with NEXT_PUBLIC_THUNDERID_BASE_URL, NEXT_PUBLIC_THUNDERID_CLIENT_ID, THUNDERID_CLIENT_SECRET, THUNDERID_SECRET (add NODE_TLS_REJECT_UNAUTHORIZED=0 only for a local self-signed instance, never production)
+6. Wrap root layout with <ThunderIDProvider> from '@thunderid/nextjs/server'
+7. Create proxy.ts with thunderIDProxy and createRouteMatcher from '@thunderid/nextjs/server' for route protection
+8. Add SignedIn, UserDropdown, SignedOut, SignInButton components to pages
+9. Run: npm run dev
 
 Please provide complete, working code with proper configuration for {{productName}} authentication using the {{productName}} Next.js SDK.

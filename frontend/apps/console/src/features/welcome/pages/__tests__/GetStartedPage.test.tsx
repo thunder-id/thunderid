@@ -125,6 +125,19 @@ describe('GetStartedPage', () => {
     expect(screen.getByText(/common:welcome\.getStarted\.options\.onboardApp\.description/i)).toBeInTheDocument();
   });
 
+  it('renders secure AI agent option as an available action', () => {
+    render(<GetStartedPage />);
+    expect(screen.getByText('common:welcome.getStarted.options.secureAiAgent.title')).toBeInTheDocument();
+    expect(screen.getByText('common:welcome.getStarted.options.secureAiAgent.action')).toBeInTheDocument();
+    expect(screen.queryByText('common:welcome.getStarted.options.comingSoon')).not.toBeInTheDocument();
+  });
+
+  it('renders secure MCP option as an available action', () => {
+    render(<GetStartedPage />);
+    expect(screen.getByText('common:welcome.getStarted.options.secureMcp.title')).toBeInTheDocument();
+    expect(screen.getByText('common:welcome.getStarted.options.secureMcp.action')).toBeInTheDocument();
+  });
+
   it('renders skip to console button', () => {
     render(<GetStartedPage />);
     expect(screen.getByText('common:welcome.getStarted.actions.skipToConsole')).toBeInTheDocument();
@@ -138,6 +151,24 @@ describe('GetStartedPage', () => {
     await user.click(actionButton);
 
     expect(mockNavigate).toHaveBeenCalledWith('/welcome/get-started/applications/types');
+  });
+
+  it('navigates to the welcome-scoped agent wizard on secure AI agent click', async () => {
+    const user = userEvent.setup();
+    render(<GetStartedPage />);
+
+    await user.click(screen.getByText('common:welcome.getStarted.options.secureAiAgent.action'));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/welcome/get-started/agents/create');
+  });
+
+  it('navigates to the MCP client template on secure MCP click', async () => {
+    const user = userEvent.setup();
+    render(<GetStartedPage />);
+
+    await user.click(screen.getByText('common:welcome.getStarted.options.secureMcp.action'));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/welcome/get-started/applications/types?type=MCP_CLIENT');
   });
 
   it('navigates to /home and sets session storage on skip', async () => {

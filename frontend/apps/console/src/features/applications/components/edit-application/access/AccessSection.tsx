@@ -102,7 +102,7 @@ export default function AccessSection({
           title={t('applications:edit.access.sections.userTypes.title', 'Allowed User Types')}
           description={t(
             'applications:edit.access.sections.userTypes.description',
-            'Choose which user types can authenticate with this application.',
+            'Choose which user types can sign up through this application.',
           )}
         >
           <FormControl fullWidth>

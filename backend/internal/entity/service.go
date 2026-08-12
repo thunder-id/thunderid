@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
@@ -246,6 +248,12 @@ func (s *entityService) UpdateEntity(
 	var updated providers.Entity
 	err = s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		entity.ID = entityID
+		preserved, prErr := s.mergeReservedAttributes(txCtx, entityID, entity.SystemAttributes)
+		if prErr != nil {
+			return prErr
+		}
+		entity.SystemAttributes = preserved
+
 		if err := s.store.UpdateEntity(txCtx, entity); err != nil {
 			return err
 		}
@@ -347,7 +355,11 @@ func (s *entityService) UpdateSystemAttributes(ctx context.Context, entityID str
 	attrs json.RawMessage) error {
 	s.logger.Debug(ctx, "Updating entity system attributes", log.MaskedString("id", entityID))
 	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		return s.store.UpdateSystemAttributes(txCtx, entityID, attrs)
+		preserved, err := s.mergeReservedAttributes(txCtx, entityID, attrs)
+		if err != nil {
+			return err
+		}
+		return s.store.UpdateSystemAttributes(txCtx, entityID, preserved)
 	})
 }
 
@@ -643,7 +655,18 @@ func (s *entityService) UpdateCredentials(ctx context.Context, entityID string,
 			return fmt.Errorf("failed to marshal merged credentials: %w", err)
 		}
 
-		return s.store.UpdateCredentials(txCtx, entityID, mergedJSON)
+		if err := s.store.UpdateCredentials(txCtx, entityID, mergedJSON); err != nil {
+			return err
+		}
+
+		// Record the change so the refresh grant can reject tokens established before it. Every
+		// password change lands here, and the marker shares this transaction with the write.
+		markedAttrs, err := setCredentialUpdatedAt(
+			existingWithCreds.Entity.SystemAttributes, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		return s.store.UpdateSystemAttributes(txCtx, entityID, markedAttrs)
 	})
 }
 
@@ -789,7 +812,20 @@ func (s *entityService) UpdateSystemCredentials(ctx context.Context, entityID st
 			return fmt.Errorf("failed to marshal merged credentials: %w", err)
 		}
 
-		return s.store.UpdateSystemCredentials(txCtx, entityID, mergedJSON)
+		if err := s.store.UpdateSystemCredentials(txCtx, entityID, mergedJSON); err != nil {
+			return err
+		}
+
+		// Only a client secret rotation marks the entity. A passkey adds an authentication option
+		// rather than replacing one, and the flow secret does not authenticate the client.
+		if _, rotatesClientSecret := updates[authnprovidercm.CredentialTypeClientSecret]; !rotatesClientSecret {
+			return nil
+		}
+		markedAttrs, err := setCredentialUpdatedAt(existing.Entity.SystemAttributes, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		return s.store.UpdateSystemAttributes(txCtx, entityID, markedAttrs)
 	})
 }
 
@@ -876,6 +912,70 @@ func (s *entityService) validateEntityType(
 	}
 
 	return nil
+}
+
+// mergeReservedAttributes carries the reserved, server-owned keys of an entity's stored system
+// attributes into a replacement blob. Both write paths replace the blob wholesale, and the services
+// that own an entity rebuild it from their own model, so without this a rename would drop the
+// credential-change marker this package writes and revive the tokens a credential change invalidated.
+func (s *entityService) mergeReservedAttributes(ctx context.Context, entityID string,
+	incoming json.RawMessage) (json.RawMessage, error) {
+	current, err := s.store.GetEntity(ctx, entityID)
+	if err != nil {
+		return nil, err
+	}
+	marker := credentialUpdatedAtOf(current.SystemAttributes)
+	if marker == "" {
+		return incoming, nil
+	}
+
+	attrs := map[string]interface{}{}
+	if len(incoming) > 0 {
+		if err := json.Unmarshal(incoming, &attrs); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal system attributes: %w", err)
+		}
+	}
+	attrs[authnprovidercm.SystemAttrCredentialUpdatedAt] = marker
+
+	merged, err := json.Marshal(attrs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal system attributes: %w", err)
+	}
+	return merged, nil
+}
+
+// credentialUpdatedAtOf returns the credential-change marker in the given system attributes, or empty
+// when none is recorded.
+func credentialUpdatedAtOf(systemAttributes json.RawMessage) string {
+	if len(systemAttributes) == 0 {
+		return ""
+	}
+	var attrs map[string]interface{}
+	if err := json.Unmarshal(systemAttributes, &attrs); err != nil {
+		return ""
+	}
+	marker, _ := attrs[authnprovidercm.SystemAttrCredentialUpdatedAt].(string)
+	return marker
+}
+
+// setCredentialUpdatedAt returns systemAttributes with the credential-change marker set to at. The
+// marker is merged in rather than replacing the blob, whose other keys belong to the service that
+// owns the entity. Unlike mergeCredentialJSON, an unparsable blob is an error rather than a silent
+// overwrite, since dropping those keys would go unnoticed.
+func setCredentialUpdatedAt(systemAttributes json.RawMessage, at time.Time) (json.RawMessage, error) {
+	attrs := map[string]interface{}{}
+	if len(systemAttributes) > 0 {
+		if err := json.Unmarshal(systemAttributes, &attrs); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal system attributes: %w", err)
+		}
+	}
+	attrs[authnprovidercm.SystemAttrCredentialUpdatedAt] = at.UTC().Format(time.RFC3339)
+
+	marked, err := json.Marshal(attrs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal system attributes: %w", err)
+	}
+	return marked, nil
 }
 
 // mergeCredentialJSON merges new credential JSON into existing credential JSON.

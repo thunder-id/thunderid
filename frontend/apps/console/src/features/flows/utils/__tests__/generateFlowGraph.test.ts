@@ -29,10 +29,68 @@ describe('generateFlowGraph', () => {
     });
 
     expect(request.handle).toMatch(/^generated-sign-in-flow-[a-z0-9]{6}$/);
-    expect(request.nodes).toHaveLength(5); // START, PROMPT, BASIC_EXEC, AUTH_ASSERT, END
+    // START, PROMPT, BASIC_EXEC, AUTHORIZATION_CHECK, AUTH_ASSERT, END
+    expect(request.nodes).toHaveLength(6);
 
     const components = getPromptComponents(request);
     expect(components.find((c) => c.id === 'block_basic')).toBeDefined();
+  });
+
+  describe('authorization', () => {
+    it('should insert exactly one AuthorizationExecutor, wired between authentication and the assertion', () => {
+      const request = generateFlowGraph({hasCredentialsAuth: true, hasPasskey: false, hasSmsOtp: false});
+
+      const authzNodes = request.nodes.filter((n) => n.executor?.name === 'AuthorizationExecutor');
+      expect(authzNodes).toHaveLength(1);
+      expect(authzNodes[0].id).toBe('authorization_check');
+      expect(authzNodes[0].type).toBe(FlowNodeType.TASK_EXECUTION);
+      expect(authzNodes[0].onSuccess).toBe('auth_assert');
+      expect(request.nodes.find((n) => n.id === 'auth_assert')?.onSuccess).toBe('end');
+    });
+
+    it('should only ever reach the assertion through the authorization check', () => {
+      const request = generateFlowGraph({
+        hasCredentialsAuth: true,
+        hasPasskey: true,
+        hasMagicLink: true,
+        hasSmsOtp: true,
+        googleIdpId: 'google-p-id',
+        githubIdpId: 'github-p-id',
+        hasEmailOtpMfa: true,
+        hasSmsOtpMfa: true,
+      });
+
+      const intoAssert = request.nodes.filter((n) => n.onSuccess === 'auth_assert').map((n) => n.id);
+      expect(intoAssert).toEqual(['authorization_check']);
+    });
+
+    // hasSmsOtp is absent here on purpose: it generates no first-factor nodes (it only feeds the
+    // "passkey is the sole method" heuristic), so SMS OTP is only reachable as MFA. See the MFA tests.
+    it.each([
+      ['credentials', {hasCredentialsAuth: true}, 'credentials_auth'],
+      ['passkey', {hasPasskey: true}, 'passkey_verify'],
+      ['magic link', {hasMagicLink: true}, 'magic_link_verify'],
+      ['Google', {googleIdpId: 'google-p-id'}, 'provisioning'],
+      ['GitHub', {githubIdpId: 'github-p-id'}, 'provisioning'],
+    ])('should route a completed %s sign-in into the authorization check', (_label, options, terminalNodeId) => {
+      const request = generateFlowGraph({hasCredentialsAuth: false, hasPasskey: false, hasSmsOtp: false, ...options});
+
+      expect(request.nodes.find((n) => n.id === terminalNodeId)?.onSuccess).toBe('authorization_check');
+    });
+
+    it('should route both social provisioning outcomes into the authorization check', () => {
+      const request = generateFlowGraph({
+        hasCredentialsAuth: false,
+        hasPasskey: false,
+        hasSmsOtp: false,
+        googleIdpId: 'google-p-id',
+      });
+
+      // Newly provisioned users take onSuccess; users that already exist locally take onSkip.
+      const provisioning = request.nodes.find((n) => n.id === 'provisioning');
+      expect(provisioning?.onSuccess).toBe('authorization_check');
+      expect(provisioning?.condition?.onSkip).toBe('authorization_check');
+    });
   });
 
   it('should generate a Passkey flow', () => {
@@ -134,7 +192,7 @@ describe('generateFlowGraph', () => {
   });
 
   describe('MFA subgraph', () => {
-    it('should route the first factor into the Email OTP chain instead of auth_assert', () => {
+    it('should route the first factor into the Email OTP chain instead of the authorization check', () => {
       const request = generateFlowGraph({
         hasCredentialsAuth: true,
         hasPasskey: false,
@@ -163,7 +221,7 @@ describe('generateFlowGraph', () => {
 
       const verifyNode = request.nodes.find((n) => n.id === 'mfa_verify_otp');
       expect(verifyNode?.executor).toEqual({name: 'OTPExecutor', mode: 'verify'});
-      expect(verifyNode?.onSuccess).toBe('auth_assert');
+      expect(verifyNode?.onSuccess).toBe('authorization_check');
     });
 
     it('should route the SMS OTP chain through SMSExecutor with the configured senderId', () => {
@@ -209,14 +267,14 @@ describe('generateFlowGraph', () => {
       expect(smsSendNode?.properties?.senderId).toBe('sender-123');
       expect(smsSendNode?.properties?.smsTemplate).toBe('OTP');
 
-      expect(request.nodes.find((n) => n.id === 'mfa_verify_otp_email')?.onSuccess).toBe('auth_assert');
-      expect(request.nodes.find((n) => n.id === 'mfa_verify_otp_sms')?.onSuccess).toBe('auth_assert');
+      expect(request.nodes.find((n) => n.id === 'mfa_verify_otp_email')?.onSuccess).toBe('authorization_check');
+      expect(request.nodes.find((n) => n.id === 'mfa_verify_otp_sms')?.onSuccess).toBe('authorization_check');
     });
 
-    it('should leave the first factor routed straight to auth_assert when MFA is not enabled', () => {
+    it('should leave the first factor routed straight to the authorization check when MFA is not enabled', () => {
       const request = generateFlowGraph({hasCredentialsAuth: true, hasPasskey: false, hasSmsOtp: false});
 
-      expect(request.nodes.find((n) => n.id === 'credentials_auth')?.onSuccess).toBe('auth_assert');
+      expect(request.nodes.find((n) => n.id === 'credentials_auth')?.onSuccess).toBe('authorization_check');
       expect(request.nodes.find((n) => n.id === 'mfa_generate_otp')).toBeUndefined();
     });
 
@@ -305,7 +363,7 @@ describe('generateFlowGraph', () => {
       expect(verifyNode?.executor).toEqual({name: 'MagicLinkExecutor', mode: 'verify'});
     });
 
-    it('should route a verified magic link straight to auth_assert when MFA is not enabled', () => {
+    it('should route a verified magic link straight to the authorization check when MFA is not enabled', () => {
       const request = generateFlowGraph({
         hasCredentialsAuth: false,
         hasPasskey: false,
@@ -313,7 +371,7 @@ describe('generateFlowGraph', () => {
         hasSmsOtp: false,
       });
 
-      expect(request.nodes.find((n) => n.id === 'magic_link_verify')?.onSuccess).toBe('auth_assert');
+      expect(request.nodes.find((n) => n.id === 'magic_link_verify')?.onSuccess).toBe('authorization_check');
     });
 
     it('should route a verified magic link into the MFA subgraph when MFA is enabled', () => {
@@ -363,7 +421,7 @@ describe('generateFlowGraph', () => {
         expect(magicLinkAction?.action?.nextNode).toBe('magic_link_prompt_email');
       });
 
-      it('should route credentials success straight to auth_assert, without an email-collecting step', () => {
+      it('should route credentials success straight to the authorization check, without an email-collecting step', () => {
         const request = generateFlowGraph({
           hasCredentialsAuth: true,
           hasPasskey: false,
@@ -371,7 +429,7 @@ describe('generateFlowGraph', () => {
           hasSmsOtp: false,
         });
 
-        expect(request.nodes.find((n) => n.id === 'credentials_auth')?.onSuccess).toBe('auth_assert');
+        expect(request.nodes.find((n) => n.id === 'credentials_auth')?.onSuccess).toBe('authorization_check');
         expect(request.nodes.find((n) => n.id === 'collect_email')).toBeUndefined();
       });
 
@@ -393,7 +451,7 @@ describe('generateFlowGraph', () => {
 
         const verifyNode = request.nodes.find((n) => n.id === 'magic_link_verify');
         expect(verifyNode?.onFailure).toBe('magic_link_prompt_email');
-        expect(verifyNode?.onSuccess).toBe('auth_assert');
+        expect(verifyNode?.onSuccess).toBe('authorization_check');
       });
 
       it('should still layer OTP MFA on top when enabled, after the magic link verifies', () => {
@@ -416,8 +474,8 @@ describe('generateFlowGraph', () => {
           hasSmsOtp: false,
         });
 
-        expect(request.nodes.find((n) => n.id === 'passkey_verify')?.onSuccess).toBe('auth_assert');
-        expect(request.nodes.find((n) => n.id === 'credentials_auth')?.onSuccess).toBe('auth_assert');
+        expect(request.nodes.find((n) => n.id === 'passkey_verify')?.onSuccess).toBe('authorization_check');
+        expect(request.nodes.find((n) => n.id === 'credentials_auth')?.onSuccess).toBe('authorization_check');
       });
     });
 

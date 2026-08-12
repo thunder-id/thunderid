@@ -78,7 +78,7 @@ type EntityTypeListResponse struct {
 
 // CreateEntityTypeRequest represents the request body for creating an entity type.
 type CreateEntityTypeRequest struct {
-	Name                  string            `json:"name" native:"required,min=3,max=100"`
+	Name                  string            `json:"name" native:"required,min=1,max=100"`
 	OUID                  string            `json:"ouId" native:"required"`
 	AllowSelfRegistration bool              `json:"allowSelfRegistration,omitempty"`
 	SystemAttributes      *SystemAttributes `json:"systemAttributes,omitempty"`
@@ -89,7 +89,7 @@ type CreateEntityTypeRequest struct {
 // including an optional ID.
 type CreateEntityTypeRequestWithID struct {
 	ID                    string            `json:"id,omitempty" yaml:"id,omitempty"`
-	Name                  string            `json:"name" native:"required,min=3,max=100"`
+	Name                  string            `json:"name" native:"required,min=1,max=100"`
 	OUID                  string            `json:"ouId" native:"required"`
 	OUHandle              string            `json:"ouHandle,omitempty"`
 	AllowSelfRegistration bool              `json:"allowSelfRegistration,omitempty"`
@@ -99,7 +99,7 @@ type CreateEntityTypeRequestWithID struct {
 
 // UpdateEntityTypeRequest represents the request body for updating an entity type.
 type UpdateEntityTypeRequest struct {
-	Name                  string            `json:"name" native:"required,min=3,max=100"`
+	Name                  string            `json:"name" native:"required,min=1,max=100"`
 	OUID                  string            `json:"ouId" native:"required"`
 	OUHandle              string            `json:"ouHandle,omitempty"`
 	AllowSelfRegistration bool              `json:"allowSelfRegistration,omitempty"`

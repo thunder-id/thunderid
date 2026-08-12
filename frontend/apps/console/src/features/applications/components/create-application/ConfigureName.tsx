@@ -5,8 +5,9 @@ import {NameSuggestion, ResourceAvatar} from '@thunderid/components';
 import {buildAvatarSpec, pickAnonymousEntityName} from '@thunderid/react';
 import {Typography, Stack, TextField, FormControl, FormLabel} from '@wso2/oxygen-ui';
 import type {ChangeEvent, JSX} from 'react';
-import {useEffect} from 'react';
+import {useEffect, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
+import ApplicationConstants from '../../constants/application-constants';
 
 /**
  * Props for the {@link ConfigureName} component.
@@ -105,8 +106,26 @@ export default function ConfigureName({
 }: ConfigureNameProps): JSX.Element {
   const {t} = useTranslation();
 
+  const trimmedLength: number = appName.trim().length;
+
   // Exact match, mirroring the server's uniqueness check.
   const isDuplicateName: boolean = appName !== '' && existingAppNames.includes(appName);
+
+  // An empty field is not an error yet; the user has simply not filled it in.
+  const nameError = useMemo((): string | null => {
+    if (isDuplicateName) {
+      return t('applications:errors.APP-1020', {
+        defaultValue: 'An application with this name already exists. Choose a different name.',
+      });
+    }
+    if (trimmedLength > ApplicationConstants.NAME_MAX_LENGTH) {
+      return t('applications:onboarding.configure.name.maxLength', {
+        max: ApplicationConstants.NAME_MAX_LENGTH,
+        defaultValue: `Application name cannot exceed ${ApplicationConstants.NAME_MAX_LENGTH} characters`,
+      });
+    }
+    return null;
+  }, [isDuplicateName, trimmedLength, t]);
 
   /**
    * Default to a generated entity avatar the first time this step is reached, so the logo
@@ -130,11 +149,14 @@ export default function ConfigureName({
    * Broadcast readiness whenever appName changes.
    */
   useEffect((): void => {
-    const isReady: boolean = appName.trim().length > 0 && !isDuplicateName;
+    const isReady: boolean =
+      trimmedLength >= ApplicationConstants.NAME_MIN_LENGTH &&
+      trimmedLength <= ApplicationConstants.NAME_MAX_LENGTH &&
+      !isDuplicateName;
     if (onReadyChange) {
       onReadyChange(isReady);
     }
-  }, [appName, isDuplicateName, onReadyChange]);
+  }, [trimmedLength, isDuplicateName, onReadyChange]);
 
   return (
     <Stack direction="column" spacing={4} data-testid="application-configure-name">
@@ -164,8 +186,8 @@ export default function ConfigureName({
               value={appName}
               onChange={(e: ChangeEvent<HTMLInputElement>): void => onAppNameChange(e.target.value)}
               placeholder={t('applications:onboarding.configure.name.placeholder')}
-              error={isDuplicateName}
-              helperText={isDuplicateName ? t('applications:errors.APP-1020') : undefined}
+              error={Boolean(nameError)}
+              helperText={nameError ?? undefined}
               inputProps={{
                 'data-testid': 'app-name-input',
               }}

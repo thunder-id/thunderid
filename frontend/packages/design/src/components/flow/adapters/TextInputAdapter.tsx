@@ -7,12 +7,13 @@ import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {FlowFieldProps} from '../../../models/flow';
 
-type TextInputVariant = 'TEXT_INPUT' | 'EMAIL_INPUT' | 'PHONE_INPUT';
+type TextInputVariant = 'TEXT_INPUT' | 'EMAIL_INPUT' | 'PHONE_INPUT' | 'NUMBER_INPUT';
 
 const HTML_INPUT_TYPE: Record<TextInputVariant, string> = {
   TEXT_INPUT: 'text',
   EMAIL_INPUT: 'email',
   PHONE_INPUT: 'tel',
+  NUMBER_INPUT: 'number',
 };
 
 const AUTO_COMPLETE_MAP: Record<TextInputVariant, (ref: string) => string> = {
@@ -23,11 +24,13 @@ const AUTO_COMPLETE_MAP: Record<TextInputVariant, (ref: string) => string> = {
   },
   EMAIL_INPUT: () => 'email',
   PHONE_INPUT: () => 'tel',
+  NUMBER_INPUT: () => 'off',
 };
 
 function resolveTextVariant(type: string): TextInputVariant {
   if (type === 'EMAIL_INPUT') return 'EMAIL_INPUT';
   if (type === 'PHONE_INPUT') return 'PHONE_INPUT';
+  if (type === 'NUMBER_INPUT') return 'NUMBER_INPUT';
   return 'TEXT_INPUT';
 }
 

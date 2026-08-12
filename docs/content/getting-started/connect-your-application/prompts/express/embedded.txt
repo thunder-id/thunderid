@@ -17,6 +17,7 @@ I have an Express application and I want to integrate {{productName}} authentica
 ## Configuration
 - **Application ID**: {{applicationId}}
 - **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **Flow Secret**: `<your-flow-secret>`
 - **App URL**: http://localhost:3000
 - **Sign-In Page**: `/login`
 - **Flow Route**: `/flow/sign-in`
@@ -30,15 +31,18 @@ I have an Express application and I want to integrate {{productName}} authentica
 - `handleFlow()` calls the Flow Execution API on each POST and returns the flow's JSON step (`executionId`, `challengeToken`, `authId`, `components`) — render whatever `components` the response contains as form fields, and POST the user's input back to the same route with the returned `executionId`
 - Do not invent unsupported SDK APIs or custom wrappers
 - Do not use `clientId`/`clientSecret` in this mode — embedded mode is driven by `applicationId`, not an OAuth2 client
+- Pass `flowSecret` in the `thunderID({...})` middleware config (or set `THUNDERID_FLOW_SECRET` in the environment, which `handleFlow()` falls back to automatically) — it authenticates this app when the flow starts, sent in the `Flow-Secret` request header. It is a separate credential from an OAuth2 client secret, never a substitute for one
+- Never ask the developer to type or paste the Flow Secret into this conversation. If it is not supplied above, set `THUNDERID_FLOW_SECRET` in a local `.env` file as a placeholder and stop with a message telling the developer to fill it in locally before running the app
 
 ## Implementation Steps
 1. Create a new project and install `express` and `cookie-parser`
 2. Install `@thunderid/express`
-3. Add `index.js` with `thunderID({ applicationId, baseUrl, mode: 'embedded' })` middleware
-4. Add `/login` route serving a minimal HTML form, and `/flow/sign-in` using `handleFlow()`
-5. Add `/logout`, `/protected`, and `/me` routes
-6. Start the server with `node index.js`
-7. Validate the flow by opening `/login`, submitting the form, then `/protected` and `/me`
+3. If the flow secret was not provided, add a `THUNDERID_FLOW_SECRET` placeholder to a local `.env` file and tell the developer to fill it in before running the app
+4. Add `index.js` with `thunderID({ applicationId, baseUrl, mode: 'embedded', flowSecret })` middleware
+5. Add `/login` route serving a minimal HTML form, and `/flow/sign-in` using `handleFlow()`
+6. Add `/logout`, `/protected`, and `/me` routes
+7. Start the server with `node index.js`
+8. Validate the flow by opening `/login`, submitting the form, then `/protected` and `/me`; then request `/logout` and confirm `/protected` is no longer accessible
 
 Please provide:
 - The exact terminal commands

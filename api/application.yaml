@@ -852,7 +852,7 @@ components:
           type: array
           items:
             type: string
-          description: Array of allowed user types for this application.
+          description: User types allowed to sign up through this application.
           example: ["employee", "customer", "partner"]
         subjectAttribute:
           type: object
@@ -1009,7 +1009,7 @@ components:
           type: array
           items:
             type: string
-          description: Array of allowed user types for this application.
+          description: User types allowed to sign up through this application.
           example: ["employee", "customer", "partner"]
         subjectAttribute:
           type: object
@@ -1147,7 +1147,7 @@ components:
           type: array
           items:
             type: string
-          description: Array of allowed user types for this application.
+          description: User types allowed to sign up through this application.
           example: ["employee", "customer", "partner"]
         subjectAttribute:
           type: object

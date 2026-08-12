@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Children, isValidElement, useEffect, useMemo, type ReactElement, PropsWithChildren} from 'react';
+import {Children, isValidElement, useEffect, type ReactElement, PropsWithChildren} from 'react';
 import applyAttributes from './utils/applyAttributes';
 
 export type HelmetProps = PropsWithChildren;
@@ -25,20 +25,6 @@ export type HelmetProps = PropsWithChildren;
  * </Helmet>
  */
 export default function Helmet({children}: HelmetProps): null {
-  const childrenKey = useMemo(() => {
-    const parts: string[] = [];
-    Children.forEach(children, (child) => {
-      if (!isValidElement(child)) return;
-      const {type, props} = child as ReactElement<Record<string, unknown>>;
-      try {
-        parts.push(JSON.stringify({props, type: String(type)}));
-      } catch {
-        parts.push(String(type));
-      }
-    });
-    return parts.join('\0');
-  }, [children]);
-
   useEffect(() => {
     const nodes: Element[] = [];
 
@@ -77,7 +63,7 @@ export default function Helmet({children}: HelmetProps): null {
     return () => {
       nodes.forEach((node) => node.parentNode?.removeChild(node));
     };
-  }, [childrenKey]);
+  }, [children]);
 
   return null;
 }

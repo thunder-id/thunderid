@@ -3,6 +3,7 @@
 
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {AllowedOriginTypes, createRow} from '@thunderid/configure-settings';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import ApplicationCreateContext, {
   type ApplicationCreateContextType,
@@ -175,7 +176,10 @@ describe('ConfigureRedirectUris', () => {
     await user.click(screen.getByText('applications:onboarding.configure.details.devServer.addToRedirectAndCors'));
 
     expect(setRedirectUris).toHaveBeenCalledWith(['http://localhost:5173']);
-    expect(setCorsOrigins).toHaveBeenCalledWith(['http://localhost:5173']);
+    // Quick-add always produces an exact origin, never a pattern.
+    expect(setCorsOrigins).toHaveBeenCalledWith([
+      expect.objectContaining({type: AllowedOriginTypes.ORIGIN, value: 'http://localhost:5173'}),
+    ]);
   });
 
   it('only adds the dev server URL to redirect URIs, not CORS origins, for a non-CORS template', async () => {
@@ -204,7 +208,7 @@ describe('ConfigureRedirectUris', () => {
       selectedTemplateConfig: reactTemplate,
       redirectUris: ['http://localhost:5173'],
       setRedirectUris,
-      corsOrigins: ['http://localhost:5173'],
+      corsOrigins: [createRow(AllowedOriginTypes.ORIGIN, 'http://localhost:5173')],
       setCorsOrigins,
     });
 
@@ -268,12 +272,12 @@ describe('ConfigureRedirectUris', () => {
     expect(setRedirectUris).toHaveBeenCalledWith(['', '']);
   });
 
-  it('flags an invalid CORS origin (a path is not a bare origin)', async () => {
+  it('flags an invalid CORS origin (a path is not a bare origin) instead of accepting it as a pattern', async () => {
     const setCorsOrigins = vi.fn();
 
     renderWithContext({
       selectedTemplateConfig: reactTemplate,
-      corsOrigins: ['https://example.com/some/path'],
+      corsOrigins: [createRow(AllowedOriginTypes.ORIGIN, 'https://example.com/some/path')],
       setCorsOrigins,
     });
 
@@ -281,8 +285,6 @@ describe('ConfigureRedirectUris', () => {
     await user.click(corsInput);
     await user.tab();
 
-    expect(
-      await screen.findByText('applications:onboarding.configure.details.corsOrigins.error.invalid'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('settings:cors.validation.invalidOrigin')).toBeInTheDocument();
   });
 });

@@ -49,6 +49,7 @@ export interface ConsoleRoutePaths {
     getStarted: () => string;
     getStartedApplicationsTypes: () => string;
     getStartedApplicationsCreate: () => string;
+    getStartedAgentsCreate: () => string;
     tryoutSecuringApplication: () => string;
     tryoutAiAgents: () => string;
     tryoutMcp: () => string;
@@ -223,6 +224,7 @@ const RouteConfig: RouteConfig = {
     getStarted: () => `/${ROUTE_SEGMENTS.welcome}/get-started`,
     getStartedApplicationsTypes: () => `/${ROUTE_SEGMENTS.welcome}/get-started/applications/types`,
     getStartedApplicationsCreate: () => `/${ROUTE_SEGMENTS.welcome}/get-started/applications/create`,
+    getStartedAgentsCreate: () => `/${ROUTE_SEGMENTS.welcome}/get-started/agents/create`,
     tryoutSecuringApplication: () => `/${ROUTE_SEGMENTS.welcome}/tryout/securing-application`,
     tryoutAiAgents: () => `/${ROUTE_SEGMENTS.welcome}/tryout/ai-agents`,
     tryoutMcp: () => `/${ROUTE_SEGMENTS.welcome}/tryout/mcp`,

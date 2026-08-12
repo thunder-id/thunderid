@@ -9,7 +9,6 @@ type OAuthEndpoints struct {
 	TokenEndpoint         string
 	UserInfoEndpoint      string
 	UserEmailEndpoint     string
-	LogoutEndpoint        string
 	JwksEndpoint          string
 }
 

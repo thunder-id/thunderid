@@ -64,7 +64,7 @@ export interface McpAccessSectionProps {
 
 /**
  * Section component for an MCP client's access settings, in order: the allowed user
- * types (which user schemas may authorize this client), its optional client URI, and its
+ * types (which user types can sign up through this client), its optional client URI, and its
  * authorized redirect URIs — matching the React-template General tab's Access card layout.
  *
  * Redirect URIs are validated against the MCP redirect URI rule (loopback or HTTPS) instead

@@ -67,6 +67,22 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OAuth_WithOptional() {
 	s.Len(result, 7)
 }
 
+func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OAuth_WithoutUserInfoEndpoint() {
+	prop1, _ := cmodels.NewProperty(PropClientID, "test-client", false)
+	prop2, _ := cmodels.NewProperty(PropClientSecret, "test-secret", false)
+	prop3, _ := cmodels.NewProperty(PropRedirectURI, "http://localhost/callback", false)
+	prop4, _ := cmodels.NewProperty(PropAuthorizationEndpoint, "http://idp/auth", false)
+	prop5, _ := cmodels.NewProperty(PropTokenEndpoint, "http://idp/token", false)
+
+	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4, *prop5}
+
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOAuth, properties, s.logger)
+
+	s.Nil(err)
+	s.NotNil(result)
+	s.Len(result, 5)
+}
+
 func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OAuth_MissingRequired() {
 	prop1, _ := cmodels.NewProperty(PropClientID, "test-client", false)
 	prop2, _ := cmodels.NewProperty(PropClientSecret, "test-secret", false)

@@ -36,6 +36,7 @@ import {
 } from '../../models/application-create-flow';
 import type {PlatformApplicationTemplate, TechnologyApplicationTemplate} from '../../models/application-templates';
 import getConfigurationTypeFromTemplate from '../../utils/getConfigurationTypeFromTemplate';
+import hasInvalidCorsRows from '../../utils/hasInvalidCorsRows';
 import isRedirectCapableTemplate from '../../utils/isRedirectCapableTemplate';
 
 /**
@@ -292,6 +293,7 @@ export default function ConfigureDetails({
     relyingPartyName: contextRelyingPartyName,
     setRelyingPartyName,
     appName,
+    corsOrigins,
   } = useApplicationCreate();
   const {
     control,
@@ -326,6 +328,11 @@ export default function ConfigureDetails({
     ? ApplicationCreateFlowConfiguration.NONE
     : configurationType;
   const effectiveIsRedirectCapable = isEmbeddedApproach ? false : isRedirectCapable;
+
+  // Guarded on the same condition that renders the CORS editor, so rows left over from a previously
+  // selected template can't block a step that no longer shows them.
+  const showsCorsEditor: boolean = effectiveIsRedirectCapable && Boolean(selectedTemplateConfig?.capabilities?.cors);
+  const hasInvalidCorsOrigins: boolean = showsCorsEditor && hasInvalidCorsRows(corsOrigins);
 
   const isWallet: boolean = selectedTemplateConfig?.id === 'wallet';
   const [walletVendor, setWalletVendor] = useState<string>(CUSTOM_WALLET_VENDOR);
@@ -455,38 +462,31 @@ export default function ConfigureDetails({
    * Determine if step is ready based on validity and configuration type.
    */
   useEffect((): void => {
-    // If Passkey is enabled, we MUST have valid relying party info
-    if (isPasskeyConfigEnabled) {
-      if (!relyingPartyId || !relyingPartyName) {
-        onReadyChange(false);
-        return;
-      }
-    }
+    let ready: boolean;
 
-    if (effectiveConfigurationType === ApplicationCreateFlowConfiguration.NONE) {
-      // Even if no base config needed, if Passkey is enabled we need those fields valid
-      // The Passkey check block above handles returning false if invalid.
-      // If we are here, it means either Passkey is disabled OR Passkey fields are valid.
-      onReadyChange(true);
-      return;
-    }
-
-    // For URL-based config, need valid hosting URL
-    if (effectiveConfigurationType === ApplicationCreateFlowConfiguration.URL) {
+    if (isPasskeyConfigEnabled && (!relyingPartyId || !relyingPartyName)) {
+      // If Passkey is enabled, we MUST have valid relying party info
+      ready = false;
+    } else if (effectiveConfigurationType === ApplicationCreateFlowConfiguration.NONE) {
+      // Even if no base config needed, if Passkey is enabled we need those fields valid, which the
+      // check above has already accounted for.
+      ready = true;
+    } else if (effectiveConfigurationType === ApplicationCreateFlowConfiguration.URL) {
+      // For URL-based config, need valid hosting URL
       const hasValidHostingUrl: boolean = !!hostingUrl && !errors.hostingUrl;
       const hasValidCallbackUrl: boolean = callbackMode === 'same' || (!!callbackUrl && !errors.callbackUrl);
-      onReadyChange(!!hasValidHostingUrl && !!hasValidCallbackUrl);
-      return;
+      ready = !!hasValidHostingUrl && !!hasValidCallbackUrl;
+    } else if (effectiveConfigurationType === ApplicationCreateFlowConfiguration.DEEPLINK) {
+      // For deeplink config, need valid deeplink. For wallets, also block if the resolved client
+      // id is already taken by another application (would otherwise fail only on submit).
+      ready = !!deeplink && !errors.deeplink && !isDuplicateWalletClientId;
+    } else {
+      ready = isValid;
     }
 
-    // For deeplink config, need valid deeplink. For wallets, also block if the resolved client
-    // id is already taken by another application (would otherwise fail only on submit).
-    if (effectiveConfigurationType === ApplicationCreateFlowConfiguration.DEEPLINK) {
-      onReadyChange(!!deeplink && !errors.deeplink && !isDuplicateWalletClientId);
-      return;
-    }
-
-    onReadyChange(isValid);
+    // A malformed CORS origin used to be dropped on submit without a word, so block here instead.
+    // This reads the same rows that get merged into the allow-list, so the two cannot disagree.
+    onReadyChange(ready && !hasInvalidCorsOrigins);
   }, [
     isValid,
     effectiveConfigurationType,
@@ -501,6 +501,7 @@ export default function ConfigureDetails({
     onReadyChange,
     selectedTemplateConfig,
     isDuplicateWalletClientId,
+    hasInvalidCorsOrigins,
   ]);
 
   // For platforms that don't require configuration AND no passkey configuration needed AND the

@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ResourceAvatar} from '@thunderid/components';
+import {PageLoader, ResourceAvatar} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {
   Box,
@@ -89,7 +89,7 @@ export default function ApplicationTemplateSelectPage(): JSX.Element {
     });
   }, [selectedCategory, searchQuery, t]);
 
-  const handleTemplateSelect = (option: AnyTemplateMetadata): void => {
+  const handleTemplateSelect = (option: AnyTemplateMetadata, replace = false): void => {
     if (option.disabled) return;
 
     reset();
@@ -119,7 +119,7 @@ export default function ApplicationTemplateSelectPage(): JSX.Element {
     const wizardPath = isWelcomeFlow ? '/welcome/get-started/applications/create' : '/applications/create';
 
     (async () => {
-      await navigate(`${wizardPath}?type=${option.value}`);
+      await navigate(`${wizardPath}?type=${option.value}`, {replace});
     })().catch((error: unknown) => {
       logger.error('Failed to navigate to application creation wizard', {error, template: option.value});
     });
@@ -127,16 +127,28 @@ export default function ApplicationTemplateSelectPage(): JSX.Element {
 
   // Entry points elsewhere in the console (e.g. the home page's framework picker) deep-link here
   // with a preselected type, skipping the gallery straight to the wizard.
-  useEffect(() => {
+  const preselectedTemplate: AnyTemplateMetadata | undefined = useMemo(() => {
     const typeParam = searchParams.get('type');
-    if (!typeParam) return;
-
+    if (!typeParam) return undefined;
     const preselected = ALL_TEMPLATES.find((tmpl) => tmpl.value === typeParam);
-    if (preselected && !preselected.disabled) {
-      handleTemplateSelect(preselected);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return preselected && !preselected.disabled ? preselected : undefined;
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!preselectedTemplate) return;
+    // Replaces rather than pushes, so this pass-through gallery entry doesn't sit in the history
+    // between the entry point and the wizard — going back from the wizard would otherwise land
+    // here and be bounced straight forward again.
+    handleTemplateSelect(preselectedTemplate, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectedTemplate]);
+
+  // The gallery is only passed through on a deep link, so rendering it would flash the full
+  // template grid for a frame before the effect above navigates on. Hold the loader the lazy
+  // wizard chunk shows anyway, so the hand-off reads as one continuous load.
+  if (preselectedTemplate) {
+    return <PageLoader />;
+  }
 
   return (
     <PageContent>

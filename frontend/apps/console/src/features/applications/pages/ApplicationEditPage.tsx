@@ -151,6 +151,21 @@ export default function ApplicationEditPage() {
     [updateApplication],
   );
 
+  const commitName = useCallback(
+    (value: string): void => {
+      const trimmedName = value.trim();
+      // The API rejects names outside these bounds, so an out of range rename is discarded here.
+      if (
+        trimmedName.length < ApplicationConstants.NAME_MIN_LENGTH ||
+        trimmedName.length > ApplicationConstants.NAME_MAX_LENGTH
+      ) {
+        return;
+      }
+      handleFieldChange('name', trimmedName);
+    },
+    [handleFieldChange],
+  );
+
   const handleSave = useCallback(async () => {
     if (!application || !applicationId) return;
 
@@ -420,16 +435,12 @@ export default function ApplicationEditPage() {
                 value={tempName}
                 onChange={(e) => setTempName(e.target.value)}
                 onBlur={() => {
-                  if (tempName.trim()) {
-                    handleFieldChange('name', tempName.trim());
-                  }
+                  commitName(tempName);
                   setIsEditingName(false);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    if (tempName.trim()) {
-                      handleFieldChange('name', tempName.trim());
-                    }
+                    commitName(tempName);
                     setIsEditingName(false);
                   } else if (e.key === 'Escape') {
                     setIsEditingName(false);

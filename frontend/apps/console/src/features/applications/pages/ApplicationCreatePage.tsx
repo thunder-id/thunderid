@@ -11,8 +11,9 @@ import {
   useGetOrganizationUnit,
   useHasMultipleOUs,
 } from '@thunderid/configure-organization-units';
-import {useGetCorsConfig, useUpdateCorsConfig} from '@thunderid/configure-settings';
+import {isRowEmpty, useGetCorsConfig, useUpdateCorsConfig} from '@thunderid/configure-settings';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
+import {useToast} from '@thunderid/contexts';
 import {DefaultTheme, useGetTheme, type Theme} from '@thunderid/design';
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
@@ -59,6 +60,7 @@ import resolveCreationFlow from '../utils/resolveCreationFlow';
 
 export default function ApplicationCreatePage(): JSX.Element {
   const {t} = useTranslation();
+  const {showToast} = useToast();
   const {resolveAll} = useTemplateLiteralResolver();
 
   const {
@@ -662,15 +664,36 @@ export default function ApplicationCreatePage(): JSX.Element {
         // Configuration step are merged into the deployment's allow-list here rather than sent as
         // part of the application payload above. This is independent of application creation
         // succeeding, so it neither blocks nor is blocked by the navigation below.
-        const validCorsAdditions = corsOrigins.map((origin) => origin.trim()).filter(Boolean);
-        if (selectedTemplateConfig?.capabilities?.cors && validCorsAdditions.length > 0) {
-          updateCorsConfig.mutate({
-            data: mergeCorsOrigins(
-              corsConfigData?.writable.allowedOrigins ?? [],
-              corsConfigData?.readOnly.allowedOrigins ?? [],
-              validCorsAdditions,
-            ),
-          });
+        const corsAdditions = corsOrigins.filter((row) => !isRowEmpty(row));
+        if (selectedTemplateConfig?.capabilities?.cors && corsAdditions.length > 0) {
+          updateCorsConfig.mutate(
+            {
+              data: mergeCorsOrigins(
+                corsConfigData?.writable.allowedOrigins ?? [],
+                corsConfigData?.readOnly.allowedOrigins ?? [],
+                corsAdditions,
+              ),
+            },
+            {
+              // The application itself is already created and the wizard navigates away below, so
+              // there is no form left to attach an inline error to and retrying here would risk a
+              // second application. Name the one thing the admin has to redo instead, otherwise the
+              // origins they entered are silently missing from the deployment's allow-list.
+              onError: (err: Error) => {
+                logger.error('Failed to merge the wizard CORS origins into the deployment allow-list', {
+                  applicationId: createdApp.id,
+                  error: err,
+                });
+                showToast(
+                  t(
+                    'applications:onboarding.configure.details.corsOrigins.saveError',
+                    'The application was created, but its allowed origins were not saved. Add them under Settings, CORS.',
+                  ),
+                  'error',
+                );
+              },
+            },
+          );
         }
 
         // The mcp-client template has no completion step of its own, so it always goes straight

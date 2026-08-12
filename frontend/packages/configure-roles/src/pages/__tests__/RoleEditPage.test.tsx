@@ -3,7 +3,7 @@
 
 import userEvent from '@testing-library/user-event';
 import type {ResourcePermissions} from '@thunderid/configure-resource-servers';
-import {render, screen, waitFor} from '@thunderid/test-utils';
+import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import type {UpdateRoleRequest} from '../../models/requests';
@@ -411,6 +411,23 @@ describe('RoleEditPage', () => {
       await user.tab();
 
       expect(screen.queryByRole('button', {name: 'Save Changes'})).not.toBeInTheDocument();
+    });
+
+    it('discards a rename that exceeds the maximum length', async () => {
+      const user = userEvent.setup();
+      render(<RoleEditPage />);
+
+      const editName = async (to: string): Promise<void> => {
+        await user.click(screen.getByRole('button', {name: 'Edit role name'}));
+        const nameInput = screen.getByRole('textbox');
+        fireEvent.change(nameInput, {target: {value: to}});
+        await user.tab();
+      };
+
+      await editName('a'.repeat(101));
+      expect(screen.queryByRole('button', {name: 'Save Changes'})).not.toBeInTheDocument();
+
+      expect(screen.getByText('Admin Role')).toBeInTheDocument();
     });
   });
 

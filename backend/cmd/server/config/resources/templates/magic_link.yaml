@@ -13,7 +13,7 @@ body: |
   	<p><a href="{{ctx(magicLink)}}" style="display: inline-block; padding: 10px 20px;
   		background-color: #3a87ed; color: #fff; text-decoration: none;
   		border-radius: 4px;">Sign in</a></p>
-  	<p>This link expires in {{ctx(expiryMinutes)}} minutes.</p>
+  	<p>This link expires in {{ctx(expiryTime)}}.</p>
   	<p>If the button above doesn't work, copy and paste the following link into your browser:</p>
   	<p style="word-break: break-all;"><a href="{{ctx(magicLink)}}">{{ctx(magicLink)}}</a></p>
   	<p>If you did not request this, you can safely ignore this email.</p>

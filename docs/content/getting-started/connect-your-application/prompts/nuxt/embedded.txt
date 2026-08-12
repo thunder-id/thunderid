@@ -8,37 +8,44 @@ I have a Nuxt 3 application and I want to integrate {{productName}}'s authentica
 - Register the module in nuxt.config.ts
 - Configure via environment variables (no inline config)
 - Wrap app.vue content with <ThunderIDRoot>
-- Render sign-in on a custom page using the module's own SignIn component (not a redirect to {{productName}}-hosted pages)
+- Render sign-in and sign-up on custom pages using the module's own SignIn/SignUp components (not a redirect to {{productName}}-hosted pages)
 - Display signed-in user's profile information
 - Optionally protect pages with the built-in thunderIDMiddleware
 
 ## Configuration
 - **Application ID**: {{applicationId}}
 - **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **Client Secret**: `<your-client-secret>`
 - **Sign In Page**: /signin (custom page)
+- **Sign Up Page**: /signup (custom page)
 - **SDK**: @thunderid/nuxt
 
 ## IMPORTANT Configuration Rules
 - Add '@thunderid/nuxt' to the modules array in nuxt.config.ts — no other config needed there
 - All configuration is read from environment variables with NUXT_PUBLIC_ prefix for public values
-- Required env vars: NUXT_PUBLIC_THUNDERID_BASE_URL, NUXT_PUBLIC_THUNDERID_APPLICATION_ID, THUNDERID_SESSION_SECRET (without the NUXT_PUBLIC_ prefix)
+- Required env vars: NUXT_PUBLIC_THUNDERID_BASE_URL, NUXT_PUBLIC_THUNDERID_APPLICATION_ID, NUXT_PUBLIC_THUNDERID_SIGN_IN_URL, NUXT_PUBLIC_THUNDERID_SIGN_UP_URL, THUNDERID_CLIENT_SECRET, THUNDERID_SESSION_SECRET (the last two without the NUXT_PUBLIC_ prefix)
+- Never ask the developer to type or paste the Client Secret into this conversation. If it is not supplied above, add a `THUNDERID_CLIENT_SECRET` placeholder to `.env` and tell the developer to fill it in locally before running the app
+- Generate `THUNDERID_SESSION_SECRET` locally as a random, high-entropy value of at least 32 characters (e.g. `openssl rand -base64 32`) — never ask the developer for this value or guess one
 - Wrap <NuxtPage /> with <ThunderIDRoot> in app.vue
-- All components (`SignedIn`, `SignedOut`, `SignIn`, `SignOutButton`, `User`) and composables are auto-imported — no manual import needed
-- The `<SignIn>` component mirrors the Vue SDK's `SignIn`/`BaseSignIn` and drives the embedded (app-native) Flow Execution API directly — it replaces `window.location` navigation with Nuxt's `navigateTo` internally, so no manual redirect handling is needed
-- Render `<SignIn @success="..." @error="..." />` inside `<SignedOut>` on pages/signin.vue
+- All components are auto-registered under the `ThunderID` prefix (`ThunderIDSignedIn`, `ThunderIDSignedOut`, `ThunderIDSignIn`, `ThunderIDSignUp`, `ThunderIDSignInButton`, `ThunderIDSignOutButton`, `ThunderIDUserDropdown`, `ThunderIDUser`), and composables are auto-imported — no manual import needed. NEVER use bare names like `SignedIn` or `SignInButton`
+- The `<ThunderIDSignIn>`/`<ThunderIDSignUp>` components mirror the Vue SDK's `SignIn`/`SignUp` and drive the embedded (app-native) Flow Execution API directly — they replace `window.location` navigation with Nuxt's `navigateTo` internally, so no manual redirect handling is needed
+- Render `<ThunderIDSignIn @success="..." @error="..." />` directly on pages/signin.vue, and `<ThunderIDSignUp after-sign-up-url="/" />` directly on pages/signup.vue — no `ThunderIDSignedIn`/`ThunderIDSignedOut` wrapper needed
+- `<ThunderIDSignInButton>` navigates to the local `NUXT_PUBLIC_THUNDERID_SIGN_IN_URL` route rather than redirecting to a hosted page
 - Protect pages by adding definePageMeta({ middleware: ['thunderIDMiddleware'] })
-- NEVER redirect to a {{productName}}-hosted URL for sign-in in this mode
+- NEVER redirect to a {{productName}}-hosted URL for sign-in or sign-up in this mode
 
 ## Implementation Steps
 1. Create a Nuxt 3 app: npx nuxi@latest init my-nuxt-app
 2. Navigate into the project: cd my-nuxt-app && npm install
 3. Install @thunderid/nuxt: npm install @thunderid/nuxt
-4. Add '@thunderid/nuxt' to modules in nuxt.config.ts
-5. Create .env with NUXT_PUBLIC_THUNDERID_BASE_URL, NUXT_PUBLIC_THUNDERID_APPLICATION_ID, THUNDERID_SESSION_SECRET
-6. Wrap <NuxtPage /> with <ThunderIDRoot> in app.vue
-7. Create pages/signin.vue rendering `<SignedOut><SignIn @success="..." /></SignedOut>`
-8. Create pages/index.vue with SignedIn, SignOutButton, and User components
-9. Optionally add definePageMeta({ middleware: ['thunderIDMiddleware'] }) to protected pages
-10. Run: npm run dev
+4. If the client secret was not provided, add a `THUNDERID_CLIENT_SECRET` placeholder to `.env` and tell the developer to fill it in before running the app
+5. Add '@thunderid/nuxt' to modules in nuxt.config.ts
+6. Create .env with NUXT_PUBLIC_THUNDERID_BASE_URL, NUXT_PUBLIC_THUNDERID_APPLICATION_ID, NUXT_PUBLIC_THUNDERID_SIGN_IN_URL, NUXT_PUBLIC_THUNDERID_SIGN_UP_URL, THUNDERID_CLIENT_SECRET, and a locally generated THUNDERID_SESSION_SECRET
+7. Wrap <NuxtPage /> with <ThunderIDRoot> in app.vue
+8. Create pages/signin.vue rendering `<ThunderIDSignIn @success="..." />` directly
+9. Create pages/signup.vue rendering `<ThunderIDSignUp after-sign-up-url="/" />` directly
+10. Create pages/index.vue with ThunderIDSignedIn, ThunderIDSignInButton, ThunderIDSignedOut, and ThunderIDUserDropdown components
+11. Optionally add definePageMeta({ middleware: ['thunderIDMiddleware'] }) to protected pages
+12. Run: npm run dev
 
-Please provide complete, working code for {{productName}} authentication using the @thunderid/nuxt module, with a custom sign-in page rendering `<SignIn>` instead of a hosted-page redirect.
+Please provide complete, working code for {{productName}} authentication using the @thunderid/nuxt module, with custom sign-in/sign-up pages rendering `<ThunderIDSignIn>`/`<ThunderIDSignUp>` instead of a hosted-page redirect.

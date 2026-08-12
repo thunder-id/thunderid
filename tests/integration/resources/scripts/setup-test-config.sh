@@ -121,6 +121,12 @@ flow:
 server_config:
   store: composite
 
+openid4vci:
+  store: composite
+
+openid4vp:
+  store: composite
+
 oauth:
   allow_wildcard_redirect_uri: true
   send_server_errors_to_client: true

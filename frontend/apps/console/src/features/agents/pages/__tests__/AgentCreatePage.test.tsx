@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-/* eslint-disable @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, react/require-default-props */
+/* eslint-disable @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
 import userEvent from '@testing-library/user-event';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -24,11 +24,14 @@ const {
   mockUseAgentCreate: vi.fn(),
 }));
 
+let mockPathname = '/agents/create';
+
 vi.mock('react-router', async () => {
   const actual = await vi.importActual('react-router');
   return {
     ...actual,
     useNavigate: () => mockNavigate,
+    useLocation: () => ({pathname: mockPathname}),
   };
 });
 
@@ -44,13 +47,24 @@ vi.mock('@thunderid/configure-organization-units', () => ({
     data: id ? {id, name: 'Test Organization Unit'} : undefined,
     isLoading: false,
   }),
-  OrganizationUnitPickerScreen: ({onChange, onContinue}: {onChange: (id: string) => void; onContinue: () => void}) => (
+  OrganizationUnitPickerScreen: ({
+    onChange,
+    onContinue,
+    onBack,
+  }: {
+    onChange: (id: string) => void;
+    onContinue: () => void;
+    onBack: () => void;
+  }) => (
     <div data-testid="step-organization-unit">
       <button type="button" onClick={() => onChange('ou-2')}>
         Select OU
       </button>
       <button type="button" onClick={onContinue}>
         OU Continue
+      </button>
+      <button type="button" onClick={onBack}>
+        OU Back
       </button>
     </div>
   ),
@@ -127,6 +141,7 @@ describe('AgentCreatePage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPathname = '/agents/create';
     agentCreateState = {
       currentStep: AgentCreateFlowStep.NAME,
       selectedSchema: {id: 'schema-1', name: 'default', ouId: 'ou-1'},
@@ -192,6 +207,62 @@ describe('AgentCreatePage', () => {
     await user.click(closeButton);
 
     expect(mockNavigate).toHaveBeenCalledWith('/agents');
+  });
+
+  it('renders the Agents breadcrumb outside the welcome flow', () => {
+    render(<AgentCreatePage />);
+
+    expect(screen.getByText('Agents')).toBeInTheDocument();
+  });
+
+  describe('welcome flow', () => {
+    beforeEach(() => {
+      mockPathname = '/welcome/get-started/agents/create';
+    });
+
+    it('renders the welcome breadcrumb trail', () => {
+      render(<AgentCreatePage />);
+
+      expect(screen.getByText('common:welcome.header')).toBeInTheDocument();
+      expect(screen.getByText('common:welcome.createProject.breadcrumb')).toBeInTheDocument();
+      expect(screen.getByText('common:welcome.getStarted.breadcrumb')).toBeInTheDocument();
+      expect(screen.queryByText('Agents')).not.toBeInTheDocument();
+    });
+
+    it('navigates to the Get Started page from the breadcrumb', async () => {
+      const user = userEvent.setup();
+      render(<AgentCreatePage />);
+
+      await user.click(screen.getByText('common:welcome.getStarted.breadcrumb'));
+
+      expect(mockNavigate).toHaveBeenCalledWith('/welcome/get-started');
+    });
+
+    it('navigates to /home when close button is clicked', async () => {
+      const user = userEvent.setup();
+      render(<AgentCreatePage />);
+
+      const closeButton = screen.getAllByRole('button')[0];
+      await user.click(closeButton);
+
+      expect(mockNavigate).toHaveBeenCalledWith('/home');
+    });
+
+    it('goes back to the Get Started page from the organization unit step', async () => {
+      const user = userEvent.setup();
+      agentCreateState.currentStep = AgentCreateFlowStep.ORGANIZATION_UNIT;
+      mockUseGetChildOrganizationUnits.mockReturnValue({
+        data: {totalResults: 2},
+        isLoading: false,
+        error: null,
+      });
+
+      render(<AgentCreatePage />);
+
+      await user.click(screen.getByRole('button', {name: 'OU Back'}));
+
+      expect(mockNavigate).toHaveBeenCalledWith('/welcome/get-started');
+    });
   });
 
   it('disables the continue button until the step reports ready', () => {

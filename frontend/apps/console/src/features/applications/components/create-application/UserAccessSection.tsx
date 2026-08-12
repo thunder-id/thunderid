@@ -30,7 +30,7 @@ export interface UserAccessSectionProps {
 const AUTOCOMPLETE_THRESHOLD = 5;
 
 /**
- * Lets an admin restrict which user types can authenticate against the application being
+ * Lets an admin restrict which user types can sign up through the application being
  * created, using the same master-checkbox-plus-expandable-list pattern as
  * OrganizationUnitDefaultsSection. Renders nothing when the deployment has fewer than two user
  * types, since a single type is used implicitly.
@@ -69,7 +69,7 @@ export default function UserAccessSection({
 
   const title = t(
     'applications:onboarding.configure.applicationDetails.userAccess.title',
-    'Allow all user types to access this application',
+    'Allow all user types to sign up for this application',
   );
 
   return (
@@ -82,7 +82,7 @@ export default function UserAccessSection({
         title={title}
         subtitle={t(
           'applications:onboarding.configure.applicationDetails.userAccess.subtitle',
-          'Every user type can sign in to this application',
+          'Users can sign up as any user type',
         )}
         error={
           noneSelected

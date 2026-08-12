@@ -1882,22 +1882,9 @@
               "y": 600
             },
             "data": {
-              "prompts": [
-                {
-                  "inputs": [
-                    {
-                      "ref": "magic_link_token_input",
-                      "identifier": "magicLinkToken",
-                      "type": "HIDDEN",
-                      "required": true
-                    }
-                  ],
-                  "action": {
-                    "ref": "magic_link_action",
-                    "nextNode": "{{MAGIC_VERIFY_EXECUTOR}}"
-                  }
-                }
-              ],
+              "action": {
+                "onSuccess": "{{MAGIC_VERIFY_EXECUTOR}}"
+              },
               "components": [
                 {
                   "alt": "{{ t(signin:images.app_logo.alt) }}",

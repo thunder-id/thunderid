@@ -15,6 +15,7 @@ import EditCustomizationSettings from '../../components/edit-application/customi
 import McpConnectTab from '../../components/edit-application/mcp/McpConnectTab';
 import EditTokenSettings from '../../components/edit-application/token-settings/EditTokenSettings';
 import EditTokenSettingsTabs from '../../components/edit-application/token-settings/EditTokenSettingsTabs';
+import ApplicationConstants from '../../constants/application-constants';
 import {getIntegrationGuideForTemplate} from '../../utils/getIntegrationGuidesForTemplate';
 import getTemplateMetadata from '../../utils/getTemplateMetadata';
 import ApplicationEditPage from '../ApplicationEditPage';
@@ -935,6 +936,22 @@ describe('ApplicationEditPage', () => {
       await waitFor(() => {
         expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
       });
+    });
+
+    it('should discard a rename that exceeds the maximum length', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      const section = screen.getByText('Test Application').closest('div');
+      await user.click(section!.querySelector('button')!);
+      const input = screen.getByRole('textbox');
+      fireEvent.change(input, {target: {value: 'a'.repeat(ApplicationConstants.NAME_MAX_LENGTH + 1)}});
+      fireEvent.keyDown(input, {key: 'Enter'});
+
+      await waitFor(() => {
+        expect(screen.getByText('Test Application')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
     });
 
     it('should keep the action bar visible if only one of two edited fields is reverted', async () => {

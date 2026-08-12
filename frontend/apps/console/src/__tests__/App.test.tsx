@@ -54,6 +54,10 @@ vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   TrustedIssuerDetailPage: () => <div data-testid="trusted-issuer-detail-page">Trusted Issuer Detail Page</div>,
 }));
 
+vi.mock('../features/agents/pages/AgentEditPage', () => ({
+  default: () => <div data-testid="agent-edit-page">Agent Edit Page</div>,
+}));
+
 vi.mock('../features/applications/pages/ApplicationsListPage', () => ({
   default: () => <div data-testid="applications-list-page">Applications List Page</div>,
 }));
@@ -142,6 +146,14 @@ describe('App', () => {
     render(<App />);
     await waitFor(() => {
       expect(screen.getByTestId('application-edit-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads AgentEditPage lazily via the monaco-setup chain', async () => {
+    window.history.pushState({}, '', '/agents/agent-123');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('agent-edit-page')).toBeInTheDocument();
     });
   });
 

@@ -150,8 +150,23 @@ func ToBool(v any) (bool, bool) {
 	}
 }
 
-// SecondsToMinutes converts seconds to minutes and returns as a string.
-func SecondsToMinutes(seconds int64) string {
-	minutes := seconds / 60
-	return strconv.FormatInt(minutes, 10)
+// FormatExpiryDuration converts a duration in seconds into a human readable string using the
+// largest unit that divides the value evenly, so the rendered duration is never rounded.
+func FormatExpiryDuration(seconds int64) string {
+	if seconds <= 0 {
+		return "0 seconds"
+	}
+
+	value, unit := seconds, "second"
+	switch {
+	case seconds%3600 == 0:
+		value, unit = seconds/3600, "hour"
+	case seconds%60 == 0:
+		value, unit = seconds/60, "minute"
+	}
+
+	if value > 1 {
+		unit += "s"
+	}
+	return strconv.FormatInt(value, 10) + " " + unit
 }

@@ -798,7 +798,17 @@
             "name": "PasskeyAuthExecutor",
             "mode": "verify"
           },
-          "onSuccess": "auth_assert"
+          "onSuccess": "authorization_check"
+        },
+        {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "executor": {"name": "AuthorizationExecutor"},
+          "onSuccess": "auth_assert",
+          "layout": {
+            "size": {"width": 200, "height": 113},
+            "position": {"x": 2113, "y": 303}
+          }
         },
         {
           "id": "auth_assert",
@@ -809,7 +819,7 @@
               "height": 113
             },
             "position": {
-              "x": 2113,
+              "x": 2613,
               "y": 303
             }
           },
@@ -827,7 +837,7 @@
               "height": 34
             },
             "position": {
-              "x": 2657,
+              "x": 3157,
               "y": 343
             }
           }
@@ -1061,8 +1071,18 @@
             "name": "MagicLinkExecutor",
             "mode": "verify"
           },
-          "onSuccess": "auth_assert",
+          "onSuccess": "authorization_check",
           "onFailure": "prompt_email"
+        },
+        {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "executor": {"name": "AuthorizationExecutor"},
+          "onSuccess": "auth_assert",
+          "layout": {
+            "size": {"width": 200, "height": 113},
+            "position": {"x": 1760, "y": 353}
+          }
         },
         {
           "id": "auth_assert",
@@ -1073,7 +1093,7 @@
               "height": 113
             },
             "position": {
-              "x": 1760,
+              "x": 2260,
               "y": 353
             }
           },
@@ -1091,7 +1111,7 @@
               "height": 34
             },
             "position": {
-              "x": 2100,
+              "x": 2600,
               "y": 393
             }
           }
@@ -1378,7 +1398,17 @@
             "name": "OTPExecutor",
             "mode": "verify"
           },
-          "onSuccess": "auth_assert"
+          "onSuccess": "authorization_check"
+        },
+        {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "executor": {"name": "AuthorizationExecutor"},
+          "onSuccess": "auth_assert",
+          "layout": {
+            "size": {"width": 200, "height": 113},
+            "position": {"x": 2260, "y": 353}
+          }
         },
         {
           "id": "auth_assert",
@@ -1389,7 +1419,7 @@
               "height": 113
             },
             "position": {
-              "x": 2260,
+              "x": 2760,
               "y": 353
             }
           },
@@ -1407,7 +1437,7 @@
               "height": 34
             },
             "position": {
-              "x": 2630,
+              "x": 3130,
               "y": 393
             }
           }
@@ -1702,7 +1732,17 @@
             "name": "OTPExecutor",
             "mode": "verify"
           },
-          "onSuccess": "auth_assert"
+          "onSuccess": "authorization_check"
+        },
+        {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "executor": {"name": "AuthorizationExecutor"},
+          "onSuccess": "auth_assert",
+          "layout": {
+            "size": {"width": 200, "height": 113},
+            "position": {"x": 2260, "y": 353}
+          }
         },
         {
           "id": "auth_assert",
@@ -1713,7 +1753,7 @@
               "height": 113
             },
             "position": {
-              "x": 2260,
+              "x": 2760,
               "y": 353
             }
           },
@@ -1731,7 +1771,7 @@
               "height": 34
             },
             "position": {
-              "x": 2630,
+              "x": 3130,
               "y": 393
             }
           }
@@ -1806,7 +1846,7 @@
           "executor": {
             "name": "ProvisioningExecutor"
           },
-          "onSuccess": "auth_assert",
+          "onSuccess": "authorization_check",
           "layout": {
             "size": {
               "width": 200,
@@ -1871,6 +1911,16 @@
           }
         },
         {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "executor": {"name": "AuthorizationExecutor"},
+          "onSuccess": "auth_assert",
+          "layout": {
+            "size": {"width": 200, "height": 113},
+            "position": {"x": 1126, "y": 64}
+          }
+        },
+        {
           "id": "auth_assert",
           "type": "TASK_EXECUTION",
           "executor": {
@@ -1883,7 +1933,7 @@
               "height": 113
             },
             "position": {
-              "x": 1126,
+              "x": 1626,
               "y": 64
             }
           }
@@ -1897,7 +1947,7 @@
               "height": 34
             },
             "position": {
-              "x": 1495,
+              "x": 1995,
               "y": 105
             }
           }
@@ -1972,7 +2022,7 @@
           "executor": {
             "name": "ProvisioningExecutor"
           },
-          "onSuccess": "auth_assert",
+          "onSuccess": "authorization_check",
           "layout": {
             "size": {
               "width": 200,
@@ -2037,6 +2087,16 @@
           }
         },
         {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "executor": {"name": "AuthorizationExecutor"},
+          "onSuccess": "auth_assert",
+          "layout": {
+            "size": {"width": 200, "height": 113},
+            "position": {"x": 1126, "y": 64}
+          }
+        },
+        {
           "id": "auth_assert",
           "type": "TASK_EXECUTION",
           "executor": {
@@ -2049,7 +2109,7 @@
               "height": 113
             },
             "position": {
-              "x": 1126,
+              "x": 1626,
               "y": 64
             }
           }
@@ -2063,7 +2123,7 @@
               "height": 34
             },
             "position": {
-              "x": 1495,
+              "x": 1995,
               "y": 105
             }
           }
@@ -2257,7 +2317,7 @@
           "executor": {
             "name": "ProvisioningExecutor"
           },
-          "onSuccess": "auth_assert",
+          "onSuccess": "authorization_check",
           "layout": {
             "size": {
               "width": 200,
@@ -2322,6 +2382,16 @@
           }
         },
         {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "executor": {"name": "AuthorizationExecutor"},
+          "onSuccess": "auth_assert",
+          "layout": {
+            "size": {"width": 200, "height": 113},
+            "position": {"x": 1809, "y": 454}
+          }
+        },
+        {
           "id": "auth_assert",
           "type": "TASK_EXECUTION",
           "layout": {
@@ -2330,7 +2400,7 @@
               "height": 113
             },
             "position": {
-              "x": 1809,
+              "x": 2309,
               "y": 454
             }
           },
@@ -2348,7 +2418,7 @@
               "height": 34
             },
             "position": {
-              "x": 2190,
+              "x": 2690,
               "y": 493
             }
           }
@@ -2550,7 +2620,7 @@
               }
             ]
           },
-          "onSuccess": "auth_assert"
+          "onSuccess": "authorization_check"
         },
         {
           "id": "google_auth",
@@ -2588,7 +2658,7 @@
           "executor": {
             "name": "ProvisioningExecutor"
           },
-          "onSuccess": "auth_assert",
+          "onSuccess": "authorization_check",
           "layout": {
             "size": {
               "width": 200,
@@ -2653,6 +2723,16 @@
           }
         },
         {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "executor": {"name": "AuthorizationExecutor"},
+          "onSuccess": "auth_assert",
+          "layout": {
+            "size": {"width": 200, "height": 113},
+            "position": {"x": 1655, "y": 397}
+          }
+        },
+        {
           "id": "auth_assert",
           "type": "TASK_EXECUTION",
           "layout": {
@@ -2661,7 +2741,7 @@
               "height": 113
             },
             "position": {
-              "x": 1655,
+              "x": 2155,
               "y": 397
             }
           },
@@ -2679,7 +2759,7 @@
               "height": 34
             },
             "position": {
-              "x": 2019,
+              "x": 2519,
               "y": 436
             }
           }
@@ -2881,7 +2961,7 @@
               }
             ]
           },
-          "onSuccess": "auth_assert"
+          "onSuccess": "authorization_check"
         },
         {
           "id": "github_auth",
@@ -2919,7 +2999,7 @@
           "executor": {
             "name": "ProvisioningExecutor"
           },
-          "onSuccess": "auth_assert",
+          "onSuccess": "authorization_check",
           "layout": {
             "size": {
               "width": 200,
@@ -2984,6 +3064,16 @@
           }
         },
         {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "executor": {"name": "AuthorizationExecutor"},
+          "onSuccess": "auth_assert",
+          "layout": {
+            "size": {"width": 200, "height": 113},
+            "position": {"x": 1655, "y": 397}
+          }
+        },
+        {
           "id": "auth_assert",
           "type": "TASK_EXECUTION",
           "layout": {
@@ -2992,7 +3082,7 @@
               "height": 113
             },
             "position": {
-              "x": 1655,
+              "x": 2155,
               "y": 397
             }
           },
@@ -3010,7 +3100,7 @@
               "height": 34
             },
             "position": {
-              "x": 2019,
+              "x": 2519,
               "y": 436
             }
           }
@@ -3237,7 +3327,7 @@
               }
             ]
           },
-          "onSuccess": "auth_assert"
+          "onSuccess": "authorization_check"
         },
         {
           "id": "google_auth",
@@ -3305,7 +3395,7 @@
           "executor": {
             "name": "ProvisioningExecutor"
           },
-          "onSuccess": "auth_assert",
+          "onSuccess": "authorization_check",
           "layout": {
             "size": {
               "width": 200,
@@ -3370,6 +3460,16 @@
           }
         },
         {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "executor": {"name": "AuthorizationExecutor"},
+          "onSuccess": "auth_assert",
+          "layout": {
+            "size": {"width": 200, "height": 113},
+            "position": {"x": 1660, "y": 485}
+          }
+        },
+        {
           "id": "auth_assert",
           "type": "TASK_EXECUTION",
           "layout": {
@@ -3378,7 +3478,7 @@
               "height": 113
             },
             "position": {
-              "x": 1660,
+              "x": 2160,
               "y": 485
             }
           },
@@ -3396,7 +3496,7 @@
               "height": 34
             },
             "position": {
-              "x": 2035,
+              "x": 2535,
               "y": 313
             }
           }
@@ -3707,7 +3807,7 @@
             "name": "PasskeyAuthExecutor",
             "mode": "verify"
           },
-          "onSuccess": "auth_assert"
+          "onSuccess": "authorization_check"
         },
         {
           "id": "prompt_password_for_registration",
@@ -3865,7 +3965,7 @@
             "name": "PasskeyAuthExecutor",
             "mode": "register_finish"
           },
-          "onSuccess": "auth_assert"
+          "onSuccess": "authorization_check"
         },
         {
           "id": "credentials_auth",
@@ -3897,7 +3997,17 @@
               }
             ]
           },
-          "onSuccess": "auth_assert"
+          "onSuccess": "authorization_check"
+        },
+        {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "executor": {"name": "AuthorizationExecutor"},
+          "onSuccess": "auth_assert",
+          "layout": {
+            "size": {"width": 200, "height": 113},
+            "position": {"x": 4634, "y": 313}
+          }
         },
         {
           "id": "auth_assert",
@@ -3908,7 +4018,7 @@
               "height": 113
             },
             "position": {
-              "x": 4634,
+              "x": 5134,
               "y": 313
             }
           },
@@ -3926,7 +4036,7 @@
               "height": 34
             },
             "position": {
-              "x": 5134,
+              "x": 5634,
               "y": 347
             }
           }
@@ -4296,8 +4406,18 @@
             "name": "MagicLinkExecutor",
             "mode": "verify"
           },
-          "onSuccess": "auth_assert",
+          "onSuccess": "authorization_check",
           "onFailure": "prompt_credentials"
+        },
+        {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "executor": {"name": "AuthorizationExecutor"},
+          "onSuccess": "auth_assert",
+          "layout": {
+            "size": {"width": 200, "height": 113},
+            "position": {"x": 2420, "y": 381}
+          }
         },
         {
           "id": "auth_assert",
@@ -4308,7 +4428,7 @@
               "height": 113
             },
             "position": {
-              "x": 2420,
+              "x": 2920,
               "y": 381
             }
           },
@@ -4326,7 +4446,7 @@
               "height": 34
             },
             "position": {
-              "x": 2764,
+              "x": 3264,
               "y": 419
             }
           }
@@ -4553,7 +4673,7 @@
               }
             ]
           },
-          "onSuccess": "generate_otp",
+          "onSuccess": "attribute_collect",
           "onIncomplete": "choose_auth"
         },
         {
@@ -4622,7 +4742,7 @@
           "executor": {
             "name": "ProvisioningExecutor"
           },
-          "onSuccess": "generate_otp",
+          "onSuccess": "attribute_collect",
           "layout": {
             "size": {
               "width": 200,
@@ -4685,6 +4805,115 @@
               "y": -14
             }
           }
+        },
+        {
+          "id": "attribute_collect",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1275,
+              "y": 546
+            }
+          },
+          "executor": {
+            "name": "AttributeCollector",
+            "inputs": [
+              {
+                "ref": "input_mobile",
+                "type": "PHONE_INPUT",
+                "identifier": "mobile_number",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "generate_otp",
+          "onIncomplete": "prompt_mobile"
+        },
+        {
+          "id": "prompt_mobile",
+          "type": "PROMPT",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 603
+            },
+            "position": {
+              "x": 1275,
+              "y": 750
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signin:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image_logo_phone_signin",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "category": "DISPLAY",
+                "id": "display_phone_heading_signin",
+                "label": "{{ t(signin:forms.phone.title) }}",
+                "resourceType": "ELEMENT",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "category": "BLOCK",
+                "components": [
+                  {
+                    "category": "FIELD",
+                    "hint": "",
+                    "id": "input_phone_signin",
+                    "inputType": "tel",
+                    "label": "{{ t(signin:forms.phone.fields.phone.label) }}",
+                    "placeholder": "{{ t(signin:forms.phone.fields.phone.placeholder) }}",
+                    "ref": "mobile_number",
+                    "required": true,
+                    "resourceType": "ELEMENT",
+                    "type": "TEXT_INPUT"
+                  },
+                  {
+                    "category": "ACTION",
+                    "eventType": "SUBMIT",
+                    "id": "action_phone_signin",
+                    "label": "{{ t(signin:forms.phone.actions.submit.label) }}",
+                    "resourceType": "ELEMENT",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_phone_signin",
+                "resourceType": "ELEMENT",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_phone_signin",
+                  "type": "PHONE_INPUT",
+                  "identifier": "mobile_number",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_phone_signin",
+                "nextNode": "attribute_collect"
+              }
+            }
+          ]
         },
         {
           "id": "generate_otp",
@@ -4842,7 +5071,17 @@
             "name": "OTPExecutor",
             "mode": "verify"
           },
-          "onSuccess": "auth_assert"
+          "onSuccess": "authorization_check"
+        },
+        {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "executor": {"name": "AuthorizationExecutor"},
+          "onSuccess": "auth_assert",
+          "layout": {
+            "size": {"width": 200, "height": 113},
+            "position": {"x": 2657, "y": 542}
+          }
         },
         {
           "id": "auth_assert",
@@ -4853,7 +5092,7 @@
               "height": 113
             },
             "position": {
-              "x": 2657,
+              "x": 3157,
               "y": 542
             }
           },
@@ -4871,7 +5110,7 @@
               "height": 34
             },
             "position": {
-              "x": 3006,
+              "x": 3506,
               "y": 579
             }
           }
@@ -9818,7 +10057,7 @@
           "executor": {
             "name": "CredentialsAuthExecutor"
           },
-          "onSuccess": "generate_otp",
+          "onSuccess": "prompt_mobile",
           "onFailure": "choose_auth",
           "onIncomplete": "choose_auth"
         },
@@ -10845,7 +11084,7 @@
               }
             ]
           },
-          "onSuccess": "invite_verify",
+          "onSuccess": "invite_sent",
           "layout": {
             "size": {
               "width": 200,
@@ -10856,6 +11095,37 @@
               "y": 835
             }
           }
+        },
+        {
+          "id": "invite_sent",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "invite_sent_icon",
+                "label": "✅",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "invite_sent_heading",
+                "label": "{{ t(onboarding:forms.invite_email_sent.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "invite_sent_message",
+                "label": "{{ t(onboarding:forms.invite_email_sent.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "Invitation sent",
+          "next": "invite_verify"
         },
         {
           "id": "invite_verify",
@@ -11055,7 +11325,7 @@
           "executor": {
             "name": "ProvisioningExecutor"
           },
-          "onSuccess": "end",
+          "onSuccess": "registration_complete",
           "layout": {
             "size": {
               "width": 200,
@@ -11067,6 +11337,36 @@
             }
           },
           "onIncomplete": "prompt_schema_attrs"
+        },
+        {
+          "id": "registration_complete",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "registration_complete_icon",
+                "label": "✅",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "registration_complete_heading",
+                "label": "{{ t(invite:complete.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "registration_complete_message",
+                "label": "{{ t(invite:complete.description) }}"
+              }
+            ]
+          },
+          "message": "Registration complete",
+          "next": "end"
         },
         {
           "id": "prompt_schema_attrs",
@@ -14554,6 +14854,10 @@
               "type": "ID"
             },
             {
+              "key": "MOBILE_PROMPT_STEP_ID",
+              "type": "ID"
+            },
+            {
               "key": "SMS_SEND_EXECUTOR_ID",
               "type": "ID"
             },
@@ -14665,6 +14969,37 @@
                 "executor": {
                   "name": "CredentialsAuthExecutor"
                 },
+                "onSuccess": "{{MOBILE_PROMPT_STEP_ID}}",
+                "onFailure": "",
+                "onIncomplete": ""
+              }
+            }
+          },
+          {
+            "id": "{{MOBILE_PROMPT_STEP_ID}}",
+            "type": "TASK_EXECUTION",
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1010,
+              "y": 291
+            },
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "AttributeCollector",
+                  "inputs": [
+                    {
+                      "ref": "mobile_number",
+                      "type": "PHONE_INPUT",
+                      "identifier": "mobile_number",
+                      "required": true
+                    }
+                  ]
+                },
                 "onSuccess": "{{SMS_SEND_EXECUTOR_ID}}",
                 "onFailure": "",
                 "onIncomplete": ""
@@ -14687,7 +15022,15 @@
                 "type": "EXECUTOR",
                 "executor": {
                   "name": "OTPExecutor",
-                  "mode": "generate"
+                  "mode": "generate",
+                  "inputs": [
+                    {
+                      "ref": "mobile_number",
+                      "type": "PHONE_INPUT",
+                      "identifier": "mobile_number",
+                      "required": true
+                    }
+                  ]
                 },
                 "onSuccess": "{{SMS_EXECUTOR_ID}}",
                 "onFailure": "",
@@ -15707,22 +16050,9 @@
               "y": 450
             },
             "data": {
-              "prompts": [
-                {
-                  "inputs": [
-                    {
-                      "ref": "magic_link_token_input",
-                      "identifier": "magicLinkToken",
-                      "type": "HIDDEN",
-                      "required": true
-                    }
-                  ],
-                  "action": {
-                    "ref": "magic_link_action",
-                    "nextNode": "{{VERIFY_LINK_ID}}"
-                  }
-                }
-              ],
+              "action": {
+                "onSuccess": "{{VERIFY_LINK_ID}}"
+              },
               "components": [
                 {
                   "alt": "{{ t(signin:images.app_logo.alt) }}",

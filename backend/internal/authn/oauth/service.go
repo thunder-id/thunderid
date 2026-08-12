@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/idp"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
+	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -296,7 +297,7 @@ func (s *oAuthAuthnService) GetInternalUser(
 }
 
 // Authenticate performs the full OAuth authentication flow: exchanges the code for a token,
-// fetches user info, extracts the subject claim, and resolves the internal user.
+// resolves the user attributes, extracts the subject claim, and resolves the internal user.
 // A missing internal user is NOT an error — the caller decides how to handle it.
 func (s *oAuthAuthnService) Authenticate(ctx context.Context, idpID string,
 	authzData common.AuthorizationData) (*common.AuthnResult, *tidcommon.ServiceError) {
@@ -308,7 +309,12 @@ func (s *oAuthAuthnService) Authenticate(ctx context.Context, idpID string,
 		return nil, svcErr
 	}
 
-	userInfo, svcErr := s.FetchUserInfo(ctx, idpID, tokenResp.AccessToken)
+	oAuthClientConfig, svcErr := s.GetOAuthClientConfig(ctx, idpID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	userInfo, svcErr := s.resolveUserAttributes(ctx, oAuthClientConfig, tokenResp, logger)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -325,6 +331,32 @@ func (s *oAuthAuthnService) Authenticate(ctx context.Context, idpID string,
 	}
 
 	return s.BuildFederatedAuthResult(ctx, idpID, sub, userInfo)
+}
+
+// resolveUserAttributes reads the federated user's attributes from the provider's profile endpoint,
+// falling back to the subject in a JWT access token for providers that expose no profile API. Only
+// the subject is taken from the token: its other claims address the resource server, not the user.
+func (s *oAuthAuthnService) resolveUserAttributes(ctx context.Context, oAuthClientConfig *OAuthClientConfig,
+	tokenResp *TokenResponse, logger *log.Logger) (map[string]interface{}, *tidcommon.ServiceError) {
+	if oAuthClientConfig.OAuthEndpoints.UserInfoEndpoint != "" {
+		return s.FetchUserInfoWithClientConfig(ctx, oAuthClientConfig, tokenResp.AccessToken)
+	}
+
+	logger.Debug(ctx, "User profile endpoint is not configured, deriving the subject from the access token")
+
+	claims, err := jwt.DecodeJWTPayload(tokenResp.AccessToken)
+	if err != nil {
+		logger.Debug(ctx, "Access token is not a JWT and no user profile endpoint is configured")
+		return nil, &ErrorNoUserProfileSource
+	}
+
+	sub, ok := claims["sub"].(string)
+	if !ok || sub == "" {
+		logger.Debug(ctx, "Access token carries no string sub claim and no user profile endpoint is configured")
+		return nil, &ErrorNoUserProfileSource
+	}
+
+	return map[string]interface{}{"sub": sub}, nil
 }
 
 // BuildFederatedAuthResult maps the federated identity's raw claims to local attributes and derives

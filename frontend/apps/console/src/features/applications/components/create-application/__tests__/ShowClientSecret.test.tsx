@@ -70,8 +70,40 @@ describe('ShowClientSecret', () => {
     it('should render action buttons', () => {
       renderComponent();
 
-      expect(screen.getByRole('button', {name: /copy secret/i})).toBeInTheDocument();
+      expect(screen.getByTestId('application-copy-secret-button')).toHaveTextContent(/copy client secret/i);
       expect(screen.getByRole('button', {name: /continue/i})).toBeInTheDocument();
+    });
+  });
+
+  describe('flow secret copy', () => {
+    it('should name the Flow Secret when only a Flow Secret is issued', () => {
+      renderComponent({clientSecret: '', flowSecret: 'flow_secret_12345'});
+
+      expect(screen.getByRole('heading', {level: 1, name: /save your flow secret/i})).toBeInTheDocument();
+      expect(screen.getByText(/only time you'll see this secret\. Store it somewhere safe\./i)).toBeInTheDocument();
+      expect(screen.getByText(/your flow secret is a confidential key/i)).toBeInTheDocument();
+      expect(screen.getByTestId('application-copy-secret-button')).toHaveTextContent(/copy flow secret/i);
+      expect(screen.queryByText(/your client secret is a confidential key/i)).not.toBeInTheDocument();
+    });
+
+    it('should copy the Flow Secret from the main copy button when it is the only secret', async () => {
+      const user = userEvent.setup();
+      renderComponent({clientSecret: '', flowSecret: 'flow_secret_12345'});
+
+      await user.click(screen.getByTestId('application-copy-secret-button'));
+
+      await waitFor(() => {
+        expect(mockCopy).toHaveBeenCalledWith('flow_secret_12345');
+      });
+    });
+
+    it('should use neutral copy when both secrets are issued', () => {
+      renderComponent({flowSecret: 'flow_secret_12345'});
+
+      expect(screen.getByRole('heading', {level: 1, name: /save your secrets/i})).toBeInTheDocument();
+      expect(screen.getByText(/only time you'll see these secrets\. Store them somewhere safe\./i)).toBeInTheDocument();
+      expect(screen.getByText(/these secrets are confidential keys/i)).toBeInTheDocument();
+      expect(screen.getByTestId('application-copy-secret-button')).toHaveTextContent(/copy client secret/i);
     });
   });
 
@@ -103,7 +135,7 @@ describe('ShowClientSecret', () => {
       const user = userEvent.setup();
       renderComponent();
 
-      const copyButton = screen.getByRole('button', {name: 'Copy Client Secret'});
+      const copyButton = screen.getAllByRole('button', {name: 'Copy Client Secret'})[0];
 
       await user.click(copyButton);
 
@@ -116,7 +148,7 @@ describe('ShowClientSecret', () => {
       const user = userEvent.setup();
       renderComponent();
 
-      const mainCopyButton = screen.getByRole('button', {name: /copy secret/i});
+      const mainCopyButton = screen.getByTestId('application-copy-secret-button');
       await user.click(mainCopyButton);
 
       await waitFor(() => {

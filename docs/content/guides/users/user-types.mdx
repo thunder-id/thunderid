@@ -28,17 +28,21 @@ Each user type belongs to a single OU. Users of that type can only exist under t
 
 | User Type | Description | Organization Unit | Self-Registration |
 |-----------|-------------|-------------------|-------------------|
-| **Person** | Internal or admin-managed users, such as staff or service accounts. | Default | Not allowed |
+| **Person** | The general-purpose user type used by the default sign-in and registration flows. | Default | Allowed |
 
 
 ## Create a User Type
 
 1. Navigate to **User Types** in the <ProductName /> Console and click **Create User Type**.
 2. Enter a **Name** for the user type. The name is used as the type identifier and must be unique.
-3. Select the **Organization Unit** this user type should belong. A user of this type can only be created under this OU or one of its descendants in the hierarchy. See [Organization Units](../../organization-units/) for more information.
-4. Select whether to allow self-registration. Enabling this allows users of this type to sign up through the registration flow assigned to your application.
+3. Select the **Organization Unit** this user type should belong to. A user of this type can only be created under this OU or one of its descendants in the hierarchy. See [Organization Units](../../organization-units/) for more information.
+4. Configure **Allow Self Registration**. When enabled, users of this type can sign up through the registration flow assigned to your application.
 5. Set the attributes that the user type should have, including data types and constraint modifiers. See [User Type Reference](../user-type-reference) for details on available settings and attribute options.
-7. Click **Create User Attribute**. 
+6. Click **Create User Type**.
+
+:::note
+**Allow Self Registration** applies to every application that allows the user type. When first-time users sign in with a social identity provider, an application must allow exactly one user type with this setting enabled. The default **Person** type already has it enabled. See [Application Settings](../../applications/application-settings#control-who-can-register).
+:::
 
 ## Update a User Type
 

@@ -28,7 +28,6 @@ type connectionExportModel struct {
 	TokenEndpoint         string   `yaml:"tokenEndpoint,omitempty"         json:"tokenEndpoint,omitempty"`
 	UserInfoEndpoint      string   `yaml:"userInfoEndpoint,omitempty"      json:"userInfoEndpoint,omitempty"`
 	JwksEndpoint          string   `yaml:"jwksEndpoint,omitempty"          json:"jwksEndpoint,omitempty"`
-	LogoutEndpoint        string   `yaml:"logoutEndpoint,omitempty"        json:"logoutEndpoint,omitempty"`
 	Issuer                string   `yaml:"issuer,omitempty"                json:"issuer,omitempty"`
 	TokenExchangeEnabled  *bool    `yaml:"tokenExchangeEnabled,omitempty"  json:"tokenExchangeEnabled,omitempty"`
 	TrustedTokenAudience  string   `yaml:"trustedTokenAudience,omitempty"  json:"trustedTokenAudience,omitempty"`

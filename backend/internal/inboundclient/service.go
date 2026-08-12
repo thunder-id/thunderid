@@ -604,7 +604,21 @@ func BuildOAuthClient(
 // server-level default configured; registration/recovery/signout server defaults are intentionally
 // left empty to prevent CALL-node mismatches across independently configured flows).
 func (s *inboundClientService) resolveFlowDefaults(ctx context.Context, c *inboundmodel.InboundClient) error {
-	if s.flowMgt == nil || c == nil {
+	if c == nil {
+		return nil
+	}
+
+	// Drop registration/recovery bindings whose enable flag is false before any resolution so we
+	// never persist an ID that contradicts the toggle. This must run regardless of whether flowMgt
+	// is wired — persistence should still respect the caller's disabled intent.
+	if !c.IsRegistrationFlowEnabled {
+		c.RegistrationFlowID = ""
+	}
+	if !c.IsRecoveryFlowEnabled {
+		c.RecoveryFlowID = ""
+	}
+
+	if s.flowMgt == nil {
 		return nil
 	}
 
@@ -640,22 +654,27 @@ func (s *inboundClientService) resolveFlowDefaults(ctx context.Context, c *inbou
 	}
 	c.AuthFlowID = authID
 
-	regID, err := resolve(c.RegistrationFlowID, providers.FlowTypeRegistration)
-	if err != nil {
-		return err
+	// Try to resolve the registration and recovery flows if they are enabled.
+	// If the resolved ID is empty, disable the flow.
+	if c.IsRegistrationFlowEnabled {
+		regID, err := resolve(c.RegistrationFlowID, providers.FlowTypeRegistration)
+		if err != nil {
+			return err
+		}
+		c.RegistrationFlowID = regID
+		if c.RegistrationFlowID == "" {
+			c.IsRegistrationFlowEnabled = false
+		}
 	}
-	c.RegistrationFlowID = regID
-	if c.RegistrationFlowID == "" {
-		c.IsRegistrationFlowEnabled = false
-	}
-
-	recID, err := resolve(c.RecoveryFlowID, providers.FlowTypeRecovery)
-	if err != nil {
-		return err
-	}
-	c.RecoveryFlowID = recID
-	if c.RecoveryFlowID == "" {
-		c.IsRecoveryFlowEnabled = false
+	if c.IsRecoveryFlowEnabled {
+		recID, err := resolve(c.RecoveryFlowID, providers.FlowTypeRecovery)
+		if err != nil {
+			return err
+		}
+		c.RecoveryFlowID = recID
+		if c.RecoveryFlowID == "" {
+			c.IsRecoveryFlowEnabled = false
+		}
 	}
 
 	signOutID, err := resolve(c.SignOutFlowID, providers.FlowTypeSignOut)
@@ -1865,20 +1884,14 @@ func (s *inboundClientService) walkReferencedFlows(
 
 			if expected == "" {
 				// The inbound client has no binding for this type. On the reconcile path (create/update),
-				// we auto-fill the reg/recovery/signout binding with the reachable target and force
-				// the enable flag to false. On the validate-only path (flow update revalidation)
-				// we simply accept — no mutation, no rejection.
+				// we auto-fill the sign-out binding with the reachable target so the FK graph stays
+				// complete. Registration and recovery are never auto-filled: if the caller left the
+				// flag disabled, we must not persist a binding that will surface later as a phantom
+				// configuration and clash with a future auth-flow change.
 				if !reconcile {
 					continue
 				}
-				switch t.FlowType {
-				case providers.FlowTypeRegistration:
-					c.RegistrationFlowID = t.FlowID
-					c.IsRegistrationFlowEnabled = false
-				case providers.FlowTypeRecovery:
-					c.RecoveryFlowID = t.FlowID
-					c.IsRecoveryFlowEnabled = false
-				case providers.FlowTypeSignOut:
+				if t.FlowType == providers.FlowTypeSignOut {
 					c.SignOutFlowID = t.FlowID
 				}
 				continue

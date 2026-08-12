@@ -23,6 +23,8 @@ const BASE_URL = process.env.BASE_URL || "https://localhost:8090";
 const DISCOVERY_PATH = "/.well-known/openid-configuration";
 // A fake origin dedicated to this test - it only needs to be a valid origin string
 const TEST_ORIGIN = "https://e2e-cors-probe.invalid";
+// The same origin expressed as an anchored pattern, for the regex entry type.
+const TEST_ORIGIN_PATTERN = "^https://e2e-cors-probe\\.invalid$";
 // The sample app's origin, configured by the imported deployment config. Editing allowed origins
 // through the console must never drop it, otherwise every later sample-app test loses its ability to
 // read cross-origin responses.
@@ -43,15 +45,17 @@ async function corsAllowOriginHeader(page: Page, origin: string = TEST_ORIGIN): 
 
 test.describe("Settings — CORS allowed origins", { tag: [TestTags.SMOKE] }, () => {
   test.beforeEach(async ({ settingsPage }) => {
-    // Ensure a clean starting state (origin not yet configured).
+    // Ensure a clean starting state (neither entry yet configured).
     await settingsPage.goto();
     await settingsPage.removeAllowedOrigin(TEST_ORIGIN);
+    await settingsPage.removeAllowedOrigin(TEST_ORIGIN_PATTERN);
   });
 
   test.afterEach(async ({ settingsPage }) => {
-    // Remove the origin added by the test so the shared deployment config stays clean.
+    // Remove the entries added by the test so the shared deployment config stays clean.
     await settingsPage.goto();
     await settingsPage.removeAllowedOrigin(TEST_ORIGIN);
+    await settingsPage.removeAllowedOrigin(TEST_ORIGIN_PATTERN);
 
     // Editing origins here must leave the pre-configured ones intact and still enforced at runtime.
     // Without this, a regression that drops them would surface far away, as unexplained cross-origin
@@ -77,6 +81,16 @@ test.describe("Settings — CORS allowed origins", { tag: [TestTags.SMOKE] }, ()
 
     const acao = await corsAllowOriginHeader(settingsPage.page);
     expect(acao, "a configured origin must be echoed in Access-Control-Allow-Origin").toBe(TEST_ORIGIN);
+  });
+
+  test("allows a cross-origin request matched by an entry saved as a regex", async ({ settingsPage }) => {
+    await settingsPage.addAllowedOriginRegex(TEST_ORIGIN_PATTERN);
+
+    expect(await settingsPage.hasCustomOrigin(TEST_ORIGIN_PATTERN)).toBe(true);
+    const acao = await corsAllowOriginHeader(settingsPage.page);
+    expect(acao, "an origin matched by a configured pattern must be echoed in Access-Control-Allow-Origin").toBe(
+      TEST_ORIGIN
+    );
   });
 
   test("denies the origin again after it is removed through the console", async ({ settingsPage }) => {

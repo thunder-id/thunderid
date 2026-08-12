@@ -33,6 +33,7 @@ import ResourceServerDeleteDialog from '../components/ResourceServerDeleteDialog
 import SetDefaultResourceServerDialog from '../components/SetDefaultResourceServerDialog';
 import {getResourceServerTypeLabel} from '../config/resource-server-types';
 import useResourceServerRoutes from '../hooks/useResourceServerRoutes';
+import {isDefaultEligibleType} from '../models/resource-server';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -215,6 +216,9 @@ export default function ResourceServerEditPage(): JSX.Element {
   // A declarative (read-only) default is locked; the backend rejects any write, so the
   // action can never succeed and must not be offered.
   const isDefaultLocked = isDefaultReady && Boolean(defaultConfig?.readOnly?.resourceServerId);
+  // Only API and custom servers are eligible, as in the list menu and the creation wizard. The badge
+  // above is deliberately not gated on this, so a default set outside the console still shows up.
+  const isDefaultEligible = isDefaultEligibleType(resourceServer.type);
 
   return (
     <PageContent>
@@ -285,7 +289,7 @@ export default function ResourceServerEditPage(): JSX.Element {
                 />
               </Tooltip>
             )}
-            {isDefaultReady && !isDefault && !isDefaultLocked && (
+            {isDefaultReady && !isDefault && !isDefaultLocked && isDefaultEligible && (
               <Button variant="contained" size="small" onClick={() => setDefaultDialogOpen(true)}>
                 {t('resourceServers:actions.setAsDefault', 'Set as default')}
               </Button>

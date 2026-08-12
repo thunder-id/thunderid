@@ -29,7 +29,7 @@ Get started by exploring how ThunderID can be used to secure:
 
  To learn more about overall requirements, solution patterns of these scenarios, refer to the [Use Cases](https://thunderid.dev/docs/next/use-cases/overview/) section.
 
-Visit [Get ThunderID](https://thunderid.dev/docs/next/guides/getting-started/get-thunderid/) to learn more about installation methods.
+Visit [Get ThunderID](https://thunderid.dev/docs/next/getting-started/get-thunderid/) to learn more about installation methods.
 
 
 ## Architecture
