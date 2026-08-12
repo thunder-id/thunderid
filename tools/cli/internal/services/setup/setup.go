@@ -415,26 +415,98 @@ func UpdateServerPort(installPath string, port int) error {
 	return fmt.Errorf("server.port not found in %s", configPath)
 }
 
-// KillPort sends SIGTERM to all processes listening on the given TCP port.
-func KillPort(port int) {
-	if runtime.GOOS == "windows" {
-		_ = exec.Command("cmd", "/c",
-			fmt.Sprintf("for /f \"tokens=5\" %%a in ('netstat -aon ^| findstr :%d') do taskkill /f /pid %%a", port),
-		).Run()
-		return
+var (
+	killPortInUse   = IsPortInUse
+	killPortCommand = func(name string, args ...string) ([]byte, error) {
+		return exec.Command(name, args...).CombinedOutput()
 	}
-	cmd := exec.Command("lsof", "-ti", fmt.Sprintf("tcp:%d", port))
-	out, err := cmd.Output()
+	killPortSignal = func(pid int, signal syscall.Signal) error {
+		process, err := os.FindProcess(pid)
+		if err != nil {
+			return err
+		}
+		return process.Signal(signal)
+	}
+	killPortWait = WaitForPortFree
+)
+
+// KillPort terminates processes listening on port and verifies that the port is released.
+func KillPort(port int) error {
+	return killPortWithOS(port, runtime.GOOS)
+}
+
+func killPortWithOS(port int, goos string) error {
+	if !killPortInUse(port) {
+		return nil
+	}
+
+	if goos == "windows" {
+		query := fmt.Sprintf(
+			"(Get-NetTCPConnection -LocalPort %d -State Listen -ErrorAction SilentlyContinue).OwningProcess | Sort-Object -Unique",
+			port)
+		out, err := killPortCommand("powershell.exe", "-NoProfile", "-Command", query)
+		if err != nil {
+			return fmt.Errorf("failed to discover listener on port %d: %w: %s", port, err, strings.TrimSpace(string(out)))
+		}
+		pids, err := parseListenerPIDs(out, port)
+		if err != nil {
+			return err
+		}
+		for _, pid := range pids {
+			taskkillOut, taskkillErr := killPortCommand("taskkill", "/T", "/F", "/PID", strconv.Itoa(pid))
+			if taskkillErr != nil {
+				return fmt.Errorf("failed to terminate PID %d on port %d: %w: %s",
+					pid, port, taskkillErr, strings.TrimSpace(string(taskkillOut)))
+			}
+		}
+		if !killPortWait(port, 5*time.Second) {
+			return fmt.Errorf("port %d remains occupied after termination", port)
+		}
+		return nil
+	}
+
+	out, err := killPortCommand("lsof", "-nP", fmt.Sprintf("-tiTCP:%d", port), "-sTCP:LISTEN")
 	if err != nil {
-		return
-	}
-	for _, pidStr := range strings.Fields(string(out)) {
-		pid, err := strconv.Atoi(strings.TrimSpace(pidStr))
-		if err != nil || pid <= 0 {
-			continue
+		if !killPortInUse(port) {
+			return nil
 		}
-		if p, err := os.FindProcess(pid); err == nil {
-			p.Signal(syscall.SIGTERM) //nolint:errcheck
+		return fmt.Errorf("failed to discover listener on port %d: %w: %s", port, err, strings.TrimSpace(string(out)))
+	}
+	parsedPIDs, err := parseListenerPIDs(out, port)
+	if err != nil {
+		return err
+	}
+	for _, pid := range parsedPIDs {
+		if signalErr := killPortSignal(pid, syscall.SIGTERM); signalErr != nil {
+			return fmt.Errorf("failed to terminate PID %d on port %d: %w", pid, port, signalErr)
 		}
 	}
+	if killPortWait(port, 5*time.Second) {
+		return nil
+	}
+	for _, pid := range parsedPIDs {
+		if signalErr := killPortSignal(pid, syscall.SIGKILL); signalErr != nil {
+			return fmt.Errorf("failed to force terminate PID %d on port %d: %w", pid, port, signalErr)
+		}
+	}
+	if !killPortWait(port, 5*time.Second) {
+		return fmt.Errorf("port %d remains occupied after termination", port)
+	}
+	return nil
+}
+
+func parseListenerPIDs(out []byte, port int) ([]int, error) {
+	pidStrings := strings.Fields(string(out))
+	if len(pidStrings) == 0 {
+		return nil, fmt.Errorf("no listener process found for occupied port %d", port)
+	}
+	pids := make([]int, 0, len(pidStrings))
+	for _, pidString := range pidStrings {
+		pid, parseErr := strconv.Atoi(strings.TrimSpace(pidString))
+		if parseErr != nil || pid <= 0 {
+			return nil, fmt.Errorf("invalid listener PID %q for port %d", pidString, port)
+		}
+		pids = append(pids, pid)
+	}
+	return pids, nil
 }
