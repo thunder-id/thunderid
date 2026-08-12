@@ -377,6 +377,20 @@ func (ts *PARTestSuite) TestPAREndpointValidation() {
 			},
 			ExpectedError: "invalid_request",
 		},
+		{
+			// This test reflects current behavior; prompt=none session checking is not implemented yet.
+			Name: "Prompt None Not Supported",
+			Params: map[string]string{
+				"response_type":         "code",
+				"redirect_uri":          redirectURI,
+				"scope":                 "openid",
+				"state":                 "test",
+				"prompt":                "none",
+				"code_challenge":        testutils.GenerateCodeChallenge("test-verifier-that-is-at-least-43-characters-long-enough"),
+				"code_challenge_method": "S256",
+			},
+			ExpectedError: "login_required",
+		},
 	}
 
 	for _, tc := range testCases {

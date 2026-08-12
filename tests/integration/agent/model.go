@@ -34,14 +34,30 @@ type InboundAuthConfig struct {
 
 // OAuthAgentConfig represents the OAuth client configuration for an agent.
 type OAuthAgentConfig struct {
-	ClientID                string   `json:"clientId,omitempty"`
-	ClientSecret            string   `json:"clientSecret,omitempty"`
-	RedirectURIs            []string `json:"redirectUris,omitempty"`
-	GrantTypes              []string `json:"grantTypes,omitempty"`
-	ResponseTypes           []string `json:"responseTypes,omitempty"`
-	TokenEndpointAuthMethod string   `json:"tokenEndpointAuthMethod,omitempty"`
-	PKCERequired            bool     `json:"pkceRequired,omitempty"`
-	PublicClient            bool     `json:"publicClient,omitempty"`
+	ClientID                string            `json:"clientId,omitempty"`
+	ClientSecret            string            `json:"clientSecret,omitempty"`
+	RedirectURIs            []string          `json:"redirectUris,omitempty"`
+	GrantTypes              []string          `json:"grantTypes,omitempty"`
+	ResponseTypes           []string          `json:"responseTypes,omitempty"`
+	TokenEndpointAuthMethod string            `json:"tokenEndpointAuthMethod,omitempty"`
+	PKCERequired            bool              `json:"pkceRequired,omitempty"`
+	PublicClient            bool              `json:"publicClient,omitempty"`
+	Token                   *OAuthTokenConfig `json:"token,omitempty"`
+}
+
+// OAuthTokenConfig represents the OAuth token configuration for an agent's inbound auth config.
+type OAuthTokenConfig struct {
+	AccessToken *AccessTokenConfig `json:"accessToken,omitempty"`
+}
+
+// AccessTokenConfig represents the access token configuration, split by token subject.
+type AccessTokenConfig struct {
+	ClientConfig *AccessTokenSubConfig `json:"clientConfig,omitempty"`
+}
+
+// AccessTokenSubConfig represents the attribute selection for one access token subject type.
+type AccessTokenSubConfig struct {
+	Attributes []string `json:"attributes,omitempty"`
 }
 
 // AgentListResponse represents the paginated list response for agents.
