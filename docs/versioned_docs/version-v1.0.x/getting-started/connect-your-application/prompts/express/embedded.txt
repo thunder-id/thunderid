@@ -33,6 +33,8 @@ I have an Express application and I want to integrate {{productName}} authentica
 - Do not use `clientId`/`clientSecret` in this mode — embedded mode is driven by `applicationId`, not an OAuth2 client
 - Pass `flowSecret` in the `thunderID({...})` middleware config (or set `THUNDERID_FLOW_SECRET` in the environment, which `handleFlow()` falls back to automatically) — it authenticates this app when the flow starts, sent in the `Flow-Secret` request header. It is a separate credential from an OAuth2 client secret, never a substitute for one
 - Never ask the developer to type or paste the Flow Secret into this conversation. If it is not supplied above, set `THUNDERID_FLOW_SECRET` in a local `.env` file as a placeholder and stop with a message telling the developer to fill it in locally before running the app
+- If the local {{productName}} instance uses a self-signed certificate or a certificate from a private CA that Node.js does not trust, configure `NODE_EXTRA_CA_CERTS` with the path to the CA or server certificate before starting the app. Explain that the browser trusting the certificate does not make Node.js trust it, so server-side SDK requests can otherwise fail with `DEPTH_ZERO_SELF_SIGNED_CERT`
+- Do not use `NODE_TLS_REJECT_UNAUTHORIZED=0`. A certificate issued by a CA that Node.js already trusts requires no additional TLS configuration
 
 ## Implementation Steps
 1. Create a new project and install `express` and `cookie-parser`
@@ -41,7 +43,7 @@ I have an Express application and I want to integrate {{productName}} authentica
 4. Add `index.js` with `thunderID({ applicationId, baseUrl, mode: 'embedded', flowSecret })` middleware
 5. Add `/login` route serving a minimal HTML form, and `/flow/sign-in` using `handleFlow()`
 6. Add `/logout`, `/protected`, and `/me` routes
-7. Start the server with `node index.js`
+7. Start the server with `node index.js`, or `NODE_EXTRA_CA_CERTS=/path/to/thunderid-ca-or-server.cert node index.js` only when the local certificate is not already trusted by Node.js
 8. Validate the flow by opening `/login`, submitting the form, then `/protected` and `/me`; then request `/logout` and confirm `/protected` is no longer accessible
 
 Please provide:

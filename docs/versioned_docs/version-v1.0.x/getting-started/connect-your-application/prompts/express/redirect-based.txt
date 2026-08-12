@@ -25,6 +25,8 @@ I have an Express application and I want to integrate {{productName}} authentica
 - Use CommonJS syntax (`require`) in `index.js`
 - Use these SDK imports exactly: `thunderID`, `handleSignIn`, `handleSignOut`, `protect`
 - Ensure redirect URL alignment: the app callback URL must be `http://localhost:3000/login`, and the post-logout redirect URL must be `http://localhost:3000/logout`
+- If the local {{productName}} instance uses a self-signed certificate or a certificate from a private CA that Node.js does not trust, configure `NODE_EXTRA_CA_CERTS` with the path to the CA or server certificate before starting the app. Explain that the browser trusting the certificate does not make Node.js trust it, so the server-side authorization-code exchange can otherwise fail with `DEPTH_ZERO_SELF_SIGNED_CERT` and return HTTP 500 from `/login`
+- Do not use `NODE_TLS_REJECT_UNAUTHORIZED=0`. A certificate issued by a CA that Node.js already trusts requires no additional TLS configuration
 - Do not invent unsupported SDK APIs or custom wrappers
 - Keep route names and behavior exactly as specified
 
@@ -33,7 +35,7 @@ I have an Express application and I want to integrate {{productName}} authentica
 2. Install `@thunderid/express`
 3. Add `index.js` with ThunderID middleware and auth routes
 4. Add `/protected` and `/me` routes with `protect()`
-5. Start the server with `node index.js`
+5. Start the server with `node index.js`, or `NODE_EXTRA_CA_CERTS=/path/to/thunderid-ca-or-server.cert node index.js` only when the local certificate is not already trusted by Node.js
 6. Validate the flow by opening `/protected`, then `/me`
 
 Please provide:

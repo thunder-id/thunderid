@@ -10,7 +10,7 @@ I have a Nuxt 3 application and I want to integrate {{productName}}'s authentica
 - Wrap app.vue content with <ThunderIDRoot>
 - Implement sign-in and sign-out with auto-imported components
 - Display signed-in user's profile information
-- Optionally protect pages with the built-in thunderIDMiddleware
+- Optionally protect pages with the built-in `auth` middleware
 
 ## Configuration
 - **Client ID**: {{clientId}}
@@ -19,24 +19,27 @@ I have a Nuxt 3 application and I want to integrate {{productName}}'s authentica
 - **SDK**: @thunderid/nuxt
 
 ## IMPORTANT Configuration Rules
-- Add '@thunderid/nuxt' to the modules array in nuxt.config.ts — no other config needed there
+- Add '@thunderid/nuxt' to the modules array in nuxt.config.ts
+- For @thunderid/nuxt 1.0.3, add `vite.optimizeDeps.include: ['@thunderid/node']` in nuxt.config.ts to avoid the known client-bundling issue tracked in thunder-id/thunderid#4905. Remove this workaround only after upgrading to a release that fixes the issue
 - All configuration is read from environment variables with NUXT_PUBLIC_ prefix for public values
 - Required env vars: NUXT_PUBLIC_THUNDERID_BASE_URL, NUXT_PUBLIC_THUNDERID_CLIENT_ID, THUNDERID_CLIENT_SECRET, THUNDERID_SESSION_SECRET
 - THUNDERID_CLIENT_SECRET and THUNDERID_SESSION_SECRET must NOT have the NUXT_PUBLIC_ prefix
 - The /api/auth/callback route is auto-registered by the module — do NOT create it manually
 - Wrap <NuxtPage /> with <ThunderIDRoot> in app.vue
 - All components are auto-registered under the `ThunderID` prefix (`ThunderIDSignedIn`, `ThunderIDSignedOut`, `ThunderIDSignInButton`, `ThunderIDSignOutButton`, `ThunderIDUserDropdown`, `ThunderIDUser`), and composables are auto-imported. NEVER use bare names like `SignedIn` or `SignInButton`
-- Protect pages by adding definePageMeta({ middleware: ['thunderIDMiddleware'] })
+- Protect pages by adding definePageMeta({ middleware: ['auth'] })
+- For @thunderid/nuxt 1.0.3, configure the application with the `authorization_code` grant only. Enabling the `refresh_token` grant can produce an oversized session cookie, as tracked in thunder-id/thunderid#4904. Enable refresh tokens only after upgrading to a release that fixes the issue
+- When using a local self-signed certificate, set `NODE_EXTRA_CA_CERTS` to the certificate file before starting Nuxt. Do not use `NODE_TLS_REJECT_UNAUTHORIZED=0`. A certificate signed by a trusted certificate authority does not require this setting
 
 ## Implementation Steps
 1. Create a Nuxt 3 app: npx nuxi@latest init my-nuxt-app
 2. Navigate into the project: cd my-nuxt-app && npm install
 3. Install @thunderid/nuxt: npm install @thunderid/nuxt
-4. Add '@thunderid/nuxt' to modules in nuxt.config.ts
+4. Add '@thunderid/nuxt' to modules in nuxt.config.ts and include the version-qualified Vite workaround above
 5. Create .env with NUXT_PUBLIC_THUNDERID_BASE_URL, NUXT_PUBLIC_THUNDERID_CLIENT_ID, THUNDERID_CLIENT_SECRET, THUNDERID_SESSION_SECRET
 6. Wrap <NuxtPage /> with <ThunderIDRoot> in app.vue
 7. Create pages/index.vue with ThunderIDSignInButton, ThunderIDSignOutButton, ThunderIDSignedIn, ThunderIDSignedOut, and ThunderIDUser components
-8. Optionally add definePageMeta({ middleware: ['thunderIDMiddleware'] }) to protected pages
-9. Run: npm run dev
+8. Optionally add definePageMeta({ middleware: ['auth'] }) to protected pages
+9. Run `npm run dev`, or start Node with `NODE_EXTRA_CA_CERTS` pointing to the certificate when the local certificate is self-signed
 
 Please provide complete, working code with proper configuration for {{productName}} authentication using the @thunderid/nuxt module.

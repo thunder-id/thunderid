@@ -66,7 +66,7 @@ Once it's running, the console is available at [https://localhost:8090/console](
 7. Select how you want to sign in users (e.g., email/password, social login, etc.).
 8. Select Theme settings.
 9. Leave **Sign-In Approach** set to **Redirect to <ProductName /> Gate** (the default for Express applications).
-10. In the Configuration step, add `http://localhost:3000/login` to the list of **Authorized Redirect URIs**.
+10. In the Configuration step, add `http://localhost:3000/login` to **Authorized Redirect URIs** and `http://localhost:3000/logout` to **Post-Logout Redirect URIs**. Clear **Use the same URLs for post-logout redirect** if the fields are linked.
 
 :::note Note
 Copy both the **Client ID** and **Client Secret** from the window that pops up when the application is created. The Client ID can also be found in the **General** tab.
@@ -116,6 +116,19 @@ Install the <ProductName /> Express SDK:
     pnpm add @thunderid/express
   </CodeBlock>
 </CodeGroup>
+
+## Trust the Local Certificate in Node.js
+
+Skip this step when your <ProductName /> instance uses a certificate issued by a certificate authority that Node.js already trusts. For a local self-signed certificate, export the certificate and configure Node.js to trust it:
+
+```bash
+openssl s_client -connect localhost:8090 -servername localhost </dev/null 2>/dev/null \
+  | openssl x509 > thunderid.cert
+
+export NODE_EXTRA_CA_CERTS="$PWD/thunderid.cert"
+```
+
+The browser and Node.js use separate certificate trust stores. Browser trust does not make Node.js trust the certificate. Without `NODE_EXTRA_CA_CERTS`, the authorization-code exchange can fail with `DEPTH_ZERO_SELF_SIGNED_CERT`, causing `/login` to return HTTP 500. Do not use `NODE_TLS_REJECT_UNAUTHORIZED=0` because it disables certificate verification for the entire Node.js process.
 
 ## Add Authentication Middleware and Routes
 
@@ -168,7 +181,7 @@ app.listen(port, () => {
 ```
 
 :::warning Configuration
-Replace `<your-client-id>` and `<your-client-secret>` with values from your <ProductName /> application. Make sure the authorized redirect URL in your application settings is set to `http://localhost:3000/login`.
+Replace `<your-client-id>` and `<your-client-secret>` with values from your <ProductName /> application. Make sure the authorized redirect URL is `http://localhost:3000/login` and the post-logout redirect URL is `http://localhost:3000/logout`.
 :::
 
 ## Run Your App
