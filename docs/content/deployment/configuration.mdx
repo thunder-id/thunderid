@@ -450,7 +450,7 @@ OAuth 2.0 and OpenID Connect settings.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `oauth.refresh_token.renew_on_grant` | `false` | If `true`, issues a new refresh token on each access token grant |
+| `oauth.refresh_token.renew_on_grant` | `true` | If `true`, issues a new refresh token on each access token grant. Set to `false` to reuse the existing refresh token until it expires |
 | `oauth.refresh_token.revoke_previous_on_renew` | `true` | If `true`, revokes the consumed refresh token after a successful renewal. Applies when `renew_on_grant` is enabled |
 | `oauth.refresh_token.validity_period` | `86400` | Refresh token validity period in seconds (24 hours) |
 | `oauth.authorization_code.validity_period` | `600` | Authorization code validity period in seconds (10 minutes) |

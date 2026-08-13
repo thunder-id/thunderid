@@ -405,7 +405,7 @@ configuration:
   # OAuth configuration
   oauth:
     refreshToken:
-      renewOnGrant: false
+      renewOnGrant: true
       revokePreviousOnRenew: true
       validityPeriod: 86400
     authorizationCode:
