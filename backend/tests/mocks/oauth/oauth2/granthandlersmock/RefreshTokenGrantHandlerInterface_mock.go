@@ -116,16 +116,16 @@ func (_c *RefreshTokenGrantHandlerInterfaceMock_HandleGrant_Call) RunAndReturn(r
 }
 
 // IssueRefreshToken provides a mock function for the type RefreshTokenGrantHandlerInterfaceMock
-func (_mock *RefreshTokenGrantHandlerInterfaceMock) IssueRefreshToken(ctx context.Context, tokenResponse *model.TokenResponseDTO, oauthApp *providers.OAuthClient, subject string, audiences []string, grantType string, scopes []string, claimsRequest *model.ClaimsRequest, claimsLocales string, attributeCacheID string, tokenFamilyID string) *model.ErrorResponse {
-	ret := _mock.Called(ctx, tokenResponse, oauthApp, subject, audiences, grantType, scopes, claimsRequest, claimsLocales, attributeCacheID, tokenFamilyID)
+func (_mock *RefreshTokenGrantHandlerInterfaceMock) IssueRefreshToken(ctx context.Context, tokenResponse *model.TokenResponseDTO, oauthApp *providers.OAuthClient, subject string, audiences []string, grantType string, scopes []string, claimsRequest *model.ClaimsRequest, claimsLocales string, attributeCacheID string, tokenFamilyID string, expiresAt int64) *model.ErrorResponse {
+	ret := _mock.Called(ctx, tokenResponse, oauthApp, subject, audiences, grantType, scopes, claimsRequest, claimsLocales, attributeCacheID, tokenFamilyID, expiresAt)
 
 	if len(ret) == 0 {
 		panic("no return value specified for IssueRefreshToken")
 	}
 
 	var r0 *model.ErrorResponse
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *model.TokenResponseDTO, *providers.OAuthClient, string, []string, string, []string, *model.ClaimsRequest, string, string, string) *model.ErrorResponse); ok {
-		r0 = returnFunc(ctx, tokenResponse, oauthApp, subject, audiences, grantType, scopes, claimsRequest, claimsLocales, attributeCacheID, tokenFamilyID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *model.TokenResponseDTO, *providers.OAuthClient, string, []string, string, []string, *model.ClaimsRequest, string, string, string, int64) *model.ErrorResponse); ok {
+		r0 = returnFunc(ctx, tokenResponse, oauthApp, subject, audiences, grantType, scopes, claimsRequest, claimsLocales, attributeCacheID, tokenFamilyID, expiresAt)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*model.ErrorResponse)
@@ -151,11 +151,12 @@ type RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call struct {
 //   - claimsLocales string
 //   - attributeCacheID string
 //   - tokenFamilyID string
-func (_e *RefreshTokenGrantHandlerInterfaceMock_Expecter) IssueRefreshToken(ctx interface{}, tokenResponse interface{}, oauthApp interface{}, subject interface{}, audiences interface{}, grantType interface{}, scopes interface{}, claimsRequest interface{}, claimsLocales interface{}, attributeCacheID interface{}, tokenFamilyID interface{}) *RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call {
-	return &RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call{Call: _e.mock.On("IssueRefreshToken", ctx, tokenResponse, oauthApp, subject, audiences, grantType, scopes, claimsRequest, claimsLocales, attributeCacheID, tokenFamilyID)}
+//   - expiresAt int64
+func (_e *RefreshTokenGrantHandlerInterfaceMock_Expecter) IssueRefreshToken(ctx interface{}, tokenResponse interface{}, oauthApp interface{}, subject interface{}, audiences interface{}, grantType interface{}, scopes interface{}, claimsRequest interface{}, claimsLocales interface{}, attributeCacheID interface{}, tokenFamilyID interface{}, expiresAt interface{}) *RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call {
+	return &RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call{Call: _e.mock.On("IssueRefreshToken", ctx, tokenResponse, oauthApp, subject, audiences, grantType, scopes, claimsRequest, claimsLocales, attributeCacheID, tokenFamilyID, expiresAt)}
 }
 
-func (_c *RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call) Run(run func(ctx context.Context, tokenResponse *model.TokenResponseDTO, oauthApp *providers.OAuthClient, subject string, audiences []string, grantType string, scopes []string, claimsRequest *model.ClaimsRequest, claimsLocales string, attributeCacheID string, tokenFamilyID string)) *RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call {
+func (_c *RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call) Run(run func(ctx context.Context, tokenResponse *model.TokenResponseDTO, oauthApp *providers.OAuthClient, subject string, audiences []string, grantType string, scopes []string, claimsRequest *model.ClaimsRequest, claimsLocales string, attributeCacheID string, tokenFamilyID string, expiresAt int64)) *RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -201,6 +202,10 @@ func (_c *RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call) Run(run 
 		if args[10] != nil {
 			arg10 = args[10].(string)
 		}
+		var arg11 int64
+		if args[11] != nil {
+			arg11 = args[11].(int64)
+		}
 		run(
 			arg0,
 			arg1,
@@ -213,6 +218,7 @@ func (_c *RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call) Run(run 
 			arg8,
 			arg9,
 			arg10,
+			arg11,
 		)
 	})
 	return _c
@@ -223,7 +229,7 @@ func (_c *RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call) Return(e
 	return _c
 }
 
-func (_c *RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call) RunAndReturn(run func(ctx context.Context, tokenResponse *model.TokenResponseDTO, oauthApp *providers.OAuthClient, subject string, audiences []string, grantType string, scopes []string, claimsRequest *model.ClaimsRequest, claimsLocales string, attributeCacheID string, tokenFamilyID string) *model.ErrorResponse) *RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call {
+func (_c *RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call) RunAndReturn(run func(ctx context.Context, tokenResponse *model.TokenResponseDTO, oauthApp *providers.OAuthClient, subject string, audiences []string, grantType string, scopes []string, claimsRequest *model.ClaimsRequest, claimsLocales string, attributeCacheID string, tokenFamilyID string, expiresAt int64) *model.ErrorResponse) *RefreshTokenGrantHandlerInterfaceMock_IssueRefreshToken_Call {
 	_c.Call.Return(run)
 	return _c
 }

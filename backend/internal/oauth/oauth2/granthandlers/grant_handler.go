@@ -35,5 +35,6 @@ type RefreshTokenGrantHandlerInterface interface {
 		claimsLocales string,
 		attributeCacheID string,
 		tokenFamilyID string,
+		expiresAt int64,
 	) *model.ErrorResponse
 }

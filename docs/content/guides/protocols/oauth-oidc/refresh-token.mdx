@@ -67,6 +67,7 @@ Access tokens issued earlier are unaffected and remain valid until they expire. 
 | Client authentication | Same methods as the original grant, see [Client Authentication Methods](../client-authentication-methods) |
 | Rotation | Controlled globally by `oauth.refresh_token.renew_on_grant` in `deployment.yaml`, enabled by default. Every refresh issues a new `refresh_token`; when disabled, the existing one is reused |
 | Old token after rotation | When `oauth.refresh_token.revoke_previous_on_renew` is enabled, the consumed refresh token is revoked after renewal. A revocation failure stops the rotation |
+| Grant lifetime | A rotated refresh token inherits the expiry of the token it replaces, so refreshing extends access but never the grant. Once `oauth.refresh_token.validity_period` has elapsed since the original grant, the user must authenticate again |
 | Audience preservation | The new access token keeps the refresh token's single audience when `resource` is omitted |
 | Resource validation | When supplied, `resource` must match the refresh token's audience. A mismatch returns `invalid_target` |
 | Scope narrowing | The `scope` parameter may request a subset of the originally granted scopes. Asking for a wider scope returns `invalid_scope` |

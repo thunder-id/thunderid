@@ -515,7 +515,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_WithRefreshToken() {
 	// The access token's tfid must be forwarded to refresh-token issuance so both tokens share the family.
 	mockRefreshHandler.
 		On("IssueRefreshToken", mock.Anything, tokenRespDTO, app, "user123", []string{"test-audience"},
-			"authorization_code", []string{"openid"}, (*model.ClaimsRequest)(nil), "", "", "tfid-access-123").
+			"authorization_code", []string{"openid"}, (*model.ClaimsRequest)(nil), "", "", "tfid-access-123", int64(0)).
 		Return(nil)
 
 	svc := suite.newService()
@@ -570,7 +570,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_RefreshTokenIssuance
 
 	mockRefreshHandler.
 		On("IssueRefreshToken", mock.Anything, tokenRespDTO, app, "user123", []string{"test-audience"},
-			"authorization_code", []string{"openid"}, (*model.ClaimsRequest)(nil), "", "", "").
+			"authorization_code", []string{"openid"}, (*model.ClaimsRequest)(nil), "", "", "", int64(0)).
 		Return(&model.ErrorResponse{
 			Error:            "server_error",
 			ErrorDescription: "Failed to issue refresh token",
@@ -792,7 +792,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_WithRefreshToken_Use
 	mockRefreshHandler.
 		On("IssueRefreshToken", mock.Anything, tokenRespDTO, app, "user123",
 			[]string{"original-audience-1", "original-audience-2"},
-			"authorization_code", []string{"openid"}, (*model.ClaimsRequest)(nil), "", "", "").
+			"authorization_code", []string{"openid"}, (*model.ClaimsRequest)(nil), "", "", "", int64(0)).
 		Return(nil)
 
 	svc := suite.newService()
@@ -850,7 +850,8 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_CIBA_RefreshTokenUse
 	mockRefreshHandler.
 		On("IssueRefreshToken", mock.Anything, tokenRespDTO, app, "user-1",
 			[]string{"https://api.example.com"},
-			string(providers.GrantTypeCIBA), []string{"openid", "read"}, (*model.ClaimsRequest)(nil), "", "", "").
+			string(providers.GrantTypeCIBA), []string{"openid", "read"},
+			(*model.ClaimsRequest)(nil), "", "", "", int64(0)).
 		Return(nil)
 
 	svc := suite.newService()

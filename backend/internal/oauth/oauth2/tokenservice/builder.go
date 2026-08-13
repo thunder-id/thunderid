@@ -6,6 +6,7 @@ package tokenservice
 import (
 	"context"
 	"fmt"
+	"time"
 
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -262,13 +263,23 @@ func (tb *tokenBuilder) BuildRefreshToken(
 
 	tokenConfig := ResolveTokenConfig(tb.cfg, tokenCtx.OAuthApp, TokenTypeRefresh, 0)
 
+	// A rotated token inherits the expiry of the token it replaces, so refreshing extends access
+	// but never the grant's lifetime. First issuance carries no expiry and starts a fresh period.
+	validityPeriod := tokenConfig.ValidityPeriod
+	if tokenCtx.ExpiresAt > 0 {
+		validityPeriod = tokenCtx.ExpiresAt - time.Now().Unix()
+		if validityPeriod <= 0 {
+			return nil, fmt.Errorf("refresh token grant has reached its expiry")
+		}
+	}
+
 	claims, claimsErr := tb.buildRefreshTokenClaims(tokenCtx)
 	if claimsErr != nil {
 		return nil, fmt.Errorf("failed to build refresh token claims: %w", claimsErr)
 	}
 
 	tokenDTO := &oauth2model.TokenDTO{
-		ExpiresIn:     tokenConfig.ValidityPeriod,
+		ExpiresIn:     validityPeriod,
 		Scopes:        tokenCtx.Scopes,
 		ClientID:      tokenCtx.ClientID,
 		Subject:       tokenCtx.AccessTokenSubject,
@@ -282,7 +293,7 @@ func (tb *tokenBuilder) BuildRefreshToken(
 		ctx,
 		tokenCtx.ClientID,
 		tokenConfig.Issuer,
-		tokenConfig.ValidityPeriod,
+		validityPeriod,
 		claims,
 		jwt.TokenTypeJWT,
 		"",
