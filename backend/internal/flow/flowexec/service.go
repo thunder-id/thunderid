@@ -125,6 +125,8 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 					WithStatus(providers.StatusFailure).
 					WithData(event.DataKey.EntityID, appID).
 					WithData(event.DataKey.FlowType, flowType).
+					// The flow never started, so there is no execution id to correlate on.
+					WithData(event.DataKey.CorrelationID, traceID).
 					WithData(event.DataKey.Error, processServiceErrorForEventPublish(loadErr))
 
 				s.observabilitySvc.PublishEvent(ctx, evt)

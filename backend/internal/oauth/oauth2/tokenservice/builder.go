@@ -34,6 +34,9 @@ type tokenBuilder struct {
 	jwtService   jwt.JWTServiceInterface
 	jweService   jwe.JWEServiceInterface
 	jwksResolver *jwksresolver.Resolver
+	// actorProvider resolves the token subject's entity so its category can be recorded on the token
+	// DTO. Optional: a nil provider leaves the category empty rather than failing issuance.
+	actorProvider providers.ActorProvider
 }
 
 // newTokenBuilder creates a new TokenBuilder instance.
@@ -42,12 +45,14 @@ func newTokenBuilder(
 	jwtService jwt.JWTServiceInterface,
 	jweService jwe.JWEServiceInterface,
 	resolver *jwksresolver.Resolver,
+	actorProvider providers.ActorProvider,
 ) TokenBuilderInterface {
 	return &tokenBuilder{
-		cfg:          cfg,
-		jwtService:   jwtService,
-		jweService:   jweService,
-		jwksResolver: resolver,
+		cfg:           cfg,
+		jwtService:    jwtService,
+		jweService:    jweService,
+		jwksResolver:  resolver,
+		actorProvider: actorProvider,
 	}
 }
 
@@ -85,6 +90,10 @@ func (tb *tokenBuilder) BuildAccessToken(
 		ClaimsLocales:    tokenCtx.ClaimsLocales,
 		TokenFamilyID:    tokenCtx.TokenFamilyID,
 	}
+	if tokenCtx.ActorClaims != nil {
+		tokenDTO.ActorID = tokenCtx.ActorClaims.Sub
+	}
+	tokenDTO.SubjectID, tokenDTO.SubjectCategory = tb.resolveSubjectIdentity(tokenCtx)
 
 	token, iat, err := tb.jwtService.GenerateJWT(
 		ctx,
@@ -104,6 +113,58 @@ func (tb *tokenBuilder) BuildAccessToken(
 	tokenDTO.IssuedAt = iat
 
 	return tokenDTO, nil
+}
+
+// resolveSubjectIdentity returns the resource ID and entity category of the token's subject, for
+// observability rather than for any token claim. Both are empty when the subject cannot be resolved
+// to an entity, so consumers omit the fields rather than being told something the server does not
+// know: an agent can be a token subject as much as a token requester, and guessing "user" would
+// misreport agent-for-agent delegation.
+//
+// Every grant reaches this function, so none can omit the fields by forgetting to set them, but a
+// grant whose upstream layer already knows the answer supplies it and skips the lookup entirely.
+func (tb *tokenBuilder) resolveSubjectIdentity(tokenCtx *AccessTokenBuildContext) (id, category string) {
+	// authorization_code: carried on the flow assertion, which resolved the entity during login.
+	if tokenCtx.SubjectEntityID != "" {
+		if tokenCtx.SubjectCategory != "" {
+			return tokenCtx.SubjectEntityID, tokenCtx.SubjectCategory
+		}
+		return tokenCtx.SubjectEntityID, tb.lookupCategory(tokenCtx.SubjectEntityID)
+	}
+
+	if tokenCtx.Subject == "" {
+		return "", ""
+	}
+
+	// client_credentials: the subject is the authenticated client, already loaded.
+	if tokenCtx.OAuthApp != nil && tokenCtx.Subject == tokenCtx.OAuthApp.ID {
+		return tokenCtx.OAuthApp.ID, string(tokenCtx.OAuthApp.EntityCategory)
+	}
+
+	// Exchange grants: the subject arrives on a presented token, whose sub is a resource ID on most
+	// deployments but the mapped subject attribute where the issuing application configures one.
+	// Resolving it decides which: a mapped attribute matches no entity, so an unresolvable subject is
+	// reported as no subject rather than published as-is. This is what keeps a mapped attribute, which
+	// may be an email address, off the events.
+	category = tb.lookupCategory(tokenCtx.Subject)
+	if category == "" {
+		return "", ""
+	}
+	return tokenCtx.Subject, category
+}
+
+// lookupCategory returns the entity category of the given resource ID, or an empty string when the
+// provider is absent or the ID resolves to no entity. Reads are served by the cache-backed entity
+// store, so this is normally an in-memory hit.
+func (tb *tokenBuilder) lookupCategory(entityID string) string {
+	if tb.actorProvider == nil {
+		return ""
+	}
+	entity, svcErr := tb.actorProvider.GetActor(entityID)
+	if svcErr != nil || entity == nil {
+		return ""
+	}
+	return string(entity.Category)
 }
 
 // BuildIDJAG builds an Identity Assertion Authorization Grant (ID-JAG) JWT targeted at an external

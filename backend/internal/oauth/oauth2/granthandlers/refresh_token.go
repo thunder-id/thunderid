@@ -263,6 +263,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 		DPoPJkt:           dpop.GetJkt(ctx),
 		TokenFamilyID:     refreshTokenClaims.TokenFamilyID,
 	}
+	setRefreshSubjectIdentity(accessTokenCtx, subjectEntity, cacheEntry)
 	// Replay the on-behalf-of decision frozen at issuance, sourced from the stored marker
 	// rather than the client's current setting.
 	if refreshTokenClaims.ActorSub != "" {
@@ -510,6 +511,28 @@ func (h *refreshTokenGrantHandler) verifyCredentialsUnchanged(ctx context.Contex
 		}
 	}
 	return subjectEntity, nil
+}
+
+// setRefreshSubjectIdentity records which entity the refreshed token is for, so issuance reports the
+// subject without resolving it again.
+//
+// Two sources, in order. The entity resolved while verifying this refresh token is preferred: it is
+// already in hand, so this costs nothing. It is nil when sub named no entity, which is what a sub
+// mapped to an attribute such as an email address looks like — there the attribute cache entry
+// created during login is the only server-side record of the resource ID, since the refresh token
+// carries none. Neither source leaves both fields empty, and the builder then falls back to resolving
+// sub itself.
+func setRefreshSubjectIdentity(accessTokenCtx *tokenservice.AccessTokenBuildContext,
+	subjectEntity *providers.Entity, cacheEntry *attributecache.AttributeCache) {
+	if subjectEntity != nil {
+		accessTokenCtx.SubjectEntityID = subjectEntity.ID
+		accessTokenCtx.SubjectCategory = string(subjectEntity.Category)
+		return
+	}
+	if cacheEntry != nil && cacheEntry.SubjectID != "" {
+		accessTokenCtx.SubjectEntityID = cacheEntry.SubjectID
+		accessTokenCtx.SubjectCategory = cacheEntry.SubjectCategory
+	}
 }
 
 // resolveSubjectEntity resolves the token's subject to its entity, or nil when it does not name one.

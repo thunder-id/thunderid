@@ -125,10 +125,30 @@ Always use predefined keys from `event.DataKey` for consistency. See <RepoLink p
 
 | Constant | Key | Usage |
 |----------|-----|-------|
-| `event.DataKey.UserID` | `user_id` | Authenticated user identifier |
 | `event.DataKey.Username` | `username` | Username |
 | `event.DataKey.ClientID` | `client_id` | OAuth client identifier |
 | `event.DataKey.EntityID` | `app_id` | Application identifier |
+
+**Principal and delegation keys:**
+
+Authentication events carry the kind of principal involved, so agent traffic can be filtered without resolving a client ID against the registry. The subject and actor axes are named after the token claims they mirror, so one vocabulary covers both tokens and events.
+
+| Constant | Key | Usage |
+|----------|-----|-------|
+| `event.DataKey.Subject` | `sub` | Resource ID of the principal the token or flow is about |
+| `event.DataKey.SubjectType` | `sub_type` | Principal type of the subject: `user`, `agent`, or `application` |
+| `event.DataKey.ActorSub` | `act_sub` | Resource ID of the actor acting for the subject, on delegated (on-behalf-of) issuance |
+| `event.DataKey.ActorType` | `act_type` | Principal type of the acting party |
+| `event.DataKey.IsDelegated` | `is_delegated` | Whether the issuance carries actor-to-subject delegation |
+
+On an on-behalf-of issuance the agent appears as `act_sub` against the user's `sub`, matching the token's [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693) `act` claim, so agent-for-user delegation is directly observable.
+
+`sub` and `act_sub` are always entity resource IDs. The token's own `sub` claim is not used: an application can map it to a schema attribute through `subjectAttribute`, so it may hold a directly identifying value such as an email address, and it varies per application for the same principal. The resource ID is opaque, stable across applications, and names the same principal on the flow events and the token events, so it recurs across every authentication that principal performs rather than identifying one of them. Join the events of a single authentication on `correlation_id`, which carries the flow's execution ID. Use `event.PrincipalType` to derive `sub_type` and `act_type` from an entity category; it is the single place the entity vocabulary's `app` is reconciled with the `application` spelling used by the token's `sub_type` claim.
+
+`sub` is omitted rather than guessed when the subject cannot be resolved to an entity, so filtering on `sub` returns nothing for those events rather than returning them with a wrong value; `sub_type` accompanies it when the category is recognized. `act_sub` is resolved separately and is emitted whenever the actor is known, and `is_delegated` is always present on a successful issuance. A delegated issuance whose subject cannot be resolved therefore reports `act_sub` and `is_delegated: true` with no `sub`. Two cases produce an unresolved subject:
+
+- On token exchange, jwt-bearer, and ID-JAG, when the subject arriving on the presented token is a mapped attribute rather than a resource ID, since a mapped attribute resolves to no entity. Only `authorization_code` and `client_credentials` report the subject on every deployment: the first carries the resource ID on the flow assertion, and the second's subject is the client itself. Nothing is added to a client-facing token to close this gap. `refresh_token` is not affected: the login records the subject's resource ID on the attribute cache entry that the refresh token already points at, and the refresh reads it from there, so a refreshed token reports the subject even when its own `sub` claim is a mapped attribute. It is omitted only where the login wrote no entry, as in an App Native flow or when there were no attributes to cache.
+- On flow events before just-in-time provisioning, where the authenticating provider returns an entity reference token instead of a reference because the entity does not exist yet. A first-time social login therefore reports no subject on the nodes that precede provisioning, and reports one from there on. There is no resource ID to report until the entity exists.
 
 **Flow execution keys:**
 
@@ -165,10 +185,23 @@ Always use predefined keys from `event.DataKey` for consistency. See <RepoLink p
 | `event.DataKey.DurationMs` | `duration_ms` | Operation duration in milliseconds |
 | `event.DataKey.LatencyUs` | `latency_us` | Operation latency in microseconds |
 | `event.DataKey.TraceParent` | `trace_parent` | W3C traceparent header value for OTel span linking |
+| `event.DataKey.CorrelationID` | `correlation_id` | Identifier grouping related events across requests: the flow's execution ID where the event has one, otherwise the request's trace ID |
 
 ## Distributed Tracing
 
 Events with the same `TraceID` are automatically grouped into a single trace by the OpenTelemetry subscriber.
+
+### Correlating Across Requests
+
+An authentication spans several HTTP requests, each with its own trace ID, so `TraceID` alone cannot stitch a login to the token issued from it. The `correlation_id` data key carries an identifier across them, falling back to the request's trace ID wherever a flow-scoped one is not available:
+
+- Flow events use the flow's execution ID, which every event of that execution shares. A flow that fails before its context loads has no execution ID and reports the request's trace ID instead.
+- The execution ID rides the flow assertion onto the authorization code, and `TOKEN_ISSUED` for that code reports it.
+- A grant issued in a single request, such as `client_credentials`, correlates on its own trace ID.
+
+`TOKEN_ISSUANCE_STARTED` and `TOKEN_ISSUANCE_FAILED` always report the request's trace ID, because the authorization code is read by the grant handler after the started event is published and is never read on the paths that fail before it. A login's execution ID therefore matches its flow events and `TOKEN_ISSUED`, but not the started event of the same exchange, and a failed redemption of a code cannot be joined to the login it came from. Use `grant_type` and `client_id` on those two events instead.
+
+Flow and token events also cross-reference the same principal both ways: flow events carry the OAuth `client_id` alongside `app_id`, and token events carry `app_id` alongside `client_id`.
 
 ### Hierarchical Tracing
 To create parent-child relationships between spans, include the `TraceParent` key:

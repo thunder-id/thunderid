@@ -44,6 +44,16 @@ type AuthorizationCode struct {
 	// assertion. It is stamped onto the access and refresh tokens issued for this code so revocation
 	// can target the whole family. Empty when the login flow issued no tfid (e.g. pre-rollout tokens).
 	TokenFamilyID string
+	// CorrelationID is the login flow's execution id, carried on the flow assertion. It is reported
+	// on the token issuance events for this code so they correlate with the flow's own events.
+	// Empty when the code was not minted from a flow assertion.
+	CorrelationID string
+	// SubjectID is the resource ID of the entity the flow authenticated, and SubjectCategory its
+	// entity category. Both are carried on the flow assertion so the token issued for this code can
+	// report the subject without resolving it again, and so the reported subject is the opaque
+	// resource ID rather than the possibly-mapped token subject.
+	SubjectID       string
+	SubjectCategory string
 }
 
 // AuthZPostResponse represents the response body for the authorization POST request.
@@ -73,5 +83,8 @@ type assertionClaims struct {
 	completedACR           string
 	authorizationRequestID string
 	tokenFamilyID          string
+	correlationID          string
+	subjectID              string
+	subjectCategory        string
 	flowErrorType          string
 }

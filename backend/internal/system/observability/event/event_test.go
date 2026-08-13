@@ -53,7 +53,7 @@ func TestEventBuilderPattern(t *testing.T) {
 
 	result := evt.
 		WithStatus(providers.StatusSuccess).
-		WithData(DataKey.UserID, "user-456").
+		WithData(DataKey.Subject, "user-456").
 		WithData(DataKey.ClientID, "client-789").
 		WithData(DataKey.Message, "Authentication completed successfully").
 		WithData(DataKey.DurationMs, 500)
@@ -66,8 +66,8 @@ func TestEventBuilderPattern(t *testing.T) {
 		t.Errorf("Expected Status %s, got %s", providers.StatusSuccess, evt.Status)
 	}
 
-	if evt.Data["user_id"] != "user-456" {
-		t.Errorf("Expected Data[user_id] %s, got %v", "user-456", evt.Data["user_id"])
+	if evt.Data["sub"] != "user-456" {
+		t.Errorf("Expected Data[sub] %s, got %v", "user-456", evt.Data["sub"])
 	}
 
 	if evt.Data["client_id"] != "client-789" {
@@ -252,5 +252,52 @@ func TestStatusConstants(t *testing.T) {
 
 	if providers.StatusPending == "" {
 		t.Error("StatusPending should not be empty")
+	}
+}
+
+// The wire names are what operators filter on, so they are part of the event contract and must not
+// drift when the surrounding struct is edited.
+func TestPrincipalAndCorrelationDataKeys(t *testing.T) {
+	tests := []struct {
+		key  string
+		want string
+	}{
+		{key: DataKey.ActorType, want: "act_type"},
+		{key: DataKey.ActorSub, want: "act_sub"},
+		{key: DataKey.Subject, want: "sub"},
+		{key: DataKey.SubjectType, want: "sub_type"},
+		{key: DataKey.IsDelegated, want: "is_delegated"},
+		{key: DataKey.CorrelationID, want: "correlation_id"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if tt.key != tt.want {
+				t.Errorf("data key = %q, want %q", tt.key, tt.want)
+			}
+		})
+	}
+}
+
+// An application is spelled "app" as an entity category and "application" as a principal type, which
+// is the spelling the token's sub_type claim uses. Consumers filter on the latter.
+func TestPrincipalType(t *testing.T) {
+	tests := []struct {
+		category string
+		want     string
+	}{
+		{category: "user", want: "user"},
+		{category: "agent", want: "agent"},
+		{category: "app", want: "application"},
+		{category: "", want: ""},
+		{category: "something-else", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.category, func(t *testing.T) {
+			if got := PrincipalType(tt.category); got != tt.want {
+				t.Errorf("PrincipalType(%q) = %q, want %q", tt.category, got, tt.want)
+			}
+		})
 	}
 }
