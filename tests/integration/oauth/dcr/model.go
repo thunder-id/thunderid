@@ -25,6 +25,8 @@ type DCRRegistrationRequest struct {
 	TosURI                             string                 `json:"tos_uri,omitempty"`
 	PolicyURI                          string                 `json:"policy_uri,omitempty"`
 	RequirePushedAuthorizationRequests bool                   `json:"require_pushed_authorization_requests,omitempty"`
+	IDTokenEncryptedResponseAlg        string                 `json:"id_token_encrypted_response_alg,omitempty"`
+	IDTokenEncryptedResponseEnc        string                 `json:"id_token_encrypted_response_enc,omitempty"`
 
 	// LocalizedFields holds OIDC language-tagged fields (e.g. "client_name#fr": "Mon Client").
 	// These are serialized as top-level #-keyed JSON keys.
@@ -71,6 +73,8 @@ type DCRRegistrationResponse struct {
 	PolicyURI                          string                 `json:"policy_uri,omitempty"`
 	AppID                              string                 `json:"app_id,omitempty"`
 	RequirePushedAuthorizationRequests bool                   `json:"require_pushed_authorization_requests,omitempty"`
+	IDTokenEncryptedResponseAlg        string                 `json:"id_token_encrypted_response_alg,omitempty"`
+	IDTokenEncryptedResponseEnc        string                 `json:"id_token_encrypted_response_enc,omitempty"`
 
 	// Localized variant maps — populated from #-keyed top-level fields in the response JSON.
 	LocalizedClientName map[string]string `json:"-"`

@@ -399,6 +399,25 @@ func (ts *DCRTestSuite) TestDCRRegistrationJWKSAndJWKSUriConflict() {
 	ts.Assert().NotEmpty(errResp.Error)
 }
 
+func (ts *DCRTestSuite) TestDCRRegistrationIDTokenEncryptionEncWithoutAlg() {
+	request := DCRRegistrationRequest{
+		OUID:                        "decl-ou-1",
+		RedirectURIs:                []string{"https://example.com/callback"},
+		GrantTypes:                  []string{"authorization_code"},
+		ResponseTypes:               []string{"code"},
+		ClientName:                  "ID Token Encryption Missing Alg",
+		TokenEndpointAuthMethod:     "client_secret_basic",
+		IDTokenEncryptedResponseEnc: "A256GCM",
+	}
+
+	_, statusCode, errResp := ts.registerClientWithError(request)
+
+	ts.Assert().Equal(http.StatusBadRequest, statusCode)
+	ts.Require().NotNil(errResp)
+	ts.Assert().Equal("invalid_client_metadata", errResp.Error)
+	ts.Assert().Equal("idToken encryptionAlg is required when encryptionEnc is set", errResp.ErrorDescription)
+}
+
 // TestDCRRegistrationJWKSUriNotHTTPS verifies rejection of non-HTTPS JWKS URI per RFC 7591.
 func (ts *DCRTestSuite) TestDCRRegistrationJWKSUriNotHTTPS() {
 	request := DCRRegistrationRequest{
