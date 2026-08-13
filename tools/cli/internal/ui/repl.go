@@ -1054,17 +1054,22 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 			m.input.Placeholder = "Type / for commands, Ctrl+C to exit"
 		}
 
+	// The three exits below replace the running product, so the sample must not
+	// survive: it would keep its ports and point at a base URL that is gone.
 	case cutoverMsg:
+		sample.StopServices()
 		m.cutoverRequested = true
 		m.quitting = true
 		return m, tea.Quit
 
 	case upgradeMsg:
+		sample.StopServices()
 		m.upgradeRequested = true
 		m.quitting = true
 		return m, tea.Quit
 
 	case switchVersionMsg:
+		sample.StopServices()
 		m.switchRequested = true
 		m.quitting = true
 		return m, tea.Quit
@@ -1147,6 +1152,9 @@ func (m *ReplModel) runCommand(val string) tea.Cmd {
 }
 
 func (m *ReplModel) killThunder() {
+	// Stop the sample first: its backend talks to the product, so stopping the
+	// dependant before the product avoids error spew in the sample log.
+	sample.StopServices()
 	if m.proc == nil || m.proc.Process == nil {
 		return
 	}

@@ -6,6 +6,7 @@ package sample
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
@@ -170,6 +172,7 @@ func runWithResult(
 	if !ok {
 		return nil, "", "", fmt.Errorf("unknown sample %q — available: %s", sampleName, availableList())
 	}
+	beginRun()
 
 	if err := checkNodeVersion(); err != nil {
 		return nil, "", "", err
@@ -285,6 +288,9 @@ func runWithResult(
 	// Start sample services.
 	progress("Starting " + sampleName + " services...")
 	if err := startSampleServices(sampleDir, aiEnabled); err != nil {
+		if errors.Is(err, errStoppedDuringStart) {
+			return proc, meta.sampleURL, serverURL, err
+		}
 		return proc, meta.sampleURL, serverURL, fmt.Errorf("could not start sample: %w", err)
 	}
 
@@ -616,6 +622,91 @@ func waitForServices(checks []serviceCheck, logPath string, timeout time.Duratio
 	return nil
 }
 
+// running tracks the sample's npm process so the CLI can stop it on shutdown.
+// startSampleServices writes it from RunAsync's goroutine while the REPL reads
+// it from Update, so it is mutex-guarded.
+var running struct {
+	sync.Mutex
+	cmd       *exec.Cmd
+	aiEnabled bool
+	started   bool // a sample was started at least once, so its ports are worth sweeping
+	stopping  bool // shutdown began; a sample that starts after it must not survive
+}
+
+// errStoppedDuringStart is returned when the CLI shuts down while the sample is
+// still starting; the freshly started process is terminated before it returns.
+var errStoppedDuringStart = errors.New("sample startup stopped: shutting down")
+
+// beginRun clears the shutdown latch for a newly requested sample run.
+func beginRun() {
+	running.Lock()
+	defer running.Unlock()
+	running.stopping = false
+}
+
+// trackRunning records the started sample process for StopServices. It reports
+// false when shutdown already began, in which case the caller must stop the
+// process it just started.
+func trackRunning(cmd *exec.Cmd, aiEnabled bool) bool {
+	running.Lock()
+	defer running.Unlock()
+	if running.stopping {
+		return false
+	}
+	running.cmd = cmd
+	running.aiEnabled = aiEnabled
+	running.started = true
+	return true
+}
+
+// clearRunning drops the recorded handle if it is still cmd.
+func clearRunning(cmd *exec.Cmd) {
+	running.Lock()
+	defer running.Unlock()
+	if running.cmd == cmd {
+		running.cmd = nil
+	}
+}
+
+// stopPortTimeout bounds how long StopServices waits for each sample port to be
+// released after the processes holding it are signaled.
+const stopPortTimeout = 5 * time.Second
+
+// StopServices terminates the sample services started by this CLI process. It
+// signals the sample's process group (npm plus every service it spawned) and
+// then sweeps the sample's known ports as a backstop for anything that escaped
+// the group. It is safe to call when nothing was started, and calling it twice
+// is a no-op.
+func StopServices() {
+	running.Lock()
+	cmd, aiEnabled, started := running.cmd, running.aiEnabled, running.started
+	running.cmd = nil
+	running.started = false
+	// Latch shutdown: a sample still starting on RunAsync's goroutine registers
+	// after this point, and trackRunning must refuse it rather than leave it
+	// running past the CLI's exit.
+	running.stopping = true
+	running.Unlock()
+
+	if !started {
+		return
+	}
+	killProcessGroup(cmd)
+	sweepSamplePorts(sampleServicePorts(aiEnabled))
+}
+
+// sweepSamplePorts frees the sample's ports. It is a variable so tests can stop
+// tracked processes without signaling whatever else holds those ports on the
+// developer's machine.
+var sweepSamplePorts = func(ports []int) {
+	for _, p := range ports {
+		setup.KillPort(p)
+	}
+	for _, p := range ports {
+		setup.WaitForPortFree(p, stopPortTimeout)
+	}
+}
+
 // startSampleServices launches the sample services in the background via npm.
 // For AgentID mode (aiEnabled=true) it runs `npm run dev` (all three services);
 // otherwise it runs `npm run dev:b2c` (backend + frontend only).
@@ -645,8 +736,15 @@ func startSampleServices(sampleDir string, aiEnabled bool) error {
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile // never write to os.Stderr — it corrupts the Bubble Tea display
 	cmd.Stdin = nil
+	// Own process group, so StopServices can signal npm and every service it
+	// spawns as a unit.
+	setProcessGroup(cmd)
 	if err := cmd.Start(); err != nil {
 		return err
+	}
+	if !trackRunning(cmd, aiEnabled) {
+		killProcessGroup(cmd)
+		return errStoppedDuringStart
 	}
 
 	// Detect immediate failures (e.g. missing npm script) before returning.
@@ -654,6 +752,7 @@ func startSampleServices(sampleDir string, aiEnabled bool) error {
 	go func() { done <- cmd.Wait() }()
 	select {
 	case err := <-done:
+		clearRunning(cmd)
 		tail := tailLog(logPath, 10)
 		if err != nil {
 			return fmt.Errorf("sample services failed to start:\n%s", tail)
