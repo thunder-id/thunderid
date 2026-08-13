@@ -16,11 +16,13 @@ hide_title: true
   </div>
 
   {/* Connector */}
-  <svg className="uc-line uc-overview-connector" width="660" height="52" viewBox="0 0 660 52">
-    <path d="M330 0 C330 26, 110 26, 110 52" stroke="var(--ifm-color-emphasis-300)" strokeWidth="1.5" fill="none" strokeDasharray="4 3"/>
-    <path d="M330 0 L330 52" stroke="var(--ifm-color-emphasis-300)" strokeWidth="1.5" fill="none" strokeDasharray="4 3"/>
-    <path d="M330 0 C330 26, 550 26, 550 52" stroke="var(--ifm-color-emphasis-300)" strokeWidth="1.5" fill="none" strokeDasharray="4 3"/>
-  </svg>
+  <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+    <svg className="uc-line uc-overview-connector" width="660" height="52" viewBox="0 0 660 52">
+      <path d="M330 0 C330 26, 110 26, 110 52" stroke="var(--ifm-color-emphasis-300)" strokeWidth="1.5" fill="none" strokeDasharray="4 3"/>
+      <path d="M330 0 L330 52" stroke="var(--ifm-color-emphasis-300)" strokeWidth="1.5" fill="none" strokeDasharray="4 3"/>
+      <path d="M330 0 C330 26, 550 26, 550 52" stroke="var(--ifm-color-emphasis-300)" strokeWidth="1.5" fill="none" strokeDasharray="4 3"/>
+    </svg>
+  </Box>
 
   {/* Branch cards */}
   <UseCaseBranchCards />
