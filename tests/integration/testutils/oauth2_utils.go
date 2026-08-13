@@ -1391,3 +1391,14 @@ func DecodeJWTPayloadMap(token string) (map[string]any, error) {
 	}
 	return claims, nil
 }
+
+// RandomJTI returns a fresh url-safe identifier suitable for the "jti" claim.
+func RandomJTI() string {
+	return randomJTI()
+}
+
+// SignJWT signs a JWS signing input using the given private key and algorithm.
+// Supported algorithms: ES256, ES384, ES512, PS256, RS256, EdDSA.
+func SignJWT(priv crypto.Signer, alg, signingInput string) ([]byte, error) {
+	return signProof(priv, alg, signingInput)
+}

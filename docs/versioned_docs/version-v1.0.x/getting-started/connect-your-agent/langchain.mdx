@@ -179,8 +179,8 @@ No extra agent configuration is needed. An agent can authenticate with its own c
 
 Acting for a user requires a little extra agent configuration. Open **Agents** → select your agent, then:
 
-1. On the **Advanced** tab, set **Operating Mode** to **On behalf of a user**. This extends the agent to also sign users in, enabling the `authorization_code` grant the on-behalf-of flow needs.
-2. On the **Advanced Settings** tab, set the **Allowed user types** (for example, **Person**) so users of that type can sign up through this agent, and under **Redirect URIs** add `http://localhost:6274/callback` (this must match `REDIRECT_URI` in your `.env`).
+1. On the **Advanced** tab, under **Operating Mode**, turn on the **Delegated mode** toggle. This extends the agent to also sign users in, enabling the `authorization_code` grant the on-behalf-of flow needs.
+2. On the **Advanced** tab, set the **Allowed user types** (for example, **Person**) so users of that type can sign up through this agent, and under **Redirect URIs** add `http://localhost:6274/callback` (this must match `REDIRECT_URI` in your `.env`).
 3. Click **Save**.
 
 </Mode>
@@ -1116,8 +1116,8 @@ The user signed in once, and the agent acted on their behalf, operating with the
     href="../../../use-cases/ai-agents/agent-as-subject"
   />
   <NextStepsCard
-    title="Manage Agents"
-    description="Go deeper on the agent you registered: create and manage agents, configure their credentials, and regenerate secrets from the Console."
+    title="Create and Manage Your Agent"
+    description="Go deeper on the agent you registered: manage its owner, attribute schema, and lifecycle from the Console."
     href="../../../guides/agents/manage-agents"
   />
 </NextSteps>

@@ -6,14 +6,18 @@ package export
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+	"gopkg.in/yaml.v3"
+
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
@@ -983,4 +987,138 @@ func (ts *ExportAPITestSuite) deleteIDP(idpID string) error {
 	delete(idpVendorRegistry, idpID)
 	idpVendorRegistryMu.Unlock()
 	return nil
+}
+
+// yamlValue returns the first of names present in node. The exported nested keys are snake_case today
+// while the declarative contract calls for camelCase (G13), so navigating tolerantly keeps this a
+// round-trip check rather than a characterization of the casing bug: it passes now and keeps passing once
+// G13 is fixed. Asserting on the spelling would be a tripwire test, which this plan does not use.
+func yamlValue(node map[string]interface{}, names ...string) (interface{}, bool) {
+	for _, name := range names {
+		if value, ok := node[name]; ok {
+			return value, true
+		}
+	}
+	return nil, false
+}
+
+// yamlMapping is yamlValue narrowed to a nested mapping.
+func yamlMapping(node map[string]interface{}, names ...string) (map[string]interface{}, bool) {
+	value, ok := yamlValue(node, names...)
+	if !ok {
+		return nil, false
+	}
+	mapping, ok := value.(map[string]interface{})
+	return mapping, ok
+}
+
+// exportPlaceholder matches the {{.VAR}} tokens the exporter substitutes for secrets, and the
+// {{ t(...) }} expressions it preserves verbatim.
+var exportPlaceholder = regexp.MustCompile(`{{[^}]*}}`)
+
+// findExportedConnection decodes every YAML document in an export bundle and returns the one whose id
+// matches. The bundle carries "# File:" comments and separates documents with ---, so it decodes as a
+// stream; but an exported secret is rendered as a bare {{.VAR}} token, which YAML reads as the start of
+// a flow mapping and rejects. The tokens are replaced with a plain scalar first, since this test is
+// about the attribute configuration rather than the placeholder syntax.
+func (ts *ExportAPITestSuite) findExportedConnection(bundle, id string) map[string]interface{} {
+	ts.T().Helper()
+	parseable := exportPlaceholder.ReplaceAllString(bundle, "__redacted__")
+	decoder := yaml.NewDecoder(strings.NewReader(parseable))
+	for {
+		var document map[string]interface{}
+		err := decoder.Decode(&document)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		ts.Require().NoError(err, "failed to decode exported YAML: %s", parseable)
+		if document == nil {
+			continue
+		}
+		if documentID, ok := document["id"].(string); ok && documentID == id {
+			return document
+		}
+	}
+	ts.Require().Fail("exported bundle did not contain connection "+id, parseable)
+	return nil
+}
+
+// AD2 verifies an attributeConfiguration survives export intact. The exported document is what a
+// declarative deployment consumes, so a section dropped or mangled here would silently un-configure a
+// connection on re-import. The whole structure is compared after parsing, because substring checks would
+// pass on a document whose values had been reordered, truncated or emptied.
+func (ts *ExportAPITestSuite) TestIdentityProviderExportPreservesAttributeConfiguration() {
+	// Targets resolve against the bootstrapped Person user type, so no fixture is needed here.
+	idpID, err := testutils.CreateIDP(testutils.IDP{
+		Name:        "Export Attr Config IDP",
+		Description: "Identity provider carrying an attribute configuration",
+		Type:        "GOOGLE",
+		Properties: []testutils.IDPProperty{
+			{Name: "client_id", Value: "export_attr_client"},
+			{Name: "client_secret", Value: "export_attr_secret", IsSecret: true},
+			{Name: "redirect_uri", Value: "https://localhost:8095/callback"},
+		},
+		AttributeConfiguration: &testutils.AttributeConfiguration{
+			UserTypeResolution: &testutils.UserTypeResolution{Default: "Person"},
+			UserTypeAttributeMappings: []testutils.UserTypeAttributeMapping{{
+				UserType: "Person",
+				Attributes: []testutils.AttributeMapping{
+					{ExternalAttribute: "given_name", LocalAttribute: "given_name"},
+					{ExternalAttribute: "family_name", LocalAttribute: "family_name"},
+				},
+			}},
+			AccountLinking: &testutils.AccountLinking{Attributes: []string{"email"}},
+		},
+	})
+	ts.Require().NoError(err)
+	defer func() {
+		ts.Require().NoError(testutils.DeleteIDP(idpID))
+	}()
+
+	yamlContent, err := ts.exportResourcesYAML(ExportRequest{Connections: []string{idpID}})
+	ts.Require().NoError(err)
+	ts.Require().NotEmpty(yamlContent)
+
+	document := ts.findExportedConnection(yamlContent, idpID)
+	config, ok := yamlMapping(document, "attributeConfiguration")
+	ts.Require().True(ok, "exported connection should carry an attributeConfiguration: %v", document)
+
+	resolution, ok := yamlMapping(config, "user_type_resolution", "userTypeResolution")
+	ts.Require().True(ok, "exported configuration should carry a resolution section: %v", config)
+	ts.Equal("Person", resolution["default"])
+
+	linking, ok := yamlMapping(config, "accountLinking", "account_linking")
+	ts.Require().True(ok, "exported configuration should carry an account-linking section: %v", config)
+	ts.Equal([]interface{}{"email"}, linking["attributes"],
+		"the account-linking list must survive export exactly")
+
+	rawMappings, ok := yamlValue(config, "user_type_attribute_mappings", "userTypeAttributeMappings")
+	ts.Require().True(ok, "exported configuration should carry mapping entries: %v", config)
+	mappings, ok := rawMappings.([]interface{})
+	ts.Require().True(ok)
+	ts.Require().Len(mappings, 1, "exactly the one configured mapping entry should be exported")
+
+	entry, ok := mappings[0].(map[string]interface{})
+	ts.Require().True(ok)
+	entryUserType, ok := yamlValue(entry, "user_type", "userType")
+	ts.Require().True(ok, "mapping entry should name its user type: %v", entry)
+	ts.Equal("Person", entryUserType)
+
+	rawAttributes, ok := entry["attributes"]
+	ts.Require().True(ok, "mapping entry should carry its attributes: %v", entry)
+	attributes, ok := rawAttributes.([]interface{})
+	ts.Require().True(ok)
+	ts.Require().Len(attributes, 2, "both configured pairs should be exported, in order")
+
+	expectedPairs := [][2]string{{"given_name", "given_name"}, {"family_name", "family_name"}}
+	for i, expected := range expectedPairs {
+		pair, ok := attributes[i].(map[string]interface{})
+		ts.Require().True(ok)
+		external, ok := yamlValue(pair, "external_attribute", "externalAttribute")
+		ts.Require().True(ok, "pair %d should name its external attribute: %v", i, pair)
+		local, ok := yamlValue(pair, "local_attribute", "localAttribute")
+		ts.Require().True(ok, "pair %d should name its local attribute: %v", i, pair)
+		ts.Equal(expected[0], external)
+		ts.Equal(expected[1], local)
+	}
 }

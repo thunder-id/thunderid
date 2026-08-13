@@ -17,8 +17,8 @@ An agent can hold an access token that represents a user instead of itself. The 
 
 By default an agent acts only on its own. Extending it lets the same agent also act for a signed-in user, without giving up acting on its own. In the Console, extend the agent as follows:
 
-1. On the **Advanced** tab, set **Operating Mode** to **On behalf of a user**. The agent keeps acting on its own (`client_credentials`) and gains the ability to sign a user in and act for them (`authorization_code` with PKCE).
-2. Still on the **Advanced** tab, add the **Authorized redirect URIs** for the sign-in callback, and restrict **Allowed User Types** if only certain user types may sign in through this agent.
+1. On the **Advanced** tab, under **Operating Mode**, turn on the **Delegated mode** toggle. The agent keeps acting on its own (`client_credentials`) and gains the ability to sign a user in and act for them (`authorization_code` with PKCE).
+2. Still on the **Advanced** tab, add the **Authorized redirect URIs** for the sign-in callback, and set **Allowed User Types** to the user types allowed to register through the agent.
 3. On the **Flows** tab, pick the **Authentication** and **Registration** flows that decide how users authenticate (enterprise SSO, social login, passkeys, OTP, and where step-up applies).
 
 :::note

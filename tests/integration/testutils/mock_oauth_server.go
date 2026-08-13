@@ -60,6 +60,10 @@ type MockOAuthServer struct {
 	baseURL       string
 	authorizeFunc func(userID string) (string, error)
 
+	// Response overrides drive the transport failures a well-behaved provider never produces.
+	tokenOverride    func() (int, string)
+	userInfoOverride func() (int, string)
+
 	// Configurable endpoints
 	authorizePath string
 	tokenPath     string
@@ -137,6 +141,40 @@ func (m *MockOAuthServer) SetAuthorizeFunc(fn func(userID string) (string, error
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.authorizeFunc = fn
+}
+
+// SetTokenResponseOverride replaces the whole token response with the given status and body.
+func (m *MockOAuthServer) SetTokenResponseOverride(fn func() (int, string)) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	m.tokenOverride = fn
+}
+
+// SetUserInfoResponseOverride replaces the whole userinfo response with the given status and body.
+func (m *MockOAuthServer) SetUserInfoResponseOverride(fn func() (int, string)) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	m.userInfoOverride = fn
+}
+
+// ClearOverrides restores normal behaviour on both endpoints between tests.
+func (m *MockOAuthServer) ClearOverrides() {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	m.tokenOverride = nil
+	m.userInfoOverride = nil
+}
+
+// writeOAuthOverride serves an override response and reports whether it handled the request.
+func writeOAuthOverride(w http.ResponseWriter, fn func() (int, string)) bool {
+	if fn == nil {
+		return false
+	}
+	status, body := fn()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(body))
+	return true
 }
 
 // AddUser adds a user to the mock server
@@ -241,6 +279,13 @@ func (m *MockOAuthServer) handleAuthorize(w http.ResponseWriter, r *http.Request
 
 // handleToken handles the OAuth token endpoint
 func (m *MockOAuthServer) handleToken(w http.ResponseWriter, r *http.Request) {
+	m.mutex.RLock()
+	override := m.tokenOverride
+	m.mutex.RUnlock()
+	if writeOAuthOverride(w, override) {
+		return
+	}
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -342,6 +387,13 @@ func (m *MockOAuthServer) handleToken(w http.ResponseWriter, r *http.Request) {
 
 // handleUserInfo handles the OAuth userinfo endpoint
 func (m *MockOAuthServer) handleUserInfo(w http.ResponseWriter, r *http.Request) {
+	m.mutex.RLock()
+	override := m.userInfoOverride
+	m.mutex.RUnlock()
+	if writeOAuthOverride(w, override) {
+		return
+	}
+
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return

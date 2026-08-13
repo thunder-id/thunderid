@@ -70,6 +70,28 @@ Use the **SMS gateway** connection to connect <ProductName /> to any SMS gateway
    | **Content type** | No | Format of the request body sent to the gateway: `JSON` or `FORM`. Defaults to `JSON`. |
    | **HTTP headers** | No | Headers sent with every request, one name and value per row. A row is saved only when both parts are filled in. |
 
+#### Customize the Gateway Request Body
+
+<ProductName /> does not assemble a request payload for the gateway. It sends the rendered SMS template as the request body exactly as written. The template defines both the payload shape and the field names your gateway expects.
+
+To change the request body, edit the SMS template for the scenario your flow uses, such as `sms_otp.yaml` for the `OTP` scenario. Templates load at startup, so restart the server after editing one.
+
+For a connection with `contentType` set to `JSON`, write the template body as the JSON object your gateway accepts:
+
+```yaml
+body: '{"to":"{{ctx(mobile_number)}}","body":"Your verification code is {{ctx(otpCode)}}."}'
+```
+
+For `FORM`, write one `key=value` pair per line:
+
+```yaml
+body: |
+  to={{ctx(mobile_number)}}
+  message=Your verification code is {{ctx(otpCode)}}
+```
+
+Keep the template's `contentType` set to `text/plain`. With `text/html`, <ProductName /> escapes HTML characters in substituted values, which breaks JSON quoting.
+
 ## Update an SMS Provider
 
 1. Open the connection from the Connections page.

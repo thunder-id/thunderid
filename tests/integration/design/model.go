@@ -105,6 +105,23 @@ type Link struct {
 	Rel  string `json:"rel"`
 }
 
+// ResourceDependency represents a single resource that references a theme or layout.
+type ResourceDependency struct {
+	ResourceType     string `json:"resourceType"`
+	ID               string `json:"id"`
+	DisplayName      string `json:"displayName"`
+	BehaviorOnDelete string `json:"behaviorOnDelete"`
+}
+
+// DependenciesResponse represents the response of the theme/layout usages endpoints. TotalResults
+// and Summary are nil when dependency data is unavailable, distinct from a confirmed-empty result.
+type DependenciesResponse struct {
+	TotalResults *int                 `json:"totalResults"`
+	Count        int                  `json:"count"`
+	Summary      map[string]int       `json:"summary"`
+	Usages       []ResourceDependency `json:"usages"`
+}
+
 // ErrorResponse represents an error response.
 type ErrorResponse struct {
 	Code        string      `json:"code"`

@@ -41,6 +41,12 @@ import (
 // The {{ t(...) }} expression in the GitHub IDP description verifies that
 // non-Go-template expressions inside the file are preserved as-is and do not
 // cause parse errors during env-var substitution.
+//
+// The GitHub IDP also carries an attributeConfiguration. Its nested keys are snake_case
+// (user_type_resolution, user_type_attribute_mappings, user_type, external_attribute,
+// local_attribute) while the outer key and accountLinking are camelCase, because
+// providers.AttributeConfiguration tags them inconsistently. That is recorded as G13; camelCase
+// nested keys would silently fail to parse. Update this fixture when G13 is fixed.
 const resourcesYAML = `resource_type: organization_unit
 id: sf-decl-ou-1
 handle: sf-decl-ou-1
@@ -55,6 +61,17 @@ type: github
 clientId: {{.SF_TEST_GITHUB_CLIENT_ID}}
 clientSecret: sf-test-github-secret
 redirectUri: https://localhost:8095/callback
+attributeConfiguration:
+  user_type_resolution:
+    default: Person
+  user_type_attribute_mappings:
+    - user_type: Person
+      attributes:
+        - external_attribute: login
+          local_attribute: username
+  accountLinking:
+    attributes:
+      - email
 ---
 resource_type: connection
 id: sf-decl-idp-2
@@ -64,6 +81,17 @@ type: google
 clientId: sf-test-google-client
 clientSecret: sf-test-google-secret
 redirectUri: https://localhost:8095/callback
+---
+resource_type: connection
+id: sf-decl-idp-3
+name: Single File Empty Config IDP
+description: IDP whose attributeConfiguration is present but empty
+type: google
+clientId: sf-test-empty-client
+clientSecret: sf-test-empty-secret
+redirectUri: https://localhost:8095/callback
+attributeConfiguration:
+  accountLinking: {}
 `
 
 // envVars are set in the test process before the server starts so they are inherited
@@ -206,7 +234,7 @@ func (s *SingleFileModeSuite) TestSecondIdentityProviderLoadedFromFile() {
 	s.Equal("google", idp["type"])
 }
 
-// TestAllIDPsFromFileAppearInListing verifies that both declarative IDPs appear in the
+// TestAllIDPsFromFileAppearInListing verifies that every declarative IDP in the file appears in the
 // collection endpoint.
 func (s *SingleFileModeSuite) TestAllIDPsFromFileAppearInListing() {
 	client := testutils.GetHTTPClient()
@@ -230,6 +258,134 @@ func (s *SingleFileModeSuite) TestAllIDPsFromFileAppearInListing() {
 
 	s.Contains(idpIDs, "sf-decl-idp-1", "listing should include sf-decl-idp-1")
 	s.Contains(idpIDs, "sf-decl-idp-2", "listing should include sf-decl-idp-2")
+	s.Contains(idpIDs, "sf-decl-idp-3", "listing should include sf-decl-idp-3")
+}
+
+// AD1 verifies a full attributeConfiguration declared in the single file is parsed and returned by the
+// connection API, including the mapping entries and the account-linking list.
+func (s *SingleFileModeSuite) TestAttributeConfigurationLoadedFromFile() {
+	client := testutils.GetHTTPClient()
+	resp, err := client.Get(fmt.Sprintf("%s/connections/github/sf-decl-idp-1", testutils.TestServerURL))
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+	s.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var idp map[string]interface{}
+	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&idp))
+
+	config, ok := idp["attributeConfiguration"].(map[string]interface{})
+	s.Require().True(ok, "expected attributeConfiguration on the response: %v", idp)
+
+	// The response is camelCase even though the file is snake_case: the wire format follows the json
+	// tags while the file is parsed with the yaml ones. See G13.
+	resolution, ok := config["userTypeResolution"].(map[string]interface{})
+	s.Require().True(ok, "expected userTypeResolution in %v", config)
+	s.Equal("Person", resolution["default"])
+
+	linking, ok := config["accountLinking"].(map[string]interface{})
+	s.Require().True(ok, "expected accountLinking in %v", config)
+	s.Equal([]interface{}{"email"}, linking["attributes"])
+
+	mappings, ok := config["userTypeAttributeMappings"].([]interface{})
+	s.Require().True(ok, "expected userTypeAttributeMappings in %v", config)
+	s.Require().Len(mappings, 1)
+	entry, ok := mappings[0].(map[string]interface{})
+	s.Require().True(ok)
+	s.Equal("Person", entry["userType"])
+	attributes, ok := entry["attributes"].([]interface{})
+	s.Require().True(ok)
+	s.Require().Len(attributes, 1)
+	attribute, ok := attributes[0].(map[string]interface{})
+	s.Require().True(ok)
+	s.Equal("login", attribute["externalAttribute"])
+	s.Equal("username", attribute["localAttribute"])
+}
+
+// AD3 verifies that a declared-but-empty configuration section stays distinguishable from an absent one
+// after loading. Declarative connections are seeded at startup exactly as REST-created ones are, so an
+// omitted accountLinking is filled in while a present-but-empty one is left alone. sf-decl-idp-3 declares
+// `accountLinking: {}` and sf-decl-idp-2 declares nothing.
+func (s *SingleFileModeSuite) TestEmptyVersusOmittedAttributeConfigurationFromFile() {
+	client := testutils.GetHTTPClient()
+
+	resp, err := client.Get(fmt.Sprintf("%s/connections/google/sf-decl-idp-3", testutils.TestServerURL))
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+	s.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var withEmpty map[string]interface{}
+	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&withEmpty))
+	emptyConfig, ok := withEmpty["attributeConfiguration"].(map[string]interface{})
+	s.Require().True(ok, "a declared-but-empty configuration should survive the load: %v", withEmpty)
+	linking, ok := emptyConfig["accountLinking"].(map[string]interface{})
+	s.Require().True(ok, "the empty section must remain present rather than being treated as absent")
+	s.Empty(linking["attributes"], "a present-but-empty section is not seeded")
+
+	resp2, err := client.Get(fmt.Sprintf("%s/connections/google/sf-decl-idp-2", testutils.TestServerURL))
+	s.Require().NoError(err)
+	defer resp2.Body.Close()
+	s.Require().Equal(http.StatusOK, resp2.StatusCode)
+
+	var withNone map[string]interface{}
+	s.Require().NoError(json.NewDecoder(resp2.Body).Decode(&withNone))
+	noneConfig, ok := withNone["attributeConfiguration"].(map[string]interface{})
+	s.Require().True(ok, "an omitted configuration should be seeded, not left absent: %v", withNone)
+	seededLinking, ok := noneConfig["accountLinking"].(map[string]interface{})
+	s.Require().True(ok, "an omitted accountLinking should be seeded: %v", noneConfig)
+
+	// Seeding fills the default only for attributes every user type declares unique, so one type allowing
+	// duplicate emails disables it deployment-wide. Naming that type here keeps the cause visible instead
+	// of surfacing as an unexplained empty list on the connection.
+	userTypes, err := testutils.ListUserTypes()
+	s.Require().NoError(err, "failed to list user types")
+	for _, userType := range userTypes {
+		s.Require().True(userType.IsAttributeUnique("email"),
+			"seeding precondition: user type %q allows duplicate emails", userType.Name)
+	}
+
+	s.Equal([]interface{}{"email"}, seededLinking["attributes"],
+		"an omitted section is seeded, which is the distinction the empty one suppresses")
+}
+
+// AD6 verifies that masking the declarative clientSecret does not disturb the configuration returned
+// alongside it.
+func (s *SingleFileModeSuite) TestSecretMaskingLeavesAttributeConfigurationIntactFromFile() {
+	client := testutils.GetHTTPClient()
+	resp, err := client.Get(fmt.Sprintf("%s/connections/github/sf-decl-idp-1", testutils.TestServerURL))
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+	s.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var idp map[string]interface{}
+	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&idp))
+
+	s.Equal("******", idp["clientSecret"], "the declarative secret should be masked")
+	config, ok := idp["attributeConfiguration"].(map[string]interface{})
+	s.Require().True(ok, "masking must not drop the attributeConfiguration")
+
+	// Presence alone would still pass if masking emptied or rewrote the sections, so the values are
+	// compared against what the fixture declares.
+	resolution, ok := config["userTypeResolution"].(map[string]interface{})
+	s.Require().True(ok, "expected userTypeResolution in %v", config)
+	s.Equal("Person", resolution["default"])
+
+	linking, ok := config["accountLinking"].(map[string]interface{})
+	s.Require().True(ok, "expected accountLinking in %v", config)
+	s.Equal([]interface{}{"email"}, linking["attributes"])
+
+	mappings, ok := config["userTypeAttributeMappings"].([]interface{})
+	s.Require().True(ok, "expected userTypeAttributeMappings in %v", config)
+	s.Require().Len(mappings, 1)
+	entry, ok := mappings[0].(map[string]interface{})
+	s.Require().True(ok)
+	s.Equal("Person", entry["userType"])
+	attributes, ok := entry["attributes"].([]interface{})
+	s.Require().True(ok)
+	s.Require().Len(attributes, 1)
+	attribute, ok := attributes[0].(map[string]interface{})
+	s.Require().True(ok)
+	s.Equal("login", attribute["externalAttribute"])
+	s.Equal("username", attribute["localAttribute"])
 }
 
 // TestDeclarativeResourcesAreImmutable verifies that a resource loaded from the single

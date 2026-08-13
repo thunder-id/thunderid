@@ -345,7 +345,8 @@
     "key_binding_max_age_seconds": 300,
     "result_token_validity_seconds": 300,
     "enforce_key_binding": true,
-    "trusted_anchors": []
+    "trusted_anchors": [],
+    "store": "composite"
   },
   "openid4vci": {
     "signing_key_id": "ecdsa-key",
@@ -353,7 +354,8 @@
     "proof_max_age_seconds": 300,
     "credential_validity_seconds": 2592000,
     "batch_size": 5,
-    "enforce_scope": false
+    "enforce_scope": false,
+    "store": "composite"
   },
   "attestation": {
     "apple": {
