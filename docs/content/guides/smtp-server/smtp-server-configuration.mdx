@@ -148,6 +148,50 @@ SendGrid displays API keys only once during creation. Store the key securely bef
 </TabItem>
 </Tabs>
 
+## Configure SMTP on Kubernetes
+
+The Helm chart generates `deployment.yaml` from your values file, so set the SMTP properties under `configuration.email.smtp` instead of editing the file directly. The value names are camelCase versions of the properties in [Configuration Properties](#configuration-properties).
+
+```yaml
+configuration:
+  email:
+    smtp:
+      host: smtp.example.com
+      port: 587
+      fromAddress: noreply@example.com
+      username: your-username
+      password: your-password
+      enableStartTls: true
+      enableAuthentication: true
+```
+
+The chart stores an inline `password` in the generated `{{productSlug}}-db-credentials` Secret and injects it as the `SMTP_PASSWORD` environment variable. To keep the password out of your values file, put it in your own Secret and reference it with `passwordRef`:
+
+```yaml
+configuration:
+  email:
+    smtp:
+      host: smtp.example.com
+      port: 587
+      fromAddress: noreply@example.com
+      username: your-username
+      passwordRef:
+        name: {{productSlug}}-smtp
+        key: password
+```
+
+Create that Secret before you install the chart:
+
+```bash
+kubectl create secret generic {{productSlug}}-smtp \
+  --from-literal=password=<your-smtp-password> \
+  --namespace {{productSlug}}
+```
+
+While `host` is empty, the chart omits the `email` section and email-dependent features remain unavailable. Once you set `host`, `port` and `fromAddress` are required, and Helm fails the install if either is missing.
+
+For the rest of the Kubernetes deployment settings, see [Deploy on Kubernetes](../../../deployment/deployment-paths/kubernetes).
+
 ## Connection Security
 
 <ProductName /> secures SMTP connections using explicit STARTTLS. When `enable_start_tls` is `true`, <ProductName /> first connects to the SMTP server over plain TCP on the specified port, then upgrades the connection to TLS using the STARTTLS command. The TLS handshake requires TLS 1.2 or later.

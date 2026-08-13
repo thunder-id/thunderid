@@ -78,6 +78,8 @@ log:
 
 If `log.level` is omitted, <ProductName /> defaults to `info`. An unrecognized value causes the server to exit at startup.
 
+On Kubernetes, set the logging properties under `configuration.log` in your Helm values rather than editing `deployment.yaml`. See [Logging](../deployment-paths/kubernetes#logging).
+
 ### Log Output
 
 By default <ProductName /> writes logs to the console (stdout) only. You can additionally, or instead, write them to a file. Console and file are independent outputs: enable either, both, or neither (with neither enabled, <ProductName /> falls back to the console so logs are never silently lost).
@@ -88,7 +90,7 @@ By default <ProductName /> writes logs to the console (stdout) only. You can add
 | `log.output.file.enabled` | `false` | Write logs to a file |
 | `log.output.file.path` | `logs` | Directory for the log file. A relative path resolves under the <ProductName /> home directory; an absolute path is used as-is |
 | `log.output.file.file_name` | `thunderid.log` | Name of the active log file |
-| `log.output.file.format` | `text` | Log line format: `text` or `json` |
+| `log.output.file.format` | `text` | Log line format: `text` or `json`. Despite its position under `file`, this setting applies to console output as well, so set it to `json` to emit JSON to stdout without enabling file output |
 | `log.output.file.rotation.size.enabled` | `false` | Roll the file over once it reaches `max_size_mb` |
 | `log.output.file.rotation.size.max_size_mb` | `10` | Size (in MB, fractional values allowed, e.g. `0.5`) at which the file is rotated |
 | `log.output.file.rotation.time.enabled` | `false` | Roll the file over on a time schedule |
@@ -814,6 +816,8 @@ email:
 ```
 
 For the full property reference and provider-specific examples, see [Configure SMTP Server](../../guides/smtp-server/smtp-server-configuration).
+
+On Kubernetes, set these properties under `configuration.email.smtp` in your Helm values rather than editing `deployment.yaml`. The chart also sources the SMTP password from a Kubernetes Secret. See [Email](../deployment-paths/kubernetes#email).
 
 ## Notification Configuration
 

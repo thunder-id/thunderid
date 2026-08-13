@@ -309,6 +309,139 @@ persistence:
 
 Set `replicaCount: 1` when using SQLite: multiple replicas writing to the same SQLite files will corrupt the database.
 
+## Application Configuration
+
+The `configuration` block in your values file becomes the server's `deployment.yaml`. Any setting you omit keeps its built-in default. For the full setting reference, see [Configuration](../../configuration). The sections below cover the settings most Kubernetes deployments set.
+
+### Email
+
+Set `configuration.email.smtp.host` to send email for features such as magic link authentication and user invitations. While the host is empty, the chart omits the section and email-dependent features remain unavailable.
+
+```yaml
+configuration:
+  email:
+    smtp:
+      host: smtp.example.com
+      port: 587
+      fromAddress: noreply@example.com
+      username: your-username
+      password: your-password
+      enableStartTls: true
+      enableAuthentication: true
+```
+
+`port` and `fromAddress` are required once you set `host`. Helm fails the install and names the missing value if either is absent.
+
+The chart stores an inline `password` in the generated `{{productSlug}}-db-credentials` Secret under the `smtp-password` key, then injects it into both the server and the setup job as the `SMTP_PASSWORD` environment variable. To keep the password out of your values file, put it in your own Secret and reference it:
+
+```yaml
+configuration:
+  email:
+    smtp:
+      host: smtp.example.com
+      port: 587
+      fromAddress: noreply@example.com
+      username: your-username
+      passwordRef:
+        name: {{productSlug}}-smtp
+        key: password
+```
+
+Set `passwordRef.name` and `passwordRef.key` together. `passwordRef` takes precedence over `password`, and the chart then writes nothing to the generated Secret.
+
+For provider-specific setup and connection security details, see [Configure SMTP Server](../../../guides/smtp-server/smtp-server-configuration).
+
+### Logging
+
+<ProductName /> writes logs to the console (stdout), where your cluster log collector reads them from the pod. Change the level under `configuration.log`:
+
+```yaml
+configuration:
+  log:
+    level: debug
+```
+
+To emit structured logs for a collector, set the format to `json`. The format applies to every output, so console logs become JSON without enabling file output:
+
+```yaml
+configuration:
+  log:
+    level: info
+    output:
+      file:
+        format: json
+```
+
+Each record then carries `time`, `level`, and `msg`, plus the fields for that record:
+
+```json
+{"time":"2026-01-15T06:34:35.496711511Z","level":"INFO","msg":"ThunderID Server started","startup_time":"200.978709ms"}
+{"time":"2026-01-15T06:34:37.179445303Z","level":"INFO","msg":"10.244.0.1 - - [15/Jan/2026:06:34:37 +0000] GET /health/readiness HTTP/1.1 200 167 0 a8616cbe-a820-410e-8517-6ebfbfed16d6","trace_id":"a8616cbe-a820-410e-8517-6ebfbfed16d6"}
+```
+
+Access log records hold the full request line in `msg` as preformatted text. The method, status, and latency are not separate fields, so a collector cannot filter on them without parsing `msg`.
+
+File output stays off by default. The container root filesystem is read-only, and the only writable path is `/tmp`, which the chart mounts as an `emptyDir` volume. Point `path` there to enable file output without changing the security context:
+
+```yaml
+configuration:
+  log:
+    output:
+      console:
+        enabled: true
+      file:
+        enabled: true
+        path: /tmp/logs
+        rotation:
+          maxBackups: 5
+```
+
+An `emptyDir` volume lives and dies with the pod, so these files disappear on restart or rescheduling. Keep console output enabled and collect logs from the pod for anything you need to retain. To write elsewhere, set `deployment.securityContext.readOnlyRootFilesystem` to `false`.
+
+:::warning
+Enabling file output with a `path` the container cannot create stops the server from starting. The pod enters `CrashLoopBackOff` and logs `rollingfile: failed to create directory`.
+:::
+
+### Deployment Identifier
+
+<ProductName /> scopes every record it stores to a deployment identifier. Set `configuration.server.identifier` to give each deployment its own scope when several of them share one database:
+
+```yaml
+configuration:
+  server:
+    identifier: eu-production
+```
+
+When you leave it empty, the server uses `default-deployment`.
+
+### Resource Store Modes
+
+Set a storage mode per resource type so <ProductName /> reads mounted declarative resources at startup. Use `configuration.stores`:
+
+```yaml
+declarativeResources:
+  enabled: true
+  configMap:
+    name: declarative-resources
+
+configuration:
+  stores:
+    application: composite
+    identity_provider: composite
+```
+
+Each mode is `mutable`, `declarative`, or `composite`. Helm rejects any other value at install time. The supported keys are `user`, `group`, `role`, `theme`, `layout`, `translation`, `agent`, `user_type`, `organization_unit`, `identity_provider`, `application`, `server_config`, and `resource`.
+
+The `flow`, `openid4vp`, and `openid4vci` resources take their mode on their own section instead:
+
+```yaml
+configuration:
+  flow:
+    store: composite
+```
+
+A mode you leave unset follows `declarativeResources.enabled`. For what each mode means and how <ProductName /> resolves resource files, see [Declarative Resources](../../configuration#declarative-resources).
+
 ## Cryptographic Material
 
 When `setup.enabled` is `true` (the default), the setup job generates per-install TLS, JWT signing, and AES encryption keys into a dedicated certs PersistentVolumeClaim, and the server reads them from it. This PVC must persist for the life of the deployment: if it is lost, previously encrypted data cannot be decrypted and previously issued tokens can no longer be validated. Configure its size and storage class under `certs.persistence`.

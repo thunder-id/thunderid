@@ -6,6 +6,9 @@ server:
   port: {{ .Values.configuration.server.port }}
   http_only: {{ .Values.configuration.server.httpOnly }}
   public_url: {{ .Values.configuration.server.publicUrl | quote }}
+  {{- if .Values.configuration.server.identifier }}
+  identifier: {{ .Values.configuration.server.identifier | quote }}
+  {{- end }}
   {{- if or .Values.configuration.server.security .Values.setup.enabled }}
   security:
     {{- with .Values.configuration.server.security }}
@@ -257,6 +260,9 @@ oauth:
 flow:
   max_version_history: {{ .Values.configuration.flow.maxVersionHistory }}
   auto_infer_registration: {{ .Values.configuration.flow.autoInferRegistration }}
+{{- if .Values.configuration.flow.store }}
+  store: {{ include "thunderid.validateStoreMode" (dict "value" .Values.configuration.flow.store "field" "configuration.flow.store") | quote }}
+{{- end }}
 {{- if .Values.configuration.flow.executors }}
   executors:
   {{- range .Values.configuration.flow.executors }}
@@ -291,6 +297,9 @@ openid4vp:
   result_token_validity_seconds: {{ .Values.configuration.openid4vp.resultTokenValiditySeconds }}
   enforce_key_binding: {{ .Values.configuration.openid4vp.enforceKeyBinding }}
   registration_cert_file: {{ .Values.configuration.openid4vp.registrationCertFile | quote }}
+  {{- if .Values.configuration.openid4vp.store }}
+  store: {{ include "thunderid.validateStoreMode" (dict "value" .Values.configuration.openid4vp.store "field" "configuration.openid4vp.store") | quote }}
+  {{- end }}
   trusted_anchors:
   {{- range .Values.configuration.openid4vp.trustedAnchors }}
     - name: {{ .name | quote }}
@@ -304,6 +313,113 @@ openid4vci:
   credential_validity_seconds: {{ .Values.configuration.openid4vci.credentialValiditySeconds | int64 }}
   batch_size: {{ .Values.configuration.openid4vci.batchSize }}
   enforce_scope: {{ .Values.configuration.openid4vci.enforceScope }}
+  {{- if .Values.configuration.openid4vci.store }}
+  store: {{ include "thunderid.validateStoreMode" (dict "value" .Values.configuration.openid4vci.store "field" "configuration.openid4vci.store") | quote }}
+  {{- end }}
+
+{{- $email := default dict .Values.configuration.email }}
+{{- $smtp := default dict $email.smtp }}
+{{- if $smtp.host }}
+
+email:
+  smtp:
+    host: {{ $smtp.host | quote }}
+    port: {{ required "configuration.email.smtp.port is required when configuration.email.smtp.host is set." $smtp.port }}
+    from_address: {{ required "configuration.email.smtp.fromAddress is required when configuration.email.smtp.host is set." $smtp.fromAddress | quote }}
+    {{- if hasKey $smtp "enableStartTls" }}
+    enable_start_tls: {{ $smtp.enableStartTls }}
+    {{- end }}
+    {{- if hasKey $smtp "enableAuthentication" }}
+    enable_authentication: {{ $smtp.enableAuthentication }}
+    {{- end }}
+    {{- if $smtp.username }}
+    username: {{ $smtp.username | quote }}
+    {{- end }}
+    {{- if or $smtp.password (default dict $smtp.passwordRef).key }}
+    password: {{ "{{.SMTP_PASSWORD}}" | quote }}
+    {{- end }}
+{{- end }}
+
+{{- $log := default dict .Values.configuration.log }}
+{{- $logOutput := default dict $log.output }}
+{{- $logConsole := default dict $logOutput.console }}
+{{- $logFile := default dict $logOutput.file }}
+{{- $logAccess := default dict $log.access }}
+{{- $logRotation := default dict $logFile.rotation }}
+{{- $logSizeRotation := default dict $logRotation.size }}
+{{- $logTimeRotation := default dict $logRotation.time }}
+{{- if or $log.level (hasKey $logConsole "enabled") $logFile $logAccess.excludePaths }}
+
+log:
+  {{- if $log.level }}
+  level: {{ $log.level | quote }}
+  {{- end }}
+  {{- if or (hasKey $logConsole "enabled") $logFile }}
+  output:
+    {{- if hasKey $logConsole "enabled" }}
+    console:
+      enabled: {{ $logConsole.enabled }}
+    {{- end }}
+    {{- if $logFile }}
+    file:
+      {{- if hasKey $logFile "enabled" }}
+      enabled: {{ $logFile.enabled }}
+      {{- end }}
+      {{- if $logFile.path }}
+      path: {{ $logFile.path | quote }}
+      {{- end }}
+      {{- if $logFile.fileName }}
+      file_name: {{ $logFile.fileName | quote }}
+      {{- end }}
+      {{- if $logFile.format }}
+      format: {{ $logFile.format | quote }}
+      {{- end }}
+      {{- if $logRotation }}
+      rotation:
+        {{- if hasKey $logSizeRotation "enabled" }}
+        size:
+          enabled: {{ $logSizeRotation.enabled }}
+          {{- if $logSizeRotation.maxSizeMb }}
+          max_size_mb: {{ $logSizeRotation.maxSizeMb }}
+          {{- end }}
+        {{- end }}
+        {{- if hasKey $logTimeRotation "enabled" }}
+        time:
+          enabled: {{ $logTimeRotation.enabled }}
+          {{- if $logTimeRotation.intervalDays }}
+          interval_days: {{ $logTimeRotation.intervalDays }}
+          {{- end }}
+        {{- end }}
+        {{- if hasKey $logRotation "maxBackups" }}
+        max_backups: {{ $logRotation.maxBackups }}
+        {{- end }}
+        {{- if hasKey $logRotation "maxAgeDays" }}
+        max_age_days: {{ $logRotation.maxAgeDays }}
+        {{- end }}
+        {{- if hasKey $logRotation "compress" }}
+        compress: {{ $logRotation.compress }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- if $logAccess.excludePaths }}
+  access:
+    exclude_paths:
+    {{- range $logAccess.excludePaths }}
+      - {{ . | quote }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- $stores := default dict .Values.configuration.stores }}
+{{- range $section := (list "user" "group" "role" "theme" "layout" "translation" "agent" "user_type" "organization_unit" "identity_provider" "application" "server_config" "resource") }}
+{{- $mode := index $stores $section }}
+{{- if $mode }}
+
+{{ $section }}:
+  store: {{ include "thunderid.validateStoreMode" (dict "value" $mode "field" (printf "configuration.stores.%s" $section)) | quote }}
+{{- end }}
+{{- end }}
 
 declarative_resources:
   enabled: {{ .Values.declarativeResources.enabled }}

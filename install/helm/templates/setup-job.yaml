@@ -157,6 +157,7 @@ spec:
             {{- include "thunderid.databasePasswordEnvVars" . | nindent 12 }}
             {{- include "thunderid.secretEnvVars" (dict "secretEnv" .Values.setup.secretEnv) | nindent 12 }}
             {{- include "thunderid.cacheRedisPasswordEnvVars" . | nindent 12 }}
+            {{- include "thunderid.smtpPasswordEnvVars" . | nindent 12 }}
             {{- if .Values.setup.env }}
             {{- toYaml .Values.setup.env | nindent 12 }}
             {{- end }}
