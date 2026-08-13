@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
@@ -80,11 +81,35 @@ type ProgressEvent struct {
 
 // Result is returned by RunAsync when the operation completes.
 type Result struct {
-	Proc      *exec.Cmd
-	SampleURL string
-	ServerURL string   // base URL confirmed by ResolveBaseURL; empty on error
-	Features  []string // mirrors Options.Features so callers can display mode-aware output
-	Err       error
+	Proc       *exec.Cmd
+	SampleProc *Process
+	SampleURL  string
+	ServerURL  string   // base URL confirmed by ResolveBaseURL; empty on error
+	Features   []string // mirrors Options.Features so callers can display mode-aware output
+	Err        error
+}
+
+// Process owns the npm process tree for one sample run.
+type Process struct {
+	Cmd *exec.Cmd
+
+	done          chan struct{}
+	waitErr       error
+	stopOwnedTree func() error
+	mu            sync.Mutex
+}
+
+func (process *Process) finish(err error) {
+	process.mu.Lock()
+	process.waitErr = err
+	process.mu.Unlock()
+	close(process.done)
+}
+
+func (process *Process) result() error {
+	process.mu.Lock()
+	defer process.mu.Unlock()
+	return process.waitErr
 }
 
 // Run downloads the named sample, writes its resources into the product repository,
@@ -92,7 +117,7 @@ type Result struct {
 // In verbose mode every step is printed on its own line; otherwise a progress bar
 // overwrites in-place (matching the product download experience).
 func Run(sampleName, installPath string, verbose bool, opts Options) error {
-	_, sampleURL, serverURL, err := runWithResult(sampleName, installPath, opts,
+	_, _, sampleURL, serverURL, err := runWithResult(sampleName, installPath, opts,
 		func(msg string) { fmt.Println("  " + msg) },
 		func(pct int, msg string) {
 			if verbose {
@@ -145,7 +170,7 @@ func RunAsync(sampleName, installPath string, verbose bool, opts Options) (<-cha
 	go func() {
 		defer close(progress)
 		defer close(result)
-		proc, sampleURL, serverURL, err := runWithResult(sampleName, installPath, opts,
+		proc, sampleProc, sampleURL, serverURL, err := runWithResult(sampleName, installPath, opts,
 			send,
 			func(pct int, msg string) {
 				if pct < 0 {
@@ -155,7 +180,10 @@ func RunAsync(sampleName, installPath string, verbose bool, opts Options) (<-cha
 				}
 			},
 		)
-		result <- Result{Proc: proc, SampleURL: sampleURL, ServerURL: serverURL, Features: opts.Features, Err: err}
+		result <- Result{
+			Proc: proc, SampleProc: sampleProc, SampleURL: sampleURL, ServerURL: serverURL,
+			Features: opts.Features, Err: err,
+		}
 	}()
 	return progress, result
 }
@@ -165,20 +193,20 @@ func runWithResult(
 	opts Options,
 	progress func(string),
 	onDownload release.ProgressFunc,
-) (*exec.Cmd, string, string, error) {
+) (*exec.Cmd, *Process, string, string, error) {
 	meta, ok := knownSamples[sampleName]
 	if !ok {
-		return nil, "", "", fmt.Errorf("unknown sample %q — available: %s", sampleName, availableList())
+		return nil, nil, "", "", fmt.Errorf("unknown sample %q — available: %s", sampleName, availableList())
 	}
 
 	if err := checkNodeVersion(); err != nil {
-		return nil, "", "", err
+		return nil, nil, "", "", err
 	}
 
 	// Fetch latest version.
 	version, err := release.FetchLatestVersion()
 	if err != nil {
-		return nil, "", "", fmt.Errorf("could not fetch latest version: %w", err)
+		return nil, nil, "", "", fmt.Errorf("could not fetch latest version: %w", err)
 	}
 
 	// Download sample into the shared samples directory inside the product base dir.
@@ -190,7 +218,7 @@ func runWithResult(
 			_ = os.RemoveAll(cacheDir)
 		}
 		if err := release.DownloadSample(sampleName, version, cacheDir, onDownload); err != nil {
-			return nil, "", "", fmt.Errorf("download failed: %w", err)
+			return nil, nil, "", "", fmt.Errorf("download failed: %w", err)
 		}
 		_ = writeCachedSampleVersion(cacheDir, version)
 		progress(fmt.Sprintf("✓ Downloaded %s sample v%s", sampleName, version))
@@ -201,13 +229,13 @@ func runWithResult(
 	// Find config files inside the extracted sample (may be in a subdirectory).
 	configYAML, configEnv, sampleDir, err := findSampleConfig(cacheDir)
 	if err != nil {
-		return nil, "", "", err
+		return nil, nil, "", "", err
 	}
 
 	// Parse env variables.
 	vars, err := parseEnvFile(configEnv)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("could not read env file: %w", err)
+		return nil, nil, "", "", fmt.Errorf("could not read env file: %w", err)
 	}
 
 	// Stop the product. The REPL may have moved it off the default port after a
@@ -217,30 +245,31 @@ func runWithResult(
 		port = health.DefaultPort
 	}
 	progress("Stopping " + product.Name + "...")
-	setup.KillPort(port)
-	setup.WaitForPortFree(port, 15*time.Second)
+	if err := setup.KillPort(port); err != nil {
+		return nil, nil, "", "", fmt.Errorf("could not stop %s: %w", product.Name, err)
+	}
 
 	// Find ThunderID root and write resource files.
 	thunderRoot, err := setup.FindThunderRoot(installPath)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("could not find %s root: %w", product.Name, err)
+		return nil, nil, "", "", fmt.Errorf("could not find %s root: %w", product.Name, err)
 	}
 	progress("Writing wayfinder resources...")
 	if err := writeResources(configYAML, vars, thunderRoot); err != nil {
-		return nil, "", "", fmt.Errorf("could not write resources: %w", err)
+		return nil, nil, "", "", fmt.Errorf("could not write resources: %w", err)
 	}
 
 	// Start the product.
 	progress("Starting " + product.Name + "...")
 	proc, err := setup.StartBackgroundOnPort(installPath, false, opts.Port)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("could not start %s: %w", product.Name, err)
+		return nil, nil, "", "", fmt.Errorf("could not start %s: %w", product.Name, err)
 	}
 
 	// Wait for the product to be ready.
 	serverURL, ready := health.ResolveBaseURL(port, 60*time.Second)
 	if !ready {
-		return proc, meta.sampleURL, "",
+		return proc, nil, meta.sampleURL, "",
 			fmt.Errorf("%s did not become ready within 60 seconds — check logs at %s",
 				product.Name, setup.LogDir(installPath))
 	}
@@ -252,7 +281,7 @@ func runWithResult(
 		installCmd := exec.Command("npm", "install", "--silent")
 		installCmd.Dir = sampleDir
 		if out, installErr := installCmd.CombinedOutput(); installErr != nil {
-			return proc, meta.sampleURL, serverURL,
+			return proc, nil, meta.sampleURL, serverURL,
 				fmt.Errorf("npm install failed: %w\n%s", installErr, out)
 		}
 	}
@@ -260,14 +289,14 @@ func runWithResult(
 	// Write service .env files so each process starts with the right credentials.
 	aiEnabled := hasFeature(opts, "ai")
 	if err := writeFrontendEnv(sampleDir, serverURL, vars, aiEnabled); err != nil {
-		return proc, meta.sampleURL, serverURL, fmt.Errorf("could not write frontend env: %w", err)
+		return proc, nil, meta.sampleURL, serverURL, fmt.Errorf("could not write frontend env: %w", err)
 	}
 	if err := writeBaseURLEnvs(sampleDir, serverURL); err != nil {
-		return proc, meta.sampleURL, serverURL, fmt.Errorf("could not write service env: %w", err)
+		return proc, nil, meta.sampleURL, serverURL, fmt.Errorf("could not write service env: %w", err)
 	}
 	if aiEnabled && opts.EnvTarget != "" {
 		if err := writeServiceEnv(sampleDir, serverURL, vars, opts); err != nil {
-			return proc, meta.sampleURL, serverURL, fmt.Errorf("could not write %s env: %w", opts.EnvTarget, err)
+			return proc, nil, meta.sampleURL, serverURL, fmt.Errorf("could not write %s env: %w", opts.EnvTarget, err)
 		}
 	}
 
@@ -276,27 +305,28 @@ func runWithResult(
 	// new dev server to another port while the browser keeps hitting the old one.
 	ports := sampleServicePorts(aiEnabled)
 	for _, p := range ports {
-		setup.KillPort(p)
-	}
-	for _, p := range ports {
-		setup.WaitForPortFree(p, 10*time.Second)
+		if err := setup.KillPort(p); err != nil {
+			return proc, nil, meta.sampleURL, serverURL,
+				fmt.Errorf("could not stop sample service on port %d: %w", p, err)
+		}
 	}
 
 	// Start sample services.
 	progress("Starting " + sampleName + " services...")
-	if err := startSampleServices(sampleDir, aiEnabled); err != nil {
-		return proc, meta.sampleURL, serverURL, fmt.Errorf("could not start sample: %w", err)
+	sampleProcess, err := startSampleServices(sampleDir, aiEnabled)
+	if err != nil {
+		return proc, nil, meta.sampleURL, serverURL, fmt.Errorf("could not start sample: %w", err)
 	}
 
 	// `npm run dev` keeps running when a single workspace exits, so a crashed
 	// service is invisible to the parent process. Confirm each one is accepting
 	// connections before reporting the sample as ready.
 	progress("Waiting for " + sampleName + " services...")
-	if err := waitForSampleServices(sampleDir, aiEnabled, sampleReadyTimeout); err != nil {
-		return proc, meta.sampleURL, serverURL, err
+	if err := waitForSampleReadiness(sampleProcess, sampleDir, aiEnabled, sampleReadyTimeout); err != nil {
+		return proc, sampleProcess, meta.sampleURL, serverURL, err
 	}
 
-	return proc, meta.sampleURL, serverURL, nil
+	return proc, sampleProcess, meta.sampleURL, serverURL, nil
 }
 
 // defaultAuthMode is the sample auth mode the CLI provisions. The wayfinder
@@ -616,13 +646,20 @@ func waitForServices(checks []serviceCheck, logPath string, timeout time.Duratio
 	return nil
 }
 
+var (
+	sampleStartGrace           = 2 * time.Second
+	sampleWaitForReadiness     = waitForSampleServices
+	sampleTerminateProcessTree = terminateProcessTree
+	sampleProcessTreeRunning   = processTreeRunning
+)
+
 // startSampleServices launches the sample services in the background via npm.
 // For AgentID mode (aiEnabled=true) it runs `npm run dev` (all three services);
 // otherwise it runs `npm run dev:b2c` (backend + frontend only).
-func startSampleServices(sampleDir string, aiEnabled bool) error {
+func startSampleServices(sampleDir string, aiEnabled bool) (*Process, error) {
 	logsDir := filepath.Join(sampleDir, "logs")
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
-		return err
+		return nil, err
 	}
 	logFile, err := os.OpenFile(filepath.Join(logsDir, "sample.log"),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
@@ -645,23 +682,97 @@ func startSampleServices(sampleDir string, aiEnabled bool) error {
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile // never write to os.Stderr — it corrupts the Bubble Tea display
 	cmd.Stdin = nil
+	configureProcessTree(cmd)
 	if err := cmd.Start(); err != nil {
-		return err
+		_ = logFile.Close()
+		return nil, err
+	}
+	stopOwnedTree, err := ownProcessTree(cmd)
+	if err != nil {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		_ = logFile.Close()
+		return nil, fmt.Errorf("could not own sample process tree: %w", err)
 	}
 
-	// Detect immediate failures (e.g. missing npm script) before returning.
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-	select {
-	case err := <-done:
-		tail := tailLog(logPath, 10)
-		if err != nil {
-			return fmt.Errorf("sample services failed to start:\n%s", tail)
+	process := &Process{Cmd: cmd, done: make(chan struct{}), stopOwnedTree: stopOwnedTree}
+	go func() {
+		err := cmd.Wait()
+		if process.stopOwnedTree != nil {
+			_ = process.stopOwnedTree()
 		}
-	case <-time.After(2 * time.Second):
+		_ = logFile.Close()
+		process.finish(err)
+	}()
+	select {
+	case <-process.done:
+		tail := tailLog(logPath, 10)
+		if err := process.result(); err != nil {
+			return nil, fmt.Errorf("sample services failed to start: %w\n%s", err, tail)
+		}
+		return nil, fmt.Errorf("sample services exited before becoming ready:\n%s", tail)
+	case <-time.After(sampleStartGrace):
 		// Still running — startup succeeded.
 	}
+	return process, nil
+}
+
+func waitForSampleReadiness(process *Process, sampleDir string, aiEnabled bool, timeout time.Duration) error {
+	if err := sampleWaitForReadiness(sampleDir, aiEnabled, timeout); err != nil {
+		if stopErr := StopProcessTree(process); stopErr != nil {
+			return fmt.Errorf("%w; cleanup failed: %v", err, stopErr)
+		}
+		return err
+	}
 	return nil
+}
+
+// StopProcessTree terminates a sample's npm process group and waits for it to exit.
+func StopProcessTree(process *Process) error {
+	if process == nil || process.Cmd == nil || process.Cmd.Process == nil {
+		return nil
+	}
+	if process.stopOwnedTree != nil {
+		if err := process.stopOwnedTree(); err != nil {
+			return err
+		}
+		select {
+		case <-process.done:
+			return nil
+		case <-time.After(5 * time.Second):
+			return fmt.Errorf("sample process tree did not stop")
+		}
+	}
+	if !sampleProcessTreeRunning(process.Cmd) {
+		return nil
+	}
+	if err := sampleTerminateProcessTree(process.Cmd, false); err != nil {
+		if !sampleProcessTreeRunning(process.Cmd) {
+			return nil
+		}
+		return err
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if !sampleProcessTreeRunning(process.Cmd) {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if err := sampleTerminateProcessTree(process.Cmd, true); err != nil {
+		if !sampleProcessTreeRunning(process.Cmd) {
+			return nil
+		}
+		return err
+	}
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if !sampleProcessTreeRunning(process.Cmd) {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("sample process tree did not stop")
 }
 
 // tailLog returns the last n lines of the file at path, or a fallback message.

@@ -4,10 +4,12 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -24,6 +26,25 @@ import (
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/health"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/setup"
 	"github.com/thunder-id/thunderid/tools/cli/internal/utils"
+)
+
+var (
+	stopSampleProcess = sample.StopProcessTree
+	stopServerProcess = func(cmd *exec.Cmd) error {
+		if cmd == nil || cmd.Process == nil {
+			return nil
+		}
+		var err error
+		if runtime.GOOS == "windows" {
+			err = cmd.Process.Kill()
+		} else {
+			err = cmd.Process.Signal(syscall.SIGTERM)
+		}
+		if errors.Is(err, os.ErrProcessDone) {
+			return nil
+		}
+		return err
+	}
 )
 
 // SlashCommand represents a / command available in the REPL.
@@ -119,6 +140,7 @@ type sampleProgressDoneMsg struct{}
 // sampleDoneMsg signals that the try-* operation completed successfully.
 type sampleDoneMsg struct {
 	proc       *exec.Cmd
+	sampleProc *sample.Process
 	sampleName string
 	sampleURL  string
 	serverURL  string // confirmed-ready base URL from ResolveBaseURL
@@ -126,7 +148,11 @@ type sampleDoneMsg struct {
 }
 
 // sampleErrMsg signals that the try-* operation failed.
-type sampleErrMsg struct{ err error }
+type sampleErrMsg struct {
+	err        error
+	proc       *exec.Cmd
+	sampleProc *sample.Process
+}
 
 // integrateFrameworkMsg triggers the step-by-step integration guide for a framework.
 type integrateFrameworkMsg struct{ framework string }
@@ -310,6 +336,9 @@ type ReplModel struct {
 	selectedComp    int
 
 	proc             *exec.Cmd
+	sampleProc       *sample.Process
+	stopServer       func() error
+	externalStopper  bool
 	sampleProgressCh <-chan sample.ProgressEvent
 	// trySampleStatus holds the current inline-overwrite line (progress bar or
 	// "Extracting…") shown in the spinner area at the bottom of the REPL while
@@ -462,7 +491,7 @@ func NewReplModel(version string, proc *exec.Cmd, installPath string, verbose bo
 	ii.Prompt = "> "
 	ii.CharLimit = 256
 
-	return ReplModel{
+	model := ReplModel{
 		input:          ti,
 		spinner:        s,
 		commands:       commands,
@@ -477,6 +506,8 @@ func NewReplModel(version string, proc *exec.Cmd, installPath string, verbose bo
 		onboardingList: newOnboardingList(80),
 		integrateInput: ii,
 	}
+	model.setOwnedServerProcess(proc)
+	return model
 }
 
 // makeTryCmd starts RunAsync and immediately returns sampleStartedMsg so the
@@ -505,9 +536,12 @@ func waitForSampleResult(sampleName string, ch <-chan sample.Result) tea.Cmd {
 	return func() tea.Msg {
 		r := <-ch
 		if r.Err != nil {
-			return sampleErrMsg{err: r.Err}
+			return sampleErrMsg{err: r.Err, proc: r.Proc, sampleProc: r.SampleProc}
 		}
-		return sampleDoneMsg{proc: r.Proc, sampleName: sampleName, sampleURL: r.SampleURL, serverURL: r.ServerURL, features: r.Features}
+		return sampleDoneMsg{
+			proc: r.Proc, sampleProc: r.SampleProc, sampleName: sampleName,
+			sampleURL: r.SampleURL, serverURL: r.ServerURL, features: r.Features,
+		}
 	}
 }
 
@@ -516,6 +550,14 @@ func (m ReplModel) effectivePort() int {
 		return m.checkPort
 	}
 	return health.DefaultPort
+}
+
+func (m *ReplModel) setOwnedServerProcess(proc *exec.Cmd) {
+	m.proc = proc
+	if m.externalStopper || proc == nil || proc.Process == nil {
+		return
+	}
+	m.stopServer = func() error { return stopServerProcess(proc) }
 }
 
 // Init implements tea.Model.
@@ -634,8 +676,11 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
+			if err := m.killThunder(); err != nil {
+				m.messages = append(m.messages, Red("✗")+" "+err.Error())
+				return m, nil
+			}
 			m.quitting = true
-			m.killThunder()
 			return m, tea.Quit
 		}
 
@@ -1010,7 +1055,8 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 		m.tryingOut = false
 		m.trySampleStatus = ""
 		m.sampleProgressCh = nil
-		m.proc = msg.proc
+		m.setOwnedServerProcess(msg.proc)
+		m.sampleProc = msg.sampleProc
 		// The server was confirmed ready by ResolveBaseURL before the sample
 		// services started. Mark it ready now so the normal health-check
 		// stopped-detection fires immediately if the sample's start.sh kills
@@ -1045,6 +1091,12 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 		}
 
 	case sampleErrMsg:
+		if msg.proc != nil {
+			m.setOwnedServerProcess(msg.proc)
+		}
+		if msg.sampleProc != nil {
+			m.sampleProc = msg.sampleProc
+		}
 		m.tryingOut = false
 		m.trySampleStatus = ""
 		m.sampleProgressCh = nil
@@ -1055,16 +1107,28 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 		}
 
 	case cutoverMsg:
+		if err := m.stopSample(); err != nil {
+			m.messages = append(m.messages, Red("✗")+" "+err.Error())
+			break
+		}
 		m.cutoverRequested = true
 		m.quitting = true
 		return m, tea.Quit
 
 	case upgradeMsg:
+		if err := m.stopSample(); err != nil {
+			m.messages = append(m.messages, Red("✗")+" "+err.Error())
+			break
+		}
 		m.upgradeRequested = true
 		m.quitting = true
 		return m, tea.Quit
 
 	case switchVersionMsg:
+		if err := m.stopSample(); err != nil {
+			m.messages = append(m.messages, Red("✗")+" "+err.Error())
+			break
+		}
 		m.switchRequested = true
 		m.quitting = true
 		return m, tea.Quit
@@ -1114,7 +1178,11 @@ func (m *ReplModel) updateCompletions() {
 
 func (m *ReplModel) runCommand(val string) tea.Cmd {
 	if val == "/stop" {
-		m.killThunder()
+		if err := m.killThunder(); err != nil {
+			m.messages = append(m.messages, Red("✗")+" "+err.Error())
+			return nil
+		}
+		m.quitting = true
 		return tea.Quit
 	}
 	if m.tryingOut {
@@ -1146,15 +1214,28 @@ func (m *ReplModel) runCommand(val string) tea.Cmd {
 	return nil
 }
 
-func (m *ReplModel) killThunder() {
-	if m.proc == nil || m.proc.Process == nil {
-		return
+func (m *ReplModel) stopSample() error {
+	if m.sampleProc == nil {
+		return nil
 	}
-	// SIGTERM lets start.sh's cleanup trap stop ThunderID cleanly before exiting.
-	// SIGKILL would bypass the trap and leave the port occupied, causing the next
-	// invocation to fail.
-	m.proc.Process.Signal(syscall.SIGTERM) //nolint:errcheck
-	time.Sleep(time.Second)
+	if err := stopSampleProcess(m.sampleProc); err != nil {
+		return fmt.Errorf("could not stop sample services: %w", err)
+	}
+	m.sampleProc = nil
+	return nil
+}
+
+func (m *ReplModel) killThunder() error {
+	if err := m.stopSample(); err != nil {
+		return err
+	}
+	if m.stopServer == nil {
+		return nil
+	}
+	if err := m.stopServer(); err != nil {
+		return fmt.Errorf("could not stop %s: %w", product.Name, err)
+	}
+	return nil
 }
 
 func renderCompletions(m ReplModel) string {
@@ -1527,8 +1608,13 @@ func clamp(v, min, max int) int {
 func RunREPL(
 	version string, proc *exec.Cmd, installPath string,
 	verbose, isFirstRun bool, newVersion, nodeWarning string, port int, creds *setup.AdminCredentials,
+	serverStoppers ...func() error,
 ) (upgradeRequested, switchRequested bool, err error) {
 	m := NewReplModel(version, proc, installPath, verbose, isFirstRun, creds)
+	if len(serverStoppers) > 0 {
+		m.stopServer = serverStoppers[0]
+		m.externalStopper = true
+	}
 	m.newVersion = newVersion
 	m.nodeWarning = nodeWarning
 	if port > 0 {

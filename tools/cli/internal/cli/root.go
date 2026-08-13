@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -163,8 +164,13 @@ func Run(verbose, forceSetup bool) {
 	}
 
 	if !setup.WaitForPortFree(port, 10*time.Second) {
-		setup.KillPort(port)
-		setup.WaitForPortFree(port, 5*time.Second)
+		if err := setup.KillPort(port); err != nil {
+			// The REPL normally displays generated credentials; since we exit before it,
+			// print them here so a fresh password is not lost (setup won't regenerate it).
+			ui.PrintCredentialsFallback(creds)
+			ui.Fatal("Could not free port " + strconv.Itoa(port) + ": " + err.Error())
+			os.Exit(1)
+		}
 	}
 
 	fmt.Print(ui.Dim("\n  Starting " + product.Name + " in the background..."))
@@ -232,20 +238,27 @@ func resolvePort(installPath string) int {
 	choice, selectedPort := ui.PromptPortConflict(health.DefaultPort, altPort)
 	switch choice {
 	case ui.KillAndUsePort:
-		setup.KillPort(health.DefaultPort)
-		setup.WaitForPortFree(health.DefaultPort, 5*time.Second)
+		freeDefaultPort()
 		return health.DefaultPort
 	case ui.UseAlternatePort:
 		if err := setup.UpdateServerPort(installPath, selectedPort); err != nil {
 			ui.Warn("Could not update port configuration: " + err.Error())
-			setup.KillPort(health.DefaultPort)
-			setup.WaitForPortFree(health.DefaultPort, 5*time.Second)
+			freeDefaultPort()
 			return health.DefaultPort
 		}
 		return selectedPort
 	default: // ui.AbortSetup
 		os.Exit(0)
 		return 0
+	}
+}
+
+// freeDefaultPort terminates whatever holds the default port, aborting when the
+// port cannot be released so setup never launches into an occupied port.
+func freeDefaultPort() {
+	if err := setup.KillPort(health.DefaultPort); err != nil {
+		ui.Fatal("Could not free port " + strconv.Itoa(health.DefaultPort) + ": " + err.Error())
+		os.Exit(1)
 	}
 }
 

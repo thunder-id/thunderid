@@ -126,8 +126,10 @@ func Switch(baseDir, currentVersion string, verbose bool) (bool, error) {
 	}
 
 	fmt.Print(ui.Dim("  Stopping " + product.Name + " v" + currentVersion + "..."))
-	setup.KillPort(health.DefaultPort)
-	setup.WaitForPortFree(health.DefaultPort, 10*time.Second)
+	if err := setup.KillPort(health.DefaultPort); err != nil {
+		fmt.Println()
+		return false, fmt.Errorf("failed to stop v%s: %w", currentVersion, err)
+	}
 	fmt.Printf("\r\033[2K  %s Stopped v%s\n", ui.Green("✓"), currentVersion)
 
 	if err := config.WriteActiveVersion(selected); err != nil {
@@ -153,9 +155,12 @@ func runDirect(baseDir, activeVersion, newVersion string, verbose bool) error {
 		label = product.Name + " v" + activeVersion
 	}
 	fmt.Print(ui.Dim("  Stopping " + label + "..."))
-	setup.KillPort(health.DefaultPort)
-	setup.KillPort(stagingPort)
-	setup.WaitForPortFree(health.DefaultPort, 15*time.Second)
+	for _, port := range []int{health.DefaultPort, stagingPort} {
+		if err := setup.KillPort(port); err != nil {
+			fmt.Println()
+			return fmt.Errorf("failed to stop %s: %w", label, err)
+		}
+	}
 	if activeVersion != "" {
 		fmt.Printf("\r\033[2K  %s Stopped v%s\n", ui.Green("✓"), activeVersion)
 	} else {
@@ -242,8 +247,10 @@ func performCutover(baseDir, activeVersion, newVersion, newPath string, stagingP
 	}
 
 	fmt.Print(ui.Dim("  Stopping v" + activeVersion + "..."))
-	setup.KillPort(health.DefaultPort)
-	setup.WaitForPortFree(health.DefaultPort, 15*time.Second)
+	if err := setup.KillPort(health.DefaultPort); err != nil {
+		fmt.Println()
+		return fmt.Errorf("failed to stop v%s: %w", activeVersion, err)
+	}
 	fmt.Printf("\r\033[2K  %s v%s stopped\n", ui.Green("✓"), activeVersion)
 
 	fmt.Print(ui.Dim(fmt.Sprintf("  Starting %s v%s on port %d...", product.Name, newVersion, health.DefaultPort)))

@@ -4,9 +4,12 @@
 package sample
 
 import (
+	"errors"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -126,6 +129,138 @@ func TestSampleServicePorts(t *testing.T) {
 
 	if ai := sampleServicePorts(true); !slices.Contains(ai, 8790) {
 		t.Errorf("ai ports must include the ai-agent port 8790: %v", ai)
+	}
+}
+
+func writeFakeNPM(t *testing.T, script string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture is Unix-specific")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "npm")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script+"\n"), 0o755); err != nil {
+		t.Fatalf("write fake npm: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return path
+}
+
+func withSampleProcessSeams(t *testing.T) {
+	t.Helper()
+	originalGrace := sampleStartGrace
+	originalReadiness := sampleWaitForReadiness
+	t.Cleanup(func() {
+		sampleStartGrace = originalGrace
+		sampleWaitForReadiness = originalReadiness
+	})
+}
+
+func TestStartSampleServices_ReturnsLiveProcessHandle(t *testing.T) {
+	withSampleProcessSeams(t)
+	writeFakeNPM(t, "sleep 30")
+	sampleStartGrace = 20 * time.Millisecond
+
+	process, err := startSampleServices(t.TempDir(), false)
+
+	if err != nil {
+		t.Fatalf("start sample services: %v", err)
+	}
+	if process == nil || process.Cmd == nil || process.Cmd.Process == nil {
+		t.Fatalf("missing live process handle: %+v", process)
+	}
+	if err := StopProcessTree(process); err != nil {
+		t.Fatalf("stop sample process: %v", err)
+	}
+}
+
+func TestStartSampleServices_ImmediateFailureSurfaces(t *testing.T) {
+	withSampleProcessSeams(t)
+	writeFakeNPM(t, "echo missing-script >&2\nexit 7")
+	// Generous grace: the select returns as soon as npm exits, so a long window
+	// only guards against slow process spawns on loaded machines.
+	sampleStartGrace = 30 * time.Second
+
+	process, err := startSampleServices(t.TempDir(), false)
+
+	if process != nil {
+		t.Fatalf("failed start returned process: %+v", process)
+	}
+	if err == nil || !strings.Contains(err.Error(), "missing-script") {
+		t.Fatalf("expected immediate npm failure, got %v", err)
+	}
+}
+
+func TestWaitForSampleReadiness_CleansUpSpawnedTree(t *testing.T) {
+	withSampleProcessSeams(t)
+	writeFakeNPM(t, "sleep 30")
+	sampleStartGrace = 20 * time.Millisecond
+	process, err := startSampleServices(t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("start sample services: %v", err)
+	}
+	sampleWaitForReadiness = func(string, bool, time.Duration) error {
+		return errors.New("frontend did not start")
+	}
+
+	err = waitForSampleReadiness(process, t.TempDir(), false, time.Second)
+
+	if err == nil || !strings.Contains(err.Error(), "frontend did not start") {
+		t.Fatalf("expected readiness error, got %v", err)
+	}
+	select {
+	case <-process.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("sample process still running after readiness failure")
+	}
+}
+
+func TestStopProcessTree_SignalsGroupAfterWrapperExit(t *testing.T) {
+	originalTerminate := sampleTerminateProcessTree
+	originalRunning := sampleProcessTreeRunning
+	t.Cleanup(func() {
+		sampleTerminateProcessTree = originalTerminate
+		sampleProcessTreeRunning = originalRunning
+	})
+	done := make(chan struct{})
+	close(done)
+	process := &Process{
+		Cmd:  &exec.Cmd{Process: &os.Process{Pid: 123}},
+		done: done,
+	}
+	called := false
+	sampleTerminateProcessTree = func(*exec.Cmd, bool) error {
+		called = true
+		return nil
+	}
+	sampleProcessTreeRunning = func(*exec.Cmd) bool { return !called }
+
+	if err := StopProcessTree(process); err != nil {
+		t.Fatalf("stop process tree: %v", err)
+	}
+	if !called {
+		t.Fatal("process group was not signaled after npm wrapper exited")
+	}
+}
+
+func TestStopProcessTree_StopsOwnedTreeAfterWrapperExit(t *testing.T) {
+	done := make(chan struct{})
+	close(done)
+	called := false
+	process := &Process{
+		Cmd:  &exec.Cmd{Process: &os.Process{Pid: 123}},
+		done: done,
+		stopOwnedTree: func() error {
+			called = true
+			return nil
+		},
+	}
+
+	if err := StopProcessTree(process); err != nil {
+		t.Fatalf("stop owned tree: %v", err)
+	}
+	if !called {
+		t.Fatal("owned process tree was not stopped")
 	}
 }
 
