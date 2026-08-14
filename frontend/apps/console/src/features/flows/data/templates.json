@@ -1786,7 +1786,7 @@
     "type": "GOOGLE",
     "flowType": "AUTHENTICATION",
     "display": {
-      "label": "Google",
+      "label": "Google Login",
       "description": "Sign in with Google",
       "image": "assets/images/icons/google.svg",
       "showOnResourcePanel": true
@@ -1962,7 +1962,7 @@
     "type": "GITHUB",
     "flowType": "AUTHENTICATION",
     "display": {
-      "label": "GitHub",
+      "label": "GitHub Login",
       "description": "Sign in with GitHub",
       "image": "assets/images/icons/github.svg",
       "showOnResourcePanel": true
@@ -2138,7 +2138,7 @@
     "type": "GOOGLE_GITHUB",
     "flowType": "AUTHENTICATION",
     "display": {
-      "label": "Google + GitHub",
+      "label": "Google Login + GitHub Login",
       "description": "Sign in with Google or GitHub",
       "image": "assets/images/icons/google.svg",
       "showOnResourcePanel": true
@@ -2433,7 +2433,7 @@
     "type": "BASIC_GOOGLE",
     "flowType": "AUTHENTICATION",
     "display": {
-      "label": "Basic + Google",
+      "label": "Basic + Google Login",
       "description": "Username/password or Google sign-in",
       "image": "assets/images/icons/google.svg",
       "showOnResourcePanel": true
@@ -2774,7 +2774,7 @@
     "type": "BASIC_GITHUB",
     "flowType": "AUTHENTICATION",
     "display": {
-      "label": "Basic + GitHub",
+      "label": "Basic + GitHub Login",
       "description": "Username/password or GitHub sign-in",
       "image": "assets/images/icons/github.svg",
       "showOnResourcePanel": true
@@ -3115,7 +3115,7 @@
     "type": "BASIC_GOOGLE_GITHUB",
     "flowType": "AUTHENTICATION",
     "display": {
-      "label": "Basic + Google + GitHub",
+      "label": "Basic + Google Login + GitHub Login",
       "description": "Username/password, Google, or GitHub sign-in",
       "image": "assets/images/icons/social.svg",
       "showOnResourcePanel": true
@@ -4461,7 +4461,7 @@
     "type": "BASIC_GOOGLE_GITHUB_SMS",
     "flowType": "AUTHENTICATION",
     "display": {
-      "label": "Basic + Google + GitHub + SMS",
+      "label": "Basic + Google Login + GitHub Login + SMS",
       "description": "Multi-method sign-in with SMS OTP second factor",
       "image": "assets/images/icons/social.svg",
       "showOnResourcePanel": true
@@ -8278,7 +8278,7 @@
     "type": "BASIC_GOOGLE_GITHUB",
     "flowType": "REGISTRATION",
     "display": {
-      "label": "Basic + Google + GitHub",
+      "label": "Basic + Google Signup + GitHub Signup",
       "description": "Register with password, Google, or GitHub",
       "image": "assets/images/icons/social.svg",
       "showOnResourcePanel": true
@@ -9747,7 +9747,7 @@
     "type": "BASIC_GOOGLE_GITHUB_SMS",
     "flowType": "REGISTRATION",
     "display": {
-      "label": "Basic + Google + GitHub + SMS",
+      "label": "Basic + Google Signup + GitHub Signup + SMS",
       "description": "Multi-method registration with SMS",
       "image": "assets/images/icons/social.svg",
       "showOnResourcePanel": true
@@ -14514,7 +14514,7 @@
     "category": "STARTER",
     "type": "BASIC_FEDERATED",
     "display": {
-      "label": "Password Login or Google",
+      "label": "Password Login or Google Login",
       "description": "Login experience with Google as an additional option",
       "image": "assets/images/icons/google.svg",
       "preserveImageColor": true,

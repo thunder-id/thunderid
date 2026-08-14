@@ -703,6 +703,53 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_Basic() {
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
 
+func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_RotationInheritsExpiry() {
+	// A rotated token inherits the expiry of the token it replaces, so its validity is the time
+	// remaining on the grant rather than a fresh period.
+	ctx := &RefreshTokenBuildContext{
+		ClientID:             "test-client",
+		Scopes:               []string{"read"},
+		GrantType:            string(providers.GrantTypeAuthorizationCode),
+		AccessTokenSubject:   "user123",
+		AccessTokenAudiences: []string{"app123"},
+		ExpiresAt:            time.Now().Unix() + 1000,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, "test-client", "https://example.com",
+		mock.MatchedBy(func(validity int64) bool { return validity >= 998 && validity <= 1000 }),
+		mock.Anything, mock.Anything, mock.Anything,
+	).Return(testRefreshToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildRefreshToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.GreaterOrEqual(suite.T(), result.ExpiresIn, int64(998))
+	assert.LessOrEqual(suite.T(), result.ExpiresIn, int64(1000))
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_RotationPastExpiry_Errors() {
+	// Once the inherited expiry has passed there is no lifetime left to grant, so rotation fails
+	// rather than silently minting a fresh period.
+	ctx := &RefreshTokenBuildContext{
+		ClientID:             "test-client",
+		Scopes:               []string{"read"},
+		GrantType:            string(providers.GrantTypeAuthorizationCode),
+		AccessTokenSubject:   "user123",
+		AccessTokenAudiences: []string{"app123"},
+		ExpiresAt:            time.Now().Unix() - 1,
+	}
+
+	result, err := suite.builder.BuildRefreshToken(context.Background(), ctx)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Contains(suite.T(), err.Error(), "reached its expiry")
+	suite.mockJWTService.AssertNotCalled(suite.T(), "GenerateJWT")
+}
+
 func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_WithDPoPJkt() {
 	const testJkt = "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I"
 

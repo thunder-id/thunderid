@@ -41,7 +41,7 @@ export default function EditFlowsSettings({
         isUnlocked={isUnlocked}
         message={t(
           'agents:edit.flows.delegationLock.message',
-          'These settings are frozen for this agent. Select "On behalf of a user" in the Advanced tab to unlock and start using them.',
+          'These settings are frozen for this agent. Turn on Delegated mode in the Advanced tab to unlock and start using them.',
         )}
       >
         <Stack spacing={3}>

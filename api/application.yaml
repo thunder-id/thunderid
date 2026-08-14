@@ -854,17 +854,6 @@ components:
             type: string
           description: User types allowed to sign up through this application.
           example: ["employee", "customer", "partner"]
-        subjectAttribute:
-          type: object
-          additionalProperties:
-            type: string
-            minLength: 1
-          description: >-
-            Per-user-type mapping of the schema attribute to use as the token subject (`sub`) claim,
-            keyed by user type name. The attribute must be unique, required, and string-typed in that
-            user type's schema. When no entry applies, the user's ID is used as the subject.
-          example:
-            employee: "email"
         passkeyAllowedOrigins:
           type: array
           items:
@@ -1011,17 +1000,6 @@ components:
             type: string
           description: User types allowed to sign up through this application.
           example: ["employee", "customer", "partner"]
-        subjectAttribute:
-          type: object
-          additionalProperties:
-            type: string
-            minLength: 1
-          description: >-
-            Per-user-type mapping of the schema attribute to use as the token subject (`sub`) claim,
-            keyed by user type name. The attribute must be unique, required, and string-typed in that
-            user type's schema. When no entry applies, the user's ID is used as the subject.
-          example:
-            employee: "email"
         passkeyAllowedOrigins:
           type: array
           items:
@@ -1149,17 +1127,6 @@ components:
             type: string
           description: User types allowed to sign up through this application.
           example: ["employee", "customer", "partner"]
-        subjectAttribute:
-          type: object
-          additionalProperties:
-            type: string
-            minLength: 1
-          description: >-
-            Per-user-type mapping of the schema attribute to use as the token subject (`sub`) claim,
-            keyed by user type name. The attribute must be unique, required, and string-typed in that
-            user type's schema. When no entry applies, the user's ID is used as the subject.
-          example:
-            employee: "email"
         passkeyAllowedOrigins:
           type: array
           items:

@@ -15,17 +15,7 @@ import {
   LinearProgress,
   AppBreadcrumbs,
 } from '@wso2/oxygen-ui';
-import {
-  AppWindow,
-  X,
-  BookOpen,
-  KeyRound,
-  LogIn,
-  Share2,
-  ShieldCheck,
-  UserCheck,
-  UserPlus,
-} from '@wso2/oxygen-ui-icons-react';
+import {AppWindow, X, BookOpen, KeyRound, LogIn, UserCheck, UserPlus} from '@wso2/oxygen-ui-icons-react';
 import {motion} from 'framer-motion';
 import {useState, type JSX} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
@@ -42,7 +32,7 @@ import useWelcomeClose from '../hooks/useWelcomeClose';
 
 const MotionBox = motion.create(Box);
 
-type ScenarioTab = 'login' | 'signup' | 'recovery' | 'onboard' | 'mfa' | 'social';
+type ScenarioTab = 'login' | 'signup' | 'recovery' | 'onboard';
 
 export default function TryoutSecuringConsumerApp(): JSX.Element {
   const {t} = useTranslation(['common']);
@@ -66,18 +56,6 @@ export default function TryoutSecuringConsumerApp(): JSX.Element {
       value: 'onboard',
       label: t('common:welcome.applicationTryout.scenarios.tabs.onboard'),
       icon: <UserCheck size={15} />,
-    },
-    {
-      value: 'mfa',
-      label: t('common:welcome.applicationTryout.scenarios.tabs.mfa'),
-      icon: <ShieldCheck size={15} />,
-      disabled: true,
-    },
-    {
-      value: 'social',
-      label: t('common:welcome.applicationTryout.scenarios.tabs.social'),
-      icon: <Share2 size={15} />,
-      disabled: true,
     },
   ];
 

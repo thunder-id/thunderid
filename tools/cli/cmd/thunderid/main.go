@@ -19,10 +19,10 @@ import (
 func main() {
 	args := os.Args[1:]
 
-	// upgrade [--direct] — explicit upgrade with optional blue/green staging.
+	// upgrade — stop the running version, install the latest, restart on the same port.
 	if len(args) > 0 && args[0] == "upgrade" {
-		verbose, direct := parseUpgradeFlags(args[1:])
-		if _, err := upgrade.Run(cli.BaseDir(), upgrade.Opts{Direct: direct, Verbose: verbose}); err != nil {
+		verbose, _ := parseFlags(args[1:])
+		if _, err := upgrade.Run(cli.BaseDir(), upgrade.Opts{Verbose: verbose}); err != nil {
 			os.Exit(1)
 		}
 		return
@@ -38,7 +38,9 @@ func main() {
 			os.Exit(1)
 		}
 		path := cli.VersionedInstallPath(activeVersion)
-		if err := sample.Run(usecase, path, verbose, sample.Options{}); err != nil {
+		if err := sample.Run(usecase, path, verbose, sample.Options{
+			ConfirmPorts: ui.ConfirmStopPortHolders,
+		}); err != nil {
 			ui.Fatal(err.Error())
 			os.Exit(1)
 		}
@@ -65,16 +67,13 @@ func printUsage() {
 
 Commands:
   (none)               Install and start %s
-  upgrade              Upgrade to the latest release (side-by-side by default)
+  upgrade              Upgrade to the latest release
   try <usecase>        Download and launch a use-case sample app
 
 Flags:
   --verbose, -v        Show detailed output
   --setup              Force re-run setup
   --help, -h           Show this help message
-
-Upgrade flags:
-  --direct             Upgrade in-place (stop current, upgrade, restart)
 `, product.Slug, product.Name)
 }
 
@@ -85,18 +84,6 @@ func parseFlags(args []string) (verbose, forceSetup bool) {
 			verbose = true
 		case "--setup":
 			forceSetup = true
-		}
-	}
-	return
-}
-
-func parseUpgradeFlags(args []string) (verbose, direct bool) {
-	for _, a := range args {
-		switch a {
-		case "--verbose", "-v":
-			verbose = true
-		case "--direct":
-			direct = true
 		}
 	}
 	return

@@ -1,25 +1,20 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {SettingsCard} from '@thunderid/components';
 import {OAuth2GrantTypes} from '@thunderid/configure-applications';
 import type {OAuth2Config} from '@thunderid/configure-applications';
-import {Stack} from '@wso2/oxygen-ui';
+import {Box, FormControlLabel, Stack, Switch, Typography} from '@wso2/oxygen-ui';
 import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import AllowedUserTypesSection from './AllowedUserTypesSection';
 import DangerZoneSection from './DangerZoneSection';
 import OperationModesSection from './OperationModesSection';
 import OwnerSection from './OwnerSection';
-import TokenAudienceSelector, {
-  type TokenAudienceOption,
-} from '../../../../applications/components/common/TokenAudienceSelector';
 import {applyGrantTypesChange} from '../../../../applications/utils/oauth2Rules';
 import {DELEGATED_ONLY_GRANTS} from '../../../constants/delegationGrants';
 import type {Agent, AgentInboundAuthConfig, OAuthAgentConfig} from '../../../models/agent';
 import AgentDeleteDialog from '../../AgentDeleteDialog';
-
-const ON_OWN_BEHALF = 'onOwnBehalf';
-const ON_BEHALF_OF_USER = 'onBehalfOfUser';
 
 interface EditAdvancedSettingsProps {
   agent: Agent;
@@ -48,9 +43,8 @@ export default function EditAdvancedSettings({
     onFieldChange('inboundAuthConfig', updatedInboundAuth);
   };
 
-  // The "On behalf of a user" mode unlocks the delegated-only grants below and the Flows/Tokens
-  // tabs. Switching modes just flips authorization_code on/off; applyGrantTypesChange handles the
-  // dependent grants.
+  // Delegated mode unlocks the delegated-only grants below and the Flows/Tokens tabs. Toggling it
+  // just flips authorization_code on/off; applyGrantTypesChange handles the dependent grants.
   const handleDelegationToggle = (checked: boolean): void => {
     if (!oauth2Config || checked === isUnlocked) return;
     const grantTypes = oauth2Config.grantTypes ?? [];
@@ -65,55 +59,51 @@ export default function EditAdvancedSettings({
     handleOAuth2ConfigChange(updates);
   };
 
-  const mode = isUnlocked ? ON_BEHALF_OF_USER : ON_OWN_BEHALF;
-  const modeOptions: TokenAudienceOption[] = [
-    {
-      value: ON_OWN_BEHALF,
-      label: t('agents:edit.advanced.mode.onOwnBehalf.label', 'On its own behalf'),
-      description: t(
-        'agents:edit.advanced.mode.onOwnBehalf.description',
-        'This agent authenticates with its own credentials without user interaction, using Client Credentials.',
-      ),
-    },
-    {
-      value: ON_BEHALF_OF_USER,
-      label: t('agents:edit.advanced.mode.onBehalfOfUser.label', 'On behalf of a user'),
-      description: t(
-        'agents:edit.advanced.mode.onBehalfOfUser.description',
-        'This agent acts on behalf of a signed-in user, using Authorization Code with PKCE.',
-      ),
-    },
-  ];
-
-  const handleModeChange = (next: string): void => {
-    handleDelegationToggle(next === ON_BEHALF_OF_USER);
-  };
-
   return (
     <Stack spacing={3}>
-      <TokenAudienceSelector
-        title={t('agents:edit.advanced.mode.title', 'Operating Mode')}
-        options={modeOptions}
-        value={mode}
-        onChange={handleModeChange}
-        disabled={!oauth2Config || agent.isReadOnly === true}
-      >
-        <Stack spacing={3}>
-          <OwnerSection agent={agent} editedAgent={editedAgent} onFieldChange={onFieldChange} />
-          <AllowedUserTypesSection
-            agent={agent}
-            editedAgent={editedAgent}
-            oauth2Config={oauth2Config}
-            onFieldChange={onFieldChange}
+      <SettingsCard title={t('agents:edit.advanced.mode.title', 'Operating Mode')}>
+        <Box>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={isUnlocked}
+                onChange={(e) => handleDelegationToggle(e.target.checked)}
+                disabled={!oauth2Config || agent.isReadOnly === true}
+              />
+            }
+            label={
+              <Typography variant="subtitle2">
+                {t('agents:edit.advanced.delegationToggle.label', 'Delegated mode')}
+              </Typography>
+            }
           />
-          <OperationModesSection
-            oauth2Config={oauth2Config}
-            onOAuth2ConfigChange={handleOAuth2ConfigChange}
-            disabled={agent.isReadOnly}
-          />
-          {!agent.isReadOnly && <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />}
-        </Stack>
-      </TokenAudienceSelector>
+          <Typography variant="caption" color="text.secondary" sx={{display: 'block', ml: '52px'}}>
+            {isUnlocked
+              ? t(
+                  'agents:edit.advanced.mode.onBehalfOfUser.description',
+                  'This agent acts on behalf of a signed-in user, using Authorization Code with PKCE.',
+                )
+              : t(
+                  'agents:edit.advanced.mode.onOwnBehalf.description',
+                  'This agent authenticates with its own credentials without user interaction, using Client Credentials.',
+                )}
+          </Typography>
+        </Box>
+      </SettingsCard>
+
+      <OwnerSection agent={agent} editedAgent={editedAgent} onFieldChange={onFieldChange} />
+      <AllowedUserTypesSection
+        agent={agent}
+        editedAgent={editedAgent}
+        oauth2Config={oauth2Config}
+        onFieldChange={onFieldChange}
+      />
+      <OperationModesSection
+        oauth2Config={oauth2Config}
+        onOAuth2ConfigChange={handleOAuth2ConfigChange}
+        disabled={agent.isReadOnly}
+      />
+      {!agent.isReadOnly && <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />}
 
       <AgentDeleteDialog
         open={deleteDialogOpen}

@@ -23,9 +23,8 @@ import {
   Typography,
   Tabs,
   Tab,
-  useTheme,
 } from '@wso2/oxygen-ui';
-import {AppWindow, Bot, User as UserIcon, Users} from '@wso2/oxygen-ui-icons-react';
+import {AppWindow, Bot, UserRound, UsersRound} from '@wso2/oxygen-ui-icons-react';
 import {useState, useMemo, useCallback, type JSX, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import useGetRoleAssignments from '../../../api/useGetRoleAssignments';
@@ -61,7 +60,6 @@ export default function AddAssignmentDialog({
   initialTab = 0,
 }: AddAssignmentDialogProps): JSX.Element {
   const {t} = useTranslation();
-  const theme = useTheme();
   const dataGridLocaleText = useDataGridLocaleText();
 
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -194,14 +192,14 @@ export default function AddAssignmentDialog({
             <Avatar
               sx={{
                 p: 0.5,
-                backgroundColor: theme.vars?.palette.grey[500],
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
                 width: 30,
                 height: 30,
                 fontSize: '0.875rem',
-                ...theme.applyStyles('dark', {backgroundColor: theme.vars?.palette.grey[900]}),
               }}
             >
-              <UserIcon size={14} />
+              <UserRound size={14} />
             </Avatar>
           </Box>
         ),
@@ -247,7 +245,7 @@ export default function AddAssignmentDialog({
         ),
       },
     ],
-    [theme, t],
+    [t],
   );
 
   const groupColumns: DataGrid.GridColDef<GroupBasic>[] = useMemo(
@@ -263,14 +261,14 @@ export default function AddAssignmentDialog({
             <Avatar
               sx={{
                 p: 0.5,
-                backgroundColor: theme.vars?.palette.grey[500],
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
                 width: 30,
                 height: 30,
                 fontSize: '0.875rem',
-                ...theme.applyStyles('dark', {backgroundColor: theme.vars?.palette.grey[900]}),
               }}
             >
-              <Users size={14} />
+              <UsersRound size={14} />
             </Avatar>
           </Box>
         ),
@@ -289,7 +287,7 @@ export default function AddAssignmentDialog({
         valueGetter: (_value, row): string => row.description ?? '-',
       },
     ],
-    [theme, t],
+    [t],
   );
   const agentColumns: DataGrid.GridColDef<BasicAgent>[] = useMemo(
     () => [
@@ -304,11 +302,11 @@ export default function AddAssignmentDialog({
             <Avatar
               sx={{
                 p: 0.5,
-                backgroundColor: theme.vars?.palette.grey[500],
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
                 width: 30,
                 height: 30,
                 fontSize: '0.875rem',
-                ...theme.applyStyles('dark', {backgroundColor: theme.vars?.palette.grey[900]}),
               }}
             >
               <Bot size={14} />
@@ -330,7 +328,7 @@ export default function AddAssignmentDialog({
         valueGetter: (_value, row): string => row.description ?? '-',
       },
     ],
-    [theme, t],
+    [t],
   );
 
   const appColumns: DataGrid.GridColDef<BasicApplication>[] = useMemo(
@@ -346,11 +344,11 @@ export default function AddAssignmentDialog({
             <Avatar
               sx={{
                 p: 0.5,
-                backgroundColor: theme.vars?.palette.grey[500],
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
                 width: 30,
                 height: 30,
                 fontSize: '0.875rem',
-                ...theme.applyStyles('dark', {backgroundColor: theme.vars?.palette.grey[900]}),
               }}
             >
               <AppWindow size={14} />
@@ -372,7 +370,7 @@ export default function AddAssignmentDialog({
         valueGetter: (_value, row): string => row.description ?? '-',
       },
     ],
-    [theme, t],
+    [t],
   );
 
   const handleAdd = useCallback(() => {

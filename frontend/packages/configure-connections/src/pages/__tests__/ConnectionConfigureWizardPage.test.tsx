@@ -61,7 +61,7 @@ describe('ConnectionConfigureWizardPage', () => {
 
     // Single step: the credentials form is shown with a Create button (no attribute-mapping step).
     expect(screen.getByTestId('stub-connection-form')).toBeInTheDocument();
-    expect(screen.getByText('Configure your Google connection')).toBeInTheDocument();
+    expect(screen.getByText('Configure your Google Login connection')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('wizard-create'));
 
     expect(mutateMock).toHaveBeenCalledTimes(1);
@@ -73,7 +73,7 @@ describe('ConnectionConfigureWizardPage', () => {
       attributeConfiguration?: unknown;
     };
     expect(payload).toMatchObject({
-      name: 'Google',
+      name: 'Google Login',
       clientId: 'x',
       clientSecret: 's',
       redirectUri: 'https://id.acme.io/gate/callback',
@@ -170,7 +170,7 @@ describe('ConnectionConfigureWizardPage', () => {
     expect(mutateMock).toHaveBeenCalledTimes(1);
     const payload = mutateMock.mock.calls[0][0] as Record<string, unknown>;
     expect(payload).toMatchObject({
-      name: 'Twilio',
+      name: 'Twilio SMS',
       accountSid: 'AC00000000000000000000000000000000',
       senderId: '+15005550006',
     });

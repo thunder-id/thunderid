@@ -958,7 +958,6 @@ func applicationRequestToDTO(req *appmodel.ApplicationRequestWithID) *appmodel.A
 			Assertion:                 req.Assertion,
 			LoginConsent:              req.LoginConsent,
 			AllowedUserTypes:          req.AllowedUserTypes,
-			SubjectAttribute:          req.SubjectAttribute,
 		},
 		Type:       req.Type,
 		Template:   req.Template,

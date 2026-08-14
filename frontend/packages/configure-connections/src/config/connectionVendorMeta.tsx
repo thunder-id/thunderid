@@ -25,7 +25,7 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
   {
     key: 'google',
     backendType: ConnectionTypes.GOOGLE,
-    displayName: 'Google',
+    displayName: 'Google Login',
     descriptionKey: 'connections:vendor.google.description',
     logo: <ResourceAvatar transparent variant="rounded" size={AVATAR_SIZE} fallback={<GoogleIcon size={34} />} />,
     categories: ['social-login'],
@@ -36,7 +36,7 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
   {
     key: 'github',
     backendType: ConnectionTypes.GITHUB,
-    displayName: 'GitHub',
+    displayName: 'GitHub Login',
     descriptionKey: 'connections:vendor.github.description',
     logo: <ResourceAvatar transparent variant="rounded" size={AVATAR_SIZE} fallback={<GithubIcon size={34} />} />,
     categories: ['social-login'],
@@ -81,7 +81,7 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
   {
     key: 'twilio',
     backendType: ConnectionTypes.TWILIO,
-    displayName: 'Twilio',
+    displayName: 'Twilio SMS',
     descriptionKey: 'connections:vendor.twilio.description',
     // Twilio's brand mark isn't cleared for use yet — keep the generic icon until that's sorted.
     logo: <ResourceAvatar transparent variant="rounded" size={AVATAR_SIZE} fallback={<MessageSquare size={28} />} />,
@@ -91,7 +91,7 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
   {
     key: 'vonage',
     backendType: ConnectionTypes.VONAGE,
-    displayName: 'Vonage',
+    displayName: 'Vonage SMS',
     descriptionKey: 'connections:vendor.vonage.description',
     // Vonage's brand mark isn't cleared for use yet — keep the generic icon until that's sorted.
     logo: <ResourceAvatar transparent variant="rounded" size={AVATAR_SIZE} fallback={<Send size={28} />} />,

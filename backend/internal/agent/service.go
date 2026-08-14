@@ -147,7 +147,7 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *model.Agent) (
 		agent.Type, agent.Name, agent.Description, agent.LogoURL, createdEntity.Attributes,
 		authFlowID, regFlowID, agent.IsRegistrationFlowEnabled,
 		agent.ThemeID, agent.LayoutID, assertion, loginConsent,
-		agent.AllowedUserTypes, agent.SubjectAttribute, inboundConfigs)
+		agent.AllowedUserTypes, inboundConfigs)
 	resp.OUID = agent.OUID
 	s.populateOUHandleForComplete(ctx, resp)
 	return resp, nil
@@ -339,7 +339,7 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 		req.Type, req.Name, req.Description, req.LogoURL, req.Attributes,
 		authFlowID, regFlowID, resolvedClient.IsRegistrationFlowEnabled,
 		req.ThemeID, req.LayoutID, assertion, loginConsent,
-		req.AllowedUserTypes, req.SubjectAttribute, inboundConfigs)
+		req.AllowedUserTypes, inboundConfigs)
 	resp.OUID = ouID
 	s.populateOUHandleForComplete(ctx, resp)
 	return resp, nil
@@ -946,7 +946,7 @@ func (s *agentService) reconcileInboundForUpdate(ctx context.Context, agentID st
 
 	client := buildInboundClientRecord(agentID, req.AuthFlowID, req.RegistrationFlowID,
 		req.IsRegistrationFlowEnabled, req.ThemeID, req.LayoutID, req.Assertion,
-		req.LoginConsent, req.AllowedUserTypes, req.SubjectAttribute)
+		req.LoginConsent, req.AllowedUserTypes, nil)
 	setLogoProperty(&client, req.LogoURL)
 	oauthProfile := buildOAuthProfile(req.InboundAuthConfig)
 	hasSecret := clientSecret != ""
@@ -1010,7 +1010,6 @@ func (s *agentService) composeGetResponse(ctx context.Context, e *providers.Enti
 	resp.Assertion = inbound.Assertion
 	resp.LoginConsent = inbound.LoginConsent
 	resp.AllowedUserTypes = inbound.AllowedUserTypes
-	resp.SubjectAttribute = inbound.SubjectAttribute
 	resp.LogoURL = logoURLFromProperties(inbound.Properties)
 
 	oauth, oauthErr := s.inboundClientService.GetOAuthProfileByEntityID(ctx, e.ID)
@@ -1478,7 +1477,6 @@ func buildCompleteResponse(agentID, owner, clientID, clientSecret, agentType, na
 	attributes json.RawMessage, authFlowID, regFlowID string, isRegEnabled bool,
 	themeID, layoutID string, assertion *inboundmodel.AssertionConfig,
 	loginConsent *inboundmodel.LoginConsentConfig, allowedUserTypes []string,
-	subjectAttribute map[string]string,
 	inboundAuthConfig []providers.InboundAuthConfigWithSecret,
 ) *model.AgentCompleteResponse {
 	resp := &model.AgentCompleteResponse{
@@ -1489,7 +1487,7 @@ func buildCompleteResponse(agentID, owner, clientID, clientSecret, agentType, na
 		LogoURL:     logoURL,
 		Owner:       owner,
 		Attributes:  attributes,
-		InboundAuthProfile: providers.InboundAuthProfile{
+		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{
 			AuthFlowID:                authFlowID,
 			RegistrationFlowID:        regFlowID,
 			IsRegistrationFlowEnabled: isRegEnabled,
@@ -1498,7 +1496,6 @@ func buildCompleteResponse(agentID, owner, clientID, clientSecret, agentType, na
 			Assertion:                 assertion,
 			LoginConsent:              loginConsent,
 			AllowedUserTypes:          allowedUserTypes,
-			SubjectAttribute:          subjectAttribute,
 		},
 	}
 	if len(inboundAuthConfig) > 0 {

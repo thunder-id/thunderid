@@ -5,16 +5,17 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	huhspinner "charm.land/huh/v2/spinner"
-	"charm.land/lipgloss/v2"
 
 	"github.com/thunder-id/thunderid/tools/cli/internal/commands/upgrade"
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
@@ -68,16 +69,27 @@ func Run(verbose, forceSetup bool) {
 		ui.Warn(nodeWarning)
 	}
 
+	activeVersion := config.ReadActiveVersion()
+
 	fmt.Print(ui.Dim("  Fetching latest " + product.Name + " release..."))
 	latestVersion, err := release.FetchLatestVersion()
-	if err != nil {
+	switch {
+	case err == nil:
+		fmt.Printf("\r\033[2K  %s Latest %s release: v%s\n\n", ui.Green("✓"), product.Name, latestVersion)
+	case activeVersion != "":
+		// The manifest is only needed to learn about newer releases. With a version
+		// already installed, an unreachable release server must not stop the CLI from
+		// starting what is on disk.
+		fmt.Print("\r\033[2K")
+		ui.Warn("Could not reach the " + product.Name + " release server, so this run cannot check for updates.\n" +
+			"Starting the installed v" + activeVersion + ".\n" + err.Error())
+		latestVersion = activeVersion
+	default:
 		fmt.Println()
-		ui.Fatal("Could not fetch latest " + product.Name + " release: " + err.Error())
+		ui.Fatal("Could not fetch latest " + product.Name + " release: " + err.Error() +
+			"\nNo local install to fall back on, so " + product.Name + " cannot start offline.")
 		os.Exit(1)
 	}
-	fmt.Printf("\r\033[2K  %s Latest %s release: v%s\n\n", ui.Green("✓"), product.Name, latestVersion)
-
-	activeVersion := config.ReadActiveVersion()
 
 	// Always start the active version; only download when there's no installed version yet.
 	runVersion := latestVersion
@@ -102,23 +114,14 @@ func Run(verbose, forceSetup bool) {
 	alreadyInstalled := activeVersion == runVersion && config.IsSetupComplete(runVersion) && installOnDisk
 	isFirstRun := !config.IsOnboardingDone(runVersion)
 
-	// If the product is already responding on port 8090 and we have a valid local install,
-	// skip setup and attach the REPL to the running instance without starting a new process.
-	// If the install is missing or state is gone, fall through to reinstall even if something
-	// is already listening on the port.
-	if !forceSetup && alreadyInstalled && isRunning() {
-		ui.Note("Already running",
-			fmt.Sprintf("%s is already running on port %d.\nAttaching to the existing instance.",
-				product.Name, health.DefaultPort))
-		replLoop(runVersion, path, nil, verbose, isFirstRun, newVersion, nodeWarning, 0, nil)
-		return
-	}
-
-	port := health.DefaultPort
+	var port int
 	var creds *setup.AdminCredentials
 
 	if alreadyInstalled && !forceSetup {
 		ui.Note("Starting "+product.Name, fmt.Sprintf("%s v%s is ready\n%s", product.Name, runVersion, path))
+		// Setup already ran on an earlier invocation, so the port it seeded into the
+		// console application's redirect URIs is fixed: no alternate port here.
+		port = resolvePort(path, false)
 	} else if activeVersion == runVersion && installOnDisk {
 		absPath, err := filepath.Abs(path)
 		if err != nil {
@@ -134,8 +137,8 @@ func Run(verbose, forceSetup bool) {
 		} else {
 			ui.Note("First-time setup", fmt.Sprintf("Setting up %s v%s\n%s", product.Name, runVersion, path))
 		}
-		port = resolvePort(path)
-		creds = runSetupPhase(runVersion, path, verbose)
+		port = resolvePort(path, true)
+		creds = runSetupPhase(runVersion, path, verbose, port)
 	} else {
 		// If the previously-active version is no longer in the manifest we'd need
 		// to download it, so fall back to the latest available version.
@@ -154,17 +157,20 @@ func Run(verbose, forceSetup bool) {
 			os.Exit(1)
 		}
 		path = absPath
-		port = resolvePort(path)
-		creds = runSetupPhase(runVersion, path, verbose)
+		port = resolvePort(path, true)
+		creds = runSetupPhase(runVersion, path, verbose, port)
 		if err := config.WriteActiveVersion(runVersion); err != nil {
 			ui.Fatal("Failed to record active version: " + err.Error())
 			os.Exit(1)
 		}
 	}
 
+	// resolvePort has already settled any conflict on this port, so anything still
+	// listening was not approved for termination: report it instead of killing it.
 	if !setup.WaitForPortFree(port, 10*time.Second) {
-		setup.KillPort(port)
-		setup.WaitForPortFree(port, 5*time.Second)
+		ui.PrintCredentialsFallback(creds)
+		ui.Fatal(fmt.Sprintf("Port %d is still in use. Stop the process using it, then run again.", port))
+		os.Exit(1)
 	}
 
 	fmt.Print(ui.Dim("\n  Starting " + product.Name + " in the background..."))
@@ -177,7 +183,19 @@ func Run(verbose, forceSetup bool) {
 		ui.Fatal("Failed to start " + product.Name + ": " + err.Error())
 		os.Exit(1)
 	}
-	fmt.Printf("\r\033[2K  %s %s started  %s\n", ui.Green("✓"), product.Name, ui.Dim("logs: "+setup.LogDir(path)))
+
+	// Launching the script only means the launcher started. Wait for the server to
+	// answer before claiming success, so a rejected bind is reported as the failure it
+	// is instead of a started product the REPL then finds missing.
+	if err := waitForStartup(path, port, verbose); err != nil {
+		fmt.Println()
+		stopStartedInstance(proc, port)
+		ui.PrintCredentialsFallback(creds)
+		ui.FatalDetail("Failed to start " + product.Name + ": " + err.Error())
+		os.Exit(1)
+	}
+	fmt.Printf("\r\033[2K  %s %s started on port %d  %s\n",
+		ui.Green("✓"), product.Name, port, ui.Dim("logs: "+setup.LogDir(path)))
 
 	replLoop(runVersion, path, proc, verbose, isFirstRun, newVersion, nodeWarning, port, creds)
 }
@@ -195,7 +213,7 @@ func replLoop(version, installPath string, proc *exec.Cmd, verbose, isFirstRun b
 		newVersion = ""
 
 		if upgradeRequested {
-			upgraded, err := upgrade.Run(BaseDir(), upgrade.Opts{Verbose: verbose})
+			upgraded, err := upgrade.Run(BaseDir(), upgrade.Opts{Verbose: verbose, Port: port})
 			if err != nil {
 				os.Exit(1)
 			}
@@ -207,7 +225,7 @@ func replLoop(version, installPath string, proc *exec.Cmd, verbose, isFirstRun b
 		}
 
 		if switchRequested {
-			switched, err := upgrade.Switch(BaseDir(), version, verbose)
+			switched, err := upgrade.Switch(BaseDir(), version, port, verbose)
 			if err != nil {
 				os.Exit(1)
 			}
@@ -222,26 +240,53 @@ func replLoop(version, installPath string, proc *exec.Cmd, verbose, isFirstRun b
 	}
 }
 
-// resolvePort checks whether the default port is available and, if not, prompts
-// the user to either kill the occupying process or switch to a free alternate port.
-func resolvePort(installPath string) int {
-	if !setup.IsPortInUse(health.DefaultPort) {
-		return health.DefaultPort
+// resolvePort returns the port ThunderID should run on.
+//
+// Without setup in this invocation the baseline is the port configured in the install's
+// deployment.yaml — the only port the server itself honors — so a previous run that moved
+// the port is carried forward instead of health-checking a port nothing listens on. A
+// conflict there is answered by freeing the port or aborting: setup seeded the console
+// application with redirect URIs carrying its port, so a run on a different port would
+// serve a console that cannot complete a login.
+//
+// With setup in this invocation (setupWillRun) the baseline is the default port, since
+// setup re-seeds those redirect URIs from the port it runs on: a re-setup returns to the
+// default instead of inheriting a port an earlier conflict moved it to. A conflict here
+// can also be answered by moving to a free port.
+//
+// Whatever holds the port is left running until the user says otherwise. A process
+// answering on it is not necessarily this install: it may be another install, another
+// version, or an unrelated app.
+func resolvePort(installPath string, setupWillRun bool) int {
+	port := setup.ServerPort(installPath)
+	if setupWillRun {
+		port = health.DefaultPort
 	}
-	altPort := setup.FindFreePort(health.DefaultPort + 1)
-	choice, selectedPort := ui.PromptPortConflict(health.DefaultPort, altPort)
+	if !setup.IsPortInUse(port) {
+		return port
+	}
+	holders := setup.PortHolders(port)
+	if !ui.Interactive() {
+		// A scripted or CI run cannot answer the prompt, so take the port as before
+		// rather than stalling, and say what is being stopped.
+		warning := fmt.Sprintf("Port %d is in use, so the process holding it is being stopped.", port)
+		if summary := holderSummary(holders); summary != "" {
+			warning += "\n" + summary
+		}
+		ui.Warn(warning)
+		freePortOrExit(port)
+		return port
+	}
+	altPort := 0
+	if setupWillRun {
+		altPort = setup.FindFreePort(port + 1)
+	}
+	choice, selectedPort := ui.PromptPortConflict(port, altPort, holders)
 	switch choice {
 	case ui.KillAndUsePort:
-		setup.KillPort(health.DefaultPort)
-		setup.WaitForPortFree(health.DefaultPort, 5*time.Second)
-		return health.DefaultPort
+		freePortOrExit(port)
+		return port
 	case ui.UseAlternatePort:
-		if err := setup.UpdateServerPort(installPath, selectedPort); err != nil {
-			ui.Warn("Could not update port configuration: " + err.Error())
-			setup.KillPort(health.DefaultPort)
-			setup.WaitForPortFree(health.DefaultPort, 5*time.Second)
-			return health.DefaultPort
-		}
 		return selectedPort
 	default: // ui.AbortSetup
 		os.Exit(0)
@@ -249,14 +294,122 @@ func resolvePort(installPath string) int {
 	}
 }
 
-// isRunning returns true if the product is already responding on the default port.
-func isRunning() bool {
-	for _, scheme := range []string{"https", "http"} {
-		if health.CheckReady(fmt.Sprintf("%s://localhost:%d", scheme, health.DefaultPort)) {
-			return true
+// freePortOrExit stops whatever holds port and gives up when it cannot: starting
+// anyway would fail on the bind with a less useful message.
+func freePortOrExit(port int) {
+	if err := setup.FreePort(port, 10*time.Second); err != nil {
+		ui.Fatal(fmt.Sprintf("Could not free port %d: %s\nStop the process manually, then run again.", port, err))
+		os.Exit(1)
+	}
+}
+
+// holderSummary lists the processes holding a port, one per line, for the warning
+// shown where the prompt with its own list cannot run.
+func holderSummary(holders []setup.PortHolder) string {
+	lines := make([]string, 0, len(holders))
+	for _, h := range holders {
+		lines = append(lines, h.String())
+	}
+	return strings.Join(lines, "\n")
+}
+
+// startupTimeout bounds how long the CLI waits for a freshly started server to answer
+// before it reports the start as failed.
+const startupTimeout = 90 * time.Second
+
+// fatalStartupPatterns are log lines that mean the server will not come up, so the CLI
+// can report the real cause immediately instead of waiting out startupTimeout.
+var fatalStartupPatterns = []string{
+	"address already in use",
+	"is already in use",
+	"panic:",
+	"failed to start",
+}
+
+// stopStartedInstance stops what this run launched after startup verification failed, so
+// the launcher and the server it spawned do not outlive the CLI and hold the port. The
+// port check before the launch proved nothing else held it, so a listener on it now is
+// this run's own.
+func stopStartedInstance(proc *exec.Cmd, port int) {
+	if proc != nil && proc.Process != nil {
+		if runtime.GOOS == "windows" {
+			proc.Process.Kill() //nolint:errcheck
+		} else {
+			proc.Process.Signal(syscall.SIGTERM) //nolint:errcheck
 		}
 	}
-	return false
+	if setup.IsPortInUse(port) {
+		_ = setup.FreePort(port, 5*time.Second)
+	}
+}
+
+// waitForStartup waits for the server to answer, showing a spinner in non-verbose mode
+// so a slow boot does not look like a hang. Verbose runs keep the raw log output.
+func waitForStartup(installPath string, port int, verbose bool) error {
+	if verbose {
+		return awaitReady(installPath, port, startupTimeout)
+	}
+	fmt.Println()
+	var readyErr error
+	if err := huhspinner.New().
+		WithTheme(ui.SpinnerTheme()).
+		Title("Waiting for " + product.Name + " to become ready...").
+		Action(func() {
+			readyErr = awaitReady(installPath, port, startupTimeout)
+		}).
+		Run(); err != nil {
+		return fmt.Errorf("interrupted while waiting for %s: %w", product.Name, err)
+	}
+	return readyErr
+}
+
+// awaitReady blocks until the server answers on port, and otherwise returns the real
+// reason it did not: the server's own log line when it names one, or a timeout that
+// still carries the tail of that log.
+func awaitReady(installPath string, port int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		if health.IsReady(port) {
+			return nil
+		}
+		if line := fatalStartupLine(installPath); line != "" {
+			return withLogTail(installPath, errors.New(line))
+		}
+		if !time.Now().Before(deadline) {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	if setup.IsPortInUse(port) {
+		return withLogTail(installPath,
+			fmt.Errorf("port %d is in use but %s never became ready", port, product.Name))
+	}
+	return withLogTail(installPath,
+		fmt.Errorf("%s did not start listening on port %d within %s", product.Name, port, timeout))
+}
+
+// fatalStartupLine returns the log line that shows the server gave up, or "".
+func fatalStartupLine(installPath string) string {
+	tail := setup.LogTail(installPath, 40)
+	for _, line := range strings.Split(tail, "\n") {
+		lower := strings.ToLower(line)
+		for _, pattern := range fatalStartupPatterns {
+			if strings.Contains(lower, pattern) {
+				return strings.TrimSpace(line)
+			}
+		}
+	}
+	return ""
+}
+
+// withLogTail appends the tail of the server log to err, so the failure box shows what
+// the server itself reported.
+func withLogTail(installPath string, err error) error {
+	tail := setup.LogTail(installPath, 8)
+	if tail == "" {
+		return fmt.Errorf("%w\n\nlogs: %s", err, setup.LatestLogFile(installPath))
+	}
+	return fmt.Errorf("%w\n\n%s\n\nlogs: %s", err, tail, setup.LatestLogFile(installPath))
 }
 
 // downloadAndInstall downloads and extracts the product into path.
@@ -338,15 +491,16 @@ func defaultAdminPassword() string {
 	return setup.GenerateAdminPassword()
 }
 
-// runSetupPhase runs setup.sh with a spinner (non-verbose) or raw output (verbose).
-// On failure in non-verbose mode, the captured stderr is printed before the error box.
+// runSetupPhase runs setup.sh on the resolved port with a spinner (non-verbose) or
+// raw output (verbose). On failure in non-verbose mode, the captured stderr is
+// printed before the error box.
 // It returns the generated admin credentials when setup produced them, or nil.
-func runSetupPhase(version, installPath string, verbose bool) *setup.AdminCredentials {
+func runSetupPhase(version, installPath string, verbose bool, port int) *setup.AdminCredentials {
 	promptCreds := collectAdminCredentials()
 	var setupCreds *setup.AdminCredentials
 	if verbose {
 		fmt.Printf("\n  Running %s setup (v%s)...\n", product.Name, version)
-		c, err := setup.RunSetup(installPath, true)
+		c, err := setup.RunSetupOnPort(installPath, true, port)
 		if err != nil {
 			ui.Fatal("Setup failed: " + err.Error())
 			os.Exit(1)
@@ -356,34 +510,17 @@ func runSetupPhase(version, installPath string, verbose bool) *setup.AdminCreden
 		fmt.Println()
 		var setupErr error
 		if err := huhspinner.New().
-			WithTheme(huhspinner.ThemeFunc(func(bool) *huhspinner.Styles {
-				return &huhspinner.Styles{
-					Spinner: lipgloss.NewStyle().Foreground(lipgloss.Color(product.ColorElectricBlue)).PaddingLeft(2),
-					Title:   lipgloss.NewStyle(),
-				}
-			})).
+			WithTheme(ui.SpinnerTheme()).
 			Title("Setting up " + product.Name + "...").
 			Action(func() {
-				setupCreds, setupErr = setup.RunSetup(installPath, false)
+				setupCreds, setupErr = setup.RunSetupOnPort(installPath, false, port)
 			}).
 			Run(); err != nil {
 			ui.Fatal("Setup interrupted: " + err.Error())
 			os.Exit(1)
 		}
 		if setupErr != nil {
-			msg := setupErr.Error()
-			if idx := strings.Index(msg, "\n\n"); idx != -1 {
-				detail := strings.TrimSpace(msg[idx+2:])
-				if detail != "" {
-					fmt.Println()
-					for _, line := range strings.Split(detail, "\n") {
-						fmt.Println("  " + line)
-					}
-					fmt.Println()
-				}
-				msg = strings.TrimSpace(msg[:idx])
-			}
-			ui.Fatal(msg)
+			ui.FatalDetail(setupErr.Error())
 			os.Exit(1)
 		}
 	}

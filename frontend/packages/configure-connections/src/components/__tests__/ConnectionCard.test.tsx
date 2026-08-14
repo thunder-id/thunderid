@@ -11,7 +11,7 @@ const baseCard: ConnectionCardModel = {
   id: 'google',
   vendorKey: 'google',
   backendType: 'google',
-  displayName: 'Google',
+  displayName: 'Google Login',
   descriptionKey: 'connections:vendor.google.description',
   logo: 'logo' as unknown as JSX.Element,
   categories: ['social-login'],
@@ -26,7 +26,7 @@ describe('ConnectionCard', () => {
 
   it('renders the vendor name, status, and hashtag category tags', () => {
     render(<ConnectionCard card={baseCard} onAction={onAction} />);
-    expect(screen.getByText('Google')).toBeInTheDocument();
+    expect(screen.getByText('Google Login')).toBeInTheDocument();
     expect(screen.getByText('Not configured')).toBeInTheDocument();
     expect(screen.getByText('#social login')).toBeInTheDocument();
   });

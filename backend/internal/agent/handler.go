@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
@@ -76,16 +77,30 @@ func (h *agentHandler) HandleAgentPostRequest(w http.ResponseWriter, r *http.Req
 	}
 
 	agent := &model.Agent{
-		OUID:               req.OUID,
-		OUHandle:           req.OUHandle,
-		Type:               req.Type,
-		Name:               req.Name,
-		Description:        req.Description,
-		LogoURL:            req.LogoURL,
-		Owner:              req.Owner,
-		Attributes:         req.Attributes,
-		InboundAuthProfile: req.InboundAuthProfile,
-		InboundAuthConfig:  req.InboundAuthConfig,
+		OUID:        req.OUID,
+		OUHandle:    req.OUHandle,
+		Type:        req.Type,
+		Name:        req.Name,
+		Description: req.Description,
+		LogoURL:     req.LogoURL,
+		Owner:       req.Owner,
+		Attributes:  req.Attributes,
+		InboundAuthProfile: providers.InboundAuthProfile{
+			AuthFlowID:                req.AuthFlowID,
+			RegistrationFlowID:        req.RegistrationFlowID,
+			IsRegistrationFlowEnabled: req.IsRegistrationFlowEnabled,
+			RecoveryFlowID:            req.RecoveryFlowID,
+			IsRecoveryFlowEnabled:     req.IsRecoveryFlowEnabled,
+			SignOutFlowID:             req.SignOutFlowID,
+			ThemeID:                   req.ThemeID,
+			LayoutID:                  req.LayoutID,
+			Assertion:                 req.Assertion,
+			LoginConsent:              req.LoginConsent,
+			AllowedUserTypes:          req.AllowedUserTypes,
+			PasskeyAllowedOrigins:     req.PasskeyAllowedOrigins,
+			Attestation:               req.Attestation,
+		},
+		InboundAuthConfig: req.InboundAuthConfig,
 	}
 
 	resp, svcErr := h.service.CreateAgent(ctx, agent)

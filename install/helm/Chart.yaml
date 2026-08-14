@@ -5,5 +5,5 @@ apiVersion: v2
 name: thunderid
 description: A Helm chart for ThunderID - Open-source IAM stack
 type: application
-version: 0.48.0
-appVersion: "0.48.0"
+version: 1.0.0
+appVersion: "1.0.0"

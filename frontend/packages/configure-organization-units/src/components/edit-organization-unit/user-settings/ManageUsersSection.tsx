@@ -62,6 +62,7 @@ export default function ManageUsersSection({organizationUnitId}: ManageUsersSect
                   width: 30,
                   height: 30,
                   bgcolor: 'primary.main',
+                  color: 'primary.contrastText',
                   fontSize: '0.875rem',
                 }}
               >

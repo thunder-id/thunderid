@@ -12,7 +12,7 @@ const VENDORS: ConnectionVendorMeta[] = [
   {
     key: 'google',
     backendType: 'google',
-    displayName: 'Google',
+    displayName: 'Google Login',
     descriptionKey: 'connections:vendor.google.description',
     logo: LOGO,
     categories: ['social-login'],
@@ -21,7 +21,7 @@ const VENDORS: ConnectionVendorMeta[] = [
   {
     key: 'github',
     backendType: 'github',
-    displayName: 'GitHub',
+    displayName: 'GitHub Login',
     descriptionKey: 'connections:vendor.github.description',
     logo: LOGO,
     categories: ['social-login'],
@@ -47,7 +47,7 @@ const VENDORS: ConnectionVendorMeta[] = [
   },
   {
     key: 'twilio',
-    displayName: 'Twilio',
+    displayName: 'Twilio SMS',
     descriptionKey: 'connections:vendor.twilio.description',
     logo: LOGO,
     categories: ['sms'],
@@ -85,7 +85,7 @@ describe('buildConnectionCards', () => {
 
     const github = cards.find((c) => c.vendorKey === 'github');
     expect(github).toMatchObject({
-      displayName: 'GitHub',
+      displayName: 'GitHub Login',
       status: 'not-configured',
       navTarget: '/connections/github/configure',
     });

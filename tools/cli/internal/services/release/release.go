@@ -7,6 +7,7 @@ package release
 import (
 	"archive/zip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -78,8 +79,16 @@ func fetchJSON(url string, dest any) error {
 }
 
 func fetchReleasesData() (*releasesData, error) {
+	return fetchReleasesDataFrom(product.ReleasesURL, product.GitHubAPI)
+}
+
+// fetchReleasesDataFrom reads releases metadata from primaryURL and falls back to the
+// GitHub release API at fallbackURL. The URLs are parameters so tests can point both at
+// a local server.
+func fetchReleasesDataFrom(primaryURL, fallbackURL string) (*releasesData, error) {
 	var data releasesData
-	if err := fetchJSON(product.ReleasesURL, &data); err == nil {
+	primaryErr := fetchJSON(primaryURL, &data)
+	if primaryErr == nil {
 		return &data, nil
 	}
 
@@ -91,8 +100,10 @@ func fetchReleasesData() (*releasesData, error) {
 			BrowserDownloadURL string `json:"browser_download_url"`
 		} `json:"assets"`
 	}
-	if err := fetchJSON(product.GitHubAPI, &gh); err != nil {
-		return nil, err
+	if err := fetchJSON(fallbackURL, &gh); err != nil {
+		// Report both hosts: dropping the primary error blames the fallback for a
+		// failure that started somewhere else.
+		return nil, fmt.Errorf("%w; fallback %w", primaryErr, err)
 	}
 	if gh.TagName == "" {
 		return nil, fmt.Errorf("tag_name missing from GitHub release response")
@@ -157,7 +168,34 @@ func Download(version, destDir string, onProgress ProgressFunc) error {
 	if onProgress != nil {
 		onProgress(-1, "Extracting...")
 	}
-	return extractZip(zipPath, destDir)
+	return extractInto(zipPath, destDir)
+}
+
+// extractInto extracts zipPath into destDir and removes a half-written destDir when the
+// extraction fails, so a failed install does not leave a broken tree behind. Ownership
+// comes from creating destDir here: anything that already exists at that path, including
+// a dangling symlink or a directory another process created first, is not this run's to
+// delete.
+func extractInto(zipPath, destDir string) error {
+	if err := os.MkdirAll(filepath.Dir(destDir), 0o755); err != nil {
+		return err
+	}
+	createdByThisRun := false
+	switch err := os.Mkdir(destDir, 0o755); {
+	case err == nil:
+		createdByThisRun = true
+	case errors.Is(err, os.ErrExist):
+		// Left in place; extractZip writes into it.
+	default:
+		return err
+	}
+	if err := extractZip(zipPath, destDir); err != nil {
+		if createdByThisRun {
+			_ = os.RemoveAll(destDir)
+		}
+		return err
+	}
+	return nil
 }
 
 // SampleAssetName returns the ZIP name for a sample app.
@@ -201,7 +239,7 @@ func DownloadSample(sampleName, version, destDir string, onProgress ProgressFunc
 	if onProgress != nil {
 		onProgress(-1, "Extracting...")
 	}
-	return extractZip(zipPath, destDir)
+	return extractInto(zipPath, destDir)
 }
 
 func findAsset(data *releasesData, version, assetName string) *releaseAsset {
@@ -239,11 +277,14 @@ func downloadFile(url, destPath string, onProgress func(received, total int64)) 
 		return fmt.Errorf("HTTP %d downloading %s", resp.StatusCode, url)
 	}
 
-	f, err := os.Create(destPath)
+	f, err := os.CreateTemp(filepath.Dir(destPath), "."+filepath.Base(destPath)+"-*")
 	if err != nil {
 		return err
 	}
-	defer func() { _ = f.Close() }()
+	defer func() {
+		_ = f.Close()
+		_ = os.Remove(f.Name())
+	}()
 
 	total := resp.ContentLength
 	var received int64
@@ -266,7 +307,10 @@ func downloadFile(url, destPath string, onProgress func(received, total int64)) 
 			return err
 		}
 	}
-	return nil
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), destPath)
 }
 
 func extractZip(zipPath, destDir string) error {

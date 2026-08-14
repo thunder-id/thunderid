@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/thunder-id/thunderid/tools/cli/internal/product"
 )
 
 // DefaultPort is the port ThunderID listens on by default.
@@ -38,6 +40,25 @@ func ResolveBaseURL(port int, timeout time.Duration) (string, bool) {
 		time.Sleep(500 * time.Millisecond)
 	}
 	return "", false
+}
+
+// IsReady reports whether ThunderID answers on the given port over either scheme.
+// It is the one-shot form of ResolveBaseURL, for callers that only need a yes or no.
+func IsReady(port int) bool {
+	for _, scheme := range []string{"https", "http"} {
+		if CheckReady(fmt.Sprintf("%s://localhost:%d", scheme, port)) {
+			return true
+		}
+	}
+	return false
+}
+
+// WaitReady waits until ThunderID answers on port or timeout expires.
+func WaitReady(port int, timeout time.Duration) error {
+	if _, ok := ResolveBaseURL(port, timeout); !ok {
+		return fmt.Errorf("%s did not become ready on port %d within %s", product.Name, port, timeout)
+	}
+	return nil
 }
 
 // CheckReady returns true if ThunderID is responding on the readiness endpoint.

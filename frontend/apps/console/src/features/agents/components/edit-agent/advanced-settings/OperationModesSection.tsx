@@ -143,7 +143,7 @@ export default function OperationModesSection({
             <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
               {t(
                 'agents:edit.advanced.oauthAccess.grantTypes.hint',
-                'The greyed-out grants unlock once you select "On behalf of a user" above.',
+                'The greyed-out grants unlock once you turn on Delegated mode at the top of this tab.',
               )}
             </Typography>
             <Select

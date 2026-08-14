@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen, userEvent, waitFor} from '@thunderid/test-utils';
-import {Users} from '@wso2/oxygen-ui-icons-react';
+import {UsersRound} from '@wso2/oxygen-ui-icons-react';
 import {describe, expect, it, vi} from 'vitest';
 import type {ConfigSummaryItem} from '../../models/import-configuration';
 import ResourceSummaryTable from '../ResourceSummaryTable';
@@ -30,13 +30,13 @@ describe('ResourceSummaryTable', () => {
       id: 'users',
       label: 'Users',
       value: 10,
-      icon: <Users size={16} />,
+      icon: <UsersRound size={16} />,
     },
     {
       id: 'groups',
       label: 'Groups',
       value: 5,
-      icon: <Users size={16} />,
+      icon: <UsersRound size={16} />,
     },
   ];
 
@@ -71,7 +71,7 @@ describe('ResourceSummaryTable', () => {
           id: 'users',
           label: 'Users',
           value: 10,
-          icon: <Users size={16} />,
+          icon: <UsersRound size={16} />,
           content: <div>User details content</div>,
         },
       ];
@@ -90,7 +90,7 @@ describe('ResourceSummaryTable', () => {
           id: 'users',
           label: 'Users',
           value: 10,
-          icon: <Users size={16} />,
+          icon: <UsersRound size={16} />,
           content: <div>User details content</div>,
         },
       ];
@@ -123,14 +123,14 @@ describe('ResourceSummaryTable', () => {
           id: 'users',
           label: 'Users',
           value: 10,
-          icon: <Users size={16} />,
+          icon: <UsersRound size={16} />,
           content: <div>User details</div>,
         },
         {
           id: 'groups',
           label: 'Groups',
           value: 5,
-          icon: <Users size={16} />,
+          icon: <UsersRound size={16} />,
           content: <div>Group details</div>,
         },
       ];
@@ -161,7 +161,7 @@ describe('ResourceSummaryTable', () => {
           id: 'users',
           label: 'Users',
           value: 10,
-          icon: <Users size={16} />,
+          icon: <UsersRound size={16} />,
           status: 'ready',
         },
       ];
@@ -177,7 +177,7 @@ describe('ResourceSummaryTable', () => {
           id: 'users',
           label: 'Users',
           value: 10,
-          icon: <Users size={16} />,
+          icon: <UsersRound size={16} />,
           status: 'warning',
         },
       ];
@@ -207,7 +207,7 @@ describe('ResourceSummaryTable', () => {
           id: 'users',
           label: 'Users',
           value: 10,
-          icon: <Users size={16} />,
+          icon: <UsersRound size={16} />,
           dependencyCount: 3,
         },
       ];
@@ -223,7 +223,7 @@ describe('ResourceSummaryTable', () => {
           id: 'users',
           label: 'Users',
           value: 10,
-          icon: <Users size={16} />,
+          icon: <UsersRound size={16} />,
           dependencyCount: 0,
         },
       ];
@@ -239,7 +239,7 @@ describe('ResourceSummaryTable', () => {
           id: 'users',
           label: 'Users',
           value: 10,
-          icon: <Users size={16} />,
+          icon: <UsersRound size={16} />,
         },
       ];
 
@@ -286,7 +286,7 @@ describe('ResourceSummaryTable', () => {
           id: 'users',
           label: 'Users',
           value: 10,
-          icon: <Users size={16} />,
+          icon: <UsersRound size={16} />,
           status: 'ready',
         },
       ];
@@ -319,7 +319,7 @@ describe('ResourceSummaryTable', () => {
           id: 'users',
           label: 'Users',
           value: 999999,
-          icon: <Users size={16} />,
+          icon: <UsersRound size={16} />,
         },
       ];
 
@@ -334,7 +334,7 @@ describe('ResourceSummaryTable', () => {
           id: 'users',
           label: 'Users',
           value: 0,
-          icon: <Users size={16} />,
+          icon: <UsersRound size={16} />,
         },
       ];
 
@@ -349,7 +349,7 @@ describe('ResourceSummaryTable', () => {
           id: 'long-label',
           label: 'Very Long Resource Type Name That Might Cause Layout Issues',
           value: 5,
-          icon: <Users size={16} />,
+          icon: <UsersRound size={16} />,
         },
       ];
 

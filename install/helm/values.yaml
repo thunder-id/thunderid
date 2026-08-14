@@ -49,7 +49,7 @@ deployment:
       cpu: 100m
       memory: 50Mi
   # Additional environment variables with plain values.
-  # The log level is configured via deployment.yaml (log.level), not an environment variable.
+  # The log level is configured via configuration.log.level, not an environment variable.
   # Example:
   # env:
   #   - name: EXTERNAL_API_BASE_URL
@@ -137,6 +137,9 @@ configuration:
   server:
     port: 8090
     httpOnly: false
+    # Logical deployment identifier. Every record is scoped to it, so give each
+    # deployment sharing a database its own value. Defaults to "default-deployment".
+    identifier: ""
     # The URL where users reach ThunderID in their browser.
     # ThunderID uses it to build the login and error redirect links.
     publicUrl: "https://thunderid.local"
@@ -402,7 +405,7 @@ configuration:
   # OAuth configuration
   oauth:
     refreshToken:
-      renewOnGrant: false
+      renewOnGrant: true
       revokePreviousOnRenew: true
       validityPeriod: 86400
     authorizationCode:
@@ -442,6 +445,9 @@ configuration:
     # Optional whitelist of built-in interceptor names to register at startup.
     # Leave empty to register all built-in interceptors.
     interceptors: []
+    # Storage mode for flows: "mutable", "declarative", or "composite".
+    # Leave empty to inherit the global declarativeResources.enabled setting.
+    store: ""
 
   # Passkey configuration
   passkey:
@@ -476,6 +482,9 @@ configuration:
     # Trusted issuer anchors (root CAs) used to validate credential issuer chains.
     # Each entry: { name, certFile }.
     trustedAnchors: []
+    # Storage mode for presentation definitions: "mutable", "declarative", or "composite".
+    # Leave empty to inherit the global declarativeResources.enabled setting.
+    store: ""
 
   # OpenID4VCI (verifiable credential issuance / issuer) configuration.
   # Leave signingKeyId empty to keep the issuer engine disabled.
@@ -488,6 +497,77 @@ configuration:
     batchSize: 5
     # Require the credential_configuration_id scope on the issuance token.
     enforceScope: false
+    # Storage mode for credential configurations: "mutable", "declarative", or "composite".
+    # Leave empty to inherit the global declarativeResources.enabled setting.
+    store: ""
+
+  # SMTP server used to deliver emails (email OTP, magic link, verification).
+  # Leave host empty to omit the section, in which case no email can be sent.
+  # port and fromAddress are required once host is set. enableStartTls and
+  # enableAuthentication both default to true when omitted.
+  email:
+    smtp:
+      host: ""
+      port: 587
+      fromAddress: ""
+      username: ""
+      enableStartTls: true
+      enableAuthentication: true
+      # Inline SMTP password. Stored in the "<release>-db-credentials" Secret and
+      # injected as the SMTP_PASSWORD environment variable.
+      password: ""
+      # Source the SMTP password from an existing Kubernetes Secret. When both
+      # name and key are set, it takes precedence over the inline password above.
+      passwordRef:
+        name: ""
+        key: ""
+
+  # Logging configuration. Logs go to the console (stdout) so a log collector can pick
+  # them up from the pod, which is the expected setup on Kubernetes. Everything below
+  # console output is optional; omitted keys keep the server defaults.
+  log:
+    level: "info"
+    output:
+      console:
+        enabled: true
+      # format sets the log line format for every output, including the console, so
+      # set it to "json" on its own to emit JSON to stdout for a log collector.
+      # file:
+      #   format: "json"
+      # The remaining file settings turn on file output. The container root filesystem
+      # is read-only by default (deployment.securityContext.readOnlyRootFilesystem), so
+      # point path at /tmp, which the chart mounts as an emptyDir, or at another
+      # writable mount. Prefer console output.
+      # file:
+      #   enabled: true
+      #   path: "logs"
+      #   fileName: "thunderid.log"
+      #   format: "text"
+      #   rotation:
+      #     size:
+      #       enabled: false
+      #       maxSizeMb: 10
+      #     time:
+      #       enabled: true
+      #       intervalDays: 1
+      #     maxBackups: 20
+      #     maxAgeDays: 0
+      #     compress: false
+    # Optional. Extra path prefixes served without an access log line.
+    # access:
+    #   excludePaths:
+    #     - /health
+
+  # Storage mode per resource type: "mutable", "declarative", or "composite".
+  # Only set these when declarativeResources.enabled=true and the resource should be
+  # sourced from mounted files. An unset key inherits the global setting.
+  # Example:
+  # stores:
+  #   application: composite
+  #   identity_provider: declarative
+  # Supported keys: user, group, role, theme, layout, translation, agent, user_type,
+  # organization_unit, identity_provider, application, server_config, resource.
+  stores: {}
 
 
 # Persistence configuration for SQLite databases

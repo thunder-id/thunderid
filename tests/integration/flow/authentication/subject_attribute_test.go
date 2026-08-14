@@ -35,6 +35,11 @@ type SubjectAttributeTestSuite struct {
 }
 
 func TestSubjectAttributeTestSuite(t *testing.T) {
+	// The subject attribute mapping is an internal-only attribute. It is no longer accepted from the
+	// management API or from declarative configuration, so this suite has no supported way to
+	// provision the mapping on the applications it creates. Re-enable once an input path exists.
+	t.Skip("subject attribute mapping is internal-only and has no supported input path to configure")
+
 	suite.Run(t, new(SubjectAttributeTestSuite))
 }
 

@@ -211,7 +211,7 @@ func (suite *AgentServiceTestSuite) TestUpdateNeedsInboundClient_EmptyRequest() 
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateNeedsInboundClient_WithThemeID() {
-	req := &model.UpdateAgentRequest{InboundAuthProfile: providers.InboundAuthProfile{ThemeID: "theme-abc"}}
+	req := &model.UpdateAgentRequest{InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{ThemeID: "theme-abc"}}
 	assert.True(suite.T(), updateNeedsInboundClient(req))
 }
 
@@ -1966,9 +1966,9 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_WantsInbound_NoExisting_Crea
 		}).Return(nil)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name:               testAgentName,
-		Type:               testAgentType,
-		InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "new-flow-id"},
+		Name:                  testAgentName,
+		Type:                  testAgentType,
+		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{AuthFlowID: "new-flow-id"},
 	})
 	suite.Require().Nil(svcErr)
 	suite.Require().NotNil(resp)
@@ -1997,10 +1997,10 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_SetsLogoProperty() {
 		}).Return(nil)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-		Name:               testAgentName,
-		Type:               testAgentType,
-		LogoURL:            testAgentLogo,
-		InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "new-flow-id"},
+		Name:                  testAgentName,
+		Type:                  testAgentType,
+		LogoURL:               testAgentLogo,
+		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{AuthFlowID: "new-flow-id"},
 	})
 	suite.Require().Nil(svcErr)
 	suite.Require().NotNil(resp)
@@ -2740,9 +2740,9 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileUpdateInboundFails_
 		Return(errors.New("update boom"))
 
 	req := &model.UpdateAgentRequest{
-		Name:               testAgentName,
-		Type:               testAgentType,
-		InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "flow-1"},
+		Name:                  testAgentName,
+		Type:                  testAgentType,
+		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{AuthFlowID: "flow-1"},
 	}
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, req)
 	assert.Nil(suite.T(), resp)
@@ -2767,9 +2767,9 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileCreateInboundFails_
 		Return(errors.New("create boom"))
 
 	req := &model.UpdateAgentRequest{
-		Name:               testAgentName,
-		Type:               testAgentType,
-		InboundAuthProfile: providers.InboundAuthProfile{AuthFlowID: "flow-1"},
+		Name:                  testAgentName,
+		Type:                  testAgentType,
+		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{AuthFlowID: "flow-1"},
 	}
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, req)
 	assert.Nil(suite.T(), resp)

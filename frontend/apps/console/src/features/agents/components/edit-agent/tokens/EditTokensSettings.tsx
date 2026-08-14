@@ -92,7 +92,7 @@ export default function EditTokensSettings({
         <Alert severity="info" icon={<Lock size={20} />}>
           <Trans
             i18nKey="agents:edit.tokens.delegationLock.message"
-            defaults='This agent does not receive tokens on behalf of a user. Select "On behalf of a user" in the <advancedLink>Advanced tab</advancedLink> to configure them.'
+            defaults="This agent does not receive tokens on behalf of a user. Turn on Delegated mode in the <advancedLink>Advanced tab</advancedLink> to configure them."
             components={{
               advancedLink: <Link component="button" type="button" underline="always" onClick={onNavigateToAdvanced} />,
             }}

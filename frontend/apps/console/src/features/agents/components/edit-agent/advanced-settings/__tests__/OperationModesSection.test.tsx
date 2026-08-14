@@ -51,7 +51,7 @@ describe('OperationModesSection', () => {
     render(<OperationModesSection oauth2Config={autonomousOnlyConfig} onOAuth2ConfigChange={vi.fn()} />);
 
     expect(
-      screen.getByText(/greyed-out grants unlock once you select "On behalf of a user" above/i),
+      screen.getByText(/greyed-out grants unlock once you turn on Delegated mode at the top of this tab/i),
     ).toBeInTheDocument();
   });
 

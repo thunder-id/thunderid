@@ -251,45 +251,6 @@ func (suite *InboundClientValidationSuite) TestCreateWithDeclaredUserAttributesS
 
 // --- Subject attribute mapping ---
 
-// TestCreateWithUnknownSubjectAttributeIsRejected covers a mapping naming an attribute the user
-// type does not declare.
-func (suite *InboundClientValidationSuite) TestCreateWithUnknownSubjectAttributeIsRejected() {
-	status, body := suite.createApplication(map[string]interface{}{
-		"name":             suite.appName("unknown-subject-attr"),
-		"allowedUserTypes": []string{suite.userTypeName},
-		"subjectAttribute": map[string]string{suite.userTypeName: "not_a_declared_attribute"},
-	})
-
-	suite.Equal(http.StatusBadRequest, status)
-	suite.Equal("APP-1045", suite.errorCode(body))
-}
-
-// TestCreateWithNonUniqueSubjectAttributeIsRejected covers the uniqueness requirement: "username"
-// is declared but is not a unique+required attribute, so it cannot identify a subject.
-func (suite *InboundClientValidationSuite) TestCreateWithNonUniqueSubjectAttributeIsRejected() {
-	status, body := suite.createApplication(map[string]interface{}{
-		"name":             suite.appName("non-unique-subject-attr"),
-		"allowedUserTypes": []string{suite.userTypeName},
-		"subjectAttribute": map[string]string{suite.userTypeName: "username"},
-	})
-
-	suite.Equal(http.StatusBadRequest, status)
-	suite.Equal("APP-1045", suite.errorCode(body))
-}
-
-// TestCreateWithMappingForUnallowedTypeIsRejected covers a mapping keyed by a user type that is
-// not in allowedUserTypes.
-func (suite *InboundClientValidationSuite) TestCreateWithMappingForUnallowedTypeIsRejected() {
-	status, body := suite.createApplication(map[string]interface{}{
-		"name":             suite.appName("unallowed-subject-type"),
-		"allowedUserTypes": []string{suite.userTypeName},
-		"subjectAttribute": map[string]string{"some-other-type": "email"},
-	})
-
-	suite.Equal(http.StatusBadRequest, status)
-	suite.Equal("APP-1045", suite.errorCode(body))
-}
-
 // TestCreateWithValidSubjectAttributeSucceeds is the control: "email" is unique and required.
 func (suite *InboundClientValidationSuite) TestCreateWithValidSubjectAttributeSucceeds() {
 	status, body := suite.createApplication(map[string]interface{}{

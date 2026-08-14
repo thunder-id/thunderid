@@ -190,6 +190,13 @@ export const DefaultThemeConfig = {
         root: {
           transition: 'all 0.3s ease-in-out',
         },
+        sizeSmall: {
+          padding: '4px 10px',
+          gap: '4px',
+          '& .MuiButton-startIcon': {
+            marginRight: '0',
+          },
+        },
         contained: ({ownerState}: {theme: OxygenThemeType; ownerState: {color?: string}}) => {
           if (ownerState.color && ownerState.color !== 'primary') {
             return {};

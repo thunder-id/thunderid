@@ -4,7 +4,7 @@
 import {SettingsCard} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {Box, Avatar, DataGrid, IconButton, Tabs, Tab} from '@wso2/oxygen-ui';
-import {AppWindow, Bot, Trash2, User, Users} from '@wso2/oxygen-ui-icons-react';
+import {AppWindow, Bot, Trash2, UserRound, UsersRound} from '@wso2/oxygen-ui-icons-react';
 import {useState, useMemo, type JSX, type ReactNode, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import useGetRoleAssignments from '../../../api/useGetRoleAssignments';
@@ -149,7 +149,9 @@ export default function ManageAssignmentsSection({
         filterable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<RoleAssignment>): JSX.Element => (
           <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%'}}>
-            <Avatar sx={{width: 30, height: 30, bgcolor: 'primary.main', fontSize: '0.875rem'}}>
+            <Avatar
+              sx={{width: 30, height: 30, bgcolor: 'primary.main', color: 'primary.contrastText', fontSize: '0.875rem'}}
+            >
               {(params.row.display ?? params.row.id).charAt(0).toUpperCase()}
             </Avatar>
           </Box>
@@ -170,7 +172,9 @@ export default function ManageAssignmentsSection({
         filterable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<RoleAssignment>): JSX.Element => (
           <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%'}}>
-            <Avatar sx={{width: 30, height: 30, bgcolor: 'primary.main', fontSize: '0.875rem'}}>
+            <Avatar
+              sx={{width: 30, height: 30, bgcolor: 'primary.main', color: 'primary.contrastText', fontSize: '0.875rem'}}
+            >
               {(params.row.display ?? params.row.id).charAt(0).toUpperCase()}
             </Avatar>
           </Box>
@@ -190,7 +194,9 @@ export default function ManageAssignmentsSection({
         filterable: false,
         renderCell: (): JSX.Element => (
           <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%'}}>
-            <Avatar sx={{width: 30, height: 30, bgcolor: 'primary.main', fontSize: '0.875rem'}}>
+            <Avatar
+              sx={{width: 30, height: 30, bgcolor: 'primary.main', color: 'primary.contrastText', fontSize: '0.875rem'}}
+            >
               <AppWindow size={14} />
             </Avatar>
           </Box>
@@ -210,7 +216,9 @@ export default function ManageAssignmentsSection({
         filterable: false,
         renderCell: (): JSX.Element => (
           <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%'}}>
-            <Avatar sx={{width: 30, height: 30, bgcolor: 'primary.main', fontSize: '0.875rem'}}>
+            <Avatar
+              sx={{width: 30, height: 30, bgcolor: 'primary.main', color: 'primary.contrastText', fontSize: '0.875rem'}}
+            >
               <Bot size={14} />
             </Avatar>
           </Box>
@@ -235,13 +243,13 @@ export default function ManageAssignmentsSection({
       <Box sx={{borderBottom: 1, borderColor: 'divider', px: 2}}>
         <Tabs value={activeAssignmentTab} onChange={handleTabChange}>
           <Tab
-            icon={<User size={16} />}
+            icon={<UserRound size={16} />}
             iconPosition="start"
             label={t('roles:edit.assignments.sections.manage.tabs.users')}
             sx={{textTransform: 'none'}}
           />
           <Tab
-            icon={<Users size={16} />}
+            icon={<UsersRound size={16} />}
             iconPosition="start"
             label={t('roles:edit.assignments.sections.manage.tabs.groups')}
             sx={{textTransform: 'none'}}

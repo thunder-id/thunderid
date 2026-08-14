@@ -505,6 +505,11 @@ func CreateApplication(app Application) (string, error) {
 		appData["assertion"] = app.AssertionConfig
 	}
 
+	// Add login consent config if provided
+	if app.LoginConsent != nil {
+		appData["loginConsent"] = app.LoginConsent
+	}
+
 	// Add the application type (explicit, or defaulted to full-stack above).
 	appData["type"] = appType
 

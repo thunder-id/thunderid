@@ -293,7 +293,8 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 			refreshTokenClaims.Sub, audiences,
 			refreshTokenClaims.GrantType, newTokenScopes,
 			refreshTokenClaims.ClaimsRequest, refreshTokenClaims.ClaimsLocales,
-			refreshTokenClaims.AttributeCacheID, refreshTokenClaims.TokenFamilyID)
+			refreshTokenClaims.AttributeCacheID, refreshTokenClaims.TokenFamilyID,
+			refreshTokenClaims.Exp)
 		if errResp != nil && errResp.Error != "" {
 			logger.Error(ctx, "Failed to issue refresh token", log.String("error", errResp.Error))
 			return nil, errResp
@@ -322,8 +323,8 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 		}
 	}
 
-	if errResp := h.extendCacheTTL(ctx, cacheEntry, oauthApp, refreshTokenClaims.Iat,
-		accessToken.ExpiresIn, renewRefreshToken, refreshTokenClaims.AttributeCacheID,
+	if errResp := h.extendCacheTTL(ctx, cacheEntry, refreshTokenClaims.Exp,
+		accessToken.ExpiresIn, refreshTokenClaims.AttributeCacheID,
 		logger); errResp != nil {
 		return nil, errResp
 	}
@@ -367,8 +368,10 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 	claimsLocales string,
 	attributeCacheID string,
 	tokenFamilyID string,
+	expiresAt int64,
 ) *model.ErrorResponse {
 	tokenCtx := &tokenservice.RefreshTokenBuildContext{
+		ExpiresAt:            expiresAt,
 		ClientID:             oauthApp.ClientID,
 		Scopes:               scopes,
 		GrantType:            grantType,
@@ -412,7 +415,7 @@ func dpopJktForRefresh(ctx context.Context, oauthApp *providers.OAuthClient) str
 
 // extendCacheTTL extends the attribute cache TTL when the desired lifetime exceeds what is already
 // stored. The desired TTL is the larger of:
-//   - the refresh token's actual expiry (iat + validity; for a renewed token, iat = now)
+//   - the refresh token's expiry, which a rotated token inherits, so it is the same either way
 //   - the newly issued access token's expiry (now + ExpiresIn)
 //
 // This ensures the cache outlives whichever token lives longest without needlessly
@@ -420,9 +423,7 @@ func dpopJktForRefresh(ctx context.Context, oauthApp *providers.OAuthClient) str
 func (h *refreshTokenGrantHandler) extendCacheTTL(
 	ctx context.Context,
 	cacheEntry *attributecache.AttributeCache,
-	oauthApp *providers.OAuthClient,
-	refreshIat, accessExpiresIn int64,
-	renewRefreshToken bool,
+	refreshExpiry, accessExpiresIn int64,
 	cacheID string,
 	logger *log.Logger,
 ) *model.ErrorResponse {
@@ -430,12 +431,6 @@ func (h *refreshTokenGrantHandler) extendCacheTTL(
 		return nil
 	}
 	now := time.Now().Unix()
-	refreshValidity := tokenservice.ResolveTokenConfig(
-		h.cfg, oauthApp, tokenservice.TokenTypeRefresh, 0).ValidityPeriod
-	if renewRefreshToken {
-		refreshIat = now // newly issued token starts from now
-	}
-	refreshExpiry := refreshIat + refreshValidity
 	accessExpiry := now + accessExpiresIn
 	maxExpiry := refreshExpiry
 	if accessExpiry > maxExpiry {

@@ -19,7 +19,7 @@ import {
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
-import {Plus, Trash2, User} from '@wso2/oxygen-ui-icons-react';
+import {Plus, Trash2, UserRound} from '@wso2/oxygen-ui-icons-react';
 import {type JSX, useEffect, useMemo, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {AttributeConfiguration} from '../models/connection';
@@ -471,7 +471,7 @@ export default function AttributeMappingSection({
         <SettingsCard
           title={t('attributeMapping.resolution.title')}
           description={t('attributeMapping.resolution.description')}
-          titleIcon={iconBox(<User size={16} />)}
+          titleIcon={iconBox(<UserRound size={16} />)}
         >
           <Stack direction="column" spacing={3.5}>
             {canResolveDynamic && (

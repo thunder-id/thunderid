@@ -11,6 +11,7 @@ import (
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -28,8 +29,8 @@ type AgentRequestWithID struct {
 	Owner       string                 `json:"owner,omitempty"       yaml:"owner,omitempty"`
 	Attributes  map[string]interface{} `json:"attributes,omitempty"  yaml:"attributes,omitempty"`
 
-	providers.InboundAuthProfile `yaml:",inline"`
-	InboundAuthConfig            []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
+	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
+	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
 }
 
 // Agent is the service-level model for agent create operations.
@@ -44,6 +45,8 @@ type Agent struct {
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
 
+	// The service-level model carries the full internal profile, including SubjectAttribute, which
+	// the API-facing request and response types deliberately exclude.
 	providers.InboundAuthProfile
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
 }
@@ -59,7 +62,7 @@ type CreateAgentRequest struct {
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
 
-	providers.InboundAuthProfile
+	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
 }
 
@@ -74,7 +77,7 @@ type UpdateAgentRequest struct {
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
 
-	providers.InboundAuthProfile
+	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
 }
 
@@ -91,7 +94,7 @@ type AgentCompleteResponse struct {
 	Owner       string          `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
 
-	providers.InboundAuthProfile
+	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
 }
 
@@ -111,8 +114,8 @@ type AgentGetResponse struct {
 	Attributes     json.RawMessage        `json:"attributes,omitempty" yaml:"-"`
 	AttributesYAML map[string]interface{} `json:"-"                    yaml:"attributes,omitempty"`
 
-	providers.InboundAuthProfile `yaml:",inline"`
-	InboundAuthConfig            []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
+	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
+	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
 }
 
 // BasicAgentResponse is the summary view used in list responses.

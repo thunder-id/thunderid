@@ -60,7 +60,7 @@ describe('ConnectionForm', () => {
     },
     secretReplacing: false,
     hasStoredSecret: false,
-    vendorDisplayName: 'Google',
+    vendorDisplayName: 'Google Login',
     onFieldChange: vi.fn(),
     onSecretReplacingChange: vi.fn(),
   };
@@ -102,12 +102,14 @@ describe('ConnectionForm', () => {
     expect(field).toHaveValue('https://id.acme.io/oauth/callback/google');
     expect(field).toHaveAttribute('readonly');
     expect(screen.getByTestId('connection-field-redirectUri-copy')).toBeInTheDocument();
-    expect(screen.getByText('Add this exact URI to your Google OAuth client.')).toBeInTheDocument();
+    expect(screen.getByText('Add this exact URI to your Google Login OAuth client.')).toBeInTheDocument();
     expect(screen.getByText(/Space-separated scopes to request during sign-in\. Defaults to/)).toBeInTheDocument();
   });
 
   it('shows the GitHub scopes default instead of the OIDC scopes default', () => {
-    render(<ConnectionForm {...baseProps} type="github" mode="edit" hasStoredSecret vendorDisplayName="GitHub" />);
+    render(
+      <ConnectionForm {...baseProps} type="github" mode="edit" hasStoredSecret vendorDisplayName="GitHub Login" />,
+    );
 
     expect(getConnectionField('scopes')).toHaveAttribute('placeholder', 'user:email');
     const helperText = document.getElementById('connection-field-scopes-helper-text');

@@ -155,12 +155,6 @@ describe('TryoutSecuringApplicationPage', () => {
     expect(screen.getByText('common:welcome.applicationTryout.scenarios.tabs.onboard')).toBeInTheDocument();
   });
 
-  it('renders coming soon chip on disabled tabs', () => {
-    render(<TryoutSecuringApplicationPage />);
-    const chips = screen.getAllByText('common:welcome.getStarted.options.comingSoon');
-    expect(chips.length).toBeGreaterThanOrEqual(2);
-  });
-
   it('shows login scenario by default', () => {
     render(<TryoutSecuringApplicationPage />);
     expect(

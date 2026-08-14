@@ -125,7 +125,7 @@
   },
   "oauth": {
     "refresh_token": {
-      "renew_on_grant": false,
+      "renew_on_grant": true,
       "revoke_previous_on_renew": true,
       "validity_period": 86400
     },

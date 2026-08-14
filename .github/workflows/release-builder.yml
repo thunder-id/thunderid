@@ -11,8 +11,18 @@ on:
   #   - cron: '30 6 * * 5'
   workflow_dispatch:
     inputs:
+      version:
+        description: 'Release version to build (e.g. v1.0.0-beta3). Overrides bump_type and use_existing_version.'
+        required: false
+        type: string
+        default: ''
+      commit_version_bump:
+        description: 'Commit the given version to version.txt, Helm chart and sample apps on the release branch'
+        required: false
+        type: boolean
+        default: false
       bump_type:
-        description: 'Version bump type to apply to version.txt (major, minor, or patch)'
+        description: 'Version bump type to apply to version.txt (major, minor, or patch). Ignored when version is given.'
         required: false
         type: choice
         options:
@@ -21,7 +31,7 @@ on:
           - major
         default: minor
       use_existing_version:
-        description: 'Use version as-is (no bump, no auto-commit)'
+        description: 'Use version.txt as-is (no bump, no auto-commit). Ignored when version is given.'
         required: false
         type: boolean
         default: false
@@ -59,7 +69,7 @@ jobs:
       version: ${{ steps.get_version.outputs.version }}
       prerelease: ${{ steps.get_version.outputs.prerelease }}
       run_performance_test: ${{ steps.get_version.outputs.run_performance_test }}
-      use_existing_version: ${{ steps.get_version.outputs.use_existing_version }}
+      commit_version: ${{ steps.get_version.outputs.commit_version }}
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -70,56 +80,72 @@ jobs:
 
       - name: 📝 Determine Release Version
         id: get_version
+        env:
+          VERSION_INPUT: ${{ github.event.inputs.version }}
         run: |
-          # Read current version from version.txt
-          if [ ! -f version.txt ] || [ -z "$(cat version.txt | tr -d '[:space:]')" ]; then
-            echo "❌ Error: version.txt not found or empty"
-            exit 1
-          fi
-          CURRENT_VERSION=$(tr -d '[:space:]' < version.txt)
-          # Strip leading 'v' for semver parsing
-          SEMVER="${CURRENT_VERSION#v}"
-
-          if [[ $SEMVER =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
-            CUR_MAJOR="${BASH_REMATCH[1]}"
-            CUR_MINOR="${BASH_REMATCH[2]}"
-            CUR_PATCH="${BASH_REMATCH[3]}"
-          else
-            echo "❌ Error: Could not parse version '$CURRENT_VERSION' from version.txt"
-            exit 1
-          fi
-
           PRERELEASE="${{ github.event.inputs.prerelease }}"
           RUN_PERF_TEST="${{ github.event.inputs.run_performance_test }}"
           BUMP_TYPE="${{ github.event.inputs.bump_type }}"
           USE_EXISTING_VERSION="${{ github.event.inputs.use_existing_version }}"
+          COMMIT_VERSION_BUMP="${{ github.event.inputs.commit_version_bump }}"
 
-          if [ "$USE_EXISTING_VERSION" == "true" ]; then
-            VERSION="$CURRENT_VERSION"
-            echo "✅ Using existing version from version.txt: $VERSION"
+          VERSION_INPUT=$(printf '%s' "$VERSION_INPUT" | tr -d '[:space:]')
+
+          if [ -n "$VERSION_INPUT" ]; then
+            # An explicit version takes precedence over bump_type and use_existing_version
+            VERSION="$VERSION_INPUT"
+            # Accept the version with or without the leading 'v'
+            [[ $VERSION == v* ]] || VERSION="v$VERSION"
+            COMMIT_VERSION="$COMMIT_VERSION_BUMP"
+            echo "✅ Using version from workflow input: $VERSION (ignoring bump_type and use_existing_version)"
           else
-            case "$BUMP_TYPE" in
-              major)
-                VERSION="v$((CUR_MAJOR + 1)).0.0"
-                ;;
-              minor)
-                VERSION="v${CUR_MAJOR}.$((CUR_MINOR + 1)).0"
-                ;;
-              patch)
-                VERSION="v${CUR_MAJOR}.${CUR_MINOR}.$((CUR_PATCH + 1))"
-                ;;
-              *)
-                echo "❌ Error: Invalid bump_type '$BUMP_TYPE'. Must be major, minor, or patch."
-                exit 1
-                ;;
-            esac
+            # Read current version from version.txt
+            if [ ! -f version.txt ] || [ -z "$(cat version.txt | tr -d '[:space:]')" ]; then
+              echo "❌ Error: version.txt not found or empty"
+              exit 1
+            fi
+            CURRENT_VERSION=$(tr -d '[:space:]' < version.txt)
+            # Strip leading 'v' for semver parsing
+            SEMVER="${CURRENT_VERSION#v}"
+
+            if [[ $SEMVER =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+              CUR_MAJOR="${BASH_REMATCH[1]}"
+              CUR_MINOR="${BASH_REMATCH[2]}"
+              CUR_PATCH="${BASH_REMATCH[3]}"
+            else
+              echo "❌ Error: Could not parse version '$CURRENT_VERSION' from version.txt"
+              exit 1
+            fi
+
+            if [ "$USE_EXISTING_VERSION" == "true" ]; then
+              VERSION="$CURRENT_VERSION"
+              COMMIT_VERSION="false"
+              echo "✅ Using existing version from version.txt: $VERSION"
+            else
+              case "$BUMP_TYPE" in
+                major)
+                  VERSION="v$((CUR_MAJOR + 1)).0.0"
+                  ;;
+                minor)
+                  VERSION="v${CUR_MAJOR}.$((CUR_MINOR + 1)).0"
+                  ;;
+                patch)
+                  VERSION="v${CUR_MAJOR}.${CUR_MINOR}.$((CUR_PATCH + 1))"
+                  ;;
+                *)
+                  echo "❌ Error: Invalid bump_type '$BUMP_TYPE'. Must be major, minor, or patch."
+                  exit 1
+                  ;;
+              esac
+              COMMIT_VERSION="true"
+            fi
           fi
 
-          echo "✅ Selected release version: $VERSION (use_existing_version: $USE_EXISTING_VERSION, bump: $BUMP_TYPE, Prerelease: $PRERELEASE, Perf Test: $RUN_PERF_TEST)"
+          echo "✅ Selected release version: $VERSION (Commit version: $COMMIT_VERSION, Prerelease: $PRERELEASE, Perf Test: $RUN_PERF_TEST)"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "prerelease=$PRERELEASE" >> $GITHUB_OUTPUT
           echo "run_performance_test=$RUN_PERF_TEST" >> $GITHUB_OUTPUT
-          echo "use_existing_version=$USE_EXISTING_VERSION" >> $GITHUB_OUTPUT
+          echo "commit_version=$COMMIT_VERSION" >> $GITHUB_OUTPUT
 
       - name: ✅ Validate Release Version
         run: |
@@ -136,20 +162,20 @@ jobs:
           # Check if tag already exists
           if git rev-parse "$VERSION" >/dev/null 2>&1; then
             echo "❌ Error: Version '$VERSION' already exists as a git tag"
-            echo "❌ Please update version.txt with a new version before running the release"
+            echo "❌ Please pass a new 'version' input or update version.txt before running the release"
             exit 1
           fi
           echo "✅ Version '$VERSION' does not exist yet - proceeding with release"
 
       - name: 🏷️ Update Product Version
-        if: ${{ steps.get_version.outputs.use_existing_version != 'true' }}
+        if: ${{ steps.get_version.outputs.commit_version == 'true' }}
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
           echo "$VERSION" > version.txt
           echo "✅ Updated version.txt to $VERSION"
 
       - name: 📝 Update Helm and Sample App Versions
-        if: ${{ steps.get_version.outputs.use_existing_version != 'true' }}
+        if: ${{ steps.get_version.outputs.commit_version == 'true' }}
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
           SEMVER_VERSION="${VERSION#v}"
@@ -175,7 +201,7 @@ jobs:
           echo "✅ Updated Helm chart and sample app versions to $SEMVER_VERSION"
 
       - name: 📤 Commit and Push Version Bump
-        if: ${{ steps.get_version.outputs.use_existing_version != 'true' }}
+        if: ${{ steps.get_version.outputs.commit_version == 'true' }}
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
 
@@ -317,11 +343,6 @@ jobs:
           fetch-depth: 0
           ref: ${{ env.RELEASE_BRANCH }}
 
-      - name: 🏷️ Update Product Version
-        run: |
-          VERSION="${{ needs.build.outputs.version }}"
-          echo "$VERSION" > version.txt
-
       - name: ⚙️ Set up Go Environment
         uses: ./.github/actions/setup-go
 
@@ -356,6 +377,37 @@ jobs:
 
       - name: 🔨 Build Release Artifacts
         uses: ./.github/actions/build-multiplatform
+
+      - name: 🏷️ Name Distributions After the Release Version
+        run: |
+          # The product is built from version.txt so a release candidate stays identical to
+          # its GA build; only the distribution file name carries the release version.
+          RELEASE_VERSION="${{ needs.build.outputs.version }}"
+          RELEASE_VERSION="${RELEASE_VERSION#v}"
+          BUILT_VERSION=$(tr -d '[:space:]' < version.txt)
+          BUILT_VERSION="${BUILT_VERSION#v}"
+
+          if [ "$BUILT_VERSION" == "$RELEASE_VERSION" ]; then
+            echo "✅ Distributions already carry the release version $RELEASE_VERSION"
+            exit 0
+          fi
+
+          echo "📦 Renaming distributions from $BUILT_VERSION to $RELEASE_VERSION"
+          RENAMED=0
+          for zip in target/dist/${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-*.zip; do
+            [ -e "$zip" ] || continue
+            SUFFIX="${zip#target/dist/${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-}"
+            mv "$zip" "target/dist/${PRODUCT_NAME_LOWER}-${RELEASE_VERSION}-${SUFFIX}"
+            echo "  ${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-${SUFFIX} -> ${PRODUCT_NAME_LOWER}-${RELEASE_VERSION}-${SUFFIX}"
+            RENAMED=$((RENAMED + 1))
+          done
+
+          if [ "$RENAMED" -eq 0 ]; then
+            echo "❌ Error: no distributions matched ${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-*.zip"
+            ls -l target/dist/
+            exit 1
+          fi
+          echo "✅ Renamed $RENAMED distribution(s) to $RELEASE_VERSION"
 
       - name: 📝 Read Updated Version
         id: version

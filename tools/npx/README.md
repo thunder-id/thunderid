@@ -18,7 +18,7 @@ the cached installation and start immediately.
 | Command              | Description                                        |
 | -------------------- | -------------------------------------------------- |
 | _(none)_             | Install (if needed) and start ThunderID            |
-| `upgrade`            | Upgrade to the latest release (side-by-side)       |
+| `upgrade`            | Upgrade to the latest release                      |
 | `try <use-case>`     | Download and launch a use-case sample app          |
 | `integrate <tech>`   | Configure a technology integration _(coming soon)_ |
 
@@ -30,15 +30,9 @@ the cached installation and start immediately.
 | `--verbose`, `-v` | Show detailed output                     |
 | `--help`, `-h`    | Show help                                |
 
-### Upgrade flags
-
-| Flag       | Description                                          |
-| ---------- | ---------------------------------------------------- |
-| `--direct` | Upgrade in-place (stop current, upgrade, restart)    |
-
 ## Requirements
 
-- **Node.js** `>= 18`
+- **Node.js** `>= 22.23.1`
 
 ## Supported Platforms
 

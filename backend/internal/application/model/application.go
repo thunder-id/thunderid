@@ -87,9 +87,10 @@ type ApplicationRequest struct {
 	PolicyURI   string          `json:"policyUri,omitempty" yaml:"policyUri,omitempty" native:"omitempty,url,max=2048"`
 	Contacts    []string        `json:"contacts,omitempty" yaml:"contacts,omitempty"`
 
-	providers.InboundAuthProfile `yaml:",inline"`
-	InboundAuthConfig            []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
-	Metadata                     map[string]interface{}                  `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
+
+	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
+	Metadata          map[string]interface{}                  `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 }
 
 // ApplicationRequestWithID represents the request structure for importing an application using file based runtime.
@@ -108,9 +109,10 @@ type ApplicationRequestWithID struct {
 	PolicyURI   string          `json:"policyUri,omitempty" yaml:"policyUri,omitempty"`
 	Contacts    []string        `json:"contacts,omitempty" yaml:"contacts,omitempty"`
 
-	providers.InboundAuthProfile `yaml:",inline"`
-	InboundAuthConfig            []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
-	Metadata                     map[string]interface{}                  `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
+
+	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
+	Metadata          map[string]interface{}                  `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 }
 
 // ApplicationCompleteResponse represents the complete response structure for an application.
@@ -129,7 +131,8 @@ type ApplicationCompleteResponse struct {
 	PolicyURI   string          `json:"policyUri,omitempty"`
 	Contacts    []string        `json:"contacts,omitempty"`
 
-	providers.InboundAuthProfile
+	inboundmodel.InboundAuthProfileReq
+
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
 	Metadata          map[string]interface{}                  `json:"metadata,omitempty"`
 }
@@ -149,7 +152,8 @@ type ApplicationGetResponse struct {
 	PolicyURI   string          `json:"policyUri,omitempty"`
 	Contacts    []string        `json:"contacts,omitempty"`
 
-	providers.InboundAuthProfile
+	inboundmodel.InboundAuthProfileReq
+
 	InboundAuthConfig []inboundmodel.InboundAuthConfig `json:"inboundAuthConfig,omitempty"`
 	Metadata          map[string]interface{}           `json:"metadata,omitempty"`
 }

@@ -168,8 +168,8 @@ describe('EditAdvancedSettings', () => {
     expect(mockOnFieldChange).toHaveBeenCalledWith('inboundAuthConfig', []);
   });
 
-  describe('Operating mode selector', () => {
-    it('selects "On behalf of a user" when Delegated mode is on', () => {
+  describe('Delegated mode toggle', () => {
+    it('shows the toggle checked, and the delegated description, when Delegated mode is on', () => {
       render(
         <EditAdvancedSettings
           agent={mockAgent}
@@ -179,11 +179,11 @@ describe('EditAdvancedSettings', () => {
         />,
       );
 
-      expect(screen.getByRole('tab', {name: 'On behalf of a user'})).toHaveAttribute('aria-selected', 'true');
-      expect(screen.getByRole('tab', {name: 'On its own behalf'})).toHaveAttribute('aria-selected', 'false');
+      expect(screen.getByRole('switch', {name: 'Delegated mode'})).toBeChecked();
+      expect(screen.getByText(/acts on behalf of a signed-in user/i)).toBeInTheDocument();
     });
 
-    it('selects "On its own behalf" when Delegated mode is off', () => {
+    it('shows the toggle unchecked, and the own-behalf description, when Delegated mode is off', () => {
       render(
         <EditAdvancedSettings
           agent={mockAgent}
@@ -193,8 +193,8 @@ describe('EditAdvancedSettings', () => {
         />,
       );
 
-      expect(screen.getByRole('tab', {name: 'On its own behalf'})).toHaveAttribute('aria-selected', 'true');
-      expect(screen.getByRole('tab', {name: 'On behalf of a user'})).toHaveAttribute('aria-selected', 'false');
+      expect(screen.getByRole('switch', {name: 'Delegated mode'})).not.toBeChecked();
+      expect(screen.getByText(/authenticates with its own credentials/i)).toBeInTheDocument();
     });
 
     it('turns on Delegated mode by adding authorization_code and requiring PKCE', async () => {
@@ -211,7 +211,7 @@ describe('EditAdvancedSettings', () => {
         />,
       );
 
-      await user.click(screen.getByRole('tab', {name: 'On behalf of a user'}));
+      await user.click(screen.getByRole('switch', {name: 'Delegated mode'}));
 
       expect(mockOnFieldChange).toHaveBeenCalledWith(
         'inboundAuthConfig',
@@ -246,7 +246,7 @@ describe('EditAdvancedSettings', () => {
         />,
       );
 
-      await user.click(screen.getByRole('tab', {name: 'On its own behalf'}));
+      await user.click(screen.getByRole('switch', {name: 'Delegated mode'}));
 
       expect(mockOnFieldChange).toHaveBeenCalledWith(
         'inboundAuthConfig',
@@ -259,7 +259,7 @@ describe('EditAdvancedSettings', () => {
       );
     });
 
-    it('disables the selector for read-only agents', () => {
+    it('disables the toggle for read-only agents', () => {
       render(
         <EditAdvancedSettings
           agent={{...mockAgent, isReadOnly: true}}
@@ -269,8 +269,7 @@ describe('EditAdvancedSettings', () => {
         />,
       );
 
-      expect(screen.getByRole('tab', {name: 'On behalf of a user'})).toBeDisabled();
-      expect(screen.getByRole('tab', {name: 'On its own behalf'})).toBeDisabled();
+      expect(screen.getByRole('switch', {name: 'Delegated mode'})).toBeDisabled();
     });
   });
 

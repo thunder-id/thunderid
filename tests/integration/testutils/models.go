@@ -45,6 +45,8 @@ type Application struct {
 	Certificate               map[string]interface{}   `json:"certificate,omitempty"`
 	InboundAuthConfig         []map[string]interface{} `json:"inboundAuthConfig,omitempty"`
 	AssertionConfig           map[string]interface{}   `json:"assertion,omitempty"`
+	// LoginConsent is the login consent configuration (e.g. validityPeriod in seconds).
+	LoginConsent map[string]interface{} `json:"loginConsent,omitempty"`
 	// Attestation is the client-level platform attestation config, set at the top level of the
 	// application independent of any OAuth profile.
 	Attestation map[string]interface{} `json:"attestation,omitempty"`

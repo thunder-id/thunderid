@@ -89,6 +89,7 @@ spec:
             {{- toYaml .Values.deployment.env | nindent 12 }}
             {{- end }}
             {{- include "thunderid.cacheRedisPasswordEnvVars" . | nindent 12 }}
+            {{- include "thunderid.smtpPasswordEnvVars" . | nindent 12 }}
           startupProbe:
             exec:
               command:

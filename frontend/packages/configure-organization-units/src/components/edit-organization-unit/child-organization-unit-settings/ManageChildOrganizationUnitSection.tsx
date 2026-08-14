@@ -4,7 +4,7 @@
 import {QueryErrorNotice, SettingsCard} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
-import {Box, DataGrid, Avatar, useTheme} from '@wso2/oxygen-ui';
+import {Box, DataGrid, Avatar} from '@wso2/oxygen-ui';
 import {Building} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -49,7 +49,6 @@ export default function ManageChildOrganizationUnitSection({
   const navigate = useNavigate();
   const routes = useOrganizationUnitRoutes();
   const {t} = useTranslation();
-  const theme = useTheme();
   const logger = useLogger('ManageChildOrganizationUnitSection');
   const dataGridLocaleText = useDataGridLocaleText();
 
@@ -75,13 +74,11 @@ export default function ManageChildOrganizationUnitSection({
             <Avatar
               sx={{
                 p: 0.5,
-                backgroundColor: theme.vars?.palette.grey[500],
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
                 width: 30,
                 height: 30,
                 fontSize: '0.875rem',
-                ...theme.applyStyles('dark', {
-                  backgroundColor: theme.vars?.palette.grey[900],
-                }),
               }}
             >
               <Building size={14} />
@@ -109,7 +106,7 @@ export default function ManageChildOrganizationUnitSection({
         valueGetter: (_value, row): string => row.description ?? '-',
       },
     ],
-    [t, theme],
+    [t],
   );
 
   if (error) {

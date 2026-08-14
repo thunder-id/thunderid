@@ -65,8 +65,9 @@ Access tokens issued earlier are unaffected and remain valid until they expire. 
 |---|---|
 | Endpoint | `POST /oauth2/token` with `grant_type=refresh_token` |
 | Client authentication | Same methods as the original grant, see [Client Authentication Methods](../client-authentication-methods) |
-| Rotation | Controlled globally by `oauth.refresh_token.renew_on_grant` in `deployment.yaml`. When enabled, every refresh issues a new `refresh_token`; when disabled, the existing one is reused |
+| Rotation | Controlled globally by `oauth.refresh_token.renew_on_grant` in `deployment.yaml`, enabled by default. Every refresh issues a new `refresh_token`; when disabled, the existing one is reused |
 | Old token after rotation | When `oauth.refresh_token.revoke_previous_on_renew` is enabled, the consumed refresh token is revoked after renewal. A revocation failure stops the rotation |
+| Grant lifetime | A rotated refresh token inherits the expiry of the token it replaces, so refreshing extends access but never the grant. Once `oauth.refresh_token.validity_period` has elapsed since the original grant, the user must authenticate again |
 | Audience preservation | The new access token keeps the refresh token's single audience when `resource` is omitted |
 | Resource validation | When supplied, `resource` must match the refresh token's audience. A mismatch returns `invalid_target` |
 | Scope narrowing | The `scope` parameter may request a subset of the originally granted scopes. Asking for a wider scope returns `invalid_scope` |
@@ -116,7 +117,9 @@ Content-Type: application/json
 </TabItem>
 </Tabs>
 
-Refresh token rotation is a deployment-wide setting, not per client. Enable it by setting `oauth.refresh_token.renew_on_grant: true` in `deployment.yaml`. By default, `oauth.refresh_token.revoke_previous_on_renew` is `true`, so a successful rotation revokes the consumed refresh token.
+Refresh token rotation is a deployment-wide setting, not per client. It is enabled by default; disable it by setting `oauth.refresh_token.renew_on_grant: false` in `deployment.yaml`. By default, `oauth.refresh_token.revoke_previous_on_renew` is `true`, so a successful rotation revokes the consumed refresh token.
+
+Because rotation makes each refresh token single-use, a client must persist the new `refresh_token` from every response and discard the old one. Replaying a consumed token revokes the entire token family, ending the session. Clients that issue concurrent refresh requests should serialise them, since only the first will succeed.
 
 ## Related Guides
 

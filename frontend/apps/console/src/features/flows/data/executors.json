@@ -152,7 +152,7 @@
     "type": "TASK_EXECUTION",
     "display": {
       "header": "GitHub Executor",
-      "label": "GitHub",
+      "label": "GitHub Login",
       "description": "Authenticate the user with GitHub",
       "image": "assets/images/icons/github.svg",
       "showOnResourcePanel": true
@@ -180,7 +180,7 @@
     "type": "TASK_EXECUTION",
     "display": {
       "header": "Google Executor",
-      "label": "Google",
+      "label": "Google Login",
       "description": "Authenticate the user with Google",
       "image": "assets/images/icons/google.svg",
       "preserveImageColor": true,

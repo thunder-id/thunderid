@@ -1,7 +1,7 @@
 {
   "name": "@thunderid/agentid-playground",
   "private": true,
-  "version": "0.48.0",
+  "version": "1.0.0",
   "description": "Agent identity playground demonstrating the three ways an AI agent can hold identity in ThunderID.",
   "type": "module",
   "scripts": {

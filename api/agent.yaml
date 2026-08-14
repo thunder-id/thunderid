@@ -2041,17 +2041,6 @@ components:
             type: string
           description: User types that can sign up through this agent.
           example: ["employee", "contractor"]
-        subjectAttribute:
-          type: object
-          additionalProperties:
-            type: string
-            minLength: 1
-          description: >-
-            Per-agent-type mapping of the schema attribute to use as the token subject (`sub`) claim,
-            keyed by agent type name. The attribute must be unique, required, and string-typed in that
-            agent type's schema. When no entry applies, the agent's ID is used as the subject.
-          example:
-            service-agent: "externalId"
         inboundAuthConfig:
           type: array
           items:
@@ -2128,17 +2117,6 @@ components:
           items:
             type: string
           example: ["employee", "contractor"]
-        subjectAttribute:
-          type: object
-          additionalProperties:
-            type: string
-            minLength: 1
-          description: >-
-            Per-agent-type mapping of the schema attribute to use as the token subject (`sub`) claim,
-            keyed by agent type name. The attribute must be unique, required, and string-typed in that
-            agent type's schema. When no entry applies, the agent's ID is used as the subject.
-          example:
-            service-agent: "externalId"
         inboundAuthConfig:
           type: array
           items:
@@ -2213,17 +2191,6 @@ components:
           items:
             type: string
           example: ["employee", "contractor"]
-        subjectAttribute:
-          type: object
-          additionalProperties:
-            type: string
-            minLength: 1
-          description: >-
-            Per-agent-type mapping of the schema attribute to use as the token subject (`sub`) claim,
-            keyed by agent type name. The attribute must be unique, required, and string-typed in that
-            agent type's schema. When no entry applies, the agent's ID is used as the subject.
-          example:
-            service-agent: "externalId"
         inboundAuthConfig:
           type: array
           items:
@@ -2301,17 +2268,6 @@ components:
           items:
             type: string
           example: ["employee", "contractor"]
-        subjectAttribute:
-          type: object
-          additionalProperties:
-            type: string
-            minLength: 1
-          description: >-
-            Per-agent-type mapping of the schema attribute to use as the token subject (`sub`) claim,
-            keyed by agent type name. The attribute must be unique, required, and string-typed in that
-            agent type's schema. When no entry applies, the agent's ID is used as the subject.
-          example:
-            service-agent: "externalId"
         inboundAuthConfig:
           type: array
           items:

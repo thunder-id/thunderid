@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package upgrade orchestrates in-place and side-by-side version upgrades.
+// Package upgrade orchestrates in-place version upgrades and version switching.
 package upgrade
 
 import (
@@ -9,13 +9,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"syscall"
 	"time"
 
 	"charm.land/huh/v2"
 	huhspinner "charm.land/huh/v2/spinner"
-	"charm.land/lipgloss/v2"
 
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/config"
@@ -26,12 +24,24 @@ import (
 	"github.com/thunder-id/thunderid/tools/cli/internal/ui/spinner"
 )
 
-const stagingPort = 8091
+// startupTimeout bounds how long a freshly started instance gets to answer before the
+// upgrade reports the start as failed.
+const startupTimeout = 90 * time.Second
 
 // Opts controls how the upgrade runs.
 type Opts struct {
-	Direct  bool // skip side-by-side and upgrade in-place
 	Verbose bool
+	Port    int // port the running instance serves on; 0 resolves it from config
+}
+
+// resolveLivePort returns the port the running instance serves on: the port the
+// caller already resolved, else the active install's configured port (deployment.yaml
+// is what the server reads), else the default.
+func resolveLivePort(opts Opts, activeVersion string) int {
+	if opts.Port > 0 {
+		return opts.Port
+	}
+	return setup.ServerPort(config.ReadInstallPath(activeVersion))
 }
 
 // Run executes the upgrade workflow. baseDir is the parent thunderid directory (e.g. "./thunderid").
@@ -40,9 +50,11 @@ func Run(baseDir string, opts Opts) (bool, error) {
 	fmt.Print(ui.Dim("  Fetching latest " + product.Name + " release..."))
 	latestVersion, err := release.FetchLatestVersion()
 	if err != nil {
-		fmt.Println()
-		ui.Fatal("Could not fetch latest " + product.Name + " release: " + err.Error())
-		return false, err
+		// Not being able to check for updates is not a broken upgrade: report it and
+		// leave the running instance alone, so an offline /upgrade does not end the session.
+		fmt.Print("\r\033[2K")
+		ui.Warn("Could not check for a newer " + product.Name + " release.\n" + err.Error())
+		return false, nil
 	}
 	fmt.Printf("\r\033[2K  %s Latest %s release: v%s\n\n", ui.Green("✓"), product.Name, latestVersion)
 
@@ -60,39 +72,16 @@ func Run(baseDir string, opts Opts) (bool, error) {
 		)
 	}
 
-	if opts.Direct || activeVersion == "" {
-		return true, runDirect(baseDir, activeVersion, latestVersion, opts.Verbose)
-	}
+	livePort := resolveLivePort(opts, activeVersion)
 
-	var mode string
-	if err := huh.NewSelect[string]().
-		Title("How would you like to upgrade?").
-		Options(
-			huh.NewOption(
-				fmt.Sprintf("Side-by-side — run v%s on port %d while v%s keeps serving on %d (recommended)",
-					latestVersion, stagingPort, activeVersion, health.DefaultPort),
-				"side-by-side",
-			),
-			huh.NewOption(
-				fmt.Sprintf("Direct — stop v%s, upgrade, restart on port %d", activeVersion, health.DefaultPort),
-				"direct",
-			),
-		).
-		Value(&mode).
-		Run(); err != nil {
-		return false, nil // cancelled
-	}
-
-	if mode == "direct" {
-		return true, runDirect(baseDir, activeVersion, latestVersion, opts.Verbose)
-	}
-	return true, runSideBySide(baseDir, activeVersion, latestVersion, opts.Verbose)
+	return true, runUpgrade(baseDir, activeVersion, latestVersion, opts.Verbose, livePort)
 }
 
-// Switch stops the running ThunderID instance and starts the selected installed version.
-// It shows an interactive version picker and returns false if the user cancels or no other
-// versions are installed. On success it starts the new instance and runs a REPL for it.
-func Switch(baseDir, currentVersion string, verbose bool) (bool, error) {
+// Switch stops the running ThunderID instance and starts the selected installed version
+// on the same port. It shows an interactive version picker and returns false if the user
+// cancels or no other versions are installed. On success it starts the new instance and
+// runs a REPL for it.
+func Switch(baseDir, currentVersion string, livePort int, verbose bool) (bool, error) {
 	versions := config.ListInstalledVersions(currentVersion)
 	if len(versions) == 0 {
 		ui.Warn("No other installed versions found. Use /upgrade to install a new version.")
@@ -125,59 +114,82 @@ func Switch(baseDir, currentVersion string, verbose bool) (bool, error) {
 		return false, nil
 	}
 
-	fmt.Print(ui.Dim("  Stopping " + product.Name + " v" + currentVersion + "..."))
-	setup.KillPort(health.DefaultPort)
-	setup.WaitForPortFree(health.DefaultPort, 10*time.Second)
-	fmt.Printf("\r\033[2K  %s Stopped v%s\n", ui.Green("✓"), currentVersion)
-
-	if err := config.WriteActiveVersion(selected); err != nil {
-		return false, fmt.Errorf("failed to update active version: %w", err)
+	if livePort <= 0 {
+		livePort = resolveLivePort(Opts{}, currentVersion)
 	}
 
+	fmt.Print(ui.Dim("  Stopping " + product.Name + " v" + currentVersion + "..."))
+	if err := setup.FreePort(livePort, 10*time.Second); err != nil {
+		fmt.Println()
+		ui.Fatal("Could not stop v" + currentVersion + ": " + err.Error())
+		return false, err
+	}
+	fmt.Printf("\r\033[2K  %s Stopped v%s\n", ui.Green("✓"), currentVersion)
+
 	fmt.Print(ui.Dim("\n  Starting " + product.Name + " v" + selected + "..."))
-	proc, err := setup.StartBackground(installPath, verbose)
+	proc, err := setup.StartBackgroundOnPort(installPath, verbose, livePort)
 	if err != nil {
 		fmt.Println()
 		ui.Fatal("Failed to start v" + selected + ": " + err.Error())
 		return false, err
 	}
+	if err := health.WaitReady(livePort, startupTimeout); err != nil {
+		stopStartedProcess(proc, livePort)
+		fmt.Println()
+		ui.Fatal(fmt.Sprintf("Failed to start v%s: %s", selected, startupFailure(installPath, err)))
+		return false, fmt.Errorf("failed to start v%s: %w", selected, err)
+	}
+	// Persist the active version only once the new instance is up, so a failed
+	// start does not leave the recorded version pointing at nothing.
+	if err := config.WriteActiveVersion(selected); err != nil {
+		return false, fmt.Errorf("failed to update active version: %w", err)
+	}
 	fmt.Printf("\r\033[2K  %s Switched to %s v%s  %s\n", ui.Green("✓"), product.Name, selected, ui.Dim("logs: "+setup.LogDir(installPath)))
 
-	_, _, err = ui.RunREPL(selected, proc, installPath, verbose, false, "", "", 0, nil)
+	_, _, err = ui.RunREPL(selected, proc, installPath, verbose, false, "", "", livePort, nil)
 	return true, err
 }
 
-func runDirect(baseDir, activeVersion, newVersion string, verbose bool) error {
+func runUpgrade(baseDir, activeVersion, newVersion string, verbose bool, livePort int) error {
 	label := product.Name
 	if activeVersion != "" {
 		label = product.Name + " v" + activeVersion
 	}
-	fmt.Print(ui.Dim("  Stopping " + label + "..."))
-	setup.KillPort(health.DefaultPort)
-	setup.KillPort(stagingPort)
-	setup.WaitForPortFree(health.DefaultPort, 15*time.Second)
+	// With no active version there is nothing of ours to stop: the resolved live port is
+	// only the default, and whatever listens on it belongs to something else.
 	if activeVersion != "" {
+		fmt.Print(ui.Dim("  Stopping " + label + "..."))
+		if err := setup.FreePort(livePort, 15*time.Second); err != nil {
+			fmt.Println()
+			ui.Fatal("Could not stop " + label + ": " + err.Error())
+			return err
+		}
 		fmt.Printf("\r\033[2K  %s Stopped v%s\n", ui.Green("✓"), activeVersion)
-	} else {
-		fmt.Printf("\r\033[2K\n")
 	}
 
 	newPath := versionedPath(baseDir, newVersion)
 	if err := downloadVersion(newVersion, newPath, verbose); err != nil {
 		return err
 	}
-	creds, err := runSetupWithPort(newVersion, newPath, verbose, 0)
+	creds, err := runSetupWithPort(newVersion, newPath, verbose, livePort)
 	if err != nil {
 		return err
 	}
 
 	fmt.Print(ui.Dim("\n  Starting " + product.Name + " v" + newVersion + "..."))
-	proc, err := setup.StartBackground(newPath, verbose)
+	proc, err := setup.StartBackgroundOnPort(newPath, verbose, livePort)
 	if err != nil {
 		fmt.Println()
 		ui.PrintCredentialsFallback(creds)
 		ui.Fatal("Failed to start " + product.Name + ": " + err.Error())
 		return err
+	}
+	if err := health.WaitReady(livePort, startupTimeout); err != nil {
+		stopStartedProcess(proc, livePort)
+		fmt.Println()
+		ui.PrintCredentialsFallback(creds)
+		ui.Fatal(fmt.Sprintf("Failed to start %s: %s", product.Name, startupFailure(newPath, err)))
+		return fmt.Errorf("failed to start %s: %w", product.Name, err)
 	}
 
 	// Persist both the install path and the new active version only after the
@@ -192,78 +204,37 @@ func runDirect(baseDir, activeVersion, newVersion string, verbose bool) error {
 	}
 	fmt.Printf("\r\033[2K  %s %s v%s started  %s\n", ui.Green("✓"), product.Name, newVersion, ui.Dim("logs: "+setup.LogDir(newPath)))
 
-	_, _, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "", "", 0, creds)
+	_, _, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "", "", livePort, creds)
 	return err
 }
 
-func runSideBySide(baseDir, activeVersion, newVersion string, verbose bool) error {
-	newPath := versionedPath(baseDir, newVersion)
-	if err := downloadVersion(newVersion, newPath, verbose); err != nil {
-		return err
+// startupFailure describes a failed start: the readiness error, what the server itself
+// last wrote, and where the full log is. health.WaitReady only reports a timeout, so
+// without the tail the user is left with a log path to open by hand.
+func startupFailure(installPath string, err error) string {
+	logPath := setup.LatestLogFile(installPath)
+	if tail := setup.LogTail(installPath, 8); tail != "" {
+		return fmt.Sprintf("%s\n\n%s\n\nlogs: %s", err, tail, logPath)
 	}
-	creds, err := runSetupWithPort(newVersion, newPath, verbose, stagingPort)
-	if err != nil {
-		return err
-	}
-
-	fmt.Print(ui.Dim(fmt.Sprintf("\n  Starting %s v%s on port %d (staging)...", product.Name, newVersion, stagingPort)))
-	proc, err := setup.StartBackgroundOnPort(newPath, verbose, stagingPort)
-	if err != nil {
-		fmt.Println()
-		ui.PrintCredentialsFallback(creds)
-		ui.Fatal("Failed to start staging instance: " + err.Error())
-		return err
-	}
-	fmt.Printf("\r\033[2K  %s %s v%s staging on port %d\n", ui.Green("✓"), product.Name, newVersion, stagingPort)
-	fmt.Printf("  %s v%s still serving on port %d\n\n", ui.Dim("→  Current"), activeVersion, health.DefaultPort)
-	fmt.Printf("  Type %s in the REPL to cut over to v%s and restart on port %d.\n\n",
-		ui.Cyan("/cutover"), newVersion, health.DefaultPort)
-
-	cutoverRequested, err := ui.RunStagingREPL(newVersion, proc, newPath, verbose, stagingPort, creds)
-	if err != nil {
-		return err
-	}
-	if !cutoverRequested {
-		return nil // user exited without cutting over
-	}
-	return performCutover(baseDir, activeVersion, newVersion, newPath, proc, verbose, creds)
+	return fmt.Sprintf("%s\nlogs: %s", err, logPath)
 }
 
-func performCutover(baseDir, activeVersion, newVersion, newPath string, stagingProc *exec.Cmd, verbose bool, creds *setup.AdminCredentials) error {
-	fmt.Printf("\n  %s Cutting over from v%s to v%s...\n\n", ui.Cyan("→"), activeVersion, newVersion)
-
-	if stagingProc != nil && stagingProc.Process != nil {
+// stopStartedProcess stops what this command launched on port after it failed to become
+// ready. start.sh traps SIGTERM and stops the server it backgrounded, but the trap does
+// not run when the launcher is killed outright on Windows, and it does not wait for the
+// port to be released either; freeing the port makes the stop definite. Nothing else can
+// be on that port here: it was ours to start on.
+func stopStartedProcess(proc *exec.Cmd, port int) {
+	if proc != nil && proc.Process != nil {
 		if runtime.GOOS == "windows" {
-			stagingProc.Process.Kill() //nolint:errcheck
+			_ = proc.Process.Kill()
 		} else {
-			stagingProc.Process.Signal(syscall.SIGTERM) //nolint:errcheck
+			_ = proc.Process.Signal(syscall.SIGTERM)
 		}
-		time.Sleep(time.Second)
 	}
-
-	fmt.Print(ui.Dim("  Stopping v" + activeVersion + "..."))
-	setup.KillPort(health.DefaultPort)
-	setup.WaitForPortFree(health.DefaultPort, 15*time.Second)
-	fmt.Printf("\r\033[2K  %s v%s stopped\n", ui.Green("✓"), activeVersion)
-
-	fmt.Print(ui.Dim(fmt.Sprintf("  Starting %s v%s on port %d...", product.Name, newVersion, health.DefaultPort)))
-	proc, err := setup.StartBackground(newPath, verbose)
-	if err != nil {
-		fmt.Println()
-		return fmt.Errorf("failed to start %s: %w", product.Name, err)
+	if setup.IsPortInUse(port) {
+		_ = setup.FreePort(port, 5*time.Second)
 	}
-
-	// Persist state only after the new instance is confirmed running.
-	if err := config.WriteInstallPath(newVersion, newPath); err != nil {
-		return fmt.Errorf("failed to persist install path: %w", err)
-	}
-	if err := config.WriteActiveVersion(newVersion); err != nil {
-		return fmt.Errorf("failed to update active version: %w", err)
-	}
-	fmt.Printf("\r\033[2K  %s %s v%s is now live on port %d\n", ui.Green("✓"), product.Name, newVersion, health.DefaultPort)
-
-	_, _, err = ui.RunREPL(newVersion, proc, newPath, verbose, false, "", "", 0, creds)
-	return err
 }
 
 func downloadVersion(version, destDir string, verbose bool) error {
@@ -311,12 +282,7 @@ func runSetupWithPort(version, installPath string, verbose bool, port int) (*set
 		fmt.Println()
 		var setupErr error
 		if err := huhspinner.New().
-			WithTheme(huhspinner.ThemeFunc(func(bool) *huhspinner.Styles {
-				return &huhspinner.Styles{
-					Spinner: lipgloss.NewStyle().Foreground(lipgloss.Color(product.ColorElectricBlue)).PaddingLeft(2),
-					Title:   lipgloss.NewStyle(),
-				}
-			})).
+			WithTheme(ui.SpinnerTheme()).
 			Title("Setting up " + product.Name + " v" + version + "...").
 			Action(func() {
 				creds, setupErr = setup.RunSetupOnPort(installPath, false, port)
@@ -326,19 +292,7 @@ func runSetupWithPort(version, installPath string, verbose bool, port int) (*set
 			return nil, err
 		}
 		if setupErr != nil {
-			msg := setupErr.Error()
-			if idx := strings.Index(msg, "\n\n"); idx != -1 {
-				detail := strings.TrimSpace(msg[idx+2:])
-				if detail != "" {
-					fmt.Println()
-					for _, line := range strings.Split(detail, "\n") {
-						fmt.Println("  " + line)
-					}
-					fmt.Println()
-				}
-				msg = strings.TrimSpace(msg[:idx])
-			}
-			ui.Fatal(msg)
+			ui.FatalDetail(setupErr.Error())
 			return nil, setupErr
 		}
 	}

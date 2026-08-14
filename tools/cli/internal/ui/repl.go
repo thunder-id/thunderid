@@ -6,15 +6,17 @@ package ui
 import (
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -91,7 +93,6 @@ var defaultCommands = []SlashCommand{
 // --- bubbletea messages ---
 
 type healthCheckMsg struct{ ready bool }
-type cutoverMsg struct{}
 type upgradeMsg struct{}
 type switchVersionMsg struct{}
 type thunderExitedMsg struct {
@@ -318,12 +319,17 @@ type ReplModel struct {
 	tryingOut       bool
 	quitting        bool
 	width           int
+	height          int
+
+	// body scrolls everything above the input line, so output longer than the
+	// terminal stays reachable and the input is never pushed off screen.
+	body      viewport.Model
+	bodySized bool
 
 	showOnboarding    bool
 	onboardingList    list.Model
 	onboardingCmdMode bool // true while the slash-command input overlay is active
 	checkPort         int  // non-zero overrides health.DefaultPort for health checks
-	cutoverRequested  bool // set when the /cutover command is executed
 	upgradeRequested  bool // set when the /upgrade command is executed
 	switchRequested   bool // set when the /use command is executed
 	newVersion        string
@@ -332,6 +338,14 @@ type ReplModel struct {
 	showWalkthrough  bool
 	walkthroughPanes []walkthroughPane
 	walkthroughTab   int
+
+	// Sample dev-port conflict — active when showPortConflict is true. Holds the launch
+	// waiting for the user to approve stopping the processes on the sample's ports.
+	showPortConflict bool
+	pcHolders        []setup.PortHolder
+	pcSampleName     string
+	pcOpts           sample.Options
+	pcStop           bool // highlighted answer: true stops the holders, false cancels
 
 	// Generic use-case config collection — active when showUsecaseConfig is true.
 	showUsecaseConfig bool
@@ -343,7 +357,7 @@ type ReplModel struct {
 	ucSampleName      string
 	ucEnvTarget       string
 	ucFeatures        []string
-	ucComplete        func(values map[string]string) tea.Cmd
+	ucLaunch          func(values map[string]string) (string, sample.Options)
 
 	// Step-by-step integration guide — active when showIntegrate is true.
 	showIntegrate       bool
@@ -437,15 +451,11 @@ func NewReplModel(version string, proc *exec.Cmd, installPath string, verbose bo
 		Description: "Show recent server logs",
 		Section:     "Server",
 		Action: func(_ string) ([]string, error) {
-			logPath := setup.LogFile(installPath)
-			data, err := os.ReadFile(logPath)
-			if err != nil {
-				return nil, fmt.Errorf("could not read logs: %w", err)
-			}
-			lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
 			const maxLines = 30
-			if len(lines) > maxLines {
-				lines = lines[len(lines)-maxLines:]
+			logPath := setup.LogFile(installPath)
+			lines := setup.TailFile(logPath, maxLines)
+			if len(lines) == 0 {
+				return nil, fmt.Errorf("could not read logs at %s", logPath)
 			}
 			out := make([]string, 0, len(lines)+1)
 			out = append(out, Dim(fmt.Sprintf("── last %d lines of %s ──", len(lines), logPath)))
@@ -476,6 +486,86 @@ func NewReplModel(version string, proc *exec.Cmd, installPath string, verbose bo
 		showOnboarding: isFirstRun,
 		onboardingList: newOnboardingList(80),
 		integrateInput: ii,
+		body:           newOutputViewport(),
+	}
+}
+
+// newOutputViewport builds the scrollable output region. The default key map binds
+// plain letters and space, which belong to the command input, so scrolling is bound to
+// keys the input does not use.
+func newOutputViewport() viewport.Model {
+	vp := viewport.New()
+	vp.SoftWrap = true
+	vp.KeyMap = viewport.KeyMap{
+		PageUp:   key.NewBinding(key.WithKeys("pgup")),
+		PageDown: key.NewBinding(key.WithKeys("pgdown")),
+		Up:       key.NewBinding(key.WithKeys("shift+up")),
+		Down:     key.NewBinding(key.WithKeys("shift+down")),
+	}
+	return vp
+}
+
+// scrollKeys are the keys that move the output region instead of reaching the
+// focused input or list.
+var scrollKeys = map[string]bool{"pgup": true, "pgdown": true, "shift+up": true, "shift+down": true}
+
+// syncBody re-flows the scrollable region: the viewport takes the height the pinned
+// footer leaves, and follows new output unless the user has scrolled up.
+func (m *ReplModel) syncBody() {
+	if m.width <= 0 || m.height <= 0 {
+		return
+	}
+	height := m.height - lipgloss.Height(m.footer())
+	if height < minBodyHeight {
+		height = minBodyHeight
+	}
+	follow := !m.bodySized || m.body.AtBottom()
+	m.body.SetWidth(m.width)
+	m.body.SetHeight(height)
+	m.body.SetContent(m.bodyContent())
+	m.bodySized = true
+	if follow {
+		m.body.GotoBottom()
+	}
+}
+
+// portHolders is a seam so tests can drive the port-conflict overlay without
+// depending on what happens to be listening on the developer's machine.
+var portHolders = setup.PortHolders
+
+// launchTry starts a sample run, or opens the port-conflict overlay first when
+// something already holds one of the sample's dev ports: the run frees those ports
+// before it starts, and the holder may be an unrelated app.
+func (m *ReplModel) launchTry(sampleName string, opts sample.Options) tea.Cmd {
+	if holders := portHolders(sample.ServicePorts(opts.Features)...); len(holders) > 0 {
+		// runCommand latches tryingOut before dispatching the try. Release it while the
+		// overlay waits: a cancel returns to the prompt, and a stale latch would reject
+		// every later command as setup in progress.
+		m.tryingOut = false
+		m.showPortConflict = true
+		m.pcHolders = holders
+		m.pcSampleName = sampleName
+		m.pcOpts = opts
+		m.pcStop = true
+		m.input.Blur()
+		return nil
+	}
+	m.tryingOut = true
+	m.input.Blur()
+	return makeTryCmd(sampleName, m.installPath, m.verbose, opts)
+}
+
+// closePortConflict dismisses the port-conflict overlay. refocus hands the prompt back
+// to the user, which every path except the approved launch does.
+func (m *ReplModel) closePortConflict(refocus bool) {
+	m.showPortConflict = false
+	m.pcHolders = nil
+	if !refocus {
+		return
+	}
+	m.input.Focus()
+	if m.status == statusReady {
+		m.input.Placeholder = "Type / for commands, Ctrl+C to exit"
 	}
 }
 
@@ -595,7 +685,7 @@ func (m *ReplModel) initUCStep() {
 }
 
 // advanceUCStep records value for the current step then moves to the next.
-// When all steps are done it clears the config state and invokes ucComplete.
+// When all steps are done it clears the config state and starts the run.
 func (m *ReplModel) advanceUCStep(value string) tea.Cmd {
 	m.ucValues[m.ucInputs[m.ucStep].Key] = value
 	m.ucStep++
@@ -604,19 +694,34 @@ func (m *ReplModel) advanceUCStep(value string) tea.Cmd {
 		return nil
 	}
 	m.showUsecaseConfig = false
-	m.tryingOut = true
-	m.input.Blur()
-	return m.ucComplete(m.ucValues)
+	return m.launchTry(m.ucLaunch(m.ucValues))
 }
 
-// Update implements tea.Model.
-func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,funlen
+// Update implements tea.Model. It delegates to update and then re-flows the
+// scrollable region, so every state change is reflected in one place.
+func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(msg)
+	updated, ok := next.(ReplModel)
+	if !ok {
+		return next, cmd
+	}
+	updated.syncBody()
+	return updated, cmd
+}
+
+func (m ReplModel) update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,funlen
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
+		m.height = msg.Height
 		m.onboardingList.SetSize(msg.Width, onboardingListHeight)
+
+	case tea.MouseWheelMsg:
+		var vpCmd tea.Cmd
+		m.body, vpCmd = m.body.Update(msg)
+		cmds = append(cmds, vpCmd)
 
 	// Bracketed paste arrives as its own message rather than as key presses, so the
 	// overlay inputs need it routed explicitly — the command input already receives
@@ -635,8 +740,41 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
 			m.quitting = true
-			m.killThunder()
+			m.killThunderID()
 			return m, tea.Quit
+		}
+
+		// Scrolling the output must work in every mode, and must not reach the
+		// focused input or list underneath.
+		if scrollKeys[msg.String()] {
+			var vpCmd tea.Cmd
+			m.body, vpCmd = m.body.Update(msg)
+			cmds = append(cmds, vpCmd)
+			return m, tea.Batch(cmds...)
+		}
+
+		if m.showPortConflict {
+			// ── Sample dev-port conflict ───────────────────────────────────────
+			switch msg.String() {
+			case "up", "down", "left", "right", "tab":
+				m.pcStop = !m.pcStop
+			case "enter":
+				if m.pcStop {
+					sampleName, opts := m.pcSampleName, m.pcOpts
+					m.closePortConflict(false)
+					m.tryingOut = true
+					m.input.Blur()
+					cmds = append(cmds, makeTryCmd(sampleName, m.installPath, m.verbose, opts))
+					break
+				}
+				held := portsSummary(m.pcHolders)
+				m.closePortConflict(true)
+				m.messages = append(m.messages,
+					Yellow("○")+" Cancelled. The processes on "+held+" were left running.")
+			case "esc":
+				m.closePortConflict(true)
+			}
+			return m, tea.Batch(cmds...)
 		}
 
 		if m.showOnboarding && m.status == statusReady {
@@ -847,7 +985,7 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 		}
 
 	case sampleTryRequestMsg:
-		cmds = append(cmds, makeTryCmd(msg.sampleName, m.installPath, m.verbose, sample.Options{
+		cmds = append(cmds, m.launchTry(msg.sampleName, sample.Options{
 			Features: msg.features, Port: m.effectivePort(),
 		}))
 
@@ -857,13 +995,13 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 		m.ucEnvTarget = msg.envTarget
 		m.ucFeatures = msg.features
 
-		// Capture msg fields for the completion closure.
-		sampleName, ip, envTarget, features := msg.sampleName, m.installPath, msg.envTarget, msg.features
+		// Capture msg fields for the launch closure.
+		sampleName, envTarget, features := msg.sampleName, msg.envTarget, msg.features
 		port := m.effectivePort()
-		m.ucComplete = func(values map[string]string) tea.Cmd {
-			return makeTryCmd(sampleName, ip, m.verbose, sample.Options{
+		m.ucLaunch = func(values map[string]string) (string, sample.Options) {
+			return sampleName, sample.Options{
 				Config: values, EnvTarget: envTarget, Features: features, Port: port,
-			})
+			}
 		}
 
 		// Pre-populate from a previous run so the user is not re-prompted.
@@ -882,9 +1020,7 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 
 		if m.ucStep >= len(m.ucInputs) {
 			// All values already present — launch immediately without prompting.
-			m.tryingOut = true
-			m.input.Blur()
-			cmds = append(cmds, m.ucComplete(m.ucValues))
+			cmds = append(cmds, m.launchTry(m.ucLaunch(m.ucValues)))
 		} else {
 			m.showUsecaseConfig = true
 			m.input.Blur()
@@ -1054,17 +1190,16 @@ func (m ReplModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 			m.input.Placeholder = "Type / for commands, Ctrl+C to exit"
 		}
 
-	case cutoverMsg:
-		m.cutoverRequested = true
-		m.quitting = true
-		return m, tea.Quit
-
+	// Both exits below replace the running product, so the sample must not survive:
+	// it would keep its ports and point at a base URL that is gone.
 	case upgradeMsg:
+		sample.StopServices()
 		m.upgradeRequested = true
 		m.quitting = true
 		return m, tea.Quit
 
 	case switchVersionMsg:
+		sample.StopServices()
 		m.switchRequested = true
 		m.quitting = true
 		return m, tea.Quit
@@ -1114,7 +1249,10 @@ func (m *ReplModel) updateCompletions() {
 
 func (m *ReplModel) runCommand(val string) tea.Cmd {
 	if val == "/stop" {
-		m.killThunder()
+		if err := m.stopThunderID(true); err != nil {
+			m.messages = append(m.messages, Red("✗")+" Could not stop "+product.Name+": "+err.Error())
+			return nil
+		}
 		return tea.Quit
 	}
 	if m.tryingOut {
@@ -1146,16 +1284,56 @@ func (m *ReplModel) runCommand(val string) tea.Cmd {
 	return nil
 }
 
-func (m *ReplModel) killThunder() {
-	if m.proc == nil || m.proc.Process == nil {
-		return
-	}
-	// SIGTERM lets start.sh's cleanup trap stop ThunderID cleanly before exiting.
-	// SIGKILL would bypass the trap and leave the port occupied, causing the next
-	// invocation to fail.
-	m.proc.Process.Signal(syscall.SIGTERM) //nolint:errcheck
-	time.Sleep(time.Second)
+// killThunderID stops what this CLI started and leaves an instance it merely attached to
+// running, which is what exiting the session should do.
+func (m *ReplModel) killThunderID() {
+	// This path cannot fail: it only signals a handle the CLI owns.
+	_ = m.stopThunderID(false)
 }
+
+// stopThunderID stops the sample and the product. When the CLI started the product it
+// holds a handle to the launcher and signals that. When it attached to an instance
+// started by an earlier run there is no handle, so an explicit stop falls back to the
+// process listening on the session's port — without that fallback an orphaned server
+// could never be stopped through the CLI. An undeliverable signal takes that same
+// fallback. It only runs when the product answers on the port, so an unrelated listener
+// is never terminated.
+func (m *ReplModel) stopThunderID(explicit bool) error {
+	// Stop the sample first: its backend talks to the product, so stopping the
+	// dependant before the product avoids error spew in the sample log.
+	sample.StopServices()
+
+	if m.proc != nil && m.proc.Process != nil {
+		// SIGTERM lets start.sh's cleanup trap stop ThunderID cleanly before exiting.
+		// SIGKILL would bypass the trap and leave the port occupied, causing the next
+		// invocation to fail.
+		if err := m.proc.Process.Signal(syscall.SIGTERM); err == nil {
+			time.Sleep(time.Second)
+			return nil
+		}
+		// The launcher is already gone, so no trap ran for this stop and the server it
+		// backgrounded can still be listening. Reporting success here would quit the
+		// session leaving that server up, so fall through to the port stop.
+	}
+	if !explicit {
+		return nil
+	}
+	port := m.effectivePort()
+	if !productOnPort(port) {
+		return nil // nothing of ours is listening
+	}
+	return stopPort(port)
+}
+
+// stopTimeout bounds an explicit stop of an attached instance.
+const stopTimeout = 15 * time.Second
+
+// productOnPort and stopPort are variables so tests can exercise the attached-stop
+// path without signaling whatever holds that port on the developer's machine.
+var (
+	productOnPort = health.IsReady
+	stopPort      = func(port int) error { return setup.FreePort(port, stopTimeout) }
+)
 
 func renderCompletions(m ReplModel) string {
 	if !m.showCompletions || len(m.completions) == 0 {
@@ -1384,6 +1562,47 @@ func renderIntegrate(m ReplModel) string {
 	return b.String()
 }
 
+// renderPortConflict names the processes holding the sample's dev ports. Those ports
+// are pinned in the sample's generated config, so the only choices, rendered by
+// portConflictChoices in the pinned footer, are stopping the holders or canceling.
+func renderPortConflict(m ReplModel) string {
+	var b strings.Builder
+	b.WriteString("  " + Bold("Ports needed by the "+m.pcSampleName+" sample are in use") + "\n\n")
+	for _, h := range m.pcHolders {
+		b.WriteString("  " + Dim(h.String()) + "\n")
+	}
+	b.WriteString("\n  " + Dim("Starting the sample frees these ports, which stops whatever holds them.") + "\n")
+	return b.String()
+}
+
+// portConflictChoices renders the answer the user is about to give.
+func portConflictChoices(m ReplModel) string {
+	var b strings.Builder
+	for i, opt := range []string{"Stop these processes and continue", "Cancel, leave them running"} {
+		if (i == 0) == m.pcStop {
+			b.WriteString("  " + Cyan("> "+opt) + "\n")
+		} else {
+			b.WriteString("    " + Dim(opt) + "\n")
+		}
+	}
+	b.WriteString("\n" + Dim("  ↑/↓ select  •  Enter to confirm  •  esc cancel"))
+	return b.String()
+}
+
+// portsSummary lists the ports held by holders as a comma-separated string.
+func portsSummary(holders []setup.PortHolder) string {
+	seen := make(map[int]bool, len(holders))
+	var ports []string
+	for _, h := range holders {
+		if seen[h.Port] {
+			continue
+		}
+		seen[h.Port] = true
+		ports = append(ports, strconv.Itoa(h.Port))
+	}
+	return strings.Join(ports, ", ")
+}
+
 // credentialsBox renders a bordered box with the generated admin credentials, so
 // they stay visible on the alternate screen for the whole session. Returns an empty
 // string when no credentials were generated this run.
@@ -1409,21 +1628,38 @@ func (m ReplModel) credentialsBox() string {
 func (m ReplModel) View() tea.View {
 	v := tea.NewView(m.render())
 	v.AltScreen = true
+	// The output region scrolls, so the wheel has to reach it: the alternate screen
+	// has no scrollback of its own.
+	v.MouseMode = tea.MouseModeCellMotion
 	return v
 }
 
-// render builds the REPL view content as a string.
+// minBodyHeight keeps a usable slice of output visible on very short terminals.
+const minBodyHeight = 3
+
+// render builds the REPL view: a scrolling output region above a pinned footer that
+// always keeps the input (or the current spinner) on screen.
 func (m ReplModel) render() string {
 	if m.quitting {
 		return Dim("Stopping " + product.Name + "...\n")
 	}
+	footer := m.footer()
+	if !m.bodySized {
+		// No window size yet (first frame): render flat rather than guessing a height.
+		return m.bodyContent() + footer
+	}
+	return m.body.View() + "\n" + footer
+}
 
+// bodyContent builds the scrollable region: the banner, server status and everything
+// the session has printed so far.
+func (m ReplModel) bodyContent() string {
 	var b strings.Builder
 
 	b.WriteString(BannerString() + "\n")
 
 	if m.nodeWarning != "" {
-		b.WriteString(noteBoxStyle.Render(Yellow("⚠ "+m.nodeWarning)) + "\n\n")
+		b.WriteString(fitBox(noteBoxStyle, noteChrome, Yellow("⚠ "+m.nodeWarning)) + "\n\n")
 	}
 
 	b.WriteString(Bold("⚡ "+product.Name+" v"+m.version) + "\n")
@@ -1441,16 +1677,14 @@ func (m ReplModel) render() string {
 	b.WriteString(Dim(strings.Repeat("─", clamp(m.width-2, 20, 80))) + "\n\n")
 
 	if m.showOnboarding && m.status == statusReady {
-		if m.onboardingCmdMode {
-			// Slash-command overlay: show completions and input, no list.
-			b.WriteString(renderCompletions(m))
-			b.WriteString(m.input.View())
-			b.WriteString("\n\n" + Dim("  esc back to use-case picker"))
-		} else {
-			// List mode with custom hint replacing the list's built-in help.
+		if !m.onboardingCmdMode {
 			b.WriteString(strings.TrimRight(m.onboardingList.View(), "\n"))
-			b.WriteString("\n" + Dim("  ↑/k up  •  ↓/j down  •  / commands"))
 		}
+		return b.String()
+	}
+
+	if m.showPortConflict {
+		b.WriteString(renderPortConflict(m))
 		return b.String()
 	}
 
@@ -1463,6 +1697,47 @@ func (m ReplModel) render() string {
 		if len(inp.Instructions) > 0 {
 			b.WriteString("\n")
 		}
+		return b.String()
+	}
+
+	for _, msg := range m.messages {
+		b.WriteString("  " + msg + "\n")
+	}
+	if len(m.messages) > 0 {
+		b.WriteString("\n")
+	}
+
+	// The guides carry their own navigation hints, so they scroll with the output.
+	if m.showIntegrate {
+		b.WriteString(renderIntegrate(m))
+	} else if m.showWalkthrough {
+		b.WriteString(renderWalkthrough(m))
+	}
+	return b.String()
+}
+
+// footer builds the pinned region below the scrolling output: the completion list and
+// whatever the user types into or waits on.
+func (m ReplModel) footer() string {
+	var b strings.Builder
+
+	if m.showOnboarding && m.status == statusReady {
+		if m.onboardingCmdMode {
+			b.WriteString(renderCompletions(m))
+			b.WriteString(m.input.View())
+			b.WriteString("\n\n" + Dim("  esc back to use-case picker"))
+		} else {
+			b.WriteString("\n" + Dim("  ↑/k up  •  ↓/j down  •  / commands"))
+		}
+		return b.String()
+	}
+
+	if m.showPortConflict {
+		return portConflictChoices(m)
+	}
+
+	if m.showUsecaseConfig {
+		inp := m.ucInputs[m.ucStep]
 		if len(inp.Choices) > 0 {
 			b.WriteString(m.ucList.View())
 			b.WriteString("\n" + Dim("  ↑/↓ select  •  Enter to continue"))
@@ -1477,21 +1752,8 @@ func (m ReplModel) render() string {
 		return b.String()
 	}
 
-	for _, msg := range m.messages {
-		b.WriteString("  " + msg + "\n")
-	}
-	if len(m.messages) > 0 {
-		b.WriteString("\n")
-	}
-
-	if m.showIntegrate {
-		b.WriteString(renderIntegrate(m))
-		return b.String()
-	}
-
-	if m.showWalkthrough {
-		b.WriteString(renderWalkthrough(m))
-		return b.String()
+	if m.showIntegrate || m.showWalkthrough {
+		return Dim("  " + scrollHint)
 	}
 
 	b.WriteString(renderCompletions(m))
@@ -1505,9 +1767,13 @@ func (m ReplModel) render() string {
 		b.WriteString(m.spinner.View() + Dim(" Starting "+product.Name+"…"))
 	default:
 		b.WriteString(m.input.View())
+		b.WriteString("\n" + Dim("  "+scrollHint))
 	}
 	return b.String()
 }
+
+// scrollHint documents the keys that move the output region.
+const scrollHint = "PgUp/PgDn scroll  •  shift+↑/↓ line"
 
 func clamp(v, min, max int) int {
 	if v < min {
@@ -1540,27 +1806,4 @@ func RunREPL(
 		return rm.upgradeRequested, rm.switchRequested, runErr
 	}
 	return false, false, runErr
-}
-
-// RunStagingREPL runs the REPL connected to a staging instance on stagingPort.
-// It injects a /cutover command; when the user runs it the REPL exits and
-// cutoverRequested=true is returned so the caller can perform the cut-over.
-func RunStagingREPL(version string, proc *exec.Cmd, installPath string, verbose bool, stagingPort int, creds *setup.AdminCredentials) (cutoverRequested bool, err error) {
-	m := NewReplModel(version, proc, installPath, verbose, false, creds)
-	m.checkPort = stagingPort
-	m.commands = append([]SlashCommand{
-		{
-			Name:        "/cutover",
-			Description: "Cut over to this version and restart on the default port",
-			AsyncAction: func(_ string) tea.Cmd {
-				return func() tea.Msg { return cutoverMsg{} }
-			},
-		},
-	}, m.commands...)
-	p := tea.NewProgram(m)
-	finalModel, runErr := p.Run()
-	if rm, ok := finalModel.(ReplModel); ok {
-		return rm.cutoverRequested, runErr
-	}
-	return false, runErr
 }

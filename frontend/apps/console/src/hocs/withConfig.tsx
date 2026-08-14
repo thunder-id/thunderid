@@ -47,6 +47,10 @@ export default function withConfig<P extends object>(WrappedComponent: Component
           }
         : {}),
       sendIdTokenInLogoutRequest: false,
+      // Revoke the access token at the OP's revocation_endpoint before completing sign out, on top
+      // of the SDK's default RP-Initiated Logout. Best-effort: revocation failures don't block
+      // sign out. Override via config.js: `sdk: {tokenLifecycle: {revokeToken: {revokeOnSignOut: false}}}`.
+      tokenLifecycle: {revokeToken: {revokeOnSignOut: true}},
       // When the trusted issuer is a generic OIDC provider, suppress the SDK's
       // product-specific bootstrap calls that would otherwise 404 / be CORS-blocked
       // at the external authorization server: flow metadata (`{baseUrl}/flow/meta`).

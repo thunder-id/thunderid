@@ -19,9 +19,8 @@ import {
   Typography,
   Tabs,
   Tab,
-  useTheme,
 } from '@wso2/oxygen-ui';
-import {AppWindow, Bot, User as UserIcon, Users} from '@wso2/oxygen-ui-icons-react';
+import {AppWindow, Bot, UserRound, UsersRound} from '@wso2/oxygen-ui-icons-react';
 import {useState, useMemo, useCallback, type JSX, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import useGetAllCandidates from '../../../api/useGetAllCandidates';
@@ -59,7 +58,6 @@ export default function AddMemberDialog({
   groupId = undefined,
 }: AddMemberDialogProps): JSX.Element {
   const {t} = useTranslation();
-  const theme = useTheme();
   const dataGridLocaleText = useDataGridLocaleText();
 
   const [activeTab, setActiveTab] = useState(0);
@@ -167,16 +165,14 @@ export default function AddMemberDialog({
             <Avatar
               sx={{
                 p: 0.5,
-                backgroundColor: theme.vars?.palette.grey[500],
                 width: 30,
                 height: 30,
                 fontSize: '0.875rem',
-                ...theme.applyStyles('dark', {
-                  backgroundColor: theme.vars?.palette.grey[900],
-                }),
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
               }}
             >
-              <UserIcon size={14} />
+              <UserRound size={14} />
             </Avatar>
           </Box>
         ),
@@ -219,7 +215,7 @@ export default function AddMemberDialog({
         ),
       },
     ],
-    [theme, t],
+    [t],
   );
 
   const agentColumns: DataGrid.GridColDef<BasicAgent>[] = useMemo(
@@ -242,13 +238,11 @@ export default function AddMemberDialog({
             <Avatar
               sx={{
                 p: 0.5,
-                backgroundColor: theme.vars?.palette.grey[500],
                 width: 30,
                 height: 30,
                 fontSize: '0.875rem',
-                ...theme.applyStyles('dark', {
-                  backgroundColor: theme.vars?.palette.grey[900],
-                }),
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
               }}
             >
               <Bot size={14} />
@@ -269,7 +263,7 @@ export default function AddMemberDialog({
         minWidth: 250,
       },
     ],
-    [theme, t],
+    [t],
   );
 
   const groupColumns: DataGrid.GridColDef<GroupBasic>[] = useMemo(
@@ -292,16 +286,14 @@ export default function AddMemberDialog({
             <Avatar
               sx={{
                 p: 0.5,
-                backgroundColor: theme.vars?.palette.grey[500],
                 width: 30,
                 height: 30,
                 fontSize: '0.875rem',
-                ...theme.applyStyles('dark', {
-                  backgroundColor: theme.vars?.palette.grey[900],
-                }),
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
               }}
             >
-              <Users size={14} />
+              <UsersRound size={14} />
             </Avatar>
           </Box>
         ),
@@ -319,7 +311,7 @@ export default function AddMemberDialog({
         minWidth: 250,
       },
     ],
-    [theme, t],
+    [t],
   );
 
   const appColumns: DataGrid.GridColDef<BasicApplication>[] = useMemo(
@@ -342,13 +334,11 @@ export default function AddMemberDialog({
             <Avatar
               sx={{
                 p: 0.5,
-                backgroundColor: theme.vars?.palette.grey[500],
                 width: 30,
                 height: 30,
                 fontSize: '0.875rem',
-                ...theme.applyStyles('dark', {
-                  backgroundColor: theme.vars?.palette.grey[900],
-                }),
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
               }}
             >
               <AppWindow size={14} />
@@ -369,7 +359,7 @@ export default function AddMemberDialog({
         minWidth: 250,
       },
     ],
-    [theme, t],
+    [t],
   );
 
   const handleAdd = useCallback(() => {
@@ -412,10 +402,14 @@ export default function AddMemberDialog({
       <DialogTitle>{t('groups:addMember.title')}</DialogTitle>
       <DialogContent>
         <Tabs value={activeTab} onChange={handleTabChange} sx={{mb: 2}}>
-          <Tab icon={<UserIcon size={16} />} iconPosition="start" label={t('groups:addMember.tabs.users')} />
+          <Tab icon={<UserRound size={16} />} iconPosition="start" label={t('groups:addMember.tabs.users')} />
           <Tab icon={<AppWindow size={16} />} iconPosition="start" label={t('groups:addMember.tabs.apps')} />
           <Tab icon={<Bot size={16} />} iconPosition="start" label={t('groups:addMember.tabs.agents', 'Agents')} />
-          <Tab icon={<Users size={16} />} iconPosition="start" label={t('groups:addMember.tabs.groups', 'Groups')} />
+          <Tab
+            icon={<UsersRound size={16} />}
+            iconPosition="start"
+            label={t('groups:addMember.tabs.groups', 'Groups')}
+          />
         </Tabs>
 
         {membersError && (

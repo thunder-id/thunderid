@@ -293,8 +293,6 @@ const translations = {
     'welcome.applicationTryout.scenarios.tabs.profile': 'View Profile',
     'welcome.applicationTryout.scenarios.tabs.recovery': 'Account Recovery',
     'welcome.applicationTryout.scenarios.tabs.onboard': 'Staff Sign-Up',
-    'welcome.applicationTryout.scenarios.tabs.mfa': 'Multi-Factor Authentication',
-    'welcome.applicationTryout.scenarios.tabs.social': 'Social Login',
 
     'welcome.applicationTryout.scenarios.login.description':
       'Sign in with the test user account to explore {{productName}} Sign in experience.',
@@ -1254,14 +1252,13 @@ const translations = {
     'edit.flows.allowedUserTypes.hint': 'Users of these types can sign up through this agent.',
     'edit.flows.allowedUserTypes.required': 'Select at least one user type that can sign up through this agent.',
     'edit.flows.delegationLock.message':
-      'These settings are frozen for this agent. Select "On behalf of a user" in the Advanced tab to unlock and start using them.',
+      'These settings are frozen for this agent. Turn on Delegated mode in the Advanced tab to unlock and start using them.',
 
     // Edit page - Advanced tab
     'edit.advanced.mode.title': 'Operating Mode',
-    'edit.advanced.mode.onOwnBehalf.label': 'On its own behalf',
+    'edit.advanced.delegationToggle.label': 'Delegated mode',
     'edit.advanced.mode.onOwnBehalf.description':
       'This agent authenticates with its own credentials without user interaction, using Client Credentials.',
-    'edit.advanced.mode.onBehalfOfUser.label': 'On behalf of a user',
     'edit.advanced.mode.onBehalfOfUser.description':
       'This agent acts on behalf of a signed-in user, using Authorization Code with PKCE.',
     'edit.advanced.redirectUris.title': 'Authorized redirect URIs',
@@ -1275,7 +1272,7 @@ const translations = {
     'edit.advanced.oauthAccess.description': 'Manage OAuth 2 settings for this agent.',
     'edit.advanced.oauthAccess.grantTypes.label': 'Grant Types',
     'edit.advanced.oauthAccess.grantTypes.hint':
-      'The greyed-out grants unlock once you select "On behalf of a user" above.',
+      'The greyed-out grants unlock once you turn on Delegated mode at the top of this tab.',
     'edit.advanced.security.title': 'Security',
     'edit.advanced.security.description':
       'Controls how this agent protects the authorization code exchange when a user signs in.',
@@ -1299,7 +1296,7 @@ const translations = {
     'edit.tokens.audience.user.description': 'Tokens for the agent acting on behalf of a user',
     'edit.tokens.audience.footnote': 'Attribute sets are configured independently for each audience.',
     'edit.tokens.delegationLock.message':
-      'This agent does not receive tokens on behalf of a user. Select "On behalf of a user" in the <advancedLink>Advanced tab</advancedLink> to configure them.',
+      'This agent does not receive tokens on behalf of a user. Turn on Delegated mode in the <advancedLink>Advanced tab</advancedLink> to configure them.',
     'edit.tokens.agent.attributes.title': 'Access Token Attributes',
     'edit.tokens.agent.attributes.description':
       'Extra attributes to add to the access token this agent receives for itself.',
