@@ -84,6 +84,10 @@ Whether an application may initiate one of these flows directly depends on its [
 
 See the [API Reference](../../../apis#tag/flow-execution) for endpoint specifications.
 
+:::note[No Backward Navigation]
+Flow execution does not support going back to a previous step, either through a dedicated back control or the browser's back button.
+:::
+
 ### Flow Secret
 
 A confidential server-side application (one with no OAuth 2.0 configuration, or one that is confidential and does not use the `authorization_code` grant) authenticates at flow initiation with a **Flow Secret**. <ProductName /> issues this secret once, when the application is created, and never returns it again; the [Console](../../guides/applications/application-settings.mdx) can regenerate it if it's lost. Keep it server-side only, since a browser SPA has nowhere safe to hold it, which is why the `browser` application type is never issued one (see [Direct Initiation Restriction](#direct-initiation-restriction) above).

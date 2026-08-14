@@ -128,6 +128,14 @@ Always connect both the success and failure ports on every TASK EXECUTION node. 
 
 See [View and Executor Pairings](../advanced-configurations#view-and-executor-pairings) for guidance on pairing PROMPT nodes with the correct executors.
 
+## Flow Execution
+
+At runtime, a flow only moves forward, never backward. When a user submits a PROMPT screen, <ProductName /> validates the input and executes the connected path. The response is the next step in the flow: another PROMPT screen, the same screen re-displayed with an error when the input is rejected, or a terminal result that completes the flow. The engine keeps flow state on the server and does not expose a way to return to a step the user has already passed.
+
+:::warning
+Flow execution does not support going back to a previous step, either through a dedicated back control or the browser's back button.
+:::
+
 ## Interceptors
 
 A flow definition can declare an optional `interceptors` array to attach cross-cutting operations that run at defined lifecycle points (before or after a request, or around individual nodes). Interceptors are declared at the flow level and apply across nodes based on their mode and scope.

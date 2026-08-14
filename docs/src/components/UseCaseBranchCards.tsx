@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useActiveVersion} from '@docusaurus/plugin-content-docs/client';
 import {Box} from '@wso2/oxygen-ui';
 import {Bot, Building2, Fingerprint} from '@wso2/oxygen-ui-icons-react';
 import React from 'react';
@@ -18,6 +19,7 @@ interface BranchCard {
   title: string;
   description: string;
   bullets: string[];
+  hiddenInVersions?: string[];
 }
 
 const cards: BranchCard[] = [
@@ -52,6 +54,7 @@ const cards: BranchCard[] = [
       'You need org-scoped roles, policies, and branding',
       'Enterprise SSO or federated identity is required',
     ],
+    hiddenInVersions: ['v1.0.x'],
   },
   {
     href: '/docs/next/use-cases/ai-agents/overview',
@@ -73,18 +76,20 @@ const cards: BranchCard[] = [
 
 export default function UseCaseBranchCards() {
   const docsUrl = useDocsUrl();
+  const activeVersion = useActiveVersion(undefined);
+  const visibleCards = cards.filter((card) => !card.hiddenInVersions?.includes(activeVersion?.name ?? ''));
   return (
     <Box
       sx={{
         display: 'flex',
         flexWrap: 'wrap',
         gap: '1.25rem',
-        justifyContent: 'center',
+        justifyContent: 'flex-start',
         maxWidth: '900px',
         width: '100%',
       }}
     >
-      {cards.map((card) => (
+      {visibleCards.map((card) => (
         <UseCaseBranchCard
           key={card.href}
           href={docsUrl(card.href)}

@@ -4,8 +4,9 @@
 package common
 
 type I18nMessage struct {
-	Key          string `json:"key,omitempty"`
-	DefaultValue string `json:"defaultValue,omitempty"`
+	Key          string            `json:"key,omitempty"`
+	DefaultValue string            `json:"defaultValue,omitempty"`
+	Params       map[string]string `json:"params,omitempty"`
 }
 
 // TestSuiteConfig holds common configuration for test suites
@@ -21,13 +22,13 @@ type TestSuiteConfig struct {
 }
 
 type FlowStep struct {
-	ExecutionID    string   `json:"executionId"`
-	FlowStatus     string   `json:"flowStatus"`
-	Type           string   `json:"type,omitempty"`
-	Data           FlowData `json:"data,omitempty"`
-	Assertion      string   `json:"assertion,omitempty"`
+	ExecutionID    string         `json:"executionId"`
+	FlowStatus     string         `json:"flowStatus"`
+	Type           string         `json:"type,omitempty"`
+	Data           FlowData       `json:"data,omitempty"`
+	Assertion      string         `json:"assertion,omitempty"`
 	Error          *ErrorResponse `json:"error,omitempty"`
-	ChallengeToken string   `json:"challengeToken,omitempty"`
+	ChallengeToken string         `json:"challengeToken,omitempty"`
 }
 
 type FlowData struct {

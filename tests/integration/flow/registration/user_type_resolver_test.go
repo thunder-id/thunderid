@@ -16,11 +16,15 @@ type UserTypeResolverRuntimeTestSuite struct {
 	testOUID1         string
 	testUserTypeID1   string
 	testUserTypeID2   string
+	testUserTypeID3   string
 	testUserTypeName1 string
 	testUserTypeName2 string
-	testAppID          string
-	createdFlowIDs     []string
-	createdUserIDs []string
+	testUserTypeName3 string
+	narrowAuthFlowID  string
+	createdAppIDs     []string
+	testAppID         string
+	createdFlowIDs    []string
+	createdUserIDs    []string
 }
 
 func TestUserTypeResolverRuntimeTestSuite(t *testing.T) {
@@ -76,6 +80,34 @@ func (ts *UserTypeResolverRuntimeTestSuite) SetupSuite() {
 	ts.testUserTypeID2 = userTypeID2
 	ts.testUserTypeName2 = userType2.Name
 
+	// A third type so the allowedUserTypes node property can narrow 3 down to 2. Narrowing to a
+	// single type would auto-select instead of prompting (user_type_resolver.go:162).
+	userType3 := testutils.UserType{
+		Name:                  "runtime-test-contractor",
+		OUID:                  ts.testOUID1,
+		AllowSelfRegistration: true,
+		Schema: map[string]interface{}{
+			"username": map[string]interface{}{"type": "string"},
+			"password": map[string]interface{}{"type": "string", "credential": true},
+			"email":    map[string]interface{}{"type": "string"},
+		},
+	}
+	userTypeID3, err := testutils.CreateUserType(userType3)
+	if err != nil {
+		ts.T().Fatalf("Failed to create third test user type: %v", err)
+	}
+	ts.testUserTypeID3 = userTypeID3
+	ts.testUserTypeName3 = userType3.Name
+
+	// Custom registration flows need an isolated auth flow, else the app's default auth flow CALLs
+	// the default registration flow and the server rejects the mismatch with APP-1039.
+	narrowAuthFlowID, err := testutils.CreateIsolatedAuthFlow("resolver-narrow-isolated-auth")
+	if err != nil {
+		ts.T().Fatalf("Failed to create isolated auth flow: %v", err)
+	}
+	ts.narrowAuthFlowID = narrowAuthFlowID
+	ts.createdFlowIDs = append(ts.createdFlowIDs, narrowAuthFlowID)
+
 	// Look up the default registration flow ID
 	regFlowID, err := testutils.GetFlowIDByHandle("default-flow", "REGISTRATION")
 	if err != nil {
@@ -113,17 +145,25 @@ func (ts *UserTypeResolverRuntimeTestSuite) TearDownSuite() {
 		ts.T().Logf("Failed to cleanup users: %v", err)
 	}
 
+	// Delete applications before flows: an application still referencing a flow can make the flow
+	// deletion fail, leaving a stale handle that breaks the next run's SetupSuite.
+	if ts.testAppID != "" {
+		if err := testutils.DeleteApplication(ts.testAppID); err != nil {
+			ts.T().Logf("Failed to delete test application: %v", err)
+		}
+	}
+
+	// Delete applications created by the allowedUserTypes narrowing tests
+	for _, appID := range ts.createdAppIDs {
+		if err := testutils.DeleteApplication(appID); err != nil {
+			ts.T().Logf("Failed to delete test application %s: %v", appID, err)
+		}
+	}
+
 	// Delete test flows
 	for _, flowID := range ts.createdFlowIDs {
 		if err := testutils.DeleteFlow(flowID); err != nil {
 			ts.T().Logf("Failed to delete test flow %s: %v", flowID, err)
-		}
-	}
-
-	// Delete test application
-	if ts.testAppID != "" {
-		if err := testutils.DeleteApplication(ts.testAppID); err != nil {
-			ts.T().Logf("Failed to delete test application: %v", err)
 		}
 	}
 
@@ -136,6 +176,11 @@ func (ts *UserTypeResolverRuntimeTestSuite) TearDownSuite() {
 	if ts.testUserTypeID2 != "" {
 		if err := testutils.DeleteUserType(ts.testUserTypeID2); err != nil {
 			ts.T().Logf("Failed to delete second test user type: %v", err)
+		}
+	}
+	if ts.testUserTypeID3 != "" {
+		if err := testutils.DeleteUserType(ts.testUserTypeID3); err != nil {
+			ts.T().Logf("Failed to delete third test user type: %v", err)
 		}
 	}
 
@@ -224,4 +269,111 @@ func (ts *UserTypeResolverRuntimeTestSuite) TestMetaNotReturnedWithoutVerbose() 
 
 	// Verify meta is NOT returned when verbose=false
 	ts.Nil(flowStep.Data.Meta, "Meta should NOT be returned when verbose=false")
+}
+
+// buildResolverFlowWithAllowedTypes returns a registration flow whose UserTypeResolver node carries
+// an allowedUserTypes property. allowedTypes is passed through verbatim so a non-array value can be
+// tested. REGISTRATION requires both UserTypeResolver and ProvisioningExecutor.
+func buildResolverFlowWithAllowedTypes(handle string, allowedTypes interface{}) testutils.Flow {
+	resolverNode := map[string]interface{}{
+		"id":        "resolve_user_type",
+		"type":      "TASK_EXECUTION",
+		"executor":  map[string]interface{}{"name": "UserTypeResolver"},
+		"onSuccess": "provision_user",
+	}
+	if allowedTypes != nil {
+		resolverNode["properties"] = map[string]interface{}{"allowedUserTypes": allowedTypes}
+	}
+
+	return testutils.Flow{
+		Name:     "User Type Resolver Allowed Types Flow",
+		FlowType: "REGISTRATION",
+		Handle:   handle,
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "resolve_user_type"},
+			resolverNode,
+			{
+				"id":        "provision_user",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "ProvisioningExecutor"},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
+}
+
+// appForResolverFlow creates the flow plus a bound app allowing all three suite user types.
+func (ts *UserTypeResolverRuntimeTestSuite) appForResolverFlow(
+	flow testutils.Flow, name, clientID string) string {
+	flowID, err := testutils.CreateFlow(flow)
+	ts.Require().NoError(err, "Failed to create flow %s", flow.Handle)
+	ts.createdFlowIDs = append(ts.createdFlowIDs, flowID)
+
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID:                      ts.testOUID1,
+		Name:                      name,
+		IsRegistrationFlowEnabled: true,
+		RegistrationFlowID:        flowID,
+		ClientID:                  clientID,
+		ClientSecret:              clientID + "_secret",
+		RedirectURIs:              []string{"http://localhost:3000/callback"},
+		AllowedUserTypes: []string{
+			ts.testUserTypeName1, ts.testUserTypeName2, ts.testUserTypeName3,
+		},
+		AuthFlowID: ts.narrowAuthFlowID,
+	})
+	ts.Require().NoError(err, "Failed to create app %s", name)
+	ts.createdAppIDs = append(ts.createdAppIDs, appID)
+	return appID
+}
+
+// findResolverInput returns the input with the given identifier, or nil.
+func findResolverInput(inputs []common.Inputs, identifier string) *common.Inputs {
+	for i := range inputs {
+		if inputs[i].Identifier == identifier {
+			return &inputs[i]
+		}
+	}
+	return nil
+}
+
+// Scenario 23: the allowedUserTypes node property narrows the offered user types even though the
+// app allows all three (user_type_resolver.go:325-334).
+func (ts *UserTypeResolverRuntimeTestSuite) TestNodePropertyNarrowsAllowedUserTypes() {
+	appID := ts.appForResolverFlow(
+		buildResolverFlowWithAllowedTypes("reg_flow_resolver_narrowed",
+			[]interface{}{ts.testUserTypeName1, ts.testUserTypeName2}),
+		"Resolver Narrowed App", "resolver_narrowed_client")
+
+	flowStep, err := common.InitiateRegistrationFlow(appID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate the narrowed resolver flow")
+
+	userTypeInput := findResolverInput(flowStep.Data.Inputs, "userType")
+	ts.Require().NotNil(userTypeInput, "Expected a userType selection input")
+	ts.ElementsMatch([]string{ts.testUserTypeName1, ts.testUserTypeName2}, userTypeInput.Options,
+		"The node property must narrow the offered user types to the two it lists")
+	ts.NotContains(userTypeInput.Options, ts.testUserTypeName3,
+		"A user type excluded by the node property must not be offered")
+}
+
+// Scenario 24: a malformed allowedUserTypes property must not lock every user type out and break
+// registration. The resolver ignores a non-array value (user_type_resolver.go:302-306) and the
+// empty result means "no restriction" (:328-330), so the flow stays usable.
+func (ts *UserTypeResolverRuntimeTestSuite) TestMalformedAllowedUserTypesDoesNotBreakRegistration() {
+	appID := ts.appForResolverFlow(
+		buildResolverFlowWithAllowedTypes("reg_flow_resolver_bad_prop", ts.testUserTypeName1),
+		"Resolver Bad Property App", "resolver_badprop_client")
+
+	flowStep, err := common.InitiateRegistrationFlow(appID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate the bad-property resolver flow")
+
+	userTypeInput := findResolverInput(flowStep.Data.Inputs, "userType")
+	ts.Require().NotNil(userTypeInput, "Expected a userType selection input")
+	ts.NotEmpty(userTypeInput.Options,
+		"A malformed property must not leave registration with zero selectable types")
+	ts.ElementsMatch(
+		[]string{ts.testUserTypeName1, ts.testUserTypeName2, ts.testUserTypeName3},
+		userTypeInput.Options,
+		"A malformed property must fall back to every user type the app allows")
 }

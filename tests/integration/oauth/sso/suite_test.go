@@ -37,10 +37,11 @@ const (
 	postLogoutRedirectURI = "https://localhost:3000/logged-out"
 	resourceIdentifier    = "https://sso-logout.example.com"
 
-	testPassword     = "testpass123"
-	ssoReuseUsername = "sso_reuse_user"
-	logoutUsername   = "sso_logout_user"
-	ssoScopeUsername = "sso_scope_user"
+	testPassword      = "testpass123"
+	ssoReuseUsername  = "sso_reuse_user"
+	logoutUsername    = "sso_logout_user"
+	ssoScopeUsername  = "sso_scope_user"
+	ssoMaxAgeUsername = "sso_max_age_user"
 
 	// Two resource servers defining the same permission string, used by the cross-resource-server
 	// SSO regression: the scope user is granted "read" on rs-A only.
@@ -231,7 +232,7 @@ func (ts *SSOLogoutTestSuite) SetupSuite() {
 
 	ts.applicationID = ts.createApplication()
 
-	for _, username := range []string{ssoReuseUsername, logoutUsername} {
+	for _, username := range []string{ssoReuseUsername, logoutUsername, ssoMaxAgeUsername} {
 		ts.createUser(username)
 	}
 
@@ -438,12 +439,23 @@ func (ts *SSOLogoutTestSuite) ssoCookieNames(client *http.Client) []string {
 // authorize starts an authorization code flow and returns the authId and executionId issued at the
 // gate redirect.
 func (ts *SSOLogoutTestSuite) authorize(client *http.Client, scope, state string) (string, string) {
+	return ts.authorizeWithMaxAge(client, scope, state, "")
+}
+
+// authorizeWithMaxAge starts an authorization code flow, optionally carrying the OIDC max_age
+// request parameter, and returns the authId and executionId issued at the gate redirect. An empty
+// maxAge omits the parameter entirely.
+func (ts *SSOLogoutTestSuite) authorizeWithMaxAge(client *http.Client, scope, state, maxAge string) (
+	string, string) {
 	params := url.Values{}
 	params.Set("client_id", clientID)
 	params.Set("redirect_uri", redirectURI)
 	params.Set("response_type", "code")
 	params.Set("scope", scope)
 	params.Set("state", state)
+	if maxAge != "" {
+		params.Set("max_age", maxAge)
+	}
 
 	req, err := http.NewRequest("GET", testutils.TestServerURL+"/oauth2/authorize?"+params.Encode(), nil)
 	ts.Require().NoError(err)
