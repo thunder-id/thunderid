@@ -5,7 +5,11 @@
 package config
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // TrustedIssuerConfig holds configuration for trusted external issuer authentication.
@@ -422,4 +426,97 @@ type LogConfig struct {
 	Level string `yaml:"level" json:"level"`
 	// Format selects the record format: "json" or "text" (default).
 	Format string `yaml:"format" json:"format"`
+}
+
+// CORSConfig holds the allowed cross-origin origins for the engine's CORS-enabled endpoints
+// (well-known discovery, JWKS, token, userinfo, and the rest of the OAuth surface). An empty
+// AllowedOrigins leaves CORS disabled: no cross-origin request is allowed to read a response.
+//
+// The field uses the camelCase "allowedOrigins" tag (rather than this file's usual snake_case) to
+// match the wire format the engine re-encodes it to internally.
+type CORSConfig struct {
+	AllowedOrigins []CORSOrigin `yaml:"allowedOrigins" json:"allowedOrigins"`
+}
+
+// CORSOrigin is one allowed-origin entry: exactly one of Origin (a literal origin, e.g.
+// "https://app.example.com") or Regex (a fully anchored pattern, e.g. "^https://.*\\.example\\.com$")
+// must be set. Decoding from YAML or JSON enforces this; a bare string decodes to Origin, and an
+// object of the shape { regex: "..." } decodes to Regex.
+type CORSOrigin struct {
+	Origin string
+	Regex  string
+}
+
+// toEntry renders the origin as its wire form: a bare string for a literal, or a { "regex": ... }
+// object for a pattern.
+func (o CORSOrigin) toEntry() (any, error) {
+	switch {
+	case o.Origin != "" && o.Regex != "":
+		return nil, fmt.Errorf("thunderidengine: CORSOrigin must set exactly one of Origin or Regex, got both")
+	case o.Regex != "":
+		return map[string]string{"regex": o.Regex}, nil
+	case o.Origin != "":
+		return o.Origin, nil
+	default:
+		return nil, fmt.Errorf("thunderidengine: CORSOrigin must set exactly one of Origin or Regex, got neither")
+	}
+}
+
+// MarshalJSON encodes the origin to its wire form.
+func (o CORSOrigin) MarshalJSON() ([]byte, error) {
+	entry, err := o.toEntry()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(entry)
+}
+
+// MarshalYAML encodes the origin to its wire form.
+func (o CORSOrigin) MarshalYAML() (any, error) {
+	return o.toEntry()
+}
+
+// UnmarshalJSON decodes a JSON string into Origin, or an object of the shape { "regex": "..." }
+// into Regex.
+func (o *CORSOrigin) UnmarshalJSON(data []byte) error {
+	var literal string
+	if err := json.Unmarshal(data, &literal); err == nil {
+		*o = CORSOrigin{Origin: literal}
+		return nil
+	}
+	var obj struct {
+		Regex string `json:"regex"`
+	}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return fmt.Errorf("thunderidengine: CORS origin entry must be a string or { regex: ... } object: %w", err)
+	}
+	if obj.Regex == "" {
+		return fmt.Errorf("thunderidengine: CORS origin entry: regex object missing 'regex' field")
+	}
+	*o = CORSOrigin{Regex: obj.Regex}
+	return nil
+}
+
+// UnmarshalYAML decodes a YAML scalar into Origin, or a mapping of the shape { regex: "..." } into
+// Regex.
+func (o *CORSOrigin) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		*o = CORSOrigin{Origin: node.Value}
+		return nil
+	case yaml.MappingNode:
+		var obj struct {
+			Regex string `yaml:"regex"`
+		}
+		if err := node.Decode(&obj); err != nil {
+			return fmt.Errorf("thunderidengine: CORS origin entry: %w", err)
+		}
+		if obj.Regex == "" {
+			return fmt.Errorf("thunderidengine: CORS origin entry: regex object missing 'regex' field")
+		}
+		*o = CORSOrigin{Regex: obj.Regex}
+		return nil
+	default:
+		return fmt.Errorf("thunderidengine: CORS origin entry must be a string or { regex: ... } object")
+	}
 }

@@ -4,6 +4,7 @@
 package thunderidengine
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -21,6 +22,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	systemconfig "github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/cors"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -523,4 +525,68 @@ func (suite *EngineTestSuite) TestWithCustomAuthnProvider_AccumulatesByName() {
 	assert.Equal(suite.T(), []string{"password"}, ctx.customAuthnProviders["acme"].Creds)
 	assert.Equal(suite.T(), []string{"otp"}, ctx.customAuthnProviders["beta"].Creds)
 	assert.NotNil(suite.T(), ctx.customAuthnProviders["acme"].Instance)
+}
+
+// mustMatch parses origin and reports whether matcher allows it.
+func mustMatch(t *testing.T, matcher *cors.Matcher, origin string) bool {
+	t.Helper()
+	parsed, err := cors.ParseOrigin(origin)
+	require.NoError(t, err)
+	allow, _ := matcher.Match(parsed)
+	return allow
+}
+
+func (suite *EngineTestSuite) TestBuildCORSReader() {
+	suite.T().Run("empty config returns nil reader", func(t *testing.T) {
+		reader, err := buildCORSReader(engineconfig.CORSConfig{})
+		require.NoError(t, err)
+		assert.Nil(t, reader)
+	})
+
+	suite.T().Run("valid config installs matching reader", func(t *testing.T) {
+		t.Cleanup(func() { cors.InitializeDynamicMatcher(nil) })
+
+		reader, err := buildCORSReader(engineconfig.CORSConfig{
+			AllowedOrigins: []engineconfig.CORSOrigin{
+				{Origin: "https://app.example.com"},
+				{Regex: `^https://[a-z0-9-]+\.staging\.example\.com$`},
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, reader)
+
+		cors.InitializeDynamicMatcher(reader)
+		matcher := cors.GetDynamicMatcher(context.Background())
+		require.NotNil(t, matcher)
+
+		assert.True(t, mustMatch(t, matcher, "https://app.example.com"))
+		assert.True(t, mustMatch(t, matcher, "https://foo.staging.example.com"))
+		assert.False(t, mustMatch(t, matcher, "https://other.example.com"))
+	})
+
+	suite.T().Run("wildcard literal is rejected", func(t *testing.T) {
+		reader, err := buildCORSReader(engineconfig.CORSConfig{
+			AllowedOrigins: []engineconfig.CORSOrigin{{Origin: "*"}},
+		})
+		assert.Error(t, err)
+		assert.Nil(t, reader)
+	})
+
+	suite.T().Run("invalid regex is rejected", func(t *testing.T) {
+		reader, err := buildCORSReader(engineconfig.CORSConfig{
+			AllowedOrigins: []engineconfig.CORSOrigin{{Regex: "["}},
+		})
+		assert.Error(t, err)
+		assert.Nil(t, reader)
+	})
+
+	suite.T().Run("origin and regex both set is rejected", func(t *testing.T) {
+		reader, err := buildCORSReader(engineconfig.CORSConfig{
+			AllowedOrigins: []engineconfig.CORSOrigin{
+				{Origin: "https://app.example.com", Regex: "^https://.*$"},
+			},
+		})
+		assert.Error(t, err)
+		assert.Nil(t, reader)
+	})
 }

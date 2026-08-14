@@ -6,7 +6,9 @@ package thunderidengine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -28,6 +30,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/runtimestore"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	systemconfig "github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/jose"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
@@ -35,6 +38,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -181,6 +185,17 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.observabilitySvc, tokenFamilyRevocationTTL,
 		engineCtx.oauthConfig.Revocation.TokenFamily.OnExplicitRevokeEnabled())
 
+	// CORS origins come from the engine's static CORSConfig; unlike the full server there is no
+	// server-config store to back a dynamic matcher. An empty config leaves CORS disabled (matcher
+	// stays uninstalled, so every cross-origin request to the routes registered below is denied).
+	corsReader, err := buildCORSReader(engineCtx.corsConfig)
+	if err != nil {
+		logger.Fatal(ctx, "Invalid CORS configuration", log.Error(err))
+	}
+	if corsReader != nil {
+		cors.InitializeDynamicMatcher(corsReader)
+	}
+
 	// The embedded engine has no server-config store, so no default resource server is available: the
 	// resource provider is passed undecorated. Implicit no-resource requests that carry permission
 	// scopes are rejected (the provider resolves no server for an empty identifier); OIDC-only or
@@ -284,6 +299,45 @@ func (e *engineContext) applyCustomExecutors() error {
 	return nil
 }
 
+// buildCORSReader validates cfg and, if it carries any allowed origins, returns a
+// cors.ServerConfigReader that serves them as a static read-only layer with no writable layer.
+// An empty cfg returns a nil reader and no error: the caller then leaves the CORS dynamic matcher
+// uninstalled, which denies every cross-origin request.
+func buildCORSReader(cfg engineconfig.CORSConfig) (cors.ServerConfigReader, error) {
+	if len(cfg.AllowedOrigins) == 0 {
+		return nil, nil
+	}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("thunderidengine: failed to encode CORS configuration: %w", err)
+	}
+	decoded, err := cors.OriginHandler{}.Decode(raw)
+	if err != nil {
+		return nil, fmt.Errorf("thunderidengine: invalid CORS configuration: %w", err)
+	}
+	if err := (cors.OriginHandler{}).Validate(decoded, nil, nil); err != nil {
+		return nil, fmt.Errorf("thunderidengine: invalid CORS configuration: %w", err)
+	}
+	return staticCORSReader{config: decoded.(cors.OriginConfig)}, nil
+}
+
+// staticCORSReader implements cors.ServerConfigReader over a fixed origin list supplied via
+// WithCORSConfig. It has no writable layer: origins can only change by restarting the engine
+// with a new CORSConfig.
+type staticCORSReader struct {
+	config cors.OriginConfig
+}
+
+// GetReadOnlyConfig returns the engine's static CORS configuration.
+func (r staticCORSReader) GetReadOnlyConfig(_ context.Context, _ string) (any, *common.ServiceError) {
+	return r.config, nil
+}
+
+// GetWritableConfig returns an empty configuration: staticCORSReader has no writable layer.
+func (r staticCORSReader) GetWritableConfig(_ context.Context, _ string) (any, *common.ServiceError) {
+	return cors.OriginConfig{}, nil
+}
+
 type engineContext struct {
 	cacheManager          cache.CacheManagerInterface
 	jwtService            jwt.JWTServiceInterface
@@ -310,6 +364,7 @@ type engineContext struct {
 	encryptionConfig       engineconfig.EncryptionConfig
 	logConfig              engineconfig.LogConfig
 	attributeCacheConfig   engineconfig.AttributeCacheConfig
+	corsConfig             engineconfig.CORSConfig
 
 	actorProvider             providers.ActorProvider
 	defaultAuthnProvider      providers.AuthnProviderInterface
@@ -359,6 +414,14 @@ func WithEncryptionConfig(encryptionConfig engineconfig.EncryptionConfig) Option
 // WithAttributeCacheConfig supplies the attribute cache configuration.
 func WithAttributeCacheConfig(config engineconfig.AttributeCacheConfig) Option {
 	return func(c *engineContext) { c.attributeCacheConfig = config }
+}
+
+// WithCORSConfig supplies the allowed cross-origin origins for the engine's CORS-enabled
+// endpoints (well-known discovery, JWKS, token, userinfo, and the rest of the OAuth surface).
+// Omitting this option leaves CORS disabled: no cross-origin request is allowed to read a
+// response from those endpoints.
+func WithCORSConfig(config engineconfig.CORSConfig) Option {
+	return func(c *engineContext) { c.corsConfig = config }
 }
 
 // WithServerConfig supplies the server configuration.
