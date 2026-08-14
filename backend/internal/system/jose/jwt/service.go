@@ -385,6 +385,11 @@ func (js *jwtService) getJWKSKeys(
 		}
 	}
 
+	if err := httpservice.IsSSRFSafeURL(jwksURL); err != nil {
+		js.logger.Debug(ctx, "JWKS URL is not SSRF-safe: "+err.Error())
+		return nil, &ErrorFailedToGetJWKS
+	}
+
 	resp, err := js.httpClient.Get(jwksURL)
 	if err != nil {
 		js.logger.Debug(ctx, "Failed to fetch JWKS from URL: "+err.Error())

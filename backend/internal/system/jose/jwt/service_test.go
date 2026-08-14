@@ -17,11 +17,11 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -41,6 +41,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
+	"github.com/thunder-id/thunderid/tests/mocks/httpmock"
 )
 
 const (
@@ -1016,10 +1017,9 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTWithJWKS() {
 				token := suite.createBasicJWT(aud, iss,
 					time.Now().Add(time.Hour).Unix(), time.Now().Unix())
 
-				mockServer := suite.mockJWKSServer()
-				suite.T().Cleanup(mockServer.Close)
+				jwksURL := suite.mockJWKSServer()
 
-				return token, mockServer.URL, aud, iss
+				return token, jwksURL, aud, iss
 			},
 			expectError: false,
 		},
@@ -1029,20 +1029,18 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTWithJWKS() {
 				token := suite.createBasicJWT("any-aud", "any-iss",
 					time.Now().Add(time.Hour).Unix(), time.Now().Unix())
 
-				mockServer := suite.mockJWKSServer()
-				suite.T().Cleanup(mockServer.Close)
+				jwksURL := suite.mockJWKSServer()
 
-				return token, mockServer.URL, "", "" // Empty expected aud and iss
+				return token, jwksURL, "", "" // Empty expected aud and iss
 			},
 			expectError: false,
 		},
 		{
 			name: "InvalidJWTFormat",
 			setupFunc: func() (string, string, string, string) {
-				mockServer := suite.mockJWKSServer()
-				suite.T().Cleanup(mockServer.Close)
+				jwksURL := suite.mockJWKSServer()
 
-				return suite.createMalformedJWT(), mockServer.URL, testAud, testIss
+				return suite.createMalformedJWT(), jwksURL, testAud, testIss
 			},
 			expectError:   true,
 			expectedError: ErrorInvalidJWTFormat,
@@ -1059,10 +1057,9 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTWithJWKS() {
 					token = parts[0] + "." + parts[1] + ".invalidSignature123"
 				}
 
-				mockServer := suite.mockJWKSServer()
-				suite.T().Cleanup(mockServer.Close)
+				jwksURL := suite.mockJWKSServer()
 
-				return token, mockServer.URL, testAud, testIss
+				return token, jwksURL, testAud, testIss
 			},
 			expectError:   true,
 			expectedError: ErrorInvalidTokenSignature,
@@ -1076,10 +1073,9 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTWithJWKS() {
 				token := suite.createBasicJWT(aud, iss,
 					expiredTime, time.Now().Add(-2*time.Hour).Unix())
 
-				mockServer := suite.mockJWKSServer()
-				suite.T().Cleanup(mockServer.Close)
+				jwksURL := suite.mockJWKSServer()
 
-				return token, mockServer.URL, aud, iss
+				return token, jwksURL, aud, iss
 			},
 			expectError:   true,
 			expectedError: ErrorTokenExpired,
@@ -1093,10 +1089,9 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTWithJWKS() {
 				token := suite.createBasicJWT(aud, iss,
 					time.Now().Add(2*time.Hour).Unix(), futureTime)
 
-				mockServer := suite.mockJWKSServer()
-				suite.T().Cleanup(mockServer.Close)
+				jwksURL := suite.mockJWKSServer()
 
-				return token, mockServer.URL, aud, iss
+				return token, jwksURL, aud, iss
 			},
 			expectError:   true,
 			expectedError: ErrorInvalidJWTFormat,
@@ -1109,10 +1104,9 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTWithJWKS() {
 				token := suite.createBasicJWT(aud, iss,
 					time.Now().Add(time.Hour).Unix(), time.Now().Unix())
 
-				mockServer := suite.mockJWKSServer()
-				suite.T().Cleanup(mockServer.Close)
+				jwksURL := suite.mockJWKSServer()
 
-				return token, mockServer.URL, "expected-audience", iss
+				return token, jwksURL, "expected-audience", iss
 			},
 			expectError:   true,
 			expectedError: ErrorInvalidJWTFormat,
@@ -1125,10 +1119,9 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTWithJWKS() {
 				token := suite.createBasicJWT(aud, iss,
 					time.Now().Add(time.Hour).Unix(), time.Now().Unix())
 
-				mockServer := suite.mockJWKSServer()
-				suite.T().Cleanup(mockServer.Close)
+				jwksURL := suite.mockJWKSServer()
 
-				return token, mockServer.URL, aud, "expected-issuer"
+				return token, jwksURL, aud, "expected-issuer"
 			},
 			expectError:   true,
 			expectedError: ErrorInvalidJWTFormat,
@@ -1611,10 +1604,9 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKS() {
 		"test-subject", testIssuer, 3600, map[string]interface{}{"aud": testAudience}, TokenTypeJWT, "")
 	assert.Nil(suite.T(), err)
 
-	testServer := suite.mockJWKSServer()
-	defer testServer.Close()
+	jwksURL := suite.mockJWKSServer()
 
-	err = suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, testServer.URL)
+	err = suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, jwksURL)
 	assert.Nil(suite.T(), err)
 }
 
@@ -1635,58 +1627,50 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSUsesCache() {
 	suite.jwtService.cfg.JWKSCacheTTL = 300 * time.Second
 
 	jwksData := suite.createMockJWKSData()
-	makeServer := func(counter *int32) *httptest.Server {
-		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			atomic.AddInt32(counter, 1)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			if _, writeErr := fmt.Fprintln(w, jwksData); writeErr != nil {
-				suite.T().Errorf("Failed to write JWKS response: %v", writeErr)
-			}
-		}))
-	}
-
-	var fetchCountA, fetchCountB int32
-	serverA := makeServer(&fetchCountA)
-	defer serverA.Close()
-	serverB := makeServer(&fetchCountB)
-	defer serverB.Close()
+	// A real httptest.Server can't be used here: it only serves plain HTTP on 127.0.0.1, which
+	// getJWKSKeys now rejects via IsSSRFSafeURL. Mock the HTTP client instead, counting calls
+	// per URL directly in RunAndReturn (single-threaded here, so no atomics needed).
+	urlA, urlB := "https://jwks-cache-a.example.com/jwks", "https://jwks-cache-b.example.com/jwks" //nolint:gosec // test URIs, never dialed
+	var fetchCountA, fetchCountB int
+	mockHTTP := httpmock.NewHTTPClientInterfaceMock(suite.T())
+	mockHTTP.EXPECT().Get(urlA).RunAndReturn(func(string) (*http.Response, error) {
+		fetchCountA++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(jwksData))}, nil
+	}).Maybe()
+	mockHTTP.EXPECT().Get(urlB).RunAndReturn(func(string) (*http.Response, error) {
+		fetchCountB++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(jwksData))}, nil
+	}).Maybe()
+	suite.jwtService.httpClient = mockHTTP
 
 	token, _, genErr := suite.jwtService.GenerateJWT(context.Background(),
 		"test-subject", testIssuer, 3600, map[string]interface{}{"aud": testAudience}, TokenTypeJWT, "")
 	assert.Nil(suite.T(), genErr)
 
-	// 1. First call against serverA — cache miss, one fetch.
-	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, serverA.URL))
-	assert.Equal(suite.T(), int32(1), atomic.LoadInt32(&fetchCountA),
-		"first call to serverA should fetch JWKS once")
-	assert.Equal(suite.T(), int32(0), atomic.LoadInt32(&fetchCountB),
-		"serverB should not have been touched yet")
+	// 1. First call against urlA — cache miss, one fetch.
+	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, urlA))
+	assert.Equal(suite.T(), 1, fetchCountA, "first call to urlA should fetch JWKS once")
+	assert.Equal(suite.T(), 0, fetchCountB, "urlB should not have been touched yet")
 
-	// 2. Second call against serverA — cache hit, no additional fetch.
-	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, serverA.URL))
-	assert.Equal(suite.T(), int32(1), atomic.LoadInt32(&fetchCountA),
-		"second call to serverA should hit the cache, not re-fetch")
+	// 2. Second call against urlA — cache hit, no additional fetch.
+	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, urlA))
+	assert.Equal(suite.T(), 1, fetchCountA, "second call to urlA should hit the cache, not re-fetch")
 
-	// 3a. First call against serverB — must miss the cache (different URL key) and
+	// 3a. First call against urlB — must miss the cache (different URL key) and
 	//     fetch independently. A buggy cache that returns any entry would skip this
 	//     fetch and the count would stay at 0.
-	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, serverB.URL))
-	assert.Equal(suite.T(), int32(1), atomic.LoadInt32(&fetchCountB),
-		"first call to serverB should fetch independently (cache is keyed by URL)")
-	assert.Equal(suite.T(), int32(1), atomic.LoadInt32(&fetchCountA),
-		"fetching serverB must not provoke a re-fetch of serverA")
+	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, urlB))
+	assert.Equal(suite.T(), 1, fetchCountB, "first call to urlB should fetch independently (cache is keyed by URL)")
+	assert.Equal(suite.T(), 1, fetchCountA, "fetching urlB must not provoke a re-fetch of urlA")
 
-	// 3b. Going back to serverA must STILL be a cache hit — the serverB fetch must
-	//     not have evicted or overwritten serverA's cache entry.
-	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, serverA.URL))
-	assert.Equal(suite.T(), int32(1), atomic.LoadInt32(&fetchCountA),
-		"serverA's cache entry must survive an unrelated fetch of serverB")
+	// 3b. Going back to urlA must STILL be a cache hit — the urlB fetch must
+	//     not have evicted or overwritten urlA's cache entry.
+	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, urlA))
+	assert.Equal(suite.T(), 1, fetchCountA, "urlA's cache entry must survive an unrelated fetch of urlB")
 }
 
 func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSInvalidToken() {
-	testServer := suite.mockJWKSServer()
-	defer testServer.Close()
+	jwksURL := suite.mockJWKSServer()
 
 	testCases := []struct {
 		name  string
@@ -1700,15 +1684,14 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSInvalidToken() {
 
 	for _, tc := range testCases {
 		suite.T().Run(tc.name, func(t *testing.T) {
-			err := suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), tc.token, testServer.URL)
+			err := suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), tc.token, jwksURL)
 			assert.NotNil(t, err)
 		})
 	}
 }
 
 func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSKeyIDNotFound() {
-	testServer := suite.mockJWKSServer()
-	defer testServer.Close()
+	jwksURL := suite.mockJWKSServer()
 
 	nonExistentKidJWT := suite.createJWTWithCustomHeader(map[string]interface{}{
 		"alg": "RS256",
@@ -1716,14 +1699,13 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSKeyIDNotFound() 
 		"kid": "non-existent-key-id",
 	})
 
-	err := suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), nonExistentKidJWT, testServer.URL)
+	err := suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), nonExistentKidJWT, jwksURL)
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), ErrorNoMatchingJWKFound, *err)
 }
 
 func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSNoKeyID() {
-	testServer := suite.mockJWKSServer()
-	defer testServer.Close()
+	jwksURL := suite.mockJWKSServer()
 
 	noKidJWT := suite.createJWTWithCustomHeader(map[string]interface{}{
 		"alg": "RS256",
@@ -1731,24 +1713,32 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSNoKeyID() {
 		// No kid field
 	})
 
-	err := suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), noKidJWT, testServer.URL)
+	err := suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), noKidJWT, jwksURL)
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), ErrorDecodingJWTHeader, *err)
 }
 
 func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSHTTPErrors() {
 	testCases := []struct {
-		name          string
-		setupServer   func() *httptest.Server
+		name string
+		// setupServer configures suite.jwtService's mocked HTTP client for this case and
+		// returns the JWKS URL to fetch. A real httptest.Server can't be used here: it only
+		// serves plain HTTP on 127.0.0.1, which getJWKSKeys now rejects via IsSSRFSafeURL.
+		setupServer   func() string
 		setupToken    func() string
 		expectedError tidcommon.ServiceError
 	}{
 		{
 			name: "HTTPError404",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					w.WriteHeader(http.StatusNotFound)
-				}))
+			setupServer: func() string {
+				const url = "https://jwks-404.example.com/jwks" //nolint:gosec // test URI, never dialed
+				mockHTTP := httpmock.NewHTTPClientInterfaceMock(suite.T())
+				mockHTTP.EXPECT().Get(url).Return(&http.Response{
+					StatusCode: http.StatusNotFound,
+					Body:       io.NopCloser(strings.NewReader("")),
+				}, nil)
+				suite.jwtService.httpClient = mockHTTP
+				return url
 			},
 			setupToken: func() string {
 				token, _, err := suite.jwtService.GenerateJWT(context.Background(),
@@ -1760,14 +1750,15 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSHTTPErrors() {
 		},
 		{
 			name: "InvalidJSONResponse",
-			setupServer: func() *httptest.Server {
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusOK)
-					if _, err := w.Write([]byte("invalid json")); err != nil {
-						suite.T().Errorf("Failed to write response: %v", err)
-					}
-				}))
+			setupServer: func() string {
+				const url = "https://jwks-invalid-json.example.com/jwks" //nolint:gosec // test URI, never dialed
+				mockHTTP := httpmock.NewHTTPClientInterfaceMock(suite.T())
+				mockHTTP.EXPECT().Get(url).Return(&http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader("invalid json")),
+				}, nil)
+				suite.jwtService.httpClient = mockHTTP
+				return url
 			},
 			setupToken: func() string {
 				token, _, err := suite.jwtService.GenerateJWT(context.Background(),
@@ -1779,7 +1770,8 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSHTTPErrors() {
 		},
 		{
 			name: "JWKSWithoutMatchingKid",
-			setupServer: func() *httptest.Server {
+			setupServer: func() string {
+				const url = "https://jwks-wrong-kid.example.com/jwks" //nolint:gosec // test URI, never dialed
 				// Create JWKS with different kid
 				jwks := map[string]interface{}{
 					"keys": []interface{}{
@@ -1792,13 +1784,13 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSHTTPErrors() {
 					},
 				}
 				jwksData, _ := json.Marshal(jwks)
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusOK)
-					if _, err := w.Write(jwksData); err != nil {
-						suite.T().Errorf("Failed to write response: %v", err)
-					}
-				}))
+				mockHTTP := httpmock.NewHTTPClientInterfaceMock(suite.T())
+				mockHTTP.EXPECT().Get(url).Return(&http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(string(jwksData))),
+				}, nil)
+				suite.jwtService.httpClient = mockHTTP
+				return url
 			},
 			setupToken: func() string {
 				token, _, err := suite.jwtService.GenerateJWT(context.Background(),
@@ -1810,7 +1802,8 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSHTTPErrors() {
 		},
 		{
 			name: "InvalidJWKFormat",
-			setupServer: func() *httptest.Server {
+			setupServer: func() string {
+				const url = "https://jwks-invalid-jwk.example.com/jwks" //nolint:gosec // test URI, never dialed
 				// Create JWKS with invalid JWK (missing n and e)
 				jwks := map[string]interface{}{
 					"keys": []interface{}{
@@ -1822,13 +1815,13 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSHTTPErrors() {
 					},
 				}
 				jwksData, _ := json.Marshal(jwks)
-				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusOK)
-					if _, err := w.Write(jwksData); err != nil {
-						suite.T().Errorf("Failed to write response: %v", err)
-					}
-				}))
+				mockHTTP := httpmock.NewHTTPClientInterfaceMock(suite.T())
+				mockHTTP.EXPECT().Get(url).Return(&http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(string(jwksData))),
+				}, nil)
+				suite.jwtService.httpClient = mockHTTP
+				return url
 			},
 			setupToken: func() string {
 				token, _, err := suite.jwtService.GenerateJWT(context.Background(),
@@ -1842,10 +1835,8 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSHTTPErrors() {
 			expectedError: ErrorInvalidTokenSignature,
 		},
 		{
-			name: "InvalidTokenSignature",
-			setupServer: func() *httptest.Server {
-				return suite.mockJWKSServer()
-			},
+			name:        "InvalidTokenSignature",
+			setupServer: func() string { return suite.mockJWKSServer() },
 			setupToken: func() string {
 				// Create a token with wrong signature
 				token := suite.createJWTWithCustomHeader(map[string]interface{}{
@@ -1864,12 +1855,10 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSHTTPErrors() {
 
 	for _, tc := range testCases {
 		suite.T().Run(tc.name, func(t *testing.T) {
-			testServer := tc.setupServer()
-			defer testServer.Close()
-
+			jwksURL := tc.setupServer()
 			token := tc.setupToken()
 
-			err := suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, testServer.URL)
+			err := suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, jwksURL)
 			assert.NotNil(t, err)
 			assert.Equal(t, tc.expectedError, *err)
 		})
@@ -1945,19 +1934,26 @@ func (suite *JWTServiceTestSuite) createMockJWKSData() string {
 	return string(jwksData)
 }
 
-// Helper method to mock a JWKS server
-func (suite *JWTServiceTestSuite) mockJWKSServer() *httptest.Server {
+// mockJWKSURL is the fixed HTTPS JWKS endpoint used by mockJWKSServer. JWKSCacheTTL defaults to 0
+// in these tests, so reusing the same URL across independent test cases never serves a stale cache
+// entry. It must be HTTPS and a non-IP-literal hostname to pass the SSRF check in getJWKSKeys.
+const mockJWKSURL = "https://mock-jwks.example.com/jwks" //nolint:gosec // test URI, never dialed
+
+// mockJWKSServer points suite.jwtService's HTTP client at a mocked JWKS response containing
+// suite.testPrivateKey's public key, and returns the URL to fetch it from. It replaces a real
+// httptest.Server (which can only serve plain HTTP on 127.0.0.1) because getJWKSKeys now rejects
+// non-HTTPS and loopback URLs via IsSSRFSafeURL before ever reaching the HTTP client.
+func (suite *JWTServiceTestSuite) mockJWKSServer() string {
 	jwksData := suite.createMockJWKSData()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		if _, err := fmt.Fprintln(w, jwksData); err != nil {
-			suite.T().Errorf("Failed to write JWKS response: %v", err)
-		}
-	}))
+	mockHTTP := httpmock.NewHTTPClientInterfaceMock(suite.T())
+	mockHTTP.EXPECT().Get(mockJWKSURL).Return(&http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(jwksData)),
+	}, nil).Maybe()
+	suite.jwtService.httpClient = mockHTTP
 
-	return server
+	return mockJWKSURL
 }
 
 // Helper method to create a JWT with custom claims and validity
