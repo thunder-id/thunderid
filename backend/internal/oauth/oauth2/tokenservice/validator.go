@@ -44,8 +44,14 @@ type TokenValidatorInterface interface {
 	// refresh token into an ID-JAG.
 	ValidateIDJAGSubjectToken(ctx context.Context, token string, oauthApp *providers.OAuthClient) (
 		*SubjectTokenClaims, error)
+<<<<<<< HEAD
 	// ValidateIDJAGAssertion validates an ID-JAG assertion presented on the jwt-bearer grant.
 	ValidateIDJAGAssertion(ctx context.Context, assertion string) (*IDJAGAssertionClaims, error)
+=======
+	// ValidateIDJAGAssertion validates an ID-JAG assertion presented on the jwt-bearer grant,
+	// binding it to the authenticated client via its client_id claim.
+	ValidateIDJAGAssertion(ctx context.Context, assertion, clientID string) (*IDJAGAssertionClaims, error)
+>>>>>>> abe9097b8 (Restrict introspect to access and refresh tokens)
 }
 
 // TokenValidator implements TokenValidatorInterface.
