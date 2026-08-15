@@ -245,6 +245,27 @@ describe('useGetFlowBuilderResources', () => {
     });
   });
 
+  describe('BASIC_FEDERATED Template Executor Action Fields', () => {
+    it('should define onFailure for BasicAuthExecutor and GoogleOIDCAuthExecutor task-execution steps', () => {
+      const {result} = renderHook(() => useGetFlowBuilderResources());
+
+      const {data} = result.current;
+      const basicFederatedTemplate = data.templates.find((template) => template.type === 'BASIC_FEDERATED');
+      expect(basicFederatedTemplate).toBeDefined();
+
+      const executorSteps = basicFederatedTemplate!.config.data.steps.filter(
+        (step) =>
+          step.type === 'TASK_EXECUTION' &&
+          ['CredentialsAuthExecutor', 'GoogleOIDCAuthExecutor'].includes(step.data?.action?.executor?.name ?? ''),
+      );
+      expect(executorSteps).toHaveLength(2);
+
+      executorSteps.forEach((step) => {
+        expect(step.data?.action).toHaveProperty('onFailure');
+      });
+    });
+  });
+
   describe('Consistency', () => {
     it('should return consistent data across multiple hook instances', () => {
       const {result: result1} = renderHook(() => useGetFlowBuilderResources());
