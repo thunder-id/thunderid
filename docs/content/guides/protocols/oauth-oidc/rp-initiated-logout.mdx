@@ -31,7 +31,7 @@ Whether the user is asked to confirm depends on the sign-out flow. <ProductName 
 | Endpoint | `GET`/`POST /oauth2/logout` |
 | Discovery | Advertised as `end_session_endpoint` in `/.well-known/openid-configuration`, see [Server Metadata](../server-metadata) |
 | Session termination | Runs the application's sign-out flow, which ends the SSO session and clears the per-flow cookie, see [Sessions and Single Sign-On](../../../../key-concepts/authentication/sessions) |
-| `id_token_hint` | Optional. When supplied, its signature and issuer are verified; expiry is **not** enforced, so an expired ID token is accepted. When omitted, the request is flagged as needing confirmation, which a sign-out flow can branch on |
+| `id_token_hint` | Optional. When supplied, it must be an ID token, and its signature and issuer are verified; expiry is **not** enforced, so an expired ID token is accepted. Another token issued by <ProductName />, such as an access token or a refresh token, is rejected. When omitted, the request is flagged as needing confirmation, which a sign-out flow can branch on |
 | Redirect validation | `post_logout_redirect_uri` must match one of the client's registered `postLogoutRedirectUris` exactly. Registered wildcard patterns also match when the server sets `allow_wildcard_redirect_uri` to `true`, which is off by default |
 | Sign-out flow | Resolved in order: the flow the application pins, then the default on its organization unit, then the server-level default |
 
@@ -59,6 +59,7 @@ The endpoint accepts the same request as either an HTTP `GET` or an HTTP `POST`,
 
 - `post_logout_redirect_uri` does not exactly match a URI registered on the client.
 - `id_token_hint` is present but was not signed by <ProductName /> or carries a different issuer.
+- `id_token_hint` is present but is not an ID token, for example an access token or a refresh token.
 - both `id_token_hint` and `client_id` are present and identify different clients.
 - neither `id_token_hint` nor `client_id` is supplied.
 - the client id, whether supplied as `client_id` or derived from `id_token_hint`, does not resolve to a registered client.

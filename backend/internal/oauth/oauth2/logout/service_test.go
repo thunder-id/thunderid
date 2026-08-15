@@ -16,6 +16,7 @@ import (
 	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
@@ -309,6 +310,20 @@ func makeIDTokenMultiAud(iss string, aud []string, azp string) string {
 		enc(map[string]interface{}{"iss": iss, "aud": aud, "azp": azp}) + ".sig"
 }
 
+// makeTokenWithHeader builds an unsigned JWT carrying the given typ header (omitted when empty) and
+// claims, so the tests can present token shapes other than an ID token as id_token_hint.
+func makeTokenWithHeader(typ string, claims map[string]interface{}) string {
+	enc := func(v interface{}) string {
+		b, _ := json.Marshal(v)
+		return base64.RawURLEncoding.EncodeToString(b)
+	}
+	header := map[string]string{"alg": "RS256"}
+	if typ != "" {
+		header["typ"] = typ
+	}
+	return enc(header) + "." + enc(claims) + ".sig"
+}
+
 func (suite *LogoutServiceTestSuite) TestResolve_ClientIDWithRedirectWithoutIDTokenHint() {
 	svc, _, actor := suite.newService()
 	actor.EXPECT().GetOAuthClientByClientID(mock.Anything, "client-x").
@@ -452,6 +467,65 @@ func (suite *LogoutServiceTestSuite) TestResolve_IDTokenHintUndecodablePayload()
 	svc, jwtSvc, _ := suite.newService()
 	// Signature verification passes (mocked), but the payload segment is not valid base64url JSON.
 	token := "header.@@@notbase64@@@.sig"
+	jwtSvc.EXPECT().VerifyJWTSignature(mock.Anything, token).Return(nil)
+
+	_, err := svc.Resolve(context.Background(), LogoutRequest{IDTokenHint: token})
+
+	suite.Require().ErrorIs(err, errInvalidIDTokenHint)
+}
+
+// An access token satisfies the signature, issuer and audience checks (aud falls back to the client
+// id when no defaultAudience is configured), so only the typ header separates it from an ID token.
+func (suite *LogoutServiceTestSuite) TestResolve_IDTokenHintRejectsAccessToken() {
+	svc, jwtSvc, _ := suite.newService()
+	token := makeTokenWithHeader(jwt.TokenTypeAccessToken, map[string]interface{}{
+		"iss": testIssuer, "aud": "client-x", "client_id": "client-x",
+	})
+	jwtSvc.EXPECT().VerifyJWTSignature(mock.Anything, token).Return(nil)
+
+	_, err := svc.Resolve(context.Background(), LogoutRequest{IDTokenHint: token})
+
+	suite.Require().ErrorIs(err, errInvalidIDTokenHint)
+}
+
+func (suite *LogoutServiceTestSuite) TestResolve_IDTokenHintRejectsIDJAGAssertion() {
+	svc, jwtSvc, _ := suite.newService()
+	token := makeTokenWithHeader(jwt.TokenTypeIDJAG, map[string]interface{}{
+		"iss": testIssuer, "aud": "client-x",
+	})
+	jwtSvc.EXPECT().VerifyJWTSignature(mock.Anything, token).Return(nil)
+
+	_, err := svc.Resolve(context.Background(), LogoutRequest{IDTokenHint: token})
+
+	suite.Require().ErrorIs(err, errInvalidIDTokenHint)
+}
+
+// A refresh token carries the ID token typ, so the access_token_sub claim is what separates it.
+func (suite *LogoutServiceTestSuite) TestResolve_IDTokenHintRejectsRefreshToken() {
+	svc, jwtSvc, _ := suite.newService()
+	token := makeTokenWithHeader(jwt.TokenTypeJWT, map[string]interface{}{
+		"iss": testIssuer, "aud": "client-x", "sub": "client-x", "access_token_sub": "user-1",
+	})
+	jwtSvc.EXPECT().VerifyJWTSignature(mock.Anything, token).Return(nil)
+
+	_, err := svc.Resolve(context.Background(), LogoutRequest{IDTokenHint: token})
+
+	suite.Require().ErrorIs(err, errInvalidIDTokenHint)
+}
+
+func (suite *LogoutServiceTestSuite) TestResolve_IDTokenHintRejectsMissingTyp() {
+	svc, jwtSvc, _ := suite.newService()
+	token := makeTokenWithHeader("", map[string]interface{}{"iss": testIssuer, "aud": "client-x"})
+	jwtSvc.EXPECT().VerifyJWTSignature(mock.Anything, token).Return(nil)
+
+	_, err := svc.Resolve(context.Background(), LogoutRequest{IDTokenHint: token})
+
+	suite.Require().ErrorIs(err, errInvalidIDTokenHint)
+}
+
+func (suite *LogoutServiceTestSuite) TestResolve_IDTokenHintRejectsUndecodableHeader() {
+	svc, jwtSvc, _ := suite.newService()
+	token := "@@@notbase64@@@.payload.sig"
 	jwtSvc.EXPECT().VerifyJWTSignature(mock.Anything, token).Return(nil)
 
 	_, err := svc.Resolve(context.Background(), LogoutRequest{IDTokenHint: token})

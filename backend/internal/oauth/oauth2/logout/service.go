@@ -221,15 +221,34 @@ func (s *logoutService) Resolve(ctx context.Context, req LogoutRequest) (*Logout
 	}, nil
 }
 
-// clientIDFromIDTokenHint verifies the id_token_hint was issued by this server (signature + issuer)
-// and returns its audience (the client id). The token's expiry is intentionally not enforced: per
-// OIDC RP-Initiated Logout, id_token_hint may be an expired ID token.
+// clientIDFromIDTokenHint verifies the id_token_hint was issued by this server (signature + issuer),
+// is an ID token rather than some other server-signed JWT, and returns its audience (the client id).
+// The token's expiry is intentionally not enforced: per OIDC RP-Initiated Logout, id_token_hint may
+// be an expired ID token.
+//
+// The token type has to be checked because an access token otherwise satisfies both the signature and
+// the issuer check, and resolves a client from its aud claim whenever the client configures no
+// defaultAudience (ResolveDefaultAudience falls back to the client id). That would let any holder of
+// an access token for the client suppress the End-User sign-out confirmation. The identification
+// mirrors ValidateIDJAGSubjectToken, which makes the same "must be an ID token" decision: the ID
+// token typ header, which access tokens ("at+jwt", RFC 9068) and ID-JAG assertions
+// ("oauth-id-jag+jwt") do not carry, plus the access_token_sub claim that marks a refresh token.
 func (s *logoutService) clientIDFromIDTokenHint(ctx context.Context, idTokenHint string) (string, error) {
 	if svcErr := s.jwtService.VerifyJWTSignature(ctx, idTokenHint); svcErr != nil {
 		return "", errInvalidIDTokenHint
 	}
+	header, err := jwt.DecodeJWTHeader(idTokenHint)
+	if err != nil {
+		return "", errInvalidIDTokenHint
+	}
+	if typ, _ := header["typ"].(string); typ != jwt.TokenTypeJWT {
+		return "", errInvalidIDTokenHint
+	}
 	payload, err := jwt.DecodeJWTPayload(idTokenHint)
 	if err != nil {
+		return "", errInvalidIDTokenHint
+	}
+	if _, isRefreshToken := payload["access_token_sub"]; isRefreshToken {
 		return "", errInvalidIDTokenHint
 	}
 	if iss, _ := payload[constants.ClaimIss].(string); iss != s.issuer {

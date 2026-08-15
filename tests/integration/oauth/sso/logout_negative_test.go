@@ -183,6 +183,33 @@ func (ts *SSOLogoutTestSuite) TestLogoutRejectsIDTokenHintWithForeignIssuer() {
 	ts.Equal(errInvalidIDTokenHint, strings.TrimSpace(body))
 }
 
+// TestLogoutRejectsAccessTokenAsIDTokenHint isolates the token type check. The access token from a
+// real login is signed by this server and carries the correct issuer, and its aud falls back to the
+// client id because the application configures no defaultAudience, so it satisfies every other check
+// the endpoint makes. Supplying any hint suppresses the End-User sign-out confirmation, so accepting
+// a non ID token would hand that suppression to any holder of an access token for the client. The
+// id_token from the same login is the control: it is still accepted, which proves the rejection is
+// about the token type rather than the session, the client or the issuer.
+func (ts *SSOLogoutTestSuite) TestLogoutRejectsAccessTokenAsIDTokenHint() {
+	tokens := ts.loginTokens(ts.newSessionClient(), logoutUsername, "logout_hint_type_state_1")
+	ts.Require().NotEmpty(tokens.AccessToken, "the login should issue an access token")
+	ts.Require().NotEmpty(tokens.IDToken, "the login should issue an id_token")
+
+	controlParams := url.Values{}
+	controlParams.Set("id_token_hint", tokens.IDToken)
+	controlStatus, controlLocation, controlBody := ts.rawLogout(ts.newSessionClient(), http.MethodPost, controlParams)
+	ts.Require().Equal(http.StatusFound, controlStatus,
+		"the id_token from the same login proves the hint is otherwise acceptable: %s", strings.TrimSpace(controlBody))
+	ts.Require().NotEmpty(controlLocation, "the control hint should redirect to the gate sign-out page")
+
+	params := url.Values{}
+	params.Set("id_token_hint", tokens.AccessToken)
+
+	status, _, body := ts.rawLogout(ts.newSessionClient(), http.MethodPost, params)
+	ts.Equal(http.StatusBadRequest, status, "an access token must not be accepted as an id_token_hint")
+	ts.Equal(errInvalidIDTokenHint, strings.TrimSpace(body))
+}
+
 // TestLogoutRejectsRequestWithoutHintOrClientID checks the endpoint refuses a request that names no
 // client at all, rather than guessing one.
 func (ts *SSOLogoutTestSuite) TestLogoutRejectsRequestWithoutHintOrClientID() {
