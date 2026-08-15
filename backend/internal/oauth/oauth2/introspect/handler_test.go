@@ -117,7 +117,7 @@ func (s *TokenIntrospectionHandlerTestSuite) TestHandleIntrospect_IntrospectionE
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	// Setup the mock to return an error
-	s.introspectionServiceMock.On("IntrospectToken", mock.Anything, "valid-token", "").
+	s.introspectionServiceMock.On("IntrospectToken", mock.Anything, "valid-token", "", mock.Anything).
 		Return(nil, errors.New("introspection error"))
 
 	rr := httptest.NewRecorder()
@@ -151,7 +151,7 @@ func (s *TokenIntrospectionHandlerTestSuite) TestHandleIntrospect_Success_Active
 		Iss:       "https://example.com",
 		Jti:       "token-id-123",
 	}
-	s.introspectionServiceMock.On("IntrospectToken", mock.Anything, "valid-token", "access_token").
+	s.introspectionServiceMock.On("IntrospectToken", mock.Anything, "valid-token", "access_token", mock.Anything).
 		Return(activeResponse, nil)
 
 	rr := httptest.NewRecorder()
@@ -171,7 +171,7 @@ func (s *TokenIntrospectionHandlerTestSuite) TestHandleIntrospect_IntrospectionE
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	// Setup the mock to return an error
-	s.introspectionServiceMock.On("IntrospectToken", mock.Anything, "valid-token", "").
+	s.introspectionServiceMock.On("IntrospectToken", mock.Anything, "valid-token", "", mock.Anything).
 		Return(nil, errors.New("introspection error"))
 
 	rr := httptest.NewRecorder()
@@ -191,7 +191,8 @@ func (s *TokenIntrospectionHandlerTestSuite) TestHandleIntrospect_Success_Encode
 	activeResponse := &IntrospectResponse{
 		Active: true,
 	}
-	s.introspectionServiceMock.On("IntrospectToken", mock.Anything, "valid-token", "").Return(activeResponse, nil)
+	s.introspectionServiceMock.On("IntrospectToken", mock.Anything, "valid-token", "", mock.Anything).
+		Return(activeResponse, nil)
 
 	rr := httptest.NewRecorder()
 
@@ -210,7 +211,8 @@ func (s *TokenIntrospectionHandlerTestSuite) TestHandleIntrospect_Success_Inacti
 	inactiveResponse := &IntrospectResponse{
 		Active: false,
 	}
-	s.introspectionServiceMock.On("IntrospectToken", mock.Anything, "invalid-token", "").Return(inactiveResponse, nil)
+	s.introspectionServiceMock.On("IntrospectToken", mock.Anything, "invalid-token", "", mock.Anything).
+		Return(inactiveResponse, nil)
 
 	rr := httptest.NewRecorder()
 

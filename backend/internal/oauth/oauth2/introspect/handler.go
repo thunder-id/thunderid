@@ -6,6 +6,7 @@ package introspect
 import (
 	"net/http"
 
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -44,7 +45,14 @@ func (h *tokenIntrospectionHandler) HandleIntrospect(w http.ResponseWriter, r *h
 	// token_type_hint parameter is not supported due to non persistent tokens in the server
 	tokenTypeHint := r.FormValue(constants.RequestParamTokenTypeHint)
 
-	response, err := h.service.IntrospectToken(ctx, token, tokenTypeHint)
+	// ClientAuthMiddleware has already authenticated the caller; the client it resolved decides which
+	// tokens this request may introspect.
+	clientID := ""
+	if client := clientauth.GetOAuthClient(ctx); client != nil {
+		clientID = client.ClientID
+	}
+
+	response, err := h.service.IntrospectToken(ctx, token, tokenTypeHint, clientID)
 	if err != nil {
 		h.logger.Error(ctx, "Failed to introspect token", log.Error(err))
 		sysutils.WriteJSONError(ctx, w, constants.ErrorServerError,

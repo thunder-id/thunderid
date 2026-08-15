@@ -39,8 +39,8 @@ func (_m *TokenIntrospectionServiceInterfaceMock) EXPECT() *TokenIntrospectionSe
 }
 
 // IntrospectToken provides a mock function for the type TokenIntrospectionServiceInterfaceMock
-func (_mock *TokenIntrospectionServiceInterfaceMock) IntrospectToken(ctx context.Context, token string, tokenTypeHint string) (*introspect.IntrospectResponse, error) {
-	ret := _mock.Called(ctx, token, tokenTypeHint)
+func (_mock *TokenIntrospectionServiceInterfaceMock) IntrospectToken(ctx context.Context, token string, tokenTypeHint string, clientID string) (*introspect.IntrospectResponse, error) {
+	ret := _mock.Called(ctx, token, tokenTypeHint, clientID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for IntrospectToken")
@@ -48,18 +48,18 @@ func (_mock *TokenIntrospectionServiceInterfaceMock) IntrospectToken(ctx context
 
 	var r0 *introspect.IntrospectResponse
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*introspect.IntrospectResponse, error)); ok {
-		return returnFunc(ctx, token, tokenTypeHint)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) (*introspect.IntrospectResponse, error)); ok {
+		return returnFunc(ctx, token, tokenTypeHint, clientID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *introspect.IntrospectResponse); ok {
-		r0 = returnFunc(ctx, token, tokenTypeHint)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) *introspect.IntrospectResponse); ok {
+		r0 = returnFunc(ctx, token, tokenTypeHint, clientID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*introspect.IntrospectResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
-		r1 = returnFunc(ctx, token, tokenTypeHint)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string) error); ok {
+		r1 = returnFunc(ctx, token, tokenTypeHint, clientID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -75,11 +75,12 @@ type TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call struct {
 //   - ctx context.Context
 //   - token string
 //   - tokenTypeHint string
-func (_e *TokenIntrospectionServiceInterfaceMock_Expecter) IntrospectToken(ctx interface{}, token interface{}, tokenTypeHint interface{}) *TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call {
-	return &TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call{Call: _e.mock.On("IntrospectToken", ctx, token, tokenTypeHint)}
+//   - clientID string
+func (_e *TokenIntrospectionServiceInterfaceMock_Expecter) IntrospectToken(ctx interface{}, token interface{}, tokenTypeHint interface{}, clientID interface{}) *TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call {
+	return &TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call{Call: _e.mock.On("IntrospectToken", ctx, token, tokenTypeHint, clientID)}
 }
 
-func (_c *TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call) Run(run func(ctx context.Context, token string, tokenTypeHint string)) *TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call {
+func (_c *TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call) Run(run func(ctx context.Context, token string, tokenTypeHint string, clientID string)) *TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -93,10 +94,15 @@ func (_c *TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call) Run(run f
 		if args[2] != nil {
 			arg2 = args[2].(string)
 		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -107,7 +113,7 @@ func (_c *TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call) Return(in
 	return _c
 }
 
-func (_c *TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call) RunAndReturn(run func(ctx context.Context, token string, tokenTypeHint string) (*introspect.IntrospectResponse, error)) *TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call {
+func (_c *TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call) RunAndReturn(run func(ctx context.Context, token string, tokenTypeHint string, clientID string) (*introspect.IntrospectResponse, error)) *TokenIntrospectionServiceInterfaceMock_IntrospectToken_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -603,6 +603,44 @@ func (ts *IntrospectionTestSuite) TestIntrospect_RefreshToken_IsActive() {
 }
 
 //
+// Case 6b: a caller that is not a party to the token learns nothing about it.
+//
+
+// TestIntrospect_CrossClientAccessToken_IsInactive authenticates as a different confidential client
+// and introspects an access token issued to userClient. RFC 7662 section 2.1 requires the server to
+// decide whether the caller is authorized for the token, so the response must be
+// {"active": false} with none of the token's metadata attached, rather than the same payload the
+// owning client sees.
+func (ts *IntrospectionTestSuite) TestIntrospect_CrossClientAccessToken_IsInactive() {
+	owner := ts.introspectBasic(ts.userAccessToken, userClientID, userClientSecret)
+	ts.Require().Equalf(http.StatusOK, owner.StatusCode, "introspection body: %s", string(owner.Raw))
+	ts.Require().True(owner.active(), "the owning client must still see its own token as active")
+
+	res := ts.introspectBasic(ts.userAccessToken, ccClientID, ccClientSecret)
+
+	ts.Require().Equalf(http.StatusOK, res.StatusCode, "introspection body: %s", string(res.Raw))
+	ts.False(res.active(), "a client that is not a party to the token must not see it as active")
+	for _, claim := range []string{"scope", "client_id", "sub", "aud", "iss", "jti", "exp"} {
+		ts.NotContainsf(res.Body, claim, "an unauthorized caller must not receive the %q member", claim)
+	}
+}
+
+// TestIntrospect_CrossClientRefreshToken_IsInactive is the refresh token counterpart. A refresh token
+// carries no client_id claim and names its client in sub, so the ownership check has to read a
+// different claim for it than for an access token.
+func (ts *IntrospectionTestSuite) TestIntrospect_CrossClientRefreshToken_IsInactive() {
+	owner := ts.introspectBasic(ts.userRefreshToken, userClientID, userClientSecret)
+	ts.Require().Equalf(http.StatusOK, owner.StatusCode, "introspection body: %s", string(owner.Raw))
+	ts.Require().True(owner.active(), "the owning client must still see its own refresh token as active")
+
+	res := ts.introspectBasic(ts.userRefreshToken, ccClientID, ccClientSecret)
+
+	ts.Require().Equalf(http.StatusOK, res.StatusCode, "introspection body: %s", string(res.Raw))
+	ts.False(res.active(), "a refresh token must not be introspectable by another client")
+	ts.NotContains(res.Body, "sub", "an unauthorized caller must not receive the token subject")
+}
+
+//
 // Cases 7 and 8: token_type_hint is accepted and ignored.
 //
 
