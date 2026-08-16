@@ -32,3 +32,6 @@ sdks/overview   # linked from the SDKs overview nav, not a sidebar page
 use-cases/ai-agents/configure-it-yourself
 use-cases/ai-agents/identity-concepts
 use-cases/ai-agents/mcp-authorization
+# docs/oxlint-evaluation.md is intentionally not registered in a sidebar
+oxlint-evaluation
+
