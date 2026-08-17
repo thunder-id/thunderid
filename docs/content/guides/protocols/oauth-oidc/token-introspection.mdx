@@ -23,7 +23,7 @@ Use it when a resource server cannot or should not validate JWTs locally. For ex
 |---|---|
 | Endpoint | `POST /oauth2/introspect` |
 | Authentication | Required, same client authentication method as the token endpoint (see [Client Authentication Methods](../client-authentication-methods)) |
-| Who can call | Any registered client. Best practice: register the resource server as a confidential client and use its credentials |
+| Who can call | A client that is a party to the token. Any other authenticated client receives `{ "active": false }` (see [Who Can Introspect a Token](#who-can-introspect-a-token)) |
 | `token_type_hint` parameter | Accepted but not used internally: the server determines the token type itself |
 | Inactive token response | `{ "active": false }` with HTTP 200, never leaks reason |
 | Active token response | Standard claims (see below) |
@@ -49,6 +49,26 @@ When the token is DPoP-bound, the response also includes the `cnf.jkt` claim.
 
 </details>
 
+## Who Can Introspect a Token
+
+Client authentication tells <ProductName /> who is asking, and the caller then has to be a party to
+the token it presents. A caller that is not gets `{ "active": false }`, the same answer an expired or
+unknown token produces, so the endpoint cannot be used to discover other clients' tokens.
+
+A caller is a party to the token when any of the following holds.
+
+| The caller | Matches |
+|---|---|
+| The client the access token was issued to | the token's `client_id` claim |
+| The client a refresh token was issued to | the token's `sub` claim, since refresh tokens carry no `client_id` |
+| A resource server the token is addressed to | an entry in the token's `aud` claim |
+
+For the audience case, the client id the resource server authenticates with has to equal the audience
+value carried by the token. That is the resource server `identifier` for a token bound to a resource
+server, and the requesting client's own `defaultAudience` (falling back to its client id) otherwise.
+Register the resource server's client id to match its identifier, or set `defaultAudience`
+accordingly, so its introspection calls resolve.
+
 ## Introspection or Local JWT Validation
 
 <ProductName /> issues JWT access tokens, so resource servers have two valid options:
@@ -62,7 +82,7 @@ A common pattern is to verify the JWT locally on most calls and call introspecti
 
 ## Try It in <ProductName />
 
-Introspection is always available. To call it, register a client with permission to introspect, typically the resource server itself.
+Introspection is always available. To call it, register a client for the caller, typically the resource server itself, and make sure it is a party to the tokens it will introspect (see [Who Can Introspect a Token](#who-can-introspect-a-token)).
 
 ### Register an Introspection Client
 
