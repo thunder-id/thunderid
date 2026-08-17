@@ -42,6 +42,13 @@ func TestValidateSCIMUserRequest(t *testing.T) {
 			wantErrCode: ErrorMissingCustomSchema.Code,
 		},
 		{
+			name:         "CoreOnly_NoThunderIDURN_ParsesWithEmptyUserType",
+			body:         []byte(`{"schemas":["` + SCIMCoreUserSchemaURN + `"],"userName":"alice"}`),
+			wantErrCode:  "",
+			wantUserType: "",
+			wantExtURN:   "",
+		},
+		{
 			name: "MultipleThunderIDURNs",
 			body: []byte(`{` +
 				`"schemas":["urn:thunderid:params:scim:schemas:employee:2.0:User",` +
@@ -98,6 +105,12 @@ func TestValidateSCIMUserRequest(t *testing.T) {
 			name:        "CoreAttrsPresent_CoreUserSchemaMissing",
 			body:        []byte(`{"schemas":["` + validURN + `"],"` + validURN + `":{}, "userName":"alice"}`),
 			wantErrCode: ErrorMissingCoreUserSchema.Code,
+		},
+		{
+			name: "UndeclaredThunderIDExtensionKey_NoThunderIDURNInSchemas",
+			body: []byte(`{"schemas":["` + SCIMCoreUserSchemaURN + `"],` +
+				`"` + validURN + `":{"department":"engineering"},"userName":"alice"}`),
+			wantErrCode: ErrorUndeclaredCustomSchemaObject.Code,
 		},
 	}
 

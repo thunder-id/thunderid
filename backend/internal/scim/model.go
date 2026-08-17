@@ -52,6 +52,15 @@ type SCIMMeta struct {
 	Version      string `json:"version,omitempty"`
 }
 
+// SCIMPaginationConfig captures pagination capability flags per RFC 9865.
+type SCIMPaginationConfig struct {
+	Cursor                  bool   `json:"cursor"`
+	Index                   bool   `json:"index"`
+	DefaultPaginationMethod string `json:"defaultPaginationMethod,omitempty"`
+	DefaultPageSize         int    `json:"defaultPageSize,omitempty"`
+	MaxPageSize             int    `json:"maxPageSize,omitempty"`
+}
+
 // SCIMServiceProviderConfig is the response body for GET /scim/v2/ServiceProviderConfig.
 type SCIMServiceProviderConfig struct {
 	Schemas               []string                   `json:"schemas"`
@@ -61,6 +70,7 @@ type SCIMServiceProviderConfig struct {
 	ChangePassword        SCIMSupportedFeature       `json:"changePassword"`
 	Sort                  SCIMSupportedFeature       `json:"sort"`
 	ETag                  SCIMSupportedFeature       `json:"etag"`
+	Pagination            SCIMPaginationConfig       `json:"pagination"`
 	AuthenticationSchemes []SCIMAuthenticationScheme `json:"authenticationSchemes"`
 	Meta                  SCIMMeta                   `json:"meta"`
 }

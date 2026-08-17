@@ -492,6 +492,22 @@ var (
 			DefaultValue: "The request does not carry a valid authenticated subject",
 		},
 	}
+	// ErrorUndeclaredCustomSchemaObject is returned when the request body
+	// contains a ThunderID extension object key that is not declared in
+	// "schemas".
+	ErrorUndeclaredCustomSchemaObject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1033",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.undeclared_custom_schema_object",
+			DefaultValue: "Undeclared custom schema object",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.scim.undeclared_custom_schema_object_description",
+			DefaultValue: "The request body includes a ThunderID extension object whose schema URN " +
+				"is not declared in the schemas array",
+		},
+	}
 )
 
 // newMissingRequiredAttributesError builds a SCIM-1018 (schema validation failed)

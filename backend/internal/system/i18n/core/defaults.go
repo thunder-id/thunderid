@@ -1064,6 +1064,8 @@ var defaultMessages = map[string]string{
 	"error.scim.sort_not_supported_description": "Sorting via sortBy or sortOrder is not supported in this implementation",
 	"error.scim.unauthenticated": "Unauthenticated",
 	"error.scim.unauthenticated_description": "The request does not carry a valid authenticated subject",
+	"error.scim.undeclared_custom_schema_object": "Undeclared custom schema object",
+	"error.scim.undeclared_custom_schema_object_description": "The request body includes a ThunderID extension object whose schema URN is not declared in the schemas array",
 	"error.scim.uniqueness_conflict": "Uniqueness conflict",
 	"error.scim.uniqueness_conflict_description": "A user with the same unique attribute value already exists",
 	"error.scim.unknown_user_type": "Unknown user type",
