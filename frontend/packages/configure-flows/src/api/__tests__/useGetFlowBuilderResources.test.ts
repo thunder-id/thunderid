@@ -246,7 +246,7 @@ describe('useGetFlowBuilderResources', () => {
   });
 
   describe('BASIC_FEDERATED Template Executor Action Fields', () => {
-    it('should define onFailure for BasicAuthExecutor and GoogleOIDCAuthExecutor task-execution steps', () => {
+    it('should define onFailure for CredentialsAuthExecutor and GoogleOIDCAuthExecutor task-execution steps', () => {
       const {result} = renderHook(() => useGetFlowBuilderResources());
 
       const {data} = result.current;
@@ -259,9 +259,13 @@ describe('useGetFlowBuilderResources', () => {
           ['CredentialsAuthExecutor', 'GoogleOIDCAuthExecutor'].includes(step.data?.action?.executor?.name ?? ''),
       );
       expect(executorSteps).toHaveLength(2);
+      expect(executorSteps.map((step) => step.data?.action?.executor?.name).sort()).toEqual([
+        'CredentialsAuthExecutor',
+        'GoogleOIDCAuthExecutor',
+      ]);
 
       executorSteps.forEach((step) => {
-        expect(step.data?.action).toHaveProperty('onFailure');
+        expect(step.data?.action).toHaveProperty('onFailure', '');
       });
     });
   });
