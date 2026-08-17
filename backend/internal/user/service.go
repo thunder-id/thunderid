@@ -502,6 +502,7 @@ func (us *userService) createUser(
 	// A new user has no verified attributes: the entity service drops them on create.
 	user.VerifiedAttributes = map[string]providers.VerifiedAttribute{}
 	us.captureSubmittedCredentials(ctx, user, submitted)
+	applyEntityTimestamps(user, created)
 
 	logger.Debug(ctx, "Successfully created user", log.MaskedString(log.LoggerKeyUserID, user.ID))
 	return user, nil
@@ -938,6 +939,7 @@ func (us *userService) updateUser(
 	user.Status = &access.Status
 	user.LastLoginAt = access.LastLoginAt
 	user.VerifiedAttributes = us.verification.GetVerifiedAttributes(ctx, *updated)
+	applyEntityTimestamps(user, updated)
 	logger.Debug(ctx, "Successfully updated user", log.MaskedString(log.LoggerKeyUserID, userID))
 	return user, nil
 }

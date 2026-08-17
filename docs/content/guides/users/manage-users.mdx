@@ -66,6 +66,8 @@ If the user type schema changed since the user was last saved, saving the user r
 
 Saving a different value for a verified email address or mobile number, or removing it, clears its verification. Changing the user type clears every verification the user has.
 
+User API responses carry two read-only timestamps, `createdAt` and `updatedAt`, as RFC 3339 values in UTC. `updatedAt` moves whenever the user record is written, such as an attribute, credential or organization unit change. Suspending, unlocking or signing in does not move it, because access state is stored apart from the user record. Declarative users have no stored record, so their responses omit both fields. The fields are also omitted from listings that return identifiers only.
+
 ### Update User Credentials
 
 Credential fields (such as passwords) are write-only and cannot be viewed. To set new credential values for a user:

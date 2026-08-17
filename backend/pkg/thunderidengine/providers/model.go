@@ -819,6 +819,9 @@ type User struct {
 	Status      *AccessStatusReport `json:"status,omitempty"`
 	LastLoginAt string              `json:"lastLoginAt,omitempty"`
 	IsOwnedByOU *bool               `json:"isOwnedByOU,omitempty"`
+	// CreatedAt and UpdatedAt are store-owned RFC 3339 UTC strings, read-only on the API.
+	CreatedAt string `json:"createdAt,omitempty"`
+	UpdatedAt string `json:"updatedAt,omitempty"`
 	// LinkedAccount, set on create, records the user's linked account in the same write.
 	LinkedAccount *LinkedAccount `json:"-"`
 	// VerifiedAttributes maps each verified contact attribute to when it was verified.
@@ -1037,6 +1040,9 @@ type Entity struct {
 	// Display is the value of the entity type's display attribute, falling back to the entity ID.
 	// It is populated only by callers that resolve it, such as the actor provider for agents.
 	Display string `json:"display,omitempty"`
+	// CreatedAt and UpdatedAt are set by the store; declarative entities have none.
+	CreatedAt time.Time `json:"createdAt,omitzero"`
+	UpdatedAt time.Time `json:"updatedAt,omitzero"`
 }
 
 // EntityGroup represents a group with basic information for entity group membership queries.
