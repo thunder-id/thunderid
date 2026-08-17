@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import MDXComponents from '@theme-original/MDXComponents';
+import ResponsiveTable from './ResponsiveTable';
 import {AndroidLogo, FlutterLogo} from '@thunderid/components';
 import {
   Box,
@@ -94,6 +95,7 @@ import {
 
 export default {
   ...MDXComponents,
+  table: ResponsiveTable,
   Box,
   Card,
   CardContent,
