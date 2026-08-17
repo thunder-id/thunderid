@@ -145,3 +145,10 @@ backend/cmd/server/bootstrap/03-dev-server-configurations.yaml
 
 # Development internals guide (not intended for commit)
 THUNDERID_INTERNALS_GUIDE.md
+
+# Docs gap scan artifacts (generated in CI, never committed)
+docs-scan-inventory.md
+docs-gap-report.md
+docs-gap-metrics.json
+docs-demand-signals.md
+/prev/
