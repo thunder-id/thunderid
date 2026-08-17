@@ -64,6 +64,8 @@ paths:
                       contactPreferences:
                         - email
                         - sms
+                    createdAt: "2026-08-17T09:12:03Z"
+                    updatedAt: "2026-08-17T10:44:51Z"
                   - id: "039bda67-a80d-4b7b-ac0f-36db85332089"
                     ouId: "456e8400-e29b-41d4-a716-446655440001"
                     type: "customer"
@@ -76,6 +78,8 @@ paths:
                         zip: "94301"
                       contactPreferences:
                         - sms
+                    createdAt: "2026-08-16T14:03:22Z"
+                    updatedAt: "2026-08-16T14:03:22Z"
                   - id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                     ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
                     type: "employee"
@@ -85,6 +89,8 @@ paths:
                       lastname: "Wu"
                       department: "Engineering"
                       email: "alice.wu@company.inc"
+                    createdAt: "2026-08-15T08:20:10Z"
+                    updatedAt: "2026-08-17T11:05:44Z"
                 links:
                   - href: "users?offset=3&limit=3"
                     rel: "next"
@@ -171,6 +177,8 @@ paths:
                   contactPreferences:
                     - email
                     - sms
+                createdAt: "2026-08-17T09:12:03Z"
+                updatedAt: "2026-08-17T09:12:03Z"
         "400":
           description: Bad request
           content:
@@ -303,6 +311,8 @@ paths:
                   contactPreferences:
                     - email
                     - sms
+                createdAt: "2026-08-17T09:12:03Z"
+                updatedAt: "2026-08-17T10:44:51Z"
         "404":
           description: User not found
         "500":
@@ -357,6 +367,8 @@ paths:
                     zip: "94040"
                   contactPreferences:
                     - email
+                createdAt: "2026-08-17T09:12:03Z"
+                updatedAt: "2026-08-17T12:30:09Z"
         "400":
           description: Bad request
           content:
@@ -958,6 +970,8 @@ paths:
                   lastname: "Doe"
                   email: "john.doe@company.com"
                   department: "Engineering"
+                createdAt: "2026-08-17T09:12:03Z"
+                updatedAt: "2026-08-17T09:12:03Z"
         "400":
           description: Bad request
           content:
@@ -1090,6 +1104,8 @@ paths:
                   firstname: "Alice"
                   lastname: "Wu"
                   email: "alice.wu@company.inc"
+                createdAt: "2026-08-15T08:20:10Z"
+                updatedAt: "2026-08-17T11:05:44Z"
         "401":
           description: Unauthorized - missing or invalid authentication token
           content:
@@ -1166,6 +1182,8 @@ paths:
                   firstname: "Alice"
                   lastname: "Wu"
                   email: "alice.wu@company.io"
+                createdAt: "2026-08-15T08:20:10Z"
+                updatedAt: "2026-08-17T13:41:26Z"
         "400":
           description: Bad request
           content:
@@ -2057,6 +2075,18 @@ components:
           type: boolean
           readOnly: true
           description: "Whether the user is declarative and cannot be modified or deleted by clients."
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2026-08-17T09:12:03Z"
+          description: "Timestamp when the user was created (RFC 3339, UTC). Omitted for declarative users."
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2026-08-17T10:44:51Z"
+          description: "Timestamp when the user was last modified (RFC 3339, UTC). Omitted for declarative users."
 
     Link:
       type: object

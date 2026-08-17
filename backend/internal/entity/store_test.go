@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -16,6 +17,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+)
+
+var (
+	testCreatedAt = time.Date(2026, 8, 17, 9, 12, 3, 0, time.UTC)
+	testUpdatedAt = time.Date(2026, 8, 17, 10, 44, 51, 0, time.UTC)
 )
 
 type DBStoreTestSuite struct {
@@ -82,6 +88,8 @@ func dbEntityRow() map[string]interface{} {
 		"state":             "ACTIVE",
 		"attributes":        `{"email":"a@b.com"}`,
 		"system_attributes": nil,
+		"created_at":        testCreatedAt,
+		"updated_at":        testUpdatedAt,
 	}
 }
 
@@ -682,6 +690,8 @@ func goodRow() map[string]interface{} {
 		"state":             "ACTIVE",
 		"attributes":        `{"email":"a@b.com"}`,
 		"system_attributes": `{"key":"val"}`,
+		"created_at":        testCreatedAt,
+		"updated_at":        testUpdatedAt,
 	}
 }
 
@@ -695,6 +705,39 @@ func (s *StoreHelpersTestSuite) TestBuildEntityFromResultRow_Success() {
 	s.Equal("ou-1", e.OUID)
 	s.NotNil(e.Attributes)
 	s.NotNil(e.SystemAttributes)
+	s.Equal(testCreatedAt, e.CreatedAt)
+	s.Equal(testUpdatedAt, e.UpdatedAt)
+}
+
+func (s *StoreHelpersTestSuite) TestBuildEntityFromResultRow_SQLiteTimestamps() {
+	row := goodRow()
+	row["created_at"] = "2026-08-17 09:12:03.123456"
+	row["updated_at"] = "2026-08-17 10:44:51"
+	e, err := buildEntityFromResultRow(row)
+	s.NoError(err)
+	s.Equal(time.Date(2026, 8, 17, 9, 12, 3, 123456000, time.UTC), e.CreatedAt)
+	s.Equal(testUpdatedAt, e.UpdatedAt)
+}
+
+func (s *StoreHelpersTestSuite) TestBuildEntityFromResultRow_MissingCreatedAt() {
+	row := goodRow()
+	delete(row, "created_at")
+	_, err := buildEntityFromResultRow(row)
+	s.Error(err)
+}
+
+func (s *StoreHelpersTestSuite) TestBuildEntityFromResultRow_NullUpdatedAt() {
+	row := goodRow()
+	row["updated_at"] = nil
+	_, err := buildEntityFromResultRow(row)
+	s.Error(err)
+}
+
+func (s *StoreHelpersTestSuite) TestBuildEntityFromResultRow_UnparseableTimestamp() {
+	row := goodRow()
+	row["created_at"] = "not-a-timestamp"
+	_, err := buildEntityFromResultRow(row)
+	s.Error(err)
 }
 
 func (s *StoreHelpersTestSuite) TestBuildEntityFromResultRow_AttributesAsBytes() {
@@ -704,6 +747,22 @@ func (s *StoreHelpersTestSuite) TestBuildEntityFromResultRow_AttributesAsBytes()
 	e, err := buildEntityFromResultRow(row)
 	s.NoError(err)
 	s.Equal("entity-1", e.ID)
+}
+
+func (s *StoreHelpersTestSuite) TestBuildEntityFromResultRow_NullAttributes() {
+	row := goodRow()
+	row["attributes"] = `null`
+	e, err := buildEntityFromResultRow(row)
+	s.NoError(err)
+	s.Nil(e.Attributes)
+}
+
+func (s *StoreHelpersTestSuite) TestBuildEntityFromResultRow_EmptyAttributes() {
+	row := goodRow()
+	row["attributes"] = ``
+	e, err := buildEntityFromResultRow(row)
+	s.NoError(err)
+	s.Nil(e.Attributes)
 }
 
 func (s *StoreHelpersTestSuite) TestBuildEntityFromResultRow_MissingID() {

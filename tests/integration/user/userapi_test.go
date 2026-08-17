@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
@@ -893,4 +894,91 @@ func deleteGroup(groupID string) error {
 	}
 
 	return nil
+}
+
+// TestUserTimestamps verifies createdAt/updatedAt are returned on write and read paths,
+// persist across reads, and that updatedAt advances on update while createdAt stays fixed.
+func (ts *UserAPITestSuite) TestUserTimestamps() {
+	payload := testutils.User{
+		OUID:       testOUID,
+		Type:       testUser.Type,
+		Attributes: json.RawMessage(`{"age": 41, "roles": ["viewer"]}`),
+	}
+	body, err := json.Marshal(payload)
+	ts.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/users", bytes.NewReader(body))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	var created testutils.User
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&created))
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusCreated, resp.StatusCode)
+	ts.Require().NotEmpty(created.ID)
+
+	defer func() {
+		if err := deleteUser(created.ID); err != nil {
+			ts.T().Logf("Failed to delete timestamp test user: %v", err)
+		}
+	}()
+
+	createdAt := parseTimestamp(ts, created.CreatedAt, "createdAt on create")
+	updatedAt := parseTimestamp(ts, created.UpdatedAt, "updatedAt on create")
+	ts.Require().False(updatedAt.Before(createdAt), "updatedAt must not precede createdAt")
+
+	fetched := getUser(ts, created.ID)
+	ts.Require().Equal(created.CreatedAt, fetched.CreatedAt)
+	ts.Require().Equal(created.UpdatedAt, fetched.UpdatedAt)
+
+	update := testutils.User{
+		OUID:       testOUID,
+		Type:       testUser.Type,
+		Attributes: json.RawMessage(`{"age": 42, "roles": ["admin"]}`),
+	}
+	updateBody, err := json.Marshal(update)
+	ts.Require().NoError(err)
+
+	updateReq, err := http.NewRequest(http.MethodPut,
+		testServerURL+"/users/"+created.ID, bytes.NewReader(updateBody))
+	ts.Require().NoError(err)
+	updateReq.Header.Set("Content-Type", "application/json")
+
+	updateResp, err := testutils.GetHTTPClient().Do(updateReq)
+	ts.Require().NoError(err)
+	var updated testutils.User
+	ts.Require().NoError(json.NewDecoder(updateResp.Body).Decode(&updated))
+	updateResp.Body.Close()
+	ts.Require().Equal(http.StatusOK, updateResp.StatusCode)
+
+	ts.Require().Equal(created.CreatedAt, updated.CreatedAt, "createdAt must not change on update")
+	newUpdatedAt := parseTimestamp(ts, updated.UpdatedAt, "updatedAt on update")
+	ts.Require().False(newUpdatedAt.Before(updatedAt), "updatedAt must advance on update")
+
+	refetched := getUser(ts, created.ID)
+	ts.Require().Equal(updated.CreatedAt, refetched.CreatedAt)
+	ts.Require().Equal(updated.UpdatedAt, refetched.UpdatedAt)
+}
+
+func parseTimestamp(ts *UserAPITestSuite, value, field string) time.Time {
+	ts.Require().NotEmpty(value, "%s must not be empty", field)
+	parsed, err := time.Parse(time.RFC3339, value)
+	ts.Require().NoError(err, "%s must be RFC 3339", field)
+	return parsed
+}
+
+func getUser(ts *UserAPITestSuite, userID string) testutils.User {
+	req, err := http.NewRequest(http.MethodGet, testServerURL+"/users/"+userID, nil)
+	ts.Require().NoError(err)
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var user testutils.User
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&user))
+	return user
 }

@@ -15,6 +15,7 @@ import (
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -843,16 +844,31 @@ func buildEntityFromResultRow(row map[string]interface{}) (providers.Entity, err
 		return providers.Entity{}, fmt.Errorf("failed to parse attributes as string")
 	}
 
-	entity := providers.Entity{
-		ID:       entityID,
-		Category: providers.EntityCategory(category),
-		Type:     entityType,
-		State:    providers.EntityState(state),
-		OUID:     ouID,
+	createdAt, err := sysutils.ParseDBTimeField(row["created_at"], "created_at")
+	if err != nil {
+		return providers.Entity{}, fmt.Errorf("failed to parse created_at: %w", err)
 	}
 
-	if err := json.Unmarshal([]byte(attributes), &entity.Attributes); err != nil {
-		return providers.Entity{}, fmt.Errorf("failed to unmarshal attributes")
+	updatedAt, err := sysutils.ParseDBTimeField(row["updated_at"], "updated_at")
+	if err != nil {
+		return providers.Entity{}, fmt.Errorf("failed to parse updated_at: %w", err)
+	}
+
+	entity := providers.Entity{
+		ID:        entityID,
+		Category:  providers.EntityCategory(category),
+		Type:      entityType,
+		State:     providers.EntityState(state),
+		OUID:      ouID,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+	}
+
+	// An entity stored without attributes holds the JSON null literal, so treat it as absent.
+	if attributes != "" && attributes != "null" {
+		if err := json.Unmarshal([]byte(attributes), &entity.Attributes); err != nil {
+			return providers.Entity{}, fmt.Errorf("failed to unmarshal attributes")
+		}
 	}
 
 	entity.SystemAttributes = parseJSONColumn(row, "system_attributes")

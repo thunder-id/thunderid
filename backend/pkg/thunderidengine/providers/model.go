@@ -701,6 +701,9 @@ type User struct {
 	Attributes json.RawMessage `json:"attributes,omitempty"`
 	Display    string          `json:"display,omitempty"`
 	IsReadOnly bool            `json:"isReadOnly"`
+	// CreatedAt and UpdatedAt are store-owned RFC 3339 UTC strings, read-only on the API.
+	CreatedAt string `json:"createdAt,omitempty"`
+	UpdatedAt string `json:"updatedAt,omitempty"`
 }
 
 // Agent is the service-level model for agent create operations.
@@ -765,6 +768,10 @@ type Entity struct {
 	Attributes       json.RawMessage `json:"attributes,omitempty"`
 	SystemAttributes json.RawMessage `json:"systemAttributes,omitempty"`
 	IsReadOnly       bool            `json:"isReadOnly"`
+	// omitempty does not apply to time.Time, so these always serialize; the API edge
+	// decides what to expose.
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // EntityGroup represents a group with basic information for entity group membership queries.

@@ -337,6 +337,7 @@ func (us *userService) CreateUser(
 
 	// Sync cleaned attributes back — entity service removed credential fields from Attributes.
 	user.Attributes = created.Attributes
+	applyEntityTimestamps(user, created)
 
 	logger.Debug(ctx, "Successfully created user", log.MaskedString(log.LoggerKeyUserID, user.ID))
 	return user, nil
@@ -600,6 +601,7 @@ func (us *userService) UpdateUser(
 
 	// Sync cleaned attributes back — entity service removed credential fields from Attributes.
 	user.Attributes = updated.Attributes
+	applyEntityTimestamps(user, updated)
 	logger.Debug(ctx, "Successfully updated user", log.MaskedString(log.LoggerKeyUserID, userID))
 	return user, nil
 }
@@ -681,6 +683,14 @@ func (us *userService) UpdateUserAttributes(
 		}
 		return nil, logErrorAndReturnServerError(ctx, logger, "Failed to update user attributes", err,
 			log.MaskedString(log.LoggerKeyUserID, userID))
+	}
+
+	// Re-read so the response carries the post-update timestamps.
+	if updatedEntity, err := us.entityService.GetEntity(ctx, userID); err != nil {
+		logger.Warn(ctx, "Failed to reload user after attribute update, returning stale timestamps",
+			log.MaskedString(log.LoggerKeyUserID, userID), log.Error(err))
+	} else {
+		applyEntityTimestamps(&existingUser, updatedEntity)
 	}
 
 	logger.Debug(ctx, "Successfully updated user attributes", log.MaskedString(log.LoggerKeyUserID, userID))
