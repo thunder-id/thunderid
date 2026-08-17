@@ -2704,3 +2704,27 @@ func UpdateApplication(appID string, app Application) error {
 func RemoveRoleAssignments(roleID string, assignments []Assignment) error {
 	return removeRoleAssignments(roleID, assignments, GetHTTPClient())
 }
+
+// DeleteResource deletes a resource from a resource server. A resource server cannot be deleted
+// while it still has resources, so suites that build a resource tree must remove it leaf first.
+func DeleteResource(resourceServerID, resourceID string) error {
+	client := GetHTTPClient()
+
+	url := fmt.Sprintf("%s/resource-servers/%s/resources/%s", TestServerURL, resourceServerID, resourceID)
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create delete request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete resource: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 204, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
+	}
+	return nil
+}

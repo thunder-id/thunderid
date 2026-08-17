@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -680,7 +681,10 @@ func mergeAssignments(dbAssignments, fileAssignments []RoleAssignment) []RoleAss
 	return result
 }
 
-// mergePermissions deduplicates and merges permissions from database and file stores.
+// mergePermissions deduplicates and merges permissions from database and file stores. The result is
+// sorted, because map iteration order is randomized: callers that page over the merged list (such as
+// GetUserRoles) would otherwise return a different order on every call, repeating entries on one page
+// and dropping them from another.
 func mergePermissions(dbPerms, filePerms []string) []string {
 	permMap := make(map[string]bool)
 
@@ -696,5 +700,6 @@ func mergePermissions(dbPerms, filePerms []string) []string {
 	for perm := range permMap {
 		result = append(result, perm)
 	}
+	slices.Sort(result)
 	return result
 }

@@ -1,0 +1,14 @@
+resource_type: resource_server
+id: decl-rs-2
+name: Declarative OU Handle Resource Server
+description: A declarative test resource server that references its organization unit by handle
+identifier: https://localhost:8090/decl-rs-2
+ouHandle: decl-ou-1
+delimiter: ":"
+resources:
+  - name: Reports
+    handle: reports
+    description: A test resource resolved through an organization unit handle
+    actions:
+      - name: View
+        handle: view

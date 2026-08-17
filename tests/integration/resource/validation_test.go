@@ -489,3 +489,498 @@ func (suite *ValidationTestSuite) TestCreateActionHandleInvalidCharacters() {
 	suite.Error(err, "Should fail when handle contains invalid characters")
 	suite.Contains(err.Error(), "400")
 }
+
+// Malformed request body tests
+
+func (suite *ValidationTestSuite) TestMalformedJSONOnWriteEndpoints() {
+	resID, err := createResource(suite.resourceServerID, CreateResourceRequest{
+		Name:   "Malformed Body Resource",
+		Handle: "malformed-body-resource",
+		Parent: nil,
+	})
+	suite.Require().NoError(err)
+	defer deleteResource(suite.resourceServerID, resID)
+
+	actionID, err := createActionAtResource(suite.resourceServerID, resID, CreateActionRequest{
+		Name:   "Malformed Body Action",
+		Handle: "malformed-body-action",
+	})
+	suite.Require().NoError(err)
+	defer deleteActionAtResource(suite.resourceServerID, resID, actionID)
+
+	serverActionID, err := createActionAtResourceServer(suite.resourceServerID, CreateActionRequest{
+		Name:   "Malformed Body Server Action",
+		Handle: "malformed-body-server-action",
+	})
+	suite.Require().NoError(err)
+	defer deleteAction(suite.resourceServerID, serverActionID)
+
+	malformed := []byte(`{"name": "broken", }`)
+
+	testCases := []struct {
+		description string
+		method      string
+		url         string
+	}{
+		{"update resource server", http.MethodPut, resourceServerURL("/%s", suite.resourceServerID)},
+		{"create resource", http.MethodPost, resourceServerURL("/%s/resources", suite.resourceServerID)},
+		{"update resource", http.MethodPut, resourceServerURL("/%s/resources/%s", suite.resourceServerID, resID)},
+		{"create action at resource server", http.MethodPost,
+			resourceServerURL("/%s/actions", suite.resourceServerID)},
+		{"update action at resource server", http.MethodPut,
+			resourceServerURL("/%s/actions/%s", suite.resourceServerID, serverActionID)},
+		{"create action at resource", http.MethodPost,
+			resourceServerURL("/%s/resources/%s/actions", suite.resourceServerID, resID)},
+		{"update action at resource", http.MethodPut,
+			resourceServerURL("/%s/resources/%s/actions/%s", suite.resourceServerID, resID, actionID)},
+	}
+
+	for _, tc := range testCases {
+		resp, err := doRawRequest(tc.method, tc.url, malformed)
+		suite.Require().NoError(err)
+		suite.Equal(http.StatusBadRequest, resp.StatusCode,
+			"Should return 400 for malformed JSON on %s. Response: %s", tc.description, resp.Body)
+	}
+}
+
+func (suite *ValidationTestSuite) TestStructuredValidationErrorsOnMissingRequiredFields() {
+	resID, err := createResource(suite.resourceServerID, CreateResourceRequest{
+		Name:   "Structured Validation Resource",
+		Handle: "structured-validation-resource",
+		Parent: nil,
+	})
+	suite.Require().NoError(err)
+	defer deleteResource(suite.resourceServerID, resID)
+
+	serverActionID, err := createActionAtResourceServer(suite.resourceServerID, CreateActionRequest{
+		Name:   "Structured Validation Action",
+		Handle: "structured-validation-action",
+	})
+	suite.Require().NoError(err)
+	defer deleteAction(suite.resourceServerID, serverActionID)
+
+	testCases := []struct {
+		description string
+		method      string
+		url         string
+		body        map[string]interface{}
+	}{
+		{"update resource server without organization unit", http.MethodPut,
+			resourceServerURL("/%s", suite.resourceServerID),
+			map[string]interface{}{"name": "No Organization Unit"}},
+		{"update action at resource server without name", http.MethodPut,
+			resourceServerURL("/%s/actions/%s", suite.resourceServerID, serverActionID),
+			map[string]interface{}{"description": "No name"}},
+		{"create action at resource without name", http.MethodPost,
+			resourceServerURL("/%s/resources/%s/actions", suite.resourceServerID, resID),
+			map[string]interface{}{"handle": "no-name"}},
+	}
+
+	for _, tc := range testCases {
+		resp, err := doJSONRequest(tc.method, tc.url, tc.body)
+		suite.Require().NoError(err)
+		suite.Equal(http.StatusBadRequest, resp.StatusCode,
+			"Should return 400 for %s. Response: %s", tc.description, resp.Body)
+	}
+}
+
+func (suite *ValidationTestSuite) TestUpdateResourceMissingName() {
+	resID, err := createResource(suite.resourceServerID, CreateResourceRequest{
+		Name:   "Update Validation Resource",
+		Handle: "update-validation-resource",
+		Parent: nil,
+	})
+	suite.Require().NoError(err)
+	defer deleteResource(suite.resourceServerID, resID)
+
+	resp, err := doJSONRequest(http.MethodPut,
+		resourceServerURL("/%s/resources/%s", suite.resourceServerID, resID),
+		UpdateResourceRequest{Name: ""})
+	suite.Require().NoError(err)
+	suite.Equal(http.StatusBadRequest, resp.StatusCode, "Response: %s", resp.Body)
+}
+
+func (suite *ValidationTestSuite) TestCreateResourceHandleExceedsMaxLength() {
+	handle := ""
+	for i := 0; i < 101; i++ {
+		handle += "a"
+	}
+
+	_, err := createResource(suite.resourceServerID, CreateResourceRequest{
+		Name:   "Too Long Handle Resource",
+		Handle: handle,
+		Parent: nil,
+	})
+	suite.Error(err, "Should fail when handle exceeds the maximum length")
+	suite.Contains(err.Error(), "400")
+}
+
+// Pagination validation on nested collections
+
+func (suite *ValidationTestSuite) TestListResourcesInvalidPaginationParams() {
+	testCases := []struct {
+		description string
+		query       string
+	}{
+		{"non-numeric limit", "?limit=abc"},
+		{"zero limit", "?limit=0"},
+		{"negative offset", "?offset=-1"},
+	}
+
+	for _, tc := range testCases {
+		resp, err := doRawRequest(http.MethodGet,
+			resourceServerURL("/%s/resources%s", suite.resourceServerID, tc.query), nil)
+		suite.Require().NoError(err)
+		suite.Equal(http.StatusBadRequest, resp.StatusCode,
+			"Should return 400 for %s. Response: %s", tc.description, resp.Body)
+	}
+}
+
+func (suite *ValidationTestSuite) TestListActionsInvalidPaginationParams() {
+	resID, err := createResource(suite.resourceServerID, CreateResourceRequest{
+		Name:   "Action Pagination Resource",
+		Handle: "action-pagination-resource",
+		Parent: nil,
+	})
+	suite.Require().NoError(err)
+	defer deleteResource(suite.resourceServerID, resID)
+
+	testCases := []struct {
+		description string
+		url         string
+	}{
+		{"resource server level, non-numeric limit",
+			resourceServerURL("/%s/actions?limit=abc", suite.resourceServerID)},
+		{"resource server level, negative offset",
+			resourceServerURL("/%s/actions?offset=-1", suite.resourceServerID)},
+		{"resource server level, zero limit",
+			resourceServerURL("/%s/actions?limit=0", suite.resourceServerID)},
+		{"resource level, non-numeric limit",
+			resourceServerURL("/%s/resources/%s/actions?limit=abc", suite.resourceServerID, resID)},
+		{"resource level, negative offset",
+			resourceServerURL("/%s/resources/%s/actions?offset=-1", suite.resourceServerID, resID)},
+		{"resource level, zero limit",
+			resourceServerURL("/%s/resources/%s/actions?limit=0", suite.resourceServerID, resID)},
+	}
+
+	for _, tc := range testCases {
+		resp, err := doRawRequest(http.MethodGet, tc.url, nil)
+		suite.Require().NoError(err)
+		suite.Equal(http.StatusBadRequest, resp.StatusCode,
+			"Should return 400 for %s. Response: %s", tc.description, resp.Body)
+	}
+}
+
+// Not found propagation on collection endpoints
+
+func (suite *ValidationTestSuite) TestListResourcesForNonExistentResourceServer() {
+	_, err := listResources("00000000-0000-0000-0000-000000000000", "", 0, 10)
+	suite.Error(err, "Should fail for a non-existent resource server")
+	suite.Contains(err.Error(), "404")
+}
+
+func (suite *ValidationTestSuite) TestListResourcesWithNonExistentParent() {
+	_, err := listResources(suite.resourceServerID, "00000000-0000-0000-0000-000000000000", 0, 10)
+	suite.Error(err, "Should fail for a non-existent parent resource")
+	suite.Contains(err.Error(), "404")
+}
+
+func (suite *ValidationTestSuite) TestListActionsForNonExistentResourceServer() {
+	_, err := listActionsAtResourceServer("00000000-0000-0000-0000-000000000000", 0, 10)
+	suite.Error(err, "Should fail for a non-existent resource server")
+	suite.Contains(err.Error(), "404")
+}
+
+func (suite *ValidationTestSuite) TestListActionsForNonExistentResource() {
+	_, err := listActionsAtResource(suite.resourceServerID, "00000000-0000-0000-0000-000000000000", 0, 10)
+	suite.Error(err, "Should fail for a non-existent resource")
+	suite.Contains(err.Error(), "404")
+}
+
+func (suite *ValidationTestSuite) TestGetActionAtNonExistentResource() {
+	_, err := getActionAtResource(suite.resourceServerID, "00000000-0000-0000-0000-000000000000",
+		"00000000-0000-0000-0000-000000000000")
+	suite.Error(err, "Should fail for a non-existent resource")
+	suite.Contains(err.Error(), "404")
+}
+
+func (suite *ValidationTestSuite) TestUpdateActionAtNonExistentResource() {
+	err := updateActionAtResource(suite.resourceServerID, "00000000-0000-0000-0000-000000000000",
+		"00000000-0000-0000-0000-000000000000", UpdateActionRequest{Name: "Updated"})
+	suite.Error(err, "Should fail for a non-existent resource")
+	suite.Contains(err.Error(), "404")
+}
+
+// Idempotent delete tests
+
+func (suite *ValidationTestSuite) TestDeleteActionAtNonExistentResourceServer() {
+	err := deleteAction("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000000")
+	suite.NoError(err, "Delete should be idempotent when the resource server does not exist")
+}
+
+func (suite *ValidationTestSuite) TestDeleteActionAtNonExistentResource() {
+	err := deleteActionAtResource(suite.resourceServerID, "00000000-0000-0000-0000-000000000000",
+		"00000000-0000-0000-0000-000000000000")
+	suite.NoError(err, "Delete should be idempotent when the resource does not exist")
+}
+
+// Identifier conflict on update
+
+func (suite *ValidationTestSuite) TestUpdateResourceServerIdentifierConflict() {
+	firstID, err := createResourceServer(CreateResourceServerRequest{
+		Name:       "Identifier Conflict Server 1",
+		Identifier: "https://api.example.com/identifier-conflict-1",
+		OUID:       suite.ouID,
+	})
+	suite.Require().NoError(err)
+	defer deleteResourceServer(firstID)
+
+	secondID, err := createResourceServer(CreateResourceServerRequest{
+		Name:       "Identifier Conflict Server 2",
+		Identifier: "https://api.example.com/identifier-conflict-2",
+		OUID:       suite.ouID,
+	})
+	suite.Require().NoError(err)
+	defer deleteResourceServer(secondID)
+
+	err = updateResourceServer(secondID, UpdateResourceServerRequest{
+		Name:       "Identifier Conflict Server 2",
+		Identifier: "https://api.example.com/identifier-conflict-1",
+		OUID:       suite.ouID,
+	})
+	suite.Error(err, "Should fail when the identifier is already taken")
+	suite.Contains(err.Error(), "409")
+}
+
+// roleResponse is the role payload, limited to the fields needed to assert permission cleanup.
+type roleResponse struct {
+	ID          string                          `json:"id"`
+	Name        string                          `json:"name"`
+	Permissions []testutils.ResourcePermissions `json:"permissions"`
+}
+
+// PermissionDependencyTestSuite covers permission validation performed for roles and the dependency
+// guards and cascade cleanup that run when resource entities are deleted.
+type PermissionDependencyTestSuite struct {
+	suite.Suite
+	ouID             string
+	resourceServerID string
+}
+
+func TestPermissionDependencyTestSuite(t *testing.T) {
+	suite.Run(t, new(PermissionDependencyTestSuite))
+}
+
+func (suite *PermissionDependencyTestSuite) SetupSuite() {
+	ou := testutils.OrganizationUnit{
+		Handle:      "test_resource_permission_ou",
+		Name:        "Test OU for Resource Permissions",
+		Description: "Organization unit for resource permission testing",
+		Parent:      nil,
+	}
+	ouID, err := testutils.CreateOrganizationUnit(ou)
+	suite.Require().NoError(err, "Failed to create test organization unit")
+	suite.ouID = ouID
+
+	rsID, err := createResourceServer(CreateResourceServerRequest{
+		Name:        "Permission Test Server",
+		Description: "Resource server for permission testing",
+		OUID:        ouID,
+	})
+	suite.Require().NoError(err, "Failed to create test resource server")
+	suite.resourceServerID = rsID
+}
+
+func (suite *PermissionDependencyTestSuite) TearDownSuite() {
+	if suite.resourceServerID != "" {
+		deleteResourceServer(suite.resourceServerID)
+	}
+	if suite.ouID != "" {
+		testutils.DeleteOrganizationUnit(suite.ouID)
+	}
+}
+
+func (suite *PermissionDependencyTestSuite) TestRoleWithUnknownPermissionRejected() {
+	_, err := testutils.CreateRole(testutils.Role{
+		Name:        "Role With Unknown Permission",
+		Description: "Role referencing a permission that does not exist",
+		OUID:        suite.ouID,
+		Permissions: []testutils.ResourcePermissions{{
+			ResourceServerID: suite.resourceServerID,
+			Permissions:      []string{"does-not-exist"},
+		}},
+	})
+	suite.Error(err, "Role creation should fail for an unknown permission")
+	suite.Contains(err.Error(), "400")
+}
+
+func (suite *PermissionDependencyTestSuite) TestRoleWithUnknownResourceServerRejected() {
+	_, err := testutils.CreateRole(testutils.Role{
+		Name:        "Role With Unknown Resource Server",
+		Description: "Role referencing a resource server that does not exist",
+		OUID:        suite.ouID,
+		Permissions: []testutils.ResourcePermissions{{
+			ResourceServerID: "00000000-0000-0000-0000-000000000000",
+			Permissions:      []string{"read"},
+		}},
+	})
+	suite.Error(err, "Role creation should fail for an unknown resource server")
+	suite.Contains(err.Error(), "400")
+}
+
+func (suite *PermissionDependencyTestSuite) TestRoleWithEmptyPermissionListAccepted() {
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name:        "Role With Empty Permission List",
+		Description: "Role that references a resource server without permissions",
+		OUID:        suite.ouID,
+		Permissions: []testutils.ResourcePermissions{{
+			ResourceServerID: suite.resourceServerID,
+			Permissions:      []string{},
+		}},
+	})
+	suite.Require().NoError(err)
+	defer testutils.DeleteRole(roleID)
+
+	role, err := getRole(roleID)
+	suite.Require().NoError(err)
+	suite.Empty(permissionsFor(role, suite.resourceServerID))
+}
+
+func (suite *PermissionDependencyTestSuite) TestRoleWithDeclarativePermissionAccepted() {
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name:        "Role With Declarative Permission",
+		Description: "Role referencing a permission from a declarative resource server",
+		OUID:        suite.ouID,
+		Permissions: []testutils.ResourcePermissions{{
+			ResourceServerID: declarativeResourceServerID,
+			Permissions:      []string{declarativeReadPermission},
+		}},
+	})
+	suite.Require().NoError(err, "Permissions of a declarative resource server should validate")
+	defer testutils.DeleteRole(roleID)
+
+	role, err := getRole(roleID)
+	suite.Require().NoError(err)
+	suite.Contains(permissionsFor(role, declarativeResourceServerID), declarativeReadPermission)
+}
+
+// TestDeleteActionRemovesRolePermission verifies that deleting an action cascades into the roles
+// holding the permission it contributed.
+func (suite *PermissionDependencyTestSuite) TestDeleteActionRemovesRolePermission() {
+	resourceID, err := createResource(suite.resourceServerID, CreateResourceRequest{
+		Name:   "Cascade Resource",
+		Handle: "cascade-resource",
+		Parent: nil,
+	})
+	suite.Require().NoError(err)
+	defer deleteResource(suite.resourceServerID, resourceID)
+
+	actionID, err := createActionAtResource(suite.resourceServerID, resourceID, CreateActionRequest{
+		Name:   "Cascade Action",
+		Handle: "cascade-action",
+	})
+	suite.Require().NoError(err)
+
+	permission := "cascade-resource:cascade-action"
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name:        "Role With Cascading Permission",
+		Description: "Role holding a permission that is removed with its action",
+		OUID:        suite.ouID,
+		Permissions: []testutils.ResourcePermissions{{
+			ResourceServerID: suite.resourceServerID,
+			Permissions:      []string{permission},
+		}},
+	})
+	suite.Require().NoError(err)
+	defer testutils.DeleteRole(roleID)
+
+	role, err := getRole(roleID)
+	suite.Require().NoError(err)
+	suite.Contains(permissionsFor(role, suite.resourceServerID), permission)
+
+	err = deleteActionAtResource(suite.resourceServerID, resourceID, actionID)
+	suite.Require().NoError(err)
+
+	role, err = getRole(roleID)
+	suite.Require().NoError(err)
+	suite.NotContains(permissionsFor(role, suite.resourceServerID), permission,
+		"Deleting an action should remove the permission it contributed from roles")
+}
+
+// TestDeleteResourceWithActionIsBlocked verifies the restrict dependency guard on resources.
+func (suite *PermissionDependencyTestSuite) TestDeleteResourceWithActionIsBlocked() {
+	resourceID, err := createResource(suite.resourceServerID, CreateResourceRequest{
+		Name:   "Guarded Resource",
+		Handle: "guarded-resource",
+		Parent: nil,
+	})
+	suite.Require().NoError(err)
+	defer deleteResource(suite.resourceServerID, resourceID)
+
+	actionID, err := createActionAtResource(suite.resourceServerID, resourceID, CreateActionRequest{
+		Name:   "Guarding Action",
+		Handle: "guarding-action",
+	})
+	suite.Require().NoError(err)
+	defer deleteActionAtResource(suite.resourceServerID, resourceID, actionID)
+
+	resp, err := doRawRequest(http.MethodDelete,
+		resourceServerURL("/%s/resources/%s", suite.resourceServerID, resourceID), nil)
+	suite.Require().NoError(err)
+	suite.Equal(http.StatusBadRequest, resp.StatusCode, "Response: %s", resp.Body)
+	suite.Equal("RES-1006", resp.Error.Code, "Deletion should be refused while an action depends on the resource")
+}
+
+// TestDeleteResourceServerWithResourceIsBlocked verifies the restrict dependency guard on resource
+// servers.
+func (suite *PermissionDependencyTestSuite) TestDeleteResourceServerWithResourceIsBlocked() {
+	rsID, err := createResourceServer(CreateResourceServerRequest{
+		Name: "Guarded Resource Server",
+		OUID: suite.ouID,
+	})
+	suite.Require().NoError(err)
+	defer deleteResourceServer(rsID)
+
+	resourceID, err := createResource(rsID, CreateResourceRequest{
+		Name:   "Guarding Resource",
+		Handle: "guarding-resource",
+		Parent: nil,
+	})
+	suite.Require().NoError(err)
+	defer deleteResource(rsID, resourceID)
+
+	resp, err := doRawRequest(http.MethodDelete, resourceServerURL("/%s", rsID), nil)
+	suite.Require().NoError(err)
+	suite.Equal(http.StatusBadRequest, resp.StatusCode, "Response: %s", resp.Body)
+	suite.Equal("RES-1006", resp.Error.Code,
+		"Deletion should be refused while a resource depends on the resource server")
+}
+
+// Helper functions
+
+// getRole fetches a role by ID.
+func getRole(roleID string) (*roleResponse, error) {
+	resp, err := doRawRequest(http.MethodGet, testServerURL+"/roles/"+roleID, nil)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, resp.Body)
+	}
+
+	var role roleResponse
+	if err := json.Unmarshal([]byte(resp.Body), &role); err != nil {
+		return nil, err
+	}
+	return &role, nil
+}
+
+// permissionsFor returns the permissions a role holds on the given resource server.
+func permissionsFor(role *roleResponse, resourceServerID string) []string {
+	for _, resPerm := range role.Permissions {
+		if resPerm.ResourceServerID == resourceServerID {
+			return resPerm.Permissions
+		}
+	}
+	return nil
+}

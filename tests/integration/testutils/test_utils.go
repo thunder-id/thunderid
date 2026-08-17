@@ -72,6 +72,10 @@ func InitializeTestContext(port string, zipPattern string, databaseType string) 
 // Returning an absolute path ensures it resolves correctly regardless of the working
 // directory of the consumer (e.g. a test subprocess running from a sub-package directory).
 func GetExtractedProductHome() string {
+	// A test subprocess has the path in its environment but no initialized context until something
+	// asks for it, so resolve lazily rather than panicking on the un-set package variable.
+	ensureInitialized()
+
 	if extractedProductHome == "" {
 		panic("Extracted product home is not set")
 	}

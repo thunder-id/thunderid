@@ -94,6 +94,23 @@ type GroupListResponse struct {
 	Links        []testutils.Link `json:"links"`
 }
 
+// Role represents a role with basic information for OU endpoints.
+type Role struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	IsReadOnly  bool   `json:"isReadOnly"`
+}
+
+// RoleListResponse represents the response for listing roles in an organization unit.
+type RoleListResponse struct {
+	TotalResults int              `json:"totalResults"`
+	StartIndex   int              `json:"startIndex"`
+	Count        int              `json:"count"`
+	Roles        []Role           `json:"roles"`
+	Links        []testutils.Link `json:"links"`
+}
+
 type I18nMessage struct {
 	Key          string `json:"key,omitempty"`
 	DefaultValue string `json:"defaultValue,omitempty"`

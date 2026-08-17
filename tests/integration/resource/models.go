@@ -9,8 +9,10 @@ type ResourceServerResponse struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	Identifier  string `json:"identifier,omitempty"`
+	Type        string `json:"type,omitempty"`
 	OUID        string `json:"ouId"`
 	Delimiter   string `json:"delimiter"`
+	IsReadOnly  bool   `json:"isReadOnly"`
 }
 
 // ResourceResponse represents a resource response.
@@ -30,6 +32,7 @@ type ActionResponse struct {
 	Handle      string `json:"handle"`
 	Description string `json:"description,omitempty"`
 	Permission  string `json:"permission"`
+	Kind        string `json:"kind,omitempty"`
 }
 
 // LinkResponse represents a pagination link.
@@ -85,6 +88,7 @@ type CreateResourceServerRequest struct {
 	Name        string  `json:"name"`
 	Description string  `json:"description,omitempty"`
 	Identifier  string  `json:"identifier,omitempty"`
+	Type        string  `json:"type,omitempty"`
 	OUID        string  `json:"ouId"`
 	Delimiter   *string `json:"delimiter,omitempty"`
 }
@@ -116,6 +120,7 @@ type CreateActionRequest struct {
 	Name        string `json:"name"`
 	Handle      string `json:"handle"`
 	Description string `json:"description,omitempty"`
+	Kind        string `json:"kind,omitempty"`
 }
 
 // UpdateActionRequest represents the request to update an action.

@@ -159,6 +159,31 @@ func initiateAuthorizationFlow(clientID, redirectURI, responseType, scope, state
 	return resp, nil
 }
 
+// SubmitAuthorizationRequest sends an arbitrary parameter set to the authorization endpoint without
+// following redirects, so the caller can assert on the redirect the server produced. Use this for
+// parameters the InitiateAuthorizationFlow variants do not cover, such as prompt.
+func SubmitAuthorizationRequest(params url.Values) (*http.Response, error) {
+	req, err := http.NewRequest("GET", TestServerURL+"/oauth2/authorize?"+params.Encode(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create authorization request: %w", err)
+	}
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send authorization request: %w", err)
+	}
+	return resp, nil
+}
+
 // ExecuteAuthenticationFlow executes an authentication flow and returns the flow step.
 func ExecuteAuthenticationFlow(executionId string, inputs map[string]string, action string,
 	challengeToken ...string) (*FlowStep, error) {

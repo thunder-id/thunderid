@@ -28,7 +28,7 @@ type Agent struct {
 
 // InboundAuthConfig represents an inbound authentication configuration entry.
 type InboundAuthConfig struct {
-	Type   string          `json:"type"`
+	Type   string            `json:"type"`
 	Config *OAuthAgentConfig `json:"config,omitempty"`
 }
 
@@ -82,6 +82,16 @@ type AgentGroupListResponse struct {
 	StartIndex   int           `json:"startIndex"`
 	Count        int           `json:"count"`
 	Groups       []AgentGroup  `json:"groups"`
+	Links        []interface{} `json:"links"`
+}
+
+// AgentRoleListResponse is the paginated role list response for an agent. Roles are reported by
+// name, both for direct assignments and for those inherited through group membership.
+type AgentRoleListResponse struct {
+	TotalResults int           `json:"totalResults"`
+	StartIndex   int           `json:"startIndex"`
+	Count        int           `json:"count"`
+	Roles        []string      `json:"roles"`
 	Links        []interface{} `json:"links"`
 }
 

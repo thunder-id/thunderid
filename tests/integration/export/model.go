@@ -9,6 +9,10 @@ type ExportRequest struct {
 	Connections              []string `json:"connections,omitempty"`
 	CredentialConfigurations []string `json:"credentialConfigurations,omitempty"`
 	PresentationDefinitions  []string `json:"presentationDefinitions,omitempty"`
+	Users                    []string `json:"users,omitempty"`
+	UserTypes                []string `json:"userTypes,omitempty"`
+	AgentTypes               []string `json:"agentTypes,omitempty"`
+	Translations             []string `json:"translations,omitempty"`
 }
 
 // ExportResponse represents the response structure for exporting resources.

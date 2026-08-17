@@ -170,6 +170,8 @@ func buildConsentFlowWithoutAuthz() testutils.Flow {
 // publishes under the consentPrompt key of the flow response additional data.
 type consentPromptElement struct {
 	Name string `json:"name"`
+	// Parent is the element a nested permission rolls up to, absent for a top-level one.
+	Parent string `json:"parent,omitempty"`
 }
 
 // consentPromptPurpose mirrors one purpose of the consent prompt payload.

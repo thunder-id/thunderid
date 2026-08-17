@@ -589,6 +589,38 @@ func (suite *ActionAPITestSuite) TestActionPermissionDerivationWithCustomDelimit
 
 // Helper functions
 
+// listActionsByKind lists actions filtered by kind. When resourceID is empty the resource server
+// level endpoint is used.
+func listActionsByKind(resourceServerID, resourceID, kind string) (*ActionListResponse, error) {
+	path := fmt.Sprintf("/%s/actions?kind=%s", resourceServerID, kind)
+	if resourceID != "" {
+		path = fmt.Sprintf("/%s/resources/%s/actions?kind=%s", resourceServerID, resourceID, kind)
+	}
+
+	resp, err := doRawRequest(http.MethodGet, resourceServerURL("%s", path), nil)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, resp.Body)
+	}
+
+	var list ActionListResponse
+	if err := json.Unmarshal([]byte(resp.Body), &list); err != nil {
+		return nil, err
+	}
+	return &list, nil
+}
+
+// actionIDs returns the IDs of the actions in a list response.
+func actionIDs(list *ActionListResponse) []string {
+	ids := make([]string, 0, len(list.Actions))
+	for _, action := range list.Actions {
+		ids = append(ids, action.ID)
+	}
+	return ids
+}
+
 func createActionAtResourceServer(resourceServerID string, req CreateActionRequest) (string, error) {
 	client := testutils.GetHTTPClient()
 

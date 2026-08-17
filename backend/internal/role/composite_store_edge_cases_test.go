@@ -434,6 +434,28 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_C
 	assert.Contains(suite.T(), result, "p3")
 }
 
+// Test GetUserRoles returns the merged roles in a stable order. Callers page over this list by
+// slicing it, so an unstable order would repeat a role on one page and drop it from another.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetUserRoles_MergedOrderIsStable() {
+	dbRoles := []string{"role-c", "role-a"}
+	fileRoles := []string{"role-b", "role-a"}
+
+	suite.mockDBStore.On("GetUserRoles", suite.ctx, "user1", []string{"group1"}).Return(dbRoles, nil)
+	suite.mockFileStore.On("GetUserRoles", suite.ctx, "user1", []string{"group1"}).Return(fileRoles, nil)
+
+	first, err := suite.store.GetUserRoles(suite.ctx, "user1", []string{"group1"})
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), []string{"role-a", "role-b", "role-c"}, first,
+		"The merged roles must be deduplicated and sorted")
+
+	// Repeat the call: the same inputs must always produce the same order.
+	for i := 0; i < 20; i++ {
+		repeat, err := suite.store.GetUserRoles(suite.ctx, "user1", []string{"group1"})
+		assert.NoError(suite.T(), err)
+		assert.Equal(suite.T(), first, repeat, "Repeated calls must return the roles in the same order")
+	}
+}
+
 // Test GetAuthorizedPermissions with empty result
 func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_EmptyResult() {
 	perms := []string{"perm1"}

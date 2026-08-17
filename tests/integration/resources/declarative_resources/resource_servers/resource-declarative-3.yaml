@@ -1,0 +1,30 @@
+resource_type: resource_server
+id: decl-rs-3
+name: Declarative MCP Resource Server
+description: A declarative MCP test resource server with nested resources
+identifier: https://localhost:8090/decl-rs-3
+ouId: decl-ou-1
+type: MCP
+delimiter: ":"
+resources:
+  - name: Tools
+    handle: tools
+    description: Tool group
+    actions:
+      - name: Search
+        handle: search
+      - name: Fetch Document
+        handle: fetch
+        kind: resource
+  - name: Nested Tools
+    handle: nested
+    parent: tools
+    actions:
+      - name: Run
+        handle: run
+  - name: Prompts
+    handle: prompts
+    description: Prompt group
+    actions:
+      - name: Render
+        handle: render
