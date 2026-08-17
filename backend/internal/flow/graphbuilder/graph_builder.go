@@ -29,7 +29,6 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -37,7 +36,7 @@ import (
 // graphBuilder is the implementation of GraphBuilderInterface.
 type graphBuilder struct {
 	flowFactory         core.FlowFactoryInterface
-	executorRegistry    executor.ExecutorRegistryInterface
+	executorRegistry    core.ExecutorMetadataProvider
 	interceptorRegistry interceptor.InterceptorRegistryInterface
 	graphCache          core.GraphCacheInterface
 	logger              *log.Logger
@@ -46,7 +45,7 @@ type graphBuilder struct {
 // Initialize creates a new graph builder instance.
 func Initialize(
 	flowFactory core.FlowFactoryInterface,
-	executorRegistry executor.ExecutorRegistryInterface,
+	executorRegistry core.ExecutorMetadataProvider,
 	interceptorRegistry interceptor.InterceptorRegistryInterface,
 	graphCache core.GraphCacheInterface,
 ) GraphBuilderInterface {

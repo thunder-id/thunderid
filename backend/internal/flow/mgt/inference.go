@@ -27,7 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -285,7 +285,7 @@ func (s *flowInferenceService) addDefaultLayout(node *providers.NodeDefinition) 
 // findAuthAssertNode finds the AuthAssertExecutor node in the flow and returns its ID
 func (s *flowInferenceService) findAuthAssertNode(nodes []providers.NodeDefinition) (string, bool) {
 	for _, node := range nodes {
-		if node.Executor != nil && node.Executor.Name == executor.ExecutorNameAuthAssert {
+		if node.Executor != nil && node.Executor.Name == executormeta.ExecutorNameAuthAssert {
 			return node.ID, true
 		}
 	}
@@ -295,7 +295,7 @@ func (s *flowInferenceService) findAuthAssertNode(nodes []providers.NodeDefiniti
 // hasProvisioningNode checks if a provisioning node already exists in the flow
 func (s *flowInferenceService) hasProvisioningNode(nodes []providers.NodeDefinition) bool {
 	for _, node := range nodes {
-		if node.Executor != nil && node.Executor.Name == executor.ExecutorNameProvisioning {
+		if node.Executor != nil && node.Executor.Name == executormeta.ExecutorNameProvisioning {
 			return true
 		}
 	}
@@ -332,7 +332,7 @@ func (s *flowInferenceService) createProvisioningNode(nextNodeID string, include
 		ID:   provisioningNodeID,
 		Type: string(common.NodeTypeTaskExecution),
 		Executor: &providers.ExecutorDefinition{
-			Name: executor.ExecutorNameProvisioning,
+			Name: executormeta.ExecutorNameProvisioning,
 		},
 		OnSuccess: nextNodeID,
 	}
@@ -347,7 +347,7 @@ func (s *flowInferenceService) createProvisioningNode(nextNodeID string, include
 // hasUserTypeResolverNode checks if a user type resolver node already exists in the flow
 func (s *flowInferenceService) hasUserTypeResolverNode(nodes []providers.NodeDefinition) bool {
 	for _, node := range nodes {
-		if node.Executor != nil && node.Executor.Name == executor.ExecutorNameUserTypeResolver {
+		if node.Executor != nil && node.Executor.Name == executormeta.ExecutorNameUserTypeResolver {
 			return true
 		}
 	}
@@ -363,7 +363,7 @@ func (s *flowInferenceService) createUserTypeResolverNode(
 		ID:   userTypeResolverNodeID,
 		Type: string(common.NodeTypeTaskExecution),
 		Executor: &providers.ExecutorDefinition{
-			Name: executor.ExecutorNameUserTypeResolver,
+			Name: executormeta.ExecutorNameUserTypeResolver,
 		},
 		OnIncomplete: promptNodeID,
 	}
@@ -531,8 +531,8 @@ func (s *flowInferenceService) insertPhoneInputPromptIfNeeded(
 	for _, node := range *nodes {
 		// Check for OTP generate node and capture phone input from executor inputs if defined
 		if node.Executor != nil &&
-			node.Executor.Name == executor.ExecutorNameOTPExecutor &&
-			node.Executor.Mode == executor.ExecutorModeGenerate &&
+			node.Executor.Name == executormeta.ExecutorNameOTPExecutor &&
+			node.Executor.Mode == executormeta.ExecutorModeGenerate &&
 			otpGenerateNodeID == "" {
 			otpGenerateNodeID = node.ID
 			for _, input := range node.Executor.Inputs {
