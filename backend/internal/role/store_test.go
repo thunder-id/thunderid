@@ -65,6 +65,28 @@ func (suite *RoleStoreTestSuite) SetupTest() {
 	}
 }
 
+func (suite *RoleStoreTestSuite) TestRoleListOrdering() {
+	const assignmentOrder = " ORDER BY CREATED_AT, ASSIGNMENT_OU_ID, ASSIGNEE_TYPE, " +
+		"ASSIGNEE_ID, SHARING_POLICY_ID LIMIT "
+
+	for _, tc := range []struct {
+		query dbmodel.DBQuery
+		order string
+	}{
+		{queryGetRoleList, " ORDER BY CREATED_AT DESC, ID DESC LIMIT "},
+		{queryGetRoleListByOUID, " ORDER BY CREATED_AT DESC, ID DESC LIMIT "},
+		{queryGetRolePermissions, " ORDER BY CREATED_AT, RESOURCE_SERVER_ID, PERMISSION"},
+		{queryGetRoleAssignments, assignmentOrder},
+		{queryGetRoleAssignmentsByType, assignmentOrder},
+		{queryGetRoleAssignmentsInOU, assignmentOrder},
+		{queryGetRoleAssignmentsByTypeInOU, assignmentOrder},
+	} {
+		suite.Run(tc.query.ID, func() {
+			suite.Contains(strings.Join(strings.Fields(tc.query.Query), " "), tc.order)
+		})
+	}
+}
+
 func (suite *RoleStoreTestSuite) TestGetRoleListCount() {
 	testCases := []struct {
 		name          string

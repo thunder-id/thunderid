@@ -11,6 +11,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -497,6 +499,56 @@ func (suite *RoleAPITestSuite) TestListRoles_Pagination() {
 	response2, err := suite.listRoles(1, 2)
 	suite.Require().NoError(err)
 	suite.NotNil(response2)
+}
+
+func (suite *RoleAPITestSuite) TestListRoles_PaginationIsStableAcrossPages() {
+	const (
+		roleCount = 6
+		timestamp = "2026-01-01 00:00:00"
+	)
+
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "role-pagination-ou",
+		Name:   "Role Pagination OU",
+	})
+	suite.Require().NoError(err)
+	suite.T().Cleanup(func() { suite.NoError(testutils.DeleteOrganizationUnit(ouID)) })
+
+	ids := make([]string, 0, roleCount)
+	for i := range roleCount {
+		role, err := suite.createRole(CreateRoleRequest{
+			Name: fmt.Sprintf("Stable Pagination Role %d", i),
+			OUID: ouID,
+		})
+		suite.Require().NoError(err)
+		suite.T().Cleanup(func() { suite.NoError(suite.deleteRole(role.ID)) })
+		ids = append(ids, role.ID)
+	}
+
+	where := fmt.Sprintf("OU_ID = '%s' AND ID IN ('%s')", ouID, strings.Join(ids, "','"))
+	_, err = testutils.QueryConfigDB(fmt.Sprintf(
+		`UPDATE "ROLE" SET CREATED_AT = '%s' WHERE %s`, timestamp, where))
+	suite.Require().NoError(err)
+	tiedCount, err := testutils.QueryConfigDB(fmt.Sprintf(
+		`SELECT COUNT(*) FROM "ROLE" WHERE %s AND CREATED_AT = '%s'`, where, timestamp))
+	suite.Require().NoError(err)
+	suite.Require().Equal(strconv.Itoa(roleCount), tiedCount)
+
+	slices.Sort(ids)
+	slices.Reverse(ids)
+	filter := url.QueryEscape(`ouId eq "` + ouID + `"`)
+	for offset, id := range ids {
+		path := fmt.Sprintf("%s?limit=1&offset=%d&filter=%s", rolesBasePath, offset, filter)
+		resp := suite.doRoleRequest(http.MethodGet, path, nil)
+		var page RoleListResponse
+		decodeErr := json.NewDecoder(resp.Body).Decode(&page)
+		resp.Body.Close()
+		suite.Require().Equal(http.StatusOK, resp.StatusCode)
+		suite.Require().NoError(decodeErr)
+		suite.Require().Len(page.Roles, 1)
+		suite.Equal(roleCount, page.TotalResults)
+		suite.Equalf(id, page.Roles[0].ID, "unexpected role at offset %d", offset)
+	}
 }
 
 // Test 9: Update Role

@@ -42,7 +42,7 @@ var (
 		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
 			FROM "RESOURCE_SERVER"
 			WHERE DEPLOYMENT_ID = $3
-			ORDER BY CREATED_AT DESC
+			ORDER BY CREATED_AT DESC, ID DESC
 			LIMIT $1 OFFSET $2`,
 	}
 
@@ -188,7 +188,7 @@ var (
 			FROM "RESOURCE" r
 			LEFT JOIN "RESOURCE" pr ON r.PARENT_RESOURCE_ID = pr.ID AND pr.DEPLOYMENT_ID = r.DEPLOYMENT_ID
 			WHERE r.RESOURCE_SERVER_ID = $1 AND r.DEPLOYMENT_ID = $4
-			ORDER BY r.CREATED_AT DESC LIMIT $2 OFFSET $3`,
+			ORDER BY r.CREATED_AT DESC, r.ID DESC LIMIT $2 OFFSET $3`,
 	}
 
 	// queryGetResourceListByParent retrieves resources by parent ID with pagination.
@@ -199,7 +199,7 @@ var (
 			FROM "RESOURCE" r
 			LEFT JOIN "RESOURCE" pr ON r.PARENT_RESOURCE_ID = pr.ID AND pr.DEPLOYMENT_ID = r.DEPLOYMENT_ID
 			WHERE r.RESOURCE_SERVER_ID = $1 AND r.PARENT_RESOURCE_ID = $2 AND r.DEPLOYMENT_ID = $5
-			ORDER BY r.CREATED_AT DESC LIMIT $3 OFFSET $4`,
+			ORDER BY r.CREATED_AT DESC, r.ID DESC LIMIT $3 OFFSET $4`,
 	}
 
 	// queryGetResourceListByNullParent retrieves top-level resources with pagination.
@@ -210,7 +210,7 @@ var (
 			FROM "RESOURCE" r
 		        LEFT JOIN "RESOURCE" pr ON r.PARENT_RESOURCE_ID = pr.ID AND pr.DEPLOYMENT_ID = r.DEPLOYMENT_ID
 		        WHERE r.RESOURCE_SERVER_ID = $1 AND r.PARENT_RESOURCE_ID IS NULL AND r.DEPLOYMENT_ID = $4
-		        ORDER BY r.CREATED_AT DESC LIMIT $2 OFFSET $3`,
+		        ORDER BY r.CREATED_AT DESC, r.ID DESC LIMIT $2 OFFSET $3`,
 	}
 
 	// queryGetResourceListCount retrieves the total count of resources.
@@ -344,7 +344,7 @@ var (
 		        WHERE a.RESOURCE_SERVER_ID = $1
 		          AND (a.RESOURCE_ID = $2 OR (a.RESOURCE_ID IS NULL AND $2 IS NULL))
 		          AND a.DEPLOYMENT_ID = $5
-		        ORDER BY a.CREATED_AT DESC LIMIT $3 OFFSET $4`,
+		        ORDER BY a.CREATED_AT DESC, a.ID DESC LIMIT $3 OFFSET $4`,
 	}
 
 	// queryGetActionListByKind retrieves actions filtered by kind (stored in PROPERTIES) with pagination.
@@ -356,14 +356,14 @@ var (
 		          AND (a.RESOURCE_ID = $2 OR (a.RESOURCE_ID IS NULL AND $2 IS NULL))
 		          AND a.PROPERTIES->>'kind' = $5
 		          AND a.DEPLOYMENT_ID = $6
-		        ORDER BY a.CREATED_AT DESC LIMIT $3 OFFSET $4`,
+		        ORDER BY a.CREATED_AT DESC, a.ID DESC LIMIT $3 OFFSET $4`,
 		SQLiteQuery: `SELECT a.ID, a.NAME, a.HANDLE, a.DESCRIPTION, a.PERMISSION, a.PROPERTIES
 		        FROM "ACTION" a
 		        WHERE a.RESOURCE_SERVER_ID = $1
 		          AND (a.RESOURCE_ID = $2 OR (a.RESOURCE_ID IS NULL AND $2 IS NULL))
 		          AND json_extract(a.PROPERTIES, '$.kind') = $5
 		          AND a.DEPLOYMENT_ID = $6
-		        ORDER BY a.CREATED_AT DESC LIMIT $3 OFFSET $4`,
+		        ORDER BY a.CREATED_AT DESC, a.ID DESC LIMIT $3 OFFSET $4`,
 	}
 
 	// queryGetActionListCount retrieves count of actions.
