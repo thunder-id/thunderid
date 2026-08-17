@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
@@ -3922,4 +3923,203 @@ func TestGetUserMetadata_GetEntityTypeSchemaError(t *testing.T) {
 	require.Nil(t, schema)
 	require.NotNil(t, svcErr)
 	require.Equal(t, entitytype.ErrorEntityTypeNotFound.Code, svcErr.Code)
+}
+
+// Timestamp exposure tests.
+
+var (
+	svcTestCreatedAt = time.Date(2026, 8, 17, 9, 12, 3, 0, time.UTC)
+	svcTestUpdatedAt = time.Date(2026, 8, 17, 10, 44, 51, 0, time.UTC)
+)
+
+func TestEntityToUser_MapsTimestamps(t *testing.T) {
+	user := entityToUser(&providers.Entity{
+		ID: svcTestUserID1, CreatedAt: svcTestCreatedAt, UpdatedAt: svcTestUpdatedAt,
+	})
+	require.Equal(t, "2026-08-17T09:12:03Z", user.CreatedAt)
+	require.Equal(t, "2026-08-17T10:44:51Z", user.UpdatedAt)
+}
+
+func TestEntityToUser_DeclarativeUserOmitsTimestamps(t *testing.T) {
+	user := entityToUser(&providers.Entity{ID: svcTestDeclarativeUserID1, IsReadOnly: true})
+	require.Empty(t, user.CreatedAt)
+	require.Empty(t, user.UpdatedAt)
+
+	encoded, err := json.Marshal(user)
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), "createdAt")
+	require.NotContains(t, string(encoded), "updatedAt")
+}
+
+func TestUserService_GetUser_ReturnsTimestamps(t *testing.T) {
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).Return(&providers.Entity{
+		Category: providers.EntityCategoryUser, ID: svcTestUserID1, OUID: testOrgID,
+		CreatedAt: svcTestCreatedAt, UpdatedAt: svcTestUpdatedAt,
+	}, nil).Once()
+
+	service := &userService{entityService: storeMock, authzService: newAllowAllAuthz(t)}
+
+	user, err := service.GetUser(context.Background(), svcTestUserID1, false)
+	require.Nil(t, err)
+	require.Equal(t, "2026-08-17T09:12:03Z", user.CreatedAt)
+	require.Equal(t, "2026-08-17T10:44:51Z", user.UpdatedAt)
+}
+
+func TestUserService_GetUserList_ReturnsTimestamps(t *testing.T) {
+	limit, offset := 10, 0
+	filters := map[string]interface{}{}
+
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntityListCount", mock.Anything, providers.EntityCategoryUser, filters).
+		Return(1, nil).Once()
+	storeMock.On("GetEntityList", mock.Anything, providers.EntityCategoryUser, limit, offset, filters).
+		Return([]providers.Entity{{
+			ID: svcTestUserID1, CreatedAt: svcTestCreatedAt, UpdatedAt: svcTestUpdatedAt,
+		}}, nil).Once()
+
+	service := &userService{entityService: storeMock, authzService: newAllowAllAuthz(t)}
+
+	resp, err := service.GetUserList(context.Background(), limit, offset, filters, false)
+	require.Nil(t, err)
+	require.Len(t, resp.Users, 1)
+	require.Equal(t, "2026-08-17T09:12:03Z", resp.Users[0].CreatedAt)
+	require.Equal(t, "2026-08-17T10:44:51Z", resp.Users[0].UpdatedAt)
+}
+
+func TestUserService_CreateUser_ReturnsTimestamps(t *testing.T) {
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
+
+	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Once()
+
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+		Return(&providers.Entity{
+			OUID: testOrgID, Type: testUserType, Attributes: json.RawMessage(`{}`),
+			CreatedAt: svcTestCreatedAt, UpdatedAt: svcTestCreatedAt,
+		}, nil).Once()
+
+	service := &userService{
+		entityService:     storeMock,
+		ouService:         ouServiceMock,
+		entityTypeService: entityTypeMock,
+		authzService:      newAllowAllAuthz(t),
+		uuidGenerator:     utils.GenerateUUIDv7,
+	}
+
+	created, err := service.CreateUser(context.Background(), &User{
+		Type: testUserType, OUID: testOrgID, Attributes: json.RawMessage(`{}`),
+	})
+	require.Nil(t, err)
+	require.Equal(t, "2026-08-17T09:12:03Z", created.CreatedAt)
+	require.Equal(t, created.CreatedAt, created.UpdatedAt)
+}
+
+func TestUserService_UpdateUser_ReturnsTimestamps(t *testing.T) {
+	userID := svcTestUserID1
+
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
+	storeMock.On("GetEntity", mock.Anything, userID).Return(&providers.Entity{
+		Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID, Type: testUserType,
+		CreatedAt: svcTestCreatedAt, UpdatedAt: svcTestCreatedAt,
+	}, nil).Once()
+	storeMock.On("UpdateEntity", mock.Anything, userID, mock.Anything).Return(&providers.Entity{
+		ID: userID, Attributes: json.RawMessage(`{"updated":"true"}`),
+		CreatedAt: svcTestCreatedAt, UpdatedAt: svcTestUpdatedAt,
+	}, nil).Once()
+
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
+
+	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Once()
+	entityTypeMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Once()
+
+	service := &userService{
+		entityService:     storeMock,
+		ouService:         ouServiceMock,
+		entityTypeService: entityTypeMock,
+		authzService:      newAllowAllAuthz(t),
+	}
+
+	resp, err := service.UpdateUser(context.Background(), userID, &User{
+		ID: userID, OUID: testOrgID, Type: testUserType,
+		Attributes: json.RawMessage(`{"updated":"true"}`),
+	})
+	require.Nil(t, err)
+	require.Equal(t, "2026-08-17T09:12:03Z", resp.CreatedAt)
+	require.Equal(t, "2026-08-17T10:44:51Z", resp.UpdatedAt)
+}
+
+func TestUserService_UpdateUserAttributes_ReturnsPostUpdateTimestamps(t *testing.T) {
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
+	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).Return(&providers.Entity{
+		Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType,
+		Attributes: json.RawMessage(`{"email":"old@example.com"}`),
+		CreatedAt:  svcTestCreatedAt, UpdatedAt: svcTestCreatedAt,
+	}, nil).Once()
+	storeMock.On("UpdateAttributes", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
+	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).Return(&providers.Entity{
+		Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType,
+		Attributes: json.RawMessage(`{"email":"new@example.com"}`),
+		CreatedAt:  svcTestCreatedAt, UpdatedAt: svcTestUpdatedAt,
+	}, nil).Once()
+
+	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	schemaMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Once()
+
+	service := &userService{
+		entityService:     storeMock,
+		entityTypeService: schemaMock,
+		authzService:      newAllowAllAuthz(t),
+	}
+
+	resp, err := service.UpdateUserAttributes(context.Background(), svcTestUserID1,
+		json.RawMessage(`{"email":"new@example.com"}`))
+	require.Nil(t, err)
+	require.Equal(t, "2026-08-17T09:12:03Z", resp.CreatedAt)
+	require.Equal(t, "2026-08-17T10:44:51Z", resp.UpdatedAt)
+}
+
+func TestUserService_UpdateUserAttributes_ReloadFailureKeepsResponse(t *testing.T) {
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
+	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).Return(&providers.Entity{
+		Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType,
+		Attributes: json.RawMessage(`{"email":"old@example.com"}`),
+		CreatedAt:  svcTestCreatedAt, UpdatedAt: svcTestUpdatedAt,
+	}, nil).Once()
+	storeMock.On("UpdateAttributes", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
+	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).
+		Return((*providers.Entity)(nil), errors.New("reload failed")).Once()
+
+	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	schemaMock.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Once()
+
+	service := &userService{
+		entityService:     storeMock,
+		entityTypeService: schemaMock,
+		authzService:      newAllowAllAuthz(t),
+	}
+
+	resp, err := service.UpdateUserAttributes(context.Background(), svcTestUserID1,
+		json.RawMessage(`{"email":"new@example.com"}`))
+	require.Nil(t, err)
+	// Both pre-update values survive the failed reload; neither is cleared.
+	require.Equal(t, "2026-08-17T09:12:03Z", resp.CreatedAt)
+	require.Equal(t, "2026-08-17T10:44:51Z", resp.UpdatedAt)
 }

@@ -202,7 +202,14 @@ func (suite *CompositeModeSuite) TestUserDeclarativeVisibility() {
 	resp, err := client.Get(fmt.Sprintf("%s/users/decl-user-1", testutils.TestServerURL))
 	suite.Require().NoError(err)
 	suite.Equal(http.StatusOK, resp.StatusCode, "declarative user should be visible")
+
+	var payload map[string]interface{}
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&payload))
 	resp.Body.Close()
+
+	// Declarative users have no database row, so they carry no timestamps.
+	suite.NotContains(payload, "createdAt")
+	suite.NotContains(payload, "updatedAt")
 
 	suite.assertMergedCollectionContainsIDs("/users", "users", "decl-user-1", "user")
 }
