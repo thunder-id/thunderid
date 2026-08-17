@@ -30,6 +30,8 @@ type User struct {
 	OUID       string          `json:"ouId"`
 	Type       string          `json:"type"`
 	Attributes json.RawMessage `json:"attributes"`
+	CreatedAt  string          `json:"createdAt"`
+	UpdatedAt  string          `json:"updatedAt"`
 }
 
 // Application represents an application in the system

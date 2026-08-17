@@ -5,6 +5,7 @@ package user
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -20,6 +21,8 @@ type User struct {
 	Attributes json.RawMessage `json:"attributes,omitempty"`
 	Display    string          `json:"display,omitempty"`
 	IsReadOnly bool            `json:"isReadOnly"`
+	CreatedAt  string          `json:"createdAt,omitempty"`
+	UpdatedAt  string          `json:"updatedAt,omitempty"`
 }
 
 // Credential represents the credentials of a user.
@@ -95,12 +98,28 @@ type CreateUserByPathRequest struct {
 
 // entityToUser converts an Entity to a User.
 func entityToUser(e *providers.Entity) User {
-	return User{
+	user := User{
 		ID:         e.ID,
 		OUID:       e.OUID,
 		Type:       e.Type,
 		Attributes: e.Attributes,
 		IsReadOnly: e.IsReadOnly,
+	}
+	applyEntityTimestamps(&user, e)
+	return user
+}
+
+// applyEntityTimestamps copies the store-owned timestamps onto the user as RFC 3339 strings.
+// Declarative users have no stored row, so their zero timestamps stay empty and are omitted.
+func applyEntityTimestamps(u *User, e *providers.Entity) {
+	if e == nil {
+		return
+	}
+	if !e.CreatedAt.IsZero() {
+		u.CreatedAt = e.CreatedAt.UTC().Format(time.RFC3339)
+	}
+	if !e.UpdatedAt.IsZero() {
+		u.UpdatedAt = e.UpdatedAt.UTC().Format(time.RFC3339)
 	}
 }
 
