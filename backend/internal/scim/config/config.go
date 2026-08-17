@@ -21,6 +21,7 @@ package scimconfig
 
 import (
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
@@ -51,7 +52,7 @@ const (
 
 	// FilterMaxResults caps the number of resources returned in a single
 	// filtered query, guarding against excessively large result sets.
-	FilterMaxResults = 200
+	FilterMaxResults = serverconst.MaxPageSize
 
 	// ChangePasswordSupported indicates that the SCIM change-password
 	// operation is not yet supported.
@@ -64,6 +65,27 @@ const (
 	// ETagSupported indicates that ETag / versioning is supported
 	// per RFC 7644 §3.14.
 	ETagSupported = true
+
+	// PaginationCursorSupported indicates whether cursor-based pagination
+	// (RFC 9865) is supported. Not implemented; this server only supports
+	// index-based pagination.
+	PaginationCursorSupported = false
+
+	// PaginationIndexSupported indicates whether index-based pagination
+	// (startIndex/count, RFC 7644 §3.4.2.4) is supported.
+	PaginationIndexSupported = true
+
+	// PaginationDefaultMethod is the pagination method used when a client
+	// does not specify a preference. Must be "cursor" or "index" per RFC 9865.
+	PaginationDefaultMethod = "index"
+
+	// PaginationDefaultPageSize is the default number of resources returned
+	// per page when a client does not specify "count".
+	PaginationDefaultPageSize = serverconst.DefaultPageSize
+
+	// PaginationMaxPageSize is the maximum number of resources returned
+	// per page, regardless of the requested "count".
+	PaginationMaxPageSize = serverconst.MaxPageSize
 )
 
 // SCIMConfig holds the SCIM service configuration resolved from the

@@ -89,27 +89,38 @@ func newSCIMService(
 func computeSCIMConfigVersion(cfg scimconfig.SCIMConfig) string {
 	state := struct {
 		scimconfig.SCIMConfig
-		PatchSupported          bool
-		BulkSupported           bool
-		BulkMaxOperations       int
-		BulkMaxPayloadSize      int
-		FilterSupported         bool
-		FilterMaxResults        int
-		ChangePasswordSupported bool
-		SortSupported           bool
-		ETagSupported           bool
+		PatchSupported            bool
+		BulkSupported             bool
+		BulkMaxOperations         int
+		BulkMaxPayloadSize        int
+		FilterSupported           bool
+		FilterMaxResults          int
+		ChangePasswordSupported   bool
+		SortSupported             bool
+		ETagSupported             bool
+		PaginationCursorSupported bool
+		PaginationIndexSupported  bool
+		PaginationDefaultMethod   string
+		PaginationDefaultPageSize int
+		PaginationMaxPageSize     int
 	}{
-		SCIMConfig:              cfg,
-		PatchSupported:          scimconfig.PatchSupported,
-		BulkSupported:           scimconfig.BulkSupported,
-		BulkMaxOperations:       scimconfig.BulkMaxOperations,
-		BulkMaxPayloadSize:      scimconfig.BulkMaxPayloadSize,
-		FilterSupported:         scimconfig.FilterSupported,
-		FilterMaxResults:        scimconfig.FilterMaxResults,
-		ChangePasswordSupported: scimconfig.ChangePasswordSupported,
-		SortSupported:           scimconfig.SortSupported,
-		ETagSupported:           scimconfig.ETagSupported,
+		SCIMConfig:                cfg,
+		PatchSupported:            scimconfig.PatchSupported,
+		BulkSupported:             scimconfig.BulkSupported,
+		BulkMaxOperations:         scimconfig.BulkMaxOperations,
+		BulkMaxPayloadSize:        scimconfig.BulkMaxPayloadSize,
+		FilterSupported:           scimconfig.FilterSupported,
+		FilterMaxResults:          scimconfig.FilterMaxResults,
+		ChangePasswordSupported:   scimconfig.ChangePasswordSupported,
+		SortSupported:             scimconfig.SortSupported,
+		ETagSupported:             scimconfig.ETagSupported,
+		PaginationCursorSupported: scimconfig.PaginationCursorSupported,
+		PaginationIndexSupported:  scimconfig.PaginationIndexSupported,
+		PaginationDefaultMethod:   scimconfig.PaginationDefaultMethod,
+		PaginationDefaultPageSize: scimconfig.PaginationDefaultPageSize,
+		PaginationMaxPageSize:     scimconfig.PaginationMaxPageSize,
 	}
+
 	b, err := json.Marshal(state)
 	if err != nil {
 		panic(fmt.Sprintf("scim: failed to marshal SCIM config for ETag generation: %v", err))
@@ -151,6 +162,13 @@ func (s *scimService) GetServiceProviderConfig(_ context.Context, baseURL string
 		ChangePassword: SCIMSupportedFeature{Supported: scimconfig.ChangePasswordSupported},
 		Sort:           SCIMSupportedFeature{Supported: scimconfig.SortSupported},
 		ETag:           SCIMSupportedFeature{Supported: scimconfig.ETagSupported},
+		Pagination: SCIMPaginationConfig{
+			Cursor:                  scimconfig.PaginationCursorSupported,
+			Index:                   scimconfig.PaginationIndexSupported,
+			DefaultPaginationMethod: scimconfig.PaginationDefaultMethod,
+			DefaultPageSize:         scimconfig.PaginationDefaultPageSize,
+			MaxPageSize:             scimconfig.PaginationMaxPageSize,
+		},
 		AuthenticationSchemes: []SCIMAuthenticationScheme{
 			{
 				Type:        "oauthbearertoken",
@@ -462,4 +480,25 @@ func resolveEntityTypeNameForSchemaURN(
 			return "", nil
 		}
 	}
+}
+
+// resolveDefaultEntityTypeName returns the sole configured user entity type's
+// canonical name, for SCIM payloads that carry only core attributes and omit
+// the ThunderID extension URN. Errors if zero or more than one user type is
+// configured, since the default type is then ambiguous.
+func resolveDefaultEntityTypeName(
+	ctx context.Context, entityTypeService entitytype.EntityTypeServiceInterface,
+) (string, *tidcommon.ServiceError) {
+	page, svcErr := entityTypeService.GetEntityTypeList(
+		ctx, entitytype.TypeCategoryUser, serverconst.MaxPageSize, 0, false)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return "", &ErrorInternalServer
+		}
+		return "", &ErrorMissingCustomSchema
+	}
+	if page.TotalResults != 1 || len(page.Types) != 1 {
+		return "", &ErrorMissingCustomSchema
+	}
+	return page.Types[0].Name, nil
 }

@@ -86,6 +86,11 @@ func TestGetServiceProviderConfig_CapabilitiesMatchConstants(t *testing.T) {
 	require.Equal(t, scimconfig.ChangePasswordSupported, result.ChangePassword.Supported)
 	require.Equal(t, scimconfig.SortSupported, result.Sort.Supported)
 	require.Equal(t, scimconfig.ETagSupported, result.ETag.Supported)
+	require.Equal(t, scimconfig.PaginationCursorSupported, result.Pagination.Cursor)
+	require.Equal(t, scimconfig.PaginationIndexSupported, result.Pagination.Index)
+	require.Equal(t, scimconfig.PaginationDefaultMethod, result.Pagination.DefaultPaginationMethod)
+	require.Equal(t, scimconfig.PaginationDefaultPageSize, result.Pagination.DefaultPageSize)
+	require.Equal(t, scimconfig.PaginationMaxPageSize, result.Pagination.MaxPageSize)
 
 	if scimconfig.ETagSupported {
 		require.NotEmpty(t, result.Meta.Version)
