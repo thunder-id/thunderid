@@ -1859,12 +1859,10 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_buildGetOrganizationUni
 		query := buildGetOrganizationUnitsByIDsQuery(ids)
 
 		suite.Require().Equal("OUQ-OU_MGT-21", query.ID)
-		suite.Require().Contains(query.PostgresQuery, "METADATA")
-		suite.Require().Contains(query.PostgresQuery, "$1, $2, $3")
-		suite.Require().Contains(query.PostgresQuery, "DEPLOYMENT_ID = $4")
-		suite.Require().Contains(query.SQLiteQuery, "METADATA")
-		suite.Require().Contains(query.SQLiteQuery, "?, ?, ?")
-		suite.Require().Contains(query.SQLiteQuery, "DEPLOYMENT_ID = ?")
+		suite.Require().Contains(query.GetQuery("postgres"), "METADATA")
+		suite.Require().Contains(query.GetQuery("postgres"), "$1, $2, $3")
+		suite.Require().Contains(query.GetQuery("postgres"), "DEPLOYMENT_ID = $4")
+		suite.Require().Equal(query.GetQuery("postgres"), query.GetQuery("sqlite"))
 	})
 }
 
