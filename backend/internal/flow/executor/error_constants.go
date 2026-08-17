@@ -4,8 +4,6 @@
 package executor
 
 import (
-	"fmt"
-
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -1216,13 +1214,5 @@ func errAttributeNotUniqueFor(attrName string) *tidcommon.ServiceError {
 	e := ErrAttributeNotUnique
 	e.Error.Params = params
 	e.ErrorDescription.Params = params
-	return &e
-}
-
-// errMaxOTPAttemptsReachedFor returns a ServiceError for reaching the maximum OTP attempts.
-func errMaxOTPAttemptsReachedFor(count int) *tidcommon.ServiceError {
-	e := ErrMaxOTPAttemptsReached
-	e.ErrorDescription.DefaultValue = fmt.Sprintf(
-		"The maximum number of OTP verification attempts (%d) has been reached", count)
 	return &e
 }

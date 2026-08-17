@@ -828,6 +828,7 @@ Controls notification delivery behaviour, including OTP generation parameters.
 | `notification.otp.length` | `6` | OTP character length. Must be in `[4, 10]`. |
 | `notification.otp.use_numeric_only` | `true` | If `true`, OTPs use digits only; if `false`, OTPs use a mixed alphanumeric character set. |
 | `notification.otp.validity_period_seconds` | `120` | OTP validity period in seconds. Must be in `[30, 600]`. |
+| `notification.otp.max_generation_attempts` | `3` | Maximum number of OTP generation attempts per session. When a client requests a new OTP without providing the previous session token, the attempt count resets to 1. When the previous session token is provided, the server validates the recipient binding and increments the attempt count. If the limit is exceeded, OTP generation fails with an error. Valid range: `[1, 10]`. |
 
 ## Authentication Provider Configuration
 

@@ -109,6 +109,7 @@ type OTPConfig struct {
 	// default.json default of true; a nil pointer means "not set" and keeps the default.
 	UseNumericOnly        *bool `yaml:"use_numeric_only"        json:"use_numeric_only"`
 	ValidityPeriodSeconds int   `yaml:"validity_period_seconds" json:"validity_period_seconds"`
+	MaxGenerationAttempts int   `yaml:"max_generation_attempts" json:"max_generation_attempts"`
 }
 
 // UsesNumericOnly reports whether OTPs use a numeric-only character set,
@@ -119,12 +120,19 @@ func (c OTPConfig) UsesNumericOnly() bool {
 
 // Validate ensures OTP configuration values are within accepted bounds.
 func (c *OTPConfig) Validate() error {
+	if c.MaxGenerationAttempts == 0 {
+		c.MaxGenerationAttempts = 3
+	}
 	if c.Length < 4 || c.Length > 10 {
 		return fmt.Errorf("notification.otp.length must be in [4, 10] (got %d)", c.Length)
 	}
 	if c.ValidityPeriodSeconds < 30 || c.ValidityPeriodSeconds > 600 {
 		return fmt.Errorf("notification.otp.validity_period_seconds must be in [30, 600] (got %d)",
 			c.ValidityPeriodSeconds)
+	}
+	if c.MaxGenerationAttempts < 1 || c.MaxGenerationAttempts > 10 {
+		return fmt.Errorf("notification.otp.max_generation_attempts must be in [1, 10] (got %d)",
+			c.MaxGenerationAttempts)
 	}
 	return nil
 }
