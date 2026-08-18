@@ -25,7 +25,7 @@ func NewHealthCheckHandler(svc service.HealthCheckServiceInterface) *HealthCheck
 	}
 }
 
-// HandleLivenessRequest handles the health check livenss request.
+// HandleLivenessRequest handles the health check liveness request.
 func (hch *HealthCheckHandler) HandleLivenessRequest(w http.ResponseWriter, r *http.Request) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "HealthCheckHandler"))
 	w.WriteHeader(http.StatusOK)
