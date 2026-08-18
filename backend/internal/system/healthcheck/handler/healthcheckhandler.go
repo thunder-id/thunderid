@@ -29,7 +29,7 @@ func NewHealthCheckHandler(svc service.HealthCheckServiceInterface) *HealthCheck
 func (hch *HealthCheckHandler) HandleLivenessRequest(w http.ResponseWriter, r *http.Request) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "HealthCheckHandler"))
 	w.WriteHeader(http.StatusOK)
-	logger.Debug(r.Context(), "Health Check Liveness response sent")
+	logger.Debug(r.Context(), "Health Check Liveness response sent to the caller")
 }
 
 // HandleReadinessRequest handles the health check readiness request.
