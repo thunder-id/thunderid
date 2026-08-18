@@ -863,6 +863,11 @@ const sidebars: SidebarsConfig = {
                       id: 'guides/protocols/oauth-oidc/token-introspection',
                       label: 'Token Introspection',
                     },
+                    {
+                      type: 'doc',
+                      id: 'guides/protocols/oauth-oidc/token-revocation',
+                      label: 'Token Revocation',
+                    },
                   ],
                 },
                 {

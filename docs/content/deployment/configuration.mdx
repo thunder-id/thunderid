@@ -453,6 +453,11 @@ OAuth 2.0 and OpenID Connect settings.
 | `oauth.refresh_token.renew_on_grant` | `true` | If `true`, issues a new refresh token on each access token grant. Set to `false` to reuse the existing refresh token until it expires |
 | `oauth.refresh_token.revoke_previous_on_renew` | `true` | If `true`, revokes the consumed refresh token after a successful renewal. Applies when `renew_on_grant` is enabled |
 | `oauth.refresh_token.validity_period` | `86400` | Refresh token validity period in seconds (24 hours) |
+| `oauth.token_revocation.enabled` | `true` | If `true`, enables token revocation on the authorization server: the RFC 7009 endpoint (`/oauth2/revoke`), the implicit revocation triggers, and the check that rejects revoked tokens during introspection, the refresh grant, and token exchange. Setting it to `false` turns off all of them, not only the endpoint. See [Token Revocation](../../guides/protocols/oauth-oidc/token-revocation) |
+| `oauth.revocation.token_family.on_explicit_revoke` | `true` | If `true`, revoking a token through `/oauth2/revoke` also revokes every other token of the same authorization grant |
+| `oauth.revocation.token_family.on_refresh_replay` | `true` | If `true`, presenting a refresh token that has already been rotated out revokes every token of that grant. Requires `oauth.refresh_token.renew_on_grant`, since a refresh token can only be replayed once it has been rotated |
+| `oauth.revocation.token_family.on_code_replay` | `true` | If `true`, redeeming an authorization code a second time revokes every token issued from that code |
+| `oauth.token_exchange.token_family` | `none` | Whether an exchanged token joins the subject token's authorization grant. `none` issues an independent token; `inherit` copies the subject token's token family, so revoking the grant also revokes the exchanged token |
 | `oauth.authorization_code.validity_period` | `600` | Authorization code validity period in seconds (10 minutes) |
 | `oauth.authorization_request.validity_period` | `3600` | How long the authorization request context stays valid while the user completes the login flow, in seconds (60 minutes). A non-positive value falls back to the default |
 | `oauth.dcr.enabled` | `true` | If `true`, enables the Dynamic Client Registration endpoint |
@@ -1014,7 +1019,9 @@ Each flow type has two fields:
 | `<type>.defaultHandle` | Handle of the flow to use when the application and the organization unit do not pin a specific flow. Empty string means no server default, and the flow type is treated as not configured at the server level. |
 | `<type>.expirySeconds` | How long (in seconds) a started flow context remains valid before it expires. Must be a positive integer. |
 
-Supported flow types are `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, and `signOutFlow`.
+Supported flow types are `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, and `userDeletionFlow`.
+
+`userDeletionFlow` is resolved differently from the others: it names an administration flow that runs when a user is deleted from the Console, rather than a flow an inbound request starts. Its shipped default revokes the user's tokens and terminates their sessions before the record is removed. Deleting a user through the `DELETE /users/{id}` API removes the record only and does not run this flow. See [Token Revocation](../../guides/protocols/oauth-oidc/token-revocation#user-deletion).
 
 **Resolution order:** When an inbound request starts a flow, the effective flow is resolved as follows:
 
@@ -1079,6 +1086,9 @@ Controls server-wide security behavior that is not specific to any single authen
 | `server.security.jwks_cache_ttl` | `300` | JWKS cache TTL in seconds. Applies to every JWKS consumer in the server (trusted issuer validation, federated OIDC authenticators such as Google, and so on). Fetched signing keys are reused from the in-process cache for this duration before being re-fetched. Plan external-server key rotations with at least this much overlap. Set to `0` to disable caching |
 | `server.security.system_permission_prefix` | `""` (empty) | Prefix for system permission strings used in API authorization. When empty, permissions use their base names (for example, `system`). When set, the prefix is prepended to every system permission (for example, `mgmt:system`). If you set a prefix, update the Console scopes to match. Changes require a server restart |
 | `server.security.direct_auth_secret` | `""` (empty) | Secret that gates the Direct API authentication endpoints (`/auth/**` and `/register/passkey/**`) and protected AuthZEN access endpoints (`/access/**`). AuthZEN discovery (`/.well-known/authzen-configuration`) remains public. The protected endpoints are **secure by default**. While this is empty they are blocked with `401`. When set, callers must send the value in the `Direct-Auth-Secret` header; a missing or incorrect value is rejected with `401`. See [Integration Models](../../key-concepts/authentication/integration-models#direct-api) |
+| `server.security.token_revocation.enabled` | `true` | If `true`, revoked tokens are rejected on requests to protected APIs. See [Token Revocation](../../guides/protocols/oauth-oidc/token-revocation) |
+| `server.security.token_revocation.source` | `db` | Where the revocation snapshot is read from. `db` is the only supported value; any other value fails startup validation |
+| `server.security.token_revocation.sync_interval_seconds` | `60` | How often the in-memory revocation snapshot refreshes, in seconds. This sets the normal propagation delay before a revoked token stops being accepted on protected API requests. Token introspection is unaffected and always reads current state |
 
 :::tip
 If you set a custom `system_permission_prefix`, update the Console scopes to match the new permission strings and restart the server.
