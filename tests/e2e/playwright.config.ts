@@ -83,6 +83,12 @@ const WAYFINDER_TRYOUT_SPECS = ["**/wayfinder/**/*.spec.ts"];
 const MOCK_EMAIL_TRYOUT_SPEC = "**/wayfinder/mock-email-flows.spec.ts";
 
 /**
+ * ai-agent-tryout/** drives the Wayfinder Concierge chat with a real LLM: each spec is a genuine,
+ * billed API call, and LLM output is inherently nondeterministic. Runs chromium-only
+ */
+const AI_AGENT_TRYOUT_SPECS = "**/wayfinder/ai-agent-tryout/**/*.spec.ts";
+
+/**
  * Specs that have possible collisions in the system, and so must not run while
  * anything else is running. They are run in a separate project after all the
  * other specs have finished.
@@ -213,10 +219,21 @@ export default defineConfig({
       testMatch: WAYFINDER_SETUP_SPEC,
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      name: "wayfinder-ai-agent",
+      testMatch: AI_AGENT_TRYOUT_SPECS,
+      use: { ...devices["Desktop Chrome"] },
+      dependencies: ["wayfinder-setup"],
+      // browse-and-book-with-agent.spec.ts alone chains sign-in plus four LLM round trips and two
+      // OAuth popups in a single test; four Timeouts.LLM_RESPONSE (45s) waits alone already sum to
+      // 180s, leaving no budget for sign-in, the two popups, or other UI actions, so give it a
+      // bigger multiple of LLM_RESPONSE plus that overhead.
+      timeout: 4 * Timeouts.LLM_RESPONSE + 2 * 60 * 1000,
+    },
     ...BROWSERS.map(browser => ({
       name: `${browser.id}-wayfinder-tryout`,
       testMatch: WAYFINDER_TRYOUT_SPECS,
-      testIgnore: [MOCK_EMAIL_TRYOUT_SPEC],
+      testIgnore: [MOCK_EMAIL_TRYOUT_SPEC, AI_AGENT_TRYOUT_SPECS],
       // Run the tryout specs in parallel across browsers, but only after wayfinder-setup has completed
       fullyParallel: true,
       use: { ...browser.device },

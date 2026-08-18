@@ -1126,20 +1126,25 @@ async function handleConsent(
     return;
   }
 
+  // Claim the pending consent before awaiting: the check above only guards a duplicate request
+  // (a double-clicked Authorize, a retried POST) if the code is taken off the session before the
+  // exchange yields the event loop, since the code is single use.
+  const pending = session.pendingConsent;
+  session.pendingConsent = undefined;
+
   try {
-    const userToken = await exchangeCodeForUserToken(
-      body.code,
-      session.pendingConsent.verifier,
-    );
+    const userToken = await exchangeCodeForUserToken(body.code, pending.verifier);
     session.userToken = userToken;
     session.userToolsByName = undefined;
-    session.pendingConsent = undefined;
 
     sendJson(response, 200, {
       type: "consent_received",
       session_id: session.id,
     });
   } catch (error) {
+    // Leave the request re-authorizable: this consent attempt failed on its own merits (expired
+    // code, unreachable token endpoint), not because another request already consumed it.
+    session.pendingConsent = pending;
     console.error("Token exchange failed:", error);
     sendJson(response, 500, {
       error: error instanceof Error ? error.message : "Token exchange failed",

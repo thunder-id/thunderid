@@ -19,7 +19,7 @@
  * await welcomePage.verifyOnWelcomeScreen();
  */
 
-import { Page, Locator, Download, Response, expect } from "@playwright/test";
+import { Page, Locator, Response, expect } from "@playwright/test";
 import { ConsoleRoutes } from "../../configs/routes/console-routes";
 import { BasePage } from "../base.page";
 import { Timeouts } from "../../constants/timeouts";
@@ -30,11 +30,14 @@ const WELCOME_DISMISSED_SUFFIX = ":welcome:dismissed";
 /** Suffix of the sessionStorage key that tracks whether the Wayfinder bundle has been imported. */
 const WAYFINDER_CONFIGURED_SUFFIX = ":wayfinder-config-imported";
 
-/** Matches the release asset name WayfinderSampleDownload resolves via useWayfinderReleases. */
-const WAYFINDER_ASSET_NAME_PATTERN = /^sample-app-wayfinder-[0-9A-Za-z.+-]+\.zip$/i;
-
-/** Matches the download link's href: a full URL ending in the asset name above, not the bare name. */
-const WAYFINDER_ASSET_URL_PATTERN = /\/sample-app-wayfinder-[0-9A-Za-z.+-]+\.zip$/i;
+/**
+ * Matches the download link's href: a GitHub release asset URL (see useWayfinderReleases -
+ * `downloadUrl` is GitHub's own `browser_download_url`), with the same version in both the
+ * `/releases/download/v<version>/` path segment and the `sample-app-wayfinder-<version>.zip`
+ * asset name.
+ */
+const WAYFINDER_ASSET_URL_PATTERN =
+  /^https:\/\/github\.com\/[^/]+\/[^/]+\/releases\/download\/v([0-9A-Za-z.+-]+)\/sample-app-wayfinder-\1\.zip$/i;
 
 export class WelcomePage extends BasePage {
   readonly baseUrl: string;
@@ -181,20 +184,13 @@ export class WelcomePage extends BasePage {
   }
 
   /**
-   * Click the wayfinder sample download link and assert a download starts. The link resolves to
-   * a release asset fetched at runtime (see useWayfinderReleases), so this needs live network
-   * access to whatever releasesUrl the app is configured with.
+   * Assert the wayfinder sample download link points at a release asset, without clicking it.
+   * The href resolves to a real release asset URL (see useWayfinderReleases); actually downloading
+   * it in every run just to cancel the download is real network I/O, so we verify the link instead.
    */
-  async triggerDownload(): Promise<Download> {
+  async verifyDownloadLink(): Promise<void> {
     await this.downloadLink.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
     await expect(this.downloadLink).toHaveAttribute("href", WAYFINDER_ASSET_URL_PATTERN);
-
-    const [download] = await Promise.all([
-      this.page.context().waitForEvent("download", { timeout: Timeouts.PAGE_LOAD }),
-      this.downloadLink.click(),
-    ]);
-    expect(download.suggestedFilename()).toMatch(WAYFINDER_ASSET_NAME_PATTERN);
-    return download;
   }
 
   /**

@@ -100,6 +100,7 @@ const RESOURCE_MANIFEST: Array<{
     expected: [
       "Wayfinder Registration Flow",
       "Wayfinder Password Recovery Flow",
+      "Wayfinder Sign Out Flow",
       "Wayfinder Staff Onboarding Flow",
       "Default Wayfinder CIBA Email Notification Flow",
       "Default Wayfinder CIBA SMS Notification Flow",
@@ -127,17 +128,15 @@ test.describe("Wayfinder Sample Setup", { tag: [TestTags.WAYFINDER] }, () => {
       });
     });
 
-    /** TC002: Download button downloads the Wayfinder sample */
-    test("TC002: Download button downloads the Wayfinder sample", async ({ welcomePage }) => {
+    /** TC002: Download button links to the Wayfinder sample release asset */
+    test("TC002: Download button links to the Wayfinder sample release asset", async ({ welcomePage }) => {
       await test.step("Open the setup card", async () => {
         await welcomePage.gotoTryoutApp();
         await welcomePage.expandSetupCardIfCollapsed();
       });
 
-      await test.step("Trigger the download and verify it starts", async () => {
-        const download = await welcomePage.triggerDownload();
-        console.log("Download suggested filename:", download.suggestedFilename());
-        await download.cancel().catch(() => {});
+      await test.step("Verify the download link points at the sample release asset", async () => {
+        await welcomePage.verifyDownloadLink();
       });
     });
 
