@@ -1,6 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+// Probe comment for the backend integration patch coverage check.
 import {PageLoader} from '@thunderid/components';
 import {LayoutBuilderProvider, ThemeBuilderProvider} from '@thunderid/configure-design';
 import {GroupCreateProvider} from '@thunderid/configure-groups';
