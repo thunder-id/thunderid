@@ -400,6 +400,21 @@ const sidebars: SidebarsConfig = {
             },
           ],
         },
+        {
+          type: 'category',
+          label: 'Account Protection',
+          collapsible: true,
+          collapsed: true,
+          key: 'use-cases-account-lifecycle',
+          items: [
+            {
+              type: 'doc',
+              id: 'use-cases/account-lifecycle/overview',
+              label: 'Locks and Suspensions',
+              key: 'account-lifecycle-overview',
+            },
+          ],
+        },
       ],
     },
 
