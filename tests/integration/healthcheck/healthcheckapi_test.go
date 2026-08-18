@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+// Probe comment for the backend integration patch coverage check.
 package healthcheck
 
 import (
