@@ -23,8 +23,7 @@ func newCredentialFileBasedStore() *credentialFileBasedStore {
 // Create stores a credential configuration in the file-based store. In declarative
 // and composite modes the loader writes resources through this method (resources
 // loaded from YAML are immutable; management writes route to the database store).
-func (f *credentialFileBasedStore) CreateCredentialConfiguration(
-	_ context.Context, dto CredentialConfigurationDTO,
+func (f *credentialFileBasedStore) CreateCredentialConfiguration(ctx context.Context, dto CredentialConfigurationDTO,
 ) error {
 	return f.GenericFileBasedStore.Create(dto.ID, &dto)
 }
@@ -48,10 +47,9 @@ func (s *credentialStorer) Create(id string, data interface{}) error {
 }
 
 // GetByID retrieves a credential configuration by ID from the file-based store.
-func (f *credentialFileBasedStore) GetCredentialConfigurationByID(
-	_ context.Context, id string,
+func (f *credentialFileBasedStore) GetCredentialConfigurationByID(ctx context.Context, id string,
 ) (*CredentialConfigurationDTO, error) {
-	data, err := f.GenericFileBasedStore.Get(id)
+	data, err := f.GenericFileBasedStore.Get(ctx, id)
 	if err != nil {
 		return nil, ErrNotFound
 	}
@@ -64,10 +62,9 @@ func (f *credentialFileBasedStore) GetCredentialConfigurationByID(
 }
 
 // GetByHandle retrieves a credential configuration by handle from the file-based store.
-func (f *credentialFileBasedStore) GetCredentialConfigurationByHandle(
-	_ context.Context, handle string,
+func (f *credentialFileBasedStore) GetCredentialConfigurationByHandle(ctx context.Context, handle string,
 ) (*CredentialConfigurationDTO, error) {
-	data, err := f.GenericFileBasedStore.GetByField(handle, func(d interface{}) string {
+	data, err := f.GenericFileBasedStore.GetByField(ctx, handle, func(d interface{}) string {
 		return d.(*CredentialConfigurationDTO).Handle
 	})
 	if err != nil {
@@ -77,10 +74,9 @@ func (f *credentialFileBasedStore) GetCredentialConfigurationByHandle(
 }
 
 // ListSummaries retrieves minimal listing data from the file-based store.
-func (f *credentialFileBasedStore) ListCredentialConfigurationSummaries(
-	_ context.Context,
+func (f *credentialFileBasedStore) ListCredentialConfigurationSummaries(ctx context.Context,
 ) ([]CredentialConfigurationList, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -94,10 +90,9 @@ func (f *credentialFileBasedStore) ListCredentialConfigurationSummaries(
 }
 
 // List retrieves all credential configurations from the file-based store.
-func (f *credentialFileBasedStore) ListCredentialConfigurations(
-	_ context.Context,
+func (f *credentialFileBasedStore) ListCredentialConfigurations(ctx context.Context,
 ) ([]CredentialConfigurationDTO, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -111,19 +106,18 @@ func (f *credentialFileBasedStore) ListCredentialConfigurations(
 }
 
 // Update is not supported in the file-based store.
-func (f *credentialFileBasedStore) UpdateCredentialConfiguration(
-	_ context.Context, _ CredentialConfigurationDTO,
+func (f *credentialFileBasedStore) UpdateCredentialConfiguration(ctx context.Context, _ CredentialConfigurationDTO,
 ) error {
 	return ErrConfigurationIsImmutable
 }
 
 // Delete is not supported in the file-based store.
-func (f *credentialFileBasedStore) DeleteCredentialConfiguration(_ context.Context, _ string) error {
+func (f *credentialFileBasedStore) DeleteCredentialConfiguration(ctx context.Context, _ string) error {
 	return ErrConfigurationIsImmutable
 }
 
 // IsDeclarative reports whether the given id exists in the file-based store.
-func (f *credentialFileBasedStore) IsCredentialConfigurationDeclarative(_ context.Context, id string) (bool, error) {
-	_, err := f.GenericFileBasedStore.Get(id)
+func (f *credentialFileBasedStore) IsCredentialConfigurationDeclarative(ctx context.Context, id string) (bool, error) {
+	_, err := f.GenericFileBasedStore.Get(ctx, id)
 	return err == nil, nil
 }

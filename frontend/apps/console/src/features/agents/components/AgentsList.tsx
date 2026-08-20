@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice, ResourceAvatar} from '@thunderid/components';
+import {useIsManagedResource} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, IconButton, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
@@ -17,6 +18,8 @@ import type {BasicAgent} from '../models/agent';
 
 export default function AgentsList(): JSX.Element {
   const navigate = useNavigate();
+  // A agent applied from the control plane is read only here, the same as a declarative one.
+  const isManagedAgent = useIsManagedResource('agent');
   const {t} = useTranslation();
   const logger = useLogger('AgentsList');
   const dataGridLocaleText = useDataGridLocaleText();
@@ -103,7 +106,7 @@ export default function AgentsList(): JSX.Element {
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<BasicAgent>): JSX.Element => (
           <ListingTable.RowActions>
-            {params.row.isReadOnly ? (
+            {params.row.isReadOnly || isManagedAgent(params.row.id) ? (
               <Tooltip title={t('common:status.readOnly', 'Read Only')}>
                 <IconButton size="small" disableRipple sx={{cursor: 'default'}}>
                   <Eye size={16} />
@@ -140,7 +143,7 @@ export default function AgentsList(): JSX.Element {
         ),
       },
     ],
-    [handleDeleteClick, handleEditClick, t],
+    [handleDeleteClick, handleEditClick, t, isManagedAgent],
   );
 
   if (error) {

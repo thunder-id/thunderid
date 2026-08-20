@@ -18,9 +18,10 @@ import (
 // services, registers the /connections routes, loads declarative connection resources, and
 // returns the connection exporter for the export API.
 func Initialize(mux *http.ServeMux, idpService idp.IDPServiceInterface,
-	notificationService notification.NotificationSenderMgtSvcInterface) (
+	notificationService notification.NotificationSenderMgtSvcInterface,
+	secretCapturer SecretCapturer) (
 	declarativeresource.ResourceExporter, error) {
-	svc := newService(idpService, notificationService)
+	svc := newService(idpService, notificationService, secretCapturer)
 	h := newHandler(svc)
 	registerRoutes(mux, h)
 

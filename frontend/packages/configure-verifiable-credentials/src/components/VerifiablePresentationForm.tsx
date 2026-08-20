@@ -66,6 +66,8 @@ export interface VerifiablePresentationFormProps {
   error?: string;
   /** Called whenever a field changes, so a stale save error can be cleared. */
   onErrorClear?: () => void;
+  /** Show the stored configuration without offering to change it. */
+  isReadOnly?: boolean;
 }
 
 interface TabPanelProps {
@@ -98,6 +100,7 @@ export default function VerifiablePresentationForm({
   onDelete = undefined,
   error = undefined,
   onErrorClear = undefined,
+  isReadOnly = false,
 }: VerifiablePresentationFormProps): JSX.Element {
   const {t} = useTranslation('verifiable-presentations');
 
@@ -542,7 +545,7 @@ export default function VerifiablePresentationForm({
         </TabPanel>
       )}
 
-      {dirty && (
+      {dirty && !isReadOnly && (
         <UnsavedChangesBar
           message={t('form.unsavedChanges')}
           resetLabel={t('common:actions.reset')}

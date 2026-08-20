@@ -313,7 +313,7 @@ func (s *ThemeDeclarativeSuite) TestLoadDeclarativeResources_WithDBStore() {
 	store := &themeFileBasedStore{GenericFileBasedStore: genericStore}
 
 	dbStore := newThemeMgtStoreInterfaceMock(s.T())
-	dbStore.On("IsThemeExist", "theme-dup").Return(false, nil)
+	dbStore.On("IsThemeExist", mock.Anything, "theme-dup").Return(false, nil)
 
 	err = loadDeclarativeResources(store, dbStore)
 	s.NoError(err)
@@ -379,7 +379,7 @@ func (s *ThemeDeclarativeSuite) TestValidateThemeWrapper_DBStoreDuplicate() {
 	}
 
 	dbStore := newThemeMgtStoreInterfaceMock(s.T())
-	dbStore.On("IsThemeExist", "theme1").Return(true, nil)
+	dbStore.On("IsThemeExist", mock.Anything, "theme1").Return(true, nil)
 
 	err := validateThemeWrapper(theme, dbStore)
 	s.Error(err)
@@ -394,7 +394,7 @@ func (s *ThemeDeclarativeSuite) TestValidateThemeWrapper_DBStoreError() {
 	}
 
 	dbStore := newThemeMgtStoreInterfaceMock(s.T())
-	dbStore.On("IsThemeExist", "theme1").Return(false, errors.New("db error"))
+	dbStore.On("IsThemeExist", mock.Anything, "theme1").Return(false, errors.New("db error"))
 
 	err := validateThemeWrapper(theme, dbStore)
 	s.Error(err)

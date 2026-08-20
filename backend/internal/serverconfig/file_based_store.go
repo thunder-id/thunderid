@@ -46,8 +46,8 @@ func (s *fileBasedStore) Create(id string, data any) error {
 }
 
 // GetByName returns the declarative value for name and whether one is set.
-func (s *fileBasedStore) GetByName(name ConfigName) (json.RawMessage, bool) {
-	data, err := s.GenericFileBasedStore.Get(string(name))
+func (s *fileBasedStore) GetByName(ctx context.Context, name ConfigName) (json.RawMessage, bool) {
+	data, err := s.GenericFileBasedStore.Get(ctx, string(name))
 	if err != nil || data == nil {
 		return nil, false
 	}
@@ -59,8 +59,8 @@ func (s *fileBasedStore) GetByName(name ConfigName) (json.RawMessage, bool) {
 }
 
 // GetServerConfig serves the declarative value as the read-only layer; the writable layer is never set.
-func (s *fileBasedStore) GetServerConfig(_ context.Context, name ConfigName) (storeLayers, error) {
-	value, ok := s.GetByName(name)
+func (s *fileBasedStore) GetServerConfig(ctx context.Context, name ConfigName) (storeLayers, error) {
+	value, ok := s.GetByName(ctx, name)
 	if !ok {
 		return storeLayers{}, nil
 	}
@@ -68,6 +68,6 @@ func (s *fileBasedStore) GetServerConfig(_ context.Context, name ConfigName) (st
 }
 
 // UpsertServerConfig is rejected: the declarative layer is read-only.
-func (s *fileBasedStore) UpsertServerConfig(_ context.Context, _ ServerConfig) error {
+func (s *fileBasedStore) UpsertServerConfig(ctx context.Context, _ ServerConfig) error {
 	return errors.New("serverconfig: declarative store is read-only")
 }

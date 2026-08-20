@@ -217,6 +217,7 @@ func (s *ApplicationImportExportSuite) TestExportImportRoundTrip_ConfidentialOAu
 		"clientId":     "app-rt-conf-client-" + s.handleSuffix,
 		"clientSecret": "app-rt-conf-secret-" + s.handleSuffix,
 		"redirectUris": []string{"https://app-rt-conf.example.com/callback"},
+		"url":          "https://app-rt-conf.example.com",
 	})
 
 	importResp, err := s.importApps(appImportRequest{

@@ -39,8 +39,25 @@ func (s *GenericFileBasedStore) Create(id string, data interface{}) error {
 	return s.storage.Set(key, data)
 }
 
-// Get retrieves an entity by its ID.
-func (s *GenericFileBasedStore) Get(id string) (interface{}, error) {
+// Get retrieves an entity by its ID, when declarative resources are readable in this deployment.
+func (s *GenericFileBasedStore) Get(ctx context.Context, id string) (interface{}, error) {
+	if !VisibleTo(ctx) {
+		return nil, errors.New("entity not found")
+	}
+	key := entity.NewCompositeKey(id, s.keyType)
+	e, err := s.storage.Get(key)
+	if err != nil {
+		return nil, err
+	}
+	return e.Data, nil
+}
+
+// GetForLoad retrieves an entity without regard to who may see it.
+//
+// It exists for loading, where the file is being parsed and there is no request and no deployment to
+// scope by. The uniqueness checks that run then must see every declarative resource, not the subset
+// some tenant would be shown.
+func (s *GenericFileBasedStore) GetForLoad(id string) (interface{}, error) {
 	key := entity.NewCompositeKey(id, s.keyType)
 	e, err := s.storage.Get(key)
 	if err != nil {
@@ -52,8 +69,11 @@ func (s *GenericFileBasedStore) Get(id string) (interface{}, error) {
 // GetByField retrieves an entity by searching for a matching field value.
 // The fieldGetter function extracts the field value from each entity.
 func (s *GenericFileBasedStore) GetByField(
-	fieldValue string, fieldGetter func(interface{}) string,
+	ctx context.Context, fieldValue string, fieldGetter func(interface{}) string,
 ) (interface{}, error) {
+	if !VisibleTo(ctx) {
+		return nil, errors.New("entity not found")
+	}
 	list, err := s.storage.ListByType(s.keyType)
 	if err != nil {
 		return nil, err
@@ -68,13 +88,21 @@ func (s *GenericFileBasedStore) GetByField(
 	return nil, errors.New("entity not found")
 }
 
-// List retrieves all entities of this type.
-func (s *GenericFileBasedStore) List() ([]*entity.Entity, error) {
+// List retrieves all entities of this type, when declarative resources are readable in this
+// deployment. A deployment they are not readable in sees none rather than an error, so a listing
+// simply does not include them.
+func (s *GenericFileBasedStore) List(ctx context.Context) ([]*entity.Entity, error) {
+	if !VisibleTo(ctx) {
+		return nil, nil
+	}
 	return s.storage.ListByType(s.keyType)
 }
 
-// Count returns the count of entities of this type.
-func (s *GenericFileBasedStore) Count() (int, error) {
+// Count returns the count of entities of this type, when they are readable in this deployment.
+func (s *GenericFileBasedStore) Count(ctx context.Context) (int, error) {
+	if !VisibleTo(ctx) {
+		return 0, nil
+	}
 	return s.storage.CountByType(s.keyType)
 }
 
@@ -90,7 +118,9 @@ func (s *GenericFileBasedStore) Delete(id string) error {
 
 // ClearByType removes all entities of this specific key type (primarily for testing).
 func (s *GenericFileBasedStore) ClearByType() error {
-	list, err := s.List()
+	// Reads the storage directly rather than through List: clearing is maintenance, not a read on
+	// behalf of a deployment, so it is not subject to who may see these resources.
+	list, err := s.storage.ListByType(s.keyType)
 	if err != nil {
 		return err
 	}

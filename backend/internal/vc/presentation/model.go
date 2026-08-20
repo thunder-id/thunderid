@@ -80,13 +80,14 @@ func toResponse(dto PresentationDefinitionDTO) presentationDefinitionResponse {
 // PresentationDefinitionList is the minimal projection returned by the list
 // endpoint. It contains only the fields the management UI renders in the table.
 type PresentationDefinitionList struct {
-	ID       string `json:"id"`
-	Handle   string `json:"handle"`
-	OUID     string `json:"ouId"`
-	OUHandle string `json:"ouHandle,omitempty"`
-	Name     string `json:"name,omitempty"`
-	VCT      string `json:"vct"`
-	Format   string `json:"format"`
+	ID         string `json:"id"`
+	Handle     string `json:"handle"`
+	OUID       string `json:"ouId"`
+	OUHandle   string `json:"ouHandle,omitempty"`
+	Name       string `json:"name,omitempty"`
+	VCT        string `json:"vct"`
+	Format     string `json:"format"`
+	IsReadOnly bool   `json:"isReadOnly"`
 }
 
 // toSummary projects a full DTO to a list summary.

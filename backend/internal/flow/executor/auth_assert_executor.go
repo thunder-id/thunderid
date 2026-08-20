@@ -581,7 +581,7 @@ func (a *authAssertExecutor) fetchAllUserGroups(
 		return nil, nil
 	}
 
-	groups, err := a.entityProvider.GetTransitiveEntityGroups(userID)
+	groups, err := a.entityProvider.GetTransitiveEntityGroups(ctx, userID)
 	if err != nil {
 		a.logger.Error(ctx, "Failed to fetch transitive user groups",
 			log.MaskedString(log.LoggerKeyUserID, userID), log.Any("error", err))

@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -75,7 +76,7 @@ func (s *idpStore) CreateIdentityProvider(ctx context.Context, idp providers.IDP
 
 	_, err = dbClient.ExecuteContext(ctx,
 		queryCreateIdentityProvider, idp.ID, idp.Name, idp.Description, idp.Type, propertiesJSON,
-		attributeConfigurationJSON, s.deploymentID,
+		attributeConfigurationJSON, deployment.Resolve(ctx, s.deploymentID),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
@@ -91,7 +92,7 @@ func (s *idpStore) GetIdentityProviderList(ctx context.Context) ([]BasicIDPDTO, 
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryGetIdentityProviderList, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, queryGetIdentityProviderList, deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -118,7 +119,8 @@ func (s *idpStore) GetIdentityProviderListCount(ctx context.Context) (int, error
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryGetIdentityProviderListCount, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, queryGetIdentityProviderListCount, deployment.Resolve(ctx,
+		s.deploymentID))
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -163,7 +165,7 @@ func (s *idpStore) GetIdentityProvidersByProperty(ctx context.Context,
 	}
 
 	results, err := dbClient.QueryContext(ctx, queryGetIdentityProvidersByProperty,
-		propertyKey, propertyValue, s.deploymentID)
+		propertyKey, propertyValue, deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -217,7 +219,7 @@ func (s *idpStore) getIDP(ctx context.Context, query dbmodel.DBQuery, identifier
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, query, identifier, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, query, identifier, deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -293,7 +295,7 @@ func (s *idpStore) UpdateIdentityProvider(ctx context.Context, idp *providers.ID
 
 	// Update the IDP in the database
 	_, err = dbClient.ExecuteContext(ctx, queryUpdateIdentityProviderByID, idp.ID, idp.Name,
-		idp.Description, idp.Type, propertiesJSON, attributeConfigurationJSON, s.deploymentID)
+		idp.Description, idp.Type, propertiesJSON, attributeConfigurationJSON, deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -310,7 +312,8 @@ func (s *idpStore) DeleteIdentityProvider(ctx context.Context, id string) error 
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	rowsAffected, err := dbClient.ExecuteContext(ctx, queryDeleteIdentityProviderByID, id, s.deploymentID)
+	rowsAffected, err := dbClient.ExecuteContext(ctx, queryDeleteIdentityProviderByID, id, deployment.Resolve(ctx,
+		s.deploymentID))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}

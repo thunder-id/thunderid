@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
@@ -281,7 +282,7 @@ func newImportService(
 func (s *importService) ImportResources(
 	ctx context.Context, request *ImportRequest,
 ) (*ImportResponse, *tidcommon.ServiceError) {
-	if request == nil || request.Content == "" {
+	if request == nil || (request.Content == "" && len(request.Deletions) == 0) {
 		return nil, tidcommon.CustomServiceError(ErrorInvalidImportRequest,
 			tidcommon.I18nMessage{Key: "error.import.emptyContent", DefaultValue: "import content cannot be empty"})
 	}
@@ -312,18 +313,33 @@ func (s *importService) ImportResources(
 		)
 	}
 
-	resolvedContent, err := resolveTemplate(request.Content, request.Variables)
-	if err != nil {
-		log.GetLogger().Warn(ctx, "Import template resolution failed", log.String("error", err.Error()))
-		return nil, tidcommon.CustomServiceError(ErrorTemplateResolutionFailed,
-			tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
+	// A request that claims control plane authorship is allowed to change resources this deployment
+	// does not own, because that is how a promotion updates what it wrote last time. A plain local
+	// import gets no such license: it writes this deployment's own resources and must be refused at a
+	// control plane owned one, the same as any other local caller.
+	if request.claimsControlPlaneAuthorship() {
+		ctx = managedresource.WithImport(ctx)
 	}
 
-	docs, err := parseDocuments(resolvedContent)
-	if err != nil {
-		log.GetLogger().Warn(ctx, "Import YAML parsing failed", log.String("error", err.Error()))
-		return nil, tidcommon.CustomServiceError(ErrorInvalidYAMLContent,
-			tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
+	var docs []parsedDocument
+	if request.Content != "" {
+		// Placeholders the caller did not supply are filled from this server's own secret provider and
+		// environment, so a secret can stay on this side rather than traveling with the configuration.
+		variables := fillSecretPlaceholders(ctx, request.Content, request.Variables)
+
+		resolvedContent, err := resolveTemplate(request.Content, variables)
+		if err != nil {
+			log.GetLogger().Warn(ctx, "Import template resolution failed", log.String("error", err.Error()))
+			return nil, tidcommon.CustomServiceError(ErrorTemplateResolutionFailed,
+				tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
+		}
+
+		docs, err = parseDocuments(resolvedContent)
+		if err != nil {
+			log.GetLogger().Warn(ctx, "Import YAML parsing failed", log.String("error", err.Error()))
+			return nil, tidcommon.CustomServiceError(ErrorInvalidYAMLContent,
+				tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
+		}
 	}
 
 	results := make([]ImportItemOutcome, 0, len(docs))
@@ -352,6 +368,7 @@ func (s *importService) ImportResources(
 
 		if outcome.Status == statusSuccess {
 			imported++
+			s.recordManagedResource(ctx, request, outcome)
 		} else {
 			failed++
 			if !options.IsContinueOnErrorEnabled() {
@@ -360,10 +377,22 @@ func (s *importService) ImportResources(
 		}
 	}
 
+	// Deletions run after the upserts so that resources moved or replaced by this same request are in
+	// place before their predecessors are pruned.
+	deleted := 0
+	if len(request.Deletions) > 0 && (failed == 0 || options.IsContinueOnErrorEnabled()) {
+		deleteOutcomes, deleteCount, deleteFailures := s.deleteResources(ctx, request.Deletions, options,
+			request.DryRun)
+		results = append(results, deleteOutcomes...)
+		deleted = deleteCount
+		failed += deleteFailures
+	}
+
 	return &ImportResponse{
 		Summary: &ImportSummary{
 			TotalDocuments: len(docs),
 			Imported:       imported,
+			Deleted:        deleted,
 			Failed:         failed,
 			ImportedAt:     time.Now().UTC(),
 		},
@@ -766,8 +795,11 @@ var resourceDependencyOrder = []string{
 	resourceTypeTheme,
 	resourceTypeLayout,
 	resourceTypeApplication,
-	resourceTypeAgent,
+	// Agents follow users: an agent names an owner, and that owner is a user, so importing agents
+	// first fails every agent that has one. Groups still come after both, because a group's members
+	// may be either.
 	resourceTypeUser,
+	resourceTypeAgent,
 	resourceTypeGroup,
 	resourceTypeRole,
 	resourceTypeTranslation,
@@ -1043,4 +1075,32 @@ func isNotFoundServiceError(svcErr *tidcommon.ServiceError) bool {
 	}
 	_, ok := notFoundErrorCodes[svcErr.Code]
 	return ok
+}
+
+// recordManagedResource records a written resource as owned by the control plane, so this
+// deployment's own management APIs refuse to change it.
+//
+// Only what the request asked for is marked. The import API is also how this deployment does its own
+// work, and marking everything it wrote would make those resources read only here too, which is the
+// opposite of what a data plane needs for anything it owns.
+//
+// A failure to record is logged rather than failing the import: the resource is already written, and
+// reporting the import as failed would be a worse answer than a resource that stays locally editable.
+func (s *importService) recordManagedResource(ctx context.Context, request *ImportRequest,
+	outcome ImportItemOutcome) {
+	if request.DryRun || outcome.ResourceID == "" {
+		return
+	}
+	if !request.marksAsManaged(outcome.ResourceType, outcome.ResourceID) {
+		return
+	}
+	registry := managedresource.Default()
+	if !registry.Enabled() {
+		return
+	}
+	if err := registry.Mark(ctx, outcome.ResourceType, outcome.ResourceID); err != nil {
+		log.GetLogger().Warn(ctx, "Failed to record a resource as control plane owned",
+			log.String("resourceType", outcome.ResourceType),
+			log.String("resourceId", outcome.ResourceID), log.Error(err))
+	}
 }

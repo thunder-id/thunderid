@@ -124,6 +124,24 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OIDC_AllRequired() {
 	s.True(hasOpenIDScope, "OIDC should have openid scope added")
 }
 
+// A control plane stores a reference to the credential rather than the credential, and runs no secret
+// provider to resolve one with. Validation only needs the property to be set, so a reference has to be
+// accepted as it stands.
+func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OIDC_AcceptsASecretReference() {
+	prop1, _ := cmodels.NewProperty(PropClientID, "test-client", false)
+	prop2, _ := cmodels.NewProperty(PropClientSecret, "kv:CONNECTION_TEST_CLIENT_SECRET", false)
+	prop3, _ := cmodels.NewProperty(PropRedirectURI, "http://localhost/callback", false)
+	prop4, _ := cmodels.NewProperty(PropAuthorizationEndpoint, "http://idp/auth", false)
+	prop5, _ := cmodels.NewProperty(PropTokenEndpoint, "http://idp/token", false)
+
+	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4, *prop5}
+
+	result, err := validateIDPProperties(context.Background(), providers.IDPTypeOIDC, properties, s.logger)
+
+	s.Nil(err)
+	s.NotNil(result)
+}
+
 func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OIDC_WithExistingScopes() {
 	prop1, _ := cmodels.NewProperty(PropClientID, "test-client", false)
 	prop2, _ := cmodels.NewProperty(PropClientSecret, "test-secret", false)

@@ -53,13 +53,17 @@ export default function withConfig<P extends object>(WrappedComponent: Component
       tokenLifecycle: {revokeToken: {revokeOnSignOut: true}},
       // When the trusted issuer is a generic OIDC provider, suppress the SDK's
       // product-specific bootstrap calls that would otherwise 404 / be CORS-blocked
-      // at the external authorization server: flow metadata (`{baseUrl}/flow/meta`).
-      // The user profile is already derived from ID token
-      // claims under the ThunderID platform, so no additional profile configuration
-      // is required.
+      // at the external authorization server: flow metadata (`{baseUrl}/flow/meta`)
+      // and the signed-in user's profile (`{baseUrl}/users/me`).
+      //
+      // Both are ThunderID endpoints, and the SDK addresses them relative to the single
+      // `baseUrl` it is given, which in this model is the issuer rather than this server.
+      // The profile call is not merely misaddressed: whoever signs in exists at the issuer
+      // and not in this deployment, so there is no profile here to read. Their details come
+      // from the ID token claims, which is what the SDK falls back to.
       ...(genericOidc
         ? {
-            preferences: {resolveFromMeta: false},
+            preferences: {resolveFromMeta: false, user: {fetchUserProfile: false}},
             // Generic OIDC authorization servers typically respond to the `/oauth/token`
             // endpoint with `access-control-allow-credentials: false`, so a credentialed
             // fetch from the browser is blocked by CORS and the SDK never sees the issued

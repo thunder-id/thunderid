@@ -22,12 +22,12 @@ func newCompositeI18nStore(fileStore, dbStore i18nStoreInterface) i18nStoreInter
 }
 
 // GetDistinctLanguages returns the union of languages from both stores.
-func (c *compositeI18nStore) GetDistinctLanguages() ([]string, error) {
-	dbLangs, err := c.dbStore.GetDistinctLanguages()
+func (c *compositeI18nStore) GetDistinctLanguages(ctx context.Context) ([]string, error) {
+	dbLangs, err := c.dbStore.GetDistinctLanguages(ctx)
 	if err != nil {
 		return nil, err
 	}
-	fileLangs, err := c.fileStore.GetDistinctLanguages()
+	fileLangs, err := c.fileStore.GetDistinctLanguages(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -51,12 +51,12 @@ func (c *compositeI18nStore) GetDistinctLanguages() ([]string, error) {
 
 // GetTranslations merges translations from both stores.
 // DB values (overrides) take precedence over file-based values for the same key+language.
-func (c *compositeI18nStore) GetTranslations() (map[string]map[string]Translation, error) {
-	fileTrans, err := c.fileStore.GetTranslations()
+func (c *compositeI18nStore) GetTranslations(ctx context.Context) (map[string]map[string]Translation, error) {
+	fileTrans, err := c.fileStore.GetTranslations(ctx)
 	if err != nil {
 		return nil, err
 	}
-	dbTrans, err := c.dbStore.GetTranslations()
+	dbTrans, err := c.dbStore.GetTranslations(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -65,14 +65,15 @@ func (c *compositeI18nStore) GetTranslations() (map[string]map[string]Translatio
 
 // GetTranslationsByNamespace merges translations for a namespace from both stores.
 // DB values take precedence over file-based values for the same key+language.
-func (c *compositeI18nStore) GetTranslationsByNamespace(namespace string) (
+func (c *compositeI18nStore) GetTranslationsByNamespace(ctx context.Context,
+	namespace string) (
 	map[string]map[string]Translation, error,
 ) {
-	fileTrans, err := c.fileStore.GetTranslationsByNamespace(namespace)
+	fileTrans, err := c.fileStore.GetTranslationsByNamespace(ctx, namespace)
 	if err != nil {
 		return nil, err
 	}
-	dbTrans, err := c.dbStore.GetTranslationsByNamespace(namespace)
+	dbTrans, err := c.dbStore.GetTranslationsByNamespace(ctx, namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -81,14 +82,15 @@ func (c *compositeI18nStore) GetTranslationsByNamespace(namespace string) (
 
 // GetTranslationsByKey retrieves a translation for a specific key and namespace.
 // Returns the DB override if present, otherwise falls back to the file-based value.
-func (c *compositeI18nStore) GetTranslationsByKey(key string, namespace string) (
+func (c *compositeI18nStore) GetTranslationsByKey(ctx context.Context, key string,
+	namespace string) (
 	map[string]Translation, error,
 ) {
-	fileTrans, err := c.fileStore.GetTranslationsByKey(key, namespace)
+	fileTrans, err := c.fileStore.GetTranslationsByKey(ctx, key, namespace)
 	if err != nil {
 		return nil, err
 	}
-	dbTrans, err := c.dbStore.GetTranslationsByKey(key, namespace)
+	dbTrans, err := c.dbStore.GetTranslationsByKey(ctx, key, namespace)
 	if err != nil {
 		return nil, err
 	}

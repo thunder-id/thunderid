@@ -12,6 +12,7 @@ import {useNavigate, useParams} from 'react-router';
 import useConnection from '../api/useConnection';
 import useConnectionInstances from '../api/useConnectionInstances';
 import useDeleteConnection from '../api/useDeleteConnection';
+import useIsManagedConnection from '../api/useIsManagedConnection';
 import useUpdateConnection from '../api/useUpdateConnection';
 import AttributeMappingSection from '../components/AttributeMappingSection';
 import ConnectionDeleteDialog from '../components/ConnectionDeleteDialog';
@@ -91,6 +92,11 @@ export default function ConnectionDetailPage(): JSX.Element | null {
   const [nameError, setNameError] = useState<string | null>(null);
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const isManagedConnection = useIsManagedConnection();
+  // Owned by the control plane: a change made here would be replaced by the next apply, and the
+  // server refuses it with 403, so the controls are not offered at all.
+  const isManaged: boolean = isManagedConnection(resolvedId);
 
   const updateMutation = useUpdateConnection(connectionType, resolvedId ?? '');
   const deleteMutation = useDeleteConnection(connectionType);
@@ -221,6 +227,15 @@ export default function ConnectionDetailPage(): JSX.Element | null {
         />
       ) : (
         <>
+          {isManaged && (
+            <Alert severity="info" sx={{mb: 2}}>
+              {t('common:managedResource.body', {
+                defaultValue:
+                  'This resource was applied from the control plane and is read only here. Change it there and apply again, otherwise the next apply would replace whatever was changed on this deployment.',
+              })}
+            </Alert>
+          )}
+
           <Stack direction="row" spacing={2} alignItems="flex-start" sx={{mb: 3}}>
             <Box
               sx={{
@@ -296,6 +311,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                   vendorDisplayName={meta.displayName}
                   nameError={nameError}
                   showNameField={isCustom}
+                  isReadOnly={isManaged}
                   onFieldChange={(name, value) => {
                     clearSaveError();
                     setEditedValues((prev) => ({...prev, [name]: value}));
@@ -321,30 +337,32 @@ export default function ConnectionDetailPage(): JSX.Element | null {
 
           <TabPanel value={activeTab} index={supportsAttributes ? 2 : 1}>
             <Stack direction="column" spacing={4}>
-              <SettingsCard title={t('detail.dangerZone.title')} description={t('detail.dangerZone.description')}>
-                <Typography variant="h6" gutterBottom color="error">
-                  {t('detail.dangerZone.delete.title')}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
-                  {t('detail.dangerZone.delete.description')}
-                </Typography>
-                <Button
-                  variant="contained"
-                  color="error"
-                  startIcon={<Trash2 size={16} />}
-                  onClick={() => {
-                    setDeleteError(null);
-                    setDeleteOpen(true);
-                  }}
-                  data-testid="connection-delete-button"
-                >
-                  {t('form.actions.delete')}
-                </Button>
-              </SettingsCard>
+              {!isManaged && (
+                <SettingsCard title={t('detail.dangerZone.title')} description={t('detail.dangerZone.description')}>
+                  <Typography variant="h6" gutterBottom color="error">
+                    {t('detail.dangerZone.delete.title')}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
+                    {t('detail.dangerZone.delete.description')}
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    color="error"
+                    startIcon={<Trash2 size={16} />}
+                    onClick={() => {
+                      setDeleteError(null);
+                      setDeleteOpen(true);
+                    }}
+                    data-testid="connection-delete-button"
+                  >
+                    {t('form.actions.delete')}
+                  </Button>
+                </SettingsCard>
+              )}
             </Stack>
           </TabPanel>
 
-          {dirty && (
+          {dirty && !isManaged && (
             <UnsavedChangesBar
               message={t('detail.saveBar.unsaved', 'You have unsaved changes.')}
               resetLabel={t('detail.saveBar.reset', 'Reset')}

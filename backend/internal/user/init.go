@@ -24,9 +24,10 @@ func Initialize(
 	ouService oupkg.OrganizationUnitServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
+	secretCapturer SecretCapturer,
 ) (UserServiceInterface, oupkg.OUUserResolver, declarativeresource.ResourceExporter, error) {
 	// Step 1: Create service with entity service
-	userService := newUserService(authzService, entityService, ouService, entityTypeService)
+	userService := newUserService(authzService, entityService, ouService, entityTypeService, secretCapturer)
 
 	// Step 2: Load user-specific indexed attributes into the entity store.
 	if err := entityService.LoadIndexedAttributes(getUserIndexedAttributes()); err != nil {

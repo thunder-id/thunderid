@@ -37,7 +37,7 @@ func (f *notificationFileBasedStore) deleteSender(ctx context.Context, id string
 // getSenderByID implements notificationStoreInterface.
 func (f *notificationFileBasedStore) getSenderByID(
 	ctx context.Context, id string) (*common.NotificationSenderDTO, error) {
-	data, err := f.GenericFileBasedStore.Get(id)
+	data, err := f.GenericFileBasedStore.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +52,7 @@ func (f *notificationFileBasedStore) getSenderByID(
 // getSenderByName implements notificationStoreInterface.
 func (f *notificationFileBasedStore) getSenderByName(
 	ctx context.Context, name string) (*common.NotificationSenderDTO, error) {
-	data, err := f.GenericFileBasedStore.GetByField(name, func(d interface{}) string {
+	data, err := f.GenericFileBasedStore.GetByField(ctx, name, func(d interface{}) string {
 		return d.(*common.NotificationSenderDTO).Name
 	})
 	if err != nil {
@@ -63,7 +63,7 @@ func (f *notificationFileBasedStore) getSenderByName(
 
 // listSenders implements notificationStoreInterface.
 func (f *notificationFileBasedStore) listSenders(ctx context.Context) ([]common.NotificationSenderDTO, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}

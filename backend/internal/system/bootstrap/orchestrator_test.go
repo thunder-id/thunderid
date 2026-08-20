@@ -139,3 +139,63 @@ func TestRun_PropagatesServiceError(t *testing.T) {
 		t.Fatal("expected Run to fail when the import service returns an error")
 	}
 }
+
+// A tenant gets no local administrator: whoever administers one signs in against the trusted issuer,
+// so a local user with a password would be an unusable credential that is still a real way in.
+func TestRun_TenantProvisioningOmitsTheLocalAdministrator(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "01-resources.yaml", `resource_type: organization_unit
+id: ou-1
+name: Default
+---
+resource_type: user
+id: user-1
+attributes:
+  username: admin
+---
+resource_type: group
+id: group-1
+members:
+  - id: user-1
+    type: user
+---
+resource_type: role
+id: role-1
+assignments:
+  - id: group-1
+    type: group
+`)
+
+	svc := &stubImportService{response: okResponse(1)}
+	if err := Run(context.Background(), svc, Options{DefaultsDir: dir, DeploymentID: "acme:dev"}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	content := svc.lastRequest.Content
+	for _, unwanted := range []string{"resource_type: user", "resource_type: group", "resource_type: role"} {
+		if strings.Contains(content, unwanted) {
+			t.Fatalf("expected %q to be left out of a tenant's baseline", unwanted)
+		}
+	}
+	if !strings.Contains(content, "resource_type: organization_unit") {
+		t.Fatal("expected the rest of the baseline to be provisioned")
+	}
+}
+
+// A deployment provisioned without a tenant is standalone, where that user is the only way in.
+func TestRun_StandaloneKeepsTheLocalAdministrator(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "01-resources.yaml", `resource_type: user
+id: user-1
+attributes:
+  username: admin
+`)
+
+	svc := &stubImportService{response: okResponse(1)}
+	if err := Run(context.Background(), svc, Options{DefaultsDir: dir}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(svc.lastRequest.Content, "resource_type: user") {
+		t.Fatal("expected a standalone deployment to keep its administrator")
+	}
+}

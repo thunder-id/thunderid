@@ -327,8 +327,11 @@ describe('withConfig (console)', () => {
       mockGetClientUrl.mockReturnValue('https://tenant.example.com:9443/console');
 
       render(<WithConfigComponent />);
+      // The profile call is suppressed too: it addresses a ThunderID endpoint relative to the
+      // issuer, and the person signing in exists there rather than in this deployment.
       expect(capturedProviderProps.preferences).toEqual({
         resolveFromMeta: false,
+        user: {fetchUserProfile: false},
       });
     });
 
@@ -467,6 +470,7 @@ describe('withConfig (console)', () => {
       render(<WithConfigComponent />);
       expect(capturedProviderProps.preferences).toEqual({
         resolveFromMeta: true,
+        user: {fetchUserProfile: false},
       });
     });
 

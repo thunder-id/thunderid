@@ -1,0 +1,175 @@
+# Data Plane deployment configuration.
+#
+# The Data Plane serves runtime traffic: OAuth2/OIDC, flow execution, the Direct APIs, and the gate.
+# Configuration is authored on the Control Plane and applied down to here, so the management APIs are
+# not served and resources that arrived from the Control Plane are read only on this side.
+server:
+  mode: "dp"
+  # Resources applied from the Control Plane are recorded as owned by it, and this deployment's own
+  # APIs then refuse to change them. Without this an operator could edit a resource here and have the
+  # next apply silently undo it.
+  control_plane_managed: true
+  hostname: "localhost"
+  port: 8090
+
+  security:
+    # Where this deployment's secrets live.
+    #
+    # Configuration applied from the Control Plane carries no secret: a credential is stored as a
+    # "kv:NAME" reference and resolved here, so the Control Plane holds nothing at rest. This is what
+    # resolves those references, and what a Control Plane writes a new credential into.
+    #
+    # mode is one of:
+    #   file    - a JSON file beside the server. Needs nothing else deployed, which suits a single
+    #             instance and local development. Each instance has its own file, so a deployment
+    #             running several of them does not share what it stores.
+    #   kv      - an external key vault, shared by every instance of the deployment. This is the
+    #             production choice.
+    #   service - the standalone secret provider service, over HTTP. Read only: the service owns its
+    #             own writes, so the Control Plane cannot push a credential in from here.
+    secret_provider:
+      mode: "file"
+      file:
+        path: "repository/secrets/secrets.json"
+
+      # Key vault mode. Set mode to "kv" above to use it.
+      #
+      # type selects the vault. Only "openbao" is implemented; anything else fails at startup with a
+      # message naming what is supported, rather than starting against the wrong store.
+      kv:
+        type: "openbao"
+        address: ""
+        # The KV version 2 engine's mount path.
+        mount: "secret"
+        # Scopes this deployment's secrets within the mount, so deployments sharing one vault do not
+        # collide. Use the deployment identifier, for example "thunderid/org1-dev".
+        path_prefix: ""
+        # For the vaults that have namespaces. Leave empty when yours does not.
+        namespace: ""
+        # The token comes from the THUNDERID_KV_TOKEN environment variable, so leave this empty.
+        #
+        # Everything else above says where the deployment points and is fine to keep here, where it
+        # can be read and reviewed. The token is the one value that must not be, so it is injected at
+        # startup instead: under Kubernetes, from a Secret through secretKeyRef. The variable wins
+        # over anything set here.
+        #
+        # A mounted secret file works too: set token to a file: URL pointing at it, and the server
+        # reads the token from there instead. Written out here it would be read at startup, because
+        # substitution scans this whole file including comments, so the form is described rather
+        # than shown.
+        token: ""
+        # The authority that signed the vault's certificate, when it is not one the system trusts.
+        ca_file: ""
+        timeout_seconds: 10
+        # How long a secret read from the vault is reused before being read again.
+        #
+        # A Control Plane write reaches one instance, which applies it at once. Every other instance
+        # picks it up by reloading, so this bounds how long one of them keeps serving a credential
+        # that has since been regenerated. Lower it where that window matters more than the traffic.
+        cache_ttl_seconds: 600
+
+      # Standalone secret provider service. Set mode to "service" above to use it.
+      service:
+        url: ""
+        token: ""
+        timeout_seconds: 10
+
+    # Gates the Direct API endpoints. The secret is generated into config/secrets/direct_auth_secret
+    # by setup.sh and read from there at load time. Callers present it in the Direct-Auth-Secret header.
+    direct_auth_secret: "file://config/secrets/direct_auth_secret"
+
+tls:
+  min_version: "1.3"
+  cert_file: "config/certs/server.cert"
+  key_file: "config/certs/server.key"
+
+# The channel to the Control Plane. This side always dials out, so this deployment needs no inbound
+# route from the Control Plane and exposes no management API to it.
+channel:
+  client:
+    enabled: false
+    # This deployment's identifier, as "<org>:<env>". It must match the environment registered on the
+    # Control Plane.
+    id: ""
+    # Which replica of this deployment the process is. Every replica dials, so without this they
+    # present one identity and each new connection evicts the last. Empty defaults to the host name,
+    # which is the pod name under Kubernetes, and that is usually what you want.
+    instance: ""
+    control_plane_url: ""
+    # Issued by the Control Plane when the environment is registered, and shown once. Mount it as a
+    # file and reference it here rather than writing it into this file.
+    auth_token: ""
+    # The authority that signed the Control Plane's certificate, when it is not one the system trusts.
+    ca_file: ""
+    read_limit_bytes: 8388608
+    ping_interval_seconds: 30
+    reconnect_initial_seconds: 1
+    reconnect_max_seconds: 60
+
+database:
+  config:
+    type: "sqlite"
+    sqlite:
+      path: "database/configdb.db"
+      options: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
+      max_open_conns: 500
+      max_idle_conns: 100
+      conn_max_lifetime: 3600
+
+  runtime_transient:
+    type: "sqlite"
+    sqlite:
+      path: "database/runtime-transient.db"
+      options: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
+      max_open_conns: 500
+      max_idle_conns: 100
+      conn_max_lifetime: 3600
+
+  entity:
+    type: "sqlite"
+    sqlite:
+      path: "database/entitydb.db"
+      options: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
+      max_open_conns: 500
+      max_idle_conns: 100
+      conn_max_lifetime: 3600
+
+  runtime_persistent:
+    type: "sqlite"
+    sqlite:
+      path: "database/runtime-persistent.db"
+      options: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
+      max_open_conns: 500
+      max_idle_conns: 100
+      conn_max_lifetime: 3600
+
+crypto:
+  encryption:
+    key: "file://config/certs/crypto.key"
+  password_hashing:
+    algorithm: "PBKDF2"
+  keys:
+    - id: "default-key"
+      cert_file: "config/certs/signing.cert"
+      key_file: "config/certs/signing.key"
+    - id: "ecdsa-key"
+      cert_file: "config/certs/ecdsa-signing.cert"
+      key_file: "config/certs/ecdsa-signing.key"
+
+jwt:
+  preferred_key_id: "default-key"
+
+passkey:
+  allowed_origins:
+    - "https://localhost:8090"
+
+# Sample email client configuration. Replace with real SMTP details before serving anything real.
+email:
+  smtp:
+    host: "127.0.0.1"
+    port: 2525
+    username: "dev"
+    password: "dev"
+    from_address: "noreply@thunderid.dev"
+    enable_start_tls: false
+    enable_authentication: true

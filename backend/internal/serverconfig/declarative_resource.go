@@ -4,6 +4,7 @@
 package serverconfig
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -63,7 +64,9 @@ func validateServerConfigDoc(data interface{}, fileStore *fileBasedStore,
 	if !doc.Name.IsValid() {
 		return fmt.Errorf("serverconfig: unsupported server config %q", doc.Name)
 	}
-	if _, exists := fileStore.GetByName(doc.Name); exists {
+	// Loading is not a read on behalf of a deployment: this is the uniqueness check as the file is
+	// parsed, before any request exists.
+	if _, exists := fileStore.GetByName(context.Background(), doc.Name); exists {
 		return fmt.Errorf("serverconfig: server config %q defined more than once", doc.Name)
 	}
 	handler, ok := handlers[doc.Name]
@@ -74,7 +77,8 @@ func validateServerConfigDoc(data interface{}, fileStore *fileBasedStore,
 	if err != nil {
 		return fmt.Errorf("serverconfig: invalid value for %q: %w", doc.Name, err)
 	}
-	return handler.Validate(value, nil, nil)
+	// Loading a declarative resource happens at startup, outside any request.
+	return handler.Validate(context.Background(), value, nil, nil)
 }
 
 // yamlNodeToJSON decodes a YAML node into a generic value and re-encodes it as JSON, producing the same

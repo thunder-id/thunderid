@@ -36,7 +36,7 @@ func (f *fileBasedStore) Create(id string, data interface{}) error {
 }
 
 // CreateFlow implements flowStoreInterface.
-func (f *fileBasedStore) CreateFlow(_ context.Context, flowID string, flow *FlowDefinition) (
+func (f *fileBasedStore) CreateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (
 	*providers.CompleteFlowDefinition, error) {
 	completeFlow := &providers.CompleteFlowDefinition{
 		ID:            flowID,
@@ -53,9 +53,9 @@ func (f *fileBasedStore) CreateFlow(_ context.Context, flowID string, flow *Flow
 }
 
 // ListFlows implements flowStoreInterface.
-func (f *fileBasedStore) ListFlows(_ context.Context, limit, offset int, flowType string) (
+func (f *fileBasedStore) ListFlows(ctx context.Context, limit, offset int, flowType string) (
 	[]BasicFlowDefinition, int, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -95,9 +95,9 @@ func (f *fileBasedStore) ListFlows(_ context.Context, limit, offset int, flowTyp
 
 // ListActiveFlowsWithNodes implements flowStoreInterface. File-based flows already carry their node
 // definitions, so it returns every stored flow.
-func (f *fileBasedStore) ListActiveFlowsWithNodes(_ context.Context) (
+func (f *fileBasedStore) ListActiveFlowsWithNodes(ctx context.Context) (
 	[]*providers.CompleteFlowDefinition, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -113,8 +113,8 @@ func (f *fileBasedStore) ListActiveFlowsWithNodes(_ context.Context) (
 }
 
 // GetFlowByID implements flowStoreInterface.
-func (f *fileBasedStore) GetFlowByID(_ context.Context, flowID string) (*providers.CompleteFlowDefinition, error) {
-	data, err := f.GenericFileBasedStore.Get(flowID)
+func (f *fileBasedStore) GetFlowByID(ctx context.Context, flowID string) (*providers.CompleteFlowDefinition, error) {
+	data, err := f.GenericFileBasedStore.Get(ctx, flowID)
 	if err != nil {
 		return nil, errFlowNotFound
 	}
@@ -127,9 +127,9 @@ func (f *fileBasedStore) GetFlowByID(_ context.Context, flowID string) (*provide
 }
 
 // GetFlowByHandle implements flowStoreInterface.
-func (f *fileBasedStore) GetFlowByHandle(_ context.Context, handle string,
+func (f *fileBasedStore) GetFlowByHandle(ctx context.Context, handle string,
 	flowType providers.FlowType) (*providers.CompleteFlowDefinition, error) {
-	data, err := f.GenericFileBasedStore.GetByField(handle, func(d interface{}) string {
+	data, err := f.GenericFileBasedStore.GetByField(ctx, handle, func(d interface{}) string {
 		if flow, ok := d.(*providers.CompleteFlowDefinition); ok && flow.FlowType == flowType {
 			return flow.Handle
 		}
@@ -147,39 +147,39 @@ func (f *fileBasedStore) GetFlowByHandle(_ context.Context, handle string,
 }
 
 // UpdateFlow implements flowStoreInterface.
-func (f *fileBasedStore) UpdateFlow(_ context.Context, flowID string, flow *FlowDefinition) (
+func (f *fileBasedStore) UpdateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (
 	*providers.CompleteFlowDefinition, error) {
 	return nil, errors.New("UpdateFlow is not supported in file-based store")
 }
 
 // DeleteFlow implements flowStoreInterface.
-func (f *fileBasedStore) DeleteFlow(_ context.Context, flowID string) error {
+func (f *fileBasedStore) DeleteFlow(ctx context.Context, flowID string) error {
 	return errors.New("DeleteFlow is not supported in file-based store")
 }
 
 // InvalidateCache is a no-op for the file-based store; nothing is cached at this layer.
-func (f *fileBasedStore) InvalidateCache(_ context.Context, _, _ string, _ providers.FlowType) {}
+func (f *fileBasedStore) InvalidateCache(ctx context.Context, _, _ string, _ providers.FlowType) {}
 
 // ListFlowVersions implements flowStoreInterface.
-func (f *fileBasedStore) ListFlowVersions(_ context.Context, flowID string) ([]BasicFlowVersion, error) {
+func (f *fileBasedStore) ListFlowVersions(ctx context.Context, flowID string) ([]BasicFlowVersion, error) {
 	return nil, errors.New("ListFlowVersions is not supported in file-based store")
 }
 
 // GetFlowVersion implements flowStoreInterface.
-func (f *fileBasedStore) GetFlowVersion(_ context.Context, flowID string, version int) (*FlowVersion, error) {
+func (f *fileBasedStore) GetFlowVersion(ctx context.Context, flowID string, version int) (*FlowVersion, error) {
 	return nil, errors.New("GetFlowVersion is not supported in file-based store")
 }
 
 // RestoreFlowVersion implements flowStoreInterface.
-func (f *fileBasedStore) RestoreFlowVersion(_ context.Context, flowID string, version int) (
+func (f *fileBasedStore) RestoreFlowVersion(ctx context.Context, flowID string, version int) (
 	*providers.CompleteFlowDefinition, error) {
 	return nil, errors.New("RestoreFlowVersion is not supported in file-based store")
 }
 
 // IsFlowExistsByHandle implements flowStoreInterface.
-func (f *fileBasedStore) IsFlowExistsByHandle(_ context.Context, handle string,
+func (f *fileBasedStore) IsFlowExistsByHandle(ctx context.Context, handle string,
 	flowType providers.FlowType) (bool, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return false, err
 	}

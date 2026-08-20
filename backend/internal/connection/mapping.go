@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -106,6 +107,10 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 	status := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
+		case managedresource.ErrorResourceManaged.Code:
+			// The request is well formed and the resource exists. The caller simply may not change
+			// it here, which is what forbidden means.
+			status = http.StatusForbidden
 		case idp.ErrorIDPNotFound.Code, notification.ErrorSenderNotFound.Code:
 			status = http.StatusNotFound
 		case idp.ErrorIDPAlreadyExists.Code,

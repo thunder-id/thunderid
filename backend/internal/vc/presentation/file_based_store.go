@@ -25,8 +25,7 @@ func newDefinitionFileBasedStore() *definitionFileBasedStore {
 // Create stores a presentation definition in the file-based store. In declarative
 // and composite modes the loader writes resources through this method (resources
 // loaded from YAML are immutable; management writes route to the database store).
-func (f *definitionFileBasedStore) CreatePresentationDefinition(
-	_ context.Context, dto PresentationDefinitionDTO,
+func (f *definitionFileBasedStore) CreatePresentationDefinition(ctx context.Context, dto PresentationDefinitionDTO,
 ) error {
 	return f.GenericFileBasedStore.Create(dto.ID, &dto)
 }
@@ -50,10 +49,9 @@ func (s *definitionStorer) Create(id string, data interface{}) error {
 }
 
 // GetByID retrieves a presentation definition by ID from the file-based store.
-func (f *definitionFileBasedStore) GetPresentationDefinitionByID(
-	_ context.Context, id string,
+func (f *definitionFileBasedStore) GetPresentationDefinitionByID(ctx context.Context, id string,
 ) (*PresentationDefinitionDTO, error) {
-	data, err := f.GenericFileBasedStore.Get(id)
+	data, err := f.GenericFileBasedStore.Get(ctx, id)
 	if err != nil {
 		return nil, ErrNotFound
 	}
@@ -66,10 +64,9 @@ func (f *definitionFileBasedStore) GetPresentationDefinitionByID(
 }
 
 // GetByHandle retrieves a presentation definition by handle from the file-based store.
-func (f *definitionFileBasedStore) GetPresentationDefinitionByHandle(
-	_ context.Context, handle string,
+func (f *definitionFileBasedStore) GetPresentationDefinitionByHandle(ctx context.Context, handle string,
 ) (*PresentationDefinitionDTO, error) {
-	data, err := f.GenericFileBasedStore.GetByField(handle, func(d interface{}) string {
+	data, err := f.GenericFileBasedStore.GetByField(ctx, handle, func(d interface{}) string {
 		return d.(*PresentationDefinitionDTO).Handle
 	})
 	if err != nil {
@@ -79,10 +76,9 @@ func (f *definitionFileBasedStore) GetPresentationDefinitionByHandle(
 }
 
 // ListSummaries retrieves minimal listing data from the file-based store.
-func (f *definitionFileBasedStore) ListPresentationDefinitionSummaries(
-	_ context.Context,
+func (f *definitionFileBasedStore) ListPresentationDefinitionSummaries(ctx context.Context,
 ) ([]PresentationDefinitionList, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -96,8 +92,9 @@ func (f *definitionFileBasedStore) ListPresentationDefinitionSummaries(
 }
 
 // List retrieves all presentation definitions from the file-based store.
-func (f *definitionFileBasedStore) ListPresentationDefinitions(_ context.Context) ([]PresentationDefinitionDTO, error) {
-	list, err := f.GenericFileBasedStore.List()
+func (f *definitionFileBasedStore) ListPresentationDefinitions(ctx context.Context) ([]PresentationDefinitionDTO,
+	error) {
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -112,17 +109,18 @@ func (f *definitionFileBasedStore) ListPresentationDefinitions(_ context.Context
 }
 
 // Update is not supported in the file-based store.
-func (f *definitionFileBasedStore) UpdatePresentationDefinition(_ context.Context, _ PresentationDefinitionDTO) error {
+func (f *definitionFileBasedStore) UpdatePresentationDefinition(ctx context.Context,
+	_ PresentationDefinitionDTO) error {
 	return ErrDefinitionIsImmutable
 }
 
 // Delete is not supported in the file-based store.
-func (f *definitionFileBasedStore) DeletePresentationDefinition(_ context.Context, _ string) error {
+func (f *definitionFileBasedStore) DeletePresentationDefinition(ctx context.Context, _ string) error {
 	return ErrDefinitionIsImmutable
 }
 
 // IsDeclarative reports whether the given id exists in the file-based store.
-func (f *definitionFileBasedStore) IsPresentationDefinitionDeclarative(_ context.Context, id string) (bool, error) {
-	_, err := f.GenericFileBasedStore.Get(id)
+func (f *definitionFileBasedStore) IsPresentationDefinitionDeclarative(ctx context.Context, id string) (bool, error) {
+	_, err := f.GenericFileBasedStore.Get(ctx, id)
 	return err == nil, nil
 }

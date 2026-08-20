@@ -62,7 +62,7 @@ func newI18nService(store i18nStoreInterface) I18nServiceInterface {
 // ListLanguages retrieves all locale codes that have translations in the system.
 // The default locale is always included in the response, even if it has no translations in the DB.
 func (s *i18nService) ListLanguages(ctx context.Context) ([]string, *tidcommon.ServiceError) {
-	localeCodes, err := s.store.GetDistinctLanguages()
+	localeCodes, err := s.store.GetDistinctLanguages(ctx)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to get locales from store", log.Error(err))
 		return nil, &tidcommon.InternalServerError
@@ -92,7 +92,7 @@ func (s *i18nService) ResolveTranslationsForKey(ctx context.Context,
 		return nil, err
 	}
 
-	trans, err := s.store.GetTranslationsByKey(key, namespace)
+	trans, err := s.store.GetTranslationsByKey(ctx, key, namespace)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to get translation from store", log.Error(err))
 		return nil, &tidcommon.InternalServerError
@@ -249,13 +249,13 @@ func (s *i18nService) ResolveTranslations(ctx context.Context,
 
 	if namespace == "" {
 		// Get all namespaces
-		allTranslations, err = s.store.GetTranslations()
+		allTranslations, err = s.store.GetTranslations(ctx)
 		if err != nil {
 			s.logger.Error(ctx, "Failed to get translations from store", log.Error(err))
 			return nil, &tidcommon.InternalServerError
 		}
 	} else {
-		allTranslations, err = s.store.GetTranslationsByNamespace(namespace)
+		allTranslations, err = s.store.GetTranslationsByNamespace(ctx, namespace)
 		if err != nil {
 			s.logger.Error(ctx, "Failed to get translations from store", log.Error(err))
 			return nil, &tidcommon.InternalServerError
@@ -417,7 +417,7 @@ func (s *i18nService) GetTranslationsByNamespace(ctx context.Context,
 	if !ValidateNamespace(namespace) {
 		return nil, &ErrorInvalidNamespace
 	}
-	byNs, err := s.store.GetTranslationsByNamespace(namespace)
+	byNs, err := s.store.GetTranslationsByNamespace(ctx, namespace)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to get translations by namespace", log.Error(err))
 		return nil, &tidcommon.InternalServerError

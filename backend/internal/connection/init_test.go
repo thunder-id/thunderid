@@ -55,7 +55,7 @@ func newConnectionTestHandler(t *testing.T) (*handler, *idpmock.IDPServiceInterf
 	t.Cleanup(config.ResetServerRuntime)
 	mockIDP := idpmock.NewIDPServiceInterfaceMock(t)
 	mockNotif := notificationmock.NewNotificationSenderMgtSvcInterfaceMock(t)
-	return newHandler(newService(mockIDP, mockNotif)), mockIDP, mockNotif
+	return newHandler(newService(mockIDP, mockNotif, nil)), mockIDP, mockNotif
 }
 
 // mustProperty builds a property, failing the test on error.
@@ -86,7 +86,7 @@ func (s *InitTestSuite) SetupTest() {
 	s.mockIDP = idpmock.NewIDPServiceInterfaceMock(s.T())
 	s.mockNotif = notificationmock.NewNotificationSenderMgtSvcInterfaceMock(s.T())
 	s.mux = http.NewServeMux()
-	_, err := Initialize(s.mux, s.mockIDP, s.mockNotif)
+	_, err := Initialize(s.mux, s.mockIDP, s.mockNotif, nil)
 	s.Require().NoError(err)
 }
 

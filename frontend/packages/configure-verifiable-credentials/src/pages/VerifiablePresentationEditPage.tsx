@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoadingAnimation, QueryErrorNotice} from '@thunderid/components';
+import {ManagedResourceNotice, PageLoadingAnimation, QueryErrorNotice} from '@thunderid/components';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Button, IconButton, PageContent, PageTitle, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
@@ -12,6 +12,7 @@ import useGetVerifiablePresentation from '../api/useGetVerifiablePresentation';
 import useUpdateVerifiablePresentation from '../api/useUpdateVerifiablePresentation';
 import VerifiablePresentationDeleteDialog from '../components/VerifiablePresentationDeleteDialog';
 import VerifiablePresentationForm from '../components/VerifiablePresentationForm';
+import {useIsManagedResource} from '@thunderid/contexts';
 import useVerifiableCredentialRoutes from '../hooks/useVerifiableCredentialRoutes';
 import type {UpdateVerifiablePresentationRequest} from '../models/presentation-requests';
 
@@ -34,6 +35,10 @@ export default function VerifiablePresentationEditPage(): JSX.Element {
   const {data, isLoading, error, refetch} = useGetVerifiablePresentation(vpId);
   const updateVP = useUpdateVerifiablePresentation();
   const [deleteOpen, setDeleteOpen] = useState<boolean>(false);
+
+  // Owned by the control plane: a change made here would be replaced by the next apply, and the
+  // server refuses it with 403, so the controls are not offered at all.
+  const isManaged: boolean = useIsManagedResource('presentation_definition')(vpId);
 
   const [name, setName] = useState<string>('');
   const [description, setDescription] = useState<string>('');
@@ -222,6 +227,8 @@ export default function VerifiablePresentationEditPage(): JSX.Element {
         </PageTitle.SubHeader>
       </PageTitle>
 
+      {isManaged && <ManagedResourceNotice />}
+
       <VerifiablePresentationForm
         initial={data}
         name={name}
@@ -231,7 +238,6 @@ export default function VerifiablePresentationEditPage(): JSX.Element {
         submitting={updateVP.isPending}
         submitLabel={t('common:actions.save')}
         onSubmit={handleSubmit}
-        onDelete={(): void => setDeleteOpen(true)}
         error={
           updateVP.error
             ? getErrorMessage(updateVP.error, tForErrors, 'update.error', 'Failed to update presentation definition')
@@ -240,6 +246,8 @@ export default function VerifiablePresentationEditPage(): JSX.Element {
         onErrorClear={() => {
           if (updateVP.isError) updateVP.reset();
         }}
+        isReadOnly={isManaged}
+        onDelete={isManaged ? undefined : (): void => setDeleteOpen(true)}
       />
 
       <VerifiablePresentationDeleteDialog

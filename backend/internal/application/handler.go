@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -502,7 +503,11 @@ func (ah *applicationHandler) handleError(ctx context.Context, w http.ResponseWr
 	}
 
 	statusCode := http.StatusInternalServerError
-	if svcErr.Type == tidcommon.ClientErrorType {
+	if svcErr.Code == managedresource.ErrorResourceManaged.Code {
+		// The request is well formed and the resource exists. The caller simply may not change it
+		// here, which is what forbidden means.
+		statusCode = http.StatusForbidden
+	} else if svcErr.Type == tidcommon.ClientErrorType {
 		if svcErr.Code == ErrorApplicationNotFound.Code {
 			statusCode = http.StatusNotFound
 		} else {

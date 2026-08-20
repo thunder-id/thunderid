@@ -160,7 +160,7 @@ func TestAuthorizationExecutor_Execute_ScopesEvaluationToResourceServer(t *testi
 
 	mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
 		Return(authUser, &providers.EntityReference{EntityID: "user123"}, nil)
-	mockEntityProvider.On("GetTransitiveEntityGroups", "user123").Return(
+	mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "user123").Return(
 		[]providers.EntityGroup{}, nil)
 
 	// The evaluation must be scoped to the requested resource server.
@@ -278,7 +278,7 @@ func TestAuthorizationExecutor_Execute_ResourceServerFromUserInputFallback(t *te
 
 	mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
 		Return(authUser, &providers.EntityReference{EntityID: "user123"}, nil)
-	mockEntityProvider.On("GetTransitiveEntityGroups", "user123").Return([]providers.EntityGroup{}, nil)
+	mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "user123").Return([]providers.EntityGroup{}, nil)
 	mockAuthzService.On("EvaluateAccessBatch", mock.Anything,
 		mock.MatchedBy(func(req providers.AccessEvaluationsRequest) bool {
 			return len(req.Evaluations) == 1 && req.Evaluations[0].ResourceServer.ID == "rs-input"
@@ -318,7 +318,7 @@ func TestAuthorizationExecutor_Execute_DefaultResourceServerFallback(t *testing.
 
 	mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
 		Return(authUser, &providers.EntityReference{EntityID: "user123"}, nil)
-	mockEntityProvider.On("GetTransitiveEntityGroups", "user123").Return([]providers.EntityGroup{}, nil)
+	mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "user123").Return([]providers.EntityGroup{}, nil)
 	mockAuthzService.On("EvaluateAccessBatch", mock.Anything,
 		mock.MatchedBy(func(req providers.AccessEvaluationsRequest) bool {
 			return len(req.Evaluations) == 1 && req.Evaluations[0].ResourceServer.ID == "rs-default"
@@ -355,7 +355,7 @@ func TestAuthorizationExecutor_Execute_PartialPermissions(t *testing.T) {
 	mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
 		Return(authUser, &providers.EntityReference{EntityID: "user123"}, nil)
 
-	mockEntityProvider.On("GetTransitiveEntityGroups", "user123").Return(
+	mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "user123").Return(
 		[]providers.EntityGroup{}, nil)
 
 	// User only has read permission
@@ -401,7 +401,7 @@ func TestAuthorizationExecutor_Execute_NoPermissions(t *testing.T) {
 	mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
 		Return(authUser, &providers.EntityReference{EntityID: "user123"}, nil)
 
-	mockEntityProvider.On("GetTransitiveEntityGroups", "user123").Return(
+	mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "user123").Return(
 		[]providers.EntityGroup{}, nil)
 
 	mockAuthzService.On("EvaluateAccessBatch", mock.Anything, mock.Anything).Return(
@@ -470,7 +470,7 @@ func TestAuthorizationExecutor_Execute_ServiceError(t *testing.T) {
 	mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
 		Return(authUser, &providers.EntityReference{EntityID: "user123"}, nil)
 
-	mockEntityProvider.On("GetTransitiveEntityGroups", "user123").Return(
+	mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "user123").Return(
 		[]providers.EntityGroup{}, nil)
 
 	mockAuthzService.On("EvaluateAccessBatch", mock.Anything, mock.Anything).Return(
@@ -510,7 +510,7 @@ func TestAuthorizationExecutor_Execute_GroupExtractionError(t *testing.T) {
 	mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
 		Return(authUser, &providers.EntityReference{EntityID: "user123"}, nil)
 
-	mockEntityProvider.On("GetTransitiveEntityGroups", "user123").Return(
+	mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "user123").Return(
 		nil, entityprovider.NewEntityProviderError(
 			entityprovider.ErrorCodeSystemError,
 			"failed to retrieve groups",
@@ -569,7 +569,7 @@ func TestAuthorizationExecutor_ExtractGroupIDs_NoGroupsInContext(t *testing.T) {
 		RuntimeData: make(map[string]string),
 	}
 
-	mockEntityProvider.On("GetTransitiveEntityGroups", "user123").Return(
+	mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "user123").Return(
 		[]providers.EntityGroup{}, nil)
 
 	groupIDs, err := executor.extractGroupIDs(ctx, "user123")
@@ -670,7 +670,7 @@ func TestAuthorizationExecutor_ExtractGroupIDs_WithNoGroups(t *testing.T) {
 		RuntimeData: make(map[string]string),
 	}
 
-	mockEntityProvider.On("GetTransitiveEntityGroups", "user123").Return(
+	mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "user123").Return(
 		[]providers.EntityGroup{}, nil)
 
 	groupIDs, err := executor.extractGroupIDs(ctx, "user123")
@@ -918,7 +918,7 @@ func TestAuthorizationExecutor_ExtractGroupIDs_FromEntityProvider(t *testing.T) 
 		RuntimeData: make(map[string]string), // No groups in runtime data
 	}
 
-	mockEntityProvider.On("GetTransitiveEntityGroups", "test-user-123").Return(
+	mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "test-user-123").Return(
 		[]providers.EntityGroup{
 			{ID: "svc-group-1"},
 			{ID: "svc-group-2"},
@@ -941,7 +941,7 @@ func TestAuthorizationExecutor_ExtractGroupIDs_FromEntityProvider_Error(t *testi
 		RuntimeData: make(map[string]string), // No groups in runtime data
 	}
 
-	mockEntityProvider.On("GetTransitiveEntityGroups", "test-user-err").Return(
+	mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "test-user-err").Return(
 		nil, entityprovider.NewEntityProviderError(
 			entityprovider.ErrorCodeSystemError,
 			"failed to retrieve groups",

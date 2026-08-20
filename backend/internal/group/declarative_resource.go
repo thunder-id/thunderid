@@ -248,7 +248,7 @@ func validateGroupWrapper(
 	}
 
 	if fileStore != nil {
-		if existing, err := fileStore.GenericFileBasedStore.Get(grp.ID); err == nil && existing != nil {
+		if existing, err := fileStore.GenericFileBasedStore.GetForLoad(grp.ID); err == nil && existing != nil {
 			return fmt.Errorf("duplicate group ID '%s': group already exists in declarative resources", grp.ID)
 		}
 	}

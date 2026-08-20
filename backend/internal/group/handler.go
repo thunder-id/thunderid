@@ -15,6 +15,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -395,7 +396,11 @@ func (gh *groupHandler) HandleGroupMembersRemoveRequest(w http.ResponseWriter, r
 // handleError handles service errors and returns appropriate HTTP responses.
 func (gh *groupHandler) handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.ServiceError) {
 	var statusCode int
-	if svcErr.Type == tidcommon.ClientErrorType {
+	if svcErr.Code == managedresource.ErrorResourceManaged.Code {
+		// The request is well formed and the resource exists. The caller simply may not change it
+		// here, which is what forbidden means.
+		statusCode = http.StatusForbidden
+	} else if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
 		case ErrorGroupNotFound.Code:
 			statusCode = http.StatusNotFound

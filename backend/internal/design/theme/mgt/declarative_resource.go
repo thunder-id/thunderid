@@ -203,7 +203,7 @@ func validateThemeWrapper(dto interface{}, dbStore themeMgtStoreInterface) error
 
 	// In composite mode, check for duplicates in database store
 	if dbStore != nil {
-		exists, err := dbStore.IsThemeExist(theme.ID)
+		exists, err := dbStore.IsThemeExist(context.Background(), theme.ID)
 		if err != nil {
 			return fmt.Errorf("failed to check for duplicate theme ID '%s': %w", theme.ID, err)
 		}

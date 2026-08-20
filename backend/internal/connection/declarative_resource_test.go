@@ -414,13 +414,13 @@ func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreDispatchesB
 
 	idpDTO := &providers.IDPDTO{ID: "idp-1", Type: providers.IDPTypeGoogle}
 	s.Require().NoError(store.Create("idp-1", idpDTO))
-	got, err := store.idpStore.Get("idp-1")
+	got, err := store.idpStore.Get(context.Background(), "idp-1")
 	s.Require().NoError(err)
 	s.Equal(idpDTO, got)
 
 	senderDTO := &ncommon.NotificationSenderDTO{ID: "sender-1", Provider: ncommon.MessageProviderTypeTwilio}
 	s.Require().NoError(store.Create("sender-1", senderDTO))
-	got, err = store.senderStore.Get("sender-1")
+	got, err = store.senderStore.Get(context.Background(), "sender-1")
 	s.Require().NoError(err)
 	s.Equal(senderDTO, got)
 
@@ -445,12 +445,12 @@ func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreSkipsIDPWhe
 
 	idpDTO := &providers.IDPDTO{ID: "idp-1", Type: providers.IDPTypeGoogle}
 	s.Require().NoError(store.Create("idp-1", idpDTO))
-	_, err := store.idpStore.Get("idp-1")
+	_, err := store.idpStore.Get(context.Background(), "idp-1")
 	s.Error(err, "IDP declarative resource should not be stored when idp store mode is mutable")
 
 	senderDTO := &ncommon.NotificationSenderDTO{ID: "sender-1", Provider: ncommon.MessageProviderTypeTwilio}
 	s.Require().NoError(store.Create("sender-1", senderDTO))
-	got, err := store.senderStore.Get("sender-1")
+	got, err := store.senderStore.Get(context.Background(), "sender-1")
 	s.Require().NoError(err)
 	s.Equal(senderDTO, got)
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 )
 
 // certificateStoreInterface defines the methods for certificate storage operations.
@@ -40,13 +41,14 @@ func newCertificateStore() certificateStoreInterface {
 
 // GetCertificateByID retrieves a certificate by its ID.
 func (s *certificateStore) GetCertificateByID(ctx context.Context, id string) (*Certificate, error) {
-	return s.getCertificate(ctx, queryGetCertificateByID, id, s.deploymentID)
+	return s.getCertificate(ctx, queryGetCertificateByID, id, deployment.Resolve(ctx, s.deploymentID))
 }
 
 // GetCertificateByReference retrieves a certificate by its reference type and ID.
 func (s *certificateStore) GetCertificateByReference(ctx context.Context, refType CertificateReferenceType,
 	refID string) (*Certificate, error) {
-	return s.getCertificate(ctx, queryGetCertificateByReference, refType, refID, s.deploymentID)
+	return s.getCertificate(ctx, queryGetCertificateByReference, refType, refID, deployment.Resolve(ctx,
+		s.deploymentID))
 }
 
 // getCertificate retrieves a certificate based on a query and its arguments.
@@ -121,7 +123,7 @@ func (s *certificateStore) CreateCertificate(ctx context.Context, cert *Certific
 	}
 
 	rows, err := dbClient.ExecuteContext(ctx, queryInsertCertificate, cert.ID, cert.RefType, cert.RefID, cert.Type,
-		cert.Value, s.deploymentID)
+		cert.Value, deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return fmt.Errorf("failed to insert certificate: %w", err)
 	}
@@ -135,14 +137,14 @@ func (s *certificateStore) CreateCertificate(ctx context.Context, cert *Certific
 // UpdateCertificateByID updates a certificate by its ID.
 func (s *certificateStore) UpdateCertificateByID(ctx context.Context, existingCert, updatedCert *Certificate) error {
 	return s.updateCertificate(ctx, queryUpdateCertificateByID, existingCert.ID, updatedCert.Type, updatedCert.Value,
-		s.deploymentID)
+		deployment.Resolve(ctx, s.deploymentID))
 }
 
 // UpdateCertificateByReference updates a certificate by its reference type and ID.
 func (s *certificateStore) UpdateCertificateByReference(ctx context.Context,
 	existingCert, updatedCert *Certificate) error {
 	return s.updateCertificate(ctx, queryUpdateCertificateByReference, existingCert.RefType, existingCert.RefID,
-		updatedCert.Type, updatedCert.Value, s.deploymentID)
+		updatedCert.Type, updatedCert.Value, deployment.Resolve(ctx, s.deploymentID))
 }
 
 // updateCertificate updates a certificate based on a query and its arguments.
@@ -165,13 +167,14 @@ func (s *certificateStore) updateCertificate(ctx context.Context, query dbmodel.
 
 // DeleteCertificateByID deletes a certificate by its ID.
 func (s *certificateStore) DeleteCertificateByID(ctx context.Context, id string) error {
-	return s.deleteCertificate(ctx, queryDeleteCertificateByID, id, s.deploymentID)
+	return s.deleteCertificate(ctx, queryDeleteCertificateByID, id, deployment.Resolve(ctx, s.deploymentID))
 }
 
 // DeleteCertificateByReference deletes a certificate by its reference type and ID.
 func (s *certificateStore) DeleteCertificateByReference(ctx context.Context, refType CertificateReferenceType,
 	refID string) error {
-	return s.deleteCertificate(ctx, queryDeleteCertificateByReference, refType, refID, s.deploymentID)
+	return s.deleteCertificate(ctx, queryDeleteCertificateByReference, refType, refID, deployment.Resolve(ctx,
+		s.deploymentID))
 }
 
 // deleteCertificate deletes a certificate based on a query and its arguments.

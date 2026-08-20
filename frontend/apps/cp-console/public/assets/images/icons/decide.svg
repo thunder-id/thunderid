@@ -1,0 +1,26 @@
+<!--
+ * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1"
+    id="Uploaded to svgrepo.com" width="800px" height="800px" viewBox="0 0 32 32"
+    xml:space="preserve">
+<style type="text/css">
+	.feather_een{fill:#0B1719;}
+</style>
+<path class="feather_een" d="M26.14,12.747l-2.292-2.005C23.301,10.264,22.599,10,21.873,10H18V9h5c1.105,0,2-0.895,2-2V4  c0-1.105-0.895-2-2-2h-5V1c0-0.552-0.448-1-1-1h-2c-0.552,0-1,0.448-1,1v1h-3.873C9.401,2,8.699,2.264,8.152,2.742L5.86,4.747  c-0.455,0.398-0.455,1.107,0,1.505l2.292,2.005C8.699,8.736,9.401,9,10.127,9H14v1H9c-1.105,0-2,0.895-2,2v3c0,1.105,0.895,2,2,2h5  v14c0,0.552,0.448,1,1,1h2c0.552,0,1-0.448,1-1V17h3.873c0.727,0,1.429-0.264,1.976-0.742l2.292-2.005  C26.595,13.854,26.595,13.146,26.14,12.747z M15,1h2v1h-2V1z M8.81,7.505L6.519,5.5L8.81,3.495C9.175,3.176,9.643,3,10.127,3H23  c0.551,0,1,0.449,1,1v3c0,0.551-0.449,1-1,1H10.127C9.643,8,9.175,7.824,8.81,7.505z M15,9h2v1h-2V9z M17,31h-2V17h2V31z   M23.19,15.505C22.825,15.824,22.357,16,21.873,16H9c-0.551,0-1-0.449-1-1v-3c0-0.551,0.449-1,1-1h12.873  c0.485,0,0.952,0.176,1.317,0.495l2.292,2.005L23.19,15.505z M20,13.5c0,0.276-0.224,0.5-0.5,0.5h-7c-0.276,0-0.5-0.224-0.5-0.5  s0.224-0.5,0.5-0.5h7C19.776,13,20,13.224,20,13.5z M20,5.5C20,5.776,19.776,6,19.5,6h-7C12.224,6,12,5.776,12,5.5S12.224,5,12.5,5  h7C19.776,5,20,5.224,20,5.5z"/>
+</svg>

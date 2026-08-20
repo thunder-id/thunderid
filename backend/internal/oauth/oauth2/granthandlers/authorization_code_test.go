@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/authzmock"
@@ -517,7 +518,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_NilTokenAtt
 }
 
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestValidateAuthorizationCode_Success() {
-	err := validateAuthorizationCode(suite.testTokenReq, suite.testAuthzCode)
+	err := validateAuthorizationCode(context.Background(), suite.testTokenReq, suite.testAuthzCode, log.GetLogger())
 	assert.Nil(suite.T(), err)
 }
 
@@ -526,7 +527,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestValidateAuthorizationCo
 		ClientID: "wrong-client-id", // Wrong client ID
 	}
 
-	err := validateAuthorizationCode(invalidTokenReq, suite.testAuthzCode)
+	err := validateAuthorizationCode(context.Background(), invalidTokenReq, suite.testAuthzCode, log.GetLogger())
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
 	assert.Equal(suite.T(), "Invalid authorization code", err.ErrorDescription)
@@ -538,7 +539,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestValidateAuthorizationCo
 		RedirectURI: "https://wrong.example.com/callback", // Wrong redirect URI
 	}
 
-	err := validateAuthorizationCode(invalidTokenReq, suite.testAuthzCode)
+	err := validateAuthorizationCode(context.Background(), invalidTokenReq, suite.testAuthzCode, log.GetLogger())
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
 	assert.Equal(suite.T(), "Invalid redirect URI", err.ErrorDescription)
@@ -553,14 +554,16 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestValidateAuthorizationCo
 		ClientID:    testClientID,
 		RedirectURI: "",
 	}
-	assert.Nil(suite.T(), validateAuthorizationCode(tokenReqOmitted, codeNotProvided))
+	assert.Nil(suite.T(), validateAuthorizationCode(
+		context.Background(), tokenReqOmitted, codeNotProvided, log.GetLogger()))
 
 	// Token endpoint sends a different value — also succeeds (comparison skipped).
 	tokenReqOther := &model.TokenRequest{
 		ClientID:    testClientID,
 		RedirectURI: "https://any.example.com/callback",
 	}
-	assert.Nil(suite.T(), validateAuthorizationCode(tokenReqOther, codeNotProvided))
+	assert.Nil(suite.T(), validateAuthorizationCode(
+		context.Background(), tokenReqOther, codeNotProvided, log.GetLogger()))
 }
 
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestValidateAuthorizationCode_RedirectURIProvidedRequiresMatch() {
@@ -569,7 +572,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestValidateAuthorizationCo
 		ClientID:    testClientID,
 		RedirectURI: "https://wrong.example.com/callback",
 	}
-	err := validateAuthorizationCode(tokenReqMismatch, suite.testAuthzCode)
+	err := validateAuthorizationCode(context.Background(), tokenReqMismatch, suite.testAuthzCode, log.GetLogger())
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
 	assert.Equal(suite.T(), "Invalid redirect URI", err.ErrorDescription)
@@ -580,7 +583,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestValidateAuthorizationCo
 		ClientID:    testClientID,
 		RedirectURI: "",
 	}
-	err = validateAuthorizationCode(tokenReqOmitted, suite.testAuthzCode)
+	err = validateAuthorizationCode(context.Background(), tokenReqOmitted, suite.testAuthzCode, log.GetLogger())
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
 	assert.Equal(suite.T(), "Invalid redirect URI", err.ErrorDescription)
@@ -590,7 +593,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestValidateAuthorizationCo
 	expiredCode := suite.testAuthzCode
 	expiredCode.ExpiryTime = time.Now().Add(-5 * time.Minute) // Expired
 
-	err := validateAuthorizationCode(suite.testTokenReq, expiredCode)
+	err := validateAuthorizationCode(context.Background(), suite.testTokenReq, expiredCode, log.GetLogger())
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
 	assert.Equal(suite.T(), "Expired authorization code", err.ErrorDescription)
@@ -1326,7 +1329,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestValidateAuthorizationCo
 		Resources:   []string{testResourceURL},             // Different resource
 	}
 
-	err := validateAuthorizationCode(tokenReq, authCodeWithResource)
+	err := validateAuthorizationCode(context.Background(), tokenReq, authCodeWithResource, log.GetLogger())
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), constants.ErrorInvalidTarget, err.Error)
 	assert.Equal(suite.T(), "Resource parameter mismatch", err.ErrorDescription)
@@ -1344,7 +1347,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestValidateAuthorizationCo
 		Resources:   []string{testResourceURL},             // Matching resource
 	}
 
-	err := validateAuthorizationCode(tokenReq, authCodeWithResource)
+	err := validateAuthorizationCode(context.Background(), tokenReq, authCodeWithResource, log.GetLogger())
 	assert.Nil(suite.T(), err)
 }
 
@@ -1359,7 +1362,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestValidateAuthorizationCo
 		Resources:   []string{testResourceURL},             // Any resource should be OK
 	}
 
-	err := validateAuthorizationCode(tokenReq, authCodeWithEmptyResource)
+	err := validateAuthorizationCode(context.Background(), tokenReq, authCodeWithEmptyResource, log.GetLogger())
 	assert.Nil(suite.T(), err)
 }
 

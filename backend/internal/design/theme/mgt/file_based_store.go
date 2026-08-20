@@ -4,6 +4,7 @@
 package thememgt
 
 import (
+	"context"
 	"errors"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -27,11 +28,11 @@ func (f *themeFileBasedStore) Create(id string, data interface{}) error {
 		Description: theme.Description,
 		Theme:       theme.Theme,
 	}
-	return f.CreateTheme(id, createReq)
+	return f.CreateTheme(context.Background(), id, createReq)
 }
 
 // CreateTheme implements themeMgtStoreInterface.
-func (f *themeFileBasedStore) CreateTheme(id string, theme CreateThemeRequest) error {
+func (f *themeFileBasedStore) CreateTheme(ctx context.Context, id string, theme CreateThemeRequest) error {
 	themeData := &Theme{
 		ID:          id,
 		Handle:      theme.Handle,
@@ -45,13 +46,13 @@ func (f *themeFileBasedStore) CreateTheme(id string, theme CreateThemeRequest) e
 }
 
 // DeleteTheme implements themeMgtStoreInterface.
-func (f *themeFileBasedStore) DeleteTheme(id string) error {
+func (f *themeFileBasedStore) DeleteTheme(ctx context.Context, id string) error {
 	return errors.New("deleteTheme is not supported in file-based store")
 }
 
 // GetTheme implements themeMgtStoreInterface.
-func (f *themeFileBasedStore) GetTheme(id string) (Theme, error) {
-	data, err := f.GenericFileBasedStore.Get(id)
+func (f *themeFileBasedStore) GetTheme(ctx context.Context, id string) (Theme, error) {
+	data, err := f.GenericFileBasedStore.Get(ctx, id)
 	if err != nil {
 		return Theme{}, errThemeNotFound
 	}
@@ -64,7 +65,7 @@ func (f *themeFileBasedStore) GetTheme(id string) (Theme, error) {
 }
 
 // GetThemeList implements themeMgtStoreInterface.
-func (f *themeFileBasedStore) GetThemeList(limit, offset int) ([]Theme, error) {
+func (f *themeFileBasedStore) GetThemeList(ctx context.Context, limit, offset int) ([]Theme, error) {
 	// Validate input parameters to prevent panics
 	if offset < 0 {
 		offset = 0
@@ -73,7 +74,7 @@ func (f *themeFileBasedStore) GetThemeList(limit, offset int) ([]Theme, error) {
 		return []Theme{}, nil
 	}
 
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -99,8 +100,8 @@ func (f *themeFileBasedStore) GetThemeList(limit, offset int) ([]Theme, error) {
 }
 
 // GetThemeListCount implements themeMgtStoreInterface.
-func (f *themeFileBasedStore) GetThemeListCount() (int, error) {
-	count, err := f.GenericFileBasedStore.Count()
+func (f *themeFileBasedStore) GetThemeListCount(ctx context.Context) (int, error) {
+	count, err := f.GenericFileBasedStore.Count(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -108,8 +109,8 @@ func (f *themeFileBasedStore) GetThemeListCount() (int, error) {
 }
 
 // IsThemeExist implements themeMgtStoreInterface.
-func (f *themeFileBasedStore) IsThemeExist(id string) (bool, error) {
-	_, err := f.GetTheme(id)
+func (f *themeFileBasedStore) IsThemeExist(ctx context.Context, id string) (bool, error) {
+	_, err := f.GetTheme(ctx, id)
 	if err != nil {
 		return false, nil
 	}
@@ -117,7 +118,7 @@ func (f *themeFileBasedStore) IsThemeExist(id string) (bool, error) {
 }
 
 // UpdateTheme implements themeMgtStoreInterface.
-func (f *themeFileBasedStore) UpdateTheme(id string, theme UpdateThemeRequest) error {
+func (f *themeFileBasedStore) UpdateTheme(ctx context.Context, id string, theme UpdateThemeRequest) error {
 	return errors.New("updateTheme is not supported in file-based store")
 }
 
@@ -127,8 +128,9 @@ func (f *themeFileBasedStore) IsThemeDeclarative(id string) bool {
 }
 
 // IsThemeHandleConflict checks if a theme handle already exists (excluding a specific ID).
-func (f *themeFileBasedStore) IsThemeHandleConflict(handle string, excludeID string) (bool, error) {
-	list, err := f.GenericFileBasedStore.List()
+func (f *themeFileBasedStore) IsThemeHandleConflict(ctx context.Context, handle string, excludeID string) (bool,
+	error) {
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return false, err
 	}

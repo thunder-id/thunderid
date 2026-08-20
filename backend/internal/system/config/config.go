@@ -90,6 +90,9 @@ type DatabaseConfig struct {
 	RuntimeTransient  DataSource `yaml:"runtime_transient"  json:"runtime_transient"`
 	Entity            DataSource `yaml:"entity"             json:"entity"`
 	RuntimePersistent DataSource `yaml:"runtime_persistent" json:"runtime_persistent"`
+	// Environment backs the environment manager, which only a Control Plane runs. It is left unset
+	// on every other plane, and the client is not opened when it is.
+	Environment DataSource `yaml:"environment" json:"environment"`
 }
 
 // NotificationConfig holds the notification configuration details.
@@ -127,6 +130,116 @@ func (c *OTPConfig) Validate() error {
 			c.ValidityPeriodSeconds)
 	}
 	return nil
+}
+
+// PromotionConfig configures who may promote configuration between an organization's environments.
+//
+// Promotion is the one environment action that is not open to every member of the organization:
+// moving a version into production is a release decision. Every other action, including applying and
+// reverting an environment the caller already administers, is left to the organization.
+type PromotionConfig struct {
+	// Scope is the scope a caller's token must carry to promote. It is configurable because the
+	// authorization server that issues these tokens is not always this one, and its scope naming is
+	// its own. Empty falls back to DefaultPromotionScope.
+	Scope string `yaml:"scope" json:"scope"`
+}
+
+// DefaultPromotionScope is the scope required to promote when none is configured.
+const DefaultPromotionScope = "system:promote"
+
+// PromotionScope returns the scope a caller must hold to promote.
+func (c PromotionConfig) PromotionScope() string {
+	if scope := strings.TrimSpace(c.Scope); scope != "" {
+		return scope
+	}
+	return DefaultPromotionScope
+}
+
+// ChannelConfig configures the CP-DP phone-home WebSocket channel. The Server block is used by the
+// Control Plane (cpserver); the Client block by the Data Plane (dpserver).
+type ChannelConfig struct {
+	Server ChannelServerConfig `yaml:"server" json:"server"`
+	Client ChannelClientConfig `yaml:"client" json:"client"`
+}
+
+// ChannelServerConfig configures the Control Plane channel WebSocket server.
+type ChannelServerConfig struct {
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// Path is the route the WebSocket server is mounted on. Changing it requires updating, in
+	// lockstep, the public-path allowlist (publicPaths in internal/system/security/permissions.go)
+	// and the Control Plane access-log exclusion list (accessLogExcludePaths in cmd/cpserver/main.go).
+	Path string `yaml:"path"       json:"path"`
+	// AuthToken is a token shared by every Data Plane. It authenticates the connection but proves no
+	// identity, so the server takes the id each Data Plane claims. It is the fallback for a control
+	// plane that issues no per-Data-Plane tokens of its own.
+	AuthToken         string `yaml:"auth_token" json:"auth_token"`
+	ReadLimitBytes    int64  `yaml:"read_limit_bytes"    json:"read_limit_bytes"`
+	RPCTimeoutSeconds int    `yaml:"rpc_timeout_seconds" json:"rpc_timeout_seconds"`
+}
+
+// Validate ensures the Control Plane channel server configuration is usable when enabled. A disabled
+// server is not validated: an empty section is a valid way to leave the channel off.
+func (c *ChannelServerConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	// A token is not required here: a control plane that issues one per data plane keeps them in its
+	// own database, and auth_token is only the fallback for one that does not.
+	return nil
+}
+
+// ChannelClientConfig configures the Data Plane channel WebSocket client.
+type ChannelClientConfig struct {
+	Enabled bool   `yaml:"enabled"                   json:"enabled"`
+	ID      string `yaml:"id"                        json:"id"`
+	// Instance names which replica of this Data Plane the process is. Every replica dials the Control
+	// Plane, so without it they present one identity and each new connection evicts the last. Empty
+	// defaults to the host name, which is the pod name under Kubernetes.
+	Instance        string `yaml:"instance"                  json:"instance"`
+	ControlPlaneURL string `yaml:"control_plane_url"         json:"control_plane_url"`
+	AuthToken       string `yaml:"auth_token"                json:"auth_token"`
+	// CAFile is a PEM certificate to trust alongside the system roots when dialing the Control Plane,
+	// for one serving a certificate no public authority signed. Naming it keeps verification on.
+	CAFile                  string `yaml:"ca_file"                   json:"ca_file"`
+	ReadLimitBytes          int64  `yaml:"read_limit_bytes"          json:"read_limit_bytes"`
+	PingIntervalSeconds     int    `yaml:"ping_interval_seconds"     json:"ping_interval_seconds"`
+	ReconnectInitialSeconds int    `yaml:"reconnect_initial_seconds" json:"reconnect_initial_seconds"`
+	ReconnectMaxSeconds     int    `yaml:"reconnect_max_seconds"     json:"reconnect_max_seconds"`
+}
+
+// Validate ensures the Data Plane channel client configuration is usable when enabled. A disabled
+// client is not validated: an empty section is a valid way to leave the channel off.
+func (c *ChannelClientConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	if c.ID == "" {
+		return fmt.Errorf("channel.client.id must be set when channel.client.enabled is true")
+	}
+	if c.ControlPlaneURL == "" {
+		return fmt.Errorf("channel.client.control_plane_url must be set when channel.client.enabled is true")
+	}
+	parsed, err := url.Parse(c.ControlPlaneURL)
+	if err != nil {
+		return fmt.Errorf("channel.client.control_plane_url is not a valid URL: %w", err)
+	}
+	if parsed.Scheme != "ws" && parsed.Scheme != "wss" {
+		return fmt.Errorf(
+			"channel.client.control_plane_url must use the ws or wss scheme (got %q)", parsed.Scheme)
+	}
+	if c.AuthToken == "" {
+		return fmt.Errorf("channel.client.auth_token must be set when channel.client.enabled is true")
+	}
+	return nil
+}
+
+// Validate checks the channel configuration for correctness, delegating to the server and client
+// sections.
+func (c *ChannelConfig) Validate() error {
+	if err := c.Server.Validate(); err != nil {
+		return err
+	}
+	return c.Client.Validate()
 }
 
 // CryptoConfig holds the cryptographic configuration details.
@@ -608,6 +721,8 @@ type Config struct {
 	Email                EmailConfig                       `yaml:"email"                 json:"email"`
 	Notification         NotificationConfig                `yaml:"notification"          json:"notification"`
 	AttributeCache       engineconfig.AttributeCacheConfig `yaml:"attribute_cache" json:"attribute_cache"`
+	Channel              ChannelConfig                     `yaml:"channel"               json:"channel"`
+	Promotion            PromotionConfig                   `yaml:"promotion"             json:"promotion"`
 }
 
 // LoadConfig loads the configurations from the specified YAML file and applies defaults.
@@ -690,6 +805,10 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 		cfg.JWT.Issuer = engineconfig.GetServerURL(&cfg.Server)
 	}
 
+	if err := cfg.Server.Validate(); err != nil {
+		return nil, err
+	}
+
 	if err := cfg.Server.SecurityConfig.Validate(); err != nil {
 		return nil, err
 	}
@@ -705,6 +824,9 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 		return nil, err
 	}
 	if err := cfg.Notification.Validate(); err != nil {
+		return nil, err
+	}
+	if err := cfg.Channel.Validate(); err != nil {
 		return nil, err
 	}
 

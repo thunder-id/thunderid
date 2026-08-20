@@ -85,7 +85,7 @@ func (s *ConfigurationExporterTestSuite) TestGetAllResourceIDs_ListError() {
 func (s *ConfigurationExporterTestSuite) TestGetAllResourceIDs_IsDeclarativeError() {
 	m := newCredentialStoreInterfaceMock(s.T())
 	m.EXPECT().ListCredentialConfigurations(mock.Anything).RunAndReturn(
-		func(_ context.Context) ([]CredentialConfigurationDTO, error) {
+		func(ctx context.Context) ([]CredentialConfigurationDTO, error) {
 			return []CredentialConfigurationDTO{
 				{ID: "cfg-1", Handle: "h", VCT: "v", Format: DefaultCredentialFormat},
 			}, nil

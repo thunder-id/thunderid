@@ -151,7 +151,7 @@ func (suite *AttributeCollectorTestSuite) TestExecute_UserInputRequired() {
 		Attributes: attrsJSON,
 	}
 
-	suite.mockEntityProvider.On("GetEntity", testUserID).Return(existingUser, nil)
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, testUserID).Return(existingUser, nil)
 
 	authUser := newAuthenticatedAuthUser()
 	ctx := &providers.NodeContext{
@@ -198,10 +198,11 @@ func (suite *AttributeCollectorTestSuite) TestExecute_Success() {
 		Attributes: json.RawMessage(`{}`),
 	}
 
-	suite.mockEntityProvider.On("GetEntity", testUserID).Return(existingUser, nil)
-	suite.mockEntityProvider.On("UpdateAttributes", testUserID, mock.MatchedBy(func(attrs json.RawMessage) bool {
-		return attrs != nil
-	})).Return(nil)
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, testUserID).Return(existingUser, nil)
+	suite.mockEntityProvider.On("UpdateAttributes", mock.Anything, testUserID,
+		mock.MatchedBy(func(attrs json.RawMessage) bool {
+			return attrs != nil
+		})).Return(nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -233,8 +234,8 @@ func (suite *AttributeCollectorTestSuite) TestExecute_UpdateUserFails() {
 		Attributes: json.RawMessage(`{}`),
 	}
 
-	suite.mockEntityProvider.On("GetEntity", testUserID).Return(existingUser, nil)
-	suite.mockEntityProvider.On("UpdateAttributes", testUserID, mock.Anything).
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, testUserID).Return(existingUser, nil)
+	suite.mockEntityProvider.On("UpdateAttributes", mock.Anything, testUserID, mock.Anything).
 		Return(&entityprovider.EntityProviderError{Message: "update failed"})
 
 	resp, err := suite.executor.Execute(ctx)
@@ -306,7 +307,7 @@ func (suite *AttributeCollectorTestSuite) TestHasRequiredInputs_AttributesInUser
 		Attributes: attrsJSON,
 	}
 
-	suite.mockEntityProvider.On("GetEntity", testUserID).Return(existingUser, nil)
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, testUserID).Return(existingUser, nil)
 
 	result := suite.executor.HasRequiredInputs(ctx, execResp)
 
@@ -333,7 +334,7 @@ func (suite *AttributeCollectorTestSuite) TestGetUserAttributes_Success() {
 		Attributes: attrsJSON,
 	}
 
-	suite.mockEntityProvider.On("GetEntity", testUserID).Return(existingUser, nil)
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, testUserID).Return(existingUser, nil)
 
 	result, err := suite.executor.getUserAttributes(ctx, execResp)
 
@@ -353,7 +354,7 @@ func (suite *AttributeCollectorTestSuite) TestGetUserAttributes_UserNotFound() {
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("GetEntity", testUserID).
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, testUserID).
 		Return(nil, &entityprovider.EntityProviderError{Message: "user not found"})
 
 	result, err := suite.executor.getUserAttributes(ctx, execResp)
@@ -377,7 +378,7 @@ func (suite *AttributeCollectorTestSuite) TestGetUserAttributes_InvalidJSON() {
 		Attributes: json.RawMessage(`invalid json`),
 	}
 
-	suite.mockEntityProvider.On("GetEntity", testUserID).Return(existingUser, nil)
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, testUserID).Return(existingUser, nil)
 
 	result, err := suite.executor.getUserAttributes(ctx, execResp)
 

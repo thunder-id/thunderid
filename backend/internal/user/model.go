@@ -4,9 +4,11 @@
 package user
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -102,6 +104,36 @@ func entityToUser(e *providers.Entity) User {
 		Attributes: e.Attributes,
 		IsReadOnly: e.IsReadOnly,
 	}
+}
+
+// entityToUserForContext converts an Entity to a User and reports a control plane owned one as read
+// only.
+//
+// The flag is set here rather than left to the caller because it is what a client renders from: a
+// user this deployment cannot change should not be offered an edit or delete control that the server
+// is going to refuse.
+func entityToUserForContext(ctx context.Context, e *providers.Entity) User {
+	user := entityToUser(e)
+	if !user.IsReadOnly && managedresource.IsManaged(ctx, managedresource.TypeUser, e.ID) {
+		user.IsReadOnly = true
+	}
+	return user
+}
+
+// entitiesToUsersForContext converts entities to users, marking the control plane owned ones read
+// only. The managed ids are read once rather than per user, so a listing costs one extra query.
+func entitiesToUsersForContext(ctx context.Context, entities []providers.Entity) []User {
+	users := entitiesToUsers(entities)
+	managed := managedresource.Default().ManagedIDs(ctx, managedresource.TypeUser)
+	if len(managed) == 0 {
+		return users
+	}
+	for i := range users {
+		if managed[users[i].ID] {
+			users[i].IsReadOnly = true
+		}
+	}
+	return users
 }
 
 // entitiesToUsers converts a slice of Entity to a slice of User.

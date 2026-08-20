@@ -64,7 +64,7 @@ func (suite *I18nStoreTestSuite) TestGetDistinctLanguages_Success() {
 		{"language_code": "fr-FR"},
 	}, nil)
 
-	langs, err := suite.store.GetDistinctLanguages()
+	langs, err := suite.store.GetDistinctLanguages(context.Background())
 
 	suite.NoError(err)
 	suite.Len(langs, 2)
@@ -76,7 +76,7 @@ func (suite *I18nStoreTestSuite) TestGetDistinctLanguages_QueryError() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("Query", queryGetDistinctLanguages, testDeploymentID).Return(nil, errors.New("db error"))
 
-	langs, err := suite.store.GetDistinctLanguages()
+	langs, err := suite.store.GetDistinctLanguages(context.Background())
 
 	suite.Error(err)
 	suite.Nil(langs)
@@ -91,7 +91,7 @@ func (suite *I18nStoreTestSuite) TestGetTranslations_Success() {
 		},
 	}, nil)
 
-	trans, err := suite.store.GetTranslations()
+	trans, err := suite.store.GetTranslations(context.Background())
 
 	suite.NoError(err)
 	suite.NotNil(trans)
@@ -108,7 +108,7 @@ func (suite *I18nStoreTestSuite) TestGetTranslationsByNamespace_Success() {
 			},
 		}, nil)
 
-	trans, err := suite.store.GetTranslationsByNamespace("ns1")
+	trans, err := suite.store.GetTranslationsByNamespace(context.Background(), "ns1")
 
 	suite.NoError(err)
 	suite.NotNil(trans)
@@ -124,7 +124,7 @@ func (suite *I18nStoreTestSuite) TestGetTranslationsByKey_Success() {
 		},
 	}, nil)
 
-	trans, err := suite.store.GetTranslationsByKey("k1", "ns1")
+	trans, err := suite.store.GetTranslationsByKey(context.Background(), "k1", "ns1")
 
 	suite.NoError(err)
 	suite.NotNil(trans)
@@ -136,7 +136,7 @@ func (suite *I18nStoreTestSuite) TestGetTranslationsByKey_NotFound() {
 	suite.mockDBClient.On("Query", queryGetTranslation, "k1", "ns1", testDeploymentID).
 		Return([]map[string]interface{}{}, nil)
 
-	trans, err := suite.store.GetTranslationsByKey("k1", "ns1")
+	trans, err := suite.store.GetTranslationsByKey(context.Background(), "k1", "ns1")
 	suite.NoError(err)
 	suite.NotNil(trans)
 	suite.Empty(trans)
@@ -317,7 +317,7 @@ func (suite *I18nStoreTestSuite) TestGetTranslations_QueryError() {
 	suite.mockDBClient.On("Query", queryGetTranslations, testDeploymentID).
 		Return(nil, errors.New("query error"))
 
-	result, err := suite.store.GetTranslations()
+	result, err := suite.store.GetTranslations(context.Background())
 
 	suite.Nil(result)
 	suite.Error(err)
@@ -328,7 +328,7 @@ func (suite *I18nStoreTestSuite) TestGetTranslationsByNamespace_QueryError() {
 	suite.mockDBClient.On("Query", queryGetTranslationsByNamespace, "ns", testDeploymentID).
 		Return(nil, errors.New("query error"))
 
-	result, err := suite.store.GetTranslationsByNamespace("ns")
+	result, err := suite.store.GetTranslationsByNamespace(context.Background(), "ns")
 
 	suite.Nil(result)
 	suite.Error(err)
@@ -339,7 +339,7 @@ func (suite *I18nStoreTestSuite) TestGetTranslationsByKey_QueryError() {
 	suite.mockDBClient.On("Query", queryGetTranslation, "k", "ns", testDeploymentID).
 		Return(nil, errors.New("query error"))
 
-	result, err := suite.store.GetTranslationsByKey("k", "ns")
+	result, err := suite.store.GetTranslationsByKey(context.Background(), "k", "ns")
 
 	suite.Nil(result)
 	suite.Error(err)
@@ -378,7 +378,7 @@ func (suite *I18nStoreTestSuite) TestGetTranslations_ParsingError() {
 		{"message_key": 123}, // Invalid type
 	}, nil)
 
-	result, err := suite.store.GetTranslations()
+	result, err := suite.store.GetTranslations(context.Background())
 
 	suite.Nil(result)
 	suite.Error(err)
@@ -390,7 +390,7 @@ func (suite *I18nStoreTestSuite) TestGetTranslationsByKey_ParsingError() {
 		{"message_key": 123}, // Invalid type
 	}, nil)
 
-	result, err := suite.store.GetTranslationsByKey("k", "ns")
+	result, err := suite.store.GetTranslationsByKey(context.Background(), "k", "ns")
 
 	suite.Nil(result)
 	suite.Error(err)
@@ -402,7 +402,7 @@ func (suite *I18nStoreTestSuite) TestGetDistinctLanguages_ParsingError() {
 		{"language_code": 123}, // Invalid type
 	}, nil)
 
-	result, err := suite.store.GetDistinctLanguages()
+	result, err := suite.store.GetDistinctLanguages(context.Background())
 
 	suite.Nil(result)
 	suite.Error(err)
@@ -413,19 +413,19 @@ func (suite *I18nStoreTestSuite) TestGetDBClient_Error() {
 
 	var err error
 
-	_, err = suite.store.GetDistinctLanguages()
+	_, err = suite.store.GetDistinctLanguages(context.Background())
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to get database client")
 
-	_, err = suite.store.GetTranslations()
+	_, err = suite.store.GetTranslations(context.Background())
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to get database client")
 
-	_, err = suite.store.GetTranslationsByNamespace("ns")
+	_, err = suite.store.GetTranslationsByNamespace(context.Background(), "ns")
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to get database client")
 
-	_, err = suite.store.GetTranslationsByKey("k", "ns")
+	_, err = suite.store.GetTranslationsByKey(context.Background(), "k", "ns")
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to get database client")
 

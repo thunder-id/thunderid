@@ -868,6 +868,280 @@ importers:
         specifier: '>=4.1.0'
         version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
 
+  frontend/apps/cp-console:
+    dependencies:
+      '@dnd-kit/abstract':
+        specifier: 0.4.0
+        version: 0.4.0
+      '@dnd-kit/collision':
+        specifier: 0.4.0
+        version: 0.4.0
+      '@dnd-kit/dom':
+        specifier: 0.4.0
+        version: 0.4.0
+      '@dnd-kit/helpers':
+        specifier: 0.4.0
+        version: 0.4.0
+      '@dnd-kit/react':
+        specifier: 0.4.0
+        version: 0.4.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@emotion/cache':
+        specifier: ^11.14.0
+        version: 11.14.0
+      '@emotion/react':
+        specifier: ^11.14.0
+        version: 11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2)
+      '@hookform/resolvers':
+        specifier: 'catalog:'
+        version: 5.2.2(react-hook-form@7.65.0(react@19.2.3))(zod@4.3.6)
+      '@lexical/html':
+        specifier: 0.38.2
+        version: 0.38.2
+      '@lexical/link':
+        specifier: 0.38.2
+        version: 0.38.2
+      '@lexical/react':
+        specifier: 0.38.2
+        version: 0.38.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(yjs@13.6.30)
+      '@lexical/rich-text':
+        specifier: 0.38.2
+        version: 0.38.2
+      '@lexical/selection':
+        specifier: 0.38.2
+        version: 0.38.2
+      '@lexical/utils':
+        specifier: 0.38.2
+        version: 0.38.2
+      '@monaco-editor/react':
+        specifier: 'catalog:'
+        version: 4.7.0(monaco-editor@0.55.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.90.5(react@19.2.3)
+      '@tanstack/react-query-devtools':
+        specifier: 'catalog:'
+        version: 5.90.2(@tanstack/react-query@5.90.5(react@19.2.3))(react@19.2.3)
+      '@thunderid/components':
+        specifier: workspace:^
+        version: link:../../packages/components
+      '@thunderid/configure-agent-types':
+        specifier: workspace:^
+        version: link:../../packages/configure-agent-types
+      '@thunderid/configure-applications':
+        specifier: workspace:^
+        version: link:../../packages/configure-applications
+      '@thunderid/configure-connections':
+        specifier: workspace:^
+        version: link:../../packages/configure-connections
+      '@thunderid/configure-design':
+        specifier: workspace:^
+        version: link:../../packages/configure-design
+      '@thunderid/configure-groups':
+        specifier: workspace:^
+        version: link:../../packages/configure-groups
+      '@thunderid/configure-import-export':
+        specifier: workspace:^
+        version: link:../../packages/configure-import-export
+      '@thunderid/configure-organization-units':
+        specifier: workspace:^
+        version: link:../../packages/configure-organization-units
+      '@thunderid/configure-resource-servers':
+        specifier: workspace:^
+        version: link:../../packages/configure-resource-servers
+      '@thunderid/configure-roles':
+        specifier: workspace:^
+        version: link:../../packages/configure-roles
+      '@thunderid/configure-settings':
+        specifier: workspace:^
+        version: link:../../packages/configure-settings
+      '@thunderid/configure-translations':
+        specifier: workspace:^
+        version: link:../../packages/configure-translations
+      '@thunderid/configure-user-types':
+        specifier: workspace:^
+        version: link:../../packages/configure-user-types
+      '@thunderid/configure-users':
+        specifier: workspace:^
+        version: link:../../packages/configure-users
+      '@thunderid/configure-verifiable-credentials':
+        specifier: workspace:^
+        version: link:../../packages/configure-verifiable-credentials
+      '@thunderid/contexts':
+        specifier: workspace:^
+        version: link:../../packages/contexts
+      '@thunderid/design':
+        specifier: workspace:^
+        version: link:../../packages/design
+      '@thunderid/hooks':
+        specifier: workspace:^
+        version: link:../../packages/hooks
+      '@thunderid/i18n':
+        specifier: workspace:^
+        version: link:../../packages/i18n
+      '@thunderid/logger':
+        specifier: workspace:^
+        version: link:../../packages/logger
+      '@thunderid/react':
+        specifier: 'catalog:'
+        version: 1.0.3(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
+      '@thunderid/react-router':
+        specifier: 'catalog:'
+        version: 1.0.3(@thunderid/browser@1.0.3)(@thunderid/react@1.0.3(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2))(react-router@8.3.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
+      '@thunderid/utils':
+        specifier: workspace:^
+        version: link:../../packages/utils
+      '@wso2/oxygen-ui':
+        specifier: 'catalog:'
+        version: 0.13.1(@mui/system@7.3.11(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3)(supports-color@10.2.2))(@types/react@19.2.14)(react@19.2.3))(@types/react@19.2.14)(@wso2/oxygen-ui-icons-react@0.13.1(react@19.2.3))(dayjs@1.11.18)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
+      '@wso2/oxygen-ui-icons-react':
+        specifier: 'catalog:'
+        version: 0.13.1(react@19.2.3)
+      '@xyflow/react':
+        specifier: 12.9.2
+        version: 12.9.2(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@xyflow/system':
+        specifier: ^0.0.72
+        version: 0.0.72
+      classnames:
+        specifier: 2.5.1
+        version: 2.5.1
+      clsx:
+        specifier: 'catalog:'
+        version: 2.1.1
+      dayjs:
+        specifier: 'catalog:'
+        version: 1.11.18
+      dompurify:
+        specifier: '>=3.4.12'
+        version: 3.4.12
+      elkjs:
+        specifier: ^0.11.0
+        version: 0.11.1
+      framer-motion:
+        specifier: ^12.35.2
+        version: 12.39.0(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      html-react-parser:
+        specifier: 5.2.10
+        version: 5.2.10(@types/react@19.2.14)(react@19.2.3)
+      i18next:
+        specifier: 25.6.0
+        version: 25.6.0(typescript@5.9.3)
+      lexical:
+        specifier: 0.38.2
+        version: 0.38.2
+      lodash-es:
+        specifier: 'catalog:'
+        version: 4.18.1
+      monaco-editor:
+        specifier: ^0.55.1
+        version: 0.55.1
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      react-hook-form:
+        specifier: 'catalog:'
+        version: 7.65.0(react@19.2.3)
+      react-i18next:
+        specifier: 'catalog:'
+        version: 16.0.1(i18next@25.6.0(typescript@5.9.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@5.9.3)
+      react-router:
+        specifier: 'catalog:'
+        version: 8.3.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      react-syntax-highlighter:
+        specifier: ^16.1.0
+        version: 16.1.1(react@19.2.3)
+      yaml:
+        specifier: 2.8.3
+        version: 2.8.3
+      zod:
+        specifier: 'catalog:'
+        version: 4.3.6
+    devDependencies:
+      '@codecov/vite-plugin':
+        specifier: 'catalog:'
+        version: 2.0.1(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      '@rolldown/plugin-babel':
+        specifier: 'catalog:'
+        version: 0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.2)(rolldown@1.0.3)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      '@testing-library/jest-dom':
+        specifier: 'catalog:'
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.0(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.1(@testing-library/dom@10.4.1)
+      '@thunderid/build-plugins':
+        specifier: workspace:^
+        version: link:../../packages/build-plugins
+      '@thunderid/eslint-plugin':
+        specifier: workspace:^
+        version: link:../../packages/eslint-plugin
+      '@thunderid/prettier-config':
+        specifier: workspace:^
+        version: link:../../packages/prettier-config
+      '@thunderid/test-utils':
+        specifier: workspace:^
+        version: link:../../packages/test-utils
+      '@thunderid/types':
+        specifier: workspace:^
+        version: link:../../packages/types
+      '@types/lodash-es':
+        specifier: 'catalog:'
+        version: 4.17.12
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.7.2
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.14)
+      '@types/react-syntax-highlighter':
+        specifier: ^15.5.13
+        version: 15.5.13
+      '@vitejs/plugin-basic-ssl':
+        specifier: 'catalog:'
+        version: 2.3.0(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 6.0.2(@rolldown/plugin-babel@0.2.3(@babel/core@7.29.7(supports-color@10.2.2))(@babel/plugin-transform-runtime@7.29.0(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@babel/runtime@7.29.2)(rolldown@1.0.3)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)))(babel-plugin-react-compiler@19.1.0-rc.3)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      '@vitest/coverage-istanbul':
+        specifier: 'catalog:'
+        version: 4.1.10(supports-color@10.2.2)(vitest@4.1.10)
+      babel-plugin-react-compiler:
+        specifier: 'catalog:'
+        version: 19.1.0-rc.3
+      eslint:
+        specifier: 'catalog:'
+        version: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
+      jsdom:
+        specifier: 'catalog:'
+        version: 27.0.1(supports-color@10.2.2)
+      rollup-plugin-visualizer:
+        specifier: 'catalog:'
+        version: 6.0.5(rolldown@1.0.3)
+      sass-embedded:
+        specifier: 1.98.0
+        version: 1.98.0
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vite:
+        specifier: 8.0.16
+        version: 8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)
+      vite-plugin-svgr:
+        specifier: 'catalog:'
+        version: 5.2.0(supports-color@10.2.2)(typescript@5.9.3)(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      vitest:
+        specifier: '>=4.1.0'
+        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.0.16(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+
   frontend/apps/gate:
     dependencies:
       '@fontsource-variable/inter':
@@ -2613,9 +2887,18 @@ importers:
 
   frontend/packages/contexts:
     dependencies:
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.90.5(react@19.2.3)
+      '@thunderid/react':
+        specifier: 'catalog:'
+        version: 1.0.3(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
       lucide-react:
         specifier: 'catalog:'
         version: 0.545.0(react@19.2.3)
+      react-i18next:
+        specifier: 'catalog:'
+        version: 16.0.1(i18next@25.6.0(typescript@5.9.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@5.9.3)
       tslib:
         specifier: 'catalog:'
         version: 2.8.1
@@ -3483,7 +3766,7 @@ importers:
     devDependencies:
       '@types/node':
         specifier: ^22.15.19
-        version: 22.20.1
+        version: 22.19.19
 
   samples/apps/wayfinder-sample/backend:
     dependencies:
@@ -7545,8 +7828,8 @@ packages:
   '@types/node@17.0.45':
     resolution: {integrity: sha512-w+tIMs3rq2afQdsPJlODhoUEKzFP1ayaoyl1CcnwtIlsVe7K7bA1NGm4s3PraqTLlXnbIN84zuBlxBWo1u9BLw==}
 
-  '@types/node@22.20.1':
-    resolution: {integrity: sha512-EANqOCF9QFyra+4pfxUcX9STKJpCLjMbObVzljIJomAWSnuSIEAvyzEU53GaajbXJEgdh0iEcPL+DGvpUd4k1Q==}
+  '@types/node@22.19.19':
+    resolution: {integrity: sha512-dyh/xO2Fh5bYrfWaaqGrRQQGkNdmYw6AmaAUvYeUMNTWQtvb796ikLdmTchRmOlOiIJ1TDXfWgVx1QkUlQ6Hew==}
 
   '@types/node@24.12.4':
     resolution: {integrity: sha512-GUUEShf+PBCGW2KaXwcIt3Yk+e3pkKwWKb9GSyM9WQVE+ep2jzmHdGsHzu4wgcZy5fN9FBdVzjpBQsYlpfpgLA==}
@@ -7869,7 +8152,7 @@ packages:
     resolution: {integrity: sha512-YmKkfhOAi3wsB1PhJq5Scj3GXMn3WvtQ/JC0xoopuHoXSdmtdStOpFrYaT1kie2YgFBcIe64ROzMYRjCrYOdYw==}
     engines: {node: ^20.19.0 || >=22.12.0}
     peerDependencies:
-      vite: '>=8.0.16'
+      vite: 8.0.16
 
   '@vitejs/plugin-react@6.0.2':
     resolution: {integrity: sha512-DlSMqo4WhThw4vB8Mpn0Woe9J+Jfq1geJ61AKW0QEgLzGMNwtIMdxbDUzLxcun8W7NbJO0e2Jg/Nxm3cCSVzzg==}
@@ -7923,7 +8206,7 @@ packages:
     resolution: {integrity: sha512-v0xaezt+DKEmKfaxg133ldzADrwLGd7Ze1MfQQTYfvs8OqZIwbxyxaYURivwV7sWy5fqn3rH5uOrSp07bp44Ow==}
     peerDependencies:
       msw: ^2.4.9
-      vite: '>=8.0.16'
+      vite: 8.0.16
     peerDependenciesMeta:
       msw:
         optional: true
@@ -9146,6 +9429,9 @@ packages:
 
   dayjs@1.11.18:
     resolution: {integrity: sha512-zFBQ7WFRvVRhKcWoUh+ZA1g2HVgUbsZm9sbddh8EC5iv93sui8DVVz1Npvz+r6meo9VKfa8NyLWBsQK1VvIKPA==}
+
+  dayjs@1.11.20:
+    resolution: {integrity: sha512-YbwwqR/uYpeoP4pu043q+LTDLFBLApUP6VxRihdfNTqu4ubqMlGDLd6ErXhEgsyvY0K6nCs7nggYumAN+9uEuQ==}
 
   dayjs@1.11.21:
     resolution: {integrity: sha512-98IT+HOahAisibz/yjKbzuOBwYcjJ7BCLPzARyHiyEBmRz4fatF+KPJszEHXsGYjUG234aH/cOjW1wwTbKUZlA==}
@@ -13971,7 +14257,7 @@ packages:
       '@vitest/ui': 4.1.10
       happy-dom: '*'
       jsdom: '*'
-      vite: '>=8.0.16'
+      vite: 8.0.16
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true
@@ -15390,8 +15676,7 @@ snapshots:
 
   '@braintree/sanitize-url@7.1.2': {}
 
-  '@bufbuild/protobuf@2.12.0':
-    optional: true
+  '@bufbuild/protobuf@2.12.0': {}
 
   '@cfworker/json-schema@4.1.1': {}
 
@@ -19770,7 +20055,7 @@ snapshots:
 
   '@types/node@17.0.45': {}
 
-  '@types/node@22.20.1':
+  '@types/node@22.19.19':
     dependencies:
       undici-types: 6.21.0
 
@@ -21140,8 +21425,7 @@ snapshots:
 
   colorette@2.0.20: {}
 
-  colorjs.io@0.5.2:
-    optional: true
+  colorjs.io@0.5.2: {}
 
   combine-promises@1.2.0: {}
 
@@ -21686,7 +21970,10 @@ snapshots:
 
   dayjs@1.11.18: {}
 
-  dayjs@1.11.21: {}
+  dayjs@1.11.20: {}
+
+  dayjs@1.11.21:
+    optional: true
 
   debounce@1.2.1: {}
 
@@ -22151,8 +22438,8 @@ snapshots:
       '@babel/parser': 7.29.3
       eslint: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
       hermes-parser: 0.25.1
-      zod: 4.4.3
-      zod-validation-error: 4.0.2(zod@4.4.3)
+      zod: 3.25.76
+      zod-validation-error: 4.0.2(zod@3.25.76)
     transitivePeerDependencies:
       - supports-color
 
@@ -23355,8 +23642,7 @@ snapshots:
 
   image-size@2.0.2: {}
 
-  immutable@5.1.8:
-    optional: true
+  immutable@5.1.8: {}
 
   import-fresh@3.3.1:
     dependencies:
@@ -24244,7 +24530,7 @@ snapshots:
       d3: 7.9.0
       d3-sankey: 0.12.3
       dagre-d3-es: 7.0.14
-      dayjs: 1.11.21
+      dayjs: 1.11.20
       dompurify: 3.4.12
       es-toolkit: 1.50.0
       katex: 0.16.47
@@ -26321,7 +26607,6 @@ snapshots:
       sass-embedded-unknown-all: 1.98.0
       sass-embedded-win32-arm64: 1.98.0
       sass-embedded-win32-x64: 1.98.0
-    optional: true
 
   sass@1.98.0:
     dependencies:
@@ -26918,10 +27203,8 @@ snapshots:
   sync-child-process@1.0.2:
     dependencies:
       sync-message-port: 1.2.0
-    optional: true
 
-  sync-message-port@1.2.0:
-    optional: true
+  sync-message-port@1.2.0: {}
 
   tabbable@6.4.0: {}
 
@@ -27339,8 +27622,7 @@ snapshots:
 
   value-equal@1.0.1: {}
 
-  varint@6.0.0:
-    optional: true
+  varint@6.0.0: {}
 
   vary@1.1.2: {}
 
@@ -27834,9 +28116,9 @@ snapshots:
     dependencies:
       zod: 3.25.76
 
-  zod-validation-error@4.0.2(zod@4.4.3):
+  zod-validation-error@4.0.2(zod@3.25.76):
     dependencies:
-      zod: 4.4.3
+      zod: 3.25.76
 
   zod@3.25.76: {}
 

@@ -203,7 +203,7 @@ func validateLayoutWrapper(dto interface{}, dbStore layoutMgtStoreInterface) err
 
 	// In composite mode, check for duplicates in database store
 	if dbStore != nil {
-		exists, err := dbStore.IsLayoutExist(layout.ID)
+		exists, err := dbStore.IsLayoutExist(context.Background(), layout.ID)
 		if err != nil {
 			return fmt.Errorf("failed to check for duplicate layout ID '%s': %w", layout.ID, err)
 		}

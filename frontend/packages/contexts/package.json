@@ -73,7 +73,10 @@
     "access": "public"
   },
   "dependencies": {
+    "@tanstack/react-query": "catalog:",
+    "@thunderid/react": "catalog:",
     "lucide-react": "catalog:",
+    "react-i18next": "catalog:",
     "tslib": "catalog:"
   },
   "peerDependencies": {

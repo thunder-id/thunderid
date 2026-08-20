@@ -135,7 +135,7 @@ func (s *ActorProviderTestSuite) TestAuthenticateActor_Delegates_Failure() {
 
 func (s *ActorProviderTestSuite) TestGetActor_Delegates() {
 	expected := &providers.Entity{ID: "app-1"}
-	s.mockEntity.On("GetEntity", "app-1").Return(expected, (*entityprovider.EntityProviderError)(nil))
+	s.mockEntity.On("GetEntity", mock.Anything, "app-1").Return(expected, (*entityprovider.EntityProviderError)(nil))
 
 	entity, err := s.provider.GetActor("app-1")
 
@@ -145,7 +145,8 @@ func (s *ActorProviderTestSuite) TestGetActor_Delegates() {
 
 func (s *ActorProviderTestSuite) TestGetActorGroups_Delegates() {
 	expected := []providers.EntityGroup{{ID: "group-1"}}
-	s.mockEntity.On("GetTransitiveEntityGroups", "app-1").Return(expected, (*entityprovider.EntityProviderError)(nil))
+	s.mockEntity.On("GetTransitiveEntityGroups", mock.Anything, "app-1").Return(expected,
+		(*entityprovider.EntityProviderError)(nil))
 
 	groups, err := s.provider.GetActorGroups("app-1")
 

@@ -35,7 +35,7 @@ func (f *idpFileBasedStore) DeleteIdentityProvider(ctx context.Context, id strin
 
 // GetIdentityProvider implements idpStoreInterface.
 func (f *idpFileBasedStore) GetIdentityProvider(ctx context.Context, idpID string) (*providers.IDPDTO, error) {
-	data, err := f.GenericFileBasedStore.Get(idpID)
+	data, err := f.GenericFileBasedStore.Get(ctx, idpID)
 	if err != nil {
 		return nil, ErrIDPNotFound
 	}
@@ -49,7 +49,7 @@ func (f *idpFileBasedStore) GetIdentityProvider(ctx context.Context, idpID strin
 
 // GetIdentityProviderByName implements idpStoreInterface.
 func (f *idpFileBasedStore) GetIdentityProviderByName(ctx context.Context, idpName string) (*providers.IDPDTO, error) {
-	data, err := f.GenericFileBasedStore.GetByField(idpName, func(d interface{}) string {
+	data, err := f.GenericFileBasedStore.GetByField(ctx, idpName, func(d interface{}) string {
 		return d.(*providers.IDPDTO).Name
 	})
 	if err != nil {
@@ -60,7 +60,7 @@ func (f *idpFileBasedStore) GetIdentityProviderByName(ctx context.Context, idpNa
 
 // GetIdentityProviderList implements idpStoreInterface.
 func (f *idpFileBasedStore) GetIdentityProviderList(ctx context.Context) ([]BasicIDPDTO, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (f *idpFileBasedStore) GetIdentityProviderList(ctx context.Context) ([]Basi
 // GetIdentityProvidersByProperty retrieves identity providers matching a property from the file-based store.
 func (f *idpFileBasedStore) GetIdentityProvidersByProperty(ctx context.Context,
 	propertyKey, propertyValue string) ([]providers.IDPDTO, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func (f *idpFileBasedStore) GetIdentityProvidersByProperty(ctx context.Context,
 
 // GetIdentityProviderListCount retrieves the total count of identity providers.
 func (f *idpFileBasedStore) GetIdentityProviderListCount(ctx context.Context) (int, error) {
-	return f.GenericFileBasedStore.Count()
+	return f.GenericFileBasedStore.Count(ctx)
 }
 
 // UpdateIdentityProvider implements idpStoreInterface.

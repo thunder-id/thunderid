@@ -46,20 +46,20 @@ func (f *fileBasedStore) Create(id string, data interface{}) error {
 
 // CreateInboundClient stores an inbound client directly. Used by tests; the production path
 // goes via Create (the declarative loader).
-func (f *fileBasedStore) CreateInboundClient(_ context.Context, client inboundmodel.InboundClient) error {
+func (f *fileBasedStore) CreateInboundClient(ctx context.Context, client inboundmodel.InboundClient) error {
 	return f.GenericFileBasedStore.Create(client.ID, &client)
 }
 
 // CreateOAuthProfile is not supported in the file store — OAuth profile is embedded in the
 // inbound client's Properties under PropOAuthProfile.
-func (f *fileBasedStore) CreateOAuthProfile(_ context.Context, _ string, _ *providers.OAuthProfile) error {
+func (f *fileBasedStore) CreateOAuthProfile(ctx context.Context, _ string, _ *providers.OAuthProfile) error {
 	return errors.New("CreateOAuthProfile is not supported in file-based store")
 }
 
 // GetInboundClientByEntityID retrieves an inbound client from the file store by entity ID.
-func (f *fileBasedStore) GetInboundClientByEntityID(_ context.Context, entityID string) (
+func (f *fileBasedStore) GetInboundClientByEntityID(ctx context.Context, entityID string) (
 	*inboundmodel.InboundClient, error) {
-	data, err := f.GenericFileBasedStore.Get(entityID)
+	data, err := f.GenericFileBasedStore.Get(ctx, entityID)
 	if err != nil {
 		return nil, ErrInboundClientNotFound
 	}
@@ -105,8 +105,8 @@ func (f *fileBasedStore) GetOAuthProfileByEntityID(ctx context.Context, entityID
 }
 
 // GetInboundClientList returns all inbound clients in the file store with IsReadOnly set.
-func (f *fileBasedStore) GetInboundClientList(_ context.Context, limit int) ([]inboundmodel.InboundClient, error) {
-	list, err := f.GenericFileBasedStore.List()
+func (f *fileBasedStore) GetInboundClientList(ctx context.Context, limit int) ([]inboundmodel.InboundClient, error) {
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -126,34 +126,34 @@ func (f *fileBasedStore) GetInboundClientList(_ context.Context, limit int) ([]i
 }
 
 // GetTotalInboundClientCount returns the count of inbound clients in the file store.
-func (f *fileBasedStore) GetTotalInboundClientCount(_ context.Context) (int, error) {
-	return f.GenericFileBasedStore.Count()
+func (f *fileBasedStore) GetTotalInboundClientCount(ctx context.Context) (int, error) {
+	return f.GenericFileBasedStore.Count(ctx)
 }
 
 // UpdateInboundClient is not supported in the file store.
-func (f *fileBasedStore) UpdateInboundClient(_ context.Context, _ inboundmodel.InboundClient) error {
+func (f *fileBasedStore) UpdateInboundClient(ctx context.Context, _ inboundmodel.InboundClient) error {
 	return errors.New("UpdateInboundClient is not supported in file-based store")
 }
 
 // UpdateOAuthProfile is not supported in the file store.
-func (f *fileBasedStore) UpdateOAuthProfile(_ context.Context, _ string, _ *providers.OAuthProfile) error {
+func (f *fileBasedStore) UpdateOAuthProfile(ctx context.Context, _ string, _ *providers.OAuthProfile) error {
 	return errors.New("UpdateOAuthProfile is not supported in file-based store")
 }
 
 // DeleteInboundClient is not supported in the file store.
-func (f *fileBasedStore) DeleteInboundClient(_ context.Context, _ string) error {
+func (f *fileBasedStore) DeleteInboundClient(ctx context.Context, _ string) error {
 	return errors.New("DeleteInboundClient is not supported in file-based store")
 }
 
 // DeleteOAuthProfile is not supported in the file store.
-func (f *fileBasedStore) DeleteOAuthProfile(_ context.Context, _ string) error {
+func (f *fileBasedStore) DeleteOAuthProfile(ctx context.Context, _ string) error {
 	return errors.New("DeleteOAuthProfile is not supported in file-based store")
 }
 
 // InboundClientExists reports whether an inbound client with the given entity ID is present
 // in the file store.
-func (f *fileBasedStore) InboundClientExists(_ context.Context, entityID string) (bool, error) {
-	_, err := f.GenericFileBasedStore.Get(entityID)
+func (f *fileBasedStore) InboundClientExists(ctx context.Context, entityID string) (bool, error) {
+	_, err := f.GenericFileBasedStore.Get(ctx, entityID)
 	if err != nil {
 		return false, nil
 	}
@@ -162,14 +162,14 @@ func (f *fileBasedStore) InboundClientExists(_ context.Context, entityID string)
 
 // IsDeclarative returns true when the given entity ID corresponds to a declaratively-loaded
 // inbound client. All inbound clients held by the file store are declarative.
-func (f *fileBasedStore) IsDeclarative(_ context.Context, entityID string) bool {
-	_, err := f.GenericFileBasedStore.Get(entityID)
+func (f *fileBasedStore) IsDeclarative(ctx context.Context, entityID string) bool {
+	_, err := f.GenericFileBasedStore.Get(ctx, entityID)
 	return err == nil
 }
 
-func (f *fileBasedStore) GetEntityIDsByReference(
-	_ context.Context, refType, refID string, limit, offset int) ([]string, int, error) {
-	list, err := f.GenericFileBasedStore.List()
+func (f *fileBasedStore) GetEntityIDsByReference(ctx context.Context, refType, refID string, limit,
+	offset int) ([]string, int, error) {
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, 0, err
 	}

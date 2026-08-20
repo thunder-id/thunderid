@@ -4,6 +4,7 @@
 package thememgt
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -74,13 +75,13 @@ func (suite *ThemeFileBasedStoreTestSuite) TestCreateTheme_Success() {
 	themeReq := suite.createTestTheme("Blue Theme")
 
 	// Act
-	err := suite.store.CreateTheme("theme-001", themeReq)
+	err := suite.store.CreateTheme(context.Background(), "theme-001", themeReq)
 
 	// Assert
 	suite.NoError(err)
 
 	// Verify theme was created
-	retrieved, err := suite.store.GetTheme("theme-001")
+	retrieved, err := suite.store.GetTheme(context.Background(), "theme-001")
 	suite.NoError(err)
 	suite.Equal("theme-001", retrieved.ID)
 	suite.Equal("Blue Theme", retrieved.DisplayName)
@@ -91,10 +92,10 @@ func (suite *ThemeFileBasedStoreTestSuite) TestCreateTheme_Success() {
 func (suite *ThemeFileBasedStoreTestSuite) TestGetTheme_Success() {
 	// Arrange
 	themeReq := suite.createTestTheme("Red Theme")
-	_ = suite.store.CreateTheme("theme-002", themeReq)
+	_ = suite.store.CreateTheme(context.Background(), "theme-002", themeReq)
 
 	// Act
-	retrieved, err := suite.store.GetTheme("theme-002")
+	retrieved, err := suite.store.GetTheme(context.Background(), "theme-002")
 
 	// Assert
 	suite.NoError(err)
@@ -104,7 +105,7 @@ func (suite *ThemeFileBasedStoreTestSuite) TestGetTheme_Success() {
 
 func (suite *ThemeFileBasedStoreTestSuite) TestGetTheme_NotFound() {
 	// Act
-	retrieved, err := suite.store.GetTheme("non-existent")
+	retrieved, err := suite.store.GetTheme(context.Background(), "non-existent")
 
 	// Assert
 	suite.Error(err)
@@ -116,12 +117,12 @@ func (suite *ThemeFileBasedStoreTestSuite) TestGetThemeList_Success() {
 	theme1 := suite.createTestTheme("Theme 1")
 	theme2 := suite.createTestTheme("Theme 2")
 	theme3 := suite.createTestTheme("Theme 3")
-	_ = suite.store.CreateTheme("theme-003", theme1)
-	_ = suite.store.CreateTheme("theme-004", theme2)
-	_ = suite.store.CreateTheme("theme-005", theme3)
+	_ = suite.store.CreateTheme(context.Background(), "theme-003", theme1)
+	_ = suite.store.CreateTheme(context.Background(), "theme-004", theme2)
+	_ = suite.store.CreateTheme(context.Background(), "theme-005", theme3)
 
 	// Act
-	themes, err := suite.store.GetThemeList(10, 0)
+	themes, err := suite.store.GetThemeList(context.Background(), 10, 0)
 
 	// Assert
 	suite.NoError(err)
@@ -132,18 +133,18 @@ func (suite *ThemeFileBasedStoreTestSuite) TestGetThemeList_WithPagination() {
 	// Arrange
 	for i := 1; i <= 5; i++ {
 		themeReq := suite.createTestTheme(fmt.Sprintf("Theme %d", i))
-		_ = suite.store.CreateTheme(fmt.Sprintf("theme-%03d", i), themeReq)
+		_ = suite.store.CreateTheme(context.Background(), fmt.Sprintf("theme-%03d", i), themeReq)
 	}
 
 	// Act - Get first 2 themes
-	themes, err := suite.store.GetThemeList(2, 0)
+	themes, err := suite.store.GetThemeList(context.Background(), 2, 0)
 
 	// Assert
 	suite.NoError(err)
 	suite.Len(themes, 2)
 
 	// Act - Get next 2 themes
-	themes, err = suite.store.GetThemeList(2, 2)
+	themes, err = suite.store.GetThemeList(context.Background(), 2, 2)
 
 	// Assert
 	suite.NoError(err)
@@ -152,7 +153,7 @@ func (suite *ThemeFileBasedStoreTestSuite) TestGetThemeList_WithPagination() {
 
 func (suite *ThemeFileBasedStoreTestSuite) TestGetThemeList_EmptyStore() {
 	// Act
-	themes, err := suite.store.GetThemeList(10, 0)
+	themes, err := suite.store.GetThemeList(context.Background(), 10, 0)
 
 	// Assert
 	suite.NoError(err)
@@ -163,11 +164,11 @@ func (suite *ThemeFileBasedStoreTestSuite) TestGetThemeListCount_Success() {
 	// Arrange
 	theme1 := suite.createTestTheme("Theme 6")
 	theme2 := suite.createTestTheme("Theme 7")
-	_ = suite.store.CreateTheme("theme-006", theme1)
-	_ = suite.store.CreateTheme("theme-007", theme2)
+	_ = suite.store.CreateTheme(context.Background(), "theme-006", theme1)
+	_ = suite.store.CreateTheme(context.Background(), "theme-007", theme2)
 
 	// Act
-	count, err := suite.store.GetThemeListCount()
+	count, err := suite.store.GetThemeListCount(context.Background())
 
 	// Assert
 	suite.NoError(err)
@@ -177,10 +178,10 @@ func (suite *ThemeFileBasedStoreTestSuite) TestGetThemeListCount_Success() {
 func (suite *ThemeFileBasedStoreTestSuite) TestIsThemeExist_True() {
 	// Arrange
 	themeReq := suite.createTestTheme("Existing Theme")
-	_ = suite.store.CreateTheme("theme-008", themeReq)
+	_ = suite.store.CreateTheme(context.Background(), "theme-008", themeReq)
 
 	// Act
-	exists, err := suite.store.IsThemeExist("theme-008")
+	exists, err := suite.store.IsThemeExist(context.Background(), "theme-008")
 
 	// Assert
 	suite.NoError(err)
@@ -189,7 +190,7 @@ func (suite *ThemeFileBasedStoreTestSuite) TestIsThemeExist_True() {
 
 func (suite *ThemeFileBasedStoreTestSuite) TestIsThemeExist_False() {
 	// Act
-	exists, err := suite.store.IsThemeExist("non-existent")
+	exists, err := suite.store.IsThemeExist(context.Background(), "non-existent")
 
 	// Assert
 	suite.NoError(err)
@@ -201,7 +202,7 @@ func (suite *ThemeFileBasedStoreTestSuite) TestUpdateTheme_NotSupported() {
 	themeReq := suite.createTestTheme("Update Test")
 
 	// Act
-	err := suite.store.UpdateTheme("theme-009", UpdateThemeRequest{
+	err := suite.store.UpdateTheme(context.Background(), "theme-009", UpdateThemeRequest{
 		DisplayName: "Updated Name",
 		Description: "Updated description",
 		Theme:       themeReq.Theme,
@@ -214,7 +215,7 @@ func (suite *ThemeFileBasedStoreTestSuite) TestUpdateTheme_NotSupported() {
 
 func (suite *ThemeFileBasedStoreTestSuite) TestDeleteTheme_NotSupported() {
 	// Act
-	err := suite.store.DeleteTheme("theme-001")
+	err := suite.store.DeleteTheme(context.Background(), "theme-001")
 
 	// Assert
 	suite.Error(err)
@@ -241,7 +242,7 @@ func (suite *ThemeFileBasedStoreTestSuite) TestCreate_StorerInterface() {
 	suite.NoError(err)
 
 	// Verify
-	retrieved, err := suite.store.GetTheme("theme-010")
+	retrieved, err := suite.store.GetTheme(context.Background(), "theme-010")
 	suite.NoError(err)
 	suite.Equal("theme-010", retrieved.ID)
 }
@@ -262,11 +263,11 @@ func (suite *ThemeFileBasedStoreTestSuite) TestGetThemeList_NegativeOffset() {
 	// Arrange
 	theme1 := suite.createTestTheme("Theme A")
 	theme2 := suite.createTestTheme("Theme B")
-	_ = suite.store.CreateTheme("theme-a", theme1)
-	_ = suite.store.CreateTheme("theme-b", theme2)
+	_ = suite.store.CreateTheme(context.Background(), "theme-a", theme1)
+	_ = suite.store.CreateTheme(context.Background(), "theme-b", theme2)
 
 	// Act - negative offset should be clamped to 0
-	themes, err := suite.store.GetThemeList(10, -5)
+	themes, err := suite.store.GetThemeList(context.Background(), 10, -5)
 
 	// Assert
 	suite.NoError(err)
@@ -276,10 +277,10 @@ func (suite *ThemeFileBasedStoreTestSuite) TestGetThemeList_NegativeOffset() {
 func (suite *ThemeFileBasedStoreTestSuite) TestGetThemeList_ZeroLimit() {
 	// Arrange
 	theme1 := suite.createTestTheme("Theme C")
-	_ = suite.store.CreateTheme("theme-c", theme1)
+	_ = suite.store.CreateTheme(context.Background(), "theme-c", theme1)
 
 	// Act - zero limit should return empty slice
-	themes, err := suite.store.GetThemeList(0, 0)
+	themes, err := suite.store.GetThemeList(context.Background(), 0, 0)
 
 	// Assert
 	suite.NoError(err)
@@ -289,10 +290,10 @@ func (suite *ThemeFileBasedStoreTestSuite) TestGetThemeList_ZeroLimit() {
 func (suite *ThemeFileBasedStoreTestSuite) TestGetThemeList_NegativeLimit() {
 	// Arrange
 	theme1 := suite.createTestTheme("Theme D")
-	_ = suite.store.CreateTheme("theme-d", theme1)
+	_ = suite.store.CreateTheme(context.Background(), "theme-d", theme1)
 
 	// Act - negative limit should return empty slice
-	themes, err := suite.store.GetThemeList(-10, 0)
+	themes, err := suite.store.GetThemeList(context.Background(), -10, 0)
 
 	// Assert
 	suite.NoError(err)
@@ -302,10 +303,10 @@ func (suite *ThemeFileBasedStoreTestSuite) TestGetThemeList_NegativeLimit() {
 func (suite *ThemeFileBasedStoreTestSuite) TestGetThemeList_OffsetBeyondList() {
 	// Arrange
 	theme1 := suite.createTestTheme("Theme E")
-	_ = suite.store.CreateTheme("theme-e", theme1)
+	_ = suite.store.CreateTheme(context.Background(), "theme-e", theme1)
 
 	// Act - offset beyond list length should return empty slice
-	themes, err := suite.store.GetThemeList(10, 100)
+	themes, err := suite.store.GetThemeList(context.Background(), 10, 100)
 
 	// Assert
 	suite.NoError(err)
@@ -316,10 +317,10 @@ func (suite *ThemeFileBasedStoreTestSuite) TestIsThemeHandleConflict_Conflict() 
 	// Arrange
 	themeReq := suite.createTestTheme("Handle Conflict Test")
 	themeReq.Handle = "conflict-handle"
-	_ = suite.store.CreateTheme("theme-hc1", themeReq)
+	_ = suite.store.CreateTheme(context.Background(), "theme-hc1", themeReq)
 
 	// Act - different ID with same handle should conflict
-	conflict, err := suite.store.IsThemeHandleConflict("conflict-handle", "other-id")
+	conflict, err := suite.store.IsThemeHandleConflict(context.Background(), "conflict-handle", "other-id")
 
 	// Assert
 	suite.NoError(err)
@@ -328,7 +329,7 @@ func (suite *ThemeFileBasedStoreTestSuite) TestIsThemeHandleConflict_Conflict() 
 
 func (suite *ThemeFileBasedStoreTestSuite) TestIsThemeHandleConflict_NoConflict() {
 	// Act - non-existent handle should not conflict
-	conflict, err := suite.store.IsThemeHandleConflict("non-existent-handle", "")
+	conflict, err := suite.store.IsThemeHandleConflict(context.Background(), "non-existent-handle", "")
 
 	// Assert
 	suite.NoError(err)
@@ -339,10 +340,10 @@ func (suite *ThemeFileBasedStoreTestSuite) TestIsThemeHandleConflict_SameIDExclu
 	// Arrange
 	themeReq := suite.createTestTheme("Same ID Exclude Test")
 	themeReq.Handle = "same-id-handle"
-	_ = suite.store.CreateTheme("theme-hc2", themeReq)
+	_ = suite.store.CreateTheme(context.Background(), "theme-hc2", themeReq)
 
 	// Act - same ID should be excluded from conflict check
-	conflict, err := suite.store.IsThemeHandleConflict("same-id-handle", "theme-hc2")
+	conflict, err := suite.store.IsThemeHandleConflict(context.Background(), "same-id-handle", "theme-hc2")
 
 	// Assert
 	suite.NoError(err)

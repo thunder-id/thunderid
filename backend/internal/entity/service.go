@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/secretresolver"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -560,14 +561,9 @@ func (s *entityService) verifyCredentials(credentials map[string]interface{},
 		credList := storedCreds[credType]
 		verified := false
 		for _, stored := range credList {
-			ref := cryptolib.Credential{
-				Algorithm: stored.StorageAlgo,
-				Hash:      stored.Value,
-				Parameters: cryptolib.CredParameters{
-					Salt:       stored.StorageAlgoParams.Salt,
-					Iterations: stored.StorageAlgoParams.Iterations,
-					KeySize:    stored.StorageAlgoParams.KeySize,
-				},
+			ref, usable := credentialReference(stored)
+			if !usable {
+				continue
 			}
 			ok, verifyErr := s.hashService.Verify([]byte(credValue), ref)
 			if verifyErr == nil && ok {
@@ -581,6 +577,45 @@ func (s *entityService) verifyCredentials(credentials map[string]interface{},
 	}
 
 	return nil
+}
+
+// credentialReference builds what a presented value is verified against.
+//
+// A credential promoted from a control plane is stored as a reference rather than a hash, because the
+// hash lives in this deployment's secret provider instead of its database. Those are resolved here, so
+// verification is the same comparison either way. A credential created on this deployment is stored
+// normally and is used as it stands.
+//
+// usable is false when a reference cannot be resolved. That is deliberately not treated as a match:
+// an unresolvable credential must reject, not pass.
+func credentialReference(stored StoredCredential) (cryptolib.Credential, bool) {
+	if secretresolver.IsReference(stored.Value) {
+		h, found, err := secretresolver.Default().ResolveHash(context.Background(), stored.Value)
+		if err != nil || !found {
+			return cryptolib.Credential{}, false
+		}
+		return cryptolib.Credential{
+			Algorithm: cryptolib.CredAlgorithm(h.Algorithm),
+			Hash:      h.Value,
+			Parameters: cryptolib.CredParameters{
+				Salt:        h.Salt,
+				Iterations:  h.Iterations,
+				KeySize:     h.KeySize,
+				Memory:      h.Memory,
+				Parallelism: h.Parallelism,
+			},
+		}, true
+	}
+
+	return cryptolib.Credential{
+		Algorithm: stored.StorageAlgo,
+		Hash:      stored.Value,
+		Parameters: cryptolib.CredParameters{
+			Salt:       stored.StorageAlgoParams.Salt,
+			Iterations: stored.StorageAlgoParams.Iterations,
+			KeySize:    stored.StorageAlgoParams.KeySize,
+		},
+	}, true
 }
 
 // UpdateCredentials updates schema-defined credentials (e.g., password) by hashing new
@@ -1089,6 +1124,14 @@ func (s *entityService) hashPlaintextCredentials(creds json.RawMessage) (json.Ra
 		case string:
 			// Plaintext string value — hash it.
 			if v == "" {
+				continue
+			}
+			// A reference is not a credential to hash: the hash it points at lives in this
+			// deployment's secret provider. Hashing it here would store the hash of the reference
+			// text and every authentication would fail, so it is kept as it is and resolved when a
+			// presented value is verified.
+			if secretresolver.IsReference(v) {
+				result[credType] = []StoredCredential{{Value: v}}
 				continue
 			}
 			credHash, err := s.hashService.Generate([]byte(v))

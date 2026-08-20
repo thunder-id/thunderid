@@ -398,9 +398,10 @@ func GetCache[T any](cm CacheManagerInterface, cacheName string) CacheInterface[
 		return nil
 	}
 
-	// Create a new cache
+	// Create a new cache, wrapped so every keyed operation is namespaced by the request's deployment
+	// id (a no-op single prefix in server mode; per-tenant isolation in token mode).
 	logger.Debug(ctx, "Creating new cache", log.String("cacheName", cacheName), log.String("type", typeName))
-	newCacheInst := newCache[T](cm, cacheName)
+	newCacheInst := &tenantScopedCache[T]{inner: newCache[T](cm, cacheName)}
 	cm.addCache(cacheKey, newCacheInst)
 
 	return newCacheInst

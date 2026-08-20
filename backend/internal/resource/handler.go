@@ -15,6 +15,7 @@ import (
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -570,7 +571,11 @@ func parseActionKindParam(query url.Values) (providers.ActionKind, *tidcommon.Se
 // handleError writes an error response based on the provided service error.
 func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.ServiceError) {
 	statusCode := http.StatusInternalServerError
-	if svcErr.Type == tidcommon.ClientErrorType {
+	if svcErr.Code == managedresource.ErrorResourceManaged.Code {
+		// The request is well formed and the resource exists. The caller simply may not change it
+		// here, which is what forbidden means.
+		statusCode = http.StatusForbidden
+	} else if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
 		case ErrorResourceServerNotFound.Code, ErrorResourceNotFound.Code, ErrorActionNotFound.Code:
 			statusCode = http.StatusNotFound

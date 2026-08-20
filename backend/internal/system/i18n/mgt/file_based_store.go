@@ -30,8 +30,8 @@ func (f *fileBasedStore) Create(id string, data interface{}) error {
 }
 
 // GetDistinctLanguages retrieves all distinct language codes that have translations.
-func (f *fileBasedStore) GetDistinctLanguages() ([]string, error) {
-	list, err := f.GenericFileBasedStore.List()
+func (f *fileBasedStore) GetDistinctLanguages(ctx context.Context) ([]string, error) {
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -46,8 +46,8 @@ func (f *fileBasedStore) GetDistinctLanguages() ([]string, error) {
 }
 
 // GetTranslations retrieves all translations.
-func (f *fileBasedStore) GetTranslations() (map[string]map[string]Translation, error) {
-	list, err := f.GenericFileBasedStore.List()
+func (f *fileBasedStore) GetTranslations(ctx context.Context) (map[string]map[string]Translation, error) {
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -75,8 +75,9 @@ func (f *fileBasedStore) GetTranslations() (map[string]map[string]Translation, e
 }
 
 // GetTranslationsByNamespace retrieves all translations for a namespace.
-func (f *fileBasedStore) GetTranslationsByNamespace(namespace string) (map[string]map[string]Translation, error) {
-	list, err := f.GenericFileBasedStore.List()
+func (f *fileBasedStore) GetTranslationsByNamespace(ctx context.Context,
+	namespace string) (map[string]map[string]Translation, error) {
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -107,8 +108,9 @@ func (f *fileBasedStore) GetTranslationsByNamespace(namespace string) (map[strin
 }
 
 // GetTranslationsByKey retrieves a single translation by key and namespace.
-func (f *fileBasedStore) GetTranslationsByKey(key string, namespace string) (map[string]Translation, error) {
-	list, err := f.GenericFileBasedStore.List()
+func (f *fileBasedStore) GetTranslationsByKey(ctx context.Context, key string,
+	namespace string) (map[string]Translation, error) {
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +151,7 @@ func (f *fileBasedStore) UpsertTranslation(trans Translation) error {
 }
 
 // UpsertTranslations is not supported in file-based store.
-func (f *fileBasedStore) UpsertTranslations(_ context.Context, _ []Translation) error {
+func (f *fileBasedStore) UpsertTranslations(ctx context.Context, _ []Translation) error {
 	return errors.New("UpsertTranslations is not supported in file-based store")
 }
 
@@ -164,25 +166,25 @@ func (f *fileBasedStore) DeleteTranslation(language string, key string, namespac
 }
 
 // DeleteTranslationsByNamespace is not supported in file-based store.
-func (f *fileBasedStore) DeleteTranslationsByNamespace(_ context.Context, _ string) error {
+func (f *fileBasedStore) DeleteTranslationsByNamespace(ctx context.Context, _ string) error {
 	return errors.New("DeleteTranslationsByNamespace is not supported in file-based store")
 }
 
 // DeleteTranslationsByKey is not supported in file-based store.
-func (f *fileBasedStore) DeleteTranslationsByKey(_ context.Context, namespace string, key string) error {
+func (f *fileBasedStore) DeleteTranslationsByKey(ctx context.Context, namespace string, key string) error {
 	return errors.New("DeleteTranslationsByKey is not supported in file-based store")
 }
 
 // IsTranslationDeclarative checks if a translation is immutable (exists in file store).
 // Helper method for composite store.
-func (f *fileBasedStore) IsTranslationDeclarative(id string) bool {
-	item, err := f.GenericFileBasedStore.Get(id)
+func (f *fileBasedStore) IsTranslationDeclarative(ctx context.Context, id string) bool {
+	item, err := f.GenericFileBasedStore.Get(ctx, id)
 	return err == nil && item != nil
 }
 
 // IsTranslationExists checks if a translation exists.
-func (f *fileBasedStore) IsTranslationExists(id string) (bool, error) {
-	item, err := f.GenericFileBasedStore.Get(id)
+func (f *fileBasedStore) IsTranslationExists(ctx context.Context, id string) (bool, error) {
+	item, err := f.GenericFileBasedStore.Get(ctx, id)
 	if err != nil {
 		return false, nil // Treat get error as not found
 	}

@@ -27,8 +27,8 @@ func (f *templateFileBasedStore) Create(id string, data interface{}) error {
 }
 
 // GetTemplate retrieves a template by its ID.
-func (f *templateFileBasedStore) GetTemplate(_ context.Context, id string) (*TemplateDTO, error) {
-	data, err := f.GenericFileBasedStore.Get(id)
+func (f *templateFileBasedStore) GetTemplate(ctx context.Context, id string) (*TemplateDTO, error) {
+	data, err := f.GenericFileBasedStore.Get(ctx, id)
 	if err != nil {
 		return nil, errTemplateNotFound
 	}
@@ -42,10 +42,10 @@ func (f *templateFileBasedStore) GetTemplate(_ context.Context, id string) (*Tem
 
 // GetTemplateByScenario retrieves a template by its scenario type and template type.
 func (f *templateFileBasedStore) GetTemplateByScenario(
-	_ context.Context, scenario ScenarioType, tmplType TemplateType,
+	ctx context.Context, scenario ScenarioType, tmplType TemplateType,
 ) (*TemplateDTO, error) {
 	compositeKey := string(scenario) + ":" + string(tmplType)
-	data, err := f.GenericFileBasedStore.GetByField(compositeKey, func(d interface{}) string {
+	data, err := f.GenericFileBasedStore.GetByField(ctx, compositeKey, func(d interface{}) string {
 		if tmpl, ok := d.(*TemplateDTO); ok {
 			return string(tmpl.Scenario) + ":" + string(tmpl.Type)
 		}
@@ -63,8 +63,8 @@ func (f *templateFileBasedStore) GetTemplateByScenario(
 }
 
 // ListTemplates returns all templates stored in the file-based store.
-func (f *templateFileBasedStore) ListTemplates(_ context.Context) ([]*TemplateDTO, error) {
-	list, err := f.GenericFileBasedStore.List()
+func (f *templateFileBasedStore) ListTemplates(ctx context.Context) ([]*TemplateDTO, error) {
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}

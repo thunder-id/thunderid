@@ -4,6 +4,8 @@
 package layoutmgt
 
 import (
+	"context"
+
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 )
@@ -27,22 +29,22 @@ func newCompositeLayoutStore(fileStore, dbStore layoutMgtStoreInterface) *compos
 }
 
 // GetLayoutListCount retrieves the total count of layouts from both stores.
-func (c *compositeLayoutStore) GetLayoutListCount() (int, error) {
+func (c *compositeLayoutStore) GetLayoutListCount(ctx context.Context) (int, error) {
 	return declarativeresource.CompositeMergeCountHelper(
-		func() (int, error) { return c.dbStore.GetLayoutListCount() },
-		func() (int, error) { return c.fileStore.GetLayoutListCount() },
+		func() (int, error) { return c.dbStore.GetLayoutListCount(ctx) },
+		func() (int, error) { return c.fileStore.GetLayoutListCount(ctx) },
 	)
 }
 
 // GetLayoutList retrieves layouts from both stores with pagination.
 // Applies the 1000-record limit in composite mode to prevent memory exhaustion.
 // Returns errResultLimitExceededInCompositeMode if the limit is exceeded.
-func (c *compositeLayoutStore) GetLayoutList(limit, offset int) ([]Layout, error) {
+func (c *compositeLayoutStore) GetLayoutList(ctx context.Context, limit, offset int) ([]Layout, error) {
 	items, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
-		func() (int, error) { return c.dbStore.GetLayoutListCount() },
-		func() (int, error) { return c.fileStore.GetLayoutListCount() },
-		func(count int) ([]Layout, error) { return c.dbStore.GetLayoutList(count, 0) },
-		func(count int) ([]Layout, error) { return c.fileStore.GetLayoutList(count, 0) },
+		func() (int, error) { return c.dbStore.GetLayoutListCount(ctx) },
+		func() (int, error) { return c.fileStore.GetLayoutListCount(ctx) },
+		func(count int) ([]Layout, error) { return c.dbStore.GetLayoutList(ctx, count, 0) },
+		func(count int) ([]Layout, error) { return c.fileStore.GetLayoutList(ctx, count, 0) },
 		mergeAndDeduplicateLayouts,
 		limit,
 		offset,
@@ -60,16 +62,16 @@ func (c *compositeLayoutStore) GetLayoutList(limit, offset int) ([]Layout, error
 
 // CreateLayout creates a new layout in the database store only.
 // Conflict checking is handled at the service layer.
-func (c *compositeLayoutStore) CreateLayout(id string, layout CreateLayoutRequest) error {
-	return c.dbStore.CreateLayout(id, layout)
+func (c *compositeLayoutStore) CreateLayout(ctx context.Context, id string, layout CreateLayoutRequest) error {
+	return c.dbStore.CreateLayout(ctx, id, layout)
 }
 
 // GetLayout retrieves a layout by ID from either store.
 // Checks database store first, then falls back to file store (declarative).
-func (c *compositeLayoutStore) GetLayout(id string) (Layout, error) {
+func (c *compositeLayoutStore) GetLayout(ctx context.Context, id string) (Layout, error) {
 	layout, err := declarativeresource.CompositeGetHelper(
 		func() (Layout, error) {
-			layout, err := c.dbStore.GetLayout(id)
+			layout, err := c.dbStore.GetLayout(ctx, id)
 			if err != nil {
 				return Layout{}, err
 			}
@@ -77,7 +79,7 @@ func (c *compositeLayoutStore) GetLayout(id string) (Layout, error) {
 			return layout, nil
 		},
 		func() (Layout, error) {
-			layout, err := c.fileStore.GetLayout(id)
+			layout, err := c.fileStore.GetLayout(ctx, id)
 			if err != nil {
 				return Layout{}, err
 			}
@@ -90,9 +92,9 @@ func (c *compositeLayoutStore) GetLayout(id string) (Layout, error) {
 }
 
 // IsLayoutExist checks if a layout exists in either store.
-func (c *compositeLayoutStore) IsLayoutExist(id string) (bool, error) {
+func (c *compositeLayoutStore) IsLayoutExist(ctx context.Context, id string) (bool, error) {
 	// Check database store first
-	exists, err := c.dbStore.IsLayoutExist(id)
+	exists, err := c.dbStore.IsLayoutExist(ctx, id)
 	if err != nil {
 		return false, err
 	}
@@ -101,42 +103,43 @@ func (c *compositeLayoutStore) IsLayoutExist(id string) (bool, error) {
 	}
 
 	// Check file store
-	return c.fileStore.IsLayoutExist(id)
+	return c.fileStore.IsLayoutExist(ctx, id)
 }
 
 // UpdateLayout updates a layout in the database store only.
 // Returns an error if the layout is declarative (immutable).
-func (c *compositeLayoutStore) UpdateLayout(id string, layout UpdateLayoutRequest) error {
+func (c *compositeLayoutStore) UpdateLayout(ctx context.Context, id string, layout UpdateLayoutRequest) error {
 	return declarativeresource.CompositeUpdateHelper(
 		layout,
 		func(UpdateLayoutRequest) string { return id },
-		func(id string) (bool, error) { return c.fileStore.IsLayoutExist(id) },
-		func(UpdateLayoutRequest) error { return c.dbStore.UpdateLayout(id, layout) },
+		func(id string) (bool, error) { return c.fileStore.IsLayoutExist(ctx, id) },
+		func(UpdateLayoutRequest) error { return c.dbStore.UpdateLayout(ctx, id, layout) },
 		errCannotUpdateDeclarativeLayout,
 	)
 }
 
 // DeleteLayout deletes a layout from the database store only.
 // Returns an error if the layout is declarative (immutable).
-func (c *compositeLayoutStore) DeleteLayout(id string) error {
+func (c *compositeLayoutStore) DeleteLayout(ctx context.Context, id string) error {
 	return declarativeresource.CompositeDeleteHelper(
 		id,
-		func(id string) (bool, error) { return c.fileStore.IsLayoutExist(id) },
-		func(id string) error { return c.dbStore.DeleteLayout(id) },
+		func(id string) (bool, error) { return c.fileStore.IsLayoutExist(ctx, id) },
+		func(id string) error { return c.dbStore.DeleteLayout(ctx, id) },
 		errCannotDeleteDeclarativeLayout,
 	)
 }
 
 // IsLayoutDeclarative checks if a layout is immutable (exists in file store).
 func (c *compositeLayoutStore) IsLayoutDeclarative(id string) bool {
-	exists, err := c.fileStore.IsLayoutExist(id)
+	exists, err := c.fileStore.IsLayoutExist(context.Background(), id)
 	return err == nil && exists
 }
 
 // IsLayoutHandleConflict checks if a layout handle conflicts in either store.
-func (c *compositeLayoutStore) IsLayoutHandleConflict(handle string, excludeID string) (bool, error) {
+func (c *compositeLayoutStore) IsLayoutHandleConflict(ctx context.Context, handle string, excludeID string) (bool,
+	error) {
 	// Check file store first
-	conflict, err := c.fileStore.IsLayoutHandleConflict(handle, excludeID)
+	conflict, err := c.fileStore.IsLayoutHandleConflict(ctx, handle, excludeID)
 	if err != nil {
 		return false, err
 	}
@@ -144,7 +147,7 @@ func (c *compositeLayoutStore) IsLayoutHandleConflict(handle string, excludeID s
 		return true, nil
 	}
 	// Then check db store
-	return c.dbStore.IsLayoutHandleConflict(handle, excludeID)
+	return c.dbStore.IsLayoutHandleConflict(ctx, handle, excludeID)
 }
 
 // mergeAndDeduplicateLayouts merges layouts from DB and file stores, removing duplicates.

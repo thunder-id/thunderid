@@ -28,12 +28,14 @@ import {
   Layers,
   LayoutGrid,
   Palette,
+  Rocket,
   Server,
   Settings,
   ShieldCheck,
   SquareArrowRightEnter,
   UserRoundCog,
   UsersRound,
+  Variable,
   Wallet,
   Workflow,
 } from '@wso2/oxygen-ui-icons-react';
@@ -41,6 +43,7 @@ import {useEffect, useMemo, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link as NavigateLink, Outlet, useLocation, useNavigate} from 'react-router';
 import RouteConfig from '../configs/RouteConfig';
+import {usePlane, hiddenNavIds} from '../lib/plane';
 
 const ICON_BUTTON_SX = {
   minWidth: 40,
@@ -143,6 +146,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
   const {clearSession, discovery} = useThunderID();
   const {isTrustedIssuerGenericOidc, getTrustedIssuerClientId, getClientUrl} = useConfig();
   const {t} = useTranslation();
+  const plane = usePlane();
   const logger = useLogger();
   const navigate = useNavigate();
 
@@ -180,8 +184,8 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
     });
   };
 
-  const appRoutes: NavCategory[] = useMemo(
-    () => [
+  const appRoutes: NavCategory[] = useMemo(() => {
+    const categories: NavCategory[] = [
       {
         routes: [
           {
@@ -266,6 +270,18 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
             path: RouteConfig.connections.list(),
           },
           {
+            id: 'environment-variables',
+            text: t('navigation:pages.environmentVariables', 'Environment Variables'),
+            icon: <Variable />,
+            path: '/environment-variables',
+          },
+          {
+            id: 'promotions',
+            text: t('navigation:pages.promotions', 'Promotions'),
+            icon: <Rocket />,
+            path: '/promotions',
+          },
+          {
             id: 'verifiable-credentials',
             text: t('navigation:pages.verifiableCredentials'),
             icon: <Wallet />,
@@ -314,9 +330,27 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
           },
         ],
       },
-    ],
-    [t],
-  );
+    ];
+
+    // Hide entries not available on this plane (Data Plane runtime-only entries on the Control Plane,
+    // Control Plane authoring-only entries elsewhere). Drop any child items too, then remove
+    // categories left with no visible routes.
+    const hidden = hiddenNavIds(plane);
+    if (hidden.size === 0) {
+      return categories;
+    }
+    const isHidden = (id: string): boolean => hidden.has(id);
+    return categories
+      .map((group) => ({
+        ...group,
+        routes: group.routes
+          .filter((route) => !isHidden(route.id))
+          .map((route) =>
+            route.children ? {...route, children: route.children.filter((child) => !isHidden(child.id))} : route,
+          ),
+      }))
+      .filter((group) => group.routes.length > 0);
+  }, [t, plane]);
 
   const {pathname} = useLocation();
 

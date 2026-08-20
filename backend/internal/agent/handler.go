@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -266,7 +267,11 @@ func parseFilterParams(query url.Values) (map[string]interface{}, *tidcommon.Ser
 // writeServiceError converts a service error into the appropriate HTTP error response.
 func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.ServiceError) {
 	statusCode := http.StatusInternalServerError
-	if svcErr.Type == tidcommon.ClientErrorType {
+	if svcErr.Code == managedresource.ErrorResourceManaged.Code {
+		// The request is well formed and the resource exists. The caller simply may not change it
+		// here, which is what forbidden means.
+		statusCode = http.StatusForbidden
+	} else if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
 		case ErrorAgentNotFound.Code:
 			statusCode = http.StatusNotFound

@@ -217,6 +217,47 @@ func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_Confident
 	assert.Contains(s.T(), rules.ArrayVariables, "InboundAuthConfig[].OAuthConfig.RedirectURIs")
 }
 
+func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_ParameterizesTheHomeURL() {
+	pr, ok := s.exporter.(declarativeresource.PerResourceRuler)
+	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")
+
+	// The home URL names the deployment the application runs on, so promoting it verbatim would carry
+	// one environment's host into the next.
+	app := &providers.Application{
+		ID:   "app3",
+		Name: "Console",
+		URL:  "https://localhost:8095/console",
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{OAuthConfig: &providers.OAuthConfigWithSecret{ClientID: "CONSOLE", PublicClient: true}},
+		},
+	}
+
+	rules := pr.GetResourceRulesForResource(app)
+
+	assert.NotNil(s.T(), rules)
+	assert.Contains(s.T(), rules.Variables, "URL")
+}
+
+func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_LeavesAnAbsentHomeURLAlone() {
+	pr, ok := s.exporter.(declarativeresource.PerResourceRuler)
+	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")
+
+	// A field named in the rules survives omitempty, so parameterizing an unset URL would make every
+	// application without one demand a value before it could be imported.
+	app := &providers.Application{
+		ID:   "app4",
+		Name: "No URL App",
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{OAuthConfig: &providers.OAuthConfigWithSecret{ClientID: "client-id-4"}},
+		},
+	}
+
+	rules := pr.GetResourceRulesForResource(app)
+
+	assert.NotNil(s.T(), rules)
+	assert.NotContains(s.T(), rules.Variables, "URL")
+}
+
 func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_NonApplicationType() {
 	pr, ok := s.exporter.(declarativeresource.PerResourceRuler)
 	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")

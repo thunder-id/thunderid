@@ -220,6 +220,11 @@ func (h *authorizationCodeGrantHandler) retrieveAndValidateAuthCode(
 ) (*authz.AuthorizationCode, *model.ErrorResponse) {
 	authCode, codeErr := h.authzService.GetAuthorizationCodeDetails(ctx, tokenRequest.ClientID, tokenRequest.Code)
 	if codeErr != nil {
+		// The response deliberately says no more than "invalid", so the reason is recorded here. A code
+		// is rejected at this point because it was never issued, was already exchanged, or belongs to a
+		// different client, and those are not distinguishable from the client side.
+		logger.Warn(ctx, "Rejected an authorization code that could not be claimed",
+			log.String("clientId", tokenRequest.ClientID), log.Error(codeErr))
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorInvalidGrant,
 			ErrorDescription: "Invalid authorization code",
@@ -227,7 +232,7 @@ func (h *authorizationCodeGrantHandler) retrieveAndValidateAuthCode(
 	}
 
 	// Validate the retrieved authorization code
-	errResponse := validateAuthorizationCode(tokenRequest, *authCode)
+	errResponse := validateAuthorizationCode(ctx, tokenRequest, *authCode, logger)
 	if errResponse != nil && errResponse.Error != "" {
 		return nil, errResponse
 	}
@@ -235,6 +240,8 @@ func (h *authorizationCodeGrantHandler) retrieveAndValidateAuthCode(
 	// Validate PKCE if required or if code challenge was provided during authorization
 	if oauthApp.RequiresPKCE() || authCode.CodeChallenge != "" {
 		if tokenRequest.CodeVerifier == "" {
+			logger.Warn(ctx, "The token request carried no code verifier for a code bound to PKCE",
+				log.String("clientId", tokenRequest.ClientID))
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorInvalidGrant,
 				ErrorDescription: "code_verifier is required",
@@ -244,7 +251,8 @@ func (h *authorizationCodeGrantHandler) retrieveAndValidateAuthCode(
 		// Validate PKCE
 		if err := pkce.ValidatePKCE(authCode.CodeChallenge, authCode.CodeChallengeMethod,
 			tokenRequest.CodeVerifier); err != nil {
-			logger.Debug(ctx, "PKCE validation failed", log.Error(err))
+			logger.Warn(ctx, "The code verifier does not match the challenge the code was issued for",
+				log.String("clientId", tokenRequest.ClientID), log.Error(err))
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorInvalidGrant,
 				ErrorDescription: "Invalid code verifier",
@@ -254,10 +262,13 @@ func (h *authorizationCodeGrantHandler) retrieveAndValidateAuthCode(
 	return authCode, nil
 }
 
-// validateAuthorizationCode validates the authorization code against the token request.
-func validateAuthorizationCode(tokenRequest *model.TokenRequest,
-	code authz.AuthorizationCode) *model.ErrorResponse {
+// validateAuthorizationCode validates the authorization code against the token request. Each rejection
+// is logged with what did not match, because the response says only that the grant was refused.
+func validateAuthorizationCode(ctx context.Context, tokenRequest *model.TokenRequest,
+	code authz.AuthorizationCode, logger *log.Logger) *model.ErrorResponse {
 	if tokenRequest.ClientID != code.ClientID {
+		logger.Warn(ctx, "The authorization code was issued to a different client",
+			log.String("requestClientId", tokenRequest.ClientID), log.String("codeClientId", code.ClientID))
 		return &model.ErrorResponse{
 			Error:            constants.ErrorInvalidGrant,
 			ErrorDescription: "Invalid authorization code",
@@ -266,6 +277,9 @@ func validateAuthorizationCode(tokenRequest *model.TokenRequest,
 
 	// RFC 6749 §4.1.3: required only if included in the authorize request.
 	if code.RedirectURIProvided && tokenRequest.RedirectURI != code.RedirectURI {
+		logger.Warn(ctx, "The redirect URI does not match the one the code was issued for",
+			log.String("requestRedirectUri", tokenRequest.RedirectURI),
+			log.String("codeRedirectUri", code.RedirectURI))
 		return &model.ErrorResponse{
 			Error:            constants.ErrorInvalidGrant,
 			ErrorDescription: "Invalid redirect URI",
@@ -286,6 +300,8 @@ func validateAuthorizationCode(tokenRequest *model.TokenRequest,
 	}
 
 	if code.ExpiryTime.Before(time.Now()) {
+		logger.Warn(ctx, "The authorization code has expired",
+			log.String("expiredAt", code.ExpiryTime.UTC().Format(time.RFC3339)))
 		return &model.ErrorResponse{
 			Error:            constants.ErrorInvalidGrant,
 			ErrorDescription: "Expired authorization code",

@@ -54,7 +54,7 @@ func (f *fileBasedResourceStore) CreateResourceServer(
 }
 
 func (f *fileBasedResourceStore) GetResourceServer(ctx context.Context, id string) (providers.ResourceServer, error) {
-	data, err := f.GenericFileBasedStore.Get(id)
+	data, err := f.GenericFileBasedStore.Get(ctx, id)
 	if err != nil {
 		return providers.ResourceServer{}, errResourceServerNotFound
 	}
@@ -70,7 +70,7 @@ func (f *fileBasedResourceStore) GetResourceServer(ctx context.Context, id strin
 
 func (f *fileBasedResourceStore) GetResourceServerList(
 	ctx context.Context, limit, offset int) ([]providers.ResourceServer, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func (f *fileBasedResourceStore) GetResourceServerList(
 }
 
 func (f *fileBasedResourceStore) GetResourceServerListCount(ctx context.Context) (int, error) {
-	return f.GenericFileBasedStore.Count()
+	return f.GenericFileBasedStore.Count(ctx)
 }
 
 func (f *fileBasedResourceStore) UpdateResourceServer(
@@ -118,7 +118,7 @@ func (f *fileBasedResourceStore) DeleteResourceServer(ctx context.Context, id st
 }
 
 func (f *fileBasedResourceStore) CheckResourceServerNameExists(ctx context.Context, name string) (bool, error) {
-	_, err := f.GenericFileBasedStore.GetByField(name, func(d interface{}) string {
+	_, err := f.GenericFileBasedStore.GetByField(ctx, name, func(d interface{}) string {
 		return d.(*providers.ResourceServer).Name
 	})
 	if err != nil {
@@ -129,7 +129,7 @@ func (f *fileBasedResourceStore) CheckResourceServerNameExists(ctx context.Conte
 
 func (f *fileBasedResourceStore) CheckResourceServerIdentifierExists(
 	ctx context.Context, identifier string) (bool, error) {
-	_, err := f.GenericFileBasedStore.GetByField(identifier, func(d interface{}) string {
+	_, err := f.GenericFileBasedStore.GetByField(ctx, identifier, func(d interface{}) string {
 		return d.(*providers.ResourceServer).Identifier
 	})
 	if err != nil {
@@ -140,7 +140,7 @@ func (f *fileBasedResourceStore) CheckResourceServerIdentifierExists(
 
 func (f *fileBasedResourceStore) GetResourceServerByIdentifier(
 	ctx context.Context, identifier string) (providers.ResourceServer, error) {
-	data, err := f.GenericFileBasedStore.GetByField(identifier, func(d interface{}) string {
+	data, err := f.GenericFileBasedStore.GetByField(ctx, identifier, func(d interface{}) string {
 		return d.(*providers.ResourceServer).Identifier
 	})
 	if err != nil {
@@ -159,7 +159,7 @@ func (f *fileBasedResourceStore) CheckResourceServerHasDependencies(
 	ctx context.Context, resServerID string,
 ) (bool, error) {
 	// Fetch resource server from store
-	data, err := f.GenericFileBasedStore.Get(resServerID)
+	data, err := f.GenericFileBasedStore.Get(ctx, resServerID)
 	if err != nil {
 		return false, nil
 	}
@@ -174,8 +174,10 @@ func (f *fileBasedResourceStore) CheckResourceServerHasDependencies(
 }
 
 func (f *fileBasedResourceStore) IsResourceServerDeclarative(id string) bool {
-	// Check if the resource server actually exists in the file store
-	_, err := f.GenericFileBasedStore.Get(id)
+	// Asks whether an id names a declarative resource, to refuse changing one. It is not a read on
+	// behalf of a deployment and returns no data, so it is not scoped: a caller that cannot see the
+	// resource is refused before reaching here.
+	_, err := f.GenericFileBasedStore.GetForLoad(id)
 	return err == nil
 }
 
@@ -192,7 +194,7 @@ func (f *fileBasedResourceStore) GetResource(
 	id string,
 	resServerID string,
 ) (providers.Resource, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return providers.Resource{}, err
 	}
@@ -226,7 +228,7 @@ func (f *fileBasedResourceStore) GetResource(
 
 func (f *fileBasedResourceStore) GetResourceList(
 	ctx context.Context, resServerID string, limit, offset int) ([]providers.Resource, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +282,7 @@ func (f *fileBasedResourceStore) GetResourceList(
 func (f *fileBasedResourceStore) GetResourceListByParent(
 	ctx context.Context, resServerID string, parentID *string, limit, offset int,
 ) ([]providers.Resource, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -411,7 +413,7 @@ func (f *fileBasedResourceStore) CreateAction(
 func (f *fileBasedResourceStore) GetAction(
 	ctx context.Context, id string, resServerID string, resID *string) (providers.Action, error) {
 	// Search through all resource servers and their resources
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return providers.Action{}, err
 	}
@@ -441,7 +443,7 @@ func (f *fileBasedResourceStore) GetAction(
 func (f *fileBasedResourceStore) GetActionList(
 	ctx context.Context, resServerID string, resID *string, kind providers.ActionKind, limit, offset int,
 ) ([]providers.Action, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -549,7 +551,7 @@ func (f *fileBasedResourceStore) IsActionExist(
 func (f *fileBasedResourceStore) CheckActionHandleExists(
 	ctx context.Context, resServerID string, resID *string, handle string,
 ) (bool, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -586,7 +588,7 @@ func (f *fileBasedResourceStore) CheckActionHandleExists(
 
 func (f *fileBasedResourceStore) ValidatePermissions(
 	ctx context.Context, resServerID string, permissions []string) ([]string, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}

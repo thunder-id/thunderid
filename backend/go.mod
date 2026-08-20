@@ -6,6 +6,7 @@ require (
 	cloud.google.com/go/auth v0.22.0
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/cloudflare/circl v1.6.4
+	github.com/coder/websocket v1.8.15
 	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/go-webauthn/webauthn v0.17.4
 	github.com/google/jsonschema-go v0.4.3

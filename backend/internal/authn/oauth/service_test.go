@@ -521,12 +521,12 @@ func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserSuccess() {
 		OUID: "test-ou",
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", mock.MatchedBy(
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.MatchedBy(
 		func(filters map[string]interface{}) bool {
 			return filters["sub"] == testSub
 		}),
 	).Return(&userID, nil)
-	suite.mockEntityProvider.On("GetEntity", userID).Return(user, nil)
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, userID).Return(user, nil)
 
 	result, err := svcImpl.GetInternalUser(context.Background(), testSub)
 	suite.Nil(err)
@@ -547,7 +547,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithError_UserNotFou
 	svcImpl := suite.service.(*oAuthAuthnService)
 
 	upErr := &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeEntityNotFound}
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil, upErr)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil, upErr)
 
 	result, err := svcImpl.GetInternalUser(context.Background(), testSub)
 	suite.Nil(result)
@@ -559,7 +559,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithError_AmbiguousU
 	svcImpl := suite.service.(*oAuthAuthnService)
 
 	upErr := &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeAmbiguousEntity}
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil, upErr)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil, upErr)
 
 	result, err := svcImpl.GetInternalUser(context.Background(), testSub)
 	suite.Nil(result)
@@ -580,7 +580,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithServiceError() {
 					Code:    entityprovider.ErrorCodeSystemError,
 					Message: "Database unavailable",
 				}
-				m.On("IdentifyEntity", mock.Anything).Return(nil, serverErr)
+				m.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil, serverErr)
 			},
 			expectedErrCode: tidcommon.InternalServerError.Code,
 		},
@@ -592,8 +592,8 @@ func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithServiceError() {
 					Code:    entityprovider.ErrorCodeSystemError,
 					Message: "Database unavailable",
 				}
-				m.On("IdentifyEntity", mock.Anything).Return(&userID, nil)
-				m.On("GetEntity", userID).Return(nil, serverErr)
+				m.On("IdentifyEntity", mock.Anything, mock.Anything).Return(&userID, nil)
+				m.On("GetEntity", mock.Anything, userID).Return(nil, serverErr)
 			},
 			expectedErrCode: tidcommon.InternalServerError.Code,
 		},
@@ -604,15 +604,16 @@ func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithServiceError() {
 				notFoundErr := &entityprovider.EntityProviderError{
 					Code: entityprovider.ErrorCodeEntityNotFound,
 				}
-				m.On("IdentifyEntity", mock.Anything).Return(&userID, nil)
-				m.On("GetEntity", userID).Return(nil, notFoundErr)
+				m.On("IdentifyEntity", mock.Anything, mock.Anything).Return(&userID, nil)
+				m.On("GetEntity", mock.Anything, userID).Return(nil, notFoundErr)
 			},
 			expectedErrCode: common.ErrorUserNotFound.Code,
 		},
 		{
 			name: "IdentifyNilUserID",
 			mockSetup: func(m *entityprovidermock.EntityProviderInterfaceMock) {
-				m.On("IdentifyEntity", mock.Anything).Return(nil, (*entityprovider.EntityProviderError)(nil))
+				m.On("IdentifyEntity", mock.Anything, mock.Anything).
+					Return(nil, (*entityprovider.EntityProviderError)(nil))
 			},
 			expectedErrCode: common.ErrorUserNotFound.Code,
 		},
@@ -1079,7 +1080,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultLinksByAttr
 		AccountLinking: &providers.AccountLinking{Attributes: []string{"email"}},
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
-	suite.mockEntityProvider.On("IdentifyEntity",
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
 		map[string]interface{}{"sub": testSub}).Return(nil, errEntityNotFound)
 
 	result, svcErr := suite.service.BuildFederatedAuthResult(
@@ -1097,14 +1098,14 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultPrefersSubW
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
 	resolvedID := testUserID
-	suite.mockEntityProvider.On("IdentifyEntity",
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
 		map[string]interface{}{"sub": testSub}).Return(&resolvedID, nil)
 
 	result, svcErr := suite.service.BuildFederatedAuthResult(
 		context.Background(), testIDPID, testSub, map[string]interface{}{"email": "user@example.com"})
 	suite.Nil(svcErr)
 	suite.Equal(testUserID, result.Token[common.UserAttributeUserID])
-	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity",
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything,
 		map[string]interface{}{"email": "user@example.com"})
 }
 
@@ -1116,7 +1117,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultCombinesLin
 		AccountLinking: &providers.AccountLinking{Attributes: []string{"email", "username"}},
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
-	suite.mockEntityProvider.On("IdentifyEntity",
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
 		map[string]interface{}{"sub": testSub}).Return(nil, errEntityNotFound)
 
 	result, svcErr := suite.service.BuildFederatedAuthResult(context.Background(), testIDPID, testSub,
@@ -1141,7 +1142,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultResolvesExt
 		AccountLinking: &providers.AccountLinking{Attributes: []string{"email"}},
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
-	suite.mockEntityProvider.On("IdentifyEntity",
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
 		map[string]interface{}{"sub": testSub}).Return(nil, errEntityNotFound)
 
 	result, svcErr := suite.service.BuildFederatedAuthResult(
@@ -1162,7 +1163,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultAmbiguousSu
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
 	ambiguousErr := &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeAmbiguousEntity}
-	suite.mockEntityProvider.On("IdentifyEntity",
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
 		map[string]interface{}{"sub": testSub}).Return(nil, ambiguousErr)
 
 	result, svcErr := suite.service.BuildFederatedAuthResult(context.Background(), testIDPID, testSub, nil)
@@ -1180,7 +1181,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultAmbiguousSu
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
 	ambiguousErr := &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeAmbiguousEntity}
-	suite.mockEntityProvider.On("IdentifyEntity",
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
 		map[string]interface{}{"sub": testSub}).Return(nil, ambiguousErr)
 
 	result, svcErr := suite.service.BuildFederatedAuthResult(
@@ -1199,7 +1200,8 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultSurfacesSer
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
 	serverErr := &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeSystemError}
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"sub": testSub}).Return(nil, serverErr)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{"sub": testSub}).Return(nil,
+		serverErr)
 
 	result, svcErr := suite.service.BuildFederatedAuthResult(
 		context.Background(), testIDPID, testSub, map[string]interface{}{"email": "user@example.com"})
@@ -1224,7 +1226,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultFallsBackTo
 		AccountLinking: &providers.AccountLinking{Attributes: []string{"email"}},
 	}
 	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil, errEntityNotFound)
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, mock.Anything).Return(nil, errEntityNotFound)
 
 	result, svcErr := suite.service.BuildFederatedAuthResult(
 		context.Background(), testIDPID, testSub, map[string]interface{}{"name": "no-email"})

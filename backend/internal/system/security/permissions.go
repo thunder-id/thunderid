@@ -45,6 +45,7 @@ var publicPaths = []string{
 	"/auth/**",
 	"/register/passkey/**",
 	"/access/**",
+	"/cp/connect", // Control Plane phone-home WebSocket; authenticated by a shared token in the channel handler.
 }
 
 // ---- Resource types ----
@@ -64,6 +65,10 @@ const (
 	ResourceTypeUserType ResourceType = "usertype"
 	// ResourceTypeAgentType identifies an agent-category entity type resource.
 	ResourceTypeAgentType ResourceType = "agenttype"
+	// ResourceTypeEnvironmentVariable identifies a non-secret environment variable resource.
+	ResourceTypeEnvironmentVariable ResourceType = "environmentvariable"
+	// ResourceTypeTenant identifies a tenant resource (platform "system" tenant management).
+	ResourceTypeTenant ResourceType = "tenant"
 )
 
 // ---- Actions ----
@@ -128,6 +133,26 @@ const (
 	ActionDeleteAgentType Action = "agenttype:delete"
 	// ActionListAgentTypes lists agent types.
 	ActionListAgentTypes Action = "agenttype:list"
+
+	// ActionCreateEnvironmentVariable creates a new environment variable.
+	ActionCreateEnvironmentVariable Action = "environmentvariable:create"
+	// ActionReadEnvironmentVariable reads an environment variable.
+	ActionReadEnvironmentVariable Action = "environmentvariable:read"
+	// ActionUpdateEnvironmentVariable updates an environment variable.
+	ActionUpdateEnvironmentVariable Action = "environmentvariable:update"
+	// ActionDeleteEnvironmentVariable deletes an environment variable.
+	ActionDeleteEnvironmentVariable Action = "environmentvariable:delete"
+	// ActionListEnvironmentVariables lists environment variables.
+	ActionListEnvironmentVariables Action = "environmentvariable:list"
+
+	// ActionCreateTenant provisions a new tenant.
+	ActionCreateTenant Action = "tenant:create"
+	// ActionReadTenant reads a tenant.
+	ActionReadTenant Action = "tenant:read"
+	// ActionDeleteTenant deprovisions a tenant.
+	ActionDeleteTenant Action = "tenant:delete"
+	// ActionListTenants lists tenants.
+	ActionListTenants Action = "tenant:list"
 )
 
 // ---- Permissions ----
@@ -146,6 +171,10 @@ type SystemPermissions struct {
 	UserTypeView  string
 	AgentType     string
 	AgentTypeView string
+	EnvVar        string
+	EnvVarView    string
+	Tenant        string
+	TenantView    string
 }
 
 // sysPerms holds the active system permissions, initialized by InitSystemPermissions.
@@ -179,6 +208,10 @@ func InitSystemPermissions(handle string) {
 		UserTypeView:  buildPermission(handle, "system", "usertype", "view"),
 		AgentType:     buildPermission(handle, "system", "agenttype"),
 		AgentTypeView: buildPermission(handle, "system", "agenttype", "view"),
+		EnvVar:        buildPermission(handle, "system", "environmentvariable"),
+		EnvVarView:    buildPermission(handle, "system", "environmentvariable", "view"),
+		Tenant:        buildPermission(handle, "system", "tenant"),
+		TenantView:    buildPermission(handle, "system", "tenant", "view"),
 	}
 	sysPerms = p
 
@@ -218,6 +251,19 @@ func InitSystemPermissions(handle string) {
 		ActionUpdateAgentType: p.AgentType,
 		ActionDeleteAgentType: p.AgentType,
 		ActionListAgentTypes:  p.AgentTypeView,
+
+		// Environment variable actions.
+		ActionCreateEnvironmentVariable: p.EnvVar,
+		ActionReadEnvironmentVariable:   p.EnvVarView,
+		ActionUpdateEnvironmentVariable: p.EnvVar,
+		ActionDeleteEnvironmentVariable: p.EnvVar,
+		ActionListEnvironmentVariables:  p.EnvVarView,
+
+		// Tenant actions (platform "system" tenant management).
+		ActionCreateTenant: p.Tenant,
+		ActionReadTenant:   p.TenantView,
+		ActionDeleteTenant: p.Tenant,
+		ActionListTenants:  p.TenantView,
 	}
 
 	apiPermissionEntries = []apiPermissionEntry{
@@ -269,6 +315,23 @@ func InitSystemPermissions(handle string) {
 		{"GET /agent-types/**", p.AgentTypeView},
 		{"PUT /agent-types/**", p.AgentType},
 		{"DELETE /agent-types/**", p.AgentType},
+
+		// Environment variable APIs. Resolve returns non-secret values that reads already expose, so
+		// the view permission is enough; it still precedes the /environment-variables/** rules.
+		{"GET /environment-variables/resolve", p.EnvVarView},
+		{"GET /environment-variables", p.EnvVarView},
+		{"POST /environment-variables", p.EnvVar},
+		{"GET /environment-variables/**", p.EnvVarView},
+		{"PUT /environment-variables/**", p.EnvVar},
+		{"DELETE /environment-variables/**", p.EnvVar},
+
+		// System tenant-management APIs. The `system` root scope satisfies these; the service
+		// additionally requires the caller to belong to the system tenant.
+		{"GET /system/tenants", p.TenantView},
+		{"POST /system/tenants", p.Tenant},
+		{"GET /system/tenants/**", p.TenantView},
+		{"POST /system/tenants/**", p.Tenant},
+		{"DELETE /system/tenants/**", p.Tenant},
 
 		// Import APIs.
 		{"POST /import", p.Root},

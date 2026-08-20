@@ -56,7 +56,7 @@ func (h *FlowConfigHandler) Decode(raw json.RawMessage) (any, error) {
 
 // Validate checks structural constraints on the incoming FlowSectionConfig. When a validator is present,
 // it additionally verifies that every non-empty handle references an existing flow of the correct type.
-func (h *FlowConfigHandler) Validate(incoming, _, _ any) error {
+func (h *FlowConfigHandler) Validate(_ context.Context, incoming, _, _ any) error {
 	cfg, ok := incoming.(flowconfig.FlowSectionConfig)
 	if !ok {
 		return fmt.Errorf("flow: unexpected config type %T", incoming)

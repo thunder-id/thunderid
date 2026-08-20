@@ -299,7 +299,9 @@ func validateIDPProperties(ctx context.Context, idpType providers.IDPType, prope
 			})
 		}
 
-		propertyValue, err := prop.GetValue()
+		// The stored value is enough to validate with, and it is all a control plane can offer: it holds
+		// a reference to the credential rather than the credential, and no provider to resolve it with.
+		propertyValue, err := prop.UnresolvedValue()
 		if err != nil {
 			return nil, tidcommon.CustomServiceError(ErrorInvalidIDPProperty, tidcommon.I18nMessage{
 				Key:          "error.idpservice.property_value_get_failed_description",

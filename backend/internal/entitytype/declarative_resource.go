@@ -60,6 +60,10 @@ func (e *entityTypeExporter) GetParameterizerType() string {
 
 // GetAllResourceIDs retrieves all entity type IDs for the exporter's category.
 // In composite mode, this excludes declarative (YAML-based) entity types.
+//
+// Agent types are included alongside user types: an agent document names its type, and importing it
+// into a deployment that does not have that type fails schema validation. The exported document
+// carries its category, so the two round-trip through the one resource type.
 func (e *entityTypeExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
 	offset := 0
 	limit := serverconst.MaxPageSize

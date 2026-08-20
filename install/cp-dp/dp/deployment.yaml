@@ -1,0 +1,196 @@
+# Data Plane deployment configuration for Kubernetes.
+#
+# Mount this as the deployment.yaml a Data Plane pod reads, at /opt/thunderid/deployment.yaml.
+# See ../README.md for the ConfigMap and Secret wiring.
+#
+# The template placeholders below, such as DB_CONFIG_PASSWORD, are replaced from the pod's
+# environment when the server loads this file. Every one present must be set, or the server refuses
+# to start.
+#
+# Note that substitution scans this whole file, comments included, so a placeholder written in a
+# comment demands an environment variable just as a real setting does.
+#
+# The Data Plane serves runtime traffic: OAuth2/OIDC, flow execution, the Direct APIs, and the
+# gate. Configuration is authored on the Control Plane and applied down to here, so the management
+# APIs are not served and resources that arrived from the Control Plane are read only on this side.
+#
+# One of these files describes one environment, for example org1's dev. A second environment is a
+# second deployment of this file with its own id, database, and vault prefix.
+
+server:
+  mode: "dp"
+  # Resources applied from the Control Plane are recorded as owned by it, and this deployment's own
+  # APIs then refuse to change them. Without this an operator could edit a resource here and have
+  # the next apply silently undo it.
+  control_plane_managed: true
+  hostname: "0.0.0.0"
+  port: 8090
+  public_url: "https://dev.example.com"
+
+  security:
+    # Where this deployment's secrets live.
+    #
+    # Configuration applied from the Control Plane carries no secret: a credential is stored as a
+    # "kv:NAME" reference and resolved here, so the Control Plane holds nothing at rest.
+    #
+    # kv mode is what several pods of one Data Plane share. In file mode each pod keeps its own
+    # file, so a credential pushed to whichever pod the Control Plane reached would be invisible to
+    # the others; do not run more than one replica on file mode.
+    secret_provider:
+      mode: "kv"
+      kv:
+        type: "openbao"
+        address: "https://openbao.example.com:8200"
+        mount: "secret"
+        # Scopes this deployment's secrets within the mount, so environments sharing one vault do
+        # not collide. Use the deployment identifier.
+        path_prefix: "thunderid/org1-dev"
+        namespace: ""
+        # Left empty on purpose: the token comes from the THUNDERID_KV_TOKEN environment variable,
+        # injected from a Secret, and takes precedence over anything set here. See ../README.md.
+        token: ""
+        # The authority that signed the vault's certificate, when it is not one the system trusts.
+        ca_file: ""
+        timeout_seconds: 10
+        # How long a secret read from the vault is reused before being read again.
+        #
+        # A Control Plane write reaches one pod, which applies it at once. Every other pod picks it
+        # up by reloading, so this bounds how long one of them keeps serving a credential that has
+        # since been regenerated: until it reloads, a login against that credential fails there.
+        # Lower it where that window matters more than the traffic.
+        cache_ttl_seconds: 600
+
+    # direct_auth_secret is deliberately not set here.
+    #
+    # It gates the Direct APIs: the /auth, /register/passkey and /access routes, where an application
+    # calls this deployment directly instead of redirecting a browser to the gate. Callers present it
+    # in the Direct-Auth-Secret header, and without it every one of those routes answers 401. That is
+    # the secure default, and it is what a deployment using only the redirect based OAuth2 flow wants.
+    #
+    # To use those APIs, add direct_auth_secret here as a template placeholder reading an environment
+    # variable, the way the database passwords below do, and inject it from a Secret. Written out
+    # unconditionally it would be one more variable every deployment has to set, and a placeholder
+    # with nothing behind it stops the server starting.
+    #
+    # It has nothing to do with the Control Plane channel, which authenticates with its own token.
+
+tls:
+  min_version: "1.3"
+  cert_file: "config/certs/server.cert"
+  key_file: "config/certs/server.key"
+
+# The channel to the Control Plane. This side always dials out, so this deployment needs no inbound
+# route from the Control Plane and exposes no management API to it.
+#
+# Every replica dials and holds its own connection. A command from the Control Plane goes to one of
+# them, not to all, because the replicas share a database.
+channel:
+  client:
+    enabled: true
+    # This deployment's identifier, as "<org>:<env>". It must match the environment registered on
+    # the Control Plane, and is the same for every replica.
+    id: "org1:dev"
+    # Which replica this pod is. Left empty it defaults to the host name, which under Kubernetes is
+    # the pod name. That is what you want: it is unique per replica and changes when the pod is
+    # replaced. Setting it to a fixed value would make every replica present one identity, and each
+    # new connection would evict the last.
+    instance: ""
+    control_plane_url: "wss://cp.example.com/cp/connect"
+    # Issued by the Control Plane when the environment is registered, and shown once.
+    auth_token: "{{.DP_CHANNEL_TOKEN}}"
+    # The authority that signed the Control Plane's certificate, when it is not one the system
+    # already trusts. Naming it keeps verification on.
+    ca_file: ""
+    read_limit_bytes: 8388608
+    ping_interval_seconds: 30
+    reconnect_initial_seconds: 1
+    reconnect_max_seconds: 60
+
+# Postgres rather than SQLite: several pods share one database, which SQLite cannot do.
+database:
+  config:
+    type: "postgres"
+    postgres:
+      hostname: "postgres.example.com"
+      port: 5432
+      name: "configdb"
+      username: "dbuser"
+      password: "{{.DB_CONFIG_PASSWORD}}"
+      sslmode: "require"
+      max_open_conns: 500
+      max_idle_conns: 100
+      conn_max_lifetime: 3600
+
+  runtime_transient:
+    type: "postgres"
+    postgres:
+      hostname: "postgres.example.com"
+      port: 5432
+      name: "runtime_transient"
+      username: "dbuser"
+      password: "{{.DB_RUNTIME_TRANSIENT_PASSWORD}}"
+      sslmode: "require"
+      max_open_conns: 500
+      max_idle_conns: 100
+      conn_max_lifetime: 3600
+
+  entity:
+    type: "postgres"
+    postgres:
+      hostname: "postgres.example.com"
+      port: 5432
+      name: "entitydb"
+      username: "dbuser"
+      password: "{{.DB_ENTITY_PASSWORD}}"
+      sslmode: "require"
+      max_open_conns: 500
+      max_idle_conns: 100
+      conn_max_lifetime: 3600
+
+  runtime_persistent:
+    type: "postgres"
+    postgres:
+      hostname: "postgres.example.com"
+      port: 5432
+      name: "runtime_persistent"
+      username: "dbuser"
+      password: "{{.DB_RUNTIME_PERSISTENT_PASSWORD}}"
+      sslmode: "require"
+      max_open_conns: 500
+      max_idle_conns: 100
+      conn_max_lifetime: 3600
+
+# Key material is generated per deployment by the setup job and mounted in. None of it is baked
+# into the image. Every replica must mount the same material: a token signed by one pod has to
+# verify on another.
+crypto:
+  encryption:
+    key: "file://config/certs/crypto.key"
+  password_hashing:
+    algorithm: "PBKDF2"
+  keys:
+    - id: "default-key"
+      cert_file: "config/certs/signing.cert"
+      key_file: "config/certs/signing.key"
+    - id: "ecdsa-key"
+      cert_file: "config/certs/ecdsa-signing.cert"
+      key_file: "config/certs/ecdsa-signing.key"
+
+jwt:
+  preferred_key_id: "default-key"
+
+passkey:
+  # Must be the origin a browser actually reaches this deployment on. A passkey registered for one
+  # origin cannot be used from another.
+  allowed_origins:
+    - "https://dev.example.com"
+
+email:
+  smtp:
+    host: "smtp.example.com"
+    port: 587
+    username: "{{.SMTP_USERNAME}}"
+    password: "{{.SMTP_PASSWORD}}"
+    from_address: "noreply@example.com"
+    enable_start_tls: true
+    enable_authentication: true

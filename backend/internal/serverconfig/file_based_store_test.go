@@ -30,13 +30,13 @@ func (suite *FileBasedStoreTestSuite) TestCreateAndGetByName() {
 	value := json.RawMessage(`["https://app.example.com"]`)
 	suite.NoError(suite.store.Create("cors", &serverConfigDoc{Name: ConfigNameCORS, Value: value}))
 
-	got, ok := suite.store.GetByName(ConfigNameCORS)
+	got, ok := suite.store.GetByName(context.Background(), ConfigNameCORS)
 	suite.True(ok)
 	suite.Equal(value, got)
 }
 
 func (suite *FileBasedStoreTestSuite) TestGetByNameMissing() {
-	got, ok := suite.store.GetByName(ConfigNameCORS)
+	got, ok := suite.store.GetByName(context.Background(), ConfigNameCORS)
 	suite.False(ok)
 	suite.Nil(got)
 }
@@ -49,7 +49,7 @@ func (suite *FileBasedStoreTestSuite) TestCreateOverwritesOnRepeatedName() {
 	suite.NoError(suite.store.Create("cors", &serverConfigDoc{Name: ConfigNameCORS, Value: json.RawMessage(`["a"]`)}))
 	suite.NoError(suite.store.Create("cors", &serverConfigDoc{Name: ConfigNameCORS, Value: json.RawMessage(`["b"]`)}))
 
-	got, ok := suite.store.GetByName(ConfigNameCORS)
+	got, ok := suite.store.GetByName(context.Background(), ConfigNameCORS)
 	suite.True(ok)
 	suite.Equal(json.RawMessage(`["b"]`), got)
 }

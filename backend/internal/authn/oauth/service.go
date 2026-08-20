@@ -263,7 +263,7 @@ func (s *oAuthAuthnService) GetInternalUser(
 	filters := map[string]interface{}{
 		"sub": sub,
 	}
-	userID, upErr := s.entityProvider.IdentifyEntity(filters)
+	userID, upErr := s.entityProvider.IdentifyEntity(ctx, filters)
 	if upErr != nil {
 		if upErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			logger.Debug(ctx, "No user found for the provided sub claim")
@@ -283,7 +283,7 @@ func (s *oAuthAuthnService) GetInternalUser(
 		return nil, &common.ErrorUserNotFound
 	}
 
-	user, upErr := s.entityProvider.GetEntity(*userID)
+	user, upErr := s.entityProvider.GetEntity(ctx, *userID)
 	if upErr != nil {
 		if upErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			return nil, &common.ErrorUserNotFound
@@ -429,7 +429,7 @@ func (s *oAuthAuthnService) buildAccountLinkingFilter(ctx context.Context, idpDT
 // try the next candidate filter; any other (server) error is surfaced.
 func (s *oAuthAuthnService) resolveFilter(ctx context.Context, filter map[string]interface{}) (
 	map[string]interface{}, bool, *tidcommon.ServiceError) {
-	entityID, epErr := s.entityProvider.IdentifyEntity(filter)
+	entityID, epErr := s.entityProvider.IdentifyEntity(ctx, filter)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeEntityNotFound ||
 			epErr.Code == entityprovider.ErrorCodeAmbiguousEntity {

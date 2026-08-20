@@ -11,6 +11,7 @@ import (
 	"fmt"
 
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
+	"github.com/thunder-id/thunderid/internal/system/secretresolver"
 )
 
 // configCryptoProvider is injected once during application startup via
@@ -67,9 +68,32 @@ func (p *Property) IsSecret() bool {
 	return p.isSecret
 }
 
-// GetValue returns the decrypted value if it's a secret, otherwise returns the plain value
+// GetValue returns the usable value of the property: decrypted if it is a secret, and resolved if it
+// holds a reference to a secret held elsewhere.
 func (p *Property) GetValue() (string, error) {
-	if !p.IsSecret() {
+	value, err := p.UnresolvedValue()
+	if err != nil {
+		return "", err
+	}
+	if secretresolver.IsReference(value) {
+		return p.resolveReference(value)
+	}
+	return value, nil
+}
+
+// UnresolvedValue returns the property's stored value, decrypted when it is a secret, but with a
+// reference to a secret held elsewhere left as it is.
+//
+// It is for callers that do not need the credential itself: checking that a property is set, or
+// carrying it from one place to another unchanged. Resolving there would fail outright on a plane that
+// runs no secret provider, such as a control plane, and would put the credential somewhere it does not
+// belong on one that does.
+//
+// A reference is stored in the clear, because it is not itself sensitive, so it is recognized before
+// decryption. The decrypted value is checked by the caller too, so a reference encrypted by an earlier
+// write is still recognized.
+func (p *Property) UnresolvedValue() (string, error) {
+	if secretresolver.IsReference(p.value) || !p.IsSecret() {
 		return p.value, nil
 	}
 
@@ -80,8 +104,16 @@ func (p *Property) GetValue() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to decrypt secret property %s: %w", p.GetName(), err)
 	}
-
 	return string(decryptedBytes), nil
+}
+
+// resolveReference turns a secret reference into its value using the process-wide resolver.
+func (p *Property) resolveReference(reference string) (string, error) {
+	value, err := secretresolver.Default().Resolve(context.Background(), reference)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve secret property %s: %w", p.GetName(), err)
+	}
+	return value, nil
 }
 
 // Encrypt encrypts the value if it's a secret property

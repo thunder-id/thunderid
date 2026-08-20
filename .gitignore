@@ -115,6 +115,8 @@ out
 out-tsc
 backend/bin
 backend/server
+backend/cpserver
+backend/dpserver
 
 # E2E extracted distribution
 tests/e2e/distribution/
@@ -145,3 +147,16 @@ backend/cmd/server/bootstrap/03-dev-server-configurations.yaml
 
 # Development internals guide (not intended for commit)
 THUNDERID_INTERNALS_GUIDE.md
+
+# Control Plane / Data Plane dev server homes. Each lives outside its cmd/ source directory, so that
+# a dev run never rewrites the deployment.yaml tracked there: that file is the per-plane template
+# packaged into the distribution and the image, not something a local run generates.
+backend/.cphome/
+backend/.cphome-*/
+backend/.dphome/
+backend/.dphome/cp-export/
+backend/.dphome-*/
+dp-overrides.env
+dp.env
+backend/cmd/server/apps/
+backend/.hybridhome/

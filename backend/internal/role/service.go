@@ -18,6 +18,7 @@ import (
 	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -131,6 +132,8 @@ func (rs *roleService) GetRoleList(ctx context.Context, limit, offset int) (*Rol
 			}
 		}
 	}
+
+	markManagedRoles(ctx, roles)
 
 	response := &RoleList{
 		TotalResults: totalCount,
@@ -289,6 +292,11 @@ func (rs *roleService) GetRoleWithPermissions(ctx context.Context, id string) (
 // UpdateRole updates an existing role.
 func (rs *roleService) UpdateRoleWithPermissions(
 	ctx context.Context, id string, role RoleUpdateDetail) (*RoleWithPermissions, *tidcommon.ServiceError) {
+	// A resource applied from the control plane is owned there. Changing it here would last only
+	// until the next promotion overwrote it, so the change is refused instead.
+	if svcErr := managedresource.Guard(ctx, managedresource.TypeRole, id); svcErr != nil {
+		return nil, svcErr
+	}
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Updating role", log.String("id", id), log.String("name", role.Name))
 
@@ -374,6 +382,11 @@ func (rs *roleService) UpdateRoleWithPermissions(
 
 // DeleteRole delete the specified role by its id.
 func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.ServiceError {
+	// A resource applied from the control plane is owned there. Changing it here would last only
+	// until the next promotion overwrote it, so the change is refused instead.
+	if svcErr := managedresource.Guard(ctx, managedresource.TypeRole, id); svcErr != nil {
+		return svcErr
+	}
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Deleting role", log.String("id", id))
 
@@ -752,4 +765,18 @@ func (rs *roleService) CascadeDeleteDependencies(
 	}
 
 	return deleted, nil
+}
+
+// markManagedRoles reports the control plane owned entries as read only, which is what a client renders its edit
+// and delete controls from.
+func markManagedRoles(ctx context.Context, items []Role) {
+	managed := managedresource.Default().ManagedIDs(ctx, managedresource.TypeRole)
+	if len(managed) == 0 {
+		return
+	}
+	for i := range items {
+		if managed[items[i].ID] {
+			items[i].IsReadOnly = true
+		}
+	}
 }

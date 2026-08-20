@@ -41,7 +41,7 @@ func (*DefaultResourceServerConfigHandler) Decode(raw json.RawMessage) (any, err
 }
 
 // Validate validates a default resource server configuration.
-func (h *DefaultResourceServerConfigHandler) Validate(incoming, readOnly, _ any) error {
+func (h *DefaultResourceServerConfigHandler) Validate(ctx context.Context, incoming, readOnly, _ any) error {
 	cfg, _ := incoming.(DefaultResourceServerConfig)
 	if ro, ok := readOnly.(DefaultResourceServerConfig); ok && ro.ResourceServerID != "" {
 		return errDeclarativeDefaultLocked
@@ -49,7 +49,10 @@ func (h *DefaultResourceServerConfigHandler) Validate(incoming, readOnly, _ any)
 	if cfg.ResourceServerID == "" {
 		return nil
 	}
-	if _, svcErr := h.resourceService.GetResourceServer(context.Background(), cfg.ResourceServerID); svcErr != nil {
+	// Read under the deployment the value is being set for: on a multi-tenant control plane the same
+	// id names a different row per tenant, so a lookup without it finds nothing and every tenant's
+	// default would be rejected as unknown.
+	if _, svcErr := h.resourceService.GetResourceServer(ctx, cfg.ResourceServerID); svcErr != nil {
 		if svcErr.Code == ErrorResourceServerNotFound.Code {
 			return errUnknownDefaultResourceServer
 		}

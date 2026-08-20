@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -60,6 +61,7 @@ type applicationService struct {
 	cryptoSvc            providers.RuntimeCryptoProvider
 	dependencyRegistry   resourcedependency.Registry
 	serverConfigService  serverconfig.ServerConfigService
+	secretCapturer       SecretCapturer
 }
 
 // newApplicationService creates a new instance of ApplicationService.
@@ -70,6 +72,7 @@ func newApplicationService(
 	i18nService i18nmgt.I18nServiceInterface,
 	cryptoSvc providers.RuntimeCryptoProvider,
 	serverConfigSvc serverconfig.ServerConfigService,
+	secretCapturer SecretCapturer,
 ) ApplicationServiceInterface {
 	return &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
@@ -79,11 +82,12 @@ func newApplicationService(
 		i18nService:          i18nService,
 		cryptoSvc:            cryptoSvc,
 		serverConfigService:  serverConfigSvc,
+		secretCapturer:       secretCapturer,
 	}
 }
 
 func (as *applicationService) deleteEntityCompensation(ctx context.Context, appID string) {
-	if delErr := as.entityProvider.DeleteEntity(appID); delErr != nil {
+	if delErr := as.entityProvider.DeleteEntity(ctx, appID); delErr != nil {
 		as.logger.Error(ctx, "Failed to delete entity during compensation", log.Error(delErr),
 			log.String("appID", appID))
 	}
@@ -151,7 +155,7 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 		return nil, &tidcommon.InternalServerError
 	}
 
-	_, epErr := as.entityProvider.CreateEntity(appEntity, sysCredsJSON)
+	_, epErr := as.entityProvider.CreateEntity(ctx, appEntity, sysCredsJSON)
 	if epErr != nil {
 		if svcErr := mapEntityProviderError(epErr); svcErr != nil {
 			return nil, svcErr
@@ -174,6 +178,10 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 	}
 
 	as.syncPasskeyOriginsToCORS(ctx, processedDTO.PasskeyAllowedOrigins)
+	// Capture the generated client secret into the Control Plane secret store (best-effort; no-op
+	// when no capturer is configured, e.g. on the Data Plane). The key matches the placeholder the
+	// exporter emits for this field so the apply flow resolves it.
+	as.captureSecret(ctx, app.Name, clientSecret)
 
 	appForReturn := *app
 	appForReturn.AuthFlowID = inboundClient.AuthFlowID
@@ -275,13 +283,13 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 // GetApplicationList list the applications.
 func (as *applicationService) GetApplicationList(
 	ctx context.Context) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
-	totalResults, epErr := as.entityProvider.GetEntityListCount(providers.EntityCategoryApp, nil)
+	totalResults, epErr := as.entityProvider.GetEntityListCount(ctx, providers.EntityCategoryApp, nil)
 	if epErr != nil {
 		as.logger.Error(ctx, "Failed to count application entities", log.Error(epErr))
 		return nil, &tidcommon.InternalServerError
 	}
 
-	entities, epErr := as.entityProvider.GetEntityList(
+	entities, epErr := as.entityProvider.GetEntityList(ctx,
 		providers.EntityCategoryApp, serverconst.MaxCompositeStoreRecords, 0, nil)
 	if epErr != nil {
 		as.logger.Error(ctx, "Failed to list application entities", log.Error(epErr))
@@ -327,6 +335,8 @@ func (as *applicationService) GetApplicationList(
 		applicationList = append(applicationList, buildBasicApplicationResponse(*cfg, &entities[i]))
 	}
 
+	markManagedApplications(ctx, applicationList)
+
 	return &model.ApplicationListResponse{
 		TotalResults: totalResults,
 		Count:        len(applicationList),
@@ -351,7 +361,7 @@ func (as *applicationService) GetOAuthApplication(
 		return nil, &ErrorApplicationNotFound
 	}
 
-	entity, epErr := as.entityProvider.GetEntity(client.ID)
+	entity, epErr := as.entityProvider.GetEntity(ctx, client.ID)
 	if epErr != nil && epErr.Code != entityprovider.ErrorCodeEntityNotFound {
 		as.logger.Error(ctx, "Failed to load entity for OAuth client",
 			log.String("entityID", client.ID), log.Error(epErr))
@@ -381,6 +391,11 @@ func (as *applicationService) GetApplication(ctx context.Context, appID string) 
 // UpdateApplication update the application for given app id.
 func (as *applicationService) UpdateApplication(ctx context.Context, appID string, app *model.ApplicationDTO) (
 	*model.ApplicationDTO, *tidcommon.ServiceError) {
+	// A resource applied from the control plane is owned there. Changing it here would last only
+	// until the next promotion overwrote it, so the change is refused instead.
+	if svcErr := managedresource.Guard(ctx, managedresource.TypeApplication, appID); svcErr != nil {
+		return nil, svcErr
+	}
 	if appID == "" {
 		return nil, &ErrorInvalidApplicationID
 	}
@@ -391,6 +406,13 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 
 	if svcErr != nil {
 		return nil, svcErr
+	}
+
+	// A rotated client secret has to be captured here as well as on create. It is stored as a one way
+	// hash, so once this returns the value cannot be recovered, and without this the secret store keeps
+	// serving the one from creation while the application expects the new one.
+	if inboundAuthConfig != nil && inboundAuthConfig.OAuthConfig != nil {
+		as.captureSecret(ctx, app.Name, inboundAuthConfig.OAuthConfig.ClientSecret)
 	}
 
 	processedDTO := as.buildProcessedDTOForUpdate(appID, app, inboundAuthConfig)
@@ -469,7 +491,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 		return &tidcommon.InternalServerError
 	}
 
-	if epErr := as.entityProvider.UpdateSystemAttributes(appID, sysAttrsJSON); epErr != nil {
+	if epErr := as.entityProvider.UpdateSystemAttributes(ctx, appID, sysAttrsJSON); epErr != nil {
 		if svcErr := mapEntityProviderError(epErr); svcErr != nil {
 			return svcErr
 		}
@@ -489,7 +511,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 			as.logger.Error(ctx, "Failed to build flow secret credentials for update", log.Error(marshalErr))
 			return &tidcommon.InternalServerError
 		}
-		if epErr := as.entityProvider.UpdateSystemCredentials(appID, flowSecretJSON); epErr != nil {
+		if epErr := as.entityProvider.UpdateSystemCredentials(ctx, appID, flowSecretJSON); epErr != nil {
 			if svcErr := mapEntityProviderError(epErr); svcErr != nil {
 				return svcErr
 			}
@@ -517,7 +539,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 		return &tidcommon.InternalServerError
 	}
 
-	if epErr := as.entityProvider.UpdateSystemCredentials(appID, sysCredsJSON); epErr != nil {
+	if epErr := as.entityProvider.UpdateSystemCredentials(ctx, appID, sysCredsJSON); epErr != nil {
 		if svcErr := mapEntityProviderError(epErr); svcErr != nil {
 			return svcErr
 		}
@@ -586,11 +608,16 @@ func (as *applicationService) SetDependencyRegistry(r resourcedependency.Registr
 }
 
 func (as *applicationService) DeleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError {
+	// A resource applied from the control plane is owned there. Changing it here would last only
+	// until the next promotion overwrote it, so the change is refused instead.
+	if svcErr := managedresource.Guard(ctx, managedresource.TypeApplication, appID); svcErr != nil {
+		return svcErr
+	}
 	if appID == "" {
 		return &ErrorInvalidApplicationID
 	}
 
-	if existing, epErr := as.entityProvider.GetEntity(appID); epErr != nil {
+	if existing, epErr := as.entityProvider.GetEntity(ctx, appID); epErr != nil {
 		if epErr.Code != entityprovider.ErrorCodeEntityNotFound {
 			as.logger.Error(ctx, "Failed to load entity before delete",
 				log.String("appID", appID), log.Error(epErr))
@@ -627,7 +654,7 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 	}
 
 	// Delete entity.
-	if epErr := as.entityProvider.DeleteEntity(appID); epErr != nil {
+	if epErr := as.entityProvider.DeleteEntity(ctx, appID); epErr != nil {
 		if svcErr := mapEntityProviderError(epErr); svcErr != nil {
 			return svcErr
 		}
@@ -656,7 +683,7 @@ func (as *applicationService) GetResourceDependencies(
 		return []resourcedependency.ResourceDependency{}, nil
 	}
 
-	entities, epErr := as.entityProvider.GetEntitiesByIDs(ids)
+	entities, epErr := as.entityProvider.GetEntitiesByIDs(ctx, ids)
 	if epErr != nil {
 		as.logger.Error(ctx, "Failed to get entities by IDs", log.Error(epErr))
 		return nil, epErr
@@ -728,7 +755,7 @@ func (as *applicationService) ValidateReferenceUpdate(
 // (used during declarative loading and updates where the entity already exists).
 func (as *applicationService) isIdentifierTaken(
 	ctx context.Context, key, value, excludeID string) (bool, *tidcommon.ServiceError) {
-	entityID, epErr := as.entityProvider.IdentifyEntity(map[string]interface{}{key: value})
+	entityID, epErr := as.entityProvider.IdentifyEntity(ctx, map[string]interface{}{key: value})
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			return false, nil
@@ -758,7 +785,7 @@ func (as *applicationService) getApplication(
 		return nil, &ErrorApplicationNotFound
 	}
 
-	entity, epErr := as.entityProvider.GetEntity(appID)
+	entity, epErr := as.entityProvider.GetEntity(ctx, appID)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			entity = nil
@@ -2203,5 +2230,19 @@ func (as *applicationService) syncPasskeyOriginsToCORS(ctx context.Context, orig
 	); svcErr != nil {
 		as.logger.Warn(ctx, "Failed to update CORS config with passkey allowed origins",
 			log.String("error", svcErr.ErrorDescription.DefaultValue))
+	}
+}
+
+// markManagedApplications reports the control plane owned applications as read only, which is what a
+// client renders its edit and delete controls from.
+func markManagedApplications(ctx context.Context, items []model.BasicApplicationResponse) {
+	managed := managedresource.Default().ManagedIDs(ctx, managedresource.TypeApplication)
+	if len(managed) == 0 {
+		return
+	}
+	for i := range items {
+		if managed[items[i].ID] {
+			items[i].IsReadOnly = true
+		}
 	}
 }

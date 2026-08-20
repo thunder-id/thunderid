@@ -18,6 +18,7 @@ export {default as FullScreenCreationWizardLayout} from './FullScreenCreationWiz
 export type {FullScreenCreationWizardLayoutProps} from './FullScreenCreationWizardLayout/FullScreenCreationWizardLayout';
 export {default as I18nTextInput} from './I18nTextInput/I18nTextInput';
 export type {I18nTextInputLabels, I18nTextInputProps} from './I18nTextInput/I18nTextInput';
+export {default as ManagedResourceNotice} from './ManagedResourceNotice/ManagedResourceNotice';
 export {default as ExternalLink} from './ExternalLink/ExternalLink';
 export type {ExternalLinkProps} from './ExternalLink/ExternalLink';
 export {default as OrganizationUnitSummaryChip} from './OrganizationUnitSummaryChip/OrganizationUnitSummaryChip';

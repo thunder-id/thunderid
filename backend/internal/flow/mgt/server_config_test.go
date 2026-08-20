@@ -57,7 +57,7 @@ func (s *FlowConfigHandlerTestSuite) TestDecode_InvalidJSON() {
 }
 
 func (s *FlowConfigHandlerTestSuite) TestValidate_WrongType() {
-	err := s.handler.Validate("not-a-config", nil, nil)
+	err := s.handler.Validate(context.Background(), "not-a-config", nil, nil)
 	s.Error(err)
 }
 
@@ -65,7 +65,7 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_NegativeExpiry() {
 	cfg := flowconfig.FlowSectionConfig{
 		AuthFlow: flowconfig.FlowTypeConfig{ExpirySeconds: -1},
 	}
-	err := s.handler.Validate(cfg, nil, nil)
+	err := s.handler.Validate(context.Background(), cfg, nil, nil)
 	s.Error(err)
 }
 
@@ -76,7 +76,7 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_ValidConfig() {
 		RecoveryFlow:     flowconfig.FlowTypeConfig{ExpirySeconds: 1800},
 		SignOutFlow:      flowconfig.FlowTypeConfig{ExpirySeconds: 1800},
 	}
-	err := s.handler.Validate(cfg, nil, nil)
+	err := s.handler.Validate(context.Background(), cfg, nil, nil)
 	s.NoError(err)
 }
 
@@ -90,7 +90,7 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_HandleValidatorCalled() {
 	cfg := flowconfig.FlowSectionConfig{
 		AuthFlow: flowconfig.FlowTypeConfig{DefaultHandle: "valid-handle"},
 	}
-	err := s.handler.Validate(cfg, nil, nil)
+	err := s.handler.Validate(context.Background(), cfg, nil, nil)
 	s.NoError(err)
 	s.True(called)
 }
@@ -103,7 +103,7 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_HandleValidatorRejectsUnknown(
 	cfg := flowconfig.FlowSectionConfig{
 		SignOutFlow: flowconfig.FlowTypeConfig{DefaultHandle: "nonexistent"},
 	}
-	err := s.handler.Validate(cfg, nil, nil)
+	err := s.handler.Validate(context.Background(), cfg, nil, nil)
 	s.Error(err)
 }
 
@@ -111,7 +111,7 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_NoValidatorSkipsHandleCheck() 
 	cfg := flowconfig.FlowSectionConfig{
 		AuthFlow: flowconfig.FlowTypeConfig{DefaultHandle: "any-handle"},
 	}
-	err := s.handler.Validate(cfg, nil, nil)
+	err := s.handler.Validate(context.Background(), cfg, nil, nil)
 	s.NoError(err)
 }
 
@@ -171,7 +171,7 @@ func (s *FlowConfigHandlerTestSuite) TestMergeFlowTypeConfig_WritableExpiryWins(
 // An unset handle is valid: it is how a deployment opts out of flow-based deletion and keeps the
 // native endpoint.
 func (s *FlowConfigHandlerTestSuite) TestValidate_UserDeletionHandleOptional() {
-	s.NoError(s.handler.Validate(flowconfig.FlowSectionConfig{}, nil, nil))
+	s.NoError(s.handler.Validate(context.Background(), flowconfig.FlowSectionConfig{}, nil, nil))
 }
 
 // The handle must name an administration flow, not merely exist.
@@ -185,7 +185,7 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_UserDeletionHandleCheckedAgain
 		UserDeletionFlow: flowconfig.FlowTypeConfig{DefaultHandle: "default-user-deletion-flow"},
 	}
 
-	s.Require().NoError(s.handler.Validate(cfg, nil, nil))
+	s.Require().NoError(s.handler.Validate(context.Background(), cfg, nil, nil))
 	s.Equal(providers.FlowTypeAdministration, gotType)
 }
 
@@ -197,7 +197,7 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_UserDeletionHandleRejectedWhen
 		UserDeletionFlow: flowconfig.FlowTypeConfig{DefaultHandle: "not-an-admin-flow"},
 	}
 
-	err := s.handler.Validate(cfg, nil, nil)
+	err := s.handler.Validate(context.Background(), cfg, nil, nil)
 
 	s.Require().Error(err)
 	s.Contains(err.Error(), "userDeletionFlow.defaultHandle")

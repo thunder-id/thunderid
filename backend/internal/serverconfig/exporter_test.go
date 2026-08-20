@@ -26,10 +26,25 @@ func TestServerConfigExporter_Type(t *testing.T) {
 func TestServerConfigExporter_GetAllResourceIDs(t *testing.T) {
 	service := NewServerConfigServiceMock(t)
 	service.EXPECT().ListConfigNames(mock.Anything).Return([]ConfigName{ConfigNameCORS}, nil)
+	service.EXPECT().GetConfig(mock.Anything, ConfigNameCORS).
+		Return(ServerConfigLayers{Merged: mergedValue}, nil)
 
 	ids, svcErr := newServerConfigExporter(service).GetAllResourceIDs(context.Background())
 	assert.Nil(t, svcErr)
 	assert.Equal(t, []string{"cors"}, ids)
+}
+
+func TestServerConfigExporter_GetAllResourceIDs_SkipsAnUnsetSection(t *testing.T) {
+	service := NewServerConfigServiceMock(t)
+	service.EXPECT().ListConfigNames(mock.Anything).Return([]ConfigName{ConfigNameCORS}, nil)
+	service.EXPECT().GetConfig(mock.Anything, ConfigNameCORS).
+		Return(ServerConfigLayers{Merged: struct{ ResourceServerID string }{}}, nil)
+
+	// Exporting a section nobody configured would carry an empty value into whatever it is imported
+	// to, replacing a setting that deployment made for itself.
+	ids, svcErr := newServerConfigExporter(service).GetAllResourceIDs(context.Background())
+	assert.Nil(t, svcErr)
+	assert.Empty(t, ids)
 }
 
 func TestServerConfigExporter_GetAllResourceIDs_Error(t *testing.T) {

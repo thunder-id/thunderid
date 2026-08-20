@@ -193,10 +193,14 @@ func isIDPBackedVendorName(name string) bool {
 // values. Unlike propertyValues (used by the live read API), this is only safe for internal
 // consumers that never let the value reach an external response: the export parameterizer
 // captures it here only to immediately externalize it to the generated .env file.
+//
+// A property holding a reference to a credential kept elsewhere is passed through as the reference.
+// The export parameterizes every secret field anyway, so nothing is lost, and resolving would fail on
+// a plane that runs no secret provider.
 func rawPropertyValues(props []cmodels.Property) (map[string]string, error) {
 	values := make(map[string]string, len(props))
 	for i := range props {
-		value, err := props[i].GetValue()
+		value, err := props[i].UnresolvedValue()
 		if err != nil {
 			return nil, err
 		}

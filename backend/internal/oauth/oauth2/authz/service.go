@@ -612,6 +612,17 @@ func (as *authorizeService) handleSuccessCallback(ctx context.Context, authID st
 			return err
 		}
 
+		// TEMPORARY: records what the code was bound to, so a later rejection at the token endpoint can
+		// be compared against it. Remove once the console login failure is understood.
+		as.logger.Debug(ctx, "Issued an authorization code",
+			log.String("clientId", authzCode.ClientID),
+			log.String("redirectUri", authzCode.RedirectURI),
+			log.Bool("redirectUriProvided", authzCode.RedirectURIProvided),
+			log.String("codeChallengeMethod", authzCode.CodeChallengeMethod),
+			log.Bool("hasCodeChallenge", authzCode.CodeChallenge != ""),
+			log.String("scopes", authzCode.Scopes),
+			log.String("expiresAt", authzCode.ExpiryTime.UTC().Format(time.RFC3339)))
+
 		// Persist the authorization code.
 		if persistErr := as.authCodeStore.InsertAuthorizationCode(ctx, authzCode); persistErr != nil {
 			authErr = &AuthorizationError{

@@ -77,6 +77,7 @@ type connectionInstance struct {
 	Type         string               `json:"type"`
 	Categories   []connectionCategory `json:"categories"`
 	IDJagEnabled *bool                `json:"idJagEnabled,omitempty"`
+	IsReadOnly   bool                 `json:"isReadOnly"`
 }
 
 // connectionListResponse is the paginated payload for GET /connections (the flat instance list).

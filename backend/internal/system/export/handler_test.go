@@ -131,7 +131,9 @@ func (suite *HandlerTestSuite) TestHandleExportRequest_Success() {
 	assert.Contains(suite.T(), response.Resources, "# File: Test_App_1.yaml")
 	assert.Contains(suite.T(), response.Resources, "resource_type: application")
 	assert.Contains(suite.T(), response.Resources, "name: Test App 1")
-	assert.Equal(suite.T(), "", response.EnvironmentVariables)
+	// The home URL is environment specific, so it is exported as a placeholder with its current value
+	// in the sidecar for the operator to override per deployment.
+	assert.Equal(suite.T(), "APPLICATION_TEST_APP_1_URL=https://example.com\n", response.EnvironmentVariables)
 }
 
 // TestHandleExportRequest_InvalidJSON tests invalid JSON request handling.

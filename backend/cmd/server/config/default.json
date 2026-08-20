@@ -184,6 +184,25 @@
       "validity_period_seconds": 120
     }
   },
+  "channel": {
+    "server": {
+      "enabled": false,
+      "path": "/cp/connect",
+      "auth_token": "",
+      "read_limit_bytes": 1048576,
+      "rpc_timeout_seconds": 30
+    },
+    "client": {
+      "enabled": false,
+      "id": "",
+      "control_plane_url": "",
+      "auth_token": "",
+      "read_limit_bytes": 1048576,
+      "ping_interval_seconds": 30,
+      "reconnect_initial_seconds": 1,
+      "reconnect_max_seconds": 30
+    }
+  },
   "user": {
     "indexed_attributes": ["username", "email", "mobile_number", "sub"],
     "store": "composite"

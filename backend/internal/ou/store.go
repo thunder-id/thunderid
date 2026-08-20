@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -79,7 +80,7 @@ func (s *organizationUnitStore) GetOrganizationUnitListCount(
 	if err != nil {
 		return 0, fmt.Errorf("failed to build count query: %w", err)
 	}
-	args := append([]interface{}{s.deploymentID}, filterArgs...)
+	args := append([]interface{}{deployment.Resolve(ctx, s.deploymentID)}, filterArgs...)
 
 	results, err := dbClient.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -111,7 +112,7 @@ func (s *organizationUnitStore) GetOrganizationUnitList(
 	if err != nil {
 		return nil, fmt.Errorf("failed to build list query: %w", err)
 	}
-	args := append([]interface{}{limit, offset, s.deploymentID}, filterArgs...)
+	args := append([]interface{}{limit, offset, deployment.Resolve(ctx, s.deploymentID)}, filterArgs...)
 
 	results, err := dbClient.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -148,7 +149,7 @@ func (s *organizationUnitStore) GetOrganizationUnitsByIDs(
 	for _, id := range ids {
 		args = append(args, id)
 	}
-	args = append(args, s.deploymentID)
+	args = append(args, deployment.Resolve(ctx, s.deploymentID))
 
 	results, err := dbClient.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -188,7 +189,7 @@ func (s *organizationUnitStore) CreateOrganizationUnit(ctx context.Context, ou p
 		ou.Name,
 		ou.Description,
 		string(ouMetadataBytes),
-		s.deploymentID,
+		deployment.Resolve(ctx, s.deploymentID),
 		ou.CreatedAt,
 		ou.UpdatedAt,
 	)
@@ -209,7 +210,8 @@ func (s *organizationUnitStore) GetOrganizationUnit(
 		return providers.OrganizationUnit{}, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryGetOrganizationUnitByID, id, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, queryGetOrganizationUnitByID, id, deployment.Resolve(ctx,
+		s.deploymentID))
 	if err != nil {
 		return providers.OrganizationUnit{}, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -238,9 +240,12 @@ func (s *organizationUnitStore) GetOrganizationUnitByHandle(
 
 	var results []map[string]interface{}
 	if parent == nil {
-		results, err = dbClient.QueryContext(ctx, queryGetRootOrganizationUnitByHandle, handle, s.deploymentID)
+		results, err = dbClient.QueryContext(ctx, queryGetRootOrganizationUnitByHandle, handle, deployment.Resolve(ctx,
+			s.deploymentID))
 	} else {
-		results, err = dbClient.QueryContext(ctx, queryGetOrganizationUnitByHandle, handle, *parent, s.deploymentID)
+		results, err = dbClient.QueryContext(ctx, queryGetOrganizationUnitByHandle, handle, *parent,
+			deployment.Resolve(ctx,
+				s.deploymentID))
 	}
 	if err != nil {
 		return providers.OrganizationUnit{}, fmt.Errorf("failed to execute query for handle %s: %w", handle, err)
@@ -308,9 +313,12 @@ func (s *organizationUnitStore) getOrganizationUnitByHandleWithClient(
 	var err error
 
 	if parent == nil {
-		results, err = dbClient.QueryContext(ctx, queryGetRootOrganizationUnitByHandle, handle, s.deploymentID)
+		results, err = dbClient.QueryContext(ctx, queryGetRootOrganizationUnitByHandle, handle, deployment.Resolve(ctx,
+			s.deploymentID))
 	} else {
-		results, err = dbClient.QueryContext(ctx, queryGetOrganizationUnitByHandle, handle, *parent, s.deploymentID)
+		results, err = dbClient.QueryContext(ctx, queryGetOrganizationUnitByHandle, handle, *parent,
+			deployment.Resolve(ctx,
+				s.deploymentID))
 	}
 	if err != nil {
 		return providers.OrganizationUnit{}, fmt.Errorf("failed to execute query for handle %s: %w", handle, err)
@@ -339,7 +347,8 @@ func (s *organizationUnitStore) IsOrganizationUnitExists(ctx context.Context, id
 		return false, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryCheckOrganizationUnitExists, id, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, queryCheckOrganizationUnitExists, id, deployment.Resolve(ctx,
+		s.deploymentID))
 	if err != nil {
 		return false, fmt.Errorf("failed to execute existence check query: %w", err)
 	}
@@ -385,7 +394,7 @@ func (s *organizationUnitStore) UpdateOrganizationUnit(ctx context.Context, ou p
 		ou.Description,
 		string(ouMetadataBytes),
 		ou.UpdatedAt,
-		s.deploymentID,
+		deployment.Resolve(ctx, s.deploymentID),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
@@ -401,7 +410,7 @@ func (s *organizationUnitStore) DeleteOrganizationUnit(ctx context.Context, id s
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	_, err = dbClient.ExecuteContext(ctx, queryDeleteOrganizationUnit, id, s.deploymentID)
+	_, err = dbClient.ExecuteContext(ctx, queryDeleteOrganizationUnit, id, deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -422,7 +431,7 @@ func (s *organizationUnitStore) GetOrganizationUnitChildrenCount(
 	if err != nil {
 		return 0, fmt.Errorf("failed to build count query: %w", err)
 	}
-	args := append([]interface{}{parentID, s.deploymentID}, filterArgs...)
+	args := append([]interface{}{parentID, deployment.Resolve(ctx, s.deploymentID)}, filterArgs...)
 
 	results, err := dbClient.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -455,7 +464,7 @@ func (s *organizationUnitStore) GetOrganizationUnitChildrenList(ctx context.Cont
 	if err != nil {
 		return nil, fmt.Errorf("failed to build list query: %w", err)
 	}
-	args := append([]interface{}{parentID, limit, offset, s.deploymentID}, filterArgs...)
+	args := append([]interface{}{parentID, limit, offset, deployment.Resolve(ctx, s.deploymentID)}, filterArgs...)
 
 	results, err := dbClient.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -483,7 +492,7 @@ func (s *organizationUnitStore) CheckOrganizationUnitNameConflict(
 		queryCheckOrganizationUnitNameConflictRoot,
 		name,
 		parentID,
-		s.deploymentID,
+		deployment.Resolve(ctx, s.deploymentID),
 	)
 }
 
@@ -496,7 +505,7 @@ func (s *organizationUnitStore) CheckOrganizationUnitHandleConflict(
 		queryCheckOrganizationUnitHandleConflictRoot,
 		handle,
 		parentID,
-		s.deploymentID,
+		deployment.Resolve(ctx, s.deploymentID),
 	)
 }
 

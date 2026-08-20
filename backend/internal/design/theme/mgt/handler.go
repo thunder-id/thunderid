@@ -14,6 +14,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -249,6 +250,10 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 	switch {
 	case svcErr == &ErrorThemeNotFound:
 		statusCode = http.StatusNotFound
+	case svcErr.Code == managedresource.ErrorResourceManaged.Code:
+		// The request is well formed and the resource exists. The caller simply may not
+		// change it here, which is what forbidden means.
+		statusCode = http.StatusForbidden
 	case svcErr.Type == tidcommon.ClientErrorType:
 		statusCode = http.StatusBadRequest
 	}

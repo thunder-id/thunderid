@@ -1,0 +1,120 @@
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# ----------------------------------------------------------------------------
+
+# Data Plane image.
+#
+# The Data Plane serves runtime traffic: OAuth2/OIDC, flow execution, the Direct APIs, and the gate.
+# Configuration is authored on the Control Plane (see Dockerfile.cp) and applied down to here.
+#
+# The distribution layout, the frontend apps, and the scripts are the product's own, so this builds
+# them the same way the hybrid image does and swaps in the Data Plane binary and configuration. The
+# binary is installed under the name start.sh expects, so nothing downstream has to know which plane
+# it is running.
+
+FROM golang:1.26-alpine3.23 AS builder
+
+RUN apk add --no-cache git make bash sqlite openssl zip nodejs npm curl python3 g++ build-base sqlite-dev
+
+ENV CI=true
+
+WORKDIR /app
+
+COPY . .
+
+# Serve on every interface rather than on loopback, which is what a container needs.
+RUN sed -i 's/hostname: "localhost"/hostname: "0.0.0.0"/' backend/cmd/dpserver/deployment.yaml
+
+# Security material (TLS/JWT/AES keys) is not baked into the image; the setup step generates it per
+# deployment.
+
+ARG TARGETARCH
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+        ./build.sh build linux amd64; \
+    else \
+        ./build.sh build linux arm64; \
+    fi
+
+# The distribution above carries the hybrid binary. Build the Data Plane one alongside it and let the
+# runtime stage install it in place of the packaged binary. The version is stamped from the same file
+# the distribution takes it from, so the two do not disagree.
+RUN mkdir -p target/out && \
+    GOOS=linux GOARCH=$TARGETARCH CGO_ENABLED=0 go build -C backend \
+        -ldflags "-X \"main.version=$(cat version.txt)\" \
+        -X \"main.buildDate=$(date -u '+%Y-%m-%d %H:%M:%S UTC')\"" \
+        -o ../target/out/thunderid-dp ./cmd/dpserver
+
+# Runtime stage
+FROM alpine:3.19
+
+# postgresql-client rather than sqlite: these planes run against PostgreSQL, because several pods of
+# one deployment share a database and SQLite cannot be shared. psql is here so an operator can reach
+# that database from the container.
+RUN apk add --no-cache \
+    ca-certificates \
+    lsof \
+    postgresql-client \
+    bash \
+    curl \
+    openssl \
+    unzip
+
+RUN addgroup -S thunderid -g 10001 && adduser -S thunderid -u 10001 -G thunderid
+
+WORKDIR /opt/thunderid
+
+ARG TARGETARCH
+COPY --from=builder /app/target/dist/ /tmp/dist/
+RUN cd /tmp/dist && \
+    if [ "$TARGETARCH" = "amd64" ]; then \
+        find . -name "thunderid-*-linux-x64.zip" | grep -E '^.*/thunderid-v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(-[A-Z]+)?)?-linux-x64\.zip$' | xargs -I{} cp {} /tmp/ ; \
+    else \
+        find . -name "thunderid-*-linux-arm64.zip" | grep -E '^.*/thunderid-v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(-[A-Z]+)?)?-linux-arm64\.zip$' | xargs -I{} cp {} /tmp/ ; \
+    fi && \
+    cd /tmp && \
+    unzip thunderid-*.zip && \
+    cp -r thunderid-*/* /opt/thunderid/ && \
+    rm -rf /tmp/thunderid-* /tmp/dist
+
+# Install the Data Plane binary and configuration over the packaged hybrid ones. start.sh runs
+# ./thunderid, so the binary keeps that name.
+COPY --from=builder /app/target/out/thunderid-dp /opt/thunderid/thunderid
+COPY --from=builder /app/backend/cmd/dpserver/deployment.yaml /opt/thunderid/deployment.yaml
+
+# No baseline resources. A Data Plane is fed by a Control Plane: its organization units, user types,
+# applications, flows and themes all arrive on the first apply, and seeding any of them here would
+# leave a second copy for that apply to sit alongside. The packaged bundle is removed rather than
+# replaced, so a Data Plane starts empty and the apply makes it whole.
+RUN rm -rf /opt/thunderid/bootstrap
+
+# Where the file-mode secret store and any other per-deployment state is kept. Mount a volume over it
+# in file mode: the store is this instance's own, and losing it loses every credential applied so far.
+# In kv mode nothing durable is kept here.
+RUN mkdir -p /opt/thunderid/repository/secrets
+
+RUN chown -R thunderid:thunderid /opt/thunderid && \
+    chmod +x thunderid start.sh setup.sh scripts/init_script.sh && \
+    (find bootstrap -name "*.sh" -type f -exec chmod +x {} \; 2>/dev/null || true) && \
+    chmod 700 /opt/thunderid/repository/secrets
+
+EXPOSE 8090
+
+USER thunderid
+
+ENV BACKEND_PORT=8090
+
+CMD ["./start.sh"]

@@ -257,6 +257,116 @@ func (_c *DBProviderInterfaceMock_GetEntityDBTransactioner_Call) RunAndReturn(ru
 	return _c
 }
 
+// GetEnvironmentDBClient provides a mock function for the type DBProviderInterfaceMock
+func (_mock *DBProviderInterfaceMock) GetEnvironmentDBClient() (provider.DBClientInterface, error) {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEnvironmentDBClient")
+	}
+
+	var r0 provider.DBClientInterface
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func() (provider.DBClientInterface, error)); ok {
+		return returnFunc()
+	}
+	if returnFunc, ok := ret.Get(0).(func() provider.DBClientInterface); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(provider.DBClientInterface)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func() error); ok {
+		r1 = returnFunc()
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// DBProviderInterfaceMock_GetEnvironmentDBClient_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEnvironmentDBClient'
+type DBProviderInterfaceMock_GetEnvironmentDBClient_Call struct {
+	*mock.Call
+}
+
+// GetEnvironmentDBClient is a helper method to define mock.On call
+func (_e *DBProviderInterfaceMock_Expecter) GetEnvironmentDBClient() *DBProviderInterfaceMock_GetEnvironmentDBClient_Call {
+	return &DBProviderInterfaceMock_GetEnvironmentDBClient_Call{Call: _e.mock.On("GetEnvironmentDBClient")}
+}
+
+func (_c *DBProviderInterfaceMock_GetEnvironmentDBClient_Call) Run(run func()) *DBProviderInterfaceMock_GetEnvironmentDBClient_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *DBProviderInterfaceMock_GetEnvironmentDBClient_Call) Return(dBClientInterface provider.DBClientInterface, err error) *DBProviderInterfaceMock_GetEnvironmentDBClient_Call {
+	_c.Call.Return(dBClientInterface, err)
+	return _c
+}
+
+func (_c *DBProviderInterfaceMock_GetEnvironmentDBClient_Call) RunAndReturn(run func() (provider.DBClientInterface, error)) *DBProviderInterfaceMock_GetEnvironmentDBClient_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetEnvironmentDBTransactioner provides a mock function for the type DBProviderInterfaceMock
+func (_mock *DBProviderInterfaceMock) GetEnvironmentDBTransactioner() (providers.Transactioner, error) {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEnvironmentDBTransactioner")
+	}
+
+	var r0 providers.Transactioner
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func() (providers.Transactioner, error)); ok {
+		return returnFunc()
+	}
+	if returnFunc, ok := ret.Get(0).(func() providers.Transactioner); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(providers.Transactioner)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func() error); ok {
+		r1 = returnFunc()
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// DBProviderInterfaceMock_GetEnvironmentDBTransactioner_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEnvironmentDBTransactioner'
+type DBProviderInterfaceMock_GetEnvironmentDBTransactioner_Call struct {
+	*mock.Call
+}
+
+// GetEnvironmentDBTransactioner is a helper method to define mock.On call
+func (_e *DBProviderInterfaceMock_Expecter) GetEnvironmentDBTransactioner() *DBProviderInterfaceMock_GetEnvironmentDBTransactioner_Call {
+	return &DBProviderInterfaceMock_GetEnvironmentDBTransactioner_Call{Call: _e.mock.On("GetEnvironmentDBTransactioner")}
+}
+
+func (_c *DBProviderInterfaceMock_GetEnvironmentDBTransactioner_Call) Run(run func()) *DBProviderInterfaceMock_GetEnvironmentDBTransactioner_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *DBProviderInterfaceMock_GetEnvironmentDBTransactioner_Call) Return(transactioner providers.Transactioner, err error) *DBProviderInterfaceMock_GetEnvironmentDBTransactioner_Call {
+	_c.Call.Return(transactioner, err)
+	return _c
+}
+
+func (_c *DBProviderInterfaceMock_GetEnvironmentDBTransactioner_Call) RunAndReturn(run func() (providers.Transactioner, error)) *DBProviderInterfaceMock_GetEnvironmentDBTransactioner_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetRuntimePersistentDBClient provides a mock function for the type DBProviderInterfaceMock
 func (_mock *DBProviderInterfaceMock) GetRuntimePersistentDBClient() (provider.DBClientInterface, error) {
 	ret := _mock.Called()

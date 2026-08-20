@@ -4,6 +4,7 @@
 package declarativeresource
 
 import (
+	"context"
 	"strconv"
 	"testing"
 
@@ -52,7 +53,7 @@ func TestGenericFileBasedStore_Get(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Get
-	result, err := store.Get("test-id")
+	result, err := store.Get(context.Background(), "test-id")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
@@ -74,7 +75,7 @@ func TestGenericFileBasedStore_GetByField(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Get by name
-	result, err := store.GetByField("Test Entity", func(data interface{}) string {
+	result, err := store.GetByField(context.Background(), "Test Entity", func(data interface{}) string {
 		return data.(*testEntity).Name
 	})
 
@@ -89,7 +90,7 @@ func TestGenericFileBasedStore_GetByField_NotFound(t *testing.T) {
 	store := NewGenericFileBasedStoreForTest(entity.KeyTypeIDP)
 
 	// Get by name when nothing exists
-	result, err := store.GetByField("NonExistent", func(data interface{}) string {
+	result, err := store.GetByField(context.Background(), "NonExistent", func(data interface{}) string {
 		return data.(*testEntity).Name
 	})
 
@@ -112,7 +113,7 @@ func TestGenericFileBasedStore_List(t *testing.T) {
 	}
 
 	// List
-	results, err := store.List()
+	results, err := store.List(context.Background())
 
 	assert.NoError(t, err)
 	assert.NotNil(t, results)
@@ -133,7 +134,7 @@ func TestGenericFileBasedStore_Count(t *testing.T) {
 	}
 
 	// Count
-	count, err := store.Count()
+	count, err := store.Count(context.Background())
 
 	assert.NoError(t, err)
 	assert.Equal(t, 3, count)

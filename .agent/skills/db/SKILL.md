@@ -7,7 +7,7 @@ description: Database schema and query conventions for ThunderID. Use when chang
 
 ## Logical Database Separation
 
-ThunderID uses four logically separated databases. Each database owns a specific category of data.
+ThunderID uses logically separated databases. Each database owns a specific category of data.
 
 | Database (config key) | Responsibility                                                |
 |-----------------------|---------------------------------------------------------------|
@@ -15,6 +15,7 @@ ThunderID uses four logically separated databases. Each database owns a specific
 | `runtime_transient`   | Short-lived runtime state: authorization codes, authorization/PAR requests, JTI records, WebAuthn/VCI state, flow contexts |
 | `entitydb`                | Identity data: users, groups, indexed user attributes         |
 | `runtime_persistent`  | Long-lived operational state that must survive restarts: revoked tokens, SSO sessions, consent records |
+| `environment`         | Environments, their captured configuration versions, and environment variables. Only a Control Plane configures it; every other plane leaves it unset |
 
 Although the databases are logically separated, they share consistent schema design principles documented here.
 

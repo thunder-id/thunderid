@@ -14,10 +14,11 @@ import (
 
 // i18nStoreInterface defines the interface for i18n store operations.
 type i18nStoreInterface interface {
-	GetDistinctLanguages() ([]string, error)
-	GetTranslations() (map[string]map[string]Translation, error)
-	GetTranslationsByNamespace(namespace string) (map[string]map[string]Translation, error)
-	GetTranslationsByKey(key string, namespace string) (map[string]Translation, error)
+	GetDistinctLanguages(ctx context.Context) ([]string, error)
+	GetTranslations(ctx context.Context) (map[string]map[string]Translation, error)
+	GetTranslationsByNamespace(ctx context.Context,
+		namespace string) (map[string]map[string]Translation, error)
+	GetTranslationsByKey(ctx context.Context, key string, namespace string) (map[string]Translation, error)
 	UpsertTranslationsByLanguage(language string, translations []Translation) error
 	UpsertTranslation(trans Translation) error
 	UpsertTranslations(ctx context.Context, translations []Translation) error
@@ -51,7 +52,7 @@ func (s *i18nStore) getDBClient() (provider.DBClientInterface, error) {
 }
 
 // GetDistinctLanguages retrieves all distinct language codes that have translations.
-func (s *i18nStore) GetDistinctLanguages() ([]string, error) {
+func (s *i18nStore) GetDistinctLanguages(_ context.Context) ([]string, error) {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return nil, err
@@ -75,7 +76,7 @@ func (s *i18nStore) GetDistinctLanguages() ([]string, error) {
 
 // GetTranslations retrieves all translations.
 // This implements TranslationStoreInterface.
-func (s *i18nStore) GetTranslations() (map[string]map[string]Translation, error) {
+func (s *i18nStore) GetTranslations(_ context.Context) (map[string]map[string]Translation, error) {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return nil, err
@@ -92,7 +93,8 @@ func (s *i18nStore) GetTranslations() (map[string]map[string]Translation, error)
 
 // GetTranslations retrieves all translations of the given namespace.
 // This implements TranslationStoreInterface.
-func (s *i18nStore) GetTranslationsByNamespace(namespace string) (map[string]map[string]Translation, error) {
+func (s *i18nStore) GetTranslationsByNamespace(_ context.Context,
+	namespace string) (map[string]map[string]Translation, error) {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return nil, err
@@ -108,7 +110,8 @@ func (s *i18nStore) GetTranslationsByNamespace(namespace string) (map[string]map
 }
 
 // GetTranslationsByKey retrieves a single translation by key, and namespace.
-func (s *i18nStore) GetTranslationsByKey(key string, namespace string) (map[string]Translation, error) {
+func (s *i18nStore) GetTranslationsByKey(_ context.Context, key string,
+	namespace string) (map[string]Translation, error) {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return nil, err

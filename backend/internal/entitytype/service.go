@@ -17,6 +17,7 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -145,6 +146,7 @@ func (us *entityTypeService) listAllEntityTypes(
 	if includeDisplay {
 		us.populateEntityTypeOUHandles(ctx, entityTypes, logger)
 	}
+	markManagedEntityTypes(ctx, entityTypes)
 
 	return &EntityTypeListResponse{
 		TotalResults: totalCount,
@@ -186,6 +188,7 @@ func (us *entityTypeService) listAccessibleEntityTypes(
 	if includeDisplay {
 		us.populateEntityTypeOUHandles(ctx, entityTypes, logger)
 	}
+	markManagedEntityTypes(ctx, entityTypes)
 
 	return &EntityTypeListResponse{
 		TotalResults: totalCount,
@@ -377,6 +380,11 @@ func (us *entityTypeService) GetEntityTypeByName(
 func (us *entityTypeService) UpdateEntityType(ctx context.Context, category TypeCategory,
 	schemaID string, request UpdateEntityTypeRequest) (
 	*EntityType, *tidcommon.ServiceError) {
+	// A resource applied from the control plane is owned there. Changing it here would last only
+	// until the next promotion overwrote it, so the change is refused instead.
+	if svcErr := managedresource.Guard(ctx, managedresource.TypeEntityType, schemaID); svcErr != nil {
+		return nil, svcErr
+	}
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -469,6 +477,11 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 // DeleteEntityType deletes an entity type by its ID within the given category.
 func (us *entityTypeService) DeleteEntityType(ctx context.Context, category TypeCategory,
 	schemaID string) *tidcommon.ServiceError {
+	// A resource applied from the control plane is owned there. Changing it here would last only
+	// until the next promotion overwrote it, so the change is refused instead.
+	if svcErr := managedresource.Guard(ctx, managedresource.TypeEntityType, schemaID); svcErr != nil {
+		return svcErr
+	}
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -996,5 +1009,19 @@ func validateDisplayAttribute(
 		return &ErrorCredentialDisplayAttribute
 	default:
 		return nil
+	}
+}
+
+// markManagedEntityTypes reports the control plane owned entity types as read only, so a client does
+// not offer an edit or delete control this deployment is going to refuse.
+func markManagedEntityTypes(ctx context.Context, entityTypes []EntityTypeListItem) {
+	managed := managedresource.Default().ManagedIDs(ctx, managedresource.TypeEntityType)
+	if len(managed) == 0 {
+		return
+	}
+	for i := range entityTypes {
+		if managed[entityTypes[i].ID] {
+			entityTypes[i].IsReadOnly = true
+		}
 	}
 }

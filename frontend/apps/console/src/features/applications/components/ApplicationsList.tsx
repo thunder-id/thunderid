@@ -4,7 +4,7 @@
 import {QueryErrorNotice, ResourceAvatar} from '@thunderid/components';
 import {useGetApplications} from '@thunderid/configure-applications';
 import type {BasicApplication} from '@thunderid/configure-applications';
-import {useConfig} from '@thunderid/contexts';
+import {useConfig, useIsManagedResource} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, Chip, IconButton, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
@@ -26,6 +26,8 @@ export default function ApplicationsList(): JSX.Element {
   const dataGridLocaleText = useDataGridLocaleText();
   const {data, isLoading, error, refetch} = useGetApplications();
   const systemConsoleClientId = (config?.client?.client_id ?? 'CONSOLE').toUpperCase();
+  // An application applied from the control plane is read only here, the same as a declarative one.
+  const isManagedApplication = useIsManagedResource('application');
 
   // Resolves an error through the `applications` catalog. `t` defaults to the `common` namespace,
   // so this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with `applications:`,
@@ -128,7 +130,7 @@ export default function ApplicationsList(): JSX.Element {
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<BasicApplication>): JSX.Element => (
           <ListingTable.RowActions>
-            {params.row.isReadOnly ? (
+            {params.row.isReadOnly || isManagedApplication(params.row.id) ? (
               <Tooltip title={t('common:status.readOnly', 'Read Only')}>
                 <IconButton size="small" disableRipple sx={{cursor: 'default'}}>
                   <Eye size={16} />
@@ -167,7 +169,7 @@ export default function ApplicationsList(): JSX.Element {
         ),
       },
     ],
-    [handleDeleteClick, handleEditClick, systemConsoleClientId, t],
+    [handleDeleteClick, handleEditClick, isManagedApplication, systemConsoleClientId, t],
   );
 
   if (error) {

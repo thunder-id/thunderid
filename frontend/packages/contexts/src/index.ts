@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Export types
-export type {ProductConfig, ServerConfig, TrustedIssuerConfig, BrandConfig, SdkConfig} from './Config/types';
+export type {ProductConfig, ServerConfig, TrustedIssuerConfig, BrandConfig, SdkConfig, Plane} from './Config/types';
 export type {ToastContextType, ToastSeverity} from './Toast/ToastContext';
 export type {RoutePaths} from './Routes/RoutesContext';
 
@@ -16,3 +16,8 @@ export {default as useToast} from './Toast/useToast';
 export {default as RoutesContext} from './Routes/RoutesContext';
 export {default as RoutesProvider, type RoutesProviderProps} from './Routes/RoutesProvider';
 export {default as useRoutes} from './Routes/useRoutes';
+
+// Managed resources: which resources this deployment does not own, because a control plane applied
+// them. Lives here so every configure-* package can ask, rather than only the console.
+export {useManagedResources, useIsManagedResource} from './ManagedResources';
+export type {ManagedResourceType, ManagedResourcesResponse} from './ManagedResources';

@@ -167,7 +167,7 @@ func (e *emailExecutor) resolveRecipientEmail(ctx *providers.NodeContext, logger
 		if e.entityProvider == nil {
 			return "", errors.New("entity provider is not configured for email resolution")
 		}
-		user, providerErr := e.entityProvider.GetEntity(userID)
+		user, providerErr := e.entityProvider.GetEntity(ctx.Context, userID)
 		if providerErr != nil {
 			if providerErr.Code == entityprovider.ErrorCodeEntityNotFound {
 				return "", nil

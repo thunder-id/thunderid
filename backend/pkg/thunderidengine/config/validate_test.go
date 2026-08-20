@@ -325,3 +325,30 @@ func (suite *ValidateTestSuite) TestOAuthConfig_SendServerErrorsToClientEnabled(
 		})
 	}
 }
+
+func TestServerConfig_Validate_DeploymentIDSource(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		claim   string
+		wantErr bool
+	}{
+		{"empty defaults to server", "", "", false},
+		{"server mode needs no claim", DeploymentIDSourceServer, "", false},
+		{"token mode with claim is valid", DeploymentIDSourceToken, "deploymentId", false},
+		{"token mode without claim is rejected", DeploymentIDSourceToken, "", true},
+		{"unknown source is rejected", "tenant", "deploymentId", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &ServerConfig{DeploymentIDSource: tt.source, DeploymentIDClaim: tt.claim}
+			err := c.Validate()
+			if tt.wantErr && err == nil {
+				t.Fatalf("expected error for source=%q claim=%q, got nil", tt.source, tt.claim)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error for source=%q claim=%q: %v", tt.source, tt.claim, err)
+			}
+		})
+	}
+}

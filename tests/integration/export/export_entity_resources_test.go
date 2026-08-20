@@ -198,13 +198,12 @@ func (ts *ExportEntityResourcesTestSuite) TestUserExportParameterizesCredentials
 	ts.Assert().NotContains(yamlContent, entityExportPassword,
 		"an exported user must not carry its plaintext credential")
 
-	// The exporter currently omits the credentials block entirely rather than emitting the template
-	// variable its DynamicPropertyFields declaration implies, so the assertion above holds because
-	// the field is dropped rather than because it is parameterized. Pinned here so the distinction
-	// is visible: if the exporter starts emitting a placeholder, this assertion should become a
-	// positive check for it.
-	ts.Assert().NotContains(yamlContent, "credentials:",
-		"the exporter omits credentials today; revisit this test if it starts parameterizing them")
+	// The credential leaves as the template variable its DynamicPropertyFields declaration implies,
+	// so the assertion above holds because the field is parameterized rather than dropped.
+	ts.Assert().Contains(yamlContent, "credentials:",
+		"an exported user must carry its credentials block")
+	ts.Assert().Contains(yamlContent, `password: "{{.USER_EXPORT_ENTITY_USER_PASSWORD}}"`,
+		"the credential must leave as a template variable")
 }
 
 // TestUserExportWithWildcard verifies the wildcard form enumerates users and includes the fixture.

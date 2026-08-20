@@ -13,6 +13,27 @@ import (
 const schemeHTTPS = "https"
 const localhost = "localhost"
 
+// Validate checks the server configuration. The deployment-id source is an exclusive switch: "token"
+// requires a claim name (there is no configured-identifier fallback in that mode), and any value
+// other than "server"/"token" (or empty, which means "server") is rejected.
+func (c *ServerConfig) Validate() error {
+	switch c.DeploymentIDSource {
+	case "", DeploymentIDSourceServer:
+		return nil
+	case DeploymentIDSourceToken:
+		if strings.TrimSpace(c.DeploymentIDClaim) == "" {
+			return fmt.Errorf(
+				"server.deployment_id_claim must be set when server.deployment_id_source is %q",
+				DeploymentIDSourceToken)
+		}
+		return nil
+	default:
+		return fmt.Errorf(
+			"server.deployment_id_source %q is not supported (use %q or %q)",
+			c.DeploymentIDSource, DeploymentIDSourceServer, DeploymentIDSourceToken)
+	}
+}
+
 // Validate checks the security configuration for correctness, including any nested
 // sections that expose their own Validate method.
 func (c *SecurityConfig) Validate() error {

@@ -23,8 +23,9 @@ func Initialize(
 	inboundClientService inboundclient.InboundClientServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	roleService role.RoleServiceInterface,
+	secretCapturer SecretCapturer,
 ) (AgentServiceInterface, declarativeresource.ResourceExporter, error) {
-	service := newAgentService(entityService, inboundClientService, ouService, roleService)
+	service := newAgentService(entityService, inboundClientService, ouService, roleService, secretCapturer)
 
 	storeMode := getAgentStoreMode()
 	if storeMode == serverconst.StoreModeComposite || storeMode == serverconst.StoreModeDeclarative {

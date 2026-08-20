@@ -5,6 +5,8 @@
 package thememock
 
 import (
+	"context"
+
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/design/theme/mgt"
 )
@@ -37,16 +39,16 @@ func (_m *themeMgtStoreInterfaceMock) EXPECT() *themeMgtStoreInterfaceMock_Expec
 }
 
 // CreateTheme provides a mock function for the type themeMgtStoreInterfaceMock
-func (_mock *themeMgtStoreInterfaceMock) CreateTheme(id string, theme thememgt.CreateThemeRequest) error {
-	ret := _mock.Called(id, theme)
+func (_mock *themeMgtStoreInterfaceMock) CreateTheme(ctx context.Context, id string, theme thememgt.CreateThemeRequest) error {
+	ret := _mock.Called(ctx, id, theme)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateTheme")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(string, thememgt.CreateThemeRequest) error); ok {
-		r0 = returnFunc(id, theme)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, thememgt.CreateThemeRequest) error); ok {
+		r0 = returnFunc(ctx, id, theme)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -59,25 +61,31 @@ type themeMgtStoreInterfaceMock_CreateTheme_Call struct {
 }
 
 // CreateTheme is a helper method to define mock.On call
+//   - ctx context.Context
 //   - id string
 //   - theme thememgt.CreateThemeRequest
-func (_e *themeMgtStoreInterfaceMock_Expecter) CreateTheme(id interface{}, theme interface{}) *themeMgtStoreInterfaceMock_CreateTheme_Call {
-	return &themeMgtStoreInterfaceMock_CreateTheme_Call{Call: _e.mock.On("CreateTheme", id, theme)}
+func (_e *themeMgtStoreInterfaceMock_Expecter) CreateTheme(ctx interface{}, id interface{}, theme interface{}) *themeMgtStoreInterfaceMock_CreateTheme_Call {
+	return &themeMgtStoreInterfaceMock_CreateTheme_Call{Call: _e.mock.On("CreateTheme", ctx, id, theme)}
 }
 
-func (_c *themeMgtStoreInterfaceMock_CreateTheme_Call) Run(run func(id string, theme thememgt.CreateThemeRequest)) *themeMgtStoreInterfaceMock_CreateTheme_Call {
+func (_c *themeMgtStoreInterfaceMock_CreateTheme_Call) Run(run func(ctx context.Context, id string, theme thememgt.CreateThemeRequest)) *themeMgtStoreInterfaceMock_CreateTheme_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
 		}
-		var arg1 thememgt.CreateThemeRequest
+		var arg1 string
 		if args[1] != nil {
-			arg1 = args[1].(thememgt.CreateThemeRequest)
+			arg1 = args[1].(string)
+		}
+		var arg2 thememgt.CreateThemeRequest
+		if args[2] != nil {
+			arg2 = args[2].(thememgt.CreateThemeRequest)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -88,22 +96,22 @@ func (_c *themeMgtStoreInterfaceMock_CreateTheme_Call) Return(err error) *themeM
 	return _c
 }
 
-func (_c *themeMgtStoreInterfaceMock_CreateTheme_Call) RunAndReturn(run func(id string, theme thememgt.CreateThemeRequest) error) *themeMgtStoreInterfaceMock_CreateTheme_Call {
+func (_c *themeMgtStoreInterfaceMock_CreateTheme_Call) RunAndReturn(run func(ctx context.Context, id string, theme thememgt.CreateThemeRequest) error) *themeMgtStoreInterfaceMock_CreateTheme_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // DeleteTheme provides a mock function for the type themeMgtStoreInterfaceMock
-func (_mock *themeMgtStoreInterfaceMock) DeleteTheme(id string) error {
-	ret := _mock.Called(id)
+func (_mock *themeMgtStoreInterfaceMock) DeleteTheme(ctx context.Context, id string) error {
+	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteTheme")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(string) error); ok {
-		r0 = returnFunc(id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, id)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -116,19 +124,25 @@ type themeMgtStoreInterfaceMock_DeleteTheme_Call struct {
 }
 
 // DeleteTheme is a helper method to define mock.On call
+//   - ctx context.Context
 //   - id string
-func (_e *themeMgtStoreInterfaceMock_Expecter) DeleteTheme(id interface{}) *themeMgtStoreInterfaceMock_DeleteTheme_Call {
-	return &themeMgtStoreInterfaceMock_DeleteTheme_Call{Call: _e.mock.On("DeleteTheme", id)}
+func (_e *themeMgtStoreInterfaceMock_Expecter) DeleteTheme(ctx interface{}, id interface{}) *themeMgtStoreInterfaceMock_DeleteTheme_Call {
+	return &themeMgtStoreInterfaceMock_DeleteTheme_Call{Call: _e.mock.On("DeleteTheme", ctx, id)}
 }
 
-func (_c *themeMgtStoreInterfaceMock_DeleteTheme_Call) Run(run func(id string)) *themeMgtStoreInterfaceMock_DeleteTheme_Call {
+func (_c *themeMgtStoreInterfaceMock_DeleteTheme_Call) Run(run func(ctx context.Context, id string)) *themeMgtStoreInterfaceMock_DeleteTheme_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -139,14 +153,14 @@ func (_c *themeMgtStoreInterfaceMock_DeleteTheme_Call) Return(err error) *themeM
 	return _c
 }
 
-func (_c *themeMgtStoreInterfaceMock_DeleteTheme_Call) RunAndReturn(run func(id string) error) *themeMgtStoreInterfaceMock_DeleteTheme_Call {
+func (_c *themeMgtStoreInterfaceMock_DeleteTheme_Call) RunAndReturn(run func(ctx context.Context, id string) error) *themeMgtStoreInterfaceMock_DeleteTheme_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetTheme provides a mock function for the type themeMgtStoreInterfaceMock
-func (_mock *themeMgtStoreInterfaceMock) GetTheme(id string) (thememgt.Theme, error) {
-	ret := _mock.Called(id)
+func (_mock *themeMgtStoreInterfaceMock) GetTheme(ctx context.Context, id string) (thememgt.Theme, error) {
+	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetTheme")
@@ -154,16 +168,16 @@ func (_mock *themeMgtStoreInterfaceMock) GetTheme(id string) (thememgt.Theme, er
 
 	var r0 thememgt.Theme
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(string) (thememgt.Theme, error)); ok {
-		return returnFunc(id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (thememgt.Theme, error)); ok {
+		return returnFunc(ctx, id)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) thememgt.Theme); ok {
-		r0 = returnFunc(id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) thememgt.Theme); ok {
+		r0 = returnFunc(ctx, id)
 	} else {
 		r0 = ret.Get(0).(thememgt.Theme)
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) error); ok {
-		r1 = returnFunc(id)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, id)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -176,19 +190,25 @@ type themeMgtStoreInterfaceMock_GetTheme_Call struct {
 }
 
 // GetTheme is a helper method to define mock.On call
+//   - ctx context.Context
 //   - id string
-func (_e *themeMgtStoreInterfaceMock_Expecter) GetTheme(id interface{}) *themeMgtStoreInterfaceMock_GetTheme_Call {
-	return &themeMgtStoreInterfaceMock_GetTheme_Call{Call: _e.mock.On("GetTheme", id)}
+func (_e *themeMgtStoreInterfaceMock_Expecter) GetTheme(ctx interface{}, id interface{}) *themeMgtStoreInterfaceMock_GetTheme_Call {
+	return &themeMgtStoreInterfaceMock_GetTheme_Call{Call: _e.mock.On("GetTheme", ctx, id)}
 }
 
-func (_c *themeMgtStoreInterfaceMock_GetTheme_Call) Run(run func(id string)) *themeMgtStoreInterfaceMock_GetTheme_Call {
+func (_c *themeMgtStoreInterfaceMock_GetTheme_Call) Run(run func(ctx context.Context, id string)) *themeMgtStoreInterfaceMock_GetTheme_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -199,14 +219,14 @@ func (_c *themeMgtStoreInterfaceMock_GetTheme_Call) Return(theme thememgt.Theme,
 	return _c
 }
 
-func (_c *themeMgtStoreInterfaceMock_GetTheme_Call) RunAndReturn(run func(id string) (thememgt.Theme, error)) *themeMgtStoreInterfaceMock_GetTheme_Call {
+func (_c *themeMgtStoreInterfaceMock_GetTheme_Call) RunAndReturn(run func(ctx context.Context, id string) (thememgt.Theme, error)) *themeMgtStoreInterfaceMock_GetTheme_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetThemeList provides a mock function for the type themeMgtStoreInterfaceMock
-func (_mock *themeMgtStoreInterfaceMock) GetThemeList(limit int, offset int) ([]thememgt.Theme, error) {
-	ret := _mock.Called(limit, offset)
+func (_mock *themeMgtStoreInterfaceMock) GetThemeList(ctx context.Context, limit int, offset int) ([]thememgt.Theme, error) {
+	ret := _mock.Called(ctx, limit, offset)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetThemeList")
@@ -214,18 +234,18 @@ func (_mock *themeMgtStoreInterfaceMock) GetThemeList(limit int, offset int) ([]
 
 	var r0 []thememgt.Theme
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(int, int) ([]thememgt.Theme, error)); ok {
-		return returnFunc(limit, offset)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) ([]thememgt.Theme, error)); ok {
+		return returnFunc(ctx, limit, offset)
 	}
-	if returnFunc, ok := ret.Get(0).(func(int, int) []thememgt.Theme); ok {
-		r0 = returnFunc(limit, offset)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) []thememgt.Theme); ok {
+		r0 = returnFunc(ctx, limit, offset)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]thememgt.Theme)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(int, int) error); ok {
-		r1 = returnFunc(limit, offset)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int) error); ok {
+		r1 = returnFunc(ctx, limit, offset)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -238,25 +258,31 @@ type themeMgtStoreInterfaceMock_GetThemeList_Call struct {
 }
 
 // GetThemeList is a helper method to define mock.On call
+//   - ctx context.Context
 //   - limit int
 //   - offset int
-func (_e *themeMgtStoreInterfaceMock_Expecter) GetThemeList(limit interface{}, offset interface{}) *themeMgtStoreInterfaceMock_GetThemeList_Call {
-	return &themeMgtStoreInterfaceMock_GetThemeList_Call{Call: _e.mock.On("GetThemeList", limit, offset)}
+func (_e *themeMgtStoreInterfaceMock_Expecter) GetThemeList(ctx interface{}, limit interface{}, offset interface{}) *themeMgtStoreInterfaceMock_GetThemeList_Call {
+	return &themeMgtStoreInterfaceMock_GetThemeList_Call{Call: _e.mock.On("GetThemeList", ctx, limit, offset)}
 }
 
-func (_c *themeMgtStoreInterfaceMock_GetThemeList_Call) Run(run func(limit int, offset int)) *themeMgtStoreInterfaceMock_GetThemeList_Call {
+func (_c *themeMgtStoreInterfaceMock_GetThemeList_Call) Run(run func(ctx context.Context, limit int, offset int)) *themeMgtStoreInterfaceMock_GetThemeList_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 int
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(int)
+			arg0 = args[0].(context.Context)
 		}
 		var arg1 int
 		if args[1] != nil {
 			arg1 = args[1].(int)
 		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -267,14 +293,14 @@ func (_c *themeMgtStoreInterfaceMock_GetThemeList_Call) Return(themes []thememgt
 	return _c
 }
 
-func (_c *themeMgtStoreInterfaceMock_GetThemeList_Call) RunAndReturn(run func(limit int, offset int) ([]thememgt.Theme, error)) *themeMgtStoreInterfaceMock_GetThemeList_Call {
+func (_c *themeMgtStoreInterfaceMock_GetThemeList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int) ([]thememgt.Theme, error)) *themeMgtStoreInterfaceMock_GetThemeList_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetThemeListCount provides a mock function for the type themeMgtStoreInterfaceMock
-func (_mock *themeMgtStoreInterfaceMock) GetThemeListCount() (int, error) {
-	ret := _mock.Called()
+func (_mock *themeMgtStoreInterfaceMock) GetThemeListCount(ctx context.Context) (int, error) {
+	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetThemeListCount")
@@ -282,16 +308,16 @@ func (_mock *themeMgtStoreInterfaceMock) GetThemeListCount() (int, error) {
 
 	var r0 int
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func() (int, error)); ok {
-		return returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (int, error)); ok {
+		return returnFunc(ctx)
 	}
-	if returnFunc, ok := ret.Get(0).(func() int); ok {
-		r0 = returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) int); ok {
+		r0 = returnFunc(ctx)
 	} else {
 		r0 = ret.Get(0).(int)
 	}
-	if returnFunc, ok := ret.Get(1).(func() error); ok {
-		r1 = returnFunc()
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -304,13 +330,20 @@ type themeMgtStoreInterfaceMock_GetThemeListCount_Call struct {
 }
 
 // GetThemeListCount is a helper method to define mock.On call
-func (_e *themeMgtStoreInterfaceMock_Expecter) GetThemeListCount() *themeMgtStoreInterfaceMock_GetThemeListCount_Call {
-	return &themeMgtStoreInterfaceMock_GetThemeListCount_Call{Call: _e.mock.On("GetThemeListCount")}
+//   - ctx context.Context
+func (_e *themeMgtStoreInterfaceMock_Expecter) GetThemeListCount(ctx interface{}) *themeMgtStoreInterfaceMock_GetThemeListCount_Call {
+	return &themeMgtStoreInterfaceMock_GetThemeListCount_Call{Call: _e.mock.On("GetThemeListCount", ctx)}
 }
 
-func (_c *themeMgtStoreInterfaceMock_GetThemeListCount_Call) Run(run func()) *themeMgtStoreInterfaceMock_GetThemeListCount_Call {
+func (_c *themeMgtStoreInterfaceMock_GetThemeListCount_Call) Run(run func(ctx context.Context)) *themeMgtStoreInterfaceMock_GetThemeListCount_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -320,7 +353,7 @@ func (_c *themeMgtStoreInterfaceMock_GetThemeListCount_Call) Return(n int, err e
 	return _c
 }
 
-func (_c *themeMgtStoreInterfaceMock_GetThemeListCount_Call) RunAndReturn(run func() (int, error)) *themeMgtStoreInterfaceMock_GetThemeListCount_Call {
+func (_c *themeMgtStoreInterfaceMock_GetThemeListCount_Call) RunAndReturn(run func(ctx context.Context) (int, error)) *themeMgtStoreInterfaceMock_GetThemeListCount_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -377,8 +410,8 @@ func (_c *themeMgtStoreInterfaceMock_IsThemeDeclarative_Call) RunAndReturn(run f
 }
 
 // IsThemeExist provides a mock function for the type themeMgtStoreInterfaceMock
-func (_mock *themeMgtStoreInterfaceMock) IsThemeExist(id string) (bool, error) {
-	ret := _mock.Called(id)
+func (_mock *themeMgtStoreInterfaceMock) IsThemeExist(ctx context.Context, id string) (bool, error) {
+	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for IsThemeExist")
@@ -386,16 +419,16 @@ func (_mock *themeMgtStoreInterfaceMock) IsThemeExist(id string) (bool, error) {
 
 	var r0 bool
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(string) (bool, error)); ok {
-		return returnFunc(id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, error)); ok {
+		return returnFunc(ctx, id)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) bool); ok {
-		r0 = returnFunc(id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, id)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) error); ok {
-		r1 = returnFunc(id)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, id)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -408,77 +441,17 @@ type themeMgtStoreInterfaceMock_IsThemeExist_Call struct {
 }
 
 // IsThemeExist is a helper method to define mock.On call
+//   - ctx context.Context
 //   - id string
-func (_e *themeMgtStoreInterfaceMock_Expecter) IsThemeExist(id interface{}) *themeMgtStoreInterfaceMock_IsThemeExist_Call {
-	return &themeMgtStoreInterfaceMock_IsThemeExist_Call{Call: _e.mock.On("IsThemeExist", id)}
+func (_e *themeMgtStoreInterfaceMock_Expecter) IsThemeExist(ctx interface{}, id interface{}) *themeMgtStoreInterfaceMock_IsThemeExist_Call {
+	return &themeMgtStoreInterfaceMock_IsThemeExist_Call{Call: _e.mock.On("IsThemeExist", ctx, id)}
 }
 
-func (_c *themeMgtStoreInterfaceMock_IsThemeExist_Call) Run(run func(id string)) *themeMgtStoreInterfaceMock_IsThemeExist_Call {
+func (_c *themeMgtStoreInterfaceMock_IsThemeExist_Call) Run(run func(ctx context.Context, id string)) *themeMgtStoreInterfaceMock_IsThemeExist_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
-func (_c *themeMgtStoreInterfaceMock_IsThemeExist_Call) Return(b bool, err error) *themeMgtStoreInterfaceMock_IsThemeExist_Call {
-	_c.Call.Return(b, err)
-	return _c
-}
-
-func (_c *themeMgtStoreInterfaceMock_IsThemeExist_Call) RunAndReturn(run func(id string) (bool, error)) *themeMgtStoreInterfaceMock_IsThemeExist_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// IsThemeHandleConflict provides a mock function for the type themeMgtStoreInterfaceMock
-func (_mock *themeMgtStoreInterfaceMock) IsThemeHandleConflict(handle string, excludeID string) (bool, error) {
-	ret := _mock.Called(handle, excludeID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for IsThemeHandleConflict")
-	}
-
-	var r0 bool
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(string, string) (bool, error)); ok {
-		return returnFunc(handle, excludeID)
-	}
-	if returnFunc, ok := ret.Get(0).(func(string, string) bool); ok {
-		r0 = returnFunc(handle, excludeID)
-	} else {
-		r0 = ret.Get(0).(bool)
-	}
-	if returnFunc, ok := ret.Get(1).(func(string, string) error); ok {
-		r1 = returnFunc(handle, excludeID)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsThemeHandleConflict'
-type themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call struct {
-	*mock.Call
-}
-
-// IsThemeHandleConflict is a helper method to define mock.On call
-//   - handle string
-//   - excludeID string
-func (_e *themeMgtStoreInterfaceMock_Expecter) IsThemeHandleConflict(handle interface{}, excludeID interface{}) *themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call {
-	return &themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call{Call: _e.mock.On("IsThemeHandleConflict", handle, excludeID)}
-}
-
-func (_c *themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call) Run(run func(handle string, excludeID string)) *themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
-		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
 		}
 		var arg1 string
 		if args[1] != nil {
@@ -492,27 +465,99 @@ func (_c *themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call) Run(run func(ha
 	return _c
 }
 
+func (_c *themeMgtStoreInterfaceMock_IsThemeExist_Call) Return(b bool, err error) *themeMgtStoreInterfaceMock_IsThemeExist_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *themeMgtStoreInterfaceMock_IsThemeExist_Call) RunAndReturn(run func(ctx context.Context, id string) (bool, error)) *themeMgtStoreInterfaceMock_IsThemeExist_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// IsThemeHandleConflict provides a mock function for the type themeMgtStoreInterfaceMock
+func (_mock *themeMgtStoreInterfaceMock) IsThemeHandleConflict(ctx context.Context, handle string, excludeID string) (bool, error) {
+	ret := _mock.Called(ctx, handle, excludeID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsThemeHandleConflict")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (bool, error)); ok {
+		return returnFunc(ctx, handle, excludeID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) bool); ok {
+		r0 = returnFunc(ctx, handle, excludeID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, handle, excludeID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsThemeHandleConflict'
+type themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call struct {
+	*mock.Call
+}
+
+// IsThemeHandleConflict is a helper method to define mock.On call
+//   - ctx context.Context
+//   - handle string
+//   - excludeID string
+func (_e *themeMgtStoreInterfaceMock_Expecter) IsThemeHandleConflict(ctx interface{}, handle interface{}, excludeID interface{}) *themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call {
+	return &themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call{Call: _e.mock.On("IsThemeHandleConflict", ctx, handle, excludeID)}
+}
+
+func (_c *themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call) Run(run func(ctx context.Context, handle string, excludeID string)) *themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
 func (_c *themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call) Return(b bool, err error) *themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call {
 	_c.Call.Return(b, err)
 	return _c
 }
 
-func (_c *themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call) RunAndReturn(run func(handle string, excludeID string) (bool, error)) *themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call {
+func (_c *themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call) RunAndReturn(run func(ctx context.Context, handle string, excludeID string) (bool, error)) *themeMgtStoreInterfaceMock_IsThemeHandleConflict_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UpdateTheme provides a mock function for the type themeMgtStoreInterfaceMock
-func (_mock *themeMgtStoreInterfaceMock) UpdateTheme(id string, theme thememgt.UpdateThemeRequest) error {
-	ret := _mock.Called(id, theme)
+func (_mock *themeMgtStoreInterfaceMock) UpdateTheme(ctx context.Context, id string, theme thememgt.UpdateThemeRequest) error {
+	ret := _mock.Called(ctx, id, theme)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateTheme")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(string, thememgt.UpdateThemeRequest) error); ok {
-		r0 = returnFunc(id, theme)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, thememgt.UpdateThemeRequest) error); ok {
+		r0 = returnFunc(ctx, id, theme)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -525,25 +570,31 @@ type themeMgtStoreInterfaceMock_UpdateTheme_Call struct {
 }
 
 // UpdateTheme is a helper method to define mock.On call
+//   - ctx context.Context
 //   - id string
 //   - theme thememgt.UpdateThemeRequest
-func (_e *themeMgtStoreInterfaceMock_Expecter) UpdateTheme(id interface{}, theme interface{}) *themeMgtStoreInterfaceMock_UpdateTheme_Call {
-	return &themeMgtStoreInterfaceMock_UpdateTheme_Call{Call: _e.mock.On("UpdateTheme", id, theme)}
+func (_e *themeMgtStoreInterfaceMock_Expecter) UpdateTheme(ctx interface{}, id interface{}, theme interface{}) *themeMgtStoreInterfaceMock_UpdateTheme_Call {
+	return &themeMgtStoreInterfaceMock_UpdateTheme_Call{Call: _e.mock.On("UpdateTheme", ctx, id, theme)}
 }
 
-func (_c *themeMgtStoreInterfaceMock_UpdateTheme_Call) Run(run func(id string, theme thememgt.UpdateThemeRequest)) *themeMgtStoreInterfaceMock_UpdateTheme_Call {
+func (_c *themeMgtStoreInterfaceMock_UpdateTheme_Call) Run(run func(ctx context.Context, id string, theme thememgt.UpdateThemeRequest)) *themeMgtStoreInterfaceMock_UpdateTheme_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
 		}
-		var arg1 thememgt.UpdateThemeRequest
+		var arg1 string
 		if args[1] != nil {
-			arg1 = args[1].(thememgt.UpdateThemeRequest)
+			arg1 = args[1].(string)
+		}
+		var arg2 thememgt.UpdateThemeRequest
+		if args[2] != nil {
+			arg2 = args[2].(thememgt.UpdateThemeRequest)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -554,7 +605,7 @@ func (_c *themeMgtStoreInterfaceMock_UpdateTheme_Call) Return(err error) *themeM
 	return _c
 }
 
-func (_c *themeMgtStoreInterfaceMock_UpdateTheme_Call) RunAndReturn(run func(id string, theme thememgt.UpdateThemeRequest) error) *themeMgtStoreInterfaceMock_UpdateTheme_Call {
+func (_c *themeMgtStoreInterfaceMock_UpdateTheme_Call) RunAndReturn(run func(ctx context.Context, id string, theme thememgt.UpdateThemeRequest) error) *themeMgtStoreInterfaceMock_UpdateTheme_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -743,7 +743,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithGroups() {
 		{Name: "viewer"},
 	}
 
-	suite.mockEntityProvider.On("GetTransitiveEntityGroups", "user-123").
+	suite.mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "user-123").
 		Return(userGroups, nil)
 	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
@@ -783,7 +783,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithGroups_EmptyGroups() {
 	suite.setupGetEntityReference("", "")
 	suite.setupGetUserAttributesEmpty()
 
-	suite.mockEntityProvider.On("GetTransitiveEntityGroups", "user-123").
+	suite.mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "user-123").
 		Return([]providers.EntityGroup{}, nil)
 	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
@@ -820,7 +820,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithGroups_GetUserGroupsFa
 	suite.setupGetEntityReference("", "")
 	suite.setupGetUserAttributesEmpty()
 
-	suite.mockEntityProvider.On("GetTransitiveEntityGroups", "user-123").Return(
+	suite.mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "user-123").Return(
 		nil, &entityprovider.EntityProviderError{
 			Message: "failed to fetch groups", Description: "database error",
 		})
@@ -1230,7 +1230,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithGroups()
 		{Name: "developer"},
 	}
 
-	suite.mockEntityProvider.On("GetTransitiveEntityGroups", "user-123").
+	suite.mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "user-123").
 		Return(userGroups, nil)
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.UserAttributeGroups},
@@ -1251,7 +1251,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithGroups_F
 		RuntimeData: map[string]string{},
 	}
 
-	suite.mockEntityProvider.On("GetTransitiveEntityGroups", "user-123").
+	suite.mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "user-123").
 		Return(nil, &entityprovider.EntityProviderError{Message: "groups_fetch_failed", Description: "database error"})
 
 	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.UserAttributeGroups},
@@ -1423,7 +1423,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithAttributeCache_GroupsI
 		{Name: "developer"},
 	}
 
-	suite.mockEntityProvider.On("GetTransitiveEntityGroups", "user-123").
+	suite.mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "user-123").
 		Return(userGroups, nil)
 	suite.mockAttributeCacheSvc.On("CreateAttributeCache", mock.Anything,
 		mock.MatchedBy(func(cache *attributecache.AttributeCache) bool {

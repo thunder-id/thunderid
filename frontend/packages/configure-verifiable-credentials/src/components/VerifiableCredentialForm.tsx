@@ -59,6 +59,8 @@ export interface VerifiableCredentialFormProps {
   error?: string;
   /** Called to clear a stale save error once the user edits a field or resets the form. */
   onErrorClear?: () => void;
+  /** Show the stored configuration without offering to change it. */
+  isReadOnly?: boolean;
 }
 
 interface TabPanelProps {
@@ -91,6 +93,7 @@ export default function VerifiableCredentialForm({
   onDelete = undefined,
   error = undefined,
   onErrorClear = undefined,
+  isReadOnly = false,
 }: VerifiableCredentialFormProps): JSX.Element {
   const {t} = useTranslation('verifiable-credentials');
 
@@ -445,7 +448,7 @@ export default function VerifiableCredentialForm({
         </TabPanel>
       )}
 
-      {dirty && (
+      {dirty && !isReadOnly && (
         <UnsavedChangesBar
           message={t('form.unsavedChanges')}
           resetLabel={t('common:actions.reset')}

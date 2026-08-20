@@ -10,6 +10,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -109,7 +110,7 @@ func (s *groupStore) GetGroupListCount(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	countResults, err := dbClient.QueryContext(ctx, QueryGetGroupListCount, s.deploymentID)
+	countResults, err := dbClient.QueryContext(ctx, QueryGetGroupListCount, deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute group list count query: %w", err)
 	}
@@ -130,7 +131,8 @@ func (s *groupStore) GetGroupList(ctx context.Context, limit, offset int) ([]Gro
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
-	results, err := dbClient.QueryContext(ctx, QueryGetGroupList, limit, offset, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, QueryGetGroupList, limit, offset, deployment.Resolve(ctx,
+		s.deploymentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute group list query: %w", err)
 	}
@@ -166,7 +168,7 @@ func (s *groupStore) GetGroupListCountByOUIDs(ctx context.Context, ouIDs []strin
 		return 0, fmt.Errorf("failed to get database client for counter query: %w", err)
 	}
 
-	query, args := buildGetGroupsCountByOUIDsQuery(ouIDs, s.deploymentID)
+	query, args := buildGetGroupsCountByOUIDsQuery(ouIDs, deployment.Resolve(ctx, s.deploymentID))
 
 	var count int
 	countResults, err := dbClient.QueryContext(ctx, query, args...)
@@ -196,7 +198,7 @@ func (s *groupStore) GetGroupListByOUIDs(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client for query: %w", err)
 	}
-	query, args := buildGetGroupsByOUIDsQuery(ouIDs, limit, offset, s.deploymentID)
+	query, args := buildGetGroupsByOUIDsQuery(ouIDs, limit, offset, deployment.Resolve(ctx, s.deploymentID))
 
 	results, err := dbClient.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -238,7 +240,7 @@ func (s *groupStore) CreateGroup(ctx context.Context, group GroupDAO) error {
 		group.OUID,
 		group.Name,
 		group.Description,
-		s.deploymentID,
+		deployment.Resolve(ctx, s.deploymentID),
 		now,
 		now,
 	)
@@ -246,7 +248,7 @@ func (s *groupStore) CreateGroup(ctx context.Context, group GroupDAO) error {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
 
-	err = addMembersToGroup(ctx, dbClient, group.ID, group.Members, s.deploymentID)
+	err = addMembersToGroup(ctx, dbClient, group.ID, group.Members, deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return err
 	}
@@ -261,7 +263,7 @@ func (s *groupStore) GetGroup(ctx context.Context, id string) (GroupDAO, error) 
 		return GroupDAO{}, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, QueryGetGroupByID, id, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, QueryGetGroupByID, id, deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return GroupDAO{}, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -290,7 +292,8 @@ func (s *groupStore) GetGroupMembers(ctx context.Context, groupID string, limit,
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, QueryGetGroupMembers, groupID, limit, offset, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, QueryGetGroupMembers, groupID, limit, offset, deployment.Resolve(ctx,
+		s.deploymentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get group members: %w", err)
 	}
@@ -317,7 +320,8 @@ func (s *groupStore) GetGroupMemberCount(ctx context.Context, groupID string) (i
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	countResults, err := dbClient.QueryContext(ctx, QueryGetGroupMemberCount, groupID, s.deploymentID)
+	countResults, err := dbClient.QueryContext(ctx, QueryGetGroupMemberCount, groupID, deployment.Resolve(ctx,
+		s.deploymentID))
 	if err != nil {
 		return 0, fmt.Errorf("failed to get group member count: %w", err)
 	}
@@ -348,7 +352,7 @@ func (s *groupStore) UpdateGroup(ctx context.Context, group GroupDAO) error {
 		group.Name,
 		group.Description,
 		time.Now().UTC(),
-		s.deploymentID,
+		deployment.Resolve(ctx, s.deploymentID),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
@@ -370,12 +374,12 @@ func (s *groupStore) DeleteGroup(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	_, err = dbClient.ExecuteContext(ctx, QueryDeleteGroupMembers, id, s.deploymentID)
+	_, err = dbClient.ExecuteContext(ctx, QueryDeleteGroupMembers, id, deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return fmt.Errorf("failed to delete group members: %w", err)
 	}
 
-	result, err := dbClient.ExecuteContext(ctx, QueryDeleteGroup, id, s.deploymentID)
+	result, err := dbClient.ExecuteContext(ctx, QueryDeleteGroup, id, deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -398,7 +402,7 @@ func (s *groupStore) ValidateGroupIDs(ctx context.Context, groupIDs []string) ([
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	query, args, err := buildBulkGroupExistsQueryFunc(groupIDs, s.deploymentID)
+	query, args, err := buildBulkGroupExistsQueryFunc(groupIDs, deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build bulk group exists query: %w", err)
 	}
@@ -434,7 +438,7 @@ func (s *groupStore) CheckGroupNameConflictForCreate(
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	return checkGroupNameConflictForCreate(ctx, dbClient, name, oUID, s.deploymentID)
+	return checkGroupNameConflictForCreate(ctx, dbClient, name, oUID, deployment.Resolve(ctx, s.deploymentID))
 }
 
 // CheckGroupNameConflictForUpdate checks if the new group name conflicts with other groups
@@ -446,7 +450,7 @@ func (s *groupStore) CheckGroupNameConflictForUpdate(
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	return checkGroupNameConflictForUpdate(ctx, dbClient, name, oUID, groupID, s.deploymentID)
+	return checkGroupNameConflictForUpdate(ctx, dbClient, name, oUID, groupID, deployment.Resolve(ctx, s.deploymentID))
 }
 
 // GetGroupsByOrganizationUnitCount retrieves the total count of groups in a specific organization unit.
@@ -457,7 +461,7 @@ func (s *groupStore) GetGroupsByOrganizationUnitCount(ctx context.Context, oUID 
 	}
 
 	countResults, err := dbClient.QueryContext(
-		ctx, QueryGetGroupsByOrganizationUnitCount, oUID, s.deploymentID)
+		ctx, QueryGetGroupsByOrganizationUnitCount, oUID, deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return 0, fmt.Errorf("failed to get group count by organization unit: %w", err)
 	}
@@ -483,7 +487,7 @@ func (s *groupStore) GetGroupsByOrganizationUnit(
 	}
 
 	results, err := dbClient.QueryContext(
-		ctx, QueryGetGroupsByOrganizationUnit, oUID, limit, offset, s.deploymentID)
+		ctx, QueryGetGroupsByOrganizationUnit, oUID, limit, offset, deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get groups by organization unit: %w", err)
 	}
@@ -513,7 +517,7 @@ func (s *groupStore) AddGroupMembers(ctx context.Context, groupID string, member
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	return addMembersToGroup(ctx, dbClient, groupID, members, s.deploymentID)
+	return addMembersToGroup(ctx, dbClient, groupID, members, deployment.Resolve(ctx, s.deploymentID))
 }
 
 // RemoveGroupMembers removes members from a group.
@@ -526,7 +530,7 @@ func (s *groupStore) RemoveGroupMembers(ctx context.Context, groupID string, mem
 	for _, member := range members {
 		_, err := dbClient.ExecuteContext(
 			ctx, QueryDeleteGroupMember,
-			groupID, member.Type, member.ID, s.deploymentID,
+			groupID, member.Type, member.ID, deployment.Resolve(ctx, s.deploymentID),
 		)
 		if err != nil {
 			return fmt.Errorf("failed to remove member from group: %w", err)
@@ -546,7 +550,7 @@ func (s *groupStore) DeleteMembershipsByMember(
 	}
 
 	rowsAffected, err := dbClient.ExecuteContext(
-		ctx, QueryDeleteGroupMembershipsByMember, memberType, memberID, s.deploymentID)
+		ctx, QueryDeleteGroupMembershipsByMember, memberType, memberID, deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return 0, fmt.Errorf("failed to delete memberships for member: %w", err)
 	}
@@ -575,7 +579,7 @@ func (s *groupStore) GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]G
 		}
 		chunk := groupIDs[start:end]
 
-		query, args, err := buildGetGroupsByIDsQuery(chunk, s.deploymentID)
+		query, args, err := buildGetGroupsByIDsQuery(chunk, deployment.Resolve(ctx, s.deploymentID))
 		if err != nil {
 			return nil, fmt.Errorf("failed to build get groups by IDs query: %w", err)
 		}
@@ -617,7 +621,8 @@ func (s *groupStore) GetTransitiveGroupsForEntity(
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, QueryGetTransitiveGroupsForMember, entityID, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, QueryGetTransitiveGroupsForMember, entityID, deployment.Resolve(ctx,
+		s.deploymentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transitive groups for entity: %w", err)
 	}

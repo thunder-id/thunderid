@@ -220,8 +220,10 @@ func validateOUWrapper(data interface{}, fileStore *fileBasedStore, dbStore orga
 		return fmt.Errorf("organization unit handle is required")
 	}
 
-	// Check for duplicate ID in the file store
-	if existingData, err := fileStore.GenericFileBasedStore.Get(ou.ID); err == nil && existingData != nil {
+	// Check for duplicate ID in the file store. Loading is not a read on behalf of a deployment: it
+	// happens as the file is parsed, before any request exists.
+	if existingData, err := fileStore.GenericFileBasedStore.GetForLoad(ou.ID); err == nil &&
+		existingData != nil {
 		return fmt.Errorf("duplicate organization unit ID '%s': "+
 			"an organization unit with this ID already exists in declarative resources", ou.ID)
 	}

@@ -78,13 +78,14 @@ func toResponse(dto CredentialConfigurationDTO) credentialConfigurationResponse 
 // CredentialConfigurationList is the minimal projection returned by the list
 // endpoint. It contains only the fields the management UI renders in the table.
 type CredentialConfigurationList struct {
-	ID       string `json:"id"`
-	Handle   string `json:"handle"`
-	OUID     string `json:"ouId"`
-	OUHandle string `json:"ouHandle,omitempty"`
-	Format   string `json:"format"`
-	VCT      string `json:"vct"`
-	Name     string `json:"name,omitempty"`
+	ID         string `json:"id"`
+	Handle     string `json:"handle"`
+	OUID       string `json:"ouId"`
+	OUHandle   string `json:"ouHandle,omitempty"`
+	Format     string `json:"format"`
+	VCT        string `json:"vct"`
+	Name       string `json:"name,omitempty"`
+	IsReadOnly bool   `json:"isReadOnly"`
 }
 
 // toConfigSummary projects a full DTO to a list summary.

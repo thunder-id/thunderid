@@ -124,7 +124,7 @@ func (e *credentialSetter) Execute(ctx *providers.NodeContext) (*providers.Execu
 	}
 
 	// Update user credentials
-	svcErr := e.entityProvider.UpdateCredentials(userID, credentials)
+	svcErr := e.entityProvider.UpdateCredentials(ctx.Context, userID, credentials)
 	if svcErr != nil {
 		logger.Debug(ctx.Context, "Failed to update user credentials",
 			log.MaskedString(log.LoggerKeyUserID, userID))

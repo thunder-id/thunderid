@@ -14,6 +14,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -321,6 +322,10 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 
 	statusCode := http.StatusBadRequest
 	switch svcErr.Code {
+	case managedresource.ErrorResourceManaged.Code:
+		// The request is well formed and the resource exists. The caller simply may not change it
+		// here, which is what forbidden means.
+		statusCode = http.StatusForbidden
 	case ErrorFlowNotFound.Code, ErrorVersionNotFound.Code:
 		statusCode = http.StatusNotFound
 	case ErrorDuplicateFlowID.Code:

@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -398,6 +399,8 @@ func (rs *resourceService) GetResourceServerList(
 		return nil, &tidcommon.InternalServerError
 	}
 
+	markManagedResourceServers(ctx, resourceServers)
+
 	response := &ResourceServerList{
 		TotalResults:    totalCount,
 		ResourceServers: resourceServers,
@@ -414,6 +417,11 @@ func (rs *resourceService) UpdateResourceServer(
 	ctx context.Context,
 	id string, resourceServer providers.ResourceServer,
 ) (*providers.ResourceServer, *tidcommon.ServiceError) {
+	// A resource applied from the control plane is owned there. Changing it here would last only
+	// until the next promotion overwrote it, so the change is refused instead.
+	if svcErr := managedresource.Guard(ctx, managedresource.TypeResourceServer, id); svcErr != nil {
+		return nil, svcErr
+	}
 	if id == "" {
 		return nil, &ErrorMissingID
 	}
@@ -507,6 +515,11 @@ func (rs *resourceService) UpdateResourceServer(
 
 // DeleteResourceServer deletes a resource server.
 func (rs *resourceService) DeleteResourceServer(ctx context.Context, id string) *tidcommon.ServiceError {
+	// A resource applied from the control plane is owned there. Changing it here would last only
+	// until the next promotion overwrote it, so the change is refused instead.
+	if svcErr := managedresource.Guard(ctx, managedresource.TypeResourceServer, id); svcErr != nil {
+		return svcErr
+	}
 	if id == "" {
 		return &ErrorMissingID
 	}
@@ -1530,4 +1543,18 @@ func derivePermission(
 		return parentResource.Permission + resourceServer.Delimiter + handle
 	}
 	return handle
+}
+
+// markManagedResourceServers reports the control plane owned entries as read only, which is what a
+// client renders its edit and delete controls from.
+func markManagedResourceServers(ctx context.Context, items []providers.ResourceServer) {
+	managed := managedresource.Default().ManagedIDs(ctx, managedresource.TypeResourceServer)
+	if len(managed) == 0 {
+		return
+	}
+	for i := range items {
+		if managed[items[i].ID] {
+			items[i].IsReadOnly = true
+		}
+	}
 }

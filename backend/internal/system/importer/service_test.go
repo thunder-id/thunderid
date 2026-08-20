@@ -163,7 +163,11 @@ func (f *fakeApplicationService) UpdateApplication(
 	return app, nil
 }
 
-func (f *fakeApplicationService) DeleteApplication(_ context.Context, _ string) *tidcommon.ServiceError {
+func (f *fakeApplicationService) DeleteApplication(_ context.Context, appID string) *tidcommon.ServiceError {
+	if _, ok := f.existing[appID]; !ok {
+		return &application.ErrorApplicationNotFound
+	}
+	delete(f.existing, appID)
 	return nil
 }
 

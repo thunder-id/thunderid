@@ -9,6 +9,14 @@ vi.mock('@thunderid/react-router', () => ({
   ProtectedRoute: ({children}: {children: React.ReactNode}) => <div data-testid="protected-route">{children}</div>,
 }));
 
+// App is rendered here without the ConfigProvider that wraps it in the running app, so useConfig is
+// stubbed. PlaneRouteGuard reads the plane through it on every render. The rest of the module, in
+// particular ToastProvider, stays real.
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useConfig: () => ({config: {plane: 'hybrid'}}),
+}));
+
 vi.mock('@thunderid/configure-translations', () => ({
   TranslationCreateProvider: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
   TranslationCreatePage: () => <div data-testid="translation-create-page" />,

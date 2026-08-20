@@ -261,7 +261,7 @@ func validateRoleWrapper(
 	}
 
 	if fileStore != nil {
-		if existingData, err := fileStore.GenericFileBasedStore.Get(role.ID); err == nil && existingData != nil {
+		if existingData, err := fileStore.GenericFileBasedStore.GetForLoad(role.ID); err == nil && existingData != nil {
 			return fmt.Errorf("duplicate role ID '%s': role already exists in declarative resources", role.ID)
 		}
 	}

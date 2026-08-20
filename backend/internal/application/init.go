@@ -33,9 +33,10 @@ func Initialize(
 	i18nService i18nmgt.I18nServiceInterface,
 	cryptoSvc providers.RuntimeCryptoProvider,
 	serverConfigSvc serverconfig.ServerConfigService,
+	secretCapturer SecretCapturer,
 ) (ApplicationServiceInterface, declarativeresource.ResourceExporter, error) {
 	appService := newApplicationService(
-		inboundClient, entityProvider, ouService, i18nService, cryptoSvc, serverConfigSvc,
+		inboundClient, entityProvider, ouService, i18nService, cryptoSvc, serverConfigSvc, secretCapturer,
 	)
 
 	if err := entityService.LoadIndexedAttributes(getAppIndexedAttributes()); err != nil {

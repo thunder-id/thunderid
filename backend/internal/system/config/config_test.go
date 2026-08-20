@@ -1455,6 +1455,279 @@ func (suite *ConfigTestSuite) TestSecurityConfig_Validate_DelegatesToTrustedIssu
 	assert.Contains(suite.T(), err.Error(), "trusted_issuer.jwks_url")
 }
 
+func (suite *ConfigTestSuite) TestLoadConfigParsesChannelSection() {
+	tempDir := suite.T().TempDir()
+
+	userContent := `
+channel:
+  server:
+    enabled: true
+    path: "/cp/connect"
+    auth_token: "tok"
+    rpc_timeout_seconds: 30
+  client:
+    enabled: true
+    id: "dp-1"
+    control_plane_url: "wss://cp.example/cp/connect"
+    auth_token: "tok"
+    ping_interval_seconds: 30
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	userFile := suite.createTempFile(tempDir, "user*.yaml", userContent)
+
+	config, err := LoadConfig(userFile, "", tempDir)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), config)
+
+	assert.True(suite.T(), config.Channel.Server.Enabled)
+	assert.Equal(suite.T(), "/cp/connect", config.Channel.Server.Path)
+	assert.Equal(suite.T(), 30, config.Channel.Server.RPCTimeoutSeconds)
+	assert.Equal(suite.T(), "dp-1", config.Channel.Client.ID)
+	assert.Equal(suite.T(), 30, config.Channel.Client.PingIntervalSeconds)
+}
+
+func (suite *ConfigTestSuite) TestChannelServerConfigValidate() {
+	tests := []struct {
+		name        string
+		cfg         ChannelServerConfig
+		expectError bool
+		errSubstr   string
+	}{
+		{name: "DisabledEmptyAuthToken", cfg: ChannelServerConfig{Enabled: false}, expectError: false},
+		{
+			// A control plane that issues a token per data plane keeps them in its own database, so
+			// an empty auth_token is a deliberate configuration rather than a missing one.
+			name:        "EnabledEmptyAuthToken",
+			cfg:         ChannelServerConfig{Enabled: true},
+			expectError: false,
+		},
+		{
+			name:        "EnabledWithAuthToken",
+			cfg:         ChannelServerConfig{Enabled: true, AuthToken: "tok"},
+			expectError: false,
+		},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			err := tc.cfg.Validate()
+			if tc.expectError {
+				assert.Error(suite.T(), err)
+				assert.Contains(suite.T(), err.Error(), tc.errSubstr)
+			} else {
+				assert.NoError(suite.T(), err)
+			}
+		})
+	}
+}
+
+func (suite *ConfigTestSuite) TestChannelClientConfigValidate() {
+	tests := []struct {
+		name        string
+		cfg         ChannelClientConfig
+		expectError bool
+		errSubstr   string
+	}{
+		{name: "DisabledEmptyEverything", cfg: ChannelClientConfig{Enabled: false}, expectError: false},
+		{
+			name: "EnabledMissingID",
+			cfg: ChannelClientConfig{
+				Enabled: true, ControlPlaneURL: "wss://cp.example/connect", AuthToken: "tok",
+			},
+			expectError: true,
+			errSubstr:   "channel.client.id",
+		},
+		{
+			name:        "EnabledMissingControlPlaneURL",
+			cfg:         ChannelClientConfig{Enabled: true, ID: "dp-1", AuthToken: "tok"},
+			expectError: true,
+			errSubstr:   "channel.client.control_plane_url",
+		},
+		{
+			name: "EnabledInvalidControlPlaneURL",
+			cfg: ChannelClientConfig{
+				Enabled: true, ID: "dp-1", ControlPlaneURL: "://bad-url", AuthToken: "tok",
+			},
+			expectError: true,
+			errSubstr:   "channel.client.control_plane_url",
+		},
+		{
+			name: "EnabledWrongScheme",
+			cfg: ChannelClientConfig{
+				Enabled: true, ID: "dp-1", ControlPlaneURL: "https://cp.example/connect", AuthToken: "tok",
+			},
+			expectError: true,
+			errSubstr:   "ws or wss",
+		},
+		{
+			name: "EnabledMissingAuthToken",
+			cfg: ChannelClientConfig{
+				Enabled: true, ID: "dp-1", ControlPlaneURL: "wss://cp.example/connect",
+			},
+			expectError: true,
+			errSubstr:   "channel.client.auth_token",
+		},
+		{
+			name: "EnabledValidWSS",
+			cfg: ChannelClientConfig{
+				Enabled: true, ID: "dp-1", ControlPlaneURL: "wss://cp.example/connect", AuthToken: "tok",
+			},
+			expectError: false,
+		},
+		{
+			name: "EnabledValidWS",
+			cfg: ChannelClientConfig{
+				Enabled: true, ID: "dp-1", ControlPlaneURL: "ws://cp.example/connect", AuthToken: "tok",
+			},
+			expectError: false,
+		},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			err := tc.cfg.Validate()
+			if tc.expectError {
+				assert.Error(suite.T(), err)
+				assert.Contains(suite.T(), err.Error(), tc.errSubstr)
+			} else {
+				assert.NoError(suite.T(), err)
+			}
+		})
+	}
+}
+
+func (suite *ConfigTestSuite) TestChannelConfigValidate_DelegatesToServerAndClient() {
+	// A server section with no shared token is valid: a control plane that issues a token per data
+	// plane keeps them in its own database, and auth_token is only the fallback for one that does not.
+	cfg := ChannelConfig{Server: ChannelServerConfig{Enabled: true}}
+	assert.NoError(suite.T(), cfg.Validate())
+
+	// A misconfigured client section must surface through ChannelConfig.Validate.
+	cfg = ChannelConfig{
+		Server: ChannelServerConfig{Enabled: true, AuthToken: "tok"},
+		Client: ChannelClientConfig{Enabled: true},
+	}
+	err := cfg.Validate()
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "channel.client.id")
+
+	// Both disabled must be a no-op.
+	assert.NoError(suite.T(), (&ChannelConfig{}).Validate())
+}
+
+func (suite *ConfigTestSuite) TestLoadConfig_ChannelValidation() {
+	// LoadConfig must surface channel validation errors, matching the pattern used for the other
+	// validated sections (security, DPoP, notification).
+	tests := []struct {
+		name        string
+		content     string
+		expectError bool
+		errSubstr   string
+	}{
+		{
+			// A control plane that issues a token per data plane keeps them in its own database, so an
+			// enabled server with no shared token loads rather than being rejected as incomplete.
+			name: "ServerEnabledWithoutASharedToken",
+			content: `
+channel:
+  server:
+    enabled: true
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`,
+			expectError: false,
+		},
+		{
+			name: "ClientEnabledMissingID",
+			content: `
+channel:
+  client:
+    enabled: true
+    control_plane_url: "wss://cp.example/cp/connect"
+    auth_token: "tok"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`,
+			expectError: true,
+			errSubstr:   "channel.client.id",
+		},
+		{
+			name: "ClientEnabledInvalidScheme",
+			content: `
+channel:
+  client:
+    enabled: true
+    id: "dp-1"
+    control_plane_url: "https://cp.example/cp/connect"
+    auth_token: "tok"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`,
+			expectError: true,
+			errSubstr:   "ws or wss",
+		},
+		{
+			name: "ServerAndClientEnabledValid",
+			content: `
+channel:
+  server:
+    enabled: true
+    auth_token: "tok"
+  client:
+    enabled: true
+    id: "dp-1"
+    control_plane_url: "wss://cp.example/cp/connect"
+    auth_token: "tok"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`,
+			expectError: false,
+		},
+		{
+			name: "BothDisabledNoValidation",
+			content: `
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`,
+			expectError: false,
+		},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			tempDir := suite.T().TempDir()
+			userFile := suite.createTempFile(tempDir, "channel-validation*.yaml", tc.content)
+
+			cfg, err := LoadConfig(userFile, "", tempDir)
+			if tc.expectError {
+				assert.Error(suite.T(), err)
+				assert.Nil(suite.T(), cfg)
+				assert.Contains(suite.T(), err.Error(), tc.errSubstr)
+			} else {
+				assert.NoError(suite.T(), err)
+				assert.NotNil(suite.T(), cfg)
+			}
+		})
+	}
+}
+
 func (suite *ConfigTestSuite) createTempFile(dir, pattern, content string) string {
 	tempFile, err := os.CreateTemp(dir, pattern)
 	suite.Require().NoError(err, "failed to create temp file")
@@ -1621,4 +1894,34 @@ func (suite *ConfigTestSuite) TestNotificationConfig_Validate_DelegatesToOTP() {
 	err := cfg.Validate()
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "notification.otp.length")
+}
+
+// A control plane that issues a token per data plane keeps them in its own database, so an empty
+// auth_token is a valid configuration rather than a missing one.
+func TestChannelServerNeedsNoSharedTokenWhenItIssuesItsOwn(t *testing.T) {
+	cfg := ChannelServerConfig{Enabled: true}
+
+	assert.NoError(t, cfg.Validate())
+}
+
+// The scope is configurable because the authorization server issuing these tokens is not always this
+// one, and its scope naming is its own. Unset, it falls back to the documented default.
+func TestPromotionScopeFallsBackToTheDefault(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure PromotionConfig
+		want      string
+	}{
+		{name: "unset", configure: PromotionConfig{}, want: DefaultPromotionScope},
+		{name: "blank", configure: PromotionConfig{Scope: "   "}, want: DefaultPromotionScope},
+		{name: "configured", configure: PromotionConfig{Scope: "release:promote"}, want: "release:promote"},
+		{name: "trimmed", configure: PromotionConfig{Scope: "  release:promote  "}, want: "release:promote"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := test.configure.PromotionScope(); got != test.want {
+				t.Fatalf("expected %q, got %q", test.want, got)
+			}
+		})
+	}
 }

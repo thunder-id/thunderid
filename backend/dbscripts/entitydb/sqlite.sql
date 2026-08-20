@@ -1,14 +1,15 @@
 -- Table to store Organization Units
 CREATE TABLE "ORGANIZATION_UNIT" (
     DEPLOYMENT_ID   VARCHAR(255) NOT NULL,
-    OU_ID       VARCHAR(36) PRIMARY KEY,
+    OU_ID       VARCHAR(36) NOT NULL,
     PARENT_ID   VARCHAR(36),
     HANDLE      VARCHAR(100)        NOT NULL,
     NAME        VARCHAR(100)        NOT NULL,
     DESCRIPTION VARCHAR(255),
     METADATA     TEXT,
     CREATED_AT  TEXT NOT NULL,
-    UPDATED_AT  TEXT NOT NULL
+    UPDATED_AT  TEXT NOT NULL,
+    PRIMARY KEY (DEPLOYMENT_ID, OU_ID)
 );
 
 -- Composite index for handle-based OU lookups (queryGetRootOrganizationUnitByHandle, queryGetOrganizationUnitByHandle)
@@ -17,7 +18,7 @@ CREATE INDEX idx_ou_handle_parent ON "ORGANIZATION_UNIT" (DEPLOYMENT_ID, HANDLE,
 -- Table to store Entities (unified identity principals: users, applications, agents)
 CREATE TABLE "ENTITY" (
     DEPLOYMENT_ID       VARCHAR(255) NOT NULL,
-    ID                  VARCHAR(36)  PRIMARY KEY,
+    ID                  VARCHAR(36) NOT NULL,
     CATEGORY            VARCHAR(50)  NOT NULL,
     TYPE                VARCHAR(50)  NOT NULL,
     STATE               VARCHAR(50)  NOT NULL,
@@ -27,7 +28,8 @@ CREATE TABLE "ENTITY" (
     CREDENTIALS         TEXT,
     SYSTEM_CREDENTIALS  TEXT,
     CREATED_AT          TEXT NOT NULL,
-    UPDATED_AT          TEXT NOT NULL
+    UPDATED_AT          TEXT NOT NULL,
+    PRIMARY KEY (DEPLOYMENT_ID, ID)
 );
 
 -- Composite index for category-based entity listing
@@ -39,12 +41,13 @@ CREATE INDEX idx_entity_ou_deployment ON "ENTITY" (DEPLOYMENT_ID, OU_ID);
 -- Table to store Groups
 CREATE TABLE "GROUP" (
     DEPLOYMENT_ID   VARCHAR(255) NOT NULL,
-    ID          VARCHAR(36)        PRIMARY KEY,
+    ID          VARCHAR(36) NOT NULL,
     OU_ID       VARCHAR(36)        NOT NULL,
     NAME        VARCHAR(50)        NOT NULL,
     DESCRIPTION VARCHAR(255),
     CREATED_AT  TEXT NOT NULL,
-    UPDATED_AT  TEXT NOT NULL
+    UPDATED_AT  TEXT NOT NULL,
+    PRIMARY KEY (DEPLOYMENT_ID, ID)
 );
 
 -- Composite index for name conflict checks within an OU (QueryCheckGroupNameConflict)
@@ -70,7 +73,7 @@ CREATE TABLE "ENTITY_IDENTIFIER" (
     SOURCE          VARCHAR(50)  NOT NULL,
     CREATED_AT      TEXT NOT NULL,
     PRIMARY KEY (ENTITY_ID, DEPLOYMENT_ID, NAME),
-    FOREIGN KEY (ENTITY_ID) REFERENCES "ENTITY" (ID) ON DELETE CASCADE
+    FOREIGN KEY (DEPLOYMENT_ID, ENTITY_ID) REFERENCES "ENTITY" (DEPLOYMENT_ID, ID) ON DELETE CASCADE
 );
 
 -- Index for fast identifier lookups (primary use case for authentication)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -213,7 +214,22 @@ func (s *configurationService) ListCredentialConfigurationSummaries(
 		return nil, &tidcommon.InternalServerError
 	}
 	s.populateSummaryOUHandles(ctx, summaries)
+	markManagedConfigurations(ctx, summaries)
 	return summaries, nil
+}
+
+// markManagedConfigurations reports the control plane owned entries as read only, which is what a
+// client renders its edit and delete controls from.
+func markManagedConfigurations(ctx context.Context, items []CredentialConfigurationList) {
+	managed := managedresource.Default().ManagedIDs(ctx, managedresource.TypeCredentialConfiguration)
+	if len(managed) == 0 {
+		return
+	}
+	for i := range items {
+		if managed[items[i].ID] {
+			items[i].IsReadOnly = true
+		}
+	}
 }
 
 // populateSummaryOUHandles resolves each summary's owning OU handle for display.
@@ -251,6 +267,11 @@ func (s *configurationService) populateSummaryOUHandles(
 func (s *configurationService) UpdateCredentialConfiguration(
 	ctx context.Context, id string, dto *CredentialConfigurationDTO,
 ) (*CredentialConfigurationDTO, *tidcommon.ServiceError) {
+	// A resource applied from the control plane is owned there. Changing it here would last only
+	// until the next promotion overwrote it, so the change is refused instead.
+	if svcErr := managedresource.Guard(ctx, managedresource.TypeCredentialConfiguration, id); svcErr != nil {
+		return nil, svcErr
+	}
 	if strings.TrimSpace(id) == "" {
 		return nil, &ErrorConfigurationInvalidRequest
 	}
@@ -296,6 +317,9 @@ func (s *configurationService) UpdateCredentialConfiguration(
 func (s *configurationService) DeleteCredentialConfiguration(
 	ctx context.Context, id string,
 ) *tidcommon.ServiceError {
+	if svcErr := managedresource.Guard(ctx, managedresource.TypeCredentialConfiguration, id); svcErr != nil {
+		return svcErr
+	}
 	if strings.TrimSpace(id) == "" {
 		return &ErrorConfigurationInvalidRequest
 	}

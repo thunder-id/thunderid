@@ -10,6 +10,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 )
 
 // serverConfigStoreInterface is the unified store contract. A read returns the section's layers; each
@@ -50,7 +51,8 @@ func (s *serverConfigStore) GetServerConfig(ctx context.Context, name ConfigName
 		return storeLayers{}, err
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryGetServerConfigByName, string(name), s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, queryGetServerConfigByName, string(name),
+		deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return storeLayers{}, fmt.Errorf("failed to get server config: %w", err)
 	}
@@ -73,7 +75,7 @@ func (s *serverConfigStore) UpsertServerConfig(ctx context.Context, cfg ServerCo
 	}
 
 	_, err = dbClient.ExecuteContext(ctx, queryUpsertServerConfig, string(cfg.Name), string(cfg.Value),
-		s.deploymentID)
+		deployment.Resolve(ctx, s.deploymentID))
 	if err != nil {
 		return fmt.Errorf("failed to upsert server config: %w", err)
 	}

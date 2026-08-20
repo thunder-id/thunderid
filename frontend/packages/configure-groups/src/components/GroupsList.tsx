@@ -10,6 +10,7 @@ import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import GroupDeleteDialog from './GroupDeleteDialog';
+import {useIsManagedResource} from '@thunderid/contexts';
 import useGetGroups from '../api/useGetGroups';
 import useGroupRoutes from '../hooks/useGroupRoutes';
 import type {GroupBasic} from '../models/group';
@@ -19,6 +20,8 @@ import type {GroupBasic} from '../models/group';
  */
 export default function GroupsList(): JSX.Element {
   const navigate = useNavigate();
+  // A group applied from the control plane is read only here, the same as a declarative one.
+  const isManagedGroup = useIsManagedResource('group');
   const {t} = useTranslation();
   const logger = useLogger('GroupsList');
   const dataGridLocaleText = useDataGridLocaleText();
@@ -98,7 +101,7 @@ export default function GroupsList(): JSX.Element {
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<GroupBasic>): JSX.Element => (
           <ListingTable.RowActions>
-            {params.row.isReadOnly ? (
+            {params.row.isReadOnly || isManagedGroup(params.row.id) ? (
               <Tooltip title={t('common:status.readOnly', 'Read Only')}>
                 <IconButton size="small" disableRipple sx={{cursor: 'default'}}>
                   <Eye size={16} />
@@ -135,7 +138,7 @@ export default function GroupsList(): JSX.Element {
         ),
       },
     ],
-    [handleDeleteClick, handleViewClick, t],
+    [handleDeleteClick, handleViewClick, t, isManagedGroup],
   );
 
   if (error) {

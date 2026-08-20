@@ -46,10 +46,91 @@ type SecurityConfig struct {
 	TrustedIssuer          TrustedIssuerConfig   `yaml:"trusted_issuer"           json:"trusted_issuer"`
 	SystemPermissionPrefix string                `yaml:"system_permission_prefix" json:"system_permission_prefix"`
 	TokenRevocation        TokenRevocationConfig `yaml:"token_revocation"         json:"token_revocation"`
+	SecretProvider         SecretProviderConfig  `yaml:"secret_provider"          json:"secret_provider"`
 	// DirectAuthSecret gates the Direct API endpoints (/auth/**, /register/passkey/**, /access/**).
 	// When set, callers must present this value in the Direct-Auth-Secret header; when empty, those
 	// endpoints are blocked (secure by default).
 	DirectAuthSecret string `yaml:"direct_auth_secret" json:"direct_auth_secret"`
+}
+
+// SecretProviderConfig configures where this deployment's secrets live. Configuration promoted from a
+// Control Plane stores a reference such as "kv:MY_APP_CLIENT_SECRET" rather than the secret itself, and
+// this is what turns such a reference back into its value.
+//
+// Mode selects the source. It also decides where a secret pushed down from a Control Plane is written,
+// because a deployment reads its secrets back from wherever it stores them; a mode that could store to
+// one place and read from another would let the two drift apart.
+//
+// Leaving Mode empty disables secret handling entirely: no store is served, and a value held as a
+// reference cannot be resolved.
+type SecretProviderConfig struct {
+	// Mode is one of SecretModeFile, SecretModeKV, or SecretModeService.
+	Mode string `yaml:"mode" json:"mode"`
+	// File configures SecretModeFile.
+	File FileSecretConfig `yaml:"file" json:"file"`
+	// KV configures SecretModeKV.
+	KV KVSecretConfig `yaml:"kv" json:"kv"`
+	// Service configures SecretModeService.
+	Service SecretServiceConfig `yaml:"service" json:"service"`
+}
+
+// Secret provider modes.
+const (
+	// SecretModeFile keeps secrets in a JSON file beside the server. It needs nothing else deployed,
+	// which suits a single instance and local development. Each instance has its own file, so a
+	// deployment running several of them does not share what it stores.
+	SecretModeFile = "file"
+	// SecretModeKV keeps secrets in an external key vault, which is what several instances of one
+	// deployment share.
+	SecretModeKV = "kv"
+	// SecretModeService reads from the standalone secret provider service over HTTP. It is read only:
+	// the service owns its own writes, so a Control Plane cannot push a secret into it from here.
+	SecretModeService = "service"
+)
+
+// FileSecretConfig configures the file-backed secret store.
+type FileSecretConfig struct {
+	// Path is the JSON file the secrets are kept in. It is created on the first write.
+	Path string `yaml:"path" json:"path"`
+}
+
+// KVSecretConfig configures the key-vault-backed secret store.
+//
+// Type names the vault implementation. Only "openbao" is implemented; the others are recognized names
+// that fail at startup with a clear message rather than being silently ignored, so a deployment
+// pointed at an unimplemented vault does not come up believing it has secrets.
+type KVSecretConfig struct {
+	Type string `yaml:"type" json:"type"`
+	// Address is the vault's base URL, for example https://openbao.example:8200.
+	Address string `yaml:"address" json:"address"`
+	// Mount is the KV engine's mount path. Defaults to "secret".
+	Mount string `yaml:"mount" json:"mount"`
+	// PathPrefix scopes this deployment's secrets within the mount, so several deployments can share
+	// one vault without colliding. For example "thunderid/org1-dev".
+	PathPrefix string `yaml:"path_prefix" json:"path_prefix"`
+	// Namespace selects a vault namespace, for the implementations that have them. Empty means none.
+	Namespace string `yaml:"namespace" json:"namespace"`
+	// Token authenticates to the vault. Mount it as a file and reference it as file://path rather than
+	// writing it here.
+	Token string `yaml:"token" json:"token"`
+	// CAFile is the certificate authority that signed the vault's certificate, when it is not one the
+	// system already trusts.
+	CAFile string `yaml:"ca_file" json:"ca_file"`
+	// TimeoutSeconds bounds a single call to the vault. A non-positive value falls back to the default.
+	TimeoutSeconds int `yaml:"timeout_seconds" json:"timeout_seconds"`
+	// CacheTTLSeconds is how long secrets read from the vault are reused before being read again. It
+	// bounds how long one instance can keep serving a secret another instance has since changed. A
+	// non-positive value falls back to the default; the cache cannot be disabled, because every
+	// resolution would otherwise become an outbound call.
+	CacheTTLSeconds int `yaml:"cache_ttl_seconds" json:"cache_ttl_seconds"`
+}
+
+// SecretServiceConfig configures reading from the standalone secret provider service.
+type SecretServiceConfig struct {
+	URL   string `yaml:"url"   json:"url"`
+	Token string `yaml:"token" json:"token"`
+	// TimeoutSeconds bounds a call to the service. A non-positive value falls back to the default.
+	TimeoutSeconds int `yaml:"timeout_seconds" json:"timeout_seconds"`
 }
 
 // TokenRevocationConfig configures the Resource Server's token-revocation enforcement: an in-memory
@@ -122,13 +203,51 @@ type RedisConfig struct {
 
 // ServerConfig holds the server configuration details.
 type ServerConfig struct {
-	Hostname       string         `yaml:"hostname"   json:"hostname"`
-	Port           int            `yaml:"port"       json:"port"`
-	HTTPOnly       bool           `yaml:"http_only"  json:"http_only"`
-	PublicURL      string         `yaml:"public_url" json:"public_url"`
-	Identifier     string         `yaml:"identifier" json:"identifier"`
-	SecurityConfig SecurityConfig `yaml:"security"   json:"security"`
+	Hostname string `yaml:"hostname"   json:"hostname"`
+	Port     int    `yaml:"port"       json:"port"`
+	HTTPOnly bool   `yaml:"http_only"  json:"http_only"`
+	// Mode selects which planes this instance serves: "hybrid" (default, both the control-plane
+	// configuration APIs and the data-plane runtime + identity APIs), "cp" (control plane only:
+	// configuration management such as applications, IdPs, flows, roles, groups, OUs), or "dp"
+	// (data plane only: runtime plus data-plane management such as users, agents, role assignment).
+	// It gates only the management HTTP surface; public runtime endpoints are always served.
+	Mode      string `yaml:"mode"       json:"mode"`
+	PublicURL string `yaml:"public_url" json:"public_url"`
+	// ControlPlaneManaged marks this deployment as receiving its configuration from a control plane.
+	// The import records every resource it writes, and this deployment's own management APIs then
+	// refuse to change those: an edit made here would survive only until the next promotion overwrote
+	// it. Resources created on this deployment are unaffected and stay editable. Off by default, which
+	// is what a standalone server with no control plane in front of it wants.
+	ControlPlaneManaged bool `yaml:"control_plane_managed" json:"control_plane_managed"`
+	// Identifier is the deployment id that scopes all persisted resources when DeploymentIDSource is
+	// "server". For a single-tenant instance it is the only value stores partition by.
+	Identifier string `yaml:"identifier" json:"identifier"`
+	// DeploymentIDSource selects where the per-request deployment id (the value stores partition by)
+	// comes from. It is an exclusive switch:
+	//   "server" (default) - always use Identifier; any deployment claim in the token is ignored.
+	//   "token"            - always use the DeploymentIDClaim from the authenticated caller's token;
+	//                        Identifier is never consulted for requests, and an authenticated request
+	//                        whose token lacks the claim is rejected. This is what makes a single
+	//                        instance multi-tenant over one database.
+	DeploymentIDSource string `yaml:"deployment_id_source" json:"deployment_id_source"`
+	// DeploymentIDClaim is the name of the token claim carrying the per-request deployment id. It is
+	// required when DeploymentIDSource is "token" and unused otherwise.
+	DeploymentIDClaim string `yaml:"deployment_id_claim" json:"deployment_id_claim"`
+	// SystemDeploymentID is the reserved deployment id of the platform "system" tenant - the single
+	// tenant allowed to manage other tenants via the /system APIs. Defaults to "root" when empty.
+	SystemDeploymentID string         `yaml:"system_deployment_id" json:"system_deployment_id"`
+	SecurityConfig     SecurityConfig `yaml:"security"            json:"security"`
 }
+
+// Deployment id source modes for ServerConfig.DeploymentIDSource.
+const (
+	// DeploymentIDSourceServer scopes persistence by the configured Identifier and ignores any
+	// deployment claim in the token. It is the default when DeploymentIDSource is empty.
+	DeploymentIDSourceServer = "server"
+	// DeploymentIDSourceToken scopes persistence by the token's deployment claim and never falls
+	// back to the configured Identifier for requests.
+	DeploymentIDSourceToken = "token"
+)
 
 // GateClientConfig holds the client configuration details.
 type GateClientConfig struct {

@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoadingAnimation, QueryErrorNotice} from '@thunderid/components';
+import {ManagedResourceNotice, PageLoadingAnimation, QueryErrorNotice} from '@thunderid/components';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Button, IconButton, PageContent, PageTitle, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
@@ -12,6 +12,7 @@ import useGetVerifiableCredential from '../api/useGetVerifiableCredential';
 import useUpdateVerifiableCredential from '../api/useUpdateVerifiableCredential';
 import VerifiableCredentialDeleteDialog from '../components/VerifiableCredentialDeleteDialog';
 import VerifiableCredentialForm from '../components/VerifiableCredentialForm';
+import {useIsManagedResource} from '@thunderid/contexts';
 import useVerifiableCredentialRoutes from '../hooks/useVerifiableCredentialRoutes';
 import type {UpdateVerifiableCredentialRequest} from '../models/credential-requests';
 
@@ -34,6 +35,9 @@ export default function VerifiableCredentialEditPage(): JSX.Element {
       t(key.includes(':') ? key : `verifiable-credentials:${key}`, options),
     [t],
   );
+  // Owned by the control plane: a change made here would be replaced by the next apply, and the
+  // server refuses it with 403, so the controls are not offered at all.
+  const isManaged: boolean = useIsManagedResource('credential_configuration')(vcId);
 
   const [name, setName] = useState<string>('');
   const [description, setDescription] = useState<string>('');
@@ -217,6 +221,8 @@ export default function VerifiableCredentialEditPage(): JSX.Element {
         </PageTitle.SubHeader>
       </PageTitle>
 
+      {isManaged && <ManagedResourceNotice />}
+
       <VerifiableCredentialForm
         initial={data}
         name={name}
@@ -226,7 +232,8 @@ export default function VerifiableCredentialEditPage(): JSX.Element {
         submitting={updateVC.isPending}
         submitLabel={t('common:actions.save')}
         onSubmit={handleSubmit}
-        onDelete={(): void => setDeleteOpen(true)}
+        isReadOnly={isManaged}
+        onDelete={isManaged ? undefined : (): void => setDeleteOpen(true)}
         error={
           updateVC.error
             ? getErrorMessage(updateVC.error, tForErrors, 'update.error', 'Failed to update credential template')

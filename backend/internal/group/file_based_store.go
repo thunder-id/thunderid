@@ -41,7 +41,7 @@ func (f *fileBasedGroupStore) Create(id string, data interface{}) error {
 
 // GetGroupListCount returns the total count of groups in the file-based store.
 func (f *fileBasedGroupStore) GetGroupListCount(ctx context.Context) (int, error) {
-	return f.GenericFileBasedStore.Count()
+	return f.GenericFileBasedStore.Count(ctx)
 }
 
 // GetGroupList returns a paginated list of root groups from the file-based store.
@@ -53,7 +53,7 @@ func (f *fileBasedGroupStore) GetGroupList(ctx context.Context, limit, offset in
 		offset = 0
 	}
 
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (f *fileBasedGroupStore) GetGroupListCountByOUIDs(ctx context.Context, ouID
 		ouSet[id] = true
 	}
 
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -131,7 +131,7 @@ func (f *fileBasedGroupStore) GetGroupListByOUIDs(
 		ouSet[id] = true
 	}
 
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ func (f *fileBasedGroupStore) CreateGroup(ctx context.Context, group GroupDAO) e
 
 // GetGroup returns a group from the file-based store.
 func (f *fileBasedGroupStore) GetGroup(ctx context.Context, id string) (GroupDAO, error) {
-	data, err := f.GenericFileBasedStore.Get(id)
+	data, err := f.GenericFileBasedStore.Get(ctx, id)
 	if err != nil {
 		if isGroupNotFoundError(err) {
 			return GroupDAO{}, ErrGroupNotFound
@@ -214,7 +214,7 @@ func (f *fileBasedGroupStore) GetGroupMembers(
 		offset = 0
 	}
 
-	data, err := f.GenericFileBasedStore.Get(groupID)
+	data, err := f.GenericFileBasedStore.Get(ctx, groupID)
 	if err != nil {
 		if isGroupNotFoundError(err) {
 			return []Member{}, nil
@@ -242,7 +242,7 @@ func (f *fileBasedGroupStore) GetGroupMembers(
 
 // GetGroupMemberCount returns the total count of members in a group.
 func (f *fileBasedGroupStore) GetGroupMemberCount(ctx context.Context, groupID string) (int, error) {
-	data, err := f.GenericFileBasedStore.Get(groupID)
+	data, err := f.GenericFileBasedStore.Get(ctx, groupID)
 	if err != nil {
 		if isGroupNotFoundError(err) {
 			return 0, nil
@@ -276,7 +276,7 @@ func (f *fileBasedGroupStore) ValidateGroupIDs(ctx context.Context, groupIDs []s
 
 	var invalid []string
 	for _, id := range groupIDs {
-		_, err := f.GenericFileBasedStore.Get(id)
+		_, err := f.GenericFileBasedStore.Get(ctx, id)
 		if err != nil {
 			if isGroupNotFoundError(err) {
 				invalid = append(invalid, id)
@@ -293,7 +293,7 @@ func (f *fileBasedGroupStore) ValidateGroupIDs(ctx context.Context, groupIDs []s
 func (f *fileBasedGroupStore) CheckGroupNameConflictForCreate(
 	ctx context.Context, name string, oUID string,
 ) error {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return err
 	}
@@ -315,7 +315,7 @@ func (f *fileBasedGroupStore) CheckGroupNameConflictForCreate(
 func (f *fileBasedGroupStore) CheckGroupNameConflictForUpdate(
 	ctx context.Context, name string, oUID string, groupID string,
 ) error {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return err
 	}
@@ -338,7 +338,7 @@ func (f *fileBasedGroupStore) CheckGroupNameConflictForUpdate(
 
 // GetGroupsByOrganizationUnitCount returns the count of groups in the given OU.
 func (f *fileBasedGroupStore) GetGroupsByOrganizationUnitCount(ctx context.Context, oUID string) (int, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -361,7 +361,7 @@ func (f *fileBasedGroupStore) GetGroupsByOrganizationUnitCount(ctx context.Conte
 func (f *fileBasedGroupStore) GetGroupsByOrganizationUnit(
 	ctx context.Context, oUID string, limit, offset int,
 ) ([]GroupBasicDAO, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -413,8 +413,7 @@ func (f *fileBasedGroupStore) RemoveGroupMembers(ctx context.Context, groupID st
 
 // DeleteMembershipsByMember is a no-op for the file-based store: declarative groups hold no mutable
 // runtime memberships to cascade-delete, so there is nothing to remove.
-func (f *fileBasedGroupStore) DeleteMembershipsByMember(
-	_ context.Context, _, _ string) (int64, error) {
+func (f *fileBasedGroupStore) DeleteMembershipsByMember(ctx context.Context, _, _ string) (int64, error) {
 	return 0, nil
 }
 
@@ -429,7 +428,7 @@ func (f *fileBasedGroupStore) GetGroupsByIDs(ctx context.Context, groupIDs []str
 		wanted[id] = true
 	}
 
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -460,7 +459,7 @@ func (f *fileBasedGroupStore) GetGroupsByIDs(ctx context.Context, groupIDs []str
 
 // IsGroupDeclarative returns true for all groups in the file-based store.
 func (f *fileBasedGroupStore) IsGroupDeclarative(ctx context.Context, id string) (bool, error) {
-	_, err := f.GenericFileBasedStore.Get(id)
+	_, err := f.GenericFileBasedStore.Get(ctx, id)
 	if err != nil {
 		if isGroupNotFoundError(err) {
 			return false, nil
@@ -486,7 +485,7 @@ func groupFromDeclarativeData(id string, data interface{}) (groupDeclarativeReso
 func (f *fileBasedGroupStore) GetTransitiveGroupsForEntity(
 	ctx context.Context, entityID string,
 ) ([]providers.EntityGroup, error) {
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -550,7 +549,7 @@ func (f *fileBasedGroupStore) GetDirectGroupParents(
 		return []string{}, nil
 	}
 
-	list, err := f.GenericFileBasedStore.List()
+	list, err := f.GenericFileBasedStore.List(ctx)
 	if err != nil {
 		return nil, err
 	}

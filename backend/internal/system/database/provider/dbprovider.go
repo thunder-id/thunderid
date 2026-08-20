@@ -28,6 +28,7 @@ const (
 	dbNameRuntimeTransient  = "runtime_transient"
 	dbNameEntity            = "entity"
 	dbNameRuntimePersistent = "runtime_persistent"
+	dbNameEnvironment       = "environment"
 )
 
 // dbConfig represents the local database configuration.
@@ -42,10 +43,12 @@ type DBProviderInterface interface {
 	GetRuntimeTransientDBClient() (DBClientInterface, error)
 	GetEntityDBClient() (DBClientInterface, error)
 	GetRuntimePersistentDBClient() (DBClientInterface, error)
+	GetEnvironmentDBClient() (DBClientInterface, error)
 	GetConfigDBTransactioner() (providers.Transactioner, error)
 	GetEntityDBTransactioner() (providers.Transactioner, error)
 	GetRuntimeTransientDBTransactioner() (providers.Transactioner, error)
 	GetRuntimePersistentDBTransactioner() (providers.Transactioner, error)
+	GetEnvironmentDBTransactioner() (providers.Transactioner, error)
 }
 
 // DBProviderCloser is a separate interface for closing the provider.
@@ -64,6 +67,8 @@ type dbProvider struct {
 	entityMutex             sync.RWMutex
 	runtimePersistentClient DBClientInterface
 	runtimePersistentMutex  sync.RWMutex
+	environmentClient       DBClientInterface
+	environmentMutex        sync.RWMutex
 }
 
 var (
@@ -122,6 +127,15 @@ func (d *dbProvider) GetRuntimePersistentDBClient() (DBClientInterface, error) {
 		&d.runtimePersistentClient, &d.runtimePersistentMutex, runtimePersistentDBConfig, dbNameRuntimePersistent)
 }
 
+// GetEnvironmentDBClient returns a database client for the environment datasource, which backs the
+// environment manager. Only a Control Plane configures it.
+// Not required to close the returned client manually since it manages its own connection pool.
+func (d *dbProvider) GetEnvironmentDBClient() (DBClientInterface, error) {
+	environmentDBConfig := config.GetServerRuntime().Config.Database.Environment
+	return d.getOrInitClient(
+		&d.environmentClient, &d.environmentMutex, environmentDBConfig, dbNameEnvironment)
+}
+
 // GetConfigDBTransactioner returns a transactioner for the config database.
 // The transactioner manages database transactions with automatic nesting detection.
 func (d *dbProvider) GetConfigDBTransactioner() (providers.Transactioner, error) {
@@ -148,6 +162,12 @@ func (d *dbProvider) GetRuntimeTransientDBTransactioner() (providers.Transaction
 // The transactioner manages database transactions with automatic nesting detection.
 func (d *dbProvider) GetRuntimePersistentDBTransactioner() (providers.Transactioner, error) {
 	return d.getTransactioner(d.GetRuntimePersistentDBClient, dbNameRuntimePersistent)
+}
+
+// GetEnvironmentDBTransactioner returns a transactioner for the environment database.
+// The transactioner manages database transactions with automatic nesting detection.
+func (d *dbProvider) GetEnvironmentDBTransactioner() (providers.Transactioner, error) {
+	return d.getTransactioner(d.GetEnvironmentDBClient, dbNameEnvironment)
 }
 
 // getTransactioner is a helper method that creates a transactioner for a given database client.
@@ -194,6 +214,16 @@ func (d *dbProvider) initializeAllClients() {
 		err = d.initializeClient(&d.runtimePersistentClient, runtimePersistentDBConfig, dbNameRuntimePersistent)
 		if err != nil {
 			logger.Error(ctx, "Failed to initialize runtime persistent database client", log.Error(err))
+		}
+	}
+
+	// Only a Control Plane configures the environment datasource, so an unset one is the normal case
+	// on every other plane rather than something to report.
+	environmentDBConfig := config.GetServerRuntime().Config.Database.Environment
+	if environmentDBConfig.Type != "" {
+		err = d.initializeClient(&d.environmentClient, environmentDBConfig, dbNameEnvironment)
+		if err != nil {
+			logger.Error(ctx, "Failed to initialize environment database client", log.Error(err))
 		}
 	}
 }
@@ -334,6 +364,7 @@ func (d *dbProvider) Close() error {
 	runtimeTransientErr := d.closeClient(&d.runtimeTransientClient, &d.runtimeTransientMutex, "runtimeTransient")
 	entityErr := d.closeClient(&d.entityClient, &d.entityMutex, "entity")
 	runtimePersistentErr := d.closeClient(&d.runtimePersistentClient, &d.runtimePersistentMutex, "runtimePersistent")
+	environmentErr := d.closeClient(&d.environmentClient, &d.environmentMutex, "environment")
 
 	// Close the Redis runtime provider if it was initialized.
 	var redisErr error
@@ -341,7 +372,7 @@ func (d *dbProvider) Close() error {
 		redisErr = redisInstance.Close()
 	}
 
-	return errors.Join(configErr, runtimeTransientErr, entityErr, runtimePersistentErr, redisErr)
+	return errors.Join(configErr, runtimeTransientErr, entityErr, runtimePersistentErr, environmentErr, redisErr)
 }
 
 // closeClient is a helper to close a DB client with locking.

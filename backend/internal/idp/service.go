@@ -17,6 +17,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -232,6 +233,11 @@ func (is *idpService) UpdateIdentityProvider(
 	idp *providers.IDPDTO,
 ) (*providers.IDPDTO,
 	*tidcommon.ServiceError) {
+	// A resource applied from the control plane is owned there. Changing it here would last only
+	// until the next promotion overwrote it, so the change is refused instead.
+	if svcErr := managedresource.Guard(ctx, managedresource.TypeConnection, idpID); svcErr != nil {
+		return nil, svcErr
+	}
 	logger := is.logger
 	// Block updates only in declarative-only mode; allow in composite and mutable modes
 	// In composite mode, the store will check if the resource is immutable and return appropriate error
@@ -302,6 +308,11 @@ func (is *idpService) UpdateIdentityProvider(
 
 // DeleteIdentityProvider deletes an identity provider.
 func (is *idpService) DeleteIdentityProvider(ctx context.Context, idpID string) *tidcommon.ServiceError {
+	// A resource applied from the control plane is owned there. Changing it here would last only
+	// until the next promotion overwrote it, so the change is refused instead.
+	if svcErr := managedresource.Guard(ctx, managedresource.TypeConnection, idpID); svcErr != nil {
+		return svcErr
+	}
 	logger := is.logger
 	// Block deletes only in declarative-only mode; allow in composite and mutable modes
 	// In composite mode, the store will check if the resource is immutable and return appropriate error

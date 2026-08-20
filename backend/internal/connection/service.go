@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -24,13 +25,19 @@ import (
 type service struct {
 	idpService          idp.IDPServiceInterface
 	notificationService notification.NotificationSenderMgtSvcInterface
+	secretCapturer      SecretCapturer
 }
 
 // newService creates a connection service over the given identity-provider and
 // notification-sender services.
 func newService(idpService idp.IDPServiceInterface,
-	notificationService notification.NotificationSenderMgtSvcInterface) *service {
-	return &service{idpService: idpService, notificationService: notificationService}
+	notificationService notification.NotificationSenderMgtSvcInterface,
+	secretCapturer SecretCapturer) *service {
+	return &service{
+		idpService:          idpService,
+		notificationService: notificationService,
+		secretCapturer:      secretCapturer,
+	}
 }
 
 // listByType returns the configured instances of the given identity-provider type.
@@ -161,6 +168,8 @@ func (s *service) listInstances(ctx context.Context, category connectionCategory
 		page = instances[offset:end]
 	}
 
+	markManagedConnections(ctx, page)
+
 	extraQuery := ""
 	if category != "" {
 		extraQuery = "&category=" + string(category)
@@ -190,7 +199,12 @@ func (s *service) getByType(ctx context.Context, idpType providers.IDPType, id s
 
 // create delegates creation to the identity-provider service.
 func (s *service) create(ctx context.Context, dto *providers.IDPDTO) (*providers.IDPDTO, *tidcommon.ServiceError) {
-	return s.idpService.CreateIdentityProvider(ctx, dto)
+	created, svcErr := s.idpService.CreateIdentityProvider(ctx, dto)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	s.captureIDPSecret(ctx, created)
+	return created, nil
 }
 
 // update verifies the instance is of the expected type, preserves any secret the request
@@ -202,7 +216,12 @@ func (s *service) update(ctx context.Context, idpType providers.IDPType, id stri
 		return nil, svcErr
 	}
 	dto.Properties = mergeStoredSecrets(dto.Properties, existing.Properties)
-	return s.idpService.UpdateIdentityProvider(ctx, id, dto)
+	updated, svcErr := s.idpService.UpdateIdentityProvider(ctx, id, dto)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	s.captureIDPSecret(ctx, updated)
+	return updated, nil
 }
 
 // deleteByType verifies the instance is of the expected type, then deletes it.
@@ -246,7 +265,12 @@ func (s *service) getSMSByProvider(ctx context.Context, provider ncommon.Message
 // createSMS delegates creation to the notification-sender service.
 func (s *service) createSMS(ctx context.Context, dto ncommon.NotificationSenderDTO) (
 	*ncommon.NotificationSenderDTO, *tidcommon.ServiceError) {
-	return s.notificationService.CreateSender(ctx, dto)
+	created, svcErr := s.notificationService.CreateSender(ctx, dto)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	s.captureSenderSecret(ctx, created)
+	return created, nil
 }
 
 // updateSMS verifies the sender is of the expected provider, preserves any secret the request
@@ -258,7 +282,12 @@ func (s *service) updateSMS(ctx context.Context, provider ncommon.MessageProvide
 		return nil, svcErr
 	}
 	dto.Properties = mergeStoredSecrets(dto.Properties, existing.Properties)
-	return s.notificationService.UpdateSender(ctx, id, dto)
+	updated, svcErr := s.notificationService.UpdateSender(ctx, id, dto)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	s.captureSenderSecret(ctx, updated)
+	return updated, nil
 }
 
 // deleteSMSByProvider verifies the sender is of the expected provider, then deletes it.
@@ -288,4 +317,19 @@ func (s *service) usagesSMSByProvider(ctx context.Context, provider ncommon.Mess
 		return nil, svcErr
 	}
 	return s.notificationService.GetSenderUsages(ctx, id)
+}
+
+// markManagedConnections reports the control plane owned entries as read only, which is what a client
+// renders its edit and delete controls from. Both backing services share the connection resource type,
+// so one lookup covers identity providers and notification senders alike.
+func markManagedConnections(ctx context.Context, items []connectionInstance) {
+	managed := managedresource.Default().ManagedIDs(ctx, managedresource.TypeConnection)
+	if len(managed) == 0 {
+		return
+	}
+	for i := range items {
+		if managed[items[i].ID] {
+			items[i].IsReadOnly = true
+		}
+	}
 }

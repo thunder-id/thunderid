@@ -84,7 +84,7 @@ func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*pro
 			continue
 		}
 
-		userID, svcErr := e.entityProvider.IdentifyEntity(map[string]interface{}{attr: value})
+		userID, svcErr := e.entityProvider.IdentifyEntity(ctx.Context, map[string]interface{}{attr: value})
 		if svcErr != nil {
 			if svcErr.Code == entityprovider.ErrorCodeEntityNotFound {
 				continue

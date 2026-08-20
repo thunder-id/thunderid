@@ -14,6 +14,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -149,7 +150,7 @@ func (es *entityDBStore) CreateEntity(ctx context.Context, entity providers.Enti
 		ctx,
 		QueryCreateEntity,
 		entity.ID,
-		es.deploymentID,
+		deployment.Resolve(ctx, es.deploymentID),
 		string(entity.Category),
 		entity.Type,
 		string(entity.State),
@@ -180,7 +181,7 @@ func (es *entityDBStore) GetEntity(ctx context.Context, id string) (providers.En
 		return providers.Entity{}, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, QueryGetEntityByID, id, es.deploymentID)
+	results, err := dbClient.QueryContext(ctx, QueryGetEntityByID, id, deployment.Resolve(ctx, es.deploymentID))
 	if err != nil {
 		return providers.Entity{}, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -204,7 +205,8 @@ func (es *entityDBStore) GetEntityWithCredentials(ctx context.Context, id string
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, QueryGetEntityWithCredentials, id, es.deploymentID)
+	results, err := dbClient.QueryContext(ctx, QueryGetEntityWithCredentials, id, deployment.Resolve(ctx,
+		es.deploymentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -251,7 +253,8 @@ func (es *entityDBStore) UpdateEntity(ctx context.Context, entity *providers.Ent
 		ctx,
 		QueryUpdateEntity,
 		entity.ID, entity.OUID, entity.Type,
-		string(entity.State), string(attributes), systemAttrs, time.Now().UTC(), es.deploymentID,
+		string(entity.State), string(attributes), systemAttrs, time.Now().
+			UTC(), deployment.Resolve(ctx, es.deploymentID),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to execute update entity query: %w", err)
@@ -269,7 +272,8 @@ func (es *entityDBStore) UpdateEntity(ctx context.Context, entity *providers.Ent
 		return fmt.Errorf("failed to reload entity for identifier sync: %w", err)
 	}
 
-	_, err = dbClient.ExecuteContext(ctx, QueryDeleteIdentifiersByEntity, entity.ID, es.deploymentID)
+	_, err = dbClient.ExecuteContext(ctx, QueryDeleteIdentifiersByEntity, entity.ID, deployment.Resolve(ctx,
+		es.deploymentID))
 	if err != nil {
 		return fmt.Errorf("failed to delete identifiers: %w", err)
 	}
@@ -283,6 +287,9 @@ func (es *entityDBStore) UpdateEntity(ctx context.Context, entity *providers.Ent
 }
 
 // UpdateAttributes updates only the schema attributes of an entity and re-syncs attribute-sourced identifiers.
+// identifier set. Merging them would hide which of the two a caller is reaching for.
+//
+//nolint:dupl // Mirrors UpdateSystemAttributes by shape only: a different query and a different
 func (es *entityDBStore) UpdateAttributes(ctx context.Context, entityID string, attributes json.RawMessage) error {
 	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
@@ -290,7 +297,7 @@ func (es *entityDBStore) UpdateAttributes(ctx context.Context, entityID string, 
 	}
 
 	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryUpdateAttributes,
-		entityID, string(attributes), time.Now().UTC(), es.deploymentID)
+		entityID, string(attributes), time.Now().UTC(), deployment.Resolve(ctx, es.deploymentID))
 	if err != nil {
 		return fmt.Errorf("failed to execute update attributes query: %w", err)
 	}
@@ -300,7 +307,7 @@ func (es *entityDBStore) UpdateAttributes(ctx context.Context, entityID string, 
 	}
 
 	if _, err = dbClient.ExecuteContext(ctx, QueryDeleteAttributeIdentifiersByEntity,
-		entityID, es.deploymentID); err != nil {
+		entityID, deployment.Resolve(ctx, es.deploymentID)); err != nil {
 		return fmt.Errorf("failed to delete attribute identifiers: %w", err)
 	}
 
@@ -312,6 +319,8 @@ func (es *entityDBStore) UpdateAttributes(ctx context.Context, entityID string, 
 }
 
 // UpdateSystemAttributes updates the system attributes of an entity and re-syncs system-sourced identifiers.
+//
+//nolint:dupl // See UpdateAttributes: same shape, different query and identifier set.
 func (es *entityDBStore) UpdateSystemAttributes(ctx context.Context, entityID string,
 	attrs json.RawMessage) error {
 	dbClient, err := es.dbProvider.GetEntityDBClient()
@@ -320,7 +329,7 @@ func (es *entityDBStore) UpdateSystemAttributes(ctx context.Context, entityID st
 	}
 
 	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryUpdateSystemAttributes,
-		entityID, string(attrs), time.Now().UTC(), es.deploymentID)
+		entityID, string(attrs), time.Now().UTC(), deployment.Resolve(ctx, es.deploymentID))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -330,7 +339,7 @@ func (es *entityDBStore) UpdateSystemAttributes(ctx context.Context, entityID st
 	}
 
 	if _, err = dbClient.ExecuteContext(ctx, QueryDeleteSystemIdentifiersByEntity,
-		entityID, es.deploymentID); err != nil {
+		entityID, deployment.Resolve(ctx, es.deploymentID)); err != nil {
 		return fmt.Errorf("failed to delete system identifiers: %w", err)
 	}
 
@@ -350,7 +359,7 @@ func (es *entityDBStore) UpdateCredentials(ctx context.Context, entityID string,
 	}
 
 	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryUpdateCredentials,
-		entityID, string(creds), time.Now().UTC(), es.deploymentID)
+		entityID, string(creds), time.Now().UTC(), deployment.Resolve(ctx, es.deploymentID))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -371,7 +380,7 @@ func (es *entityDBStore) UpdateSystemCredentials(ctx context.Context, entityID s
 	}
 
 	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryUpdateSystemCredentials,
-		entityID, string(creds), time.Now().UTC(), es.deploymentID)
+		entityID, string(creds), time.Now().UTC(), deployment.Resolve(ctx, es.deploymentID))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -390,7 +399,7 @@ func (es *entityDBStore) DeleteEntity(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryDeleteEntity, id, es.deploymentID)
+	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryDeleteEntity, id, deployment.Resolve(ctx, es.deploymentID))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -399,7 +408,8 @@ func (es *entityDBStore) DeleteEntity(ctx context.Context, id string) error {
 		return ErrEntityNotFound
 	}
 
-	if _, err = dbClient.ExecuteContext(ctx, QueryDeleteIdentifiersByEntity, id, es.deploymentID); err != nil {
+	if _, err = dbClient.ExecuteContext(ctx, QueryDeleteIdentifiersByEntity, id, deployment.Resolve(ctx,
+		es.deploymentID)); err != nil {
 		return fmt.Errorf("failed to delete entity identifiers: %w", err)
 	}
 
@@ -411,7 +421,8 @@ func (es *entityDBStore) DeleteEntity(ctx context.Context, id string) error {
 func (es *entityDBStore) syncAttributeIdentifiers(ctx context.Context, entityID string,
 	attributes json.RawMessage, systemAttributes json.RawMessage,
 	indexedAttrs map[string]bool) error {
-	query, args, err := prepareIdentifierQuery(entityID, attributes, systemAttributes, indexedAttrs, es.deploymentID)
+	query, args, err := prepareIdentifierQuery(entityID, attributes, systemAttributes, indexedAttrs,
+		deployment.Resolve(ctx, es.deploymentID))
 	if err != nil {
 		return err
 	}
@@ -443,7 +454,7 @@ func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 	// Fast path: try indexed identifier store first for all lookups.
 	// This covers both schema-indexed attributes (email, username) and
 	// system identifiers without requiring config.
-	identifyQuery, args, err := buildIdentifyQueryFromIdentifiers(filters, es.deploymentID)
+	identifyQuery, args, err := buildIdentifyQueryFromIdentifiers(filters, deployment.Resolve(ctx, es.deploymentID))
 	if err == nil {
 		results, qErr := dbClient.QueryContext(ctx, identifyQuery, args...)
 		if qErr == nil && len(results) == 1 {
@@ -470,14 +481,16 @@ func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 
 	if len(indexedFilters) > 0 && len(nonIndexedFilters) > 0 {
 		// Mixed: identifier table for indexed filters + JSON for non-indexed filters.
-		fallbackQuery, fallbackArgs, err = buildIdentifyQueryHybrid(indexedFilters, nonIndexedFilters, es.deploymentID)
+		fallbackQuery, fallbackArgs, err = buildIdentifyQueryHybrid(indexedFilters, nonIndexedFilters,
+			deployment.Resolve(ctx,
+				es.deploymentID))
 		if err != nil {
 			return nil, fmt.Errorf("failed to build hybrid query: %w", err)
 		}
 	} else {
 		// All-indexed: fast path already tried the identifier table; fall back to JSON search.
 		// All non-indexed: always use JSON search.
-		fallbackQuery, fallbackArgs, err = buildIdentifyQuery(filters, es.deploymentID)
+		fallbackQuery, fallbackArgs, err = buildIdentifyQuery(filters, deployment.Resolve(ctx, es.deploymentID))
 		if err != nil {
 			return nil, fmt.Errorf("failed to build identify query: %w", err)
 		}
@@ -528,7 +541,7 @@ func (es *entityDBStore) SearchEntities(ctx context.Context,
 	}
 
 	searchQuery, args, err := buildEntityListQuery(
-		"", filters, serverconst.MaxPageSize, 0, es.deploymentID)
+		"", filters, serverconst.MaxPageSize, 0, deployment.Resolve(ctx, es.deploymentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build search query: %w", err)
 	}
@@ -558,7 +571,7 @@ func (es *entityDBStore) GetEntityListCount(ctx context.Context, category string
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	countQuery, args, err := buildEntityCountQuery(category, filters, es.deploymentID)
+	countQuery, args, err := buildEntityCountQuery(category, filters, deployment.Resolve(ctx, es.deploymentID))
 	if err != nil {
 		return 0, fmt.Errorf("failed to build count query: %w", err)
 	}
@@ -574,7 +587,8 @@ func (es *entityDBStore) GetEntityList(ctx context.Context, category string,
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	listQuery, args, err := buildEntityListQuery(category, filters, limit, offset, es.deploymentID)
+	listQuery, args, err := buildEntityListQuery(category, filters, limit, offset, deployment.Resolve(ctx,
+		es.deploymentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build list query: %w", err)
 	}
@@ -598,7 +612,8 @@ func (es *entityDBStore) GetEntityListCountByOUIDs(ctx context.Context, category
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	countQuery, args, err := buildEntityCountQueryByOUIDs(category, ouIDs, filters, es.deploymentID)
+	countQuery, args, err := buildEntityCountQueryByOUIDs(category, ouIDs, filters, deployment.Resolve(ctx,
+		es.deploymentID))
 	if err != nil {
 		return 0, fmt.Errorf("failed to build count query: %w", err)
 	}
@@ -614,7 +629,8 @@ func (es *entityDBStore) GetEntityListByOUIDs(ctx context.Context, category stri
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	listQuery, args, err := buildEntityListQueryByOUIDs(category, ouIDs, filters, limit, offset, es.deploymentID)
+	listQuery, args, err := buildEntityListQueryByOUIDs(category, ouIDs, filters, limit, offset, deployment.Resolve(ctx,
+		es.deploymentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build list query: %w", err)
 	}
@@ -638,7 +654,7 @@ func (es *entityDBStore) ValidateEntityIDs(ctx context.Context, entityIDs []stri
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	query, args, err := buildBulkEntityExistsQuery(entityIDs, es.deploymentID)
+	query, args, err := buildBulkEntityExistsQuery(entityIDs, deployment.Resolve(ctx, es.deploymentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build bulk entity exists query: %w", err)
 	}
@@ -687,7 +703,7 @@ func (es *entityDBStore) GetEntitiesByIDs(ctx context.Context, entityIDs []strin
 		}
 		chunk := entityIDs[start:end]
 
-		query, args, err := buildGetEntitiesByIDsQuery(chunk, es.deploymentID)
+		query, args, err := buildGetEntitiesByIDsQuery(chunk, deployment.Resolve(ctx, es.deploymentID))
 		if err != nil {
 			return nil, fmt.Errorf("failed to build get entities by IDs query: %w", err)
 		}
@@ -723,7 +739,7 @@ func (es *entityDBStore) ValidateEntityIDsInOUs(
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	query, args, err := buildBulkEntityExistsQueryInOUs(entityIDs, ouIDs, es.deploymentID)
+	query, args, err := buildBulkEntityExistsQueryInOUs(entityIDs, ouIDs, deployment.Resolve(ctx, es.deploymentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build query: %w", err)
 	}
@@ -756,7 +772,8 @@ func (es *entityDBStore) GetGroupCountForEntity(ctx context.Context, entityID st
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	countResults, err := dbClient.QueryContext(ctx, QueryGetGroupCountForEntity, entityID, es.deploymentID)
+	countResults, err := dbClient.QueryContext(ctx, QueryGetGroupCountForEntity, entityID, deployment.Resolve(ctx,
+		es.deploymentID))
 	if err != nil {
 		return 0, fmt.Errorf("failed to get group count for entity: %w", err)
 	}
@@ -780,7 +797,7 @@ func (es *entityDBStore) GetEntityGroups(
 	}
 
 	results, err := dbClient.QueryContext(ctx, QueryGetGroupsForEntity,
-		entityID, limit, offset, es.deploymentID)
+		entityID, limit, offset, deployment.Resolve(ctx, es.deploymentID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get groups for entity: %w", err)
 	}

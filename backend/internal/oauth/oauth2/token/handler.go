@@ -101,6 +101,17 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 		Assertion:          r.FormValue(constants.RequestParamAssertion),
 	}
 
+	// TEMPORARY: records what the token endpoint actually received, to compare against what the
+	// authorization code was issued with. Remove once the console login failure is understood.
+	logger.Debug(ctx, "Received a token request",
+		log.String("grantType", tokenRequest.GrantType),
+		log.String("clientId", tokenRequest.ClientID),
+		log.String("redirectUri", tokenRequest.RedirectURI),
+		log.Bool("hasCode", tokenRequest.Code != ""),
+		log.Bool("hasCodeVerifier", tokenRequest.CodeVerifier != ""),
+		log.String("scope", tokenRequest.Scope),
+		log.Int("resourceCount", len(tokenRequest.Resources)))
+
 	// Delegate all business logic to the token service.
 	tokenResponse, tokenError := th.tokenService.ProcessTokenRequest(ctx, tokenRequest, clientInfo.OAuthApp)
 	if tokenError != nil {
@@ -117,6 +128,13 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 				logger.Debug(ctx, "DPoP proof rejected", log.String("error", description))
 				description = "Invalid DPoP proof"
 			}
+			// The response is deliberately terse, so what was refused is recorded here. Without this a
+			// rejected token request leaves nothing behind but a status code in the access log.
+			logger.Warn(ctx, "Refused a token request",
+				log.String("grantType", tokenRequest.GrantType),
+				log.String("clientId", clientInfo.ClientID),
+				log.String("error", tokenError.Error),
+				log.String("description", tokenError.ErrorDescription))
 			utils.WriteJSONError(r.Context(), w, tokenError.Error, description, statusCode, nil)
 		} else {
 			utils.WriteJSONError(r.Context(), w, constants.ErrorServerError, "Something went wrong",

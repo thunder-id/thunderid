@@ -168,7 +168,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_Authen
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
@@ -210,7 +210,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_Regist
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
@@ -256,7 +256,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_Regist
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		"mobile_number": "+1234567890",
 	}).Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
@@ -299,7 +299,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_AntiEnumeratio
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
@@ -329,7 +329,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithCu
 		},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
@@ -372,7 +372,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithCu
 		},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
@@ -406,7 +406,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Failure_Genera
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
@@ -439,7 +439,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Failure_Client
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
@@ -481,7 +481,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_AntiEnumeratio
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
@@ -1069,7 +1069,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_RegistrationFl
 		RuntimeData: make(map[string]string),
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
 	}).Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "", ""))
 

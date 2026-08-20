@@ -5,6 +5,7 @@ package serverconfig
 
 import (
 	"context"
+	"reflect"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -50,11 +51,42 @@ func (e *serverConfigExporter) GetAllResourceIDs(ctx context.Context) ([]string,
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	ids := make([]string, len(names))
-	for i, name := range names {
-		ids[i] = string(name)
+	ids := make([]string, 0, len(names))
+	for _, name := range names {
+		// A section that holds no value is not configuration, and exporting it would carry an empty
+		// value into whatever it is imported to, wiping a setting that deployment made for itself. The
+		// default resource server is the case that bites: an empty one leaves a data plane unable to
+		// issue a token for a login that asks for a permission scope.
+		// A section this deployment does not serve is skipped, not fatal. The supported names are the
+		// same everywhere, but a plane registers a handler only for what it is responsible for: a
+		// control plane serves no SSO session lifetime, because that is the data plane's. Failing here
+		// would abandon every other section too, so a control plane would export no configuration at
+		// all, and the default resource server would never reach the data plane that needs it.
+		layers, layerErr := e.service.GetConfig(ctx, name)
+		if layerErr != nil {
+			continue
+		}
+		if isZeroConfig(layers.Merged) {
+			continue
+		}
+		ids = append(ids, string(name))
 	}
 	return ids, nil
+}
+
+// isZeroConfig reports whether a merged section value carries nothing.
+func isZeroConfig(value any) bool {
+	if value == nil {
+		return true
+	}
+	v := reflect.ValueOf(value)
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return true
+		}
+		v = v.Elem()
+	}
+	return v.IsZero()
 }
 
 // GetResourceByID returns the section's effective value as an export document.

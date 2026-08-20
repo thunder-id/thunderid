@@ -242,7 +242,7 @@ func (a *authorizationExecutor) extractGroupIDs(ctx *providers.NodeContext, user
 			"Groups not found in context, fetching transitive groups from entity provider",
 			log.MaskedString(log.LoggerKeyUserID, userID))
 
-		groups, err := a.entityProvider.GetTransitiveEntityGroups(userID)
+		groups, err := a.entityProvider.GetTransitiveEntityGroups(ctx.Context, userID)
 		if err != nil {
 			return nil, err
 		}
