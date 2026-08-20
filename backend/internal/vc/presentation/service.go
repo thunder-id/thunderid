@@ -111,6 +111,9 @@ func (s *definitionService) populateOUHandle(ctx context.Context, dtos ...*Prese
 func (s *definitionService) CreatePresentationDefinition(
 	ctx context.Context, dto *PresentationDefinitionDTO,
 ) (*PresentationDefinitionDTO, *tidcommon.ServiceError) {
+	if isDeclarativeModeEnabled() {
+		return nil, &ErrorDefinitionDeclarativeModeCreateNotAllowed
+	}
 	if svcErr := validateDefinition(dto); svcErr != nil {
 		return nil, svcErr
 	}

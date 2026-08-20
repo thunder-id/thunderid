@@ -22,9 +22,9 @@ func newDefinitionFileBasedStore() *definitionFileBasedStore {
 	}
 }
 
-// Create stores a presentation definition in the file-based store. In declarative
-// and composite modes the loader writes resources through this method (resources
-// loaded from YAML are immutable; management writes route to the database store).
+// Create stores a presentation definition in the file-based store. Declarative resources
+// are loaded through definitionStorer; the management API cannot reach this method because
+// the service refuses creates while the store is in declarative-only mode.
 func (f *definitionFileBasedStore) CreatePresentationDefinition(
 	_ context.Context, dto PresentationDefinitionDTO,
 ) error {
@@ -62,7 +62,9 @@ func (f *definitionFileBasedStore) GetPresentationDefinitionByID(
 		declarativeresource.LogTypeAssertionError("presentation definition", id)
 		return nil, ErrDefinitionDataCorrupted
 	}
-	return dto, nil
+	// Hand out a copy so a caller cannot mutate the shared declarative entry.
+	stored := *dto
+	return &stored, nil
 }
 
 // GetByHandle retrieves a presentation definition by handle from the file-based store.
@@ -75,7 +77,8 @@ func (f *definitionFileBasedStore) GetPresentationDefinitionByHandle(
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	return data.(*PresentationDefinitionDTO), nil
+	stored := *data.(*PresentationDefinitionDTO)
+	return &stored, nil
 }
 
 // ListSummaries retrieves minimal listing data from the file-based store.
