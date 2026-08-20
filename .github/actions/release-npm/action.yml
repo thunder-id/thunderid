@@ -14,8 +14,12 @@ inputs:
     description: 'Path to the package from the repo root (e.g. tools/npx, frontend/packages/eslint-plugin)'
     required: true
   bump-type:
-    description: 'Semver bump type: major, minor, or patch'
+    description: 'Semver bump type: major, minor, patch, or prerelease'
     required: true
+  dist-tag:
+    description: 'npm dist-tag to publish under. Defaults to latest, which is what existing consumers install.'
+    required: false
+    default: 'latest'
   git-user-name:
     description: 'Git committer name'
     required: false
@@ -106,4 +110,7 @@ runs:
       shell: bash
       run: |
         cd ${{ inputs.package-dir }}
-        pnpm publish --no-git-checks --access public --provenance
+        # --tag is load-bearing: npm assigns the 'latest' dist-tag to any publish that
+        # omits it, including a prerelease version, which would move every default
+        # consumer onto it.
+        pnpm publish --no-git-checks --access public --provenance --tag "${{ inputs.dist-tag }}"
