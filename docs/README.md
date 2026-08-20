@@ -47,4 +47,4 @@ Say you want to add a page explaining how adaptive authentication works in Thund
 
 - **Do not ask it to "just write the adaptive authentication page" and accept whatever it produces without supplying the real facts.** If it cannot verify a claim, that is the system working as intended. Give it the specific detail instead of nudging it to guess.
 - **Do not create a new file by hand and skip the new-page step.** Its duplicate check exists because two contributors can otherwise write two competing pages on the same topic, and its sidebar step exists because a page without a sidebar entry fails CI.
-- **Do not treat every suggestion as a blocker.** Some checks, like step count, step ordering, or sidebar placement, are deliberately not hard gates. They ask whether your structure or placement is intentional. If it is, say so and move on.
+- **Do not treat every suggestion as a blocker (probe).** Some checks, like step count, step ordering, or sidebar placement, are deliberately not hard gates. They ask whether your structure or placement is intentional. If it is, say so and move on.
