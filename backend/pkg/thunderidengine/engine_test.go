@@ -9,11 +9,14 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
+	"io"
 	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,6 +49,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/runtimestoreprovidermock"
 )
 
+// testKeyID is the signing key identifier shared by the engine initialization tests.
 const testKeyID = "test-key"
 
 type EngineTestSuite struct {
@@ -340,10 +344,10 @@ func (suite *EngineTestSuite) TestWithCustomExecutors_MergesIntoExistingMap() {
 	assert.Equal(suite.T(), "new", ctx.customExecutors["new"].GetName())
 }
 
-// generateSelfSignedCertFiles writes a throwaway self-signed cert/key pair to dir and returns
-// their PEM-encoded certificate contents, so callers can also seed it as a trust anchor
-// (e.g. the Apple App Attest root) without needing a real one.
-func generateSelfSignedCertFiles(t *testing.T, dir, certFile, keyFile string) []byte {
+// generateSelfSignedCertFiles writes a throwaway self-signed pair to dir as cert.pem and
+// key.pem, and returns the PEM-encoded certificate contents, so callers can also seed it as
+// a trust anchor (e.g. the Apple App Attest root) without needing a real one.
+func generateSelfSignedCertFiles(t *testing.T, dir string) []byte {
 	t.Helper()
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -368,10 +372,103 @@ func generateSelfSignedCertFiles(t *testing.T, dir, certFile, keyFile string) []
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey)})
 
-	require.NoError(t, os.WriteFile(filepath.Join(dir, certFile), certPEM, 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, keyFile), keyPEM, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cert.pem"), certPEM, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "key.pem"), keyPEM, 0o600))
 
 	return certPEM
+}
+
+// TestNew_EmitsJSONForEveryComponent pins the fix for the reported defect: services cache
+// a logger derived in their constructor, so the engine must configure the log output before
+// it builds them, and derived loggers must follow the configured handler. Any component that
+// slipped through would show up here as a plain-text line among the JSON records.
+func (suite *EngineTestSuite) TestNew_EmitsJSONForEveryComponent() {
+	t := suite.T()
+	tempDir := t.TempDir()
+
+	keyID := testKeyID
+	certPEM := generateSelfSignedCertFiles(t, tempDir)
+	keyConfigs := []engineconfig.KeyConfig{{ID: keyID, CertFile: "cert.pem", KeyFile: "key.pem"}}
+
+	systemconfig.ResetServerRuntime()
+	t.Cleanup(systemconfig.ResetServerRuntime)
+	require.NoError(t, systemconfig.InitializeServerRuntime(tempDir, &systemconfig.Config{
+		GateClient: engineconfig.GateClientConfig{Hostname: "localhost", Port: 8080, Scheme: "https"},
+		Crypto: systemconfig.CryptoConfig{
+			Keys:       keyConfigs,
+			Encryption: engineconfig.EncryptionConfig{Key: "000102030405060708090a0b0c0d0e0f"},
+		},
+		Attestation: systemconfig.AttestationConfig{
+			Apple: systemconfig.AppleAttestationConfig{RootCertificate: string(certPEM)},
+		},
+	}))
+
+	captured := captureStdout(t, func() {
+		require.NotNil(t, New(http.NewServeMux(),
+			WithServerHome(tempDir),
+			WithServerConfig(engineconfig.ServerConfig{Identifier: "test-engine"}),
+			WithObservabilityProvider(newTestObservabilityProvider(t)),
+			WithAuthorizationProvider(newTestAuthzProvider(t)),
+			WithKeyConfigs(keyConfigs),
+			WithJWTConfig(engineconfig.JWTConfig{Issuer: "test-issuer", PreferredKeyID: keyID, ValidityPeriod: 3600}),
+			WithRuntimeStoreProvider(newTestRuntimeStoreProvider(t)),
+			WithRuntimeTransientDBType("memory"),
+			WithEncryptionConfig(engineconfig.EncryptionConfig{Key: "test-encryption-key"}),
+			WithGateClientConfig(engineconfig.GateClientConfig{Hostname: "localhost", Port: 8080, Scheme: "https"}),
+			WithCacheConfig(engineconfig.CacheConfig{Disabled: true}),
+			WithLogConfig(engineconfig.LogConfig{Level: "debug", Format: "json"}),
+			WithIDPProvider(newTestIDPProvider(t)),
+			WithActorProvider(actorprovidermock.NewActorProviderMock(t)),
+			WithDefaultAuthnProvider(newTestDefaultAuthnProvider(t)),
+			WithResourceProvider(resourceserverprovidermock.NewResourceServerProviderMock(t)),
+			WithOUProvider(ouprovidermock.NewOrganizationUnitProviderMock(t)),
+			WithDesignResolveProvider(designprovidermock.NewDesignProviderMock(t)),
+			WithFlowProvider(flowexecmock.NewFlowProviderMock(t)),
+			WithI18nProvider(i18nprovidermock.NewI18nProviderMock(t)),
+			WithConsentProvider(consentprovidermock.NewConsentProviderMock(t)),
+			WithFlowConfig(engineconfig.FlowConfig{Executors: []string{"InviteExecutor", "PermissionValidator"}}),
+		))
+	})
+
+	lines := 0
+	for _, line := range strings.Split(captured, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		lines++
+		var record map[string]any
+		require.NoErrorf(t, json.Unmarshal([]byte(line), &record),
+			"engine emitted a non-JSON log line: %s", line)
+	}
+	assert.Positive(t, lines, "the engine should log during initialization")
+}
+
+// captureStdout redirects os.Stdout for the duration of fn and returns what was written.
+// The logger builds its writer from os.Stdout when Configure runs, which is inside fn.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	original := os.Stdout
+	reader, writer, err := os.Pipe()
+	require.NoError(t, err)
+
+	done := make(chan string, 1)
+	go func() {
+		content, _ := io.ReadAll(reader)
+		done <- string(content)
+	}()
+
+	os.Stdout = writer
+	func() {
+		// Restore and close in a defer so a failure inside fn still unblocks the reader.
+		defer func() {
+			os.Stdout = original
+			_ = writer.Close()
+		}()
+		fn()
+	}()
+
+	return <-done
 }
 
 // TestNew_HappyPath drives New() through its full initialization sequence, using a real
@@ -385,7 +482,7 @@ func (suite *EngineTestSuite) TestNew_HappyPath() {
 	tempDir := t.TempDir()
 
 	keyID := testKeyID
-	certPEM := generateSelfSignedCertFiles(t, tempDir, "cert.pem", "key.pem")
+	certPEM := generateSelfSignedCertFiles(t, tempDir)
 	keyConfigs := []engineconfig.KeyConfig{{ID: keyID, CertFile: "cert.pem", KeyFile: "key.pem"}}
 
 	systemconfig.ResetServerRuntime()
@@ -457,7 +554,7 @@ func (suite *EngineTestSuite) TestNew_InitializesRuntimeStoreWhenNotInjected() {
 	tempDir := t.TempDir()
 
 	keyID := testKeyID
-	certPEM := generateSelfSignedCertFiles(t, tempDir, "cert.pem", "key.pem")
+	certPEM := generateSelfSignedCertFiles(t, tempDir)
 	keyConfigs := []engineconfig.KeyConfig{{ID: keyID, CertFile: "cert.pem", KeyFile: "key.pem"}}
 
 	systemconfig.ResetServerRuntime()
@@ -604,7 +701,7 @@ func (suite *EngineTestSuite) TestNew_ResetsDynamicMatcherWhenOriginConfigEmpty(
 	newEngine := func(opts ...Option) *Engine {
 		tempDir := t.TempDir()
 		keyID := testKeyID
-		certPEM := generateSelfSignedCertFiles(t, tempDir, "cert.pem", "key.pem")
+		certPEM := generateSelfSignedCertFiles(t, tempDir)
 		keyConfigs := []engineconfig.KeyConfig{{ID: keyID, CertFile: "cert.pem", KeyFile: "key.pem"}}
 
 		systemconfig.ResetServerRuntime()

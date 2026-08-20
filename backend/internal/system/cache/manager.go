@@ -66,6 +66,10 @@ func Initialize(cacheConfig engineconfig.CacheConfig, deploymentID string) Cache
 	cm.enabled = true
 
 	if getCacheType(cacheConfig) == cacheTypeRedis {
+		// Route the library's own diagnostics through the framework logger; go-redis
+		// otherwise writes them to stderr as plain text, bypassing the configured format.
+		redis.SetLogger(log.NewRedisLogger(logger))
+
 		cm.redisClient = redis.NewClient(&redis.Options{
 			Addr:            cacheConfig.Redis.Address,
 			Username:        cacheConfig.Redis.Username,

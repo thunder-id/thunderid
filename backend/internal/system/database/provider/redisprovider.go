@@ -52,6 +52,10 @@ func initRedisProvider() {
 
 		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RedisProvider"))
 
+		// Route the library's own diagnostics through the framework logger; go-redis
+		// otherwise writes them to stderr as plain text, bypassing the configured format.
+		redis.SetLogger(log.NewRedisLogger(logger))
+
 		r := cfg.Redis
 		client := redis.NewClient(&redis.Options{
 			Addr:            r.Address,

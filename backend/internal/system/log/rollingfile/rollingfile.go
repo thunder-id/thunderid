@@ -50,6 +50,10 @@ type Config struct {
 	MaxAgeDays int
 	// Compress controls whether rotated files are gzip-compressed.
 	Compress bool
+	// OnError reports a rotation, compression, or pruning failure. It must not write
+	// through this writer, or a file failure would recurse. When nil the message is
+	// written to stderr.
+	OnError func(msg string)
 }
 
 // Writer is a size- and/or time-rotating file writer that implements io.Writer.
@@ -67,6 +71,17 @@ type Writer struct {
 }
 
 var _ io.WriteCloser = (*Writer)(nil)
+
+// reportError surfaces a failure in the writer's own housekeeping. These cannot be
+// logged through the framework logger, because that logger writes through this writer
+// and a file failure would recurse; the configured sink formats them on stderr instead.
+func (w *Writer) reportError(msg string) {
+	if w.config.OnError != nil {
+		w.config.OnError(msg)
+		return
+	}
+	fmt.Fprintln(os.Stderr, msg)
+}
 
 // New opens (creating if needed) the file at cfg.Path and returns a Writer. When
 // time-based rotation is configured, it starts a background goroutine that rotates
@@ -154,7 +169,7 @@ func (w *Writer) rotateOnSchedule() {
 		return
 	}
 	if err := w.rotate(); err != nil {
-		fmt.Fprintf(os.Stderr, "rollingfile: scheduled rotation failed: %v\n", err)
+		w.reportError(fmt.Sprintf("rollingfile: scheduled rotation failed: %v", err))
 	}
 }
 
@@ -214,7 +229,7 @@ func (w *Writer) rotate() error {
 		// Closing can fail without leaving a usable descriptor; log and continue so
 		// a transient close error does not permanently block rotation. The file is
 		// reopened (or w.file cleared) below in every path.
-		fmt.Fprintf(os.Stderr, "rollingfile: failed to close file during rotation: %v\n", err)
+		w.reportError(fmt.Sprintf("rollingfile: failed to close file during rotation: %v", err))
 	}
 
 	rotatedPath := w.uniqueRotatedPath(time.Now())
@@ -235,7 +250,7 @@ func (w *Writer) rotate() error {
 	if w.config.Compress {
 		if err := compressFile(rotatedPath); err != nil {
 			// Compression is best-effort; keep the uncompressed backup and carry on.
-			fmt.Fprintf(os.Stderr, "rollingfile: failed to compress %s: %v\n", rotatedPath, err)
+			w.reportError(fmt.Sprintf("rollingfile: failed to compress %s: %v", rotatedPath, err))
 		}
 	}
 
@@ -287,7 +302,7 @@ func (w *Writer) cleanup() {
 	base := filepath.Base(w.config.Path)
 	matches, err := filepath.Glob(filepath.Join(dir, base+".*"))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "rollingfile: failed to list rotated files: %v\n", err)
+		w.reportError(fmt.Sprintf("rollingfile: failed to list rotated files: %v", err))
 		return
 	}
 
@@ -319,7 +334,7 @@ func (w *Writer) cleanup() {
 		}
 		if remove {
 			if err := os.Remove(path); err != nil {
-				fmt.Fprintf(os.Stderr, "rollingfile: failed to remove old log file %s: %v\n", path, err)
+				w.reportError(fmt.Sprintf("rollingfile: failed to remove old log file %s: %v", path, err))
 			}
 		}
 	}

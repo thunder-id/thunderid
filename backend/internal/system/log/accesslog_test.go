@@ -35,9 +35,7 @@ func (suite *AccessLogTestSuite) TestAccessLogHandler() {
 		Level: slog.LevelDebug,
 	}
 	logHandler := slog.NewTextHandler(&buf, handlerOptions)
-	log := &Logger{
-		internal: slog.New(logHandler),
-	}
+	log := newLogger(logHandler, new(slog.LevelVar), &buf)
 
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -79,9 +77,7 @@ func (suite *AccessLogTestSuite) TestAccessLogHandlerSkipPrefixes() {
 	once = sync.Once{}
 
 	logHandler := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
-	log := &Logger{
-		internal: slog.New(logHandler),
-	}
+	log := newLogger(logHandler, new(slog.LevelVar), &buf)
 
 	served := false
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +136,7 @@ func (suite *AccessLogTestSuite) TestAccessLogHandlerSkipPrefixEdgeCases() {
 	for _, tc := range cases {
 		var buf bytes.Buffer
 		logHandler := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
-		log := &Logger{internal: slog.New(logHandler)}
+		log := newLogger(logHandler, new(slog.LevelVar), &buf)
 
 		handler := AccessLogHandler(log, skipPrefixes, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)

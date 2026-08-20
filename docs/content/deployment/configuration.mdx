@@ -93,9 +93,9 @@ By default <ProductName /> writes logs to the console (stdout) only. You can add
 | `log.output.file.format` | `text` | Log line format: `text` or `json`. Despite its position under `file`, this setting applies to console output as well, so set it to `json` to emit JSON to stdout without enabling file output |
 | `log.output.file.rotation.size.enabled` | `false` | Roll the file over once it reaches `max_size_mb` |
 | `log.output.file.rotation.size.max_size_mb` | `10` | Size (in MB, fractional values allowed, e.g. `0.5`) at which the file is rotated |
-| `log.output.file.rotation.time.enabled` | `false` | Roll the file over on a time schedule |
+| `log.output.file.rotation.time.enabled` | `true` | Roll the file over on a time schedule |
 | `log.output.file.rotation.time.interval_days` | `1` | Roll the file over every N days at local midnight |
-| `log.output.file.rotation.max_backups` | `0` | Maximum number of rotated files to keep (`0` keeps all) |
+| `log.output.file.rotation.max_backups` | `20` | Maximum number of rotated files to keep (`0` keeps all) |
 | `log.output.file.rotation.max_age_days` | `0` | Delete rotated files older than this many days (`0` disables age-based deletion) |
 | `log.output.file.rotation.compress` | `false` | Gzip-compress rotated files |
 
@@ -125,6 +125,10 @@ log:
 With the configuration above, logs are written to `<THUNDER_HOME>/logs/thunderid.log`. When the active file reaches the configured size limit, it is renamed with a timestamp suffix (for example `thunderid.log.2026-07-06-14-30-00`) and a fresh file is started. Older rotated files are then pruned by the configured backup count and age limit.
 
 Size and time triggers are independent and can run together: with both enabled, the file rolls whenever it exceeds the size limit **or** reaches the next time interval, whichever comes first. Time-based rotation rolls at local midnight and skips days with no log output (so idle days do not create empty files).
+
+:::note
+The format applies to every component's log lines, regardless of when that component was created. Diagnostics from the embedded Redis and OpenTelemetry clients are routed through the same logger, so they honor the configured level, format, and file output too. Lines emitted before the configuration is read (server home resolution and configuration loading) are the exception: they use the default text format on stdout, because the format itself is defined in the file being loaded.
+:::
 
 :::note
 This is the <ProductName /> **application log** (the `INFO`/`WARN`/`ERROR` lines the server emits). It is separate from the observability event file sink described in the [Observability](../../deployment/observability) guide, which records structured domain events such as token issuance and flow execution.

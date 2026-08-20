@@ -64,6 +64,23 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		logger.Fatal(ctx, "Engine context is missing required fields", log.Error(err))
 	}
 
+	// Apply the logging configuration before any service is initialized, so the
+	// engine's own boot logging is emitted at the configured level and format.
+	if engineCtx.logConfig.Level != "" {
+		if err := logger.SetLevel(engineCtx.logConfig.Level); err != nil {
+			logger.Fatal(ctx, "invalid log level in LogConfig", log.Error(err))
+		}
+	}
+	if engineCtx.logConfig.Format != "" {
+		// SetFormat rather than Configure: the engine owns the format but not where the
+		// records go. A host application may have configured console and file output
+		// already, and Configure would replace it with a console-only sink and close the
+		// host's file writer.
+		if err := logger.SetFormat(engineCtx.logConfig.Format); err != nil {
+			logger.Fatal(ctx, "failed to configure logger", log.Error(err))
+		}
+	}
+
 	// Initialize the cache manager.
 	engineCtx.cacheManager = cache.Initialize(engineCtx.cacheConfig, engineCtx.serverConfig.Identifier)
 
@@ -207,20 +224,6 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.transactioner, revocationEnforcer, revocationService, oauthConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
-	}
-
-	if engineCtx.logConfig.Level != "" {
-		if err := logger.SetLevel(engineCtx.logConfig.Level); err != nil {
-			logger.Fatal(ctx, "invalid log level in LogConfig", log.Error(err))
-		}
-	}
-	if engineCtx.logConfig.Format != "" {
-		if err := logger.Configure(log.OutputOptions{
-			ConsoleEnabled: true,
-			Format:         engineCtx.logConfig.Format,
-		}); err != nil {
-			logger.Fatal(ctx, "failed to configure logger", log.Error(err))
-		}
 	}
 
 	return &Engine{

@@ -5,13 +5,21 @@ package opentelemetry
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
 )
 
 func TestNewTracerProvider_Disabled(t *testing.T) {
@@ -602,4 +610,99 @@ func BenchmarkCreateSpanNoSampling(b *testing.B) {
 		_, span := tracer.Start(ctx, "benchmark-span")
 		span.End()
 	}
+}
+
+// configuredLogger points the framework logger at a JSON file and returns a reader for it.
+func configuredLogger(t *testing.T) (*log.Logger, func() string) {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "thunderid.log")
+	logger := log.GetLogger()
+	require.NoError(t, logger.SetLevel("debug"))
+	require.NoError(t, logger.Configure(log.OutputOptions{
+		FileEnabled: true,
+		Format:      "json",
+		File:        rollingfile.Config{Path: path},
+	}))
+	t.Cleanup(func() { _ = logger.Close() })
+
+	return logger, func() string {
+		content, err := os.ReadFile(path) // #nosec G304 -- test reads a file under t.TempDir().
+		require.NoError(t, err)
+		return string(content)
+	}
+}
+
+func TestOtelLogSinkMapsVerbosityToLevels(t *testing.T) {
+	logger, read := configuredLogger(t)
+	sink := &otelLogSink{logger: logger}
+
+	sink.Info(otelWarnVerbosity, "warn message")
+	sink.Info(otelInfoVerbosity, "info message")
+	sink.Info(otelDebugVerbosity, "debug message")
+
+	output := read()
+	assert.Contains(t, output, `"level":"WARN","msg":"warn message"`)
+	assert.Contains(t, output, `"level":"INFO","msg":"info message"`)
+	assert.Contains(t, output, `"level":"DEBUG","msg":"debug message"`)
+}
+
+func TestOtelLogSinkErrorIncludesCause(t *testing.T) {
+	logger, read := configuredLogger(t)
+	sink := &otelLogSink{logger: logger}
+
+	sink.Error(errors.New("export failed"), "exporter problem", "endpoint", "localhost:4317")
+
+	output := read()
+	assert.Contains(t, output, `"level":"ERROR"`)
+	assert.Contains(t, output, `"msg":"exporter problem"`)
+	assert.Contains(t, output, `"endpoint":"localhost:4317"`)
+	assert.Contains(t, output, "export failed")
+}
+
+func TestOtelLogSinkWithValuesAndName(t *testing.T) {
+	logger, read := configuredLogger(t)
+	sink := &otelLogSink{logger: logger}
+
+	sink.WithValues("exporter", "otlp").WithName("tracer").Info(otelInfoVerbosity, "named message")
+
+	output := read()
+	assert.Contains(t, output, `"exporter":"otlp"`)
+	assert.Contains(t, output, `"logger":"tracer"`)
+	assert.Contains(t, output, `"msg":"named message"`)
+}
+
+func TestPairsToFields(t *testing.T) {
+	assert.Empty(t, pairsToFields(nil))
+
+	fields := pairsToFields([]any{"key", "value", 7, "numeric-key", "dangling"})
+	require.Len(t, fields, 2, "a trailing key without a value is dropped")
+	assert.Equal(t, "key", fields[0].Key)
+	assert.Equal(t, "value", fields[0].Value)
+	assert.Equal(t, "7", fields[1].Key, "a non-string key falls back to its default format")
+	assert.Equal(t, "numeric-key", fields[1].Value)
+}
+
+func TestGrpcLogSinkMapsSeveritiesToLevels(t *testing.T) {
+	logger, read := configuredLogger(t)
+	sink := &grpcLogSink{logger: logger}
+
+	sink.Infof("connecting to %s", "collector:4317")
+	sink.Warningln("transport", "is", "closing")
+	sink.Error("addrConn: failed to connect")
+
+	output := read()
+	assert.Contains(t, output, `"level":"DEBUG","msg":"connecting to collector:4317"`)
+	assert.Contains(t, output, `"level":"WARN","msg":"transport is closing"`)
+	assert.Contains(t, output, `"level":"ERROR","msg":"addrConn: failed to connect"`)
+	// The newline the Sprintln-style variants append must not reach the record.
+	assert.NotContains(t, output, `closing\n`)
+}
+
+func TestGrpcLogSinkVerbosity(t *testing.T) {
+	logger, _ := configuredLogger(t)
+	sink := &grpcLogSink{logger: logger}
+
+	assert.True(t, sink.V(0), "the default verbosity level is enabled")
+	assert.False(t, sink.V(1), "higher verbosity levels are disabled, as in gRPC's own logger")
 }

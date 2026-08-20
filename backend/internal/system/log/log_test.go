@@ -120,9 +120,7 @@ func (suite *LogTestSuite) TestLogMethods() {
 		Level: slog.LevelDebug,
 	}
 	logHandler := slog.NewTextHandler(&buf, handlerOptions)
-	logger = &Logger{
-		internal: slog.New(logHandler),
-	}
+	logger = newLogger(logHandler, new(slog.LevelVar), &buf)
 	log := logger
 
 	ctx := context.Background()
@@ -153,9 +151,7 @@ func (suite *LogTestSuite) TestLoggerWith() {
 		Level: slog.LevelDebug,
 	}
 	logHandler := slog.NewTextHandler(&buf, handlerOptions)
-	logger = &Logger{
-		internal: slog.New(logHandler),
-	}
+	logger = newLogger(logHandler, new(slog.LevelVar), &buf)
 	log := logger
 
 	contextLogger := log.With(Field{Key: "context", Value: "test"})
@@ -293,9 +289,8 @@ func newContextTestLogger(buf *bytes.Buffer) *Logger {
 	handlerOptions := &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}
-	return &Logger{
-		internal: slog.New(&contextHandler{Handler: slog.NewTextHandler(buf, handlerOptions)}),
-	}
+	handler := &contextHandler{Handler: slog.NewTextHandler(buf, handlerOptions)}
+	return newLogger(handler, new(slog.LevelVar), buf)
 }
 
 func (suite *LogTestSuite) TestContextLogMethodsWithTraceID() {
@@ -375,8 +370,10 @@ func (suite *LogTestSuite) TestGetLoggerUsesContextHandler() {
 	once = sync.Once{}
 
 	log := GetLogger()
-	_, ok := log.internal.Handler().(*contextHandler)
-	assert.True(suite.T(), ok, "GetLogger should wrap the handler with contextHandler")
+	_, ok := log.internal.Handler().(*dynamicHandler)
+	assert.True(suite.T(), ok, "GetLogger should install the dynamic handler")
+	_, ok = log.root.state.Load().handler.(*contextHandler)
+	assert.True(suite.T(), ok, "GetLogger should wrap the root handler with contextHandler")
 }
 
 func (suite *LogTestSuite) TestServerErrorWriterWrite() {
@@ -399,11 +396,10 @@ func (suite *LogTestSuite) TestServerErrorWriterWrite() {
 
 func (suite *LogTestSuite) TestServerErrorWriterRespectsLevel() {
 	var buf bytes.Buffer
-	log := newContextTestLogger(&buf)
-	log.levelVar = new(slog.LevelVar)
-	log.levelVar.Set(slog.LevelError)
-	log.internal = slog.New(&contextHandler{Handler: slog.NewTextHandler(&buf,
-		&slog.HandlerOptions{Level: log.levelVar})})
+	levelVar := new(slog.LevelVar)
+	levelVar.Set(slog.LevelError)
+	log := newLogger(&contextHandler{Handler: slog.NewTextHandler(&buf,
+		&slog.HandlerOptions{Level: levelVar})}, levelVar, &buf)
 	w := &serverErrorWriter{logger: log}
 
 	_, err := w.Write([]byte("some server error"))
@@ -447,4 +443,32 @@ func (suite *LogTestSuite) TestConvertFields() {
 	assert.Contains(suite.T(), output, "string=value")
 	assert.Contains(suite.T(), output, "int=42")
 	assert.Contains(suite.T(), output, "bool=true")
+}
+
+func TestRedisLoggerPrintf(t *testing.T) {
+	var buf bytes.Buffer
+	log := newContextTestLogger(&buf)
+
+	NewRedisLogger(log).Printf(sysContext.WithTraceID(context.Background(), "trace-redis"),
+		"redis: connection pool timeout after %ds\n", 5)
+
+	output := buf.String()
+	assert.Contains(t, output, "level=WARN")
+	assert.Contains(t, output, "redis: connection pool timeout after 5s")
+	assert.Contains(t, output, LoggerKeyTraceID+"=trace-redis")
+	// The trailing newline from the library's format string must not be logged.
+	assert.NotContains(t, output, `5s\n`)
+}
+
+func TestRedisLoggerRespectsLevel(t *testing.T) {
+	var buf bytes.Buffer
+	levelVar := new(slog.LevelVar)
+	levelVar.Set(slog.LevelError)
+	log := newLogger(&contextHandler{Handler: slog.NewTextHandler(&buf,
+		&slog.HandlerOptions{Level: levelVar})}, levelVar, &buf)
+
+	NewRedisLogger(log).Printf(context.Background(), "redis: some diagnostic")
+
+	// WARN is below the ERROR threshold, so nothing should be emitted.
+	assert.Empty(t, buf.String())
 }

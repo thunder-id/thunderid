@@ -4,6 +4,7 @@
 package rollingfile
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -368,4 +369,35 @@ func TestConcurrentWrites(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// TestReportErrorUsesConfiguredSink verifies the writer's own housekeeping failures are
+// handed to the configured reporter instead of being written straight to stderr.
+func TestReportErrorUsesConfiguredSink(t *testing.T) {
+	var reported []string
+	w := &Writer{config: Config{OnError: func(msg string) {
+		reported = append(reported, msg)
+	}}}
+
+	w.reportError("rollingfile: something went wrong")
+
+	assert.Equal(t, []string{"rollingfile: something went wrong"}, reported)
+}
+
+// TestReportErrorFallsBackToStderr verifies a writer created without a reporter still
+// surfaces its failures rather than dropping them.
+func TestReportErrorFallsBackToStderr(t *testing.T) {
+	original := os.Stderr
+	r, pipeW, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stderr = pipeW
+	defer func() { os.Stderr = original }()
+
+	w := &Writer{config: Config{}}
+	w.reportError("rollingfile: fallback message")
+
+	require.NoError(t, pipeW.Close())
+	captured, err := io.ReadAll(r)
+	require.NoError(t, err)
+	assert.Contains(t, string(captured), "rollingfile: fallback message")
 }
