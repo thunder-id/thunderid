@@ -728,6 +728,87 @@ func (suite *AuthorizeHandlerTestSuite) TestDecodeAttributesFromAssertion_Succes
 	assert.Equal(suite.T(), "read write", clms.authorizedPermissions)
 }
 
+func (suite *AuthorizeHandlerTestSuite) TestDecodeAttributesFromAssertion_CorrelationID() {
+	// JWT payload: {"sub":"test-user","correlation_id":"flow-exec-1"}
+	correlationJWT := "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0." +
+		"eyJzdWIiOiJ0ZXN0LXVzZXIiLCJjb3JyZWxhdGlvbl9pZCI6ImZsb3ctZXhlYy0xIn0."
+
+	clms, _, err := decodeAttributesFromAssertion(correlationJWT)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "flow-exec-1", clms.correlationID)
+}
+
+// The assertion's sub holds the token subject, which the application may map to an attribute; the
+// resource ID and category travel beside it so issuance reports the opaque identity instead.
+func (suite *AuthorizeHandlerTestSuite) TestDecodeAttributesFromAssertion_SubjectIdentity() {
+	// JWT payload: {"sub":"alice@example.com","sub_id":"user-entity-1","sub_type":"user"}
+	subjectJWT := "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0." +
+		"eyJzdWIiOiJhbGljZUBleGFtcGxlLmNvbSIsInN1Yl9pZCI6InVzZXItZW50aXR5LTEiLCJzdWJfdHlwZSI6InVzZXIifQ."
+
+	clms, _, err := decodeAttributesFromAssertion(subjectJWT)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "user-entity-1", clms.subjectID)
+	assert.Equal(suite.T(), "user", clms.subjectCategory)
+	// The mapped subject stays on userID, where the rest of issuance expects it.
+	assert.Equal(suite.T(), "alice@example.com", clms.userID)
+}
+
+func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_CarriesSubjectIdentity() {
+	authRequestCtx := &authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{
+			ClientID:    "test-client",
+			RedirectURI: "https://client.example.com/callback",
+		},
+	}
+
+	clms := &assertionClaims{
+		userID:          "alice@example.com",
+		subjectID:       "user-entity-1",
+		subjectCategory: "user",
+	}
+
+	result, err := createAuthorizationCode(
+		authorizeServiceCfgFromRuntime(), authRequestCtx, clms, time.Now())
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "user-entity-1", result.SubjectID)
+	assert.Equal(suite.T(), "user", result.SubjectCategory)
+}
+
+func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_CarriesCorrelationID() {
+	authRequestCtx := &authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{
+			ClientID:    "test-client",
+			RedirectURI: "https://client.example.com/callback",
+		},
+	}
+
+	clms := &assertionClaims{userID: "test-user", correlationID: "flow-exec-1"}
+
+	result, err := createAuthorizationCode(
+		authorizeServiceCfgFromRuntime(), authRequestCtx, clms, time.Now())
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "flow-exec-1", result.CorrelationID)
+}
+
+func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_NoCorrelationIDWhenAssertionHasNone() {
+	authRequestCtx := &authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{
+			ClientID:    "test-client",
+			RedirectURI: "https://client.example.com/callback",
+		},
+	}
+
+	result, err := createAuthorizationCode(authorizeServiceCfgFromRuntime(), authRequestCtx,
+		&assertionClaims{userID: "test-user"}, time.Now())
+
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), result.CorrelationID)
+}
+
 func (suite *AuthorizeHandlerTestSuite) TestDecodeAttributesFromAssertion_DecodeError() {
 	invalidJWT := "invalid.jwt.token"
 

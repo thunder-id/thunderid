@@ -53,7 +53,7 @@ func TestEventBuilderPattern(t *testing.T) {
 
 	result := evt.
 		WithStatus(providers.StatusSuccess).
-		WithData(DataKey.UserID, "user-456").
+		WithData(DataKey.Subject, "user-456").
 		WithData(DataKey.ClientID, "client-789").
 		WithData(DataKey.Message, "Authentication completed successfully").
 		WithData(DataKey.DurationMs, 500)
@@ -66,8 +66,8 @@ func TestEventBuilderPattern(t *testing.T) {
 		t.Errorf("Expected Status %s, got %s", providers.StatusSuccess, evt.Status)
 	}
 
-	if evt.Data["user_id"] != "user-456" {
-		t.Errorf("Expected Data[user_id] %s, got %v", "user-456", evt.Data["user_id"])
+	if evt.Data["sub"] != "user-456" {
+		t.Errorf("Expected Data[sub] %s, got %v", "user-456", evt.Data["sub"])
 	}
 
 	if evt.Data["client_id"] != "client-789" {

@@ -138,6 +138,21 @@ func (s *UtilsTestSuite) TestAssembleApplication_CarriesFlowIDs() {
 	s.Equal("signout-flow", app.SignOutFlowID)
 }
 
+func (s *UtilsTestSuite) TestAssembleApplication_CarriesEntityCategory() {
+	client := &providers.InboundClient{ID: "agent-1"}
+	entity := &providers.Entity{ID: "agent-1", Category: providers.EntityCategoryAgent}
+
+	app := assembleApplication(client, entity)
+
+	s.Equal(providers.EntityCategoryAgent, app.EntityCategory)
+}
+
+func (s *UtilsTestSuite) TestAssembleApplication_NoEntityLeavesCategoryEmpty() {
+	app := assembleApplication(&providers.InboundClient{ID: "app-1"}, nil)
+
+	s.Empty(app.EntityCategory)
+}
+
 func (s *UtilsTestSuite) TestBuildApplication_NotFound() {
 	s.mockInbound.On("GetInboundClientByEntityID", mock.Anything, "missing").
 		Return((*inboundmodel.InboundClient)(nil), inboundclient.ErrInboundClientNotFound)

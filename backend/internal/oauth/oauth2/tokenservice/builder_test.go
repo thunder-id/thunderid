@@ -98,7 +98,7 @@ func (suite *TokenBuilderTestSuite) TestNewTokenBuilder() {
 	jwtService := jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	builder := newTokenBuilder(oauthconfig.Config{
 		JWT: engineconfig.JWTConfig{Issuer: "https://example.com", ValidityPeriod: 3600},
-	}, jwtService, nil, nil)
+	}, jwtService, nil, nil, nil)
 
 	assert.NotNil(suite.T(), builder)
 	assert.Implements(suite.T(), (*TokenBuilderInterface)(nil), builder)
@@ -143,6 +143,45 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_Basic() {
 	assert.Equal(suite.T(), "test-client", result.ClientID)
 	assert.Equal(suite.T(), map[string]interface{}{"name": testUserName}, result.UserAttributes)
 	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_CarriesActorSubOntoTokenDTO() {
+	ctx := &AccessTokenBuildContext{
+		Subject:     "user123",
+		Audiences:   []string{"app123"},
+		ClientID:    "test-client",
+		GrantType:   string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:    suite.oauthApp,
+		ActorClaims: &SubjectTokenClaims{Sub: "agent-entity-1"},
+	}
+
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user123", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "agent-entity-1", result.ActorSub)
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_NoActorClaimsLeavesActorSubEmpty() {
+	ctx := &AccessTokenBuildContext{
+		Subject:   "agent-entity-1",
+		Audiences: []string{"app123"},
+		ClientID:  "test-client",
+		GrantType: string(providers.GrantTypeClientCredentials),
+		OAuthApp:  suite.oauthApp,
+	}
+
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "agent-entity-1", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), result.ActorSub)
 }
 
 func (suite *TokenBuilderTestSuite) TestBuildAccessToken_ClientAttributes_MergesOUAndOwnClaims() {

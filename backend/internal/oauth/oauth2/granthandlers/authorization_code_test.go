@@ -409,6 +409,59 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_ActorClaim(
 	}
 }
 
+// The code carries the subject resolved during login. Reporting it depends on the handler passing it
+// to the builder, so assert on the build context rather than on the response: without it the builder
+// falls back to resolving the token subject, which is a mapped attribute on some deployments and
+// resolves to nothing, silently dropping the subject from the issuance events.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_PassesCodeSubjectToTheBuilder() {
+	authCode := suite.testAuthzCode
+	authCode.SubjectID = "user-entity-1"
+	authCode.SubjectCategory = string(providers.EntityCategoryUser)
+
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authCode, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(tokenCtx *tokenservice.AccessTokenBuildContext) bool {
+			return tokenCtx.SubjectEntityID == "user-entity-1" &&
+				tokenCtx.SubjectCategory == string(providers.EntityCategoryUser)
+		})).Return(&model.TokenDTO{
+		Token:     "test-jwt-token",
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresIn: 3600,
+		ClientID:  testClientID,
+		Subject:   testUserID,
+	}, nil)
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_CarriesCodeCorrelationID() {
+	authCode := suite.testAuthzCode
+	authCode.CorrelationID = "flow-exec-1"
+
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authCode, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token:     "test-jwt-token",
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresIn: 3600,
+		ClientID:  testClientID,
+		Subject:   testUserID,
+	}, nil)
+
+	result, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), "flow-exec-1", result.CorrelationID)
+}
+
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_InvalidAuthorizationCode() {
 	// Mock authorization code store to return error
 	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").

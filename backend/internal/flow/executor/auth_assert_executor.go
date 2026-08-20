@@ -167,6 +167,42 @@ func (a *authAssertExecutor) resolveAuthTime(ctx *providers.NodeContext) int64 {
 	return time.Now().UTC().Unix()
 }
 
+// addCorrelationClaim carries the flow's execution id onto the assertion so the authorization code
+// minted from it, and the token issuance events that follow, report the same correlation identifier
+// as the flow's own observability events.
+func addCorrelationClaim(jwtClaims map[string]interface{}, executionID string) {
+	if executionID == "" {
+		return
+	}
+	jwtClaims[oauth2const.ClaimCorrelationID] = executionID
+}
+
+// reservedAssertionClaims are the assertion claims the server derives itself. App Native flows embed
+// the subject's attributes directly in the assertion, so a schema attribute sharing one of these
+// names would otherwise replace the server's value. That matters most for the subject identity: the
+// replaced value would reach the authorization code and be reported as the event's subject, which is
+// the mapped-attribute disclosure these claims exist to avoid.
+var reservedAssertionClaims = map[string]bool{
+	oauth2const.ClaimSubjectID:     true,
+	oauth2const.ClaimSubjectType:   true,
+	oauth2const.ClaimCorrelationID: true,
+}
+
+// addSubjectIdentityClaims carries the authenticated entity's resource ID and category onto the
+// assertion. The assertion's sub claim holds the token subject, which the application may map to an
+// attribute such as an email address, so these carry the opaque identity alongside it: token
+// issuance reports the subject from them rather than from sub, and reads the category here instead
+// of resolving the entity a second time.
+func addSubjectIdentityClaims(jwtClaims map[string]interface{}, entityID, entityCategory string) {
+	if entityID == "" {
+		return
+	}
+	jwtClaims[oauth2const.ClaimSubjectID] = entityID
+	if entityCategory != "" {
+		jwtClaims[oauth2const.ClaimSubjectType] = entityCategory
+	}
+}
+
 // generateAuthAssertion generates the authentication assertion token.
 func (a *authAssertExecutor) generateAuthAssertion(
 	ctx *providers.NodeContext, execResp *providers.ExecutorResponse, logger *log.Logger,
@@ -211,6 +247,8 @@ func (a *authAssertExecutor) generateAuthAssertion(
 	if authReqID, exists := ctx.RuntimeData[common.RuntimeKeyAuthorizationRequestID]; exists && authReqID != "" {
 		jwtClaims[oauth2const.ClaimAuthorizationRequestID] = authReqID
 	}
+
+	addCorrelationClaim(jwtClaims, ctx.ExecutionID)
 
 	// Carry the token family id (minted by the Session node) so the authorization code, and in turn
 	// the grant's access and refresh tokens, are stamped with it for family-scoped revocation.
@@ -268,6 +306,7 @@ func (a *authAssertExecutor) generateAuthAssertion(
 
 	tokenSub = resolveSubject(ctx.Application.SubjectAttribute, entityRef.EntityType, fetchedAttributes,
 		entityRef.EntityID)
+	addSubjectIdentityClaims(jwtClaims, entityRef.EntityID, entityRef.EntityCategory)
 
 	resolvedAttributes, attrErr := a.resolveUserAttributes(ctx, requiredAttributes, fetchedAttributes,
 		entityRef.EntityID, entityRef.EntityType, entityRef.OUID)
@@ -286,9 +325,14 @@ func (a *authAssertExecutor) generateAuthAssertion(
 					log.String("error", err.Error()))
 				return "", errors.New("something went wrong while processing attribute cache configuration")
 			}
+			// Record the resolved identity alongside the attributes. A grant that later holds only
+			// this entry's ID can then report the subject without resolving it again, including when
+			// the token's sub is a mapped attribute and the resource ID is unrecoverable from it.
 			attributeCache := &attributecache.AttributeCache{
-				Attributes: resolvedAttributes,
-				TTLSeconds: ttlSeconds,
+				Attributes:      resolvedAttributes,
+				TTLSeconds:      ttlSeconds,
+				SubjectID:       entityRef.EntityID,
+				SubjectCategory: entityRef.EntityCategory,
 			}
 			result, creationErr := a.attributeCacheSvc.CreateAttributeCache(ctx.Context, attributeCache)
 			if creationErr != nil {
@@ -301,6 +345,9 @@ func (a *authAssertExecutor) generateAuthAssertion(
 	} else {
 		// We are in an App Native flow, so we need to add user attributes to the assertion
 		for attrKey, attrVal := range resolvedAttributes {
+			if reservedAssertionClaims[attrKey] {
+				continue
+			}
 			jwtClaims[attrKey] = attrVal
 		}
 	}

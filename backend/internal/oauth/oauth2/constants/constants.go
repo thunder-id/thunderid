@@ -279,6 +279,20 @@ const (
 	// family at once. Revocation-only and not a client-managed identifier: it rides the token JWTs
 	// but is not part of any client-facing API.
 	ClaimTokenFamilyID string = "tfid"
+	// ClaimCorrelationID carries the login flow's execution id on the flow assertion so the
+	// authorization code, and in turn the token issuance events, report the same correlation
+	// identifier as the flow's own observability events. Observability-only: it rides the internal
+	// flow assertion and is never emitted on a client-facing token.
+	ClaimCorrelationID string = "correlation_id"
+	// ClaimSubjectID carries the resource ID of the entity the flow authenticated, and
+	// ClaimSubjectType its entity category. The assertion's own sub claim holds the token subject,
+	// which the application may map to an attribute such as an email address; these two carry the
+	// opaque identity alongside it so token issuance can report the subject without resolving it
+	// again and without reporting a mapped attribute. Observability-only: both ride the internal flow
+	// assertion, neither is emitted on a client-facing token, and no authorization decision reads
+	// either claim.
+	ClaimSubjectID   string = "sub_id"
+	ClaimSubjectType string = "sub_type"
 )
 
 // SurfaceableClientSystemClaims is the fixed set of entity system-attribute keys that may be

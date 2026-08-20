@@ -56,6 +56,18 @@ type TokenDTO struct {
 	// TokenFamilyID is the token family id (tfid) stamped on the token, carried here so the refresh
 	// token issued alongside an access token can be stamped with the same family id.
 	TokenFamilyID string
+	// ActorSub is the resource ID of the principal acting for Subject, mirroring the token's act.sub
+	// claim. Set only for delegated (on-behalf-of) issuance; empty when the subject acts for itself.
+	ActorSub string
+	// SubjectID is the resource ID of the entity the token was issued for. It differs from Subject
+	// whenever the application maps a subject attribute, where Subject is that attribute's value: the
+	// resource ID is opaque and stable across applications, so it is what observability reports.
+	// Empty when the subject could not be resolved to an entity, as on an exchange whose subject token
+	// carries a mapped attribute.
+	SubjectID string
+	// SubjectCategory is the entity category of SubjectID (user, agent or app), resolved while the
+	// token is built. Empty when it could not be determined, so consumers omit it rather than assume.
+	SubjectCategory string
 }
 
 // TokenResponseDTO represents the data transfer object for token responses.
@@ -63,4 +75,9 @@ type TokenResponseDTO struct {
 	AccessToken  TokenDTO
 	RefreshToken TokenDTO
 	IDToken      TokenDTO
+	// CorrelationID is the correlation identifier of the authorization grant these tokens were issued
+	// against, when the grant carries one (the login flow's execution id, arriving via the
+	// authorization code). Reported on the token issuance event so it stitches to the flow's own
+	// events; never returned to the client.
+	CorrelationID string
 }
