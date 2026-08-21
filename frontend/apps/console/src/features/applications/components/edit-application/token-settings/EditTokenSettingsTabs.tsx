@@ -114,6 +114,7 @@ export default function EditTokenSettingsTabs({
           disabled={application.isReadOnly ?? false}
           onValidationChange={setClientTabHasError}
           subjectValue={application.id}
+          subjectType="application"
           copy={{
             attributesTitle: t('applications:edit.token.client.attributes.title', 'Access Token Attributes'),
             attributesDescription: t(

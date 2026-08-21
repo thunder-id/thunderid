@@ -112,6 +112,8 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 
 	appID := processedDTO.ID
 
+	seedClientSubTypeAttribute(processedDTO)
+
 	inboundClient := toInboundClient(processedDTO)
 	oauthProfile := toOAuthProfile(processedDTO)
 	if svcErr := as.resolveAttestationCredentialsForPersist(ctx, appID, &inboundClient); svcErr != nil {
@@ -556,6 +558,23 @@ func isFlowSecretEligible(appType model.ApplicationType,
 // isM2MGrantSet reports whether client_credentials is the only configured grant type.
 func isM2MGrantSet(grantTypes []providers.GrantType) bool {
 	return len(grantTypes) == 1 && grantTypes[0] == providers.GrantTypeClientCredentials
+}
+
+// seedClientSubTypeAttribute selects the sub_type claim for a new application that can use the
+// client_credentials grant, so its own tokens identify it without being reconfigured. Keyed on the
+// grant, not the type: a fullstack or custom application can hold the grant too.
+func seedClientSubTypeAttribute(processedDTO *model.ApplicationProcessedDTO) {
+	if processedDTO == nil {
+		return
+	}
+	oauthProcessed := getOAuthInboundAuthConfigProcessedDTO(processedDTO.InboundAuthConfig)
+	if oauthProcessed == nil || oauthProcessed.OAuthConfig == nil {
+		return
+	}
+	if !slices.Contains(oauthProcessed.OAuthConfig.GrantTypes, providers.GrantTypeClientCredentials) {
+		return
+	}
+	oauthProcessed.OAuthConfig.Token = oauthutils.EnsureClientSubTypeAttribute(oauthProcessed.OAuthConfig.Token)
 }
 
 // appRequiresClientSecret reports whether the OAuth config implies a confidential client requiring a secret.

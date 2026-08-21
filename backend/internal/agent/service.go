@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -904,6 +905,7 @@ func (s *agentService) createInboundForAgent(ctx context.Context, agentID string
 		agent.LoginConsent, agent.AllowedUserTypes, agent.SubjectAttribute)
 	setLogoProperty(&client, agent.LogoURL)
 
+	seedClientSubTypeAttribute(agent.InboundAuthConfig)
 	oauthProfile := buildOAuthProfile(agent.InboundAuthConfig)
 
 	hasSecret := clientSecret != ""
@@ -1414,6 +1416,21 @@ func (s *agentService) agentLogoMap(ctx context.Context, entities []providers.En
 		}
 	}
 	return logoByID
+}
+
+// seedClientSubTypeAttribute selects the sub_type claim for a new agent, so its own tokens are
+// distinguishable from an M2M application's. Empty grant types default to client_credentials (see
+// buildOAuthProfile), so those are seeded too.
+func seedClientSubTypeAttribute(configs []providers.InboundAuthConfigWithSecret) {
+	cfg, err := pickOAuthConfig(configs)
+	if err != nil || cfg == nil {
+		return
+	}
+	if len(cfg.GrantTypes) > 0 &&
+		!slices.Contains(cfg.GrantTypes, providers.GrantTypeClientCredentials) {
+		return
+	}
+	cfg.Token = oauthutils.EnsureClientSubTypeAttribute(cfg.Token)
 }
 
 // buildOAuthProfile maps the agent OAuth config to the inbound client profile shape.

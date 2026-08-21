@@ -22,6 +22,7 @@ const JWT_CLAIM_DESCRIPTIONS: Record<string, string> = {
   nbf: 'Not before — token not valid before this Unix timestamp',
   scope: 'OAuth 2 scopes granted to the token',
   sub: 'Subject — the principal (user) this token represents',
+  sub_type: 'Identity class of the subject: application or agent',
 };
 
 interface MonacoLike {

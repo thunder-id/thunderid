@@ -141,3 +141,69 @@ func (s *ApplicationTypeTestSuite) TestFullStackCustomAndMCPFlowSecretEligibilit
 		s.False(isFlowSecretEligible(appType, m2mShaped), "type %q m2m-shaped should not be eligible", appType)
 	}
 }
+
+// processedDTOWithGrants builds a processed application DTO with one OAuth inbound config.
+func processedDTOWithGrants(
+	grantTypes []providers.GrantType, clientAttributes []string,
+) *model.ApplicationProcessedDTO {
+	var token *providers.OAuthTokenConfig
+	if clientAttributes != nil {
+		token = &providers.OAuthTokenConfig{
+			AccessToken: &providers.AccessTokenConfig{
+				ClientConfig: &providers.AccessTokenSubConfig{Attributes: clientAttributes},
+			},
+		}
+	}
+	return &model.ApplicationProcessedDTO{
+		InboundAuthConfig: []inboundmodel.InboundAuthConfigProcessed{
+			{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthClient{
+					GrantTypes: grantTypes,
+					Token:      token,
+				},
+			},
+		},
+	}
+}
+
+// clientAttributesOf reads back the client-token attribute selection, or nil when unset.
+func clientAttributesOf(dto *model.ApplicationProcessedDTO) []string {
+	cfg := dto.InboundAuthConfig[0].OAuthConfig.Token
+	if cfg == nil || cfg.AccessToken == nil || cfg.AccessToken.ClientConfig == nil {
+		return nil
+	}
+	return cfg.AccessToken.ClientConfig.Attributes
+}
+
+// Creation selects sub_type whenever the client_credentials grant is present, alone or not.
+func (s *ApplicationTypeTestSuite) TestSeedClientSubTypeAttributeForClientCredentialsGrants() {
+	for _, grantTypes := range [][]providers.GrantType{
+		{providers.GrantTypeClientCredentials},
+		{providers.GrantTypeAuthorizationCode, providers.GrantTypeClientCredentials},
+	} {
+		dto := processedDTOWithGrants(grantTypes, nil)
+
+		seedClientSubTypeAttribute(dto)
+
+		s.Equal([]string{"sub_type"}, clientAttributesOf(dto), "grants %v should receive the claim", grantTypes)
+	}
+}
+
+// An application that never receives a token for itself gets no selection.
+func (s *ApplicationTypeTestSuite) TestSeedClientSubTypeAttributeSkipsNonClientGrants() {
+	dto := processedDTOWithGrants([]providers.GrantType{providers.GrantTypeAuthorizationCode}, nil)
+
+	seedClientSubTypeAttribute(dto)
+
+	s.Nil(clientAttributesOf(dto), "an application with no client_credentials grant must not be seeded")
+}
+
+// Seeding adds to the caller's selection rather than replacing it.
+func (s *ApplicationTypeTestSuite) TestSeedClientSubTypeAttributeAppendsToCallerSelection() {
+	dto := processedDTOWithGrants([]providers.GrantType{providers.GrantTypeClientCredentials}, []string{"ouId"})
+
+	seedClientSubTypeAttribute(dto)
+
+	s.Equal([]string{"ouId", "sub_type"}, clientAttributesOf(dto))
+}

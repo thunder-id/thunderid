@@ -275,6 +275,13 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_AgentWithConfidential
 	s.Require().NotNil(cfg)
 	s.Assert().Equal(clientID, cfg.ClientID)
 	s.Assert().Empty(cfg.ClientSecret, "GET response must not expose client secret")
+
+	// Creation selects sub_type, so the selection has to survive the export and the import as well.
+	s.Assert().Contains(yamlContent, "sub_type", "the exported selection must carry the claim")
+	s.Require().NotNil(cfg.Token)
+	s.Require().NotNil(cfg.Token.AccessToken)
+	s.Require().NotNil(cfg.Token.AccessToken.ClientConfig)
+	s.Assert().Contains(cfg.Token.AccessToken.ClientConfig.Attributes, "sub_type")
 }
 
 // TestImportAgent_UpsertUpdates verifies that importing the same YAML twice with

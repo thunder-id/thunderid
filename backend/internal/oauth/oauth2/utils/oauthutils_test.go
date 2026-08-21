@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type OAuth2UtilsTestSuite struct {
@@ -1844,4 +1845,55 @@ func (suite *OAuth2UtilsTestSuite) TestSanitizeErrorDescriptionKeepsRedirectBuil
 
 	assert.NoError(suite.T(), err)
 	assert.Contains(suite.T(), uri, "error=access_denied")
+}
+
+// No token configuration is the common case, so the helper builds the nested config.
+func (suite *OAuth2UtilsTestSuite) TestEnsureClientSubTypeAttribute_BuildsMissingConfig() {
+	token := EnsureClientSubTypeAttribute(nil)
+
+	assert.NotNil(suite.T(), token)
+	assert.NotNil(suite.T(), token.AccessToken)
+	assert.NotNil(suite.T(), token.AccessToken.ClientConfig)
+	assert.Equal(suite.T(), []string{constants.ClaimSubType}, token.AccessToken.ClientConfig.Attributes)
+}
+
+// Seeding adds the claim without replacing a caller-supplied selection.
+func (suite *OAuth2UtilsTestSuite) TestEnsureClientSubTypeAttribute_KeepsExistingAttributes() {
+	token := EnsureClientSubTypeAttribute(&providers.OAuthTokenConfig{
+		AccessToken: &providers.AccessTokenConfig{
+			ClientConfig: &providers.AccessTokenSubConfig{
+				ValidityPeriod: 1800,
+				Attributes:     []string{constants.ClaimOUID},
+			},
+		},
+	})
+
+	clientConfig := token.AccessToken.ClientConfig
+	assert.Equal(suite.T(), []string{constants.ClaimOUID, constants.ClaimSubType}, clientConfig.Attributes)
+	assert.Equal(suite.T(), int64(1800), clientConfig.ValidityPeriod,
+		"seeding the claim must not disturb the rest of the client config")
+}
+
+// The caller may already have set the claim, so seeding must not duplicate it.
+func (suite *OAuth2UtilsTestSuite) TestEnsureClientSubTypeAttribute_IsIdempotent() {
+	token := EnsureClientSubTypeAttribute(&providers.OAuthTokenConfig{
+		AccessToken: &providers.AccessTokenConfig{
+			ClientConfig: &providers.AccessTokenSubConfig{Attributes: []string{constants.ClaimSubType}},
+		},
+	})
+	token = EnsureClientSubTypeAttribute(token)
+
+	assert.Equal(suite.T(), []string{constants.ClaimSubType}, token.AccessToken.ClientConfig.Attributes)
+}
+
+// sub_type never appears on a user-subject token, so the user sub-config is untouched.
+func (suite *OAuth2UtilsTestSuite) TestEnsureClientSubTypeAttribute_LeavesUserConfigAlone() {
+	token := EnsureClientSubTypeAttribute(&providers.OAuthTokenConfig{
+		AccessToken: &providers.AccessTokenConfig{
+			UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"email"}},
+		},
+	})
+
+	assert.Equal(suite.T(), []string{"email"}, token.AccessToken.UserConfig.Attributes)
+	assert.Equal(suite.T(), []string{constants.ClaimSubType}, token.AccessToken.ClientConfig.Attributes)
 }

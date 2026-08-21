@@ -967,6 +967,22 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_SkipsR
 	assert.NotContains(suite.T(), claims, "scope")
 }
 
+// sub_type is reserved, so an agent cannot surface a schema attribute of that name.
+func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_SkipsSubType() {
+	actors := actorprovidermock.NewActorProviderMock(suite.T())
+	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+		ID:         testBCCAppID,
+		Attributes: []byte(`{"sub_type":"app","modelProvider":"anthropic"}`),
+	}, (*tidcommon.ServiceError)(nil))
+
+	app := newOAuthAppForOwnAttributes([]string{"sub_type", "modelProvider"})
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
+	assert.NotContains(suite.T(), claims, "sub_type")
+}
+
 func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentSystemAttributes_HappyPath() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
 	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{

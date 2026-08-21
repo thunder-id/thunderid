@@ -271,12 +271,23 @@ const (
 	// jwt-bearer-grant (ID-JAG) access token, so downstream consumers can distinguish a federated
 	// principal from a local one.
 	ClaimIDP string = "idp"
+	// ClaimSubType identifies the identity class of the token subject, so a resource server can apply
+	// policy that differs by class. Emitted on client_credentials tokens.
+	ClaimSubType string = "sub_type"
 	// ClaimTokenFamilyID identifies the token family (one authorization grant) a token belongs to.
 	// A single tfid is minted per grant during the login flow and rides every access and refresh
 	// token of that grant, unchanged across refresh rotation, so revocation can target a whole
 	// family at once. Revocation-only and not a client-managed identifier: it rides the token JWTs
 	// but is not part of any client-facing API.
 	ClaimTokenFamilyID string = "tfid"
+)
+
+// Subject type values for the sub_type claim.
+const (
+	// SubTypeApp marks the subject as an application.
+	SubTypeApp string = "application"
+	// SubTypeAgent marks the subject as an agent.
+	SubTypeAgent string = "agent"
 )
 
 // SurfaceableClientSystemClaims is the fixed set of entity system-attribute keys that may be

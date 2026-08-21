@@ -163,6 +163,38 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_EnforcementUnav
 	assert.Nil(s.T(), response)
 }
 
+// An introspecting resource server needs the subject's identity class too, so sub_type is surfaced.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_SurfacesSubType() {
+	for _, subType := range []string{constants.SubTypeAgent, constants.SubTypeApp} {
+		s.Run(subType, func() {
+			token := accessTokenFor("client-token-" + subType)
+			s.stubAccessToken(token, map[string]interface{}{
+				"sub":       "entity123",
+				"sub_type":  subType,
+				"client_id": "client123",
+			})
+
+			response, err := s.introspectService.IntrospectToken(context.Background(), token, "")
+
+			assert.NoError(s.T(), err)
+			assert.True(s.T(), response.Active)
+			assert.Equal(s.T(), subType, response.SubType)
+		})
+	}
+}
+
+// A token without the claim reports no subject type rather than a guessed one.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_OmitsAbsentSubType() {
+	token := accessTokenFor("no-sub-type")
+	s.stubAccessToken(token, map[string]interface{}{"sub": "user123"})
+
+	response, err := s.introspectService.IntrospectToken(context.Background(), token, "")
+
+	assert.NoError(s.T(), err)
+	assert.True(s.T(), response.Active)
+	assert.Empty(s.T(), response.SubType)
+}
+
 // RFC 7662 Section 2.1 covers refresh tokens as well as access tokens, so a refresh token is
 // reported active with its claims surfaced.
 func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_RefreshToken_Active() {

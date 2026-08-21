@@ -182,6 +182,320 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_ClientAttributes_Merges
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
 
+// clientCredentialsCtxWithCategory builds a client_credentials context for the given entity category,
+// with sub_type selected as creation seeds it.
+func (suite *TokenBuilderTestSuite) clientCredentialsCtxWithCategory(
+	category providers.EntityCategory,
+) *AccessTokenBuildContext {
+	return suite.clientCredentialsCtxWithAttributes(category, []string{constants.ClaimSubType})
+}
+
+// clientCredentialsCtxWithAttributes builds a client_credentials context with the given category and
+// client-token attribute selection.
+func (suite *TokenBuilderTestSuite) clientCredentialsCtxWithAttributes(
+	category providers.EntityCategory, clientAttributes []string,
+) *AccessTokenBuildContext {
+	oauthApp := *suite.oauthApp
+	oauthApp.EntityCategory = category
+	oauthApp.Token = &providers.OAuthTokenConfig{
+		AccessToken: &providers.AccessTokenConfig{
+			ClientConfig: &providers.AccessTokenSubConfig{Attributes: clientAttributes},
+		},
+	}
+
+	return &AccessTokenBuildContext{
+		Subject:   "entity123",
+		Audiences: []string{"https://api.example.com"},
+		ClientID:  "test-client",
+		Scopes:    []string{"read"},
+		GrantType: string(providers.GrantTypeClientCredentials),
+		OAuthApp:  &oauthApp,
+	}
+}
+
+// expectSubTypeClaim asserts the generated claims carry the expected sub_type value. An empty
+// expectation asserts the claim is absent.
+func (suite *TokenBuilderTestSuite) expectSubTypeClaim(expected string) {
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			subType, ok := claims[constants.ClaimSubType]
+			if expected == "" {
+				return !ok
+			}
+			return ok && subType == expected
+		}), mock.Anything, mock.Anything,
+	).Return(testAccessToken, time.Now().Unix(), nil)
+}
+
+// An agent's client_credentials token carries sub_type=agent, so it is distinguishable from an M2M
+// application token of identical shape.
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_SubType_Agent() {
+	suite.expectSubTypeClaim(constants.SubTypeAgent)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(),
+		suite.clientCredentialsCtxWithCategory(providers.EntityCategoryAgent))
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_SubType_App() {
+	suite.expectSubTypeClaim(constants.SubTypeApp)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(),
+		suite.clientCredentialsCtxWithCategory(providers.EntityCategoryApp))
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// A category that is not a client identity class omits the claim rather than guessing.
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_SubType_OmittedForNonClientCategory() {
+	suite.expectSubTypeClaim("")
+
+	result, err := suite.builder.BuildAccessToken(context.Background(),
+		suite.clientCredentialsCtxWithCategory(providers.EntityCategoryUser))
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_SubType_OmittedWhenCategoryUnset() {
+	suite.expectSubTypeClaim("")
+
+	result, err := suite.builder.BuildAccessToken(context.Background(),
+		suite.clientCredentialsCtxWithCategory(""))
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// A client whose selection omits sub_type receives a token without it.
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_SubType_OmittedWhenNotSelected() {
+	for _, category := range []providers.EntityCategory{providers.EntityCategoryAgent, providers.EntityCategoryApp} {
+		suite.Run(string(category), func() {
+			suite.SetupTest()
+			buildCtx := suite.clientCredentialsCtxWithAttributes(category, []string{constants.ClaimOUID})
+
+			suite.expectSubTypeClaim("")
+
+			result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+			assert.NoError(suite.T(), err)
+			assert.NotNil(suite.T(), result)
+			suite.mockJWTService.AssertExpectations(suite.T())
+		})
+	}
+}
+
+// A client with no client-token configuration predates the claim, so it is not restored at issuance.
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_SubType_OmittedWithoutClientConfig() {
+	buildCtx := suite.clientCredentialsCtxWithCategory(providers.EntityCategoryAgent)
+	buildCtx.OAuthApp.Token = nil
+
+	suite.expectSubTypeClaim("")
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// The selection is read from the client sub-config, so a user-token setting cannot decide it.
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_SubType_NotSelectedByUserConfigAttribute() {
+	buildCtx := suite.clientCredentialsCtxWithAttributes(providers.EntityCategoryAgent, nil)
+	buildCtx.OAuthApp.Token.AccessToken.UserConfig = &providers.AccessTokenSubConfig{
+		Attributes: []string{constants.ClaimSubType},
+	}
+
+	suite.expectSubTypeClaim("")
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// Only client_credentials makes the client the subject, so a user-subject token carries no sub_type.
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_SubType_OmittedForUserSubjectGrant() {
+	buildCtx := suite.clientCredentialsCtxWithCategory(providers.EntityCategoryAgent)
+	buildCtx.GrantType = string(providers.GrantTypeAuthorizationCode)
+
+	suite.expectSubTypeClaim("")
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// Every builder-written claim must be immune to a configured attribute of the same name, whether it is
+// written before the merge (scope, client_id, grant_type) or after it (act, cnf, idp, aci).
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_BuilderOwnedClaims_NotSuppliableByAttributes() {
+	forged := "FORGED"
+	attrs := map[string]interface{}{"email": "real@example.com"}
+	for name := range builderOwnedClaimNames() {
+		attrs[name] = forged
+	}
+
+	buildCtx := &AccessTokenBuildContext{
+		Subject:           "user123",
+		Audiences:         []string{"https://api.example.com"},
+		ClientID:          "real-client",
+		Scopes:            []string{"read"},
+		GrantType:         string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:          suite.oauthApp,
+		SubjectAttributes: attrs,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			for name := range builderOwnedClaimNames() {
+				if claims[name] == forged {
+					return false
+				}
+			}
+			// A non-reserved attribute still rides through untouched.
+			return claims["email"] == "real@example.com"
+		}), mock.Anything, mock.Anything,
+	).Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// The scope write is conditional, so a scopeless token must still not carry an attribute-supplied one.
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_ScopelessToken_RejectsAttributeScope() {
+	buildCtx := &AccessTokenBuildContext{
+		Subject:           "user123",
+		Audiences:         []string{"https://api.example.com"},
+		ClientID:          "real-client",
+		GrantType:         string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:          suite.oauthApp,
+		SubjectAttributes: map[string]interface{}{"scope": "admin:everything"},
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			_, present := claims["scope"]
+			return !present
+		}), mock.Anything, mock.Anything,
+	).Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// The OU claims are deliberately not builder-owned, so they must still reach a user-subject token.
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_OUClaims_StillDeliveredByAttributes() {
+	buildCtx := &AccessTokenBuildContext{
+		Subject:   "user123",
+		Audiences: []string{"https://api.example.com"},
+		ClientID:  "real-client",
+		Scopes:    []string{"read"},
+		GrantType: string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:  suite.oauthApp,
+		SubjectAttributes: map[string]interface{}{
+			constants.ClaimOUID:     "ou-1",
+			constants.ClaimOUName:   "Engineering",
+			constants.ClaimOUHandle: "eng",
+		},
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			return claims[constants.ClaimOUID] == "ou-1" &&
+				claims[constants.ClaimOUName] == "Engineering" &&
+				claims[constants.ClaimOUHandle] == "eng"
+		}), mock.Anything, mock.Anything,
+	).Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// Literals, not constants, so a rename of the emitted vocabulary fails here instead of passing.
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_SubType_WireValues() {
+	for category, expected := range map[providers.EntityCategory]string{
+		providers.EntityCategoryAgent: "agent",
+		providers.EntityCategoryApp:   "application",
+	} {
+		suite.Run(string(category), func() {
+			suite.SetupTest()
+			suite.expectSubTypeClaim(expected)
+
+			_, err := suite.builder.BuildAccessToken(context.Background(),
+				suite.clientCredentialsCtxWithCategory(category))
+
+			assert.NoError(suite.T(), err)
+			suite.mockJWTService.AssertExpectations(suite.T())
+		})
+	}
+}
+
+// With no OAuth client there is no identity class to state, so the claim is omitted.
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_SubType_OmittedWithoutOAuthApp() {
+	buildCtx := suite.clientCredentialsCtxWithCategory(providers.EntityCategoryAgent)
+	buildCtx.OAuthApp = nil
+
+	suite.expectSubTypeClaim("")
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// No configured attribute may introduce the claim on a grant that does not stamp it.
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_SubType_StrippedFromUserSubjectToken() {
+	buildCtx := suite.clientCredentialsCtxWithCategory(providers.EntityCategoryAgent)
+	buildCtx.GrantType = string(providers.GrantTypeAuthorizationCode)
+	buildCtx.SubjectAttributes = map[string]interface{}{constants.ClaimSubType: constants.SubTypeApp}
+
+	suite.expectSubTypeClaim("")
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// The claim is set after the merge, so an attribute of that name cannot make an agent an application.
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_SubType_NotSpoofableByAttribute() {
+	buildCtx := suite.clientCredentialsCtxWithCategory(providers.EntityCategoryAgent)
+	buildCtx.SubjectAttributes = map[string]interface{}{constants.ClaimSubType: constants.SubTypeApp}
+
+	suite.expectSubTypeClaim(constants.SubTypeAgent)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
 // A jwt-bearer-grant (ID-JAG) access token carries the source IdP issuer as the `idp` claim so
 // downstream consumers can distinguish a federated principal from a local one.
 func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_WithSourceIDP() {

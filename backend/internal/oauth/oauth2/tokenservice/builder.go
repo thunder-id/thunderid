@@ -6,6 +6,7 @@ package tokenservice
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
@@ -180,14 +181,28 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 		claims["grant_type"] = ctx.GrantType
 	}
 
-	// Merge the subject's attributes (already resolved and filtered by the grant handler).
+	// Merge the subject's attributes (already resolved and filtered by the grant handler), skipping
+	// claims the builder writes itself so a configured attribute cannot supply one it is trusted for.
+	ownedClaims := builderOwnedClaimNames()
 	for key, value := range ctx.SubjectAttributes {
+		if ownedClaims[key] {
+			continue
+		}
 		claims[key] = value
 	}
 
 	// Set after merging subject attributes to prevent them from overwriting this system claim.
 	if ctx.AttributeCacheID != "" {
 		claims["aci"] = ctx.AttributeCacheID
+	}
+
+	// set sub_type claim to the token if conditions are met.
+	// This is used to distinguish between an agent and an M2M application.
+	if ctx.GrantType == string(providers.GrantTypeClientCredentials) &&
+		slices.Contains(clientConfigAttributeNames(ctx.OAuthApp), constants.ClaimSubType) {
+		if subType := clientSubjectType(ctx.OAuthApp); subType != "" {
+			claims[constants.ClaimSubType] = subType
+		}
 	}
 
 	// Set after merging user attributes so a federated principal's attributes cannot spoof the source
@@ -233,6 +248,23 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 	}
 
 	return claims, nil
+}
+
+// clientSubjectType maps an OAuth client's entity category to its sub_type claim value. Returns ""
+// for a category that is not a client identity class, so the claim is omitted rather than guessed.
+func clientSubjectType(oauthApp *providers.OAuthClient) string {
+	if oauthApp == nil {
+		return ""
+	}
+
+	switch oauthApp.EntityCategory {
+	case providers.EntityCategoryAgent:
+		return constants.SubTypeAgent
+	case providers.EntityCategoryApp:
+		return constants.SubTypeApp
+	default:
+		return ""
+	}
 }
 
 // buildActorClaim builds the actor claim for token exchange.

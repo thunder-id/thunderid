@@ -9,10 +9,10 @@ import {describe, it, expect, vi} from 'vitest';
 import EditTokenSettingsTabs from '../EditTokenSettingsTabs';
 
 vi.mock('../ClientAccessTokenSection', () => ({
-  default: vi.fn(() => {
+  default: vi.fn(({subjectType}: {subjectType?: string}) => {
     const [clicks, setClicks] = useState(0);
     return (
-      <div data-testid="client-token-section">
+      <div data-testid="client-token-section" data-subject-type={subjectType}>
         Clicks: {clicks}
         <button type="button" data-testid="client-token-section-bump" onClick={() => setClicks((c) => c + 1)}>
           Bump
@@ -90,6 +90,20 @@ describe('EditTokenSettingsTabs', () => {
     expect(screen.getByTestId('client-token-section')).toBeInTheDocument();
     expect(screen.queryByText(clientLockMessage)).not.toBeInTheDocument();
     expect(screen.queryByText(userLockMessage)).not.toBeInTheDocument();
+  });
+
+  // The application tab must declare its own identity class, not the agent value.
+  it('tells the client section its subject type is application', () => {
+    render(
+      <EditTokenSettingsTabs
+        application={application}
+        editedApp={{}}
+        oauth2Config={oauthConfig(['client_credentials'])}
+        onFieldChange={onFieldChange}
+      />,
+    );
+
+    expect(screen.getByTestId('client-token-section')).toHaveAttribute('data-subject-type', 'application');
   });
 
   it('omits the Application audience when client_credentials is not granted', () => {

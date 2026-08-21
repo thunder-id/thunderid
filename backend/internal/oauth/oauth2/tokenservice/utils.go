@@ -409,7 +409,21 @@ func ReservedAccessTokenClaimNames() map[string]bool {
 	reserved[constants.ClaimOUHandle] = true
 	reserved[constants.ClaimClaimsRequest] = true
 	reserved[constants.ClaimClaimsLocales] = true
+	reserved[constants.ClaimSubType] = true
+	reserved[constants.ClaimIDP] = true
+	reserved[constants.ClaimTokenFamilyID] = true
 	return reserved
+}
+
+// builderOwnedClaimNames returns the access-token claims the builder writes itself, so a configured
+// attribute can never supply one. The reserved set minus the OU claims, which a user-subject token
+// legitimately receives through the attribute channel.
+func builderOwnedClaimNames() map[string]bool {
+	owned := ReservedAccessTokenClaimNames()
+	delete(owned, constants.ClaimOUID)
+	delete(owned, constants.ClaimOUName)
+	delete(owned, constants.ClaimOUHandle)
+	return owned
 }
 
 // FilterAttributesByAllowList returns the subset of attrs whose keys are listed in the given

@@ -2975,3 +2975,71 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_AbortedWhenCascadeFails() {
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 	mockInbound.AssertNotCalled(suite.T(), "DeleteInboundClient", mock.Anything, mock.Anything)
 }
+
+// configsWithGrants builds a one-entry inbound auth config carrying the given grant types.
+func configsWithGrants(grantTypes []providers.GrantType) []providers.InboundAuthConfigWithSecret {
+	return []providers.InboundAuthConfigWithSecret{
+		{
+			Type:        providers.OAuthInboundAuthType,
+			OAuthConfig: &providers.OAuthConfigWithSecret{GrantTypes: grantTypes},
+		},
+	}
+}
+
+// clientAttributesOf reads back the client-token attribute selection, or nil when unset.
+func clientAttributesOf(configs []providers.InboundAuthConfigWithSecret) []string {
+	token := configs[0].OAuthConfig.Token
+	if token == nil || token.AccessToken == nil || token.AccessToken.ClientConfig == nil {
+		return nil
+	}
+	return token.AccessToken.ClientConfig.Attributes
+}
+
+func (suite *AgentServiceTestSuite) TestSeedClientSubTypeAttribute_ClientCredentials() {
+	configs := configsWithGrants([]providers.GrantType{providers.GrantTypeClientCredentials})
+
+	seedClientSubTypeAttribute(configs)
+
+	assert.Equal(suite.T(), []string{"sub_type"}, clientAttributesOf(configs))
+}
+
+// An agent with no grant types receives client_credentials by default, so it is seeded too.
+func (suite *AgentServiceTestSuite) TestSeedClientSubTypeAttribute_EmptyGrantTypes() {
+	configs := configsWithGrants(nil)
+
+	seedClientSubTypeAttribute(configs)
+
+	assert.Equal(suite.T(), []string{"sub_type"}, clientAttributesOf(configs))
+}
+
+// An agent that never receives a token for itself gets no selection.
+func (suite *AgentServiceTestSuite) TestSeedClientSubTypeAttribute_SkipsNonClientGrants() {
+	configs := configsWithGrants([]providers.GrantType{providers.GrantTypeAuthorizationCode})
+
+	seedClientSubTypeAttribute(configs)
+
+	assert.Nil(suite.T(), clientAttributesOf(configs))
+}
+
+// Seeding adds to the caller's selection rather than replacing it.
+func (suite *AgentServiceTestSuite) TestSeedClientSubTypeAttribute_AppendsToCallerSelection() {
+	configs := configsWithGrants([]providers.GrantType{providers.GrantTypeClientCredentials})
+	configs[0].OAuthConfig.Token = &providers.OAuthTokenConfig{
+		AccessToken: &providers.AccessTokenConfig{
+			ClientConfig: &providers.AccessTokenSubConfig{Attributes: []string{"modelProvider"}},
+		},
+	}
+
+	seedClientSubTypeAttribute(configs)
+
+	assert.Equal(suite.T(), []string{"modelProvider", "sub_type"}, clientAttributesOf(configs))
+}
+
+// An agent with no OAuth inbound config has no client token to carry the claim.
+func (suite *AgentServiceTestSuite) TestSeedClientSubTypeAttribute_NoOAuthConfig() {
+	configs := []providers.InboundAuthConfigWithSecret{}
+
+	seedClientSubTypeAttribute(configs)
+
+	assert.Empty(suite.T(), configs)
+}

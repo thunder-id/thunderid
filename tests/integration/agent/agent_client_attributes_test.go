@@ -4,7 +4,10 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -64,6 +67,8 @@ func (s *AgentClientAttributesTestSuite) SetupSuite() {
 		Schema: map[string]interface{}{
 			"modelProvider": map[string]interface{}{"type": "string"},
 			"description":   map[string]interface{}{"type": "string"},
+			// Named after a reserved claim, so a test can store a conflicting value.
+			"sub_type": map[string]interface{}{"type": "string"},
 		},
 	})
 	s.Require().NoError(err)
@@ -131,6 +136,14 @@ func (s *AgentClientAttributesTestSuite) TearDownSuite() {
 func (s *AgentClientAttributesTestSuite) createAgentWithAttributes(
 	clientID string, clientAttributes []string, attributes json.RawMessage, owner string,
 ) (string, error) {
+	return s.createAgentWithClientConfig(clientID, &AccessTokenSubConfig{Attributes: clientAttributes},
+		attributes, owner)
+}
+
+// createAgentWithClientConfig creates an agent with the given token.accessToken.clientConfig block.
+func (s *AgentClientAttributesTestSuite) createAgentWithClientConfig(
+	clientID string, clientConfig *AccessTokenSubConfig, attributes json.RawMessage, owner string,
+) (string, error) {
 	return createAgent(Agent{
 		OUID:       s.ouID,
 		Type:       "default",
@@ -147,13 +160,64 @@ func (s *AgentClientAttributesTestSuite) createAgentWithAttributes(
 					TokenEndpointAuthMethod: "client_secret_basic",
 					Token: &OAuthTokenConfig{
 						AccessToken: &AccessTokenConfig{
-							ClientConfig: &AccessTokenSubConfig{Attributes: clientAttributes},
+							ClientConfig: clientConfig,
 						},
 					},
 				},
 			},
 		},
 	})
+}
+
+// updateClientAttributes replaces the agent's client-token attribute selection, as the Console does
+// when an operator toggles a chip.
+func (s *AgentClientAttributesTestSuite) updateClientAttributes(
+	agentID, clientID string, attributes []string, attrs json.RawMessage,
+) error {
+	body := Agent{
+		OUID:       s.ouID,
+		Type:       "default",
+		Name:       "Client Attrs Agent " + clientID,
+		Owner:      s.ownerUserID,
+		Attributes: attrs,
+		InboundAuthConfig: []InboundAuthConfig{
+			{
+				Type: "oauth2",
+				Config: &OAuthAgentConfig{
+					ClientID:                clientID,
+					ClientSecret:            agentClientAttrsClientSecret,
+					GrantTypes:              []string{"client_credentials"},
+					TokenEndpointAuthMethod: "client_secret_basic",
+					Token: &OAuthTokenConfig{
+						AccessToken: &AccessTokenConfig{
+							ClientConfig: &AccessTokenSubConfig{Attributes: attributes},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	data, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPut, testServerURL+"/agents/"+agentID, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
 }
 
 // requestToken performs a client_credentials token request for the given client ID.
@@ -237,6 +301,91 @@ func (s *AgentClientAttributesTestSuite) TestAgentClientAttrs_SchemaAndSystemAnd
 	s.Require().True(ok, "roles claim should be present as an array")
 	s.Assert().ElementsMatch(
 		[]interface{}{"Agent Client Attrs Direct Role", "Agent Client Attrs Group Role"}, roles)
+}
+
+// TestAgentClientAttrs_SubTypeAgent verifies that an agent's client_credentials token carries
+// sub_type=agent. The agent stores a conflicting sub_type attribute and allow-lists it, so the token
+// value also proves the claim is server-set and cannot be spoofed.
+func (s *AgentClientAttributesTestSuite) TestAgentClientAttrs_SubTypeAgent() {
+	clientID := agentClientAttrsClientID + "_subtype"
+	attrs, err := json.Marshal(map[string]interface{}{
+		"modelProvider": "anthropic",
+		"sub_type":      "application",
+	})
+	s.Require().NoError(err)
+
+	agentID, err := s.createAgentWithAttributes(
+		clientID, []string{"sub_type", "modelProvider"}, attrs, s.ownerUserID)
+	s.Require().NoError(err)
+	defer func() { _ = deleteAgent(agentID) }()
+
+	status, body := s.requestToken(clientID)
+	s.Require().Equal(http.StatusOK, status, "CC token request must succeed: %v", body)
+	token, ok := body["access_token"].(string)
+	s.Require().True(ok)
+
+	claims, err := testutils.DecodeJWT(token)
+	s.Require().NoError(err)
+
+	s.Assert().Equal("agent", claims.Additional["sub_type"],
+		"a configured sub_type attribute must not override the server-asserted identity class")
+	s.Assert().Equal("anthropic", claims.Additional["modelProvider"])
+}
+
+// TestAgentClientAttrs_SubTypeSeededOnCreate verifies that an agent created with no client token
+// configuration still receives sub_type, because creation selects the claim for it.
+func (s *AgentClientAttributesTestSuite) TestAgentClientAttrs_SubTypeSeededOnCreate() {
+	clientID := agentClientAttrsClientID + "_subtype_seeded"
+	agentID, err := s.createAgentWithClientConfig(clientID, nil, nil, s.ownerUserID)
+	s.Require().NoError(err)
+	defer func() { _ = deleteAgent(agentID) }()
+
+	status, body := s.requestToken(clientID)
+	s.Require().Equal(http.StatusOK, status, "CC token request must succeed: %v", body)
+	token, ok := body["access_token"].(string)
+	s.Require().True(ok)
+
+	claims, err := testutils.DecodeJWT(token)
+	s.Require().NoError(err)
+
+	s.Assert().Equal("agent", claims.Additional["sub_type"],
+		"creation must select sub_type so a new agent is identifiable without being reconfigured")
+}
+
+// TestAgentClientAttrs_SubTypeRemovedByUpdate verifies that dropping sub_type from an agent's selection
+// stops the claim. Removal is an update, which must be authoritative: re-seeding would make it
+// unremovable.
+func (s *AgentClientAttributesTestSuite) TestAgentClientAttrs_SubTypeRemovedByUpdate() {
+	clientID := agentClientAttrsClientID + "_subtype_off"
+	attrs, err := json.Marshal(map[string]interface{}{"modelProvider": "anthropic"})
+	s.Require().NoError(err)
+
+	agentID, err := s.createAgentWithClientConfig(clientID, nil, attrs, s.ownerUserID)
+	s.Require().NoError(err)
+	defer func() { _ = deleteAgent(agentID) }()
+
+	status, body := s.requestToken(clientID)
+	s.Require().Equal(http.StatusOK, status, "CC token request must succeed: %v", body)
+	token, ok := body["access_token"].(string)
+	s.Require().True(ok)
+	claims, err := testutils.DecodeJWT(token)
+	s.Require().NoError(err)
+	s.Require().Equal("agent", claims.Additional["sub_type"],
+		"creation must select the claim, otherwise this test cannot show it being removed")
+
+	s.Require().NoError(s.updateClientAttributes(agentID, clientID, []string{"modelProvider"}, attrs))
+
+	status, body = s.requestToken(clientID)
+	s.Require().Equal(http.StatusOK, status, "CC token request must succeed: %v", body)
+	token, ok = body["access_token"].(string)
+	s.Require().True(ok)
+	claims, err = testutils.DecodeJWT(token)
+	s.Require().NoError(err)
+
+	s.Assert().NotContains(claims.Additional, "sub_type",
+		"sub_type must stay out once it is removed from the selection")
+	s.Assert().Equal("anthropic", claims.Additional["modelProvider"],
+		"the rest of the updated selection must still be surfaced")
 }
 
 // TestAgentClientAttrs_PartialAllowList verifies that only the allow-listed attributes are

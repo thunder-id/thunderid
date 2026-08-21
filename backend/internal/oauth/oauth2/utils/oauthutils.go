@@ -10,11 +10,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // GetURIWithQueryParams constructs a URI with the given query parameters.
@@ -256,4 +258,25 @@ func SerializeClaimsRequest(cr *model.ClaimsRequest) (string, error) {
 	}
 
 	return string(data), nil
+}
+
+// EnsureClientSubTypeAttribute selects the sub_type claim in a client's own access token attribute
+// list, returning the updated token config. Called at client creation only, so a claim removed later
+// stays removed. Selection alone enables the claim; the builder supplies its value.
+func EnsureClientSubTypeAttribute(token *providers.OAuthTokenConfig) *providers.OAuthTokenConfig {
+	if token == nil {
+		token = &providers.OAuthTokenConfig{}
+	}
+	if token.AccessToken == nil {
+		token.AccessToken = &providers.AccessTokenConfig{}
+	}
+	if token.AccessToken.ClientConfig == nil {
+		token.AccessToken.ClientConfig = &providers.AccessTokenSubConfig{}
+	}
+
+	clientConfig := token.AccessToken.ClientConfig
+	if !slices.Contains(clientConfig.Attributes, constants.ClaimSubType) {
+		clientConfig.Attributes = append(clientConfig.Attributes, constants.ClaimSubType)
+	}
+	return token
 }

@@ -40,6 +40,7 @@ Every agent access token is a signed JWT (`typ: at+jwt`). A `client_credentials`
 | Claim | Value |
 |---|---|
 | `sub` | The agent's resource ID. |
+| `sub_type` | `agent`, the identity class of the token's subject. An application's `client_credentials` token carries `application` instead, so a resource server can tell an agent from an application. Selected for every new agent, and removable on the **Tokens** tab. |
 | `iss` | The <ProductName /> instance URL. |
 | `aud` | The resolved resource server, or the agent's default audience (its client ID when none is set) for a scopeless request with no `resource`. |
 | `scope` | The scopes authorized through the agent's roles and groups. |
@@ -47,11 +48,11 @@ Every agent access token is a signed JWT (`typ: at+jwt`). A `client_credentials`
 | `grant_type` | `client_credentials`. |
 | `exp`, `iat`, `nbf`, `jti` | Standard JWT lifetime and identity claims. |
 
-There is no `act` claim, because the agent acts as itself and not for anyone else. The attributes and claims selected on the **Tokens** tab (the agent's schema attributes, its system attributes `name` and `owner`, the OU claims `ouId`, `ouName`, and `ouHandle`, and its `groups` and `roles`) are added only when selected.
+There is no `act` claim, because the agent acts as itself and not for anyone else. `sub_type` is the one claim above that the **Tokens** tab can remove: clear its chip when the resource servers reading these tokens do not use it. Creating an agent selects the claim for you, whether through the Console, the REST API, or a declarative import. Two cases start without it: an agent created before the claim existed, and an agent read from a declarative file in `declarative` store mode, which has to list `sub_type` under `clientConfig.attributes` itself. The attributes and claims selected on the **Tokens** tab (the agent's schema attributes, its system attributes `name` and `owner`, the OU claims `ouId`, `ouName`, and `ouHandle`, and its `groups` and `roles`) are added only when selected.
 
 ## Call a protected API with the agent token
 
-Send the token as a Bearer token. The resource verifies the token's signature with the keys from `https://localhost:8090/oauth2/jwks`, checks the `iss`, `aud`, and `exp` claims, then authorizes the request against `scope`. To identify the caller, the resource reads `sub` (the agent itself) and `client_id` (the OAuth client that obtained the token); there is no `act` claim, because the agent acts as itself.
+Send the token as a Bearer token. The resource verifies the token's signature with the keys from `https://localhost:8090/oauth2/jwks`, checks the `iss`, `aud`, and `exp` claims, then authorizes the request against `scope`. To identify the caller, the resource reads `sub` (the agent itself), `sub_type` (`agent`, to apply policy that differs by identity class), and `client_id` (the OAuth client that obtained the token); there is no `act` claim, because the agent acts as itself.
 
 ```bash
 curl https://api.example.com/invoices -H 'Authorization: Bearer <ACCESS_TOKEN>'

@@ -22,6 +22,7 @@ import TokenConstants from '../../../constants/token-constants';
 
 // The client_credentials grant carries no scopes, so `scope` never appears on this token.
 const ACCESS_TOKEN_DEFAULT_CLAIMS = TokenConstants.DEFAULT_TOKEN_ATTRIBUTES.filter((attr) => attr !== 'scope');
+const SUB_TYPE_CLAIM = 'sub_type';
 
 /** Display copy for the section, supplied by the caller so agents and applications read differently. */
 export interface ClientAccessTokenCopy {
@@ -50,6 +51,8 @@ interface ClientAccessTokenSectionProps {
   inputId?: string;
   /** Value shown for the `sub` claim in the preview (the client entity's own ID). */
   subjectValue?: string;
+  /** Identity class the server stamps as `sub_type` on this client's token. */
+  subjectType: 'application' | 'agent';
 }
 
 /**
@@ -69,6 +72,7 @@ export default function ClientAccessTokenSection({
   copy,
   inputId = 'client-access-token-validity',
   subjectValue = '<sub>',
+  subjectType,
 }: ClientAccessTokenSectionProps): JSX.Element {
   const {t} = useTranslation();
 
@@ -117,12 +121,19 @@ export default function ClientAccessTokenSection({
     }
   };
 
+  const previewValueFor = (claim: string): string => {
+    if (claim === 'sub') return subjectValue;
+    // sub_type carries its literal value: the server fixes it from the client's identity class.
+    if (claim === SUB_TYPE_CLAIM) return subjectType;
+    return `<${claim}>`;
+  };
+
   const jwtPreview: Record<string, unknown> = {};
   ACCESS_TOKEN_DEFAULT_CLAIMS.forEach((attr) => {
-    jwtPreview[attr] = attr === 'sub' ? subjectValue : `<${attr}>`;
+    jwtPreview[attr] = previewValueFor(attr);
   });
   currentAttributes.forEach((attr) => {
-    jwtPreview[attr] = `<${attr}>`;
+    jwtPreview[attr] = previewValueFor(attr);
   });
 
   return (

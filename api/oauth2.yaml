@@ -888,6 +888,13 @@ components:
           format: int64
         sub:
           type: string
+        sub_type:
+          type: string
+          enum: [application, agent]
+          description: |
+            Identity class of the token subject. Present on tokens issued through the
+            `client_credentials` grant, where the OAuth client itself is the subject, so a resource
+            server can apply policy that differs by class. Absent for user-subject tokens.
         aud:
           description: Audience — may be a string or an array of strings.
           oneOf:
