@@ -26,6 +26,7 @@ type MiddlewareTestSuite struct {
 	testCtx     context.Context
 }
 
+// SetupTest initializes the test suite environment.
 func (suite *MiddlewareTestSuite) SetupTest() {
 	suite.mockService = NewSecurityServiceInterfaceMock(suite.T())
 	suite.middleware, _ = middleware(suite.mockService)
@@ -43,6 +44,7 @@ func (suite *MiddlewareTestSuite) SetupTest() {
 }
 
 // Test successful authentication flow
+// TestMiddleware_SuccessfulAuthentication tests Middleware for Successful Authentication.
 func (suite *MiddlewareTestSuite) TestMiddleware_SuccessfulAuthentication() {
 	req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
 	w := httptest.NewRecorder()
@@ -77,6 +79,7 @@ func (suite *MiddlewareTestSuite) TestMiddleware_SuccessfulAuthentication() {
 }
 
 // Test authentication failure with unauthorized error
+// TestMiddleware_AuthenticationFailure_Unauthorized tests Middleware for Authentication Failure Unauthorized.
 func (suite *MiddlewareTestSuite) TestMiddleware_AuthenticationFailure_Unauthorized() {
 	req := httptest.NewRequest(http.MethodGet, "/api/protected", nil)
 	w := httptest.NewRecorder()
@@ -97,6 +100,7 @@ func (suite *MiddlewareTestSuite) TestMiddleware_AuthenticationFailure_Unauthori
 // Test authentication failure with invalid token error. A rejected token (including a revoked one,
 // which the service surfaces as errInvalidToken) must return the RFC 6750 invalid_token challenge
 // without disclosing the specific reason.
+// TestMiddleware_AuthenticationFailure_InvalidToken tests Middleware for Authentication Failure Invalid Token.
 func (suite *MiddlewareTestSuite) TestMiddleware_AuthenticationFailure_InvalidToken() {
 	req := httptest.NewRequest(http.MethodPost, "/api/groups", nil)
 	w := httptest.NewRecorder()
@@ -114,6 +118,8 @@ func (suite *MiddlewareTestSuite) TestMiddleware_AuthenticationFailure_InvalidTo
 }
 
 // Test authentication failure with missing auth header error
+// TestMiddleware_AuthenticationFailure_MissingAuthHeader tests Middleware for Authentication Failure Missing
+// Auth Header.
 func (suite *MiddlewareTestSuite) TestMiddleware_AuthenticationFailure_MissingAuthHeader() {
 	req := httptest.NewRequest(http.MethodPut, "/api/roles", nil)
 	w := httptest.NewRecorder()
@@ -128,6 +134,7 @@ func (suite *MiddlewareTestSuite) TestMiddleware_AuthenticationFailure_MissingAu
 }
 
 // Test authentication failure with no handler found error
+// TestMiddleware_AuthenticationFailure_NoHandlerFound tests Middleware for Authentication Failure No Handler Found.
 func (suite *MiddlewareTestSuite) TestMiddleware_AuthenticationFailure_NoHandlerFound() {
 	req := httptest.NewRequest(http.MethodDelete, "/api/applications", nil)
 	w := httptest.NewRecorder()
@@ -142,6 +149,7 @@ func (suite *MiddlewareTestSuite) TestMiddleware_AuthenticationFailure_NoHandler
 }
 
 // Test authorization failure with forbidden error
+// TestMiddleware_AuthorizationFailure_Forbidden tests Middleware for Authorization Failure Forbidden.
 func (suite *MiddlewareTestSuite) TestMiddleware_AuthorizationFailure_Forbidden() {
 	req := httptest.NewRequest(http.MethodGet, "/admin/users", nil)
 	w := httptest.NewRecorder()
@@ -156,6 +164,8 @@ func (suite *MiddlewareTestSuite) TestMiddleware_AuthorizationFailure_Forbidden(
 }
 
 // Test authorization failure with insufficient permissions error
+// TestMiddleware_AuthorizationFailure_InsufficientPermissions tests Middleware for Authorization Failure
+// Insufficient Permissions.
 func (suite *MiddlewareTestSuite) TestMiddleware_AuthorizationFailure_InsufficientPermissions() {
 	req := httptest.NewRequest(http.MethodPost, "/admin/settings", nil)
 	w := httptest.NewRecorder()
@@ -170,6 +180,7 @@ func (suite *MiddlewareTestSuite) TestMiddleware_AuthorizationFailure_Insufficie
 }
 
 // Test unknown error (default case)
+// TestMiddleware_UnknownError tests Middleware for Unknown Error.
 func (suite *MiddlewareTestSuite) TestMiddleware_UnknownError() {
 	req := httptest.NewRequest(http.MethodGet, "/api/unknown", nil)
 	w := httptest.NewRecorder()
@@ -195,6 +206,7 @@ func (suite *MiddlewareTestSuite) TestMiddleware_UnknownError() {
 }
 
 // Test context propagation with nil context from service
+// TestMiddleware_NilContextFromService tests Middleware for Nil Context From Service.
 func (suite *MiddlewareTestSuite) TestMiddleware_NilContextFromService() {
 	req := httptest.NewRequest(http.MethodGet, "/public/health", nil)
 	w := httptest.NewRecorder()
@@ -214,6 +226,7 @@ func (suite *MiddlewareTestSuite) TestMiddleware_NilContextFromService() {
 }
 
 // Test with different HTTP methods
+// TestMiddleware_DifferentHTTPMethods tests Middleware for Different HTTP Methods.
 func (suite *MiddlewareTestSuite) TestMiddleware_DifferentHTTPMethods() {
 	methods := []string{
 		http.MethodGet,
@@ -248,6 +261,7 @@ func (suite *MiddlewareTestSuite) TestMiddleware_DifferentHTTPMethods() {
 }
 
 // Test middleware chaining
+// TestMiddleware_Chaining tests Middleware for Chaining.
 func (suite *MiddlewareTestSuite) TestMiddleware_Chaining() {
 	req := httptest.NewRequest(http.MethodGet, "/api/chained", nil)
 	w := httptest.NewRecorder()
@@ -280,6 +294,7 @@ func (suite *MiddlewareTestSuite) TestMiddleware_Chaining() {
 }
 
 // Test error handling doesn't panic with nil response writer (edge case)
+// TestMiddleware_ErrorHandling_EdgeCases tests Middleware for Error Handling Edge Cases.
 func (suite *MiddlewareTestSuite) TestMiddleware_ErrorHandling_EdgeCases() {
 	req := httptest.NewRequest(http.MethodGet, "/api/edge", nil)
 	w := httptest.NewRecorder()
@@ -297,7 +312,60 @@ func (suite *MiddlewareTestSuite) TestMiddleware_ErrorHandling_EdgeCases() {
 	assert.Nil(suite.T(), suite.testCtx)
 }
 
+// Test SCIM authentication failure with invalid token sets the RFC 6750 invalid_token challenge.
+// TestMiddleware_SCIM_AuthenticationFailure_InvalidToken tests Middleware for SCIM Authentication Failure
+// Invalid Token.
+func (suite *MiddlewareTestSuite) TestMiddleware_SCIM_AuthenticationFailure_InvalidToken() {
+	req := httptest.NewRequest(http.MethodGet, "/scim/v2/Users", nil)
+	w := httptest.NewRecorder()
+
+	suite.mockService.EXPECT().Process(req).Return(context.Background(), errInvalidToken)
+
+	handler := suite.middleware(suite.testHandler)
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(suite.T(), http.StatusUnauthorized, w.Code)
+	assert.Equal(suite.T(),
+		`Bearer error="invalid_token", error_description="The access token is invalid, expired, or malformed"`,
+		w.Header().Get("WWW-Authenticate"))
+	assert.Nil(suite.T(), suite.testCtx)
+}
+
+// Test SCIM authentication failure with no handler found sets the bare Bearer challenge.
+// TestMiddleware_SCIM_AuthenticationFailure_NoHandlerFound tests Middleware for SCIM Authentication Failure
+// No Handler Found.
+func (suite *MiddlewareTestSuite) TestMiddleware_SCIM_AuthenticationFailure_NoHandlerFound() {
+	req := httptest.NewRequest(http.MethodGet, "/scim/v2/Users", nil)
+	w := httptest.NewRecorder()
+
+	suite.mockService.EXPECT().Process(req).Return(context.Background(), errNoHandlerFound)
+
+	handler := suite.middleware(suite.testHandler)
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(suite.T(), http.StatusUnauthorized, w.Code)
+	assert.Equal(suite.T(), "Bearer", w.Header().Get("WWW-Authenticate"))
+	assert.Nil(suite.T(), suite.testCtx)
+}
+
+// Test SCIM authorization failure with forbidden error omits the WWW-Authenticate header.
+// TestMiddleware_SCIM_AuthorizationFailure_Forbidden tests Middleware for SCIM Authorization Failure Forbidden.
+func (suite *MiddlewareTestSuite) TestMiddleware_SCIM_AuthorizationFailure_Forbidden() {
+	req := httptest.NewRequest(http.MethodGet, "/scim/v2/Users", nil)
+	w := httptest.NewRecorder()
+
+	suite.mockService.EXPECT().Process(req).Return(context.Background(), errForbidden)
+
+	handler := suite.middleware(suite.testHandler)
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(suite.T(), http.StatusForbidden, w.Code)
+	assert.Empty(suite.T(), w.Header().Get("WWW-Authenticate"))
+	assert.Nil(suite.T(), suite.testCtx)
+}
+
 // Helper method to assert unauthorized response
+// assertUnauthorizedResponse handles assert unauthorized response.
 func (suite *MiddlewareTestSuite) assertUnauthorizedResponse(w *httptest.ResponseRecorder) {
 	assert.Equal(suite.T(), http.StatusUnauthorized, w.Code)
 	assert.Equal(suite.T(), "application/json", w.Header().Get("Content-Type"))
@@ -311,6 +379,7 @@ func (suite *MiddlewareTestSuite) assertUnauthorizedResponse(w *httptest.Respons
 }
 
 // Helper method to assert forbidden response
+// assertForbiddenResponse handles assert forbidden response.
 func (suite *MiddlewareTestSuite) assertForbiddenResponse(w *httptest.ResponseRecorder) {
 	assert.Equal(suite.T(), http.StatusForbidden, w.Code)
 	assert.Equal(suite.T(), "application/json", w.Header().Get("Content-Type"))
@@ -325,6 +394,7 @@ func (suite *MiddlewareTestSuite) assertForbiddenResponse(w *httptest.ResponseRe
 }
 
 // Test writeSecurityError function directly
+// TestWriteSecurityError tests Write Security Error.
 func TestWriteSecurityError(t *testing.T) {
 	testCases := []struct {
 		name               string
@@ -412,6 +482,7 @@ func TestWriteSecurityError(t *testing.T) {
 }
 
 // Test middleware creation with nil service (edge case)
+// TestMiddleware_NilService tests Middleware for Nil Service.
 func TestMiddleware_NilService(t *testing.T) {
 	// This should return an error
 	handler, err := middleware(nil)
@@ -420,6 +491,7 @@ func TestMiddleware_NilService(t *testing.T) {
 }
 
 // Run the test suite
+// TestMiddlewareTestSuite tests Middleware Test Suite.
 func TestMiddlewareTestSuite(t *testing.T) {
 	suite.Run(t, new(MiddlewareTestSuite))
 }
