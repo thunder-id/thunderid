@@ -56,6 +56,38 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_Success() {
 	assert.Empty(suite.T(), errMsg)
 }
 
+func (suite *AuthzValidationTestSuite) TestValidateParams_RequestObjectRejected() {
+	params := suite.validParams()
+	params.Set(constants.RequestParamRequest, "eyJhbGciOiAibm9uZSJ9.eyJzdGF0ZSI6ICJhYmMifQ.")
+
+	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
+
+	assert.Equal(suite.T(), constants.ErrorRequestNotSupported, errCode)
+	assert.NotEmpty(suite.T(), errMsg)
+}
+
+// The request object is rejected before any other parameter is validated, so a request carrying
+// one is never processed on the query string alone.
+func (suite *AuthzValidationTestSuite) TestValidateParams_RequestObjectRejectedBeforeOtherParams() {
+	params := url.Values{
+		constants.RequestParamRequest: {"eyJhbGciOiAibm9uZSJ9.eyJzdGF0ZSI6ICJhYmMifQ."},
+	}
+
+	errCode, _ := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
+
+	assert.Equal(suite.T(), constants.ErrorRequestNotSupported, errCode)
+}
+
+func (suite *AuthzValidationTestSuite) TestValidateParams_EmptyRequestParamIgnored() {
+	params := suite.validParams()
+	params.Set(constants.RequestParamRequest, "")
+
+	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
+
+	assert.Empty(suite.T(), errCode)
+	assert.Empty(suite.T(), errMsg)
+}
+
 func (suite *AuthzValidationTestSuite) TestValidateParams_MissingResponseType() {
 	params := url.Values{}
 

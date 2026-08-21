@@ -508,16 +508,19 @@ func (ts *PARTestSuite) TestPARRequestURISingleUse() {
 // TestPARInvalidRequestURI tests that an invalid request_uri is rejected by the authorize endpoint.
 func (ts *PARTestSuite) TestPARInvalidRequestURI() {
 	testCases := []struct {
-		Name       string
-		RequestURI string
+		Name          string
+		RequestURI    string
+		ExpectedError string
 	}{
 		{
-			Name:       "Completely Invalid URI",
-			RequestURI: "not-a-valid-uri",
+			Name:          "Completely Invalid URI",
+			RequestURI:    "not-a-valid-uri",
+			ExpectedError: "request_uri_not_supported",
 		},
 		{
-			Name:       "Valid Prefix But Non-existent",
-			RequestURI: "urn:ietf:params:oauth:request_uri:nonexistent-request-123",
+			Name:          "Valid Prefix But Non-existent",
+			RequestURI:    "urn:ietf:params:oauth:request_uri:nonexistent-request-123",
+			ExpectedError: "invalid_request",
 		},
 	}
 
@@ -529,8 +532,8 @@ func (ts *PARTestSuite) TestPARInvalidRequestURI() {
 
 			ts.Equal(http.StatusFound, resp.StatusCode, "Should redirect with error")
 			location := resp.Header.Get("Location")
-			err = testutils.ValidateOAuth2ErrorRedirect(location, "invalid_request", "")
-			ts.NoError(err, "Should produce an invalid_request error")
+			err = testutils.ValidateOAuth2ErrorRedirect(location, tc.ExpectedError, "")
+			ts.NoError(err, "Should produce a %s error", tc.ExpectedError)
 		})
 	}
 }

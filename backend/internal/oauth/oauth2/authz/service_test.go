@@ -252,6 +252,67 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_In
 	assert.Equal(suite.T(), oauth2const.ErrorInvalidRequest, authErr.Code)
 }
 
+// A request_uri that is not a PAR handle is a client-supplied request object by reference
+// (RFC 9101), which is not supported. It must be rejected with request_uri_not_supported and
+// returned to the client's redirect_uri, rather than resolved as a PAR handle or ignored.
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_RequestURINotSupported() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+
+	msg := suite.testMsg()
+	msg.RequestQueryParams["request_uri"] = []string{"https://client.example.org/request.jwt"}
+
+	svc := suite.newService()
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorRequestURINotSupported, authErr.Code)
+	assert.True(suite.T(), authErr.SendErrorToClient)
+	assert.Equal(suite.T(), "https://client.example.com/callback", authErr.ClientRedirectURI)
+	assert.Equal(suite.T(), "test-state", authErr.State)
+}
+
+// An unregistered redirect_uri must not be used as a redirect target, so the rejection goes to
+// the error page instead.
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_RequestURINotSupported_BadRedirectURI() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+
+	msg := suite.testMsg()
+	msg.RequestQueryParams["request_uri"] = []string{"https://client.example.org/request.jwt"}
+	msg.RequestQueryParams["redirect_uri"] = []string{"https://attacker.example.com/callback"}
+
+	svc := suite.newService()
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorRequestURINotSupported, authErr.Code)
+	assert.False(suite.T(), authErr.SendErrorToClient)
+	assert.Empty(suite.T(), authErr.ClientRedirectURI)
+}
+
+// An omitted redirect_uri falls back to the single registered one, so the rejection still
+// reaches the client.
+func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_RequestURINotSupported_NoRedirectURI() {
+	app := suite.testApp()
+	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
+
+	msg := suite.testMsg()
+	msg.RequestQueryParams["request_uri"] = []string{"https://client.example.org/request.jwt"}
+	delete(msg.RequestQueryParams, "redirect_uri")
+
+	svc := suite.newService()
+	result, authErr := svc.HandleInitialAuthorizationRequest(context.Background(), msg)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), authErr)
+	assert.Equal(suite.T(), oauth2const.ErrorRequestURINotSupported, authErr.Code)
+	assert.True(suite.T(), authErr.SendErrorToClient)
+	assert.Equal(suite.T(), "https://client.example.com/callback", authErr.ClientRedirectURI)
+}
+
 func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_ValidationError_NoClientRedirect() {
 	app := suite.testApp()
 	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)

@@ -19,7 +19,7 @@ import (
 // ValidateAuthorizationRequestParams validates the common authorization request parameters
 // shared by both the standard authorize endpoint and the PAR endpoint.
 //
-// This validates: prompt, grant_type, response_type, PKCE, nonce, and dpop_jkt.
+// This validates: request, prompt, grant_type, response_type, PKCE, nonce, and dpop_jkt.
 // Callers are responsible for validating client_id and redirect_uri before calling this
 // function, since those validations have endpoint-specific error handling semantics
 // (e.g., the authorize endpoint must not redirect errors when the redirect_uri is invalid).
@@ -37,6 +37,13 @@ func ValidateAuthorizationRequestParams(
 	params := url.Values(rawParams)
 	responseType := params.Get(constants.RequestParamResponseType)
 	responseMode := params.Get(constants.RequestParamResponseMode)
+
+	// ThunderID does not implement JAR (RFC 9101). A request object must be rejected rather than
+	// ignored: honoring only the query string would silently drop security parameters the client
+	// placed inside the object, notably state and nonce (OIDC Core 6.1).
+	if params.Get(constants.RequestParamRequest) != "" {
+		return constants.ErrorRequestNotSupported, "The request parameter is not supported"
+	}
 
 	// Validate the prompt parameter if present.
 	if params.Has(constants.RequestParamPrompt) {
