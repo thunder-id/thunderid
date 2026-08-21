@@ -319,11 +319,13 @@ func (s *runtimeCryptoService) GetPublicKeys(
 			continue
 		}
 
+		thumbprint := s.pkiService.GetCertThumbprint(id)
+
 		keys = append(keys, providers.PublicKeyInfo{
-			KeyID:               id,
+			KeyID:               thumbprint,
 			Algorithm:           string(alg),
 			PublicKey:           pub,
-			Thumbprint:          s.pkiService.GetCertThumbprint(id),
+			Thumbprint:          thumbprint,
 			CertificateDER:      cert.Raw,
 			CertificateChainDER: s.pkiService.GetCertificateChain(id),
 		})
