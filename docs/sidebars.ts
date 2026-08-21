@@ -612,6 +612,11 @@ const sidebars: SidebarsConfig = {
               items: [
                 {
                   type: 'doc',
+                  id: 'guides/notifications/templates',
+                  label: 'Notification Templates',
+                },
+                {
+                  type: 'doc',
                   id: 'guides/smtp-server/smtp-server-configuration',
                   label: 'SMTP Server',
                 },
