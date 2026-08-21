@@ -736,6 +736,8 @@ type Entity struct {
 	Attributes       json.RawMessage `json:"attributes,omitempty"`
 	SystemAttributes json.RawMessage `json:"systemAttributes,omitempty"`
 	IsReadOnly       bool            `json:"isReadOnly"`
+	CreatedAt        time.Time       `json:"createdAt,omitempty"`
+	UpdatedAt        time.Time       `json:"updatedAt,omitempty"`
 }
 
 // EntityGroup represents a group with basic information for entity group membership queries.
