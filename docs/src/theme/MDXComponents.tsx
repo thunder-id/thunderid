@@ -16,11 +16,13 @@ import {
   TableHead,
   TableRow,
 } from '@wso2/oxygen-ui';
+import {AgentAuthorityDiagram} from '@site/src/components/AgentAuthorityDiagram';
 import {AgentInteractionsDiagram} from '@site/src/components/AgentInteractionsDiagram';
 import {LangTabs, Lang} from '@site/src/components/AgentLang';
 import {AgentModeSelector, Mode} from '@site/src/components/AgentMode';
 import {DelegationMethodSelector, DelegationContent} from '@site/src/components/AgentDelegationMode';
 import {AgentOwnTokenFlow, AgentOboFlow} from '@site/src/components/AgentQuickstartFlow';
+import {AgentSolutionArchitectureDiagram} from '@site/src/components/AgentSolutionArchitectureDiagram';
 import {
   AIAgentIdentityRoadmap as AIAgentIdentityExplorer,
   AIAgentSolutionPatternsRoadmap,
@@ -174,6 +176,8 @@ export default {
   GettingStartedJourney,
   SampleDownload,
   SdkQuickstartDownload,
+  AgentAuthorityDiagram,
+  AgentSolutionArchitectureDiagram,
   SolutionArchitectureDiagram,
   UseCaseBranchCards,
   UseCaseStepper,

@@ -11,7 +11,7 @@ import TabItem from '@theme/TabItem';
 
 # Agent Access on Behalf of Users
 
-An agent can hold an access token that represents a user instead of itself. The token names the user in the `sub` claim and the agent in the `act` (actor) claim, so any resource that receives it sees both the user who authorized the action and the agent that carried it out. <ProductName /> issues these tokens once the agent is extended to act on behalf of a user.
+An agent can hold an access token that represents a user instead of itself. The token names the user in the `sub` claim, and on the sign-in and exchange paths it also names the agent in the `act` (actor) claim, so a resource sees both the user who authorized the action and the agent that carried it out. <ProductName /> issues these tokens once the agent is extended to act on behalf of a user.
 
 ## Extend the agent to act for a user
 
@@ -123,7 +123,7 @@ curl -X POST https://localhost:8090/oauth2/token \
 - `resource` (RFC 8707) sets the new token's audience to that [Resource Server](../../../resource-servers) and downscopes the permission scopes to the scopes it defines. The subject and actor tokens do not need to be bound to this resource.
 - The issued permission scopes are the intersection of the scopes requested (or all of the subject token's scopes when no `scope` is sent), the subject token's scopes, the scopes the target resource server defines, and the scopes the agent itself is authorized for. Anything outside that intersection is dropped, not rejected.
 - The RFC 8693 `audience` parameter is accepted but does not set the token's `aud`. Use `resource` to control the audience.
-- With no `resource` and no permission scopes, the token is not bound to a resource server: its audience falls back to the agent's default audience (its client ID), and only OIDC scopes such as `openid` remain.
+- With no `resource` and no permission scopes, the token is not bound to a resource server: its audience falls back to the agent's default audience, or its client ID when no default audience is set, and only OIDC scopes such as `openid` remain.
 - See [Token Exchange](../../../protocols/oauth-oidc/token-exchange) for the full request and its parameters.
 
 To confine an agent to specific operations, such as allowing a read but denying a delete, grant it only the scopes its task needs. See [Groups and roles](../../manage-agents#groups-and-roles).

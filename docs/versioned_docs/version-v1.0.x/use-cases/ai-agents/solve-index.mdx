@@ -1,0 +1,54 @@
+---
+title: What Agent Identity Has to Solve
+docType: use-case
+sidebar_position: 2
+description: The six problems that come with running agents, the three postures an agent takes, and the order this section works through them.
+---
+
+# What Agent Identity Has to Solve
+
+Running an agent surfaces six identity problems. The first three apply to any agent that authenticates at all.
+The last three depend on how the agent is invoked and who has to approve its work, so whether you hit them
+depends on what the agent does.
+
+Each problem below links to the page that solves it and names the <ProductName /> feature involved.
+Configuration steps stay in the guides, linked from the page that needs them.
+
+| # | The problem | Answered by |
+| --- | --- | --- |
+| 1 | [The agent has no identity of its own](../solve-identity) | Agent registration, owner, and schema |
+| 2 | [Anyone who copies the secret is the agent](../solve-credentials) | Secret rotation, private key JWT, DPoP |
+| 3 | [Nothing limits what the agent may do](../solve-access) | Resource servers, roles, resource indicators |
+| 4 | [The token cannot say the agent acted for a user](../solve-acts-for-user) | Delegated mode, consent, the `act` claim |
+| 5 | [Anyone can call the agent](../solve-agent-as-resource) | The agent's own resource server |
+| 6 | [The person is not there to approve](../solve-ambient) | Backchannel authorization (CIBA) |
+
+## The Three Postures
+
+Every one of those problems is about a single agent in one of three positions. Which posture an agent is in
+decides what its token names, through two claims: `sub`, the principal the token represents, and `act`, the
+agent exercising it on that principal's behalf.
+
+| Posture | What the agent is doing | `sub` names | `act` names |
+| --- | --- | --- | --- |
+| Acts on its own | Work nobody had to approve, such as recommending a flight | the agent | nothing |
+| Acts for a person | Work a customer asked for, such as booking a trip | the customer | the agent |
+| Is called | Answering a request from a user or an application | the caller | nothing |
+
+Read the `act` column downward. When the agent obtains a token for itself there is no actor to record, and
+when it obtains one for a person the token names both. In the third row the token is not the agent's at all:
+it is whatever the caller presented, so what it carries depends on how that caller obtained it.
+
+## The Pieces Involved
+
+Three concepts describe an agent's authority: the credential it authenticates with, the roles it holds, and the
+resource server those roles grant access to. An agent is a principal like any other, so its authority is
+described in the same terms as a person's.
+
+<AgentAuthorityDiagram />
+
+## Where to Start
+
+[Set Up the Playground](../solve-playground) comes first, because several of the pages that follow point at a
+tab in it for the token they describe. [How It All Runs](../solve-run) closes the part by tracing one request
+through every piece.

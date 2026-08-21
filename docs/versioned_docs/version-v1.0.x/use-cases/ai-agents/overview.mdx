@@ -1,78 +1,69 @@
 ---
+title: Understand It
 docType: use-case
-title: Identity for AI Agents
-description: Identify when to use this pattern for AI agent identity and access management, and review the supported use case scope.
 sidebar_position: 1
+description: Why agents need an identity of their own, and how a token that names both the agent and the person it works for keeps every call accountable.
 ---
 
-# Identity for AI Agents
+# Understand It
 
-An application owner deploying an autonomous AI agent has to answer three questions about every action it takes: who is acting, what are they allowed to do, and on whose authority. <ProductName /> answers them by giving each agent a managed identity, verifiable credentials, scoped authorization, and a complete audit trail.
+A customer opens a travel application and asks its assistant to find flights for an upcoming trip. The
+assistant searches and comes back with the options and their fares. The customer picks one and asks the
+assistant to book it. The assistant searched on its own authority, then made the booking as the customer.
 
-## Why Agents Need Their Own Identity Class
+To the customer it is one conversation. To your backend, each of those steps raises the same set of questions:
 
-Enterprise identity was built for two audiences: humans who sign in through a browser, and machines that exchange credentials through an API. Agents fit neither. An agent needs the contextual, session-based access patterns of a human user, but it cannot complete an interactive sign-in. It needs the programmatic reliability of a service account, but it carries far more autonomy and a far broader access scope than any service account was designed for.
+- Who is acting?
+- On whose authority?
+- What is that authority allowed to reach?
+- Can a service tell an agent working alone from an agent working for a person?
 
-Forcing an agent into an existing category creates ungovernable gaps. Registered as a service account, it lacks lifecycle governance, contextual authorization, and individual accountability. Issued a human user's credentials, it destroys auditability: you can no longer tell whether the human or the agent took an action. <ProductName /> provisions agents as a distinct identity class, with governance built for how agents actually behave.
+Answering those questions is what it takes to run agents you can account for, and the sign-in screen your
+customer sees is a small part of it.
 
-## How Agent Identity Works
+## The Problem
 
-- **Agent**: A first-class identity with its own credentials, assigned permissions, owner, and lifecycle. Identity is bound to the configured agent, not the underlying model, so two agents built on the same model but carrying different prompts, tool grants, and scopes are two distinct identities.
-- **Owner**: The accountable party, a liable human or team, that every action the agent takes traces back to.
-- **Postures**: A single agent occupies three identity postures, sometimes within one task, and each demands a different mechanism:
+The first agent you ship usually borrows a credential from something else. The same problems surface as soon as
+there is more than one of them:
 
-    | Posture | The agent is... | Question it must answer |
-    |---|---|---|
-    | **Subject** | acting on its own behalf | "Who is this agent?" |
-    | **Actor** | acting on behalf of a principal | "Who authorized this, and is the agent a permitted delegate?" | 
-    | **Resource** | being invoked by a caller | "Who is calling, and are they authorized?" | 
+- **Agents fit neither identity class.** An agent cannot work through a sign-in screen the way a person does,
+  and it carries far more reach than the service accounts it gets pushed into. Give it a credential copied from
+  either one and nothing in your traces tells you which agent made a call.
+- **Whoever holds the credential is the agent.** It sits in your configuration and your container image, and a
+  token lifted off the wire works for anyone who took it.
+- **Authority has to be narrow.** An agent that may read a booking must not implicitly be able to cancel one,
+  and the token it carries must not work against every API you run.
+- **Acting for a person is not the same as being that person.** When an agent books a trip a customer asked
+  for, the token has to name both of them, or you lose either the customer's consent or the record of which
+  agent carried it out.
+- **The agent is also something that gets called.** Its own endpoint needs the same authorization check as any
+  other API you expose, so that not every signed-in user can reach it.
+- **The person is not always there.** Work that runs on a schedule still reaches steps that need somebody's
+  approval, with no browser to send them to.
 
-<ProductName /> handles authentication and authorization for agents, issues tokens that represent the agent, the user, or both depending on the flow. Services validate those tokens, check scopes, and enforce audience restrictions, and delegated flows preserve actor context so downstream services can audit who initiated each action.
+## How It Works
 
-## AI Agent Identity and Access Journey
+Solving this gives the agent its own identity in a dedicated **identity layer**, and moves the authorization
+decision out of the agent. The layer registers the agent as a principal, meaning something the layer can name
+and issue tokens to, with a credential of its own. It holds the
+roles that decide what the agent may reach, and it issues the token the agent presents on every call. Your
+services read that token instead of trusting what the agent tells them.
 
-From an application owner's perspective, you need to solve the full agent lifecycle: registering an accountable identity, letting users invoke the agent, and governing every interaction the agent has with models, internal services, external platforms, and other agents. <ProductName /> provides capabilities for each stage. It governs every interaction, but first it governs the agent itself.
+<AgentSolutionArchitectureDiagram />
 
-An agent sits at the center of a web of interactions. Invoking parties call it, it reasons over foundation models, it reaches internal services and external systems, and it delegates work to sub-agents.
+The token names a different principal in each case. When the agent works on its own, the token names the agent.
+When it works for a customer, it names the customer as the subject and the agent as the actor, so one service
+sees both at once. Each service verifies the token itself, or asks the identity layer whether it is still
+valid, and authorizes the call against what the token carries.
 
-<AgentInteractionsDiagram />
+:::tip Not Your Pattern?
+- Your users sign in to a consumer application and no agent is involved: see
+  [Secure Consumer Access to Your Application](../../b2c/).
+- You are protecting a Model Context Protocol (MCP) server rather than an agent: see
+  [Securing MCP](../mcp-authorization/overview).
+:::
 
-Each of these interactions is a distinct identity and access boundary that <ProductName /> governs, and each maps to a use case below.
-
-## Start With Governance
-
-Before an agent handles a single interaction, it has to exist as a governed identity with an accountable owner. Registration, credential rotation, revocation, and ownership transfer are the foundation every other pattern builds on.
-
-- **[Managed Identity](../managed-agent-identity)**: register an agent as a first-class identity, rotate its credentials, revoke it (and cascade that revocation through its delegation chain), and trace every action back to a liable human.
-
-## Being Invoked (Inbound)
-
-These patterns govern who may call an agent and how the agent proves its own identity when it is the one calling.
-
-- **[Invoking the Agent and Authenticating Users](../invoking-the-agent)**: authenticate the users, applications, and agents that call an agent; enforce step-up for sensitive actions; and manage the structured, time-bound consent that lets an agent act for a user.
-- **[Agent as Subject](../agent-as-subject)**: let an agent prove its own identity to the systems it accesses with its own credentials (`client_credentials`, `private_key_jwt`, OIDC), distinct from human users and service accounts.
-
-## Reaching Out (Outbound)
-
-These patterns govern what an agent may reach once it is running: models, internal tools, and third-party platforms.
-
-- **[Model Interaction Controls](../model-interaction)**: give an AI gateway a verifiable agent identity so model access, quotas, and guardrails are enforced per agent and, when the agent acts for a user, per delegated user.
-- **[Accessing Internal Business Services](../internal-services)**: solve the dual-identity problem when an agent calls internal APIs and MCP servers, carrying both the agent and the user in one token and scoping access down to individual tool operations.
-- **[External Integration](../external-integration)**: let an agent act across third-party SaaS (Gmail, Slack, Salesforce) using short-lived, just-in-time tokens from a managed vault, so the agent never holds a long-lived secret.
-
-## Working With Other Agents
-
-- **[Multi-Agent Interactions](../multi-agent)**: delegate work between agents with tokens that downscope at every hop, preserve the full delegation chain from the originating user to the final actor, and obtain out-of-band approval (CIBA) for headless agents.
-
-## Choosing the Pattern You Need
-
-Most agents need more than one of these. A useful way to narrow down is to answer two questions about how the agent is invoked, then read the use cases that apply:
-
-- **Is the agent acting on its own, or on behalf of a user?** Acting on its own points to [Agent as Subject](../agent-as-subject) and the autonomous sections of [Internal Business Services](../internal-services). Acting for a user points to the delegated sections of [Invoking the Agent](../invoking-the-agent) and [Internal Business Services](../internal-services).
-- **If on behalf of a user, is the user present at the moment of the call?** A present user is handled by an interactive consent flow in [Invoking the Agent](../invoking-the-agent). An absent user is handled by backchannel (CIBA) approval, covered in [Multi-Agent Interactions](../multi-agent).
-
-Whichever patterns apply, [Managed Identity](../managed-agent-identity) underpins all of them.
-
-## Next Steps
-
-Read the use case that fits your agent, then see the patterns running against a working sample in **[Try It Out](../try-it-out)**.
+None of this is a proprietary protocol. It is standard [OAuth2 and OpenID Connect](../../../guides/protocols/oauth-oidc),
+so the token your services already know how to verify is the token an agent presents. By the end of this
+section you will have agents registered with their own credentials, roles that decide what each one may reach,
+and APIs that authorize every call against the token it presents.
