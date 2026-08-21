@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/thunder-id/thunderid/internal/system/constants"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
@@ -24,11 +25,127 @@ var (
 	once   sync.Once
 )
 
+// Log record formats accepted by Configure and SetFormat. Any other value is treated
+// as formatText.
+const (
+	formatText = "text"
+	formatJSON = "json"
+)
+
 // Logger is a wrapper around the slog logger.
 type Logger struct {
-	internal   *slog.Logger
-	levelVar   *slog.LevelVar
+	internal *slog.Logger
+	root     *root
+}
+
+// root holds the process-wide logging state shared by the singleton logger and every
+// logger derived from it. Configure swaps the state atomically, so loggers derived
+// before Configure ran also write through the newly configured handler.
+type root struct {
+	state    atomic.Pointer[rootState]
+	levelVar *slog.LevelVar
+
+	// mu serializes Configure, SetFormat and Close, and guards the fields below.
+	mu         sync.Mutex
 	fileWriter *rollingfile.Writer
+	// out is the sink the current handler writes to, and format is the format it was
+	// built with. SetFormat rebuilds the handler from them so it can change the format
+	// without discarding the configured output.
+	out    io.Writer
+	format string
+}
+
+// rootState is an immutable snapshot of the configured output handler. A new value is
+// allocated on every Configure, so derived handlers can detect that their cached
+// handler chain is stale by comparing pointers.
+type rootState struct {
+	handler slog.Handler
+}
+
+// derivation records a single WithAttrs or WithGroup call so it can be replayed, in
+// order, onto a swapped root handler.
+type derivation struct {
+	// group is the group name for a WithGroup call, and empty for WithAttrs. slog
+	// treats WithGroup("") as a no-op, so an empty name is never recorded and the
+	// field is an unambiguous discriminator.
+	group string
+	attrs []slog.Attr
+}
+
+// resolvedHandler caches a replayed handler chain together with the root state it was
+// built from.
+type resolvedHandler struct {
+	from    *rootState
+	handler slog.Handler
+}
+
+// dynamicHandler is the handler installed on every Logger. It owns no output handler of
+// its own: it resolves the root's current handler and replays the recorded derivations
+// onto it. The result is cached until Configure installs a new root state, so the
+// steady-state path is two atomic loads and no allocation.
+type dynamicHandler struct {
+	// derivations is immutable once the handler is constructed.
+	derivations []derivation
+	root        *root
+	cache       atomic.Pointer[resolvedHandler]
+}
+
+var _ slog.Handler = (*dynamicHandler)(nil)
+
+// resolve returns the handler for the current root state, rebuilding and caching the
+// derivation chain when the state has been swapped since the last call.
+func (h *dynamicHandler) resolve() slog.Handler {
+	state := h.root.state.Load()
+	if cached := h.cache.Load(); cached != nil && cached.from == state {
+		return cached.handler
+	}
+
+	handler := state.handler
+	for _, d := range h.derivations {
+		if d.group != "" {
+			handler = handler.WithGroup(d.group)
+			continue
+		}
+		handler = handler.WithAttrs(d.attrs)
+	}
+	// Concurrent resolvers build equivalent chains, so the last store wins.
+	h.cache.Store(&resolvedHandler{from: state, handler: handler})
+	return handler
+}
+
+// Enabled reports whether the current handler handles records at the given level.
+func (h *dynamicHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.resolve().Enabled(ctx, level)
+}
+
+// Handle delegates the record to the current handler.
+func (h *dynamicHandler) Handle(ctx context.Context, record slog.Record) error {
+	return h.resolve().Handle(ctx, record)
+}
+
+// WithAttrs records the attributes so they are replayed on the current handler.
+func (h *dynamicHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	if len(attrs) == 0 {
+		return h
+	}
+	return h.derive(derivation{attrs: attrs})
+}
+
+// WithGroup records the group so it is replayed on the current handler.
+func (h *dynamicHandler) WithGroup(name string) slog.Handler {
+	if name == "" {
+		return h
+	}
+	return h.derive(derivation{group: name})
+}
+
+// derive appends d to the recorded derivations. The slice is copied rather than
+// appended in place so sibling handlers derived from the same parent never share a
+// backing array and overwrite each other's last derivation.
+func (h *dynamicHandler) derive(d derivation) *dynamicHandler {
+	derivations := make([]derivation, len(h.derivations), len(h.derivations)+1)
+	copy(derivations, h.derivations)
+	return &dynamicHandler{derivations: append(derivations, d), root: h.root}
 }
 
 // OutputOptions describes where and how the logger writes. It is a log-package
@@ -88,11 +205,30 @@ func GetLogger() *Logger {
 	return logger
 }
 
+// newFormatHandler builds the output handler for the given format. It is the single
+// place that maps a format name onto an slog handler, so Configure and SetFormat cannot
+// drift apart.
+func newFormatHandler(format string, out io.Writer, levelVar *slog.LevelVar) slog.Handler {
+	handlerOptions := &slog.HandlerOptions{Level: levelVar}
+	if strings.EqualFold(format, formatJSON) {
+		return slog.NewJSONHandler(out, handlerOptions)
+	}
+	return slog.NewTextHandler(out, handlerOptions)
+}
+
+// newLogger wires a Logger onto base, which writes to out in format. Loggers derived
+// from the result follow whatever handler Configure installs later.
+func newLogger(base slog.Handler, levelVar *slog.LevelVar, out io.Writer, format string) *Logger {
+	r := &root{levelVar: levelVar, out: out, format: format}
+	r.state.Store(&rootState{handler: base})
+	return &Logger{internal: slog.New(&dynamicHandler{root: r}), root: r}
+}
+
 // initLogger initializes the slog logger.
 func initLogger() error {
 	// The logger is initialized before the deployment configuration is loaded, so it
-	// boots at the default level. The configured level from deployment.yaml is applied
-	// afterwards via SetLevel.
+	// boots at the default level and format. The configured values from deployment.yaml
+	// are applied afterwards via SetLevel and Configure.
 	level, err := parseLogLevel(constants.DefaultLogLevel)
 	if err != nil {
 		return errors.New("error parsing log level: " + err.Error())
@@ -101,19 +237,8 @@ func initLogger() error {
 	levelVar := new(slog.LevelVar)
 	levelVar.Set(level)
 
-	handlerOptions := &slog.HandlerOptions{
-		Level: levelVar,
-	}
-
-	logHandler := slog.NewTextHandler(os.Stdout, handlerOptions)
-	if logHandler == nil {
-		return errors.New("failed to create log handler")
-	}
-
-	logger = &Logger{
-		internal: slog.New(&contextHandler{Handler: logHandler}),
-		levelVar: levelVar,
-	}
+	logHandler := newFormatHandler(formatText, os.Stdout, levelVar)
+	logger = newLogger(&contextHandler{Handler: logHandler}, levelVar, os.Stdout, formatText)
 
 	return nil
 }
@@ -124,15 +249,16 @@ func (l *Logger) SetLevel(logLevel string) error {
 	if err != nil {
 		return err
 	}
-	l.levelVar.Set(level)
+	l.root.levelVar.Set(level)
 	return nil
 }
 
 // Configure applies the output configuration, rebuilding the underlying slog
 // handler to write to the console, a rotating file, or both. It preserves the
 // shared level variable so a prior SetLevel keeps taking effect, and keeps the
-// trace ID decoration via contextHandler. It is intended to be called once during
-// startup, right after the configured level is applied.
+// trace ID decoration via contextHandler. Because the handler lives on the shared
+// root, loggers derived before Configure ran also pick up the new output, so the
+// order of Configure relative to service construction does not matter.
 func (l *Logger) Configure(opts OutputOptions) error {
 	writers := make([]io.Writer, 0, 2)
 	if opts.ConsoleEnabled {
@@ -161,36 +287,66 @@ func (l *Logger) Configure(opts OutputOptions) error {
 		out = io.MultiWriter(writers...)
 	}
 
-	handlerOptions := &slog.HandlerOptions{Level: l.levelVar}
-	var handler slog.Handler
-	if strings.EqualFold(opts.Format, "json") {
-		handler = slog.NewJSONHandler(out, handlerOptions)
-	} else {
-		handler = slog.NewTextHandler(out, handlerOptions)
-	}
+	handler := newFormatHandler(opts.Format, out, l.root.levelVar)
 
-	previous := l.fileWriter
-	l.internal = slog.New(&contextHandler{Handler: handler})
-	l.fileWriter = fileWriter
+	l.root.mu.Lock()
+	defer l.root.mu.Unlock()
+
+	previous := l.root.fileWriter
+	l.root.state.Store(&rootState{handler: &contextHandler{Handler: handler}})
+	l.root.fileWriter = fileWriter
+	l.root.out = out
+	l.root.format = opts.Format
 	if previous != nil {
 		_ = previous.Close()
 	}
 	return nil
 }
 
-// Close releases the file writer, if any. It should be called during shutdown.
-func (l *Logger) Close() error {
-	if l.fileWriter != nil {
-		return l.fileWriter.Close()
+// SetFormat changes the record format without touching where the records go. It exists
+// for callers that own the format but not the output configuration, such as an embedded
+// engine running inside a host application that has already configured the file sink:
+// calling Configure there would replace the host's output with a console-only one and
+// close its file writer.
+func (l *Logger) SetFormat(format string) error {
+	if !strings.EqualFold(format, formatText) && !strings.EqualFold(format, formatJSON) {
+		return errors.New("unsupported log format: " + format)
 	}
+
+	l.root.mu.Lock()
+	defer l.root.mu.Unlock()
+
+	if strings.EqualFold(format, l.root.format) {
+		return nil
+	}
+
+	handler := newFormatHandler(format, l.root.out, l.root.levelVar)
+	l.root.state.Store(&rootState{handler: &contextHandler{Handler: handler}})
+	l.root.format = format
 	return nil
 }
 
-// With creates a new logger instance with additional fields.
+// Close releases the file writer, if any. It should be called during shutdown.
+// The writer lives on the shared root, so closing any derived logger closes the
+// single process-wide file sink. Close is idempotent.
+func (l *Logger) Close() error {
+	l.root.mu.Lock()
+	defer l.root.mu.Unlock()
+
+	if l.root.fileWriter == nil {
+		return nil
+	}
+	err := l.root.fileWriter.Close()
+	l.root.fileWriter = nil
+	return err
+}
+
+// With creates a new logger instance with additional fields. The returned logger shares
+// the root state, so it follows any later Configure or SetFormat call.
 func (l *Logger) With(fields ...Field) *Logger {
 	return &Logger{
 		internal: l.internal.With(convertFields(fields)...),
-		levelVar: l.levelVar,
+		root:     l.root,
 	}
 }
 
