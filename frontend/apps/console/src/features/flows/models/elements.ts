@@ -58,6 +58,7 @@ export const ElementTypes = {
   DynamicInputPlaceholder: 'DYNAMIC_INPUT_PLACEHOLDER',
   Resend: 'RESEND',
   Timer: 'TIMER',
+  QrCode: 'QR_CODE',
   Consent: 'CONSENT',
   ConsentInput: 'CONSENT_INPUT',
   Custom: 'CUSTOM',

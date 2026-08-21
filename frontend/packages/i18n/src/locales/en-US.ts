@@ -3808,6 +3808,7 @@ const translations = {
     'core.validation.fields.input.idpName': 'Identity provider name is required',
     'core.validation.fields.input.idpId': 'Connection is required',
     'core.validation.fields.input.senderId': 'Notification sender is required',
+    'core.validation.fields.input.presentationDefinitionId': 'Presentation definition is required',
     'core.validation.fields.input.label': 'Label is required',
     'core.validation.fields.input.ref': 'Attribute is required',
 
