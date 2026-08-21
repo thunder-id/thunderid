@@ -1340,7 +1340,7 @@ func (suite *InboundClientServiceTestSuite) TestValidateIDTokenConfig_Encryption
 			EncryptionEnc: "A256GCM",
 		}},
 	}
-	assert.ErrorIs(suite.T(), validateIDTokenConfig(p, suite.jweService), ErrOAuthIDTokenEncryptionAlgRequiresEnc)
+	assert.ErrorIs(suite.T(), validateIDTokenConfig(p, suite.jweService), ErrOAuthIDTokenEncryptionEncRequiresAlg)
 }
 
 func (suite *InboundClientServiceTestSuite) TestValidateIDTokenConfig_EncryptionAlgWithoutEnc() {
@@ -1447,7 +1447,7 @@ func (suite *InboundClientServiceTestSuite) TestValidateIDTokenConfig_NESTEDJWTR
 			EncryptionEnc: "A256GCM",
 		}},
 	}
-	assert.ErrorIs(suite.T(), validateIDTokenConfig(p, suite.jweService), ErrOAuthIDTokenEncryptionAlgRequiresEnc)
+	assert.ErrorIs(suite.T(), validateIDTokenConfig(p, suite.jweService), ErrOAuthIDTokenEncryptionEncRequiresAlg)
 }
 
 func (suite *InboundClientServiceTestSuite) TestValidateIDTokenConfig_UnsupportedResponseType() {

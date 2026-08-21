@@ -624,6 +624,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OAuthError'
+              examples:
+                missing_id_token_encryption_alg:
+                  summary: Missing ID token encryption algorithm
+                  value:
+                    error: invalid_client_metadata
+                    error_description: idToken encryptionAlg is required when encryptionEnc is set
         "401":
           description: Unauthorized — missing or insufficient access token (when DCR is not insecure).
           content:
@@ -1067,8 +1073,10 @@ components:
           type: string
         id_token_encrypted_response_alg:
           type: string
+          description: Key-management algorithm for ID token encryption. Required when `id_token_encrypted_response_enc` is set. Supported values are `RSA-OAEP` and `RSA-OAEP-256`.
         id_token_encrypted_response_enc:
           type: string
+          description: Content-encryption algorithm for ID token encryption. Required when `id_token_encrypted_response_alg` is set. Supported values are `A128CBC-HS256` and `A256GCM`.
       description: Language-tagged fields (e.g. `client_name#fr`) are also accepted as top-level properties.
 
     DCRRegistrationResponse:
@@ -1133,8 +1141,10 @@ components:
           type: string
         id_token_encrypted_response_alg:
           type: string
+          description: Key-management algorithm configured for ID token encryption.
         id_token_encrypted_response_enc:
           type: string
+          description: Content-encryption algorithm configured for ID token encryption.
       description: Language-tagged variants (e.g. `client_name#fr`) are included as top-level properties in the response.
 
     BackchannelAuthRequest:

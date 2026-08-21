@@ -935,7 +935,10 @@ func validateIDTokenConfig(p *providers.OAuthProfile, jweService jwe.JWEServiceI
 			return ErrOAuthIDTokenEncryptionFieldsNotAllowed
 		}
 	case providers.IDTokenResponseTypeJWE, providers.IDTokenResponseTypeNESTEDJWT:
-		if cfg.EncryptionAlg == "" || cfg.EncryptionEnc == "" {
+		if cfg.EncryptionAlg == "" {
+			return ErrOAuthIDTokenEncryptionEncRequiresAlg
+		}
+		if cfg.EncryptionEnc == "" {
 			return ErrOAuthIDTokenEncryptionAlgRequiresEnc
 		}
 		if !slices.Contains(jweService.SupportedKeyEncryptionAlgorithms(), cfg.EncryptionAlg) {
