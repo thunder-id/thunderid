@@ -9,7 +9,7 @@ import {
   Building,
   Copy,
   FileDown,
-  Key,
+  Group,
   Languages,
   Layers,
   LayoutGrid,
@@ -17,9 +17,9 @@ import {
   Palette,
   Server,
   Settings,
+  ShieldCheck,
   Terminal,
   UserRoundCog,
-  Users,
   UsersRound,
   Workflow,
 } from '@wso2/oxygen-ui-icons-react';
@@ -936,7 +936,7 @@ export default function ConfigureExport({
     items.push({
       id: 'roles',
       label: t('importExport:configureExport.labels.roles'),
-      icon: <Key size={16} />,
+      icon: <ShieldCheck size={16} />,
       value: rolesCount,
       status: 'ready',
       dependencyCount: 0,
@@ -947,7 +947,7 @@ export default function ConfigureExport({
               {displayedRoles.map((role, idx) => (
                 <Stack key={role.handle ?? role.name ?? `role-${idx}`} spacing={0.5}>
                   <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
-                    <Key size={14} />
+                    <ShieldCheck size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {role.name ?? role.handle ?? t('importExport:configureExport.fallback.unnamedRole')}
                     </Typography>
@@ -995,7 +995,7 @@ export default function ConfigureExport({
     items.push({
       id: 'groups',
       label: t('importExport:configureExport.labels.groups'),
-      icon: <Users size={16} />,
+      icon: <Group size={16} />,
       value: groupsCount,
       status: 'ready',
       dependencyCount: 0,
@@ -1006,7 +1006,7 @@ export default function ConfigureExport({
               {displayedGroups.map((group, idx) => (
                 <Stack key={group.id ?? group.name ?? `group-${idx}`} spacing={0.5}>
                   <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
-                    <Users size={14} />
+                    <Group size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {group.name ?? t('importExport:configureExport.fallback.unnamedGroup')}
                     </Typography>
