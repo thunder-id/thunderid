@@ -101,7 +101,10 @@ func (ds *discoveryService) GetOIDCMetadata(ctx context.Context) (*OIDCProviderM
 		IDTokenEncryptionEncValuesSupported:  encryptionEncs,
 		ClaimsSupported:                      ds.getAllowedClaims(),
 		ClaimsParameterSupported:             true,
-		AcrValuesSupported:                   ds.getSupportedAcrValues(),
+		// JAR (RFC 9101) is not implemented.
+		RequestParameterSupported:    false,
+		RequestURIParameterSupported: false,
+		AcrValuesSupported:           ds.getSupportedAcrValues(),
 	}
 
 	if ds.cfg.OAuth.Logout.IsEnabled() {

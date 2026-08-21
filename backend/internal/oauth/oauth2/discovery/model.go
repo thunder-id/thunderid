@@ -41,6 +41,8 @@ type OIDCProviderMetadata struct {
 	IDTokenEncryptionEncValuesSupported  []string `json:"id_token_encryption_enc_values_supported,omitempty"`
 	ClaimsSupported                      []string `json:"claims_supported"`
 	ClaimsParameterSupported             bool     `json:"claims_parameter_supported"`
+	RequestParameterSupported            bool     `json:"request_parameter_supported"`
+	RequestURIParameterSupported         bool     `json:"request_uri_parameter_supported"`
 	EndSessionEndpoint                   string   `json:"end_session_endpoint,omitempty"`
 	AcrValuesSupported                   []string `json:"acr_values_supported,omitempty"`
 }

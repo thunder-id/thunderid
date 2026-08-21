@@ -47,6 +47,7 @@ const (
 	RequestParamUILocales           string = "ui_locales"
 	RequestParamNonce               string = "nonce"
 	RequestParamPrompt              string = "prompt"
+	RequestParamRequest             string = "request"
 	RequestParamRequestURI          string = "request_uri"
 	RequestParamAcrValues           string = "acr_values"
 	RequestParamMaxAge              string = "max_age"
@@ -195,6 +196,8 @@ const (
 	ErrorExpiredToken             string = "expired_token" // #nosec G101
 	ErrorUnknownUserID            string = "unknown_user_id"
 	ErrorInvalidBindingMessage    string = "invalid_binding_message"
+	ErrorRequestNotSupported      string = "request_not_supported"
+	ErrorRequestURINotSupported   string = "request_uri_not_supported"
 )
 
 // UnSupportedGrantTypeError is returned when an unsupported grant type is requested.

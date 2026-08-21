@@ -188,8 +188,15 @@ func (as *authorizeService) HandleInitialAuthorizationRequest(ctx context.Contex
 		}
 	}
 
-	// If request_uri is present, resolve the pushed authorization request.
+	// If request_uri is present, resolve the pushed authorization request. A request_uri that is
+	// not a PAR handle is a client-supplied request object by reference (RFC 9101), which is not
+	// supported: reject it rather than ignoring it, so the client learns its request was not
+	// honored (OIDC Core 6.1).
 	if requestURI != "" {
+		if !par.IsPARRequestURI(requestURI) {
+			return nil, as.newRequestObjectError(ctx, msg, app,
+				oauth2const.ErrorRequestURINotSupported, "The request_uri parameter is not supported")
+		}
 		return as.handlePARAuthorizationRequest(ctx, requestURI, clientID, app)
 	}
 
@@ -207,6 +214,38 @@ func (as *authorizeService) HandleInitialAuthorizationRequest(ctx context.Contex
 	}
 
 	return as.handleStandardAuthorizationRequest(ctx, msg, app, initiatorReq)
+}
+
+// newRequestObjectError builds the rejection for an unsupported request object. The error is
+// returned to the client's redirect_uri only when that redirect_uri validates against the
+// client's registration, since an unvalidated redirect_uri must not be used as a redirect
+// target; otherwise it is shown on the server error page.
+func (as *authorizeService) newRequestObjectError(
+	ctx context.Context, msg *OAuthMessage, app *providers.OAuthClient, code string, message string,
+) *AuthorizationError {
+	queryParams := url.Values(msg.RequestQueryParams)
+	redirectURI := queryParams.Get(oauth2const.RequestParamRedirectURI)
+
+	authErr := &AuthorizationError{
+		Code:    code,
+		Message: message,
+		State:   queryParams.Get(oauth2const.RequestParamState),
+	}
+	if err := app.ValidateRedirectURI(ctx, redirectURI); err != nil {
+		as.logger.Debug(ctx, "Validation failed for redirect URI", log.Error(err))
+		return authErr
+	}
+	// ValidateRedirectURI accepts an omitted redirect_uri when the client has exactly one
+	// registered; fall back to that so the rejection still reaches the client.
+	if redirectURI == "" {
+		if len(app.RedirectURIs) == 0 {
+			return authErr
+		}
+		redirectURI = app.RedirectURIs[0]
+	}
+	authErr.SendErrorToClient = true
+	authErr.ClientRedirectURI = redirectURI
+	return authErr
 }
 
 // handlePARAuthorizationRequest resolves a request_uri from a PAR and continues the authorization flow.

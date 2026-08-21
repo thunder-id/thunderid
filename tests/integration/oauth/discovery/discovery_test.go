@@ -221,6 +221,31 @@ func (ts *DiscoveryTestSuite) TestOIDCDiscovery_GET_Success() {
 		"authorization_response_iss_parameter_supported must be true (RFC 9207)")
 }
 
+func (ts *DiscoveryTestSuite) TestOIDCDiscovery_RequestObjectParametersNotSupported() {
+	req, err := http.NewRequest("GET", testServerURL+oidcDiscoveryEndpoint, nil)
+	ts.Require().NoError(err)
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	ts.Equal(http.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+
+	var doc map[string]any
+	ts.Require().NoError(json.Unmarshal(body, &doc))
+
+	value, present := doc["request_uri_parameter_supported"]
+	ts.True(present, "request_uri_parameter_supported must be present (its default when omitted is true)")
+	ts.Equal(false, value, "request_uri_parameter_supported must be false")
+
+	value, present = doc["request_parameter_supported"]
+	ts.True(present, "request_parameter_supported must be present")
+	ts.Equal(false, value, "request_parameter_supported must be false")
+}
+
 func (ts *DiscoveryTestSuite) TestOIDCDiscovery_AcrValuesSupported() {
 	req, err := http.NewRequest("GET", testServerURL+oidcDiscoveryEndpoint, nil)
 	ts.Require().NoError(err)

@@ -184,6 +184,12 @@ func (suite *DiscoveryTestSuite) TestOIDCDiscovery() {
 	// Verify claims parameter support
 	assert.True(suite.T(), metadata.ClaimsParameterSupported, "claims_parameter_supported should be true")
 
+	// JAR (RFC 9101) is not implemented, so neither request object form is advertised.
+	assert.False(suite.T(), metadata.RequestParameterSupported,
+		"request_parameter_supported should be false")
+	assert.False(suite.T(), metadata.RequestURIParameterSupported,
+		"request_uri_parameter_supported should be false")
+
 	// Verify RFC 9207 advertisement (inherited from embedded OAuth2AuthorizationServerMetadata)
 	assert.True(suite.T(), metadata.AuthorizationResponseIssParameterSupported)
 	assert.Contains(suite.T(), metadata.AcrValuesSupported, "urn:thunder:acr:password")
@@ -559,3 +565,28 @@ func (suite *DiscoveryTestSuite) TestOIDCDiscovery_EngineOverridesLandInWellKnow
 }
 
 func boolPtr(b bool) *bool { return &b }
+
+// Both request object booleans must appear in the serialized document. request_parameter_supported
+// defaults to false when omitted, but request_uri_parameter_supported defaults to true
+// (OIDC Discovery 3), so omitting it would advertise support that does not exist.
+func (suite *DiscoveryTestSuite) TestRequestObjectParametersSerializedExplicitly() {
+	suite.cryptoMock.EXPECT().GetPublicKeys(mock.Anything, providers.PublicKeyFilter{}).
+		Return([]providers.PublicKeyInfo{{KeyID: "k1", Algorithm: string(cryptolib.AlgorithmRS256)}}, nil)
+
+	metadata, err := suite.discoveryService.GetOIDCMetadata(context.Background())
+	assert.NoError(suite.T(), err)
+
+	raw, err := json.Marshal(metadata)
+	assert.NoError(suite.T(), err)
+
+	var doc map[string]any
+	assert.NoError(suite.T(), json.Unmarshal(raw, &doc))
+
+	value, present := doc["request_uri_parameter_supported"]
+	assert.True(suite.T(), present, "request_uri_parameter_supported must be present")
+	assert.Equal(suite.T(), false, value)
+
+	value, present = doc["request_parameter_supported"]
+	assert.True(suite.T(), present, "request_parameter_supported must be present")
+	assert.Equal(suite.T(), false, value)
+}

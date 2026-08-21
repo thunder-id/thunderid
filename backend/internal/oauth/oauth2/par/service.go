@@ -22,6 +22,12 @@ import (
 // requestURIPrefix is the URN prefix used for PAR request URIs per RFC 9126.
 const requestURIPrefix = "urn:ietf:params:oauth:request_uri:"
 
+// IsPARRequestURI reports whether a request_uri is a PAR handle issued by this server, as
+// opposed to a client-supplied request object by reference (RFC 9101), which is not supported.
+func IsPARRequestURI(requestURI string) bool {
+	return strings.HasPrefix(requestURI, requestURIPrefix)
+}
+
 // sensitiveParParams is the deny-list of PAR body parameters that must not be persisted into
 // InitiatorRequest.QueryParams, since they carry client credentials and the PAR store is a
 // plaintext runtime cache.
@@ -197,7 +203,7 @@ func resolveDPoPJkt(paramJkt, headerJkt string) string {
 func (s *parService) ResolvePushedAuthorizationRequest(
 	ctx context.Context, requestURI string, clientID string,
 ) (*oauth2model.OAuthParameters, *providers.InitiatorRequest, error) {
-	if !strings.HasPrefix(requestURI, requestURIPrefix) {
+	if !IsPARRequestURI(requestURI) {
 		return nil, nil, errInvalidRequestURI
 	}
 	randomKey := strings.TrimPrefix(requestURI, requestURIPrefix)

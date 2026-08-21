@@ -645,3 +645,12 @@ func (s *ServiceTestSuite) TestHandlePAR_MultipleResources_InvalidTarget() {
 	assert.Nil(s.T(), resp)
 	assert.Equal(s.T(), oauth2const.ErrorInvalidTarget, errCode)
 }
+
+// IsPARRequestURI distinguishes a PAR handle from a client-supplied request object by
+// reference (RFC 9101), which is not supported.
+func (suite *ServiceTestSuite) TestIsPARRequestURI() {
+	assert.True(suite.T(), IsPARRequestURI("urn:ietf:params:oauth:request_uri:abc123"))
+	assert.False(suite.T(), IsPARRequestURI("https://client.example.org/request.jwt"))
+	assert.False(suite.T(), IsPARRequestURI(""))
+	assert.False(suite.T(), IsPARRequestURI("urn:ietf:params:oauth:request-uri:abc123"))
+}
