@@ -66,6 +66,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/runtimestore"
+	"github.com/thunder-id/thunderid/internal/scim"
+	scimconfig "github.com/thunder-id/thunderid/internal/scim/config"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
@@ -196,6 +198,15 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	resourceService, resourceExporter, err := resource.Initialize(mux, ouService)
 	fatalOnError(ctx, logger, err, "Failed to initialize Resource Service")
 	exporters = append(exporters, resourceExporter)
+
+	// Initialize SCIM service.
+	scim.Initialize(
+		mux,
+		userService,
+		entityTypeService,
+		groupService,
+		scimconfig.FromServerRuntime(),
+	)
 
 	roleService, roleAssignmentService, ouRoleResolver, roleExporter, err := role.Initialize(
 		mux, entityService, groupService, ouService, resourceService, entityTypeService, ouAuthzService,

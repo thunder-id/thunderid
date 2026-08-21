@@ -393,6 +393,15 @@ type GroupConfig struct {
 	Store string `yaml:"store" json:"store"`
 }
 
+// SCIMConfig holds the SCIM service configuration.
+type SCIMConfig struct {
+	// ReturnMappedCoreAttrsOnGet controls whether GET responses (GetUser,
+	// ListUsers) include core schema fields (userName, emails, name, etc.)
+	// mapped from stored attributes, or only the custom extension schema.
+	// Pointer so an explicit `false` in deployment.yaml can override the default.
+	ReturnMappedCoreAttrsOnGet *bool `yaml:"core_attrs_on_get" json:"core_attrs_on_get"`
+}
+
 // RoleConfig holds the role service configuration.
 type RoleConfig struct {
 	// Store defines the storage mode for roles.
@@ -647,6 +656,7 @@ type Config struct {
 	UserProvider         UserProviderConfig                `yaml:"user_provider"         json:"user_provider"`
 	EntityProvider       EntityProviderConfig              `yaml:"entity_provider"       json:"entity_provider"`
 	Group                GroupConfig                       `yaml:"group"                 json:"group"`
+	SCIM                 SCIMConfig                        `yaml:"scim"                  json:"scim"`
 	Role                 RoleConfig                        `yaml:"role"                  json:"role"`
 	Theme                ThemeConfig                       `yaml:"theme"                 json:"theme"`
 	Layout               LayoutConfig                      `yaml:"layout"                json:"layout"`
@@ -776,6 +786,7 @@ func loadDefaultConfig(path string, serverHome string) (*Config, error) {
 	return &cfg, nil
 }
 
+// loadUserConfig loads and parses the user-provided configuration file with environment and path substitution.
 func loadUserConfig(path string, serverHome string) (Config, error) {
 	var cfg Config
 	configPath := filepath.Clean(path)

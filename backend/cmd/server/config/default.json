@@ -191,6 +191,9 @@
   "group": {
     "store": "composite"
   },
+  "scim": {
+    "core_attrs_on_get": false
+  },
   "declarative_resources": {
     "enabled": false
   },

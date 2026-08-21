@@ -5,8 +5,11 @@ package security
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
@@ -30,8 +33,26 @@ func middleware(service SecurityServiceInterface) (func(http.Handler) http.Handl
 			// Process the security checks
 			ctx, err := service.Process(r)
 			if err != nil {
-				// Write error response and stop request processing
-				writeSecurityError(ctx, w, err)
+				if strings.HasPrefix(r.URL.Path, "/scim/") {
+					statusCode := http.StatusUnauthorized
+					detail := "Authentication failed"
+					if errors.Is(err, errForbidden) || errors.Is(err, errInsufficientPermissions) {
+						statusCode = http.StatusForbidden
+						detail = "Insufficient permissions to access this resource"
+					} else if errors.Is(err, errNoHandlerFound) {
+						detail = "Authentication token missing or invalid"
+					}
+					if statusCode == http.StatusUnauthorized {
+						if errors.Is(err, errInvalidToken) {
+							w.Header().Set(serverconst.WWWAuthenticateHeaderName, wwwAuthChallengeInvalidToken)
+						} else {
+							w.Header().Set(serverconst.WWWAuthenticateHeaderName, serverconst.TokenTypeBearer)
+						}
+					}
+					writeSCIMSecurityError(w, statusCode, detail)
+				} else {
+					writeSecurityError(ctx, w, err)
+				}
 				return
 			}
 
@@ -61,4 +82,15 @@ func writeSecurityError(ctx context.Context, w http.ResponseWriter, err error) {
 	}
 
 	utils.WriteErrorResponse(ctx, w, http.StatusUnauthorized, apierror.ErrUnauthorized)
+}
+
+// writeSCIMSecurityError writes a RFC 7643 compliant SCIM error response for security/auth middleware rejections.
+func writeSCIMSecurityError(w http.ResponseWriter, status int, detail string) {
+	w.Header().Set("Content-Type", serverconst.SCIMContentType)
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"schemas": []string{"urn:ietf:params:scim:api:messages:2.0:Error"},
+		"status":  fmt.Sprintf("%d", status),
+		"detail":  detail,
+	})
 }
