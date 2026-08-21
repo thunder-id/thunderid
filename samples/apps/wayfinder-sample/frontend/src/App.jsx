@@ -682,13 +682,19 @@ function HomeRedirect() {
 // triggered an authorization-code flow in a popup. Posts the code (and state)
 // back to the opener window (the chat widget) and closes itself.
 function AgentCallbackRoute() {
+  const posted = useRef(false);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     const state = params.get("state");
     const error = params.get("error");
     const errorDescription = params.get("error_description");
-    if (window.opener) {
+    // The authorization code is single use and StrictMode runs this effect twice on mount, so post
+    // it once: a second delivery makes the opener redeem the same code again, which the token
+    // endpoint rightly rejects as a replay.
+    if (window.opener && !posted.current) {
+      posted.current = true;
       window.opener.postMessage(
         {
           type: "wayfinder-agent-oauth",
@@ -720,6 +726,8 @@ function AgentCallbackRoute() {
 }
 
 function ChatTokenCallbackRoute() {
+  const posted = useRef(false);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
@@ -727,7 +735,9 @@ function ChatTokenCallbackRoute() {
     const error = params.get("error");
     const errorDescription = params.get("error_description");
 
-    if (window.opener) {
+    // Post once, for the same reason as AgentCallbackRoute above.
+    if (window.opener && !posted.current) {
+      posted.current = true;
       window.opener.postMessage(
         {
           type: "wayfinder-chat-token-oauth",

@@ -1383,6 +1383,105 @@ jobs:
             exit 1
           fi
 
+      # The AI agent tryout specs (tests/wayfinder/ai-agent-tryout/**) drive the Concierge chat with
+      # real, billed LLM calls, so they only run when an API key is configured - forked PRs get no
+      # secrets. Without a key the three steps below are skipped and the specs skip themselves (see
+      # their describeOrSkip), exactly as run-e2e.sh does locally.
+      - name: 🔑 Resolve Wayfinder AI Agent Configuration
+        if: ${{ !cancelled() }}
+        id: llm-config
+        env:
+          LLM_API_KEY: ${{ secrets.PLAYWRIGHT_LLM_API_KEY }}
+          VAR_LLM_PROVIDER: ${{ vars.PLAYWRIGHT_LLM_PROVIDER }}
+          VAR_MODEL_NAME: ${{ vars.PLAYWRIGHT_LLM_MODEL_NAME }}
+        run: |
+          # Provider and model are not sensitive, so they come from Variables rather than Secrets.
+          # An empty MODEL_NAME is fine: the agent falls back to its per-provider default.
+          echo "LLM_PROVIDER=${VAR_LLM_PROVIDER:-anthropic}" >> "$GITHUB_ENV"
+          echo "MODEL_NAME=${VAR_MODEL_NAME}" >> "$GITHUB_ENV"
+          if [ -z "$LLM_API_KEY" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "⏭️ PLAYWRIGHT_LLM_API_KEY not set - skipping the Wayfinder AI agent tryout tests"
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          # The Wayfinder bundle's variables map, from the same file run-e2e.sh feeds to /import.
+          VARS=$(jq -Rnc '[inputs | select(contains("=") and (startswith("#") | not)) | split("=") | {(.[0]): (.[1:] | join("="))}] | add // {}' \
+            < samples/apps/wayfinder-sample/thunderid-config/redirect/thunderid.env)
+          echo "WAYFINDER_IMPORT_VARS=$VARS" >> "$GITHUB_ENV"
+          echo "✅ LLM API key present - the Wayfinder AI agent tryout tests will run"
+
+      # Ahead of the AI agent starting, not just via wayfinder-sample-setup.spec.ts's own import
+      # step: the agent authenticates against WAYFINDER-CONCIERGE at startup (before any Playwright
+      # test runs), so that client must already exist by then. The setup spec still re-imports the
+      # same (upsert:true) bundle through the console UI later - that is what actually tests the
+      # import feature, and what every other @wayfinder spec depends on.
+      - name: 📦 Import Wayfinder Sample Config
+        if: ${{ !cancelled() && steps.llm-config.outputs.enabled == 'true' }}
+        uses: ./.github/actions/import-declarative-config
+        with:
+          config-path: samples/apps/wayfinder-sample/thunderid-config/redirect/thunderid-config.yaml
+          variables-json: ${{ env.WAYFINDER_IMPORT_VARS }}
+          admin-token: ${{ steps.admin-token-wayfinder.outputs.token }}
+          label: Wayfinder sample
+
+      - name: 🚀 Start Wayfinder Backend
+        if: ${{ !cancelled() && steps.llm-config.outputs.enabled == 'true' }}
+        run: |
+          cd samples/apps/wayfinder-sample/backend
+          cp .env.example .env
+          npm install
+          setsid npm run dev > "$GITHUB_WORKSPACE/wayfinder-backend.log" 2>&1 < /dev/null &
+          disown $! 2>/dev/null || true
+          echo "Waiting for Wayfinder backend on http://localhost:8787..."
+          for i in {1..60}; do
+            if curl -s http://localhost:8787/health > /dev/null; then
+              echo "Wayfinder backend is up!"
+              break
+            fi
+            sleep 2
+          done
+          if ! curl -s http://localhost:8787/health > /dev/null; then
+            echo "❌ Wayfinder backend failed to start within 2 minutes"
+            echo "--- wayfinder-backend.log ---"
+            cat "$GITHUB_WORKSPACE/wayfinder-backend.log" || true
+            exit 1
+          fi
+
+      - name: 🚀 Start Wayfinder AI Agent
+        if: ${{ !cancelled() && steps.llm-config.outputs.enabled == 'true' }}
+        env:
+          LLM_API_KEY: ${{ secrets.PLAYWRIGHT_LLM_API_KEY }}
+        run: |
+          cd samples/apps/wayfinder-sample/ai-agent
+          cp .env.example .env
+          # Same seeding as run-e2e.sh: the E2E run owns the agent's LLM config, so drop whatever
+          # .env.example carried (MODEL_NAME is commented out there) and append the resolved values.
+          grep -vE '^[[:space:]]*#?[[:space:]]*(LLM_PROVIDER|LLM_API_KEY|MODEL_NAME)=' .env > .env.ci
+          {
+            echo "LLM_PROVIDER=${LLM_PROVIDER}"
+            echo "LLM_API_KEY=${LLM_API_KEY}"
+            echo "MODEL_NAME=${MODEL_NAME}"
+          } >> .env.ci
+          mv .env.ci .env
+          npm install
+          setsid npm run dev > "$GITHUB_WORKSPACE/wayfinder-ai-agent.log" 2>&1 < /dev/null &
+          disown $! 2>/dev/null || true
+          echo "Waiting for Wayfinder AI agent on http://localhost:8790..."
+          for i in {1..60}; do
+            if curl -s http://localhost:8790/health > /dev/null; then
+              echo "Wayfinder AI agent is up!"
+              break
+            fi
+            sleep 2
+          done
+          if ! curl -s http://localhost:8790/health > /dev/null; then
+            echo "❌ Wayfinder AI agent failed to start within 2 minutes"
+            echo "--- wayfinder-ai-agent.log ---"
+            cat "$GITHUB_WORKSPACE/wayfinder-ai-agent.log" || true
+            exit 1
+          fi
+
       - name: 🎭 Run Playwright E2E Tests (Wayfinder)
         if: ${{ !cancelled() }}
         run: |
@@ -1400,7 +1499,7 @@ jobs:
           # name the Wayfinder projects explicitly (chromium's tryout project plus the two
           # browser-agnostic ones) instead of a 'chromium' or '*wayfinder-*' filter - the former
           # would match none of them, the latter would also pull in firefox/webkit tryout runs.
-          PLAYWRIGHT_PROJECT_FILTER: ${{ github.event_name == 'pull_request' && 'wayfinder-setup chromium-wayfinder-tryout wayfinder-mock-email' || '' }}
+          PLAYWRIGHT_PROJECT_FILTER: ${{ github.event_name == 'pull_request' && 'wayfinder-setup chromium-wayfinder-tryout wayfinder-mock-email wayfinder-ai-agent' || '' }}
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report-wayfinder
           PLAYWRIGHT_JSON_OUTPUT_FILE: test-results-wayfinder/test-results.json
           PLAYWRIGHT_JUNIT_OUTPUT_FILE: test-results-wayfinder/junit.xml
@@ -1411,6 +1510,9 @@ jobs:
           PLAYWRIGHT_WORKERS: ${{ vars.PLAYWRIGHT_WORKERS || env.DEFAULT_PLAYWRIGHT_WORKERS }}
           DEBUG_AUTH: ${{ vars.PLAYWRIGHT_DEBUG_AUTH || env.DEFAULT_DEBUG_AUTH }}
           SERVER_URL: ${{ env.DEFAULT_SERVER_URL }}
+          # Gates the ai-agent-tryout specs: the wayfinder-ai-agent project always runs, and its
+          # specs skip themselves when this is empty (no agent was started above).
+          LLM_API_KEY: ${{ secrets.PLAYWRIGHT_LLM_API_KEY }}
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ !cancelled() }}
