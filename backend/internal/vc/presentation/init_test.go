@@ -4,6 +4,7 @@
 package presentation
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -85,4 +86,26 @@ func TestRegisterRoutesRegistersEndpoints(t *testing.T) {
 		mux.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusNoContent, rec.Code)
 	}
+}
+
+// TestDeclarativeModeRejectsCreate verifies the management API cannot create a definition
+// when the store is declarative-only. The write would otherwise land in the in-memory
+// declarative store and disappear on restart.
+func TestDeclarativeModeRejectsCreate(t *testing.T) {
+	setupDefinitionConfig(t, "declarative", false)
+
+	ouSvc := newOUServiceMock(t, map[string]bool{"ou-1": true},
+		map[string]string{"root": "ou-1"}, map[string]string{"ou-1": "root"})
+	store, err := initializeStore(ouSvc)
+	require.NoError(t, err)
+
+	svc := newPresentationDefinitionService(store, ouSvc)
+	_, svcErr := svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
+		Handle: "decl-mode-create",
+		OUID:   "ou-1",
+		VCT:    "urn:example:vct",
+	})
+
+	require.NotNil(t, svcErr, "a create must be rejected in declarative-only mode")
+	assert.Equal(t, ErrorDefinitionDeclarativeModeCreateNotAllowed.Code, svcErr.Code)
 }

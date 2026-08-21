@@ -5,7 +5,10 @@ package presentation
 
 import (
 	"context"
+	"errors"
 	"fmt"
+
+	"github.com/thunder-id/thunderid/internal/ou"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -107,6 +110,8 @@ func (e *definitionExporter) GetResourceRules() *declarativeresource.ResourceRul
 type definitionRequestWithID struct {
 	ID                   string              `yaml:"id"`
 	Handle               string              `yaml:"handle"`
+	OUID                 string              `yaml:"ouId"`
+	OUHandle             string              `yaml:"ouHandle"`
 	Name                 string              `yaml:"name"`
 	Description          string              `yaml:"description"`
 	VCT                  string              `yaml:"vct"`
@@ -119,19 +124,26 @@ type definitionRequestWithID struct {
 	TrustedAuthorities   []string            `yaml:"trustedAuthorities"`
 }
 
-// loadDeclarativeResources loads declarative presentation-definition resources from files.
-func loadDeclarativeResources(store declarativeresource.Storer) error {
+// loadDeclarativeResources loads declarative presentation-definition resources from YAML files
+// into the file store. The dbStore parameter is optional and is used only for duplicate checking
+// in composite mode. The ouService parameter is optional and is used to resolve ouHandle to ouId.
+func loadDeclarativeResources(
+	fileStore *definitionFileBasedStore, dbStore definitionStoreInterface,
+	ouService ou.OrganizationUnitServiceInterface,
+) error {
 	resourceConfig := declarativeresource.ResourceConfig{
-		ResourceType:  "PresentationDefinition",
+		ResourceType:  paramTypePresentationDefinition,
 		DirectoryName: "presentation_definitions",
 		Parser:        parseToDefinitionDTOWrapper,
-		Validator:     validateDefinitionWrapper,
+		Validator: func(dto interface{}) error {
+			return validateDefinitionWrapper(dto, fileStore, dbStore, ouService)
+		},
 		IDExtractor: func(dto interface{}) string {
 			return dto.(*PresentationDefinitionDTO).ID
 		},
 	}
 
-	loader := declarativeresource.NewResourceLoader(resourceConfig, store)
+	loader := declarativeresource.NewResourceLoader(resourceConfig, &definitionStorer{store: fileStore})
 	if err := loader.LoadResources(); err != nil {
 		return fmt.Errorf("failed to load presentation definition resources: %w", err)
 	}
@@ -159,6 +171,8 @@ func buildDefinitionDTOFromRequest(req definitionRequestWithID) *PresentationDef
 	return &PresentationDefinitionDTO{
 		ID:                   req.ID,
 		Handle:               req.Handle,
+		OUID:                 req.OUID,
+		OUHandle:             req.OUHandle,
 		Name:                 req.Name,
 		Description:          req.Description,
 		VCT:                  req.VCT,
@@ -172,8 +186,13 @@ func buildDefinitionDTOFromRequest(req definitionRequestWithID) *PresentationDef
 	}
 }
 
-// validateDefinitionWrapper wraps validateDefinition to match ResourceConfig.Validator signature.
-func validateDefinitionWrapper(dto interface{}) error {
+// validateDefinitionWrapper validates a declarative presentation definition: it must carry an ID,
+// pass the same field validation the management API applies, resolve to an existing organization
+// unit, and not reuse an ID or handle already claimed by another file.
+func validateDefinitionWrapper(
+	dto interface{}, fileStore *definitionFileBasedStore, dbStore definitionStoreInterface,
+	ouService ou.OrganizationUnitServiceInterface,
+) error {
 	def, ok := dto.(*PresentationDefinitionDTO)
 	if !ok {
 		return fmt.Errorf("invalid type: expected *PresentationDefinitionDTO")
@@ -183,6 +202,59 @@ func validateDefinitionWrapper(dto interface{}) error {
 	}
 	if svcErr := validateDefinition(def); svcErr != nil {
 		return fmt.Errorf("validation failed: %s", svcErr.Error.DefaultValue)
+	}
+	if err := resolveDefinitionOU(context.Background(), def, ouService); err != nil {
+		return err
+	}
+	return checkDuplicateDefinition(context.Background(), def, fileStore, dbStore)
+}
+
+// resolveDefinitionOU resolves ouHandle to ouId and requires the result to be non-empty, so a
+// declarative definition carries the same owning organization unit the management API demands.
+func resolveDefinitionOU(
+	ctx context.Context, def *PresentationDefinitionDTO, ouService ou.OrganizationUnitServiceInterface,
+) error {
+	if ouService != nil && def.OUID == "" && def.OUHandle != "" {
+		resolved, svcErr := ouService.GetOrganizationUnitByPath(ctx, def.OUHandle)
+		if svcErr != nil {
+			return fmt.Errorf("organization unit with handle %q not found for presentation definition '%s'",
+				def.OUHandle, def.Handle)
+		}
+		def.OUID = resolved.ID
+	}
+	if def.OUID == "" {
+		return fmt.Errorf("ouId or ouHandle is required for presentation definition '%s'", def.Handle)
+	}
+	return nil
+}
+
+// checkDuplicateDefinition rejects a definition whose ID or handle another declarative file already
+// claimed, which would otherwise silently overwrite or shadow the earlier one.
+func checkDuplicateDefinition(
+	ctx context.Context, def *PresentationDefinitionDTO,
+	fileStore *definitionFileBasedStore, dbStore definitionStoreInterface,
+) error {
+	if fileStore != nil {
+		if _, err := fileStore.GetPresentationDefinitionByID(ctx, def.ID); err == nil {
+			return fmt.Errorf(
+				"duplicate presentation definition ID '%s': definition already exists in declarative resources",
+				def.ID)
+		}
+		if _, err := fileStore.GetPresentationDefinitionByHandle(ctx, def.Handle); err == nil {
+			return fmt.Errorf(
+				"duplicate presentation definition handle '%s': handle already used in declarative resources",
+				def.Handle)
+		}
+	}
+	if dbStore != nil {
+		_, err := dbStore.GetPresentationDefinitionByID(ctx, def.ID)
+		if err == nil {
+			return fmt.Errorf(
+				"duplicate presentation definition ID '%s': definition already exists in the database store",
+				def.ID)
+		} else if !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("failed to check for duplicate presentation definition ID '%s': %w", def.ID, err)
+		}
 	}
 	return nil
 }
