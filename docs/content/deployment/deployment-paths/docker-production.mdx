@@ -53,24 +53,24 @@ services:
     restart: unless-stopped
 ```
 
-## Persist Data with Named Volumes
+## Mount Configuration and Security Material
 
-Without a volume, all data inside the container is lost when it is stopped or recreated. Mount a named volume for the database directory:
+Provision production configuration, certificates, private keys, and secrets outside the container. Mount them read-only into every <ProductName /> replica:
 
 ```bash
 docker run -d \
   --name thunderid \
   --restart unless-stopped \
-  -v thunderid-data:/opt/thunderid/database \
-  ghcr.io/thunder-id/thunderid:latest
+  -p 8090:8090 \
+  --mount type=bind,src="$(pwd)/deployment.yaml",dst=/opt/thunderid/deployment.yaml,readonly \
+  --mount type=bind,src="$(pwd)/config/certs",dst=/opt/thunderid/config/certs,readonly \
+  --mount type=bind,src="$(pwd)/config/secrets",dst=/opt/thunderid/config/secrets,readonly \
+  --mount type=bind,src="$(pwd)/config/resources/server_configs/cors.yaml",dst=/opt/thunderid/config/resources/server_configs/cors.yaml,readonly \
+  --mount type=bind,src="$(pwd)/config/resources/server_configs/csp.yaml",dst=/opt/thunderid/config/resources/server_configs/csp.yaml,readonly \
+  ghcr.io/thunder-id/thunderid:<version>
 ```
 
-Also mount the named volumes that setup populates, so the TLS certificates, encryption key, and Direct Auth Secret persist outside the container lifecycle:
-
-```bash
--v thunderid-certs:/opt/thunderid/config/certs \
--v thunderid-secrets:/opt/thunderid/config/secrets
-```
+The certs directory must contain the TLS pair, RSA and ECDSA signing pairs, and encryption key referenced by `deployment.yaml`. The secrets directory must contain the Direct Auth Secret when it uses the default file reference. See [Mount Production Configuration](../../production-guidelines#mount-production-configuration) for the complete file inventory and permission requirements.
 
 ## Terminate TLS at a Reverse Proxy
 
@@ -113,12 +113,16 @@ services:
       - thunderid
 
   thunderid:
-    image: ghcr.io/thunder-id/thunderid:latest
+    image: ghcr.io/thunder-id/thunderid:<version>
     restart: unless-stopped
     expose:
       - "8090"
     volumes:
-      - ./deployment.yaml:/opt/thunderid/deployment.yaml
+      - ./deployment.yaml:/opt/thunderid/deployment.yaml:ro
+      - ./config/certs:/opt/thunderid/config/certs:ro
+      - ./config/secrets:/opt/thunderid/config/secrets:ro
+      - ./config/resources/server_configs/cors.yaml:/opt/thunderid/config/resources/server_configs/cors.yaml:ro
+      - ./config/resources/server_configs/csp.yaml:/opt/thunderid/config/resources/server_configs/csp.yaml:ro
 ```
 
 ## Set Resource Constraints
@@ -128,7 +132,7 @@ Prevent a runaway container from exhausting host resources by setting CPU and me
 ```yaml
 services:
   thunderid:
-    image: ghcr.io/thunder-id/thunderid:latest
+    image: ghcr.io/thunder-id/thunderid:<version>
     deploy:
       resources:
         limits:
@@ -148,7 +152,7 @@ Add a health check so Docker can detect and restart an unhealthy container autom
 ```yaml
 services:
   thunderid:
-    image: ghcr.io/thunder-id/thunderid:latest
+    image: ghcr.io/thunder-id/thunderid:<version>
     healthcheck:
       test: ["CMD", "curl", "-fsk", "https://localhost:8090/health/liveness"]
       interval: 30s
