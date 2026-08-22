@@ -28,7 +28,7 @@ var (
 	queryGetRoleList = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-03",
 		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "ROLE" ` +
-			`WHERE DEPLOYMENT_ID = $3 ORDER BY CREATED_AT DESC LIMIT $1 OFFSET $2`,
+			`WHERE DEPLOYMENT_ID = $3 ORDER BY CREATED_AT DESC, ID DESC LIMIT $1 OFFSET $2`,
 	}
 
 	// queryGetRoleListCount retrieves the total count of roles.
@@ -60,7 +60,7 @@ var (
 	queryGetRolePermissions = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-08",
 		Query: `SELECT RESOURCE_SERVER_ID, PERMISSION FROM "ROLE_PERMISSION" WHERE ` +
-			`ROLE_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT`,
+			`ROLE_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT, RESOURCE_SERVER_ID, PERMISSION`,
 	}
 
 	// queryDeleteRolePermissions deletes all permissions for a role.
@@ -96,7 +96,8 @@ var (
 	queryGetRoleAssignments = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-11",
 		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE FROM "ROLE_ASSIGNMENT"
-			WHERE ROLE_ID = $1 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT LIMIT $2 OFFSET $3`,
+			WHERE ROLE_ID = $1 AND DEPLOYMENT_ID = $4
+			ORDER BY CREATED_AT, ASSIGNEE_TYPE, ASSIGNEE_ID LIMIT $2 OFFSET $3`,
 	}
 
 	// queryGetRoleAssignmentsCount retrieves the total count of assignments for a role.
@@ -149,7 +150,8 @@ var (
 	queryGetRoleAssignmentsByType = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-17",
 		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE FROM "ROLE_ASSIGNMENT"
-			WHERE ROLE_ID = $1 AND ASSIGNEE_TYPE = $5 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT LIMIT $2 OFFSET $3`,
+			WHERE ROLE_ID = $1 AND ASSIGNEE_TYPE = $5 AND DEPLOYMENT_ID = $4
+			ORDER BY CREATED_AT, ASSIGNEE_TYPE, ASSIGNEE_ID LIMIT $2 OFFSET $3`,
 	}
 
 	// queryGetRoleAssignmentsCountByType retrieves the total count of assignments for a role filtered by type.
@@ -163,7 +165,7 @@ var (
 	queryGetRoleListByOUID = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-23",
 		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "ROLE" ` +
-			`WHERE OU_ID = $1 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT DESC LIMIT $2 OFFSET $3`,
+			`WHERE OU_ID = $1 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT DESC, ID DESC LIMIT $2 OFFSET $3`,
 	}
 
 	// queryGetRoleListCountByOUID retrieves the total count of roles belonging to an organization unit.
