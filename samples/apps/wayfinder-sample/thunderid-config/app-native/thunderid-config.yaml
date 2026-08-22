@@ -1045,7 +1045,15 @@ flowType: AUTHENTICATION
 nodes:
   - id: start
     type: START
-    onSuccess: prompt_credentials
+    onSuccess: sso_check
+  - id: sso_check
+    type: TASK_EXECUTION
+    executor:
+      name: SSOCheckExecutor
+    properties:
+      checkpointRef: session
+    onSuccess: session
+    onFailure: prompt_credentials
   - id: prompt_credentials
     type: PROMPT
     meta:
@@ -1112,8 +1120,13 @@ nodes:
     type: TASK_EXECUTION
     executor:
       name: CredentialsAuthExecutor
-    onSuccess: authorization_check
+    onSuccess: session
     onIncomplete: prompt_credentials
+  - id: session
+    type: TASK_EXECUTION
+    executor:
+      name: SessionExecutor
+    onSuccess: authorization_check
   - id: authorization_check
     type: TASK_EXECUTION
     executor:
