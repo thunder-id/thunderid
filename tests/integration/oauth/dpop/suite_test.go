@@ -262,9 +262,8 @@ func (ts *DPoPTestSuite) obtainAuthorizationCode(
 	params.Set("state", "dpop-test-state")
 	params.Set("code_challenge", challenge)
 	params.Set("code_challenge_method", "S256")
-	// Single-resource-server (RFC 8707) enforcement requires a target RS; the
-	// seeded System RS suffices since these tests don't care which RS binds.
-	params.Set("resource", testutils.SystemResourceIdentifier)
+	// No 'resource' is requested so minted tokens carry the client's own default audience,
+	// which is what the UserInfo endpoint accepts (see OAuthClient.ResolveDefaultAudience).
 	for k, v := range extraAuthzParams {
 		params.Set(k, v)
 	}
