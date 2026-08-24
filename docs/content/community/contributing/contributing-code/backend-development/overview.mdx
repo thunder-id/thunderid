@@ -12,7 +12,10 @@ The backend is a Go application under `backend/`.
 
 ## Project Structure
 
-Each domain package under `internal/` follows a flat structure:
+This is the flat layout to follow for a **new** domain package under `internal/`. Existing packages vary: some register
+their routes in `init.go` with no separate `handler.go`, a few use a `model/` subpackage instead of a single `model.go`,
+and `constants.go` is only present where a package actually needs shared constants. Match the package you are working in
+rather than adding files to make it fit this table.
 
 | File | Purpose |
 |------|---------|

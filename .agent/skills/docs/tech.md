@@ -41,9 +41,9 @@ For any claim about OAuth 2.0, OIDC, PKCE, JWT, SAML, or other protocols: load t
 ThunderID-specific watch-list:
 - OAuth 2.0 is an authorization framework; OIDC adds identity on top. Don't call OAuth 2.0 "authentication."
 - JWTs are signed (JWS) by default, not encrypted unless using JWE. "Prevents tampering" ≈ true; "keeps data private" is false unless encrypted.
-- PKCE: verifier and challenge are different values (S256 = BASE64URL(SHA-256(verifier))) — not interchangeable.
+- PKCE: verifier and challenge are different values (S256 = BASE64URL(SHA-256(verifier))) — not interchangeable, and the direction matters: the client generates the verifier and derives the challenge from it, never the reverse.
 - Access, refresh, and ID tokens have different lifetimes/scopes/audiences — don't conflate them.
-- Authorization Code, Implicit, and Client Credentials flows have different security properties; recommending Implicit for new apps is wrong (deprecated).
+- Authorization Code, Implicit, and Client Credentials flows have different security properties; recommending Implicit for new apps is wrong. It is deprecated per RFC 9700 (OAuth 2.0 Security Best Current Practice) — prefer Authorization Code with PKCE, and say so where a page still documents Implicit.
 
 ### 2. ThunderID Feature and Behavior Claims
 Verify against source via `Bash` grep/search. Console UI behavior can't be fully verified without running the product — flag for manual verification if source doesn't confirm it. Verify the feature exists in the current codebase, not planned or removed.

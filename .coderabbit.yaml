@@ -69,43 +69,7 @@ reviews:
         - <item 2>: <what needs to be documented and which file to update or create>
         - ..."
 
-    - path: "**/*_test.go"
-      instructions: |
-        Intermittent test failure detection. Scrutinize every changed test, helper, or setup
-        function for patterns that can cause non-deterministic (flaky) outcomes. Common patterns
-        include but are not limited to:
-
-        - **Encoding/decoding equivalence**: mutating a base64 (or hex, URL-encoding, etc.)
-          string in a position where the change does not alter the decoded bytes (e.g., flipping
-          the last character of a `base64.RawURLEncoding` string may produce identical decoded
-          output depending on input length and padding alignment).
-        - **Map iteration order**: relying on the order of `range` over a Go map, which is
-          randomized per iteration.
-        - **Time-dependent assertions**: comparing timestamps with `time.Now()` or fixed
-          durations without tolerance, sleeping for a fixed duration and asserting state, or
-          assuming wall-clock ordering across goroutines.
-        - **Port/resource conflicts**: hardcoded ports, temp file paths, or shared resources
-          that collide when tests run in parallel.
-        - **Goroutine races**: shared mutable state accessed from test goroutines without
-          synchronization, or `t.Parallel()` tests closing over loop variables.
-        - **Random/non-deterministic input**: using `rand` without a fixed seed, or generating
-          values that can collide (e.g., UUID-based names that are later asserted by position).
-        - **External service timing**: assertions that depend on an external server, database,
-          or network call completing within an implicit timeout.
-        - **Flaky cleanup**: `defer` cleanup that races with asynchronous operations, or
-          teardown that depends on creation having fully completed.
-
-        When any of these patterns is detected, flag it as a **critical issue** (not major,
-        not a suggestion) using this format:
-
-        "🔴 **Intermittent test failure**: <description of the non-deterministic pattern>.
-        This will pass most of the time but fail unpredictably in CI, wasting maintainer time
-        and eroding trust in the test suite."
-
-        Provide a concrete explanation of the failure scenario (inputs/state that trigger the
-        flake) and suggest a deterministic fix.
-
-    - path: "tests/**"
+    - path: "{**/*_test.go,tests/**}"
       instructions: |
         Intermittent test failure detection. Scrutinize every changed test, helper, or setup
         function for patterns that can cause non-deterministic (flaky) outcomes. Common patterns
@@ -421,16 +385,12 @@ reviews:
           (e.g., a guide that creates, edits, deletes, and configures a resource all on one page).
           Suggest splitting by task, or confirming the page is intentionally a reference hub.
 
-        The checks below mirror the project's `/docs-review-style` and `/docs-review-tech` skills.
-        They cover judgment calls the repo's mechanical CI (Vale, docs-lint.sh) cannot make — CI
-        already hard-blocks on em/en dashes, H1 title case, inclusive-language substitutions
-        (whitelist/blacklist, master/slave), and structural frontmatter/heading/link checks, so do
-        not re-flag those here. Everything below is a **suggestion**, never blocking, unless
-        explicitly marked otherwise.
-
-        **Terminology note:** sign in/out vs. log in/out, and redirect URI vs. callback/redirect
-        URL, are not yet enforced anywhere (Vale or here) — those terms are still being finalized.
-        Do not flag them until this note is updated.
+        The checks below mirror `.agent/skills/docs/style.md` and `.agent/skills/docs/tech.md`,
+        which are the authoritative source for all of them. They cover judgment calls the repo's
+        mechanical CI (Vale, docs-lint.sh) cannot make — CI already hard-blocks on em/en dashes,
+        H1 title case, inclusive-language substitutions (whitelist/blacklist, master/slave), and
+        structural frontmatter/heading/link checks, so do not re-flag those here. Everything below
+        is a **suggestion**, never blocking, unless explicitly marked otherwise.
 
         **Tone and voice:**
         - Passive voice in instructions ("The configuration can be set by..." instead of
@@ -556,5 +516,55 @@ reviews:
     - "!**/*.pb.go"
     - "!**/node_modules/**"
     - "!docs/__backup__/**"
-    - "!.agent/skills/**"
-    - "!.claude/skills/**"
+    - "!.agent/**"
+    - "!.claude/**"
+
+# Guidance files CodeRabbit should apply as review criteria, rather than review as code.
+#
+# The AGENTS.md hierarchy needs no entry here: `**/AGENTS.md` and `**/CLAUDE.md` are auto-detected
+# defaults, and each is scoped to its own directory and everything below it. That is the same
+# scoping the agent-facing routing tables use, so one file serves both consumers.
+#
+# The guides under .agent/guides/ do need entries. A bare glob string is scoped to the containing
+# directory of the matched file, so ".agent/guides/**/*.md" on its own would scope every guide to
+# .agent/guides/** and therefore apply to nothing reviewable. It is kept only as a catch-all so a
+# newly added guide is at least ingested; every guide that must actually apply gets an explicit
+# {files, applyTo} mapping. Custom patterns add to the defaults rather than replacing them.
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - ".agent/guides/**/*.md"
+
+      - files: ".agent/guides/database.md"
+        applyTo: "{backend/dbscripts/**,backend/internal/**/store*.go,backend/internal/**/*_store.go}"
+
+      - files: ".agent/guides/go-testing.md"
+        applyTo: "{backend/**/*_test.go,tests/integration/**/*.go}"
+
+      - files: ".agent/guides/e2e-page-objects.md"
+        applyTo: "tests/e2e/**/*.ts"
+
+      - files: ".agent/guides/frontend-error-display.md"
+        applyTo: "frontend/**/*.{ts,tsx}"
+
+      - files: ".agent/guides/frontend-routing.md"
+        applyTo: "frontend/{apps,packages}/**/*.{ts,tsx}"
+
+      - files: ".agent/guides/frontend-forms.md"
+        applyTo: "frontend/**/components/**/*.tsx"
+
+      - files: ".agent/guides/frontend-edit-pages.md"
+        applyTo: "frontend/**/{pages/*EditPage.tsx,components/edit-*/**/*.tsx}"
+
+      - files: ".agent/guides/frontend-package-build.md"
+        applyTo: "frontend/{packages/**/rolldown.config.js,apps/*/src/App.tsx}"
+
+      - files: ".agent/guides/oxygen-ui.md"
+        applyTo: "{frontend/**/*.tsx,docs/src/**/*.{ts,tsx}}"
+
+      - files: ".agent/guides/docs-site.md"
+        applyTo: "docs/{src/**/*.{ts,tsx},src/css/custom.css,docusaurus*.ts,scripts/**/*.mjs}"
+
+      - files: ".agent/guides/cross-os-paths.md"
+        applyTo: "{tools/**/*.{ts,js,mjs},docs/scripts/**/*.mjs,frontend/**/*.config.{ts,js}}"

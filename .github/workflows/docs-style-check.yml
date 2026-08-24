@@ -40,7 +40,7 @@ jobs:
           else
             BASE_REF="${{ github.base_ref }}"
           fi
-          FILES=$(git diff --name-only --diff-filter=ACMR "origin/${BASE_REF}...HEAD" -- '*.md' '*.mdx' ':!.agent/skills/**')
+          FILES=$(git diff --name-only --diff-filter=ACMR "origin/${BASE_REF}...HEAD" -- '*.md' '*.mdx' ':!.agent/**' ':!.claude/**')
           echo "base_ref=origin/${BASE_REF}" >> "$GITHUB_OUTPUT"
           if [ -z "$FILES" ]; then
             echo "No markdown files changed."

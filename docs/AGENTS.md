@@ -1,28 +1,33 @@
----
-title: AGENTS
-description: AI agents should use this file when creating and reviewing documentation content for ThunderID. It points to the docs skill that scaffolds, writes, and reviews docs, rather than restating its rules here.
----
+# ThunderID Documentation — Agent Guide
 
-# ThunderID Documentation — Agent Instructions
+Read with the root [AGENTS.md](../AGENTS.md).
 
-Documentation content under `docs/content/` is handled by one skill, `docs` (`.agent/skills/docs/SKILL.md`), covering every stage: scaffolding, writing, and review. **Invoke it instead of creating, editing, or reviewing a doc page by hand** — it enforces the project's writing standards directly, so the rules live in one executable place, not duplicated in prose here. This applies even when the request doesn't name it: "write documentation for X," "document this feature," "add a section on Y," "review this page," and "does this doc meet standards" should all route to it, not to a manual edit or review.
+## Route Every Documentation Task to the `docs` Skill
 
-The skill's `SKILL.md` is a dispatch table over its reference files, each covering one stage:
+Documentation content under `docs/content/` is handled by one skill, `docs` (`.agent/skills/docs/SKILL.md`), covering
+every stage: scaffolding, writing, and review. **Invoke it instead of creating, editing, or reviewing a doc page by
+hand.** This applies even when the request doesn't name it: "write documentation for X", "document this feature", "add a
+section on Y", "review this page", and "does this doc meet standards" all route to it.
 
-- `new-page.md` — creating a new page, or "write documentation for X" when no existing page covers the topic. Checks for an existing page on the same topic first, creates the file from the right template, and proposes where it belongs in the sidebar.
-- `edit.md` — writing content into an existing page (a placeholder, a gap, or a new section). Verifies every technical claim against the codebase, existing docs, a standard spec, or a supplied draft before writing it.
-- `check.md` — structural standards only: frontmatter, headings, links, Stepper config, sidebar registration.
-- `style.md` — writing quality only: AI-sounding prose, tone, voice consistency, em/en dashes, and more.
-- `tech.md` — technical accuracy only: protocol, API, SDK, config, and security claims verified against source.
-- `api.md` — API documentation specifically: OpenAPI specs (`api/*.yaml`) verified against the Go backend's registered routes, and SDK reference pages (`docs/content/sdks/*/apis/**`) verified against build artifacts when available. Technical accuracy hard-gates here, same as `tech.md`.
-- `review.md` — the full pre-merge check: runs `check.md`, `style.md`, `tech.md`, and (for API-reference paths) `api.md`, and combines them into one pass/fail report.
-- `seo.md` — discoverability check for new pages or major rewrites.
-- `use-case.md`, for structuring or auditing a use-case section (`docs/content/use-cases/<pattern>/`): page order, diagram design, jargon literacy for readers unfamiliar with IAM or ThunderID, and a scoring rubric. Use for creating, restructuring, or reviewing B2C, B2B, AI Agents, or a new use-case pattern.
+`SKILL.md` is the dispatch table. It is the only place the stage-to-reference-file mapping lives, so read it there
+rather than trusting a copy: earlier copies of that table in this file and in [README.md](README.md) both went stale and
+silently omitted a reference file that had been added to the skill.
 
-See [docs/README.md](README.md) for the full contributor workflow with a worked example, and `.agent/skills/docs/` for each reference file's complete rules.
+See [README.md](README.md) for the contributor-facing workflow with a worked example.
 
-## Versioned Fetches in `docs/src/` Components
+## Validation
 
-A component rendered inside actual doc content (an `.mdx` page under `docs/content/` or `docs/versioned_docs/`) that builds a URL to `fetch()` a versioned static asset (anything mirrored per-version under `static/docs/<versionPath>/...` or `static/api/<versionPath>/...`) must derive `versionPath` from `useDocsVersion()` (`@docusaurus/plugin-content-docs/client`), mapping `version === 'current' ? 'next' : version`. This is the same pattern already used in `docs/src/components/ApiVersionReference.tsx`.
+- `make lint_docs` runs Vale plus the structural checks in `scripts/docs-lint.sh` (frontmatter, heading hierarchy,
+  Stepper config, links, `<ProductName />` usage, sidebar-orphan check against `.orphan-allowlist`).
+- `make build_docs` catches broken links and MDX compile errors that linting alone does not.
+- Neither is part of `make pr_checks`, so run both yourself when you change anything under `docs/`.
 
-Do not hardcode a `/docs/next/...` literal and rewrite it with `useDocsUrl()` (`@site/src/hooks/useDocsUrl`). That hook exists for version-*less* contexts (footer links, homepage, custom pages) that fall back through the site's global active/preferred/latest version state; a component embedded in a specific doc page already has its own authoritative version and should read it directly instead. `useDocsUrl()` remains the correct tool for rewriting `<Link>`/`href` navigation targets, since this rule only applies to runtime `fetch()` URLs. Enforced in `.coderabbit.yaml` under the `docs/**` path instructions.
+## Guides
+
+| Trigger | Read |
+|---|---|
+| `docs/src/**`, `docs/docusaurus*.ts`, or `docs/src/css/custom.css` | [.agent/guides/docs-site.md](../.agent/guides/docs-site.md) |
+| Any `.tsx` under `docs/src/` | [.agent/guides/oxygen-ui.md](../.agent/guides/oxygen-ui.md) |
+
+Before your first edit, read every guide whose trigger matches a file you are about to change, and state in one line
+which ones you loaded. If none match, say so.

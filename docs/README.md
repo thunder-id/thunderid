@@ -4,7 +4,7 @@ Documentation for **ThunderID** - an open-source IAM stack. This documentation c
 
 ## Writing and reviewing docs with agent skills
 
-Contributors do not have to write and review documentation from scratch, or memorize every style rule by hand. This repo ships a Claude Code skill, `docs` (invoked as `/docs` in an agent session, or automatically whenever a request matches), that scaffolds, writes, and reviews ThunderID docs consistently. It lives in `.agent/skills/docs/` (mirrored in `.claude/skills/` for Claude Code): a `SKILL.md` dispatch table plus one reference file per stage, so a request only loads the part it actually needs. The reference files a contributor's requests route to:
+Contributors do not have to write and review documentation from scratch, or memorize every style rule by hand. This repo ships a Claude Code skill, `docs` (invoked as `/docs` in an agent session, or automatically whenever a request matches), that scaffolds, writes, and reviews ThunderID docs consistently. It lives in `.agent/skills/docs/` (mirrored in `.claude/skills/` for Claude Code): a `SKILL.md` dispatch table plus one reference file per stage, so a request only loads the part it actually needs. `SKILL.md` is authoritative for which stages exist; the list below is a reader's summary and can lag it. The reference files a contributor's requests route to:
 
 - **`new-page.md`**: scaffolds a new page. Collects the page type, title, and description, checks whether a similar page already exists before creating a duplicate, creates the file from the matching template, and proposes where it belongs in the sidebar for your approval.
 - **`edit.md`**: writes content into a page, whether that is a placeholder left by `new-page.md`, a gap in something you started, or a new section on an existing page. You can also hand it a draft, a design doc, or notes to write from. It verifies every technical claim against the codebase, an existing doc, or the draft you supplied before writing it, and asks you for the missing fact instead of guessing.
@@ -14,6 +14,7 @@ Contributors do not have to write and review documentation from scratch, or memo
 - **`api.md`**: API documentation specifically — an OpenAPI spec (`api/*.yaml`) verified against the Go backend's actual registered routes, or an SDK reference page (`docs/content/sdks/*/apis/**`) verified against build artifacts when available locally. Unlike `seo.md`, this isn't advisory: technical accuracy is a hard gate here.
 - **`review.md`**: the full pre-merge check, running `check.md`, `style.md`, `tech.md`, and (for API-reference paths) `api.md` together. Also has a diff mode: ask it to "review my changes" or "review the diff" without naming a file, and it reviews every changed doc file — including anything not yet committed — instead of one file at a time.
 - **`seo.md`**: an optional discoverability pass for new pages or major rewrites.
+- **`diagram.md`**: authoring or debugging a Mermaid diagram, choosing the right diagram type for what you are showing. The house Mermaid theme is applied globally, so this is about content and structure, not styling.
 - **`use-case.md`**: structures or audits a use-case section (`docs/content/use-cases/<pattern>/`), covering page order, diagram design, and jargon-literacy checks for that funnel, plus a scoring rubric for a reader unfamiliar with IAM or ThunderID.
 
 ### Invoking a specific stage
@@ -31,6 +32,7 @@ Natural language works for all of the above ("check this file," "review my chang
 | `seo` | `seo.md` |
 | `review` | `review.md` (omit the file path to review the diff instead of one file) |
 | `use-case` | `use-case.md` |
+| `diagram` | `diagram.md` |
 
 ### Example workflow
 
