@@ -38,15 +38,24 @@
 # Requirements: curl, jq, python3, pnpm, lsof, unzip
 
 set -euo pipefail
+# Job control, so each "cmd &" below gets its own process group (see kill_job) instead of
+# sharing this script's - without it, killing a group would kill run-e2e.sh itself. Each start
+# is followed by `disown` so job control doesn't also report "Terminated: 15" for it at cleanup;
+# the tracked PID is what kill_job uses, so nothing depends on the job table entry.
+set -m
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SAMPLE_APP_DIR="$PROJECT_ROOT/samples/apps/react-sdk-sample"
 WAYFINDER_APP_DIR="$PROJECT_ROOT/samples/apps/wayfinder-sample/frontend"
+WAYFINDER_API_DIR="$PROJECT_ROOT/samples/apps/wayfinder-sample/backend"
+WAYFINDER_AGENT_DIR="$PROJECT_ROOT/samples/apps/wayfinder-sample/ai-agent"
 SMTP_SERVER_DIR="$PROJECT_ROOT/samples/apps/wayfinder-sample/smtp-server"
 SERVER_URL="${BASE_URL:-https://localhost:8090}"
 SAMPLE_URL="${SAMPLE_APP_URL:-https://localhost:3000}"
 WAYFINDER_URL="${WAYFINDER_APP_URL:-http://localhost:5173}"
+WAYFINDER_API_URL="${WAYFINDER_API_URL:-http://localhost:8787}"
+WAYFINDER_AGENT_URL="${WAYFINDER_AGENT_URL:-http://localhost:8790}"
 MOCK_SMTP_INBOX_URL="${MOCK_SMTP_INBOX_URL:-http://localhost:8788}"
 # Extracts the port from a URL, falling back to the scheme's default port (443/80) when the URL
 # has none (e.g. a portless override like https://myserver.example.com).
@@ -64,6 +73,8 @@ url_port() {
 SERVER_PORT=$(url_port "$SERVER_URL")
 SAMPLE_PORT=$(url_port "$SAMPLE_URL")
 WAYFINDER_PORT=$(url_port "$WAYFINDER_URL")
+WAYFINDER_API_PORT=$(url_port "$WAYFINDER_API_URL")
+WAYFINDER_AGENT_PORT=$(url_port "$WAYFINDER_AGENT_URL")
 MOCK_SMTP_INBOX_PORT=$(url_port "$MOCK_SMTP_INBOX_URL")
 
 # Pull --phase=1|2 out of the arguments, leaving the rest to pass through to Playwright unchanged.
@@ -102,8 +113,50 @@ ADMIN_USER="${ADMIN_USERNAME:-admin}"
 ADMIN_PASS="${ADMIN_PASSWORD:-admin}"
 ADMIN_TOKEN=""
 
-kill_port() {
-    lsof -ti tcp:"$1" | xargs kill -9 2>/dev/null || true
+# $! of each background server, set right after it's started (see the start_* functions below).
+# Tracking these directly - rather than only discovering them later via lsof on their port -
+# means kill_job can still reap a server that crashed or hung before ever binding its port.
+SERVER_PID=""
+SAMPLE_APP_PID=""
+WAYFINDER_APP_PID=""
+WAYFINDER_API_PID=""
+WAYFINDER_AGENT_PID=""
+MOCK_SMTP_PID=""
+
+# Sends SIGTERM to the given PID's process group (reaping a supervisor like `node --watch`
+# along with the worker it forked, not just the worker), waits up to 5s for it to exit (the Go
+# server and the Wayfinder sample apps all handle SIGTERM), then SIGKILLs anything still standing.
+kill_pgid_of() {
+    local pid="$1" pgid
+    [ -z "$pid" ] && return 0
+    pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ') || true
+    [ -z "$pgid" ] && pgid="$pid"
+    kill -TERM -- -"$pgid" 2>/dev/null || true
+    local i=0
+    while [ $i -lt 10 ] && kill -0 -- -"$pgid" 2>/dev/null; do
+        sleep 0.5
+        i=$((i + 1))
+    done
+    kill -9 -- -"$pgid" 2>/dev/null || true
+}
+
+# Stops a server we started: its tracked PID (catches it even if it crashed or hung before ever
+# binding its port), then whatever is still listening on the port (catches a stale process left
+# over from an earlier, differently-torn-down run - pid may be empty if we never started it).
+kill_job() {
+    local pid="$1" port="$2" leftover
+    kill_pgid_of "$pid"
+    leftover=$(lsof -ti tcp:"$port" 2>/dev/null | head -1) || true
+    kill_pgid_of "$leftover"
+}
+
+# Reads a single KEY=VALUE line from an .env-style file (ignoring comments), or empty if the file
+# or key is absent. Unlike ADMIN_USERNAME/etc above, the LLM_* vars have no CI export step, so they
+# must be readable straight out of .env - see setup_env below.
+env_file_var() {
+    local key="$1" file="$2"
+    [ -f "$file" ] || return 0
+    grep "^${key}=" "$file" | tail -1 | cut -d= -f2-
 }
 
 wait_for_url() {
@@ -123,10 +176,12 @@ wait_for_url() {
 
 cleanup() {
     echo "Cleaning up..."
-    kill_port "$SAMPLE_PORT"
-    kill_port "$WAYFINDER_PORT"
-    kill_port "$MOCK_SMTP_INBOX_PORT"
-    kill_port "$SERVER_PORT"
+    kill_job "$SAMPLE_APP_PID" "$SAMPLE_PORT"
+    kill_job "$WAYFINDER_APP_PID" "$WAYFINDER_PORT"
+    kill_job "$WAYFINDER_API_PID" "$WAYFINDER_API_PORT"
+    kill_job "$WAYFINDER_AGENT_PID" "$WAYFINDER_AGENT_PORT"
+    kill_job "$MOCK_SMTP_PID" "$MOCK_SMTP_INBOX_PORT"
+    kill_job "$SERVER_PID" "$SERVER_PORT"
     rm -rf "$DIST_HOME"
 }
 trap cleanup EXIT
@@ -172,6 +227,8 @@ EOF
 
     echo "Starting ThunderID server..."
     (cd "$DIST_HOME" && ./start.sh) &
+    SERVER_PID=$!
+    disown
     wait_for_url "$SERVER_URL/health/liveness" "ThunderID server"
 }
 
@@ -179,7 +236,7 @@ EOF
 # start_fresh_server call is not racing an orphaned process still holding the sqlite files.
 stop_server() {
     echo "Stopping ThunderID server..."
-    kill_port "$SERVER_PORT"
+    kill_job "$SERVER_PID" "$SERVER_PORT"
     local i=0
     while curl -skf "$SERVER_URL/health/liveness" > /dev/null 2>&1 && [ $i -lt 30 ]; do
         sleep 1
@@ -355,7 +412,9 @@ start_sample_app() {
         pnpm install --frozen-lockfile
         pnpm run build
     fi
-    pnpm start &
+    pnpm --silent start &
+    SAMPLE_APP_PID=$!
+    disown
     wait_for_url "$SAMPLE_URL" "Sample app"
     cd "$SCRIPT_DIR"
 }
@@ -367,8 +426,47 @@ start_wayfinder_app() {
     cd "$WAYFINDER_APP_DIR"
     [ -f .env ] || cp .env.example .env
     [ -d node_modules ] || npm install
-    npm run dev &
+    npm --silent run dev &
+    WAYFINDER_APP_PID=$!
+    disown
     wait_for_url "$WAYFINDER_URL" "Wayfinder sample app"
+    cd "$SCRIPT_DIR"
+}
+
+# Starts the Wayfinder sample's backend (booking API + MCP server) that the AI agent tryout specs
+# need in addition to the frontend above. Only started when LLM_API_KEY is set - see phase 2 below.
+start_wayfinder_backend() {
+    echo "Setting up Wayfinder backend..."
+    cd "$WAYFINDER_API_DIR"
+    [ -f .env ] || cp .env.example .env
+    [ -d node_modules ] || npm install
+    npm --silent run dev &
+    WAYFINDER_API_PID=$!
+    disown
+    wait_for_url "$WAYFINDER_API_URL/health" "Wayfinder backend"
+    cd "$SCRIPT_DIR"
+}
+
+# Starts the Wayfinder sample's AI agent service. The E2E run owns the agent's LLM config: the
+# LLM_PROVIDER/LLM_API_KEY/MODEL_NAME resolved in setup_env always replace whatever the agent's
+# .env (or .env.example it was copied from) carried. Only called when LLM_API_KEY is set - see
+# phase 2 below.
+start_wayfinder_agent() {
+    echo "Setting up Wayfinder AI agent..."
+    cd "$WAYFINDER_AGENT_DIR"
+    [ -f .env ] || cp .env.example .env
+    grep -vE '^[[:space:]]*#?[[:space:]]*(LLM_PROVIDER|LLM_API_KEY|MODEL_NAME)=' .env > .env.e2e
+    {
+        echo "LLM_PROVIDER=${LLM_PROVIDER}"
+        echo "LLM_API_KEY=${LLM_API_KEY}"
+        echo "MODEL_NAME=${MODEL_NAME}"
+    } >> .env.e2e
+    mv .env.e2e .env
+    [ -d node_modules ] || npm install
+    npm --silent run dev &
+    WAYFINDER_AGENT_PID=$!
+    disown
+    wait_for_url "$WAYFINDER_AGENT_URL/health" "Wayfinder AI agent"
     cd "$SCRIPT_DIR"
 }
 
@@ -382,6 +480,8 @@ start_mock_smtp_server() {
     [ -d node_modules ] || npm install
     npm run build
     node src/index.js &
+    MOCK_SMTP_PID=$!
+    disown
     wait_for_url "$MOCK_SMTP_INBOX_URL/health" "Wayfinder mock SMTP inbox"
     cd "$SCRIPT_DIR"
 }
@@ -400,6 +500,13 @@ setup_env() {
     export ADMIN_PASSWORD="$ADMIN_PASS"
     export SAMPLE_APP_URL="$SAMPLE_URL"
     export WAYFINDER_APP_URL="$WAYFINDER_URL"
+    # Gates whether the Wayfinder AI agent tests run at all (see .env.example); fall back to .env
+    # since, unlike the vars above, it has no CI export step of its own.
+    export LLM_PROVIDER="${LLM_PROVIDER:-$(env_file_var LLM_PROVIDER "$SCRIPT_DIR/.env")}"
+    export LLM_PROVIDER="${LLM_PROVIDER:-anthropic}"
+    export LLM_API_KEY="${LLM_API_KEY:-$(env_file_var LLM_API_KEY "$SCRIPT_DIR/.env")}"
+    # Empty is fine: the agent falls back to its per-provider default model.
+    export MODEL_NAME="${MODEL_NAME:-$(env_file_var MODEL_NAME "$SCRIPT_DIR/.env")}"
 }
 
 # Runs "$@" without tripping `set -e` on a non-zero exit, returning its exit code instead. A
@@ -463,7 +570,7 @@ if [ -z "$PHASE" ] || [ "$PHASE" = "2" ]; then
     if [ -z "$PHASE" ]; then
         # Only phase 1's server/sample-app need tearing down when phase 1 just ran in this
         # invocation - a --phase=2 run never started them.
-        kill_port "$SAMPLE_PORT"
+        kill_job "$SAMPLE_APP_PID" "$SAMPLE_PORT"
         stop_server
     fi
     start_fresh_server
@@ -471,6 +578,25 @@ if [ -z "$PHASE" ] || [ "$PHASE" = "2" ]; then
     import_config "$SCRIPT_DIR/thunderid-config.yaml" "" "E2E admin app"
     start_wayfinder_app
     start_mock_smtp_server
+
+    # The AI agent tryout specs need a real LLM key (see tests/e2e/.env.example); without one,
+    # leave the backend and agent stopped so those specs skip cleanly instead of failing.
+    if [ -n "$LLM_API_KEY" ]; then
+        # Import the Wayfinder bundle now, ahead of wayfinder-sample-setup.spec.ts's own import
+        # step: start_wayfinder_agent makes the agent authenticate against WAYFINDER-CONCIERGE at
+        # startup (before any Playwright test runs), so that client must already exist by then.
+        # The setup spec still re-imports the same (upsert:true) bundle through the console UI
+        # later - that's what actually tests the import feature itself, and it is what every other
+        # @wayfinder spec depends on (see the wayfinder-setup project in playwright.config.ts), so
+        # nothing here is needed when the agent does not start.
+        import_config "$PROJECT_ROOT/samples/apps/wayfinder-sample/thunderid-config/redirect/thunderid-config.yaml" \
+            "$PROJECT_ROOT/samples/apps/wayfinder-sample/thunderid-config/redirect/thunderid.env" \
+            "Wayfinder sample"
+        start_wayfinder_backend
+        start_wayfinder_agent
+    else
+        echo "LLM_API_KEY not set - skipping Wayfinder AI agent tryout tests."
+    fi
 
     # Own report paths, or this phase's run would delete phase 1's reports and traces outright.
     echo "Running Playwright E2E tests (wayfinder)..."
