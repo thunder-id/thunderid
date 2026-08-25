@@ -71,9 +71,11 @@ vi.mock('../../api/useCreateApplication', async () => {
 
   const useMockCreateApplication = () => {
     const [isPending, setIsPending] = useState(false);
+    const [data, setData] = useState<Application | undefined>(undefined);
 
     return {
       isPending,
+      data,
       mutate: (
         data: unknown,
         options?: {onError?: (err: Error) => void; onSuccess?: (app: Application) => void},
@@ -86,6 +88,7 @@ vi.mock('../../api/useCreateApplication', async () => {
           },
           onSuccess: (app: Application) => {
             setIsPending(false);
+            setData(app);
             options?.onSuccess?.(app);
           },
         });
@@ -2021,6 +2024,37 @@ describe('ApplicationCreatePage', () => {
       });
 
       expect(screen.queryByText(/no.*flow/i)).not.toBeInTheDocument();
+    });
+
+    it('should not flag the just-created app as a duplicate of itself after the create-triggered list refetch', async () => {
+      // Models the create success's list invalidation resolving while the wizard is still mounted
+      // (navigate() hasn't unmounted it yet): the refetched applications list now legitimately
+      // contains the app that was just created, under the exact name just submitted.
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        mockUseGetApplications.mockReturnValue({
+          data: {applications: [{id: 'backend-app-7', name: 'My Backend App', clientId: 'backend-client-7'}]},
+        });
+        onSuccess({id: 'backend-app-7', name: 'My Backend App'} as Application);
+      });
+
+      renderWithProviders();
+
+      await user.click(screen.getByTestId('select-backend-platform'));
+      await user.type(screen.getByTestId('app-name-input'), 'My Backend App');
+
+      // NAME → create
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+
+      // The wizard doesn't unmount in this test (navigate() is a no-op mock), so force a re-render
+      // unrelated to the name field to pick up the refetched list, the same way any incidental
+      // re-render during the real navigate() gap would.
+      await user.click(screen.getByTestId('logo-select-btn'));
+
+      expect(screen.queryByTestId('app-name-duplicate-error')).not.toBeInTheDocument();
     });
   });
 
