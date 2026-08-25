@@ -140,6 +140,12 @@ const translations = {
     'errors.FET-1024': 'A user with these details already exists in the selected organization unit.',
     'errors.FET-1061': 'A user already exists with the provided {{attribute}}.',
     'errors.FET-1080': 'A user with the same unique attribute value already exists.',
+    'errors.FET-1084': 'This user cannot be deleted in their current state.',
+    'errors.FET-1085': 'The user could not be deleted. Please try again.',
+    'errors.FET-1086': 'This application cannot be deleted in its current state.',
+    'errors.FET-1087': 'The application could not be deleted. Please try again.',
+    'errors.FET-1088': 'This application authenticates without a client secret, so there is none to regenerate.',
+    'errors.FET-1089': 'The client secret could not be regenerated. Please try again.',
 
     // External links
     learnMore: 'Learn more',
@@ -3124,12 +3130,17 @@ const translations = {
     'delete.success': 'Application deleted successfully.',
     'delete.error': 'Failed to delete application. Please try again.',
     'regenerateSecret.snackbar.success': 'Client secret regenerated successfully.',
+    'errors.APP-1001': 'This application no longer exists. It may have been deleted elsewhere.',
+    'errors.APP-1002': 'The application identifier is not valid.',
     'errors.APP-1012': 'One or more redirect URIs are not valid.',
     'errors.APP-1015': 'The certificate value is invalid. Check the JWKS content and try again.',
     'errors.APP-1016': 'The JWKS URL is not valid.',
     'errors.APP-1020': 'An application with this name already exists. Choose a different name.',
     'errors.APP-1030': 'This application is managed declaratively and cannot be edited or deleted.',
     'errors.APP-1035': 'One or more user attributes are not valid for the selected user types.',
+    'errors.APP-1047': 'This application authenticates without a client secret, so there is none to regenerate.',
+    'errors.APP-1048':
+      'This application cannot be deleted because {{dependencies}} depend on it. Remove or reassign them first.',
     'errors.APP-1039':
       "The {{sourceFlowType}} references a different {{flowType}} than the one configured for this application. Update the {{sourceFlowType}} so it calls the same {{flowType}}, or change the application's {{flowType}} configuration.",
   },

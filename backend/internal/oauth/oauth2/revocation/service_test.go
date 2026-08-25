@@ -285,3 +285,68 @@ func TestRevokeTokenFamily_NonPositiveTTLFallsBack(t *testing.T) {
 	assert.NoError(t, err)
 	assert.WithinDuration(t, captured.RevokedAt.Add(defaultTokenFamilyRevocationTTL), captured.ExpiryTime, time.Second)
 }
+
+// A caller that knows its artifacts outlive the configured lifetime can ask for a longer row, which is
+// what an application-scoped revocation needs: token validity is per application and uncapped, so the
+// deployment-wide default can expire the row while matching tokens are still valid.
+func TestRevokeByCriteria_RequestedTTLExtendsTheRow(t *testing.T) {
+	store := newRevocationStoreInterfaceMock(t)
+	requested := 30 * 24 * time.Hour
+	before := time.Now().UTC()
+	store.On("insertCriterion", mock.Anything, mock.MatchedBy(func(criterion revocationCriterion) bool {
+		return criterion.ExpiryTime.After(before.Add(requested-time.Minute)) &&
+			criterion.ExpiryTime.Before(before.Add(requested+time.Minute))
+	})).Return(nil)
+
+	revoker := newRevocationService(nil, store, time.Hour, false, nil)
+	err := revoker.RevokeByCriteria(context.Background(), CriteriaRevocation{
+		Criterion: Criterion{Type: CriterionTypeApplicationKey, Value: "client-long-lived"},
+		Mode:      RevocationModeAll,
+		Reason:    RevocationReasonApplicationDeleted,
+		TTL:       requested,
+	})
+
+	assert.NoError(t, err)
+}
+
+// The requested lifetime raises the row and never lowers it, so a caller cannot shorten a row below
+// what the deployment already guarantees.
+func TestRevokeByCriteria_ShorterRequestedTTLKeepsTheConfiguredLifetime(t *testing.T) {
+	store := newRevocationStoreInterfaceMock(t)
+	configured := 24 * time.Hour
+	before := time.Now().UTC()
+	store.On("insertCriterion", mock.Anything, mock.MatchedBy(func(criterion revocationCriterion) bool {
+		return criterion.ExpiryTime.After(before.Add(configured - time.Minute))
+	})).Return(nil)
+
+	revoker := newRevocationService(nil, store, configured, false, nil)
+	err := revoker.RevokeByCriteria(context.Background(), CriteriaRevocation{
+		Criterion: Criterion{Type: CriterionTypeApplicationKey, Value: "client-short-lived"},
+		Mode:      RevocationModeAll,
+		Reason:    RevocationReasonApplicationDeleted,
+		TTL:       time.Minute,
+	})
+
+	assert.NoError(t, err)
+}
+
+// An unstated lifetime keeps the configured default, so existing writers are unaffected.
+func TestRevokeByCriteria_ZeroTTLUsesTheConfiguredLifetime(t *testing.T) {
+	store := newRevocationStoreInterfaceMock(t)
+	configured := 2 * time.Hour
+	before := time.Now().UTC()
+	store.On("insertCriterion", mock.Anything, mock.MatchedBy(func(criterion revocationCriterion) bool {
+		return criterion.ExpiryTime.After(before.Add(configured-time.Minute)) &&
+			criterion.ExpiryTime.Before(before.Add(configured+time.Minute))
+	})).Return(nil)
+
+	revoker := newRevocationService(nil, store, configured, false, nil)
+	err := revoker.RevokeByCriteria(context.Background(), CriteriaRevocation{
+		Criterion: Criterion{Type: CriterionTypeSubject, Value: "user-1"},
+		Mode:      RevocationModeAll,
+		Reason:    RevocationReasonUserDeleted,
+		TTL:       0,
+	})
+
+	assert.NoError(t, err)
+}

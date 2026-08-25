@@ -27,6 +27,17 @@ type revocationPlan struct {
 	Mode     revocation.Mode        `json:"mode"`
 	Cutoff   time.Time              `json:"cutoff,omitempty"`
 	Reason   revocation.Reason      `json:"reason"`
+	// TargetID is the resource the acting nodes operate on, when that is not the criterion value. An
+	// application revocation is keyed by the OAuth client id while the delete and the session detachment
+	// need the application id, so the two travel separately rather than one being re-derived.
+	TargetID string `json:"targetId,omitempty"`
+	// TTLSeconds is how long the deny-list row must live to outlast the artifacts the criteria match.
+	// Zero leaves the revocation service on its configured default.
+	TTLSeconds int64 `json:"ttlSeconds,omitempty"`
+	// NothingToRevoke records that the preparatory node established there is no artifact to revoke, which
+	// is how an empty criteria list is distinguished from a missing one. Only a node that verified the
+	// absence sets it; without it an empty list stays an error, so a plan can never be silently skipped.
+	NothingToRevoke bool `json:"nothingToRevoke,omitempty"`
 }
 
 // encodeRevocationPlan serializes the plan for carriage on the engine context's cross-frame store.
@@ -38,8 +49,12 @@ func encodeRevocationPlan(plan revocationPlan) (string, error) {
 	return string(encoded), nil
 }
 
-// decodeRevocationPlan reads the plan an earlier node published. A missing or empty plan is an error
-// rather than a no-op: an executor that acts on revocation must never proceed without one.
+// decodeRevocationPlan reads the plan an earlier node published. A missing plan is an error rather than a
+// no-op: an executor that acts on revocation must never proceed without one.
+//
+// A plan with no criteria is likewise an error, unless it declares NothingToRevoke. That flag is the
+// difference between a node having established there is nothing to deny and a plan that lost its criteria
+// on the way, which would otherwise look identical here.
 func decodeRevocationPlan(data map[string]string) (revocationPlan, error) {
 	encoded := data[common.RuntimeKeyRevocationPlan]
 	if encoded == "" {
@@ -49,10 +64,30 @@ func decodeRevocationPlan(data map[string]string) (revocationPlan, error) {
 	if err := json.Unmarshal([]byte(encoded), &plan); err != nil {
 		return revocationPlan{}, fmt.Errorf("failed to decode trusted revocation plan: %w", err)
 	}
-	if len(plan.Criteria) == 0 {
+	if len(plan.Criteria) == 0 && !plan.NothingToRevoke {
 		return revocationPlan{}, errors.New("trusted revocation plan has no criteria")
 	}
 	return plan, nil
+}
+
+// applicationTargetFromPlan returns the application the trusted plan acts on, after checking the plan was
+// produced for this action.
+//
+// The reason check is what makes a mispaired graph fail cleanly. Nothing in flow validation stops a
+// preparatory node for one action being wired to the acting node of another, and that pairing would
+// otherwise revoke with one breadth and then perform a different mutation.
+func applicationTargetFromPlan(data map[string]string, want revocation.Reason) (string, error) {
+	plan, err := decodeRevocationPlan(data)
+	if err != nil {
+		return "", err
+	}
+	if plan.Reason != want {
+		return "", fmt.Errorf("trusted revocation plan was produced for %q, not %q", plan.Reason, want)
+	}
+	if plan.TargetID == "" {
+		return "", errors.New("trusted revocation plan has no target application")
+	}
+	return plan.TargetID, nil
 }
 
 // getAuthnServiceName returns the authn service name for an executor.

@@ -13,6 +13,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
@@ -144,6 +145,7 @@ func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesDisabled() {
 		nil, // i18nService - not needed for this test
 		nil, // cryptoSvc - not needed for this test
 		nil, // serverConfigSvc - not needed for this test
+		oauthconfig.Config{},
 	)
 
 	// Assert
@@ -187,6 +189,7 @@ func (suite *InitTestSuite) TestInitialize_WithMCPServer() {
 		nil, // i18nService - not needed for this test
 		nil, // cryptoSvc - not needed for this test
 		nil, // serverConfigSvc - not needed for this test
+		oauthconfig.Config{},
 	)
 
 	// Assert
@@ -578,6 +581,7 @@ func TestInitialize_Standalone(t *testing.T) {
 		nil, // i18nService - not needed for this test
 		nil, // cryptoSvc - not needed for this test
 		nil, // serverConfigSvc - not needed for this test
+		oauthconfig.Config{},
 	)
 
 	// Assert
@@ -629,6 +633,7 @@ func TestInitialize_WithDeclarativeResources_Standalone(t *testing.T) {
 		nil, // i18nService - not needed for this test
 		nil, // cryptoSvc - not needed for this test
 		nil, // serverConfigSvc - not needed for this test
+		oauthconfig.Config{},
 	)
 
 	// Assert

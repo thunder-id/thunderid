@@ -39,6 +39,10 @@ const (
 	ExecutorNameCriteriaRevocation           = "CriteriaRevocationExecutor"
 	ExecutorNameSessionRevocation            = "SessionRevocationExecutor"
 	ExecutorNameUserDelete                   = "UserDeleteExecutor"
+	ExecutorNameValidateApplicationDeletion  = "ValidateApplicationDeletionExecutor"
+	ExecutorNameValidateSecretRegeneration   = "ValidateSecretRegenerationExecutor"
+	ExecutorNameApplicationDelete            = "ApplicationDeleteExecutor"
+	ExecutorNameClientSecret                 = "ClientSecretExecutor"
 )
 
 // Executor mode constants
@@ -72,6 +76,14 @@ const (
 	userInputConsentDecisions = "consent_decisions"
 	userInputLoginHint        = "login_hint"
 	revocationInputSubject    = "subject"
+	// revocationInputApplication names the application an administrative flow acts on. It is deliberately
+	// not "applicationId": the flow execution request already carries a top-level applicationId meaning
+	// the application a flow runs for, and reusing that name one level down would invite supplying the
+	// value in the wrong place, where the failure is a flow that pauses asking for input.
+	revocationInputApplication = "targetApplicationId"
+	// dataKeyClientSecret carries a regenerated client secret back to the caller. AdditionalData is the
+	// only executor output the engine serializes, and this is the single moment the value is readable.
+	dataKeyClientSecret = "clientSecret" // #nosec G101 -- response field name, not a secret
 
 	ouIDKey        = "ouId"
 	defaultOUIDKey = "defaultOUID"

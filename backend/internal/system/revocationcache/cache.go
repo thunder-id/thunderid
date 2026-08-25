@@ -17,6 +17,7 @@ type revokedCache struct {
 	tokens   map[string]time.Time
 	families map[string]time.Time
 	subjects map[string]revokedEntry
+	appKeys  map[string]revokedEntry
 }
 
 // newRevokedCache creates an empty cache. It holds nothing until the first snapshot is loaded.
@@ -25,6 +26,7 @@ func newRevokedCache() *revokedCache {
 		tokens:   make(map[string]time.Time),
 		families: make(map[string]time.Time),
 		subjects: make(map[string]revokedEntry),
+		appKeys:  make(map[string]revokedEntry),
 	}
 }
 
@@ -34,10 +36,12 @@ func (c *revokedCache) replace(snapshot revokedSnapshot) {
 	tokens := indexByValue(snapshot.Tokens)
 	families := indexByValue(snapshot.Families)
 	subjects := indexEntriesByValue(snapshot.Subjects)
+	appKeys := indexEntriesByValue(snapshot.AppKeys)
 	c.mu.Lock()
 	c.tokens = tokens
 	c.families = families
 	c.subjects = subjects
+	c.appKeys = appKeys
 	c.mu.Unlock()
 }
 
@@ -45,7 +49,23 @@ func (c *revokedCache) isSubjectRevoked(subject string, establishedAt time.Time)
 	c.mu.RLock()
 	entry, ok := c.subjects[subject]
 	c.mu.RUnlock()
-	return ok && time.Now().Before(entry.ExpiryTime) &&
+	return matchesEntry(entry, ok, establishedAt)
+}
+
+// isAppKeyRevoked reports whether the OAuth client the token was issued to is revoked, honoring the
+// establishment cutoff so a token minted after a secret regeneration still passes.
+func (c *revokedCache) isAppKeyRevoked(appKey string, establishedAt time.Time) bool {
+	c.mu.RLock()
+	entry, ok := c.appKeys[appKey]
+	c.mu.RUnlock()
+	return matchesEntry(entry, ok, establishedAt)
+}
+
+// matchesEntry applies the shared terminal-versus-bounded decision. A terminal entry rejects on
+// membership alone; a bounded entry rejects only artifacts established at or before its cutoff. An
+// unknown establishment time is treated as revoked, keeping the decision fail-closed.
+func matchesEntry(entry revokedEntry, found bool, establishedAt time.Time) bool {
+	return found && time.Now().Before(entry.ExpiryTime) &&
 		(!entry.Boundary || establishedAt.IsZero() || !establishedAt.After(entry.RevokedAt))
 }
 

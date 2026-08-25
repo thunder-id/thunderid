@@ -23,8 +23,32 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
 const {useThunderID} = await import('@thunderid/react');
 const {useConfig, useToast} = await import('@thunderid/contexts');
 
+const FLOW_ID = '01900000-0000-7000-8000-00000000007a';
+const FLOW_HANDLE = 'default-client-secret-regeneration-flow';
+const FLOW_SECRET = 'KdJL7PrfDTh-XwT8kGtg1nMydcDQg_L5an25vV52Ej8';
+
+const flowConfiguredConfig = {merged: {clientSecretRegenerationFlow: {defaultHandle: FLOW_HANDLE}}};
+const noFlowConfiguredConfig = {merged: {}};
+const administrationFlows = {flows: [{flowType: 'ADMINISTRATION', handle: FLOW_HANDLE, id: FLOW_ID}]};
+
+/**
+ * The request shape the hook issues, as far as these tests inspect it.
+ */
+interface RecordedRequest {
+  url: string;
+  method: string;
+  data?: unknown;
+}
+
+/**
+ * The call signature of the mocked client, so a routed implementation returning a promise type-checks.
+ */
+type HttpRequest = (config: unknown) => Promise<{data?: unknown}>;
+
+type HttpRequestMock = ReturnType<typeof vi.fn<HttpRequest>>;
+
 describe('useRegenerateClientSecret', () => {
-  let mockHttpRequest: ReturnType<typeof vi.fn>;
+  let mockHttpRequest: HttpRequestMock;
   let mockGetServerUrl: ReturnType<typeof vi.fn>;
   let mockShowToast: ReturnType<typeof vi.fn>;
 
@@ -80,7 +104,7 @@ describe('useRegenerateClientSecret', () => {
   };
 
   beforeEach(() => {
-    mockHttpRequest = vi.fn();
+    mockHttpRequest = vi.fn<HttpRequest>();
     mockGetServerUrl = vi.fn().mockReturnValue('https://api.test.com');
     mockShowToast = vi.fn();
 
@@ -103,6 +127,76 @@ describe('useRegenerateClientSecret', () => {
     vi.clearAllMocks();
   });
 
+  /**
+   * Answers the mocked client by request rather than by call order.
+   *
+   * A regeneration issues up to four requests (read the configured handle, resolve it to a flow id,
+   * then either execute the flow or read and update the application), so a positional mock would
+   * attach a response to the wrong call. A route key may be prefixed with a method, as in
+   * `'PUT /applications/'`, because the fallback path reads and writes the same URL. A route value may
+   * be an `Error` to reject, or a function returning a promise when a test needs per-call behaviour.
+   */
+  function routeHttp(routes: Record<string, unknown>): void {
+    mockHttpRequest.mockImplementation((config: unknown): Promise<{data?: unknown}> => {
+      const {method, url} = config as RecordedRequest;
+      const keys = Object.keys(routes);
+      const key =
+        keys.find((candidate) => candidate.startsWith(`${method} `) && url.includes(candidate.split(' ')[1])) ??
+        keys.find((candidate) => !candidate.includes(' ') && url.includes(candidate));
+
+      if (key === undefined) {
+        return Promise.reject(new Error(`unexpected request: ${method} ${url}`));
+      }
+
+      const value = routes[key];
+
+      if (value instanceof Error) {
+        return Promise.reject(value);
+      }
+      if (typeof value === 'function') {
+        return (value as () => Promise<{data?: unknown}>)();
+      }
+
+      return Promise.resolve({data: value});
+    });
+  }
+
+  /**
+   * Arranges a successful rotation through the regeneration flow, which is what the shipped
+   * configuration produces.
+   */
+  function mockFlowRotation(overrides: Record<string, unknown> = {}): void {
+    routeHttp({
+      '/flow/execute': {data: {additionalData: {clientSecret: FLOW_SECRET}}, flowStatus: 'COMPLETE'},
+      '/flows': administrationFlows,
+      '/server-config/flow': flowConfiguredConfig,
+      ...overrides,
+    });
+  }
+
+  /**
+   * Arranges a successful rotation through the update endpoint, as a deployment with no regeneration
+   * flow configured gets.
+   */
+  function mockNativeRotation(overrides: Record<string, unknown> = {}): void {
+    routeHttp({
+      'GET /applications/': mockApplication,
+      'PUT /applications/': mockUpdatedApplication,
+      '/server-config/flow': noFlowConfiguredConfig,
+      ...overrides,
+    });
+  }
+
+  /**
+   * The requests matching a method and URL fragment, so assertions can ignore the lookups that
+   * precede the rotation itself.
+   */
+  function requestsTo(method: string, fragment: string): RecordedRequest[] {
+    return mockHttpRequest.mock.calls
+      .map(([config]: [unknown]) => config as RecordedRequest)
+      .filter((config: RecordedRequest) => config.method === method && config.url.includes(fragment));
+  }
+
   it('should initialize with idle state', () => {
     const {result} = renderHook(() => useRegenerateClientSecret());
 
@@ -114,11 +208,10 @@ describe('useRegenerateClientSecret', () => {
     expect(result.current.isError).toBe(false);
   });
 
-  it('should fetch current application then update with new secret', async () => {
-    // First call: GET current application
-    mockHttpRequest.mockResolvedValueOnce({data: mockApplication});
-    // Second call: PUT updated application
-    mockHttpRequest.mockResolvedValueOnce({data: mockUpdatedApplication});
+  // The flow generates the secret server-side and revokes the artifacts issued under the old one, so
+  // the returned value must be the flow's rather than one the browser invented.
+  it('should return the secret the regeneration flow produced', async () => {
+    mockFlowRotation();
 
     const {result} = renderHook(() => useRegenerateClientSecret());
 
@@ -128,31 +221,67 @@ describe('useRegenerateClientSecret', () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    // Should have made two API calls: GET then PUT
-    expect(mockHttpRequest).toHaveBeenCalledTimes(2);
-
-    // First call should be GET
-    expect(mockHttpRequest).toHaveBeenNthCalledWith(
-      1,
+    expect(result.current.data?.clientSecret).toBe(FLOW_SECRET);
+    expect(mockHttpRequest).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: `https://api.test.com/applications/${applicationId}`,
-        method: 'GET',
+        url: 'https://api.test.com/flow/execute',
+        method: 'POST',
+        data: {flowId: FLOW_ID, inputs: {targetApplicationId: applicationId}},
       }),
     );
+    expect(mockShowToast).toHaveBeenCalledWith(expect.any(String), 'success');
+  });
 
-    // Second call should be PUT
-    expect(mockHttpRequest).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        url: `https://api.test.com/applications/${applicationId}`,
-        method: 'PUT',
-      }),
-    );
+  // Rotating through the flow and then through the update endpoint would rotate twice, leaving the
+  // secret the caller was handed already stale.
+  it('should not update the application when the flow rotated the secret', async () => {
+    mockFlowRotation();
+
+    const {result} = renderHook(() => useRegenerateClientSecret());
+
+    result.current.mutate({applicationId});
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(requestsTo('PUT', '/applications/')).toHaveLength(0);
+  });
+
+  // A flow that completed already rotated the credential, so falling back would rotate it a second
+  // time and hand back a secret that no longer authenticates.
+  it('should fail when the flow completes without returning a secret', async () => {
+    mockFlowRotation({'/flow/execute': {flowStatus: 'COMPLETE'}});
+
+    const {result} = renderHook(() => useRegenerateClientSecret());
+
+    result.current.mutate({applicationId});
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+
+    expect(result.current.error?.message).toContain('without returning a secret');
+    expect(requestsTo('PUT', '/applications/')).toHaveLength(0);
+  });
+
+  it('should fetch current application then update with new secret', async () => {
+    mockNativeRotation();
+
+    const {result} = renderHook(() => useRegenerateClientSecret());
+
+    result.current.mutate({applicationId});
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(requestsTo('GET', `/applications/${applicationId}`)).toHaveLength(1);
+    expect(requestsTo('PUT', `/applications/${applicationId}`)).toHaveLength(1);
   });
 
   it('should return application and new client secret on success', async () => {
-    mockHttpRequest.mockResolvedValueOnce({data: mockApplication});
-    mockHttpRequest.mockResolvedValueOnce({data: mockUpdatedApplication});
+    mockNativeRotation();
 
     const {result} = renderHook(() => useRegenerateClientSecret());
 
@@ -170,8 +299,7 @@ describe('useRegenerateClientSecret', () => {
   });
 
   it('should generate a base64url-encoded secret (no +, /, or = characters)', async () => {
-    mockHttpRequest.mockResolvedValueOnce({data: mockApplication});
-    mockHttpRequest.mockResolvedValueOnce({data: mockUpdatedApplication});
+    mockNativeRotation();
 
     const {result} = renderHook(() => useRegenerateClientSecret());
 
@@ -186,8 +314,7 @@ describe('useRegenerateClientSecret', () => {
   });
 
   it('should strip server-generated fields (id, createdAt, updatedAt) from update request', async () => {
-    mockHttpRequest.mockResolvedValueOnce({data: mockApplication});
-    mockHttpRequest.mockResolvedValueOnce({data: mockUpdatedApplication});
+    mockNativeRotation();
 
     const {result} = renderHook(() => useRegenerateClientSecret());
 
@@ -197,15 +324,14 @@ describe('useRegenerateClientSecret', () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    const putCall = mockHttpRequest.mock.calls[1][0] as {data: Record<string, unknown>};
+    const putCall = requestsTo('PUT', '/applications/')[0] as {data: Record<string, unknown>};
     expect(putCall.data).not.toHaveProperty('id');
     expect(putCall.data).not.toHaveProperty('createdAt');
     expect(putCall.data).not.toHaveProperty('updatedAt');
   });
 
   it('should include the new client secret in the PUT request body', async () => {
-    mockHttpRequest.mockResolvedValueOnce({data: mockApplication});
-    mockHttpRequest.mockResolvedValueOnce({data: mockUpdatedApplication});
+    mockNativeRotation();
 
     const {result} = renderHook(() => useRegenerateClientSecret());
 
@@ -215,7 +341,7 @@ describe('useRegenerateClientSecret', () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    const putCall = mockHttpRequest.mock.calls[1][0] as {
+    const putCall = requestsTo('PUT', '/applications/')[0] as unknown as {
       data: {inboundAuthConfig: {type: string; config: {clientSecret: string}}[]};
     };
     const oauth2Config = putCall.data.inboundAuthConfig.find((c: {type: string}) => c.type === 'oauth2');
@@ -233,7 +359,7 @@ describe('useRegenerateClientSecret', () => {
       ],
     };
 
-    mockHttpRequest.mockResolvedValueOnce({data: appWithoutOAuth});
+    mockNativeRotation({'GET /applications/': appWithoutOAuth});
 
     const {result} = renderHook(() => useRegenerateClientSecret());
 
@@ -248,8 +374,29 @@ describe('useRegenerateClientSecret', () => {
     );
   });
 
+  // Treating a failed config read as "no flow configured" would rotate the secret without revoking
+  // anything and report it as a success.
+  it('should propagate a failed flow config read rather than rotating natively', async () => {
+    routeHttp({
+      'GET /applications/': mockApplication,
+      'PUT /applications/': mockUpdatedApplication,
+      '/server-config/flow': new Error('config unavailable'),
+    });
+
+    const {result} = renderHook(() => useRegenerateClientSecret());
+
+    result.current.mutate({applicationId});
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+
+    expect(result.current.error?.message).toBe('config unavailable');
+    expect(requestsTo('PUT', '/applications/')).toHaveLength(0);
+  });
+
   it('should handle GET request failure', async () => {
-    mockHttpRequest.mockRejectedValueOnce(new Error('Failed to fetch application'));
+    mockNativeRotation({'GET /applications/': new Error('Failed to fetch application')});
 
     const {result} = renderHook(() => useRegenerateClientSecret());
 
@@ -260,12 +407,11 @@ describe('useRegenerateClientSecret', () => {
     });
 
     expect(result.current.error?.message).toBe('Failed to fetch application');
-    expect(mockHttpRequest).toHaveBeenCalledTimes(1);
+    expect(requestsTo('PUT', '/applications/')).toHaveLength(0);
   });
 
   it('should handle PUT request failure', async () => {
-    mockHttpRequest.mockResolvedValueOnce({data: mockApplication});
-    mockHttpRequest.mockRejectedValueOnce(new Error('Failed to update application'));
+    mockNativeRotation({'PUT /applications/': new Error('Failed to update application')});
 
     const {result} = renderHook(() => useRegenerateClientSecret());
 
@@ -276,12 +422,11 @@ describe('useRegenerateClientSecret', () => {
     });
 
     expect(result.current.error?.message).toBe('Failed to update application');
-    expect(mockHttpRequest).toHaveBeenCalledTimes(2);
+    expect(requestsTo('GET', '/applications/')).toHaveLength(1);
   });
 
   it('should not show a toast on error', async () => {
-    mockHttpRequest.mockResolvedValueOnce({data: mockApplication});
-    mockHttpRequest.mockRejectedValueOnce(new Error('Failed to update application'));
+    mockNativeRotation({'PUT /applications/': new Error('Failed to update application')});
 
     const {result} = renderHook(() => useRegenerateClientSecret());
 
@@ -295,8 +440,7 @@ describe('useRegenerateClientSecret', () => {
   });
 
   it('should invalidate queries on successful regeneration', async () => {
-    mockHttpRequest.mockResolvedValueOnce({data: mockApplication});
-    mockHttpRequest.mockResolvedValueOnce({data: mockUpdatedApplication});
+    mockFlowRotation();
 
     const {result, queryClient} = renderHook(() => useRegenerateClientSecret());
 
@@ -321,8 +465,7 @@ describe('useRegenerateClientSecret', () => {
   });
 
   it('should handle invalidateQueries rejection gracefully', async () => {
-    mockHttpRequest.mockResolvedValueOnce({data: mockApplication});
-    mockHttpRequest.mockResolvedValueOnce({data: mockUpdatedApplication});
+    mockNativeRotation();
 
     const {result, queryClient} = renderHook(() => useRegenerateClientSecret());
 
@@ -338,9 +481,7 @@ describe('useRegenerateClientSecret', () => {
   });
 
   it('should generate unique secrets on consecutive calls', async () => {
-    // First regeneration
-    mockHttpRequest.mockResolvedValueOnce({data: mockApplication});
-    mockHttpRequest.mockResolvedValueOnce({data: mockUpdatedApplication});
+    mockNativeRotation();
 
     const {result} = renderHook(() => useRegenerateClientSecret());
 
@@ -352,14 +493,10 @@ describe('useRegenerateClientSecret', () => {
 
     const firstSecret = result.current.data!.clientSecret;
 
-    // Second regeneration
-    mockHttpRequest.mockResolvedValueOnce({data: mockApplication});
-    mockHttpRequest.mockResolvedValueOnce({data: mockUpdatedApplication});
-
     result.current.mutate({applicationId});
 
     await waitFor(() => {
-      expect(mockHttpRequest).toHaveBeenCalledTimes(4);
+      expect(requestsTo('PUT', '/applications/')).toHaveLength(2);
     });
 
     await waitFor(() => {

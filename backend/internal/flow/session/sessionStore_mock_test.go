@@ -265,6 +265,69 @@ func (_c *sessionStoreMock_DeleteBySessionID_Call) RunAndReturn(run func(ctx con
 	return _c
 }
 
+// DeleteParticipant provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) DeleteParticipant(ctx context.Context, sessionID string, appID string) error {
+	ret := _mock.Called(ctx, sessionID, appID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteParticipant")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = returnFunc(ctx, sessionID, appID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// sessionStoreMock_DeleteParticipant_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteParticipant'
+type sessionStoreMock_DeleteParticipant_Call struct {
+	*mock.Call
+}
+
+// DeleteParticipant is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sessionID string
+//   - appID string
+func (_e *sessionStoreMock_Expecter) DeleteParticipant(ctx interface{}, sessionID interface{}, appID interface{}) *sessionStoreMock_DeleteParticipant_Call {
+	return &sessionStoreMock_DeleteParticipant_Call{Call: _e.mock.On("DeleteParticipant", ctx, sessionID, appID)}
+}
+
+func (_c *sessionStoreMock_DeleteParticipant_Call) Run(run func(ctx context.Context, sessionID string, appID string)) *sessionStoreMock_DeleteParticipant_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_DeleteParticipant_Call) Return(err error) *sessionStoreMock_DeleteParticipant_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *sessionStoreMock_DeleteParticipant_Call) RunAndReturn(run func(ctx context.Context, sessionID string, appID string) error) *sessionStoreMock_DeleteParticipant_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DeleteSession provides a mock function for the type sessionStoreMock
 func (_mock *sessionStoreMock) DeleteSession(ctx context.Context, sessionID string) error {
 	ret := _mock.Called(ctx, sessionID)
@@ -528,6 +591,74 @@ func (_c *sessionStoreMock_GetByHandle_Call) Return(session *Session, err error)
 }
 
 func (_c *sessionStoreMock_GetByHandle_Call) RunAndReturn(run func(ctx context.Context, handleID string) (*Session, error)) *sessionStoreMock_GetByHandle_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListByAppID provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) ListByAppID(ctx context.Context, appID string) ([]Participant, error) {
+	ret := _mock.Called(ctx, appID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListByAppID")
+	}
+
+	var r0 []Participant
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]Participant, error)); ok {
+		return returnFunc(ctx, appID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []Participant); ok {
+		r0 = returnFunc(ctx, appID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]Participant)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, appID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sessionStoreMock_ListByAppID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListByAppID'
+type sessionStoreMock_ListByAppID_Call struct {
+	*mock.Call
+}
+
+// ListByAppID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+func (_e *sessionStoreMock_Expecter) ListByAppID(ctx interface{}, appID interface{}) *sessionStoreMock_ListByAppID_Call {
+	return &sessionStoreMock_ListByAppID_Call{Call: _e.mock.On("ListByAppID", ctx, appID)}
+}
+
+func (_c *sessionStoreMock_ListByAppID_Call) Run(run func(ctx context.Context, appID string)) *sessionStoreMock_ListByAppID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_ListByAppID_Call) Return(participants []Participant, err error) *sessionStoreMock_ListByAppID_Call {
+	_c.Call.Return(participants, err)
+	return _c
+}
+
+func (_c *sessionStoreMock_ListByAppID_Call) RunAndReturn(run func(ctx context.Context, appID string) ([]Participant, error)) *sessionStoreMock_ListByAppID_Call {
 	_c.Call.Return(run)
 	return _c
 }

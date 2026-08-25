@@ -588,4 +588,47 @@ var (
 			DefaultValue: "The provided credential is invalid",
 		},
 	}
+	// ErrorUnsupportedCredentialAction is the error returned when a credential action the service does
+	// not implement is requested.
+	ErrorUnsupportedCredentialAction = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1049",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.unsupported_credential_action",
+			DefaultValue: "Unsupported credential action",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.unsupported_credential_action_description",
+			DefaultValue: "The requested action is not supported for this application's credential",
+		},
+	}
+	// ErrorApplicationHasBlockingDependencies is the error returned when the application cannot be deleted
+	// because another resource holds a reference that forbids it.
+	ErrorApplicationHasBlockingDependencies = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1048",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.application_has_blocking_dependencies",
+			DefaultValue: "Application has blocking dependencies",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.applicationservice.application_has_blocking_dependencies_description",
+			DefaultValue: "The application cannot be deleted because other resources depend on it. " +
+				"Remove or reassign them first",
+		},
+	}
+	// ErrorApplicationHasNoClientSecret is the error returned when a client secret regeneration targets an
+	// application that authenticates without one: a public client, or one using private_key_jwt.
+	ErrorApplicationHasNoClientSecret = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1047",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.application_has_no_client_secret",
+			DefaultValue: "Application has no client secret",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.application_has_no_client_secret_description",
+			DefaultValue: "The application authenticates without a client secret, so there is none to regenerate",
+		},
+	}
 )

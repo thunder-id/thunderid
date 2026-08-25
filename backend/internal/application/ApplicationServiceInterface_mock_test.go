@@ -41,6 +41,80 @@ func (_m *ApplicationServiceInterfaceMock) EXPECT() *ApplicationServiceInterface
 	return &ApplicationServiceInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// ApplyCredentialAction provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) ApplyCredentialAction(ctx context.Context, appID string, action providers.CredentialAction) (string, *common.ServiceError) {
+	ret := _mock.Called(ctx, appID, action)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ApplyCredentialAction")
+	}
+
+	var r0 string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.CredentialAction) (string, *common.ServiceError)); ok {
+		return returnFunc(ctx, appID, action)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.CredentialAction) string); ok {
+		r0 = returnFunc(ctx, appID, action)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, providers.CredentialAction) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, appID, action)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ApplicationServiceInterfaceMock_ApplyCredentialAction_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ApplyCredentialAction'
+type ApplicationServiceInterfaceMock_ApplyCredentialAction_Call struct {
+	*mock.Call
+}
+
+// ApplyCredentialAction is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+//   - action providers.CredentialAction
+func (_e *ApplicationServiceInterfaceMock_Expecter) ApplyCredentialAction(ctx interface{}, appID interface{}, action interface{}) *ApplicationServiceInterfaceMock_ApplyCredentialAction_Call {
+	return &ApplicationServiceInterfaceMock_ApplyCredentialAction_Call{Call: _e.mock.On("ApplyCredentialAction", ctx, appID, action)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_ApplyCredentialAction_Call) Run(run func(ctx context.Context, appID string, action providers.CredentialAction)) *ApplicationServiceInterfaceMock_ApplyCredentialAction_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 providers.CredentialAction
+		if args[2] != nil {
+			arg2 = args[2].(providers.CredentialAction)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_ApplyCredentialAction_Call) Return(s string, serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_ApplyCredentialAction_Call {
+	_c.Call.Return(s, serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_ApplyCredentialAction_Call) RunAndReturn(run func(ctx context.Context, appID string, action providers.CredentialAction) (string, *common.ServiceError)) *ApplicationServiceInterfaceMock_ApplyCredentialAction_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreateApplication provides a mock function for the type ApplicationServiceInterfaceMock
 func (_mock *ApplicationServiceInterfaceMock) CreateApplication(ctx context.Context, app *model.ApplicationDTO) (*model.ApplicationDTO, *common.ServiceError) {
 	ret := _mock.Called(ctx, app)
@@ -638,6 +712,152 @@ func (_c *ApplicationServiceInterfaceMock_ValidateApplication_Call) Return(appli
 }
 
 func (_c *ApplicationServiceInterfaceMock_ValidateApplication_Call) RunAndReturn(run func(ctx context.Context, app *model.ApplicationDTO) (*model.ApplicationProcessedDTO, *providers.InboundAuthConfigWithSecret, *common.ServiceError)) *ApplicationServiceInterfaceMock_ValidateApplication_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateCredentialAction provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) ValidateCredentialAction(ctx context.Context, appID string, action providers.CredentialAction) (*providers.ApplicationArtifactProfile, *common.ServiceError) {
+	ret := _mock.Called(ctx, appID, action)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateCredentialAction")
+	}
+
+	var r0 *providers.ApplicationArtifactProfile
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.CredentialAction) (*providers.ApplicationArtifactProfile, *common.ServiceError)); ok {
+		return returnFunc(ctx, appID, action)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, providers.CredentialAction) *providers.ApplicationArtifactProfile); ok {
+		r0 = returnFunc(ctx, appID, action)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.ApplicationArtifactProfile)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, providers.CredentialAction) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, appID, action)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ApplicationServiceInterfaceMock_ValidateCredentialAction_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateCredentialAction'
+type ApplicationServiceInterfaceMock_ValidateCredentialAction_Call struct {
+	*mock.Call
+}
+
+// ValidateCredentialAction is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+//   - action providers.CredentialAction
+func (_e *ApplicationServiceInterfaceMock_Expecter) ValidateCredentialAction(ctx interface{}, appID interface{}, action interface{}) *ApplicationServiceInterfaceMock_ValidateCredentialAction_Call {
+	return &ApplicationServiceInterfaceMock_ValidateCredentialAction_Call{Call: _e.mock.On("ValidateCredentialAction", ctx, appID, action)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_ValidateCredentialAction_Call) Run(run func(ctx context.Context, appID string, action providers.CredentialAction)) *ApplicationServiceInterfaceMock_ValidateCredentialAction_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 providers.CredentialAction
+		if args[2] != nil {
+			arg2 = args[2].(providers.CredentialAction)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_ValidateCredentialAction_Call) Return(applicationArtifactProfile *providers.ApplicationArtifactProfile, serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_ValidateCredentialAction_Call {
+	_c.Call.Return(applicationArtifactProfile, serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_ValidateCredentialAction_Call) RunAndReturn(run func(ctx context.Context, appID string, action providers.CredentialAction) (*providers.ApplicationArtifactProfile, *common.ServiceError)) *ApplicationServiceInterfaceMock_ValidateCredentialAction_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateDeleteApplication provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) ValidateDeleteApplication(ctx context.Context, appID string) (*providers.ApplicationArtifactProfile, *common.ServiceError) {
+	ret := _mock.Called(ctx, appID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateDeleteApplication")
+	}
+
+	var r0 *providers.ApplicationArtifactProfile
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*providers.ApplicationArtifactProfile, *common.ServiceError)); ok {
+		return returnFunc(ctx, appID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *providers.ApplicationArtifactProfile); ok {
+		r0 = returnFunc(ctx, appID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.ApplicationArtifactProfile)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, appID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateDeleteApplication'
+type ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call struct {
+	*mock.Call
+}
+
+// ValidateDeleteApplication is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+func (_e *ApplicationServiceInterfaceMock_Expecter) ValidateDeleteApplication(ctx interface{}, appID interface{}) *ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call {
+	return &ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call{Call: _e.mock.On("ValidateDeleteApplication", ctx, appID)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call) Run(run func(ctx context.Context, appID string)) *ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call) Return(applicationArtifactProfile *providers.ApplicationArtifactProfile, serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call {
+	_c.Call.Return(applicationArtifactProfile, serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call) RunAndReturn(run func(ctx context.Context, appID string) (*providers.ApplicationArtifactProfile, *common.ServiceError)) *ApplicationServiceInterfaceMock_ValidateDeleteApplication_Call {
 	_c.Call.Return(run)
 	return _c
 }

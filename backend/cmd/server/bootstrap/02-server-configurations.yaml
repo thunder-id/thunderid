@@ -16,3 +16,7 @@ value:
     expirySeconds: 86400
   userDeletionFlow:
     defaultHandle: default-user-deletion-flow
+  applicationDeletionFlow:
+    defaultHandle: default-application-deletion-flow
+  clientSecretRegenerationFlow:
+    defaultHandle: default-client-secret-regeneration-flow

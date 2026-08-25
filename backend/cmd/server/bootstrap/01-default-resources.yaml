@@ -1991,6 +1991,168 @@ nodes:
       x: 1740
       y: 200
 ---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000079
+name: Default Application Deletion Flow
+handle: default-application-deletion-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  executor:
+    name: PermissionValidator
+  onSuccess: validate_application_deletion
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: validate_application_deletion
+  type: TASK_EXECUTION
+  executor:
+    name: ValidateApplicationDeletionExecutor
+    mode: revoke_all
+  onSuccess: revoke_tokens
+  layout:
+    size:
+      width: 240
+      height: 113
+    position:
+      x: 580
+      y: 175
+- id: revoke_tokens
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: revoke_sessions
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 900
+      y: 175
+- id: revoke_sessions
+  type: TASK_EXECUTION
+  executor:
+    name: SessionRevocationExecutor
+  onSuccess: delete_application
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1180
+      y: 175
+- id: delete_application
+  type: TASK_EXECUTION
+  executor:
+    name: ApplicationDeleteExecutor
+  onSuccess: end
+  layout:
+    size:
+      width: 220
+      height: 113
+    position:
+      x: 1460
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1760
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000007a
+name: Default Client Secret Regeneration Flow
+handle: default-client-secret-regeneration-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  executor:
+    name: PermissionValidator
+  onSuccess: validate_secret_regeneration
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: validate_secret_regeneration
+  type: TASK_EXECUTION
+  executor:
+    name: ValidateSecretRegenerationExecutor
+    mode: revoke_before_action
+  onSuccess: revoke_tokens
+  layout:
+    size:
+      width: 250
+      height: 113
+    position:
+      x: 580
+      y: 175
+- id: revoke_tokens
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: regenerate_secret
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 920
+      y: 175
+- id: regenerate_secret
+  type: TASK_EXECUTION
+  executor:
+    name: ClientSecretExecutor
+  onSuccess: end
+  layout:
+    size:
+      width: 250
+      height: 113
+    position:
+      x: 1200
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1520
+      y: 200
+---
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000071
 handle: acrylic-orange

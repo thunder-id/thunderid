@@ -240,7 +240,7 @@ func (s *revocationService) RevokeByCriteria(ctx context.Context, revocation Cri
 		Value:      revocation.Criterion.Value,
 		Reason:     revocation.Reason,
 		RevokedAt:  revokedAt,
-		ExpiryTime: now.Add(s.tokenFamilyLifetime),
+		ExpiryTime: now.Add(s.resolveCriterionLifetime(revocation.TTL)),
 	}); err != nil {
 		return fmt.Errorf("failed to revoke tokens by criteria: %w", err)
 	}
@@ -249,6 +249,19 @@ func (s *revocationService) RevokeByCriteria(ctx context.Context, revocation Cri
 		log.String("criterionType", string(revocation.Criterion.Type)),
 		log.String("reason", string(revocation.Reason)))
 	return nil
+}
+
+// resolveCriterionLifetime returns how long a criteria deny-list row must survive.
+//
+// The configured lifetime is derived from the deployment-wide refresh-token validity, which is only a
+// default: token validity is configurable per application and uncapped, so a caller that knows the
+// lifetime of the artifacts its criterion matches can ask for longer. The longer of the two wins, so a
+// caller can only extend a row, never cut it short.
+func (s *revocationService) resolveCriterionLifetime(requested time.Duration) time.Duration {
+	if requested > s.tokenFamilyLifetime {
+		return requested
+	}
+	return s.tokenFamilyLifetime
 }
 
 func isSupportedCriterionType(criterionType CriterionType) bool {

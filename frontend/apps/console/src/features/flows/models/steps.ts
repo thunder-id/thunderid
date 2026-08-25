@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import type {Node} from '@xyflow/react';
@@ -108,6 +108,10 @@ export const ExecutionTypes = {
   Session: 'SessionExecutor',
   SessionSignOut: 'SessionSignOutExecutor',
   PreDelete: 'PreDeleteExecutor',
+  ValidateApplicationDeletion: 'ValidateApplicationDeletionExecutor',
+  ValidateSecretRegeneration: 'ValidateSecretRegenerationExecutor',
+  ApplicationDelete: 'ApplicationDeleteExecutor',
+  ClientSecret: 'ClientSecretExecutor',
   AuthAssert: 'AuthAssertExecutor',
   Authorization: 'AuthorizationExecutor',
 } as const;

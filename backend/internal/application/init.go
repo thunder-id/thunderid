@@ -12,6 +12,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -31,9 +32,10 @@ func Initialize(
 	i18nService i18nmgt.I18nServiceInterface,
 	cryptoSvc providers.RuntimeCryptoProvider,
 	serverConfigSvc serverconfig.ServerConfigService,
+	oauthCfg oauthconfig.Config,
 ) (ApplicationServiceInterface, declarativeresource.ResourceExporter, error) {
 	appService := newApplicationService(
-		inboundClient, entityService, ouService, i18nService, cryptoSvc, serverConfigSvc,
+		inboundClient, entityService, ouService, i18nService, cryptoSvc, serverConfigSvc, oauthCfg,
 	)
 
 	if err := entityService.LoadIndexedAttributes(getAppIndexedAttributes()); err != nil {

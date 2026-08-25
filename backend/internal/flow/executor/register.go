@@ -43,6 +43,7 @@ type ExecutorRegistryInterface interface {
 	RegisterExecutor(name string, ex providers.Executor)
 	IsRegistered(name string) bool
 	GetExecutorMeta(name string) (*providers.ExecutorMeta, error)
+	SetApplicationProvider(provider providers.ApplicationAdminProvider)
 }
 
 // executorRegistry is the default implementation of ExecutorRegistryInterface.
@@ -55,6 +56,26 @@ type executorRegistry struct {
 func newExecutorRegistry() ExecutorRegistryInterface {
 	return &executorRegistry{
 		executors: make(map[string]providers.Executor),
+	}
+}
+
+// applicationProviderConsumer is implemented by the executors that act on applications. They are
+// built before the application service exists, so it reaches them in a second phase.
+type applicationProviderConsumer interface {
+	setApplicationProvider(provider providers.ApplicationAdminProvider)
+}
+
+// SetApplicationProvider injects the application service into every registered executor that acts on
+// applications. The service is constructed after the executors and sits behind them in the import graph
+// (executor -> application -> inboundclient -> flowmgt -> executor), so it cannot be passed to their
+// constructors. Called once during startup, before the server serves.
+func (r *executorRegistry) SetApplicationProvider(provider providers.ApplicationAdminProvider) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, ex := range r.executors {
+		if consumer, ok := ex.(applicationProviderConsumer); ok {
+			consumer.setApplicationProvider(provider)
+		}
 	}
 }
 
@@ -286,6 +307,22 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameUserDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameUserDelete,
 				newUserDeleteExecutor(deps.FlowFactory, deps.UserService))
+		},
+		ExecutorNameValidateApplicationDeletion: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameValidateApplicationDeletion,
+				newValidateApplicationDeletionExecutor(deps.FlowFactory))
+		},
+		ExecutorNameValidateSecretRegeneration: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameValidateSecretRegeneration,
+				newValidateSecretRegenerationExecutor(deps.FlowFactory))
+		},
+		ExecutorNameApplicationDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameApplicationDelete,
+				newApplicationDeleteExecutor(deps.FlowFactory))
+		},
+		ExecutorNameClientSecret: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameClientSecret,
+				newClientSecretExecutor(deps.FlowFactory))
 		},
 	}
 }

@@ -412,8 +412,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	applicationService, applicationExporter, err := application.Initialize(
 		mux, mcpServer, entityService, inboundClientService, ouService, i18nService,
-		runtimeCryptoSvc, serverConfigService)
+		runtimeCryptoSvc, serverConfigService, oauthCfg)
 	fatalOnError(ctx, logger, err, "Failed to initialize ApplicationService")
+	// Two-phase initialization: inject the application service into the executors that act on it.
+	execRegistry.SetApplicationProvider(applicationService)
 	exporters = append(exporters, applicationExporter)
 
 	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService,

@@ -672,3 +672,122 @@ func (suite *ServiceTestSuite) TestTerminate_DeleteError() {
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "failed to terminate session")
 }
+
+// newServiceWithRevoker builds a service wired to a criteria revoker, for the paths that revoke token
+// families as part of a session write.
+func (suite *ServiceTestSuite) newServiceWithRevoker() (*service, *serviceMocks, *CriteriaRevokerMock) {
+	m := &serviceMocks{
+		store: newSessionStoreMock(suite.T()),
+		tx:    transactionmock.NewTransactionerMock(suite.T()),
+	}
+	revoker := NewCriteriaRevokerMock(suite.T())
+	svc := &service{
+		store:           m.store,
+		resolver:        newResolver(m.store),
+		transactioner:   m.tx,
+		criteriaRevoker: revoker,
+		timeouts:        DefaultTimeouts(),
+		logger:          log.GetLogger(),
+	}
+	return svc, m, revoker
+}
+
+// A session shared with another application keeps working for that application: only the deleted
+// application's participation goes, and the session row stays.
+func (suite *ServiceTestSuite) TestRemoveApplication_DetachesWithoutEndingSharedSessions() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+
+	m.store.EXPECT().ListByAppID(mock.Anything, "app-doomed").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-doomed", TokenFamilyID: "tfid-a"},
+	}, nil)
+	runTx(m)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(nil)
+	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-doomed").Return(nil)
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-survivor", TokenFamilyID: "tfid-b"},
+	}, nil)
+
+	err := svc.RemoveApplication(context.Background(), "app-doomed")
+
+	suite.Require().NoError(err)
+	m.store.AssertNotCalled(suite.T(), "DeleteSession", mock.Anything, mock.Anything)
+	revoker.AssertNotCalled(suite.T(), "RevokeTokenFamily", mock.Anything, "tfid-b")
+}
+
+// A session whose last participant was the deleted application can no longer back SSO for anything, so
+// it is removed along with its checkpoint contexts.
+func (suite *ServiceTestSuite) TestRemoveApplication_DeletesSessionWhenLastParticipantGoes() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+
+	m.store.EXPECT().ListByAppID(mock.Anything, "app-only").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-only", TokenFamilyID: "tfid-a"},
+	}, nil)
+	runTx(m)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(nil)
+	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-only").Return(nil)
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return(nil, nil)
+	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(nil)
+	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
+
+	err := svc.RemoveApplication(context.Background(), "app-only")
+
+	suite.Require().NoError(err)
+}
+
+// An application that joined without a grant carries no token family. Revoking an empty family is a
+// no-op, so the participation is simply dropped: this is the embedded-application case, which holds no
+// tokens but can still participate in a session.
+func (suite *ServiceTestSuite) TestRemoveApplication_DetachesParticipationWithNoTokenFamily() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+
+	m.store.EXPECT().ListByAppID(mock.Anything, "app-embedded").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-embedded"},
+	}, nil)
+	runTx(m)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "").Return(nil)
+	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-embedded").Return(nil)
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-other"},
+	}, nil)
+
+	err := svc.RemoveApplication(context.Background(), "app-embedded")
+
+	suite.Require().NoError(err)
+}
+
+// The revocation precedes the row delete, since the participant row is the only record linking the
+// session to that grant: a failed revocation must leave the row in place rather than orphaning a live
+// family. The whole detachment shares one transaction, so nothing is dropped.
+func (suite *ServiceTestSuite) TestRemoveApplication_RevocationFailureAbortsTheDetachment() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+
+	m.store.EXPECT().ListByAppID(mock.Anything, "app-doomed").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-doomed", TokenFamilyID: "tfid-a"},
+	}, nil)
+	runTx(m)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(errors.New("deny list unavailable"))
+
+	err := svc.RemoveApplication(context.Background(), "app-doomed")
+
+	suite.Require().Error(err)
+	m.store.AssertNotCalled(suite.T(), "DeleteParticipant", mock.Anything, mock.Anything, mock.Anything)
+	m.store.AssertNotCalled(suite.T(), "DeleteSession", mock.Anything, mock.Anything)
+}
+
+// An application that participates in nothing is a no-op, and must not open a transaction.
+func (suite *ServiceTestSuite) TestRemoveApplication_NoParticipationIsANoOp() {
+	svc, m, _ := suite.newServiceWithRevoker()
+
+	m.store.EXPECT().ListByAppID(mock.Anything, "app-unused").Return(nil, nil)
+
+	suite.Require().NoError(svc.RemoveApplication(context.Background(), "app-unused"))
+	m.tx.AssertNotCalled(suite.T(), "Transact", mock.Anything, mock.Anything)
+}
+
+// An empty application id is a no-op rather than a query that would match every participation.
+func (suite *ServiceTestSuite) TestRemoveApplication_EmptyAppIDIsANoOp() {
+	svc, m, _ := suite.newServiceWithRevoker()
+
+	suite.Require().NoError(svc.RemoveApplication(context.Background(), ""))
+	m.store.AssertNotCalled(suite.T(), "ListByAppID", mock.Anything, mock.Anything)
+}

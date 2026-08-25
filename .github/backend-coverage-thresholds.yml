@@ -45,6 +45,19 @@ packages:
   # TODO: remove this entry once the provisioning executor consumes the provider.
   backend/internal/agentmgtprovider: 0
   # backend/internal/system/i18n: 0
+  # Both packages hold the application-revocation and session-detachment paths, whose remaining
+  # uncovered lines are error branches the integration suite cannot provoke: a failing dependency
+  # lookup, a corrupt attribute blob, a failing client-secret write, a failing participation query,
+  # a failing token-family revocation, a failing transaction. Reaching them needs fault injection,
+  # which lives in the unit suite, and this check deliberately does not load unit coverage.
+  #
+  # Measured on this branch: application 62.6%, session 61.5%. Five integration tests were added
+  # for the branches that are reachable (declarative refusals on both flows, a non-application
+  # target, and the client-credentials and refresh-token validity paths); the remainder cannot be
+  # reached without fault injection, and covering every reachable branch in session would still
+  # leave it at 64.6%.
+  backend/internal/application: 60
+  backend/internal/flow/session: 60
 
 # Thresholds grouped by pull request label. A group applies only when the pull
 # request carries that label. A group may set values below `default`, which lowers

@@ -130,6 +130,26 @@ type FlowProvider interface {
 	GetFlow(ctx context.Context, flowID string) (*CompleteFlowDefinition, *common.ServiceError)
 }
 
+// ApplicationAdminProvider exposes the application operations an administration flow performs. It is a
+// seam rather than a direct dependency because the application service is built after the flow
+// executors and sits behind them in the import graph.
+type ApplicationAdminProvider interface {
+	// ValidateDeleteApplication reports whether the application may be deleted, and returns the profile
+	// of the artifacts it has issued. It changes no state.
+	ValidateDeleteApplication(ctx context.Context, appID string) (
+		*ApplicationArtifactProfile, *common.ServiceError)
+	// DeleteApplication deletes the application.
+	DeleteApplication(ctx context.Context, appID string) *common.ServiceError
+	// ValidateCredentialAction reports whether the action may be performed on the application's
+	// credential, and returns the profile of the artifacts it has issued. It changes no state.
+	ValidateCredentialAction(ctx context.Context, appID string, action CredentialAction) (
+		*ApplicationArtifactProfile, *common.ServiceError)
+	// ApplyCredentialAction performs the action and returns the new credential value. That return is
+	// the only time the value is readable: it is hashed on write and no read path returns it.
+	ApplyCredentialAction(ctx context.Context, appID string, action CredentialAction) (
+		string, *common.ServiceError)
+}
+
 // ResourceServerProvider defines the interface for the resource provider.
 type ResourceServerProvider interface {
 	GetResourceServerByIdentifier(

@@ -575,6 +575,12 @@ packages:
           structname: '{{.InterfaceName}}Mock'
           pkgname: agentmgtprovidermock
           filename: "{{.InterfaceName}}_mock.go"
+      ApplicationAdminProvider:
+        config:
+          dir: tests/mocks/applicationadminprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: applicationadminprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
       UserMgtProvider:
         config:
           dir: tests/mocks/usermgtprovidermock

@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useLogger} from '@thunderid/logger';
-import {getErrorMessage} from '@thunderid/utils';
 import {Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button, Alert} from '@wso2/oxygen-ui';
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import useRegenerateClientSecret from '../api/useRegenerateClientSecret';
+import getApplicationErrorMessage from '../utils/getApplicationErrorMessage';
 
 const DEFAULT_REGENERATE_SECRET_ERROR = 'Failed to regenerate client secret. Please try again.';
 
@@ -82,7 +82,7 @@ export default function RegenerateSecretDialog({
           onSuccess?.(clientSecret);
         },
         onError: (err) => {
-          const errorMessage = getErrorMessage(
+          const errorMessage = getApplicationErrorMessage(
             err,
             t,
             'regenerateSecret.dialog.error',

@@ -1038,5 +1038,87 @@
         "onFailure": ""
       }
     }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Pre Application Delete Executor",
+      "label": "Validate and Plan Application Deletion",
+      "description": "Validate the application being deleted, then plan revocation of every artifact issued to its OAuth client",
+      "image": "assets/images/icons/magnifying-glass.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "ValidateApplicationDeletionExecutor", "mode": "revoke_all"},
+        "onSuccess": "",
+        "onFailure": "",
+        "onIncomplete": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Pre Secret Regeneration Executor",
+      "label": "Validate and Plan Secret Regeneration",
+      "description": "Validate the application whose client secret is being regenerated, then plan revocation of the artifacts issued under the old secret",
+      "image": "assets/images/icons/magnifying-glass.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "ValidateSecretRegenerationExecutor", "mode": "revoke_before_action"},
+        "onSuccess": "",
+        "onFailure": "",
+        "onIncomplete": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Application Delete Executor",
+      "label": "Delete Application",
+      "description": "Delete the validated application after its tokens and session participation have been revoked",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "ApplicationDeleteExecutor"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Client Secret Regeneration Executor",
+      "label": "Regenerate Client Secret",
+      "description": "Regenerate the application's client secret, returning the new value once",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {"name": "ClientSecretExecutor"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
   }
 ]

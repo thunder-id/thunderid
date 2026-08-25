@@ -33,13 +33,19 @@ type FlowTypeConfig struct {
 // UserDeletionFlow names the administration flow that carries out a user deletion. There is no
 // separate mode switch: a console deletes through the flow when one is configured and present, and
 // through DELETE /users/{id} otherwise, mirroring how user onboarding falls back to manual creation.
+//
+// ApplicationDeletionFlow and ClientSecretRegenerationFlow name the administration flows for the two
+// application actions that must revoke before they act. They follow the same configured-and-present
+// rule as UserDeletionFlow, so a deployment that unsets either handle keeps the native API behavior.
 type FlowSectionConfig struct {
-	AuthFlow           FlowTypeConfig `json:"authFlow"`
-	RegistrationFlow   FlowTypeConfig `json:"registrationFlow"`
-	UserOnboardingFlow FlowTypeConfig `json:"userOnboardingFlow"`
-	RecoveryFlow       FlowTypeConfig `json:"recoveryFlow"`
-	SignOutFlow        FlowTypeConfig `json:"signOutFlow"`
-	UserDeletionFlow   FlowTypeConfig `json:"userDeletionFlow"`
+	AuthFlow                     FlowTypeConfig `json:"authFlow"`
+	RegistrationFlow             FlowTypeConfig `json:"registrationFlow"`
+	UserOnboardingFlow           FlowTypeConfig `json:"userOnboardingFlow"`
+	RecoveryFlow                 FlowTypeConfig `json:"recoveryFlow"`
+	SignOutFlow                  FlowTypeConfig `json:"signOutFlow"`
+	UserDeletionFlow             FlowTypeConfig `json:"userDeletionFlow"`
+	ApplicationDeletionFlow      FlowTypeConfig `json:"applicationDeletionFlow"`
+	ClientSecretRegenerationFlow FlowTypeConfig `json:"clientSecretRegenerationFlow"`
 }
 
 // FromServerRuntime builds flow configuration from the global server runtime.
