@@ -601,7 +601,7 @@
                 "onIncomplete": "{{EUDI_WAIT_VIEW_ID}}"
               },
               "properties": {
-                "presentation_definition_id": "eudi-pid",
+                "presentation_definition_id": "",
                 "allowAuthenticationWithoutLocalUser": true
               }
             }
@@ -632,6 +632,12 @@
                   "type": "TEXT",
                   "variant": "BODY_1",
                   "label": "Open your EUDI Wallet and present your PID, then continue."
+                },
+                {
+                  "id": "{{ID}}",
+                  "category": "DISPLAY",
+                  "type": "QR_CODE",
+                  "source": "openid4vpWalletUri"
                 },
                 {
                   "id": "{{ID}}",
