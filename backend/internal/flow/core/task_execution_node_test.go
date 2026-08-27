@@ -58,6 +58,57 @@ func (s *TaskExecutionNodeTestSuite) TestExecutorMethods() {
 	s.Equal("mock-executor", execNode.GetExecutorName())
 }
 
+func (s *TaskExecutionNodeTestSuite) TestExecuteClearsIdentifierInputsOnIncomplete() {
+	node := newTaskExecutionNode("task-1", nil, false, false)
+	execNode, ok := node.(ExecutorBackedNodeInterface)
+	s.True(ok)
+	execNode.SetInputs([]providers.Input{{Identifier: "password", Type: providers.InputTypePassword}})
+	execNode.SetIdentifierInputs([]providers.Input{{Identifier: "uin", Type: providers.InputTypeText}})
+	execNode.SetOnIncomplete("prompt-1")
+
+	s.mockExecutor.On("GetName").Return("test-executor").Once()
+	s.mockExecutor.On("Execute", mock.Anything).Return(
+		&providers.ExecutorResponse{
+			Status: providers.ExecUserInputRequired,
+			Error:  &tidcommon.ServiceError{Code: "ERR-1"},
+		}, nil).Once()
+	execNode.SetExecutor(s.mockExecutor)
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		UserInputs:  map[string]string{"uin": "4358192047", "password": "secret"},
+	}
+	_, svcErr := node.Execute(ctx)
+	s.Nil(svcErr)
+
+	// Both lists are cleared: a surviving identifier would collide with the next attempt's.
+	s.Empty(ctx.UserInputs)
+}
+
+func (s *TaskExecutionNodeTestSuite) TestExecuteExposesIdentifierInputs() {
+	identifierInputs := []providers.Input{
+		{Identifier: "uin", Type: providers.InputTypeText},
+		{Identifier: "phone", Type: providers.InputTypeText},
+	}
+
+	node := newTaskExecutionNode("task-1", nil, false, false)
+	execNode, ok := node.(ExecutorBackedNodeInterface)
+	s.True(ok)
+	execNode.SetIdentifierInputs(identifierInputs)
+
+	s.mockExecutor.On("GetName").Return("test-executor").Once()
+	s.mockExecutor.On("Execute", mock.Anything).Return(
+		&providers.ExecutorResponse{Status: providers.ExecComplete}, nil).Once().
+		Run(func(args mock.Arguments) {
+			s.Equal(identifierInputs, args.Get(0).(*providers.NodeContext).NodeIdentifierInputs)
+		})
+	execNode.SetExecutor(s.mockExecutor)
+
+	_, svcErr := node.Execute(&providers.NodeContext{ExecutionID: "flow-1"})
+	s.Nil(svcErr)
+	s.mockExecutor.AssertExpectations(s.T())
+}
+
 func (s *TaskExecutionNodeTestSuite) TestExecuteNoExecutor() {
 	node := newTaskExecutionNode("task-1", map[string]interface{}{}, false, false)
 	ctx := &providers.NodeContext{ExecutionID: "test-flow"}
