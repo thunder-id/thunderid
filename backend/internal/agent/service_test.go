@@ -24,11 +24,14 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 const (
@@ -38,6 +41,19 @@ const (
 	testOUID      = "ou-id-abc"
 	testAgentLogo = "avatar:shape=circle,variant=anonymous_entity,content=bot_head,colors=0"
 )
+
+// newAllowAllAuthz returns a mock SystemAuthorizationServiceInterface that allows all actions.
+func newAllowAllAuthz(t interface {
+	mock.TestingT
+	Cleanup(func())
+}) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil).Maybe()
+	authzMock.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	return authzMock
+}
 
 // AgentServiceTestSuite groups all agent service unit tests.
 type AgentServiceTestSuite struct {
@@ -117,6 +133,7 @@ func (suite *AgentServiceTestSuite) setupService() (
 
 	svc := &agentService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentService")),
+		authzService:         newAllowAllAuthz(suite.T()),
 		entityService:        mockEntity,
 		inboundClientService: mockInbound,
 		ouService:            mockOU,
@@ -3042,4 +3059,214 @@ func (suite *AgentServiceTestSuite) TestSeedClientSubTypeAttribute_NoOAuthConfig
 	seedClientSubTypeAttribute(configs)
 
 	assert.Empty(suite.T(), configs)
+}
+
+// --- Authorization ---
+
+// setupServiceWithAuthz wires a service with permissive entity/inbound/OU mocks and the given
+// authorization mock, so authz-specific tests control only the authorization decision.
+func (suite *AgentServiceTestSuite) setupServiceWithAuthz(
+	authzMock *sysauthzmock.SystemAuthorizationServiceInterfaceMock,
+) (*agentService, *entitymock.EntityServiceInterfaceMock) {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	svc.authzService = authzMock
+	return svc, mockEntity
+}
+
+// newDenyAuthz returns a mock that denies the given action and allows everything else, so a test
+// can pin the denial to one specific check.
+func (suite *AgentServiceTestSuite) newDenyAuthz(
+	action security.Action, ouID string,
+) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, action,
+		&sysauthz.ActionContext{
+			ResourceType: security.ResourceTypeAgent,
+			OUID:         ouID,
+			ResourceID:   testAgentID,
+		}).Return(false, nil).Maybe()
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil).Maybe()
+	return authzMock
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_AuthzDenied() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, security.ActionCreateAgent,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeAgent, OUID: testOUID}).
+		Return(false, nil).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+
+	resp, svcErr := svc.CreateAgent(context.Background(), &model.Agent{
+		Name: testAgentName, Type: testAgentType, OUID: testOUID,
+	})
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "CreateEntity", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgent_AuthzDenied() {
+	svc, mockEntity := suite.setupServiceWithAuthz(
+		suite.newDenyAuthz(security.ActionReadAgent, testOUID))
+
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.GetAgent(context.Background(), testAgentID, false)
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_AuthzDeniedOnExistingOU() {
+	svc, mockEntity := suite.setupServiceWithAuthz(
+		suite.newDenyAuthz(security.ActionUpdateAgent, testOUID))
+
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Name: testAgentName, Type: testAgentType,
+	})
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A caller authorized on the agent's current OU must still be refused when moving the agent into an
+// OU it does not control, and the agent must not be written.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_AuthzDeniedOnDestinationOU() {
+	const destinationOUID = "ou-id-destination"
+
+	svc, mockEntity := suite.setupServiceWithAuthz(
+		suite.newDenyAuthz(security.ActionUpdateAgent, destinationOUID))
+
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Name: testAgentName, Type: testAgentType, OUID: destinationOUID,
+	})
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *AgentServiceTestSuite) TestDeleteAgent_AuthzDenied() {
+	svc, mockEntity := suite.setupServiceWithAuthz(
+		suite.newDenyAuthz(security.ActionDeleteAgent, testOUID))
+
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	svcErr := svc.DeleteAgent(context.Background(), testAgentID)
+
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "DeleteEntity", mock.Anything, mock.Anything)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentGroups_AuthzDenied() {
+	svc, mockEntity := suite.setupServiceWithAuthz(
+		suite.newDenyAuthz(security.ActionReadAgent, testOUID))
+
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.GetAgentGroups(context.Background(), testAgentID, 10, 0)
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentRoles_AuthzDenied() {
+	svc, mockEntity := suite.setupServiceWithAuthz(
+		suite.newDenyAuthz(security.ActionReadAgent, testOUID))
+
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.GetAgentRoles(context.Background(), testAgentID, 10, 0)
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+// A restricted caller lists through the OU-filtered store query, not the unfiltered one.
+func (suite *AgentServiceTestSuite) TestGetAgentList_FiltersByAccessibleOUs() {
+	accessibleOUIDs := []string{testOUID}
+
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListAgents,
+		security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: accessibleOUIDs}, nil).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+
+	clearMockCalls(mockEntity, "GetEntityListCountByOUIDs")
+	mockEntity.On("GetEntityListCountByOUIDs", mock.Anything,
+		providers.EntityCategoryAgent, accessibleOUIDs, mock.Anything).Return(1, nil)
+
+	clearMockCalls(mockEntity, "GetEntityListByOUIDs")
+	mockEntity.On("GetEntityListByOUIDs", mock.Anything, providers.EntityCategoryAgent,
+		accessibleOUIDs, mock.Anything, mock.Anything, mock.Anything).
+		Return([]providers.Entity{*buildAgentEntityFixture(testAgentName, "", "", "")}, nil)
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0, nil, false)
+
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+	assert.Equal(suite.T(), 1, resp.TotalResults)
+	mockEntity.AssertNotCalled(suite.T(), "GetEntityList", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A caller with no accessible OUs gets an empty page without querying the store.
+func (suite *AgentServiceTestSuite) TestGetAgentList_NoAccessibleOUs() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListAgents,
+		security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: []string{}}, nil).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0, nil, false)
+
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+	assert.Equal(suite.T(), 0, resp.TotalResults)
+	assert.Empty(suite.T(), resp.Agents)
+	mockEntity.AssertNotCalled(suite.T(), "GetEntityListByOUIDs", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A failed authorization check is a refusal, not a pass.
+func (suite *AgentServiceTestSuite) TestGetAgent_AuthzCheckError() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
+		Return(false, &tidcommon.InternalServerError).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	resp, svcErr := svc.GetAgent(context.Background(), testAgentID, false)
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 }

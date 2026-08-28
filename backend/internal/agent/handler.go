@@ -274,7 +274,8 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 			ErrorAttributeConflict.Code,
 			ErrorAgentAlreadyExistsWithClientID.Code:
 			statusCode = http.StatusConflict
-		case ErrorCannotModifyDeclarativeResource.Code:
+		case ErrorCannotModifyDeclarativeResource.Code,
+			tidcommon.ErrorUnauthorized.Code:
 			statusCode = http.StatusForbidden
 		default:
 			statusCode = http.StatusBadRequest
