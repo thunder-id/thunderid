@@ -1,0 +1,220 @@
+name: 📚 Docs Gap Scan
+
+# AI-assisted documentation architecture scan. Classifies coverage by Diataxis
+# quadrant, assigns an L0-L5 maturity level per capability, and reports config
+# gaps and stale references. The report lands in the run's job summary, is kept as
+# a build artifact, and is trended against the previous run.
+# See .github/prompts/docs-gap-scan.md for the scan instructions.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly, Monday 04:00 UTC. Nightly would just re-report the same backlog.
+    - cron: '0 4 * * 1'
+
+concurrency:
+  group: docs-gap-scan
+  cancel-in-progress: false
+
+jobs:
+  docs-gap-scan:
+    name: Scan for documentation gaps
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+      actions: read # download the previous run's metrics artifact for trend
+
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Full history so the inventory can read per-file last-commit dates,
+          # which drive the (zero-token) drift prioritizer for accuracy checks.
+          fetch-depth: 0
+
+      - name: 🧮 Build scan inventory
+        # Deterministic, zero-token extraction of the source-of-truth lists so the
+        # model reads one compact file instead of ~730k tokens of specs and docs.
+        run: |
+          set -euo pipefail
+          {
+            echo "# Docs Gap Scan - Baked Inventories"
+            echo
+            echo "Authoritative source-of-truth lists, pre-extracted. Treat these as the"
+            echo "complete inventories. Do NOT read the full spec or doc files to rebuild them."
+            echo
+            echo "## API specs (api/*.yaml) - purpose + endpoint count per spec"
+            echo
+            for f in api/*.yaml; do
+              n=$(grep -cE '^[[:space:]]+(get|post|put|patch|delete):[[:space:]]*$' "$f")
+              echo "### $f (${n} endpoints)"
+              echo '```yaml'
+              awk '/^[^[:space:]#]/{p=($0 ~ /^info:/)} p' "$f" | head -n 12
+              echo '```'
+              echo
+            done
+            echo "## Backend services (backend/internal/*/)"
+            echo
+            for d in backend/internal/*/; do echo "- ${d}"; done
+            echo
+            echo "## Deployment config (backend/cmd/server/deployment.yaml)"
+            echo
+            echo '```yaml'
+            cat backend/cmd/server/deployment.yaml
+            echo '```'
+            echo
+            echo "## Source-of-truth recency (last commit date)"
+            echo
+            echo "Compare each source date against a doc's date (in the index below). When the"
+            echo "source changed AFTER the doc, that doc is a drift risk worth an accuracy check."
+            echo
+            echo "### API specs"
+            for f in api/*.yaml; do echo "- $(git log -1 --format=%as -- "$f" 2>/dev/null) ${f}"; done
+            echo "### Backend services"
+            for d in backend/internal/*/; do echo "- $(git log -1 --format=%as -- "$d" 2>/dev/null) ${d}"; done
+            echo "### Deployment config"
+            echo "- $(git log -1 --format=%as -- backend/cmd/server/deployment.yaml 2>/dev/null) backend/cmd/server/deployment.yaml"
+            echo
+            echo "## Documentation index (docs/content) - [DIATAXIS-TYPE] last-commit-date path - title - description"
+            echo
+            echo "Diataxis quadrant is derived from the path: TUTORIAL=getting-started,"
+            echo "HOWTO=guides, EXPLANATION=key-concepts + working-with-ai, JOURNEY=use-cases,"
+            echo "REFERENCE=apis + sdks, OPERATIONS=deployment, COMMUNITY=community."
+            echo
+            git ls-files docs/content | grep -E '\.mdx?$' | sort | while IFS= read -r f; do
+              case "$f" in
+                docs/content/getting-started/*) q="TUTORIAL";;
+                docs/content/guides/*)          q="HOWTO";;
+                docs/content/key-concepts/*)    q="EXPLANATION";;
+                docs/content/working-with-ai/*) q="EXPLANATION";;
+                docs/content/use-cases/*)       q="JOURNEY";;
+                docs/content/sdks/*)            q="REFERENCE";;
+                docs/content/apis*)             q="REFERENCE";;
+                docs/content/deployment/*)      q="OPERATIONS";;
+                docs/content/community/*)       q="COMMUNITY";;
+                *)                              q="OTHER";;
+              esac
+              d=$(git log -1 --format=%as -- "$f" 2>/dev/null)
+              fm=$(awk 'NR==1&&/^---/{f=1;next} f&&/^---/{exit} f' "$f")
+              title=$(printf '%s\n' "$fm" | sed -n 's/^title:[[:space:]]*//p' | head -n1)
+              desc=$(printf '%s\n' "$fm" | sed -n 's/^description:[[:space:]]*//p' | head -n1)
+              echo "- [${q}] ${d:-????-??-??} ${f} - ${title:-(no title)} - ${desc:-}"
+            done
+          } > docs-scan-inventory.md
+          echo "Inventory generated:"; wc -c docs-scan-inventory.md
+
+      - name: 📊 Fetch reader demand signals (Algolia)
+        # Pulls real reader intent (top no-result + top searches) from the live docs
+        # site so the scan can rank gaps by demand. Skips cleanly if no key is set.
+        env:
+          ALGOLIA_ANALYTICS_API_KEY: ${{ secrets.ALGOLIA_ANALYTICS_API_KEY }}
+          ALGOLIA_APP_ID: PML8PAKD9O
+          ALGOLIA_INDEX: thunderid-docs-prod
+          # EU-hosted apps: change to analytics.de.algolia.com
+          ALGOLIA_ANALYTICS_HOST: analytics.algolia.com
+        run: |
+          set -uo pipefail
+          if [ -z "${ALGOLIA_ANALYTICS_API_KEY:-}" ]; then
+            echo "_No reader-demand signals available (Algolia analytics key not configured)._" > docs-demand-signals.md
+            echo "No Algolia key; wrote placeholder demand file."
+            exit 0
+          fi
+          START=$(date -u -d '90 days ago' +%F); END=$(date -u +%F)
+          BASE="https://${ALGOLIA_ANALYTICS_HOST}/2/searches"
+          AUTH=(-H "X-Algolia-Application-Id: ${ALGOLIA_APP_ID}" -H "X-Algolia-API-Key: ${ALGOLIA_ANALYTICS_API_KEY}")
+          noresults=$(curl -fsS "${BASE}/noResults?index=${ALGOLIA_INDEX}&limit=50&startDate=${START}&endDate=${END}" "${AUTH[@]}" 2>/dev/null || true)
+          top=$(curl -fsS "${BASE}?index=${ALGOLIA_INDEX}&limit=30&startDate=${START}&endDate=${END}" "${AUTH[@]}" 2>/dev/null || true)
+          {
+            echo "# Reader demand signals (Algolia search analytics, ${START}..${END})"
+            echo
+            echo "## Top no-result searches (readers searched, got nothing back)"
+            echo
+            if [ -n "$noresults" ]; then
+              echo "$noresults" | jq -r '.searches[]? | "- \"\(.search)\" - \(.count) searches, 0 results"' 2>/dev/null || echo "_Could not parse no-result data (check key ACL / region)._"
+            else
+              echo "_No data returned (check key ACL / region)._"
+            fi
+            echo
+            echo "## Top searches (most-wanted topics)"
+            echo
+            if [ -n "$top" ]; then
+              echo "$top" | jq -r '.searches[]? | "- \"\(.search)\" - \(.count) searches, \(.nbHits // 0) results"' 2>/dev/null || echo "_Could not parse top-search data._"
+            else
+              echo "_No data returned._"
+            fi
+          } > docs-demand-signals.md
+          echo "Demand signals written:"; wc -l docs-demand-signals.md
+
+      - name: 📝 Load scan prompt
+        run: |
+          {
+            echo 'SCAN_PROMPT<<SCAN_PROMPT_EOF'
+            cat .github/prompts/docs-gap-scan.md
+            echo 'SCAN_PROMPT_EOF'
+          } >> "$GITHUB_ENV"
+
+      - name: 🔍 Run docs gap scan
+        uses: anthropics/claude-code-action@9d7150bc8a3dae8149739a88019d192b579ad90c # v1
+        with:
+          # Authenticates with the Claude subscription behind CLAUDE_CODE_AUTH_TOKEN.
+          # For org-wide use, swap this line for an API key instead:
+          #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_AUTH_TOKEN }}
+          prompt: ${{ env.SCAN_PROMPT }}
+          claude_args: |
+            --model claude-sonnet-5
+            --max-turns 40
+            --allowedTools "Bash,Read,Glob,Grep,Write"
+
+      - name: 📈 Compute trend vs previous run
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          TREND="Baseline run - no previous metrics to compare against."
+          if [ -f docs-gap-metrics.json ]; then
+            # Most recent successful run of this workflow (excludes the in-progress run).
+            prev_id=$(gh run list --workflow=docs-gap-scan.yml --status=success \
+              --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)
+            if [ -n "${prev_id:-}" ]; then
+              gh run download "$prev_id" -n docs-gap-scan -D prev 2>/dev/null || true
+            fi
+            if [ -f prev/docs-gap-metrics.json ]; then
+              cur=$(jq -r '.below_standard // "?"' docs-gap-metrics.json)
+              old=$(jq -r '.below_standard // "?"' prev/docs-gap-metrics.json)
+              if [ "$cur" != "?" ] && [ "$old" != "?" ]; then
+                delta=$((cur - old)); sign=""; [ "$delta" -ge 0 ] && sign="+"
+                TREND="Below-standard capabilities: ${cur} (${sign}${delta} vs previous run)."
+              fi
+            fi
+          fi
+          echo "TREND_LINE=$TREND" >> "$GITHUB_ENV"
+
+      - name: 📄 Publish report to job summary
+        if: always()
+        run: |
+          {
+            echo "> **Trend:** ${TREND_LINE:-unavailable}"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f docs-gap-report.md ]; then
+            cat docs-gap-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Docs Gap Scan" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "⚠️ No report was produced (\`docs-gap-report.md\` not found). Check the scan step logs." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: 📦 Persist report + metrics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: docs-gap-scan
+          path: |
+            docs-gap-report.md
+            docs-gap-metrics.json
+          if-no-files-found: warn
+          retention-days: 90
