@@ -187,7 +187,9 @@ func (b *graphBuilder) processNode(
 		return err
 	}
 
-	b.configureNodeInputs(ctx, nodeDef, node)
+	if err := b.configureNodeInputs(ctx, nodeDef, node); err != nil {
+		return err
+	}
 	b.configureNodeMeta(nodeDef, node)
 	b.configureNodeVariant(nodeDef, node)
 	b.configureNodeCondition(nodeDef, node)
@@ -324,40 +326,63 @@ func (b *graphBuilder) configureCallNodeReference(nodeDef *providers.NodeDefinit
 	}
 }
 
-// configureNodeInputs configures the inputs for executor-backed nodes.
-// Validation rules on executor inputs are intentionally not propagated:
-// executor inputs are read from runtime context (already validated at the
-// preceding PROMPT node), so per-rule re-validation here would be redundant.
+// configureNodeInputs configures the inputs for executor-backed nodes, carrying
+// any validation rules declared on the executor's inputs and identifier inputs
+// instead of silently discarding them. Rule conversion errors (e.g. an invalid
+// regex) are propagated rather than swallowed.
 func (b *graphBuilder) configureNodeInputs(
 	ctx context.Context,
 	nodeDef *providers.NodeDefinition,
 	node core.NodeInterface,
-) {
+) error {
 	logger := b.logger.With(log.String("nodeID", nodeDef.ID))
 
 	executorNode, ok := node.(core.ExecutorBackedNodeInterface)
 	if !ok {
 		logger.Debug(ctx, "Node is not executor-backed; skipping input configuration")
-		return
+		return nil
 	}
 
-	if nodeDef.Executor == nil || len(nodeDef.Executor.Inputs) == 0 {
-		logger.Debug(ctx, "No inputs defined for executor; setting empty input list")
+	if nodeDef.Executor == nil {
+		logger.Debug(ctx, "No executor defined; setting empty input lists")
 		executorNode.SetInputs([]providers.Input{})
-		return
+		executorNode.SetIdentifierInputs([]providers.Input{})
+		return nil
 	}
 
-	inputs := make([]providers.Input, len(nodeDef.Executor.Inputs))
-	for i, input := range nodeDef.Executor.Inputs {
+	inputs, err := toExecutorInputs(nodeDef.Executor.Inputs)
+	if err != nil {
+		return fmt.Errorf("node %s inputs: %w", nodeDef.ID, err)
+	}
+	identifierInputs, err := toExecutorInputs(nodeDef.Executor.IdentifierInputs)
+	if err != nil {
+		return fmt.Errorf("node %s identifier inputs: %w", nodeDef.ID, err)
+	}
+
+	executorNode.SetInputs(inputs)
+	executorNode.SetIdentifierInputs(identifierInputs)
+	return nil
+}
+
+// toExecutorInputs converts executor input definitions to their runtime form,
+// carrying each definition's validation rules. Always returns a non-nil slice.
+func toExecutorInputs(defs []providers.InputDefinition) ([]providers.Input, error) {
+	inputs := make([]providers.Input, len(defs))
+	for i, def := range defs {
+		validation, err := toValidationRules(def.Validation)
+		if err != nil {
+			return nil, fmt.Errorf("input %s: %w", def.Identifier, err)
+		}
 		inputs[i] = providers.Input{
-			Ref:        input.Ref,
-			Identifier: input.Identifier,
-			Type:       input.Type,
-			Required:   input.Required,
-			OneTimeUse: input.OneTimeUse,
+			Ref:        def.Ref,
+			Identifier: def.Identifier,
+			Type:       def.Type,
+			Required:   def.Required,
+			OneTimeUse: def.OneTimeUse,
+			Validation: validation,
 		}
 	}
-	executorNode.SetInputs(inputs)
+	return inputs, nil
 }
 
 // toValidationRules converts mgt rule definitions to runtime ValidationRule
