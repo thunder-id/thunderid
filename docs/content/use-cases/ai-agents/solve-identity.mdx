@@ -5,55 +5,64 @@ sidebar_position: 4
 description: Register an agent in {{ProductName}} as a principal with its own identifier, owner, and attribute schema, so every token it requests is attributable to it.
 ---
 
+import {Bot, UserCheck} from '@wso2/oxygen-ui-icons-react';
+import {AgentDocCards, AgentDocCard} from '@site/src/components/AgentDocCards';
+
 # The Agent Has No Identity of Its Own
 
-The first agent you ship usually borrows a credential from something that already had one. It works, and it
-costs you the ability to answer three questions later: which agent made this call, what is this one allowed to
-do that the others are not, and how do I stop this one without stopping the rest.
+The first agent you ship usually borrows a credential from something that already had one. It works, and it costs you the ability to answer three questions later: which agent made this call, what is this one allowed to do that the others are not, and how do I stop this one without stopping the rest.
 
-Registering the agent is what makes those questions answerable, and everything that follows assumes it has
-been done.
+Registering the agent is what makes those questions answerable, and everything that follows assumes it has been done.
 
 ## The Agent Identity
 
-An **agent** in <ProductName /> is a principal with its own record, its own identifier, and its own credential.
-It is neither a user nor a reused service account, and registering one is what makes its actions attributable.
-Because the credential belongs to that agent alone, every token issued under it traces back to a single entry
-in your inventory.
+An **agent** in <ProductName /> is a principal with its own record, its own identifier, and its own credential. It is neither a user nor a reused service account, and registering one is what makes its actions attributable. Because the credential belongs to that agent alone, every token issued under it traces back to a single entry in your inventory.
 
-Identity binds to the configured agent rather than to the model behind it. Two agents running on the same
-model, with different prompts, tools, and roles, are two identities in <ProductName /> and are authorized
-separately.
+Identity binds to the configured agent rather than to the model behind it. Two agents running on the same model, with different prompts, tools, and roles, are two identities in <ProductName /> and are authorized separately.
 
-See [Create and Manage Agents](../../../guides/agents/manage-agents) to register one, and
-[Identifiers and owner](../../../guides/agents/manage-agents#identifiers-and-owner) for the fields that name it.
+See [Create and Manage Agents](../../../guides/agents/manage-agents) to register one, and [Identifiers and owner](../../../guides/agents/manage-agents#identifiers-and-owner) for the fields that name it.
 
 ## Agent Schema
 
-Registering agents one at a time produces a list. What turns that list into something you can query is the
-**agent schema**: a shared set of attributes every agent carries, so a fleet can be filtered and reported on
-rather than remembered.
+Registering agents one at a time produces a list. What turns that list into something you can query is the **agent schema**: a shared set of attributes every agent carries, so a fleet can be filtered and reported on rather than remembered.
 
-The default schema includes the agent's `model`, its `modelProvider`, and the `function` it performs. Those
-attributes can be selected into the agent's access token, which is how a gateway or a downstream service
-applies per-agent policy without maintaining its own registry of which agent is which.
+The default schema includes a required, unique `name`, plus optional `model`, `modelProvider`, and `function` attributes. The schema's display setting selects the attribute used to label agents in the Console. It selects `name` by default and falls back to the agent ID when no display value is available. Selected attributes can also appear in the agent's access token, so a downstream service can apply policy using the agent's recorded attributes.
 
-See [Agent Schema](../../../guides/agents/agent-schema) for the attributes an agent can carry and
-[Attribute values](../../../guides/agents/manage-agents#attribute-values) for setting them on one agent.
+See [Agent Schema](../../../guides/agents/agent-schema) for the attributes an agent can carry and [Attribute values](../../../guides/agents/manage-agents#attribute-values) for setting them on one agent.
+
+## Agent Onboarding
+
+A travel team is ready to deploy two agents: one watches fares, and the other books trips for customers. Both need an owner and a record of the model they run. The booking assistant also needs the settings for acting on behalf of signed-in customers. A single fixed form leaves the team collecting some details elsewhere or returning to finish the setup later.
+
+In <ProductName />, the agent schema defines what to record, and an **onboarding flow** brings those fields into the creation process. A signed-in administrator follows the screens your organization has arranged. The travel team can put owner selection before the assistant's details, collect the schema attributes, and check them before creating the agent.
+
+The same onboarding system can serve both agents, with different inputs and access assignments:
+
+<AgentDocCards>
+<AgentDocCard title="Fare monitor: acts on its own" icon={<Bot size={22} />}>
+
+Its flow records the owner and schema attributes, creates credentials, and can assign a role for reading fares. The agent then works under its own identity.
+
+</AgentDocCard>
+<AgentDocCard title="Booking assistant: acts for users" icon={<UserCheck size={22} />}>
+
+Its flow also collects delegation settings and can assign booking roles or groups. Customer sign-in and consent happen later, when someone uses the assistant.
+
+</AgentDocCard>
+</AgentDocCards>
+
+You can use separate templates for these paths or let the administrator select the operating mode during onboarding. As your process changes, you can change the screens, conditions, and calls to external services in the flow. The required information stays part of creating the agent, rather than a task someone must remember afterward.
+
+See [Configure agent onboarding](../../../guides/agents/manage-agents#configure-agent-onboarding) for templates and configuration. For the choice between administrator-led onboarding and automated creation, see [Choose the Onboarding Process](../architecture-decisions#choose-the-onboarding-process).
 
 ## Owner
 
-Every agent record carries an **owner**, the person accountable for what it does. An agent outlives the sprint
-that produced it, and the owner is what keeps a running agent attached to somebody once that happens.
+Every agent record carries an **owner**, the person accountable for what it does. An agent outlives the sprint that produced it, and the owner is what keeps a running agent attached to somebody once that happens.
 
-The owner is a property you set and can update. <ProductName /> does not keep a history of previous owners, so
-if you need to reconstruct who was accountable at a past point in time, record that in whatever system already
-tracks ownership for the rest of your services.
+The owner is a property you set and can update. <ProductName /> does not keep a history of previous owners, so if you need to reconstruct who was accountable at a past point in time, record that in whatever system already tracks ownership for the rest of your services.
 
 ## Organization Unit
 
-An agent lives in an organization unit alongside the users, roles, and resource servers it works with. A single
-product uses the default unit and creates no others. Separate organization units matter when one instance
-serves businesses whose configuration must never mix.
+An agent lives in an organization unit alongside the users, roles, and resource servers it works with. A single product uses the default unit and creates no others. Separate organization units matter when one instance serves businesses whose configuration must never mix.
 
 See [Organization Units](../../../guides/organization-units/manage-organization-units).

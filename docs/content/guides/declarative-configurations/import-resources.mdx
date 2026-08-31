@@ -185,6 +185,27 @@ curl -X POST "https://localhost:8090/import" \
   }'
 ```
 
+## Agent Resources
+
+An agent resource stores its name in `attributes.name`. The agent type schema controls validation; the default type requires a unique string value for `name`.
+
+```yaml
+resource_type: agent
+id: 01900000-0000-7000-8000-000000000050
+type: default
+ouId: "<organization-unit-id>"
+owner: "<owner-user-id>"
+attributes:
+  name: Calendar Agent
+  modelProvider: anthropic
+```
+
+Replace the organization unit and owner placeholders with existing IDs. This example creates an agent record without an OAuth profile. Include `inboundAuthConfig` when the agent needs OAuth credentials. See [Create and Manage Agents](../../agents/manage-agents).
+
+The Console import summary resolves each agent's label using the agent type's `systemAttributes.display` setting, which selects `name` by default. It checks agent types in the import bundle first, then types on the server. If no display value is available, it shows the agent ID. An import document with neither a display value nor an ID shows an unnamed-agent label.
+
+The resolved label is not a separate `name` or `display` field in the resource. Store attribute values under `attributes`; configure the display mapping on the agent type. See [Agent Schema](../../agents/agent-schema#display-attribute).
+
 ## Cross-Resource References by Handle
 
 Instead of embedding environment-specific resource identifiers in YAML files, you can reference organization units and flows by their human-readable handles. The importer resolves each handle to its resource identifier at import time, making the same YAML portable across environments.
