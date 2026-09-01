@@ -6,18 +6,17 @@ import type {BlogPostContextValue} from '@docusaurus/plugin-content-blog/client'
 import {Box, Typography} from '@wso2/oxygen-ui';
 import {ArrowLeft, ArrowRight} from '@wso2/oxygen-ui-icons-react';
 import {JSX} from 'react';
-import BlogAvatar from './BlogAvatar';
+import BlogAuthorGroup from './BlogAuthorGroup';
 import useIsDarkMode from '../../hooks/useIsDarkMode';
 
 export default function BlogPostFooterNav({content}: {content: BlogPostContextValue}): JSX.Element {
   const isLight = !useIsDarkMode();
   const {metadata} = content;
-  const author = metadata.authors[0];
   const {prevItem, nextItem} = metadata;
 
   return (
     <Box sx={{mt: 6}}>
-      {author && (
+      {metadata.authors.length > 0 && (
         <Box
           sx={{
             p: 3,
@@ -25,20 +24,15 @@ export default function BlogPostFooterNav({content}: {content: BlogPostContextVa
             borderColor: isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)',
             borderRadius: '16px',
             bgcolor: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)',
-            display: 'flex',
-            gap: 2.25,
-            alignItems: 'flex-start',
           }}
         >
-          <BlogAvatar name={author.name ?? ''} imageURL={author.imageURL} size={52} />
-          <Box>
-            <Typography sx={{fontSize: '15px', fontWeight: 600, color: 'text.primary', mb: 0.5}}>{author.name}</Typography>
-            {(author.description ?? author.title) && (
-              <Typography sx={{fontSize: '12.5px', color: isLight ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)'}}>
-                {author.description ?? author.title}
-              </Typography>
-            )}
-          </Box>
+          <BlogAuthorGroup
+            authors={metadata.authors}
+            avatarSize={52}
+            isLight={isLight}
+            nameFontSize="15px"
+            subtitleFontSize="12.5px"
+          />
         </Box>
       )}
 

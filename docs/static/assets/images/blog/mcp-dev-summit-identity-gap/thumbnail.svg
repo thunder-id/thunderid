@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 420" role="img" aria-label="Three altitudes of the MCP identity gap: an ambient agent, an MCP host, and an on-behalf-of enterprise call, all converging on one unanswered question of who is calling">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#152a5e" />
+      <stop offset="100%" stop-color="#3f6fe0" />
+    </linearGradient>
+    <radialGradient id="hubGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffb066" stop-opacity="0.55" />
+      <stop offset="100%" stop-color="#ffb066" stop-opacity="0" />
+    </radialGradient>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M28 0H0V28" fill="none" stroke="rgba(255,255,255,0.055)" stroke-width="1" />
+    </pattern>
+    <radialGradient id="fade" cx="50%" cy="46%" r="72%">
+      <stop offset="0%" stop-color="#fff" />
+      <stop offset="100%" stop-color="#000" />
+    </radialGradient>
+    <mask id="gridMask">
+      <rect width="1000" height="420" fill="url(#fade)" />
+    </mask>
+  </defs>
+
+  <rect width="1000" height="420" fill="url(#bg)" />
+  <rect width="1000" height="420" fill="url(#grid)" mask="url(#gridMask)" />
+
+  <!-- connectors: three altitudes converging on one shared question -->
+  <g stroke="rgba(255,255,255,0.4)" stroke-width="2.2" stroke-dasharray="5 7" fill="none">
+    <path d="M300,144 L458,206" />
+    <path d="M500,144 L500,202" />
+    <path d="M700,144 L542,206" />
+  </g>
+
+  <!-- node: ambient / headless agent -->
+  <g transform="translate(300,110)">
+    <circle r="34" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.28)" stroke-width="1.6" />
+    <rect x="-13" y="-10" width="26" height="19" rx="5" fill="none" stroke="#8bf9fa" stroke-width="2.2" />
+    <circle cx="-6" cy="-0.5" r="2.2" fill="#8bf9fa" />
+    <circle cx="6" cy="-0.5" r="2.2" fill="#8bf9fa" />
+    <line x1="0" y1="-10" x2="0" y2="-16" stroke="#8bf9fa" stroke-width="2.2" />
+    <circle cx="0" cy="-18.5" r="2.4" fill="#8bf9fa" />
+  </g>
+
+  <!-- node: mcp host -->
+  <g transform="translate(500,110)">
+    <circle r="34" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.28)" stroke-width="1.6" />
+    <rect x="-13" y="-13" width="26" height="10" rx="3" fill="none" stroke="#8bf9fa" stroke-width="2" />
+    <rect x="-13" y="3" width="26" height="10" rx="3" fill="none" stroke="#8bf9fa" stroke-width="2" />
+    <circle cx="-7" cy="-8" r="1.9" fill="#8bf9fa" />
+    <circle cx="-7" cy="8" r="1.9" fill="#8bf9fa" />
+  </g>
+
+  <!-- node: on-behalf-of enterprise call -->
+  <g transform="translate(700,110)">
+    <circle r="34" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.28)" stroke-width="1.6" />
+    <circle cx="0" cy="-6" r="8.5" fill="none" stroke="#8bf9fa" stroke-width="2.2" />
+    <path d="M-15,17 a15,14 0 0 1 30,0" fill="none" stroke="#8bf9fa" stroke-width="2.2" />
+  </g>
+
+  <!-- shared hub: the unanswered question -->
+  <circle cx="500" cy="240" r="92" fill="url(#hubGlow)" />
+  <circle cx="500" cy="240" r="50" fill="rgba(21,42,94,0.92)" stroke="#ffb066" stroke-width="2.4" />
+  <text x="500" y="257" text-anchor="middle" fill="#ffb066" font-family="'Plus Jakarta Sans', 'Inter', system-ui, sans-serif" font-weight="800" font-size="46">?</text>
+
+  <text x="500" y="345" text-anchor="middle" fill="#fff" font-family="'Plus Jakarta Sans', 'Inter', system-ui, sans-serif" font-weight="800" font-size="34" letter-spacing="-0.01em">WHO'S CALLING?</text>
+  <text x="500" y="373" text-anchor="middle" fill="rgba(255,255,255,0.62)" font-family="monospace" font-size="13" letter-spacing="0.08em">AMBIENT &#183; HOST &#183; ENTERPRISE</text>
+</svg>
