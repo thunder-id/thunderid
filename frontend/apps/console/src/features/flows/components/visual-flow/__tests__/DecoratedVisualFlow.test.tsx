@@ -38,6 +38,8 @@ const {mockFlowConfigState, mockSetFlowEdges} = vi.hoisted(() => ({
 vi.mock('../../../hooks/useFlowConfig', () => ({
   default: () => ({
     isFlowMetadataLoading: false,
+    isMiniMapVisible: true,
+    isSnapToGridEnabled: false,
     isVerboseMode: mockFlowConfigState.isVerboseMode,
     metadata: undefined,
     setFlowNodes: vi.fn(),
@@ -45,9 +47,17 @@ vi.mock('../../../hooks/useFlowConfig', () => ({
   }),
 }));
 
+const {mockOnResourceDropOnCanvas, mockSetLastInteractedResource, mockSetLastInteractedStepId} = vi.hoisted(() => ({
+  mockOnResourceDropOnCanvas: vi.fn(),
+  mockSetLastInteractedResource: vi.fn(),
+  mockSetLastInteractedStepId: vi.fn(),
+}));
+
 vi.mock('../../../hooks/useInteractionState', () => ({
   default: () => ({
-    onResourceDropOnCanvas: vi.fn(),
+    onResourceDropOnCanvas: mockOnResourceDropOnCanvas,
+    setLastInteractedResource: mockSetLastInteractedResource,
+    setLastInteractedStepId: mockSetLastInteractedStepId,
   }),
 }));
 
@@ -142,16 +152,25 @@ vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
 }));
 
 // Use vi.hoisted for mocks that need to be referenced in vi.mock
-const {mockToObject, mockGetNodes, mockGetEdges, mockUpdateNodeData, mockFitView, mockUpdateNodeInternals} = vi.hoisted(
-  () => ({
-    mockToObject: vi.fn(() => ({viewport: {x: 0, y: 0, zoom: 1}})),
-    mockGetNodes: vi.fn((): Node[] => []),
-    mockGetEdges: vi.fn((): Edge[] => []),
-    mockUpdateNodeData: vi.fn(),
-    mockFitView: vi.fn().mockResolvedValue(undefined),
-    mockUpdateNodeInternals: vi.fn(),
-  }),
-);
+const {
+  mockToObject,
+  mockGetNodes,
+  mockGetEdges,
+  mockUpdateNodeData,
+  mockFitView,
+  mockUpdateNodeInternals,
+  mockDeleteElements,
+  mockScreenToFlowPosition,
+} = vi.hoisted(() => ({
+  mockToObject: vi.fn(() => ({viewport: {x: 0, y: 0, zoom: 1}})),
+  mockGetNodes: vi.fn((): Node[] => []),
+  mockGetEdges: vi.fn((): Edge[] => []),
+  mockUpdateNodeData: vi.fn(),
+  mockFitView: vi.fn().mockResolvedValue(undefined),
+  mockUpdateNodeInternals: vi.fn(),
+  mockDeleteElements: vi.fn().mockResolvedValue(undefined),
+  mockScreenToFlowPosition: vi.fn((position: {x: number; y: number}) => position),
+}));
 
 vi.mock('@xyflow/react', () => ({
   Position: {Bottom: 'bottom', Left: 'left', Right: 'right', Top: 'top'},
@@ -161,6 +180,8 @@ vi.mock('@xyflow/react', () => ({
     getEdges: mockGetEdges,
     updateNodeData: mockUpdateNodeData,
     fitView: mockFitView,
+    deleteElements: mockDeleteElements,
+    screenToFlowPosition: mockScreenToFlowPosition,
   }),
   useStore: (selector: (state: {nodes: never[]; edges: never[]}) => unknown) => selector({edges: [], nodes: []}),
   useStoreApi: () => ({
@@ -254,13 +275,47 @@ vi.mock('classnames', () => ({
 
 // Mock child components
 vi.mock('../VisualFlow', () => ({
-  default: ({nodes, edges, onNodeDragStop, onNodeClick}: any) => (
+  default: ({
+    nodes,
+    edges,
+    onNodeDragStop,
+    onNodeClick,
+    onNodeContextMenu,
+    onPaneContextMenu,
+    showMiniMap,
+    snapToGrid,
+  }: any) => (
     <div
       data-testid="visual-flow"
       data-nodes={JSON.stringify(nodes)}
       data-edges={JSON.stringify(edges)}
       data-has-drag-stop={!!onNodeDragStop}
+      data-show-mini-map={String(showMiniMap)}
+      data-snap-to-grid={String(snapToGrid)}
     >
+      <button
+        data-testid="node-context-menu-trigger"
+        onClick={() =>
+          (onNodeContextMenu as ((e: unknown, n: unknown) => void) | undefined)?.(
+            {preventDefault: () => null, clientX: 111, clientY: 222},
+            (nodes as Node[]).find((node) => node.id === 'ctx-node') ?? {id: 'ctx-node', position: {x: 0, y: 0}},
+          )
+        }
+      >
+        Node Context Menu
+      </button>
+      <button
+        data-testid="pane-context-menu-trigger"
+        onClick={() =>
+          (onPaneContextMenu as ((e: unknown) => void) | undefined)?.({
+            preventDefault: () => null,
+            clientX: 40,
+            clientY: 50,
+          })
+        }
+      >
+        Pane Context Menu
+      </button>
       <button data-testid="node-drag-stop-trigger" onClick={onNodeDragStop}>
         Node Drag Stop
       </button>
@@ -558,6 +613,226 @@ describe('DecoratedVisualFlow', () => {
 
       const saveButton = screen.getByTestId('save-flow-button');
       expect(() => fireEvent.click(saveButton)).not.toThrow();
+    });
+  });
+
+  describe('Keyboard Shortcuts', () => {
+    it('should save on Ctrl+S', () => {
+      const mockOnSave = vi.fn();
+      renderComponent(<DecoratedVisualFlow {...defaultProps} onSave={mockOnSave} />);
+
+      fireEvent.keyDown(window, {key: 's', ctrlKey: true});
+
+      expect(mockOnSave).toHaveBeenCalledTimes(1);
+    });
+
+    it('should save on Cmd+S', () => {
+      const mockOnSave = vi.fn();
+      renderComponent(<DecoratedVisualFlow {...defaultProps} onSave={mockOnSave} />);
+
+      fireEvent.keyDown(window, {key: 's', metaKey: true});
+
+      expect(mockOnSave).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not save on Ctrl+S while typing in a text field', () => {
+      const mockOnSave = vi.fn();
+      renderComponent(<DecoratedVisualFlow {...defaultProps} onSave={mockOnSave} />);
+
+      const input = document.createElement('input');
+      document.body.appendChild(input);
+      fireEvent.keyDown(input, {key: 's', ctrlKey: true});
+      input.remove();
+
+      expect(mockOnSave).not.toHaveBeenCalled();
+    });
+
+    it('should not save on a plain S keypress', () => {
+      const mockOnSave = vi.fn();
+      renderComponent(<DecoratedVisualFlow {...defaultProps} onSave={mockOnSave} />);
+
+      fireEvent.keyDown(window, {key: 's'});
+
+      expect(mockOnSave).not.toHaveBeenCalled();
+    });
+
+    it('should duplicate the selected nodes on Ctrl+D', () => {
+      const selectedNode: Node = {
+        id: 'view_orig',
+        type: 'VIEW',
+        position: {x: 10, y: 20},
+        data: {},
+        selected: true,
+        deletable: true,
+      };
+      mockGetNodes.mockReturnValue([selectedNode]);
+      const setNodes = vi.fn();
+
+      renderComponent(<DecoratedVisualFlow {...defaultProps} setNodes={setNodes} />);
+
+      fireEvent.keyDown(window, {key: 'd', ctrlKey: true});
+
+      expect(setNodes).toHaveBeenCalledTimes(1);
+      const updater = setNodes.mock.calls[0][0] as (nodes: Node[]) => Node[];
+      const result = updater([selectedNode]);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].selected).toBe(false);
+      expect(result[1].id).toBe('view_test123');
+      expect(result[1].selected).toBe(true);
+      expect(result[1].position).toEqual({x: 58, y: 68});
+    });
+
+    it('should not duplicate protected nodes on Ctrl+D', () => {
+      mockGetNodes.mockReturnValue([
+        {id: 'start', type: 'START', position: {x: 0, y: 0}, data: {}, selected: true, deletable: false},
+      ]);
+      const setNodes = vi.fn();
+
+      renderComponent(<DecoratedVisualFlow {...defaultProps} setNodes={setNodes} />);
+
+      fireEvent.keyDown(window, {key: 'd', ctrlKey: true});
+
+      expect(setNodes).not.toHaveBeenCalled();
+    });
+
+    it('should do nothing on Ctrl+D with no selection', () => {
+      mockGetNodes.mockReturnValue([{id: 'view_1', type: 'VIEW', position: {x: 0, y: 0}, data: {}}]);
+      const setNodes = vi.fn();
+
+      renderComponent(<DecoratedVisualFlow {...defaultProps} setNodes={setNodes} />);
+
+      fireEvent.keyDown(window, {key: 'd', ctrlKey: true});
+
+      expect(setNodes).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Canvas Context Menu', () => {
+    const contextNode: Node = {
+      id: 'ctx-node',
+      type: 'TASK_EXECUTION',
+      position: {x: 10, y: 20},
+      data: {action: {executor: {name: 'OTPExecutor'}}},
+      deletable: true,
+    };
+
+    it('should open the node menu on node right-click', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} nodes={[contextNode]} />);
+
+      fireEvent.click(screen.getByTestId('node-context-menu-trigger'));
+
+      expect(screen.getByTestId('canvas-context-menu-duplicate')).toBeInTheDocument();
+      expect(screen.getByTestId('canvas-context-menu-delete')).toBeInTheDocument();
+    });
+
+    it('should duplicate the node from the menu', () => {
+      const setNodes = vi.fn();
+      renderComponent(<DecoratedVisualFlow {...defaultProps} nodes={[contextNode]} setNodes={setNodes} />);
+
+      fireEvent.click(screen.getByTestId('node-context-menu-trigger'));
+      fireEvent.click(screen.getByTestId('canvas-context-menu-duplicate'));
+
+      expect(setNodes).toHaveBeenCalledTimes(1);
+      const updater = setNodes.mock.calls[0][0] as (nodes: Node[]) => Node[];
+      const result = updater([contextNode]);
+      expect(result).toHaveLength(2);
+      expect(result[1].id).toBe('task_execution_test123');
+    });
+
+    it('should delete the node from the menu', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} nodes={[contextNode]} />);
+
+      fireEvent.click(screen.getByTestId('node-context-menu-trigger'));
+      fireEvent.click(screen.getByTestId('canvas-context-menu-delete'));
+
+      expect(mockDeleteElements).toHaveBeenCalledWith({nodes: [{id: 'ctx-node'}]});
+    });
+
+    it('should open the node properties from the menu', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} nodes={[contextNode]} />);
+
+      fireEvent.click(screen.getByTestId('node-context-menu-trigger'));
+      fireEvent.click(screen.getByTestId('canvas-context-menu-open-properties'));
+
+      expect(mockSetLastInteractedStepId).toHaveBeenCalledWith('ctx-node');
+      expect(mockSetLastInteractedResource).toHaveBeenCalledWith(
+        expect.objectContaining({id: 'ctx-node', type: 'EXECUTION'}),
+      );
+    });
+
+    it('should start the preview from the node via the menu', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} nodes={[contextNode]} />);
+
+      fireEvent.click(screen.getByTestId('node-context-menu-trigger'));
+      fireEvent.click(screen.getByTestId('canvas-context-menu-preview'));
+
+      expect(screen.getByTestId('simulate-flow-button')).toHaveTextContent(/stop preview/i);
+    });
+
+    it('should open the pane menu on canvas right-click', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      fireEvent.click(screen.getByTestId('pane-context-menu-trigger'));
+
+      expect(screen.getByTestId('canvas-context-menu-add-step')).toBeInTheDocument();
+      expect(screen.getByTestId('canvas-context-menu-auto-layout')).toBeInTheDocument();
+      expect(screen.getByTestId('canvas-context-menu-fit-view')).toBeInTheDocument();
+    });
+
+    it('should add a step at the clicked canvas position', () => {
+      const stepResource = {
+        type: 'VIEW',
+        category: 'INTERFACE',
+        resourceType: 'STEP',
+        display: {label: 'Blank View', image: '', showOnResourcePanel: true},
+      };
+      const resources = {...defaultProps.resources, steps: [stepResource]} as unknown as Resources;
+      const setNodes = vi.fn();
+      const onStepLoad = vi.fn((step) => step);
+
+      renderComponent(
+        <DecoratedVisualFlow {...defaultProps} resources={resources} setNodes={setNodes} onStepLoad={onStepLoad} />,
+      );
+
+      fireEvent.click(screen.getByTestId('pane-context-menu-trigger'));
+      fireEvent.click(screen.getByTestId('canvas-context-menu-add-step'));
+      fireEvent.click(screen.getByTestId('canvas-context-menu-add-step-0'));
+
+      expect(mockScreenToFlowPosition).toHaveBeenCalledWith({x: 40, y: 50});
+      expect(onStepLoad).toHaveBeenCalledTimes(1);
+      expect(setNodes).toHaveBeenCalledTimes(1);
+      const updater = setNodes.mock.calls[0][0] as (nodes: Node[]) => Node[];
+      const result = updater([]);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        id: 'view_test123',
+        type: 'VIEW',
+        deletable: true,
+        position: {x: 40, y: 50},
+      });
+      expect(mockOnResourceDropOnCanvas).toHaveBeenCalledWith(result[0], '');
+    });
+
+    it('should run auto-layout from the pane menu', () => {
+      mockGetNodes.mockReturnValue([
+        {id: 'a', position: {x: 0, y: 0}, data: {}},
+        {id: 'b', position: {x: 10, y: 10}, data: {}},
+      ]);
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      fireEvent.click(screen.getByTestId('pane-context-menu-trigger'));
+      fireEvent.click(screen.getByTestId('canvas-context-menu-auto-layout'));
+
+      expect(mockApplyAutoLayout).toHaveBeenCalled();
+    });
+
+    it('should pass minimap and snap-to-grid state to VisualFlow', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      const visualFlow = screen.getByTestId('visual-flow');
+      expect(visualFlow).toHaveAttribute('data-show-mini-map', 'true');
+      expect(visualFlow).toHaveAttribute('data-snap-to-grid', 'false');
     });
   });
 

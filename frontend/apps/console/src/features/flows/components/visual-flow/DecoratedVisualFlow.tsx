@@ -17,6 +17,7 @@ import {
   useUpdateNodeInternals,
 } from '@xyflow/react';
 import type {UpdateNodeInternals} from '@xyflow/system';
+import cloneDeep from 'lodash-es/cloneDeep';
 import {
   type Dispatch,
   useCallback,
@@ -31,6 +32,7 @@ import {
 } from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import CanvasContextMenu, {type CanvasContextMenuTarget} from './CanvasContextMenu';
 import CanvasToolbar from './CanvasToolbar';
 import DiscardChangesDialog from './DiscardChangesDialog';
 import FormRequiresViewDialog from './FormRequiresViewDialog';
@@ -64,8 +66,10 @@ import {StepTypes, type Step, type StepData} from '../../models/steps';
 import {type Template} from '../../models/templates';
 import type {Widget} from '../../models/widget';
 import applyAutoLayout, {hasUnpositionedNodes} from '../../utils/applyAutoLayout';
+import buildStepPropertiesResource from '../../utils/buildStepPropertiesResource';
 import {EXECUTION_STACK_NODE_TYPE, getExecutionStackWidth} from '../../utils/compactGraphTransforms';
 import computeExecutorConnections from '../../utils/computeExecutorConnections';
+import {canDuplicateNode, duplicateFlowNode} from '../../utils/duplicateFlowNode';
 import generateResourceId from '../../utils/generateResourceId';
 import {resolveCollisions} from '../../utils/resolveCollisions';
 import {
@@ -191,14 +195,22 @@ function DecoratedVisualFlow({
   useConfirmPasswordField();
   useStaticContentField();
 
-  const {toObject, getNodes, getEdges, updateNodeData, fitView} = useReactFlow();
+  const {toObject, getNodes, getEdges, updateNodeData, fitView, deleteElements, screenToFlowPosition} = useReactFlow();
   const updateNodeInternals: UpdateNodeInternals = useUpdateNodeInternals();
   const {deleteComponent} = useComponentDelete();
   const {isResourcePanelOpen, isResourcePropertiesPanelOpen, setIsResourcePanelOpen, setIsOpenResourcePropertiesPanel} =
     useUIPanelState();
   const {notifyElementAdded, onAutoLayout} = useFlowEvents();
-  const {isFlowMetadataLoading, isVerboseMode, metadata, setFlowNodes, setFlowEdges} = useFlowConfig();
-  const {onResourceDropOnCanvas} = useInteractionState();
+  const {
+    isFlowMetadataLoading,
+    isMiniMapVisible,
+    isSnapToGridEnabled,
+    isVerboseMode,
+    metadata,
+    setFlowNodes,
+    setFlowEdges,
+  } = useFlowConfig();
+  const {onResourceDropOnCanvas, setLastInteractedResource, setLastInteractedStepId} = useInteractionState();
 
   // Sync controlled nodes to the shared FlowConfig context so that
   // ValidationProvider (which sits above this ReactFlowProvider) can
@@ -497,6 +509,180 @@ function DecoratedVisualFlow({
     }
     persistCanvas();
   }, [isSimulationActive, stopSimulation, fitView, persistCanvas]);
+
+  // Duplicates the given nodes into the source graph state. Copies come back
+  // selected and the originals deselected, so the duplicate is what a follow-up
+  // drag, delete, or repeat-duplicate acts on.
+  const handleDuplicateNodes = useCallback(
+    (nodesToCopy: Node[]): void => {
+      const duplicable = nodesToCopy.filter(canDuplicateNode);
+      if (duplicable.length === 0) {
+        return;
+      }
+      setNodes((currentNodes: Node[]) => {
+        const takenIds = new Set(currentNodes.map((node: Node) => node.id));
+        const copies = duplicable.map((node: Node) => {
+          const copy = duplicateFlowNode(node, takenIds);
+          takenIds.add(copy.id);
+          return copy;
+        });
+        return [...currentNodes.map((node: Node) => (node.selected ? {...node, selected: false} : node)), ...copies];
+      });
+    },
+    [setNodes],
+  );
+
+  const handleDuplicateSelection = useCallback((): void => {
+    if (isSimulationActive) {
+      return;
+    }
+    handleDuplicateNodes(getNodes().filter((node: Node) => node.selected));
+  }, [isSimulationActive, getNodes, handleDuplicateNodes]);
+
+  // Canvas keyboard accelerators: Ctrl/Cmd+S saves, Ctrl/Cmd+D duplicates the
+  // selection. Delete/Backspace removal is handled by React Flow itself. Typing
+  // contexts are skipped so text editing keeps its native shortcuts.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey)) {
+        return;
+      }
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          target.closest('[contenteditable="true"]'))
+      ) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === 's') {
+        // Always claimed, so the browser's save dialog never appears over the
+        // builder. An invalid flow still routes through the save handler, which
+        // explains the rejection instead of silently dropping the keystroke.
+        event.preventDefault();
+        if (onSave) {
+          handleSave();
+        }
+      } else if (key === 'd') {
+        event.preventDefault();
+        handleDuplicateSelection();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSave, handleDuplicateSelection, onSave]);
+
+  // ── Canvas context menu ──
+  const [contextMenuTarget, setContextMenuTarget] = useState<CanvasContextMenuTarget | null>(null);
+
+  const handleNodeContextMenu = useCallback(
+    (event: ReactMouseEvent, node: Node): void => {
+      event.preventDefault();
+      if (isSimulationActive) {
+        return;
+      }
+      setContextMenuTarget({kind: 'node', nodeId: node.id, position: {left: event.clientX, top: event.clientY}});
+    },
+    [isSimulationActive],
+  );
+
+  const handlePaneContextMenu = useCallback(
+    (event: ReactMouseEvent | MouseEvent): void => {
+      event.preventDefault();
+      if (isSimulationActive) {
+        return;
+      }
+      setContextMenuTarget({kind: 'pane', position: {left: event.clientX, top: event.clientY}});
+    },
+    [isSimulationActive],
+  );
+
+  const closeContextMenu = useCallback((): void => setContextMenuTarget(null), []);
+
+  const contextMenuNode: Node | null = useMemo(
+    () =>
+      contextMenuTarget?.kind === 'node'
+        ? (nodes.find((node: Node) => node.id === contextMenuTarget.nodeId) ?? null)
+        : null,
+    [contextMenuTarget, nodes],
+  );
+
+  const contextMenuHasProperties = useMemo(
+    () => (contextMenuNode ? buildStepPropertiesResource(contextMenuNode, resources.steps ?? []) !== null : false),
+    [contextMenuNode, resources.steps],
+  );
+
+  const handleContextDuplicate = useCallback((): void => {
+    if (contextMenuNode) {
+      handleDuplicateNodes([contextMenuNode]);
+    }
+  }, [contextMenuNode, handleDuplicateNodes]);
+
+  const handleContextDelete = useCallback((): void => {
+    if (contextMenuNode) {
+      deleteElements({nodes: [{id: contextMenuNode.id}]}).catch(() => null);
+    }
+  }, [contextMenuNode, deleteElements]);
+
+  const handleContextOpenProperties = useCallback((): void => {
+    if (!contextMenuNode) {
+      return;
+    }
+    const propertiesResource = buildStepPropertiesResource(contextMenuNode, resources.steps ?? []);
+    if (!propertiesResource) {
+      return;
+    }
+    setLastInteractedStepId(contextMenuNode.id);
+    setLastInteractedResource(propertiesResource);
+  }, [contextMenuNode, resources.steps, setLastInteractedStepId, setLastInteractedResource]);
+
+  const handleContextPreviewFromStep = useCallback((): void => {
+    if (contextMenuNode) {
+      simulation.startAt(contextMenuNode.id);
+    }
+  }, [contextMenuNode, simulation]);
+
+  // Same list the resource panel's step section shows.
+  const addableStepResources = useMemo(
+    () => (resources.steps ?? []).filter((step) => step.display?.showOnResourcePanel !== false),
+    [resources.steps],
+  );
+
+  // Mirrors the resource panel's add-step path (useResourceAdd), but places the
+  // step at the right-clicked canvas position instead of the viewport center.
+  const handleContextAddStep = useCallback(
+    (stepResource: Resource): void => {
+      const menuPosition = contextMenuTarget?.position;
+      if (!menuPosition) {
+        return;
+      }
+      const position = screenToFlowPosition({x: menuPosition.left, y: menuPosition.top});
+      const clonedResource = cloneDeep(stepResource);
+      const generatedStep: Step = onStepLoad({
+        ...clonedResource,
+        data: {components: [], ...(clonedResource.data ?? {})},
+        deletable: true,
+        id: generateResourceId(clonedResource.type.toLowerCase()),
+        position,
+      } as Step);
+      setNodes((prevNodes: Node[]) => [...prevNodes, generatedStep]);
+      onResourceDropOnCanvas(generatedStep, '');
+    },
+    [contextMenuTarget, screenToFlowPosition, onStepLoad, setNodes, onResourceDropOnCanvas],
+  );
+
+  const handleContextAutoLayout = useCallback((): void => {
+    handleAutoLayout();
+  }, [handleAutoLayout]);
+
+  const handleContextFitView = useCallback((): void => {
+    fitView({padding: 0.2, duration: 300}).catch(() => {
+      // Ignore fitView errors - fitting is best-effort
+    });
+  }, [fitView]);
 
   // Derived presentation state: while simulating, dim everything off the walked
   // path and animate the traversed edges. Returns the original arrays untouched
@@ -1092,6 +1278,10 @@ function DecoratedVisualFlow({
                     onNodeClick={handleNodeClick}
                     onEdgeMouseEnter={handleEdgeMouseEnter}
                     onEdgeMouseLeave={handleEdgeMouseLeave}
+                    onNodeContextMenu={handleNodeContextMenu}
+                    onPaneContextMenu={handlePaneContextMenu}
+                    showMiniMap={isMiniMapVisible}
+                    snapToGrid={isSnapToGridEnabled}
                     {...rest}
                   />
                 </EdgePathsProvider>
@@ -1130,6 +1320,21 @@ function DecoratedVisualFlow({
         </StepPreviewContext.Provider>
       </Box>
 
+      <CanvasContextMenu
+        target={contextMenuTarget}
+        onClose={closeContextMenu}
+        canDuplicate={contextMenuNode ? canDuplicateNode(contextMenuNode) : false}
+        canDelete={Boolean(contextMenuNode) && contextMenuNode?.deletable !== false}
+        hasProperties={contextMenuHasProperties}
+        onDuplicate={handleContextDuplicate}
+        onDelete={handleContextDelete}
+        onOpenProperties={handleContextOpenProperties}
+        onPreviewFromStep={handleContextPreviewFromStep}
+        addableSteps={addableStepResources}
+        onAddStep={handleContextAddStep}
+        onAutoLayout={handleContextAutoLayout}
+        onFitView={handleContextFitView}
+      />
       <FormRequiresViewDialog
         open={isContainerDialogOpen}
         scenario={dropScenario}

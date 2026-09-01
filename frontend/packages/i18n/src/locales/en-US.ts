@@ -4064,6 +4064,20 @@ const translations = {
     'core.headerPanel.edgeStyles.bezier': 'Bezier',
     'core.headerPanel.edgeStyles.smoothStep': 'Smooth Step',
     'core.headerPanel.edgeStyles.step': 'Step',
+    'core.headerPanel.fitView': 'Fit view',
+    'core.headerPanel.snapToGrid': 'Snap to grid',
+    'core.headerPanel.snapToGridEnableTooltip': 'Enable snap to grid',
+    'core.headerPanel.snapToGridDisableTooltip': 'Disable snap to grid',
+    'core.headerPanel.miniMap': 'Minimap',
+    'core.headerPanel.miniMapShowTooltip': 'Show minimap',
+    'core.headerPanel.miniMapHideTooltip': 'Hide minimap',
+
+    // Canvas context menu
+    'core.contextMenu.duplicate': 'Duplicate',
+    'core.contextMenu.openProperties': 'Open properties',
+    'core.contextMenu.previewFromStep': 'Preview from this step',
+    'core.contextMenu.delete': 'Delete',
+    'core.contextMenu.addStep': 'Add step',
 
     // Flow simulation (preview mode)
     'core.simulation.stepCount_one': 'Step {{count}}',

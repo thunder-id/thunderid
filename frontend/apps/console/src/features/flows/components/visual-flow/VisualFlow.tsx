@@ -2,8 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useColorScheme} from '@wso2/oxygen-ui';
-import {Background, type EdgeTypes, type NodeTypes, ReactFlow, type ReactFlowProps} from '@xyflow/react';
+import {
+  Background,
+  MiniMap,
+  type EdgeTypes,
+  type Node,
+  type NodeTypes,
+  ReactFlow,
+  type ReactFlowProps,
+} from '@xyflow/react';
 import type {CSSProperties, ReactElement} from 'react';
+import {StaticStepTypes, StepTypes} from '../../models/steps';
 import '@xyflow/react/dist/style.css';
 
 /**
@@ -18,6 +27,27 @@ export interface VisualFlowPropsInterface extends ReactFlowProps {
    * Node types to be rendered.
    */
   nodeTypes?: NodeTypes;
+  /**
+   * Whether the navigation minimap is shown.
+   */
+  showMiniMap?: boolean;
+}
+
+/**
+ * Colors minimap nodes by step type so the flow's shape reads at a glance:
+ * green entry, red exit, primary-colored screens, muted everything else.
+ */
+function getMiniMapNodeColor(node: Node): string {
+  switch (node.type) {
+    case StaticStepTypes.Start:
+      return 'var(--oxygen-palette-success-main)';
+    case StepTypes.End:
+      return 'var(--oxygen-palette-error-main)';
+    case StepTypes.View:
+      return 'var(--oxygen-palette-primary-main)';
+    default:
+      return 'var(--oxygen-palette-action-disabled)';
+  }
 }
 
 /**
@@ -41,6 +71,10 @@ function VisualFlow({
   onEdgeClick,
   onEdgeMouseEnter,
   onEdgeMouseLeave,
+  onNodeContextMenu,
+  onPaneContextMenu,
+  showMiniMap = false,
+  snapToGrid = false,
 }: VisualFlowPropsInterface): ReactElement {
   const {mode, systemMode} = useColorScheme();
 
@@ -64,6 +98,11 @@ function VisualFlow({
       onEdgeClick={onEdgeClick}
       onEdgeMouseEnter={onEdgeMouseEnter}
       onEdgeMouseLeave={onEdgeMouseLeave}
+      onNodeContextMenu={onNodeContextMenu}
+      onPaneContextMenu={onPaneContextMenu}
+      deleteKeyCode={['Backspace', 'Delete']}
+      snapToGrid={snapToGrid}
+      snapGrid={[20, 20]}
       proOptions={{hideAttribution: true}}
       colorMode={colorMode}
       minZoom={0.2}
@@ -76,6 +115,16 @@ function VisualFlow({
       }
     >
       <Background gap={20} />
+      {showMiniMap && (
+        <MiniMap
+          pannable
+          zoomable
+          position="bottom-right"
+          nodeColor={getMiniMapNodeColor}
+          nodeStrokeColor="transparent"
+          style={{borderRadius: 8, overflow: 'hidden'}}
+        />
+      )}
     </ReactFlow>
   );
 }

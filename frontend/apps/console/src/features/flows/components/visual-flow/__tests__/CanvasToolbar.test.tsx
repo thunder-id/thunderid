@@ -54,6 +54,10 @@ describe('CanvasToolbar', () => {
     setIsVerboseMode: vi.fn(),
     edgeStyle: EdgeStyleTypes.SmoothStep,
     setEdgeStyle: vi.fn(),
+    isSnapToGridEnabled: false,
+    setIsSnapToGridEnabled: vi.fn(),
+    isMiniMapVisible: true,
+    setIsMiniMapVisible: vi.fn(),
     flowNodeTypes: {},
     flowEdgeTypes: {},
     setFlowNodeTypes: vi.fn(),
@@ -224,6 +228,60 @@ describe('CanvasToolbar', () => {
 
       expect(setIsVerboseMode).toHaveBeenCalledTimes(1);
       const updater = setIsVerboseMode.mock.calls[0][0] as (prev: boolean) => boolean;
+      expect(updater(true)).toBe(false);
+      expect(updater(false)).toBe(true);
+    });
+  });
+
+  describe('Snap to grid toggle', () => {
+    const renderWithConfig = (overrides: Partial<FlowConfigContextProps>) =>
+      render(
+        <FlowConfigContext.Provider value={{...defaultFlowConfigValue, ...overrides}}>
+          <CanvasToolbar onAutoLayout={mockOnAutoLayout} />
+        </FlowConfigContext.Provider>,
+      );
+
+    it('should report the snap-to-grid state via aria-pressed', () => {
+      renderWithConfig({isSnapToGridEnabled: false});
+
+      expect(screen.getByRole('button', {name: 'Snap to grid'})).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('should flip the snap-to-grid state when the toggle is clicked', () => {
+      const setIsSnapToGridEnabled = vi.fn();
+      renderWithConfig({isSnapToGridEnabled: false, setIsSnapToGridEnabled});
+
+      fireEvent.click(screen.getByRole('button', {name: 'Snap to grid'}));
+
+      expect(setIsSnapToGridEnabled).toHaveBeenCalledTimes(1);
+      const updater = setIsSnapToGridEnabled.mock.calls[0][0] as (prev: boolean) => boolean;
+      expect(updater(false)).toBe(true);
+      expect(updater(true)).toBe(false);
+    });
+  });
+
+  describe('Minimap toggle', () => {
+    const renderWithConfig = (overrides: Partial<FlowConfigContextProps>) =>
+      render(
+        <FlowConfigContext.Provider value={{...defaultFlowConfigValue, ...overrides}}>
+          <CanvasToolbar onAutoLayout={mockOnAutoLayout} />
+        </FlowConfigContext.Provider>,
+      );
+
+    it('should report the minimap visibility via aria-pressed', () => {
+      renderWithConfig({isMiniMapVisible: true});
+
+      expect(screen.getByRole('button', {name: 'Minimap'})).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('should flip the minimap visibility when the toggle is clicked', () => {
+      const setIsMiniMapVisible = vi.fn();
+      renderWithConfig({isMiniMapVisible: true, setIsMiniMapVisible});
+
+      fireEvent.click(screen.getByRole('button', {name: 'Minimap'}));
+
+      expect(setIsMiniMapVisible).toHaveBeenCalledTimes(1);
+      const updater = setIsMiniMapVisible.mock.calls[0][0] as (prev: boolean) => boolean;
       expect(updater(true)).toBe(false);
       expect(updater(false)).toBe(true);
     });
