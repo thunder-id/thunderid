@@ -390,6 +390,16 @@ func (a *authAssertExecutor) getRequiredUserAttributes(ctx *providers.NodeContex
 	if _, consentRecorded := ctx.RuntimeData[common.RuntimeKeyConsentID]; consentRecorded {
 		// Get user attributes from consented attributes if consent was collected in this flow
 		if consentedAttrsStr, exists := ctx.RuntimeData[common.RuntimeKeyConsentedAttributes]; exists {
+			// Build the originally-requested attribute set (essential + optional) to intersect against.
+			// This mirrors the defense resolvePermissionsForClaim applies for permissions: the consented
+			// set is narrowed to only those attributes that were actually part of the original request,
+			// preventing over-disclosure when a ConsentProvider does not itself validate scope.
+			requestedAttrs := buildRequestedAttributesSet(ctx)
+			if requestedAttrs != "" {
+				logger.Debug(ctx.Context, "Consent recorded; intersecting consented attributes against requested set")
+				return intersectAttributeSpaceList(consentedAttrsStr, requestedAttrs)
+			}
+
 			logger.Debug(ctx.Context, "Consent recorded with approved attributes")
 			return strings.Fields(consentedAttrsStr)
 		}
@@ -664,4 +674,39 @@ func intersectPermissionSpaceList(a, b string) string {
 		}
 	}
 	return strings.Join(out, " ")
+}
+
+// intersectAttributeSpaceList returns the attributes present in both space-separated inputs,
+// preserving the order of `a`. Empty inputs are handled as empty sets.
+func intersectAttributeSpaceList(a, b string) []string {
+	if a == "" || b == "" {
+		return []string{}
+	}
+	allowed := make(map[string]bool)
+	for _, p := range strings.Fields(b) {
+		allowed[p] = true
+	}
+	out := make([]string, 0, len(allowed))
+	for _, p := range strings.Fields(a) {
+		if allowed[p] {
+			out = append(out, p)
+			delete(allowed, p)
+		}
+	}
+	return out
+}
+
+// buildRequestedAttributesSet builds the space-separated union of essential and optional
+// attributes from runtime data — the attribute set that was originally resolved for the
+// authorization request and presented to the consent prompt.
+func buildRequestedAttributesSet(ctx *providers.NodeContext) string {
+	essential, _ := ctx.RuntimeData[common.RuntimeKeyRequiredEssentialAttributes]
+	optional, _ := ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes]
+	if essential != "" && optional != "" {
+		return essential + " " + optional
+	}
+	if essential != "" {
+		return essential
+	}
+	return optional
 }
