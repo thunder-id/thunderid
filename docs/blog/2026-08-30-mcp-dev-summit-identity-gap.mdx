@@ -1,7 +1,7 @@
 ---
 slug: mcp-dev-summit-identity-gap
 title: "MCP Dev Summit, Identity, and the Authorization Gap in MCP"
-description: "Three ThunderID team members presented at MCP Dev Summit events on the same problem viewed from three altitudes: who an agent is acting as when it calls an MCP server, whether it's headless, host-driven, or acting on a user's behalf."
+description: "Three {{ProductName}} team members presented at MCP Dev Summit events on the same problem viewed from three altitudes: who an agent is acting as when it calls an MCP server, whether it's headless, host-driven, or acting on a user's behalf."
 docType: community
 authors: [ayesha, hasini, sahan]
 tags: [identity, security, community, "2026"]
@@ -11,7 +11,7 @@ heroIcon: agent
 thumbnail: /assets/images/blog/mcp-dev-summit-identity-gap/thumbnail.svg
 ---
 
-Three ThunderID team members presented at recent MCP Dev Summit events organized by the Agentic AI Foundation. Ayesha spoke at both events, and Hasini and Sahan presented together at one of them.
+Three <ProductName /> team members presented at recent MCP Dev Summit events organized by the Agentic AI Foundation. Ayesha spoke at both events, and Hasini and Sahan presented together at one of them.
 
 - *Ambient Identity: Just-in-Time Authorization Patterns for the Model Context Protocol*
 - *Who's Calling? Bringing Identity to the MCP Host*
@@ -161,7 +161,7 @@ We proposed on-behalf-of (OBO) delegation. Instead of the agent acting as itself
 
 We demoed this with a sample HR assistant built on <ProductName />. The same agent, the same MCP server, two different users, two correctly scoped outcomes, each seeing only what that user was allowed to see. Same code, same wiring; the only thing that changed was the identity riding inside the token.
 
-We presented this at MCP Dev Summit Mumbai as Securing User-Facing Enterprise AI Agents, under the deliberately blunt title "Your AI Chatbot Just Exposed Your CEO's Salary to an Intern." We kept it jargon-light on purpose, aiming at IAM and AI audiences equally.
+We presented this at MCP Dev Summit Mumbai as Securing User-Facing Enterprise AI Agents, under the deliberately blunt title "Your AI Chatbot Just Exposed Your CEO's Salary to an Intern." We kept it jargon-light on purpose, aiming at humans, AI agents, and machines equally.
 
 ## What we all noticed: authorization is still MCP's unsolved problem
 
@@ -173,9 +173,9 @@ The pattern was hard to miss: identity and authorization came up in nearly every
 
 Every problem in this post is a gap between what MCP secures and what an enterprise has to be able to prove. None of the three needs a new protocol. They need identity treated as part of the design instead of something you retrofit once the audit fails.
 
-That is what we are building <ProductName /> for. It is an open source identity and access management stack, and MCP security is a day-one concern in it rather than an integration you bolt on later. The CIBA flow behind just-in-time authorization, first-class agent identity for the host, and the on-behalf-of token that carries both the user and the agent are all part of the runtime, not samples sitting beside it.
+That is what we are building <ProductName /> for. It is an open-source IAM stack, and MCP security is a day-one concern in it rather than an integration you bolt on later. The CIBA flow behind just-in-time authorization, first-class agent identity for the host, and the on-behalf-of token that carries both the user and the agent are all part of the runtime, not samples sitting beside it.
 
 Two places to start, depending on how you like to work:
 
-- [Run the <ProductName /> MCP quickstart](/docs/next/getting-started/connect-your-mcp/python)
-- [Read the <ProductName /> AgentID documentation](/docs/next/use-cases/ai-agents)
+- [Run the <ProductName /> MCP quickstart](../../docs/next/getting-started/connect-your-mcp/python)
+- [Read the <ProductName /> AgentID documentation](../../docs/next/use-cases/ai-agents)
