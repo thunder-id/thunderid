@@ -390,3 +390,28 @@ func (ts *OUResolverStrategiesTestSuite) TestUnsupportedStrategy_Fails() {
 	ts.Equal(errCodeOUResolutionFailed, step.Error.Code,
 		"An unsupported strategy must fail OU resolution")
 }
+
+// The prompt strategy resolves a submitted handle scoped to the parent OU whose children were
+// offered, not just a raw ID — the human-readable identifier path #5122 added.
+func (ts *OUResolverStrategiesTestSuite) TestPrompt_HandleSubmissionResolved() {
+	step, err := common.InitiateRegistrationFlow(ts.promptParentAppID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate registration flow")
+	ts.Require().True(common.HasInput(step.Data.Inputs, "ouId"), "The flow should prompt for an OU")
+
+	step, err = common.CompleteFlow(step.ExecutionID,
+		map[string]string{"ouHandle": "ou_strategy_child_test_ou"}, "action_ou", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the OU handle")
+	ts.Require().Nil(step.Error, "A valid handle among the parent's children must resolve")
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "The flow should move on to user details")
+
+	username := common.GenerateUniqueUsername("ou_prompt_handle")
+	completed, err := common.CompleteFlow(step.ExecutionID, map[string]string{
+		"username": username,
+		"email":    username + "@ou-strategy.test",
+	}, "action_details", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit user details")
+	ts.Require().Equal("COMPLETE", completed.FlowStatus, "Registration should provision the user")
+
+	user := ts.trackRegisteredUser(username)
+	ts.Equal(ts.childOUID, user.OUID, "A handle submission must resolve to the same OU as the raw ID would")
+}

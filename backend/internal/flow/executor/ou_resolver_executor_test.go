@@ -276,6 +276,62 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_UserSelectedOU_Vali
 	suite.mockOUService.AssertExpectations(suite.T())
 }
 
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_UserSelectedOU_ResolvedByHandle() {
+	parentOUID := testParentOUID
+	selectedHandle := "acme-corp"
+	resolvedOUID := testChildOUID
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		NodeProperties: map[string]interface{}{
+			common.NodePropertyOUResolveFrom: ouResolveFromPrompt,
+		},
+		RuntimeData: map[string]string{
+			defaultOUIDKey: parentOUID,
+		},
+		UserInputs: map[string]string{
+			ouHandleKey: selectedHandle,
+		},
+	}
+
+	suite.mockOUService.On("GetOrganizationUnitIDByHandle", mock.Anything, selectedHandle, &parentOUID).
+		Return(resolvedOUID, (*tidcommon.ServiceError)(nil))
+	suite.mockOUService.On("IsParent", mock.Anything, parentOUID, resolvedOUID).
+		Return(true, (*tidcommon.ServiceError)(nil))
+
+	result, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
+	assert.Equal(suite.T(), resolvedOUID, result.RuntimeData[ouIDKey])
+	suite.mockOUService.AssertExpectations(suite.T())
+}
+
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_BothOUIDAndOUHandleSubmitted_Rejected() {
+	parentOUID := testParentOUID
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		NodeProperties: map[string]interface{}{
+			common.NodePropertyOUResolveFrom: ouResolveFromPrompt,
+		},
+		RuntimeData: map[string]string{
+			defaultOUIDKey: parentOUID,
+		},
+		UserInputs: map[string]string{
+			ouIDKey:     testChildOUID,
+			ouHandleKey: "acme-corp",
+		},
+	}
+
+	result, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, result.Status)
+	assert.Equal(suite.T(), &ErrInvalidOU, result.Error)
+	suite.mockOUService.AssertExpectations(suite.T())
+}
+
 func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_UserSelectedOU_NotInSubtree() {
 	parentOUID := testParentOUID
 	selectedOUID := "unrelated-ou-789"
@@ -418,7 +474,7 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_HasChildOUs_Request
 	assert.Equal(suite.T(), providers.ExecUserInputRequired, result.Status)
 	assert.Equal(suite.T(), parentOUID, result.AdditionalData[common.DataRootOUID])
 	assert.NotEmpty(suite.T(), result.Inputs)
-	assert.Equal(suite.T(), ouIDKey, result.Inputs[0].Identifier)
+	assert.Equal(suite.T(), ouHandleKey, result.Inputs[0].Identifier)
 	assert.Equal(suite.T(), providers.InputTypeOUSelect, result.Inputs[0].Type)
 	suite.mockOUService.AssertExpectations(suite.T())
 }
