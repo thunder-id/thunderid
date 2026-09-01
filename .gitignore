@@ -133,9 +133,11 @@ docs/static/api/next/postman/
 # Playwright
 .playwright-cli/
 
-# Claude Code (local settings only — skills are shared via a symlink to .agent/skills)
+# Claude Code (local settings only). The vendor-neutral .agent/ directory is the source of truth;
+# these two symlinks expose it to Claude Code as skills and path-scoped rules.
 .claude/*
 !.claude/skills
+!.claude/rules
 
 # Dev-only CORS seed staged by `build.sh run` / `build.ps1 run` for the bootstrap one-shot (never committed or packaged)
 backend/cmd/server/bootstrap/03-dev-server-configurations.yaml

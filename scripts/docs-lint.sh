@@ -40,12 +40,12 @@ if [[ $# -eq 0 ]]; then
 else
   for f in "$@"; do
     [[ "$f" == /* ]] || f="$PWD/$f"
-    # Skip agent skill definitions and repo meta-docs (AGENTS.md, README.md,
+    # Skip agent guidance (skills, guides) and repo meta-docs (AGENTS.md, README.md,
     # ARCHITECTURE.md) even if passed explicitly — they're not docs/content pages
     # and don't follow its conventions (frontmatter, <ProductName />, etc.).
     case "$f" in
-      "$REPO_ROOT"/.agent/skills/*|"$REPO_ROOT"/.claude/skills/*) continue ;;
-      */AGENTS.md|*/README.md|*/ARCHITECTURE.md) continue ;;
+      "$REPO_ROOT"/.agent/*|"$REPO_ROOT"/.claude/*) continue ;;
+      */AGENTS.md|*/CLAUDE.md|*/README.md|*/ARCHITECTURE.md) continue ;;
     esac
     FILES+=("$f")
   done

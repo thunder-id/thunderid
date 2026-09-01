@@ -51,7 +51,10 @@ export type ToastProviderProps = PropsWithChildren;
  * ```
  *
  * @example
- * Triggering a toast from a mutation hook:
+ * Triggering a success toast from a mutation hook. Note there is deliberately no `onError` here: a
+ * hook cannot know whether its caller has somewhere on screen to show a failure, and a hook-level
+ * `onError` plus a call-site one is how duplicate toasts get introduced. Failures are the caller's
+ * decision and usually belong inline, next to the form or action that failed.
  * ```ts
  * import useToast from './useToast';
  *
@@ -61,7 +64,6 @@ export type ToastProviderProps = PropsWithChildren;
  *   return useMutation({
  *     mutationFn: createItem,
  *     onSuccess: () => showToast('Item created successfully.', 'success'),
- *     onError: () => showToast('Failed to create item.', 'error'),
  *   });
  * }
  * ```

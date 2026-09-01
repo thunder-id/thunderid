@@ -1,9 +1,15 @@
 ---
-name: db
-description: Database schema and query conventions for ThunderID. Use when changing schema scripts, defining SQL queries, updating store constants, or reviewing deployment-scoped persistence rules.
+paths:
+  - "backend/dbscripts/**"
+  - "backend/internal/**/store*.go"
+  - "backend/internal/**/*_store.go"
+  - "backend/scripts/cleanup_runtime_transient_db.sh"
 ---
 
-# Database Schema Design Principles and Conventions
+# ThunderID Database Schema and Query Conventions
+
+These are invariants, not a procedure: read the sections that cover what you are touching. A reviewer applies the same
+rules, so each one is written to be checkable as well as followable.
 
 ## Logical Database Separation
 
@@ -13,7 +19,7 @@ ThunderID uses four logically separated databases. Each database owns a specific
 |-----------------------|---------------------------------------------------------------|
 | `config`              | Identity configuration data Ex: applications, authentication flows, roles, identity providers |
 | `runtime_transient`   | Short-lived runtime state: authorization codes, authorization/PAR requests, JTI records, WebAuthn/VCI state, flow contexts |
-| `entitydb`                | Identity data: users, groups, indexed user attributes         |
+| `entitydb`            | Identity data: users, groups, indexed user attributes                                        |
 | `runtime_persistent`  | Long-lived operational state that must survive restarts: revoked tokens, SSO sessions, consent records |
 
 Although the databases are logically separated, they share consistent schema design principles documented here.
@@ -94,10 +100,6 @@ Although UUID v7 identifiers are globally unique, queries must still filter by `
 
 `DEPLOYMENT_ID` is the last parameter in all parameterized queries. Follow these patterns consistently.
 
-### Identifier Casing and Quoting
-
-Use uppercase table names wrapped in double quotes in schema scripts and embedded SQL.
-
 - Write table names as `"TABLE_NAME"`, not bare identifiers.
 - Apply this consistently in `CREATE TABLE`, `CREATE INDEX ... ON`, `FOREIGN KEY ... REFERENCES`, and all `SELECT` / `INSERT` / `UPDATE` / `DELETE` statements.
 - Keep Go query strings aligned with the schema scripts; do not mix quoted uppercase names with unquoted identifiers for the same table.
@@ -155,6 +157,10 @@ INNER JOIN "FLOW_VERSION" fv
 WHERE f.ID = $1 AND f.DEPLOYMENT_ID = $2
 ```
 
+## Identifier Casing and Quoting
+
+Use uppercase table names wrapped in double quotes in schema scripts and embedded SQL.
+
 ## Indexing Philosophy
 
 Indexes match real query patterns. When defining or revising indexes: review each table's queries, identify missing or inefficient indexes, optimize existing ones (including composite primary keys), add composite indexes for common patterns, and update both the PostgreSQL and SQLite schema scripts.
@@ -180,7 +186,7 @@ CREATE INDEX idx_authz_code_expiry_time ON "AUTHORIZATION_CODE" (EXPIRY_TIME);
 
 Use these rules for all temporary runtime tables in `runtime_transient`.
 
-### Agent Rules
+### Rules
 
 1. Treat runtime records as temporary; they must expire and be removable.
 2. Every runtime table must include an `EXPIRY_TIME` column.
@@ -280,20 +286,3 @@ Use a consistent prefix per store and increment the sequence number for each new
 - Apply schema changes to both scripts unless a feature is explicitly PostgreSQL-only.
 - Add inline comments above each table and index definition explaining its purpose.
 - Place indexes immediately after the table they support.
-
-## Quick Reference
-
-| Agent Check | Required Convention |
-|-------------|---------------------|
-| Primary key format | Use UUID v7 values. |
-| Primary key column name | Use `ID` (do not use entity-specific PK names like `USER_ID`). |
-| Association table key strategy | Use composite primary key from foreign key columns; do not add surrogate `ID`. |
-| Foreign key type | Reference UUID keys directly; do not introduce integer key layers. |
-| Auto-increment usage | Do not use auto-increment IDs. |
-| Multi-deployment isolation | Include `DEPLOYMENT_ID VARCHAR(255) NOT NULL` in every table. |
-| Query parameter order | Keep `DEPLOYMENT_ID` as the last parameter in parameterized queries. |
-| Runtime table expiry column | For runtime owner tables, require `EXPIRY_TIME TIMESTAMP NOT NULL`. |
-| Association table expiry column | Omit `EXPIRY_TIME` when lifecycle is inherited via `ON DELETE CASCADE`; add it only if association rows expire independently. |
-| Expired data cleanup | Use `backend/dbscripts/runtime_transient/postgres-cleanup.sql` and `backend/scripts/cleanup_runtime_transient_db.sh`; keep both updated when runtime tables change. |
-| Query declaration format | Define queries as `DBQuery` values with unique query IDs. |
-| Table identifier format | Use uppercase table names in double quotes in schema scripts and embedded SQL. |
