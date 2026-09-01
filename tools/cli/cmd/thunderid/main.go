@@ -16,8 +16,19 @@ import (
 	"github.com/thunder-id/thunderid/tools/cli/internal/ui"
 )
 
+// version is the CLI version. It is injected at build time via
+// -ldflags "-X main.version=<v>" and keeps the placeholder below for local builds.
+var version = "0.0.0-semantically-released"
+
 func main() {
 	args := os.Args[1:]
+
+	// --version is resolved before command dispatch so it always prints and exits,
+	// rather than falling through to a command or to install and setup.
+	if hasVersionFlag(args) {
+		fmt.Println(versionLine())
+		return
+	}
 
 	// upgrade — stop the running version, install the latest, restart on the same port.
 	if len(args) > 0 && args[0] == "upgrade" {
@@ -66,6 +77,21 @@ func main() {
 	cli.Run(verbose, forceSetup)
 }
 
+// hasVersionFlag reports whether args request the CLI version, in any position.
+func hasVersionFlag(args []string) bool {
+	for _, a := range args {
+		if a == "--version" || a == "-V" {
+			return true
+		}
+	}
+	return false
+}
+
+// versionLine renders the version string printed by --version.
+func versionLine() string {
+	return fmt.Sprintf("%s %s", product.Slug, version)
+}
+
 func printUsage() {
 	fmt.Printf(`Usage: %s [command] [flags]
 
@@ -77,6 +103,7 @@ Commands:
 Flags:
   --verbose, -v        Show detailed output
   --setup              Force re-run setup
+  --version, -V        Show the CLI version
   --help, -h           Show this help message
 `, product.Slug, product.Name)
 }

@@ -28,6 +28,7 @@ the cached installation and start immediately.
 | ----------------- | ---------------------------------------- |
 | `--setup`         | Force re-run setup                       |
 | `--verbose`, `-v` | Show detailed output                     |
+| `--version`, `-V` | Show the CLI version                     |
 | `--help`, `-h`    | Show help                                |
 
 ## Requirements
