@@ -1,0 +1,151 @@
+---
+title: Android SDK Testing
+docType: community
+description: "How to run and write the unit tests and the Maestro end-to-end suite for the {{ProductName}} Android SDK."
+sidebar_position: 2
+hide_table_of_contents: false
+---
+
+# Testing
+
+## Unit Tests
+
+```bash
+./gradlew test
+```
+
+Unit tests live in `src/test/kotlin`. Run a single variant with `./gradlew testDebugUnitTest` when you want a faster loop.
+
+## End-to-end Testing
+
+Unit tests cover the SDK with the server stubbed out. They cannot catch the failures that matter most to someone integrating it: a flow step the SDK renders but cannot submit, a field the server renames, or an application whose configuration the SDK rejects at runtime.
+
+The end-to-end suite closes that gap with [Maestro](https://maestro.mobile.dev), which drives the Quickstart sample the way a person would, against a server that is actually running. It signs a user in, signs them out, registers a new account, and signs in as that account.
+
+Maestro is used rather than Espresso because the sign-in and sign-up forms are not static native views. The server returns a flow definition and the SDK renders it, and the iOS and Flutter SDKs tag the resulting fields identically, so one set of selectors works across all three platforms.
+
+```text
+tests/e2e/
+  flows/                       Maestro flows, the tests themselves
+    config.yaml                limits test entry points to the top level
+    signin.yaml
+    signup.yaml
+    subflows/                  shared building blocks, not run on their own
+  run-e2e.sh                   the whole run: server, provisioning, build, Maestro
+  run-e2e.ps1                  the same, for contributors on Windows
+  thunderid-config.yaml        the test application, declaratively
+```
+
+### Configure and Run
+
+You need [Maestro](https://maestro.mobile.dev/getting-started/installing-maestro) installed and an emulator running.
+
+One script does the whole run: it downloads and starts a server, provisions the test
+application and user, configures and installs the sample, then drives it with Maestro.
+
+```bash
+cd tests/e2e
+./run-e2e.sh
+```
+
+Every stage is idempotent, so re-running is the normal way to iterate. A server already serving
+on `:8090` is reused rather than restarted, which matters because all three mobile suites bind
+that port. Skip the stages you do not need, and pass a flow path to run just one:
+
+```bash
+./run-e2e.sh --skip-server --skip-build
+./run-e2e.sh flows/signin.yaml
+```
+
+On Windows, use the PowerShell twin, which takes the same stages:
+
+```powershell
+.\run-e2e.ps1
+.\run-e2e.ps1 -SkipServer -SkipBuild
+```
+
+Provisioning creates one application and one user:
+
+| Resource | Value |
+|----------|-------|
+| Application | `019e5b10-1001-7a2b-9c3d-4e5f60718293` |
+| User | `e2e_mobile_user` / `TestPassword@123` |
+
+Set `THUNDERID_VERSION` to pin a specific server release instead of taking the latest:
+
+```bash
+THUNDERID_VERSION=1.0.1 ./run-e2e.sh
+```
+
+Rebuild and reinstall the sample after changing SDK source. Maestro drives the installed binary, so an edited SDK that has not been reinstalled still tests the old code. This also applies after restarting an emulator that loads a snapshot, which can restore an older build of the app.
+
+### Writing Tests
+
+A flow is a YAML file: a header naming the app under test, then a list of commands after the `---` separator.
+
+```yaml
+appId: dev.thunderid.Quickstart
+name: Sign in and sign out
+tags:
+  - auth
+env:
+  E2E_USERNAME: e2e_mobile_user
+  E2E_PASSWORD: TestPassword@123
+---
+- launchApp:
+    clearState: true
+- tapOn: "Sign in"
+```
+
+Override any `env` value from the command line with `-e E2E_USERNAME=someone`.
+
+#### Targeting Fields and Buttons
+
+The SDK tags every flow-driven field and action with `Modifier.testTag`. Target those identifiers rather than on-screen labels, which change with locale and theme:
+
+- Fields use the server's field identifier: `thunderid-field-username`
+- Actions use the action's ref: `thunderid-action-action_001`
+
+```yaml
+- tapOn:
+    id: "thunderid-field-username"
+- inputText: ${E2E_USERNAME}
+```
+
+:::warning
+Compose keeps `testTag` inside its own semantics tree, where only the Compose test framework can read it. Maestro drives the platform accessibility tree, so a tag is invisible to it unless an ancestor opts the subtree in with `testTagsAsResourceId`. The SDK applies that at the root of the components that render flow steps. A tagged component added outside one of those subtrees looks correct in source but cannot be targeted.
+:::
+
+Action refs differ per flow type. Authentication submits with `action_001`, while registration submits its credentials step with `action_credentials` and its attributes step with `action_schema_attrs`. Read the identifiers off a running app rather than guessing:
+
+```bash
+maestro --platform android hierarchy | grep -o 'thunderid-[a-z]*-[A-Za-z0-9_]*' | sort -u
+```
+
+#### Starting From a Known State
+
+Never assume a clean device. Tokens live in `EncryptedSharedPreferences`, which `clearState: true` does clear, but a flow that fails part way through can still leave the app mid-session. Every flow starts by calling a shared subflow that signs out when a session is present:
+
+```yaml
+- launchApp:
+    clearState: true
+- runFlow: subflows/ensure-signed-out.yaml
+```
+
+Put anything used by more than one flow in `subflows/`. The `config.yaml` entry limits test discovery to the top level, so subflows are building blocks rather than tests that run on their own.
+
+#### Keeping Flows Independent
+
+Each flow leaves the app as it found it, signed out on the landing screen, so flows run in any order. Where a flow needs a unique value, generate one:
+
+```yaml
+- evalScript: ${output.username = 'e2e_signup_' + Date.now()}
+```
+
+Registering a user leaves that account behind on the target server. That is fine against a disposable CI instance; against a long-lived development server, expect the accounts to accumulate.
+
+Note that registration completes without establishing a session, so a sign-up flow ends on the landing screen. Signing in afterward with the credentials just registered is what proves the account works.
+
+## Continuous Integration
+
+`nightly.yml` runs the suite against the latest published server release at 02:30 UTC, and the `e2e` job in `pr-builder.yml` runs it on every pull request. Both call the same `run-e2e-suite` composite action, on a Linux runner with KVM enabled so the emulator can start. On failure it uploads Maestro's screenshots and recorded hierarchy alongside the server log, which is how you tell a real regression from a flake after the run is gone.

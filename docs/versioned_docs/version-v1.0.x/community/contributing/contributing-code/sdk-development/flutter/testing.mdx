@@ -1,0 +1,172 @@
+---
+title: Flutter SDK Testing
+docType: community
+description: "How to run and write the unit tests and the Maestro end-to-end suite for the {{ProductName}} Flutter SDK."
+sidebar_position: 2
+hide_table_of_contents: false
+---
+
+# Testing
+
+## Unit Tests
+
+```bash
+flutter test
+```
+
+Unit tests live in `test/` and use `flutter_test` with `mockito`. Because the Dart layer delegates to the native SDKs over a `MethodChannel`, these tests mock the channel: they cover the Dart client, models, and widgets, not the native implementations.
+
+## End-to-end Testing
+
+Unit tests mock the channel, so they cannot catch the failures that matter most to someone integrating the SDK: a flow step the SDK renders but cannot submit, a field the server renames, or a bridge that drops an argument on the way to the native SDK.
+
+The end-to-end suite closes that gap with [Maestro](https://maestro.mobile.dev), which drives the Quickstart sample the way a person would, against a server that is actually running. It signs a user in, signs them out, registers a new account, and signs in as that account. Because it exercises the real bridge, it is the only layer that tests the Dart and native halves together.
+
+Maestro is used rather than `integration_test` because the sign-in and sign-up forms are not static widgets. The server returns a flow definition and the SDK renders it, and the iOS and Android SDKs tag the resulting fields identically, so one set of selectors works across all three platforms.
+
+```text
+tests/e2e/
+  flows/                       Maestro flows, the tests themselves
+    config.yaml                limits test entry points to the top level
+    signin.yaml
+    signup.yaml
+    subflows/                  shared building blocks, not run on their own
+  run-e2e.sh                   the whole run on iOS: server, provisioning, build, Maestro
+  run-e2e.ps1                  the same on Android, for contributors on Windows
+  thunderid-config.yaml        the test application, declaratively
+```
+
+### Configure and Run
+
+Install [Maestro](https://maestro.mobile.dev/getting-started/installing-maestro). `run-e2e.sh` boots an iOS Simulator itself if none is running; `run-e2e.ps1` needs a running Android emulator, since it does not boot one for you.
+
+:::note[Choosing a platform]
+`run-e2e.sh` drives an **iOS Simulator** and needs a Mac. `run-e2e.ps1` drives an **Android
+emulator** and is the path for contributors on Windows.
+
+Both reach the local server over its self-signed certificate, by different routes: the iOS target
+carries an `NSAllowsArbitraryLoads` exemption, while Android relies on
+`ThunderIDConfig.allowInsecureConnections`, which the sample enables for debug builds only and
+the native SDK honours for loopback hosts only. `NSAllowsArbitraryLoads` disables ATS globally
+rather than trusting only the E2E certificate; it is a testing-only convenience for this sample
+and must not be carried into a production target.
+:::
+
+One script does the whole run: it downloads and starts a server, provisions the test
+application and user, configures and installs the sample, then drives it with Maestro.
+
+```bash
+cd tests/e2e
+./run-e2e.sh
+```
+
+Every stage is idempotent, so re-running is the normal way to iterate. A server already serving
+on `:8090` is reused rather than restarted, which matters because all three mobile suites bind
+that port. Skip the stages you do not need, and pass a flow path to run just one:
+
+```bash
+./run-e2e.sh --skip-server --skip-build
+./run-e2e.sh flows/signin.yaml
+```
+
+Provisioning creates one application and one user:
+
+| Resource | Value |
+|----------|-------|
+| Application | `019e5b10-1001-7a2b-9c3d-4e5f60718293` |
+| User | `e2e_mobile_user` / `TestPassword@123` |
+
+Set `THUNDERID_VERSION` to pin a specific server release instead of taking the latest:
+
+```bash
+THUNDERID_VERSION=1.0.1 ./run-e2e.sh
+```
+
+Rebuild and reinstall the sample after changing SDK source. Maestro drives the installed binary, so an edited SDK that has not been reinstalled still tests the old code.
+
+### Writing Tests
+
+A flow is a YAML file: a header naming the app under test, then a list of commands after the `---` separator.
+
+```yaml
+appId: dev.thunderid.Quickstart
+name: Sign in and sign out
+tags:
+  - auth
+env:
+  E2E_USERNAME: e2e_mobile_user
+  E2E_PASSWORD: TestPassword@123
+---
+- launchApp:
+    clearState: true
+- tapOn: "Sign in"
+```
+
+Override any `env` value from the command line with `-e E2E_USERNAME=someone`.
+
+#### Targeting Fields and Buttons
+
+The SDK tags every flow-driven field and action. Target those identifiers rather than on-screen labels, which change with locale and theme:
+
+- Fields use the server's field identifier: `thunderid-field-username`
+- Actions use the action's ref: `thunderid-action-action_001`
+
+```yaml
+- tapOn:
+    id: "thunderid-field-username"
+- inputText: ${E2E_USERNAME}
+```
+
+:::warning
+A widget `Key` is internal to the Flutter tree and never reaches the platform accessibility tree, so Maestro cannot see it. `Semantics.identifier` is what maps to `resource-id` on Android and `accessibilityIdentifier` on iOS. Flow fields carry both: the key for widget tests, the identifier for external drivers. A widget given only a `Key` looks correct in source but cannot be targeted.
+
+The identifier resolves the field's server-side `identifier`, not its `ref`, which is what keeps selectors the same across all three SDKs. The `ref` remains the key used for form state and submission.
+:::
+
+Action refs differ per flow type. Authentication submits with `action_001`, while registration submits its credentials step with `action_credentials` and its attributes step with `action_schema_attrs`. Read the identifiers off a running app rather than guessing:
+
+```bash
+maestro hierarchy | grep -o 'thunderid-[a-z]*-[A-Za-z0-9_]*' | sort -u
+```
+
+#### Starting From a Known State
+
+Never assume a clean device. On iOS the native SDK stores tokens in the Keychain, which sits outside the app container and survives both `clearState: true` and reinstalling the app, so a previous run can leave the app signed in. Every flow starts by calling a shared subflow that signs out when a session is present:
+
+```yaml
+- launchApp:
+    clearState: true
+- runFlow: subflows/ensure-signed-out.yaml
+```
+
+Put anything used by more than one flow in `subflows/`. The `config.yaml` entry limits test discovery to the top level, so subflows are building blocks rather than tests that run on their own.
+
+#### Handling Interruptions
+
+Guard anything that appears only sometimes with a conditional subflow instead of an unconditional wait. iOS offers to save credentials after a password field is submitted, and whether it prompts depends on prior AutoFill state:
+
+```yaml
+- runFlow:
+    when:
+      visible: "Save Password?"
+    commands:
+      - tapOn: "Not Now"
+```
+
+An unconditional wait here passes on the machine where the dialog appears and fails everywhere else.
+
+#### Keeping Flows Independent
+
+Each flow leaves the app as it found it, signed out on the landing screen, so flows run in any order. Where a flow needs a unique value, generate one:
+
+```yaml
+- evalScript: ${output.username = 'e2e_signup_' + Date.now()}
+```
+
+Registering a user leaves that account behind on the target server. That is fine against a disposable CI instance; against a long-lived development server, expect the accounts to accumulate.
+
+Note that registration completes without establishing a session, so a sign-up flow ends on the landing screen. Signing in afterward with the credentials just registered is what proves the account works.
+
+## Continuous Integration
+
+`nightly.yml` runs the suite against the latest published server release at 02:30 UTC, and the `e2e` job in `pr-builder.yml` runs it on every pull request. Both call the same `run-e2e-suite` composite action, on a macOS runner so it can boot a Simulator. On failure it uploads Maestro's screenshots and recorded hierarchy alongside the server log, which is how you tell a real regression from a flake after the run is gone.
