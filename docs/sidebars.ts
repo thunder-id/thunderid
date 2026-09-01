@@ -289,6 +289,12 @@ const sidebars: SidebarsConfig = {
                   label: 'Design Decisions & Alternatives',
                   key: 'ai-agents-architecture-decisions',
                 },
+                {
+                  type: 'doc',
+                  id: 'use-cases/ai-agents/federated-identity',
+                  label: 'Federated Identity Provider',
+                  key: 'ai-agents-federated-identity',
+                },
               ],
             },
             {

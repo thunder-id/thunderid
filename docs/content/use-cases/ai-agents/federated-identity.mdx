@@ -1,0 +1,85 @@
+---
+title: Federated Identity Provider
+docType: use-case
+sidebar_position: 12
+description: Authorize a user or agent managed by a federated identity provider, using the attributes that provider already asserts about them.
+---
+
+# Federated Identity Provider
+
+The [six problems agent identity has to solve](./solve-index) assume <ProductName /> already knows who the
+delegating principal is. Often it does not. A workforce is managed in an external identity provider such as
+Entra ID or Okta, and an agent acts for people who exist there and nowhere else.
+
+The provider stays authoritative for who someone is. <ProductName /> stays authoritative for what access
+means. Nothing connects the two until you tell it how.
+
+## The Problem
+
+A user federates in carrying attributes from their provider, group membership among them, but those attributes
+mean nothing to <ProductName />'s authorization decisions on their own. That gap raises a few questions:
+
+- **Who assigns this person's roles?**
+  Without a way to read what the provider already asserts, an administrator assigns roles to every federated
+  user by hand, and repeats the work whenever someone changes teams or leaves.
+
+- **Does an agent acting for that person get the same access they would get by signing in?**
+  An agent that exchanges a token to act on a federated user's behalf needs to land on the same access decision
+  a direct sign-in would produce, not a different one because the identity arrived by a different path.
+
+- **What happens when the person has no record in <ProductName /> at all?**
+  Some identities are managed entirely by the provider. Authorization that only works once a local record
+  exists leaves them with no path to access, or forces you to create records you do not otherwise need.
+
+- **Does a new hire start with the right access, or does it arrive piecemeal?**
+  If access is only ever computed on the fly, there is nothing an administrator can point to as the identity's
+  starting entitlements, and nothing to build further changes on top of.
+
+- **What if the organization already has an authorization policy engine?**
+  Rebuilding an existing policy inside <ProductName />'s role model means maintaining the same rules twice,
+  guaranteed to drift.
+
+## How It Works
+
+An administrator configures, per connection, how attribute values the provider asserts map to local roles,
+groups, or permissions. When an identity federates in, <ProductName /> reads the relevant attributes and
+applies the configured access alongside anything already assigned directly, so the two combine rather than one
+replacing the other.
+
+The same mapping applies wherever the identity enters: at sign-in, when an agent exchanges a token to act on
+the person's behalf, or when a short-lived identity assertion is presented. When an agent is acting for
+someone else, [the token carries both names](./solve-acts-for-user), and the access granted is bounded by
+both sides at once: it cannot exceed what the person holds, and it cannot exceed what the agent is itself
+authorized for.
+
+Consider an employee who moves from the support team to the platform team in the organization's identity
+provider. The next time they sign in, <ProductName /> reads the updated group membership and grants
+platform-team access automatically, no administrator involved. If an agent later exchanges a token to act for
+that employee, it lands on the same access, narrowed further by whatever the agent itself is permitted to do.
+
+The same attributes can also seed a starting set of roles and groups at the moment an identity is first
+created, in addition to whatever the ongoing mapping continues to provide afterward. A new employee's
+department, already present in their provider record, becomes their baseline roles as part of account
+creation, so access is correct from day one rather than something an administrator configures separately. The
+seeded access becomes an ordinary assignment from that point on, the same as one granted by hand.
+
+Where no local record exists at all, such as a partner-organization user who has never signed in to
+<ProductName /> directly, an agent exchanging a token on their behalf is still authorized correctly: <ProductName />
+reads the attributes their provider asserts and applies the configured mapping, with no account created.
+
+Where the organization already runs a policy decision point over conditions the role model does not represent,
+such as role, region, and clearance evaluated together, <ProductName /> can delegate the decision itself to
+that engine instead of deciding with its own role model. See
+[Policy Decision Point](../../../guides/protocols/authzen/pdp).
+
+Two things hold regardless of which of these applies. A token carries only the access that was requested, that
+the identity is authorized for, and that the person consented to where consent applies, never the full extent
+of what a mapping could grant. And each connection grants only what it is configured to grant, so an
+organization using several providers can trust each one differently.
+
+## Where This Fits
+
+This sits beside the six problems in [Solve It](./solve-index) rather than inside them: those assume the
+delegating principal is already known to <ProductName />, and this is what makes that assumption hold for a
+principal who is not. If the person you are authorizing is not federated at all,
+[Identity Sources and Data](../b2c/identity-sources) covers the same decisions for a plain consumer sign-in.
