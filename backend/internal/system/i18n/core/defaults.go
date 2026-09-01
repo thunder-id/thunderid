@@ -1073,6 +1073,8 @@ var defaultMessages = map[string]string{
 	"error.userservice.handle_path_required_description": "Handle path is required for this operation",
 	"error.userservice.invalid_credential": "Invalid request format",
 	"error.userservice.invalid_credential_description": "Invalid credential fields in request",
+	"error.userservice.invalid_current_password": "Invalid current password",
+	"error.userservice.invalid_current_password_description": "The provided current password is incorrect",
 	"error.userservice.invalid_filter_parameter": "Invalid filter parameter",
 	"error.userservice.invalid_filter_parameter_description": "The filter format is invalid",
 	"error.userservice.invalid_handle_path": "Invalid handle path",
