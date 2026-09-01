@@ -65,6 +65,17 @@ func (suite *SessionConfigAPITestSuite) TestListIncludesSessionSection() {
 	suite.Contains(names, "session")
 }
 
+// TestGetUnsetReportsDefaultsInMerged is a regression test for #5213: with nothing configured, the
+// merged layer reports the built-in default timeouts in effect, while readOnly and writable stay 0.
+func (suite *SessionConfigAPITestSuite) TestGetUnsetReportsDefaultsInMerged() {
+	layers := suite.getLayers()
+	suite.Equal(sessionSectionValue{}, layers.ReadOnly)
+	suite.Equal(sessionSectionValue{}, layers.Writable)
+	suite.Equal(int64(7200), layers.Merged.IdleTimeoutSeconds)
+	suite.Equal(int64(28800), layers.Merged.AbsoluteTimeoutSeconds)
+	suite.Equal(int64(60), layers.Merged.ActivityRefreshIntervalSeconds)
+}
+
 func (suite *SessionConfigAPITestSuite) TestPutPersistsAndReadsBack() {
 	suite.putSession(`{"idleTimeoutSeconds":1800,"absoluteTimeoutSeconds":28800,` +
 		`"activityRefreshIntervalSeconds":300}`)
