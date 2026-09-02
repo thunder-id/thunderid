@@ -860,6 +860,147 @@ func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_ConsentR
 	assert.Equal(suite.T(), []string{"email", "name"}, result)
 }
 
+// --- Consent + requested-set intersection tests ---
+
+func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_Consented_IntersectsWithEssential() {
+	// Consent approved "email name phone" but only "email name" were requested (essential).
+	// Should return only the intersection: [email name].
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		RuntimeData: map[string]string{
+			common.RuntimeKeyConsentID:              "consent-123",
+			common.RuntimeKeyConsentedAttributes:    "email name phone",
+			common.RuntimeKeyRequiredEssentialAttributes: "email name",
+		},
+	}
+
+	result := suite.executor.getRequiredUserAttributes(ctx)
+
+	assert.Equal(suite.T(), []string{"email", "name"}, result)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_Consented_IntersectsWithEssentialAndOptional() {
+	// Consent approved "email phone address" but only "email" (essential) + "phone" (optional) were
+	// requested. The extra "address" must be dropped.
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		RuntimeData: map[string]string{
+			common.RuntimeKeyConsentID:              "consent-123",
+			common.RuntimeKeyConsentedAttributes:    "email phone address",
+			common.RuntimeKeyRequiredEssentialAttributes: "email",
+			common.RuntimeKeyRequiredOptionalAttributes:  "phone",
+		},
+	}
+
+	result := suite.executor.getRequiredUserAttributes(ctx)
+
+	assert.Equal(suite.T(), []string{"email", "phone"}, result)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_Consented_NoOverlapWithRequested() {
+	// Consent approved attributes that were not part of the original request at all.
+	// Intersection should be empty.
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		RuntimeData: map[string]string{
+			common.RuntimeKeyConsentID:              "consent-123",
+			common.RuntimeKeyConsentedAttributes:    "address ssn",
+			common.RuntimeKeyRequiredEssentialAttributes: "email",
+			common.RuntimeKeyRequiredOptionalAttributes:  "phone",
+		},
+	}
+
+	result := suite.executor.getRequiredUserAttributes(ctx)
+
+	assert.Empty(suite.T(), result)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_Consented_SubsetOfRequested() {
+	// Consent approved a subset of what was requested — should pass through unchanged.
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		RuntimeData: map[string]string{
+			common.RuntimeKeyConsentID:              "consent-123",
+			common.RuntimeKeyConsentedAttributes:    "email",
+			common.RuntimeKeyRequiredEssentialAttributes: "email",
+			common.RuntimeKeyRequiredOptionalAttributes:  "phone name",
+		},
+	}
+
+	result := suite.executor.getRequiredUserAttributes(ctx)
+
+	assert.Equal(suite.T(), []string{"email"}, result)
+}
+
+// --- intersectAttributeSpaceList unit tests ---
+
+func (suite *AuthAssertExecutorTestSuite) TestIntersectAttributeSpaceList_BothEmpty() {
+	result := intersectAttributeSpaceList("", "")
+	assert.Empty(suite.T(), result)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestIntersectAttributeSpaceList_AEmpty() {
+	result := intersectAttributeSpaceList("", "email name")
+	assert.Empty(suite.T(), result)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestIntersectAttributeSpaceList_BEmpty() {
+	result := intersectAttributeSpaceList("email name", "")
+	assert.Empty(suite.T(), result)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestIntersectAttributeSpaceList_PartialOverlap() {
+	result := intersectAttributeSpaceList("email name phone", "name address phone")
+	assert.Equal(suite.T(), []string{"name", "phone"}, result)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestIntersectAttributeSpaceList_NoOverlap() {
+	result := intersectAttributeSpaceList("email name", "address ssn")
+	assert.Empty(suite.T(), result)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestIntersectAttributeSpaceList_Identical() {
+	result := intersectAttributeSpaceList("email name", "email name")
+	assert.Equal(suite.T(), []string{"email", "name"}, result)
+}
+
+// --- buildRequestedAttributesSet unit tests ---
+
+func (suite *AuthAssertExecutorTestSuite) TestBuildRequestedAttributesSet_BothPresent() {
+	ctx := &providers.NodeContext{
+		RuntimeData: map[string]string{
+			common.RuntimeKeyRequiredEssentialAttributes: "email",
+			common.RuntimeKeyRequiredOptionalAttributes:  "phone name",
+		},
+	}
+	assert.Equal(suite.T(), "email phone name", buildRequestedAttributesSet(ctx))
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestBuildRequestedAttributesSet_EssentialOnly() {
+	ctx := &providers.NodeContext{
+		RuntimeData: map[string]string{
+			common.RuntimeKeyRequiredEssentialAttributes: "email",
+		},
+	}
+	assert.Equal(suite.T(), "email", buildRequestedAttributesSet(ctx))
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestBuildRequestedAttributesSet_OptionalOnly() {
+	ctx := &providers.NodeContext{
+		RuntimeData: map[string]string{
+			common.RuntimeKeyRequiredOptionalAttributes: "phone",
+		},
+	}
+	assert.Equal(suite.T(), "phone", buildRequestedAttributesSet(ctx))
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestBuildRequestedAttributesSet_NeitherPresent() {
+	ctx := &providers.NodeContext{
+		RuntimeData: map[string]string{},
+	}
+	assert.Equal(suite.T(), "", buildRequestedAttributesSet(ctx))
+}
+
 func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_RuntimeEssentialOnly() {
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
@@ -964,6 +1105,57 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithConsentedAttributes_Fi
 			hasEmail := claims["email"] == testEmail
 			hasName := claims["name"] == testNameValue
 			return hasEmail && hasName && !hasPhone
+		}), mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestExecute_WithConsentedAttributes_IntersectsAgainstRequested() {
+	// Consent approved "email name address" but only "email" (essential) + "name" (optional)
+	// were requested. The intersection must drop "address" and only assert email + name.
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		EntityID:    "app-123",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    newTestAuthenticatedAuthUser(),
+		RuntimeData: map[string]string{
+			common.RuntimeKeyConsentID:              "consent-123",
+			common.RuntimeKeyConsentedAttributes:    "email name address",
+			common.RuntimeKeyRequiredEssentialAttributes: "email",
+			common.RuntimeKeyRequiredOptionalAttributes:  "name",
+		},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+		Application: providers.Application{
+			InboundAuthProfile: providers.InboundAuthProfile{
+				Assertion: &inboundmodel.AssertionConfig{
+					UserAttributes: []string{"email", "name", "address"},
+				},
+			},
+		},
+	}
+
+	suite.setupGetEntityReference("", "")
+
+	suite.setupGetUserAttributesWith(map[string]*providers.AttributeResponse{
+		"email":   {Value: testEmail},
+		"name":    {Value: testNameValue},
+		"address": {Value: "123 Main St"},
+	})
+
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			// Should have email and name (intersection of consented vs requested)
+			// Must NOT have address (consented but not in the requested set)
+			hasEmail := claims["email"] == testEmail
+			hasName := claims["name"] == testNameValue
+			_, hasAddress := claims["address"]
+			return hasEmail && hasName && !hasAddress
 		}), mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
 
 	resp, err := suite.executor.Execute(ctx)
