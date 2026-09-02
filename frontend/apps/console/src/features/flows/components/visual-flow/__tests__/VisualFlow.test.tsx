@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call */
 
 import {render, screen} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -9,17 +9,32 @@ import VisualFlow from '../VisualFlow';
 
 // Mock @xyflow/react
 vi.mock('@xyflow/react', () => ({
-  ReactFlow: ({children, nodes, edges, colorMode}: any) => (
+  ReactFlow: ({children, nodes, edges, colorMode, deleteKeyCode, snapToGrid, snapGrid}: any) => (
     <div
       data-testid="react-flow"
       data-nodes={JSON.stringify(nodes)}
       data-edges={JSON.stringify(edges)}
       data-color-mode={colorMode}
+      data-delete-key-code={JSON.stringify(deleteKeyCode)}
+      data-snap-to-grid={String(snapToGrid)}
+      data-snap-grid={JSON.stringify(snapGrid)}
     >
       {children}
     </div>
   ),
   Background: ({gap}: any) => <div data-testid="react-flow-background" data-gap={gap} />,
+  MiniMap: ({pannable, zoomable, position, nodeColor}: any) => (
+    <div
+      data-testid="react-flow-minimap"
+      data-pannable={String(pannable)}
+      data-zoomable={String(zoomable)}
+      data-position={position}
+      data-color-start={nodeColor?.({type: 'START'})}
+      data-color-view={nodeColor?.({type: 'VIEW'})}
+      data-color-end={nodeColor?.({type: 'END'})}
+      data-color-other={nodeColor?.({type: 'TASK_EXECUTION'})}
+    />
+  ),
 }));
 
 // Mock color scheme - allow modification for tests
@@ -132,6 +147,57 @@ describe('VisualFlow', () => {
 
       const reactFlow = screen.getByTestId('react-flow');
       expect(reactFlow).toHaveAttribute('data-color-mode', 'dark');
+    });
+  });
+
+  describe('Canvas Editing Accelerators', () => {
+    it('should register both Backspace and Delete as delete keys', () => {
+      render(<VisualFlow {...defaultProps} />);
+
+      const reactFlow = screen.getByTestId('react-flow');
+      expect(reactFlow).toHaveAttribute('data-delete-key-code', JSON.stringify(['Backspace', 'Delete']));
+    });
+
+    it('should not snap to grid by default', () => {
+      render(<VisualFlow {...defaultProps} />);
+
+      expect(screen.getByTestId('react-flow')).toHaveAttribute('data-snap-to-grid', 'false');
+    });
+
+    it('should snap to the background grid when enabled', () => {
+      render(<VisualFlow {...defaultProps} snapToGrid />);
+
+      const reactFlow = screen.getByTestId('react-flow');
+      expect(reactFlow).toHaveAttribute('data-snap-to-grid', 'true');
+      expect(reactFlow).toHaveAttribute('data-snap-grid', JSON.stringify([20, 20]));
+    });
+  });
+
+  describe('MiniMap', () => {
+    it('should not render the minimap by default', () => {
+      render(<VisualFlow {...defaultProps} />);
+
+      expect(screen.queryByTestId('react-flow-minimap')).not.toBeInTheDocument();
+    });
+
+    it('should render a pannable, zoomable minimap when enabled', () => {
+      render(<VisualFlow {...defaultProps} showMiniMap />);
+
+      const miniMap = screen.getByTestId('react-flow-minimap');
+      expect(miniMap).toBeInTheDocument();
+      expect(miniMap).toHaveAttribute('data-pannable', 'true');
+      expect(miniMap).toHaveAttribute('data-zoomable', 'true');
+      expect(miniMap).toHaveAttribute('data-position', 'bottom-right');
+    });
+
+    it('should color minimap nodes by step type', () => {
+      render(<VisualFlow {...defaultProps} showMiniMap />);
+
+      const miniMap = screen.getByTestId('react-flow-minimap');
+      expect(miniMap).toHaveAttribute('data-color-start', 'var(--oxygen-palette-success-main)');
+      expect(miniMap).toHaveAttribute('data-color-view', 'var(--oxygen-palette-primary-main)');
+      expect(miniMap).toHaveAttribute('data-color-end', 'var(--oxygen-palette-error-main)');
+      expect(miniMap).toHaveAttribute('data-color-other', 'var(--oxygen-palette-action-disabled)');
     });
   });
 
