@@ -1,0 +1,99 @@
+name: 📐 ADR Lint
+
+on:
+  pull_request:
+    paths:
+      - 'docs/adrs/**'
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adr-checks:
+    name: 📐 Validate Decision Records
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      # The root package.json pins pnpm through `devEngines`, which makes npm
+      # refuse to run `npx` anywhere in this repository.
+      - name: ⚙️ Set up Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          cache-store: 'false'
+
+      - name: 🧹 Run markdownlint
+        run: >
+          pnpm dlx markdownlint-cli2@0.14.0
+          --config docs/adrs/.markdownlint.yml
+          "docs/adrs/*.md"
+
+      - name: 🔍 Check ADR Conventions
+        run: |
+          set -euo pipefail
+
+          shopt -s nullglob
+          records=(docs/adrs/[0-9]*.md)
+          shopt -u nullglob
+
+          if [ ${#records[@]} -eq 0 ]; then
+            echo "No decision records found."
+            exit 0
+          fi
+
+          fail=0
+
+          for f in "${records[@]}"; do
+            base=$(basename "$f")
+
+            # Filename must be NNNN-lowercase-with-dashes.md
+            if ! [[ "$base" =~ ^[0-9]{4}-[a-z0-9]+(-[a-z0-9]+)*\.md$ ]]; then
+              echo "::error file=$f::filename must match NNNN-title-with-dashes.md"
+              fail=1
+            fi
+
+            # A status field must be present and hold a recognised value.
+            status=$(awk '/^---$/{n++; next} n==1 && /^status:/{print; exit}' "$f" || true)
+            if [ -z "$status" ]; then
+              echo "::error file=$f::missing status in YAML front matter"
+              fail=1
+            elif ! echo "$status" | grep -Eq '^status: *"(proposed|rejected|accepted|deprecated|superseded by ADR-[0-9]{4})"'; then
+              echo "::error file=$f::unrecognised status value: $status"
+              fail=1
+            fi
+
+            # Every record must appear in the index table, and the status column
+            # must agree with the record's front matter.
+            # Restricted to table rows: a passing mention in the README prose is
+            # not an index entry.
+            row=$(awk -v needle="($base)" \
+              'substr($0, 1, 1) == "|" && index($0, needle)' docs/adrs/README.md)
+            if [ -z "$row" ]; then
+              echo "::error file=$f::not listed in docs/adrs/README.md index"
+              fail=1
+            elif [ -n "$status" ]; then
+              declared=$(echo "$status" | sed -E 's/^status:[[:space:]]*"?//; s/"?[[:space:]]*$//')
+              indexed=$(echo "$row" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}')
+              if [ "$declared" != "$indexed" ]; then
+                echo "::error file=$f::index status \"$indexed\" does not match front matter status \"$declared\""
+                fail=1
+              fi
+            fi
+          done
+
+          # Numbers must be unique.
+          dupes=$(printf '%s\n' "${records[@]}" \
+            | xargs -n1 basename \
+            | cut -c1-4 | sort | uniq -d)
+          if [ -n "$dupes" ]; then
+            echo "::error::duplicate ADR numbers: $dupes"
+            fail=1
+          fi
+
+          exit $fail

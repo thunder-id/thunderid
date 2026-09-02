@@ -46,6 +46,11 @@
 /backend/internal/system/jose/ @hwupathum
 
 
+## architectural decision records
+
+/docs/adrs/ @darshanasbg @madurangasiriwardena
+
+
 ## scripts
 
 /backend/dbscripts/ @rajithacharith @darshanasbg

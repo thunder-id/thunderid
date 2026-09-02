@@ -15,6 +15,7 @@ Load only the guidance the task needs:
 | Backend Go code | [backend/AGENTS.md](backend/AGENTS.md) |
 | Frontend React code | [frontend/AGENTS.md](frontend/AGENTS.md) |
 | Documentation | [docs/AGENTS.md](docs/AGENTS.md) |
+| A decision that needs an architectural record | [docs/adrs/README.md](docs/adrs/README.md) |
 | Database schema, queries, or stores | [.agent/skills/db/SKILL.md](.agent/skills/db/SKILL.md) |
 | Browser automation / Console UI verification | [.agent/skills/console/SKILL.md](.agent/skills/console/SKILL.md) |
 
