@@ -50,6 +50,7 @@ linters-settings:
     locale: US
     ignore-words:
       - cancelled
+      - cancelling
   lll:
     line-length: 140
     tab-width: 4

@@ -9,11 +9,13 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +27,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cors"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
@@ -591,6 +595,87 @@ func (suite *EngineTestSuite) TestBuildOriginReader() {
 		assert.Error(t, err)
 		assert.Nil(t, reader)
 	})
+}
+
+// TestNew_AppliesLogFormatToServicesBuiltInsideNew guards the reported defect from the
+// engine's side: the format is applied before any service is constructed, and it is
+// applied with SetFormat so a host application's own output configuration (here a file
+// sink) survives instead of being replaced by a console-only one.
+func (suite *EngineTestSuite) TestNew_AppliesLogFormatToServicesBuiltInsideNew() {
+	t := suite.T()
+	tempDir := t.TempDir()
+	logPath := filepath.Join(tempDir, "host.log")
+
+	// The host application configures where records go, before the engine starts.
+	logger := log.GetLogger()
+	require.NoError(t, logger.Configure(log.OutputOptions{
+		FileEnabled: true,
+		Format:      "text",
+		File:        rollingfile.Config{Path: logPath},
+	}))
+	t.Cleanup(func() {
+		_ = logger.Close()
+		_ = logger.Configure(log.OutputOptions{ConsoleEnabled: true, Format: "text"})
+	})
+
+	// Derived before the engine applies the format, the way a component of the host
+	// application (or of the engine itself) captures its logger at construction time.
+	componentLogger := logger.With(log.String(log.LoggerKeyComponentName, "FlowEngine"))
+
+	keyID := testKeyID
+	certPEM := generateSelfSignedCertFiles(t, tempDir, "log-cert.pem", "log-key.pem")
+	keyConfigs := []engineconfig.KeyConfig{{ID: keyID, CertFile: "log-cert.pem", KeyFile: "log-key.pem"}}
+
+	systemconfig.ResetServerRuntime()
+	t.Cleanup(systemconfig.ResetServerRuntime)
+	require.NoError(t, systemconfig.InitializeServerRuntime(tempDir, &systemconfig.Config{
+		GateClient: engineconfig.GateClientConfig{Hostname: "localhost", Port: 8080, Scheme: "https"},
+		Crypto: systemconfig.CryptoConfig{
+			Keys:       keyConfigs,
+			Encryption: engineconfig.EncryptionConfig{Key: "000102030405060708090a0b0c0d0e0f"},
+		},
+		Attestation: systemconfig.AttestationConfig{
+			Apple: systemconfig.AppleAttestationConfig{RootCertificate: string(certPEM)},
+		},
+	}))
+
+	eng := New(http.NewServeMux(),
+		WithServerHome(tempDir),
+		WithServerConfig(engineconfig.ServerConfig{Identifier: "test-engine"}),
+		WithObservabilityProvider(newTestObservabilityProvider(t)),
+		WithAuthorizationProvider(newTestAuthzProvider(t)),
+		WithKeyConfigs(keyConfigs),
+		WithJWTConfig(engineconfig.JWTConfig{Issuer: "test-issuer", PreferredKeyID: keyID, ValidityPeriod: 3600}),
+		WithRuntimeStoreProvider(newTestRuntimeStoreProvider(t)),
+		WithRuntimeTransientDBType("memory"),
+		WithEncryptionConfig(engineconfig.EncryptionConfig{Key: "test-encryption-key"}),
+		WithGateClientConfig(engineconfig.GateClientConfig{Hostname: "localhost", Port: 8080, Scheme: "https"}),
+		WithCacheConfig(engineconfig.CacheConfig{Disabled: true}),
+		WithLogConfig(engineconfig.LogConfig{Level: "debug", Format: "json"}),
+		WithIDPProvider(newTestIDPProvider(t)),
+		WithActorProvider(actorprovidermock.NewActorProviderMock(t)),
+		WithDefaultAuthnProvider(newTestDefaultAuthnProvider(t)),
+		WithResourceProvider(resourceserverprovidermock.NewResourceServerProviderMock(t)),
+		WithOUProvider(ouprovidermock.NewOrganizationUnitProviderMock(t)),
+		WithDesignResolveProvider(designprovidermock.NewDesignProviderMock(t)),
+		WithFlowProvider(flowexecmock.NewFlowProviderMock(t)),
+		WithI18nProvider(i18nprovidermock.NewI18nProviderMock(t)),
+		WithConsentProvider(consentprovidermock.NewConsentProviderMock(t)),
+		WithFlowConfig(engineconfig.FlowConfig{Executors: []string{"InviteExecutor", "PermissionValidator"}}),
+	)
+	require.NotNil(t, eng)
+
+	// A logger that already existed when the engine applied the format must follow it.
+	componentLogger.Info(context.Background(), "Executing node")
+
+	content, err := os.ReadFile(logPath) // #nosec G304 -- test reads a file under t.TempDir().
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+	for _, line := range lines {
+		var record map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &record), "every record must be JSON: %s", line)
+	}
+	assert.Contains(t, string(content), `"msg":"Executing node"`)
 }
 
 // TestNew_ResetsDynamicMatcherWhenOriginConfigEmpty guards against a stale matcher from a

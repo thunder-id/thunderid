@@ -1072,6 +1072,8 @@ components:
           type: string
         userinfo_encrypted_response_enc:
           type: string
+        id_token_signed_response_alg:
+          type: string
         id_token_encrypted_response_alg:
           type: string
         id_token_encrypted_response_enc:
@@ -1137,6 +1139,8 @@ components:
         userinfo_encrypted_response_alg:
           type: string
         userinfo_encrypted_response_enc:
+          type: string
+        id_token_signed_response_alg:
           type: string
         id_token_encrypted_response_alg:
           type: string

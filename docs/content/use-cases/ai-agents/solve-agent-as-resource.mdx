@@ -1,0 +1,50 @@
+---
+title: Anyone Can Call the Agent
+docType: use-case
+sidebar_position: 8
+description: Register the agent's own surface as a resource server so only the users, applications, and agents you intend can reach it.
+---
+
+# Anyone Can Call the Agent
+
+An agent is not only a caller. It is also a thing that gets called: its endpoint sits in your application like
+any other, and unless something says otherwise, every signed-in user can reach it.
+
+That matters more for an agent than for an ordinary endpoint, because an agent is expensive to run and capable
+of acting on a customer's behalf. Deciding who may talk to it is the same authorization question you answer for
+[the API behind its tools](../solve-access), pointed at the agent itself.
+
+## The Agent as a Protected Resource
+
+Nothing new is required here. The agent's own surface is described as a **resource server** with its own
+permission, a **role** bundles that permission, and the check the agent performs on an incoming request is the
+one any API performs: does this token carry the permission.
+
+For an agent whose only gate is whether the caller may use it at all, one permission is enough. The Wayfinder
+sample uses `agent:access` on a resource server that represents the agent itself, and the `Chat User` role
+carries it.
+
+See [Manage Resource Servers](../../../guides/resource-servers) and
+[Authorization](../../../key-concepts/authorization), the same two references behind the tools the agent calls.
+
+## Who May Register, and Who May Call
+
+An agent that acts for users has a second setting worth knowing about, mostly so you do not mistake it for
+this one.
+
+**Allowed user types** restricts which kinds of user can register through the agent. It does not stop an
+existing user of another type from signing in, so it is a provisioning control rather than an access gate.
+Keep the decision about who may use the agent on the permission.
+
+See [Extend the agent to act for a user](../../../guides/agents/authentication/on-behalf-of-user#extend-the-agent-to-act-for-a-user)
+for where allowed user types are set.
+
+## See It in the Sample
+
+This is the one posture better shown by a working application than by a decoded token, because what you want to
+observe is a person being turned away rather than a claim changing.
+
+The [Protect the Agent](../try-it-out/protect-the-agent) walkthrough runs exactly that. Two customers sign in
+to the same application. One holds the role carrying `agent:access` and reaches the assistant. The other books
+travel through the interface without trouble and is refused at the chat, because that token never carried the
+permission the agent checks.

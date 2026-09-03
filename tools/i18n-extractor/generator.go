@@ -68,12 +68,7 @@ func (g *Generator) Generate(messages []ExtractedMessage, outputPath string) err
 	sortedMessages := make([]MessageEntry, 0, len(keys))
 	for _, k := range keys {
 		msg := messageMap[k][0] // Take the first one since we are sure there are no duplicates now
-		sortedMessages = append(sortedMessages, MessageEntry{
-			Key:          msg.Key,
-			DefaultValue: msg.DefaultValue,
-			SourceFile:   msg.SourceFile,
-			Line:         msg.Line,
-		})
+		sortedMessages = append(sortedMessages, MessageEntry(msg))
 	}
 
 	data := struct {

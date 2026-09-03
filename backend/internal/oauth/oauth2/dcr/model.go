@@ -40,6 +40,7 @@ type DCRRegistrationRequest struct {
 	UserInfoSignedResponseAlg          string `json:"userinfo_signed_response_alg,omitempty"`
 	UserInfoEncryptedResponseAlg       string `json:"userinfo_encrypted_response_alg,omitempty"`
 	UserInfoEncryptedResponseEnc       string `json:"userinfo_encrypted_response_enc,omitempty"`
+	IDTokenSignedResponseAlg           string `json:"id_token_signed_response_alg,omitempty"`
 	IDTokenEncryptedResponseAlg        string `json:"id_token_encrypted_response_alg,omitempty"`
 	IDTokenEncryptedResponseEnc        string `json:"id_token_encrypted_response_enc,omitempty"`
 	// Localized variant maps — populated from #-keyed JSON fields (e.g. "client_name#fr").
@@ -138,6 +139,7 @@ type DCRRegistrationResponse struct {
 	UserInfoSignedResponseAlg          string `json:"userinfo_signed_response_alg,omitempty"`
 	UserInfoEncryptedResponseAlg       string `json:"userinfo_encrypted_response_alg,omitempty"`
 	UserInfoEncryptedResponseEnc       string `json:"userinfo_encrypted_response_enc,omitempty"`
+	IDTokenSignedResponseAlg           string `json:"id_token_signed_response_alg,omitempty"`
 	IDTokenEncryptedResponseAlg        string `json:"id_token_encrypted_response_alg,omitempty"`
 	IDTokenEncryptedResponseEnc        string `json:"id_token_encrypted_response_enc,omitempty"`
 	// Localized variant maps — injected as #-keyed top-level fields during serialization.

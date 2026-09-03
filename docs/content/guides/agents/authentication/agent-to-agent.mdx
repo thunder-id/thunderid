@@ -12,10 +12,10 @@ An agent can hand a sub-task to another agent. It exchanges a token for a new on
 
 ## Configure the agents
 
-Every agent that mints or receives a delegated token needs the token exchange grant. It is available in either operating mode, so an agent does not have to be extended to act for a user to take part in a hand-off.
+The agent that requests the exchanged token needs the token exchange grant, because the grant is checked against the client authenticating at the token endpoint. In the hand-off below that is the worker. The grant is available in either operating mode, so an agent does not have to be extended to act for a user to take part.
 
-- **Console:** on each agent's **Advanced** tab, add the **Token Exchange** grant.
-- **API:** add `urn:ietf:params:oauth:grant-type:token-exchange` to each agent's `grantTypes`.
+- **Console:** on the requesting agent's **Advanced** tab, add the **Token Exchange** grant.
+- **API:** add `urn:ietf:params:oauth:grant-type:token-exchange` to that agent's `grantTypes`.
 
 Grant each worker only the scopes its sub-task needs, through its roles. See [Groups and roles](../../manage-agents#groups-and-roles).
 

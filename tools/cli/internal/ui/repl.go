@@ -201,7 +201,8 @@ func b2cWalkthroughPanes(sampleURL, consoleURL string) []walkthroughPane {
 				"  " + Dim("Explore the self-service profile page - view account details, edit attributes, and change your password."),
 				"",
 				"  3  Click the username in the top-right corner and select Profile.",
-				"  4  View account details, edit profile attributes, or change your password. The page calls " + product.Name + " directly with your session token.",
+				"  4  View account details, edit profile attributes, or change your password. The page calls " + product.Name +
+					" directly with your session token.",
 			},
 		},
 		{
@@ -224,7 +225,9 @@ func b2cWalkthroughPanes(sampleURL, consoleURL string) []walkthroughPane {
 				"     " + Dim("last name     ") + "  " + Highlight("Wilson"),
 				"     " + Dim("mobile number ") + "  " + Highlight("+15550148812"),
 				"",
-				"  5  " + product.Name + " will create a Customer user and assign the Traveler role. The browser returns to the Wayfinder app signed in as the new user.",
+				"  5  " + product.Name +
+					" will create a Customer user and assign the Traveler role. The browser returns to the Wayfinder app signed in as " +
+					"the new user.",
 			},
 		},
 		{
@@ -236,7 +239,8 @@ func b2cWalkthroughPanes(sampleURL, consoleURL string) []walkthroughPane {
 				"  1  Open " + Cyan(sampleURL) + " and click Sign in.",
 				"  2  On the " + product.Name + " sign-in page, click Forgot password?",
 				"  3  Enter " + Bold("john.doe") + " as the username and submit.",
-				"  4  " + product.Name + " sends a recovery email to John's registered address. Open it from the inbox at " + Cyan(mailInboxURL) + ".",
+				"  4  " + product.Name + " sends a recovery email to John's registered address. Open it from the inbox at " +
+					Cyan(mailInboxURL) + ".",
 				"  5  Click the reset link in the email and set a new password.",
 				"  6  Sign in again with the new credentials.",
 			},
@@ -245,15 +249,20 @@ func b2cWalkthroughPanes(sampleURL, consoleURL string) []walkthroughPane {
 			Title: "Staff Sign-Up",
 			URL:   consoleURL,
 			Lines: []string{
-				"Invite and onboard two new staff members entirely from the " + product.Name + " Console: Sam Rivera (Support) and Maya Patel (DestinationsAdmin). The admin picks the staff role and sends the invitation, and the matching role is attached automatically when the invitee completes their profile.",
+				"Invite and onboard two new staff members entirely from the " + product.Name +
+					" Console: Sam Rivera (Support) and Maya Patel (DestinationsAdmin). The admin picks the staff role and sends the " +
+					"invitation, and the matching role is attached automatically when the invitee completes their profile.",
 				"",
 				"  1  Sign in to the " + product.Name + " Console at " + Cyan(consoleURL) + " as your admin user.",
 				"  2  Navigate to Users and select Add User.",
 				"  3  Select Staff as the user type.",
-				"  4  Pick Support as the role, enter Sam Rivera's email (" + Bold("sam.rivera@example.com") + "), and click Send invitation. An invite link is emailed to Sam.",
-				"  5  Open Sam's invitation email from the inbox at " + Cyan(mailInboxURL) + " and open the link. The browser opens a Complete Your Profile page.",
+				"  4  Pick Support as the role, enter Sam Rivera's email (" + Bold("sam.rivera@example.com") +
+					"), and click Send invitation. An invite link is emailed to Sam.",
+				"  5  Open Sam's invitation email from the inbox at " + Cyan(mailInboxURL) +
+					" and open the link. The browser opens a Complete Your Profile page.",
 				"  6  Fill in the additional attributes and submit. Sam's account is now active with the Support role attached.",
-				"  7  Repeat the flow for Maya Patel (email " + Bold("maya.patel@example.com") + "), picking DestinationsAdmin as the role.",
+				"  7  Repeat the flow for Maya Patel (email " + Bold("maya.patel@example.com") +
+					"), picking DestinationsAdmin as the role.",
 			},
 		},
 	}
@@ -277,7 +286,8 @@ func agentWalkthroughPanes(sampleURL string) []walkthroughPane {
 				"     " + Dim("username") + "  " + Highlight("john.doe"),
 				"     " + Dim("password") + "  " + Highlight("john.doe"),
 				"",
-				"  2  Open the chat widget (bottom-right corner) and send any message. The concierge responds — John's token carries the " + Bold("agent:access") + " scope.",
+				"  2  Open the chat widget (bottom-right corner) and send any message. The concierge responds — John's token carries the " +
+					Bold("agent:access") + " scope.",
 				"  3  Sign out and sign in as Jane Smith.",
 				"",
 				"     " + Red("✗") + " Jane does not have access to chat with the Wayfinder chat agent",
@@ -285,7 +295,8 @@ func agentWalkthroughPanes(sampleURL string) []walkthroughPane {
 				"     " + Dim("username") + "  " + Highlight("jane.smith"),
 				"     " + Dim("password") + "  " + Highlight("jane.smith"),
 				"",
-				"  4  Open the chat. Since Jane does not have the Wayfinder Chat User role, the chat agent will not be accessible and the widget will show an error message instead.",
+				"  4  Open the chat. Since Jane does not have the Wayfinder Chat User role, the chat agent will not be accessible and " +
+					"the widget will show an error message instead.",
 			},
 		},
 		{
@@ -304,7 +315,8 @@ func agentWalkthroughPanes(sampleURL string) []walkthroughPane {
 				"     " + Dim(`"What flights are there from Colombo to Singapore?"`),
 				"",
 				"  3  The agent calls the Wayfinder MCP server with its own M2M token (client_credentials grant). No popup appears.",
-				"  4  You can also try asking for flight deals — the agent calls the recommend_bookings tool, which requires the " + Bold("booking:recommend") + " scope, granted to the Wayfinder Concierge via its Recommender role.",
+				"  4  You can also try asking for flight deals — the agent calls the recommend_bookings tool, which requires the " +
+					Bold("booking:recommend") + " scope, granted to the Wayfinder Concierge via its Recommender role.",
 				"",
 				"     " + Dim(`"Suggest a few flight deals."`),
 			},
@@ -324,9 +336,12 @@ func agentWalkthroughPanes(sampleURL string) []walkthroughPane {
 				"",
 				"     " + Dim(`"Book flight 2"`),
 				"",
-				"  3  The agent returns a consent request. A popup opens - sign in as John and select which booking permissions to grant (" + Bold("booking:read") + ", " + Bold("booking:create") + ", " + Bold("booking:cancel") + ").",
-				"  4  Click Authorize. The agent retries the action using John's context token, and the booking confirmation appears in the chat shortly after.",
-				"  5  To see the rejection path, repeat the flow but deny " + Bold("booking:create") + " in the consent screen. The agent returns a 403.",
+				"  3  The agent returns a consent request. A popup opens - sign in as John and select which booking permissions to " +
+					"grant (" + Bold("booking:read") + ", " + Bold("booking:create") + ", " + Bold("booking:cancel") + ").",
+				"  4  Click Authorize. The agent retries the action using John's context token, and the booking confirmation appears in " +
+					"the chat shortly after.",
+				"  5  To see the rejection path, repeat the flow but deny " + Bold("booking:create") +
+					" in the consent screen. The agent returns a 403.",
 			},
 		},
 	}
@@ -409,7 +424,7 @@ type ReplModel struct {
 	switchRequested   bool   // set when the /use command is executed
 	newVersion        string // non-empty shows a persistent upgrade-available notice below the banner
 
-	nodeWarning       string // non-empty shows a persistent Node.js version notice below the banner
+	nodeWarning string // non-empty shows a persistent Node.js version notice below the banner
 
 	// showAllOnEmpty shows the full command list on an empty prompt for
 	// returning users (who skip the first-run onboarding picker). It clears
@@ -479,7 +494,10 @@ func (m *ReplModel) appendTailLogLine(line string) {
 }
 
 // NewReplModel initializes the REPL model.
-func NewReplModel(version string, proc *exec.Cmd, installPath string, verbose bool, isFirstRun bool, creds *setup.AdminCredentials) ReplModel {
+func NewReplModel(
+	version string, proc *exec.Cmd, installPath string,
+	verbose bool, isFirstRun bool, creds *setup.AdminCredentials,
+) ReplModel {
 	ti := textinput.New()
 	ti.Placeholder = "Starting " + product.Name + "..."
 	ti.Prompt = "> "
@@ -827,8 +845,7 @@ func (m ReplModel) update(msg tea.Msg) (tea.Model, tea.Cmd) { //nolint:cyclop,fu
 	// key prompt does nothing, and the value is too long to retype comfortably.
 	case tea.PasteMsg:
 		var tiCmd tea.Cmd
-		switch {
-		case m.showUsecaseConfig && m.ucStep < len(m.ucInputs) && len(m.ucInputs[m.ucStep].Choices) == 0:
+		if m.showUsecaseConfig && m.ucStep < len(m.ucInputs) && len(m.ucInputs[m.ucStep].Choices) == 0 {
 			m.ucText, tiCmd = m.ucText.Update(msg)
 		}
 		cmds = append(cmds, tiCmd)
@@ -1802,7 +1819,8 @@ func (m ReplModel) bodyPreamble() string {
 	}
 
 	if m.newVersion != "" && m.status == statusReady {
-		b.WriteString(Yellow("✦") + " " + Bold(product.Name+" v"+m.newVersion+" is available") + " — type " + Cyan("/upgrade") + " to upgrade\n\n")
+		b.WriteString(Yellow("✦") + " " + Bold(product.Name+" v"+m.newVersion+" is available") + " — type " + Cyan("/upgrade") +
+			" to upgrade\n\n")
 	}
 
 	switch m.status {

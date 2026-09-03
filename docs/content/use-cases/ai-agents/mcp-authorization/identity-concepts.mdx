@@ -32,7 +32,7 @@ See [Authorization](../../../../key-concepts/authorization).
 
 ## Resource Server
 
-This tryout reuses the Wayfinder resource server defined under [Resources and Permissions](../../identity-concepts#resources-and-permissions). The same `booking:*` permissions protect both `/api/*` (REST) and `/mcp` (MCP tools). The Wayfinder Server enforces them per-route on the REST side and per-tool on the MCP side, against the same service layer.
+This tryout reuses the Wayfinder resource server defined under [Resources and Permissions](../../try-it-out#resources-and-permissions). The same `booking:*` permissions protect both `/api/*` (REST) and `/mcp` (MCP tools). The Wayfinder Server enforces them per-route on the REST side and per-tool on the MCP side, against the same service layer.
 
 Each MCP tool checks for the same scope its REST counterpart checks for:
 

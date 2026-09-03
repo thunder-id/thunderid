@@ -16,6 +16,10 @@ $PRODUCT_NAME_LOWERCASE = $PRODUCT_NAME.ToLower()
 $CLI_DIR                = Join-Path $PSScriptRoot ".."
 $DIST_DIR               = Join-Path $CLI_DIR "dist"
 
+# Version reported by `--version`. Supplied by the npx build wrapper from
+# package.json; falls back to the unreleased placeholder for direct local builds.
+$VERSION = if ($env:VERSION) { $env:VERSION } else { "0.0.0-semantically-released" }
+
 New-Item -ItemType Directory -Force -Path $DIST_DIR | Out-Null
 
 $TARGETS = @(
@@ -34,7 +38,7 @@ try {
         $env:GOOS        = $t.GOOS
         $env:GOARCH      = $t.GOARCH
         $env:CGO_ENABLED = "0"
-        go build -ldflags="-s -w" -o $outPath "./cmd/${PRODUCT_NAME_LOWERCASE}/"
+        go build -ldflags="-s -w -X main.version=$VERSION" -o $outPath "./cmd/${PRODUCT_NAME_LOWERCASE}/"
     }
 } finally {
     "GOOS", "GOARCH", "CGO_ENABLED" | ForEach-Object { Remove-Item "Env:\$_" -ErrorAction SilentlyContinue }

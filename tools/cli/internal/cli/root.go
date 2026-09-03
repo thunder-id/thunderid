@@ -69,7 +69,14 @@ func Run(verbose, forceSetup bool) {
 		ui.Warn(nodeWarning)
 	}
 
+	// Never let a non-default release source be silent: an operator has to be able to see that
+	// this run is not reading the public manifest.
+	if release.IsCustomSource() {
+		ui.Note("Custom release source", release.SourceURL())
+	}
+
 	activeVersion := config.ReadActiveVersion()
+	pinnedVersion := release.Pinned()
 
 	fmt.Print(ui.Dim("  Fetching latest " + product.Name + " release..."))
 	latestVersion, err := release.FetchLatestVersion()
@@ -92,14 +99,20 @@ func Run(verbose, forceSetup bool) {
 	}
 
 	// Always start the active version; only download when there's no installed version yet.
+	// A pinned version overrides both: it is an explicit instruction about what to run.
 	runVersion := latestVersion
 	if activeVersion != "" {
 		runVersion = activeVersion
 	}
+	if pinnedVersion != "" {
+		runVersion = pinnedVersion
+	}
 
-	// Show a new-version banner inside the REPL (not a blocking prompt).
+	// Show a new-version banner inside the REPL (not a blocking prompt). Pinning suppresses it:
+	// the operator already said which version they want.
 	var newVersion string
-	if activeVersion != "" && activeVersion != latestVersion && !config.IsVersionSkipped(latestVersion) {
+	if pinnedVersion == "" && activeVersion != "" && activeVersion != latestVersion &&
+		!config.IsVersionSkipped(latestVersion) {
 		newVersion = latestVersion
 	}
 
@@ -111,7 +124,10 @@ func Run(verbose, forceSetup bool) {
 			installOnDisk = true
 		}
 	}
-	alreadyInstalled := activeVersion == runVersion && config.IsSetupComplete(runVersion) && installOnDisk
+	// A pinned version is judged on its own install state rather than on which version happens to
+	// be active: asking for a version that is already installed should start it, not fetch it again.
+	selected := activeVersion == runVersion || pinnedVersion != ""
+	alreadyInstalled := selected && config.IsSetupComplete(runVersion) && installOnDisk
 	isFirstRun := !config.IsOnboardingDone(runVersion)
 
 	var port int
@@ -122,7 +138,7 @@ func Run(verbose, forceSetup bool) {
 		// Setup already ran on an earlier invocation, so the port it seeded into the
 		// console application's redirect URIs is fixed: no alternate port here.
 		port = resolvePort(path, false)
-	} else if activeVersion == runVersion && installOnDisk {
+	} else if selected && installOnDisk {
 		absPath, err := filepath.Abs(path)
 		if err != nil {
 			absPath = path
@@ -141,8 +157,9 @@ func Run(verbose, forceSetup bool) {
 		creds = runSetupPhase(runVersion, path, verbose, port)
 	} else {
 		// If the previously-active version is no longer in the manifest we'd need
-		// to download it, so fall back to the latest available version.
-		if runVersion != latestVersion {
+		// to download it, so fall back to the latest available version. A pinned version is
+		// never swapped out: failing to find it has to be reported, not worked around.
+		if pinnedVersion == "" && runVersion != latestVersion {
 			runVersion = latestVersion
 			path = VersionedInstallPath(runVersion)
 			newVersion = "" // already on latest after this download
@@ -159,6 +176,15 @@ func Run(verbose, forceSetup bool) {
 		path = absPath
 		port = resolvePort(path, true)
 		creds = runSetupPhase(runVersion, path, verbose, port)
+		if err := config.WriteActiveVersion(runVersion); err != nil {
+			ui.Fatal("Failed to record active version: " + err.Error())
+			os.Exit(1)
+		}
+	}
+
+	// A pinned run switches the active version, so a later run without the pin starts what was
+	// last explicitly asked for instead of silently reverting to the previous one.
+	if config.ReadActiveVersion() != runVersion {
 		if err := config.WriteActiveVersion(runVersion); err != nil {
 			ui.Fatal("Failed to record active version: " + err.Error())
 			os.Exit(1)
@@ -202,16 +228,19 @@ func Run(verbose, forceSetup bool) {
 
 // replLoop runs the REPL repeatedly, re-entering after no-op upgrades or version switches.
 // An actual upgrade or normal exit breaks the loop.
-func replLoop(version, installPath string, proc *exec.Cmd, verbose, isFirstRun bool, newVersion, nodeWarning string, port int, creds *setup.AdminCredentials) {
+func replLoop(
+	version, installPath string, proc *exec.Cmd, verbose, isFirstRun bool,
+	newVersion, nodeWarning string, port int, creds *setup.AdminCredentials,
+) {
 	notice := ""
 	for {
-		upgradeRequested, switchRequested, err := ui.RunREPL(version, proc, installPath, verbose, isFirstRun, newVersion, nodeWarning, port, creds, notice)
+		upgradeRequested, switchRequested, err := ui.RunREPL(
+			version, proc, installPath, verbose, isFirstRun, newVersion, nodeWarning, port, creds, notice)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\nREPL error: %v\n", err)
 			os.Exit(1)
 		}
 		isFirstRun = false
-		notice = ""
 
 		if upgradeRequested {
 			upgraded, upgradeNotice, err := upgrade.Run(BaseDir(), upgrade.Opts{Verbose: verbose, Port: port})

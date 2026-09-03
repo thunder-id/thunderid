@@ -127,6 +127,10 @@ With the configuration above, logs are written to `<THUNDER_HOME>/logs/thunderid
 Size and time triggers are independent and can run together: with both enabled, the file rolls whenever it exceeds the size limit **or** reaches the next time interval, whichever comes first. Time-based rotation rolls at local midnight and skips days with no log output (so idle days do not create empty files).
 
 :::note
+The format applies to every component's log lines, regardless of when that component was created. The exception is the lines emitted before the logging configuration is applied, during server home resolution and configuration loading. Those use the default text format on stdout, because the format itself is part of the configuration still being loaded.
+:::
+
+:::note
 This is the <ProductName /> **application log** (the `INFO`/`WARN`/`ERROR` lines the server emits). It is separate from the observability event file sink described in the [Observability](../../deployment/observability) guide, which records structured domain events such as token issuance and flow execution.
 :::
 

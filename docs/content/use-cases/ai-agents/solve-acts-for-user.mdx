@@ -1,0 +1,113 @@
+---
+title: The Token Cannot Say the Agent Acted for a User
+docType: use-case
+sidebar_position: 7
+description: "Let an agent act on behalf of a user in {{ProductName}}: capture consent, then issue a delegated token that names the user as subject and the agent as actor."
+---
+
+# The Token Cannot Say the Agent Acted for a User
+
+The agent's own permissions cover the work nobody had to approve. They do not cover booking a trip, because
+booking commits an action against a person's record, and that person has to have agreed to it.
+
+Two shortcuts are tempting here, and both lose something. Use the agent's own token and the customer never
+consented, so the agent acts with authority the customer did not give. Hand the agent the customer's
+credentials and the record of which agent carried out the action disappears. What you want is a token that
+names both of them.
+
+That token is what OAuth calls an **on-behalf-of** token, and it is what an agent receives once it is extended
+to act for a user.
+
+## Extend the Agent to Act for a User
+
+An agent starts out acting only on its own. Putting it into **delegated mode** adds the ability to sign a user
+in and act for them, and it keeps everything the agent could already do on its own. Hybrid behavior is the
+normal case rather than a special one: the same agent recommends flights under its own authority and books them
+under a customer's.
+
+Extending the agent is also where you set the redirect URIs its sign-in returns to and the user types allowed
+to register through it.
+
+See [Extend the agent to act for a user](../../../guides/agents/authentication/on-behalf-of-user#extend-the-agent-to-act-for-a-user).
+
+## Which Flow Signs the User In
+
+The agent does not authenticate anybody. <ProductName /> does, by running the flow the agent points at, and the
+agent receives the result.
+
+That indirection is what lets an agent inherit the sign-in you already built. If your users authenticate with
+enterprise single sign-on, a social provider, passkeys, or a one-time code, the agent uses the same flow, and a
+step-up requirement configured there applies to the agent's sign-in too.
+
+See [Login and Registration Flows](../../../guides/flows/build-a-flow) for building a flow, and the agent's
+Flows settings in [Create and Manage Agents](../../../guides/agents/manage-agents) for selecting one.
+
+## Consent
+
+The customer approves what the agent may do for them, one requested permission at a time, and the issued token
+carries only what they approved. An agent cannot widen that afterwards.
+
+The permissions the token ends up with are the intersection of what the customer holds and what the customer
+just approved, so consent can narrow a customer's authority for a given agent but never extend it. A granted
+consent stands until the customer revokes it, unless you set a validity period on it.
+
+See [Consent](../../../guides/consent).
+
+## What the Token Carries
+
+Three claims name three different parties, and keeping them apart is the difference between reading this token
+correctly and misreading it:
+
+- **`sub`** is the customer. The token represents them, so a resource applies the customer's permissions.
+- **`act`** is the agent that carried out the request, identified by its resource ID.
+- **`client_id`** is the OAuth client that authenticated, which is always the agent.
+
+A resource reads `sub` to decide what is allowed and `act` to record which agent did it. The ID token never
+carries `act`, because it identifies the user and nothing else.
+
+An agent that keeps a refresh token can renew this access without sending the customer through sign-in again,
+and the reissued token still names the agent as the actor.
+
+See [What the token carries](../../../guides/agents/authentication/on-behalf-of-user#what-the-token-carries)
+and [Refresh Token](../../../guides/protocols/oauth-oidc/refresh-token).
+
+## See the Tokens
+
+Open the **Acts for a customer** tab in the playground and sign in as John, using the credentials the tab
+shows you (`johndoe`). The tab requests consent on every
+sign-in, so the approval screen always appears rather than being skipped by a consent granted earlier.
+
+Four artifacts come back. The **ID token** identifies John and carries no `act`. The **access token** names
+John in `sub` and the Concierge in `act`. **Refreshing** reissues the access token with the actor intact. The
+final button **narrows** the token by [token exchange](../../../guides/protocols/oauth-oidc/token-exchange),
+requesting only `booking:read` against the booking API, and
+`booking:create` disappears from the result.
+
+The access token is where the two names sit together:
+
+```json
+{
+  "sub": "agent-identity-john",
+  "act": {
+    "sub": "agent-identity-concierge"
+  },
+  "iss": "https://localhost:8090",
+  "aud": "https://api.travel.example/booking",
+  "scope": "booking:read booking:create",
+  "client_id": "agent-identity-concierge-id",
+  "exp": 1893456000,
+  "iat": 1893452400
+}
+```
+
+Compare it with the agent token on [Nothing Limits What the Agent May Do](../solve-access). There, `sub` was
+the agent and there was no `act` at all. Here `sub` is John, so the booking API applies their permissions, and
+`act` names the Concierge by its resource ID, so the same request also records which agent carried it out.
+`client_id` stays the agent in both.
+
+The narrowing step is worth watching closely, because narrowing is the only reason to exchange a token whose
+actor is already the agent that holds it. Without a reduction in scope or a change of audience, the result would be
+indistinguishable from its input.
+
+See [Get a token for the user](../../../guides/agents/authentication/on-behalf-of-user#get-a-token-for-the-user)
+for all three ways an agent obtains one.

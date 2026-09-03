@@ -1,0 +1,42 @@
+{
+  "name": "@thunderid/e2e-cli",
+  "version": "1.0.0",
+  "private": true,
+  "description": "End-to-end tests for the ThunderID CLI using Playwright",
+  "license": "Apache-2.0",
+  "author": "The ThunderID Authors",
+  "type": "commonjs",
+  "scripts": {
+    "postinstall": "node scripts/fix-node-pty-permissions.js",
+    "test": "playwright test",
+    "test:no-sample": "playwright test --project=commands --project=install --project=repl --project=restart --project=port-conflict",
+    "test:commands": "playwright test tests/commands",
+    "test:debug": "playwright test --debug",
+    "report": "playwright show-report",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{ts,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,json,md}\"",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "e2e",
+    "testing",
+    "playwright",
+    "cli",
+    "thunderid"
+  ],
+  "devDependencies": {
+    "@playwright/test": "1.60.0",
+    "@types/node": "24.7.2",
+    "@typescript-eslint/eslint-plugin": "8.57.2",
+    "@typescript-eslint/parser": "8.57.2",
+    "eslint": "9.0.0",
+    "eslint-plugin-playwright": "2.1.0",
+    "prettier": "3.4.2",
+    "typescript": "5.7.3"
+  },
+  "dependencies": {
+    "node-pty": "1.1.0"
+  }
+}

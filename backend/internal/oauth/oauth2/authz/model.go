@@ -46,12 +46,6 @@ type AuthorizationCode struct {
 	TokenFamilyID string
 }
 
-// AuthZPostRequest represents the request body for the authorization POST request.
-type AuthZPostRequest struct {
-	AuthID    string `json:"authId"`
-	Assertion string `json:"assertion"`
-}
-
 // AuthZPostResponse represents the response body for the authorization POST request.
 type AuthZPostResponse struct {
 	RedirectURI string `json:"redirect_uri"`

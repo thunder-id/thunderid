@@ -1406,6 +1406,60 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_WithClaimsLoca
 // BuildIDToken Tests - Success Cases
 // ============================================================================
 
+// TestBuildIDToken_UsesConfiguredSigningAlg verifies that a client's configured ID token signing
+// algorithm reaches the JWT service, and that an unconfigured client still signs with the
+// server's preferred key (passed as an empty algorithm).
+func (suite *TokenBuilderTestSuite) TestBuildIDToken_UsesConfiguredSigningAlg() {
+	testCases := []struct {
+		name        string
+		idTokenCfg  *providers.IDTokenConfig
+		expectedAlg string
+	}{
+		{
+			name:        "ConfiguredAlgIsUsed",
+			idTokenCfg:  &providers.IDTokenConfig{SigningAlg: "ES256"},
+			expectedAlg: "ES256",
+		},
+		{
+			name:        "NoTokenConfigFallsBackToServerDefault",
+			idTokenCfg:  nil,
+			expectedAlg: "",
+		},
+		{
+			name:        "EmptyConfiguredAlgFallsBackToServerDefault",
+			idTokenCfg:  &providers.IDTokenConfig{},
+			expectedAlg: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
+			builder := &tokenBuilder{jwtService: mockJWT, cfg: suite.builder.cfg}
+
+			oauthApp := &providers.OAuthClient{ClientID: "app123"}
+			if tc.idTokenCfg != nil {
+				oauthApp.Token = &providers.OAuthTokenConfig{IDToken: tc.idTokenCfg}
+			}
+
+			mockJWT.EXPECT().GenerateJWT(
+				mock.Anything, "user123", mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything, tc.expectedAlg,
+			).Return(testIDToken, time.Now().Unix(), nil).Once()
+
+			result, err := builder.BuildIDToken(context.Background(), &IDTokenBuildContext{
+				Subject:  "user123",
+				Audience: "app123",
+				Scopes:   []string{"openid"},
+				OAuthApp: oauthApp,
+			})
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), testIDToken, result.Token)
+		})
+	}
+}
+
 func (suite *TokenBuilderTestSuite) TestBuildIDToken_Success_Basic() {
 	ctx := &IDTokenBuildContext{
 		Subject:        "user123",

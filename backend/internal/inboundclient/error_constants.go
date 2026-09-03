@@ -148,6 +148,9 @@ var (
 	ErrOAuthUserInfoAlgRequiresResponseType = errors.New(
 		"userinfo responseType is required when signingAlg or encryptionAlg is set")
 
+	// ErrOAuthIDTokenUnsupportedSigningAlg is returned when the ID token signing algorithm has no
+	// matching signing key configured for the deployment.
+	ErrOAuthIDTokenUnsupportedSigningAlg = errors.New("unsupported ID token signing algorithm")
 	// ErrOAuthIDTokenUnsupportedEncryptionAlg is returned when the ID token encryption algorithm is not supported.
 	ErrOAuthIDTokenUnsupportedEncryptionAlg = errors.New("unsupported ID token encryption algorithm")
 	// ErrOAuthIDTokenUnsupportedEncryptionEnc is returned when the ID token content-encryption

@@ -473,7 +473,11 @@ function Test-I18n-Extractor {
 }
 
 function Lint-CLI {
-    $golangciLint = Join-Path $PSScriptRoot "backend/bin/tools/golangci-lint.exe"
+    # tools/cli is a separate Go module with its own Go directive, and golangci-lint refuses to
+    # run when the Go it was built with is older than the module it is linting. The CLI therefore
+    # uses a linter installed into its own bin directory with its own toolchain, rather than the
+    # backend's binary.
+    $golangciLint = Join-Path $PSScriptRoot "tools/cli/bin/tools/golangci-lint.exe"
     Write-Host "Linting CLI tool..."
     Push-Location "$PSScriptRoot/tools/cli"
     try {
@@ -485,7 +489,8 @@ function Lint-CLI {
 }
 
 function Lint-I18n-Extractor {
-    $golangciLint = Join-Path $PSScriptRoot "backend/bin/tools/golangci-lint.exe"
+    # Its own linter, not the backend's: see the note in Lint-CLI.
+    $golangciLint = Join-Path $PSScriptRoot "tools/i18n-extractor/bin/tools/golangci-lint.exe"
     Write-Host "Linting i18n-extractor..."
     Push-Location "$PSScriptRoot/tools/i18n-extractor"
     try {
@@ -1754,14 +1759,32 @@ switch ($Command) {
     'build_docs' {
         Build-Docs
     }
-    'build_tools' {
+    'tools_build' {
         Build-Tools
     }
-    'test_tools' {
+    'tools_test' {
         Test-Tools
     }
-    'lint_tools' {
+    'tools_lint' {
         Lint-Tools
+    }
+    'tools_build_cli' {
+        Build-CLI
+    }
+    'tools_test_cli' {
+        Test-CLI
+    }
+    'tools_lint_cli' {
+        Lint-CLI
+    }
+    'tools_build_i18n_extractor' {
+        Build-I18n-Extractor
+    }
+    'tools_test_i18n_extractor' {
+        Test-I18n-Extractor
+    }
+    'tools_lint_i18n_extractor' {
+        Lint-I18n-Extractor
     }
     'package_samples' {
         Package-Sample-App
@@ -1792,7 +1815,7 @@ switch ($Command) {
         Test-Integration
     }
     default {
-        Write-Host "Usage: $($MyInvocation.MyCommand.Name) {clean|build|build_backend|build_frontend|build_docs|build_tools|test_tools|lint_tools|package_samples|test_unit|test_integration|merge_coverage|run|run_backend|run_frontend|run_docs|test}"
+        Write-Host "Usage: $($MyInvocation.MyCommand.Name) {clean|build|build_backend|build_frontend|build_docs|tools_build|tools_test|tools_lint|tools_build_cli|tools_test_cli|tools_lint_cli|tools_build_i18n_extractor|tools_test_i18n_extractor|tools_lint_i18n_extractor|package_samples|test_unit|test_integration|merge_coverage|run|run_backend|run_frontend|run_docs|test}"
         exit 1
     }
 }

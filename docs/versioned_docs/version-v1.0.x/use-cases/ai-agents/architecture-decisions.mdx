@@ -1,0 +1,115 @@
+---
+title: Design Decisions & Alternatives
+docType: use-case
+sidebar_position: 11
+description: The reasoning behind the agent identity defaults, and what to choose instead when your constraints differ.
+---
+
+# Design Decisions & Alternatives
+
+You have seen [the problems agents bring](../overview), [how <ProductName /> answers each one](../solve-index),
+and [the whole set running in a sample application](../try-it-out). What follows is the reasoning underneath
+those defaults, and what to pick when your product does not match the assumptions they make.
+
+The problems in [Solve It](../solve-index) each had one right answer. These do not: the right choice depends on
+how your agents are deployed and operated.
+
+The decisions fall into four groups:
+
+- Which postures your agent occupies.
+- How the agent proves it is itself.
+- How permissions are shaped and how far they narrow.
+- How you operate agents once they are running.
+
+## Choose the Postures
+
+The first decision, because everything else follows from it. Work out which positions your agent occupies, and
+expect the answer to be more than one.
+
+- Use the **agent's own token** for work nobody has to approve: scheduled runs, queue processing, monitoring,
+  and any read the agent is trusted with on its own.
+- Use a **signed-in user** when a person is present and the work commits something against their record.
+- Use **backchannel approval** when the work needs a specific person and no browser is available.
+
+These combine rather than compete. Extending an agent to act for a user keeps everything it could already do
+alone, so an agent that recommends under its own authority and books under a customer's is the ordinary case
+rather than an advanced one. Deciding this early matters because it determines which grants the agent needs and
+what its token can name.
+
+See [The Token Cannot Say the Agent Acted for a User](../solve-acts-for-user) and
+[The Person Is Not There to Approve](../solve-ambient) for the two delegated postures.
+
+## Choose the Credential
+
+The right credential depends on how the agent is deployed rather than on how sensitive its work is.
+
+- A **client secret** is the simplest. It rotates on demand, and the old value stops working the moment the new
+  one is issued, so the rotation and the deployment have to happen together.
+- **`private_key_jwt`** removes the shared secret. Because the keys are a set, you can publish a new one
+  alongside the current one and cut over without a window where the agent cannot authenticate. Choose this when
+  a coordinated restart is expensive or when nothing secret may sit in configuration.
+- **DPoP** binds the token to a key the agent holds, so a copied token is unusable without that key. It costs a
+  signed proof on every request, and the agent opts in per request rather than through a setting you enforce.
+  Choose it when tokens travel through infrastructure you do not fully control.
+
+There is also the option of making the agent a public client, which rules out a client secret and the client
+credentials grant with it. That leaves an agent that can only act for users, never on its own.
+
+Rotation cadence is yours to set. <ProductName /> rotates on demand and does not run a schedule for you, so
+the policy lives in whatever already governs the rest of your credentials.
+
+See [Anyone Who Copies the Secret Is the Agent](../solve-credentials).
+
+## Choose the Authorization Model
+
+How you shape permissions now decides how finely you can delegate later, which is the part that is easy to get
+wrong while everything still works.
+
+- **Scope granularity.** One permission per tool action gives the most precise control and the most to manage.
+  One per capability group is the common middle. The agent-specific consequence: a token never carries more than
+  the principal it names already held, so granularity chosen today is the ceiling on how narrowly you can scope
+  an agent tomorrow.
+- **Resource-server grouping.** One per backend is the default. Split further when two parts of a backend
+  should be independently grantable.
+- **Audience binding.** Naming the target API on every token request stops a token being replayed elsewhere.
+  Skip it only when an agent talks to exactly one backend.
+- **What the token carries.** Selecting agent attributes such as its model and provider into the token lets a
+  gateway apply policy per agent without keeping its own registry.
+
+See [Nothing Limits What the Agent May Do](../solve-access).
+
+## Choose the Operating Model
+
+Agents become part of the production path, so plan how you will change, watch, and contain them.
+
+The decision that surprises teams is **token lifetime**. An agent can revoke tokens issued to it, but an
+administrator cannot revoke an agent's outstanding tokens on its behalf. Containment therefore means deleting
+the agent so it obtains no new tokens, then waiting for the issued ones to expire. That is the reason short
+lifetimes are the recommended posture for agents: the lifetime you choose is the longest a compromised agent
+keeps working. Shorter costs more traffic to the token endpoint, and buys a smaller window.
+
+Alongside it:
+
+- **Ownership.** Every agent has an owner, and the value is current rather than historical. If you need to
+  reconstruct who was accountable last quarter, keep that in your own system of record.
+- **Identity as code.** Agent configuration moves between environments the same way the rest of your
+  configuration does, through declarative files under review.
+- **Visibility.** <ProductName /> emits an event every time a token is issued, fails to issue, or is revoked,
+  carrying the client that asked, the grant it used, the scopes it received, and a trace identifier. For agents
+  that matters more than for ordinary clients, because they request tokens far more often than a person signs
+  in and for different subjects depending on the posture. Two things to decide up front: the events are
+  disabled by default, so pick which categories to enable, and pick where to export them, since they ship as
+  OpenTelemetry traces and can sit alongside the traces you already collect. Note that an event names the agent
+  that asked, not who it was acting for; that half of the attribution comes from the `act` claim in the token
+  your services receive. See [Observability](../../../deployment/observability).
+- **Who may register agents.** A central team, or the teams building them. Delegating reduces the bottleneck
+  and widens who can create a principal with its own credential.
+
+## Expected Outcome
+
+With these settled, agent identity stops being something bolted onto each agent and becomes one model: every
+agent nameable, its authority described outside its own code, and every call carrying a token that says what it
+is allowed to do.
+
+If one decision here does not fit, revisit that decision and then recheck only the ones that depend on it. The
+problems in [Solve It](../solve-index) and the way <ProductName /> answers them do not change.

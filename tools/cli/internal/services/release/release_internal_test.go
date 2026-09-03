@@ -235,3 +235,52 @@ func TestExtractInto_KeepsPreexistingDirectory(t *testing.T) {
 	_, err := os.Stat(keep)
 	assert.NoError(t, err, "a pre-existing install must be left alone")
 }
+
+// findAsset used to fall back to the latest release's asset when the requested version was not
+// in the manifest. Nothing could request a specific version, so it never mattered; with
+// --product-version it would install the latest under the name of the version that was asked
+// for, which is worse than failing.
+func TestFindAsset_DoesNotSubstituteAnotherRelease(t *testing.T) {
+	data := &releasesData{
+		LatestRelease: releaseEntry{
+			TagName: "v2.0.0",
+			Assets:  []releaseAsset{{Name: "thunderid-2.0.0-linux-x64.zip", DownloadURL: "https://example.com/2.0.0"}},
+		},
+		Releases: []releaseEntry{
+			{
+				TagName: "v1.0.0",
+				Assets:  []releaseAsset{{Name: "thunderid-1.0.0-linux-x64.zip", DownloadURL: "https://example.com/1.0.0"}},
+			},
+		},
+	}
+
+	found := findAsset(data, "1.0.0", "thunderid-1.0.0-linux-x64.zip")
+	require.NotNil(t, found, "an asset that exists should be found")
+	assert.Equal(t, "https://example.com/1.0.0", found.DownloadURL)
+
+	assert.Nil(t, findAsset(data, "9.9.9", "thunderid-9.9.9-linux-x64.zip"),
+		"a version the manifest does not carry must not resolve to another release")
+}
+
+// The latest release is only listed under latestRelease in the manifest, so asking for it by
+// version has to match there too.
+func TestFindAsset_MatchesTheLatestReleaseByVersion(t *testing.T) {
+	data := &releasesData{
+		LatestRelease: releaseEntry{
+			TagName: "v2.0.0",
+			Assets:  []releaseAsset{{Name: "thunderid-2.0.0-linux-x64.zip", DownloadURL: "https://example.com/2.0.0"}},
+		},
+	}
+
+	found := findAsset(data, "2.0.0", "thunderid-2.0.0-linux-x64.zip")
+	require.NotNil(t, found)
+	assert.Equal(t, "https://example.com/2.0.0", found.DownloadURL)
+}
+
+// A custom source is authoritative: reaching for the public GitHub API behind the operator's back
+// would fetch something they did not point at.
+func TestFetchReleasesData_NoFallbackWhenDisabled(t *testing.T) {
+	_, err := fetchReleasesDataFrom("http://127.0.0.1:1/releases.json", "")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "fallback", "an empty fallback must not be attempted")
+}

@@ -341,10 +341,10 @@ func (s *userInfoService) generateJWSUserInfo(
 		if err.Code == jwt.ErrorUnsupportedJWSAlgorithm.Code {
 			s.logger.Error(ctx, "UserInfo signing algorithm is not supported by the server key",
 				log.String("alg", signingAlg), log.String("error", err.Error.DefaultValue))
-		} else {
-			s.logger.Error(ctx, "Failed to generate signed UserInfo JWT",
-				log.String("error", err.Error.DefaultValue))
+			return nil, &errorUnsupportedSigningAlg
 		}
+		s.logger.Error(ctx, "Failed to generate signed UserInfo JWT",
+			log.String("error", err.Error.DefaultValue))
 		return nil, &tidcommon.InternalServerError
 	}
 

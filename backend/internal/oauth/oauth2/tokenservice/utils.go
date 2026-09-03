@@ -64,6 +64,7 @@ func ResolveTokenConfig(
 			if oauthApp.Token.IDToken.ValidityPeriod > 0 {
 				tokenConfig.ValidityPeriod = oauthApp.Token.IDToken.ValidityPeriod
 			}
+			tokenConfig.SigningAlg = oauthApp.Token.IDToken.SigningAlg
 		}
 	case TokenTypeRefresh:
 		if cfg.OAuth.RefreshToken.ValidityPeriod > 0 {

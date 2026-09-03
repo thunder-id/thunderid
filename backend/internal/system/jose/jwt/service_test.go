@@ -130,15 +130,23 @@ func (suite *JWTServiceTestSuite) SetupTest() {
 			return cryptolib.Generate(content, cryptolib.RSASHA256, suite.testPrivateKey)
 		}).Maybe()
 	cryptoMock.EXPECT().
-		GetPublicKeys(mock.Anything, providers.PublicKeyFilter{}).
-		Return([]providers.PublicKeyInfo{
-			{
-				KeyID:      "test-kid",
-				Algorithm:  string(cryptolib.AlgorithmRS256),
-				PublicKey:  &suite.testPrivateKey.PublicKey,
-				Thumbprint: "test-kid",
-			},
-		}, nil).Maybe()
+		GetPublicKeys(mock.Anything, mock.Anything).
+		RunAndReturn(func(
+			_ context.Context, filter providers.PublicKeyFilter,
+		) ([]providers.PublicKeyInfo, error) {
+			// The suite configures a single RS256 key, mirroring a deployment with one signing key.
+			if filter.Algorithm != "" && filter.Algorithm != string(cryptolib.AlgorithmRS256) {
+				return nil, nil
+			}
+			return []providers.PublicKeyInfo{
+				{
+					KeyID:      "test-kid",
+					Algorithm:  string(cryptolib.AlgorithmRS256),
+					PublicKey:  &suite.testPrivateKey.PublicKey,
+					Thumbprint: "test-kid",
+				},
+			}, nil
+		}).Maybe()
 	cryptoMock.EXPECT().
 		Verify(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		RunAndReturn(func(
@@ -1537,6 +1545,88 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithPublicKey() {
 	}
 }
 
+// TestGenerateJWTKeyLookupFailure covers the signing path when the configured keys cannot be read,
+// which is a server fault rather than an unusable client algorithm.
+func (suite *JWTServiceTestSuite) TestGenerateJWTKeyLookupFailure() {
+	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
+	cryptoMock.EXPECT().
+		GetPublicKeys(mock.Anything, providers.PublicKeyFilter{Algorithm: string(jws.ES256)}).
+		Return(nil, errors.New("keystore unavailable")).Once()
+
+	jwtSvc := &jwtService{
+		cryptoProvider: cryptoMock,
+		cfg:            joseconfig.Config{Issuer: testIssuer, ValidityPeriod: 3600},
+		keyRef:         providers.KeyRef{KeyID: "test-kid"},
+		jwsAlg:         string(jws.RS256),
+		kid:            "test-kid",
+		logger:         log.GetLogger(),
+	}
+
+	_, _, svcErr := jwtSvc.GenerateJWT(context.Background(), "test-subject", testIssuer, 3600,
+		map[string]interface{}{"aud": testAudience}, TokenTypeJWT, string(jws.ES256))
+
+	require.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// TestGenerateJWTSelectsKeyForAlg verifies that a requested algorithm is signed with the
+// configured key for that algorithm, and that the "kid" header identifies that key rather than
+// the preferred key. A mismatched kid would produce a token no client could verify.
+func (suite *JWTServiceTestSuite) TestGenerateJWTSelectsKeyForAlg() {
+	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(suite.T(), err)
+
+	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
+	cryptoMock.EXPECT().
+		GetPublicKeys(mock.Anything, providers.PublicKeyFilter{Algorithm: string(jws.ES256)}).
+		Return([]providers.PublicKeyInfo{
+			{
+				KeyID:      "ecdsa-key",
+				Algorithm:  string(jws.ES256),
+				PublicKey:  &ecKey.PublicKey,
+				Thumbprint: "ecdsa-thumbprint",
+			},
+		}, nil).Once()
+	cryptoMock.EXPECT().
+		Sign(mock.Anything, providers.KeyRef{KeyID: "ecdsa-key"}, string(jws.ES256), mock.Anything).
+		RunAndReturn(func(
+			_ context.Context, _ providers.KeyRef, _ string, content []byte,
+		) ([]byte, error) {
+			return cryptolib.Generate(content, cryptolib.ECDSASHA256, ecKey)
+		}).Once()
+
+	jwtSvc := &jwtService{
+		cryptoProvider: cryptoMock,
+		cfg:            joseconfig.Config{Issuer: testIssuer, ValidityPeriod: 3600},
+		keyRef:         providers.KeyRef{KeyID: "test-kid"},
+		jwsAlg:         string(jws.RS256),
+		kid:            "test-kid",
+		logger:         log.GetLogger(),
+	}
+
+	token, _, svcErr := jwtSvc.GenerateJWT(context.Background(), "test-subject", testIssuer, 3600,
+		map[string]interface{}{"aud": testAudience}, TokenTypeJWT, string(jws.ES256))
+	require.Nil(suite.T(), svcErr)
+
+	parts := strings.Split(token, ".")
+	require.Len(suite.T(), parts, 3)
+	headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
+	require.NoError(suite.T(), err)
+
+	var header map[string]string
+	require.NoError(suite.T(), json.Unmarshal(headerJSON, &header))
+	assert.Equal(suite.T(), string(jws.ES256), header["alg"])
+	assert.Equal(suite.T(), "ecdsa-thumbprint", header["kid"], "kid must identify the signing key")
+
+	// The signature must verify against the EC key that produced it.
+	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	require.NoError(suite.T(), err)
+	assert.NoError(suite.T(), cryptolib.Verify(
+		[]byte(parts[0]+"."+parts[1]), sig, cryptolib.ECDSASHA256, &ecKey.PublicKey))
+}
+
+// TestGenerateJWTUnsupportedAlgOverride covers algorithms with no configured signing key. The
+// suite has only an RS256 key, so both values are unusable and must be rejected.
 func (suite *JWTServiceTestSuite) TestGenerateJWTUnsupportedAlgOverride() {
 	for _, alg := range []string{"ES256", "invalid"} {
 		suite.T().Run(alg, func(t *testing.T) {

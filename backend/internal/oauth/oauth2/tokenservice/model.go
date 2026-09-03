@@ -25,6 +25,9 @@ const (
 type TokenConfig struct {
 	Issuer         string
 	ValidityPeriod int64
+	// SigningAlg is the client-configured JWS algorithm. Empty means the server's preferred
+	// signing key algorithm is used.
+	SigningAlg string
 }
 
 // AccessTokenBuildContext contains all the information needed to build an access token.

@@ -30,9 +30,11 @@ For **UserInfo**, JSON is the default. Switch to JWS when integrity matters; to 
 
 Applies to `JWS` and the signing step of `NESTED_JWT`.
 
-<ProductName /> signs every token (access token, ID Token, and signed UserInfo response) with the deployment signing key, and the algorithm follows that key's type, for example an RSA key signs with `RS256` and an Ed25519 key signs with `EdDSA`.
+<ProductName /> signs every token (access token, ID Token, and signed UserInfo response) with a deployment signing key. A deployment advertises the signing algorithms its configured keys support, and the requested algorithm selects a matching key, for example `RS256` selects an RSA key and `EdDSA` selects an Ed25519 key.
 
-To see which algorithm a deployment signs with, read `id_token_signing_alg_values_supported` (and `userinfo_signing_alg_values_supported`) in the [Server Metadata](../server-metadata) document, or inspect the published keys at the [JWKS](../jwks) endpoint. Clients verify signatures against those keys.
+A deployment can configure more than one signing key. A client can select which algorithm signs its ID Tokens and signed UserInfo responses, using `id_token_signed_response_alg` and `userinfo_signed_response_alg` at registration. The value must be one of the algorithms the deployment advertises, otherwise registration is rejected. When a client selects nothing, and for access tokens always, the deployment's signing key is used.
+
+To see which algorithms a deployment signs with, read `id_token_signing_alg_values_supported` (and `userinfo_signing_alg_values_supported`) in the [Server Metadata](../server-metadata) document, or inspect the published keys at the [JWKS](../jwks) endpoint. Clients verify signatures against those keys, matching the token's `kid` header to the published key.
 
 ## Supported Encryption Algorithms (JWE)
 
@@ -93,7 +95,7 @@ Encrypted responses (`JWE`, `NESTED_JWT`) and `private_key_jwt` client authentic
 
 1. Open **Applications** or **Agents** in the <ProductName /> Console and select your client.
 2. Open the **Token** tab.
-3. Use the **ID Token** section to configure ID Token format and, for encrypted formats, encryption. Signing uses the deployment signing key.
+3. Use the **ID Token** section to configure ID Token format and, for encrypted formats, encryption. Signing uses the deployment's signing key.
 4. Use the **UserInfo** section to configure the UserInfo response format.
 5. For encrypted responses, configure a **Certificate** in the OAuth client settings.
 6. Save.

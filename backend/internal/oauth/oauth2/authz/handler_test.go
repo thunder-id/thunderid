@@ -4,9 +4,6 @@
 package authz
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -178,40 +175,6 @@ func (suite *AuthorizeHandlerTestSuite) TestHandleAuthorizeGetRequest_DuplicateN
 	assert.Equal(suite.T(), http.StatusBadRequest, rr.Code)
 }
 
-func (suite *AuthorizeHandlerTestSuite) TestGetOAuthMessageForPostRequest_MissingAuthID() {
-	postData := AuthZPostRequest{
-		AuthID:    "",
-		Assertion: "test-assertion",
-	}
-	jsonData, _ := json.Marshal(postData)
-
-	req := httptest.NewRequest(http.MethodPost, "/auth", bytes.NewReader(jsonData))
-	req.Header.Set("Content-Type", "application/json")
-
-	msg, err := suite.handler.getOAuthMessageForPostRequest(req)
-
-	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), msg)
-	assert.Contains(suite.T(), err.Error(), "authId or assertion is missing")
-}
-
-func (suite *AuthorizeHandlerTestSuite) TestGetOAuthMessageForPostRequest_MissingAssertion() {
-	postData := AuthZPostRequest{
-		AuthID:    testAuthID,
-		Assertion: "",
-	}
-	jsonData, _ := json.Marshal(postData)
-
-	req := httptest.NewRequest(http.MethodPost, "/auth", bytes.NewReader(jsonData))
-	req.Header.Set("Content-Type", "application/json")
-
-	msg, err := suite.handler.getOAuthMessageForPostRequest(req)
-
-	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), msg)
-	assert.Contains(suite.T(), err.Error(), "authId or assertion is missing")
-}
-
 func (suite *AuthorizeHandlerTestSuite) TestGetOAuthMessage_UnsupportedMethod() {
 	req := httptest.NewRequest(http.MethodPatch, "/auth", nil)
 	rr := httptest.NewRecorder()
@@ -333,160 +296,6 @@ func (suite *AuthorizeHandlerTestSuite) TestHandleAuthorizeGetRequest_GetOAuthMe
 	assert.Equal(suite.T(), http.StatusBadRequest, rr.Code)
 }
 
-func (suite *AuthorizeHandlerTestSuite) TestHandleAuthCallbackPostRequest_Success() {
-	redirectURI := "https://client.example.com/callback?code=test-code&state=test-state"
-	suite.mockAuthzService.EXPECT().
-		HandleAuthorizationCallback(mock.Anything, testAuthID, "test-assertion").
-		Return(redirectURI, nil)
-
-	postData := AuthZPostRequest{
-		AuthID:    testAuthID,
-		Assertion: "test-assertion",
-	}
-	jsonData, _ := json.Marshal(postData)
-
-	req := httptest.NewRequest(http.MethodPost, "/oauth2/auth/callback", bytes.NewReader(jsonData))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-
-	suite.handler.HandleAuthCallbackPostRequest(rr, req)
-
-	assert.Equal(suite.T(), http.StatusOK, rr.Code)
-	var resp AuthZPostResponse
-	err := json.NewDecoder(rr.Body).Decode(&resp)
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), redirectURI, resp.RedirectURI)
-}
-
-func (suite *AuthorizeHandlerTestSuite) TestHandleAuthCallbackPostRequest_ServiceError() {
-	authErr := &AuthorizationError{
-		Code:    oauth2const.ErrorInvalidRequest,
-		Message: "Invalid authorization request",
-		State:   "test-state",
-	}
-	suite.mockAuthzService.EXPECT().
-		HandleAuthorizationCallback(mock.Anything, testAuthID, "test-assertion").
-		Return("", authErr)
-
-	postData := AuthZPostRequest{
-		AuthID:    testAuthID,
-		Assertion: "test-assertion",
-	}
-	jsonData, _ := json.Marshal(postData)
-
-	req := httptest.NewRequest(http.MethodPost, "/oauth2/auth/callback", bytes.NewReader(jsonData))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-
-	suite.handler.HandleAuthCallbackPostRequest(rr, req)
-
-	assert.Equal(suite.T(), http.StatusOK, rr.Code)
-	var resp AuthZPostResponse
-	err := json.NewDecoder(rr.Body).Decode(&resp)
-	assert.NoError(suite.T(), err)
-	assert.Contains(suite.T(), resp.RedirectURI, "/error")
-	assert.Contains(suite.T(), resp.RedirectURI, "state=test-state")
-}
-
-func (suite *AuthorizeHandlerTestSuite) TestHandleAuthCallbackPostRequest_ServiceErrorRedirectToClient() {
-	authErr := &AuthorizationError{
-		Code:              oauth2const.ErrorServerError,
-		Message:           "Failed to process authorization request",
-		State:             "test-state",
-		SendErrorToClient: true,
-		ClientRedirectURI: "https://client.example.com/callback",
-	}
-	suite.mockAuthzService.EXPECT().HandleAuthorizationCallback(mock.Anything, testAuthID, "test-assertion").
-		Return("", authErr)
-
-	postData := AuthZPostRequest{
-		AuthID:    testAuthID,
-		Assertion: "test-assertion",
-	}
-	jsonData, _ := json.Marshal(postData)
-
-	req := httptest.NewRequest(http.MethodPost, "/oauth2/auth/callback", bytes.NewReader(jsonData))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-
-	suite.handler.HandleAuthCallbackPostRequest(rr, req)
-
-	assert.Equal(suite.T(), http.StatusOK, rr.Code)
-	var resp AuthZPostResponse
-	err := json.NewDecoder(rr.Body).Decode(&resp)
-	assert.NoError(suite.T(), err)
-	assert.Contains(suite.T(), resp.RedirectURI, "https://client.example.com/callback")
-	assert.Contains(suite.T(), resp.RedirectURI, "error=server_error")
-	assert.Contains(suite.T(), resp.RedirectURI, "state=test-state")
-	assert.Contains(suite.T(), resp.RedirectURI, "iss=https%3A%2F%2Flocalhost%3A8090")
-}
-
-func (suite *AuthorizeHandlerTestSuite) TestHandleAuthCallbackPostRequest_ClientErrorIssAlwaysPresent() {
-	// RFC 9207 §2: iss is unconditional. Confirm iss is present even when state is absent.
-	authErr := &AuthorizationError{
-		Code:              oauth2const.ErrorServerError,
-		Message:           "Failed to process authorization request",
-		SendErrorToClient: true,
-		ClientRedirectURI: "https://client.example.com/callback",
-	}
-	suite.mockAuthzService.EXPECT().HandleAuthorizationCallback(mock.Anything, testAuthID, "test-assertion").
-		Return("", authErr)
-
-	postData := AuthZPostRequest{
-		AuthID:    testAuthID,
-		Assertion: "test-assertion",
-	}
-	jsonData, _ := json.Marshal(postData)
-
-	req := httptest.NewRequest(http.MethodPost, "/oauth2/auth/callback", bytes.NewReader(jsonData))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-
-	suite.handler.HandleAuthCallbackPostRequest(rr, req)
-
-	assert.Equal(suite.T(), http.StatusOK, rr.Code)
-	var resp AuthZPostResponse
-	err := json.NewDecoder(rr.Body).Decode(&resp)
-	assert.NoError(suite.T(), err)
-	assert.Contains(suite.T(), resp.RedirectURI, "https://client.example.com/callback")
-	assert.Contains(suite.T(), resp.RedirectURI, "error=server_error")
-	assert.Contains(suite.T(), resp.RedirectURI, "iss=https%3A%2F%2Flocalhost%3A8090")
-	assert.NotContains(suite.T(), resp.RedirectURI, "state=")
-}
-
-func (suite *AuthorizeHandlerTestSuite) TestHandleAuthCallbackPostRequest_InvalidRequestType() {
-	// nil body causes JSON decode to fail → getOAuthMessage returns nil → 400
-	req := httptest.NewRequest(http.MethodPost, "/oauth2/auth/callback", nil)
-	rr := httptest.NewRecorder()
-
-	suite.handler.HandleAuthCallbackPostRequest(rr, req)
-
-	assert.Equal(suite.T(), http.StatusBadRequest, rr.Code)
-}
-
-func (suite *AuthorizeHandlerTestSuite) TestHandleAuthCallbackPostRequest_GetOAuthMessageReturnsNil() {
-	req := httptest.NewRequest("POST", "/oauth2/auth/callback", bytes.NewReader([]byte("invalid json")))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-
-	suite.handler.HandleAuthCallbackPostRequest(rr, req)
-
-	assert.Equal(suite.T(), http.StatusBadRequest, rr.Code)
-}
-
-func (suite *AuthorizeHandlerTestSuite) TestHandleAuthCallbackPostRequest_UnsupportedMethod() {
-	req := httptest.NewRequest(http.MethodPut, "/oauth2/auth/callback", nil)
-	rr := httptest.NewRecorder()
-
-	suite.handler.HandleAuthCallbackPostRequest(rr, req)
-
-	assert.Equal(suite.T(), http.StatusBadRequest, rr.Code)
-	var response map[string]interface{}
-	err := json.NewDecoder(rr.Body).Decode(&response)
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), "invalid_request", response["error"])
-}
-
 func (suite *AuthorizeHandlerTestSuite) TestRedirectToLoginPage_NilResponseWriter() {
 	req := httptest.NewRequest(http.MethodGet, "/auth", nil)
 	queryParams := map[string]string{"authId": "test-key"}
@@ -530,42 +339,6 @@ func (suite *AuthorizeHandlerTestSuite) TestRedirectToErrorPage_NilRequest() {
 	suite.handler.redirectToErrorPage(rr, nil, "error_code", "error message")
 	// Should not panic; status remains unchanged
 	assert.Equal(suite.T(), http.StatusOK, rr.Code)
-}
-
-func (suite *AuthorizeHandlerTestSuite) TestWriteAuthZResponseToErrorPage_WithState() {
-	rr := httptest.NewRecorder()
-	suite.handler.writeAuthZResponseToErrorPage(context.Background(), rr, "error_code", "error message", "test-state")
-
-	assert.Equal(suite.T(), http.StatusOK, rr.Code)
-	var resp AuthZPostResponse
-	err := json.NewDecoder(rr.Body).Decode(&resp)
-	assert.NoError(suite.T(), err)
-	assert.Contains(suite.T(), resp.RedirectURI, "state=test-state")
-}
-
-func (suite *AuthorizeHandlerTestSuite) TestWriteAuthZResponseToErrorPage_NoState() {
-	rr := httptest.NewRecorder()
-	suite.handler.writeAuthZResponseToErrorPage(context.Background(), rr, "error_code", "error message", "")
-
-	assert.Equal(suite.T(), http.StatusOK, rr.Code)
-	var resp AuthZPostResponse
-	err := json.NewDecoder(rr.Body).Decode(&resp)
-	assert.NoError(suite.T(), err)
-	assert.NotEmpty(suite.T(), resp.RedirectURI)
-	assert.Contains(suite.T(), resp.RedirectURI, "/error")
-}
-
-func (suite *AuthorizeHandlerTestSuite) TestWriteAuthZResponse() {
-	rr := httptest.NewRecorder()
-
-	suite.handler.writeAuthZResponse(context.Background(), rr, "https://example.com/callback?code=abc123")
-
-	assert.Equal(suite.T(), http.StatusOK, rr.Code)
-	assert.Equal(suite.T(), "application/json", rr.Header().Get("Content-Type"))
-	var resp AuthZPostResponse
-	err := json.NewDecoder(rr.Body).Decode(&resp)
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), "https://example.com/callback?code=abc123", resp.RedirectURI)
 }
 
 func (suite *AuthorizeHandlerTestSuite) TestGetLoginPageRedirectURI_Success() {

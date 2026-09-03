@@ -4857,6 +4857,71 @@ func (ts *ApplicationAPITestSuite) TestApplicationUserInfoInvalidSigningAlgRejec
 	ts.Assert().Contains(err.Error(), "400", "Expected HTTP 400 for unsupported signingAlg")
 }
 
+// TestApplicationIDTokenSigningAlgValidation verifies that ID token signing algorithm validation
+// applies on the management API, not only the DCR path, so an app cannot be created with an
+// algorithm the deployment has no signing key for.
+func (ts *ApplicationAPITestSuite) TestApplicationIDTokenSigningAlgValidation() {
+	testCases := []struct {
+		name        string
+		signingAlg  string
+		expectError bool
+	}{
+		{name: "ConfiguredAlgAccepted", signingAlg: "ES256"},
+		{name: "AlgWithoutConfiguredKeyRejected", signingAlg: "PS256", expectError: true},
+		{name: "NotAnAlgorithmRejected", signingAlg: "INVALID_ALG", expectError: true},
+	}
+
+	for i, tc := range testCases {
+		ts.Run(tc.name, func() {
+			clientID := fmt.Sprintf("idtoken_alg_client_%d", i)
+			app := Application{
+				OUID:        testOUID,
+				Name:        "App IDToken SigningAlg " + tc.name,
+				Description: "Testing ID token signingAlg validation on the management API",
+				InboundAuthConfig: []InboundAuthConfig{
+					{
+						Type: "oauth2",
+						OAuthAppConfig: &OAuthAppConfig{
+							ClientID:                clientID,
+							ClientSecret:            clientID + "_secret",
+							RedirectURIs:            []string{"http://localhost/callback"},
+							GrantTypes:              []string{"authorization_code"},
+							ResponseTypes:           []string{"code"},
+							TokenEndpointAuthMethod: "client_secret_basic",
+							Token: &OAuthTokenConfig{
+								IDToken: &IDTokenConfig{SigningAlg: tc.signingAlg},
+							},
+						},
+					},
+				},
+			}
+			app.AuthFlowID = defaultAuthFlowID
+			app.RegistrationFlowID = defaultRegistrationFlowID
+
+			appID, err := createApplication(app)
+			if tc.expectError {
+				ts.Require().Error(err, "an unsupported signingAlg must be rejected")
+				ts.Assert().Contains(err.Error(), "400", "expected HTTP 400 for unsupported signingAlg")
+				return
+			}
+
+			ts.Require().NoError(err)
+			defer func() {
+				if delErr := deleteApplication(appID); delErr != nil {
+					ts.T().Logf("failed to delete application: %v", delErr)
+				}
+			}()
+
+			retrievedApp, err := getApplicationByID(appID)
+			ts.Require().NoError(err)
+			oauth := retrievedApp.InboundAuthConfig[0].OAuthAppConfig
+			ts.Require().NotNil(oauth.Token)
+			ts.Require().NotNil(oauth.Token.IDToken)
+			ts.Assert().Equal(tc.signingAlg, oauth.Token.IDToken.SigningAlg)
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // IDToken responseType validation tests
 // ---------------------------------------------------------------------------

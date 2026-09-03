@@ -17,6 +17,8 @@ Load only the guidance the task needs:
 | Documentation | [docs/AGENTS.md](docs/AGENTS.md) |
 | Database schema, queries, or stores | [.agent/skills/db/SKILL.md](.agent/skills/db/SKILL.md) |
 | Browser automation / Console UI verification | [.agent/skills/console/SKILL.md](.agent/skills/console/SKILL.md) |
+| Resolving a pnpm/npm security advisory | [.agent/skills/fix-npm-vulnerability/SKILL.md](.agent/skills/fix-npm-vulnerability/SKILL.md) |
+| Auditing or pruning existing pnpm overrides | [.agent/skills/prune-npm-overrides/SKILL.md](.agent/skills/prune-npm-overrides/SKILL.md) |
 
 The `.agent/skills/` entries above are internal guidance for **developing** ThunderID. Consumer-facing setup and framework-integration skills (`setup-thunderid`, `integrate-*`) live in the separate ThunderID Skills repository (installable via `/plugin marketplace add thunder-id/skills`) and are not used when working in this repo.
 
@@ -28,7 +30,9 @@ The `.agent/skills/` entries above are internal guidance for **developing** Thun
 ## Validation Ladder
 
 - **Inner loop**: run the smallest relevant checks for the area you touched. The scoped AGENTS files say which tests to run.
-- **Pre-PR gate**: `make pr_checks` — the authoritative gate (verify_mocks → lint → format_check → unit/frontend/integration tests → builds).
+- **Pre-PR gate**: `make pr_checks` — the authoritative gate (verify_mocks → lint → format_check → tool lint and tests → unit/frontend/integration tests → builds).
+- The CLI e2e suite (`make tools_test_cli_e2e`) is not part of that gate: it downloads a real release and boots a server. CI runs it in `pr-builder.yml`, behind the `trigger-pr-builder` label, on every pull request.
+- Per-tool tasks are namespaced `tools_*` (for example `make tools_lint_cli`, `make tools_test_i18n_extractor`); `tools_build`, `tools_test` and `tools_lint` run every tool.
 - Note: `make test` is backend-only (unit + integration), not full-repo validation.
 
 ## Product Name Rules

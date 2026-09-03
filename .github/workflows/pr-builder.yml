@@ -741,6 +741,156 @@ jobs:
           name: sample-app-react-sdk
           path: target/dist/sample-app-react-sdk-*.zip
 
+      # Kept separately from sample-app-react-sdk, which other workflows consume by name.
+      # The CLI installs this bundle for `try`, so cli-compatibility serves it with the product.
+      - name: 📦 Upload Wayfinder Sample
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sample-app-wayfinder
+          path: target/dist/sample-app-wayfinder-*.zip
+          if-no-files-found: error
+
+  # Fast gate for the CLI: everything that needs neither the network nor a running server.
+  # Kept out of the `lint` job above because the CLI lints with its own golangci-lint, built
+  # against the toolchain in tools/cli/go.mod: a published prebuilt binary is compiled with an
+  # older Go than the CLI targets and refuses to run at all in that case.
+  cli-lint-unit:
+    name: 🔍 CLI Lint and Unit Tests
+    needs: [preflight]
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: ⚙️ Set up Go Environment
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: tools/cli/go.mod
+          cache-dependency-path: tools/cli/go.sum
+
+      - name: 🧹 Lint CLI
+        run: make tools_lint_cli
+
+      - name: 🧪 Run CLI Unit Tests
+        run: make tools_test_cli
+
+  # Lane 1 of the CLI e2e strategy: does a CLI change break the CLI? Drives the npx wrapper
+  # against the currently published release, not the distribution built above: that pairing
+  # is cli-compatibility's job, below. Split from cli-lint-unit so a lint or unit failure
+  # reports without paying for this.
+  cli-e2e:
+    name: 🎭 CLI E2E (${{ matrix.os }})
+    needs: [cli-lint-unit]
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      # global-setup.ts builds the CLI binary that the npx wrapper resolves.
+      - name: ⚙️ Set up Go Environment
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: tools/cli/go.mod
+          cache-dependency-path: tools/cli/go.sum
+
+      - name: ⚙️ Set up Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Set up CLI E2E Suite
+        uses: ./.github/actions/setup-cli-e2e
+
+      - name: 🔌 Verify Required Ports Are Free
+        uses: ./.github/actions/verify-cli-e2e-ports
+
+      - name: 🎭 Run E2E Tests
+        working-directory: tests/e2e-cli
+        run: pnpm test
+
+      - name: 📄 Upload Playwright Report on Failure
+        if: failure()
+        uses: ./.github/actions/upload-cli-e2e-report
+        with:
+          name: cli-e2e-report-${{ matrix.os }}
+
+  cli-compatibility:
+    name: 🔗 CLI Against This Build
+    needs: [preflight, build, build_samples]
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'trigger-pr-builder') && (github.event.action != 'labeled' || github.event.label.name == 'trigger-pr-builder')) || github.event_name == 'merge_group' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      # global-setup builds the CLI from this checkout; the product comes from the artifacts.
+      - name: ⚙️ Set up Go Environment
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: tools/cli/go.mod
+          cache-dependency-path: tools/cli/go.sum
+
+      - name: ⚙️ Set up Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # Reusing what build-product and build-samples already produced, rather than building the
+      # distribution a second time.
+      - name: 📥 Download the Built Distribution
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: product-distribution
+          path: target/dist
+
+      - name: 📥 Download the Wayfinder Sample
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sample-app-wayfinder
+          path: target/dist
+
+      - name: 🔍 Show What Will Be Served
+        run: ls -lh target/dist/
+
+      - name: 📦 Set up CLI E2E Suite
+        uses: ./.github/actions/setup-cli-e2e
+
+      # 8899 is the local release server this run serves target/dist through, on top of the
+      # suite's own fixed ports.
+      - name: 🔌 Verify Required Ports Are Free
+        uses: ./.github/actions/verify-cli-e2e-ports
+        with:
+          extra-ports: "8899"
+
+      # E2E_PRODUCT_DIST makes the suite serve target/dist with a generated manifest and point the
+      # CLI at it, so everything it installs was built by this pull request.
+      - name: 🎭 Run the CLI Against This Build
+        working-directory: tests/e2e-cli
+        env:
+          E2E_PRODUCT_DIST: ${{ github.workspace }}/target/dist
+        run: pnpm test
+
+      - name: 📄 Upload Playwright Report on Failure
+        if: failure()
+        uses: ./.github/actions/upload-cli-e2e-report
+        with:
+          name: cli-compatibility-report
+
   test-integration:
     name: 🧪 Integration Tests (${{ matrix.database }})
     needs: [build, build_samples]

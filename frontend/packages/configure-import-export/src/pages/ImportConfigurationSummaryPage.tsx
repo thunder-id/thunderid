@@ -21,8 +21,8 @@ import {
 import {
   Bot,
   Building,
+  Group,
   IdCard,
-  Key,
   Languages,
   LayoutGrid,
   Layout as LayoutIcon,
@@ -33,7 +33,6 @@ import {
   ShieldCheck,
   Upload,
   UserRoundCog,
-  Users,
   UsersRound,
   Workflow,
   X,
@@ -394,7 +393,7 @@ const RESOURCE_VIEWS: ResourceView[] = [
   {
     type: 'role',
     id: 'roles',
-    icon: Key,
+    icon: ShieldCheck,
     getLabel: (t) => t('configureExport.labels.roles'),
     getKey: (item, idx) => item.handle ?? item.name ?? `role-${idx}`,
     getName: (item, t) => item.name ?? item.handle ?? t('configureExport.fallback.unnamedRole'),
@@ -408,7 +407,7 @@ const RESOURCE_VIEWS: ResourceView[] = [
   {
     type: 'group',
     id: 'groups',
-    icon: Users,
+    icon: Group,
     getLabel: (t) => t('configureExport.labels.groups'),
     getKey: (item, idx) => item.id ?? item.name ?? `group-${idx}`,
     getName: (item, t) => item.name ?? t('configureExport.fallback.unnamedGroup'),

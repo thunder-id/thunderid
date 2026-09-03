@@ -1315,6 +1315,14 @@ components:
             NESTED_JWT returns a sign-then-encrypt JWT — requires encryptionAlg, encryptionEnc, and a client certificate.
           enum: ["JWT", "JWE", "NESTED_JWT"]
           example: "JWE"
+        signingAlg:
+          type: string
+          description: |
+            JWS algorithm used to sign the ID token.
+            Must be one of the algorithms advertised in id_token_signing_alg_values_supported by the
+            server metadata endpoint, which are derived from the deployment's configured signing keys.
+            Omit to sign with the deployment's signing key.
+          example: "ES256"
         encryptionAlg:
           type: string
           description: JWE key-management algorithm for encrypted ID token responses (e.g. RSA-OAEP-256). Required when responseType is JWE or NESTED_JWT.

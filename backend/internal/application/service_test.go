@@ -3646,6 +3646,11 @@ func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError() {
 		wantDescKey string
 	}{
 		{
+			name:        "UnsupportedSigningAlg",
+			err:         inboundclient.ErrOAuthIDTokenUnsupportedSigningAlg,
+			wantDescKey: "error.applicationservice.idtoken_unsupported_signing_alg_description",
+		},
+		{
 			name:        "EncryptionFieldsNotAllowed",
 			err:         inboundclient.ErrOAuthIDTokenEncryptionFieldsNotAllowed,
 			wantDescKey: "error.applicationservice.idtoken_encryption_fields_not_allowed_description",

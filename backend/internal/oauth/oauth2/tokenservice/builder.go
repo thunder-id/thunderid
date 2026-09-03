@@ -418,7 +418,7 @@ func (tb *tokenBuilder) BuildIDToken(
 		tokenConfig.ValidityPeriod,
 		jwtClaims,
 		jwt.TokenTypeJWT,
-		"",
+		tokenConfig.SigningAlg,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate ID token: %v", err.Error)

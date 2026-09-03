@@ -493,9 +493,11 @@ func TestStop_UndeliverableSignalFallsBackToThePort(t *testing.T) {
 	}
 }
 
-// Exiting is not an explicit stop: the server an exited launcher left behind is not
-// this session's to take down on the way out.
-func TestExit_UndeliverableSignalLeavesThePortAlone(t *testing.T) {
+// Exiting a session that owns the launcher still has to clean up after it. The
+// undeliverable signal means start.sh's trap never ran, so the server it backgrounded
+// is still listening; unlike an attached session, this one started it and must not walk
+// away leaving it up.
+func TestExit_UndeliverableSignalStopsTheServerItStarted(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses a POSIX signal")
 	}
@@ -513,7 +515,7 @@ func TestExit_UndeliverableSignalLeavesThePortAlone(t *testing.T) {
 
 	m.killThunderID()
 
-	if len(*stopped) != 0 {
-		t.Fatalf("exiting must not port-stop, got %v", *stopped)
+	if len(*stopped) != 1 || (*stopped)[0] != 8091 {
+		t.Fatalf("expected the orphaned server to be stopped on exit, got %v", *stopped)
 	}
 }

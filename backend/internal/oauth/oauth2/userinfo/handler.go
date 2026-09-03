@@ -139,9 +139,13 @@ func (h *userInfoHandler) writeServiceErrorResponse(ctx context.Context,
 
 	switch svcErr.Type {
 	case tidcommon.ClientErrorType:
-		if svcErr.Code == errorInsufficientScope.Code {
+		switch svcErr.Code {
+		case errorInsufficientScope.Code:
 			statusCode = http.StatusForbidden
-		} else {
+		case errorUnsupportedSigningAlg.Code:
+			// The token is valid; the client's registered signing algorithm is not usable.
+			statusCode = http.StatusBadRequest
+		default:
 			statusCode = http.StatusUnauthorized
 		}
 	case tidcommon.ServerErrorType:

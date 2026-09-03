@@ -1772,6 +1772,11 @@ func translateUserInfoValidationError(err error) *tidcommon.ServiceError {
 // translateIDTokenValidationError maps OAuth ID token validation errors to agent-service errors.
 func translateIDTokenValidationError(err error) *tidcommon.ServiceError {
 	switch {
+	case errors.Is(err, inboundclient.ErrOAuthIDTokenUnsupportedSigningAlg):
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
+			Key:          "error.agentservice.idtoken_unsupported_signing_alg_description",
+			DefaultValue: "idToken signing algorithm is not supported",
+		})
 	case errors.Is(err, inboundclient.ErrOAuthIDTokenEncryptionFieldsNotAllowed):
 		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.agentservice.idtoken_encryption_fields_not_allowed_description",

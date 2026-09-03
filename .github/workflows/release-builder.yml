@@ -400,6 +400,37 @@ jobs:
           if-no-files-found: error
           overwrite: true
 
+      # Lane 3 of the CLI end-to-end strategy: the release gate.
+      #
+      # Everything below this point publishes: the tag, the container images, the npm package.
+      # This is the last moment a broken pairing can be caught, and it is caught by driving the
+      # real CLI against the artifacts this run just built, through the same --product-version
+      # knob an operator uses for a mirror.
+      #
+      # The sample project is excluded: it needs a browser and the sample bundle packaged
+      # alongside the product. What matters here is that the release installs, sets up, starts
+      # and answers.
+      - name: 📦 Install CLI E2E Dependencies
+        working-directory: tests/e2e-cli
+        run: pnpm install --frozen-lockfile
+
+      - name: 🎭 Verify the CLI Can Install This Release
+        working-directory: tests/e2e-cli
+        env:
+          E2E_PRODUCT_DIST: ${{ github.workspace }}/target/dist
+        run: pnpm run test:no-sample
+
+      - name: 📄 Upload CLI Verification Report on Failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-cli-verification
+          path: |
+            tests/e2e-cli/playwright-report/
+            tests/e2e-cli/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: 🏷️ Create Git Tag
         run: |
           git config --local user.email "action@github.com"

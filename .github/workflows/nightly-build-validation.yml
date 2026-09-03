@@ -1,4 +1,13 @@
-# This workflow validates platform-wise packaging nightly to catch build issues early
+# This workflow validates platform-wise packaging nightly to catch build issues early, and
+# separately checks that the published CLI and the published product still work together.
+#
+# The CLI compatibility job installs the CLI from npm rather than building it from the checkout,
+# so it is the only job in this workflow testing what a user actually gets: the wrapper as
+# packaged, and the platform binaries the release workflow built. It catches what no pull request
+# can, because nothing in the repository changed: a manifest or CDN problem, a bad publish, a
+# runner picking up a new Node, an expired certificate. Its matrix follows the release channels:
+# the 1.0.x line publishes under `latest`, main publishes prereleases under `next` (see
+# release-tools.yml).
 name: 🌙 Nightly Build Validation
 
 on:
@@ -6,6 +15,11 @@ on:
     # Runs every day at 12:00 AM IST (which is 18:30 UTC of the previous day)
     - cron: '30 18 * * *'
   workflow_dispatch:  # Allow manual triggering
+    inputs:
+      dist-tag:
+        description: "CLI compatibility: only test this npm dist-tag (latest or next). Leave empty for both."
+        required: false
+        type: string
 
 # Add permissions
 permissions:
@@ -105,10 +119,128 @@ jobs:
       - name: 📦 Build and Package Samples for macOS/${{ matrix.arch }}
         run: ./scripts/package-samples.sh macos ${{ matrix.arch }}
 
+  cli-compatibility:
+    name: 🌙 Published CLI (${{ matrix.dist-tag }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        dist-tag: [latest, next]
+    # A manual run can narrow the matrix to one channel.
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.dist-tag == '' ||
+      github.event.inputs.dist-tag == matrix.dist-tag
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: ⚙️ Set up Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          node-version: lts/*
+
+      # No Go toolchain: this lane never builds the CLI, it installs it from npm.
+      - name: 📦 Set up CLI E2E Suite
+        uses: ./.github/actions/setup-cli-e2e
+
+      - name: 🔎 Report What Is Being Tested
+        run: |
+          echo "CLI:     $(npm view thunderid@${{ matrix.dist-tag }} version 2>/dev/null || echo 'not published')"
+          echo "Product: $(curl -fsSL https://thunderid.dev/data/releases.json | \
+            node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+              try { console.log(JSON.parse(s).latestRelease.tagName) } catch { console.log("unreadable") }})')"
+
+      - name: 🔌 Verify Required Ports Are Free
+        uses: ./.github/actions/verify-cli-e2e-ports
+
+      - name: 🎭 Run the Published CLI Against the Published Product
+        working-directory: tests/e2e-cli
+        env:
+          E2E_CLI_SOURCE: published
+          E2E_CLI_TAG: ${{ matrix.dist-tag }}
+        run: pnpm test
+
+      - name: 📄 Upload Playwright Report on Failure
+        if: failure()
+        uses: ./.github/actions/upload-cli-e2e-report
+        with:
+          name: nightly-cli-${{ matrix.dist-tag }}-${{ matrix.os }}
+          retention-days: '14'
+
+      # Independent of report-results' aggregated message below: this fires per matrix leg, right
+      # where the failure happened, instead of waiting on every other nightly job to finish.
+      - name: 🔔 Send Google Chat Notification on Failure
+        if: failure()
+        shell: bash
+        env:
+          GOOGLE_CHAT_WEBHOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK }}
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DIST_TAG: ${{ matrix.dist-tag }}
+          OS: ${{ matrix.os }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          if [ -z "$GOOGLE_CHAT_WEBHOOK" ]; then
+            echo "GOOGLE_CHAT_WEBHOOK secret is not set. Skipping Google Chat notification."
+            exit 0
+          fi
+
+          FAILURE_DATE=$(date -u +"%d-%m-%Y")
+
+          jq -n \
+            --arg dist_tag "$DIST_TAG" \
+            --arg os "$OS" \
+            --arg commit "${COMMIT:0:8}" \
+            --arg workflow_url "$WORKFLOW_URL" \
+            --arg failure_date "$FAILURE_DATE" \
+            '{
+              "cards": [{
+                "header": {
+                  "title": "🔴 ThunderID CLI E2E Failed",
+                  "subtitle": ("Nightly - " + $failure_date),
+                  "imageUrl": "https://raw.githubusercontent.com/github/explore/main/topics/cli/cli.png",
+                  "imageStyle": "AVATAR"
+                },
+                "sections": [
+                  {
+                    "widgets": [
+                      {"keyValue": {"topLabel": "Dist Tag", "content": $dist_tag}},
+                      {"keyValue": {"topLabel": "Runner", "content": $os}},
+                      {"keyValue": {"topLabel": "Commit", "content": $commit}}
+                    ]
+                  },
+                  {
+                    "widgets": [
+                      {
+                        "buttons": [
+                          {
+                            "textButton": {
+                              "text": "VIEW WORKFLOW RUN",
+                              "onClick": {"openLink": {"url": $workflow_url}}
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }]
+            }' > payload.json
+
+          if curl -f -X POST -H "Content-Type: application/json" -d @payload.json "$GOOGLE_CHAT_WEBHOOK"; then
+            echo "✅ Google Chat notification sent successfully"
+          else
+            echo "⚠️ Failed to send Google Chat notification"
+          fi
+
   report-results:
     name: 📊 Report Results
     runs-on: ubuntu-latest
-    needs: [validate-complete-build, validate-sample-packaging-linux, validate-sample-packaging-macos]
+    needs: [validate-complete-build, validate-sample-packaging-linux, validate-sample-packaging-macos, cli-compatibility]
     if: always()
     steps:
       - name: 📥 Checkout Code
@@ -120,21 +252,23 @@ jobs:
           BUILD_STATUS="${{ needs.validate-complete-build.result }}"
           LINUX_STATUS="${{ needs.validate-sample-packaging-linux.result }}"
           MACOS_STATUS="${{ needs.validate-sample-packaging-macos.result }}"
+          CLI_STATUS="${{ needs.cli-compatibility.result }}"
 
           echo "Complete build: $BUILD_STATUS"
           echo "Linux/Windows samples: $LINUX_STATUS"
           echo "macOS samples: $MACOS_STATUS"
+          echo "CLI compatibility: $CLI_STATUS"
 
           # Check if all jobs succeeded
-          if [ "$BUILD_STATUS" = "success" ] && [ "$LINUX_STATUS" = "success" ] && [ "$MACOS_STATUS" = "success" ]; then
+          if [ "$BUILD_STATUS" = "success" ] && [ "$LINUX_STATUS" = "success" ] && [ "$MACOS_STATUS" = "success" ] && [ "$CLI_STATUS" = "success" ]; then
             echo "status=success" >> $GITHUB_OUTPUT
             echo "message=✅ All nightly build validations passed successfully!" >> $GITHUB_OUTPUT
           # Check if any job was cancelled
-          elif [ "$BUILD_STATUS" = "cancelled" ] || [ "$LINUX_STATUS" = "cancelled" ] || [ "$MACOS_STATUS" = "cancelled" ]; then
+          elif [ "$BUILD_STATUS" = "cancelled" ] || [ "$LINUX_STATUS" = "cancelled" ] || [ "$MACOS_STATUS" = "cancelled" ] || [ "$CLI_STATUS" = "cancelled" ]; then
             echo "status=cancelled" >> $GITHUB_OUTPUT
             echo "message=⚠️ Nightly build validation was cancelled." >> $GITHUB_OUTPUT
           # Check if any job was skipped
-          elif [ "$BUILD_STATUS" = "skipped" ] || [ "$LINUX_STATUS" = "skipped" ] || [ "$MACOS_STATUS" = "skipped" ]; then
+          elif [ "$BUILD_STATUS" = "skipped" ] || [ "$LINUX_STATUS" = "skipped" ] || [ "$MACOS_STATUS" = "skipped" ] || [ "$CLI_STATUS" = "skipped" ]; then
             echo "status=skipped" >> $GITHUB_OUTPUT
             echo "message=⚠️ Some nightly build validation jobs were skipped." >> $GITHUB_OUTPUT
           # Otherwise, treat as failure
@@ -156,6 +290,7 @@ jobs:
           echo "- Complete Build (All Platforms): ${{ needs.validate-complete-build.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Linux/Windows Samples: ${{ needs.validate-sample-packaging-linux.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- macOS Samples: ${{ needs.validate-sample-packaging-macos.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- CLI Compatibility (Published): ${{ needs.cli-compatibility.result }}" >> $GITHUB_STEP_SUMMARY
 
       - name: 🔔 Notify on Failure
         if: steps.check_status.outputs.status == 'failure'
@@ -164,6 +299,7 @@ jobs:
           BUILD_RESULT: ${{ needs.validate-complete-build.result }}
           LINUX_RESULT: ${{ needs.validate-sample-packaging-linux.result }}
           MACOS_RESULT: ${{ needs.validate-sample-packaging-macos.result }}
+          CLI_RESULT: ${{ needs.cli-compatibility.result }}
           WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BRANCH_NAME: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
@@ -172,7 +308,7 @@ jobs:
             const issue_title = '🌙 Nightly Build Validation Failed';
             const issue_body = `## Nightly Build Validation Failure
 
-            The nightly build validation workflow has detected failures in platform-wise packaging.
+            The nightly build validation workflow has detected failures in platform-wise packaging or CLI compatibility.
 
             **Workflow Run:** ${process.env.WORKFLOW_URL}
             **Branch:** ${process.env.BRANCH_NAME}
@@ -182,6 +318,7 @@ jobs:
             - Complete Build (All Platforms): ${process.env.BUILD_RESULT}
             - Linux/Windows Samples: ${process.env.LINUX_RESULT}
             - macOS Samples: ${process.env.MACOS_RESULT}
+            - CLI Compatibility (Published): ${process.env.CLI_RESULT}
 
             Please investigate and fix the build issues.
 
@@ -227,6 +364,7 @@ jobs:
           BUILD_STATUS: ${{ needs.validate-complete-build.result }}
           LINUX_STATUS: ${{ needs.validate-sample-packaging-linux.result }}
           MACOS_STATUS: ${{ needs.validate-sample-packaging-macos.result }}
+          CLI_STATUS: ${{ needs.cli-compatibility.result }}
           BRANCH: ${{ github.ref_name }}
           COMMIT: ${{ github.sha }}
         run: |
@@ -247,6 +385,7 @@ jobs:
           BUILD_EMOJI=$(get_status_emoji "$BUILD_STATUS")
           LINUX_EMOJI=$(get_status_emoji "$LINUX_STATUS")
           MACOS_EMOJI=$(get_status_emoji "$MACOS_STATUS")
+          CLI_EMOJI=$(get_status_emoji "$CLI_STATUS")
 
           # Create JSON payload for Google Chat using jq for proper escaping
           jq -n \
@@ -254,6 +393,7 @@ jobs:
             --arg build_status "$BUILD_EMOJI $BUILD_STATUS" \
             --arg linux_status "$LINUX_EMOJI $LINUX_STATUS" \
             --arg macos_status "$MACOS_EMOJI $MACOS_STATUS" \
+            --arg cli_status "$CLI_EMOJI $CLI_STATUS" \
             --arg commit "${COMMIT:0:8}" \
             --arg workflow_url "$WORKFLOW_URL" \
             --arg issues_url "${{ github.server_url }}/${{ github.repository }}/issues?q=is%3Aissue+is%3Aopen+label%3Anightly-build-failure" \
@@ -285,6 +425,12 @@ jobs:
                         "keyValue": {
                           "topLabel": "macOS Samples",
                           "content": $macos_status
+                        }
+                      },
+                      {
+                        "keyValue": {
+                          "topLabel": "CLI Compatibility (Published)",
+                          "content": $cli_status
                         }
                       },
                       {

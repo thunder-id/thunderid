@@ -114,6 +114,8 @@ tmp
 out
 out-tsc
 backend/bin
+tools/cli/bin
+tools/i18n-extractor/bin
 backend/server
 
 # E2E extracted distribution

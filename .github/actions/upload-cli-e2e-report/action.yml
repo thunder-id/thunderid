@@ -1,0 +1,24 @@
+name: Upload CLI E2E Report
+description: Uploads the Playwright report and test results from tests/e2e-cli. Meant to run on failure.
+
+inputs:
+  name:
+    description: Artifact name
+    required: true
+  retention-days:
+    description: How long to keep the artifact
+    required: false
+    default: '7'
+
+runs:
+  using: composite
+  steps:
+    - name: 📄 Upload Playwright Report
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: ${{ inputs.name }}
+        path: |
+          tests/e2e-cli/playwright-report/
+          tests/e2e-cli/test-results/
+        if-no-files-found: ignore
+        retention-days: ${{ inputs.retention-days }}

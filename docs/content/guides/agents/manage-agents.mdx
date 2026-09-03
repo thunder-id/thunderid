@@ -35,14 +35,14 @@ curl -X POST https://localhost:8090/agents \
   -H 'Content-Type: application/json' \
   -d '{
     "name": "Invoice Reconciler",
-    "type": "<agent-type-id>",
+    "type": "default",
     "ouId": "<organization-unit-id>",
     "owner": "<owner-user-id>",
     "attributes": { }
   }'
 ```
 
-`ouId`, `type`, and `name` are required; `owner` and `attributes` are optional. `type` is the agent type ID (the built-in agent schema, from the [Agent Types API](../../../apis#tag/agent-types)). See the [Agents API Reference](../../../apis#tag/agents) for the create request and all fields.
+`ouId`, `type`, and `name` are required; `owner` and `attributes` are optional. `type` is the agent type's name. <ProductName /> ships a single agent type, `default`, and does not accept others. See the [Agents API Reference](../../../apis#tag/agents) for the create request and all fields.
 
 </TabItem>
 </Tabs>
@@ -61,7 +61,7 @@ Through the API, update an agent with `PUT /agents/<AGENT_ID>`, sending only the
 
 ### Identifiers and owner
 
-Every agent has an **Agent ID**, its identity in <ProductName />, and an **Owner**, the person accountable for it. The owner appears in audit records and is the contact point for what the agent does. Assigning one grants that user no access to the agent.
+Every agent has an **Agent ID**, its identity in <ProductName />, and an **Owner**, the person accountable for it. The owner is the contact point for what the agent does. Assigning one grants that user no access to the agent.
 
 - **Console:** the **Overview** tab shows the Agent ID and owner under **Agent details**, and the **Advanced** tab is where the owner is changed.
 - **API:** `GET /agents/<AGENT_ID>` returns both.
@@ -77,7 +77,7 @@ The agent schema decides which attributes an agent carries, and each agent holds
 
 An agent should reach only the resources its task needs. What its tokens are allowed to carry comes from the groups and roles assigned to it, so the agent's reach is controlled separately from its credential, and changing what an agent can do never rotates its secret.
 
-The scopes an agent can hold are defined by the resource it will call, not by the agent. Register the API and its scopes as a [Resource Server](../../resource-servers) first, then grant the matching scopes to the agent. An agent can never be granted a scope the resource has not declared.
+The scopes an agent can hold, the permissions that travel in the token's `scope` claim, are defined by the resource it will call, not by the agent. Register the API and its scopes as a [Resource Server](../../resource-servers) first, then grant the matching scopes to the agent. An agent can never be granted a scope the resource has not declared.
 
 - **Console:** the **Access** tab is a read-only view of the groups the agent belongs to and the roles assigned to it, directly or through its groups. Assign them from the Console **Roles** and **Groups** pages; see [Manage Roles](../../users/manage-roles) and [Manage Groups](../../users/manage-groups). A role carries a set of scopes, and a group can carry roles and inherit from parent groups.
 - **API:** assign the agent to roles and groups through the roles and groups APIs. To read what an agent can already reach, call `GET /agents/<AGENT_ID>/roles` and `GET /agents/<AGENT_ID>/groups`. See the [Agents API Reference](../../../apis#tag/agents).
@@ -101,12 +101,12 @@ What the agent's tokens carry and how long they last, set independently for each
 The **Advanced** tab gathers the agent's OAuth and operational settings:
 
 - **Operating Mode** has a **Delegated mode** toggle that sets whether the agent acts only on its own or is extended to also act for a signed-in user. On its own it uses its own credentials (`client_credentials`); with Delegated mode on, it additionally signs users in (`authorization_code` with PKCE). See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
-- **Owner** is the person accountable for the agent (see [Identifiers and owner](#identifiers-and-owner) above).
+- **Owner** is changed here; see [Identifiers and owner](#identifiers-and-owner) for what it means.
 - **Allowed User Types** restricts self-service registration to the selected user types. If none are selected, users cannot register through the agent; existing users can still sign in. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
 - **Grant Types** are the OAuth grants the agent may use. Acting on its own (`client_credentials`) and handing a task to another agent (token exchange) are available in either operating mode; signing users in (`authorization_code`), keeping that access without a new sign-in (`refresh_token`), and out-of-band approval (CIBA) become available once the agent is extended to act for users. See [Agent Token](../authentication/agent-own-token) and [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
 - **Authorized Redirect URIs** are the callback URLs allowed for the `authorization_code` grant. See [Agent Access on Behalf of Users](../authentication/on-behalf-of-user).
 - **Client Authentication Method** is how the agent authenticates to the token endpoint, with a client secret or a private key JWT. See [Agent Authentication](../authentication).
-- **Security** covers **Require PKCE** and **Require Pushed Authorization Requests (PAR)**, which apply to the `authorization_code` grant; PKCE is enforced automatically once that grant is on.
+- **Security** covers **Require PKCE** and **Require Pushed Authorization Requests (PAR)**, which apply to the `authorization_code` grant. Require PKCE turns on automatically when Delegated mode is on and cannot be turned off here; PAR is optional.
 - **Default Audience** is the `aud` the agent's own token carries when a request names no `resource` and no scopes. See [Agent Token](../authentication/agent-own-token).
 
 ## Agent schema

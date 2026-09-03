@@ -78,7 +78,7 @@ Agents typically use OIDC features only when running an `authorization_code` gra
 
 1. Open **Applications** or **Agents** in the <ProductName /> Console and select your client.
 2. Open the **Token** tab and ensure `openid` is among the allowed `scopes` (it is by default).
-3. Optionally configure ID Token format, encryption, and lifetime on the same tab (see [Token Formats](../token-formats)). Signing uses the deployment signing key.
+3. Optionally configure ID Token format, encryption, and lifetime on the same tab (see [Token Formats](../token-formats)). Signing uses the deployment's signing key, unless the client selects an algorithm with `id_token_signed_response_alg` at registration.
 4. Save.
 
 ### Run an OIDC Sign-In

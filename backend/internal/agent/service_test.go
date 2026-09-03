@@ -1543,6 +1543,8 @@ func (suite *AgentServiceTestSuite) TestTranslateIDTokenValidationError() {
 		err         error
 		wantDescKey string
 	}{
+		{"UnsupportedSigningAlg", inboundclient.ErrOAuthIDTokenUnsupportedSigningAlg,
+			"error.agentservice.idtoken_unsupported_signing_alg_description"},
 		{"EncryptionFieldsNotAllowed", inboundclient.ErrOAuthIDTokenEncryptionFieldsNotAllowed,
 			"error.agentservice.idtoken_encryption_fields_not_allowed_description"},
 		{"UnsupportedResponseType", inboundclient.ErrOAuthIDTokenUnsupportedResponseType,

@@ -207,8 +207,9 @@ func (s *JWEUserInfoTestSuite) TestGenerateJWEUserInfo_EncryptErrorPropagated() 
 	assert.Equal(s.T(), "JWE-1003", svcErr.Code)
 }
 
-// TestGenerateJWSUserInfo_UnsupportedAlg verifies that an algorithm incompatible with the server key
-// returns InternalServerError (server misconfiguration, not a client auth error).
+// TestGenerateJWSUserInfo_UnsupportedAlg verifies that an algorithm with no matching signing key
+// is reported as a client error, so the caller learns its registered algorithm is unusable
+// instead of receiving an opaque 500.
 func (s *JWEUserInfoTestSuite) TestGenerateJWSUserInfo_UnsupportedAlg() {
 	mockJWT := jwtmock.NewJWTServiceInterfaceMock(s.T())
 	mockJWT.On("GenerateJWT",
@@ -228,7 +229,8 @@ func (s *JWEUserInfoTestSuite) TestGenerateJWSUserInfo_UnsupportedAlg() {
 	)
 	assert.Nil(s.T(), result)
 	assert.NotNil(s.T(), svcErr)
-	assert.Equal(s.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+	assert.Equal(s.T(), errorUnsupportedSigningAlg.Code, svcErr.Code)
+	assert.Equal(s.T(), tidcommon.ClientErrorType, svcErr.Type)
 }
 
 // TestBuildRawJWTResponse_PassesThroughWithoutEncrypting covers the cases where buildRawJWTResponse

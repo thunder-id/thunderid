@@ -371,50 +371,74 @@
               "collapsed": true,
               "link": {
                 "type": "doc",
-                "id": "use-cases/ai-agents/overview"
+                "id": "use-cases/ai-agents/index"
               },
               "items": [
                 {
                   "type": "doc",
-                  "id": "use-cases/ai-agents/managed-agent-identity",
-                  "label": "Managed Identity"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/invoking-the-agent",
-                  "label": "Invoking the Agent"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/agent-as-subject",
-                  "label": "Agent as Subject"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/model-interaction",
-                  "label": "Model Interaction Controls"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/internal-services",
-                  "label": "Internal Business Services"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/external-integration",
-                  "label": "External Integration"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/multi-agent",
-                  "label": "Multi-Agent Interactions"
+                  "id": "use-cases/ai-agents/overview",
+                  "label": "Understand It",
+                  "key": "ai-agents-understand-it"
                 },
                 {
                   "type": "category",
-                  "label": "Try It Out",
+                  "label": "Solve It",
                   "collapsible": true,
                   "collapsed": true,
-                  "key": "ai-agents-try-it-out",
+                  "link": {
+                    "type": "doc",
+                    "id": "use-cases/ai-agents/solve-index"
+                  },
+                  "items": [
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-playground",
+                      "label": "Set Up the Playground"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-identity",
+                      "label": "Give the Agent an Identity"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-credentials",
+                      "label": "Protect Its Credential"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-access",
+                      "label": "What the Agent May Do"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-acts-for-user",
+                      "label": "Act for a User"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-agent-as-resource",
+                      "label": "Who May Call the Agent"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-ambient",
+                      "label": "Approve Without a Browser"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-run",
+                      "label": "How It All Runs",
+                      "key": "ai-agents-how-it-all-runs"
+                    }
+                  ]
+                },
+                {
+                  "type": "category",
+                  "label": "See It in a Sample App",
+                  "collapsible": true,
+                  "collapsed": true,
+                  "key": "ai-agents-see-it-in-a-sample-app",
                   "link": {
                     "type": "doc",
                     "id": "use-cases/ai-agents/try-it-out/index"
@@ -457,6 +481,12 @@
                       ]
                     }
                   ]
+                },
+                {
+                  "type": "doc",
+                  "id": "use-cases/ai-agents/architecture-decisions",
+                  "label": "Design Decisions & Alternatives",
+                  "key": "ai-agents-architecture-decisions"
                 }
               ]
             },
