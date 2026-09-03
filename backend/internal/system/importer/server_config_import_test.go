@@ -15,21 +15,22 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
+// fakeServerConfigService records the value and merge flag passed to SetConfig, so tests can assert the
+// importer routed a document's importBehavior to the right merge value.
 type fakeServerConfigService struct {
-	set       map[string]json.RawMessage
+	value     json.RawMessage
+	merge     bool
 	returnErr *common.ServiceError
 }
 
 func (f *fakeServerConfigService) SetConfig(
-	_ context.Context, name serverconfig.ConfigName, value json.RawMessage,
+	_ context.Context, _ serverconfig.ConfigName, value json.RawMessage, merge ...bool,
 ) *common.ServiceError {
 	if f.returnErr != nil {
 		return f.returnErr
 	}
-	if f.set == nil {
-		f.set = map[string]json.RawMessage{}
-	}
-	f.set[string(name)] = value
+	f.value = value
+	f.merge = len(merge) > 0 && merge[0]
 	return nil
 }
 
@@ -55,7 +56,50 @@ func TestImportResources_ServerConfig_SetsWritable(t *testing.T) {
 	assert.Equal(t, statusSuccess, resp.Results[0].Status)
 	assert.Equal(t, resourceTypeServerConfig, resp.Results[0].ResourceType)
 	assert.Equal(t, "cors", resp.Results[0].ResourceName)
-	assert.JSONEq(t, `["https://app.example.com", {"regex":"^https://x$"}]`, string(scSvc.set["cors"]))
+	assert.JSONEq(t, `["https://app.example.com", {"regex":"^https://x$"}]`, string(scSvc.value))
+}
+
+// serverConfigBehaviorDoc builds a cors import document with the given importBehavior line (empty, or
+// "importBehavior: merge\n") inserted before value.
+func serverConfigBehaviorDoc(behaviorYAML string) string {
+	return "resource_type: server_config\nname: cors\n" + behaviorYAML +
+		"value:\n  - \"https://app.example.com\"\n"
+}
+
+func TestImportResources_ServerConfig_BehaviorOmittedDoesNotMerge(t *testing.T) {
+	scSvc := &fakeServerConfigService{}
+	svc := newServerConfigImportService(scSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: serverConfigBehaviorDoc("")})
+
+	require.Nil(t, err)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.False(t, scSvc.merge)
+}
+
+func TestImportResources_ServerConfig_BehaviorMergeMerges(t *testing.T) {
+	scSvc := &fakeServerConfigService{}
+	svc := newServerConfigImportService(scSvc)
+
+	resp, err := svc.ImportResources(context.Background(),
+		&ImportRequest{Content: serverConfigBehaviorDoc("importBehavior: merge\n")})
+
+	require.Nil(t, err)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.True(t, scSvc.merge)
+}
+
+func TestImportResources_ServerConfig_UnknownBehaviorRejected(t *testing.T) {
+	scSvc := &fakeServerConfigService{}
+	svc := newServerConfigImportService(scSvc)
+
+	resp, err := svc.ImportResources(context.Background(),
+		&ImportRequest{Content: serverConfigBehaviorDoc("importBehavior: Merge\n")})
+
+	require.Nil(t, err)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, ErrorInvalidYAMLContent.Code, resp.Results[0].Code)
+	assert.Nil(t, scSvc.value)
 }
 
 func TestImportResources_ServerConfig_DryRunDoesNotWrite(t *testing.T) {
@@ -68,7 +112,7 @@ func TestImportResources_ServerConfig_DryRunDoesNotWrite(t *testing.T) {
 	require.Nil(t, err)
 	require.Len(t, resp.Results, 1)
 	assert.Equal(t, statusSuccess, resp.Results[0].Status)
-	assert.Empty(t, scSvc.set)
+	assert.Nil(t, scSvc.value)
 }
 
 func TestImportResources_ServerConfig_ServiceErrorReported(t *testing.T) {

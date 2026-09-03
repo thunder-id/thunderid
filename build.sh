@@ -1046,6 +1046,7 @@ function run() {
     cat > "$BACKEND_DIR/bootstrap/03-dev-server-configurations.yaml" <<EOF
 resource_type: server_config
 name: cors
+importBehavior: merge
 value:
   allowedOrigins:
     - "https://localhost:$GATE_APP_DEFAULT_PORT"

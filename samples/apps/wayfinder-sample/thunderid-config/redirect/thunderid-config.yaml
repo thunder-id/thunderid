@@ -1963,6 +1963,7 @@ value:
 resource_type: server_config
 # Allows the Wayfinder web app's browser origin to call the server
 name: cors
+importBehavior: merge
 value:
   allowedOrigins:
     - "http://localhost:5173"

@@ -877,7 +877,7 @@ Add origins in either of these ways:
       - "https://app.example.com"
       - regex: '^https://[a-z0-9-]+\.staging\.example\.com(:[0-9]+)?$'
   ```
-- **Runtime** - send the new value to `PUT /server-config/cors`; it is applied immediately and merged with the declarative file:
+- **Runtime** - send the new value to `PUT /server-config/cors`; it is applied immediately and merged with the declarative file. An origin the declarative file already lists is not stored again, so removing it from the file still revokes it:
   ```http
   PUT /server-config/cors
   Content-Type: application/json

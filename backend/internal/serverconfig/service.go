@@ -21,7 +21,11 @@ type ServerConfigService interface {
 	GetReadOnlyConfig(ctx context.Context, name string) (any, *common.ServiceError)
 	GetWritableConfig(ctx context.Context, name string) (any, *common.ServiceError)
 	GetMergedConfig(ctx context.Context, name string) (any, *common.ServiceError)
-	SetConfig(ctx context.Context, name ConfigName, value json.RawMessage) *common.ServiceError
+	// SetConfig decodes and validates an incoming value against the current layers and persists it to the
+	// writable layer. merge defaults to false when omitted. With merge true, a handler that composes its
+	// writable value keeps the layer's current value as well, rather than composing from the incoming
+	// value alone; importing a collection section therefore adds to it instead of replacing it.
+	SetConfig(ctx context.Context, name ConfigName, value json.RawMessage, merge ...bool) *common.ServiceError
 }
 
 // serverConfigService is the default implementation of ServerConfigService.
@@ -121,10 +125,12 @@ func (s *serverConfigService) getConfigLayer(ctx context.Context, name string,
 	return s.decodeLayer(ctx, configName, handler, raw, layer)
 }
 
-// SetConfig decodes and validates an incoming value against the current layers and persists the raw
-// bytes to the writable layer. A bad incoming value is a client error; the stored bytes are kept as-is.
-func (s *serverConfigService) SetConfig(ctx context.Context,
-	name ConfigName, value json.RawMessage) *common.ServiceError {
+// SetConfig decodes and validates an incoming value against the current layers and persists it to the
+// writable layer. A bad incoming value is a client error; the stored bytes are kept as-is. merge defaults
+// to false when omitted.
+func (s *serverConfigService) SetConfig(ctx context.Context, name ConfigName, value json.RawMessage,
+	merge ...bool) *common.ServiceError {
+	m := len(merge) > 0 && merge[0]
 	handler, svcErr := s.handlerFor(ctx, name)
 	if svcErr != nil {
 		return svcErr
@@ -147,6 +153,26 @@ func (s *serverConfigService) SetConfig(ctx context.Context,
 	readOnly, writable, svcErr := s.decodeLayers(ctx, name, handler, rawLayers)
 	if svcErr != nil {
 		return svcErr
+	}
+
+	// A handler whose section owns a collection composes what the writable layer stores, leaving out
+	// entries the readOnly (declarative) layer already covers. The existing writable value is offered
+	// only when merging, so an import does not drop entries another import wrote.
+	type writableComposer interface {
+		ComposeWritable(readOnly, existing, incoming any) any
+	}
+	if composer, ok := handler.(writableComposer); ok {
+		var existing any
+		if m {
+			existing = writable
+		}
+		incoming = composer.ComposeWritable(readOnly, existing, incoming)
+		value, err = json.Marshal(incoming)
+		if err != nil {
+			s.logger.Error(ctx, "Failed to encode composed server config",
+				log.String("name", string(name)), log.Error(err))
+			return &common.InternalServerError
+		}
 	}
 
 	if err := handler.Validate(incoming, readOnly, writable); err != nil {
