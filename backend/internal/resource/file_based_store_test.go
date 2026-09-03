@@ -639,3 +639,15 @@ func (s *FileBasedResourceStoreTestSuite) TestCheckResourceServerIdentifierExist
 	assert.NoError(s.T(), err)
 	assert.False(s.T(), exists)
 }
+
+func (s *FileBasedResourceStoreTestSuite) TestGetResourceServerListByOwner_ReturnsEmpty() {
+	result, err := s.store.GetResourceServerListByOwner(s.ctx, "owner-1", "agent", 10, 0)
+	assert.NoError(s.T(), err)
+	assert.Empty(s.T(), result)
+}
+
+func (s *FileBasedResourceStoreTestSuite) TestGetResourceServerListCountByOwner_ReturnsZero() {
+	count, err := s.store.GetResourceServerListCountByOwner(s.ctx, "owner-1", "agent")
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), 0, count)
+}

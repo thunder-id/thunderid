@@ -530,6 +530,63 @@ func (_c *resourceStoreInterfaceMock_CheckResourceServerNameExists_Call) RunAndR
 	return _c
 }
 
+// ClearResourceServerOwner provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) ClearResourceServerOwner(ctx context.Context, rsID string) error {
+	ret := _mock.Called(ctx, rsID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ClearResourceServerOwner")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, rsID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// resourceStoreInterfaceMock_ClearResourceServerOwner_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ClearResourceServerOwner'
+type resourceStoreInterfaceMock_ClearResourceServerOwner_Call struct {
+	*mock.Call
+}
+
+// ClearResourceServerOwner is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rsID string
+func (_e *resourceStoreInterfaceMock_Expecter) ClearResourceServerOwner(ctx interface{}, rsID interface{}) *resourceStoreInterfaceMock_ClearResourceServerOwner_Call {
+	return &resourceStoreInterfaceMock_ClearResourceServerOwner_Call{Call: _e.mock.On("ClearResourceServerOwner", ctx, rsID)}
+}
+
+func (_c *resourceStoreInterfaceMock_ClearResourceServerOwner_Call) Run(run func(ctx context.Context, rsID string)) *resourceStoreInterfaceMock_ClearResourceServerOwner_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_ClearResourceServerOwner_Call) Return(err error) *resourceStoreInterfaceMock_ClearResourceServerOwner_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_ClearResourceServerOwner_Call) RunAndReturn(run func(ctx context.Context, rsID string) error) *resourceStoreInterfaceMock_ClearResourceServerOwner_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreateAction provides a mock function for the type resourceStoreInterfaceMock
 func (_mock *resourceStoreInterfaceMock) CreateAction(ctx context.Context, uuid string, resServerID string, resID *string, action providers.Action) error {
 	ret := _mock.Called(ctx, uuid, resServerID, resID, action)
@@ -1688,6 +1745,72 @@ func (_c *resourceStoreInterfaceMock_GetResourceServerByIdentifier_Call) RunAndR
 	return _c
 }
 
+// GetResourceServerByOwnerEntityID provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) GetResourceServerByOwnerEntityID(ctx context.Context, ownerEntityID string) (providers.ResourceServer, error) {
+	ret := _mock.Called(ctx, ownerEntityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceServerByOwnerEntityID")
+	}
+
+	var r0 providers.ResourceServer
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (providers.ResourceServer, error)); ok {
+		return returnFunc(ctx, ownerEntityID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) providers.ResourceServer); ok {
+		r0 = returnFunc(ctx, ownerEntityID)
+	} else {
+		r0 = ret.Get(0).(providers.ResourceServer)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, ownerEntityID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// resourceStoreInterfaceMock_GetResourceServerByOwnerEntityID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceServerByOwnerEntityID'
+type resourceStoreInterfaceMock_GetResourceServerByOwnerEntityID_Call struct {
+	*mock.Call
+}
+
+// GetResourceServerByOwnerEntityID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ownerEntityID string
+func (_e *resourceStoreInterfaceMock_Expecter) GetResourceServerByOwnerEntityID(ctx interface{}, ownerEntityID interface{}) *resourceStoreInterfaceMock_GetResourceServerByOwnerEntityID_Call {
+	return &resourceStoreInterfaceMock_GetResourceServerByOwnerEntityID_Call{Call: _e.mock.On("GetResourceServerByOwnerEntityID", ctx, ownerEntityID)}
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerByOwnerEntityID_Call) Run(run func(ctx context.Context, ownerEntityID string)) *resourceStoreInterfaceMock_GetResourceServerByOwnerEntityID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerByOwnerEntityID_Call) Return(resourceServer providers.ResourceServer, err error) *resourceStoreInterfaceMock_GetResourceServerByOwnerEntityID_Call {
+	_c.Call.Return(resourceServer, err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerByOwnerEntityID_Call) RunAndReturn(run func(ctx context.Context, ownerEntityID string) (providers.ResourceServer, error)) *resourceStoreInterfaceMock_GetResourceServerByOwnerEntityID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetResourceServerList provides a mock function for the type resourceStoreInterfaceMock
 func (_mock *resourceStoreInterfaceMock) GetResourceServerList(ctx context.Context, limit int, offset int) ([]providers.ResourceServer, error) {
 	ret := _mock.Called(ctx, limit, offset)
@@ -1762,6 +1885,92 @@ func (_c *resourceStoreInterfaceMock_GetResourceServerList_Call) RunAndReturn(ru
 	return _c
 }
 
+// GetResourceServerListByOwner provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) GetResourceServerListByOwner(ctx context.Context, ownerID string, ownerType string, limit int, offset int) ([]providers.ResourceServer, error) {
+	ret := _mock.Called(ctx, ownerID, ownerType, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceServerListByOwner")
+	}
+
+	var r0 []providers.ResourceServer
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int, int) ([]providers.ResourceServer, error)); ok {
+		return returnFunc(ctx, ownerID, ownerType, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int, int) []providers.ResourceServer); ok {
+		r0 = returnFunc(ctx, ownerID, ownerType, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.ResourceServer)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, int, int) error); ok {
+		r1 = returnFunc(ctx, ownerID, ownerType, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// resourceStoreInterfaceMock_GetResourceServerListByOwner_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceServerListByOwner'
+type resourceStoreInterfaceMock_GetResourceServerListByOwner_Call struct {
+	*mock.Call
+}
+
+// GetResourceServerListByOwner is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ownerID string
+//   - ownerType string
+//   - limit int
+//   - offset int
+func (_e *resourceStoreInterfaceMock_Expecter) GetResourceServerListByOwner(ctx interface{}, ownerID interface{}, ownerType interface{}, limit interface{}, offset interface{}) *resourceStoreInterfaceMock_GetResourceServerListByOwner_Call {
+	return &resourceStoreInterfaceMock_GetResourceServerListByOwner_Call{Call: _e.mock.On("GetResourceServerListByOwner", ctx, ownerID, ownerType, limit, offset)}
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListByOwner_Call) Run(run func(ctx context.Context, ownerID string, ownerType string, limit int, offset int)) *resourceStoreInterfaceMock_GetResourceServerListByOwner_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListByOwner_Call) Return(resourceServers []providers.ResourceServer, err error) *resourceStoreInterfaceMock_GetResourceServerListByOwner_Call {
+	_c.Call.Return(resourceServers, err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListByOwner_Call) RunAndReturn(run func(ctx context.Context, ownerID string, ownerType string, limit int, offset int) ([]providers.ResourceServer, error)) *resourceStoreInterfaceMock_GetResourceServerListByOwner_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetResourceServerListCount provides a mock function for the type resourceStoreInterfaceMock
 func (_mock *resourceStoreInterfaceMock) GetResourceServerListCount(ctx context.Context) (int, error) {
 	ret := _mock.Called(ctx)
@@ -1818,6 +2027,78 @@ func (_c *resourceStoreInterfaceMock_GetResourceServerListCount_Call) Return(n i
 }
 
 func (_c *resourceStoreInterfaceMock_GetResourceServerListCount_Call) RunAndReturn(run func(ctx context.Context) (int, error)) *resourceStoreInterfaceMock_GetResourceServerListCount_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetResourceServerListCountByOwner provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) GetResourceServerListCountByOwner(ctx context.Context, ownerID string, ownerType string) (int, error) {
+	ret := _mock.Called(ctx, ownerID, ownerType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceServerListCountByOwner")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (int, error)); ok {
+		return returnFunc(ctx, ownerID, ownerType)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) int); ok {
+		r0 = returnFunc(ctx, ownerID, ownerType)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, ownerID, ownerType)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// resourceStoreInterfaceMock_GetResourceServerListCountByOwner_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceServerListCountByOwner'
+type resourceStoreInterfaceMock_GetResourceServerListCountByOwner_Call struct {
+	*mock.Call
+}
+
+// GetResourceServerListCountByOwner is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ownerID string
+//   - ownerType string
+func (_e *resourceStoreInterfaceMock_Expecter) GetResourceServerListCountByOwner(ctx interface{}, ownerID interface{}, ownerType interface{}) *resourceStoreInterfaceMock_GetResourceServerListCountByOwner_Call {
+	return &resourceStoreInterfaceMock_GetResourceServerListCountByOwner_Call{Call: _e.mock.On("GetResourceServerListCountByOwner", ctx, ownerID, ownerType)}
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListCountByOwner_Call) Run(run func(ctx context.Context, ownerID string, ownerType string)) *resourceStoreInterfaceMock_GetResourceServerListCountByOwner_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListCountByOwner_Call) Return(n int, err error) *resourceStoreInterfaceMock_GetResourceServerListCountByOwner_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListCountByOwner_Call) RunAndReturn(run func(ctx context.Context, ownerID string, ownerType string) (int, error)) *resourceStoreInterfaceMock_GetResourceServerListCountByOwner_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -2298,6 +2579,75 @@ func (_c *resourceStoreInterfaceMock_UpdateResourceServer_Call) Return(err error
 }
 
 func (_c *resourceStoreInterfaceMock_UpdateResourceServer_Call) RunAndReturn(run func(ctx context.Context, id string, rs providers.ResourceServer) error) *resourceStoreInterfaceMock_UpdateResourceServer_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateResourceServerOwner provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) UpdateResourceServerOwner(ctx context.Context, rsID string, ownerEntityID string, ownerEntityType string) error {
+	ret := _mock.Called(ctx, rsID, ownerEntityID, ownerEntityType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateResourceServerOwner")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) error); ok {
+		r0 = returnFunc(ctx, rsID, ownerEntityID, ownerEntityType)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// resourceStoreInterfaceMock_UpdateResourceServerOwner_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateResourceServerOwner'
+type resourceStoreInterfaceMock_UpdateResourceServerOwner_Call struct {
+	*mock.Call
+}
+
+// UpdateResourceServerOwner is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rsID string
+//   - ownerEntityID string
+//   - ownerEntityType string
+func (_e *resourceStoreInterfaceMock_Expecter) UpdateResourceServerOwner(ctx interface{}, rsID interface{}, ownerEntityID interface{}, ownerEntityType interface{}) *resourceStoreInterfaceMock_UpdateResourceServerOwner_Call {
+	return &resourceStoreInterfaceMock_UpdateResourceServerOwner_Call{Call: _e.mock.On("UpdateResourceServerOwner", ctx, rsID, ownerEntityID, ownerEntityType)}
+}
+
+func (_c *resourceStoreInterfaceMock_UpdateResourceServerOwner_Call) Run(run func(ctx context.Context, rsID string, ownerEntityID string, ownerEntityType string)) *resourceStoreInterfaceMock_UpdateResourceServerOwner_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_UpdateResourceServerOwner_Call) Return(err error) *resourceStoreInterfaceMock_UpdateResourceServerOwner_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_UpdateResourceServerOwner_Call) RunAndReturn(run func(ctx context.Context, rsID string, ownerEntityID string, ownerEntityType string) error) *resourceStoreInterfaceMock_UpdateResourceServerOwner_Call {
 	_c.Call.Return(run)
 	return _c
 }

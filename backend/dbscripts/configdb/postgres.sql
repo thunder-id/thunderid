@@ -182,10 +182,34 @@ CREATE TABLE "RESOURCE_SERVER" (
     IDENTIFIER VARCHAR(2048) NOT NULL,
     TYPE VARCHAR(20) CHECK (TYPE IS NULL OR TYPE IN ('API', 'MCP', 'CUSTOM')),
     PROPERTIES JSONB,
+    OWNER_ENTITY_ID VARCHAR(36),
+    OWNER_ENTITY_TYPE VARCHAR(50),
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
     UPDATED_AT TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE (OU_ID, NAME, DEPLOYMENT_ID)
 );
+
+-- Both owner fields must be set together or both null
+ALTER TABLE "RESOURCE_SERVER" ADD CONSTRAINT chk_owner_fields_complete
+  CHECK (
+    ("OWNER_ENTITY_ID" IS NULL AND "OWNER_ENTITY_TYPE" IS NULL)
+    OR ("OWNER_ENTITY_ID" IS NOT NULL AND "OWNER_ENTITY_TYPE" IS NOT NULL)
+  );
+
+-- Owner type must be a valid entity category
+ALTER TABLE "RESOURCE_SERVER" ADD CONSTRAINT chk_owner_entity_type
+  CHECK ("OWNER_ENTITY_TYPE" IS NULL
+    OR "OWNER_ENTITY_TYPE" IN ('agent', 'application'));
+
+-- One RS per entity (partial unique index)
+CREATE UNIQUE INDEX uq_rs_owner_entity
+  ON "RESOURCE_SERVER" ("OWNER_ENTITY_ID", "DEPLOYMENT_ID")
+  WHERE "OWNER_ENTITY_ID" IS NOT NULL;
+
+-- Reverse lookup: find RS by owner
+CREATE INDEX idx_rs_owner_lookup
+  ON "RESOURCE_SERVER" ("DEPLOYMENT_ID", "OWNER_ENTITY_ID")
+  WHERE "OWNER_ENTITY_ID" IS NOT NULL;
 
 -- Composite index for name-based resource server lookups
 CREATE INDEX idx_resource_server_name_deployment ON "RESOURCE_SERVER" (DEPLOYMENT_ID, NAME);

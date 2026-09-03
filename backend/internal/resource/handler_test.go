@@ -5,6 +5,7 @@ package resource
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -1375,4 +1376,127 @@ func (suite *HandlerTestSuite) TestHandleActionGetAtResourceRequest_ServiceError
 	suite.handler.HandleActionGetAtResourceRequest(w, req)
 
 	suite.Equal(http.StatusInternalServerError, w.Code)
+}
+
+// --- Resource Server List with Owner Filters ---
+
+func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_WithOwnerID() {
+	suite.mockService.On("GetResourceServerListByOwner", mock.Anything,
+		"agent-1", "", 30, 0).Return(&ResourceServerList{
+		TotalResults:    1,
+		StartIndex:      1,
+		Count:           1,
+		ResourceServers: []providers.ResourceServer{{ID: "rs-1", Name: "Agent RS"}},
+		Links:           []Link{},
+	}, nil)
+	suite.mockService.On("ResolveOwnerName", mock.Anything, mock.Anything).
+		Maybe().Return("")
+
+	req := httptest.NewRequest("GET", "/resource-servers?ownerId=agent-1", nil)
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerListRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	var resp ResourceServerListResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	suite.NoError(err)
+	suite.Equal(1, resp.TotalResults)
+}
+
+func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_WithOwnerType() {
+	suite.mockService.On("GetResourceServerListByOwner", mock.Anything,
+		"", "agent", 30, 0).Return(&ResourceServerList{
+		TotalResults:    0,
+		StartIndex:      1,
+		Count:           0,
+		ResourceServers: []providers.ResourceServer{},
+		Links:           []Link{},
+	}, nil)
+	suite.mockService.On("ResolveOwnerName", mock.Anything, mock.Anything).
+		Maybe().Return("")
+
+	req := httptest.NewRequest("GET", "/resource-servers?ownerType=agent", nil)
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerListRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_WithOwnerFilters_Error() {
+	suite.mockService.On("GetResourceServerListByOwner", mock.Anything,
+		"agent-1", "agent", 30, 0).Return(nil, &tidcommon.InternalServerError)
+
+	req := httptest.NewRequest("GET", "/resource-servers?ownerId=agent-1&ownerType=agent", nil)
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerListRequest(w, req)
+
+	suite.Equal(http.StatusInternalServerError, w.Code)
+}
+
+// --- Owner Name Population ---
+
+func (suite *HandlerTestSuite) TestHandleResourceServerGetRequest_WithOwnerName() {
+	suite.mockService.On("GetResourceServer", mock.Anything, "rs-1").
+		Return(&providers.ResourceServer{
+			ID:            "rs-1",
+			Name:          "Agent RS",
+			OwnerEntityID: "agent-1",
+		}, nil)
+	suite.mockService.On("ResolveOwnerName", mock.Anything, "agent-1").
+		Return("My Agent")
+
+	req := httptest.NewRequest("GET", "/resource-servers/rs-1", nil)
+	req.SetPathValue("id", "rs-1")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerGetRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	var resp ResourceServerResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	suite.NoError(err)
+	suite.Equal("My Agent", resp.OwnerName)
+}
+
+func (suite *HandlerTestSuite) TestHandleResourceServerGetRequest_NoOwner() {
+	suite.mockService.On("GetResourceServer", mock.Anything, "rs-1").
+		Return(&providers.ResourceServer{
+			ID:   "rs-1",
+			Name: "Plain RS",
+		}, nil)
+
+	req := httptest.NewRequest("GET", "/resource-servers/rs-1", nil)
+	req.SetPathValue("id", "rs-1")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerGetRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	var resp ResourceServerResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	suite.NoError(err)
+	suite.Empty(resp.OwnerName)
+}
+
+// --- populateOwnerNames ---
+
+func (suite *HandlerTestSuite) TestPopulateOwnerNames_ResolvesForNonEmpty() {
+	suite.mockService.On("ResolveOwnerName", mock.Anything, "entity-1").
+		Return("Agent One")
+	suite.mockService.On("ResolveOwnerName", mock.Anything, "entity-2").
+		Return("App Two")
+
+	servers := []ResourceServerResponse{
+		{ID: "rs-1", OwnerID: "entity-1"},
+		{ID: "rs-2", OwnerID: ""},
+		{ID: "rs-3", OwnerID: "entity-2"},
+	}
+	suite.handler.populateOwnerNames(context.Background(), servers)
+
+	suite.Equal("Agent One", servers[0].OwnerName)
+	suite.Empty(servers[1].OwnerName)
+	suite.Equal("App Two", servers[2].OwnerName)
 }

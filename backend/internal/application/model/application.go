@@ -117,19 +117,21 @@ type ApplicationRequestWithID struct {
 
 // ApplicationCompleteResponse represents the complete response structure for an application.
 type ApplicationCompleteResponse struct {
-	ID          string          `json:"id,omitempty"`
-	OUID        string          `json:"ouId,omitempty"`
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	ClientID    string          `json:"clientId,omitempty"`
-	Type        ApplicationType `json:"type,omitempty"`
-	Template    string          `json:"template,omitempty"`
-	FlowSecret  string          `json:"flowSecret,omitempty"`
-	URL         string          `json:"url,omitempty"`
-	LogoURL     string          `json:"logoUrl,omitempty"`
-	TosURI      string          `json:"tosUri,omitempty"`
-	PolicyURI   string          `json:"policyUri,omitempty"`
-	Contacts    []string        `json:"contacts,omitempty"`
+	ID                 string          `json:"id,omitempty"`
+	OUID               string          `json:"ouId,omitempty"`
+	Name               string          `json:"name"`
+	Description        string          `json:"description,omitempty"`
+	ClientID           string          `json:"clientId,omitempty"`
+	Type               ApplicationType `json:"type,omitempty"`
+	Template           string          `json:"template,omitempty"`
+	FlowSecret         string          `json:"flowSecret,omitempty"`
+	URL                string          `json:"url,omitempty"`
+	LogoURL            string          `json:"logoUrl,omitempty"`
+	TosURI             string          `json:"tosUri,omitempty"`
+	PolicyURI          string          `json:"policyUri,omitempty"`
+	Contacts           []string        `json:"contacts,omitempty"`
+	ResourceServerID   string          `json:"resourceServerId,omitempty"`
+	ResourceServerName string          `json:"resourceServerName,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq
 
@@ -139,18 +141,20 @@ type ApplicationCompleteResponse struct {
 
 // ApplicationGetResponse represents the response structure for getting an application.
 type ApplicationGetResponse struct {
-	ID          string          `json:"id,omitempty"`
-	OUID        string          `json:"ouId,omitempty"`
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	ClientID    string          `json:"clientId,omitempty"`
-	Type        ApplicationType `json:"type,omitempty"`
-	Template    string          `json:"template,omitempty"`
-	URL         string          `json:"url,omitempty"`
-	LogoURL     string          `json:"logoUrl,omitempty"`
-	TosURI      string          `json:"tosUri,omitempty"`
-	PolicyURI   string          `json:"policyUri,omitempty"`
-	Contacts    []string        `json:"contacts,omitempty"`
+	ID                 string          `json:"id,omitempty"`
+	OUID               string          `json:"ouId,omitempty"`
+	Name               string          `json:"name"`
+	Description        string          `json:"description,omitempty"`
+	ClientID           string          `json:"clientId,omitempty"`
+	Type               ApplicationType `json:"type,omitempty"`
+	Template           string          `json:"template,omitempty"`
+	URL                string          `json:"url,omitempty"`
+	LogoURL            string          `json:"logoUrl,omitempty"`
+	TosURI             string          `json:"tosUri,omitempty"`
+	PolicyURI          string          `json:"policyUri,omitempty"`
+	Contacts           []string        `json:"contacts,omitempty"`
+	ResourceServerID   string          `json:"resourceServerId,omitempty"`
+	ResourceServerName string          `json:"resourceServerName,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq
 
@@ -178,7 +182,20 @@ type BasicApplicationResponse struct {
 	LayoutID                  string          `json:"layoutId,omitempty" jsonschema:"Layout ID."`
 	Type                      ApplicationType `json:"type,omitempty" jsonschema:"Application type (browser, fullstack, mobile, m2m, mcp, custom)."`
 	Template                  string          `json:"template,omitempty" jsonschema:"Application Template."`
+	ResourceServerID          string          `json:"resourceServerId,omitempty" jsonschema:"Bound resource server ID."`
+	ResourceServerName        string          `json:"resourceServerName,omitempty" jsonschema:"Bound resource server name."`
 	IsReadOnly                bool            `json:"isReadOnly" jsonschema:"Indicates if the application is read-only (declarative/immutable)."`
+}
+
+// ResourceServerBindRequest is the HTTP request body for binding a resource server to an application.
+type ResourceServerBindRequest struct {
+	ResourceServerID string `json:"resourceServerId" native:"required"`
+}
+
+// ApplicationResourceServerResponse is the response for an application's bound resource server.
+type ApplicationResourceServerResponse struct {
+	ResourceServerID   string `json:"resourceServerId"`
+	ResourceServerName string `json:"resourceServerName"`
 }
 
 // ApplicationListResponse represents the response structure for listing applications.

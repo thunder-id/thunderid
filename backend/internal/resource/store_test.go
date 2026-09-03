@@ -76,7 +76,7 @@ func (suite *ResourceStoreTestSuite) TestCreateResourceServer() {
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryCreateResourceServer, "rs1", "ou1", "Test Server",
 					"Test Description", "test-identifier", nil,
-					[]byte(`{"delimiter":":"}`), "test-deployment").
+					[]byte(`{"delimiter":":"}`), nil, nil, "test-deployment").
 					Return(int64(1), nil)
 			},
 			shouldErr: false,
@@ -97,7 +97,7 @@ func (suite *ResourceStoreTestSuite) TestCreateResourceServer() {
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryCreateResourceServer, "rs1", "ou1", "Test Server",
 					"Test Description", "test-identifier", "MCP",
-					[]byte(`{"delimiter":":"}`), "test-deployment").
+					[]byte(`{"delimiter":":"}`), nil, nil, "test-deployment").
 					Return(int64(1), nil)
 			},
 			shouldErr: false,
@@ -117,7 +117,7 @@ func (suite *ResourceStoreTestSuite) TestCreateResourceServer() {
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryCreateResourceServer, "rs1", "ou1", "Test Server",
 					"Test Description", "test-identifier", nil,
-					[]byte(`{"delimiter":":"}`), "test-deployment").
+					[]byte(`{"delimiter":":"}`), nil, nil, "test-deployment").
 					Return(int64(0), errors.New("insert failed"))
 			},
 			shouldErr: true,
@@ -3828,6 +3828,273 @@ func (suite *ResourceStoreTestSuite) TestIsResourceServerDeclarative() {
 		suite.Run(tc.name, func() {
 			result := suite.store.IsResourceServerDeclarative(tc.resourceID)
 			suite.Equal(tc.expected, result)
+		})
+	}
+}
+
+func (suite *ResourceStoreTestSuite) TestGetResourceServerByOwnerEntityID() {
+	testCases := []struct {
+		name          string
+		ownerEntityID string
+		setupMocks    func()
+		expectedRS    providers.ResourceServer
+		shouldErr     bool
+		expectedError error
+	}{
+		{
+			name:          "Success",
+			ownerEntityID: "entity-1",
+			setupMocks: func() {
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("QueryContext", context.Background(),
+					queryGetResourceServerByOwnerEntityID, "entity-1", "test-deployment").
+					Return([]map[string]interface{}{
+						{
+							"id":                "rs1",
+							"ou_id":             "ou1",
+							"name":              "Test Server",
+							"description":       "Desc",
+							"identifier":        "test-id",
+							"type":              "CUSTOM",
+							"properties":        []byte(`{"delimiter":":"}`),
+							"owner_entity_id":   "entity-1",
+							"owner_entity_type": "agent",
+						},
+					}, nil)
+			},
+			expectedRS: providers.ResourceServer{
+				ID:              "rs1",
+				OUID:            "ou1",
+				Name:            "Test Server",
+				Description:     "Desc",
+				Identifier:      "test-id",
+				Type:            providers.ResourceServerTypeCustom,
+				Delimiter:       ":",
+				OwnerEntityID:   "entity-1",
+				OwnerEntityType: "agent",
+			},
+			shouldErr: false,
+		},
+		{
+			name:          "NotFound",
+			ownerEntityID: "nonexistent",
+			setupMocks: func() {
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("QueryContext", context.Background(),
+					queryGetResourceServerByOwnerEntityID, "nonexistent", "test-deployment").
+					Return([]map[string]interface{}{}, nil)
+			},
+			shouldErr:     true,
+			expectedError: errResourceServerNotFound,
+		},
+		{
+			name:          "QueryError",
+			ownerEntityID: "entity-1",
+			setupMocks: func() {
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("QueryContext", context.Background(),
+					queryGetResourceServerByOwnerEntityID, "entity-1", "test-deployment").
+					Return(nil, errors.New("query error"))
+			},
+			shouldErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
+			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
+			suite.store = &resourceStore{
+				dbProvider:   suite.mockDBProvider,
+				deploymentID: "test-deployment",
+			}
+
+			tc.setupMocks()
+
+			rs, err := suite.store.GetResourceServerByOwnerEntityID(
+				context.Background(), tc.ownerEntityID)
+
+			if tc.shouldErr {
+				suite.Error(err)
+				if tc.expectedError != nil {
+					suite.Equal(tc.expectedError, err)
+				}
+			} else {
+				suite.NoError(err)
+				suite.Equal(tc.expectedRS.ID, rs.ID)
+				suite.Equal(tc.expectedRS.OwnerEntityID, rs.OwnerEntityID)
+				suite.Equal(tc.expectedRS.OwnerEntityType, rs.OwnerEntityType)
+			}
+		})
+	}
+}
+
+func (suite *ResourceStoreTestSuite) TestUpdateResourceServerOwner() {
+	testCases := []struct {
+		name            string
+		rsID            string
+		ownerEntityID   string
+		ownerEntityType string
+		setupMocks      func()
+		shouldErr       bool
+	}{
+		{
+			name:            "Success",
+			rsID:            "rs1",
+			ownerEntityID:   "entity-1",
+			ownerEntityType: "agent",
+			setupMocks: func() {
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("ExecuteContext", context.Background(),
+					queryUpdateResourceServerOwner,
+					"entity-1", "agent", "rs1", "test-deployment").
+					Return(int64(1), nil)
+			},
+			shouldErr: false,
+		},
+		{
+			name:            "ExecuteError",
+			rsID:            "rs1",
+			ownerEntityID:   "entity-1",
+			ownerEntityType: "agent",
+			setupMocks: func() {
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("ExecuteContext", context.Background(),
+					queryUpdateResourceServerOwner,
+					"entity-1", "agent", "rs1", "test-deployment").
+					Return(int64(0), errors.New("update failed"))
+			},
+			shouldErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
+			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
+			suite.store = &resourceStore{
+				dbProvider:   suite.mockDBProvider,
+				deploymentID: "test-deployment",
+			}
+
+			tc.setupMocks()
+
+			err := suite.store.UpdateResourceServerOwner(
+				context.Background(), tc.rsID, tc.ownerEntityID, tc.ownerEntityType)
+
+			if tc.shouldErr {
+				suite.Error(err)
+			} else {
+				suite.NoError(err)
+			}
+		})
+	}
+}
+
+func (suite *ResourceStoreTestSuite) TestClearResourceServerOwner() {
+	testCases := []struct {
+		name       string
+		rsID       string
+		setupMocks func()
+		shouldErr  bool
+	}{
+		{
+			name: "Success",
+			rsID: "rs1",
+			setupMocks: func() {
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("ExecuteContext", context.Background(),
+					queryClearResourceServerOwner,
+					"rs1", "test-deployment").
+					Return(int64(1), nil)
+			},
+			shouldErr: false,
+		},
+		{
+			name: "ExecuteError",
+			rsID: "rs1",
+			setupMocks: func() {
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("ExecuteContext", context.Background(),
+					queryClearResourceServerOwner,
+					"rs1", "test-deployment").
+					Return(int64(0), errors.New("clear failed"))
+			},
+			shouldErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
+			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
+			suite.store = &resourceStore{
+				dbProvider:   suite.mockDBProvider,
+				deploymentID: "test-deployment",
+			}
+
+			tc.setupMocks()
+
+			err := suite.store.ClearResourceServerOwner(context.Background(), tc.rsID)
+
+			if tc.shouldErr {
+				suite.Error(err)
+			} else {
+				suite.NoError(err)
+			}
+		})
+	}
+}
+
+func (suite *ResourceStoreTestSuite) TestBuildResourceServerFromResultRow_OwnerFields() {
+	testCases := []struct {
+		name              string
+		row               map[string]interface{}
+		expectedOwnerID   string
+		expectedOwnerType string
+	}{
+		{
+			name: "WithOwnerFields",
+			row: map[string]interface{}{
+				"id":                "rs1",
+				"ou_id":             "ou1",
+				"name":              "Server",
+				"owner_entity_id":   "entity-1",
+				"owner_entity_type": "agent",
+			},
+			expectedOwnerID:   "entity-1",
+			expectedOwnerType: "agent",
+		},
+		{
+			name: "WithoutOwnerFields",
+			row: map[string]interface{}{
+				"id":    "rs1",
+				"ou_id": "ou1",
+				"name":  "Server",
+			},
+			expectedOwnerID:   "",
+			expectedOwnerType: "",
+		},
+		{
+			name: "WithNilOwnerFields",
+			row: map[string]interface{}{
+				"id":                "rs1",
+				"ou_id":             "ou1",
+				"name":              "Server",
+				"owner_entity_id":   nil,
+				"owner_entity_type": nil,
+			},
+			expectedOwnerID:   "",
+			expectedOwnerType: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			rs, err := buildResourceServerFromResultRow(tc.row)
+			suite.NoError(err)
+			suite.Equal(tc.expectedOwnerID, rs.OwnerEntityID)
+			suite.Equal(tc.expectedOwnerType, rs.OwnerEntityType)
 		})
 	}
 }

@@ -10,6 +10,7 @@ import (
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	model0 "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -39,6 +40,82 @@ type AgentServiceInterfaceMock_Expecter struct {
 
 func (_m *AgentServiceInterfaceMock) EXPECT() *AgentServiceInterfaceMock_Expecter {
 	return &AgentServiceInterfaceMock_Expecter{mock: &_m.Mock}
+}
+
+// BindAgentResourceServer provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) BindAgentResourceServer(ctx context.Context, agentID string, resourceServerID string) (*model.AgentResourceServerResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, agentID, resourceServerID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BindAgentResourceServer")
+	}
+
+	var r0 *model.AgentResourceServerResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*model.AgentResourceServerResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, agentID, resourceServerID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *model.AgentResourceServerResponse); ok {
+		r0 = returnFunc(ctx, agentID, resourceServerID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.AgentResourceServerResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, agentID, resourceServerID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AgentServiceInterfaceMock_BindAgentResourceServer_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BindAgentResourceServer'
+type AgentServiceInterfaceMock_BindAgentResourceServer_Call struct {
+	*mock.Call
+}
+
+// BindAgentResourceServer is a helper method to define mock.On call
+//   - ctx context.Context
+//   - agentID string
+//   - resourceServerID string
+func (_e *AgentServiceInterfaceMock_Expecter) BindAgentResourceServer(ctx interface{}, agentID interface{}, resourceServerID interface{}) *AgentServiceInterfaceMock_BindAgentResourceServer_Call {
+	return &AgentServiceInterfaceMock_BindAgentResourceServer_Call{Call: _e.mock.On("BindAgentResourceServer", ctx, agentID, resourceServerID)}
+}
+
+func (_c *AgentServiceInterfaceMock_BindAgentResourceServer_Call) Run(run func(ctx context.Context, agentID string, resourceServerID string)) *AgentServiceInterfaceMock_BindAgentResourceServer_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_BindAgentResourceServer_Call) Return(agentResourceServerResponse *model.AgentResourceServerResponse, serviceError *common.ServiceError) *AgentServiceInterfaceMock_BindAgentResourceServer_Call {
+	_c.Call.Return(agentResourceServerResponse, serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_BindAgentResourceServer_Call) RunAndReturn(run func(ctx context.Context, agentID string, resourceServerID string) (*model.AgentResourceServerResponse, *common.ServiceError)) *AgentServiceInterfaceMock_BindAgentResourceServer_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // CreateAgent provides a mock function for the type AgentServiceInterfaceMock
@@ -416,6 +493,76 @@ func (_c *AgentServiceInterfaceMock_GetAgentList_Call) RunAndReturn(run func(ctx
 	return _c
 }
 
+// GetAgentResourceServer provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) GetAgentResourceServer(ctx context.Context, agentID string) (*model.AgentResourceServerResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, agentID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetAgentResourceServer")
+	}
+
+	var r0 *model.AgentResourceServerResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*model.AgentResourceServerResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, agentID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *model.AgentResourceServerResponse); ok {
+		r0 = returnFunc(ctx, agentID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.AgentResourceServerResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, agentID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// AgentServiceInterfaceMock_GetAgentResourceServer_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetAgentResourceServer'
+type AgentServiceInterfaceMock_GetAgentResourceServer_Call struct {
+	*mock.Call
+}
+
+// GetAgentResourceServer is a helper method to define mock.On call
+//   - ctx context.Context
+//   - agentID string
+func (_e *AgentServiceInterfaceMock_Expecter) GetAgentResourceServer(ctx interface{}, agentID interface{}) *AgentServiceInterfaceMock_GetAgentResourceServer_Call {
+	return &AgentServiceInterfaceMock_GetAgentResourceServer_Call{Call: _e.mock.On("GetAgentResourceServer", ctx, agentID)}
+}
+
+func (_c *AgentServiceInterfaceMock_GetAgentResourceServer_Call) Run(run func(ctx context.Context, agentID string)) *AgentServiceInterfaceMock_GetAgentResourceServer_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_GetAgentResourceServer_Call) Return(agentResourceServerResponse *model.AgentResourceServerResponse, serviceError *common.ServiceError) *AgentServiceInterfaceMock_GetAgentResourceServer_Call {
+	_c.Call.Return(agentResourceServerResponse, serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_GetAgentResourceServer_Call) RunAndReturn(run func(ctx context.Context, agentID string) (*model.AgentResourceServerResponse, *common.ServiceError)) *AgentServiceInterfaceMock_GetAgentResourceServer_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetAgentRoles provides a mock function for the type AgentServiceInterfaceMock
 func (_mock *AgentServiceInterfaceMock) GetAgentRoles(ctx context.Context, agentID string, limit int, offset int) (*model.AgentRoleListResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, agentID, limit, offset)
@@ -609,6 +756,105 @@ func (_c *AgentServiceInterfaceMock_SetDependencyRegistry_Call) Return() *AgentS
 
 func (_c *AgentServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run func(r resourcedependency.Registry)) *AgentServiceInterfaceMock_SetDependencyRegistry_Call {
 	_c.Run(run)
+	return _c
+}
+
+// SetResourceService provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) SetResourceService(rs resource.ResourceServiceInterface) {
+	_mock.Called(rs)
+	return
+}
+
+// AgentServiceInterfaceMock_SetResourceService_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetResourceService'
+type AgentServiceInterfaceMock_SetResourceService_Call struct {
+	*mock.Call
+}
+
+// SetResourceService is a helper method to define mock.On call
+//   - rs resource.ResourceServiceInterface
+func (_e *AgentServiceInterfaceMock_Expecter) SetResourceService(rs interface{}) *AgentServiceInterfaceMock_SetResourceService_Call {
+	return &AgentServiceInterfaceMock_SetResourceService_Call{Call: _e.mock.On("SetResourceService", rs)}
+}
+
+func (_c *AgentServiceInterfaceMock_SetResourceService_Call) Run(run func(rs resource.ResourceServiceInterface)) *AgentServiceInterfaceMock_SetResourceService_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 resource.ResourceServiceInterface
+		if args[0] != nil {
+			arg0 = args[0].(resource.ResourceServiceInterface)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_SetResourceService_Call) Return() *AgentServiceInterfaceMock_SetResourceService_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_SetResourceService_Call) RunAndReturn(run func(rs resource.ResourceServiceInterface)) *AgentServiceInterfaceMock_SetResourceService_Call {
+	_c.Run(run)
+	return _c
+}
+
+// UnbindAgentResourceServer provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) UnbindAgentResourceServer(ctx context.Context, agentID string) *common.ServiceError {
+	ret := _mock.Called(ctx, agentID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UnbindAgentResourceServer")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, agentID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// AgentServiceInterfaceMock_UnbindAgentResourceServer_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UnbindAgentResourceServer'
+type AgentServiceInterfaceMock_UnbindAgentResourceServer_Call struct {
+	*mock.Call
+}
+
+// UnbindAgentResourceServer is a helper method to define mock.On call
+//   - ctx context.Context
+//   - agentID string
+func (_e *AgentServiceInterfaceMock_Expecter) UnbindAgentResourceServer(ctx interface{}, agentID interface{}) *AgentServiceInterfaceMock_UnbindAgentResourceServer_Call {
+	return &AgentServiceInterfaceMock_UnbindAgentResourceServer_Call{Call: _e.mock.On("UnbindAgentResourceServer", ctx, agentID)}
+}
+
+func (_c *AgentServiceInterfaceMock_UnbindAgentResourceServer_Call) Run(run func(ctx context.Context, agentID string)) *AgentServiceInterfaceMock_UnbindAgentResourceServer_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_UnbindAgentResourceServer_Call) Return(serviceError *common.ServiceError) *AgentServiceInterfaceMock_UnbindAgentResourceServer_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_UnbindAgentResourceServer_Call) RunAndReturn(run func(ctx context.Context, agentID string) *common.ServiceError) *AgentServiceInterfaceMock_UnbindAgentResourceServer_Call {
+	_c.Call.Return(run)
 	return _c
 }
 

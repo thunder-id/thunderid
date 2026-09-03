@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -35,6 +36,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/i18n/mgtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
 )
 
@@ -4461,4 +4463,254 @@ func (suite *ServiceTestSuite) TestSyncPasskeyOriginsToCORS_SkipsInvalidOrigins(
 	// SetConfig must NOT be called because all origins are invalid
 
 	svc.syncPasskeyOriginsToCORS(context.Background(), invalidOrigins)
+}
+
+// --- SetResourceService ---
+
+func (suite *ServiceTestSuite) TestSetResourceService() {
+	service, _ := suite.setupTestService()
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	service.SetResourceService(mockRS)
+	assert.Equal(suite.T(), mockRS, service.resourceService)
+}
+
+// --- validateAppExists ---
+
+func (suite *ServiceTestSuite) TestValidateAppExists_NotFound() {
+	service, _ := suite.setupTestService()
+	svcErr := service.validateAppExists("missing-app")
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorApplicationNotFound.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestValidateAppExists_WrongCategory() {
+	service, _ := suite.setupTestService()
+
+	mockEP := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+	mockEP.On("GetEntity", "agent-entity").Return(
+		&providers.Entity{ID: "agent-entity", Category: providers.EntityCategoryAgent},
+		(*entityprovider.EntityProviderError)(nil))
+	service.entityProvider = mockEP
+
+	svcErr := service.validateAppExists("agent-entity")
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorApplicationNotFound.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestValidateAppExists_Success() {
+	service, _ := suite.setupTestService()
+
+	mockEP := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+	mockEP.On("GetEntity", testServiceAppID).Return(
+		&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp},
+		(*entityprovider.EntityProviderError)(nil))
+	service.entityProvider = mockEP
+
+	svcErr := service.validateAppExists(testServiceAppID)
+	assert.Nil(suite.T(), svcErr)
+}
+
+// --- GetApplicationResourceServer ---
+
+func (suite *ServiceTestSuite) TestGetApplicationResourceServer_EmptyID() {
+	service, _ := suite.setupTestService()
+	resp, svcErr := service.GetApplicationResourceServer(context.Background(), "")
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorInvalidApplicationID.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationResourceServer_AppNotFound() {
+	service, _ := suite.setupTestService()
+	resp, svcErr := service.GetApplicationResourceServer(context.Background(), "missing-app")
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorApplicationNotFound.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationResourceServer_NoRS() {
+	service, _ := suite.setupTestService()
+
+	mockEP := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+	mockEP.On("GetEntity", testServiceAppID).Return(
+		&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp},
+		(*entityprovider.EntityProviderError)(nil))
+	service.entityProvider = mockEP
+
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("GetResourceServerByOwnerEntityID", mock.Anything, testServiceAppID).
+		Return((*providers.ResourceServer)(nil), &resource.ErrorResourceServerNotFound)
+	service.SetResourceService(mockRS)
+
+	resp, svcErr := service.GetApplicationResourceServer(context.Background(), testServiceAppID)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), resource.ErrorResourceServerNotFound.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationResourceServer_Success() {
+	service, _ := suite.setupTestService()
+
+	mockEP := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+	mockEP.On("GetEntity", testServiceAppID).Return(
+		&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp},
+		(*entityprovider.EntityProviderError)(nil))
+	service.entityProvider = mockEP
+
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("GetResourceServerByOwnerEntityID", mock.Anything, testServiceAppID).
+		Return(&providers.ResourceServer{ID: "rs-1", Name: "App RS"},
+			(*tidcommon.ServiceError)(nil))
+	service.SetResourceService(mockRS)
+
+	resp, svcErr := service.GetApplicationResourceServer(context.Background(), testServiceAppID)
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+	assert.Equal(suite.T(), "rs-1", resp.ResourceServerID)
+	assert.Equal(suite.T(), "App RS", resp.ResourceServerName)
+}
+
+// --- BindApplicationResourceServer ---
+
+func (suite *ServiceTestSuite) TestBindApplicationResourceServer_EmptyID() {
+	service, _ := suite.setupTestService()
+	resp, svcErr := service.BindApplicationResourceServer(context.Background(), "", "rs-1")
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorInvalidApplicationID.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestBindApplicationResourceServer_AppNotFound() {
+	service, _ := suite.setupTestService()
+	resp, svcErr := service.BindApplicationResourceServer(context.Background(), "missing", "rs-1")
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorApplicationNotFound.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestBindApplicationResourceServer_Success() {
+	service, _ := suite.setupTestService()
+
+	mockEP := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+	mockEP.On("GetEntity", testServiceAppID).Return(
+		&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp},
+		(*entityprovider.EntityProviderError)(nil))
+	service.entityProvider = mockEP
+
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("BindResourceServerOwner", mock.Anything, "rs-1", testServiceAppID,
+		resourcedependency.ResourceTypeApplication).
+		Return(&providers.ResourceServer{ID: "rs-1", Name: "Bound RS"},
+			(*tidcommon.ServiceError)(nil))
+	service.SetResourceService(mockRS)
+
+	resp, svcErr := service.BindApplicationResourceServer(
+		context.Background(), testServiceAppID, "rs-1")
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+	assert.Equal(suite.T(), "rs-1", resp.ResourceServerID)
+	assert.Equal(suite.T(), "Bound RS", resp.ResourceServerName)
+}
+
+// --- UnbindApplicationResourceServer ---
+
+func (suite *ServiceTestSuite) TestUnbindApplicationResourceServer_EmptyID() {
+	service, _ := suite.setupTestService()
+	svcErr := service.UnbindApplicationResourceServer(context.Background(), "")
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorInvalidApplicationID.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestUnbindApplicationResourceServer_AppNotFound() {
+	service, _ := suite.setupTestService()
+	svcErr := service.UnbindApplicationResourceServer(context.Background(), "missing")
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorApplicationNotFound.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestUnbindApplicationResourceServer_Success() {
+	service, _ := suite.setupTestService()
+
+	mockEP := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+	mockEP.On("GetEntity", testServiceAppID).Return(
+		&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp},
+		(*entityprovider.EntityProviderError)(nil))
+	service.entityProvider = mockEP
+
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("GetResourceServerByOwnerEntityID", mock.Anything, testServiceAppID).
+		Return(&providers.ResourceServer{ID: "rs-1"}, (*tidcommon.ServiceError)(nil))
+	mockRS.On("UnbindResourceServerOwner", mock.Anything, "rs-1").
+		Return((*tidcommon.ServiceError)(nil))
+	service.SetResourceService(mockRS)
+
+	svcErr := service.UnbindApplicationResourceServer(context.Background(), testServiceAppID)
+	assert.Nil(suite.T(), svcErr)
+}
+
+// --- DeleteApplication blocked by RS ownership ---
+
+func (suite *ServiceTestSuite) TestDeleteApplication_BlockedByResourceServer() {
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{
+			Enabled: false,
+		},
+	}
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	require.NoError(suite.T(), err)
+	defer config.ResetServerRuntime()
+
+	service, _ := suite.setupTestService()
+
+	mockEP := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+	mockEP.On("GetEntity", testServiceAppID).Return(
+		&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp},
+		(*entityprovider.EntityProviderError)(nil))
+	service.entityProvider = mockEP
+
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("GetResourceServerByOwnerEntityID", mock.Anything, testServiceAppID).
+		Return(&providers.ResourceServer{ID: "rs-1"}, (*tidcommon.ServiceError)(nil))
+	service.SetResourceService(mockRS)
+
+	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorCannotDeleteAppOwnsResourceServer.Code, svcErr.Code)
+}
+
+// --- populateResourceServersForList ---
+
+func (suite *ServiceTestSuite) TestPopulateResourceServersForList_NilResourceService() {
+	service, _ := suite.setupTestService()
+	apps := []model.BasicApplicationResponse{{ID: testServiceAppID}}
+	service.populateResourceServersForList(context.Background(), apps)
+	assert.Empty(suite.T(), apps[0].ResourceServerID)
+}
+
+func (suite *ServiceTestSuite) TestPopulateResourceServersForList_EmptyList() {
+	service, _ := suite.setupTestService()
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	service.SetResourceService(mockRS)
+	service.populateResourceServersForList(context.Background(), nil)
+}
+
+func (suite *ServiceTestSuite) TestPopulateResourceServersForList_MixedResults() {
+	service, _ := suite.setupTestService()
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("GetResourceServerByOwnerEntityID", mock.Anything, "app-1").
+		Return(&providers.ResourceServer{ID: "rs-1", Name: "RS One"},
+			(*tidcommon.ServiceError)(nil))
+	mockRS.On("GetResourceServerByOwnerEntityID", mock.Anything, "app-2").
+		Return((*providers.ResourceServer)(nil), &resource.ErrorResourceServerNotFound)
+	service.SetResourceService(mockRS)
+
+	apps := []model.BasicApplicationResponse{
+		{ID: "app-1"},
+		{ID: "app-2"},
+	}
+	service.populateResourceServersForList(context.Background(), apps)
+	assert.Equal(suite.T(), "rs-1", apps[0].ResourceServerID)
+	assert.Equal(suite.T(), "RS One", apps[0].ResourceServerName)
+	assert.Empty(suite.T(), apps[1].ResourceServerID)
 }

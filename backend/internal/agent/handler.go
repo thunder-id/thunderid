@@ -216,6 +216,58 @@ func (h *agentHandler) HandleAgentRolesRequest(w http.ResponseWriter, r *http.Re
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
 }
 
+// HandleAgentResourceServerGetRequest handles GET /agents/{id}/resource-server.
+func (h *agentHandler) HandleAgentResourceServerGetRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if id == "" {
+		writeServiceError(ctx, w, &ErrorMissingAgentID)
+		return
+	}
+	resp, svcErr := h.service.GetAgentResourceServer(ctx, id)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
+}
+
+// HandleAgentResourceServerPostRequest handles POST /agents/{id}/resource-server.
+func (h *agentHandler) HandleAgentResourceServerPostRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if id == "" {
+		writeServiceError(ctx, w, &ErrorMissingAgentID)
+		return
+	}
+	req, err := sysutils.DecodeJSONBody[model.ResourceServerBindRequest](r)
+	if err != nil {
+		writeServiceError(ctx, w, &ErrorInvalidRequestFormat)
+		return
+	}
+	resp, svcErr := h.service.BindAgentResourceServer(ctx, id, req.ResourceServerID)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, resp)
+}
+
+// HandleAgentResourceServerDeleteRequest handles DELETE /agents/{id}/resource-server.
+func (h *agentHandler) HandleAgentResourceServerDeleteRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if id == "" {
+		writeServiceError(ctx, w, &ErrorMissingAgentID)
+		return
+	}
+	if svcErr := h.service.UnbindAgentResourceServer(ctx, id); svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
 // parsePaginationParams parses limit and offset query parameters.
 func parsePaginationParams(query url.Values) (int, int, *tidcommon.ServiceError) {
 	limit := 0
@@ -276,6 +328,8 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 			statusCode = http.StatusConflict
 		case ErrorCannotModifyDeclarativeResource.Code:
 			statusCode = http.StatusForbidden
+		case ErrorCannotDeleteAgentOwnsResourceServer.Code:
+			statusCode = http.StatusConflict
 		default:
 			statusCode = http.StatusBadRequest
 		}

@@ -182,10 +182,20 @@ CREATE TABLE "RESOURCE_SERVER" (
     IDENTIFIER VARCHAR(2048) NOT NULL,
     TYPE VARCHAR(20) CHECK (TYPE IS NULL OR TYPE IN ('API', 'MCP', 'CUSTOM')),
     PROPERTIES TEXT,
+    OWNER_ENTITY_ID VARCHAR(36),
+    OWNER_ENTITY_TYPE VARCHAR(50),
     CREATED_AT TEXT DEFAULT (datetime('now')),
     UPDATED_AT TEXT DEFAULT (datetime('now')),
     UNIQUE (OU_ID, NAME, DEPLOYMENT_ID)
 );
+
+-- One RS per entity
+CREATE UNIQUE INDEX uq_rs_owner_entity
+  ON "RESOURCE_SERVER" ("OWNER_ENTITY_ID", "DEPLOYMENT_ID");
+
+-- Reverse lookup: find RS by owner
+CREATE INDEX idx_rs_owner_lookup
+  ON "RESOURCE_SERVER" ("DEPLOYMENT_ID", "OWNER_ENTITY_ID");
 
 -- Composite index for name-based resource server lookups
 CREATE INDEX idx_resource_server_name_deployment ON "RESOURCE_SERVER" (DEPLOYMENT_ID, NAME);

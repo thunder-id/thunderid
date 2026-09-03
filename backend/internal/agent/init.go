@@ -82,4 +82,21 @@ func registerRoutes(mux *http.ServeMux, h *agentHandler) {
 		h.HandleAgentGroupsRequest, groupsOpts))
 	mux.HandleFunc(middleware.WithCORS("GET /agents/{id}/roles",
 		h.HandleAgentRolesRequest, groupsOpts))
+
+	rsOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET", "POST", "DELETE"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("GET /agents/{id}/resource-server",
+		h.HandleAgentResourceServerGetRequest, rsOpts))
+	mux.HandleFunc(middleware.WithCORS("POST /agents/{id}/resource-server",
+		h.HandleAgentResourceServerPostRequest, rsOpts))
+	mux.HandleFunc(middleware.WithCORS("DELETE /agents/{id}/resource-server",
+		h.HandleAgentResourceServerDeleteRequest, rsOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /agents/{id}/resource-server",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, rsOpts))
 }

@@ -179,6 +179,34 @@ func (f *fileBasedResourceStore) IsResourceServerDeclarative(id string) bool {
 	return err == nil
 }
 
+func (f *fileBasedResourceStore) GetResourceServerByOwnerEntityID(
+	ctx context.Context, ownerEntityID string,
+) (providers.ResourceServer, error) {
+	return providers.ResourceServer{}, errResourceServerNotFound
+}
+
+func (f *fileBasedResourceStore) UpdateResourceServerOwner(
+	ctx context.Context, rsID string, ownerEntityID, ownerEntityType string,
+) error {
+	return errImmutableStore
+}
+
+func (f *fileBasedResourceStore) ClearResourceServerOwner(ctx context.Context, rsID string) error {
+	return errImmutableStore
+}
+
+func (f *fileBasedResourceStore) GetResourceServerListByOwner(
+	_ context.Context, _, _ string, _, _ int,
+) ([]providers.ResourceServer, error) {
+	return []providers.ResourceServer{}, nil
+}
+
+func (f *fileBasedResourceStore) GetResourceServerListCountByOwner(
+	_ context.Context, _, _ string,
+) (int, error) {
+	return 0, nil
+}
+
 // Resource operations
 
 func (f *fileBasedResourceStore) CreateResource(

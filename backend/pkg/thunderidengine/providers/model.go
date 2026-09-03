@@ -191,16 +191,18 @@ type Resource struct {
 
 // ResourceServer represents a resource server in both declarative resources and service layer.
 type ResourceServer struct {
-	ID          string             `yaml:"id"                    json:"-"`
-	Name        string             `yaml:"name"                  json:"name"`
-	Description string             `yaml:"description,omitempty" json:"description,omitempty"`
-	Identifier  string             `yaml:"identifier"            json:"identifier"`
-	Type        ResourceServerType `yaml:"type,omitempty"        json:"type,omitempty"`
-	OUID        string             `yaml:"ouId,omitempty"        json:"ouId"`
-	OUHandle    string             `yaml:"ouHandle,omitempty"    json:"-"`
-	Delimiter   string             `yaml:"delimiter,omitempty"   json:"delimiter,omitempty"   yamlfmt:"quoted"`
-	IsReadOnly  bool               `yaml:"-"                     json:"-"`
-	Resources   []Resource         `yaml:"resources,omitempty"   json:"resources,omitempty"`
+	ID              string             `yaml:"id"                    json:"-"`
+	Name            string             `yaml:"name"                  json:"name"`
+	Description     string             `yaml:"description,omitempty" json:"description,omitempty"`
+	Identifier      string             `yaml:"identifier"            json:"identifier"`
+	Type            ResourceServerType `yaml:"type,omitempty"        json:"type,omitempty"`
+	OUID            string             `yaml:"ouId,omitempty"        json:"ouId"`
+	OUHandle        string             `yaml:"ouHandle,omitempty"    json:"-"`
+	Delimiter       string             `yaml:"delimiter,omitempty"   json:"delimiter,omitempty"   yamlfmt:"quoted"`
+	IsReadOnly      bool               `yaml:"-"                     json:"-"`
+	OwnerEntityID   string             `yaml:"-"                     json:"-"`
+	OwnerEntityType string             `yaml:"-"                     json:"-"`
+	Resources       []Resource         `yaml:"resources,omitempty"   json:"resources,omitempty"`
 }
 
 // CompleteFlowDefinition represents a complete flow definition with all details.

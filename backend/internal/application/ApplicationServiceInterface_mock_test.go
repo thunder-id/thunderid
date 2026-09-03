@@ -9,6 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -39,6 +40,82 @@ type ApplicationServiceInterfaceMock_Expecter struct {
 
 func (_m *ApplicationServiceInterfaceMock) EXPECT() *ApplicationServiceInterfaceMock_Expecter {
 	return &ApplicationServiceInterfaceMock_Expecter{mock: &_m.Mock}
+}
+
+// BindApplicationResourceServer provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) BindApplicationResourceServer(ctx context.Context, appID string, resourceServerID string) (*model.ApplicationResourceServerResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, appID, resourceServerID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BindApplicationResourceServer")
+	}
+
+	var r0 *model.ApplicationResourceServerResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*model.ApplicationResourceServerResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, appID, resourceServerID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *model.ApplicationResourceServerResponse); ok {
+		r0 = returnFunc(ctx, appID, resourceServerID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.ApplicationResourceServerResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, appID, resourceServerID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ApplicationServiceInterfaceMock_BindApplicationResourceServer_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BindApplicationResourceServer'
+type ApplicationServiceInterfaceMock_BindApplicationResourceServer_Call struct {
+	*mock.Call
+}
+
+// BindApplicationResourceServer is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+//   - resourceServerID string
+func (_e *ApplicationServiceInterfaceMock_Expecter) BindApplicationResourceServer(ctx interface{}, appID interface{}, resourceServerID interface{}) *ApplicationServiceInterfaceMock_BindApplicationResourceServer_Call {
+	return &ApplicationServiceInterfaceMock_BindApplicationResourceServer_Call{Call: _e.mock.On("BindApplicationResourceServer", ctx, appID, resourceServerID)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_BindApplicationResourceServer_Call) Run(run func(ctx context.Context, appID string, resourceServerID string)) *ApplicationServiceInterfaceMock_BindApplicationResourceServer_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_BindApplicationResourceServer_Call) Return(applicationResourceServerResponse *model.ApplicationResourceServerResponse, serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_BindApplicationResourceServer_Call {
+	_c.Call.Return(applicationResourceServerResponse, serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_BindApplicationResourceServer_Call) RunAndReturn(run func(ctx context.Context, appID string, resourceServerID string) (*model.ApplicationResourceServerResponse, *common.ServiceError)) *ApplicationServiceInterfaceMock_BindApplicationResourceServer_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // CreateApplication provides a mock function for the type ApplicationServiceInterfaceMock
@@ -304,6 +381,76 @@ func (_c *ApplicationServiceInterfaceMock_GetApplicationList_Call) RunAndReturn(
 	return _c
 }
 
+// GetApplicationResourceServer provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) GetApplicationResourceServer(ctx context.Context, appID string) (*model.ApplicationResourceServerResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, appID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetApplicationResourceServer")
+	}
+
+	var r0 *model.ApplicationResourceServerResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*model.ApplicationResourceServerResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, appID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *model.ApplicationResourceServerResponse); ok {
+		r0 = returnFunc(ctx, appID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.ApplicationResourceServerResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, appID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ApplicationServiceInterfaceMock_GetApplicationResourceServer_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetApplicationResourceServer'
+type ApplicationServiceInterfaceMock_GetApplicationResourceServer_Call struct {
+	*mock.Call
+}
+
+// GetApplicationResourceServer is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+func (_e *ApplicationServiceInterfaceMock_Expecter) GetApplicationResourceServer(ctx interface{}, appID interface{}) *ApplicationServiceInterfaceMock_GetApplicationResourceServer_Call {
+	return &ApplicationServiceInterfaceMock_GetApplicationResourceServer_Call{Call: _e.mock.On("GetApplicationResourceServer", ctx, appID)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_GetApplicationResourceServer_Call) Run(run func(ctx context.Context, appID string)) *ApplicationServiceInterfaceMock_GetApplicationResourceServer_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_GetApplicationResourceServer_Call) Return(applicationResourceServerResponse *model.ApplicationResourceServerResponse, serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_GetApplicationResourceServer_Call {
+	_c.Call.Return(applicationResourceServerResponse, serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_GetApplicationResourceServer_Call) RunAndReturn(run func(ctx context.Context, appID string) (*model.ApplicationResourceServerResponse, *common.ServiceError)) *ApplicationServiceInterfaceMock_GetApplicationResourceServer_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetOAuthApplication provides a mock function for the type ApplicationServiceInterfaceMock
 func (_mock *ApplicationServiceInterfaceMock) GetOAuthApplication(ctx context.Context, clientID string) (*providers.OAuthClient, *common.ServiceError) {
 	ret := _mock.Called(ctx, clientID)
@@ -485,6 +632,105 @@ func (_c *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call) Return() *
 
 func (_c *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run func(r resourcedependency.Registry)) *ApplicationServiceInterfaceMock_SetDependencyRegistry_Call {
 	_c.Run(run)
+	return _c
+}
+
+// SetResourceService provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) SetResourceService(rs resource.ResourceServiceInterface) {
+	_mock.Called(rs)
+	return
+}
+
+// ApplicationServiceInterfaceMock_SetResourceService_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetResourceService'
+type ApplicationServiceInterfaceMock_SetResourceService_Call struct {
+	*mock.Call
+}
+
+// SetResourceService is a helper method to define mock.On call
+//   - rs resource.ResourceServiceInterface
+func (_e *ApplicationServiceInterfaceMock_Expecter) SetResourceService(rs interface{}) *ApplicationServiceInterfaceMock_SetResourceService_Call {
+	return &ApplicationServiceInterfaceMock_SetResourceService_Call{Call: _e.mock.On("SetResourceService", rs)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_SetResourceService_Call) Run(run func(rs resource.ResourceServiceInterface)) *ApplicationServiceInterfaceMock_SetResourceService_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 resource.ResourceServiceInterface
+		if args[0] != nil {
+			arg0 = args[0].(resource.ResourceServiceInterface)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_SetResourceService_Call) Return() *ApplicationServiceInterfaceMock_SetResourceService_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_SetResourceService_Call) RunAndReturn(run func(rs resource.ResourceServiceInterface)) *ApplicationServiceInterfaceMock_SetResourceService_Call {
+	_c.Run(run)
+	return _c
+}
+
+// UnbindApplicationResourceServer provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) UnbindApplicationResourceServer(ctx context.Context, appID string) *common.ServiceError {
+	ret := _mock.Called(ctx, appID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UnbindApplicationResourceServer")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, appID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// ApplicationServiceInterfaceMock_UnbindApplicationResourceServer_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UnbindApplicationResourceServer'
+type ApplicationServiceInterfaceMock_UnbindApplicationResourceServer_Call struct {
+	*mock.Call
+}
+
+// UnbindApplicationResourceServer is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+func (_e *ApplicationServiceInterfaceMock_Expecter) UnbindApplicationResourceServer(ctx interface{}, appID interface{}) *ApplicationServiceInterfaceMock_UnbindApplicationResourceServer_Call {
+	return &ApplicationServiceInterfaceMock_UnbindApplicationResourceServer_Call{Call: _e.mock.On("UnbindApplicationResourceServer", ctx, appID)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_UnbindApplicationResourceServer_Call) Run(run func(ctx context.Context, appID string)) *ApplicationServiceInterfaceMock_UnbindApplicationResourceServer_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_UnbindApplicationResourceServer_Call) Return(serviceError *common.ServiceError) *ApplicationServiceInterfaceMock_UnbindApplicationResourceServer_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_UnbindApplicationResourceServer_Call) RunAndReturn(run func(ctx context.Context, appID string) *common.ServiceError) *ApplicationServiceInterfaceMock_UnbindApplicationResourceServer_Call {
+	_c.Call.Return(run)
 	return _c
 }
 

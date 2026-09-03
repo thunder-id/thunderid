@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/resource"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -28,6 +29,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 )
 
@@ -3044,4 +3046,320 @@ func (suite *AgentServiceTestSuite) TestSeedClientSubTypeAttribute_NoOAuthConfig
 	seedClientSubTypeAttribute(configs)
 
 	assert.Empty(suite.T(), configs)
+}
+
+// --- SetResourceService ---
+
+func (suite *AgentServiceTestSuite) TestSetResourceService() {
+	svc, _, _, _, _ := suite.setupService()
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	svc.SetResourceService(mockRS)
+	assert.Equal(suite.T(), mockRS, svc.resourceService)
+}
+
+// --- validateAgentExists ---
+
+func (suite *AgentServiceTestSuite) TestValidateAgentExists_NotFound() {
+	svc, _, _, _, _ := suite.setupService()
+	svcErr := svc.validateAgentExists(context.Background(), "missing-agent")
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorAgentNotFound.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestValidateAgentExists_WrongCategory() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+		Return(&providers.Entity{ID: testAgentID, Category: providers.EntityCategoryUser}, nil)
+
+	svcErr := svc.validateAgentExists(context.Background(), testAgentID)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorAgentNotFound.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestValidateAgentExists_StoreError() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).
+		Return((*providers.Entity)(nil), errors.New("db error"))
+
+	svcErr := svc.validateAgentExists(context.Background(), testAgentID)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestValidateAgentExists_Success() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	svcErr := svc.validateAgentExists(context.Background(), testAgentID)
+	assert.Nil(suite.T(), svcErr)
+}
+
+// --- GetAgentResourceServer ---
+
+func (suite *AgentServiceTestSuite) TestGetAgentResourceServer_EmptyID() {
+	svc, _, _, _, _ := suite.setupService()
+	resp, svcErr := svc.GetAgentResourceServer(context.Background(), "")
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorMissingAgentID.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentResourceServer_AgentNotFound() {
+	svc, _, _, _, _ := suite.setupService()
+	resp, svcErr := svc.GetAgentResourceServer(context.Background(), "missing-agent")
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorAgentNotFound.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentResourceServer_NoRS() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("GetResourceServerByOwnerEntityID", mock.Anything, testAgentID).
+		Return((*providers.ResourceServer)(nil), &resource.ErrorResourceServerNotFound)
+	svc.SetResourceService(mockRS)
+
+	resp, svcErr := svc.GetAgentResourceServer(context.Background(), testAgentID)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), resource.ErrorResourceServerNotFound.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgentResourceServer_Success() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("GetResourceServerByOwnerEntityID", mock.Anything, testAgentID).
+		Return(&providers.ResourceServer{ID: "rs-1", Name: "My RS"}, (*tidcommon.ServiceError)(nil))
+	svc.SetResourceService(mockRS)
+
+	resp, svcErr := svc.GetAgentResourceServer(context.Background(), testAgentID)
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+	assert.Equal(suite.T(), "rs-1", resp.ResourceServerID)
+	assert.Equal(suite.T(), "My RS", resp.ResourceServerName)
+}
+
+// --- BindAgentResourceServer ---
+
+func (suite *AgentServiceTestSuite) TestBindAgentResourceServer_EmptyID() {
+	svc, _, _, _, _ := suite.setupService()
+	resp, svcErr := svc.BindAgentResourceServer(context.Background(), "", "rs-1")
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorMissingAgentID.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestBindAgentResourceServer_AgentNotFound() {
+	svc, _, _, _, _ := suite.setupService()
+	resp, svcErr := svc.BindAgentResourceServer(context.Background(), "missing", "rs-1")
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorAgentNotFound.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestBindAgentResourceServer_ServiceError() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("BindResourceServerOwner", mock.Anything, "rs-1", testAgentID,
+		resourcedependency.ResourceTypeAgent).
+		Return((*providers.ResourceServer)(nil), &resource.ErrorResourceServerNotFound)
+	svc.SetResourceService(mockRS)
+
+	resp, svcErr := svc.BindAgentResourceServer(context.Background(), testAgentID, "rs-1")
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), resource.ErrorResourceServerNotFound.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestBindAgentResourceServer_Success() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("BindResourceServerOwner", mock.Anything, "rs-1", testAgentID,
+		resourcedependency.ResourceTypeAgent).
+		Return(&providers.ResourceServer{ID: "rs-1", Name: "Bound RS"}, (*tidcommon.ServiceError)(nil))
+	svc.SetResourceService(mockRS)
+
+	resp, svcErr := svc.BindAgentResourceServer(context.Background(), testAgentID, "rs-1")
+	suite.Require().Nil(svcErr)
+	suite.Require().NotNil(resp)
+	assert.Equal(suite.T(), "rs-1", resp.ResourceServerID)
+	assert.Equal(suite.T(), "Bound RS", resp.ResourceServerName)
+}
+
+// --- UnbindAgentResourceServer ---
+
+func (suite *AgentServiceTestSuite) TestUnbindAgentResourceServer_EmptyID() {
+	svc, _, _, _, _ := suite.setupService()
+	svcErr := svc.UnbindAgentResourceServer(context.Background(), "")
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorMissingAgentID.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestUnbindAgentResourceServer_AgentNotFound() {
+	svc, _, _, _, _ := suite.setupService()
+	svcErr := svc.UnbindAgentResourceServer(context.Background(), "missing")
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorAgentNotFound.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestUnbindAgentResourceServer_NoRS() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("GetResourceServerByOwnerEntityID", mock.Anything, testAgentID).
+		Return((*providers.ResourceServer)(nil), &resource.ErrorResourceServerNotFound)
+	svc.SetResourceService(mockRS)
+
+	svcErr := svc.UnbindAgentResourceServer(context.Background(), testAgentID)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), resource.ErrorResourceServerNotFound.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestUnbindAgentResourceServer_Success() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("GetResourceServerByOwnerEntityID", mock.Anything, testAgentID).
+		Return(&providers.ResourceServer{ID: "rs-1"}, (*tidcommon.ServiceError)(nil))
+	mockRS.On("UnbindResourceServerOwner", mock.Anything, "rs-1").
+		Return((*tidcommon.ServiceError)(nil))
+	svc.SetResourceService(mockRS)
+
+	svcErr := svc.UnbindAgentResourceServer(context.Background(), testAgentID)
+	assert.Nil(suite.T(), svcErr)
+}
+
+// --- DeleteAgent blocked by RS ownership ---
+
+func (suite *AgentServiceTestSuite) TestDeleteAgent_BlockedByResourceServer() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("GetResourceServerByOwnerEntityID", mock.Anything, testAgentID).
+		Return(&providers.ResourceServer{ID: "rs-1"}, (*tidcommon.ServiceError)(nil))
+	svc.SetResourceService(mockRS)
+
+	svcErr := svc.DeleteAgent(context.Background(), testAgentID)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorCannotDeleteAgentOwnsResourceServer.Code, svcErr.Code)
+}
+
+// --- populateResourceServerForGet ---
+
+func (suite *AgentServiceTestSuite) TestPopulateResourceServerForGet_NilResourceService() {
+	svc, _, _, _, _ := suite.setupService()
+	resp := &model.AgentGetResponse{ID: testAgentID}
+	svc.populateResourceServerForGet(context.Background(), resp)
+	assert.Empty(suite.T(), resp.ResourceServerID)
+}
+
+func (suite *AgentServiceTestSuite) TestPopulateResourceServerForGet_NoRS() {
+	svc, _, _, _, _ := suite.setupService()
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("GetResourceServerByOwnerEntityID", mock.Anything, testAgentID).
+		Return((*providers.ResourceServer)(nil), &resource.ErrorResourceServerNotFound)
+	svc.SetResourceService(mockRS)
+
+	resp := &model.AgentGetResponse{ID: testAgentID}
+	svc.populateResourceServerForGet(context.Background(), resp)
+	assert.Empty(suite.T(), resp.ResourceServerID)
+}
+
+func (suite *AgentServiceTestSuite) TestPopulateResourceServerForGet_Success() {
+	svc, _, _, _, _ := suite.setupService()
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("GetResourceServerByOwnerEntityID", mock.Anything, testAgentID).
+		Return(&providers.ResourceServer{ID: "rs-1", Name: "RS One"}, (*tidcommon.ServiceError)(nil))
+	svc.SetResourceService(mockRS)
+
+	resp := &model.AgentGetResponse{ID: testAgentID}
+	svc.populateResourceServerForGet(context.Background(), resp)
+	assert.Equal(suite.T(), "rs-1", resp.ResourceServerID)
+	assert.Equal(suite.T(), "RS One", resp.ResourceServerName)
+}
+
+// --- populateResourceServerForComplete ---
+
+func (suite *AgentServiceTestSuite) TestPopulateResourceServerForComplete_NilResourceService() {
+	svc, _, _, _, _ := suite.setupService()
+	resp := &model.AgentCompleteResponse{ID: testAgentID}
+	svc.populateResourceServerForComplete(context.Background(), resp)
+	assert.Empty(suite.T(), resp.ResourceServerID)
+}
+
+func (suite *AgentServiceTestSuite) TestPopulateResourceServerForComplete_Success() {
+	svc, _, _, _, _ := suite.setupService()
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("GetResourceServerByOwnerEntityID", mock.Anything, testAgentID).
+		Return(&providers.ResourceServer{ID: "rs-1", Name: "RS One"}, (*tidcommon.ServiceError)(nil))
+	svc.SetResourceService(mockRS)
+
+	resp := &model.AgentCompleteResponse{ID: testAgentID}
+	svc.populateResourceServerForComplete(context.Background(), resp)
+	assert.Equal(suite.T(), "rs-1", resp.ResourceServerID)
+	assert.Equal(suite.T(), "RS One", resp.ResourceServerName)
+}
+
+// --- populateResourceServersForList ---
+
+func (suite *AgentServiceTestSuite) TestPopulateResourceServersForList_NilResourceService() {
+	svc, _, _, _, _ := suite.setupService()
+	agents := []model.BasicAgentResponse{{ID: testAgentID}}
+	svc.populateResourceServersForList(context.Background(), agents)
+	assert.Empty(suite.T(), agents[0].ResourceServerID)
+}
+
+func (suite *AgentServiceTestSuite) TestPopulateResourceServersForList_EmptyList() {
+	svc, _, _, _, _ := suite.setupService()
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	svc.SetResourceService(mockRS)
+	svc.populateResourceServersForList(context.Background(), nil)
+}
+
+func (suite *AgentServiceTestSuite) TestPopulateResourceServersForList_MixedResults() {
+	svc, _, _, _, _ := suite.setupService()
+	mockRS := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	mockRS.On("GetResourceServerByOwnerEntityID", mock.Anything, "agent-1").
+		Return(&providers.ResourceServer{ID: "rs-1", Name: "RS One"}, (*tidcommon.ServiceError)(nil))
+	mockRS.On("GetResourceServerByOwnerEntityID", mock.Anything, "agent-2").
+		Return((*providers.ResourceServer)(nil), &resource.ErrorResourceServerNotFound)
+	svc.SetResourceService(mockRS)
+
+	agents := []model.BasicAgentResponse{
+		{ID: "agent-1"},
+		{ID: "agent-2"},
+	}
+	svc.populateResourceServersForList(context.Background(), agents)
+	assert.Equal(suite.T(), "rs-1", agents[0].ResourceServerID)
+	assert.Equal(suite.T(), "RS One", agents[0].ResourceServerName)
+	assert.Empty(suite.T(), agents[1].ResourceServerID)
 }

@@ -1184,3 +1184,34 @@ func (s *CompositeResourceStoreTestSuite) TestMergeAndDeduplicateResourceServers
 	assert.Len(s.T(), result, 1)
 	assert.True(s.T(), result[0].IsReadOnly, "File resource server should have IsReadOnly=true")
 }
+
+// --- GetResourceServerListByOwner delegates to dbStore ---
+
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListByOwner_DelegatesToDB() {
+	s.dbStoreMock.On("GetResourceServerListByOwner", s.ctx, "owner-1", "agent", 10, 0).
+		Return([]providers.ResourceServer{{ID: "rs-1"}}, nil)
+
+	result, err := s.compositeStore.GetResourceServerListByOwner(s.ctx, "owner-1", "agent", 10, 0)
+	assert.NoError(s.T(), err)
+	assert.Len(s.T(), result, 1)
+	s.dbStoreMock.AssertExpectations(s.T())
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListByOwner_Error() {
+	s.dbStoreMock.On("GetResourceServerListByOwner", s.ctx, "owner-1", "agent", 10, 0).
+		Return([]providers.ResourceServer(nil), errors.New("db error"))
+
+	result, err := s.compositeStore.GetResourceServerListByOwner(s.ctx, "owner-1", "agent", 10, 0)
+	assert.Error(s.T(), err)
+	assert.Nil(s.T(), result)
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListCountByOwner_DelegatesToDB() {
+	s.dbStoreMock.On("GetResourceServerListCountByOwner", s.ctx, "owner-1", "agent").
+		Return(5, nil)
+
+	count, err := s.compositeStore.GetResourceServerListCountByOwner(s.ctx, "owner-1", "agent")
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), 5, count)
+	s.dbStoreMock.AssertExpectations(s.T())
+}

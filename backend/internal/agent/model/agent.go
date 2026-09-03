@@ -84,15 +84,17 @@ type UpdateAgentRequest struct {
 // AgentCompleteResponse is returned on create and update operations. Includes clientSecret
 // in the embedded OAuth config when an OAuth profile was just provisioned.
 type AgentCompleteResponse struct {
-	ID          string          `json:"id,omitempty"`
-	OUID        string          `json:"ouId,omitempty"`
-	OUHandle    string          `json:"ouHandle,omitempty"`
-	Type        string          `json:"type,omitempty"`
-	Name        string          `json:"name,omitempty"`
-	Description string          `json:"description,omitempty"`
-	LogoURL     string          `json:"logoUrl,omitempty"`
-	Owner       string          `json:"owner,omitempty"`
-	Attributes  json.RawMessage `json:"attributes,omitempty"`
+	ID                 string          `json:"id,omitempty"`
+	OUID               string          `json:"ouId,omitempty"`
+	OUHandle           string          `json:"ouHandle,omitempty"`
+	Type               string          `json:"type,omitempty"`
+	Name               string          `json:"name,omitempty"`
+	Description        string          `json:"description,omitempty"`
+	LogoURL            string          `json:"logoUrl,omitempty"`
+	Owner              string          `json:"owner,omitempty"`
+	Attributes         json.RawMessage `json:"attributes,omitempty"`
+	ResourceServerID   string          `json:"resourceServerId,omitempty"`
+	ResourceServerName string          `json:"resourceServerName,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
@@ -100,15 +102,17 @@ type AgentCompleteResponse struct {
 
 // AgentGetResponse is returned on read operations. Excludes secrets (no clientSecret).
 type AgentGetResponse struct {
-	ID          string `json:"id,omitempty"          yaml:"id,omitempty"`
-	OUID        string `json:"ouId,omitempty"        yaml:"ouId,omitempty"`
-	OUHandle    string `json:"ouHandle,omitempty"    yaml:"-"`
-	Type        string `json:"type,omitempty"        yaml:"type,omitempty"`
-	Name        string `json:"name,omitempty"        yaml:"name,omitempty"`
-	Description string `json:"description,omitempty" yaml:"description,omitempty"`
-	LogoURL     string `json:"logoUrl,omitempty"     yaml:"logoUrl,omitempty"`
-	ClientID    string `json:"clientId,omitempty"    yaml:"-"`
-	Owner       string `json:"owner,omitempty"       yaml:"owner,omitempty"`
+	ID                 string `json:"id,omitempty"          yaml:"id,omitempty"`
+	OUID               string `json:"ouId,omitempty"        yaml:"ouId,omitempty"`
+	OUHandle           string `json:"ouHandle,omitempty"    yaml:"-"`
+	Type               string `json:"type,omitempty"        yaml:"type,omitempty"`
+	Name               string `json:"name,omitempty"        yaml:"name,omitempty"`
+	Description        string `json:"description,omitempty" yaml:"description,omitempty"`
+	LogoURL            string `json:"logoUrl,omitempty"     yaml:"logoUrl,omitempty"`
+	ClientID           string `json:"clientId,omitempty"    yaml:"-"`
+	Owner              string `json:"owner,omitempty"       yaml:"owner,omitempty"`
+	ResourceServerID   string `json:"resourceServerId,omitempty"   yaml:"-"`
+	ResourceServerName string `json:"resourceServerName,omitempty" yaml:"-"`
 	// Attributes holds the raw JSON for API responses; json.RawMessage cannot be
 	// directly YAML-marshaled, so AttributesYAML carries the decoded map for export.
 	Attributes     json.RawMessage        `json:"attributes,omitempty" yaml:"-"`
@@ -120,17 +124,30 @@ type AgentGetResponse struct {
 
 // BasicAgentResponse is the summary view used in list responses.
 type BasicAgentResponse struct {
-	ID          string          `json:"id,omitempty"`
-	OUID        string          `json:"ouId,omitempty"`
-	OUHandle    string          `json:"ouHandle,omitempty"`
-	Type        string          `json:"type,omitempty"`
-	Name        string          `json:"name,omitempty"`
-	Description string          `json:"description,omitempty"`
-	LogoURL     string          `json:"logoUrl,omitempty"`
-	ClientID    string          `json:"clientId,omitempty"`
-	Owner       string          `json:"owner,omitempty"`
-	Attributes  json.RawMessage `json:"attributes,omitempty"`
-	IsReadOnly  bool            `json:"isReadOnly"`
+	ID                 string          `json:"id,omitempty"`
+	OUID               string          `json:"ouId,omitempty"`
+	OUHandle           string          `json:"ouHandle,omitempty"`
+	Type               string          `json:"type,omitempty"`
+	Name               string          `json:"name,omitempty"`
+	Description        string          `json:"description,omitempty"`
+	LogoURL            string          `json:"logoUrl,omitempty"`
+	ClientID           string          `json:"clientId,omitempty"`
+	Owner              string          `json:"owner,omitempty"`
+	Attributes         json.RawMessage `json:"attributes,omitempty"`
+	ResourceServerID   string          `json:"resourceServerId,omitempty"`
+	ResourceServerName string          `json:"resourceServerName,omitempty"`
+	IsReadOnly         bool            `json:"isReadOnly"`
+}
+
+// ResourceServerBindRequest is the HTTP request body for binding a resource server to an agent.
+type ResourceServerBindRequest struct {
+	ResourceServerID string `json:"resourceServerId" native:"required"`
+}
+
+// AgentResourceServerResponse is the response for an agent's bound resource server.
+type AgentResourceServerResponse struct {
+	ResourceServerID   string `json:"resourceServerId"`
+	ResourceServerName string `json:"resourceServerName"`
 }
 
 // AgentListResponse is the paginated list response.

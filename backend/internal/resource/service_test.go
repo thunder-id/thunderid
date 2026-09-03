@@ -5294,6 +5294,245 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_CheckNameError()
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
+// Ownership Tests
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerByOwnerEntityID_Success() {
+	expected := providers.ResourceServer{
+		ID:              "rs-1",
+		Name:            "Owned RS",
+		OwnerEntityID:   "entity-1",
+		OwnerEntityType: "agent",
+	}
+	suite.mockStore.On("GetResourceServerByOwnerEntityID", mock.Anything, "entity-1").
+		Return(expected, nil)
+
+	result, svcErr := suite.service.GetResourceServerByOwnerEntityID(
+		context.Background(), "entity-1")
+
+	suite.Nil(svcErr)
+	suite.NotNil(result)
+	suite.Equal("rs-1", result.ID)
+	suite.Equal("entity-1", result.OwnerEntityID)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerByOwnerEntityID_NotFound() {
+	suite.mockStore.On("GetResourceServerByOwnerEntityID", mock.Anything, "entity-1").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+
+	result, svcErr := suite.service.GetResourceServerByOwnerEntityID(
+		context.Background(), "entity-1")
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(ErrorResourceServerNotFound.Code, svcErr.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerByOwnerEntityID_StoreError() {
+	suite.mockStore.On("GetResourceServerByOwnerEntityID", mock.Anything, "entity-1").
+		Return(providers.ResourceServer{}, errors.New("db error"))
+
+	result, svcErr := suite.service.GetResourceServerByOwnerEntityID(
+		context.Background(), "entity-1")
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestBindResourceServerOwner_Success() {
+	suite.mockStore.On("GetResourceServerByOwnerEntityID", mock.Anything, "entity-1").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-1").
+		Return(providers.ResourceServer{ID: "rs-1", Name: "RS"}, nil).Once()
+	suite.mockStore.On("UpdateResourceServerOwner", mock.Anything, "rs-1", "entity-1", "agent").
+		Return(nil)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-1").
+		Return(providers.ResourceServer{
+			ID: "rs-1", Name: "RS", OwnerEntityID: "entity-1", OwnerEntityType: "agent",
+		}, nil).Once()
+
+	result, svcErr := suite.service.BindResourceServerOwner(
+		context.Background(), "rs-1", "entity-1", "agent")
+
+	suite.Nil(svcErr)
+	suite.NotNil(result)
+	suite.Equal("entity-1", result.OwnerEntityID)
+}
+
+func (suite *ResourceServiceTestSuite) TestBindResourceServerOwner_EntityAlreadyOwns() {
+	suite.mockStore.On("GetResourceServerByOwnerEntityID", mock.Anything, "entity-1").
+		Return(providers.ResourceServer{ID: "rs-existing"}, nil)
+
+	result, svcErr := suite.service.BindResourceServerOwner(
+		context.Background(), "rs-1", "entity-1", "agent")
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(ErrorEntityAlreadyOwnsResourceServer.Code, svcErr.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestBindResourceServerOwner_RSNotFound() {
+	suite.mockStore.On("GetResourceServerByOwnerEntityID", mock.Anything, "entity-1").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-nonexistent").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+
+	result, svcErr := suite.service.BindResourceServerOwner(
+		context.Background(), "rs-nonexistent", "entity-1", "agent")
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(ErrorResourceServerNotFound.Code, svcErr.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestBindResourceServerOwner_RSAlreadyOwned() {
+	suite.mockStore.On("GetResourceServerByOwnerEntityID", mock.Anything, "entity-1").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-1").
+		Return(providers.ResourceServer{
+			ID: "rs-1", OwnerEntityID: "other-entity", OwnerEntityType: "application",
+		}, nil)
+
+	result, svcErr := suite.service.BindResourceServerOwner(
+		context.Background(), "rs-1", "entity-1", "agent")
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(ErrorResourceServerAlreadyOwned.Code, svcErr.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestUnbindResourceServerOwner_Success() {
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-1").
+		Return(providers.ResourceServer{ID: "rs-1"}, nil)
+	suite.mockStore.On("ClearResourceServerOwner", mock.Anything, "rs-1").
+		Return(nil)
+
+	svcErr := suite.service.UnbindResourceServerOwner(context.Background(), "rs-1")
+
+	suite.Nil(svcErr)
+}
+
+func (suite *ResourceServiceTestSuite) TestUnbindResourceServerOwner_RSNotFound() {
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-nonexistent").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+
+	svcErr := suite.service.UnbindResourceServerOwner(
+		context.Background(), "rs-nonexistent")
+
+	suite.NotNil(svcErr)
+	suite.Equal(ErrorResourceServerNotFound.Code, svcErr.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestUnbindResourceServerOwner_ClearError() {
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-1").
+		Return(providers.ResourceServer{ID: "rs-1"}, nil)
+	suite.mockStore.On("ClearResourceServerOwner", mock.Anything, "rs-1").
+		Return(errors.New("clear failed"))
+
+	svcErr := suite.service.UnbindResourceServerOwner(context.Background(), "rs-1")
+
+	suite.NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateAndBindResourceServer_Success() {
+	rsReq := providers.ResourceServer{
+		Name:       "New RS",
+		Identifier: "new-rs-id",
+		OUID:       "ou-123",
+	}
+
+	suite.mockStore.On("GetResourceServerByOwnerEntityID", mock.Anything, "entity-1").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
+		Return(providers.OrganizationUnit{ID: "ou-123"}, nil)
+	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "New RS").
+		Return(false, nil)
+	suite.mockStore.On("CheckResourceServerIdentifierExists", mock.Anything, "new-rs-id").
+		Return(false, nil)
+	suite.mockStore.On("CreateResourceServer", mock.Anything,
+		mock.AnythingOfType("string"), mock.MatchedBy(func(rs providers.ResourceServer) bool {
+			return rs.OwnerEntityID == "entity-1" && rs.OwnerEntityType == "agent"
+		})).Return(nil)
+
+	result, svcErr := suite.service.CreateAndBindResourceServer(
+		context.Background(), rsReq, "entity-1", "agent")
+
+	suite.Nil(svcErr)
+	suite.NotNil(result)
+	suite.Equal("entity-1", result.OwnerEntityID)
+	suite.Equal("agent", result.OwnerEntityType)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateAndBindResourceServer_EntityAlreadyOwns() {
+	suite.mockStore.On("GetResourceServerByOwnerEntityID", mock.Anything, "entity-1").
+		Return(providers.ResourceServer{ID: "rs-existing"}, nil)
+
+	result, svcErr := suite.service.CreateAndBindResourceServer(
+		context.Background(), providers.ResourceServer{}, "entity-1", "agent")
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(ErrorEntityAlreadyOwnsResourceServer.Code, svcErr.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestSetEntityNameResolver() {
+	svc := suite.service.(*resourceService)
+	suite.Nil(svc.entityNameResolver)
+
+	resolver := &mockEntityNameResolver{}
+	suite.service.SetEntityNameResolver(resolver)
+
+	suite.NotNil(svc.entityNameResolver)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceDependencies_Agent_OwnsRS() {
+	suite.mockStore.On("GetResourceServerByOwnerEntityID", mock.Anything, "agent-1").
+		Return(providers.ResourceServer{ID: "rs-1", Name: "Agent RS"}, nil)
+
+	deps, err := suite.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeAgent, "agent-1")
+
+	suite.NoError(err)
+	suite.Len(deps, 1)
+	suite.Equal(resourcedependency.ResourceTypeResourceServer, deps[0].ResourceType)
+	suite.Equal("rs-1", deps[0].ID)
+	suite.Equal("Agent RS", deps[0].DisplayName)
+	suite.Equal(resourcedependency.BehaviorRestrict, deps[0].BehaviorOnDelete)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceDependencies_Agent_NoRS() {
+	suite.mockStore.On("GetResourceServerByOwnerEntityID", mock.Anything, "agent-1").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+
+	deps, err := suite.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeAgent, "agent-1")
+
+	suite.NoError(err)
+	suite.Empty(deps)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceDependencies_Application_OwnsRS() {
+	suite.mockStore.On("GetResourceServerByOwnerEntityID", mock.Anything, "app-1").
+		Return(providers.ResourceServer{ID: "rs-2", Name: "App RS"}, nil)
+
+	deps, err := suite.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeApplication, "app-1")
+
+	suite.NoError(err)
+	suite.Len(deps, 1)
+	suite.Equal(resourcedependency.ResourceTypeResourceServer, deps[0].ResourceType)
+	suite.Equal("rs-2", deps[0].ID)
+}
+
+type mockEntityNameResolver struct{}
+
+func (m *mockEntityNameResolver) ResolveEntityName(
+	_ context.Context, _ string,
+) (string, error) {
+	return "test-name", nil
+}
+
 func TestResourceServerYAML_OUHandleParsed(t *testing.T) {
 	yamlData := []byte(`
 id: rs1
@@ -5312,4 +5551,89 @@ ouHandle: default
 	if rs.OUID != "" {
 		t.Errorf("OUID = %q, want empty (resolution happens later)", rs.OUID)
 	}
+}
+
+// --- GetResourceServerListByOwner ---
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByOwner_Success() {
+	suite.mockStore.On("GetResourceServerListCountByOwner", mock.Anything, "owner-1", "agent").
+		Return(1, nil)
+	suite.mockStore.On("GetResourceServerListByOwner", mock.Anything, "owner-1", "agent", 30, 0).
+		Return([]providers.ResourceServer{
+			{ID: "rs-1", Name: "Agent RS"},
+		}, nil)
+
+	result, svcErr := suite.service.GetResourceServerListByOwner(
+		context.Background(), "owner-1", "agent", 30, 0)
+	suite.Nil(svcErr)
+	suite.Require().NotNil(result)
+	suite.Equal(1, result.TotalResults)
+	suite.Require().Len(result.ResourceServers, 1)
+	suite.Equal("rs-1", result.ResourceServers[0].ID)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByOwner_CountError() {
+	suite.mockStore.On("GetResourceServerListCountByOwner", mock.Anything, "owner-1", "agent").
+		Return(0, errors.New("db error"))
+
+	result, svcErr := suite.service.GetResourceServerListByOwner(
+		context.Background(), "owner-1", "agent", 30, 0)
+	suite.Nil(result)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByOwner_ListError() {
+	suite.mockStore.On("GetResourceServerListCountByOwner", mock.Anything, "owner-1", "agent").
+		Return(1, nil)
+	suite.mockStore.On("GetResourceServerListByOwner", mock.Anything, "owner-1", "agent", 30, 0).
+		Return([]providers.ResourceServer(nil), errors.New("db error"))
+
+	result, svcErr := suite.service.GetResourceServerListByOwner(
+		context.Background(), "owner-1", "agent", 30, 0)
+	suite.Nil(result)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByOwner_InvalidPagination() {
+	result, svcErr := suite.service.GetResourceServerListByOwner(
+		context.Background(), "owner-1", "agent", -1, 0)
+	suite.Nil(result)
+	suite.Require().NotNil(svcErr)
+}
+
+// --- ResolveOwnerName ---
+
+func (suite *ResourceServiceTestSuite) TestResolveOwnerName_NilResolver() {
+	name := suite.service.ResolveOwnerName(context.Background(), "entity-1")
+	suite.Empty(name)
+}
+
+func (suite *ResourceServiceTestSuite) TestResolveOwnerName_EmptyID() {
+	mockResolver := NewEntityNameResolverMock(suite.T())
+	suite.service.SetEntityNameResolver(mockResolver)
+
+	name := suite.service.ResolveOwnerName(context.Background(), "")
+	suite.Empty(name)
+}
+
+func (suite *ResourceServiceTestSuite) TestResolveOwnerName_ResolverError() {
+	mockResolver := NewEntityNameResolverMock(suite.T())
+	mockResolver.On("ResolveEntityName", mock.Anything, "entity-1").
+		Return("", errors.New("not found"))
+	suite.service.SetEntityNameResolver(mockResolver)
+
+	name := suite.service.ResolveOwnerName(context.Background(), "entity-1")
+	suite.Empty(name)
+}
+
+func (suite *ResourceServiceTestSuite) TestResolveOwnerName_Success() {
+	mockResolver := NewEntityNameResolverMock(suite.T())
+	mockResolver.On("ResolveEntityName", mock.Anything, "entity-1").
+		Return("My Agent", nil)
+	suite.service.SetEntityNameResolver(mockResolver)
+
+	name := suite.service.ResolveOwnerName(context.Background(), "entity-1")
+	suite.Equal("My Agent", name)
 }

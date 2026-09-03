@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -434,6 +435,16 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	}, applicationService, agentService, flowMgtService, roleAssignmentService, roleService,
 		groupService, ouService, ouUserResolver, ouGroupResolver, resourceService)
 
+	// Two-phase initialization: inject the resource service into agent and application services
+	// for resource server ownership operations, and wire the entity name resolver into the
+	// resource service for populating owner names in responses.
+	agentService.SetResourceService(resourceService)
+	applicationService.SetResourceService(resourceService)
+	resourceService.SetEntityNameResolver(&entityNameResolverAdapter{
+		entityProvider: entityProvider,
+		entityService:  entityService,
+	})
+
 	// Initialize design resolve service for theme and layout resolution
 	designResolveService := resolve.Initialize(mux, themeMgtService, layoutMgtService, applicationService)
 
@@ -542,6 +553,43 @@ func registerDependencyRegistry(consumers dependencyConsumers, providers ...reso
 	consumers.group.SetDependencyRegistry(registry)
 	consumers.ou.SetDependencyRegistry(registry)
 	consumers.resource.SetDependencyRegistry(registry)
+}
+
+// entityNameResolverAdapter adapts the entity provider and entity service into the
+// resource.EntityNameResolver interface for cross-DB fan-out of owner names.
+type entityNameResolverAdapter struct {
+	entityProvider entityprovider.EntityProviderInterface
+	entityService  entity.EntityServiceInterface
+}
+
+// ResolveEntityName resolves an entity ID to its display name by checking both the entity
+// provider (applications) and entity service (agents/users). The name is read from the
+// entity's system attributes.
+func (a *entityNameResolverAdapter) ResolveEntityName(
+	ctx context.Context, entityID string) (string, error) {
+	if e, epErr := a.entityProvider.GetEntity(entityID); epErr == nil && e != nil {
+		return extractEntityName(e.SystemAttributes), nil
+	}
+	e, err := a.entityService.GetEntity(ctx, entityID)
+	if err != nil {
+		return "", err
+	}
+	return extractEntityName(e.SystemAttributes), nil
+}
+
+// extractEntityName reads the "name" field from a system attributes JSON blob.
+func extractEntityName(sysAttrs []byte) string {
+	if len(sysAttrs) == 0 {
+		return ""
+	}
+	var attrs map[string]interface{}
+	if err := json.Unmarshal(sysAttrs, &attrs); err != nil {
+		return ""
+	}
+	if name, ok := attrs["name"].(string); ok {
+		return name
+	}
+	return ""
 }
 
 // unregisterServices unregisters all services that require cleanup during shutdown.

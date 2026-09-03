@@ -224,6 +224,39 @@ func (c *compositeResourceStore) IsResourceServerDeclarative(id string) bool {
 	)
 }
 
+// GetResourceServerByOwnerEntityID retrieves the resource server owned by a given entity from the DB store.
+func (c *compositeResourceStore) GetResourceServerByOwnerEntityID(
+	ctx context.Context, ownerEntityID string,
+) (providers.ResourceServer, error) {
+	return c.dbStore.GetResourceServerByOwnerEntityID(ctx, ownerEntityID)
+}
+
+// UpdateResourceServerOwner sets the owner of a resource server in the DB store.
+func (c *compositeResourceStore) UpdateResourceServerOwner(
+	ctx context.Context, rsID string, ownerEntityID, ownerEntityType string,
+) error {
+	return c.dbStore.UpdateResourceServerOwner(ctx, rsID, ownerEntityID, ownerEntityType)
+}
+
+// ClearResourceServerOwner removes the owner from a resource server in the DB store.
+func (c *compositeResourceStore) ClearResourceServerOwner(ctx context.Context, rsID string) error {
+	return c.dbStore.ClearResourceServerOwner(ctx, rsID)
+}
+
+// GetResourceServerListByOwner delegates to the DB store (ownership is DB-only).
+func (c *compositeResourceStore) GetResourceServerListByOwner(
+	ctx context.Context, ownerID, ownerType string, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	return c.dbStore.GetResourceServerListByOwner(ctx, ownerID, ownerType, limit, offset)
+}
+
+// GetResourceServerListCountByOwner delegates to the DB store (ownership is DB-only).
+func (c *compositeResourceStore) GetResourceServerListCountByOwner(
+	ctx context.Context, ownerID, ownerType string,
+) (int, error) {
+	return c.dbStore.GetResourceServerListCountByOwner(ctx, ownerID, ownerType)
+}
+
 // Resource operations
 
 // CreateResource creates a resource in the database store.

@@ -26,7 +26,14 @@ type resourceStoreInterface interface {
 	CheckResourceServerIdentifierExists(ctx context.Context, identifier string) (bool, error)
 	GetResourceServerByIdentifier(ctx context.Context, identifier string) (providers.ResourceServer, error)
 	CheckResourceServerHasDependencies(ctx context.Context, resServerID string) (bool, error)
+	GetResourceServerByOwnerEntityID(ctx context.Context, ownerEntityID string) (providers.ResourceServer, error)
+	UpdateResourceServerOwner(ctx context.Context, rsID string, ownerEntityID, ownerEntityType string) error
+	ClearResourceServerOwner(ctx context.Context, rsID string) error
 	IsResourceServerDeclarative(id string) bool
+	GetResourceServerListByOwner(
+		ctx context.Context, ownerID, ownerType string, limit, offset int,
+	) ([]providers.ResourceServer, error)
+	GetResourceServerListCountByOwner(ctx context.Context, ownerID, ownerType string) (int, error)
 
 	// Resource operations
 	CreateResource(ctx context.Context, uuid string, resServerID string, parentID *string, res providers.Resource) error
@@ -107,6 +114,8 @@ func (s *resourceStore) CreateResourceServer(ctx context.Context, id string, rs 
 			resolveNullableString(rs.Identifier),
 			resolveNullableString(string(rs.Type)),
 			buildPropertiesJSON(rs),
+			resolveNullableString(rs.OwnerEntityID),
+			resolveNullableString(rs.OwnerEntityType),
 			s.deploymentID,
 		)
 		if err != nil {
@@ -288,6 +297,109 @@ func (s *resourceStore) CheckResourceServerHasDependencies(ctx context.Context, 
 // For database store, all resource servers are mutable, so this always returns false.
 func (s *resourceStore) IsResourceServerDeclarative(id string) bool {
 	return false
+}
+
+// GetResourceServerByOwnerEntityID retrieves the resource server owned by a given entity.
+func (s *resourceStore) GetResourceServerByOwnerEntityID(
+	ctx context.Context, ownerEntityID string,
+) (providers.ResourceServer, error) {
+	var rs providers.ResourceServer
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(
+			ctx, queryGetResourceServerByOwnerEntityID, ownerEntityID, s.deploymentID,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to get resource server by owner entity ID: %w", err)
+		}
+
+		if len(results) == 0 {
+			return errResourceServerNotFound
+		}
+
+		rs, err = buildResourceServerFromResultRow(results[0])
+		return err
+	})
+	return rs, err
+}
+
+// UpdateResourceServerOwner sets the owner of a resource server.
+func (s *resourceStore) UpdateResourceServerOwner(
+	ctx context.Context, rsID string, ownerEntityID, ownerEntityType string,
+) error {
+	return s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		_, err := dbClient.ExecuteContext(
+			ctx,
+			queryUpdateResourceServerOwner,
+			ownerEntityID,
+			ownerEntityType,
+			rsID,
+			s.deploymentID,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to update resource server owner: %w", err)
+		}
+		return nil
+	})
+}
+
+// ClearResourceServerOwner removes the owner from a resource server.
+func (s *resourceStore) ClearResourceServerOwner(ctx context.Context, rsID string) error {
+	return s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		_, err := dbClient.ExecuteContext(
+			ctx,
+			queryClearResourceServerOwner,
+			rsID,
+			s.deploymentID,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to clear resource server owner: %w", err)
+		}
+		return nil
+	})
+}
+
+// GetResourceServerListByOwner retrieves a paginated list of resource servers filtered by owner.
+func (s *resourceStore) GetResourceServerListByOwner(
+	ctx context.Context, ownerID, ownerType string, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	var resourceServers []providers.ResourceServer
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(
+			ctx, queryGetResourceServerListByOwner, ownerID, ownerType, limit, offset, s.deploymentID)
+		if err != nil {
+			return fmt.Errorf("failed to get resource server list by owner: %w", err)
+		}
+		resourceServers = make([]providers.ResourceServer, 0, len(results))
+		for _, row := range results {
+			rs, err := buildResourceServerFromResultRow(row)
+			if err != nil {
+				return fmt.Errorf("failed to build resource server: %w", err)
+			}
+			resourceServers = append(resourceServers, rs)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resourceServers, nil
+}
+
+// GetResourceServerListCountByOwner retrieves the count of resource servers filtered by owner.
+func (s *resourceStore) GetResourceServerListCountByOwner(
+	ctx context.Context, ownerID, ownerType string,
+) (int, error) {
+	var count int
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(
+			ctx, queryGetResourceServerListCountByOwner, ownerID, ownerType, s.deploymentID)
+		if err != nil {
+			return fmt.Errorf("failed to get resource server count by owner: %w", err)
+		}
+		count, err = parseCountResult(results)
+		return err
+	})
+	return count, err
 }
 
 // Resource Store Methods
@@ -1023,6 +1135,13 @@ func buildResourceServerFromResultRow(row map[string]interface{}) (providers.Res
 	}
 
 	resolveProperties(row, &rs)
+
+	if ownerEntityID, ok := row["owner_entity_id"].(string); ok {
+		rs.OwnerEntityID = ownerEntityID
+	}
+	if ownerEntityType, ok := row["owner_entity_type"].(string); ok {
+		rs.OwnerEntityType = ownerEntityType
+	}
 
 	return rs, nil
 }

@@ -515,4 +515,20 @@ var (
 				"and string-typed in an allowed agent type",
 		},
 	}
+
+	// ErrorCannotDeleteAgentOwnsResourceServer is returned when attempting to delete an agent
+	// that owns a resource server.
+	ErrorCannotDeleteAgentOwnsResourceServer = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-60030",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.cannot_delete_owns_resource_server",
+			DefaultValue: "Cannot delete agent",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.agentservice.cannot_delete_owns_resource_server_description",
+			DefaultValue: "The agent owns a resource server and cannot be deleted. " +
+				"Unbind the resource server first.",
+		},
+	}
 )

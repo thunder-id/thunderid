@@ -8,19 +8,21 @@ import (
 )
 
 // Resource Server Queries
-var (
+var ( //nolint:dupl // Query constant blocks share structural patterns but are distinct queries.
 	// queryCreateResourceServer creates a new resource server.
 	queryCreateResourceServer = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-01",
 		Query: `INSERT INTO "RESOURCE_SERVER"
-			(ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES, DEPLOYMENT_ID)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			(ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES,
+			OWNER_ENTITY_ID, OWNER_ENTITY_TYPE, DEPLOYMENT_ID)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 	}
 
 	// queryGetResourceServerByID retrieves a resource server by ID.
 	queryGetResourceServerByID = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-02",
-		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES,
+			OWNER_ENTITY_ID, OWNER_ENTITY_TYPE
 			FROM "RESOURCE_SERVER"
 			WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
@@ -28,7 +30,8 @@ var (
 	// queryGetResourceServerList retrieves a list of resource servers with pagination.
 	queryGetResourceServerList = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-03",
-		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES,
+			OWNER_ENTITY_ID, OWNER_ENTITY_TYPE
 			FROM "RESOURCE_SERVER"
 			WHERE DEPLOYMENT_ID = $3
 			ORDER BY CREATED_AT DESC
@@ -70,9 +73,57 @@ var (
 	// queryGetResourceServerByIdentifier retrieves a resource server by identifier.
 	queryGetResourceServerByIdentifier = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-34",
-		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES,
+			OWNER_ENTITY_ID, OWNER_ENTITY_TYPE
 			FROM "RESOURCE_SERVER"
 			WHERE IDENTIFIER = $1 AND DEPLOYMENT_ID = $2`,
+	}
+
+	// queryGetResourceServerByOwnerEntityID retrieves the resource server owned by a given entity.
+	queryGetResourceServerByOwnerEntityID = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-41",
+		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES,
+			OWNER_ENTITY_ID, OWNER_ENTITY_TYPE
+			FROM "RESOURCE_SERVER"
+			WHERE OWNER_ENTITY_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+
+	// queryUpdateResourceServerOwner sets the owner of a resource server.
+	queryUpdateResourceServerOwner = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-42",
+		Query: `UPDATE "RESOURCE_SERVER"
+			SET OWNER_ENTITY_ID = $1, OWNER_ENTITY_TYPE = $2
+			WHERE ID = $3 AND DEPLOYMENT_ID = $4`,
+	}
+
+	// queryClearResourceServerOwner removes the owner from a resource server.
+	queryClearResourceServerOwner = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-43",
+		Query: `UPDATE "RESOURCE_SERVER"
+			SET OWNER_ENTITY_ID = NULL, OWNER_ENTITY_TYPE = NULL
+			WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+
+	// queryGetResourceServerListByOwner retrieves resource servers filtered by owner with pagination.
+	queryGetResourceServerListByOwner = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-44",
+		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES,
+			OWNER_ENTITY_ID, OWNER_ENTITY_TYPE
+			FROM "RESOURCE_SERVER"
+			WHERE ($1 = '' OR OWNER_ENTITY_ID = $1)
+			AND ($2 = '' OR OWNER_ENTITY_TYPE = $2)
+			AND DEPLOYMENT_ID = $5
+			ORDER BY CREATED_AT DESC
+			LIMIT $3 OFFSET $4`,
+	}
+
+	// queryGetResourceServerListCountByOwner retrieves count of resource servers filtered by owner.
+	queryGetResourceServerListCountByOwner = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-45",
+		Query: `SELECT COUNT(*) as total FROM "RESOURCE_SERVER"
+			WHERE ($1 = '' OR OWNER_ENTITY_ID = $1)
+			AND ($2 = '' OR OWNER_ENTITY_TYPE = $2)
+			AND DEPLOYMENT_ID = $3`,
 	}
 
 	// queryCheckResourceServerHasDependencies checks if resource server has resources or actions.
@@ -90,7 +141,7 @@ var (
 )
 
 // providers.Resource Queries
-var (
+var ( //nolint:dupl // Query constant blocks share structural patterns but are distinct queries.
 	// queryCreateResource creates a new resource.
 	queryCreateResource = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-10",

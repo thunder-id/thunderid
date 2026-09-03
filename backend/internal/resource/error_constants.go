@@ -273,6 +273,32 @@ var (
 			DefaultValue: "The total number of records exceeds the maximum limit in composite mode",
 		},
 	}
+	// ErrorEntityAlreadyOwnsResourceServer is returned when an entity already owns a resource server.
+	ErrorEntityAlreadyOwnsResourceServer = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1024",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.entity_already_owns_resource_server",
+			DefaultValue: "Entity already owns a resource server",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.entity_already_owns_resource_server_description",
+			DefaultValue: "The entity already owns a resource server",
+		},
+	}
+	// ErrorResourceServerAlreadyOwned is returned when a resource server already has an owner.
+	ErrorResourceServerAlreadyOwned = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.resource_server_already_owned",
+			DefaultValue: "Resource server is already owned",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.resource_server_already_owned_description",
+			DefaultValue: "The resource server is already owned by another entity",
+		},
+	}
 	// ErrorResourceServerIDConflict is returned when a resource server with the specified ID already exists.
 	ErrorResourceServerIDConflict = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

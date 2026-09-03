@@ -96,4 +96,21 @@ func registerRoutes(mux *http.ServeMux, appHandler *applicationHandler) {
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}, opts2))
+
+	rsOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET", "POST", "DELETE"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("GET /applications/{id}/resource-server",
+		appHandler.HandleApplicationResourceServerGetRequest, rsOpts))
+	mux.HandleFunc(middleware.WithCORS("POST /applications/{id}/resource-server",
+		appHandler.HandleApplicationResourceServerPostRequest, rsOpts))
+	mux.HandleFunc(middleware.WithCORS("DELETE /applications/{id}/resource-server",
+		appHandler.HandleApplicationResourceServerDeleteRequest, rsOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /applications/{id}/resource-server",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, rsOpts))
 }

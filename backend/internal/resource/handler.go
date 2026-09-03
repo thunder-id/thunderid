@@ -41,13 +41,23 @@ func (h *resourceHandler) HandleResourceServerListRequest(w http.ResponseWriter,
 		return
 	}
 
-	result, svcErr := h.resourceService.GetResourceServerList(ctx, limit, offset)
+	ownerID := r.URL.Query().Get("ownerId")
+	ownerType := r.URL.Query().Get("ownerType")
+
+	var result *ResourceServerList
+	if ownerID != "" || ownerType != "" {
+		result, svcErr = h.resourceService.GetResourceServerListByOwner(
+			ctx, ownerID, ownerType, limit, offset)
+	} else {
+		result, svcErr = h.resourceService.GetResourceServerList(ctx, limit, offset)
+	}
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
 	}
 
 	response := toResourceServerListResponse(result)
+	h.populateOwnerNames(ctx, response.ResourceServers)
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, response)
 }
 
@@ -82,6 +92,9 @@ func (h *resourceHandler) HandleResourceServerPostRequest(w http.ResponseWriter,
 	}
 
 	response := toResourceServerResponse(result)
+	if response.OwnerID != "" {
+		response.OwnerName = h.resourceService.ResolveOwnerName(ctx, response.OwnerID)
+	}
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, response)
 }
 
@@ -96,6 +109,9 @@ func (h *resourceHandler) HandleResourceServerGetRequest(w http.ResponseWriter, 
 	}
 
 	response := toResourceServerResponse(result)
+	if response.OwnerID != "" {
+		response.OwnerName = h.resourceService.ResolveOwnerName(ctx, response.OwnerID)
+	}
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, response)
 }
 
@@ -129,6 +145,9 @@ func (h *resourceHandler) HandleResourceServerPutRequest(w http.ResponseWriter, 
 	}
 
 	response := toResourceServerResponse(result)
+	if response.OwnerID != "" {
+		response.OwnerName = h.resourceService.ResolveOwnerName(ctx, response.OwnerID)
+	}
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, response)
 }
 
@@ -574,7 +593,8 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 		switch svcErr.Code {
 		case ErrorResourceServerNotFound.Code, ErrorResourceNotFound.Code, ErrorActionNotFound.Code:
 			statusCode = http.StatusNotFound
-		case ErrorNameConflict.Code, ErrorHandleConflict.Code, ErrorIdentifierConflict.Code:
+		case ErrorNameConflict.Code, ErrorHandleConflict.Code, ErrorIdentifierConflict.Code,
+			ErrorEntityAlreadyOwnsResourceServer.Code, ErrorResourceServerAlreadyOwned.Code:
 			statusCode = http.StatusConflict
 		default:
 			statusCode = http.StatusBadRequest
@@ -657,6 +677,15 @@ func sanitizeUpdateActionRequest(req *UpdateActionRequest) UpdateActionRequest {
 	}
 }
 
+// populateOwnerNames resolves owner names for a list of resource server responses.
+func (h *resourceHandler) populateOwnerNames(ctx context.Context, servers []ResourceServerResponse) {
+	for i := range servers {
+		if servers[i].OwnerID != "" {
+			servers[i].OwnerName = h.resourceService.ResolveOwnerName(ctx, servers[i].OwnerID)
+		}
+	}
+}
+
 // Response transformation functions
 
 // toResourceServerResponse transforms a providers.ResourceServer to ResourceServerResponse.
@@ -674,6 +703,8 @@ func toResourceServerResponse(rs *providers.ResourceServer) *ResourceServerRespo
 		OUID:        rs.OUID,
 		Delimiter:   rs.Delimiter,
 		IsReadOnly:  rs.IsReadOnly,
+		OwnerID:     rs.OwnerEntityID,
+		OwnerType:   rs.OwnerEntityType,
 	}
 }
 

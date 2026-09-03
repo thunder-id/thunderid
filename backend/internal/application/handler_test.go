@@ -2481,3 +2481,134 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_ForwardsPasskeyAl
 	assert.Equal(suite.T(), http.StatusOK, w.Code)
 	mockService.AssertExpectations(suite.T())
 }
+
+// --- Resource Server Handler Tests ---
+
+func (suite *HandlerTestSuite) TestHandleApplicationResourceServerGetRequest_Success() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+	mockService.On("GetApplicationResourceServer", mock.Anything, "app-123").
+		Return(&model.ApplicationResourceServerResponse{
+			ResourceServerID:   "rs-1",
+			ResourceServerName: "My RS",
+		}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/applications/app-123/resource-server", nil)
+	req.SetPathValue("id", "app-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationResourceServerGetRequest(w, req)
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationResourceServerGetRequest_MissingID() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	req := httptest.NewRequest(http.MethodGet, "/applications//resource-server", nil)
+	req.SetPathValue("id", "")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationResourceServerGetRequest(w, req)
+	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationResourceServerPostRequest_Success() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+	mockService.On("BindApplicationResourceServer", mock.Anything, "app-123", "rs-1").
+		Return(&model.ApplicationResourceServerResponse{
+			ResourceServerID:   "rs-1",
+			ResourceServerName: "Bound RS",
+		}, nil)
+
+	body, _ := json.Marshal(model.ResourceServerBindRequest{ResourceServerID: "rs-1"})
+	req := httptest.NewRequest(http.MethodPost, "/applications/app-123/resource-server",
+		bytes.NewBuffer(body))
+	req.SetPathValue("id", "app-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationResourceServerPostRequest(w, req)
+	assert.Equal(suite.T(), http.StatusCreated, w.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationResourceServerPostRequest_MissingID() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	body, _ := json.Marshal(model.ResourceServerBindRequest{ResourceServerID: "rs-1"})
+	req := httptest.NewRequest(http.MethodPost, "/applications//resource-server",
+		bytes.NewBuffer(body))
+	req.SetPathValue("id", "")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationResourceServerPostRequest(w, req)
+	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationResourceServerPostRequest_InvalidJSON() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	req := httptest.NewRequest(http.MethodPost, "/applications/app-123/resource-server",
+		bytes.NewBufferString(`{bad`))
+	req.SetPathValue("id", "app-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationResourceServerPostRequest(w, req)
+	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationResourceServerDeleteRequest_Success() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+	mockService.On("UnbindApplicationResourceServer", mock.Anything, "app-123").
+		Return(nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/applications/app-123/resource-server", nil)
+	req.SetPathValue("id", "app-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationResourceServerDeleteRequest(w, req)
+	assert.Equal(suite.T(), http.StatusNoContent, w.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationResourceServerDeleteRequest_MissingID() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	req := httptest.NewRequest(http.MethodDelete, "/applications//resource-server", nil)
+	req.SetPathValue("id", "")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationResourceServerDeleteRequest(w, req)
+	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationResourceServerDeleteRequest_ServiceError() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+	mockService.On("UnbindApplicationResourceServer", mock.Anything, "app-123").
+		Return(&ErrorApplicationNotFound)
+
+	req := httptest.NewRequest(http.MethodDelete, "/applications/app-123/resource-server", nil)
+	req.SetPathValue("id", "app-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationResourceServerDeleteRequest(w, req)
+	assert.Equal(suite.T(), http.StatusNotFound, w.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationDeleteRequest_ConflictWhenOwnsRS() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+	mockService.On("DeleteApplication", mock.Anything, "app-123").
+		Return(&ErrorCannotDeleteAppOwnsResourceServer)
+
+	req := httptest.NewRequest(http.MethodDelete, "/applications/app-123", nil)
+	req.SetPathValue("id", "app-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationDeleteRequest(w, req)
+	assert.Equal(suite.T(), http.StatusConflict, w.Code)
+}

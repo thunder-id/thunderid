@@ -491,6 +491,61 @@ func (ah *applicationHandler) processInboundAuthConfig(
 	return true
 }
 
+// HandleApplicationResourceServerGetRequest handles GET /applications/{id}/resource-server.
+func (ah *applicationHandler) HandleApplicationResourceServerGetRequest(
+	w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if id == "" {
+		ah.handleError(ctx, w, r, &ErrorInvalidApplicationID)
+		return
+	}
+	resp, svcErr := ah.service.GetApplicationResourceServer(ctx, id)
+	if svcErr != nil {
+		ah.handleError(ctx, w, r, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
+}
+
+// HandleApplicationResourceServerPostRequest handles POST /applications/{id}/resource-server.
+func (ah *applicationHandler) HandleApplicationResourceServerPostRequest(
+	w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if id == "" {
+		ah.handleError(ctx, w, r, &ErrorInvalidApplicationID)
+		return
+	}
+	req, err := sysutils.DecodeJSONBody[model.ResourceServerBindRequest](r)
+	if err != nil {
+		ah.handleError(ctx, w, r, &ErrorInvalidRequestFormat)
+		return
+	}
+	resp, svcErr := ah.service.BindApplicationResourceServer(ctx, id, req.ResourceServerID)
+	if svcErr != nil {
+		ah.handleError(ctx, w, r, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, resp)
+}
+
+// HandleApplicationResourceServerDeleteRequest handles DELETE /applications/{id}/resource-server.
+func (ah *applicationHandler) HandleApplicationResourceServerDeleteRequest(
+	w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if id == "" {
+		ah.handleError(ctx, w, r, &ErrorInvalidApplicationID)
+		return
+	}
+	if svcErr := ah.service.UnbindApplicationResourceServer(ctx, id); svcErr != nil {
+		ah.handleError(ctx, w, r, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
 // handleError handles service errors and returns appropriate HTTP responses.
 // When the resolved status is 500, the error is logged with request context.
 func (ah *applicationHandler) handleError(ctx context.Context, w http.ResponseWriter, r *http.Request,
@@ -503,9 +558,12 @@ func (ah *applicationHandler) handleError(ctx context.Context, w http.ResponseWr
 
 	statusCode := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
-		if svcErr.Code == ErrorApplicationNotFound.Code {
+		switch svcErr.Code {
+		case ErrorApplicationNotFound.Code:
 			statusCode = http.StatusNotFound
-		} else {
+		case ErrorCannotDeleteAppOwnsResourceServer.Code:
+			statusCode = http.StatusConflict
+		default:
 			statusCode = http.StatusBadRequest
 		}
 	}

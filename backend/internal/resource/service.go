@@ -42,6 +42,12 @@ func IsPermissionDelimiter(r rune) bool {
 	return strings.ContainsRune(ValidPermissionDelimiters, r)
 }
 
+// EntityNameResolver resolves an entity ID to its display name. Used for cross-DB
+// fan-out when populating owner names in resource server responses.
+type EntityNameResolver interface {
+	ResolveEntityName(ctx context.Context, entityID string) (name string, err error)
+}
+
 // ResourceServiceInterface defines the interface for the resource service.
 type ResourceServiceInterface interface {
 	// Resource Server operations
@@ -59,6 +65,19 @@ type ResourceServiceInterface interface {
 		ctx context.Context, identifier string,
 	) (*providers.ResourceServer, *tidcommon.ServiceError)
 	IsResourceServerDeclarative(id string) bool
+
+	// Resource Server ownership operations
+	GetResourceServerByOwnerEntityID(
+		ctx context.Context, ownerEntityID string,
+	) (*providers.ResourceServer, *tidcommon.ServiceError)
+	BindResourceServerOwner(
+		ctx context.Context, rsID string, ownerEntityID, ownerEntityType string,
+	) (*providers.ResourceServer, *tidcommon.ServiceError)
+	UnbindResourceServerOwner(ctx context.Context, rsID string) *tidcommon.ServiceError
+	CreateAndBindResourceServer(
+		ctx context.Context, rs providers.ResourceServer, ownerEntityID, ownerEntityType string,
+	) (*providers.ResourceServer, *tidcommon.ServiceError)
+	SetEntityNameResolver(r EntityNameResolver)
 
 	// Resource operations
 	CreateResource(ctx context.Context, resourceServerID string, res providers.Resource) (
@@ -104,6 +123,10 @@ type ResourceServiceInterface interface {
 	SetDependencyRegistry(r resourcedependency.Registry)
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
+	GetResourceServerListByOwner(
+		ctx context.Context, ownerID, ownerType string, limit, offset int,
+	) (*ResourceServerList, *tidcommon.ServiceError)
+	ResolveOwnerName(ctx context.Context, ownerEntityID string) string
 }
 
 // resourceService is the default implementation of ResourceServiceInterface.
@@ -114,6 +137,7 @@ type resourceService struct {
 	defaultDelimiter   string
 	transactioner      providers.Transactioner
 	dependencyRegistry resourcedependency.Registry
+	entityNameResolver EntityNameResolver
 }
 
 // SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
@@ -188,6 +212,20 @@ func (rs *resourceService) GetResourceDependencies(
 		hasDeps, err = rs.resourceStore.CheckResourceServerHasDependencies(ctx, id)
 	case resourcedependency.ResourceTypeResource:
 		hasDeps, err = rs.resourceStore.CheckResourceHasDependencies(ctx, id)
+	case resourcedependency.ResourceTypeAgent, resourcedependency.ResourceTypeApplication:
+		owned, ownerErr := rs.resourceStore.GetResourceServerByOwnerEntityID(ctx, id)
+		if ownerErr != nil {
+			if errors.Is(ownerErr, errResourceServerNotFound) {
+				return []resourcedependency.ResourceDependency{}, nil
+			}
+			return nil, ownerErr
+		}
+		return []resourcedependency.ResourceDependency{{
+			ResourceType:     resourcedependency.ResourceTypeResourceServer,
+			ID:               owned.ID,
+			DisplayName:      owned.Name,
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		}}, nil
 	default:
 		return []resourcedependency.ResourceDependency{}, nil
 	}
@@ -312,13 +350,15 @@ func (rs *resourceService) CreateResourceServer(
 		}
 
 		createdRS = &providers.ResourceServer{
-			ID:          id,
-			Name:        resourceServer.Name,
-			Description: resourceServer.Description,
-			Identifier:  resourceServer.Identifier,
-			Type:        resourceServer.Type,
-			OUID:        resourceServer.OUID,
-			Delimiter:   resourceServer.Delimiter,
+			ID:              id,
+			Name:            resourceServer.Name,
+			Description:     resourceServer.Description,
+			Identifier:      resourceServer.Identifier,
+			Type:            resourceServer.Type,
+			OUID:            resourceServer.OUID,
+			Delimiter:       resourceServer.Delimiter,
+			OwnerEntityID:   resourceServer.OwnerEntityID,
+			OwnerEntityType: resourceServer.OwnerEntityType,
 		}
 		return nil
 	}); err != nil {
@@ -550,6 +590,165 @@ func (rs *resourceService) DeleteResourceServer(ctx context.Context, id string) 
 // IsResourceServerDeclarative checks if a resource server is declarative (immutable).
 func (rs *resourceService) IsResourceServerDeclarative(id string) bool {
 	return rs.resourceStore.IsResourceServerDeclarative(id)
+}
+
+// SetEntityNameResolver injects the entity name resolver for cross-DB fan-out.
+func (rs *resourceService) SetEntityNameResolver(r EntityNameResolver) {
+	rs.entityNameResolver = r
+}
+
+// GetResourceServerByOwnerEntityID retrieves the resource server owned by a given entity.
+func (rs *resourceService) GetResourceServerByOwnerEntityID(
+	ctx context.Context, ownerEntityID string,
+) (*providers.ResourceServer, *tidcommon.ServiceError) {
+	result, err := rs.resourceStore.GetResourceServerByOwnerEntityID(ctx, ownerEntityID)
+	if err != nil {
+		if errors.Is(err, errResourceServerNotFound) {
+			return nil, &ErrorResourceServerNotFound
+		}
+		rs.logger.Error(ctx, "Failed to get resource server by owner entity ID",
+			log.String("ownerEntityID", ownerEntityID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return &result, nil
+}
+
+// BindResourceServerOwner validates that the target RS exists and has no owner, then sets the owner.
+func (rs *resourceService) BindResourceServerOwner(
+	ctx context.Context, rsID string, ownerEntityID, ownerEntityType string,
+) (*providers.ResourceServer, *tidcommon.ServiceError) {
+	existing, err := rs.resourceStore.GetResourceServerByOwnerEntityID(ctx, ownerEntityID)
+	if err == nil && existing.ID != "" {
+		return nil, &ErrorEntityAlreadyOwnsResourceServer
+	}
+	if err != nil && !errors.Is(err, errResourceServerNotFound) {
+		rs.logger.Error(ctx, "Failed to check existing ownership",
+			log.String("ownerEntityID", ownerEntityID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	targetRS, getErr := rs.resourceStore.GetResourceServer(ctx, rsID)
+	if getErr != nil {
+		if errors.Is(getErr, errResourceServerNotFound) {
+			return nil, &ErrorResourceServerNotFound
+		}
+		rs.logger.Error(ctx, "Failed to get resource server for binding",
+			log.String("rsID", rsID), log.Error(getErr))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	if targetRS.OwnerEntityID != "" {
+		return nil, &ErrorResourceServerAlreadyOwned
+	}
+
+	if err := rs.resourceStore.UpdateResourceServerOwner(
+		ctx, rsID, ownerEntityID, ownerEntityType,
+	); err != nil {
+		rs.logger.Error(ctx, "Failed to bind resource server owner",
+			log.String("rsID", rsID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	updated, getErr := rs.resourceStore.GetResourceServer(ctx, rsID)
+	if getErr != nil {
+		rs.logger.Error(ctx, "Failed to get updated resource server",
+			log.String("rsID", rsID), log.Error(getErr))
+		return nil, &tidcommon.InternalServerError
+	}
+	return &updated, nil
+}
+
+// UnbindResourceServerOwner removes the owner from a resource server.
+func (rs *resourceService) UnbindResourceServerOwner(ctx context.Context, rsID string) *tidcommon.ServiceError {
+	_, err := rs.resourceStore.GetResourceServer(ctx, rsID)
+	if err != nil {
+		if errors.Is(err, errResourceServerNotFound) {
+			return &ErrorResourceServerNotFound
+		}
+		rs.logger.Error(ctx, "Failed to get resource server for unbinding",
+			log.String("rsID", rsID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+
+	if err := rs.resourceStore.ClearResourceServerOwner(ctx, rsID); err != nil {
+		rs.logger.Error(ctx, "Failed to unbind resource server owner",
+			log.String("rsID", rsID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
+// CreateAndBindResourceServer creates an RS and sets the owner in a single operation.
+func (rs *resourceService) CreateAndBindResourceServer(
+	ctx context.Context, rsReq providers.ResourceServer, ownerEntityID, ownerEntityType string,
+) (*providers.ResourceServer, *tidcommon.ServiceError) {
+	existing, err := rs.resourceStore.GetResourceServerByOwnerEntityID(ctx, ownerEntityID)
+	if err == nil && existing.ID != "" {
+		return nil, &ErrorEntityAlreadyOwnsResourceServer
+	}
+	if err != nil && !errors.Is(err, errResourceServerNotFound) {
+		rs.logger.Error(ctx, "Failed to check existing ownership",
+			log.String("ownerEntityID", ownerEntityID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	rsReq.OwnerEntityID = ownerEntityID
+	rsReq.OwnerEntityType = ownerEntityType
+
+	created, svcErr := rs.CreateResourceServer(ctx, rsReq)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return created, nil
+}
+
+// GetResourceServerListByOwner retrieves a paginated list of resource servers filtered by owner.
+func (rs *resourceService) GetResourceServerListByOwner(
+	ctx context.Context, ownerID, ownerType string, limit, offset int,
+) (*ResourceServerList, *tidcommon.ServiceError) {
+	if err := validatePaginationParams(limit, offset); err != nil {
+		return nil, err
+	}
+
+	totalCount, storeErr := rs.resourceStore.GetResourceServerListCountByOwner(ctx, ownerID, ownerType)
+	if storeErr != nil {
+		rs.logger.Error(ctx, "Failed to get filtered resource server count",
+			log.String("ownerID", ownerID), log.String("ownerType", ownerType),
+			log.Error(storeErr))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	resourceServers, storeErr := rs.resourceStore.GetResourceServerListByOwner(
+		ctx, ownerID, ownerType, limit, offset)
+	if storeErr != nil {
+		rs.logger.Error(ctx, "Failed to list filtered resource servers",
+			log.String("ownerID", ownerID), log.String("ownerType", ownerType),
+			log.Error(storeErr))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	return &ResourceServerList{
+		TotalResults:    totalCount,
+		ResourceServers: resourceServers,
+		StartIndex:      offset + 1,
+		Count:           len(resourceServers),
+		Links:           buildPaginationLinks("/resource-servers", limit, offset, totalCount),
+	}, nil
+}
+
+// ResolveOwnerName resolves an entity ID to its display name via the injected EntityNameResolver.
+// Returns an empty string on failure (silently skips).
+func (rs *resourceService) ResolveOwnerName(ctx context.Context, ownerEntityID string) string {
+	if rs.entityNameResolver == nil || ownerEntityID == "" {
+		return ""
+	}
+	name, err := rs.entityNameResolver.ResolveEntityName(ctx, ownerEntityID)
+	if err != nil {
+		rs.logger.Debug(ctx, "Failed to resolve owner entity name",
+			log.String("ownerEntityID", ownerEntityID), log.Error(err))
+		return ""
+	}
+	return name
 }
 
 // Resource operations

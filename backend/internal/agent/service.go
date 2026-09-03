@@ -21,6 +21,7 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -49,6 +50,12 @@ type AgentServiceInterface interface {
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	SetDependencyRegistry(r resourcedependency.Registry)
+	SetResourceService(rs resource.ResourceServiceInterface)
+	GetAgentResourceServer(ctx context.Context, agentID string) (*model.AgentResourceServerResponse,
+		*tidcommon.ServiceError)
+	BindAgentResourceServer(ctx context.Context, agentID, resourceServerID string) (
+		*model.AgentResourceServerResponse, *tidcommon.ServiceError)
+	UnbindAgentResourceServer(ctx context.Context, agentID string) *tidcommon.ServiceError
 }
 
 type agentService struct {
@@ -58,6 +65,7 @@ type agentService struct {
 	ouService            oupkg.OrganizationUnitServiceInterface
 	dependencyRegistry   resourcedependency.Registry
 	roleService          role.RoleServiceInterface
+	resourceService      resource.ResourceServiceInterface
 }
 
 func newAgentService(
@@ -151,6 +159,7 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *model.Agent) (
 		agent.AllowedUserTypes, inboundConfigs)
 	resp.OUID = agent.OUID
 	s.populateOUHandleForComplete(ctx, resp)
+	s.populateResourceServerForComplete(ctx, resp)
 	return resp, nil
 }
 
@@ -182,6 +191,7 @@ func (s *agentService) GetAgent(ctx context.Context, agentID string, includeDisp
 	if includeDisplay {
 		s.populateOUHandleForGet(ctx, resp)
 	}
+	s.populateResourceServerForGet(ctx, resp)
 
 	return resp, nil
 }
@@ -343,15 +353,93 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 		req.AllowedUserTypes, inboundConfigs)
 	resp.OUID = ouID
 	s.populateOUHandleForComplete(ctx, resp)
+	s.populateResourceServerForComplete(ctx, resp)
 	return resp, nil
 }
 
-// DeleteAgent removes the agent and its associated inbound client.
 // SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
 // provider services are initialized to avoid a cyclic import.
 func (s *agentService) SetDependencyRegistry(r resourcedependency.Registry) {
 	s.dependencyRegistry = r
 }
+
+// SetResourceService injects the resource service for ownership operations.
+func (s *agentService) SetResourceService(rs resource.ResourceServiceInterface) {
+	s.resourceService = rs
+}
+
+// GetAgentResourceServer returns the resource server owned by the given agent.
+func (s *agentService) GetAgentResourceServer(ctx context.Context, agentID string) (
+	*model.AgentResourceServerResponse, *tidcommon.ServiceError) {
+	if agentID == "" {
+		return nil, &ErrorMissingAgentID
+	}
+	if svcErr := s.validateAgentExists(ctx, agentID); svcErr != nil {
+		return nil, svcErr
+	}
+	rs, svcErr := s.resourceService.GetResourceServerByOwnerEntityID(ctx, agentID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return &model.AgentResourceServerResponse{
+		ResourceServerID:   rs.ID,
+		ResourceServerName: rs.Name,
+	}, nil
+}
+
+// BindAgentResourceServer binds an existing resource server to the agent.
+func (s *agentService) BindAgentResourceServer(ctx context.Context, agentID, resourceServerID string) (
+	*model.AgentResourceServerResponse, *tidcommon.ServiceError) {
+	if agentID == "" {
+		return nil, &ErrorMissingAgentID
+	}
+	if svcErr := s.validateAgentExists(ctx, agentID); svcErr != nil {
+		return nil, svcErr
+	}
+	rs, svcErr := s.resourceService.BindResourceServerOwner(
+		ctx, resourceServerID, agentID, resourcedependency.ResourceTypeAgent)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return &model.AgentResourceServerResponse{
+		ResourceServerID:   rs.ID,
+		ResourceServerName: rs.Name,
+	}, nil
+}
+
+// UnbindAgentResourceServer removes the resource server binding from the agent.
+func (s *agentService) UnbindAgentResourceServer(ctx context.Context, agentID string) *tidcommon.ServiceError {
+	if agentID == "" {
+		return &ErrorMissingAgentID
+	}
+	if svcErr := s.validateAgentExists(ctx, agentID); svcErr != nil {
+		return svcErr
+	}
+	rs, svcErr := s.resourceService.GetResourceServerByOwnerEntityID(ctx, agentID)
+	if svcErr != nil {
+		return svcErr
+	}
+	return s.resourceService.UnbindResourceServerOwner(ctx, rs.ID)
+}
+
+// validateAgentExists checks that the entity exists and is an agent.
+func (s *agentService) validateAgentExists(ctx context.Context, agentID string) *tidcommon.ServiceError {
+	e, err := s.entityService.GetEntity(ctx, agentID)
+	if err != nil {
+		if errors.Is(err, entity.ErrEntityNotFound) {
+			return &ErrorAgentNotFound
+		}
+		s.logger.Error(ctx, "Failed to retrieve agent entity",
+			log.String("agentID", agentID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if e.Category != providers.EntityCategoryAgent {
+		return &ErrorAgentNotFound
+	}
+	return nil
+}
+
+// DeleteAgent removes the agent and its associated inbound client.
 
 func (s *agentService) DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError {
 	if agentID == "" {
@@ -372,6 +460,12 @@ func (s *agentService) DeleteAgent(ctx context.Context, agentID string) *tidcomm
 	}
 	if existing.IsReadOnly {
 		return &ErrorCannotModifyDeclarativeResource
+	}
+
+	if s.resourceService != nil {
+		if _, rsErr := s.resourceService.GetResourceServerByOwnerEntityID(ctx, agentID); rsErr == nil {
+			return &ErrorCannotDeleteAgentOwnsResourceServer
+		}
 	}
 
 	// Remove dependents that must be deleted with the agent (e.g. its role assignments and group
@@ -1087,6 +1181,7 @@ func (s *agentService) buildListResponse(ctx context.Context, entities []provide
 	if includeDisplay {
 		s.populateOUHandlesForList(ctx, agents)
 	}
+	s.populateResourceServersForList(ctx, agents)
 
 	displayQuery := sysutils.DisplayQueryParam(includeDisplay)
 	return &model.AgentListResponse{
@@ -1154,6 +1249,50 @@ func (s *agentService) populateOUHandlesForList(ctx context.Context, agents []mo
 		if h, ok := handles[agents[i].OUID]; ok {
 			agents[i].OUHandle = h
 		}
+	}
+}
+
+// populateResourceServerForGet resolves and sets ResourceServerID/ResourceServerName on a single-agent
+// GET response; silently skips when the agent has no bound resource server.
+func (s *agentService) populateResourceServerForGet(ctx context.Context, resp *model.AgentGetResponse) {
+	if s.resourceService == nil {
+		return
+	}
+	rs, svcErr := s.resourceService.GetResourceServerByOwnerEntityID(ctx, resp.ID)
+	if svcErr != nil {
+		return
+	}
+	resp.ResourceServerID = rs.ID
+	resp.ResourceServerName = rs.Name
+}
+
+// populateResourceServerForComplete resolves and sets ResourceServerID/ResourceServerName on a
+// complete-agent response; silently skips when the agent has no bound resource server.
+func (s *agentService) populateResourceServerForComplete(
+	ctx context.Context, resp *model.AgentCompleteResponse) {
+	if s.resourceService == nil {
+		return
+	}
+	rs, svcErr := s.resourceService.GetResourceServerByOwnerEntityID(ctx, resp.ID)
+	if svcErr != nil {
+		return
+	}
+	resp.ResourceServerID = rs.ID
+	resp.ResourceServerName = rs.Name
+}
+
+// populateResourceServersForList batch-resolves resource server ownership for a list of agents.
+func (s *agentService) populateResourceServersForList(ctx context.Context, agents []model.BasicAgentResponse) {
+	if s.resourceService == nil || len(agents) == 0 {
+		return
+	}
+	for i := range agents {
+		rs, svcErr := s.resourceService.GetResourceServerByOwnerEntityID(ctx, agents[i].ID)
+		if svcErr != nil {
+			continue
+		}
+		agents[i].ResourceServerID = rs.ID
+		agents[i].ResourceServerName = rs.Name
 	}
 }
 

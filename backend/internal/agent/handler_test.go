@@ -16,6 +16,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -40,6 +41,15 @@ type InlineStubAgentService struct {
 	OnGetAgentRoles func(
 		ctx context.Context, id string, limit, offset int,
 	) (*model.AgentRoleListResponse, *tidcommon.ServiceError)
+	OnGetAgentResourceServer func(
+		ctx context.Context, id string,
+	) (*model.AgentResourceServerResponse, *tidcommon.ServiceError)
+	OnBindAgentResourceServer func(
+		ctx context.Context, id, rsID string,
+	) (*model.AgentResourceServerResponse, *tidcommon.ServiceError)
+	OnUnbindAgentResourceServer func(
+		ctx context.Context, id string,
+	) *tidcommon.ServiceError
 }
 
 func (s *InlineStubAgentService) CreateAgent(
@@ -112,6 +122,35 @@ func (s *InlineStubAgentService) GetResourceDependencies(
 }
 
 func (s *InlineStubAgentService) SetDependencyRegistry(resourcedependency.Registry) {}
+
+func (s *InlineStubAgentService) SetResourceService(resource.ResourceServiceInterface) {}
+
+func (s *InlineStubAgentService) GetAgentResourceServer(
+	ctx context.Context, id string,
+) (*model.AgentResourceServerResponse, *tidcommon.ServiceError) {
+	if s.OnGetAgentResourceServer != nil {
+		return s.OnGetAgentResourceServer(ctx, id)
+	}
+	return nil, &ErrorAgentNotFound
+}
+
+func (s *InlineStubAgentService) BindAgentResourceServer(
+	ctx context.Context, id, rsID string,
+) (*model.AgentResourceServerResponse, *tidcommon.ServiceError) {
+	if s.OnBindAgentResourceServer != nil {
+		return s.OnBindAgentResourceServer(ctx, id, rsID)
+	}
+	return nil, &ErrorAgentNotFound
+}
+
+func (s *InlineStubAgentService) UnbindAgentResourceServer(
+	ctx context.Context, id string,
+) *tidcommon.ServiceError {
+	if s.OnUnbindAgentResourceServer != nil {
+		return s.OnUnbindAgentResourceServer(ctx, id)
+	}
+	return &ErrorAgentNotFound
+}
 
 func TestHandleAgentPostRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{
@@ -399,4 +438,149 @@ func TestHandleAgentRolesRequest_ServiceError(t *testing.T) {
 	handler.HandleAgentRolesRequest(w, req)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.Contains(t, w.Body.String(), ErrorAgentNotFound.Code)
+}
+
+// --- Resource Server Handler Tests ---
+
+func TestHandleAgentResourceServerGetRequest_Success(t *testing.T) {
+	stubService := &InlineStubAgentService{
+		OnGetAgentResourceServer: func(
+			ctx context.Context, id string,
+		) (*model.AgentResourceServerResponse, *tidcommon.ServiceError) {
+			return &model.AgentResourceServerResponse{
+				ResourceServerID:   "rs-1",
+				ResourceServerName: "My RS",
+			}, nil
+		},
+	}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodGet, "/agents/agent-123/resource-server", nil)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentResourceServerGetRequest(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestHandleAgentResourceServerGetRequest_MissingID(t *testing.T) {
+	stubService := &InlineStubAgentService{}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodGet, "/agents//resource-server", nil)
+	req.SetPathValue("id", "")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentResourceServerGetRequest(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorMissingAgentID.Code)
+}
+
+func TestHandleAgentResourceServerGetRequest_NotFound(t *testing.T) {
+	stubService := &InlineStubAgentService{}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodGet, "/agents/agent-123/resource-server", nil)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentResourceServerGetRequest(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestHandleAgentResourceServerPostRequest_Success(t *testing.T) {
+	stubService := &InlineStubAgentService{
+		OnBindAgentResourceServer: func(
+			ctx context.Context, id, rsID string,
+		) (*model.AgentResourceServerResponse, *tidcommon.ServiceError) {
+			return &model.AgentResourceServerResponse{
+				ResourceServerID:   rsID,
+				ResourceServerName: "Bound RS",
+			}, nil
+		},
+	}
+	handler := newAgentHandler(stubService)
+	body := `{"resourceServerId": "rs-1"}`
+	req := httptest.NewRequest(http.MethodPost, "/agents/agent-123/resource-server",
+		bytes.NewBufferString(body))
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentResourceServerPostRequest(w, req)
+	assert.Equal(t, http.StatusCreated, w.Code)
+}
+
+func TestHandleAgentResourceServerPostRequest_MissingID(t *testing.T) {
+	stubService := &InlineStubAgentService{}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodPost, "/agents//resource-server",
+		bytes.NewBufferString(`{"resourceServerId": "rs-1"}`))
+	req.SetPathValue("id", "")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentResourceServerPostRequest(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleAgentResourceServerPostRequest_InvalidJSON(t *testing.T) {
+	stubService := &InlineStubAgentService{}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodPost, "/agents/agent-123/resource-server",
+		bytes.NewBufferString(`{bad`))
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentResourceServerPostRequest(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleAgentResourceServerDeleteRequest_Success(t *testing.T) {
+	stubService := &InlineStubAgentService{
+		OnUnbindAgentResourceServer: func(
+			ctx context.Context, id string,
+		) *tidcommon.ServiceError {
+			return nil
+		},
+	}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodDelete, "/agents/agent-123/resource-server", nil)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentResourceServerDeleteRequest(w, req)
+	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestHandleAgentResourceServerDeleteRequest_MissingID(t *testing.T) {
+	stubService := &InlineStubAgentService{}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodDelete, "/agents//resource-server", nil)
+	req.SetPathValue("id", "")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentResourceServerDeleteRequest(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleAgentResourceServerDeleteRequest_ServiceError(t *testing.T) {
+	stubService := &InlineStubAgentService{}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodDelete, "/agents/agent-123/resource-server", nil)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentResourceServerDeleteRequest(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestHandleAgentDeleteRequest_ConflictWhenOwnsRS(t *testing.T) {
+	stubService := &InlineStubAgentService{
+		OnDeleteAgent: func(ctx context.Context, id string) *tidcommon.ServiceError {
+			return &ErrorCannotDeleteAgentOwnsResourceServer
+		},
+	}
+	handler := newAgentHandler(stubService)
+	req := httptest.NewRequest(http.MethodDelete, "/agents/agent-123", nil)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentDeleteRequest(w, req)
+	assert.Equal(t, http.StatusConflict, w.Code)
 }

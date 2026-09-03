@@ -575,4 +575,20 @@ var (
 				"and string-typed in an allowed user type",
 		},
 	}
+
+	// ErrorCannotDeleteAppOwnsResourceServer is returned when attempting to delete an
+	// application that owns a resource server.
+	ErrorCannotDeleteAppOwnsResourceServer = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-60030",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.cannot_delete_owns_resource_server",
+			DefaultValue: "Cannot delete application",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.applicationservice.cannot_delete_owns_resource_server_description",
+			DefaultValue: "The application owns a resource server and cannot be deleted. " +
+				"Unbind the resource server first.",
+		},
+	}
 )

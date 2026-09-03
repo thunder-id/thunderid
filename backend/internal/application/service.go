@@ -18,6 +18,7 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -48,6 +49,12 @@ type ApplicationServiceInterface interface {
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	SetDependencyRegistry(r resourcedependency.Registry)
+	SetResourceService(rs resource.ResourceServiceInterface)
+	GetApplicationResourceServer(ctx context.Context, appID string) (
+		*model.ApplicationResourceServerResponse, *tidcommon.ServiceError)
+	BindApplicationResourceServer(ctx context.Context, appID, resourceServerID string) (
+		*model.ApplicationResourceServerResponse, *tidcommon.ServiceError)
+	UnbindApplicationResourceServer(ctx context.Context, appID string) *tidcommon.ServiceError
 }
 
 // ApplicationService is the default implementation of the ApplicationServiceInterface.
@@ -60,6 +67,7 @@ type applicationService struct {
 	cryptoSvc            providers.RuntimeCryptoProvider
 	dependencyRegistry   resourcedependency.Registry
 	serverConfigService  serverconfig.ServerConfigService
+	resourceService      resource.ResourceServiceInterface
 }
 
 // newApplicationService creates a new instance of ApplicationService.
@@ -328,6 +336,7 @@ func (as *applicationService) GetApplicationList(
 		}
 		applicationList = append(applicationList, buildBasicApplicationResponse(*cfg, &entities[i]))
 	}
+	as.populateResourceServersForList(ctx, applicationList)
 
 	return &model.ApplicationListResponse{
 		TotalResults: totalResults,
@@ -597,13 +606,89 @@ func appRequiresClientSecret(cfg *providers.OAuthConfigWithSecret) bool {
 	return true
 }
 
-// DeleteApplication delete the application for given app id.
 // SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
 // provider services are initialized to avoid a cyclic import.
 func (as *applicationService) SetDependencyRegistry(r resourcedependency.Registry) {
 	as.dependencyRegistry = r
 }
 
+// SetResourceService injects the resource service for ownership operations.
+func (as *applicationService) SetResourceService(rs resource.ResourceServiceInterface) {
+	as.resourceService = rs
+}
+
+// GetApplicationResourceServer returns the resource server owned by the given application.
+func (as *applicationService) GetApplicationResourceServer(ctx context.Context, appID string) (
+	*model.ApplicationResourceServerResponse, *tidcommon.ServiceError) {
+	if appID == "" {
+		return nil, &ErrorInvalidApplicationID
+	}
+	if svcErr := as.validateAppExists(appID); svcErr != nil {
+		return nil, svcErr
+	}
+	rs, svcErr := as.resourceService.GetResourceServerByOwnerEntityID(ctx, appID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return &model.ApplicationResourceServerResponse{
+		ResourceServerID:   rs.ID,
+		ResourceServerName: rs.Name,
+	}, nil
+}
+
+// BindApplicationResourceServer binds an existing resource server to the application.
+func (as *applicationService) BindApplicationResourceServer(
+	ctx context.Context, appID, resourceServerID string) (
+	*model.ApplicationResourceServerResponse, *tidcommon.ServiceError) {
+	if appID == "" {
+		return nil, &ErrorInvalidApplicationID
+	}
+	if svcErr := as.validateAppExists(appID); svcErr != nil {
+		return nil, svcErr
+	}
+	rs, svcErr := as.resourceService.BindResourceServerOwner(
+		ctx, resourceServerID, appID, resourcedependency.ResourceTypeApplication)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return &model.ApplicationResourceServerResponse{
+		ResourceServerID:   rs.ID,
+		ResourceServerName: rs.Name,
+	}, nil
+}
+
+// UnbindApplicationResourceServer removes the resource server binding from the application.
+func (as *applicationService) UnbindApplicationResourceServer(
+	ctx context.Context, appID string) *tidcommon.ServiceError {
+	if appID == "" {
+		return &ErrorInvalidApplicationID
+	}
+	if svcErr := as.validateAppExists(appID); svcErr != nil {
+		return svcErr
+	}
+	rs, svcErr := as.resourceService.GetResourceServerByOwnerEntityID(ctx, appID)
+	if svcErr != nil {
+		return svcErr
+	}
+	return as.resourceService.UnbindResourceServerOwner(ctx, rs.ID)
+}
+
+// validateAppExists checks that the entity exists and is an application.
+func (as *applicationService) validateAppExists(appID string) *tidcommon.ServiceError {
+	e, epErr := as.entityProvider.GetEntity(appID)
+	if epErr != nil {
+		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
+			return &ErrorApplicationNotFound
+		}
+		return &tidcommon.InternalServerError
+	}
+	if e == nil || e.Category != providers.EntityCategoryApp {
+		return &ErrorApplicationNotFound
+	}
+	return nil
+}
+
+// DeleteApplication delete the application for given app id.
 func (as *applicationService) DeleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError {
 	if appID == "" {
 		return &ErrorInvalidApplicationID
@@ -617,6 +702,12 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 		}
 	} else if existing != nil && existing.Category != providers.EntityCategoryApp {
 		return &ErrorApplicationNotFound
+	}
+
+	if as.resourceService != nil {
+		if _, rsErr := as.resourceService.GetResourceServerByOwnerEntityID(ctx, appID); rsErr == nil {
+			return &ErrorCannotDeleteAppOwnsResourceServer
+		}
 	}
 
 	// Remove dependents that must be deleted with the application (e.g. its role assignments and
@@ -1938,6 +2029,22 @@ func buildBasicApplicationResponse(
 		}
 	}
 	return resp
+}
+
+// populateResourceServersForList batch-resolves resource server ownership for a list of applications.
+func (as *applicationService) populateResourceServersForList(
+	ctx context.Context, apps []model.BasicApplicationResponse) {
+	if as.resourceService == nil || len(apps) == 0 {
+		return
+	}
+	for i := range apps {
+		rs, svcErr := as.resourceService.GetResourceServerByOwnerEntityID(ctx, apps[i].ID)
+		if svcErr != nil {
+			continue
+		}
+		apps[i].ResourceServerID = rs.ID
+		apps[i].ResourceServerName = rs.Name
+	}
 }
 
 // buildBaseApplicationProcessedDTO constructs an ApplicationProcessedDTO with the common base fields.
