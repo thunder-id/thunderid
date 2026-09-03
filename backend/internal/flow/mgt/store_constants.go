@@ -40,7 +40,7 @@ var (
 	queryListFlows = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-05",
 		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, CREATED_AT, UPDATED_AT ` +
-			`FROM "FLOW" WHERE DEPLOYMENT_ID = $1 ORDER BY CREATED_AT DESC LIMIT $2 OFFSET $3`,
+			`FROM "FLOW" WHERE DEPLOYMENT_ID = $1 ORDER BY CREATED_AT DESC, ID DESC LIMIT $2 OFFSET $3`,
 	}
 
 	// queryListActiveFlowsWithNodes retrieves every flow's active version including its nodes, in a
@@ -58,7 +58,7 @@ var (
 	queryListFlowsWithType = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-06",
 		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, CREATED_AT, UPDATED_AT FROM "FLOW" ` +
-			`WHERE FLOW_TYPE = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT DESC LIMIT $3 OFFSET $4`,
+			`WHERE FLOW_TYPE = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT DESC, ID DESC LIMIT $3 OFFSET $4`,
 	}
 
 	// queryCountFlows is the query to count total flow definitions.
