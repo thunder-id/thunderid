@@ -1694,6 +1694,23 @@ func GetActionsByResourceServer(resourceServerID string) ([]string, error) {
 	return actionIDs, nil
 }
 
+// DeleteResourceServerWithChildren removes a resource server together with the actions attached
+// directly to it. A plain DELETE on a resource server that still owns actions is refused, so any
+// server created via CreateResourceServerWithActions must be torn down through here or it survives
+// in the shared database.
+func DeleteResourceServerWithChildren(rsID string) error {
+	actionIDs, err := GetActionsByResourceServer(rsID)
+	if err != nil {
+		return err
+	}
+	for _, actionID := range actionIDs {
+		if err := DeleteAction(rsID, actionID); err != nil {
+			return fmt.Errorf("failed to delete action %s of resource server %s: %w", actionID, rsID, err)
+		}
+	}
+	return DeleteResourceServer(rsID)
+}
+
 // DeleteAction deletes an action from a resource server.
 func DeleteAction(resourceServerID, actionID string) error {
 	client := GetHTTPClient()
