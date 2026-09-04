@@ -29,7 +29,7 @@ Modifiers add validation and behavior rules to an attribute. You can combine mul
 | Modifier | Applies To | What It Does | When to Use |
 |----------|------------|--------------|-------------|
 | `required` | All types | The attribute must be provided on creation. <ProductName /> rejects the request if the value is missing. | Fields essential to the user's identity, such as `email` or `username`. |
-| `unique` | `string`, `number` | The value must be unique across all users. <ProductName /> rejects creation or update if a duplicate exists. | Natural identifiers like `username`, `email`, or `employeeId`. |
+| `unique` | `string`, `number` | The value must be unique across all users. <ProductName /> rejects creation or update if a duplicate exists. Provisioning flows also match on these attributes to detect an existing account. | Natural identifiers like `username`, `email`, or `employeeId`. |
 | `credential` | `string`, `number` | <ProductName /> hashes and stores the value securely. Never returned in any API response, even to administrators. | Passwords or other sensitive secrets. |
 | `enum` | `string`, `number` | Restricts the value to a fixed set of allowed options. <ProductName /> rejects any value not in the list. | Controlled vocabularies like a `department` field limited to specific team names. |
 | `regex` | `string` | Validates the value against a regular expression on creation and update. <ProductName /> rejects values that do not match. | Format rules such as email patterns or password complexity requirements. |
