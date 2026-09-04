@@ -415,6 +415,30 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: attestation
       filename: "{{.InterfaceName}}_mock_test.go"
+      
+  github.com/thunder-id/thunderid/internal/scim/discovery:
+    config:
+      all: true
+      dir: internal/scim/discovery
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: discovery
+      filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/scim/groups:
+    config:
+      all: true
+      dir: internal/scim/groups
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: groups
+      filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/scim/users:
+    config:
+      all: true
+      dir: internal/scim/users
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: users
+      filename: "{{.InterfaceName}}_mock_test.go"
 
   github.com/thunder-id/thunderid/internal/system/resourcedependency:
     config:

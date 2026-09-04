@@ -297,6 +297,53 @@ func (suite *MiddlewareTestSuite) TestMiddleware_ErrorHandling_EdgeCases() {
 	assert.Nil(suite.T(), suite.testCtx)
 }
 
+// Test SCIM authentication failure with invalid token sets the RFC 6750 invalid_token challenge.
+func (suite *MiddlewareTestSuite) TestMiddleware_SCIM_AuthenticationFailure_InvalidToken() {
+	req := httptest.NewRequest(http.MethodGet, "/scim/v2/Users", nil)
+	w := httptest.NewRecorder()
+
+	suite.mockService.EXPECT().Process(req).Return(context.Background(), errInvalidToken)
+
+	handler := suite.middleware(suite.testHandler)
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(suite.T(), http.StatusUnauthorized, w.Code)
+	assert.Equal(suite.T(),
+		`Bearer error="invalid_token", error_description="The access token is invalid, expired, or malformed"`,
+		w.Header().Get("WWW-Authenticate"))
+	assert.Nil(suite.T(), suite.testCtx)
+}
+
+// Test SCIM authentication failure with no handler found sets the bare Bearer challenge.
+func (suite *MiddlewareTestSuite) TestMiddleware_SCIM_AuthenticationFailure_NoHandlerFound() {
+	req := httptest.NewRequest(http.MethodGet, "/scim/v2/Users", nil)
+	w := httptest.NewRecorder()
+
+	suite.mockService.EXPECT().Process(req).Return(context.Background(), errNoHandlerFound)
+
+	handler := suite.middleware(suite.testHandler)
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(suite.T(), http.StatusUnauthorized, w.Code)
+	assert.Equal(suite.T(), "Bearer", w.Header().Get("WWW-Authenticate"))
+	assert.Nil(suite.T(), suite.testCtx)
+}
+
+// Test SCIM authorization failure with forbidden error omits the WWW-Authenticate header.
+func (suite *MiddlewareTestSuite) TestMiddleware_SCIM_AuthorizationFailure_Forbidden() {
+	req := httptest.NewRequest(http.MethodGet, "/scim/v2/Users", nil)
+	w := httptest.NewRecorder()
+
+	suite.mockService.EXPECT().Process(req).Return(context.Background(), errForbidden)
+
+	handler := suite.middleware(suite.testHandler)
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(suite.T(), http.StatusForbidden, w.Code)
+	assert.Empty(suite.T(), w.Header().Get("WWW-Authenticate"))
+	assert.Nil(suite.T(), suite.testCtx)
+}
+
 // Helper method to assert unauthorized response
 func (suite *MiddlewareTestSuite) assertUnauthorizedResponse(w *httptest.ResponseRecorder) {
 	assert.Equal(suite.T(), http.StatusUnauthorized, w.Code)

@@ -1,0 +1,2316 @@
+openapi: 3.0.3
+
+info:
+  title: SCIM API
+  version: "2.0"
+  description: |
+    System for Cross-domain Identity Management (SCIM) v2.0 API.
+    Provides standardized endpoints for identity discovery and provisioning as defined by RFC 7643 and RFC 7644.
+
+    ### Authentication and Authorization
+    - **`/ServiceProviderConfig`**: Public endpoint. No authentication required.
+    - **`/ResourceTypes`**: Public endpoint. No authentication required.
+    - **`/Schemas`**: Protected endpoint. Requires a valid bearer token. Tenant isolation is enforced based on the authenticated context.
+    - **`/Users`**, **`/Groups`**, **`/Me`**: Protected endpoints. Require a valid bearer token.
+
+    ### Content-Type
+    All write requests (`POST`, `PUT`, `PATCH`) must send `Content-Type: application/scim+json`. Requests with a missing or different Content-Type are rejected with a `400 invalidSyntax` error.
+
+    ### Unimplemented Endpoints
+    Per the SCIM specification, endpoints that are not yet implemented by the server (such as `/Bulk` and the root `/.search`) will return a **501 Not Implemented** HTTP status code rather than a generic 404. This correctly signals to SCIM clients that the feature is unsupported.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://{host}:{port}/scim/v2
+    variables:
+      host:
+        default: "localhost"
+      port:
+        default: "8090"
+
+tags:
+  - name: SCIM Discovery
+    description: Endpoints for discovering supported SCIM capabilities, schemas, and resource types.
+  - name: SCIM Provisioning
+    description: Endpoints for provisioning and managing Users and Groups (RFC 7644).
+
+security:
+  - bearerAuth: []
+
+paths:
+  /ServiceProviderConfig:
+    get:
+      tags:
+        - SCIM Discovery
+      summary: Get Service Provider Configuration
+      description: Returns the SCIM service provider configuration, including supported protocol capabilities (e.g., PATCH, Filter, ETag). This is a public endpoint that does not require authentication.
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ServiceProviderConfig'
+              example:
+                schemas: ["urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"]
+                patch:
+                  supported: false
+                bulk:
+                  supported: false
+                  maxOperations: 0
+                  maxPayloadSize: 0
+                filter:
+                  supported: true
+                  maxResults: 100
+                changePassword:
+                  supported: false
+                sort:
+                  supported: false
+                etag:
+                  supported: true
+                pagination:
+                  cursor: false
+                  index: true
+                  defaultPaginationMethod: "index"
+                  defaultPageSize: 30
+                  maxPageSize: 100
+                authenticationSchemes:
+                  - type: "oauthbearertoken"
+                    name: "OAuth Bearer Token"
+                    description: "Authentication using an OAuth 2.0 Bearer Token"
+                meta:
+                  resourceType: "ServiceProviderConfig"
+                  location: "https://localhost:8090/scim/v2/ServiceProviderConfig"
+                  created: "2026-01-15T09:00:00Z"
+                  lastModified: "2026-01-15T09:00:00Z"
+                  version: 'W/"3a9f1c2b7e4d5f60"'
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+
+  /Schemas:
+    get:
+      tags:
+        - SCIM Discovery
+      summary: List Schemas
+      description: Returns all supported SCIM schemas, including core schemas and any tenant-specific custom extensions. Requires authentication to ensure tenant isolation.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/SchemaListResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:ListResponse"]
+                totalResults: 2
+                startIndex: 1
+                itemsPerPage: 2
+                Resources:
+                  - schemas: ["urn:ietf:params:scim:schemas:core:2.0:Schema"]
+                    id: "urn:ietf:params:scim:schemas:core:2.0:User"
+                    name: "User"
+                    description: "User Account"
+                    attributes:
+                      - name: "userName"
+                        type: "string"
+                        multiValued: false
+                        description: "Unique identifier for the User, typically used by the user to directly authenticate to the service provider."
+                        required: true
+                        caseExact: false
+                        mutability: "readWrite"
+                        returned: "default"
+                        uniqueness: "server"
+                      - name: "emails"
+                        type: "complex"
+                        multiValued: true
+                        description: "Email addresses for the user."
+                        required: false
+                        caseExact: false
+                        mutability: "readWrite"
+                        returned: "default"
+                        uniqueness: "none"
+                    meta:
+                      resourceType: "Schema"
+                      location: "https://localhost:8090/scim/v2/Schemas/urn:ietf:params:scim:schemas:core:2.0:User"
+                  - schemas: ["urn:ietf:params:scim:schemas:core:2.0:Schema"]
+                    id: "urn:thunderid:params:scim:schemas:employee:2.0:User"
+                    name: "employee"
+                    description: "ThunderID extension schema for the \"employee\" user type"
+                    attributes:
+                      - name: "department"
+                        type: "string"
+                        multiValued: false
+                        required: false
+                        caseExact: false
+                        mutability: "readWrite"
+                        returned: "default"
+                        uniqueness: "none"
+                    meta:
+                      resourceType: "Schema"
+                      location: "https://localhost:8090/scim/v2/Schemas/urn:thunderid:params:scim:schemas:employee:2.0:User"
+        '401':
+          description: Unauthorized
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "401"
+                detail: "Authentication failed"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+
+  /Schemas/{id}:
+    get:
+      tags:
+        - SCIM Discovery
+      summary: Get Schema by URN
+      description: |
+        Returns a specific SCIM schema by its URN. Requires authentication to ensure tenant isolation.
+
+        The core `urn:ietf:params:scim:schemas:core:2.0:User` and `urn:ietf:params:scim:schemas:core:2.0:Group` URNs are always available. A ThunderID extension URN (`urn:thunderid:params:scim:schemas:<userType>:2.0:User`) is available for each registered user type.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The URN of the schema to retrieve
+          schema:
+            type: string
+          example: "urn:thunderid:params:scim:schemas:employee:2.0:User"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/Schema'
+              example:
+                schemas: ["urn:ietf:params:scim:schemas:core:2.0:Schema"]
+                id: "urn:thunderid:params:scim:schemas:employee:2.0:User"
+                name: "employee"
+                description: "ThunderID extension schema for the \"employee\" user type"
+                attributes:
+                  - name: "username"
+                    type: "string"
+                    multiValued: false
+                    required: true
+                    caseExact: false
+                    mutability: "readWrite"
+                    returned: "default"
+                    uniqueness: "server"
+                  - name: "given_name"
+                    type: "string"
+                    multiValued: false
+                    required: false
+                    caseExact: false
+                    mutability: "readWrite"
+                    returned: "default"
+                    uniqueness: "none"
+                  - name: "department"
+                    type: "string"
+                    multiValued: false
+                    required: false
+                    caseExact: false
+                    mutability: "readWrite"
+                    returned: "default"
+                    uniqueness: "none"
+                meta:
+                  resourceType: "Schema"
+                  location: "https://localhost:8090/scim/v2/Schemas/urn:thunderid:params:scim:schemas:employee:2.0:User"
+        '401':
+          description: Unauthorized
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "401"
+                detail: "Authentication failed"
+        '404':
+          description: Schema not found
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "404"
+                detail: "No schema exists for the provided URN"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+
+  /ResourceTypes:
+    get:
+      tags:
+        - SCIM Discovery
+      summary: List Resource Types
+      description: Returns all supported SCIM resource types (User and Group). This endpoint is public and does not require authentication.
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ResourceTypeListResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:ListResponse"]
+                totalResults: 2
+                startIndex: 1
+                itemsPerPage: 2
+                Resources:
+                  - schemas: ["urn:ietf:params:scim:schemas:core:2.0:ResourceType"]
+                    id: "User"
+                    name: "User"
+                    description: "User Account"
+                    endpoint: "/Users"
+                    schema: "urn:ietf:params:scim:schemas:core:2.0:User"
+                    schemaExtensions:
+                      - schema: "urn:thunderid:params:scim:schemas:employee:2.0:User"
+                        required: false
+                    meta:
+                      resourceType: "ResourceType"
+                      location: "https://localhost:8090/scim/v2/ResourceTypes/User"
+                  - schemas: ["urn:ietf:params:scim:schemas:core:2.0:ResourceType"]
+                    id: "Group"
+                    name: "Group"
+                    description: "Group"
+                    endpoint: "/Groups"
+                    schema: "urn:ietf:params:scim:schemas:core:2.0:Group"
+                    schemaExtensions: []
+                    meta:
+                      resourceType: "ResourceType"
+                      location: "https://localhost:8090/scim/v2/ResourceTypes/Group"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+
+  /ResourceTypes/{id}:
+    get:
+      tags:
+        - SCIM Discovery
+      summary: Get Resource Type by ID
+      description: Returns a specific SCIM resource type by its ID ("User" or "Group", case-insensitive). This endpoint is public and does not require authentication.
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The ID of the resource type to retrieve
+          schema:
+            type: string
+          example: "User"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ResourceType'
+              example:
+                schemas: ["urn:ietf:params:scim:schemas:core:2.0:ResourceType"]
+                id: "User"
+                name: "User"
+                description: "User Account"
+                endpoint: "/Users"
+                schema: "urn:ietf:params:scim:schemas:core:2.0:User"
+                schemaExtensions:
+                  - schema: "urn:thunderid:params:scim:schemas:employee:2.0:User"
+                    required: false
+                meta:
+                  resourceType: "ResourceType"
+                  location: "https://localhost:8090/scim/v2/ResourceTypes/User"
+        '404':
+          description: Resource type not found
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "404"
+                detail: "No resource type exists for the provided ID"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+
+  /Users:
+    get:
+      tags:
+        - SCIM Provisioning
+      summary: List Users
+      description: |
+        Returns a paginated list of users. Supports `startIndex` and `count` query parameters for pagination (RFC 7644 §3.4.2).
+
+        Supports `filter` with one or more `eq` comparisons joined by `and` (e.g. `userName eq "alice"` or `userName eq "alice" and active eq true`); `or`, `not`, grouping, and any operator other than `eq` are rejected with `400 invalidFilter`. Sorting via `sortBy`/`sortOrder` is not supported and returns `400 invalidValue` if requested.
+
+        Supports `attributes`/`excludedAttributes` for attribute projection (RFC 7644 §3.9); the two are mutually exclusive.
+      parameters:
+        - name: startIndex
+          in: query
+          description: 1-based index of the first result (default 1).
+          schema:
+            type: integer
+            default: 1
+        - name: count
+          in: query
+          description: Maximum number of results per page (default 30, max 100).
+          schema:
+            type: integer
+            default: 30
+        - name: filter
+          in: query
+          description: 'SCIM filter expression using only "eq" comparisons optionally joined by "and" (e.g. `userName eq "alice"`).'
+          schema:
+            type: string
+          example: 'userName eq "alice.wu"'
+        - name: attributes
+          in: query
+          description: Comma-separated list of attribute names to return; all other attributes are omitted. Mutually exclusive with `excludedAttributes`.
+          schema:
+            type: string
+          example: "userName,emails"
+        - name: excludedAttributes
+          in: query
+          description: Comma-separated list of attribute names to omit from the response. Mutually exclusive with `attributes`.
+          schema:
+            type: string
+          example: "name,emails"
+        - name: sortBy
+          in: query
+          required: false
+          description: Not supported. Providing this parameter returns `400 invalidValue`.
+          schema:
+            type: string
+        - name: sortOrder
+          in: query
+          required: false
+          description: Not supported. Providing this parameter returns `400 invalidValue`.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:ListResponse"]
+                totalResults: 1
+                startIndex: 1
+                itemsPerPage: 1
+                Resources:
+                  - schemas: ["urn:ietf:params:scim:schemas:core:2.0:User", "urn:thunderid:params:scim:schemas:employee:2.0:User"]
+                    id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                    userName: "alice.wu"
+                    name:
+                      givenName: "Alice"
+                      familyName: "Wu"
+                    emails:
+                      - value: "alice.wu@company.inc"
+                        primary: true
+                    urn:thunderid:params:scim:schemas:employee:2.0:User:
+                      username: "alice.wu"
+                      given_name: "Alice"
+                      family_name: "Wu"
+                      email: "alice.wu@company.inc"
+                      department: "Engineering"
+                    meta:
+                      resourceType: "User"
+                      location: "https://localhost:8090/scim/v2/Users/9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                      version: 'W/"7c1a9e2fd4b6"'
+        '400':
+          description: Bad Request (e.g., unsupported filter operator, sortBy/sortOrder requested, or both `attributes` and `excludedAttributes` supplied)
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid-filter:
+                  summary: Unsupported filter syntax
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidFilter"
+                    detail: "the specified filter operator is not supported; only 'eq' is supported"
+                sort-not-supported:
+                  summary: Sorting requested but not supported
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidValue"
+                    detail: "Sorting via sortBy or sortOrder is not supported in this implementation"
+                conflicting-attributes:
+                  summary: Both attributes and excludedAttributes supplied
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidValue"
+                    detail: '"attributes" and "excludedAttributes" are mutually exclusive; supply at most one'
+        '401':
+          description: Unauthorized
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "401"
+                detail: "Authentication failed"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+    post:
+      tags:
+        - SCIM Provisioning
+      summary: Create User
+      description: |
+        Creates a new user. The request body must include the SCIM Core User schema URN (`urn:ietf:params:scim:schemas:core:2.0:User`) whenever core attributes (`userName`, `name`, `emails`, etc.) are present, and exactly one ThunderID extension URN (`urn:thunderid:params:scim:schemas:<userType>:2.0:User`) identifying the target user type (RFC 7644 §3.3).
+
+        If exactly one user type is configured on the server, the extension URN and its object may be omitted and only core attributes supplied; the sole configured user type is used by default.
+
+        Attributes are read from two places: SCIM core fields at the top level (`userName`, `name.givenName`, `name.familyName`, `emails[].value`, `phoneNumbers[].value`, etc., mapped to their ThunderID attribute equivalents) and the object keyed by the extension URN (mapped 1:1 to ThunderID attribute names). Supplying the same core-mapped attribute with different values in both places is rejected with `400 invalidValue`.
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+            example:
+              schemas:
+                - "urn:ietf:params:scim:schemas:core:2.0:User"
+                - "urn:thunderid:params:scim:schemas:employee:2.0:User"
+              userName: "alice.wu"
+              name:
+                givenName: "Alice"
+                familyName: "Wu"
+              emails:
+                - value: "alice.wu@company.inc"
+                  primary: true
+              urn:thunderid:params:scim:schemas:employee:2.0:User:
+                department: "Engineering"
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location:
+              description: URL of the created user resource.
+              schema:
+                type: string
+            ETag:
+              description: Entity tag for the created resource version.
+              schema:
+                type: string
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:schemas:core:2.0:User", "urn:thunderid:params:scim:schemas:employee:2.0:User"]
+                id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                userName: "alice.wu"
+                name:
+                  givenName: "Alice"
+                  familyName: "Wu"
+                emails:
+                  - value: "alice.wu@company.inc"
+                    primary: true
+                urn:thunderid:params:scim:schemas:employee:2.0:User:
+                  username: "alice.wu"
+                  given_name: "Alice"
+                  family_name: "Wu"
+                  email: "alice.wu@company.inc"
+                  department: "Engineering"
+                meta:
+                  resourceType: "User"
+                  location: "https://localhost:8090/scim/v2/Users/9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                  version: 'W/"7c1a9e2fd4b6"'
+        '400':
+          description: Bad Request (e.g., missing/invalid Content-Type, missing required schema URN, duplicate schemas, invalid payload, unknown user type, schema validation failed)
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid-content-type:
+                  summary: Missing or invalid Content-Type header
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidSyntax"
+                    detail: "Request Content-Type must be application/scim+json"
+                missing-schemas:
+                  summary: Missing schemas array
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidValue"
+                    detail: "The request must include a schemas array"
+                missing-custom-schema:
+                  summary: Missing custom schema URN
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidValue"
+                    detail: "The request must include exactly one custom user schema URN"
+                unknown-user-type:
+                  summary: Unknown user type
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidValue"
+                    detail: "The user type derived from the custom schema URN does not exist"
+                schema-validation-failed:
+                  summary: Schema validation failed
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidValue"
+                    detail: 'User type "employee" requires the following attribute(s), which were not provided: username'
+        '401':
+          description: Unauthorized
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "401"
+                detail: "Authentication failed"
+        '409':
+          description: Conflict (e.g., username already exists)
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "409"
+                scimType: "uniqueness"
+                detail: "A user with the same unique attribute value already exists"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+
+  /Users/{id}:
+    get:
+      tags:
+        - SCIM Provisioning
+      summary: Get User
+      description: Returns a single user by ID (RFC 7644 §3.4.1). Supports `attributes`/`excludedAttributes` for attribute projection (RFC 7644 §3.9); the two are mutually exclusive.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The unique identifier of the user.
+          schema:
+            type: string
+          example: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+        - name: attributes
+          in: query
+          description: Comma-separated list of attribute names to return; all other attributes are omitted. Mutually exclusive with `excludedAttributes`.
+          schema:
+            type: string
+        - name: excludedAttributes
+          in: query
+          description: Comma-separated list of attribute names to omit from the response. Mutually exclusive with `attributes`.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              description: Entity tag for the current resource version.
+              schema:
+                type: string
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:schemas:core:2.0:User", "urn:thunderid:params:scim:schemas:employee:2.0:User"]
+                id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                userName: "alice.wu"
+                name:
+                  givenName: "Alice"
+                  familyName: "Wu"
+                emails:
+                  - value: "alice.wu@company.inc"
+                    primary: true
+                urn:thunderid:params:scim:schemas:employee:2.0:User:
+                  username: "alice.wu"
+                  given_name: "Alice"
+                  family_name: "Wu"
+                  email: "alice.wu@company.inc"
+                  department: "Engineering"
+                meta:
+                  resourceType: "User"
+                  location: "https://localhost:8090/scim/v2/Users/9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                  version: 'W/"7c1a9e2fd4b6"'
+        '401':
+          description: Unauthorized
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "401"
+                detail: "Authentication failed"
+        '404':
+          description: User not found
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "404"
+                detail: "The user with the specified ID does not exist"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+    put:
+      tags:
+        - SCIM Provisioning
+      summary: Replace User
+      description: |
+        Fully replaces a user resource (RFC 7644 §3.5.1). Supports optimistic concurrency via `If-Match`. The user type (extension URN) cannot be changed via PUT; it must match the existing resource's type, or the request is rejected with `400 mutability`.
+
+        Supports `attributes`/`excludedAttributes` for attribute projection (RFC 7644 §3.9); the two are mutually exclusive.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The unique identifier of the user.
+          schema:
+            type: string
+          example: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+        - name: If-Match
+          in: header
+          required: false
+          description: ETag value from a previous GET or create response. If provided, the update is rejected with 412 if the resource has changed.
+          schema:
+            type: string
+        - name: attributes
+          in: query
+          description: Comma-separated list of attribute names to return; all other attributes are omitted. Mutually exclusive with `excludedAttributes`.
+          schema:
+            type: string
+        - name: excludedAttributes
+          in: query
+          description: Comma-separated list of attribute names to omit from the response. Mutually exclusive with `attributes`.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+            example:
+              schemas:
+                - "urn:ietf:params:scim:schemas:core:2.0:User"
+                - "urn:thunderid:params:scim:schemas:employee:2.0:User"
+              userName: "alice.wu"
+              name:
+                givenName: "Alice"
+                familyName: "Wu"
+              emails:
+                - value: "alice.wu@newcompany.inc"
+                  primary: true
+              urn:thunderid:params:scim:schemas:employee:2.0:User:
+                department: "Platform"
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              description: Entity tag for the updated resource version.
+              schema:
+                type: string
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:schemas:core:2.0:User", "urn:thunderid:params:scim:schemas:employee:2.0:User"]
+                id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                userName: "alice.wu"
+                name:
+                  givenName: "Alice"
+                  familyName: "Wu"
+                emails:
+                  - value: "alice.wu@newcompany.inc"
+                    primary: true
+                urn:thunderid:params:scim:schemas:employee:2.0:User:
+                  username: "alice.wu"
+                  given_name: "Alice"
+                  family_name: "Wu"
+                  email: "alice.wu@newcompany.inc"
+                  department: "Platform"
+                meta:
+                  resourceType: "User"
+                  location: "https://localhost:8090/scim/v2/Users/9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                  version: 'W/"9f21ab3c8e01"'
+        '400':
+          description: Bad Request
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                immutable-user-type:
+                  summary: Attempted to change user type via PUT
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "mutability"
+                    detail: "The user type cannot be changed via PUT; it must match the existing resource's type"
+                schema-validation-failed:
+                  summary: Schema validation failed
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidValue"
+                    detail: 'User type "employee" requires the following attribute(s), which were not provided: username'
+        '401':
+          description: Unauthorized
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "401"
+                detail: "Authentication failed"
+        '404':
+          description: User not found
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "404"
+                detail: "The user with the specified ID does not exist"
+        '412':
+          description: Precondition Failed (ETag mismatch)
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "412"
+                detail: "The If-Match header does not match the current version of the resource"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+    delete:
+      tags:
+        - SCIM Provisioning
+      summary: Delete User
+      description: Deletes a user by ID (RFC 7644 §3.6). Supports optimistic concurrency via `If-Match`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The unique identifier of the user.
+          schema:
+            type: string
+          example: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+        - name: If-Match
+          in: header
+          required: false
+          description: ETag value from a previous GET. If provided, the delete is rejected with 412 if the resource has changed.
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+        '401':
+          description: Unauthorized
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "401"
+                detail: "Authentication failed"
+        '404':
+          description: User not found
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "404"
+                detail: "The user with the specified ID does not exist"
+        '412':
+          description: Precondition Failed (ETag mismatch)
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "412"
+                detail: "The If-Match header does not match the current version of the resource"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+    patch:
+      tags:
+        - SCIM Provisioning
+      summary: Patch User (Not Implemented)
+      description: Returns 501 Not Implemented per the SCIM specification. User resource patching is currently unsupported.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The unique identifier of the user.
+          schema:
+            type: string
+          example: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+      responses:
+        '501':
+          description: Not Implemented
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "501"
+                scimType: "notImplemented"
+                detail: "This SCIM operation is not supported"
+
+  /Users/.search:
+    post:
+      tags:
+        - SCIM Provisioning
+      summary: Search Users
+      description: Searches users using a POST body with a SCIM filter expression (RFC 7644 §3.4.3). The request body must include the `urn:ietf:params:scim:api:messages:2.0:SearchRequest` schema URN. Supports the same `eq`/`and`-only filter syntax as `GET /Users`.
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+            example:
+              schemas: ["urn:ietf:params:scim:api:messages:2.0:SearchRequest"]
+              filter: 'userName eq "alice.wu"'
+              attributes: ["userName", "emails"]
+              startIndex: 1
+              count: 30
+      responses:
+        '200':
+          description: OK
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:ListResponse"]
+                totalResults: 1
+                startIndex: 1
+                itemsPerPage: 1
+                Resources:
+                  - schemas: ["urn:ietf:params:scim:schemas:core:2.0:User", "urn:thunderid:params:scim:schemas:employee:2.0:User"]
+                    id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                    userName: "alice.wu"
+                    emails:
+                      - value: "alice.wu@company.inc"
+                        primary: true
+        '400':
+          description: Bad Request (e.g., missing schema URN, unsupported filter)
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing-search-schema:
+                  summary: Missing SearchRequest schema URN
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidValue"
+                    detail: 'The schemas array must include "urn:ietf:params:scim:api:messages:2.0:SearchRequest"'
+                invalid-filter:
+                  summary: Unsupported filter syntax
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidFilter"
+                    detail: "the specified filter operator is not supported; only 'eq' is supported"
+        '401':
+          description: Unauthorized
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "401"
+                detail: "Authentication failed"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+
+  /Me:
+    get:
+      tags:
+        - SCIM Provisioning
+      summary: Get Authenticated User
+      description: Returns the user resource corresponding to the authenticated bearer token subject (RFC 7644 §3.11). Supports `attributes`/`excludedAttributes` for attribute projection (RFC 7644 §3.9); the two are mutually exclusive.
+      parameters:
+        - name: attributes
+          in: query
+          description: Comma-separated list of attribute names to return; all other attributes are omitted. Mutually exclusive with `excludedAttributes`.
+          schema:
+            type: string
+        - name: excludedAttributes
+          in: query
+          description: Comma-separated list of attribute names to omit from the response. Mutually exclusive with `attributes`.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              description: Entity tag for the current resource version.
+              schema:
+                type: string
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:schemas:core:2.0:User", "urn:thunderid:params:scim:schemas:employee:2.0:User"]
+                id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                userName: "alice.wu"
+                name:
+                  givenName: "Alice"
+                  familyName: "Wu"
+                emails:
+                  - value: "alice.wu@company.inc"
+                    primary: true
+                urn:thunderid:params:scim:schemas:employee:2.0:User:
+                  username: "alice.wu"
+                  given_name: "Alice"
+                  family_name: "Wu"
+                  email: "alice.wu@company.inc"
+                  department: "Engineering"
+                meta:
+                  resourceType: "User"
+                  location: "https://localhost:8090/scim/v2/Users/9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                  version: 'W/"7c1a9e2fd4b6"'
+        '401':
+          description: Unauthorized - the bearer token carries no authenticated subject
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "401"
+                detail: "The request does not carry a valid authenticated subject"
+        '404':
+          description: Authenticated user not found
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "404"
+                detail: "The user with the specified ID does not exist"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+    put:
+      tags:
+        - SCIM Provisioning
+      summary: Replace Authenticated User
+      description: Fully replaces the user resource corresponding to the authenticated bearer token subject (RFC 7644 §3.11). Supports optimistic concurrency via `If-Match`, and `attributes`/`excludedAttributes` for attribute projection (RFC 7644 §3.9).
+      parameters:
+        - name: If-Match
+          in: header
+          required: false
+          description: ETag value from a previous GET. If provided, the update is rejected with 412 if the resource has changed.
+          schema:
+            type: string
+        - name: attributes
+          in: query
+          description: Comma-separated list of attribute names to return; all other attributes are omitted. Mutually exclusive with `excludedAttributes`.
+          schema:
+            type: string
+        - name: excludedAttributes
+          in: query
+          description: Comma-separated list of attribute names to omit from the response. Mutually exclusive with `attributes`.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+            example:
+              schemas:
+                - "urn:ietf:params:scim:schemas:core:2.0:User"
+                - "urn:thunderid:params:scim:schemas:employee:2.0:User"
+              userName: "alice.wu"
+              name:
+                givenName: "Alice"
+                familyName: "Wu"
+              emails:
+                - value: "alice.wu@newcompany.inc"
+                  primary: true
+              urn:thunderid:params:scim:schemas:employee:2.0:User:
+                department: "Platform"
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              description: Entity tag for the updated resource version.
+              schema:
+                type: string
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:schemas:core:2.0:User", "urn:thunderid:params:scim:schemas:employee:2.0:User"]
+                id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                userName: "alice.wu"
+                name:
+                  givenName: "Alice"
+                  familyName: "Wu"
+                emails:
+                  - value: "alice.wu@newcompany.inc"
+                    primary: true
+                urn:thunderid:params:scim:schemas:employee:2.0:User:
+                  username: "alice.wu"
+                  given_name: "Alice"
+                  family_name: "Wu"
+                  email: "alice.wu@newcompany.inc"
+                  department: "Platform"
+                meta:
+                  resourceType: "User"
+                  location: "https://localhost:8090/scim/v2/Users/9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                  version: 'W/"9f21ab3c8e01"'
+        '400':
+          description: Bad Request
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "400"
+                scimType: "invalidValue"
+                detail: 'User type "employee" requires the following attribute(s), which were not provided: username'
+        '401':
+          description: Unauthorized - the bearer token carries no authenticated subject
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "401"
+                detail: "The request does not carry a valid authenticated subject"
+        '412':
+          description: Precondition Failed (ETag mismatch)
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "412"
+                detail: "The If-Match header does not match the current version of the resource"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+
+  /Groups:
+    get:
+      tags:
+        - SCIM Provisioning
+      summary: List Groups
+      description: Returns a paginated list of groups. Supports `startIndex` and `count` query parameters for pagination. Filtering (`filter`) and sorting (`sortBy`/`sortOrder`) are not supported and return `400` if requested.
+      parameters:
+        - name: startIndex
+          in: query
+          description: 1-based index of the first result (default 1).
+          schema:
+            type: integer
+            default: 1
+        - name: count
+          in: query
+          description: Maximum number of results per page (default 30, max 100).
+          schema:
+            type: integer
+            default: 30
+      responses:
+        '200':
+          description: OK
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/GroupListResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:ListResponse"]
+                totalResults: 1
+                startIndex: 1
+                itemsPerPage: 1
+                Resources:
+                  - schemas: ["urn:ietf:params:scim:schemas:core:2.0:Group"]
+                    id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                    displayName: "Sports"
+                    members:
+                      - value: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                        type: "User"
+                        display: "alice.wu"
+                    meta:
+                      resourceType: "Group"
+                      location: "https://localhost:8090/scim/v2/Groups/3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                      version: 'W/"1de4ab7f9c02"'
+        '400':
+          description: Bad Request (e.g., unsupported filter or sort parameter)
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                filter-not-supported:
+                  summary: Filter requested but not supported
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidFilter"
+                    detail: "The ?filter query parameter is not supported in this implementation"
+                sort-not-supported:
+                  summary: Sorting requested but not supported
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidValue"
+                    detail: "Sorting via sortBy or sortOrder is not supported in this implementation"
+        '401':
+          description: Unauthorized
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "401"
+                detail: "Authentication failed"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+    post:
+      tags:
+        - SCIM Provisioning
+      summary: Create Group
+      description: Creates a new group. The request body must include the SCIM Core Group schema URN (`urn:ietf:params:scim:schemas:core:2.0:Group`) and a non-empty `displayName` (RFC 7644 §3.3). `members[].type` may be `User` or `Group`.
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/GroupRequest'
+            example:
+              schemas: ["urn:ietf:params:scim:schemas:core:2.0:Group"]
+              displayName: "Sports"
+              members:
+                - value: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                  type: "User"
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location:
+              description: URL of the created group resource.
+              schema:
+                type: string
+            ETag:
+              description: Entity tag for the created resource version.
+              schema:
+                type: string
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/GroupResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:schemas:core:2.0:Group"]
+                id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                displayName: "Sports"
+                members:
+                  - value: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                    type: "User"
+                    display: "alice.wu"
+                meta:
+                  resourceType: "Group"
+                  location: "https://localhost:8090/scim/v2/Groups/3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                  version: 'W/"1de4ab7f9c02"'
+        '400':
+          description: Bad Request (e.g., missing/invalid Content-Type, missing schema URN, missing displayName, invalid member)
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid-content-type:
+                  summary: Missing or invalid Content-Type header
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidSyntax"
+                    detail: "Request Content-Type must be application/scim+json"
+                missing-core-group-schema:
+                  summary: Missing SCIM core Group schema URN
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidValue"
+                    detail: "The schemas array must include the SCIM Core Group schema URN"
+                invalid-member:
+                  summary: Group member does not exist
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidValue"
+                    detail: "One or more group members do not exist or do not match the specified type"
+        '401':
+          description: Unauthorized
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "401"
+                detail: "Authentication failed"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+
+  /Groups/{id}:
+    get:
+      tags:
+        - SCIM Provisioning
+      summary: Get Group
+      description: Returns a single group by ID (RFC 7644 §3.4.1).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The unique identifier of the group.
+          schema:
+            type: string
+          example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              description: Entity tag for the current resource version.
+              schema:
+                type: string
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/GroupResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:schemas:core:2.0:Group"]
+                id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                displayName: "Sports"
+                members:
+                  - value: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                    type: "User"
+                    display: "alice.wu"
+                meta:
+                  resourceType: "Group"
+                  location: "https://localhost:8090/scim/v2/Groups/3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                  version: 'W/"1de4ab7f9c02"'
+        '401':
+          description: Unauthorized
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "401"
+                detail: "Authentication failed"
+        '404':
+          description: Group not found
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "404"
+                detail: "The group with the specified id does not exist"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+    put:
+      tags:
+        - SCIM Provisioning
+      summary: Replace Group
+      description: Fully replaces a group resource (RFC 7644 §3.5.1). Supports optimistic concurrency via `If-Match`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The unique identifier of the group.
+          schema:
+            type: string
+          example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        - name: If-Match
+          in: header
+          required: false
+          description: ETag value from a previous GET. If provided, the update is rejected with 412 if the resource has changed.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/GroupRequest'
+            example:
+              schemas: ["urn:ietf:params:scim:schemas:core:2.0:Group"]
+              displayName: "Activities"
+              members:
+                - value: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                  type: "User"
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              description: Entity tag for the updated resource version.
+              schema:
+                type: string
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/GroupResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:schemas:core:2.0:Group"]
+                id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                displayName: "Activities"
+                members:
+                  - value: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                    type: "User"
+                    display: "alice.wu"
+                meta:
+                  resourceType: "Group"
+                  location: "https://localhost:8090/scim/v2/Groups/3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                  version: 'W/"5ba817ce0f21"'
+        '400':
+          description: Bad Request
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "400"
+                scimType: "invalidValue"
+                detail: "The schemas array must include the SCIM Core Group schema URN"
+        '401':
+          description: Unauthorized
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "401"
+                detail: "Authentication failed"
+        '404':
+          description: Group not found
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "404"
+                detail: "The group with the specified id does not exist"
+        '412':
+          description: Precondition Failed (ETag mismatch)
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "412"
+                detail: "The If-Match header does not match the current version of the resource"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+    patch:
+      tags:
+        - SCIM Provisioning
+      summary: Patch Group
+      description: |
+        Partially updates a group resource using SCIM PATCH operations (RFC 7644 §3.5.2).
+        Supported paths:
+        - `displayName` — replace only (remove not permitted; displayName is required).
+        - `members` — add or replace the full member list, or remove all members.
+        - `members[value eq "{id}"]` — remove a specific member by ID.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The unique identifier of the group.
+          schema:
+            type: string
+          example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        - name: If-Match
+          in: header
+          required: false
+          description: ETag value from a previous GET. If provided, the update is rejected with 412 if the resource has changed.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/PatchRequest'
+            example:
+              schemas: ["urn:ietf:params:scim:api:messages:2.0:PatchOp"]
+              Operations:
+                - op: "add"
+                  path: "members"
+                  value:
+                    - value: "039bda67-a80d-4b7b-ac0f-36db85332089"
+                      type: "User"
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag:
+              description: Entity tag for the updated resource version.
+              schema:
+                type: string
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/GroupResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:schemas:core:2.0:Group"]
+                id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                displayName: "Sports"
+                members:
+                  - value: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                    type: "User"
+                    display: "alice.wu"
+                  - value: "039bda67-a80d-4b7b-ac0f-36db85332089"
+                    type: "User"
+                    display: "john.smith"
+                meta:
+                  resourceType: "Group"
+                  location: "https://localhost:8090/scim/v2/Groups/3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                  version: 'W/"6c2ab918e0f3"'
+        '400':
+          description: Bad Request (e.g., missing PatchOp schema URN, unsupported path or operation)
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid-patch-path:
+                  summary: Unsupported PATCH path
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidPath"
+                    detail: "The PATCH operation path is missing, unsupported, or malformed"
+                invalid-patch-op:
+                  summary: Unsupported PATCH op
+                  value:
+                    schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                    status: "400"
+                    scimType: "invalidValue"
+                    detail: 'The "op" must be one of "add", "remove", or "replace"'
+        '401':
+          description: Unauthorized
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "401"
+                detail: "Authentication failed"
+        '404':
+          description: Group not found
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "404"
+                detail: "The group with the specified id does not exist"
+        '412':
+          description: Precondition Failed (ETag mismatch)
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "412"
+                detail: "The If-Match header does not match the current version of the resource"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+    delete:
+      tags:
+        - SCIM Provisioning
+      summary: Delete Group
+      description: Deletes a group by ID (RFC 7644 §3.6). Supports optimistic concurrency via `If-Match`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The unique identifier of the group.
+          schema:
+            type: string
+          example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        - name: If-Match
+          in: header
+          required: false
+          description: ETag value from a previous GET. If provided, the delete is rejected with 412 if the resource has changed.
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+        '401':
+          description: Unauthorized
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "401"
+                detail: "Authentication failed"
+        '404':
+          description: Group not found
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "404"
+                detail: "The group with the specified id does not exist"
+        '412':
+          description: Precondition Failed (ETag mismatch)
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "412"
+                detail: "The If-Match header does not match the current version of the resource"
+        '500':
+          description: Internal Server Error
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "500"
+                detail: "Internal server error"
+
+  /.search:
+    post:
+      tags:
+        - SCIM Provisioning
+      summary: Bulk Search (Not Implemented)
+      description: Returns 501 Not Implemented per the SCIM specification. Root-level search is currently unsupported.
+      responses:
+        '501':
+          description: Not Implemented
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "501"
+                scimType: "notImplemented"
+                detail: "This SCIM operation is not supported"
+
+  /Bulk:
+    post:
+      tags:
+        - SCIM Provisioning
+      summary: Bulk Operations (Not Implemented)
+      description: Returns 501 Not Implemented per the SCIM specification. Bulk operations are currently unsupported.
+      responses:
+        '501':
+          description: Not Implemented
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+                status: "501"
+                scimType: "notImplemented"
+                detail: "This SCIM operation is not supported"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    SupportedFeature:
+      type: object
+      description: A simple supported/unsupported capability flag.
+      properties:
+        supported:
+          type: boolean
+
+    BulkConfig:
+      type: object
+      description: Bulk operation capability flags.
+      properties:
+        supported:
+          type: boolean
+        maxOperations:
+          type: integer
+        maxPayloadSize:
+          type: integer
+
+    FilterConfig:
+      type: object
+      description: Filter capability flags.
+      properties:
+        supported:
+          type: boolean
+        maxResults:
+          type: integer
+
+    PaginationConfig:
+      type: object
+      description: Pagination capability flags (RFC 9865).
+      properties:
+        cursor:
+          type: boolean
+        index:
+          type: boolean
+        defaultPaginationMethod:
+          type: string
+          enum: [cursor, index]
+        defaultPageSize:
+          type: integer
+        maxPageSize:
+          type: integer
+
+    AuthenticationScheme:
+      type: object
+      description: A supported authentication mechanism.
+      properties:
+        type:
+          type: string
+          example: "oauthbearertoken"
+        name:
+          type: string
+          example: "OAuth Bearer Token"
+        description:
+          type: string
+          example: "Authentication using an OAuth 2.0 Bearer Token"
+
+    ServiceProviderConfig:
+      type: object
+      description: SCIM Service Provider Configuration (RFC 7643 §5)
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+          example: ["urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"]
+        patch:
+          $ref: '#/components/schemas/SupportedFeature'
+        bulk:
+          $ref: '#/components/schemas/BulkConfig'
+        filter:
+          $ref: '#/components/schemas/FilterConfig'
+        changePassword:
+          $ref: '#/components/schemas/SupportedFeature'
+        sort:
+          $ref: '#/components/schemas/SupportedFeature'
+        etag:
+          $ref: '#/components/schemas/SupportedFeature'
+        pagination:
+          $ref: '#/components/schemas/PaginationConfig'
+        authenticationSchemes:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthenticationScheme'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    SchemaAttribute:
+      type: object
+      description: A single attribute definition within a SCIM Schema resource (RFC 7643 §7).
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [string, integer, decimal, boolean, complex]
+        multiValued:
+          type: boolean
+        description:
+          type: string
+        required:
+          type: boolean
+        caseExact:
+          type: boolean
+        mutability:
+          type: string
+          enum: [readWrite, readOnly, immutable, writeOnly]
+        returned:
+          type: string
+          enum: [always, never, default]
+        uniqueness:
+          type: string
+          enum: [none, server, global]
+        canonicalValues:
+          type: array
+          items:
+            type: string
+        subAttributes:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchemaAttribute'
+
+    Schema:
+      type: object
+      description: A single SCIM Schema resource (RFC 7643 §7).
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+        id:
+          type: string
+          description: The schema URN.
+        name:
+          type: string
+        description:
+          type: string
+        attributes:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchemaAttribute'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    SchemaListResponse:
+      type: object
+      description: SCIM ListResponse envelope for Schema resources (RFC 7644 §3.4.2)
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+          example: ["urn:ietf:params:scim:api:messages:2.0:ListResponse"]
+        totalResults:
+          type: integer
+        startIndex:
+          type: integer
+        itemsPerPage:
+          type: integer
+        Resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Schema'
+
+    ResourceTypeSchemaExtension:
+      type: object
+      description: A schema extension entry within a ResourceType resource (RFC 7643 §6).
+      properties:
+        schema:
+          type: string
+        required:
+          type: boolean
+
+    ResourceType:
+      type: object
+      description: A single SCIM ResourceType resource (RFC 7643 §6).
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        endpoint:
+          type: string
+        schema:
+          type: string
+          description: The primary schema URN for this resource type.
+        schemaExtensions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceTypeSchemaExtension'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    ResourceTypeListResponse:
+      type: object
+      description: SCIM ListResponse envelope for ResourceType resources (RFC 7644 §3.4.2)
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+          example: ["urn:ietf:params:scim:api:messages:2.0:ListResponse"]
+        totalResults:
+          type: integer
+        startIndex:
+          type: integer
+        itemsPerPage:
+          type: integer
+        Resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceType'
+
+    ErrorResponse:
+      type: object
+      description: SCIM Error Response (RFC 7644 §3.12). This is the standard SCIM wire error shape; ThunderID-internal error codes are never sent to SCIM clients.
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+          example: ["urn:ietf:params:scim:api:messages:2.0:Error"]
+        status:
+          type: string
+          description: HTTP status code as a string.
+        scimType:
+          type: string
+          description: SCIM error type keyword (e.g., invalidSyntax, invalidValue, invalidPath, mutability, invalidFilter, uniqueness, notImplemented). Omitted for errors with no standard SCIM error type (e.g., 401, 404, 412, 500).
+        detail:
+          type: string
+          description: Human-readable description of the error.
+
+    UserRequest:
+      type: object
+      description: |
+        SCIM User create/replace request body. Besides `schemas`, top-level SCIM core fields (`userName`, `name`, `emails`, `phoneNumbers`, etc.) are mapped to their ThunderID attribute equivalents. The object keyed by the ThunderID extension URN (e.g. `urn:thunderid:params:scim:schemas:employee:2.0:User`) is mapped 1:1 to ThunderID attribute names for the target user type.
+      required:
+        - schemas
+      additionalProperties: true
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+          description: Must include the SCIM Core User schema URN (when core fields are present) and exactly one ThunderID extension URN, unless the server has exactly one configured user type.
+          example:
+            - "urn:ietf:params:scim:schemas:core:2.0:User"
+            - "urn:thunderid:params:scim:schemas:employee:2.0:User"
+        userName:
+          type: string
+        name:
+          type: object
+          properties:
+            formatted:
+              type: string
+            givenName:
+              type: string
+            familyName:
+              type: string
+            middleName:
+              type: string
+        emails:
+          type: array
+          items:
+            type: object
+            properties:
+              value:
+                type: string
+              type:
+                type: string
+              primary:
+                type: boolean
+        phoneNumbers:
+          type: array
+          items:
+            type: object
+            properties:
+              value:
+                type: string
+              type:
+                type: string
+              primary:
+                type: boolean
+
+    UserResponse:
+      type: object
+      description: |
+        SCIM User resource response. Includes `id`, `schemas`, `meta`, mapped SCIM core fields at the top level, and the full set of stored ThunderID attributes (including the ones already mapped to core fields, and minus any credential fields) nested under the ThunderID extension URN key.
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+        id:
+          type: string
+        userName:
+          type: string
+        name:
+          type: object
+        emails:
+          type: array
+          items:
+            type: object
+        phoneNumbers:
+          type: array
+          items:
+            type: object
+        meta:
+          $ref: '#/components/schemas/Meta'
+      additionalProperties: true
+
+    UserListResponse:
+      type: object
+      description: SCIM ListResponse envelope for User resources (RFC 7644 §3.4.2)
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+          example: ["urn:ietf:params:scim:api:messages:2.0:ListResponse"]
+        totalResults:
+          type: integer
+        startIndex:
+          type: integer
+        itemsPerPage:
+          type: integer
+        Resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserResponse'
+
+    GroupRequest:
+      type: object
+      description: SCIM Group create/replace request body
+      required:
+        - schemas
+        - displayName
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+          example: ["urn:ietf:params:scim:schemas:core:2.0:Group"]
+        displayName:
+          type: string
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupMember'
+
+    GroupResponse:
+      type: object
+      description: SCIM Group resource response
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+        id:
+          type: string
+        displayName:
+          type: string
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupMember'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    GroupListResponse:
+      type: object
+      description: SCIM ListResponse envelope for Group resources (RFC 7644 §3.4.2)
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+          example: ["urn:ietf:params:scim:api:messages:2.0:ListResponse"]
+        totalResults:
+          type: integer
+        startIndex:
+          type: integer
+        itemsPerPage:
+          type: integer
+        Resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupResponse'
+
+    GroupMember:
+      type: object
+      properties:
+        value:
+          type: string
+          description: The unique ID of the member resource.
+        display:
+          type: string
+          description: The display name of the member (read-only, set by the server).
+        type:
+          type: string
+          enum: [User, Group]
+          description: The resource type of the member.
+          example: User
+
+    PatchRequest:
+      type: object
+      description: SCIM PATCH request body (RFC 7644 §3.5.2)
+      required:
+        - schemas
+        - Operations
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+          example: ["urn:ietf:params:scim:api:messages:2.0:PatchOp"]
+        Operations:
+          type: array
+          items:
+            type: object
+            required:
+              - op
+            properties:
+              op:
+                type: string
+                enum: [add, remove, replace]
+              path:
+                type: string
+                description: Attribute path to target (e.g., "members", "displayName", "members[value eq \"<id>\"]").
+              value:
+                description: Value for add/replace operations.
+
+    SearchRequest:
+      type: object
+      description: SCIM Search request body (RFC 7644 §3.4.3)
+      required:
+        - schemas
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+          example: ["urn:ietf:params:scim:api:messages:2.0:SearchRequest"]
+        filter:
+          type: string
+          description: SCIM filter expression using only "eq" comparisons optionally joined by "and" (e.g. 'userName eq "alice"').
+        attributes:
+          type: array
+          items:
+            type: string
+          description: Attribute names to return; all other attributes are omitted. Mutually exclusive with `excludedAttributes`.
+        excludedAttributes:
+          type: array
+          items:
+            type: string
+          description: Attribute names to omit from the response. Mutually exclusive with `attributes`.
+        startIndex:
+          type: integer
+          default: 1
+        count:
+          type: integer
+          default: 30
+
+    Meta:
+      type: object
+      description: SCIM resource metadata
+      properties:
+        resourceType:
+          type: string
+        created:
+          type: string
+          format: date-time
+        lastModified:
+          type: string
+          format: date-time
+        location:
+          type: string
+        version:
+          type: string
+          description: ETag value for the resource.

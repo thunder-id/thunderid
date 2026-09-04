@@ -713,3 +713,24 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: presentationmock
       filename: "{{.InterfaceName}}_mock.go"
+  github.com/thunder-id/thunderid/internal/scim/discovery:
+    config:
+      all: true
+      dir: tests/mocks/scim/discoverymock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: discoverymock
+      filename: "{{.InterfaceName}}_mock.go"
+  github.com/thunder-id/thunderid/internal/scim/groups:
+    config:
+      all: true
+      dir: tests/mocks/scim/groupsmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: groupsmock
+      filename: "{{.InterfaceName}}_mock.go"
+  github.com/thunder-id/thunderid/internal/scim/users:
+    config:
+      all: true
+      dir: tests/mocks/scim/usersmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: usersmock
+      filename: "{{.InterfaceName}}_mock.go"

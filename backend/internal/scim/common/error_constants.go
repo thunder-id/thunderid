@@ -1,0 +1,628 @@
+// Copyright 2025-2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package common
+
+import (
+	"fmt"
+	"strings"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+)
+
+// Internal SCIM service errors.
+// These codes are NEVER sent to SCIM clients over the wire.
+// handleSCIMError translates these into the SCIM-standard wire format.
+
+var (
+	// ErrorInvalidRequestBody is returned when the request body is not valid JSON or
+	// does not conform to the expected SCIM schema.
+	ErrorInvalidRequestBody = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1001",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_request_body",
+			DefaultValue: "Invalid request body",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_request_body_description",
+			DefaultValue: "The request body is not valid JSON or does not conform to the SCIM schema.",
+		},
+	}
+	// ErrorMissingSchemas is returned when the request body does not include
+	// a schemas array per RFC 7644 §3.
+	ErrorMissingSchemas = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1002",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.missing_schemas",
+			DefaultValue: "Missing schemas",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.missing_schemas_description",
+			DefaultValue: "The request must include a schemas array",
+		},
+	}
+	// ErrorDuplicateSchemas is returned when the schemas array contains
+	// duplicate URNs.
+	ErrorDuplicateSchemas = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1003",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.duplicate_schemas",
+			DefaultValue: "Duplicate schemas",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.duplicate_schemas_description",
+			DefaultValue: "The schemas array must not contain duplicate URNs",
+		},
+	}
+	// ErrorMissingCoreUserSchema is returned when the schemas array does not
+	// include the SCIM Core User schema URN.
+	ErrorMissingCoreUserSchema = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1004",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.missing_core_user_schema",
+			DefaultValue: "Missing SCIM core User schema",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.scim.missing_core_user_schema_description",
+			DefaultValue: "The schemas array must include the SCIM Core User schema URN " +
+				"when core user attributes are present in the request",
+		},
+	}
+	// ErrorMissingCustomSchema is returned when the request does not include
+	// exactly one custom user schema URN.
+	ErrorMissingCustomSchema = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1005",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.missing_custom_schema",
+			DefaultValue: "Missing custom schema",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.missing_custom_schema_description",
+			DefaultValue: "The request must include exactly one custom user schema URN",
+		},
+	}
+	// ErrorMultipleCustomSchemas is returned when the request includes more
+	// than one custom user schema URN.
+	ErrorMultipleCustomSchemas = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1006",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.multiple_custom_schemas",
+			DefaultValue: "Multiple custom schemas",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.multiple_custom_schemas_description",
+			DefaultValue: "The request must include exactly one custom user schema URN",
+		},
+	}
+	// ErrorInvalidCustomSchemaURN is returned when the provided custom
+	// schema URN is malformed.
+	ErrorInvalidCustomSchemaURN = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1007",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_custom_schema_urn",
+			DefaultValue: "Invalid custom schema URN",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_custom_schema_urn_description",
+			DefaultValue: "The provided custom schema URN is malformed",
+		},
+	}
+	// ErrorMissingCustomSchemaObject is returned when the request body does
+	// not contain a key matching the custom schema URN.
+	ErrorMissingCustomSchemaObject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1008",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.missing_custom_schema_object",
+			DefaultValue: "Missing custom schema object",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.missing_custom_schema_object_description",
+			DefaultValue: "The request body must contain a key matching the custom schema URN",
+		},
+	}
+	// ErrorUnknownUserType is returned when the user type derived from the
+	// custom schema URN does not exist.
+	ErrorUnknownUserType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1009",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.unknown_user_type",
+			DefaultValue: "Unknown user type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.unknown_user_type_description",
+			DefaultValue: "The user type derived from the custom schema URN does not exist",
+		},
+	}
+	// ErrorUserNotFound is returned when no user exists for the specified ID.
+	ErrorUserNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1010",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.user_not_found",
+			DefaultValue: "User not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.user_not_found_description",
+			DefaultValue: "The user with the specified ID does not exist",
+		},
+	}
+	// ErrorSchemaNotFound is returned when no schema exists for the provided URN.
+	ErrorSchemaNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1011",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.schema_not_found",
+			DefaultValue: "Schema not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.schema_not_found_description",
+			DefaultValue: "No schema exists for the provided URN",
+		},
+	}
+	// ErrorUnsupportedOperation is returned when the requested SCIM operation
+	// is not supported by this server.
+	ErrorUnsupportedOperation = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1012",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.unsupported_operation",
+			DefaultValue: "Unsupported operation",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.unsupported_operation_description",
+			DefaultValue: "This SCIM operation is not supported",
+		},
+	}
+
+	// ErrorResourceTypeNotFound is returned when the requested resource type ID
+	// does not match any known resource type. ThunderID only exposes "User".
+	ErrorResourceTypeNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1013",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.resource_type_not_found",
+			DefaultValue: "ResourceType not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.resource_type_not_found_description",
+			DefaultValue: "No resource type exists for the provided ID",
+		},
+	}
+
+	// ErrorInternalServer is returned when an unexpected server-side error
+	// occurs that is not attributable to the client request.
+	ErrorInternalServer = tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
+		Code: "SCIM-1014",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.internal_server_error",
+			DefaultValue: "Internal server error",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.internal_server_error_description",
+			DefaultValue: "An unexpected server-side error occurred",
+		},
+	}
+
+	// ErrorUniquenessConflict is returned when a user with the same unique attribute value already exists.
+	ErrorUniquenessConflict = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1015",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.uniqueness_conflict",
+			DefaultValue: "Uniqueness conflict",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.uniqueness_conflict_description",
+			DefaultValue: "A user with the same unique attribute value already exists",
+		},
+	}
+
+	// ErrorMutabilityViolation is returned when attempting to modify an immutable resource.
+	ErrorMutabilityViolation = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1016",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.mutability_violation",
+			DefaultValue: "Mutability violation",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.mutability_violation_description",
+			DefaultValue: "The resource is declarative and cannot be modified or deleted",
+		},
+	}
+
+	// ErrorFilterNotSupported is returned when a query filter is used but not supported.
+	ErrorFilterNotSupported = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1017",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.filter_not_supported",
+			DefaultValue: "Filter not supported",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.filter_not_supported_description",
+			DefaultValue: "The ?filter query parameter is not supported in this implementation",
+		},
+	}
+
+	// ErrorSchemaValidationFailed is returned when user attributes fail schema validation.
+	ErrorSchemaValidationFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1018",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.schema_validation_failed",
+			DefaultValue: "Schema validation failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.schema_validation_failed_description",
+			DefaultValue: "User attributes do not conform to the required schema",
+		},
+	}
+
+	// errorInvalidContentType is returned when the request Content-Type is invalid.
+	errorInvalidContentType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1019",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_content_type",
+			DefaultValue: "Invalid Content-Type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_content_type_description",
+			DefaultValue: "Request Content-Type must be application/scim+json",
+		},
+	}
+
+	// ErrorImmutableUserType is returned when a PUT (replace) request specifies a
+	// user type (schema extension) different from the target resource's existing type.
+	ErrorImmutableUserType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1020",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.immutable_user_type",
+			DefaultValue: "User type is immutable",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.immutable_user_type_description",
+			DefaultValue: "The user type cannot be changed via PUT; it must match the existing resource's type",
+		},
+	}
+	// ErrorResourceNotFound is returned when the requested SCIM resource does not exist.
+	ErrorResourceNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1021",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.resource_not_found",
+			DefaultValue: "Resource not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.resource_not_found_description",
+			DefaultValue: "The requested resource does not exist",
+		},
+	}
+
+	// ErrorUnsupportedMemberType is returned when a group member's type is not
+	// supported for SCIM group membership.
+	ErrorUnsupportedMemberType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1022",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.unsupported_member_type",
+			DefaultValue: "Unsupported group member type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.unsupported_member_type_description",
+			DefaultValue: "The provided member type is not supported for SCIM group membership",
+		},
+	}
+
+	// ErrorInvalidGroupMember is returned when a group member reference (user, app, or group) does not exist.
+	ErrorInvalidGroupMember = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1023",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_group_member",
+			DefaultValue: "Invalid group member",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_group_member_description",
+			DefaultValue: "One or more group members do not exist or do not match the specified type",
+		},
+	}
+
+	// ErrorInvalidPatchPath is returned when a PATCH operation's "path" is missing,
+	// unsupported, or has a malformed filter expression (RFC 7644 §3.5.2).
+	ErrorInvalidPatchPath = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1024",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_patch_path",
+			DefaultValue: "Invalid patch path",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_patch_path_description",
+			DefaultValue: "The PATCH operation path is missing, unsupported, or malformed",
+		},
+	}
+
+	// ErrorInvalidPatchOp is returned when a PATCH operation's "op" is not
+	// one of "add", "remove", or "replace".
+	ErrorInvalidPatchOp = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_patch_op",
+			DefaultValue: "Invalid patch operation",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_patch_op_description",
+			DefaultValue: `The "op" must be one of "add", "remove", or "replace"`,
+		},
+	}
+
+	// ErrorInvalidPatchValue is returned when a PATCH operation's "value" is
+	// missing or malformed for the given "op"/"path" combination.
+	ErrorInvalidPatchValue = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1026",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_patch_value",
+			DefaultValue: "Invalid patch value",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_patch_value_description",
+			DefaultValue: "The PATCH operation value is missing or malformed for the given op/path",
+		},
+	}
+
+	// ErrorPreconditionFailed is returned when an If-Match header does not match
+	// the resource's current version (RFC 7644 §3.14 optimistic concurrency control).
+	ErrorPreconditionFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1027",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.precondition_failed",
+			DefaultValue: "Precondition failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.precondition_failed_description",
+			DefaultValue: "The If-Match header does not match the current version of the resource",
+		},
+	}
+
+	// ErrorMissingCoreGroupSchema is returned when the schemas array does not
+	// include the SCIM Core Group schema URN.
+	ErrorMissingCoreGroupSchema = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1028",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.missing_core_group_schema",
+			DefaultValue: "Missing SCIM core Group schema",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.missing_core_group_schema_description",
+			DefaultValue: "The schemas array must include the SCIM Core Group schema URN",
+		},
+	}
+
+	// ErrorConflictingAttributesParams is returned when a request supplies both
+	// the "attributes" and "excludedAttributes" query/body parameters, which
+	// RFC 7644 §3.9 requires to be mutually exclusive.
+	ErrorConflictingAttributesParams = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1029",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.conflicting_attributes_params",
+			DefaultValue: "Conflicting attributes parameters",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.conflicting_attributes_params_description",
+			DefaultValue: `"attributes" and "excludedAttributes" are mutually exclusive; supply at most one`,
+		},
+	}
+
+	// ErrorSortNotSupported is returned when sorting is requested via sortBy or
+	// sortOrder but sorting is not supported per ServiceProviderConfig.
+	ErrorSortNotSupported = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1030",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.sort_not_supported",
+			DefaultValue: "Sorting not supported",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.sort_not_supported_description",
+			DefaultValue: "Sorting via sortBy or sortOrder is not supported in this implementation",
+		},
+	}
+
+	// ErrorConflictingAttributeValue is returned when a core-mapped attribute is supplied
+	// with different values through both the top-level SCIM core fields and the ThunderID
+	// custom extension object.
+	ErrorConflictingAttributeValue = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1031",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.conflicting_attribute_value",
+			DefaultValue: "Conflicting attribute value",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.conflicting_attribute_value_description",
+			DefaultValue: "A core-mapped attribute was supplied with different values in the core and custom schema",
+		},
+	}
+
+	// ErrorUnauthenticated is returned when a request to /scim/v2/Me carries no
+	// authenticated subject (RFC 7644 §3.11 requires 401 for missing authentication,
+	// as distinct from 403 for an authenticated caller lacking authorization).
+	ErrorUnauthenticated = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1032",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.unauthenticated",
+			DefaultValue: "Unauthenticated",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.unauthenticated_description",
+			DefaultValue: "The request does not carry a valid authenticated subject",
+		},
+	}
+	// ErrorUndeclaredCustomSchemaObject is returned when the request body
+	// contains a custom extension object key that is not declared in
+	// "schemas".
+	ErrorUndeclaredCustomSchemaObject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1033",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.undeclared_custom_schema_object",
+			DefaultValue: "Undeclared custom schema object",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.scim.undeclared_custom_schema_object_description",
+			DefaultValue: "The request body includes a custom extension object whose schema URN " +
+				"is not declared in the schemas array",
+		},
+	}
+
+	// errorInvalidFilterSyntax is returned when the "filter" query parameter (or the
+	// "filter" field of a POST /Users/.search request) does not parse as a supported
+	// "eq"/"and" expression per RFC 7644 §3.4.2.2.
+	errorInvalidFilterSyntax = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1034",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_filter_syntax",
+			DefaultValue: "Invalid filter syntax",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.invalid_filter_syntax_description",
+			DefaultValue: "The filter query parameter is not a syntactically valid expression",
+		},
+	}
+
+	// errorCustomAttributeRequiresURN is returned when the "attributes" or
+	// "excludedAttributes" parameter names a custom/extension attribute without
+	// qualifying it with its schema URN prefix, per RFC 7643 §3.10.
+	errorCustomAttributeRequiresURN = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1035",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.custom_attribute_requires_urn",
+			DefaultValue: "Custom attribute requires schema URN",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.custom_attribute_requires_urn_description",
+			DefaultValue: "Custom/extension attributes must be qualified with their schema URN prefix",
+		},
+	}
+
+	// errorUnrecognizedSchemaURN is returned when the "attributes" or
+	// "excludedAttributes" parameter names an attribute path qualified with a URN
+	// prefix that is neither the core User schema URN nor a well-formed ThunderID
+	// extension schema URN.
+	errorUnrecognizedSchemaURN = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1036",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.unrecognized_schema_urn",
+			DefaultValue: "Unrecognized schema URN",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.unrecognized_schema_urn_description",
+			DefaultValue: "The schema URN prefix is not the core User schema or a recognized extension schema",
+		},
+	}
+)
+
+// NewMissingRequiredAttributesError builds a SCIM-1018 (schema validation failed)
+// error whose detail names the specific attribute(s) that the target user type
+// requires but the request did not supply, whether via core fields or the custom
+// extension object. Gives clients an actionable 400 instead of a generic failure.
+func NewMissingRequiredAttributesError(userTypeName string, missing []string) *tidcommon.ServiceError {
+	svcErr := ErrorSchemaValidationFailed
+	svcErr.ErrorDescription = tidcommon.I18nMessage{
+		Key: ErrorSchemaValidationFailed.ErrorDescription.Key,
+		DefaultValue: fmt.Sprintf(
+			"User type %q requires the following attribute(s), which were not provided: %s",
+			userTypeName, strings.Join(missing, ", "),
+		),
+	}
+	return &svcErr
+}
+
+// NewConflictingAttributeValueError builds a SCIM-1029 error whose detail names the
+// core-mapped attribute that was supplied with different values in the top-level SCIM
+// core fields and the ThunderID custom extension object.
+func NewConflictingAttributeValueError(attrName string) *tidcommon.ServiceError {
+	svcErr := ErrorConflictingAttributeValue
+	svcErr.ErrorDescription = tidcommon.I18nMessage{
+		Key: ErrorConflictingAttributeValue.ErrorDescription.Key,
+		DefaultValue: fmt.Sprintf(
+			"Attribute %q was supplied with different values in the core SCIM fields and the custom schema object",
+			attrName,
+		),
+	}
+	return &svcErr
+}
+
+// NewUndeclaredAttributesError builds a SCIM-1018 (schema validation failed)
+// error whose detail names the specific attribute(s) that the request supplied
+// but the target user type schema does not declare.
+func NewUndeclaredAttributesError(userTypeName string, undeclared []string) *tidcommon.ServiceError {
+	svcErr := ErrorSchemaValidationFailed
+	svcErr.ErrorDescription = tidcommon.I18nMessage{
+		Key: ErrorSchemaValidationFailed.ErrorDescription.Key,
+		DefaultValue: fmt.Sprintf(
+			"User type %q does not declare the following attribute(s): %s",
+			userTypeName, strings.Join(undeclared, ", "),
+		),
+	}
+	return &svcErr
+}
+
+// newInvalidFilterSyntaxError builds a SCIM-1034 error whose detail names the
+// specific reason the "filter" expression was rejected.
+func newInvalidFilterSyntaxError(detail string) *tidcommon.ServiceError {
+	svcErr := errorInvalidFilterSyntax
+	svcErr.ErrorDescription = tidcommon.I18nMessage{
+		Key:          errorInvalidFilterSyntax.ErrorDescription.Key,
+		DefaultValue: detail,
+	}
+	return &svcErr
+}
+
+// NewCustomAttributeRequiresURNError builds a SCIM-1035 error whose detail names the
+// specific attribute path that was missing its schema URN prefix.
+func NewCustomAttributeRequiresURNError(attr string) *tidcommon.ServiceError {
+	svcErr := errorCustomAttributeRequiresURN
+	svcErr.ErrorDescription = tidcommon.I18nMessage{
+		Key: errorCustomAttributeRequiresURN.ErrorDescription.Key,
+		DefaultValue: fmt.Sprintf(
+			"attribute %q is a custom attribute and must be qualified with its schema URN prefix", attr),
+	}
+	return &svcErr
+}
+
+// NewUnrecognizedSchemaURNError builds a SCIM-1036 error whose detail names the
+// specific attribute path whose URN prefix is neither the core User schema URN nor
+// a well-formed ThunderID extension schema URN.
+func NewUnrecognizedSchemaURNError(attr string) *tidcommon.ServiceError {
+	svcErr := errorUnrecognizedSchemaURN
+	svcErr.ErrorDescription = tidcommon.I18nMessage{
+		Key: errorUnrecognizedSchemaURN.ErrorDescription.Key,
+		DefaultValue: fmt.Sprintf(
+			"attribute %q has a schema URN prefix that is not the core User schema or a recognized extension schema",
+			attr),
+	}
+	return &svcErr
+}
