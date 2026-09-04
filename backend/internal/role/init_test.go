@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
@@ -642,7 +643,7 @@ func (suite *InitTestSuite) TestInitialize_DBClientError() {
 	}()
 
 	mux := http.NewServeMux()
-	_, _, _, _, err := Initialize(mux, nil, nil, nil, nil, nil, nil)
+	_, _, _, _, err := Initialize(mux, nil, nil, nil, nil, nil, nil, nil)
 
 	suite.Error(err)
 	suite.Equal("mock db client error", err.Error())
@@ -666,7 +667,7 @@ func (suite *InitTestSuite) TestInitialize_TransactionerError() {
 	}()
 
 	mux := http.NewServeMux()
-	_, _, _, _, err := Initialize(mux, nil, nil, nil, nil, nil, nil)
+	_, _, _, _, err := Initialize(mux, nil, nil, nil, nil, nil, nil, nil)
 
 	suite.Error(err)
 	suite.Equal("mock transactioner error", err.Error())
@@ -697,11 +698,57 @@ func (suite *InitTestSuite) TestInitialize_Success() {
 	}()
 
 	mux := http.NewServeMux()
-	svc, _, _, exporter, err := Initialize(mux, nil, nil, nil, nil, nil, nil)
+	mcpServer := mcp.NewServer(
+		&mcp.Implementation{
+			Name:    "test-server",
+			Version: "1.0.0",
+		},
+		nil,
+	)
+	svc, _, _, exporter, err := Initialize(mux, mcpServer, nil, nil, nil, nil, nil, nil)
 
-	suite.NoError(err)
+	suite.Require().NoError(err)
 	suite.NotNil(svc)
 	suite.NotNil(exporter)
+
+	ctx := context.Background()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, err := mcpServer.Connect(ctx, serverTransport, nil)
+	suite.Require().NoError(err)
+	suite.T().Cleanup(func() {
+		suite.NoError(serverSession.Close())
+	})
+
+	mcpClient := mcp.NewClient(
+		&mcp.Implementation{
+			Name:    "test-client",
+			Version: "1.0.0",
+		},
+		nil,
+	)
+	clientSession, err := mcpClient.Connect(ctx, clientTransport, nil)
+	suite.Require().NoError(err)
+	suite.T().Cleanup(func() {
+		suite.NoError(clientSession.Close())
+	})
+
+	result, err := clientSession.ListTools(ctx, nil)
+	suite.Require().NoError(err)
+
+	toolNames := make([]string, len(result.Tools))
+	for i, registeredTool := range result.Tools {
+		toolNames[i] = registeredTool.Name
+	}
+
+	suite.ElementsMatch([]string{
+		"thunderid_list_roles",
+		"thunderid_get_role",
+		"thunderid_create_role",
+		"thunderid_update_role",
+		"thunderid_delete_role",
+		"thunderid_get_role_assignments",
+		"thunderid_add_role_assignments",
+	}, toolNames)
 	mockProvider.AssertExpectations(suite.T())
 	mockClient.AssertExpectations(suite.T())
 }
@@ -733,7 +780,7 @@ func (suite *InitTestSuite) TestInitialize_StoreInitError() {
 	}()
 
 	mux := http.NewServeMux()
-	svc, _, _, exporter, err := Initialize(mux, nil, nil, nil, nil, nil, nil)
+	svc, _, _, exporter, err := Initialize(mux, nil, nil, nil, nil, nil, nil, nil)
 
 	suite.Error(err)
 	if err != nil {

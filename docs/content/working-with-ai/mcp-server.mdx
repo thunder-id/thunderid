@@ -205,8 +205,23 @@ Once connected, your AI assistant can work with <ProductName /> resources direct
 | `flows` | Design and modify authentication and registration flows |
 | `themes` | Browse and inspect login page themes, colors, and typography |
 | `organization_units` | List organization units |
+| `roles` | Manage roles, permissions, and assignments |
 | `user_types` | List user types and self-registration settings |
 | `react_sdk` | Get tailored integration code for the <ProductName /> React SDK |
+
+### Manage Roles
+
+Role assignments support users, applications, agents, and groups. Use `limit` and `offset` to paginate role lists and assignment lists. The assignment-list tool also accepts `type` to filter by assignment type and `includeDisplay` to include display details.
+
+| Tool | Inputs | Response | Mutation effect |
+|------|--------|----------|-----------------|
+| `thunderid_list_roles` | Optional `limit` and `offset` | `totalResults` and a `roles` array | None. Lists roles with pagination. |
+| `thunderid_get_role` | Role `id` | Role details, including `id`, `name`, organization unit, and `permissions` | None. |
+| `thunderid_create_role` | `name`, `ouId`, optional `description`, `permissions`, and `assignments` | The created role, including its permissions and assignments | Creates a role with permissions and optional assignments. Each assignment contains an `id` and a `type` of `user`, `app`, `agent`, or `group`. |
+| `thunderid_update_role` | `id`, `name`, `ouId`, `permissions`, and optional `description` | The updated role and its permissions | Fully replaces the role details and permissions. Send `permissions: []` to remove all permissions. |
+| `thunderid_delete_role` | Role `id` | `success: true` | Deletes the role. |
+| `thunderid_get_role_assignments` | Role `id`, optional `limit`, `offset`, `type`, and `includeDisplay` | `totalResults` and an `assignments` array | None. Lists assignments with pagination and optional filtering. |
+| `thunderid_add_role_assignments` | Role `id` and `assignments` | `success: true` | Assigns the role to users, applications, agents, or groups. Each assignment contains an `id` and `type`. |
 
 **Example prompts:**
 
