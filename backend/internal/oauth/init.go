@@ -10,6 +10,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
+	"github.com/thunder-id/thunderid/internal/flow/session"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/jwks"
 	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
@@ -55,6 +56,8 @@ func Initialize(
 	transactioner providers.Transactioner,
 	enforcementService revocation.EnforcementServiceInterface,
 	revocationSvc revocation.RevocationServiceInterface,
+	ssoSession session.Service,
+	flowProvider providers.FlowProvider,
 	cfg oauthconfig.Config,
 ) (tokenservice.TokenValidatorInterface, error) {
 	jwks.Initialize(mux, runtimeCrypto)
@@ -81,7 +84,8 @@ func Initialize(
 	parService := par.Initialize(mux, actorProvider, authnProvider, jwtService, discoveryService,
 		resourceService, dpopVerifier, cfg, runtimeStore, jtiStore)
 	oauth2AuthzService, err := oauth2authz.Initialize(mux, actorProvider, resourceService,
-		jwtService, flowExecService, parService, revocationSvc, cfg, runtimeStore, transactioner)
+		jwtService, flowExecService, parService, revocationSvc, ssoSession, flowProvider, cfg,
+		runtimeStore, transactioner)
 	if err != nil {
 		return nil, err
 	}

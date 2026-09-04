@@ -29,6 +29,11 @@ type AuthorizationCode struct {
 	AuthorizedUserID    string
 	AttributeCacheID    string
 	TimeCreated         time.Time
+	// AuthTime is when the subject actually authenticated, which on the SSO path predates
+	// TimeCreated: a reused session authenticated once and every later authorization mints a fresh
+	// code. It is kept separate from TimeCreated so the id_token's auth_time claim can report the
+	// authentication while the code's own lifetime is still measured from its creation.
+	AuthTime            time.Time
 	ExpiryTime          time.Time
 	Scopes              string
 	State               string

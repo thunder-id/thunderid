@@ -6,6 +6,7 @@ package session
 
 import (
 	"context"
+	"time"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -721,6 +722,75 @@ func (_c *sessionStoreMock_Record_Call) Return(err error) *sessionStoreMock_Reco
 }
 
 func (_c *sessionStoreMock_Record_Call) RunAndReturn(run func(ctx context.Context, p Participant) error) *sessionStoreMock_Record_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// TouchAuthenticatedAt provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) TouchAuthenticatedAt(ctx context.Context, sessionID string, authenticatedAt time.Time, idleExpiresAt time.Time) error {
+	ret := _mock.Called(ctx, sessionID, authenticatedAt, idleExpiresAt)
+
+	if len(ret) == 0 {
+		panic("no return value specified for TouchAuthenticatedAt")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, time.Time) error); ok {
+		r0 = returnFunc(ctx, sessionID, authenticatedAt, idleExpiresAt)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// sessionStoreMock_TouchAuthenticatedAt_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'TouchAuthenticatedAt'
+type sessionStoreMock_TouchAuthenticatedAt_Call struct {
+	*mock.Call
+}
+
+// TouchAuthenticatedAt is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sessionID string
+//   - authenticatedAt time.Time
+//   - idleExpiresAt time.Time
+func (_e *sessionStoreMock_Expecter) TouchAuthenticatedAt(ctx interface{}, sessionID interface{}, authenticatedAt interface{}, idleExpiresAt interface{}) *sessionStoreMock_TouchAuthenticatedAt_Call {
+	return &sessionStoreMock_TouchAuthenticatedAt_Call{Call: _e.mock.On("TouchAuthenticatedAt", ctx, sessionID, authenticatedAt, idleExpiresAt)}
+}
+
+func (_c *sessionStoreMock_TouchAuthenticatedAt_Call) Run(run func(ctx context.Context, sessionID string, authenticatedAt time.Time, idleExpiresAt time.Time)) *sessionStoreMock_TouchAuthenticatedAt_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		var arg3 time.Time
+		if args[3] != nil {
+			arg3 = args[3].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_TouchAuthenticatedAt_Call) Return(err error) *sessionStoreMock_TouchAuthenticatedAt_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *sessionStoreMock_TouchAuthenticatedAt_Call) RunAndReturn(run func(ctx context.Context, sessionID string, authenticatedAt time.Time, idleExpiresAt time.Time) error) *sessionStoreMock_TouchAuthenticatedAt_Call {
 	_c.Call.Return(run)
 	return _c
 }

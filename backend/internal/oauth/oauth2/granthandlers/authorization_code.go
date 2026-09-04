@@ -45,6 +45,16 @@ func newAuthorizationCodeGrantHandler(
 	}
 }
 
+// resolveAuthTime returns when the subject authenticated. Codes minted before AuthTime existed as a
+// field unmarshal with a zero value, so their creation time stands in: for those codes the two
+// moments coincided anyway, since authorization did not consult an existing session.
+func resolveAuthTime(authCode *authz.AuthorizationCode) int64 {
+	if authCode.AuthTime.IsZero() {
+		return authCode.TimeCreated.Unix()
+	}
+	return authCode.AuthTime.Unix()
+}
+
 // ValidateGrant validates the authorization code grant request.
 func (h *authorizationCodeGrantHandler) ValidateGrant(ctx context.Context, tokenRequest *model.TokenRequest,
 	oauthApp *providers.OAuthClient) *model.ErrorResponse {
@@ -193,7 +203,7 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 			Audience:       tokenRequest.ClientID,
 			Scopes:         accessTokenScopes,
 			UserAttributes: attrs,
-			AuthTime:       authCode.TimeCreated.Unix(),
+			AuthTime:       resolveAuthTime(authCode),
 			OAuthApp:       oauthApp,
 			ClaimsRequest:  authCode.ClaimsRequest,
 			Nonce:          authCode.Nonce,

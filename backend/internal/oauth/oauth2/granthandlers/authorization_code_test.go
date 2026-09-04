@@ -1608,3 +1608,32 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_DownscopeVa
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), constants.ErrorServerError, err.Error)
 }
+
+// TestResolveAuthTime_ZeroFallsBackToCreation covers codes minted before AuthTime existed as a field:
+// they unmarshal from the runtime store with a zero value, so a code still in flight across an
+// upgrade must not report a year-1 authentication. Its creation time is the right stand-in, since
+// authorization did not consult an existing session for those codes.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestResolveAuthTime_ZeroFallsBackToCreation() {
+	created := time.Now().Add(-2 * time.Minute)
+	code := &authz.AuthorizationCode{TimeCreated: created}
+
+	got := resolveAuthTime(code)
+
+	suite.Equal(created.Unix(), got, "a zero AuthTime should fall back to the code's creation time")
+	suite.Positive(got, "the fallback must never yield a negative Unix timestamp")
+}
+
+// TestResolveAuthTime_PrefersAuthTime verifies the normal path: when the field is set it wins, which
+// is what keeps auth_time stable across a reused session.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestResolveAuthTime_PrefersAuthTime() {
+	authenticated := time.Now().Add(-time.Hour)
+	code := &authz.AuthorizationCode{
+		TimeCreated: time.Now(),
+		AuthTime:    authenticated,
+	}
+
+	got := resolveAuthTime(code)
+
+	suite.Equal(authenticated.Unix(), got,
+		"auth_time must report the authentication, not when the code was minted")
+}

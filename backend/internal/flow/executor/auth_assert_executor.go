@@ -146,7 +146,8 @@ func (a *authAssertExecutor) checkAssurance(ctx *providers.NodeContext,
 			logger.Debug(ctx.Context, "Ignoring malformed max_age", log.String("maxAge", rawMaxAge))
 			return nil
 		}
-		if time.Now().UTC().Unix()-a.resolveAuthTime(ctx) > maxAge {
+		// max_age=0 admits no elapsed time, so it is never satisfied by a reused authentication.
+		if maxAge == 0 || time.Now().UTC().Unix()-a.resolveAuthTime(ctx) > maxAge {
 			logger.Debug(ctx.Context, "Authentication is older than max_age; re-authentication required")
 			return &ErrInteractionRequired
 		}
@@ -205,6 +206,11 @@ func (a *authAssertExecutor) generateAuthAssertion(
 	if completedACR, exists := ctx.RuntimeData[common.RuntimeKeySelectedAuthClass]; exists && completedACR != "" {
 		jwtClaims[oauth2const.ClaimCompletedAuthClass] = completedACR
 	}
+
+	// Carry the time the subject actually authenticated. On the SSO path that is the reused
+	// session's authentication time, which is older than this assertion's iat; without the claim
+	// the OAuth layer falls back to iat and auth_time advances on every authorization.
+	jwtClaims[oauth2const.ClaimAuthTime] = a.resolveAuthTime(ctx)
 
 	// Bind the assertion to the originating auth request so the corresponding callback can verify this assertion
 	// authorizes the specific request it accompanies.

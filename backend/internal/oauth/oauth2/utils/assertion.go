@@ -69,6 +69,16 @@ func DecodeFlowAssertionClaims(assertion string) (FlowAssertionClaims, map[strin
 		claims.AuthTime = time.Unix(iat, 0)
 	}
 
+	// auth_time, when the flow supplies it, is when the subject authenticated, which on the SSO
+	// path predates this assertion. It therefore wins over the iat fallback above.
+	if authTimeValue, ok := jwtPayload[oauth2const.ClaimAuthTime]; ok {
+		authTime, ok := sysutils.ToInt64(authTimeValue)
+		if !ok {
+			return claims, nil, errors.New("JWT 'auth_time' claim has unexpected type")
+		}
+		claims.AuthTime = time.Unix(authTime, 0)
+	}
+
 	if subValue, ok := jwtPayload[oauth2const.ClaimSub]; ok {
 		strValue, ok := subValue.(string)
 		if !ok {

@@ -428,3 +428,25 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad_RehydrateErrorFailsFlow() {
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "failed to load SSO checkpoint")
 }
+
+// TestSanitizeSnapshotRuntimeData_DropsRequestScopedReauthKeys pins that the two keys stating what
+// the establishing app demanded of this authentication stay out of the durable snapshot. Replaying
+// either onto a later join imposes that demand on an app that never asked: the snapshot is merged
+// over the live request, so a stale force_reauth re-prompts every reuse and a stale max_age fails
+// the assurance check now that auth_time comes from the session rather than the current time.
+func (suite *SessionExecutorTestSuite) TestSanitizeSnapshotRuntimeData_DropsRequestScopedReauthKeys() {
+	sanitized := sanitizeSnapshotRuntimeData(map[string]string{
+		common.RuntimeKeyForceReauth:    "true",
+		common.RuntimeKeyMaxAge:         "60",
+		common.RuntimeKeySilentAuthOnly: "true",
+		"keep_me":                       "value",
+	})
+
+	_, hasForceReauth := sanitized[common.RuntimeKeyForceReauth]
+	suite.False(hasForceReauth, "force_reauth belongs to one request and must not be persisted")
+	_, hasMaxAge := sanitized[common.RuntimeKeyMaxAge]
+	suite.False(hasMaxAge, "max_age belongs to one request and must not be persisted")
+	_, hasSilent := sanitized[common.RuntimeKeySilentAuthOnly]
+	suite.False(hasSilent, "the silent marker belongs to one request and must not be persisted")
+	suite.Equal("value", sanitized["keep_me"], "unrelated runtime data must still be snapshotted")
+}

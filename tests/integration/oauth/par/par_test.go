@@ -378,20 +378,6 @@ func (ts *PARTestSuite) TestPAREndpointValidation() {
 			ExpectedError: "invalid_request",
 		},
 		{
-			// This test reflects current behavior; prompt=none session checking is not implemented yet.
-			Name: "Prompt None Not Supported",
-			Params: map[string]string{
-				"response_type":         "code",
-				"redirect_uri":          redirectURI,
-				"scope":                 "openid",
-				"state":                 "test",
-				"prompt":                "none",
-				"code_challenge":        testutils.GenerateCodeChallenge("test-verifier-that-is-at-least-43-characters-long-enough"),
-				"code_challenge_method": "S256",
-			},
-			ExpectedError: "login_required",
-		},
-		{
 			// This test reflects current behavior; account selection prompts are not implemented yet.
 			Name: "Prompt Select Account Not Supported",
 			Params: map[string]string{
@@ -417,6 +403,29 @@ func (ts *PARTestSuite) TestPAREndpointValidation() {
 			ts.Equal(tc.ExpectedError, result.Error.Error)
 		})
 	}
+}
+
+// TestPAREndpointAcceptsPromptNone verifies that pushing prompt=none is stored rather than
+// refused. PAR carries no cookies, so it cannot see whether a session exists; deciding here would
+// refuse every silent authorization a PAR client could make. The decision belongs to the
+// authorization request that later resolves the request_uri, which can read the session.
+func (ts *PARTestSuite) TestPAREndpointAcceptsPromptNone() {
+	result, err := testutils.SubmitPARRequest(clientID, clientSecret, map[string]string{
+		"response_type":         "code",
+		"redirect_uri":          redirectURI,
+		"scope":                 "openid",
+		"state":                 "test",
+		"prompt":                "none",
+		"code_challenge":        testutils.GenerateCodeChallenge("test-verifier-that-is-at-least-43-characters-long-enough"),
+		"code_challenge_method": "S256",
+	})
+	ts.Require().NoError(err)
+
+	ts.Equal(http.StatusCreated, result.StatusCode,
+		"prompt=none must be stored, since PAR cannot see the session that decides it")
+	ts.Nil(result.Error, "storing the request is not an error")
+	ts.Require().NotNil(result.PAR, "a stored request must return a request_uri")
+	ts.NotEmpty(result.PAR.RequestURI, "the pushed request should be retrievable by its uri")
 }
 
 // TestPARAuthorizationFlowWithPKCE tests the full PAR + authorization code flow with PKCE.

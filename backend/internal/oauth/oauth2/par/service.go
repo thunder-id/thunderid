@@ -154,6 +154,7 @@ func (s *parService) HandlePushedAuthorizationRequest(
 		MaxAge:              params[oauth2const.RequestParamMaxAge],
 		DPoPJkt:             resolveDPoPJkt(params[oauth2const.RequestParamDPoPJkt], dpopHeaderJkt),
 		Prompt:              params[oauth2const.RequestParamPrompt],
+		IDTokenHint:         params[oauth2const.RequestParamIDTokenHint],
 	}
 
 	initiatorQueryParams := make(map[string][]string, len(params)+1)

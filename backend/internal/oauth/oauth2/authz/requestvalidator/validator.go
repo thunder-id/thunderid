@@ -127,9 +127,10 @@ func ValidatePromptParameter(prompt string) (string, string) {
 				"prompt value 'none' must not be combined with other values"
 		}
 
-		// The server does not support server-side sessions as of now.
-		return constants.ErrorLoginRequired,
-			"User authentication is required"
+		// Whether "none" can be honored depends on an existing SSO session, which this shared
+		// parameter validation cannot see. The authorize endpoint decides it against the resolved
+		// session; the PAR endpoint only stores the request, so the decision waits for the
+		// authorization request that later resolves the request_uri.
 	}
 
 	// The server does not support account selection prompts as of now.

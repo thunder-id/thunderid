@@ -193,6 +193,17 @@ func (suite *AuthorizeHandlerTestSuite) TestGetOAuthMessage_NilRequest() {
 	assert.Nil(suite.T(), msg)
 }
 
+// TestHandleAuthorizeGetRequest_NilRequest pins that request validation precedes every dereference
+// of it. The handler reads the request context and its cookies to carry the inbound SSO handle, so
+// doing either before the nil guard turns a handled error into a panic.
+func (suite *AuthorizeHandlerTestSuite) TestHandleAuthorizeGetRequest_NilRequest() {
+	rr := httptest.NewRecorder()
+
+	assert.NotPanics(suite.T(), func() {
+		suite.handler.HandleAuthorizeGetRequest(rr, nil)
+	}, "a nil request must return through the error path, not panic")
+}
+
 func (suite *AuthorizeHandlerTestSuite) TestGetOAuthMessage_NilResponseWriter() {
 	req := httptest.NewRequest(http.MethodGet, "/auth", nil)
 
@@ -465,6 +476,63 @@ func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_ZeroAuthTime() 
 	afterCreation := time.Now()
 	assert.True(suite.T(), result.TimeCreated.After(beforeCreation) || result.TimeCreated.Equal(beforeCreation))
 	assert.True(suite.T(), result.TimeCreated.Before(afterCreation) || result.TimeCreated.Equal(afterCreation))
+}
+
+// TestCreateAuthorizationCode_AgedSessionKeepsFullCodeLifetime pins the separation between when the
+// subject authenticated and when the code was minted. On the SSO path a reused session's
+// authentication can be hours old; deriving the code's expiry from it would hand out codes that are
+// already expired, so the lifetime must run from creation instead.
+func (suite *AuthorizeHandlerTestSuite) TestCreateAuthorizationCode_AgedSessionKeepsFullCodeLifetime() {
+	authRequestCtx := &authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{
+			ClientID:    "test-client",
+			RedirectURI: "https://client.example.com/callback",
+		},
+	}
+	clms := &assertionClaims{userID: "test-user"}
+
+	cfg := authorizeServiceCfgFromRuntime()
+	validity := time.Duration(cfg.OAuth.AuthorizationCode.ValidityPeriod) * time.Second
+	suite.Require().Greater(validity, time.Duration(0), "a validity period is needed for this test to mean anything")
+
+	// A session that authenticated well before the configured code lifetime, which is the ordinary
+	// case for SSO: sessions live up to eight hours, codes for ten minutes.
+	authTime := time.Now().Add(-2 * validity)
+
+	result, err := createAuthorizationCode(cfg, authRequestCtx, clms, authTime)
+
+	suite.Require().NoError(err)
+	assert.True(suite.T(), result.ExpiryTime.After(time.Now()),
+		"a code minted over an aged session must not be born expired")
+	assert.WithinDuration(suite.T(), time.Now(), result.TimeCreated, time.Minute,
+		"TimeCreated should record when the code was minted, not when the subject authenticated")
+	assert.WithinDuration(suite.T(), authTime, result.AuthTime, time.Second,
+		"AuthTime should carry the session's authentication time unchanged")
+	assert.WithinDuration(suite.T(), time.Now().Add(validity), result.ExpiryTime, time.Minute,
+		"the code should get its full configured lifetime regardless of the session's age")
+}
+
+// TestCreateAuthorizationCode_AuthTimeSurvivesForIDToken verifies the other half: the authentication
+// time is still carried, since the id_token's auth_time claim is sourced from it. Measuring expiry
+// from creation must not cost the claim its value.
+func (suite *AuthorizeHandlerTestSuite) TestCreateAuthorizationCode_AuthTimeSurvivesForIDToken() {
+	authRequestCtx := &authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{
+			ClientID:    "test-client",
+			RedirectURI: "https://client.example.com/callback",
+		},
+	}
+	clms := &assertionClaims{userID: "test-user"}
+
+	authTime := time.Now().Add(-45 * time.Minute).Truncate(time.Second)
+
+	result, err := createAuthorizationCode(authorizeServiceCfgFromRuntime(), authRequestCtx, clms, authTime)
+
+	suite.Require().NoError(err)
+	assert.Equal(suite.T(), authTime.Unix(), result.AuthTime.Unix(),
+		"auth_time must report the authentication, so two codes over one session agree")
+	assert.NotEqual(suite.T(), result.AuthTime.Unix(), result.TimeCreated.Unix(),
+		"the two timestamps are distinct on the SSO path and must not be conflated")
 }
 
 func (suite *AuthorizeHandlerTestSuite) TestCreateAuthorizationCode_WithClaimsLocales() {

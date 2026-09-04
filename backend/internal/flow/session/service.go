@@ -176,6 +176,23 @@ func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 		return SaveCheckpointResult{Skipped: true}, nil
 	}
 
+	// Reaching this point means the subject authenticated during this execution: the SSO-hit path
+	// loads its checkpoint and never saves one. When that happens inside a session that already
+	// existed, it was a re-authentication (prompt=login, or a max_age the previous authentication no
+	// longer satisfied), so the session's authentication time has to move forward with it. Leaving it
+	// stale would make the session claim an older authentication than actually took place, which
+	// under-reports auth_time and makes a later max_age check reject a request it should allow.
+	if !created {
+		now := time.Now().UTC()
+		if err := s.store.TouchAuthenticatedAt(ctx, target.SessionID, now,
+			now.Add(s.timeouts.Idle)); err != nil {
+			// The checkpoint itself is still worth saving, so degrade rather than fail the login.
+			s.logger.Error(ctx, "Failed to refresh session authentication time", log.Error(err))
+		} else {
+			target.AuthenticatedAt = now
+		}
+	}
+
 	snapshot := SessionContext{
 		SessionID:      target.SessionID,
 		CheckpointID:   in.Checkpoint,

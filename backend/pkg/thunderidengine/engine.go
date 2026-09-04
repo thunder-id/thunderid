@@ -221,7 +221,10 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.jweService, engineCtx.flowExecService, engineCtx.observabilitySvc, engineCtx.runtimeCryptoSvc,
 		engineCtx.ouProvider, engineCtx.attributeCacheService, engineCtx.authzProvider, engineCtx.resourceProvider,
 		engineCtx.i18nProvider, engineCtx.idpProvider, engineCtx.dpopVerifier, engineCtx.runtimeStoreProvider,
-		engineCtx.transactioner, revocationEnforcer, revocationService, oauthConfig)
+		engineCtx.transactioner, revocationEnforcer, revocationService,
+		// The embedded engine has no SSO session store, so prompt=none keeps answering
+		// login_required rather than consulting a session.
+		nil, engineCtx.flowProvider, oauthConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}
