@@ -82,6 +82,11 @@ const sidebar: SidebarsConfig = {
       items: [
         {
           type: 'doc',
+          id: 'sdks/android/guides/try-the-sample-app',
+          label: 'Try the Sample App',
+        },
+        {
+          type: 'doc',
           id: 'sdks/android/guides/accessing-protected-apis',
           label: 'Accessing Protected APIs',
         },

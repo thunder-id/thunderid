@@ -1,0 +1,53 @@
+---
+title: iOS SDK Development
+docType: community
+description: "Repository layout, build commands, and code style for contributing to the {{ProductName}} iOS SDK."
+sidebar_position: 1
+hide_table_of_contents: false
+---
+
+# iOS SDK Development
+
+The iOS SDK lives in [ios-sdks](https://github.com/thunder-id/ios-sdks), a Swift package publishing two products.
+
+| Product | Purpose |
+|---------|---------|
+| `ThunderID` | Core SDK: HTTP, token management, auth flows, PKCE, storage |
+| `ThunderIDSwiftUI` | SwiftUI component library built on the core |
+
+```text
+Sources/ThunderID/          Core SDK (auth, token, http layers)
+Sources/ThunderIDSwiftUI/   SwiftUI component library
+Samples/Quickstart/         Demo app, not part of the SDK
+Tests/                      Unit tests
+Tests/e2e/                  End-to-end suite
+```
+
+## Commands
+
+```bash
+swift build
+swift test
+swiftlint lint --strict
+```
+
+Open `Samples/Quickstart/Package.swift` in Xcode to run the sample on a simulator or device.
+
+## Code Style
+
+- Swift 5.9 or later, targeting iOS 16 and macOS 13 as a minimum.
+- No third-party dependencies in `Sources/`. Only `Foundation`, `CryptoKit`, and `SwiftUI`.
+- Prefer `async`/`throws` over completion handlers.
+- Mark internal helpers `private` and expose only intentional API as `public`.
+
+`swiftlint lint --strict` gates CI, and every violation fails the build. The rules that catch people most often are a 120-character line limit, alphabetically sorted imports, `} else {` on one line, trailing closure syntax, and identifiers of at least three characters. Run it locally before opening a pull request.
+
+## Vendor Naming
+
+The SDK is white-labelable: a consuming app overrides the brand namespace through `ThunderIDConfig.vendor`. Do not hardcode `thunderid` in a runtime name that override should control, such as a Keychain service name or a log tag. Resolve it from `config.vendor` instead.
+
+An entry point whose purpose is to represent the SDK itself, such as `ThunderIDClient`, is a fixed identity and keeps the name.
+
+## Next Steps
+
+- [Testing](../testing)

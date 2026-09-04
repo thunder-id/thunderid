@@ -1260,6 +1260,46 @@ const sidebars: SidebarsConfig = {
                   label: 'Overview',
                   key: 'sdk-overview',
                 },
+                {
+                  type: 'category',
+                  label: 'JavaScript SDK Development',
+                  collapsed: true,
+                  collapsible: true,
+                  items: [
+                    {type: 'doc', id: 'community/contributing/contributing-code/sdk-development/javascript/overview', label: 'Overview', key: 'js-sdk-overview'},
+                    {type: 'doc', id: 'community/contributing/contributing-code/sdk-development/javascript/testing', label: 'Testing', key: 'js-sdk-testing'},
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'iOS SDK Development',
+                  collapsed: true,
+                  collapsible: true,
+                  items: [
+                    {type: 'doc', id: 'community/contributing/contributing-code/sdk-development/ios/overview', label: 'Overview', key: 'ios-sdk-overview'},
+                    {type: 'doc', id: 'community/contributing/contributing-code/sdk-development/ios/testing', label: 'Testing', key: 'ios-sdk-testing'},
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'Android SDK Development',
+                  collapsed: true,
+                  collapsible: true,
+                  items: [
+                    {type: 'doc', id: 'community/contributing/contributing-code/sdk-development/android/overview', label: 'Overview', key: 'android-sdk-overview'},
+                    {type: 'doc', id: 'community/contributing/contributing-code/sdk-development/android/testing', label: 'Testing', key: 'android-sdk-testing'},
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'Flutter SDK Development',
+                  collapsed: true,
+                  collapsible: true,
+                  items: [
+                    {type: 'doc', id: 'community/contributing/contributing-code/sdk-development/flutter/overview', label: 'Overview', key: 'flutter-sdk-overview'},
+                    {type: 'doc', id: 'community/contributing/contributing-code/sdk-development/flutter/testing', label: 'Testing', key: 'flutter-sdk-testing'},
+                  ],
+                },
               ],
             },
             {
