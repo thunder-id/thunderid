@@ -254,7 +254,7 @@ read_config() {
     log_debug "Reading configuration from: $config_file"
 
     # Try yq first (YAML parser)
-    if command -v yq >/dev/null 2>&1; then
+    if command -v yq >/dev/null 2>&1 && yq eval '.' /dev/null >/dev/null 2>&1; then
         HOSTNAME=$(yq eval '.server.hostname // "localhost"' "$config_file" 2>/dev/null)
         PORT=$(yq eval '.server.port // 8090' "$config_file" 2>/dev/null)
         HTTP_ONLY=$(yq eval '.server.http_only // false' "$config_file" 2>/dev/null)
