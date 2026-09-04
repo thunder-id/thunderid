@@ -1,3 +1,5 @@
+# Callers check out the test sources. The action must never check out a ref of its own.
+# A checkout here would replace the workspace mid-job and test a different commit than the build.
 name: Run Integration Tests
 description: Runs integration tests against a specific database type (sqlite, postgres, or redis)
 inputs:
@@ -8,23 +10,27 @@ inputs:
     description: 'Whether to enable coverage collection'
     required: false
     default: false
-  ref:
-    description: 'Branch, tag or SHA to check out the test sources from. Defaults to the ref that triggered the workflow.'
-    required: false
-    default: ''
 
 runs:
   using: "composite"
   steps:
-    - name: 📥 Checkout Code
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      with:
-        ref: ${{ inputs.ref }}
-
     - name: ⚙️ Set up Go Environment
       uses: ./.github/actions/setup-go
 
+    # Some callers stage the distribution themselves. Skip the download instead of refetching.
+    - name: 🔍 Check for a Staged Distribution
+      id: staged_distribution
+      shell: bash
+      run: |
+        if ls target/dist/*.zip >/dev/null 2>&1; then
+          echo "✅ Using the distribution already staged in target/dist"
+          echo "present=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "present=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: 📥 Download Built Distribution
+      if: steps.staged_distribution.outputs.present != 'true'
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
       with:
         name: product-distribution

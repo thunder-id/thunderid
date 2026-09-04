@@ -27,13 +27,14 @@ on:
         type: boolean
         default: false
       bump_type:
-        description: 'Version bump type to apply to version.txt (major, minor, or patch). Ignored when version is given.'
+        description: 'Version bump type to apply to version.txt (major, minor, patch or milestone). Ignored when version is given.'
         required: false
         type: choice
         options:
           - minor
           - patch
           - major
+          - milestone
         default: minor
       use_existing_version:
         description: 'Use version.txt as-is (no bump, no auto-commit). Ignored when version is given.'
@@ -67,21 +68,31 @@ env:
   PNPM_VERSION: "latest"
 
 jobs:
-  build:
-    name: ⚡ Build
+  resolve:
+    name: 🔎 Resolve Release Commit
     runs-on: ubuntu-latest
     outputs:
+      sha: ${{ steps.commit.outputs.sha }}
       version: ${{ steps.get_version.outputs.version }}
+      semver: ${{ steps.get_version.outputs.semver }}
       prerelease: ${{ steps.get_version.outputs.prerelease }}
       run_performance_test: ${{ steps.get_version.outputs.run_performance_test }}
       commit_version: ${{ steps.get_version.outputs.commit_version }}
+      cli_suite: ${{ steps.cli_suite.outputs.present }}
     steps:
-      - name: 📥 Checkout Code
+      - name: 📥 Checkout Release Branch
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
           ref: ${{ env.RELEASE_BRANCH }}
+          persist-credentials: false
+
+      - name: 📌 Pin the Release Commit
+        id: commit
+        run: |
+          SHA="$(git rev-parse HEAD)"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "✅ Branch '${RELEASE_BRANCH}' resolves to $SHA"
 
       - name: 📝 Determine Release Version
         id: get_version
@@ -137,8 +148,21 @@ jobs:
                 patch)
                   VERSION="v${CUR_MAJOR}.${CUR_MINOR}.$((CUR_PATCH + 1))"
                   ;;
+                milestone)
+                  # The other bump types drop the suffix, only this one advances a milestone.
+                  MILESTONE="${SEMVER#*-}"
+                  if [ "$MILESTONE" = "$SEMVER" ] || ! [[ $MILESTONE =~ ^m([0-9]+)$ ]]; then
+                    echo "❌ Error: '$CURRENT_VERSION' is not a milestone version"
+                    echo "❌ bump_type 'milestone' steps an -mN suffix, for example v1.1.0-m1 to v1.1.0-m2"
+                    echo "❌ To start a milestone line, or for any other pre-release, pass an explicit 'version'"
+                    exit 1
+                  fi
+                  MILESTONE_NUMBER="${BASH_REMATCH[1]}"
+                  VERSION="v${SEMVER%%-*}-m$((10#$MILESTONE_NUMBER + 1))"
+                  echo "🔎 Milestone bump: ${CURRENT_VERSION} is milestone ${MILESTONE_NUMBER} of ${SEMVER%%-*}"
+                  ;;
                 *)
-                  echo "❌ Error: Invalid bump_type '$BUMP_TYPE'. Must be major, minor, or patch."
+                  echo "❌ Error: Invalid bump_type '$BUMP_TYPE'. Must be major, minor, patch or milestone."
                   exit 1
                   ;;
               esac
@@ -148,6 +172,8 @@ jobs:
 
           echo "✅ Selected release version: $VERSION (Commit version: $COMMIT_VERSION, Prerelease: $PRERELEASE, Perf Test: $RUN_PERF_TEST)"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          # The distribution file names carry the version without the leading 'v'
+          echo "semver=${VERSION#v}" >> $GITHUB_OUTPUT
           echo "prerelease=$PRERELEASE" >> $GITHUB_OUTPUT
           echo "run_performance_test=$RUN_PERF_TEST" >> $GITHUB_OUTPUT
           echo "commit_version=$COMMIT_VERSION" >> $GITHUB_OUTPUT
@@ -172,98 +198,208 @@ jobs:
           fi
           echo "✅ Version '$VERSION' does not exist yet - proceeding with release"
 
-      - name: 🏷️ Update Product Version
-        if: ${{ steps.get_version.outputs.commit_version == 'true' }}
+      - name: 🔒 Verify Composite Action Compatibility
         run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
-          echo "$VERSION" > version.txt
-          echo "✅ Updated version.txt to $VERSION"
+          set -uo pipefail
+          # Composite action files are read from the workspace, while this workflow comes
+          # from the dispatch ref, and a mismatch is only a warning at runtime.
+          status=0
 
-      - name: 📝 Update Helm and Sample App Versions
-        if: ${{ steps.get_version.outputs.commit_version == 'true' }}
+          check() {
+            local dir="$1"
+            shift
+            if [ ! -f "$dir/action.yml" ]; then
+              echo "::error::$dir/action.yml does not exist at the release commit"
+              status=1
+              return
+            fi
+            # A checkout here would replace the workspace and undo the pinned commit.
+            if grep -q 'actions/checkout' "$dir/action.yml"; then
+              echo "::error::$dir/action.yml checks out its own ref, which would replace the pinned release commit. Forward-port the fix to '${RELEASE_BRANCH}'."
+              status=1
+            fi
+            local input
+            for input in "$@"; do
+              if ! awk '/^inputs:/{f=1;next} /^[^[:space:]]/{f=0} f' "$dir/action.yml" \
+                 | grep -qE "^[[:space:]]{2}${input}:"; then
+                echo "::error::$dir/action.yml does not declare the input '$input' that this workflow passes"
+                status=1
+              fi
+            done
+          }
+
+          check .github/actions/setup-go
+          check .github/actions/setup-node
+          check .github/actions/build-multiplatform
+          check .github/actions/run-integration-tests database-type
+          check .github/actions/setup-samples-environment download-certificates
+          check .github/actions/update-sample-versions version
+          check .github/actions/release-notification webhook product-name release-name release-tag release-url
+
+          if [ "$status" -ne 0 ]; then
+            echo "::error::The release commit is not compatible with this workflow revision."
+            exit 1
+          fi
+          echo "✅ Every composite action this workflow uses is present and compatible"
+
+      # Branches that predate tests/e2e-cli cannot run the CLI release gate.
+      - name: 🔎 Detect the CLI End-to-End Suite
+        id: cli_suite
         run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
-          SEMVER_VERSION="${VERSION#v}"
-
-          echo "📝 Updating install/helm/Chart.yaml to $SEMVER_VERSION"
-          sed -i -E "s/^version: .*/version: ${SEMVER_VERSION}/" install/helm/Chart.yaml
-          sed -i -E "s/^appVersion: .*/appVersion: \"${SEMVER_VERSION}\"/" install/helm/Chart.yaml
-
-          echo "📝 Updating sample app package versions to $SEMVER_VERSION"
-          cd samples/apps/react-api-based-sample
-          npm version "$SEMVER_VERSION" --no-git-tag-version --allow-same-version
-
-          cd "$GITHUB_WORKSPACE/samples/apps/react-sdk-sample"
-          npm version "$SEMVER_VERSION" --no-git-tag-version --allow-same-version
-
-          cd "$GITHUB_WORKSPACE/samples/apps/vanilla-sample"
-          npm version "$SEMVER_VERSION" --no-git-tag-version --allow-same-version
-
-          cd "$GITHUB_WORKSPACE/samples/apps/wayfinder-sample"
-          npm version "$SEMVER_VERSION" --no-git-tag-version --allow-same-version
-
-          cd "$GITHUB_WORKSPACE"
-          echo "✅ Updated Helm chart and sample app versions to $SEMVER_VERSION"
-
-      - name: 📤 Commit and Push Version Bump
-        if: ${{ steps.get_version.outputs.commit_version == 'true' }}
-        run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
-
-          git config --local user.name "${{ env.RELEASE_GIT_USER_NAME }}"
-          git config --local user.email "${{ env.RELEASE_GIT_USER_EMAIL }}"
-
-          git add \
-            version.txt \
-            README.md \
-            install/helm/Chart.yaml \
-            samples/apps/react-api-based-sample/package.json \
-            samples/apps/react-sdk-sample/package.json \
-            samples/apps/vanilla-sample/package.json \
-            samples/apps/wayfinder-sample/package.json
-
-          if git diff --cached --quiet; then
-            echo "✅ No changes to commit (files already at $VERSION)"
+          if [ -f tests/e2e-cli/package.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "✅ tests/e2e-cli is present, so the CLI release gate runs"
           else
-            git commit -m "[Release] Bump version to ${VERSION}"
-            git push origin "HEAD:${RELEASE_BRANCH}"
-            echo "✅ Pushed version bump commit to ${RELEASE_BRANCH} branch"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "⏭️ tests/e2e-cli is absent on '${RELEASE_BRANCH}', so the CLI release gate is skipped"
+            echo "⏭️ \`tests/e2e-cli\` is absent on \`${RELEASE_BRANCH}\`, so the CLI release gate did not run." \
+              >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: ⚙️ Set up Go Environment  
-        uses: ./.github/actions/setup-go  
+      - name: 📋 Record the Release Commit
+        run: |
+          echo "Building \`${{ steps.get_version.outputs.version }}\` from \`${RELEASE_BRANCH}\` at commit \`${{ steps.commit.outputs.sha }}\`." \
+            >> "$GITHUB_STEP_SUMMARY"
 
-      - name: 🗄️ Cache Go Modules  
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4  
-        id: cache-go-modules  
-        with:  
-          path: |  
-            ~/.cache/go-build  
-            ~/go/pkg/mod  
-          key: ${{ runner.os }}-go-modules-${{ hashFiles('**/go.sum') }}  
-          restore-keys: |  
-            ${{ runner.os }}-go-modules-  
+  test-unit:
+    name: 🧪 Backend Unit Tests
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout the Release Commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
 
-      - name: 📦 Install Dependencies  
-        run: |  
-          cd backend  
-          go mod download  
-          cd ../tests/integration  
-          go mod download  
+      - name: 🔒 Assert the Release Commit
+        run: |
+          EXPECTED='${{ needs.resolve.outputs.sha }}'
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Workspace is at $ACTUAL but the release commit is $EXPECTED"
+            exit 1
+          fi
+          echo "✅ Workspace is at the release commit $ACTUAL"
 
-      - name: 🧹 Clean Previous Builds  
+      - name: ⚙️ Set up Go Environment
+        uses: ./.github/actions/setup-go
+
+      - name: 🗄️ Cache Go Modules
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-modules-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-modules-
+
+      - name: 📦 Install Dependencies
+        run: |
+          cd backend
+          go mod download
+
+      - name: 🧪 Run Unit Tests
+        run: make test_unit
+
+  build:
+    name: ⚡ Build Release Artifacts
+    needs: [resolve, test-unit]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout the Release Commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+
+      - name: 🔒 Assert the Release Commit
+        run: |
+          EXPECTED='${{ needs.resolve.outputs.sha }}'
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Workspace is at $ACTUAL but the release commit is $EXPECTED"
+            exit 1
+          fi
+          echo "✅ Workspace is at the release commit $ACTUAL"
+
+      - name: ⚙️ Set up Go Environment
+        uses: ./.github/actions/setup-go
+
+      - name: 🗄️ Cache Go Modules
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: cache-go-modules
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-modules-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-modules-
+
+      - name: 📦 Install Dependencies
+        run: |
+          cd backend
+          go mod download
+
+      - name: 📦 Install pnpm for Frontend Build
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          run_install: false
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: ⚙️ Set up Node.js for Frontend Build
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 🏷️ Apply the Release Version
+        # An RC keeps the branch's version in the product; only the file names
+        # carry the dispatched version. See 8befa638a.
+        if: ${{ needs.resolve.outputs.commit_version == 'true' }}
+        run: |
+          echo "${{ needs.resolve.outputs.version }}" > version.txt
+          echo "✅ Building the product as ${{ needs.resolve.outputs.version }}"
+
+      - name: 🧹 Clean Previous Builds
         run: make clean
 
-      - name: 🔨 Build Product with Coverage  
-        run: |  
-          set -e  
-          make build_with_coverage_only OS=$(go env GOOS) ARCH=$(go env GOARCH)
-          
-          # Find the built distribution
-          DIST_PATH=$(find target/dist -name "$PRODUCT_NAME_LOWER-*.zip" | head -1)
-          echo "Built distribution: $DIST_PATH"
+      - name: 🔨 Build Release Artifacts
+        uses: ./.github/actions/build-multiplatform
 
-      - name: 📦 Upload Built Distribution
+      - name: 🔍 Verify the Distribution Set
+        run: |
+          # The archives are named from version.txt, which the release job renames to the
+          # release version once the artifact has been tested.
+          SEMVER=$(tr -d '[:space:]' < version.txt)
+          SEMVER="${SEMVER#v}"
+          missing=0
+          for target in linux-x64 linux-arm64 macos-x64 macos-arm64 win-x64; do
+            archive="target/dist/${PRODUCT_NAME_LOWER}-${SEMVER}-${target}.zip"
+            if [ ! -f "$archive" ]; then
+              echo "::error::Expected distribution $archive was not produced"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            ls -l target/dist/
+            exit 1
+          fi
+          echo "✅ All five distributions carry version $SEMVER"
+          ls -l target/dist/
+
+          {
+            echo "### 📦 Built artifacts"
+            echo
+            echo "| Archive | SHA-256 |"
+            echo "|---|---|"
+            for archive in target/dist/*.zip; do
+              echo "| \`$(basename "$archive")\` | \`$(sha256sum "$archive" | cut -d' ' -f1)\` |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 📦 Upload the Release Distribution
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: product-distribution
@@ -272,7 +408,7 @@ jobs:
 
   test-integration:
     name: 🧪 Integration Tests (${{ matrix.database }})
-    needs: build
+    needs: [resolve, build]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -293,41 +429,25 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      # Checks out the dispatched ref, not the release branch, so the local
-      # composite action below is read from this workflow's own revision. The
-      # action then checks out RELEASE_BRANCH to supply the test sources.
-      - name: 📥 Checkout Code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - name: 🧪 Run Integration Tests (${{ matrix.database }})
-        uses: ./.github/actions/run-integration-tests
-        with:
-          database-type: ${{ matrix.database }}
-          coverage-enabled: true
-          ref: ${{ env.RELEASE_BRANCH }}
-
-  validate-windows:
-    name: 🪟 Validate Windows PowerShell
-    needs: build
-    uses: ./.github/workflows/windows-powershell-validation.yml
-
-  build-and-package:
-    name: 📦 Build and Package Release
-    runs-on: ubuntu-latest
-    needs: [build, test-integration, validate-windows]
-    steps:
-      - name: 📥 Checkout Code
+      - name: 📥 Checkout the Release Commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          fetch-depth: 0
-          ref: ${{ env.RELEASE_BRANCH }}
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
 
-      - name: ⚙️ Set up Go Environment
-        uses: ./.github/actions/setup-go
+      - name: 🔒 Assert the Release Commit
+        run: |
+          EXPECTED='${{ needs.resolve.outputs.sha }}'
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Workspace is at $ACTUAL but the release commit is $EXPECTED"
+            exit 1
+          fi
+          echo "✅ Workspace is at the release commit $ACTUAL"
 
+      # Keyed off the tree under test. The action below compiles the whole suite.
       - name: 🗄️ Cache Go Modules
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        id: cache-go-modules
         with:
           path: |
             ~/.cache/go-build
@@ -336,69 +456,260 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-modules-
 
-      - name: 📦 Install Dependencies
-        run: |
-          cd backend
-          go mod download
-          cd ../tests/integration
-          go mod download
+      - name: 📥 Download the Release Distribution
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: product-distribution
+          path: target/dist/
 
-      - name: 📦 Install pnpm for Frontend Build
+      - name: 📋 Record the Archive Under Test
+        run: |
+          archive="$(ls target/dist/${PRODUCT_NAME_LOWER}-*-linux-x64.zip 2>/dev/null | head -1)"
+          if [ -z "$archive" ]; then
+            echo "::error::no ${PRODUCT_NAME_LOWER}-*-linux-x64.zip in the release artifact"
+            ls -l target/dist/
+            exit 1
+          fi
+          {
+            echo "### 🧪 Integration tests (${{ matrix.database }})"
+            echo
+            echo "Running against \`$(basename "$archive")\` (\`$(sha256sum "$archive" | cut -d' ' -f1)\`) built from \`${{ needs.resolve.outputs.sha }}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ Testing the released archive $(basename "$archive")"
+
+      - name: 🧪 Run Integration Tests (${{ matrix.database }})
+        uses: ./.github/actions/run-integration-tests
+        with:
+          database-type: ${{ matrix.database }}
+
+  test-windows:
+    name: 🪟 Validate Windows Distribution
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - name: 📥 Download the Release Distribution
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: product-distribution
+          path: .
+
+      - name: 📂 Extract Windows Build
+        run: |
+          Write-Host "📂 Extracting build..."
+
+          # Find the zip file
+          $zipFile = Get-ChildItem -Filter "$env:PRODUCT_NAME_LOWER-*-win-*.zip" | Select-Object -First 1
+
+          if (-not $zipFile) {
+            Write-Host "❌ No distribution zip found"
+            exit 1
+          }
+
+          Write-Host "Found: $($zipFile.Name)"
+
+          # Extract the archive
+          Expand-Archive -Path $zipFile.FullName -DestinationPath "." -Force
+
+          # Find the extracted directory
+          $extractedDir = Get-ChildItem -Directory -Filter "$env:PRODUCT_NAME_LOWER-*-win-*" | Select-Object -First 1
+
+          if (-not $extractedDir) {
+            Write-Host "❌ No extracted directory found"
+            exit 1
+          }
+
+          Write-Host "✅ Extraction completed"
+          Write-Host "📁 Extracted to: $($extractedDir.Name)"
+
+          # Save the directory name for later steps
+          $extractedDir.Name | Out-File -FilePath "server-dir.txt"
+
+          Write-Host "📁 Contents:"
+          Get-ChildItem -Path $extractedDir.FullName | Select-Object Name, Length
+        shell: pwsh
+
+      - name: ⚙️ Run setup.ps1
+        run: |
+          # Get the server directory name
+          $serverDir = Get-Content "server-dir.txt" -Raw
+          $serverDir = $serverDir.Trim()
+
+          Write-Host "⚙️ Running setup.ps1..."
+
+          cd $serverDir
+
+          # Set environment variables for setup
+          $env:BOOTSTRAP_FAIL_FAST = "true"
+          $env:DEBUG = "false"  # Disable debug logging
+
+          # Run setup script
+          .\setup.ps1
+
+          Write-Host "✅ Setup completed successfully"
+        shell: pwsh
+        timeout-minutes: 10
+
+      - name: 🚀 Start Server
+        run: |
+          # Get the server directory name
+          $serverDir = Get-Content "server-dir.txt" -Raw
+          $serverDir = $serverDir.Trim()
+
+          Write-Host "Starting server in background..."
+          Write-Host "Working directory: $serverDir"
+
+          cd $serverDir
+
+          # Start server in background using Start-Process
+          # This ensures the server runs in the same session context and ports are accessible
+          $startScript = Join-Path (Get-Location) "start.ps1"
+          $proc = Start-Process -FilePath "pwsh" -ArgumentList @("-File", $startScript) -WorkingDirectory (Get-Location) -NoNewWindow -PassThru
+
+          Write-Host "Server process started (PID: $($proc.Id))"
+          Write-Host "Waiting for server to start..."
+
+          # Wait for server to initialize
+          Start-Sleep -Seconds 15
+
+          # Check if process is still running
+          if ($proc.HasExited) {
+            Write-Host "❌ Server process exited unexpectedly"
+            Write-Host "Exit Code: $($proc.ExitCode)"
+            exit 1
+          }
+
+          Write-Host "✅ Server process is running (PID: $($proc.Id))"
+
+          # Wait additional time for server to be fully ready
+          Write-Host "Waiting for server to be fully ready..."
+          Start-Sleep -Seconds 15
+
+          # Save process ID for cleanup
+          $pidFilePath = Join-Path $env:GITHUB_WORKSPACE "server-pid.txt"
+          $proc.Id | Out-File -FilePath $pidFilePath
+          Write-Host "Saved PID to: $pidFilePath"
+        timeout-minutes: 5
+        shell: pwsh
+
+      - name: 🛑 Stop Server
+        if: always()
+        run: |
+          Write-Host "🛑 Cleaning up server..."
+
+          # Stop the server process using saved PID
+          $pidFilePath = Join-Path $env:GITHUB_WORKSPACE "server-pid.txt"
+          if (Test-Path $pidFilePath) {
+            $serverPid = Get-Content $pidFilePath -Raw
+            $serverPid = $serverPid.Trim()
+
+            $proc = Get-Process -Id $serverPid -ErrorAction SilentlyContinue
+            if ($proc) {
+              Write-Host "⏹️ Stopping server process (PID: $serverPid)"
+              Stop-Process -Id $serverPid -Force -ErrorAction SilentlyContinue
+              Write-Host "✅ Server process stopped"
+            } else {
+              Write-Host "ℹ️ Server process (PID: $serverPid) already exited"
+            }
+          } else {
+            Write-Host "ℹ️ PID file not found (server may not have started)"
+          }
+
+          # Also find and kill any remaining server processes by name
+          $serverProcesses = Get-Process -Name "$env:PRODUCT_NAME_LOWER" -ErrorAction SilentlyContinue
+          if ($serverProcesses) {
+            Write-Host "⏹️ Found server process(es), stopping..."
+            foreach ($proc in $serverProcesses) {
+              Write-Host "  Stopping server process (PID: $($proc.Id))"
+              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            }
+            Write-Host "✅ All server processes stopped"
+          } else {
+            Write-Host "✅ No running server processes found"
+          }
+
+          Write-Host "✅ Cleanup complete"
+        shell: pwsh
+
+  package-samples:
+    name: 📦 Package Samples
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout the Release Commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+
+      - name: 🔒 Assert the Release Commit
+        run: |
+          EXPECTED='${{ needs.resolve.outputs.sha }}'
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Workspace is at $ACTUAL but the release commit is $EXPECTED"
+            exit 1
+          fi
+          echo "✅ Workspace is at the release commit $ACTUAL"
+
+      - name: ⚙️ Setup Samples Environment
+        uses: ./.github/actions/setup-samples-environment
+        with:
+          download-certificates: 'false'
+
+      - name: 📝 Update Sample Apps Version
+        uses: ./.github/actions/update-sample-versions
+        with:
+          version: ${{ needs.resolve.outputs.version }}
+
+      - name: 📦 Build and Package Samples
+        run: ./scripts/package-samples.sh
+
+      - name: 📦 Upload Sample Artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ env.PRODUCT_NAME_LOWER }}-samples
+          path: target/dist/*.zip
+          if-no-files-found: error
+
+  test-cli:
+    name: 🎭 Verify the CLI Installs This Release
+    needs: [resolve, build]
+    if: ${{ needs.resolve.outputs.cli_suite == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout the Release Commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+
+      - name: 🔒 Assert the Release Commit
+        run: |
+          EXPECTED='${{ needs.resolve.outputs.sha }}'
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Workspace is at $ACTUAL but the release commit is $EXPECTED"
+            exit 1
+          fi
+          echo "✅ Workspace is at the release commit $ACTUAL"
+
+      - name: 📥 Download the Release Distribution
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: product-distribution
+          path: target/dist/
+
+      - name: 📦 Install pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           run_install: false
           version: ${{ env.PNPM_VERSION }}
 
-      - name: ⚙️ Set up Node.js for Frontend Build
+      - name: ⚙️ Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-
-      - name: 🔨 Build Release Artifacts
-        uses: ./.github/actions/build-multiplatform
-
-      - name: 🏷️ Name Distributions After the Release Version
-        run: |
-          # The product is built from version.txt so a release candidate stays identical to
-          # its GA build; only the distribution file name carries the release version.
-          RELEASE_VERSION="${{ needs.build.outputs.version }}"
-          RELEASE_VERSION="${RELEASE_VERSION#v}"
-          BUILT_VERSION=$(tr -d '[:space:]' < version.txt)
-          BUILT_VERSION="${BUILT_VERSION#v}"
-
-          if [ "$BUILT_VERSION" == "$RELEASE_VERSION" ]; then
-            echo "✅ Distributions already carry the release version $RELEASE_VERSION"
-            exit 0
-          fi
-
-          echo "📦 Renaming distributions from $BUILT_VERSION to $RELEASE_VERSION"
-          RENAMED=0
-          for zip in target/dist/${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-*.zip; do
-            [ -e "$zip" ] || continue
-            SUFFIX="${zip#target/dist/${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-}"
-            mv "$zip" "target/dist/${PRODUCT_NAME_LOWER}-${RELEASE_VERSION}-${SUFFIX}"
-            echo "  ${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-${SUFFIX} -> ${PRODUCT_NAME_LOWER}-${RELEASE_VERSION}-${SUFFIX}"
-            RENAMED=$((RENAMED + 1))
-          done
-
-          if [ "$RENAMED" -eq 0 ]; then
-            echo "❌ Error: no distributions matched ${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-*.zip"
-            ls -l target/dist/
-            exit 1
-          fi
-          echo "✅ Renamed $RENAMED distribution(s) to $RELEASE_VERSION"
-
-      - name: 📝 Read Updated Version
-        id: version
-        run: echo "version=$(cat version.txt)" >> $GITHUB_OUTPUT
-
-      - name: 📦 Upload Backend Distribution Artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: product-distribution
-          path: target/dist/*.zip
-          if-no-files-found: error
-          overwrite: true
 
       # Lane 3 of the CLI end-to-end strategy: the release gate.
       #
@@ -431,18 +742,63 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: 🏷️ Create Git Tag
+  docker-images:
+    name: 🐳 Publish Container Images
+    needs: [resolve, build, test-integration, test-windows, test-cli, package-samples]
+    if: ${{ !cancelled()
+      && needs.resolve.result == 'success'
+      && needs.build.result == 'success'
+      && needs.test-integration.result == 'success'
+      && needs.test-windows.result == 'success'
+      && needs.package-samples.result == 'success'
+      && (needs.test-cli.result == 'success' || needs.test-cli.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout the Release Commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+
+      - name: 🔒 Assert the Release Commit
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-
-          TAG_VERSION="${{ needs.build.outputs.version }}"
-          if [[ ! $TAG_VERSION == v* ]]; then
-            TAG_VERSION="v$TAG_VERSION"
+          EXPECTED='${{ needs.resolve.outputs.sha }}'
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Workspace is at $ACTUAL but the release commit is $EXPECTED"
+            exit 1
           fi
+          echo "✅ Workspace is at the release commit $ACTUAL"
 
-          git tag -a "$TAG_VERSION" -m "Release $TAG_VERSION"
-          git push origin "$TAG_VERSION"
+      - name: 📥 Download the Release Distribution
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: product-distribution
+          path: target/dist/
+
+      - name: 📦 Stage the Docker Build Context
+        run: |
+          # Only the two Linux archives, so the context stays small and the root
+          # .dockerignore (which excludes target) does not apply.
+          rm -rf target/docker && mkdir -p target/docker
+          for arch in x64 arm64; do
+            archive="$(ls target/dist/${PRODUCT_NAME_LOWER}-*-linux-${arch}.zip 2>/dev/null | head -1)"
+            if [ -z "$archive" ]; then
+              echo "::error::no ${PRODUCT_NAME_LOWER}-*-linux-${arch}.zip in the release artifact"
+              ls -l target/dist/
+              exit 1
+            fi
+            cp "$archive" target/docker/
+          done
+          {
+            echo "### 🐳 Container images"
+            echo
+            echo "| Archive assembled into the image | SHA-256 |"
+            echo "|---|---|"
+            for archive in target/docker/*.zip; do
+              echo "| \`$(basename "$archive")\` | \`$(sha256sum "$archive" | cut -d' ' -f1)\` |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -459,227 +815,120 @@ jobs:
           # Build image under the repository owner with the product name
           OWNER_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           IMAGE_NAME="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}"
-          
+
           # Get version without 'v' prefix for Docker tags
-          DOCKER_VERSION="${{ needs.build.outputs.version }}"
+          DOCKER_VERSION="${{ needs.resolve.outputs.version }}"
           if [[ $DOCKER_VERSION == v* ]]; then
             DOCKER_VERSION="${DOCKER_VERSION#v}"
           fi
-          
+
           echo "🐳 Building and pushing Docker image: ${IMAGE_NAME}:${DOCKER_VERSION}"
-          
-          # Build and push multi-arch image with version and latest tags.
+
+          # Versioned tag only. `latest` and the compose artifact are what users resolve,
+          # so the release job moves them once the GitHub release exists.
           # No key material is baked into the image; each deployment generates its own via setup.sh.
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
+            --file .github/docker/Dockerfile.release \
             --tag "${IMAGE_NAME}:${DOCKER_VERSION}" \
-            --tag "${IMAGE_NAME}:latest" \
             --push \
-            .
-          
+            target/docker
+
           echo "✅ Docker image pushed successfully!"
           echo "📦 Image available at: ${IMAGE_NAME}:${DOCKER_VERSION}"
-          echo "📦 Image available at: ${IMAGE_NAME}:latest"
-
-      - name: 📦 Publish Docker Compose (Quick Start) to GHCR
-        run: |
-          OWNER_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          DOCKER_VERSION="${{ needs.build.outputs.version }}"
-          if [[ $DOCKER_VERSION == v* ]]; then
-            DOCKER_VERSION="${DOCKER_VERSION#v}"
-          fi
-
-          COMPOSE_IMAGE="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}-quick-start"
-
-          docker compose -f install/quick-start/docker-compose.yml publish \
-            --resolve-image-digests -y "${COMPOSE_IMAGE}:${DOCKER_VERSION}"
-
-          docker compose -f install/quick-start/docker-compose.yml publish \
-            --resolve-image-digests -y "${COMPOSE_IMAGE}:latest"
-
-          echo "✅ Docker Compose published successfully!"
-          echo "📦 Available at: ${COMPOSE_IMAGE}:${DOCKER_VERSION}"
-          echo "📦 Available at: ${COMPOSE_IMAGE}:latest"
-
-      - name: 🏷️ Update Helm Values Image Tag
-        run: |
-          # Get version without 'v' prefix
-          CHART_VERSION="${{ needs.build.outputs.version }}"
-          if [[ $CHART_VERSION == v* ]]; then
-            CHART_VERSION="${CHART_VERSION#v}"
-          fi
-          
-          echo "📝 Updating Helm values.yaml with image tag ${CHART_VERSION}"
-          
-          # Check if the file exists and has the expected pattern
-          if ! grep -q "tag: \"" install/helm/values.yaml; then
-            echo "❌ Error: Could not find 'tag: \"' pattern in install/helm/values.yaml"
-            echo "File may have been modified or corrupted"
-            exit 1
-          fi
-          
-          # Update values.yaml with the new image tag
-          sed -i "s/tag: \"[^\"]*\"/tag: \"${CHART_VERSION}\"/" install/helm/values.yaml
-
-          # Verify the replacement was successful
-          if ! grep -q "tag: \"${CHART_VERSION}\"" install/helm/values.yaml; then
-            echo "❌ Error: Failed to update image tag in values.yaml"
-            echo "Expected to find: tag: \"${CHART_VERSION}\""
-            echo "Current content:"
-            grep "tag:" install/helm/values.yaml
-            exit 1
-          fi
-          
-          echo "✅ Successfully updated values.yaml with image tag: ${CHART_VERSION}"
-          echo "✅ Verification passed - new tag is present in file"
-          grep "tag:" install/helm/values.yaml | head -1
-
-      - name: ⚙️ Set up Helm
-        uses: azure/setup-helm@5119fcb9089d432beecbf79bb2c7915207344b78 # v3
-        with:
-          version: 'v3.12.3'
-
-      - name: 📦 Package and Push Helm Chart to GHCR
-        run: |
-          CHART_NAME="$PRODUCT_NAME_LOWER"
-          OWNER_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          HELM_REGISTRY="ghcr.io/${OWNER_NAME}"
-          
-          # Get version without 'v' prefix for Helm chart version
-          CHART_VERSION="${{ needs.build.outputs.version }}"
-          if [[ $CHART_VERSION == v* ]]; then
-            CHART_VERSION="${CHART_VERSION#v}"
-          fi
-          
-          echo "📦 Packaging Helm chart: ${CHART_NAME} version ${CHART_VERSION}"
-
-          # Ensure target directory exists
-          mkdir -p target/dist/
-          
-          # Package the Helm chart
-          helm package install/helm --version "${CHART_VERSION}" --app-version "${CHART_VERSION}" --destination target/dist/
-
-          # Validate package was created
-          if [ ! -f "target/dist/${CHART_NAME}-${CHART_VERSION}.tgz" ]; then
-            echo "❌ Error: Helm chart package not found"
-            exit 1
-          fi
-
-          # Authenticate Helm to GHCR
-          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
-          
-          # Push the Helm chart to GHCR
-          helm push "target/dist/${CHART_NAME}-${CHART_VERSION}.tgz" "oci://${HELM_REGISTRY}/helm-charts"
-          
-          echo "✅ Helm chart pushed successfully!"
-          echo "📦 Helm chart available at: oci://${HELM_REGISTRY}/helm-charts"
-
-      - name: 📝 Calculate Next Version
-        id: next_version
-        run: |
-          # Get the current release version and remove 'v' prefix
-          RELEASE_VERSION="${{ needs.build.outputs.version }}"
-          if [[ $RELEASE_VERSION == v* ]]; then
-            RELEASE_VERSION="${RELEASE_VERSION#v}"
-          fi
-          
-          # Parse version components (handle both X.Y and X.Y.Z formats)
-          if [[ $RELEASE_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
-            # X.Y.Z format
-            MAJOR="${BASH_REMATCH[1]}"
-            MINOR="${BASH_REMATCH[2]}"
-            PATCH="${BASH_REMATCH[3]}"
-          elif [[ $RELEASE_VERSION =~ ^([0-9]+)\.([0-9]+) ]]; then
-            # X.Y format
-            MAJOR="${BASH_REMATCH[1]}"
-            MINOR="${BASH_REMATCH[2]}"
-            PATCH="0"
-          else
-            echo "❌ Error: Unable to parse version format: $RELEASE_VERSION"
-            exit 1
-          fi
-          
-          # Bump minor version for next development cycle
-          NEXT_MINOR=$((MINOR + 1))
-          NEXT_VERSION="${MAJOR}.${NEXT_MINOR}.0"
-          
-          echo "✅ Next development version: $NEXT_VERSION"
-          echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
-
-      - name: 🏷️ Update Product Version
-        run: |
-          NEXT_VERSION="v${{ steps.next_version.outputs.next_version }}"
-          echo "$NEXT_VERSION" > version.txt
-          echo "✅ Updated version.txt to $NEXT_VERSION"
-
-      - name: 📦 Install pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
-        with:
-          run_install: false
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: ⚙️ Set up Node.js for Version Update
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: 🏷️ Update Sample Apps Version
-        run: |
-          NEXT_VERSION="${{ steps.next_version.outputs.next_version }}"
-          echo "📝 Setting sample apps version to $NEXT_VERSION"
-
-          for sample in vanilla-sample react-sdk-sample react-api-based-sample wayfinder-sample; do
-            cd "$GITHUB_WORKSPACE/samples/apps/$sample"
-            pnpm version "$NEXT_VERSION" --no-git-tag-version --no-git-checks --allow-same-version
-          done
-
-          cd "$GITHUB_WORKSPACE"
-          echo "✅ Updated sample apps version to $NEXT_VERSION"
-
-
-  package-samples:
-    name: 📦 Package Samples
-    runs-on: ubuntu-latest
-    needs: [build, build-and-package]
-    steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          fetch-depth: 0
-          ref: ${{ env.RELEASE_BRANCH }}
-
-      - name: ⚙️ Setup Samples Environment
-        uses: ./.github/actions/setup-samples-environment
-        with:
-          download-certificates: 'false'
-
-      - name: 📝 Update Sample Apps Version
-        uses: ./.github/actions/update-sample-versions
-        with:
-          version: ${{ needs.build.outputs.version }}
-
-      - name: 📦 Build and Package Samples
-        run: ./scripts/package-samples.sh
-
-      - name: 📦 Upload Sample Artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: ${{ env.PRODUCT_NAME_LOWER }}-samples
-          path: target/dist/*.zip
-          if-no-files-found: error
 
   release:
     name: 🚀 Release
+    needs: [resolve, build, test-integration, test-windows, test-cli, package-samples, docker-images]
+    if: ${{ !cancelled()
+      && needs.resolve.result == 'success'
+      && needs.build.result == 'success'
+      && needs.test-integration.result == 'success'
+      && needs.test-windows.result == 'success'
+      && needs.package-samples.result == 'success'
+      && needs.docker-images.result == 'success'
+      && (needs.test-cli.result == 'success' || needs.test-cli.result == 'skipped') }}
     runs-on: ubuntu-latest
-    needs: [build, build-and-package, package-samples]
     outputs:
       release_tag: ${{ steps.release_info.outputs.release_tag }}
     steps:
-      - name: 📥 Checkout Code
+      # The only job that writes to the repository, so the only checkout with credentials.
+      - name: 📥 Checkout the Release Commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
-          ref: ${{ env.RELEASE_BRANCH }}
+          ref: ${{ needs.resolve.outputs.sha }}
+          token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
+
+      - name: 🔒 Assert the Release Commit
+        run: |
+          EXPECTED='${{ needs.resolve.outputs.sha }}'
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Workspace is at $ACTUAL but the release commit is $EXPECTED"
+            exit 1
+          fi
+          echo "✅ Workspace is at the release commit $ACTUAL"
+
+      - name: 🏷️ Apply the Release Version
+        if: ${{ needs.resolve.outputs.commit_version == 'true' }}
+        run: |
+          VERSION="${{ needs.resolve.outputs.version }}"
+          SEMVER_VERSION="${VERSION#v}"
+
+          echo "$VERSION" > version.txt
+          echo "✅ Updated version.txt to $VERSION"
+
+          echo "📝 Updating install/helm/Chart.yaml to $SEMVER_VERSION"
+          sed -i -E "s/^version: .*/version: ${SEMVER_VERSION}/" install/helm/Chart.yaml
+          sed -i -E "s/^appVersion: .*/appVersion: \"${SEMVER_VERSION}\"/" install/helm/Chart.yaml
+
+          echo "📝 Updating sample app package versions to $SEMVER_VERSION"
+          for sample in react-api-based-sample react-sdk-sample vanilla-sample wayfinder-sample; do
+            cd "$GITHUB_WORKSPACE/samples/apps/$sample"
+            npm version "$SEMVER_VERSION" --no-git-tag-version --allow-same-version
+          done
+
+          cd "$GITHUB_WORKSPACE"
+          echo "✅ Updated Helm chart and sample app versions to $SEMVER_VERSION"
+
+      - name: 📤 Commit and Push Version Bump
+        if: ${{ needs.resolve.outputs.commit_version == 'true' }}
+        run: |
+          VERSION='${{ needs.resolve.outputs.version }}'
+
+          git config --local user.name "${{ env.RELEASE_GIT_USER_NAME }}"
+          git config --local user.email "${{ env.RELEASE_GIT_USER_EMAIL }}"
+
+          git add \
+            version.txt \
+            install/helm/Chart.yaml \
+            samples/apps/react-api-based-sample/package.json \
+            samples/apps/react-sdk-sample/package.json \
+            samples/apps/vanilla-sample/package.json \
+            samples/apps/wayfinder-sample/package.json
+
+          if git diff --cached --quiet; then
+            echo "✅ No changes to commit (files already at $VERSION)"
+          else
+            git commit -m "[Release] Bump version to ${VERSION}"
+            git push origin "HEAD:${RELEASE_BRANCH}"
+            echo "✅ Pushed version bump commit to ${RELEASE_BRANCH} branch"
+          fi
+
+      - name: 🏷️ Create Git Tag
+        run: |
+          git config --local user.name "${{ env.RELEASE_GIT_USER_NAME }}"
+          git config --local user.email "${{ env.RELEASE_GIT_USER_EMAIL }}"
+
+          TAG_VERSION="${{ needs.resolve.outputs.version }}"
+          if [[ ! $TAG_VERSION == v* ]]; then
+            TAG_VERSION="v$TAG_VERSION"
+          fi
+
+          git tag -a "$TAG_VERSION" -m "Release $TAG_VERSION"
+          git push origin "$TAG_VERSION"
+          echo "✅ Tagged $(git rev-parse HEAD) as $TAG_VERSION"
 
       - name: 📥 Download Backend Artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -706,6 +955,37 @@ jobs:
           echo "✅ Combined all artifacts:"
           ls -la target/dist/
 
+      - name: 🏷️ Name Distributions After the Release Version
+        run: |
+          # The product is built from version.txt so a release candidate stays identical to
+          # its GA build; only the distribution file name carries the release version.
+          RELEASE_VERSION="${{ needs.resolve.outputs.version }}"
+          RELEASE_VERSION="${RELEASE_VERSION#v}"
+          BUILT_VERSION=$(tr -d '[:space:]' < version.txt)
+          BUILT_VERSION="${BUILT_VERSION#v}"
+
+          if [ "$BUILT_VERSION" == "$RELEASE_VERSION" ]; then
+            echo "✅ Distributions already carry the release version $RELEASE_VERSION"
+            exit 0
+          fi
+
+          echo "📦 Renaming distributions from $BUILT_VERSION to $RELEASE_VERSION"
+          RENAMED=0
+          for zip in target/dist/${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-*.zip; do
+            [ -e "$zip" ] || continue
+            SUFFIX="${zip#target/dist/${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-}"
+            mv "$zip" "target/dist/${PRODUCT_NAME_LOWER}-${RELEASE_VERSION}-${SUFFIX}"
+            echo "  ${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-${SUFFIX} -> ${PRODUCT_NAME_LOWER}-${RELEASE_VERSION}-${SUFFIX}"
+            RENAMED=$((RENAMED + 1))
+          done
+
+          if [ "$RENAMED" -eq 0 ]; then
+            echo "❌ Error: no distributions matched ${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-*.zip"
+            ls -l target/dist/
+            exit 1
+          fi
+          echo "✅ Renamed $RENAMED distribution(s) to $RELEASE_VERSION"
+
       - name: 📦 Upload Final Combined Artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -713,19 +993,84 @@ jobs:
           path: target/dist/*.zip
           if-no-files-found: error
 
-      - name: 📝 Read Version
-        id: version
+      - name: 🏷️ Update Helm Values Image Tag
         run: |
-          VERSION="${{ needs.build.outputs.version }}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          # Get version without 'v' prefix
+          CHART_VERSION="${{ needs.resolve.outputs.version }}"
+          if [[ $CHART_VERSION == v* ]]; then
+            CHART_VERSION="${CHART_VERSION#v}"
+          fi
+
+          echo "📝 Updating Helm values.yaml with image tag ${CHART_VERSION}"
+
+          # Check if the file exists and has the expected pattern
+          if ! grep -q "tag: \"" install/helm/values.yaml; then
+            echo "❌ Error: Could not find 'tag: \"' pattern in install/helm/values.yaml"
+            echo "File may have been modified or corrupted"
+            exit 1
+          fi
+
+          # Update values.yaml with the new image tag
+          sed -i "s/tag: \"[^\"]*\"/tag: \"${CHART_VERSION}\"/" install/helm/values.yaml
+
+          # Verify the replacement was successful
+          if ! grep -q "tag: \"${CHART_VERSION}\"" install/helm/values.yaml; then
+            echo "❌ Error: Failed to update image tag in values.yaml"
+            echo "Expected to find: tag: \"${CHART_VERSION}\""
+            echo "Current content:"
+            grep "tag:" install/helm/values.yaml
+            exit 1
+          fi
+
+          echo "✅ Successfully updated values.yaml with image tag: ${CHART_VERSION}"
+          grep "tag:" install/helm/values.yaml | head -1
+
+      - name: ⚙️ Set up Helm
+        uses: azure/setup-helm@5119fcb9089d432beecbf79bb2c7915207344b78 # v3
+        with:
+          version: 'v3.12.3'
+
+      - name: 📦 Package and Push Helm Chart to GHCR
+        run: |
+          CHART_NAME="$PRODUCT_NAME_LOWER"
+          OWNER_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          HELM_REGISTRY="ghcr.io/${OWNER_NAME}"
+          # Get version without 'v' prefix for Helm chart version
+          CHART_VERSION="${{ needs.resolve.outputs.version }}"
+          if [[ $CHART_VERSION == v* ]]; then
+            CHART_VERSION="${CHART_VERSION#v}"
+          fi
+
+          echo "📦 Packaging Helm chart: ${CHART_NAME} version ${CHART_VERSION}"
+
+          # Ensure target directory exists
+          mkdir -p target/dist/
+
+          # Package the Helm chart
+          helm package install/helm --version "${CHART_VERSION}" --app-version "${CHART_VERSION}" --destination target/dist/
+
+          # Validate package was created
+          if [ ! -f "target/dist/${CHART_NAME}-${CHART_VERSION}.tgz" ]; then
+            echo "❌ Error: Helm chart package not found"
+            exit 1
+          fi
+
+          # Authenticate Helm to GHCR
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+          # Push the Helm chart to GHCR
+          helm push "target/dist/${CHART_NAME}-${CHART_VERSION}.tgz" "oci://${HELM_REGISTRY}/helm-charts"
+
+          echo "✅ Helm chart pushed successfully!"
+          echo "📦 Helm chart available at: oci://${HELM_REGISTRY}/helm-charts"
 
       - name: 📝 Generate Automatic Release Notes
         id: generate_notes
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
-            const currentTag = '${{ needs.build.outputs.version }}';
-            
+            const currentTag = '${{ needs.resolve.outputs.version }}';
+
             try {
               // Get only the 2 most recent releases (current + previous)
               const { data: releases } = await github.rest.repos.listReleases({
@@ -735,10 +1080,10 @@ jobs:
               });
 
               console.log(`Found ${releases.length} recent release(s)`);
-              
+
               // Find the previous release (skip the current one if it exists)
               let previousTag = null;
-              
+
               if (releases.length === 0) {
                 console.log('No previous releases found - this is the first release');
               } else if (releases.length === 1) {
@@ -765,7 +1110,7 @@ jobs:
               if (previousTag !== null && previousTag !== undefined) {
                 console.log(`Will compare ${previousTag}...${currentTag}`);
               }
-              
+
               // Generate release notes
               // Build the request parameters conditionally
               const releaseNotesParams = {
@@ -773,14 +1118,14 @@ jobs:
                 repo: context.repo.repo,
                 tag_name: currentTag,
               };
-              
+
               // Only include previous_tag_name if it exists
               if (previousTag !== null && previousTag !== undefined) {
                 releaseNotesParams.previous_tag_name = previousTag;
               }
-              
+
               const { data } = await github.rest.repos.generateReleaseNotes(releaseNotesParams);
-              
+
               // Only save to file if we have actual content
               const releaseNotesBody = data.body || '';
               if (releaseNotesBody.trim().length > 0) {
@@ -791,7 +1136,7 @@ jobs:
               } else {
                 console.log('⚠️ Generated release notes are empty, skipping file creation');
               }
-              
+
               return releaseNotesBody;
             } catch (error) {
               console.log('⚠️ Could not generate release notes:', error.message);
@@ -803,24 +1148,24 @@ jobs:
         id: readme_extract
         run: |
           # Get the release version without v prefix for replacement
-          RELEASE_VERSION="${{ needs.build.outputs.version }}"
+          RELEASE_VERSION="${{ needs.resolve.outputs.version }}"
           if [[ $RELEASE_VERSION == v* ]]; then
             RELEASE_VERSION="${RELEASE_VERSION#v}"
           fi
-          
+
           # Extract introduction (everything before ## Architecture)
           INTRO=$(awk '/^## Architecture/{exit} {print}' README.md)
-          
+
           # Extract Quick Start section
           QUICKSTART=$(sed -n '/^## ⚡ Quickstart/,/^---$/p' README.md | head -n -1)
-          
+
           # Extract license section including header
           LICENSE=$(grep -A 5 "^## License" README.md)
 
           # Replace <version> placeholders with actual version
           INTRO=$(echo "$INTRO" | sed "s/<version>/$RELEASE_VERSION/g")
           QUICKSTART=$(echo "$QUICKSTART" | sed "s/<version>/$RELEASE_VERSION/g")
-          
+
           # Replace 'latest' placeholders with actual version for release notes
           INTRO=$(echo "$INTRO" | sed "s/:latest/:$RELEASE_VERSION/g")
           QUICKSTART=$(echo "$QUICKSTART" | sed "s/:latest/:$RELEASE_VERSION/g")
@@ -852,7 +1197,7 @@ jobs:
 
           # Remove the example paragraph that follows (it's now redundant with the table)
           QUICKSTART=$(echo "$QUICKSTART" | sed '/For example, if you are using a MacOS machine with a Apple Silicon (ARM64) processor, you would download `'"${PRODUCT_NAME_LOWER}-${RELEASE_VERSION}"'-macos-arm64\.zip`\./d')
-          
+
           # Build single download links for each sample (arch-agnostic)
           VANILLA_SAMPLE_LINK="[sample-app-vanilla-${RELEASE_VERSION}.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-vanilla-${RELEASE_VERSION}.zip)"
           SDK_SAMPLE_LINK="[sample-app-react-sdk-${RELEASE_VERSION}.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-sdk-${RELEASE_VERSION}.zip)"
@@ -921,22 +1266,60 @@ jobs:
         id: create_release
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: ${{ env.PRODUCT_NAME }} ${{ steps.version.outputs.version }}
+          tag_name: ${{ needs.resolve.outputs.version }}
+          name: ${{ env.PRODUCT_NAME }} ${{ needs.resolve.outputs.version }}
           draft: false
-          prerelease: ${{ needs.build.outputs.prerelease }}
+          prerelease: ${{ needs.resolve.outputs.prerelease }}
           files: target/dist/*.zip
           body: ${{ env.RELEASE_BODY }}
           generate_release_notes: false
 
+      - name: 🔐 Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🐳 Point latest at the Released Version
+        run: |
+          # Re-points the tag from the manifest docker-images already pushed. No rebuild
+          # and no layer upload, so this cannot produce a different image.
+          OWNER_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_NAME="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}"
+          DOCKER_VERSION='${{ needs.resolve.outputs.semver }}'
+
+          docker buildx imagetools create \
+            --tag "${IMAGE_NAME}:latest" \
+            "${IMAGE_NAME}:${DOCKER_VERSION}"
+
+          echo "✅ ${IMAGE_NAME}:latest now points at ${DOCKER_VERSION}"
+
+      - name: 📦 Publish Docker Compose (Quick Start) to GHCR
+        run: |
+          # Runs after `latest` has moved, because the compose file resolves latest.
+          OWNER_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          COMPOSE_IMAGE="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}-quick-start"
+          DOCKER_VERSION='${{ needs.resolve.outputs.semver }}'
+
+          docker compose -f install/quick-start/docker-compose.yml publish \
+            --resolve-image-digests -y "${COMPOSE_IMAGE}:${DOCKER_VERSION}"
+
+          docker compose -f install/quick-start/docker-compose.yml publish \
+            --resolve-image-digests -y "${COMPOSE_IMAGE}:latest"
+
+          echo "✅ Docker Compose published successfully!"
+          echo "📦 Available at: ${COMPOSE_IMAGE}:${DOCKER_VERSION}"
+          echo "📦 Available at: ${COMPOSE_IMAGE}:latest"
+
       - name: 🔔 Set Release Info
         id: release_info
         run: |
-          RELEASE_VERSION="${{ steps.version.outputs.version }}"
+          RELEASE_VERSION='${{ needs.resolve.outputs.version }}'
           echo "release_name=${PRODUCT_NAME} ${RELEASE_VERSION}" >> $GITHUB_OUTPUT
           echo "release_tag=${RELEASE_VERSION}" >> $GITHUB_OUTPUT
           echo "release_url=https://github.com/${{ github.repository }}/releases/tag/${RELEASE_VERSION}" >> $GITHUB_OUTPUT
-      
+
       - name: 🔔 Send Release Notification
         uses: ./.github/actions/release-notification
         with:
@@ -946,17 +1329,24 @@ jobs:
           release-tag: ${{ steps.release_info.outputs.release_tag }}
           release-url: ${{ steps.release_info.outputs.release_url }}
 
+      - name: 📋 Record the Released Artifacts
+        run: |
+          {
+            echo "## 📦 Published"
+            echo
+            echo "Built, tested and packaged \`${{ needs.resolve.outputs.sha }}\`."
+            echo "The archives, the container images and the integration tests all came from that single build."
+            echo "Tag \`${{ needs.resolve.outputs.version }}\` points at $(git rev-parse HEAD)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   trigger-performance-test:
     name: 🧪 Trigger Performance Test
     runs-on: ubuntu-latest
-    needs: [build, release]
-    if: ${{ needs.build.outputs.run_performance_test == 'true' }}
+    needs: [resolve, release]
+    if: ${{ !cancelled()
+      && needs.release.result == 'success'
+      && needs.resolve.outputs.run_performance_test == 'true' }}
     steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          ref: ${{ env.RELEASE_BRANCH }}
-
       - name: ⚡ Trigger Performance Test Workflows
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
@@ -985,14 +1375,15 @@ jobs:
             } catch (error) {
               console.error(`❌ Failed to trigger performance test workflow:`, error);
             }
-            
+
             // Return success
             return {success: true};
 
   trigger-deploy-docs:
     name: 📚 Trigger Deploy Documentation
     runs-on: ubuntu-latest
-    needs: [build, release]
+    needs: [resolve, release]
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
     steps:
       - name: 📚 Trigger Deploy Documentation Workflow
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
@@ -1001,6 +1392,7 @@ jobs:
           script: |
             try {
               console.log('🔄 Triggering deploy-docs workflow...');
+              // Always built from main, whatever branch is being released.
               await github.rest.actions.createWorkflowDispatch({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
