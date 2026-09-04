@@ -187,9 +187,10 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 
 	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(
 		strings.Join(newTokenScopes, " "), oauthApp.ScopeClaims)
-	if audience == tokenRequest.ClientID {
+	if audience == h.cfg.JWT.Issuer {
 		// The original token was not bound to a resource server (OIDC-only): its audience is the
-		// client_id, which is not a resource server, so there are no permissions to downscope against.
+		// server issuer ID, which is not a resource server, so there are no permissions to downscope
+		// against.
 		newTokenScopes = oidcScopes
 	} else {
 		// Resolve the bound resource server to downscope scopes to its currently defined permissions.

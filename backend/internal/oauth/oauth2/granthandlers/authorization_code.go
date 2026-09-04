@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
+	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -28,6 +29,7 @@ type authorizationCodeGrantHandler struct {
 	tokenBuilder    tokenservice.TokenBuilderInterface
 	attributeCache  attributecache.AttributeCacheServiceInterface
 	resourceService providers.ResourceServerProvider
+	cfg             oauthconfig.Config
 }
 
 // newAuthorizationCodeGrantHandler creates a new instance of AuthorizationCodeGrantHandler.
@@ -36,12 +38,14 @@ func newAuthorizationCodeGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	attributeCache attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
+	cfg oauthconfig.Config,
 ) GrantHandlerInterface {
 	return &authorizationCodeGrantHandler{
 		authzService:    authzService,
 		tokenBuilder:    tokenBuilder,
 		attributeCache:  attributeCache,
 		resourceService: resourceService,
+		cfg:             cfg,
 	}
 }
 
@@ -135,8 +139,8 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	if targetRS == nil {
 		// OIDC-only (or scopeless) request with no resource: the token is not bound to a resource
 		// server, so its audience is the app's configured default audiences (falling back to the
-		// client_id) and it carries only the OIDC scopes.
-		accessTokenAudiences = []string{oauthApp.ResolveDefaultAudience(tokenRequest.ClientID)}
+		// server issuer ID) and it carries only the OIDC scopes.
+		accessTokenAudiences = []string{oauthApp.ResolveDefaultAudience(h.cfg.JWT.Issuer)}
 		accessTokenScopes = oidcScopes
 	} else {
 		downscopedNonOidc, dErr := resourceindicators.DownscopeToResourceServer(
