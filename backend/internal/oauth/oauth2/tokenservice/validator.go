@@ -246,7 +246,7 @@ func (tv *tokenValidator) ValidateSubjectToken(
 		if err := tv.verifyTokenSignatureByIssuer(ctx, token, iss); err != nil {
 			return nil, fmt.Errorf("invalid subject token signature: %w", err)
 		}
-		selfClaims, err := tv.extractSubjectTokenClaims(token, iss, claims, oauthApp, nil)
+		selfClaims, err := tv.extractSubjectTokenClaims(token, iss, claims, oauthApp, nil, MappedAuthorization{})
 		if err != nil {
 			return nil, err
 		}
@@ -277,7 +277,8 @@ func (tv *tokenValidator) ValidateSubjectToken(
 		return nil, err
 	}
 
-	return tv.extractSubjectTokenClaims(token, iss, claims, oauthApp, issuerInfo.AttributeMappings)
+	return tv.extractSubjectTokenClaims(
+		token, iss, claims, oauthApp, issuerInfo.AttributeMappings, issuerInfo.Authorization)
 }
 
 // ValidateIDJAGSubjectToken validates a subject token for the ID-JAG issuance leg of token exchange
@@ -349,7 +350,7 @@ func (tv *tokenValidator) ValidateIDJAGAssertion(
 		return nil, fmt.Errorf("assertion is missing 'iss' claim: %w", err)
 	}
 
-	issuerInfo, resolveErr := tv.resolveIDJAGIssuer(ctx, iss)
+	issuerInfo, resolveErr := tv.resolveIDJAGIssuer(ctx, iss, claims)
 	if resolveErr != nil {
 		return nil, fmt.Errorf("%w: untrusted assertion issuer %q: %w", ErrIssuerNotTrusted, iss, resolveErr)
 	}
@@ -407,18 +408,18 @@ func (tv *tokenValidator) ValidateIDJAGAssertion(
 	}
 
 	return &IDJAGAssertionClaims{
-		Sub:       sub,
-		Iss:       iss,
-		Scopes:    extractScopesFromClaims(claims, false),
-		Resources: extractStringSliceClaim(claims, "resource"),
-		JTI:       jti,
+		Sub:           sub,
+		Iss:           iss,
+		Scopes:        extractScopesFromClaims(claims, false),
+		Resources:     extractStringSliceClaim(claims, "resource"),
+		JTI:           jti,
+		Authorization: issuerInfo.Authorization,
 	}, nil
 }
 
-// resolveIDJAGIssuer looks up an external IDP whose issuer property matches the given issuer and
-// requires ID-JAG to be enabled. It mirrors resolveExternalIssuer but is a separate path so token
-// exchange trust resolution is unaffected.
-func (tv *tokenValidator) resolveIDJAGIssuer(ctx context.Context, issuer string) (
+// resolveIDJAGIssuer looks up a trusted ID-JAG issuer and resolves its AuthorizationMapping against
+// the assertion's claims. A separate path from resolveExternalIssuer so token exchange is unaffected.
+func (tv *tokenValidator) resolveIDJAGIssuer(ctx context.Context, issuer string, claims map[string]interface{}) (
 	*tokenExchangeIssuerInfo, error) {
 	if tv.idpService == nil {
 		return nil, fmt.Errorf("no external issuers configured")
@@ -442,6 +443,11 @@ func (tv *tokenValidator) resolveIDJAGIssuer(ctx context.Context, issuer string)
 	return &tokenExchangeIssuerInfo{
 		Issuer:  issuer,
 		JWKSURL: jwksURL,
+		Authorization: MappedAuthorization{
+			Targets: idp.GetMappedAuthorizationTargets(&idpDTO, claims),
+			Configured: idpDTO.AttributeConfiguration != nil &&
+				len(idpDTO.AttributeConfiguration.AuthorizationMappings) > 0,
+		},
 	}, nil
 }
 
@@ -451,6 +457,7 @@ type tokenExchangeIssuerInfo struct {
 	JWKSURL              string
 	TrustedTokenAudience string
 	AttributeMappings    []providers.AttributeMapping
+	Authorization        MappedAuthorization
 }
 
 // resolveExternalIssuer looks up an external IDP whose issuer property matches the given issuer.
@@ -484,6 +491,11 @@ func (tv *tokenValidator) resolveExternalIssuer(
 		JWKSURL:              jwksURL,
 		TrustedTokenAudience: idp.GetPropertyValue(idpDTO.Properties, idp.PropTrustedTokenAudience),
 		AttributeMappings:    idp.GetAttributeMappings(&idpDTO, claims),
+		Authorization: MappedAuthorization{
+			Targets: idp.GetMappedAuthorizationTargets(&idpDTO, claims),
+			Configured: idpDTO.AttributeConfiguration != nil &&
+				len(idpDTO.AttributeConfiguration.AuthorizationMappings) > 0,
+		},
 	}, nil
 }
 
@@ -513,6 +525,7 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 	claims map[string]interface{},
 	oauthApp *providers.OAuthClient,
 	attributeMappings []providers.AttributeMapping,
+	authorization MappedAuthorization,
 ) (*SubjectTokenClaims, error) {
 	sub, err := extractStringClaim(claims, "sub")
 	if err != nil {
@@ -588,6 +601,7 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 		CnfJkt:         cnfJkt,
 		JTI:            jti,
 		TokenFamilyID:  tokenFamilyID,
+		Authorization:  authorization,
 	}, nil
 }
 

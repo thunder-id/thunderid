@@ -218,7 +218,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_E
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"",
-		[]string{}, "",
+		[]string{}, nil, "",
 
 		[]string{"perm1"})
 
@@ -243,7 +243,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_E
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"user1",
-		[]string{}, "",
+		[]string{}, nil, "",
 
 		[]string{})
 
@@ -268,7 +268,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_G
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"",
-		[]string{"group1", "group2"}, "",
+		[]string{"group1", "group2"}, nil, "",
 
 		[]string{"perm1", "perm2", "perm3"})
 
@@ -307,7 +307,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_M
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"user1",
-		[]string{}, "",
+		[]string{}, nil, "",
 
 		[]string{"read", "write", "delete"})
 
@@ -335,7 +335,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_M
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"user1",
-		[]string{}, "",
+		[]string{}, nil, "",
 
 		[]string{"perm3", "perm2", "perm1"})
 
@@ -442,7 +442,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_A
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"app-uuid-123",
-		[]string{}, "",
+		[]string{}, nil, "",
 
 		[]string{"read:docs", "write:docs", "admin:docs"})
 
@@ -467,7 +467,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_A
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"different-app-uuid",
-		[]string{}, "",
+		[]string{}, nil, "",
 
 		[]string{"read:docs"})
 
@@ -493,7 +493,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_M
 
 	// App entity resolves permissions via entity ID.
 	appPerms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), "app-uuid-1", []string{}, "",
+		context.Background(), "app-uuid-1", []string{}, nil, "",
 		[]string{"perm1", "perm2", "perm3"})
 
 	assert.NoError(suite.T(), err)
@@ -501,7 +501,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_M
 
 	// User entity resolves permissions via entity ID.
 	userPerms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), "user-uuid-1", []string{}, "",
+		context.Background(), "user-uuid-1", []string{}, nil, "",
 		[]string{"perm1", "perm2", "perm3"})
 
 	assert.NoError(suite.T(), err)
@@ -509,7 +509,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_M
 
 	// Group-only resolution still works.
 	groupPerms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), "", []string{"group1"}, "",
+		context.Background(), "", []string{"group1"}, nil, "",
 		[]string{"perm1"})
 
 	assert.NoError(suite.T(), err)
@@ -544,7 +544,7 @@ func (suite *RoleFileBasedStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_A
 	perms, err := suite.store.GetAuthorizedPermissionsByResourceServer(
 		context.Background(),
 		"app-uuid-1",
-		[]string{}, "",
+		[]string{}, nil, "",
 
 		[]string{"read:docs", "write:docs", "delete:docs"})
 

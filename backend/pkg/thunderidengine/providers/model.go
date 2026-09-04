@@ -822,6 +822,147 @@ type AttributeConfiguration struct {
 	UserTypeResolution        *UserTypeResolution        `json:"userTypeResolution,omitempty"        yaml:"user_type_resolution,omitempty"`         //nolint:lll
 	UserTypeAttributeMappings []UserTypeAttributeMapping `json:"userTypeAttributeMappings,omitempty" yaml:"user_type_attribute_mappings,omitempty"` //nolint:lll
 	AccountLinking            *AccountLinking            `json:"accountLinking,omitempty"            yaml:"accountLinking,omitempty"`               //nolint:lll
+	AuthorizationMappings     []AuthorizationMapping     `json:"authorizationMappings,omitempty"     yaml:"authorization_mappings,omitempty"`       //nolint:lll
+}
+
+// AuthorizationTargetType names what a mapped external attribute value resolves to.
+type AuthorizationTargetType string
+
+// Supported authorization target types.
+const (
+	AuthorizationTargetRole       AuthorizationTargetType = "role"
+	AuthorizationTargetGroup      AuthorizationTargetType = "group"
+	AuthorizationTargetPermission AuthorizationTargetType = "permission"
+)
+
+// AuthorizationTarget names a single local role, group, or permission a mapped attribute value
+// confers. For Role and Group, ID identifies the target directly. For Permission, ResourceServerID
+// and Permission together identify it, since a permission only means something on a resource server.
+type AuthorizationTarget struct {
+	Type             AuthorizationTargetType `json:"type"                       yaml:"type"`
+	ID               string                  `json:"id,omitempty"               yaml:"id,omitempty"`
+	ResourceServerID string                  `json:"resourceServerId,omitempty" yaml:"resource_server_id,omitempty"`
+	Permission       string                  `json:"permission,omitempty"       yaml:"permission,omitempty"`
+}
+
+// AuthorizationOperator names how a rule's Value is compared against a claim's resolved value(s).
+type AuthorizationOperator string
+
+// Supported authorization operators. Equals/not_equals and the ordering operators are scalar
+// comparisons; includes/not_includes test set membership and require a multi-valued claim (see
+// AuthorizationMapping.IsMultiValued).
+const (
+	AuthorizationOperatorEquals             AuthorizationOperator = "equals"
+	AuthorizationOperatorNotEquals          AuthorizationOperator = "not_equals"
+	AuthorizationOperatorGreaterThan        AuthorizationOperator = "greater_than"
+	AuthorizationOperatorLessThan           AuthorizationOperator = "less_than"
+	AuthorizationOperatorGreaterThanOrEqual AuthorizationOperator = "greater_than_or_equal"
+	AuthorizationOperatorLessThanOrEqual    AuthorizationOperator = "less_than_or_equal"
+	AuthorizationOperatorIncludes           AuthorizationOperator = "includes"
+	AuthorizationOperatorNotIncludes        AuthorizationOperator = "not_includes"
+)
+
+// supportedAuthorizationOperators lists all the supported authorization operators.
+var supportedAuthorizationOperators = []AuthorizationOperator{
+	AuthorizationOperatorEquals,
+	AuthorizationOperatorNotEquals,
+	AuthorizationOperatorGreaterThan,
+	AuthorizationOperatorLessThan,
+	AuthorizationOperatorGreaterThanOrEqual,
+	AuthorizationOperatorLessThanOrEqual,
+	AuthorizationOperatorIncludes,
+	AuthorizationOperatorNotIncludes,
+}
+
+// IsValid reports whether the operator is one of the supported values.
+func (o AuthorizationOperator) IsValid() bool {
+	for _, supported := range supportedAuthorizationOperators {
+		if o == supported {
+			return true
+		}
+	}
+	return false
+}
+
+// IsOrdering reports whether the operator compares magnitude rather than equality, which is only
+// meaningful for AuthorizationValueTypeNumber.
+func (o AuthorizationOperator) IsOrdering() bool {
+	switch o {
+	case AuthorizationOperatorGreaterThan, AuthorizationOperatorLessThan,
+		AuthorizationOperatorGreaterThanOrEqual, AuthorizationOperatorLessThanOrEqual:
+		return true
+	}
+	return false
+}
+
+// IsMembership reports whether the operator tests set membership across every value a claim carries,
+// which is only meaningful for a multi-valued claim (see AuthorizationMapping.IsMultiValued).
+func (o AuthorizationOperator) IsMembership() bool {
+	return o == AuthorizationOperatorIncludes || o == AuthorizationOperatorNotIncludes
+}
+
+// AuthorizationValueType names how a claim's value(s) are interpreted: as a scalar to compare
+// (string, number, boolean) or as a set to test membership in (array).
+type AuthorizationValueType string
+
+// Supported authorization value types.
+const (
+	AuthorizationValueTypeString  AuthorizationValueType = "string"
+	AuthorizationValueTypeNumber  AuthorizationValueType = "number"
+	AuthorizationValueTypeBoolean AuthorizationValueType = "boolean"
+	AuthorizationValueTypeArray   AuthorizationValueType = "array"
+)
+
+// supportedAuthorizationValueTypes lists all the supported authorization value types.
+var supportedAuthorizationValueTypes = []AuthorizationValueType{
+	AuthorizationValueTypeString,
+	AuthorizationValueTypeNumber,
+	AuthorizationValueTypeBoolean,
+	AuthorizationValueTypeArray,
+}
+
+// IsValid reports whether the value type is one of the supported values.
+func (t AuthorizationValueType) IsValid() bool {
+	for _, supported := range supportedAuthorizationValueTypes {
+		if t == supported {
+			return true
+		}
+	}
+	return false
+}
+
+// AuthorizationRule matches a claim token against Value using Operator, interpreted per the owning
+// mapping's value type, and grants Targets when it matches.
+type AuthorizationRule struct {
+	Operator AuthorizationOperator `json:"operator"      yaml:"operator"`
+	Value    string                `json:"value"         yaml:"value"`
+	Targets  []AuthorizationTarget `json:"targets"       yaml:"targets"`
+}
+
+// AuthorizationMapping maps values of a single external claim to local roles, groups, or permissions.
+// The result is the union of every matching rule's Targets; an unmapped value confers nothing.
+type AuthorizationMapping struct {
+	Claim     string                 `json:"claim"                yaml:"claim"`
+	ValueType AuthorizationValueType `json:"valueType,omitempty"  yaml:"value_type,omitempty"`
+	Delimiter string                 `json:"delimiter,omitempty"  yaml:"delimiter,omitempty"`
+	Values    []AuthorizationRule    `json:"values"               yaml:"values"`
+}
+
+// EffectiveValueType returns ValueType, defaulting to AuthorizationValueTypeString when unset, so
+// callers never need to special-case the zero value.
+func (m AuthorizationMapping) EffectiveValueType() AuthorizationValueType {
+	if m.ValueType == "" {
+		return AuthorizationValueTypeString
+	}
+	return m.ValueType
+}
+
+// IsMultiValued reports whether the mapping declares a set-membership claim (an array, or a
+// delimited string) rather than a single value to compare.
+func (m AuthorizationMapping) IsMultiValued() bool {
+	valueType := m.EffectiveValueType()
+	return valueType == AuthorizationValueTypeArray ||
+		(valueType == AuthorizationValueTypeString && m.Delimiter != "")
 }
 
 // ConsentElementApproval represents a user's approval decision for a specific element.
@@ -1215,9 +1356,15 @@ func getDuration(startTime int64, endTime int64) int64 {
 
 // Subject identifies the principal for an access evaluation.
 type Subject struct {
-	Type       string                 `json:"type,omitempty"`
-	ID         string                 `json:"id"`
-	GroupIDs   []string               `json:"groupIds,omitempty"`
+	Type string `json:"type,omitempty"`
+	// ID is optional: a federated identity with no local record is described by GroupIDs and
+	// RoleIDs alone.
+	ID       string   `json:"id"`
+	GroupIDs []string `json:"groupIds,omitempty"`
+	// RoleIDs names roles the subject holds without a stored assignment, such as those derived
+	// from an external attribute mapping. It is resolved server-side, like GroupIDs, and must never
+	// be populated from request input.
+	RoleIDs    []string               `json:"roleIds,omitempty"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 

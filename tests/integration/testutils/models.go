@@ -112,13 +112,70 @@ type AccountLinking struct {
 	Attributes []string `json:"attributes,omitempty"`
 }
 
-// AttributeConfiguration is the connection's user-type resolution, per-user-type attribute mappings
-// and account-linking configuration. Mirrors the /connections wire format; pointers so a nil section
-// stays distinguishable from an empty one.
+// AuthorizationTarget names one local role, group, or permission an AuthorizationMapping value
+// resolves to. Role and group targets carry ID; a permission target carries ResourceServerID and
+// Permission instead, since a permission is only meaningful on a resource server.
+type AuthorizationTarget struct {
+	Type             string `json:"type"`
+	ID               string `json:"id,omitempty"`
+	ResourceServerID string `json:"resourceServerId,omitempty"`
+	Permission       string `json:"permission,omitempty"`
+}
+
+// AuthorizationRule matches a claim token against Value using Operator, interpreted per the owning
+// mapping's ValueType, and grants Targets when it matches. Mirrors providers.AuthorizationRule.
+type AuthorizationRule struct {
+	Operator string                `json:"operator"`
+	Value    string                `json:"value"`
+	Targets  []AuthorizationTarget `json:"targets"`
+}
+
+// AuthorizationMapping maps values of one external claim to local authorization targets. Delimiter
+// splits a string claim into candidate tokens; a list-valued claim is split into tokens regardless of
+// Delimiter. ValueType governs how a token and a rule's Value are parsed for comparison; it defaults
+// to "string" server-side when omitted.
+type AuthorizationMapping struct {
+	Claim     string              `json:"claim"`
+	ValueType string              `json:"valueType,omitempty"`
+	Delimiter string              `json:"delimiter,omitempty"`
+	Values    []AuthorizationRule `json:"values"`
+}
+
+// Authorization target type constants, mirroring providers.AuthorizationTargetType.
+const (
+	AuthorizationTargetRole       = "role"
+	AuthorizationTargetGroup      = "group"
+	AuthorizationTargetPermission = "permission"
+)
+
+// Authorization operator constants, mirroring providers.AuthorizationOperator.
+const (
+	AuthorizationOperatorEquals             = "equals"
+	AuthorizationOperatorNotEquals          = "not_equals"
+	AuthorizationOperatorGreaterThan        = "greater_than"
+	AuthorizationOperatorLessThan           = "less_than"
+	AuthorizationOperatorGreaterThanOrEqual = "greater_than_or_equal"
+	AuthorizationOperatorLessThanOrEqual    = "less_than_or_equal"
+	AuthorizationOperatorIncludes           = "includes"
+	AuthorizationOperatorNotIncludes        = "not_includes"
+)
+
+// Authorization value type constants, mirroring providers.AuthorizationValueType.
+const (
+	AuthorizationValueTypeString  = "string"
+	AuthorizationValueTypeNumber  = "number"
+	AuthorizationValueTypeBoolean = "boolean"
+	AuthorizationValueTypeArray   = "array"
+)
+
+// AttributeConfiguration is the connection's user-type resolution, per-user-type attribute mappings,
+// account-linking configuration, and authorization mappings. Mirrors the /connections wire format;
+// pointers so a nil section stays distinguishable from an empty one.
 type AttributeConfiguration struct {
 	UserTypeResolution        *UserTypeResolution        `json:"userTypeResolution,omitempty"`
 	UserTypeAttributeMappings []UserTypeAttributeMapping `json:"userTypeAttributeMappings,omitempty"`
 	AccountLinking            *AccountLinking            `json:"accountLinking,omitempty"`
+	AuthorizationMappings     []AuthorizationMapping     `json:"authorizationMappings,omitempty"`
 }
 
 // IDP represents an identity provider in the system

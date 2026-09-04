@@ -247,6 +247,61 @@ var fedOAuthFlow = testutils.Flow{
 	},
 }
 
+// fedAuthzFlow authenticates a federated identity and then runs an authorization check against
+// whatever roles/groups/permissions its claims mapped to (plus any it holds directly), so mapped
+// access can be observed on the resulting assertion's authorized_permissions claim. Provisioning
+// precedes the check so a just-in-time-created entity's own assignments are visible to it, matching
+// the architecture's Fed -> Prov -> Authz -> Assert ordering.
+var fedAuthzFlow = testutils.Flow{
+	Name:     "Federated Authorization Mapping Auth Flow",
+	FlowType: "AUTHENTICATION",
+	Handle:   "auth_flow_federated_authz_mapping",
+	Nodes: []map[string]interface{}{
+		{"id": "start", "type": "START", "onSuccess": "oidc_auth"},
+		{
+			"id":   "oidc_auth",
+			"type": "TASK_EXECUTION",
+			"properties": map[string]interface{}{
+				"idpId":                               "placeholder-idp-id",
+				"allowAuthenticationWithoutLocalUser": true,
+			},
+			"executor":  map[string]interface{}{"name": "OIDCAuthExecutor"},
+			"onSuccess": "provisioning",
+		},
+		{
+			"id":        "provisioning",
+			"type":      "TASK_EXECUTION",
+			"executor":  map[string]interface{}{"name": "ProvisioningExecutor"},
+			"onSuccess": "authorization_check",
+		},
+		{
+			"id":        "authorization_check",
+			"type":      "TASK_EXECUTION",
+			"executor":  map[string]interface{}{"name": "AuthorizationExecutor"},
+			"onSuccess": "auth_assert",
+		},
+		{
+			"id":        "auth_assert",
+			"type":      "TASK_EXECUTION",
+			"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+			"onSuccess": "end",
+		},
+		{"id": "end", "type": "END"},
+	},
+}
+
+var fedAuthzApp = testutils.Application{
+	Name:             "Federated Authorization Mapping Test Application",
+	Description:      "Application whose authentication flow checks authorization after a federated login",
+	ClientID:         "federated_authz_mapping_test_client",
+	ClientSecret:     "federated_authz_mapping_test_secret",
+	RedirectURIs:     []string{"http://localhost:3000/callback"},
+	AllowedUserTypes: []string{fedPersonType.Name},
+	AssertionConfig: map[string]interface{}{
+		"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
+	},
+}
+
 var fedOAuthApp = testutils.Application{
 	Name:             "Federated OAuth Authentication Test Application",
 	Description:      "Application whose authentication flow uses the generic OAuth executor",
@@ -316,6 +371,18 @@ type FederatedMappingSuite struct {
 	githubIDPID     string
 	perTestAppIDs   []string
 	perTestFlowIDs  []string
+
+	// Authorization mapping fixtures: an application whose auth flow runs an AuthorizationExecutor
+	// after the federated login, two resource servers (to prove a mapped permission stays scoped to
+	// its own resource server), a role with no DB assignees (to prove the LEFT JOIN fix resolves a
+	// mapped role by identifier alone), and a group whose own role assignment grants access to
+	// whoever a mapping places in the group.
+	authzAppID                 string
+	authzResourceServerID      string
+	authzOtherResourceServerID string
+	authzMappedRoleID          string
+	authzMappedGroupID         string
+	authzGroupRoleID           string
 }
 
 func TestFederatedMappingSuite(t *testing.T) {
@@ -438,6 +505,67 @@ func (s *FederatedMappingSuite) SetupSuite() {
 		&fedStrictAuthFlow, fedStrictAuthApp, idpID, ouID, "federated-strict-auth-isolated-reg")
 	s.oauthAppID = s.createAuthApp(
 		&fedOAuthFlow, fedOAuthApp, oauthIDPID, ouID, "federated-oauth-auth-isolated-reg")
+
+	s.setupAuthzFixtures(idpID, ouID)
+}
+
+// setupAuthzFixtures creates the resource servers, roles, group, and authorization-checking
+// application shared by the AuthorizationMapping scenarios.
+func (s *FederatedMappingSuite) setupAuthzFixtures(idpID, ouID string) {
+	s.T().Helper()
+
+	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:       "Federated Authorization Mapping API",
+		Identifier: "federated-authz-mapping-api",
+		OUID:       ouID,
+	}, []testutils.Action{
+		{Name: "Read", Handle: "read", Description: "Read access"},
+		{Name: "Write", Handle: "write", Description: "Write access"},
+		{Name: "Delete", Handle: "delete", Description: "Delete access"},
+	})
+	s.Require().NoError(err, "failed to create the authorization mapping resource server")
+	s.authzResourceServerID = rsID
+
+	// A second resource server with the same permission handle, so a mapped permission target scoped
+	// to the first resource server can be proven not to leak into an evaluation against this one.
+	otherRSID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:       "Federated Authorization Mapping Other API",
+		Identifier: "federated-authz-mapping-other-api",
+		OUID:       ouID,
+	}, []testutils.Action{
+		{Name: "Read", Handle: "read", Description: "Read access"},
+	})
+	s.Require().NoError(err, "failed to create the second authorization mapping resource server")
+	s.authzOtherResourceServerID = otherRSID
+
+	// No assignments: this role is reachable only by a mapping naming it directly, exercising the
+	// LEFT JOIN fix that lets a role with zero assignment rows still resolve by identifier.
+	mappedRoleID, err := testutils.CreateRole(testutils.Role{
+		Name: "Federated Mapped Reader",
+		OUID: ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: rsID, Permissions: []string{"read"}},
+		},
+	})
+	s.Require().NoError(err, "failed to create the mapped role with no assignees")
+	s.authzMappedRoleID = mappedRoleID
+
+	groupID, err := testutils.CreateGroup(testutils.Group{Name: "Federated Mapped Editors", OUID: ouID})
+	s.Require().NoError(err, "failed to create the mapped group")
+	s.authzMappedGroupID = groupID
+
+	groupRoleID, err := testutils.CreateRole(testutils.Role{
+		Name: "Federated Group Writer",
+		OUID: ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: rsID, Permissions: []string{"write"}},
+		},
+		Assignments: []testutils.Assignment{{ID: groupID, Type: "group"}},
+	})
+	s.Require().NoError(err, "failed to create the role assigned to the mapped group")
+	s.authzGroupRoleID = groupRoleID
+
+	s.authzAppID = s.createAuthApp(&fedAuthzFlow, fedAuthzApp, idpID, ouID, "federated-authz-isolated-reg")
 }
 
 // createAuthApp creates one authentication flow and the application that runs it. Both applications
@@ -527,7 +655,7 @@ func (s *FederatedMappingSuite) TearDownTest() {
 }
 
 func (s *FederatedMappingSuite) TearDownSuite() {
-	for _, appID := range []string{s.appID, s.authAppID, s.strictAuthAppID, s.oauthAppID} {
+	for _, appID := range []string{s.appID, s.authAppID, s.strictAuthAppID, s.oauthAppID, s.authzAppID} {
 		if appID == "" {
 			continue
 		}
@@ -538,6 +666,27 @@ func (s *FederatedMappingSuite) TearDownSuite() {
 	for _, flowID := range s.config.CreatedFlowIDs {
 		if err := testutils.DeleteFlow(flowID); err != nil {
 			s.T().Logf("failed to delete flow %s: %v", flowID, err)
+		}
+	}
+	for _, roleID := range []string{s.authzMappedRoleID, s.authzGroupRoleID} {
+		if roleID == "" {
+			continue
+		}
+		if err := testutils.DeleteRole(roleID); err != nil {
+			s.T().Logf("failed to delete role %s: %v", roleID, err)
+		}
+	}
+	if s.authzMappedGroupID != "" {
+		if err := testutils.DeleteGroup(s.authzMappedGroupID); err != nil {
+			s.T().Logf("failed to delete group %s: %v", s.authzMappedGroupID, err)
+		}
+	}
+	for _, rsID := range []string{s.authzResourceServerID, s.authzOtherResourceServerID} {
+		if rsID == "" {
+			continue
+		}
+		if err := testutils.DeleteResourceServer(rsID); err != nil {
+			s.T().Logf("failed to delete resource server %s: %v", rsID, err)
 		}
 	}
 	if s.idpID != "" {

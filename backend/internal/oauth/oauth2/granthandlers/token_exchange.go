@@ -27,6 +27,7 @@ type tokenExchangeGrantHandler struct {
 	tokenBuilder    tokenservice.TokenBuilderInterface
 	tokenValidator  tokenservice.TokenValidatorInterface
 	resourceService providers.ResourceServerProvider
+	authzService    providers.AuthorizationProvider
 	cfg             oauthconfig.Config
 }
 
@@ -35,12 +36,14 @@ func newTokenExchangeGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	tokenValidator tokenservice.TokenValidatorInterface,
 	resourceService providers.ResourceServerProvider,
+	authzService providers.AuthorizationProvider,
 	cfg oauthconfig.Config,
 ) GrantHandlerInterface {
 	return &tokenExchangeGrantHandler{
 		tokenBuilder:    tokenBuilder,
 		tokenValidator:  tokenValidator,
 		resourceService: resourceService,
+		authzService:    authzService,
 		cfg:             cfg,
 	}
 }
@@ -243,7 +246,8 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 	}
 
 	// Determine final scopes
-	finalScopes, errResp := h.getScopes(tokenRequest, subjectClaims.Scopes)
+	finalScopes, errResp := h.getScopes(
+		tokenRequest, subjectClaims.Scopes, subjectClaims.Authorization.Configured)
 	if errResp != nil {
 		return nil, errResp
 	}
@@ -272,6 +276,13 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 			ctx, h.resourceService, targetRS.ID, permissionScopes)
 		if resErr != nil {
 			return nil, resErr
+		}
+
+		permissionScopes, errResp = tokenservice.ApplyMappedAuthorization(
+			ctx, h.authzService, subjectClaims.Authorization.Targets, targetRS.ID, permissionScopes,
+			subjectClaims.Authorization.Configured, logger)
+		if errResp != nil {
+			return nil, errResp
 		}
 
 		finalScopes = make([]string, 0, len(oidcScopes)+len(permissionScopes))
@@ -456,23 +467,34 @@ func (h *tokenExchangeGrantHandler) validateAccessTokenType(
 	return nil
 }
 
-// getScopes validates and determines the scopes for the new token.
+// getScopes validates and determines the scopes for the new token. When authorityIsMapping, the
+// subject token's own scope claim is skipped; requested scopes are only candidates for
+// ApplyMappedAuthorization to decide, with no fallback if the mapping resolves nothing.
 func (h *tokenExchangeGrantHandler) getScopes(
 	tokenRequest *model.TokenRequest,
 	subjectScopes []string,
+	authorityIsMapping bool,
 ) ([]string, *model.ErrorResponse) {
-	// If no scopes requested, return subject scopes
 	if tokenRequest.Scope == "" {
+		if authorityIsMapping {
+			// Nothing was requested to evaluate against the mapping, and the subject token's own
+			// scope claim is not an authority here, so there is nothing to grant.
+			return []string{}, nil
+		}
 		return subjectScopes, nil
 	}
 
 	requestedScopes := tokenservice.ParseScopes(tokenRequest.Scope)
-
 	if len(requestedScopes) == 0 {
 		return []string{}, nil
 	}
 
-	// If subject token has no scopes, reject requests asking for scopes
+	if authorityIsMapping {
+		return requestedScopes, nil
+	}
+
+	// If subject token has no scopes, reject requests asking for scopes: with no mapping configured,
+	// the subject token's own scope claim is the only possible authority.
 	if len(subjectScopes) == 0 {
 		return nil, &model.ErrorResponse{
 			Error: constants.ErrorInvalidScope,

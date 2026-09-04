@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -23,6 +25,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
+	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourceserverprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 )
 
 type mockTransactioner struct{}
@@ -65,9 +70,12 @@ func newNoBlockingDepsRegistry() *stubDependencyRegistry {
 
 type IDPServiceTestSuite struct {
 	suite.Suite
-	mockStore  *idpStoreInterfaceMock
-	mockET     *entitytypemock.EntityTypeServiceInterfaceMock
-	idpService *idpService
+	mockStore    *idpStoreInterfaceMock
+	mockET       *entitytypemock.EntityTypeServiceInterfaceMock
+	mockRole     *rolemock.RoleServiceInterfaceMock
+	mockGroup    *groupmock.GroupServiceInterfaceMock
+	mockResource *resourceserverprovidermock.ResourceServerProviderMock
+	idpService   *idpService
 }
 
 const (
@@ -96,6 +104,11 @@ func (s *IDPServiceTestSuite) SetupTest() {
 	s.mockET.On("GetEntityTypeList", mock.Anything, entitytype.TypeCategoryUser,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(&entitytype.EntityTypeListResponse{}, nil).Maybe()
+	// Unused unless a test configures AuthorizationMappings: no expectations are set here, so a test
+	// that never reaches the existence check never touches them.
+	s.mockRole = rolemock.NewRoleServiceInterfaceMock(s.T())
+	s.mockGroup = groupmock.NewGroupServiceInterfaceMock(s.T())
+	s.mockResource = resourceserverprovidermock.NewResourceServerProviderMock(s.T())
 	s.idpService = &idpService{
 		idpStore:           s.mockStore,
 		transactioner:      &mockTransactioner{},
@@ -103,6 +116,9 @@ func (s *IDPServiceTestSuite) SetupTest() {
 		logger:             log.GetLogger().With(log.String(log.LoggerKeyComponentName, "IdPService")),
 		uuidGenerator:      utils.GenerateUUIDv7,
 		entityTypeService:  s.mockET,
+		roleService:        s.mockRole,
+		groupService:       s.mockGroup,
+		resourceService:    s.mockResource,
 	}
 }
 
@@ -1056,7 +1072,7 @@ func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_FailsForDeclarativeIDP(
 	fileStore.On("GetIdentityProviderByName", context.Background(), "Updated Name").
 		Return((*providers.IDPDTO)(nil), ErrIDPNotFound)
 
-	service := newIDPService(compositeStore, nil, &mockTransactioner{})
+	service := newIDPService(compositeStore, nil, nil, nil, nil, &mockTransactioner{})
 
 	updatedIDP := &providers.IDPDTO{
 		Name:        "Updated Name",
@@ -1108,7 +1124,7 @@ func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_SucceedsForMutableIDP()
 		return dto.ID == idpID && dto.Name == "Updated Name"
 	})).Return(nil)
 
-	service := newIDPService(compositeStore, nil, &mockTransactioner{})
+	service := newIDPService(compositeStore, nil, nil, nil, nil, &mockTransactioner{})
 
 	updatedIDP := &providers.IDPDTO{
 		Name:        "Updated Name",
@@ -1150,7 +1166,7 @@ func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_FailsForDeclarativeIDP(
 	dbStore.On("GetIdentityProvider", context.Background(), idpID).Return((*providers.IDPDTO)(nil), ErrIDPNotFound)
 	fileStore.On("GetIdentityProvider", context.Background(), idpID).Return(existingIDP, nil)
 
-	service := newIDPService(compositeStore, nil, &mockTransactioner{})
+	service := newIDPService(compositeStore, nil, nil, nil, nil, &mockTransactioner{})
 	service.SetDependencyRegistry(newNoBlockingDepsRegistry())
 
 	err := service.DeleteIdentityProvider(context.Background(), idpID)
@@ -1188,7 +1204,7 @@ func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_SucceedsForMutableIDP()
 	dbStore.On("GetIdentityProvider", context.Background(), idpID).Return(existingIDP, nil)
 	dbStore.On("DeleteIdentityProvider", context.Background(), idpID).Return(nil)
 
-	service := newIDPService(compositeStore, nil, &mockTransactioner{})
+	service := newIDPService(compositeStore, nil, nil, nil, nil, &mockTransactioner{})
 	service.SetDependencyRegistry(newNoBlockingDepsRegistry())
 
 	err := service.DeleteIdentityProvider(context.Background(), idpID)
@@ -1917,4 +1933,475 @@ func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_DoesNotReSeedRemovedDef
 	s.Nil(err)
 	s.Require().NotNil(result)
 	s.Nil(result.AttributeConfiguration, "a removed section must stay removed after saving")
+}
+
+// authorizationMappingIDP builds a minimal IDP carrying one authorization mapping value with a
+// single target, for the existence-check tests below.
+func authorizationMappingIDP(target providers.AuthorizationTarget) *providers.IDPDTO {
+	return &providers.IDPDTO{
+		Name:       "Authz Mapping Test IDP",
+		Type:       providers.IDPTypeOIDC,
+		Properties: createOIDCProperties(),
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMappings: []providers.AuthorizationMapping{
+				{
+					Claim: "groups",
+					Values: []providers.AuthorizationRule{
+						{
+							Operator: providers.AuthorizationOperatorEquals,
+							Value:    "platform-admins",
+							Targets:  []providers.AuthorizationTarget{target},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// TestCreateIdentityProvider_AuthorizationMapping_RoleNotFound rejects a mapping that names a role
+// that does not exist.
+func (s *IDPServiceTestSuite) TestCreateIdentityProvider_AuthorizationMapping_RoleNotFound() {
+	s.mockRole.On("GetRoleWithPermissions", mock.Anything, "missing-role-id").
+		Return((*role.RoleWithPermissions)(nil), &role.ErrorRoleNotFound)
+
+	idp := authorizationMappingIDP(providers.AuthorizationTarget{
+		Type: providers.AuthorizationTargetRole, ID: "missing-role-id",
+	})
+
+	result, err := s.idpService.CreateIdentityProvider(context.Background(), idp)
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidAttributeConfiguration.Code, err.Code)
+}
+
+// TestCreateIdentityProvider_AuthorizationMapping_RoleServiceServerErrorPropagates ensures a genuine
+// server error from the role service is surfaced as-is, not folded into a client "not found" error.
+func (s *IDPServiceTestSuite) TestCreateIdentityProvider_AuthorizationMapping_RoleServiceServerErrorPropagates() {
+	s.mockRole.On("GetRoleWithPermissions", mock.Anything, "role-id").
+		Return((*role.RoleWithPermissions)(nil), &tidcommon.InternalServerError)
+
+	idp := authorizationMappingIDP(providers.AuthorizationTarget{
+		Type: providers.AuthorizationTargetRole, ID: "role-id",
+	})
+
+	result, err := s.idpService.CreateIdentityProvider(context.Background(), idp)
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+// TestCreateIdentityProvider_AuthorizationMapping_GroupNotFound rejects a mapping that names a group
+// that does not exist.
+func (s *IDPServiceTestSuite) TestCreateIdentityProvider_AuthorizationMapping_GroupNotFound() {
+	s.mockGroup.On("GetGroupsByIDs", mock.Anything, []string{"missing-group-id"}).
+		Return(map[string]*group.Group{}, nil)
+
+	idp := authorizationMappingIDP(providers.AuthorizationTarget{
+		Type: providers.AuthorizationTargetGroup, ID: "missing-group-id",
+	})
+
+	result, err := s.idpService.CreateIdentityProvider(context.Background(), idp)
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidAttributeConfiguration.Code, err.Code)
+}
+
+// TestCreateIdentityProvider_AuthorizationMapping_PermissionNotFound rejects a mapping that names a
+// permission that does not exist on the given resource server (which also covers a nonexistent
+// resource server, since ValidatePermissions reports every requested permission as invalid then).
+func (s *IDPServiceTestSuite) TestCreateIdentityProvider_AuthorizationMapping_PermissionNotFound() {
+	s.mockResource.On("ValidatePermissions", mock.Anything, "rs-1", []string{"read"}).
+		Return([]string{"read"}, nil)
+
+	idp := authorizationMappingIDP(providers.AuthorizationTarget{
+		Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read",
+	})
+
+	result, err := s.idpService.CreateIdentityProvider(context.Background(), idp)
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidAttributeConfiguration.Code, err.Code)
+}
+
+// TestCreateIdentityProvider_AuthorizationMapping_ExistingTargetsAccepted accepts a mapping whose
+// role, group, and permission targets all exist.
+func (s *IDPServiceTestSuite) TestCreateIdentityProvider_AuthorizationMapping_ExistingTargetsAccepted() {
+	s.mockStore.On("GetIdentityProviderByName", mock.Anything, mock.Anything).
+		Return((*providers.IDPDTO)(nil), ErrIDPNotFound)
+	s.mockStore.On("CreateIdentityProvider", mock.Anything, mock.Anything).Return(nil)
+
+	s.mockRole.On("GetRoleWithPermissions", mock.Anything, "role-id").
+		Return(&role.RoleWithPermissions{ID: "role-id"}, nil)
+	s.mockGroup.On("GetGroupsByIDs", mock.Anything, []string{"group-id"}).
+		Return(map[string]*group.Group{"group-id": {ID: "group-id"}}, nil)
+	s.mockResource.On("ValidatePermissions", mock.Anything, "rs-1", []string{"read"}).
+		Return([]string{}, nil)
+
+	idp := &providers.IDPDTO{
+		Name:       "Authz Mapping Test IDP",
+		Type:       providers.IDPTypeOIDC,
+		Properties: createOIDCProperties(),
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AuthorizationMappings: []providers.AuthorizationMapping{
+				{
+					Claim: "groups",
+					Values: []providers.AuthorizationRule{
+						{
+							Operator: providers.AuthorizationOperatorEquals,
+							Value:    "platform-admins",
+							Targets: []providers.AuthorizationTarget{
+								{Type: providers.AuthorizationTargetRole, ID: "role-id"},
+								{Type: providers.AuthorizationTargetGroup, ID: "group-id"},
+							},
+						},
+						{
+							Operator: providers.AuthorizationOperatorEquals,
+							Value:    "platform-deleters",
+							Targets: []providers.AuthorizationTarget{
+								{
+									Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1",
+									Permission: "read",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := s.idpService.CreateIdentityProvider(context.Background(), idp)
+
+	s.Nil(err)
+	s.Require().NotNil(result)
+}
+
+// ----- AuthorizationMapping validation -----
+
+type AuthorizationMappingTestSuite struct {
+	suite.Suite
+}
+
+func TestAuthorizationMappingTestSuite(t *testing.T) {
+	suite.Run(t, new(AuthorizationMappingTestSuite))
+}
+
+func roleTarget(id string) providers.AuthorizationTarget {
+	return providers.AuthorizationTarget{Type: providers.AuthorizationTargetRole, ID: id}
+}
+
+func groupTarget(id string) providers.AuthorizationTarget {
+	return providers.AuthorizationTarget{Type: providers.AuthorizationTargetGroup, ID: id}
+}
+
+// equalsRule builds an equals-operator rule.
+func equalsRule(value string, targets ...providers.AuthorizationTarget) providers.AuthorizationRule {
+	return providers.AuthorizationRule{Operator: providers.AuthorizationOperatorEquals, Value: value, Targets: targets}
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsAcceptsValidRoleAndGroupTargets() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim: "groups",
+			Values: []providers.AuthorizationRule{
+				equalsRule("engineering", roleTarget("role-eng"), groupTarget("group-eng")),
+			},
+		},
+	}
+	suite.Nil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsAcceptsValidPermissionTarget() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim: "scope",
+			Values: []providers.AuthorizationRule{equalsRule("orders.write", providers.AuthorizationTarget{
+				Type:             providers.AuthorizationTargetPermission,
+				ResourceServerID: "rs-orders",
+				Permission:       "write",
+			})},
+		},
+	}
+	suite.Nil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsAcceptsGreaterThanOnNumberType() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim:     "level",
+			ValueType: providers.AuthorizationValueTypeNumber,
+			Values: []providers.AuthorizationRule{
+				{
+					Operator: providers.AuthorizationOperatorGreaterThan,
+					Value:    "5",
+					Targets:  []providers.AuthorizationTarget{roleTarget("role-1")},
+				},
+			},
+		},
+	}
+	suite.Nil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsRejectsEmptyClaim() {
+	mappings := []providers.AuthorizationMapping{
+		{Claim: "", Values: []providers.AuthorizationRule{equalsRule("x", roleTarget("role-1"))}},
+	}
+	suite.NotNil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsRejectsNoValues() {
+	mappings := []providers.AuthorizationMapping{
+		{Claim: "groups", Values: []providers.AuthorizationRule{}},
+	}
+	suite.NotNil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsRejectsRoleTargetWithNoID() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim: "groups",
+			Values: []providers.AuthorizationRule{
+				equalsRule("engineering", providers.AuthorizationTarget{Type: providers.AuthorizationTargetRole}),
+			},
+		},
+	}
+	suite.NotNil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsRejectsIncompletePermissionTarget() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim: "scope",
+			Values: []providers.AuthorizationRule{equalsRule("orders.write", providers.AuthorizationTarget{
+				Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-orders",
+			})},
+		},
+	}
+	suite.NotNil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsRejectsUnknownTargetType() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim: "groups",
+			Values: []providers.AuthorizationRule{
+				equalsRule("engineering", providers.AuthorizationTarget{Type: "not-a-real-type", ID: "x"}),
+			},
+		},
+	}
+	suite.NotNil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsRejectsInvalidValueType() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim:     "groups",
+			ValueType: "not-a-real-type",
+			Values:    []providers.AuthorizationRule{equalsRule("x", roleTarget("role-1"))},
+		},
+	}
+	suite.NotNil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsRejectsInvalidOperator() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim: "groups",
+			Values: []providers.AuthorizationRule{
+				{
+					Operator: "not-a-real-operator",
+					Value:    "x",
+					Targets:  []providers.AuthorizationTarget{roleTarget("role-1")},
+				},
+			},
+		},
+	}
+	suite.NotNil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsRejectsOrderingOperatorOnStringType() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim: "groups",
+			Values: []providers.AuthorizationRule{
+				{
+					Operator: providers.AuthorizationOperatorGreaterThan,
+					Value:    "5",
+					Targets:  []providers.AuthorizationTarget{roleTarget("role-1")},
+				},
+			},
+		},
+	}
+	suite.NotNil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsRejectsNonNumericValueForNumberType() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim:     "level",
+			ValueType: providers.AuthorizationValueTypeNumber,
+			Values:    []providers.AuthorizationRule{equalsRule("not-a-number", roleTarget("role-1"))},
+		},
+	}
+	suite.NotNil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsRejectsNonBooleanValueForBooleanType() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim:     "is_admin",
+			ValueType: providers.AuthorizationValueTypeBoolean,
+			Values:    []providers.AuthorizationRule{equalsRule("not-a-boolean", roleTarget("role-1"))},
+		},
+	}
+	suite.NotNil(validateAuthorizationMappings(mappings))
+}
+
+// Validation must accept exactly what evaluation will use: whitespace around a number or boolean
+// value is never significant, so it is trimmed before the parseability check the same way it is
+// trimmed before comparison, rather than rejecting a value evaluation would have matched fine.
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsAcceptsWhitespacePaddedNumberAndBoolean() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim:     "level",
+			ValueType: providers.AuthorizationValueTypeNumber,
+			Values:    []providers.AuthorizationRule{equalsRule(" 5 ", roleTarget("role-1"))},
+		},
+		{
+			Claim:     "is_admin",
+			ValueType: providers.AuthorizationValueTypeBoolean,
+			Values:    []providers.AuthorizationRule{equalsRule(" true ", roleTarget("role-2"))},
+		},
+	}
+	suite.Nil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsAcceptsIncludesOnArrayType() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim:     "groups",
+			ValueType: providers.AuthorizationValueTypeArray,
+			Values: []providers.AuthorizationRule{
+				{
+					Operator: providers.AuthorizationOperatorIncludes,
+					Value:    "engineering",
+					Targets:  []providers.AuthorizationTarget{roleTarget("role-1")},
+				},
+			},
+		},
+	}
+	suite.Nil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsAcceptsNotIncludesOnDelimitedString() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim:     "scope",
+			ValueType: providers.AuthorizationValueTypeString,
+			Delimiter: " ",
+			Values: []providers.AuthorizationRule{
+				{
+					Operator: providers.AuthorizationOperatorNotIncludes,
+					Value:    "guest",
+					Targets:  []providers.AuthorizationTarget{roleTarget("role-1")},
+				},
+			},
+		},
+	}
+	suite.Nil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsRejectsIncludesOnSingleValuedString() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim: "department",
+			Values: []providers.AuthorizationRule{
+				{
+					Operator: providers.AuthorizationOperatorIncludes,
+					Value:    "platform",
+					Targets:  []providers.AuthorizationTarget{roleTarget("role-1")},
+				},
+			},
+		},
+	}
+	suite.NotNil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsRejectsEqualsOnArrayType() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim:     "groups",
+			ValueType: providers.AuthorizationValueTypeArray,
+			Values:    []providers.AuthorizationRule{equalsRule("engineering", roleTarget("role-1"))},
+		},
+	}
+	suite.NotNil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsRejectsEqualsOnDelimitedString() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim:     "scope",
+			ValueType: providers.AuthorizationValueTypeString,
+			Delimiter: " ",
+			Values:    []providers.AuthorizationRule{equalsRule("orders.write", roleTarget("role-1"))},
+		},
+	}
+	suite.NotNil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsRejectsDelimiterOnNonStringType() {
+	numberWithDelimiter := []providers.AuthorizationMapping{
+		{
+			Claim:     "levels",
+			ValueType: providers.AuthorizationValueTypeNumber,
+			Delimiter: ",",
+			Values:    []providers.AuthorizationRule{equalsRule("5", roleTarget("role-1"))},
+		},
+	}
+	suite.NotNil(validateAuthorizationMappings(numberWithDelimiter), "delimiter is only meaningful for string")
+
+	arrayWithDelimiter := []providers.AuthorizationMapping{
+		{
+			Claim:     "groups",
+			ValueType: providers.AuthorizationValueTypeArray,
+			Delimiter: ",",
+			Values: []providers.AuthorizationRule{
+				{
+					Operator: providers.AuthorizationOperatorIncludes,
+					Value:    "engineering",
+					Targets:  []providers.AuthorizationTarget{roleTarget("role-1")},
+				},
+			},
+		},
+	}
+	suite.NotNil(validateAuthorizationMappings(arrayWithDelimiter),
+		"an array is already discrete, a delimiter is meaningless")
+}
+
+func (suite *AuthorizationMappingTestSuite) TestValidateAuthorizationMappingsAcceptsDelimiterOnStringType() {
+	mappings := []providers.AuthorizationMapping{
+		{
+			Claim:     "scope",
+			ValueType: providers.AuthorizationValueTypeString,
+			Delimiter: " ",
+			Values: []providers.AuthorizationRule{
+				{
+					Operator: providers.AuthorizationOperatorIncludes,
+					Value:    "orders.write",
+					Targets:  []providers.AuthorizationTarget{roleTarget("role-1")},
+				},
+			},
+		},
+	}
+	suite.Nil(validateAuthorizationMappings(mappings))
+}
+
+func (suite *AuthorizationMappingTestSuite) TestNoAuthorizationMappingsConfiguredIsValid() {
+	suite.Nil(validateAuthorizationMappings(nil))
 }

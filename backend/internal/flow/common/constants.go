@@ -263,6 +263,12 @@ const (
 	// requested without a valid id_token_hint. A sign-out flow's session sign-out node reads it to
 	// decide whether the End-User must confirm the logout before the session is terminated.
 	RuntimeKeyLogoutPromptRequired = "logoutPromptRequired"
+	// RuntimeKeyMappedRoleIDs holds the space-separated role IDs a federated login's AuthorizationMapping resolved.
+	RuntimeKeyMappedRoleIDs = "mapped_role_ids"
+	// RuntimeKeyMappedGroupIDs holds the space-separated group IDs a federated login's AuthorizationMapping resolved.
+	RuntimeKeyMappedGroupIDs = "mapped_group_ids"
+	// RuntimeKeyMappedPermissions holds the JSON-encoded []providers.AuthorizationTarget permission targets resolved.
+	RuntimeKeyMappedPermissions = "mapped_permissions"
 )
 
 // SSOCheckpointKey scopes a per-checkpoint SSO control key (RuntimeKeySSOSessionPresent,

@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
@@ -80,7 +81,7 @@ func (suite *JWTBearerGrantHandlerTestSuite) SetupTest() {
 
 func (suite *JWTBearerGrantHandlerTestSuite) TestNewJWTBearerGrantHandler() {
 	handler := newJWTBearerGrantHandler(suite.mockTokenBuilder, suite.mockTokenValidator,
-		suite.mockResourceService)
+		suite.mockResourceService, nil)
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
 }
@@ -537,4 +538,146 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_TokenBuildError() {
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), errResp)
 	assert.Equal(suite.T(), constants.ErrorServerError, errResp.Error)
+}
+
+// TestHandleGrant_MappedRoleGrantsScopeBeyondAssertionScope covers the single-authority rule: when
+// the assertion's issuing connection has AuthorizationMapping configured, the assertion's own scope
+// claim is not consulted at all, so a requested scope absent from it can still be granted through a
+// mapped role evaluated by the RBAC engine.
+func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedRoleGrantsScopeBeyondAssertionScope() {
+	now := time.Now().Unix()
+	tokenRequest := &model.TokenRequest{
+		GrantType: string(providers.GrantTypeJWTBearer),
+		ClientID:  testClientID,
+		Assertion: testAssertion,
+		Scope:     testScopeWrite,
+	}
+
+	mockAuthzService := authzmock.NewAuthorizationProviderMock(suite.T())
+	h := &jwtBearerGrantHandler{
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		resourceService: suite.mockResourceService,
+		authzService:    mockAuthzService,
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGAssertion", mock.Anything, testAssertion).
+		Return(&tokenservice.IDJAGAssertionClaims{
+			Sub: testUserID,
+			Iss: testCustomIssuer,
+			Authorization: tokenservice.MappedAuthorization{
+				Targets: []providers.AuthorizationTarget{
+					{Type: providers.AuthorizationTargetRole, ID: "role-writer"},
+				},
+				Configured: true,
+			},
+		}, nil)
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
+		[]string{testScopeWrite}).Return([]string{}, nil)
+	mockAuthzService.On("EvaluateAccessBatch", mock.Anything,
+		mock.MatchedBy(func(req providers.AccessEvaluationsRequest) bool {
+			return len(req.Evaluations) == 1 &&
+				req.Evaluations[0].Subject.ID == "" &&
+				assert.ObjectsAreEqual([]string{"role-writer"}, req.Evaluations[0].Subject.RoleIDs) &&
+				req.Evaluations[0].Permission.Name == testScopeWrite &&
+				req.Evaluations[0].ResourceServer.ID == testJWTBearerDefaultRSID
+		})).Return(&providers.AccessEvaluationsResponse{
+		Evaluations: []providers.AccessEvaluationResponse{{Decision: true}},
+	}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return tokenservice.JoinScopes(ctx.Scopes) == testScopeWrite
+		})).Return(&model.TokenDTO{
+		Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 3600, Scopes: []string{testScopeWrite},
+	}, nil)
+
+	result, errResp := h.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), []string{testScopeWrite}, result.AccessToken.Scopes)
+}
+
+// TestHandleGrant_MappedPermissionGrantsDirectlyNoEngineCall covers a mapped permission target (not a
+// role or group): it must be granted by direct union, without ever calling the RBAC engine, since a
+// permission target names no role or group to resolve.
+func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedPermissionGrantsDirectlyNoEngineCall() {
+	now := time.Now().Unix()
+	tokenRequest := &model.TokenRequest{
+		GrantType: string(providers.GrantTypeJWTBearer),
+		ClientID:  testClientID,
+		Assertion: testAssertion,
+		Scope:     "read",
+	}
+
+	// No .On("EvaluateAccessBatch", ...) expectation: a call would fail the mock, proving the direct
+	// permission grant never reaches the engine.
+	mockAuthzService := authzmock.NewAuthorizationProviderMock(suite.T())
+	h := &jwtBearerGrantHandler{
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		resourceService: suite.mockResourceService,
+		authzService:    mockAuthzService,
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGAssertion", mock.Anything, testAssertion).
+		Return(&tokenservice.IDJAGAssertionClaims{
+			Sub: testUserID,
+			Iss: testCustomIssuer,
+			Authorization: tokenservice.MappedAuthorization{
+				Targets: []providers.AuthorizationTarget{
+					{Type: providers.AuthorizationTargetPermission,
+						ResourceServerID: testJWTBearerDefaultRSID, Permission: "read"},
+				},
+				Configured: true,
+			},
+		}, nil)
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
+		[]string{"read"}).Return([]string{}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return tokenservice.JoinScopes(ctx.Scopes) == testScopeRead
+		})).Return(&model.TokenDTO{
+		Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 3600, Scopes: []string{testScopeRead},
+	}, nil)
+
+	result, errResp := h.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), []string{testScopeRead}, result.AccessToken.Scopes)
+}
+
+// TestHandleGrant_MappedAuthorizationConfigured_NoAssertionScopeFallback covers the other half of the
+// single-authority rule: when the connection has AuthorizationMapping configured but the assertion's
+// claims matched none of its rules, the assertion's own (non-empty) scope claim is still not a
+// fallback authority, so nothing beyond the request is granted.
+func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedAuthorizationConfigured_NoAssertionScopeFallback() {
+	tokenRequest := &model.TokenRequest{
+		GrantType: string(providers.GrantTypeJWTBearer),
+		ClientID:  testClientID,
+		Assertion: testAssertion,
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGAssertion", mock.Anything, testAssertion).
+		Return(&tokenservice.IDJAGAssertionClaims{
+			Sub:    testUserID,
+			Iss:    testCustomIssuer,
+			Scopes: []string{"read", "write"},
+			Authorization: tokenservice.MappedAuthorization{
+				Configured: true,
+			},
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return len(ctx.Scopes) == 0
+		})).Return(&model.TokenDTO{
+		Token: testTokenExchangeJWT, Scopes: []string{},
+	}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Empty(suite.T(), result.AccessToken.Scopes)
 }

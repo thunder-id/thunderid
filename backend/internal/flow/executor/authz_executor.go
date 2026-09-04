@@ -10,6 +10,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -124,13 +125,21 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 		return nil, errors.Join(errors.New("Failed to extract group IDs"), err)
 	}
 
+	// Fold in any roles, groups, and permissions the federated login mapped from IDP claims (via
+	// AuthorizationMapping).
+	mappedRoleIDs := utils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedRoleIDs], " ")
+	mappedGroupIDs := utils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedGroupIDs], " ")
+	mappedPermissions := extractMappedPermissions(ctx, a.logger)
+	groupIDs = utils.MergeUniqueStrings(groupIDs, mappedGroupIDs)
+
 	logger.Debug(ctx.Context, "Calling authorization service",
 		log.MaskedString(log.LoggerKeyUserID, userID),
 		log.Int("groupCount", len(groupIDs)),
+		log.Int("roleCount", len(mappedRoleIDs)),
 		log.Int("permissionCount", len(requestedPerms)))
 
 	authzResp, svcErr := a.authzService.EvaluateAccessBatch(ctx.Context,
-		a.buildAccessEvaluationsRequest(userID, groupIDs, requestedPerms, resourceServerID))
+		a.buildAccessEvaluationsRequest(userID, groupIDs, mappedRoleIDs, requestedPerms, resourceServerID))
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Authorization service call failed",
 			log.String("error", svcErr.Error.DefaultValue))
@@ -140,6 +149,8 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 	}
 
 	authorizedPermissions := a.filterAuthorizedPermissions(requestedPerms, authzResp.Evaluations)
+	authorizedPermissions = idp.UnionMappedPermissionTargets(
+		authorizedPermissions, requestedPerms, mappedPermissions, resourceServerID)
 	setAuthorizedPermissions(execResp, authorizedPermissions)
 	logger.Debug(ctx.Context, "Authorization completed successfully",
 		log.Int("authorizedCount", len(authorizedPermissions)))
@@ -194,6 +205,7 @@ func setAuthorizedPermissions(execResp *providers.ExecutorResponse, authorizedPe
 func (a *authorizationExecutor) buildAccessEvaluationsRequest(
 	entityID string,
 	groupIDs []string,
+	roleIDs []string,
 	requestedPermissions []string,
 	resourceServerID string,
 ) providers.AccessEvaluationsRequest {
@@ -203,12 +215,28 @@ func (a *authorizationExecutor) buildAccessEvaluationsRequest(
 			Subject: providers.Subject{
 				ID:       entityID,
 				GroupIDs: groupIDs,
+				RoleIDs:  roleIDs,
 			},
 			ResourceServer: providers.AccessEvaluationResourceServer{ID: resourceServerID},
 			Permission:     providers.Permission{Name: permission},
 		})
 	}
 	return providers.AccessEvaluationsRequest{Evaluations: evaluations}
+}
+
+// extractMappedPermissions decodes the permission targets a federated login's AuthorizationMapping
+// resolved, carried through runtime data.
+func extractMappedPermissions(ctx *providers.NodeContext, logger *log.Logger) []providers.AuthorizationTarget {
+	encoded, ok := ctx.RuntimeData[common.RuntimeKeyMappedPermissions]
+	if !ok || encoded == "" {
+		return nil
+	}
+	var permissions []providers.AuthorizationTarget
+	if err := json.Unmarshal([]byte(encoded), &permissions); err != nil {
+		logger.Debug(ctx.Context, "Failed to decode mapped permission targets", log.Error(err))
+		return nil
+	}
+	return permissions
 }
 
 // filterAuthorizedPermissions returns the requested permissions that were allowed by the authorization service.

@@ -444,14 +444,14 @@ func (f *fileBasedStore) GetAllPermissionsForAssignees(
 func (f *fileBasedStore) GetAuthorizedPermissionsByResourceServer(
 	ctx context.Context,
 	entityID string,
-	groupIDs []string,
+	groupIDs, roleIDs []string,
 	resourceServerID string,
 	requestPermissions []string,
 ) ([]string, error) {
 	if len(requestPermissions) == 0 {
 		return []string{}, nil
 	}
-	if entityID == "" && len(groupIDs) == 0 {
+	if entityID == "" && len(groupIDs) == 0 && len(roleIDs) == 0 {
 		return []string{}, nil
 	}
 
@@ -470,6 +470,11 @@ func (f *fileBasedStore) GetAuthorizedPermissionsByResourceServer(
 		groupSet[groupID] = true
 	}
 
+	roleIDSet := make(map[string]bool, len(roleIDs))
+	for _, roleID := range roleIDs {
+		roleIDSet[roleID] = true
+	}
+
 	permitted := make(map[string]bool)
 	for _, item := range list {
 		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
@@ -480,7 +485,9 @@ func (f *fileBasedStore) GetAuthorizedPermissionsByResourceServer(
 				log.Error(err))
 			continue
 		}
-		if !matchesAssignee(roleData.Assignments, entityID, groupSet) {
+		// A role named directly in roleIDs counts even with no matching assignment, the same way
+		// the DB store matches it against ROLE_PERMISSION without requiring a ROLE_ASSIGNMENT row.
+		if !matchesAssignee(roleData.Assignments, entityID, groupSet) && !roleIDSet[item.ID.ID] {
 			continue
 		}
 		for _, resourcePerms := range roleData.Permissions {

@@ -387,10 +387,10 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestIsRoleDeclarative_NonExist
 func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_ChecksBothStores() {
 	perms := []string{"perm1", "perm2"}
 	suite.mockDBStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{"group1"}, "", perms,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{"group1"}, mock.Anything, "", perms,
 	).Return([]string{"perm1"}, nil)
 	suite.mockFileStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{"group1"}, "", perms,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{"group1"}, mock.Anything, "", perms,
 	).Return([]string{"perm1", "perm2"}, nil)
 	// Cross-store lookup: no DB-recorded role IDs to fold in.
 	suite.mockDBStore.On(
@@ -398,7 +398,7 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_C
 	).Return([]string{}, nil)
 
 	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		suite.ctx, "user1", []string{"group1"}, "",
+		suite.ctx, "user1", []string{"group1"}, nil, "",
 		perms)
 
 	assert.NoError(suite.T(), err)
@@ -413,17 +413,17 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_C
 func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_CommonPermissions() {
 	perms := []string{"p1", "p2", "p3"}
 	suite.mockDBStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{"group1"}, "", perms,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{"group1"}, mock.Anything, "", perms,
 	).Return([]string{"p1", "p2"}, nil)
 	suite.mockFileStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{"group1"}, "", perms,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{"group1"}, mock.Anything, "", perms,
 	).Return([]string{"p2", "p3"}, nil)
 	suite.mockDBStore.On(
 		"GetEntityRoleIDs", suite.ctx, "user1", []string{"group1"},
 	).Return([]string{}, nil)
 
 	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		suite.ctx, "user1", []string{"group1"}, "",
+		suite.ctx, "user1", []string{"group1"}, nil, "",
 		perms)
 
 	assert.NoError(suite.T(), err)
@@ -460,17 +460,17 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetUserRoles_MergedOrderIs
 func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_EmptyResult() {
 	perms := []string{"perm1"}
 	suite.mockDBStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", perms,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", perms,
 	).Return([]string{}, nil)
 	suite.mockFileStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", perms,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", perms,
 	).Return([]string{}, nil)
 	suite.mockDBStore.On(
 		"GetEntityRoleIDs", suite.ctx, "user1", []string{},
 	).Return([]string{}, nil)
 
 	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		suite.ctx, "user1", []string{}, "",
+		suite.ctx, "user1", []string{}, nil, "",
 		perms)
 
 	assert.NoError(suite.T(), err)
@@ -488,10 +488,10 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_D
 	declarativeRoleID := "a1c00000-0000-0000-0000-000000000004"
 
 	suite.mockDBStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", perms,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", perms,
 	).Return([]string{}, nil)
 	suite.mockFileStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", perms,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", perms,
 	).Return([]string{}, nil)
 	suite.mockDBStore.On(
 		"GetEntityRoleIDs", suite.ctx, "user1", []string{},
@@ -509,7 +509,7 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_D
 	}, nil)
 
 	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		suite.ctx, "user1", []string{}, "",
+		suite.ctx, "user1", []string{}, nil, "",
 		perms)
 
 	assert.NoError(suite.T(), err)
@@ -524,10 +524,10 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_D
 	dbOnlyRoleID := "db-role-only"
 
 	suite.mockDBStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", perms,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", perms,
 	).Return([]string{"perm1"}, nil)
 	suite.mockFileStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", perms,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", perms,
 	).Return([]string{}, nil)
 	suite.mockDBStore.On(
 		"GetEntityRoleIDs", suite.ctx, "user1", []string{},
@@ -538,7 +538,7 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_D
 	// fileStore.GetRole MUST NOT be called for DB-only roles.
 
 	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		suite.ctx, "user1", []string{}, "",
+		suite.ctx, "user1", []string{}, nil, "",
 		perms)
 
 	assert.NoError(suite.T(), err)
@@ -555,10 +555,10 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_C
 	storageErr := errors.New("disk read failure")
 
 	suite.mockDBStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", requested,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", requested,
 	).Return([]string{}, nil)
 	suite.mockFileStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", requested,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", requested,
 	).Return([]string{}, nil)
 	suite.mockDBStore.On(
 		"GetEntityRoleIDs", suite.ctx, "user1", []string{},
@@ -570,7 +570,8 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_C
 		"GetRole", suite.ctx, roleID,
 	).Return(RoleWithPermissions{}, storageErr)
 
-	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(suite.ctx, "user1", []string{}, "", requested)
+	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(
+		suite.ctx, "user1", []string{}, nil, "", requested)
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), result)
@@ -598,10 +599,12 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_C
 			roleID := "role-" + tc.name
 
 			suite.mockDBStore.On(
-				"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", requested,
+				"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "",
+				requested,
 			).Return([]string{}, nil)
 			suite.mockFileStore.On(
-				"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", requested,
+				"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "",
+				requested,
 			).Return([]string{}, nil)
 			suite.mockDBStore.On(
 				"GetEntityRoleIDs", suite.ctx, "user1", []string{},
@@ -614,7 +617,7 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_C
 			).Return(RoleWithPermissions{}, tc.err)
 
 			result, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-				suite.ctx, "user1", []string{}, "",
+				suite.ctx, "user1", []string{}, nil, "",
 				requested)
 
 			assert.NoError(suite.T(), err)
@@ -630,10 +633,10 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_C
 	roleID := "declarative-role"
 
 	suite.mockDBStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", requested,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", requested,
 	).Return([]string{}, nil)
 	suite.mockFileStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", requested,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", requested,
 	).Return([]string{}, nil)
 	suite.mockDBStore.On(
 		"GetEntityRoleIDs", suite.ctx, "user1", []string{},
@@ -651,7 +654,8 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_C
 		}},
 	}, nil)
 
-	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(suite.ctx, "user1", []string{}, "", requested)
+	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(
+		suite.ctx, "user1", []string{}, nil, "", requested)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), []string{"tenant_instance:system"}, result)
@@ -737,7 +741,7 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetEntityRoleIDs_Propagate
 // guaranteed to be empty.
 func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_EmptyRequestedShortCircuits() {
 	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		suite.ctx, "user1", []string{"group1"}, "", []string{})
+		suite.ctx, "user1", []string{"group1"}, nil, "", []string{})
 
 	assert.NoError(suite.T(), err)
 	assert.Empty(suite.T(), result)
@@ -760,10 +764,11 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_P
 	dbErr := errors.New("db unreachable")
 	requested := []string{"perm1"}
 	suite.mockDBStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", requested,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", requested,
 	).Return(nil, dbErr)
 
-	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(suite.ctx, "user1", []string{}, "", requested)
+	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(
+		suite.ctx, "user1", []string{}, nil, "", requested)
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), result)
@@ -775,13 +780,14 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_P
 	fileErr := errors.New("file read failure")
 	requested := []string{"perm1"}
 	suite.mockDBStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", requested,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", requested,
 	).Return([]string{}, nil)
 	suite.mockFileStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", requested,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", requested,
 	).Return(nil, fileErr)
 
-	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(suite.ctx, "user1", []string{}, "", requested)
+	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(
+		suite.ctx, "user1", []string{}, nil, "", requested)
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), result)
@@ -794,14 +800,14 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_P
 func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_CrossStoreNoEntityNoGroups() {
 	requested := []string{"perm1"}
 	suite.mockDBStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "", []string{}, "", requested,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "", []string{}, mock.Anything, "", requested,
 	).Return([]string{}, nil)
 	suite.mockFileStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "", []string{}, "", requested,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "", []string{}, mock.Anything, "", requested,
 	).Return([]string{}, nil)
 	// Cross-store path must not call GetEntityRoleIDs when there's no assignee to look up.
 
-	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(suite.ctx, "", []string{}, "", requested)
+	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(suite.ctx, "", []string{}, nil, "", requested)
 
 	assert.NoError(suite.T(), err)
 	assert.Empty(suite.T(), result)
@@ -815,16 +821,17 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_C
 	requested := []string{"perm1"}
 	rolesErr := errors.New("assignment table unreachable")
 	suite.mockDBStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", requested,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", requested,
 	).Return([]string{}, nil)
 	suite.mockFileStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", requested,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", requested,
 	).Return([]string{}, nil)
 	suite.mockDBStore.On(
 		"GetEntityRoleIDs", suite.ctx, "user1", []string{},
 	).Return(nil, rolesErr)
 
-	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(suite.ctx, "user1", []string{}, "", requested)
+	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(
+		suite.ctx, "user1", []string{}, nil, "", requested)
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), result)
@@ -838,10 +845,10 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_C
 	existErr := errors.New("file lookup failure")
 	roleID := "some-role"
 	suite.mockDBStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", requested,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", requested,
 	).Return([]string{}, nil)
 	suite.mockFileStore.On(
-		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, "", requested,
+		"GetAuthorizedPermissionsByResourceServer", suite.ctx, "user1", []string{}, mock.Anything, "", requested,
 	).Return([]string{}, nil)
 	suite.mockDBStore.On(
 		"GetEntityRoleIDs", suite.ctx, "user1", []string{},
@@ -850,7 +857,8 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_C
 		"IsRoleExist", suite.ctx, roleID,
 	).Return(false, existErr)
 
-	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(suite.ctx, "user1", []string{}, "", requested)
+	result, err := suite.store.GetAuthorizedPermissionsByResourceServer(
+		suite.ctx, "user1", []string{}, nil, "", requested)
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), result)

@@ -73,6 +73,8 @@ func newProvisioningExecutor(
 				{Property: propertyKeyMaxDynamicInputsPerPrompt},
 				{Property: propertyKeyAssignGroup},
 				{Property: propertyKeyAssignRole},
+				{Property: propertyKeySeedGroupsFromMapping},
+				{Property: propertyKeySeedRolesFromMapping},
 				{Property: common.NodePropertyAllowCrossOUProvisioning},
 			},
 		})
@@ -740,6 +742,18 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 	groupIDs := p.getGroupsToAssign(ctx)
 	roleIDs := p.getRolesToAssign(ctx)
 
+	// Seeding from AuthorizationMapping is a one-time assignment at creation, it opts in to
+	// whatever the federated login's mapping already resolved for this entity's claims, alongside the
+	// fixed lists above.
+	if isSeedGroupsFromMappingEnabled(ctx) {
+		mappedGroupIDs := systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedGroupIDs], " ")
+		groupIDs = systemutils.MergeUniqueStrings(groupIDs, mappedGroupIDs)
+	}
+	if isSeedRolesFromMappingEnabled(ctx) {
+		mappedRoleIDs := systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedRoleIDs], " ")
+		roleIDs = systemutils.MergeUniqueStrings(roleIDs, mappedRoleIDs)
+	}
+
 	if len(groupIDs) == 0 && len(roleIDs) == 0 {
 		logger.Debug(ctx.Context, "No group or role configured for assignment, skipping")
 		return nil
@@ -767,6 +781,28 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 	logger.Debug(ctx.Context, "Successfully assigned groups and roles",
 		log.MaskedString(log.LoggerKeyUserID, userID))
 	return nil
+}
+
+// isSeedGroupsFromMappingEnabled returns the value of the seedGroupsFromMapping node property,
+// defaulting to false if absent or not a bool.
+func isSeedGroupsFromMappingEnabled(ctx *providers.NodeContext) bool {
+	if val, ok := ctx.NodeProperties[propertyKeySeedGroupsFromMapping]; ok {
+		if boolVal, ok := val.(bool); ok {
+			return boolVal
+		}
+	}
+	return false
+}
+
+// isSeedRolesFromMappingEnabled returns the value of the seedRolesFromMapping node property,
+// defaulting to false if absent or not a bool.
+func isSeedRolesFromMappingEnabled(ctx *providers.NodeContext) bool {
+	if val, ok := ctx.NodeProperties[propertyKeySeedRolesFromMapping]; ok {
+		if boolVal, ok := val.(bool); ok {
+			return boolVal
+		}
+	}
+	return false
 }
 
 // getGroupsToAssign parses the assignGroup node property into a slice of group IDs.

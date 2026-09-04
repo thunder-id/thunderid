@@ -14,6 +14,7 @@ import (
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -205,6 +206,26 @@ func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorRe
 	execResp.AuthUser = authUser
 	if svcErr == nil && entityRef != nil {
 		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists
+	}
+}
+
+// setMappedAuthorizationTargets splits resolved AuthorizationMapping targets by kind and stores them
+// as runtime data for later executors. No-op when there is nothing to store.
+func setMappedAuthorizationTargets(execResp *providers.ExecutorResponse, targets []providers.AuthorizationTarget) {
+	if len(targets) == 0 {
+		return
+	}
+	roleIDs, groupIDs, permissions := idp.SplitAuthorizationTargets(targets)
+	if len(roleIDs) > 0 {
+		execResp.RuntimeData[common.RuntimeKeyMappedRoleIDs] = systemutils.StringifyStringArray(roleIDs, " ")
+	}
+	if len(groupIDs) > 0 {
+		execResp.RuntimeData[common.RuntimeKeyMappedGroupIDs] = systemutils.StringifyStringArray(groupIDs, " ")
+	}
+	if len(permissions) > 0 {
+		if encoded, err := json.Marshal(permissions); err == nil {
+			execResp.RuntimeData[common.RuntimeKeyMappedPermissions] = string(encoded)
+		}
 	}
 }
 

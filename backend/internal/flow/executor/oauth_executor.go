@@ -271,6 +271,11 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 		}
 	}
 
+	// Resolve the IDP's AuthorizationMapping and store it as runtime data for later executors.
+	if idpDTO, svcErr := o.idpService.GetIdentityProvider(ctx.Context, idpID); svcErr == nil {
+		setMappedAuthorizationTargets(execResp, idp.GetMappedAuthorizationTargets(idpDTO, federatedAttributes))
+	}
+
 	setFederatedEntityState(ctx.Context, execResp, o.authnProvider)
 
 	switch ctx.FlowType {

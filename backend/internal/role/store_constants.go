@@ -178,22 +178,23 @@ var (
 // It builds separate queries for PostgreSQL and SQLite to handle array parameters correctly.
 func buildAuthorizedPermissionsQuery(
 	entityID string,
-	groupIDs []string,
+	groupIDs, roleIDs []string,
 	resourceServerID string,
 	requestedPermissions []string,
 	deploymentID string,
 ) (dbmodel.DBQuery, []interface{}) {
-	// Base query structure
+	// Base query structure. LEFT JOIN, not INNER JOIN: a role named directly in roleIDs (an
+	// externally derived role, holding no stored assignment) must still surface its permissions.
 	baseQuery := `SELECT DISTINCT rp.PERMISSION
 		FROM "ROLE_PERMISSION" rp
-		INNER JOIN "ROLE_ASSIGNMENT" ra ON rp.ROLE_ID = ra.ROLE_ID AND rp.DEPLOYMENT_ID = $1 AND ra.DEPLOYMENT_ID = $1
+		LEFT JOIN "ROLE_ASSIGNMENT" ra ON rp.ROLE_ID = ra.ROLE_ID AND rp.DEPLOYMENT_ID = $1 AND ra.DEPLOYMENT_ID = $1
 		WHERE rp.DEPLOYMENT_ID = $1 AND `
 
 	var postgresWhere []string
 	var sqliteWhere []string
 
 	// Pre-allocate args slice with estimated capacity
-	argsCapacity := 1 + len(groupIDs) + len(requestedPermissions) // +1 for DEPLOYMENT_ID
+	argsCapacity := 1 + len(groupIDs) + len(roleIDs) + len(requestedPermissions) // +1 for DEPLOYMENT_ID
 	if entityID != "" {
 		argsCapacity++
 	}
@@ -232,6 +233,25 @@ func buildAuthorizedPermissionsQuery(
 			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s))",
 				strings.Join(groupPlaceholdersSqlite, ",")))
 		paramIndex += len(groupIDs)
+	}
+
+	// Build the role condition if roleIDs are provided. Matched directly against rp.ROLE_ID, not
+	// through ra, so it needs no assignment row at all.
+	if len(roleIDs) > 0 {
+		rolePlaceholdersPostgres := make([]string, len(roleIDs))
+		rolePlaceholdersSqlite := make([]string, len(roleIDs))
+
+		for i, roleID := range roleIDs {
+			rolePlaceholdersPostgres[i] = fmt.Sprintf("$%d", paramIndex+i)
+			rolePlaceholdersSqlite[i] = "?"
+			args = append(args, roleID)
+		}
+
+		postgresWhere = append(postgresWhere,
+			fmt.Sprintf("rp.ROLE_ID IN (%s)", strings.Join(rolePlaceholdersPostgres, ",")))
+		sqliteWhere = append(sqliteWhere,
+			fmt.Sprintf("rp.ROLE_ID IN (%s)", strings.Join(rolePlaceholdersSqlite, ",")))
+		paramIndex += len(roleIDs)
 	}
 
 	var postgresScopeWhere []string

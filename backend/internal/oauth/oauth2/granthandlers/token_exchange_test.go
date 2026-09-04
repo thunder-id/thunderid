@@ -28,6 +28,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
@@ -41,6 +42,7 @@ const (
 	testClientID         = "client123"
 	testUserID           = "user123"
 	testScopeRead        = "read"
+	testScopeWrite       = "write"
 	// testTokenExchangeDefaultRSID / testTokenExchangeDefaultRSAudience model the
 	// deployment-configured default resource server used when a request carries no explicit
 	// resource parameter.
@@ -230,7 +232,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) setupSuccessfulJWTMockWithScope
 // TestNewTokenExchangeGrantHandler tests the constructor
 func (suite *TokenExchangeGrantHandlerTestSuite) TestNewTokenExchangeGrantHandler() {
 	handler := newTokenExchangeGrantHandler(suite.mockTokenBuilder, suite.mockTokenValidator,
-		suite.mockResourceService, oauthconfig.Config{})
+		suite.mockResourceService, nil, oauthconfig.Config{})
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
 }
@@ -3573,4 +3575,148 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_OIDCOnly_NoReso
 
 	assert.Nil(suite.T(), errResp)
 	assert.NotNil(suite.T(), result)
+}
+
+// TestHandleGrant_MappedRoleGrantsScopeBeyondSubjectTokenScope covers a federated subject token whose
+// own scope claim carries nothing ThunderID recognizes, but whose issuer resolved an
+// AuthorizationMapping role from the token's claims. The requested permission scope is granted by
+// evaluating that mapped role against the RBAC engine with no local entity id, since token exchange
+// never resolves the subject token's sub to a local entity.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedRoleGrantsScopeBeyondSubjectTokenScope() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID,
+		"iss": testCustomIssuer,
+		"exp": float64(now + 3600),
+		"nbf": float64(now - 60),
+	})
+
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+	tokenRequest.Resources = []string{testRS01URI}
+	tokenRequest.Scope = testScopeWrite
+
+	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
+		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
+	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return([]string{}, nil)
+	mockAuthzService := authzmock.NewAuthorizationProviderMock(suite.T())
+	h := &tokenExchangeGrantHandler{
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		resourceService: rsvc,
+		authzService:    mockAuthzService,
+	}
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:            testUserID,
+			UserAttributes: map[string]interface{}{},
+			Authorization: tokenservice.MappedAuthorization{
+				Targets: []providers.AuthorizationTarget{
+					{Type: providers.AuthorizationTargetRole, ID: "role-writer"},
+				},
+				Configured: true,
+			},
+		}, nil)
+	mockAuthzService.On("EvaluateAccessBatch", mock.Anything,
+		mock.MatchedBy(func(req providers.AccessEvaluationsRequest) bool {
+			return len(req.Evaluations) == 1 &&
+				req.Evaluations[0].Subject.ID == "" &&
+				assert.ObjectsAreEqual([]string{"role-writer"}, req.Evaluations[0].Subject.RoleIDs) &&
+				req.Evaluations[0].Permission.Name == testScopeWrite &&
+				req.Evaluations[0].ResourceServer.ID == testRS01URI
+		})).Return(&providers.AccessEvaluationsResponse{
+		Evaluations: []providers.AccessEvaluationResponse{{Decision: true}},
+	}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return tokenservice.JoinScopes(ctx.Scopes) == testScopeWrite
+		})).Return(&model.TokenDTO{
+		Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 7200, Scopes: []string{testScopeWrite},
+	}, nil)
+
+	result, errResp := h.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), []string{testScopeWrite}, result.AccessToken.Scopes)
+}
+
+// TestHandleGrant_MappedPermissionGrantsDirectlyNoEngineCall covers a mapped permission
+// target (not a role or group): it must be granted by direct union, without ever calling the RBAC
+// engine, since a permission target names no role or group to resolve.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedPermissionGrantsDirectlyNoEngineCall() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID,
+		"iss": testCustomIssuer,
+		"exp": float64(now + 3600),
+		"nbf": float64(now - 60),
+	})
+
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+	tokenRequest.Resources = []string{testRS01URI}
+	tokenRequest.Scope = "read"
+
+	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
+		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
+	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return([]string{}, nil)
+	// No .On("EvaluateAccessBatch", ...) expectation: a call would fail the mock, proving the direct
+	// permission grant never reaches the engine.
+	mockAuthzService := authzmock.NewAuthorizationProviderMock(suite.T())
+	h := &tokenExchangeGrantHandler{
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		resourceService: rsvc,
+		authzService:    mockAuthzService,
+	}
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:            testUserID,
+			UserAttributes: map[string]interface{}{},
+			Authorization: tokenservice.MappedAuthorization{
+				Targets: []providers.AuthorizationTarget{
+					{Type: providers.AuthorizationTargetPermission, ResourceServerID: testRS01URI, Permission: "read"},
+				},
+				Configured: true,
+			},
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return tokenservice.JoinScopes(ctx.Scopes) == "read"
+		})).Return(&model.TokenDTO{
+		Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 7200, Scopes: []string{"read"},
+	}, nil)
+
+	result, errResp := h.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), []string{"read"}, result.AccessToken.Scopes)
+}
+
+// TestGetScopes_MappedAuthorizationIsSingleAuthority is a direct unit test of the getScopes gate:
+// when the issuing connection has AuthorizationMapping configured, the subject token's own scope
+// claim is not consulted at all. A requested scope passes through unfiltered, without the subset
+// check against subjectScopes that would otherwise reject everything when subjectScopes is empty,
+// and an unscoped request yields no permission scopes rather than falling back to subjectScopes.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestGetScopes_MappedAuthorizationIsSingleAuthority() {
+	tokenRequest := &model.TokenRequest{Scope: testScopeWrite}
+
+	_, errResp := suite.handler.getScopes(tokenRequest, nil, false)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidScope, errResp.Error)
+
+	scopes, errResp := suite.handler.getScopes(tokenRequest, nil, true)
+	assert.Nil(suite.T(), errResp)
+	assert.Equal(suite.T(), []string{testScopeWrite}, scopes)
+
+	unscopedRequest := &model.TokenRequest{Scope: ""}
+	scopes, errResp = suite.handler.getScopes(unscopedRequest, nil, true)
+	assert.Nil(suite.T(), errResp)
+	assert.Empty(suite.T(), scopes)
 }

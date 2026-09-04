@@ -4,6 +4,7 @@
 package providers
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -301,4 +302,101 @@ func (suite *ModelTestSuite) TestAttestationConfig_WithoutCredentials_PassesDevM
 	sanitized := cfg.WithoutCredentials()
 
 	assert.True(suite.T(), sanitized.DevMode)
+}
+
+// ----- AuthorizationMapping -----
+
+type AuthorizationMappingModelTestSuite struct {
+	suite.Suite
+}
+
+func TestAuthorizationMappingModelTestSuite(t *testing.T) {
+	suite.Run(t, new(AuthorizationMappingModelTestSuite))
+}
+
+func (s *AuthorizationMappingModelTestSuite) TestUnmarshalJSONAcceptsCurrentRulesShape() {
+	raw := `{
+		"claim": "level",
+		"valueType": "number",
+		"values": [
+			{"operator": "greater_than", "value": "5", "targets": [{"type": "role", "id": "role-1"}]}
+		]
+	}`
+
+	var mapping AuthorizationMapping
+	s.Require().NoError(json.Unmarshal([]byte(raw), &mapping))
+
+	s.Equal(AuthorizationValueTypeNumber, mapping.ValueType)
+	s.Equal([]AuthorizationRule{
+		{Operator: AuthorizationOperatorGreaterThan, Value: "5", Targets: []AuthorizationTarget{
+			{Type: AuthorizationTargetRole, ID: "role-1"},
+		}},
+	}, mapping.Values)
+}
+
+func (s *AuthorizationMappingModelTestSuite) TestUnmarshalJSONHandlesMissingAndNullValues() {
+	var withoutValues AuthorizationMapping
+	s.Require().NoError(json.Unmarshal([]byte(`{"claim": "groups"}`), &withoutValues))
+	s.Empty(withoutValues.Values)
+
+	var nullValues AuthorizationMapping
+	s.Require().NoError(json.Unmarshal([]byte(`{"claim": "groups", "values": null}`), &nullValues))
+	s.Empty(nullValues.Values)
+}
+
+func (s *AuthorizationMappingModelTestSuite) TestUnmarshalJSONRejectsMalformedValues() {
+	var mapping AuthorizationMapping
+	s.Error(json.Unmarshal([]byte(`{"claim": "groups", "values": "not-an-object-or-array"}`), &mapping))
+}
+
+func (s *AuthorizationMappingModelTestSuite) TestEffectiveValueTypeDefaultsToString() {
+	s.Equal(AuthorizationValueTypeString, AuthorizationMapping{}.EffectiveValueType())
+	s.Equal(AuthorizationValueTypeNumber,
+		AuthorizationMapping{ValueType: AuthorizationValueTypeNumber}.EffectiveValueType())
+}
+
+func (s *AuthorizationMappingModelTestSuite) TestAuthorizationOperatorIsValid() {
+	s.True(AuthorizationOperatorEquals.IsValid())
+	s.True(AuthorizationOperatorGreaterThanOrEqual.IsValid())
+	s.False(AuthorizationOperator("not-a-real-operator").IsValid())
+}
+
+func (s *AuthorizationMappingModelTestSuite) TestAuthorizationOperatorIsOrdering() {
+	s.False(AuthorizationOperatorEquals.IsOrdering())
+	s.False(AuthorizationOperatorNotEquals.IsOrdering())
+	s.True(AuthorizationOperatorGreaterThan.IsOrdering())
+	s.True(AuthorizationOperatorLessThan.IsOrdering())
+	s.True(AuthorizationOperatorGreaterThanOrEqual.IsOrdering())
+	s.True(AuthorizationOperatorLessThanOrEqual.IsOrdering())
+}
+
+func (s *AuthorizationMappingModelTestSuite) TestAuthorizationValueTypeIsValid() {
+	s.True(AuthorizationValueTypeString.IsValid())
+	s.True(AuthorizationValueTypeNumber.IsValid())
+	s.True(AuthorizationValueTypeBoolean.IsValid())
+	s.True(AuthorizationValueTypeArray.IsValid())
+	s.False(AuthorizationValueType("not-a-real-type").IsValid())
+}
+
+func (s *AuthorizationMappingModelTestSuite) TestAuthorizationOperatorIsMembership() {
+	s.True(AuthorizationOperatorIncludes.IsMembership())
+	s.True(AuthorizationOperatorNotIncludes.IsMembership())
+	s.False(AuthorizationOperatorEquals.IsMembership())
+	s.False(AuthorizationOperatorNotEquals.IsMembership())
+	s.False(AuthorizationOperatorGreaterThan.IsMembership())
+}
+
+func (s *AuthorizationMappingModelTestSuite) TestIsMultiValued() {
+	s.True(AuthorizationMapping{ValueType: AuthorizationValueTypeArray}.IsMultiValued(),
+		"an array value type is always multi-valued")
+	s.True(AuthorizationMapping{ValueType: AuthorizationValueTypeString, Delimiter: ","}.IsMultiValued(),
+		"a string with a delimiter is multi-valued")
+	s.False(AuthorizationMapping{ValueType: AuthorizationValueTypeString}.IsMultiValued(),
+		"a string with no delimiter is a single value")
+	s.False(AuthorizationMapping{}.IsMultiValued(),
+		"the default (unset) value type is string with no delimiter, a single value")
+	s.False(AuthorizationMapping{ValueType: AuthorizationValueTypeNumber}.IsMultiValued(),
+		"a number is always a single value, delimiter is not applicable to it")
+	s.False(AuthorizationMapping{ValueType: AuthorizationValueTypeBoolean}.IsMultiValued(),
+		"a boolean is always a single value, delimiter is not applicable to it")
 }

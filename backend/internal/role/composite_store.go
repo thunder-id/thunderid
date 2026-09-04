@@ -419,7 +419,7 @@ func (c *compositeRoleStore) CheckRoleNameExistsExcludingID(
 func (c *compositeRoleStore) GetAuthorizedPermissionsByResourceServer(
 	ctx context.Context,
 	entityID string,
-	groupIDs []string,
+	groupIDs, roleIDs []string,
 	resourceServerID string,
 	requestPermissions []string,
 ) ([]string, error) {
@@ -428,17 +428,19 @@ func (c *compositeRoleStore) GetAuthorizedPermissionsByResourceServer(
 	}
 
 	dbPerms, err := c.dbStore.GetAuthorizedPermissionsByResourceServer(
-		ctx, entityID, groupIDs, resourceServerID, requestPermissions)
+		ctx, entityID, groupIDs, roleIDs, resourceServerID, requestPermissions)
 	if err != nil {
 		return nil, err
 	}
 
 	filePerms, err := c.fileStore.GetAuthorizedPermissionsByResourceServer(
-		ctx, entityID, groupIDs, resourceServerID, requestPermissions)
+		ctx, entityID, groupIDs, roleIDs, resourceServerID, requestPermissions)
 	if err != nil {
 		return nil, err
 	}
 
+	// roleIDs are resolved directly, not through an entity/group assignment, so the cross-store
+	// (DB assignment + file-defined role) case does not apply to them.
 	crossStorePerms, err := c.crossStoreAuthorizedPermissions(
 		ctx, entityID, groupIDs, resourceServerID, requestPermissions)
 	if err != nil {

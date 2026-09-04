@@ -1360,6 +1360,122 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_GroupWithExistingMembers
 	suite.mockGroupService.AssertExpectations(suite.T())
 }
 
+// Seeding is additive: the mapped role/group combine with the fixed assignGroup/assignRole lists,
+// deduplicated, when both flags are enabled.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMapping() {
+	suite.expectSchemaForProvisioning()
+	attrs := map[string]interface{}{"username": "newuser"}
+	attrsJSON, _ := json.Marshal(attrs)
+
+	runtimeData := map[string]string{
+		ouIDKey:     testOUID,
+		userTypeKey: testUserType,
+	}
+	for k, v := range seedMappedAuthorizationTargets(suite.T(), []providers.AuthorizationTarget{
+		{Type: providers.AuthorizationTargetRole, ID: "mapped-role-id"},
+		{Type: providers.AuthorizationTargetGroup, ID: "mapped-group-id"},
+		// A permission target has no seeding equivalent and must be ignored.
+		{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read"},
+	}) {
+		runtimeData[k] = v
+	}
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeRegistration,
+		UserInputs:  map[string]string{"username": "newuser"},
+		RuntimeData: runtimeData,
+		NodeInputs: []providers.Input{
+			{Identifier: "username", Type: "string", Required: true},
+		},
+		NodeProperties: map[string]interface{}{
+			"assignGroup":           "static-group-id",
+			"assignRole":            "static-role-id",
+			"seedGroupsFromMapping": true,
+			"seedRolesFromMapping":  true,
+		},
+	}
+
+	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(nil,
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+
+	createdUser := &providers.Entity{
+		ID: testNewUserID, OUID: testOUID, Type: testUserType, Attributes: attrsJSON,
+	}
+	suite.mockEntityProvider.On("CreateEntity", mock.Anything, mock.Anything).Return(createdUser, nil)
+
+	suite.mockGroupService.On("AddMembersToGroups",
+		mock.Anything, []group.Member{{ID: testNewUserID, Type: group.MemberTypeUser}},
+		[]string{"static-group-id", "mapped-group-id"}).
+		Return((*tidcommon.ServiceError)(nil))
+	suite.mockRoleAssignmentService.On("AddAssigneesToRoles", mock.Anything,
+		[]role.RoleAssignment{{ID: testNewUserID, Type: role.AssigneeTypeUser}},
+		[]string{"static-role-id", "mapped-role-id"}).
+		Return((*tidcommon.ServiceError)(nil))
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockGroupService.AssertExpectations(suite.T())
+	suite.mockRoleAssignmentService.AssertExpectations(suite.T())
+}
+
+// Without the seeding flags, mapped targets carried in runtime data are ignored entirely: only the
+// fixed assignGroup/assignRole lists are applied.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedFromMappingDisabled_MappedTargetsIgnored() {
+	suite.expectSchemaForProvisioning()
+	attrs := map[string]interface{}{"username": "newuser"}
+	attrsJSON, _ := json.Marshal(attrs)
+
+	runtimeData := map[string]string{
+		ouIDKey:     testOUID,
+		userTypeKey: testUserType,
+	}
+	for k, v := range seedMappedAuthorizationTargets(suite.T(), []providers.AuthorizationTarget{
+		{Type: providers.AuthorizationTargetRole, ID: "mapped-role-id"},
+		{Type: providers.AuthorizationTargetGroup, ID: "mapped-group-id"},
+	}) {
+		runtimeData[k] = v
+	}
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeRegistration,
+		UserInputs:  map[string]string{"username": "newuser"},
+		RuntimeData: runtimeData,
+		NodeInputs: []providers.Input{
+			{Identifier: "username", Type: "string", Required: true},
+		},
+		NodeProperties: map[string]interface{}{
+			"assignGroup": "static-group-id",
+			"assignRole":  "static-role-id",
+		},
+	}
+
+	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(nil,
+		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+
+	createdUser := &providers.Entity{
+		ID: testNewUserID, OUID: testOUID, Type: testUserType, Attributes: attrsJSON,
+	}
+	suite.mockEntityProvider.On("CreateEntity", mock.Anything, mock.Anything).Return(createdUser, nil)
+
+	suite.mockGroupService.On("AddMembersToGroups",
+		mock.Anything, []group.Member{{ID: testNewUserID, Type: group.MemberTypeUser}}, []string{"static-group-id"}).
+		Return((*tidcommon.ServiceError)(nil))
+	suite.mockRoleAssignmentService.On("AddAssigneesToRoles", mock.Anything,
+		[]role.RoleAssignment{{ID: testNewUserID, Type: role.AssigneeTypeUser}}, []string{"static-role-id"}).
+		Return((*tidcommon.ServiceError)(nil))
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockGroupService.AssertExpectations(suite.T())
+	suite.mockRoleAssignmentService.AssertExpectations(suite.T())
+}
+
 // Test authentication flow with auto-provisioning still assigns groups/roles
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AuthFlow_AutoProvisioning_AssignsGroupsAndRoles() {
 	suite.expectSchemaForProvisioning()

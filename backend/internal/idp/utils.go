@@ -70,7 +70,7 @@ func GetMappedUserType(idp *providers.IDPDTO, claims map[string]interface{}) str
 	resolution := idp.AttributeConfiguration.UserTypeResolution
 	externalAttribute := strings.TrimSpace(resolution.ExternalAttribute)
 	if externalAttribute != "" {
-		if value, ok := getNestedValue(claims, externalAttribute); ok {
+		if value, ok := sysutils.GetNestedValue(claims, externalAttribute); ok {
 			key := sysutils.ConvertInterfaceValueToString(value)
 			if len(resolution.ValueMapping) > 0 {
 				if userType, ok := resolution.ValueMapping[key]; ok {
@@ -102,6 +102,202 @@ func GetAttributeMappings(idp *providers.IDPDTO, claims map[string]interface{}) 
 	return nil
 }
 
+// appendToken trims raw and appends it to tokens, unless it is empty or whitespace-only.
+func appendToken(tokens []string, raw string) []string {
+	if token := strings.TrimSpace(raw); token != "" {
+		return append(tokens, token)
+	}
+	return tokens
+}
+
+// normalizeClaimValueTokens splits a claim value into the tokens a condition is evaluated against.
+// A scalar string with no delimiter is used whole and untrimmed, since it may carry meaningful whitespace.
+func normalizeClaimValueTokens(value interface{}, delimiter string) []string {
+	switch v := value.(type) {
+	case []interface{}:
+		var tokens []string
+		for _, item := range v {
+			tokens = appendToken(tokens, sysutils.ConvertInterfaceValueToString(item))
+		}
+		return tokens
+	case []string:
+		var tokens []string
+		for _, item := range v {
+			tokens = appendToken(tokens, item)
+		}
+		return tokens
+	case string:
+		if delimiter == "" {
+			if strings.TrimSpace(v) == "" {
+				return nil
+			}
+			return []string{v}
+		}
+		var tokens []string
+		for _, part := range strings.Split(v, delimiter) {
+			tokens = appendToken(tokens, part)
+		}
+		return tokens
+	default:
+		return appendToken(nil, sysutils.ConvertInterfaceValueToString(v))
+	}
+}
+
+// conditionMatches reports whether operator/value is satisfied by tokens. includes/not_includes test
+// whole-set membership; every other operator matches if any one token satisfies it.
+func conditionMatches(
+	valueType providers.AuthorizationValueType, operator providers.AuthorizationOperator, value string, tokens []string,
+) bool {
+	switch operator {
+	case providers.AuthorizationOperatorIncludes:
+		return slices.Contains(tokens, value)
+	case providers.AuthorizationOperatorNotIncludes:
+		return !slices.Contains(tokens, value)
+	}
+	for _, token := range tokens {
+		if evaluateScalarCondition(valueType, operator, value, token) {
+			return true
+		}
+	}
+	return false
+}
+
+// evaluateScalarCondition reports whether token satisfies operator against value, both parsed per
+// valueType. A token that fails to parse as the declared type never matches (fail-closed).
+func evaluateScalarCondition(
+	valueType providers.AuthorizationValueType, operator providers.AuthorizationOperator, value, token string,
+) bool {
+	switch valueType {
+	case providers.AuthorizationValueTypeNumber:
+		// Whitespace around a number is never significant, unlike in a string comparison, so both
+		// sides are trimmed before parsing.
+		tokenNum, tokenErr := strconv.ParseFloat(strings.TrimSpace(token), 64)
+		ruleNum, ruleErr := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if tokenErr != nil || ruleErr != nil {
+			return false
+		}
+		switch operator {
+		case providers.AuthorizationOperatorEquals:
+			return tokenNum == ruleNum
+		case providers.AuthorizationOperatorNotEquals:
+			return tokenNum != ruleNum
+		case providers.AuthorizationOperatorGreaterThan:
+			return tokenNum > ruleNum
+		case providers.AuthorizationOperatorLessThan:
+			return tokenNum < ruleNum
+		case providers.AuthorizationOperatorGreaterThanOrEqual:
+			return tokenNum >= ruleNum
+		case providers.AuthorizationOperatorLessThanOrEqual:
+			return tokenNum <= ruleNum
+		}
+		return false
+	case providers.AuthorizationValueTypeBoolean:
+		tokenBool, tokenErr := strconv.ParseBool(strings.TrimSpace(token))
+		ruleBool, ruleErr := strconv.ParseBool(strings.TrimSpace(value))
+		if tokenErr != nil || ruleErr != nil {
+			return false
+		}
+		switch operator {
+		case providers.AuthorizationOperatorEquals:
+			return tokenBool == ruleBool
+		case providers.AuthorizationOperatorNotEquals:
+			return tokenBool != ruleBool
+		}
+		return false
+	default: // AuthorizationValueTypeString
+		switch operator {
+		case providers.AuthorizationOperatorEquals:
+			return token == value
+		case providers.AuthorizationOperatorNotEquals:
+			return token != value
+		}
+		return false
+	}
+}
+
+// GetMappedAuthorizationTargets resolves the local roles, groups, and permissions the IDP's
+// AuthorizationMapping grants for claims, deduplicated across every matching rule.
+func GetMappedAuthorizationTargets(
+	idp *providers.IDPDTO, claims map[string]interface{},
+) []providers.AuthorizationTarget {
+	if idp == nil || idp.AttributeConfiguration == nil {
+		return nil
+	}
+
+	var targets []providers.AuthorizationTarget
+	for _, mapping := range idp.AttributeConfiguration.AuthorizationMappings {
+		value, ok := sysutils.GetNestedValue(claims, mapping.Claim)
+		if !ok {
+			continue
+		}
+		tokens := normalizeClaimValueTokens(value, mapping.Delimiter)
+		valueType := mapping.EffectiveValueType()
+		for _, rule := range mapping.Values {
+			if conditionMatches(valueType, rule.Operator, rule.Value, tokens) {
+				targets = append(targets, rule.Targets...)
+			}
+		}
+	}
+	return dedupeAuthorizationTargets(targets)
+}
+
+// SplitAuthorizationTargets separates mapped targets by kind: roles/groups go to the RBAC engine as
+// subject state, permissions are direct grants with no role or group to resolve.
+func SplitAuthorizationTargets(
+	targets []providers.AuthorizationTarget,
+) (roleIDs, groupIDs []string, permissions []providers.AuthorizationTarget) {
+	for _, target := range targets {
+		switch target.Type {
+		case providers.AuthorizationTargetRole:
+			roleIDs = append(roleIDs, target.ID)
+		case providers.AuthorizationTargetGroup:
+			groupIDs = append(groupIDs, target.ID)
+		case providers.AuthorizationTargetPermission:
+			permissions = append(permissions, target)
+		}
+	}
+	return roleIDs, groupIDs, permissions
+}
+
+// UnionMappedPermissionTargets adds any mapped permission target for the given resource server and a
+// requested permission, granting it directly without the RBAC engine.
+func UnionMappedPermissionTargets(
+	authorizedPermissions, requestedPermissions []string,
+	mappedPermissions []providers.AuthorizationTarget,
+	resourceServerID string,
+) []string {
+	for _, target := range mappedPermissions {
+		if target.ResourceServerID != resourceServerID {
+			continue
+		}
+		if !slices.Contains(requestedPermissions, target.Permission) {
+			continue
+		}
+		if slices.Contains(authorizedPermissions, target.Permission) {
+			continue
+		}
+		authorizedPermissions = append(authorizedPermissions, target.Permission)
+	}
+	return authorizedPermissions
+}
+
+// dedupeAuthorizationTargets removes duplicate targets while preserving first-seen order.
+func dedupeAuthorizationTargets(targets []providers.AuthorizationTarget) []providers.AuthorizationTarget {
+	if len(targets) == 0 {
+		return targets
+	}
+	seen := make(map[providers.AuthorizationTarget]bool, len(targets))
+	result := make([]providers.AuthorizationTarget, 0, len(targets))
+	for _, target := range targets {
+		if seen[target] {
+			continue
+		}
+		seen[target] = true
+		result = append(result, target)
+	}
+	return result
+}
+
 // ApplyAttributeMappings applies external→local attribute mappings. Mappings copy rather than rename:
 // every incoming attribute is preserved and the mapped value is published under the local name as
 // well. Mapped values take precedence on collision. Returns attrs unchanged when no mappings are
@@ -123,36 +319,12 @@ func ApplyAttributeMappings(
 		result[key] = value
 	}
 	for _, m := range mappings {
-		if value, ok := getNestedValue(attrs, m.ExternalAttribute); ok {
+		if value, ok := sysutils.GetNestedValue(attrs, m.ExternalAttribute); ok {
 			result[m.LocalAttribute] = value
 		}
 	}
 
 	return result
-}
-
-// getNestedValue resolves a value by exact key first, then by dot-notation path through nested maps.
-func getNestedValue(data map[string]interface{}, path string) (interface{}, bool) {
-	if value, ok := data[path]; ok {
-		return value, true
-	}
-	if !strings.Contains(path, ".") {
-		return nil, false
-	}
-
-	current := interface{}(data)
-	for _, segment := range strings.Split(path, ".") {
-		obj, ok := current.(map[string]interface{})
-		if !ok {
-			return nil, false
-		}
-		value, exists := obj[segment]
-		if !exists {
-			return nil, false
-		}
-		current = value
-	}
-	return current, true
 }
 
 // validateAttributeMappingShape validates the external→local mappings independently of any user type

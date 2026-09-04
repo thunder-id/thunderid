@@ -172,9 +172,12 @@ const maskedSecretValue = "******"
 
 type ConnectionAPITestSuite struct {
 	suite.Suite
-	ouID         string
-	userTypeID   string
-	userTypeName string
+	ouID                  string
+	userTypeID            string
+	userTypeName          string
+	authzResourceServerID string
+	authzRoleID           string
+	authzGroupID          string
 }
 
 func TestConnectionAPISuite(t *testing.T) {
@@ -214,9 +217,40 @@ func (s *ConnectionAPITestSuite) SetupSuite() {
 	s.Require().NoError(err, "failed to create user type")
 	s.userTypeID = userTypeID
 	s.userTypeName = userType.Name
+
+	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:       "Connection Attribute Config API",
+		Identifier: "connection-attr-config-api",
+		OUID:       ouID,
+	}, []testutils.Action{{Name: "Read", Handle: "read", Description: "Read access"}})
+	s.Require().NoError(err, "failed to create resource server")
+	s.authzResourceServerID = rsID
+
+	roleID, err := testutils.CreateRole(testutils.Role{Name: "Connection Attr Config Role", OUID: ouID})
+	s.Require().NoError(err, "failed to create role")
+	s.authzRoleID = roleID
+
+	groupID, err := testutils.CreateGroup(testutils.Group{Name: "Connection Attr Config Group", OUID: ouID})
+	s.Require().NoError(err, "failed to create group")
+	s.authzGroupID = groupID
 }
 
 func (s *ConnectionAPITestSuite) TearDownSuite() {
+	if s.authzGroupID != "" {
+		if err := testutils.DeleteGroup(s.authzGroupID); err != nil {
+			s.T().Logf("failed to delete group: %v", err)
+		}
+	}
+	if s.authzRoleID != "" {
+		if err := testutils.DeleteRole(s.authzRoleID); err != nil {
+			s.T().Logf("failed to delete role: %v", err)
+		}
+	}
+	if s.authzResourceServerID != "" {
+		if err := testutils.DeleteResourceServer(s.authzResourceServerID); err != nil {
+			s.T().Logf("failed to delete resource server: %v", err)
+		}
+	}
 	if s.userTypeID != "" {
 		if err := testutils.DeleteUserType(s.userTypeID); err != nil {
 			s.T().Logf("failed to delete user type: %v", err)
@@ -594,7 +628,7 @@ type invalidAttributeConfig struct {
 }
 
 // invalidAttributeConfigs enumerates one configuration per validation class the IdP service enforces.
-// Shared by the create cases (A3-A9) and the update table (A16): create and update reach validation by
+// Shared by the create cases (A3-A9, A20-A22) and the update table (A16): create and update reach validation by
 // separate paths, so a class proven on one says nothing about the other.
 func (s *ConnectionAPITestSuite) invalidAttributeConfigs() []invalidAttributeConfig {
 	mapping := func(attrs ...testutils.AttributeMapping) []testutils.UserTypeAttributeMapping {
@@ -672,6 +706,70 @@ func (s *ConnectionAPITestSuite) invalidAttributeConfigs() []invalidAttributeCon
 					ExternalAttribute: "user_type",
 					ValueMapping:      map[string]string{"staff": "no_such_user_type"},
 				},
+			},
+		},
+		{
+			name: "A20_authorization_mapping_role_not_found",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMappings: []testutils.AuthorizationMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets: []testutils.AuthorizationTarget{
+							{Type: testutils.AuthorizationTargetRole, ID: "00000000-0000-0000-0000-000000000001"},
+						},
+					}},
+				}},
+			},
+		},
+		{
+			name: "A21_authorization_mapping_group_not_found",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMappings: []testutils.AuthorizationMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "editors",
+						Targets: []testutils.AuthorizationTarget{
+							{Type: testutils.AuthorizationTargetGroup, ID: "00000000-0000-0000-0000-000000000002"},
+						},
+					}},
+				}},
+			},
+		},
+		{
+			name: "A22_authorization_mapping_permission_not_found",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMappings: []testutils.AuthorizationMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "writers",
+						Targets: []testutils.AuthorizationTarget{{
+							Type:             testutils.AuthorizationTargetPermission,
+							ResourceServerID: "00000000-0000-0000-0000-000000000003",
+							Permission:       "write",
+						}},
+					}},
+				}},
+			},
+		},
+		{
+			name: "A24_authorization_mapping_includes_requires_multi_valued",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMappings: []testutils.AuthorizationMapping{{
+					Claim: "department",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorIncludes,
+						Value:    "platform",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}},
 			},
 		},
 	}
@@ -809,7 +907,7 @@ func (s *ConnectionAPITestSuite) TestOIDCAttributeConfigurationRoundTrip() {
 	s.Equal(updated, afterUpdate.AttributeConfiguration)
 }
 
-// A3-A9: every validation class is rejected on create. The unit tests for these call the service's
+// A3-A9, A20-A22: every validation class is rejected on create. The unit tests for these call the service's
 // private validator directly, so nothing previously proved the create path rejects them.
 func (s *ConnectionAPITestSuite) TestAttributeConfigurationValidationOnCreate() {
 	for _, invalid := range s.invalidAttributeConfigs() {
@@ -825,7 +923,7 @@ func (s *ConnectionAPITestSuite) TestAttributeConfigurationValidationOnCreate() 
 }
 
 // A16: the same classes rejected on update. Create and update validate through separate call sites, so
-// A3-A9 passing says nothing about this path.
+// A3-A9, A20-A22 passing says nothing about this path.
 func (s *ConnectionAPITestSuite) TestAttributeConfigurationValidationOnUpdate() {
 	created := s.createConnection("oauth",
 		s.oauthRequestWithConfig("OAuth Invalid Update Base", s.validAttributeConfig()))
@@ -1118,4 +1216,39 @@ func (s *ConnectionAPITestSuite) TestNilVersusEmptyConfigurationSections() {
 			s.deleteConnection("google", created.ID)
 		}
 	})
+}
+
+// A23: authorization mapping targets that name a real role, group, and resource-server permission are
+// accepted on both create and update. A20-A22 prove the rejection side of the existence check; this is
+// the accepting side, so the check is proven to gate on existence rather than reject everything.
+func (s *ConnectionAPITestSuite) TestAttributeConfigurationWithExistingAuthorizationMappingTargetsAccepted() {
+	config := &testutils.AttributeConfiguration{
+		UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+		AuthorizationMappings: []testutils.AuthorizationMapping{{
+			Claim: "groups",
+			Values: []testutils.AuthorizationRule{{
+				Operator: testutils.AuthorizationOperatorEquals,
+				Value:    "admins",
+				Targets: []testutils.AuthorizationTarget{
+					{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID},
+					{Type: testutils.AuthorizationTargetGroup, ID: s.authzGroupID},
+					{
+						Type:             testutils.AuthorizationTargetPermission,
+						ResourceServerID: s.authzResourceServerID,
+						Permission:       "read",
+					},
+				},
+			}},
+		}},
+	}
+
+	created := s.createConnection("oauth", s.oauthRequestWithConfig("OAuth Authz Mapping Accepted", config))
+	defer s.deleteConnection("oauth", created.ID)
+	s.Require().NotNil(created.AttributeConfiguration, "create response should echo the configuration")
+	s.Equal(config.AuthorizationMappings, created.AttributeConfiguration.AuthorizationMappings)
+
+	updateRes, err := doRequest(http.MethodPut, "/connections/oauth/"+created.ID,
+		s.oauthRequestWithConfig("OAuth Authz Mapping Accepted", config))
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, updateRes.status, string(updateRes.body))
 }

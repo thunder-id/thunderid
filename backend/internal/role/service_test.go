@@ -1392,13 +1392,13 @@ func (suite *RoleServiceTestSuite) TestGetAuthorizedPermissions() {
 					normalizedGroups = []string{}
 				}
 				suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
-					tc.userID, normalizedGroups, "",
+					tc.userID, normalizedGroups, []string{}, "",
 					tc.requestedPermissions).
 					Return(tc.mockReturn, tc.mockError).Once()
 			}
 
 			result, err := suite.service.GetAuthorizedPermissionsByResourceServer(
-				context.Background(), tc.userID, tc.groups, "",
+				context.Background(), tc.userID, tc.groups, nil, "",
 				tc.requestedPermissions)
 
 			if tc.expectedError != nil {

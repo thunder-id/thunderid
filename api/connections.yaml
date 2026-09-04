@@ -1261,6 +1261,14 @@ components:
             $ref: '#/components/schemas/UserTypeAttributeMapping'
         accountLinking:
           $ref: '#/components/schemas/AccountLinking'
+        authorizationMappings:
+          type: array
+          description: >
+            Maps values of external claims to local roles, groups, or permissions, evaluated at
+            federated sign-in, token exchange, and ID-JAG consumption. A claim value satisfying no
+            rule confers nothing, even where it matches the name of a local role or group.
+          items:
+            $ref: '#/components/schemas/AuthorizationMapping'
 
     AccountLinking:
       type: object
@@ -1334,6 +1342,106 @@ components:
           type: string
           description: Target local attribute name. Must exist in the user type's schema.
           example: "firstName"
+
+    AuthorizationMapping:
+      type: object
+      required:
+        - claim
+        - values
+      description: >
+        Maps values of a single external claim to local roles, groups, or permissions. The result is
+        the union of every matching rule's targets; a value satisfying no rule confers nothing.
+      properties:
+        claim:
+          type: string
+          description: Source claim. May be a dot-notation path into a nested claim (e.g. "address.country").
+          example: "groups"
+        valueType:
+          type: string
+          description: >
+            How the claim's value(s) are interpreted. Defaults to "string" (a single scalar value)
+            when omitted. "array", or "string" combined with delimiter, is multi-valued and requires
+            the includes/not_includes operators; every other combination is single-valued and
+            requires a different operator.
+          enum: [string, number, boolean, array]
+          default: "string"
+          example: "array"
+        delimiter:
+          type: string
+          description: >
+            Splits a single string claim value into multiple tokens, making it multi-valued. Only
+            valid when valueType is "string" or omitted.
+          example: " "
+        values:
+          type: array
+          description: At least one rule. Every matching rule's targets are unioned together.
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/AuthorizationRule'
+
+    AuthorizationRule:
+      type: object
+      required:
+        - operator
+        - value
+        - targets
+      description: Grants targets when the owning mapping's claim value(s) satisfy operator against value.
+      properties:
+        operator:
+          type: string
+          description: >
+            equals/not_equals and the ordering operators (greater_than, less_than,
+            greater_than_or_equal, less_than_or_equal) are scalar comparisons and require the owning
+            mapping to be single-valued; the ordering operators additionally require valueType
+            "number". includes/not_includes test set membership and require the owning mapping to be
+            multi-valued.
+          enum:
+            - equals
+            - not_equals
+            - greater_than
+            - less_than
+            - greater_than_or_equal
+            - less_than_or_equal
+            - includes
+            - not_includes
+          example: "equals"
+        value:
+          type: string
+          description: >
+            Value compared against the claim, always given as a string regardless of valueType (e.g.
+            "true" for boolean, "5" for number).
+          example: "engineering"
+        targets:
+          type: array
+          description: Roles, groups, or permissions granted when this rule matches.
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/AuthorizationTarget'
+
+    AuthorizationTarget:
+      type: object
+      required:
+        - type
+      description: >
+        A single local role, group, or permission a matching rule confers. The referenced role,
+        group, or permission must already exist; the connection is rejected otherwise.
+      properties:
+        type:
+          type: string
+          enum: [role, group, permission]
+          example: "role"
+        id:
+          type: string
+          description: Role or group id. Required when type is "role" or "group".
+        resourceServerId:
+          type: string
+          description: >
+            Resource server id the permission belongs to. Required when type is "permission"; a
+            permission is only meaningful on one resource server.
+        permission:
+          type: string
+          description: Permission handle on resourceServerId. Required when type is "permission".
+          example: "read"
 
     Error:
       type: object

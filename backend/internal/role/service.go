@@ -37,7 +37,8 @@ type RoleServiceInterface interface {
 	DeleteRole(ctx context.Context, id string) *tidcommon.ServiceError
 	IsRoleDeclarative(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 	GetAuthorizedPermissionsByResourceServer(
-		ctx context.Context, entityID string, groups []string, resourceServerID string, requestedPermissions []string,
+		ctx context.Context, entityID string, groups, roleIDs []string, resourceServerID string,
+		requestedPermissions []string,
 	) ([]string, *tidcommon.ServiceError)
 	// GetAllPermissions returns every permission the entity and/or groups hold, keyed by resource
 	// server. Unlike GetAuthorizedPermissionsByResourceServer it enumerates rather than checks.
@@ -418,21 +419,29 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.Ser
 // GetAuthorizedPermissionsByResourceServer checks which requested permissions are authorized for the entity
 // based on roles, scoped to a resource server when provided.
 func (rs *roleService) GetAuthorizedPermissionsByResourceServer(
-	ctx context.Context, entityID string, groups []string, resourceServerID string, requestedPermissions []string,
+	ctx context.Context, entityID string, groups, roleIDs []string, resourceServerID string,
+	requestedPermissions []string,
 ) ([]string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Authorizing permissions",
 		log.MaskedString(log.LoggerKeyUserID, entityID),
 		log.Int("groupCount", len(groups)),
+		log.Int("roleCount", len(roleIDs)),
 		log.String("resourceServerID", resourceServerID))
 
-	// Handle nil groups slice
+	// Handle nil groups/roleIDs slices
 	if groups == nil {
 		groups = []string{}
 	}
+	if roleIDs == nil {
+		roleIDs = []string{}
+	}
 
-	// Validate that at least entityID or groups is provided
-	if entityID == "" && len(groups) == 0 {
+	// Validate that at least an entity, a group, or a role is provided. Role IDs stand in for the
+	// entity/group assignment a locally managed subject would otherwise need: a federated subject
+	// mapped directly to roles has neither an entity nor groups, but still has something to
+	// evaluate.
+	if entityID == "" && len(groups) == 0 && len(roleIDs) == 0 {
 		return nil, &ErrorMissingEntityOrGroups
 	}
 
@@ -443,7 +452,7 @@ func (rs *roleService) GetAuthorizedPermissionsByResourceServer(
 
 	// Get authorized permissions from store
 	authorizedPermissions, err := rs.roleStore.GetAuthorizedPermissionsByResourceServer(
-		ctx, entityID, groups, resourceServerID, requestedPermissions)
+		ctx, entityID, groups, roleIDs, resourceServerID, requestedPermissions)
 	if err != nil {
 		logger.Error(ctx, "Failed to get authorized permissions",
 			log.MaskedString(log.LoggerKeyUserID, entityID),

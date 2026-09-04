@@ -137,6 +137,16 @@ type RefreshTokenClaims struct {
 	Claims        map[string]interface{}
 }
 
+// MappedAuthorization is server-resolved authorization context for a subject token's issuing
+// connection, not claims from the token itself. Zero value when self-issued or unmapped.
+type MappedAuthorization struct {
+	// Targets are the resolved roles, groups, and permissions. Empty if unconfigured or unmatched.
+	Targets []providers.AuthorizationTarget
+	// Configured distinguishes "configured but unmatched" (grants nothing) from "no mapping at all"
+	// (falls back to the token's own scope claim) — both leave Targets empty.
+	Configured bool
+}
+
 // SubjectTokenClaims represents the validated claims from a subject token (for token exchange).
 type SubjectTokenClaims struct {
 	Sub            string
@@ -154,6 +164,9 @@ type SubjectTokenClaims struct {
 	// TokenFamilyID is the subject token's token family id (tfid), if any. Token exchange may inherit
 	// it onto the exchanged token so the two share a revocation family.
 	TokenFamilyID string
+	// Authorization is server-resolved context, not a claim from the token itself — see
+	// MappedAuthorization.
+	Authorization MappedAuthorization
 }
 
 // IDJAGAssertionClaims represents the validated claims from an ID-JAG assertion presented on the
@@ -168,6 +181,9 @@ type IDJAGAssertionClaims struct {
 	// JTI is the assertion's unique identifier, required by the draft. Enforced as single-use via
 	// the JTI replay cache; a replayed assertion is rejected.
 	JTI string
+	// Authorization is server-resolved context, not a claim from the assertion itself — see
+	// MappedAuthorization.
+	Authorization MappedAuthorization
 }
 
 // AccessTokenClaims represents the validated claims from an access token.

@@ -250,7 +250,7 @@ func (suite *TokenValidatorTestSuite) TestExtractSubjectTokenClaims_MapsReserved
 	}
 
 	result, err := suite.validator.extractSubjectTokenClaims(
-		"", "https://example.com", claims, suite.oauthApp, mappings)
+		"", "https://example.com", claims, suite.oauthApp, mappings, MappedAuthorization{})
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
