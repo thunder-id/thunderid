@@ -247,6 +247,7 @@ const sidebars: SidebarsConfig = {
                   items: [
                     {type: 'doc', id: 'use-cases/ai-agents/solve-playground', label: 'Set Up the Playground'},
                     {type: 'doc', id: 'use-cases/ai-agents/solve-identity', label: 'Give the Agent an Identity'},
+                    {type: 'doc', id: 'use-cases/ai-agents/solve-sign-in', label: 'Authenticate the Agent'},
                     {type: 'doc', id: 'use-cases/ai-agents/solve-credentials', label: 'Protect Its Credential'},
                     {type: 'doc', id: 'use-cases/ai-agents/solve-access', label: 'What the Agent May Do'},
                     {type: 'doc', id: 'use-cases/ai-agents/solve-acts-for-user', label: 'Act for a User'},
@@ -492,6 +493,11 @@ const sidebars: SidebarsConfig = {
                   type: 'doc',
                   id: 'guides/agents/authentication/agent-own-token',
                   label: 'Agent Token',
+                },
+                {
+                  type: 'doc',
+                  id: 'guides/agents/authentication/agent-sign-in',
+                  label: 'Agent Sign-In',
                 },
                 {
                   type: 'doc',

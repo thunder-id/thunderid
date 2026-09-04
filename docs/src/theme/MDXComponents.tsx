@@ -21,6 +21,7 @@ import {AgentInteractionsDiagram} from '@site/src/components/AgentInteractionsDi
 import {LangTabs, Lang} from '@site/src/components/AgentLang';
 import {AgentModeSelector, Mode} from '@site/src/components/AgentMode';
 import {DelegationMethodSelector, DelegationContent} from '@site/src/components/AgentDelegationMode';
+import {SignInMethodSelector, SignInMethodContent} from '@site/src/components/AgentSignInMethod';
 import {AgentOwnTokenFlow, AgentOboFlow} from '@site/src/components/AgentQuickstartFlow';
 import {AgentSolutionArchitectureDiagram} from '@site/src/components/AgentSolutionArchitectureDiagram';
 import {
@@ -165,6 +166,8 @@ export default {
   Mode,
   DelegationMethodSelector,
   DelegationContent,
+  SignInMethodSelector,
+  SignInMethodContent,
   AgentInteractionsDiagram,
   BuildAFlowDiagram,
   FlowNodeTypesRoadmap,

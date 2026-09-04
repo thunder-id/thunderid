@@ -402,6 +402,11 @@
                     },
                     {
                       "type": "doc",
+                      "id": "use-cases/ai-agents/solve-sign-in",
+                      "label": "Authenticate the Agent"
+                    },
+                    {
+                      "type": "doc",
                       "id": "use-cases/ai-agents/solve-credentials",
                       "label": "Protect Its Credential"
                     },
@@ -748,6 +753,11 @@
                   "type": "doc",
                   "id": "guides/agents/authentication/agent-own-token",
                   "label": "Agent Token"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/agents/authentication/agent-sign-in",
+                  "label": "Agent Sign-In"
                 },
                 {
                   "type": "doc",

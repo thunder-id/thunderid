@@ -2,12 +2,12 @@
 title: What Agent Identity Has to Solve
 docType: use-case
 sidebar_position: 2
-description: The six problems that come with running agents, the three postures an agent takes, and the order this section works through them.
+description: The seven problems that come with running agents, the three postures an agent takes, and the order this section works through them.
 ---
 
 # What Agent Identity Has to Solve
 
-Running an agent surfaces six identity problems. The first three apply to any agent that authenticates at all.
+Running an agent surfaces seven identity problems. The first four apply to any agent that authenticates at all.
 The last three depend on how the agent is invoked and who has to approve its work, so whether you hit them
 depends on what the agent does.
 
@@ -17,11 +17,12 @@ Configuration steps stay in the guides, linked from the page that needs them.
 | # | The problem | Answered by |
 | --- | --- | --- |
 | 1 | [The agent has no identity of its own](../solve-identity) | Agent registration, owner, and schema |
-| 2 | [Anyone who copies the secret is the agent](../solve-credentials) | Secret rotation, private key JWT, DPoP |
-| 3 | [Nothing limits what the agent may do](../solve-access) | Resource servers, roles, resource indicators |
-| 4 | [The token cannot say the agent acted for a user](../solve-acts-for-user) | Delegated mode, consent, the `act` claim |
-| 5 | [Anyone can call the agent](../solve-agent-as-resource) | The agent's own resource server |
-| 6 | [The person is not there to approve](../solve-ambient) | Backchannel authorization (CIBA) |
+| 2 | [What the agent calls decides how it authenticates](../solve-sign-in) | Machine-native client credentials, or user-alike sign-in attributes on the agent's schema |
+| 3 | [Anyone who copies the secret is the agent](../solve-credentials) | Secret rotation, private key JWT, DPoP |
+| 4 | [Nothing limits what the agent may do](../solve-access) | Resource servers, roles, resource indicators |
+| 5 | [The token cannot say the agent acted for a user](../solve-acts-for-user) | Delegated mode, consent, the `act` claim |
+| 6 | [Anyone can call the agent](../solve-agent-as-resource) | The agent's own resource server |
+| 7 | [The person is not there to approve](../solve-ambient) | Backchannel authorization (CIBA) |
 
 ## The Three Postures
 
