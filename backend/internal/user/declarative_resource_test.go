@@ -179,7 +179,10 @@ func (suite *DeclarativeResourceTestSuite) TestUserExporter_GetResourceByID() {
 
 	userResource, ok := resource.(*userDeclarativeResource)
 	suite.True(ok)
-	suite.Empty(userResource.Credentials)
+	// The password carries a template variable derived from the username. Exporting no credential at
+	// all would leave the imported user unable to sign in, and the value cannot be exported because it
+	// is stored as a one-way hash, so the importing server fills the variable instead.
+	suite.Equal("{{.USER_ALICE_PASSWORD}}", userResource.Credentials["password"])
 }
 
 func (suite *DeclarativeResourceTestSuite) TestUserExporter_Metadata() {

@@ -5,6 +5,7 @@ package export
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
@@ -165,6 +166,11 @@ func (es *exportService) ExportResources(
 	}
 	sort.Strings(resourceTypes)
 
+	// Which resource claimed each template variable, across the whole export. A name is claimed once:
+	// two resources sharing one would import with each other's value, and the later one would also
+	// overwrite the earlier value collected for the environment file.
+	variableOwners := make(map[string]string)
+
 	for _, resourceType := range resourceTypes {
 		resourceIDs := resourceMap[resourceType]
 		if len(resourceIDs) == 0 {
@@ -178,7 +184,16 @@ func (es *exportService) ExportResources(
 			continue
 		}
 
-		files, vars, errors := es.exportResourcesWithExporter(ctx, exporter, resourceIDs, options, varNames)
+		files, vars, errors, duplicate := es.exportResourcesWithExporter(ctx, exporter, resourceIDs, options,
+			varNames, variableOwners)
+		if duplicate != nil {
+			return nil, tidcommon.CustomServiceError(ErrorDuplicateTemplateVariable, tidcommon.I18nMessage{
+				Key: "error.exportservice.duplicate_template_variable_description",
+				DefaultValue: fmt.Sprintf(
+					"%s and %s derive the same template variable, so both would import the same value",
+					duplicate.previous, duplicate.owner),
+			})
+		}
 		exportFiles = append(exportFiles, files...)
 		for k, v := range vars {
 			allVariables[k] = v
@@ -274,7 +289,8 @@ func (es *exportService) exportResourcesWithExporter(
 	resourceIDs []string,
 	options *ExportOptions,
 	varNames *varNameAllocator,
-) ([]ExportFile, map[string]string, []declarativeresource.ExportError) {
+	variableOwners map[string]string,
+) ([]ExportFile, map[string]string, []declarativeresource.ExportError, *duplicateVariable) {
 	logger := log.GetLogger().With(log.String("component", "ExportService"))
 	resourceType := exporter.GetResourceType()
 	exportFiles := make([]ExportFile, 0, len(resourceIDs))
@@ -287,7 +303,7 @@ func (es *exportService) exportResourcesWithExporter(
 		if err != nil {
 			logger.Warn(ctx, "Failed to get all resources",
 				log.String("resourceType", resourceType), log.Any("error", err))
-			return []ExportFile{}, variableValues, []declarativeresource.ExportError{}
+			return []ExportFile{}, variableValues, []declarativeresource.ExportError{}, nil
 		}
 		resourceIDList = ids
 	} else {
@@ -343,6 +359,13 @@ func (es *exportService) exportResourcesWithExporter(
 			})
 			continue
 		}
+		owner := resourceType + "/" + resourceID
+		if clash, previous := claimedElsewhere(templateContent, variableOwners, owner); clash != "" {
+			return exportFiles, variableValues, exportErrors,
+				&duplicateVariable{owner: owner, previous: previous, name: clash}
+		}
+		claimVariables(templateContent, variableOwners, owner)
+
 		for k, v := range vars {
 			variableValues[k] = v
 		}
@@ -363,7 +386,7 @@ func (es *exportService) exportResourcesWithExporter(
 		exportFiles = append(exportFiles, exportFile)
 	}
 
-	return exportFiles, variableValues, exportErrors
+	return exportFiles, variableValues, exportErrors, nil
 }
 
 func (es *exportService) generateTemplateFromStruct(ctx context.Context, data interface{},
@@ -453,4 +476,52 @@ func (es *exportService) generateFolderPath(resourceType string, options *Export
 	}
 
 	return ""
+}
+
+// claimedElsewhere reports the first template variable in content that another resource already
+// claimed, along with that resource. It returns empty strings when nothing is claimed twice.
+func claimedElsewhere(content string, owners map[string]string, resourceID string) (string, string) {
+	for _, name := range templateVariableNames(content) {
+		if previous, taken := owners[name]; taken && previous != resourceID {
+			return name, previous
+		}
+	}
+	return "", ""
+}
+
+// claimVariables records this resource as the owner of every variable its template names.
+func claimVariables(content string, owners map[string]string, resourceID string) {
+	for _, name := range templateVariableNames(content) {
+		owners[name] = resourceID
+	}
+}
+
+// claimedVariablePattern matches the template actions an exporter may write into a resource.
+//
+// It is deliberately broader than templateVariablePattern, whose matching the environment file
+// depends on: a spaced or trimmed action still claims its name here rather than slipping past.
+var claimedVariablePattern = regexp.MustCompile(`\{\{-?\s*(?:range\s+)?\.([A-Za-z_][A-Za-z0-9_]*)\s*-?\}\}`)
+
+// templateVariableNames returns the distinct variables a template names, in the order they appear.
+func templateVariableNames(content string) []string {
+	seen := make(map[string]bool)
+	var names []string
+	for _, match := range claimedVariablePattern.FindAllStringSubmatch(content, -1) {
+		for _, name := range match[1:] {
+			if name != "" && !seen[name] {
+				seen[name] = true
+				names = append(names, name)
+			}
+		}
+	}
+	return names
+}
+
+// duplicateVariable names two resources that derive one template variable, and the variable itself.
+// The name is carried for the log and deliberately not returned to the caller, because it is derived
+// from the resource name, which for a user is their username.
+type duplicateVariable struct {
+	owner    string
+	previous string
+	name     string
 }
