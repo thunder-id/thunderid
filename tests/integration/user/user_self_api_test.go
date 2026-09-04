@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -320,4 +321,51 @@ func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsMissingAttributesR
 	s.Require().NoError(err)
 	defer verifyResp.Body.Close()
 	s.Equal(http.StatusOK, verifyResp.StatusCode, "the existing password must still grant access")
+}
+
+// TestSelfUserTimestamps verifies /users/me exposes createdAt/updatedAt and that PUT /users/me
+// returns the post-update values rather than the pre-update ones.
+func (s *SelfUserEndpointsSuite) TestSelfUserTimestamps() {
+	resp, err := s.doUserRequest(http.MethodGet, "/users/me", nil)
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+	s.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var before testutils.User
+	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&before))
+
+	createdAt, err := time.Parse(time.RFC3339, before.CreatedAt)
+	s.Require().NoError(err, "createdAt must be RFC 3339")
+	updatedAt, err := time.Parse(time.RFC3339, before.UpdatedAt)
+	s.Require().NoError(err, "updatedAt must be RFC 3339")
+	s.Require().False(updatedAt.Before(createdAt))
+
+	payload := map[string]interface{}{
+		"attributes": map[string]interface{}{
+			"username": s.username,
+			"email":    s.email,
+		},
+	}
+	updateResp, err := s.doUserRequest(http.MethodPut, "/users/me", payload)
+	s.Require().NoError(err)
+	defer updateResp.Body.Close()
+	s.Require().Equal(http.StatusOK, updateResp.StatusCode)
+
+	var after testutils.User
+	s.Require().NoError(json.NewDecoder(updateResp.Body).Decode(&after))
+
+	s.Equal(before.CreatedAt, after.CreatedAt, "createdAt must not change on update")
+	newUpdatedAt, err := time.Parse(time.RFC3339, after.UpdatedAt)
+	s.Require().NoError(err, "updatedAt must be RFC 3339")
+	s.Require().False(newUpdatedAt.Before(updatedAt), "updatedAt must advance on update")
+
+	verifyResp, err := s.doUserRequest(http.MethodGet, "/users/me", nil)
+	s.Require().NoError(err)
+	defer verifyResp.Body.Close()
+	s.Require().Equal(http.StatusOK, verifyResp.StatusCode)
+
+	var reread testutils.User
+	s.Require().NoError(json.NewDecoder(verifyResp.Body).Decode(&reread))
+	s.Equal(after.CreatedAt, reread.CreatedAt)
+	s.Equal(after.UpdatedAt, reread.UpdatedAt)
 }
