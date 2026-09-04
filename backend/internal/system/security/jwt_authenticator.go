@@ -61,7 +61,6 @@ func (h *jwtAuthenticator) CanHandle(r *http.Request) bool {
 
 // Authenticate validates the JWT token and builds a SecurityContext.
 func (h *jwtAuthenticator) Authenticate(r *http.Request) (*SecurityContext, error) {
-	ctx := r.Context()
 	// Step 1: Extract Bearer token
 	authHeader := r.Header.Get(constants.AuthorizationHeaderName)
 	token, err := extractToken(authHeader)
@@ -69,6 +68,19 @@ func (h *jwtAuthenticator) Authenticate(r *http.Request) (*SecurityContext, erro
 		return nil, err
 	}
 
+	// The REST gate does not restrict self-issued tokens to a particular audience/resource — a
+	// token valid for one REST endpoint is valid for all of them, gated by scope, not audience.
+	return h.authenticateToken(r.Context(), token, "")
+}
+
+// authenticateToken verifies token and builds the resulting SecurityContext. expectedAud, if
+// non-empty, is required as the audience of a self-issued token (RFC 8707 resource indicator);
+// empty skips that check, same as VerifyJWT itself treats it. It has no effect on a trusted-issuer
+// token, which is always checked against the issuer's own configured audience. authenticateToken
+// performs no revocation check on its own — the REST gate applies that separately in
+// securityService.Process; BearerAuthenticator.Authenticate applies it here for other callers that
+// need identical behavior in one call.
+func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token, expectedAud string) (*SecurityContext, error) {
 	if token == "" {
 		return nil, errInvalidToken
 	}
@@ -76,7 +88,7 @@ func (h *jwtAuthenticator) Authenticate(r *http.Request) (*SecurityContext, erro
 	// Step 2: Verify the JWT, routing on its issuer. Tokens this server issued
 	// are verified with its own signing key; Additionally when a trusted issuer is
 	// configured, tokens from that issuer are verified against its JWKS.
-	if err := h.verifyToken(ctx, token); err != nil {
+	if err := h.verifyToken(ctx, token, expectedAud); err != nil {
 		return nil, err
 	}
 
@@ -116,12 +128,25 @@ func (h *jwtAuthenticator) Authenticate(r *http.Request) (*SecurityContext, erro
 	return securityCtx, nil
 }
 
+// AuthenticateBearerToken verifies a bearer token exactly as the REST gate's JWT authenticator does
+// — routing on issuer (self-issued, or a configured trusted issuer verified via JWKS) — and returns
+// the resulting SecurityContext. expectedAud is required as a self-issued token's audience (RFC 8707
+// resource indicator); pass "" to skip that check, as the REST gate does. It performs no revocation
+// check; use BearerAuthenticator.Authenticate for the REST gate's full behavior (verification plus
+// revocation) in one call.
+func AuthenticateBearerToken(
+	ctx context.Context, jwtService jwt.JWTServiceInterface, token, expectedAud string,
+) (*SecurityContext, error) {
+	return (&jwtAuthenticator{jwtService: jwtService}).authenticateToken(ctx, token, expectedAud)
+}
+
 // verifyToken verifies the bearer token by routing on its iss claim against
 // an explicit allowlist of accepted issuers. Tokens from the configured
 // trusted issuer (when set) are verified against its JWKS. Tokens whose iss
 // matches this server's own JWT issuer are verified with the local signing
-// key. Any other iss is rejected. There is no cross-issuer fallback.
-func (h *jwtAuthenticator) verifyToken(ctx context.Context, token string) error {
+// key, and against expectedAud if it is non-empty. Any other iss is rejected.
+// There is no cross-issuer fallback.
+func (h *jwtAuthenticator) verifyToken(ctx context.Context, token, expectedAud string) error {
 	trustedIssuer := config.GetServerRuntime().Config.Server.SecurityConfig.TrustedIssuer
 	iss := extractIssuer(token)
 	switch {
@@ -130,7 +155,7 @@ func (h *jwtAuthenticator) verifyToken(ctx context.Context, token string) error 
 			return errInvalidToken
 		}
 	case iss == config.GetServerRuntime().Config.JWT.Issuer:
-		if err := h.jwtService.VerifyJWT(ctx, token, "", ""); err != nil {
+		if err := h.jwtService.VerifyJWT(ctx, token, expectedAud, ""); err != nil {
 			return errInvalidToken
 		}
 	default:

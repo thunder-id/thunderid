@@ -226,6 +226,32 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate() {
 	}
 }
 
+// TestAuthenticate_DoesNotValidateAudience locks in that the REST gate does not restrict a
+// self-issued token to a particular audience/resource, regardless of what "aud" claim it carries.
+// Authorization for REST is by scope (apiPermissionEntries), not audience. Only MCP (via
+// BearerAuthenticator, constructed with expectedAud = its own resource URL) enforces an RFC 8707
+// resource-indicator audience check; the REST gate's own jwtAuthenticator always passes "" here.
+func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_DoesNotValidateAudience() {
+	token := buildFakeJWT(
+		map[string]interface{}{"alg": "RS256", "kid": "test-kid"},
+		map[string]interface{}{"sub": "user123", "aud": "https://some-other-resource/mcp"},
+	)
+
+	// Registering the expectation with expectedAud "" only (not the token's own "aud" claim, and
+	// not any other value) means the mock call itself fails this test if Authenticate ever starts
+	// passing a real expected audience for the REST gate.
+	suite.mockJWT.On("VerifyJWT", mock.Anything, token, "", "").Return(nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/users", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	authCtx, err := suite.authenticator.Authenticate(req)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), authCtx)
+	suite.mockJWT.AssertExpectations(suite.T())
+}
+
 func (suite *JWTAuthenticatorTestSuite) TestExtractPermissionsFromJWTClaims() {
 	tests := []struct {
 		name                string

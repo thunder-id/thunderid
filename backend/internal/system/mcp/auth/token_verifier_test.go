@@ -5,163 +5,86 @@ package auth
 
 import (
 	"context"
-	"crypto"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 )
 
-const (
-	testIssuer = "https://localhost:8090"
-	testMCPURL = "https://localhost:8090/mcp"
-)
+const testMCPURL = "https://localhost:8090/mcp"
 
-// MockJWTService is a mock implementation of jwt.JWTServiceInterface
-type MockJWTService struct {
-	mock.Mock
+// fakeRevocationEnforcer is a minimal test double for security.RevocationEnforcerInterface — that
+// interface has no mockery-generated mock exported outside the security package, so this is
+// standalone rather than a generated mock.
+type fakeRevocationEnforcer struct {
+	err error
 }
 
-func (m *MockJWTService) GetPublicKey() crypto.PublicKey {
-	args := m.Called()
-	if args.Get(0) == nil {
-		return nil
-	}
-	return args.Get(0).(crypto.PublicKey)
-}
-
-func (m *MockJWTService) GenerateJWT(
-	ctx context.Context,
-	sub, iss string,
-	validityPeriod int64,
-	claims map[string]interface{},
-	typ, alg string,
-) (string, int64, *tidcommon.ServiceError) {
-	args := m.Called(ctx, sub, iss, validityPeriod, claims, typ, alg)
-	return args.String(0), args.Get(1).(int64), args.Get(2).(*tidcommon.ServiceError)
-}
-
-func (m *MockJWTService) VerifyJWT(
-	ctx context.Context,
-	jwtToken string,
-	expectedAud string,
-	expectedIss string,
-) *tidcommon.ServiceError {
-	args := m.Called(ctx, jwtToken, expectedAud, expectedIss)
-	if args.Get(0) == nil {
-		return nil
-	}
-	return args.Get(0).(*tidcommon.ServiceError)
-}
-
-func (m *MockJWTService) VerifyJWTWithPublicKey(
-	ctx context.Context,
-	jwtToken string,
-	keyRef providers.KeyRef,
-	expectedAud string,
-	expectedIss string,
-) *tidcommon.ServiceError {
-	args := m.Called(ctx, jwtToken, keyRef, expectedAud, expectedIss)
-	if args.Get(0) == nil {
-		return nil
-	}
-	return args.Get(0).(*tidcommon.ServiceError)
-}
-
-func (m *MockJWTService) VerifyJWTWithJWKS(
-	ctx context.Context,
-	jwtToken string,
-	jwksURL string,
-	expectedAud string,
-	expectedIss string,
-) *tidcommon.ServiceError {
-	args := m.Called(ctx, jwtToken, jwksURL, expectedAud, expectedIss)
-	if args.Get(0) == nil {
-		return nil
-	}
-	return args.Get(0).(*tidcommon.ServiceError)
-}
-
-func (m *MockJWTService) VerifyJWTSignature(ctx context.Context, jwtToken string) *tidcommon.ServiceError {
-	args := m.Called(ctx, jwtToken)
-	if args.Get(0) == nil {
-		return nil
-	}
-	return args.Get(0).(*tidcommon.ServiceError)
-}
-
-func (m *MockJWTService) VerifyJWTSignatureWithPublicKey(
-	ctx context.Context,
-	jwtToken string,
-	keyRef providers.KeyRef,
-) *tidcommon.ServiceError {
-	args := m.Called(ctx, jwtToken, keyRef)
-	if args.Get(0) == nil {
-		return nil
-	}
-	return args.Get(0).(*tidcommon.ServiceError)
-}
-
-func (m *MockJWTService) VerifyJWTSignatureWithJWKS(
-	ctx context.Context,
-	jwtToken string,
-	jwksURL string,
-) *tidcommon.ServiceError {
-	args := m.Called(ctx, jwtToken, jwksURL)
-	if args.Get(0) == nil {
-		return nil
-	}
-	return args.Get(0).(*tidcommon.ServiceError)
+func (f *fakeRevocationEnforcer) EnsureNotRevoked(context.Context, security.RevocationIdentity) error {
+	return f.err
 }
 
 type TokenVerifierTestSuite struct {
 	suite.Suite
+	mockJWT    *jwtmock.JWTServiceInterfaceMock
+	revocation *fakeRevocationEnforcer
+}
+
+func (suite *TokenVerifierTestSuite) SetupTest() {
+	suite.mockJWT = jwtmock.NewJWTServiceInterfaceMock(suite.T())
+	suite.revocation = &fakeRevocationEnforcer{}
+	// Empty runtime config so the token's absent "iss" claim ("") matches the self-issued branch
+	// (Config.JWT.Issuer == ""), same setup the security package's own authenticator tests use.
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{})
+}
+
+func (suite *TokenVerifierTestSuite) TearDownTest() {
+	suite.mockJWT.AssertExpectations(suite.T())
+	config.ResetServerRuntime()
 }
 
 func TestTokenVerifierTestSuite(t *testing.T) {
 	suite.Run(t, new(TokenVerifierTestSuite))
 }
 
-func (suite *TokenVerifierTestSuite) TestNewTokenVerifier_Success() {
-	mockJWTService := new(MockJWTService)
-	issuer := testIssuer
-	mcpURL := testMCPURL
+func encodeTestToken(payload map[string]interface{}) string {
+	payloadJSON, _ := json.Marshal(payload)
+	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadJSON)
+	return "header." + payloadB64 + ".signature"
+}
 
-	// Create test JWT payload
+func (suite *TokenVerifierTestSuite) newVerifier() auth.TokenVerifier {
+	bearerAuthenticator := security.NewBearerAuthenticator(suite.mockJWT, suite.revocation, testMCPURL)
+	return NewTokenVerifier(bearerAuthenticator)
+}
+
+func (suite *TokenVerifierTestSuite) TestNewTokenVerifier_Success() {
 	now := time.Now().Unix()
-	payload := map[string]interface{}{
+	testToken := encodeTestToken(map[string]interface{}{
 		"sub":   "user123",
 		"exp":   float64(now + 3600),
 		"scope": "openid profile email",
-	}
-	payloadJSON, _ := json.Marshal(payload)
-	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadJSON)
-	testToken := "header." + payloadB64 + ".signature"
+	})
 
-	// Mock JWT verification to succeed
-	mockJWTService.On("VerifyJWT", mock.Anything, testToken, mcpURL, issuer).Return(nil)
+	suite.mockJWT.On("VerifyJWT", mock.Anything, testToken, testMCPURL, "").Return(nil)
 
-	// Create token verifier
-	verifier := NewTokenVerifier(mockJWTService, issuer, mcpURL)
+	verifier := suite.newVerifier()
+	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	tokenInfo, err := verifier(context.Background(), testToken, req)
 
-	// Create test request
-	req := httptest.NewRequest(http.MethodGet, "/mcp/tools", nil)
-	ctx := context.Background()
-
-	// Call verifier
-	tokenInfo, err := verifier(ctx, testToken, req)
-
-	// Assertions
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), tokenInfo)
 	assert.Equal(suite.T(), "user123", tokenInfo.UserID)
@@ -170,137 +93,97 @@ func (suite *TokenVerifierTestSuite) TestNewTokenVerifier_Success() {
 	assert.Contains(suite.T(), tokenInfo.Scopes, "email")
 	assert.False(suite.T(), tokenInfo.Expiration.IsZero())
 
-	mockJWTService.AssertExpectations(suite.T())
+	// The SecurityContext survives the round trip through TokenInfo.Extra, so mcp.DefaultGuard can
+	// attach it to the outgoing request context exactly as the REST gate would.
+	secCtx := SecurityContextFromTokenInfo(tokenInfo)
+	if assert.NotNil(suite.T(), secCtx) {
+		enrichedCtx := security.WithSecurityContext(context.Background(), secCtx)
+		assert.Equal(suite.T(), "user123", security.GetSubject(enrichedCtx))
+	}
 }
 
 func (suite *TokenVerifierTestSuite) TestNewTokenVerifier_JWTVerificationFailed() {
-	mockJWTService := new(MockJWTService)
-	issuer := testIssuer
-	mcpURL := testMCPURL
 	testToken := "invalid.token.here"
 
-	// Mock JWT verification to fail
-	mockJWTService.On("VerifyJWT", mock.Anything, testToken, mcpURL, issuer).Return(&tidcommon.ServiceError{
-		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "invalid token"},
-	})
+	suite.mockJWT.On("VerifyJWT", mock.Anything, testToken, testMCPURL, "").Return(nil)
 
-	// Create token verifier
-	verifier := NewTokenVerifier(mockJWTService, issuer, mcpURL)
+	verifier := suite.newVerifier()
+	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	tokenInfo, err := verifier(context.Background(), testToken, req)
 
-	// Create test request
-	req := httptest.NewRequest(http.MethodGet, "/mcp/tools", nil)
-	ctx := context.Background()
-
-	// Call verifier
-	tokenInfo, err := verifier(ctx, testToken, req)
-
-	// Assertions
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), tokenInfo)
 	assert.Equal(suite.T(), auth.ErrInvalidToken, err)
+}
 
-	mockJWTService.AssertExpectations(suite.T())
+func (suite *TokenVerifierTestSuite) TestNewTokenVerifier_RevokedTokenRejected() {
+	now := time.Now().Unix()
+	testToken := encodeTestToken(map[string]interface{}{
+		"sub": "user123",
+		"exp": float64(now + 3600),
+		"jti": "revoked-jti",
+	})
+
+	suite.mockJWT.On("VerifyJWT", mock.Anything, testToken, testMCPURL, "").Return(nil)
+	suite.revocation.err = errors.New("token revoked")
+
+	verifier := suite.newVerifier()
+	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	tokenInfo, err := verifier(context.Background(), testToken, req)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), tokenInfo)
+	assert.Equal(suite.T(), auth.ErrInvalidToken, err)
 }
 
 func (suite *TokenVerifierTestSuite) TestNewTokenVerifier_InvalidPayload() {
-	mockJWTService := new(MockJWTService)
-	issuer := testIssuer
-	mcpURL := testMCPURL
-
-	// Create invalid JWT payload (not base64)
 	testToken := "header.invalid-payload.signature"
 
-	// Mock JWT verification to succeed
-	mockJWTService.On("VerifyJWT", mock.Anything, testToken, mcpURL, issuer).Return(nil)
+	suite.mockJWT.On("VerifyJWT", mock.Anything, testToken, testMCPURL, "").Return(nil)
 
-	// Create token verifier
-	verifier := NewTokenVerifier(mockJWTService, issuer, mcpURL)
+	verifier := suite.newVerifier()
+	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	tokenInfo, err := verifier(context.Background(), testToken, req)
 
-	// Create test request
-	req := httptest.NewRequest(http.MethodGet, "/mcp/tools", nil)
-	ctx := context.Background()
-
-	// Call verifier
-	tokenInfo, err := verifier(ctx, testToken, req)
-
-	// Assertions
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), tokenInfo)
 	assert.Equal(suite.T(), auth.ErrInvalidToken, err)
-
-	mockJWTService.AssertExpectations(suite.T())
 }
 
 func (suite *TokenVerifierTestSuite) TestNewTokenVerifier_NoScopes() {
-	mockJWTService := new(MockJWTService)
-	issuer := testIssuer
-	mcpURL := testMCPURL
-
-	// Create test JWT payload without scopes
 	now := time.Now().Unix()
-	payload := map[string]interface{}{
+	testToken := encodeTestToken(map[string]interface{}{
 		"sub": "user123",
 		"exp": float64(now + 3600),
-	}
-	payloadJSON, _ := json.Marshal(payload)
-	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadJSON)
-	testToken := "header." + payloadB64 + ".signature"
+	})
 
-	// Mock JWT verification to succeed
-	mockJWTService.On("VerifyJWT", mock.Anything, testToken, mcpURL, issuer).Return(nil)
+	suite.mockJWT.On("VerifyJWT", mock.Anything, testToken, testMCPURL, "").Return(nil)
 
-	// Create token verifier
-	verifier := NewTokenVerifier(mockJWTService, issuer, mcpURL)
+	verifier := suite.newVerifier()
+	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	tokenInfo, err := verifier(context.Background(), testToken, req)
 
-	// Create test request
-	req := httptest.NewRequest(http.MethodGet, "/mcp/tools", nil)
-	ctx := context.Background()
-
-	// Call verifier
-	tokenInfo, err := verifier(ctx, testToken, req)
-
-	// Assertions
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), tokenInfo)
 	assert.Equal(suite.T(), "user123", tokenInfo.UserID)
 	assert.Empty(suite.T(), tokenInfo.Scopes)
-
-	mockJWTService.AssertExpectations(suite.T())
 }
 
 func (suite *TokenVerifierTestSuite) TestNewTokenVerifier_EmptyUserID() {
-	mockJWTService := new(MockJWTService)
-	issuer := testIssuer
-	mcpURL := testMCPURL
-
-	// Create test JWT payload without sub claim
 	now := time.Now().Unix()
-	payload := map[string]interface{}{
+	testToken := encodeTestToken(map[string]interface{}{
 		"exp":   float64(now + 3600),
 		"scope": "openid",
-	}
-	payloadJSON, _ := json.Marshal(payload)
-	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadJSON)
-	testToken := "header." + payloadB64 + ".signature"
+	})
 
-	// Mock JWT verification to succeed
-	mockJWTService.On("VerifyJWT", mock.Anything, testToken, mcpURL, issuer).Return(nil)
+	suite.mockJWT.On("VerifyJWT", mock.Anything, testToken, testMCPURL, "").Return(nil)
 
-	// Create token verifier
-	verifier := NewTokenVerifier(mockJWTService, issuer, mcpURL)
+	verifier := suite.newVerifier()
+	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
+	tokenInfo, err := verifier(context.Background(), testToken, req)
 
-	// Create test request
-	req := httptest.NewRequest(http.MethodGet, "/mcp/tools", nil)
-	ctx := context.Background()
-
-	// Call verifier
-	tokenInfo, err := verifier(ctx, testToken, req)
-
-	// Assertions
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), tokenInfo)
 	assert.Equal(suite.T(), "", tokenInfo.UserID)
 	assert.Contains(suite.T(), tokenInfo.Scopes, "openid")
-
-	mockJWTService.AssertExpectations(suite.T())
 }
