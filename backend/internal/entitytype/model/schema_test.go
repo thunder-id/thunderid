@@ -483,3 +483,51 @@ func (s *SchemaValidateTestSuite) TestGetAttributes_UniqueOnlyAndType() {
 	s.True(subjectCandidates[0].Required)
 	s.Equal(TypeString, subjectCandidates[0].Type)
 }
+
+func (s *SchemaValidateTestSuite) TestPropertyName_AcceptsSCIMCharset() {
+	// RFC 7643 section 2.1 names: a letter, then letters, digits, '$', '-' and '_'. The hyphen is
+	// the case reported in issue #1696.
+	schema, err := CompileSchema(json.RawMessage(`{
+		"silver-mail": {"type": "string", "unique": true},
+		"given_name": {"type": "string"},
+		"empNo2": {"type": "number"},
+		"a$ref": {"type": "string"},
+		"address": {"type": "object", "properties": {
+			"post-code": {"type": "string"}
+		}}
+	}`))
+	s.Require().NoError(err)
+	s.Len(schema.properties, 5)
+}
+
+func (s *SchemaValidateTestSuite) TestPropertyName_RejectsOutOfCharset() {
+	cases := map[string]string{
+		"dot":            `{"a.b": {"type": "string"}}`,
+		"at sign":        `{"x@y": {"type": "string"}}`,
+		"space":          `{"work phone": {"type": "string"}}`,
+		"apostrophe":     `{"o'k": {"type": "string"}}`,
+		"double quote":   `{"a\"b": {"type": "string"}}`,
+		"backslash":      `{"a\\b": {"type": "string"}}`,
+		"non-ascii":      `{"héllo": {"type": "string"}}`,
+		"leading digit":  `{"1email": {"type": "string"}}`,
+		"leading hyphen": `{"-email": {"type": "string"}}`,
+		"underscore":     `{"_email": {"type": "string"}}`,
+		"empty":          `{"": {"type": "string"}}`,
+		"sql":            `{"drop') = 1 OR 1=1 --": {"type": "string"}}`,
+	}
+	for name, schemaJSON := range cases {
+		_, err := CompileSchema(json.RawMessage(schemaJSON))
+		s.Require().Error(err, "%s must be rejected", name)
+		s.Contains(err.Error(), "invalid property name", "%s", name)
+	}
+}
+
+func (s *SchemaValidateTestSuite) TestPropertyName_RejectsOutOfCharsetWhenNested() {
+	_, err := CompileSchema(json.RawMessage(`{
+		"address": {"type": "object", "properties": {
+			"post.code": {"type": "string"}
+		}}
+	}`))
+	s.Require().Error(err)
+	s.Contains(err.Error(), "invalid property name 'post.code'")
+}

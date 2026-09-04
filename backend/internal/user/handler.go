@@ -633,8 +633,10 @@ func parseFilterParams(query url.Values) (map[string]interface{}, *tidcommon.Ser
 
 // parseFilterExpression parses filter expressions in the format: attribute eq "value"
 func parseFilterExpression(filterStr string) (map[string]interface{}, error) {
-	// Regex to match: attribute_name eq "value" or attribute_name eq value
-	pattern := `^(\w+(?:\.\w+)*)\s+(eq)\s+(?:"([^"]*)"|(\w+|\d+))$`
+	// Regex to match: attribute_name eq "value" or attribute_name eq value.
+	// The attribute segments accept the same characters as a schema property name, so every
+	// attribute an entity type can declare is also filterable; '.' separates nested segments.
+	pattern := `^([A-Za-z][A-Za-z0-9$_-]*(?:\.[A-Za-z][A-Za-z0-9$_-]*)*)\s+(eq)\s+(?:"([^"]*)"|(\w+|\d+))$`
 	regex := regexp.MustCompile(pattern)
 
 	matches := regex.FindStringSubmatch(filterStr)
