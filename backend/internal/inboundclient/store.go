@@ -24,6 +24,7 @@ type inboundClientJSONBlob struct {
 	Assertion             *inboundmodel.AssertionConfig    `json:"assertion,omitempty"`
 	LoginConsent          *inboundmodel.LoginConsentConfig `json:"loginConsent,omitempty"`
 	AllowedUserTypes      []string                         `json:"allowedUserTypes,omitempty"`
+	AllowedAgentTypes     []string                         `json:"allowedAgentTypes,omitempty"`
 	SubjectAttribute      map[string]string                `json:"subjectAttribute,omitempty"`
 	PasskeyAllowedOrigins []string                         `json:"passkeyAllowedOrigins,omitempty"`
 	Attestation           *providers.AttestationConfig     `json:"attestation,omitempty"`
@@ -100,6 +101,7 @@ func marshalInboundClient(c inboundmodel.InboundClient) (
 		Assertion:             c.Assertion,
 		LoginConsent:          c.LoginConsent,
 		AllowedUserTypes:      c.AllowedUserTypes,
+		AllowedAgentTypes:     c.AllowedAgentTypes,
 		SubjectAttribute:      c.SubjectAttribute,
 		PasskeyAllowedOrigins: c.PasskeyAllowedOrigins,
 		Attestation:           c.Attestation,
@@ -491,6 +493,7 @@ func buildInboundClientFromRow(ctx context.Context, row map[string]interface{}) 
 			client.Assertion = blob.Assertion
 			client.LoginConsent = blob.LoginConsent
 			client.AllowedUserTypes = blob.AllowedUserTypes
+			client.AllowedAgentTypes = blob.AllowedAgentTypes
 			client.SubjectAttribute = blob.SubjectAttribute
 			client.PasskeyAllowedOrigins = blob.PasskeyAllowedOrigins
 			client.Attestation = blob.Attestation

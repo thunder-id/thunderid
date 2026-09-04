@@ -2102,6 +2102,43 @@ func (suite *InboundClientServiceTestSuite) TestValidateAllowedUserTypes_Service
 	assert.ErrorIs(suite.T(), err, ErrUserSchemaLookupFailed)
 }
 
+func (suite *InboundClientServiceTestSuite) TestValidateAllowedAgentTypes_NoOpWhenEmpty() {
+	svc := &inboundClientService{}
+	assert.NoError(suite.T(), svc.validateAllowedAgentTypes(context.Background(), nil))
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateAllowedAgentTypes_AllExist() {
+	us := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	us.EXPECT().GetEntityTypeList(mock.Anything, entitytypepkg.TypeCategoryAgent, mock.Anything, 0, false).Return(
+		&entitytypepkg.EntityTypeListResponse{
+			TotalResults: 1,
+			Types:        []entitytypepkg.EntityTypeListItem{{Name: "default"}},
+		}, nil)
+	svc := &inboundClientService{entityType: us, logger: log.GetLogger()}
+	assert.NoError(suite.T(), svc.validateAllowedAgentTypes(context.Background(), []string{"default"}))
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateAllowedAgentTypes_MissingType() {
+	us := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	us.EXPECT().GetEntityTypeList(mock.Anything, entitytypepkg.TypeCategoryAgent, mock.Anything, 0, false).Return(
+		&entitytypepkg.EntityTypeListResponse{
+			TotalResults: 1,
+			Types:        []entitytypepkg.EntityTypeListItem{{Name: "default"}},
+		}, nil)
+	svc := &inboundClientService{entityType: us, logger: log.GetLogger()}
+	err := svc.validateAllowedAgentTypes(context.Background(), []string{"ghost"})
+	assert.ErrorIs(suite.T(), err, ErrFKInvalidAgentType)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateAllowedAgentTypes_ServiceErrorPropagated() {
+	us := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	us.EXPECT().GetEntityTypeList(mock.Anything, entitytypepkg.TypeCategoryAgent, mock.Anything, 0, false).
+		Return(nil, &tidcommon.ServiceError{Code: "ERR"})
+	svc := &inboundClientService{entityType: us, logger: log.GetLogger()}
+	err := svc.validateAllowedAgentTypes(context.Background(), []string{"default"})
+	assert.ErrorIs(suite.T(), err, ErrAgentSchemaLookupFailed)
+}
+
 // ----- resolveFlowDefaults -----
 
 func (suite *InboundClientServiceTestSuite) TestResolveFlowDefaults_NilOrNoMgtIsNoOp() {

@@ -113,4 +113,19 @@ var (
 			DefaultValue: "The entity reference fetch was rejected by the provider",
 		},
 	}
+	
+	// ErrorSubjectNotAllowed is returned when the authenticated entity's category and type are not
+	// accepted as a subject by the application/agent driving the authentication.
+	ErrorSubjectNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AUTHN-MGR-1011",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authnmgrservice.subject_not_allowed",
+			DefaultValue: "Subject not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authnmgrservice.subject_not_allowed_description",
+			DefaultValue: "The authenticated subject is not allowed to sign in to this application",
+		},
+	}
 )

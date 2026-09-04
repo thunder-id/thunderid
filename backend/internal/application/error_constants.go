@@ -326,6 +326,20 @@ var (
 			DefaultValue: "One or more user types in allowed_user_types do not exist in the system",
 		},
 	}
+	// ErrorInvalidAgentType is the error returned when an invalid agent type is provided in
+	// allowedAgentTypes.
+	ErrorInvalidAgentType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1046",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_agent_type",
+			DefaultValue: "Invalid agent type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_agent_type_description",
+			DefaultValue: "One or more agent types in allowedAgentTypes do not exist in the system",
+		},
+	}
 	// ErrorThemeNotFound is the error returned when theme is not found.
 	ErrorThemeNotFound = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

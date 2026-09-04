@@ -373,6 +373,20 @@ var (
 		},
 	}
 
+	// ErrorInvalidAllowedAgentType is returned when an allowed agent type does not exist.
+	ErrorInvalidAllowedAgentType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1043",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_allowed_agent_type",
+			DefaultValue: "Invalid agent type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_allowed_agent_type_description",
+			DefaultValue: "One or more specified allowed agent types are invalid",
+		},
+	}
+
 	// ErrorThemeNotFound is returned when the referenced theme does not exist.
 	ErrorThemeNotFound = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

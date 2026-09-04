@@ -14,6 +14,7 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
@@ -164,10 +165,21 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 		FlowID:      ssoFlowID(ctx),
 		FlowVersion: ctx.SSOFlowVersion,
 	})
+	// The application's subject type constraints ride on the context for the same reason: the authn
+	// providers enforce them below the flow graph, so no node has to carry or check them. Only an
+	// authentication flow signs a subject in to the application; the other flow types resolve the
+	// eligible entity types through their own executors.
+	nodeCtxContext := ssoCtx
+	if ctx.FlowType == providers.FlowTypeAuthentication {
+		nodeCtxContext = authnprovidercm.WithSubjectTypeConstraints(ssoCtx, authnprovidercm.SubjectTypeConstraints{
+			AllowedUserTypes:  ctx.Application.AllowedUserTypes,
+			AllowedAgentTypes: ctx.Application.AllowedAgentTypes,
+		})
+	}
 	fe.replayPromptInputs(ctx)
 
 	nodeCtx := &providers.NodeContext{
-		Context:           ssoCtx,
+		Context:           nodeCtxContext,
 		ExecutionID:       ctx.ExecutionID,
 		FlowType:          ctx.FlowType,
 		EntityID:          ctx.AppID,

@@ -854,6 +854,12 @@ components:
             type: string
           description: User types allowed to sign up through this application.
           example: ["employee", "customer", "partner"]
+        allowedAgentTypes:
+          type: array
+          items:
+            type: string
+          description: Agent types allowed to sign in to this application. An agent can authenticate only when its agent type is listed here; when the list is empty no agent can sign in.
+          example: ["default"]
         passkeyAllowedOrigins:
           type: array
           items:
@@ -1000,6 +1006,12 @@ components:
             type: string
           description: User types allowed to sign up through this application.
           example: ["employee", "customer", "partner"]
+        allowedAgentTypes:
+          type: array
+          items:
+            type: string
+          description: Agent types allowed to sign in to this application. An agent can authenticate only when its agent type is listed here; when the list is empty no agent can sign in.
+          example: ["default"]
         passkeyAllowedOrigins:
           type: array
           items:
@@ -1127,6 +1139,12 @@ components:
             type: string
           description: User types allowed to sign up through this application.
           example: ["employee", "customer", "partner"]
+        allowedAgentTypes:
+          type: array
+          items:
+            type: string
+          description: Agent types allowed to sign in to this application. An agent can authenticate only when its agent type is listed here; when the list is empty no agent can sign in.
+          example: ["default"]
         passkeyAllowedOrigins:
           type: array
           items:

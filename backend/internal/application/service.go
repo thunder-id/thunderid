@@ -831,6 +831,7 @@ func toInboundClient(dto *model.ApplicationProcessedDTO) inboundmodel.InboundCli
 		Assertion:                 dto.Assertion,
 		LoginConsent:              dto.LoginConsent,
 		AllowedUserTypes:          dto.AllowedUserTypes,
+		AllowedAgentTypes:         dto.AllowedAgentTypes,
 		SubjectAttribute:          dto.SubjectAttribute,
 		PasskeyAllowedOrigins:     dto.PasskeyAllowedOrigins,
 		Attestation:               dto.Attestation,
@@ -888,6 +889,7 @@ func toProcessedDTO(
 			Assertion:                 dao.Assertion,
 			LoginConsent:              dao.LoginConsent,
 			AllowedUserTypes:          dao.AllowedUserTypes,
+			AllowedAgentTypes:         dao.AllowedAgentTypes,
 			SubjectAttribute:          dao.SubjectAttribute,
 			PasskeyAllowedOrigins:     dao.PasskeyAllowedOrigins,
 			Attestation:               dao.Attestation.WithoutCredentials(),
@@ -1584,7 +1586,11 @@ func translateInboundClientFKError(err error) *tidcommon.ServiceError {
 		return &ErrorLayoutNotFound
 	case errors.Is(err, inboundclient.ErrFKInvalidUserType):
 		return &ErrorInvalidUserType
+	case errors.Is(err, inboundclient.ErrFKInvalidAgentType):
+		return &ErrorInvalidAgentType
 	case errors.Is(err, inboundclient.ErrUserSchemaLookupFailed):
+		return &tidcommon.InternalServerError
+	case errors.Is(err, inboundclient.ErrAgentSchemaLookupFailed):
 		return &tidcommon.InternalServerError
 	case errors.Is(err, inboundclient.ErrUniqueAttributeLookupFailed):
 		return &tidcommon.InternalServerError
@@ -1847,6 +1853,7 @@ func buildApplicationResponse(dto *model.ApplicationProcessedDTO) *providers.App
 			LayoutID:                  dto.LayoutID,
 			Assertion:                 dto.Assertion,
 			AllowedUserTypes:          dto.AllowedUserTypes,
+			AllowedAgentTypes:         dto.AllowedAgentTypes,
 			SubjectAttribute:          dto.SubjectAttribute,
 			PasskeyAllowedOrigins:     dto.PasskeyAllowedOrigins,
 			LoginConsent:              dto.LoginConsent,
@@ -1960,6 +1967,7 @@ func buildBaseApplicationProcessedDTO(appID string, app *model.ApplicationDTO,
 			LayoutID:                  app.LayoutID,
 			Assertion:                 assertion,
 			AllowedUserTypes:          app.AllowedUserTypes,
+			AllowedAgentTypes:         app.AllowedAgentTypes,
 			SubjectAttribute:          app.SubjectAttribute,
 			PasskeyAllowedOrigins:     app.PasskeyAllowedOrigins,
 			LoginConsent:              app.LoginConsent,
@@ -2046,6 +2054,7 @@ func buildReturnApplicationDTO(
 			LayoutID:                  app.LayoutID,
 			Assertion:                 assertion,
 			AllowedUserTypes:          app.AllowedUserTypes,
+			AllowedAgentTypes:         app.AllowedAgentTypes,
 			SubjectAttribute:          app.SubjectAttribute,
 			PasskeyAllowedOrigins:     app.PasskeyAllowedOrigins,
 			LoginConsent:              app.LoginConsent,

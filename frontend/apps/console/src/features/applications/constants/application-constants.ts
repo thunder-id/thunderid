@@ -16,6 +16,12 @@ const ApplicationConstants = {
   DUPLICATE_APP_NAME_ERROR_CODE: 'APP-1020',
 
   /**
+   * The only agent type the API accepts, written to `allowedAgentTypes` when agent sign-in is
+   * enabled for an application. Keep in sync with `backend/internal/entitytype/model.go`.
+   */
+  DEFAULT_AGENT_TYPE: 'default',
+
+  /**
    * Length rules the API enforces on the application name, mirrored here so the console can
    * validate before the request is sent. Keep in sync with
    * `backend/internal/application/model/application.go`.

@@ -19,11 +19,12 @@ The **Application ID** and **Client ID** are shown on the application's General 
 
 ## Control Who Can Register
 
-Under **Access** on the General tab, you can configure which users can register with this application and provide the application's URL and redirect URIs. The **Allowed User Types** and **Authorized Redirect URIs** settings apply to applications that let users sign in and are hidden for applications that use only the `client_credentials` grant.
+Under **Access** on the General tab, you can configure which users can register with this application and provide the application's URL and redirect URIs. The **Allowed User Types**, **Agent Sign-In**, and **Authorized Redirect URIs** settings apply to applications that let users sign in and are hidden for applications that use only the `client_credentials` grant.
 
 | Setting | Description |
 |---------|-------------|
 | **Allowed User Types** | Restricts self-service registration to users of the selected types. If none are selected, self-service registration is unavailable for this application. This setting does not block existing users from signing in. |
+| **Agent Sign-In** | Controls whether agents can sign in to this application. Turn it on to let agents sign in, and leave it off to block every agent. This setting does not affect users. |
 | **Application URL** | The homepage URL of your application. |
 | **Authorized Redirect URIs** | The URLs <ProductName /> sends users back to after authentication. Register every URI your application uses.
 

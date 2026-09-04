@@ -97,6 +97,7 @@ func (h *agentHandler) HandleAgentPostRequest(w http.ResponseWriter, r *http.Req
 			Assertion:                 req.Assertion,
 			LoginConsent:              req.LoginConsent,
 			AllowedUserTypes:          req.AllowedUserTypes,
+			AllowedAgentTypes:         req.AllowedAgentTypes,
 			PasskeyAllowedOrigins:     req.PasskeyAllowedOrigins,
 			Attestation:               req.Attestation,
 		},

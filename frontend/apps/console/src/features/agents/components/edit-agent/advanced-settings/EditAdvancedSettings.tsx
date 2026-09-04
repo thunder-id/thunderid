@@ -7,6 +7,7 @@ import type {OAuth2Config} from '@thunderid/configure-applications';
 import {Box, FormControlLabel, Stack, Switch, Typography} from '@wso2/oxygen-ui';
 import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
+import AgentSignInSection from './AgentSignInSection';
 import AllowedUserTypesSection from './AllowedUserTypesSection';
 import DangerZoneSection from './DangerZoneSection';
 import OperationModesSection from './OperationModesSection';
@@ -93,6 +94,12 @@ export default function EditAdvancedSettings({
 
       <OwnerSection agent={agent} editedAgent={editedAgent} onFieldChange={onFieldChange} />
       <AllowedUserTypesSection
+        agent={agent}
+        editedAgent={editedAgent}
+        oauth2Config={oauth2Config}
+        onFieldChange={onFieldChange}
+      />
+      <AgentSignInSection
         agent={agent}
         editedAgent={editedAgent}
         oauth2Config={oauth2Config}

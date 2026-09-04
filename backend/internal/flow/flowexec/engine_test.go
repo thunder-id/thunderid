@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -2646,6 +2647,63 @@ func (s *EngineTestSuite) TestExecuteNodePackage_SkipsNodeWhenShouldExecuteFalse
 	s.Nil(nextNode)
 	s.False(exit)
 	s.NotNil(err, "missing OnSkip target should surface an internal server error")
+}
+
+// executeNodePackageCapturingContext runs one node and returns the context the engine handed it.
+func (s *EngineTestSuite) executeNodePackageCapturingContext(flowType providers.FlowType,
+	app providers.Application) context.Context {
+	t := s.T()
+	var captured context.Context
+	mockNode := coremock.NewNodeInterfaceMock(t)
+	mockNode.On("GetID").Return("n1").Maybe()
+	mockNode.On("GetType").Return(common.NodeTypeStart).Maybe()
+	mockNode.On("ShouldExecute", mock.Anything).Return(true)
+	mockNode.On("GetProperties").Return(map[string]interface{}(nil)).Maybe()
+	mockNode.On("Execute", mock.Anything).Run(func(args mock.Arguments) {
+		captured = args.Get(0).(*providers.NodeContext).Context
+	}).Return(&common.NodeResponse{Status: common.NodeStatusComplete}, nil)
+
+	fe := &flowEngine{
+		logger:           log.GetLogger(),
+		observabilitySvc: setupNodePackageMockObs(t),
+	}
+	ctx := &EngineContext{
+		Context:          context.Background(),
+		ExecutionID:      "exec-constraints",
+		FlowType:         flowType,
+		Application:      app,
+		CurrentNode:      mockNode,
+		UserInputs:       map[string]string{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+	}
+
+	_, _, err := fe.executeNodePackage(ctx, mockNode, &FlowStep{}, 0)
+	s.Nil(err)
+	s.Require().NotNil(captured)
+	return captured
+}
+
+func (s *EngineTestSuite) TestExecuteNodePackage_CarriesSubjectTypeConstraintsOnAuthenticationFlow() {
+	app := providers.Application{}
+	app.AllowedUserTypes = []string{"customer"}
+	app.AllowedAgentTypes = []string{"default"}
+
+	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeAuthentication, app)
+
+	constraints, ok := authnprovidercm.SubjectTypeConstraintsFrom(nodeCtx)
+	s.True(ok)
+	s.Equal([]string{"customer"}, constraints.AllowedUserTypes)
+	s.Equal([]string{"default"}, constraints.AllowedAgentTypes)
+}
+
+func (s *EngineTestSuite) TestExecuteNodePackage_OmitsSubjectTypeConstraintsOnOtherFlowTypes() {
+	app := providers.Application{}
+	app.AllowedAgentTypes = []string{"default"}
+
+	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeRegistration, app)
+
+	_, ok := authnprovidercm.SubjectTypeConstraintsFrom(nodeCtx)
+	s.False(ok)
 }
 
 func (s *EngineTestSuite) TestExecuteNodePackage_CompletesAndReturnsNilNextNode() {

@@ -1262,6 +1262,9 @@ const translations = {
       'This agent authenticates with its own credentials without user interaction, using Client Credentials.',
     'edit.advanced.mode.onBehalfOfUser.description':
       'This agent acts on behalf of a signed-in user, using Authorization Code with PKCE.',
+    'edit.advanced.agentSignIn.title': 'Agent Sign-In',
+    'edit.advanced.agentSignIn.description': 'Allow agents to sign in through this agent using the sign-in flow.',
+    'edit.advanced.agentSignIn.toggle.label': 'Enable Agent Sign-In',
     'edit.advanced.redirectUris.title': 'Authorized redirect URIs',
     'edit.advanced.redirectUris.description': 'For use with requests from a web server',
     'edit.advanced.redirectUris.empty': 'No redirect URIs configured.',
@@ -2844,6 +2847,11 @@ const translations = {
     // Access tab
     'edit.access.sections.userTypes.title': 'Allowed User Types',
     'edit.access.sections.userTypes.description': 'Choose which user types can sign up through this application.',
+    'edit.access.sections.agentSignIn.title': 'Agent Sign-In',
+    'edit.access.sections.agentSignIn.description':
+      'Allow agents to sign in to this application using the sign-in flow.',
+    'edit.access.agentSignIn.toggle.label': 'Enable Agent Sign-In',
+    'edit.access.agentSignIn.toggle.hint': 'When enabled, agents can sign in to this client using the sign-in flow.',
     'edit.access.sections.applicationAccess.title': 'Application Access',
     'edit.access.sections.applicationAccess.description': 'Configure where this application is accessed from.',
 

@@ -148,7 +148,7 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *model.Agent) (
 		agent.Type, agent.Name, agent.Description, agent.LogoURL, createdEntity.Attributes,
 		authFlowID, regFlowID, agent.IsRegistrationFlowEnabled,
 		agent.ThemeID, agent.LayoutID, assertion, loginConsent,
-		agent.AllowedUserTypes, inboundConfigs)
+		agent.AllowedUserTypes, agent.AllowedAgentTypes, inboundConfigs)
 	resp.OUID = agent.OUID
 	s.populateOUHandleForComplete(ctx, resp)
 	return resp, nil
@@ -340,7 +340,7 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 		req.Type, req.Name, req.Description, req.LogoURL, req.Attributes,
 		authFlowID, regFlowID, resolvedClient.IsRegistrationFlowEnabled,
 		req.ThemeID, req.LayoutID, assertion, loginConsent,
-		req.AllowedUserTypes, inboundConfigs)
+		req.AllowedUserTypes, req.AllowedAgentTypes, inboundConfigs)
 	resp.OUID = ouID
 	s.populateOUHandleForComplete(ctx, resp)
 	return resp, nil
@@ -689,7 +689,7 @@ func (s *agentService) ValidateAgent(ctx context.Context, agent *model.Agent, ex
 
 	client := buildInboundClientRecord("", agent.AuthFlowID, agent.RegistrationFlowID,
 		agent.IsRegistrationFlowEnabled, agent.ThemeID, agent.LayoutID, agent.Assertion,
-		agent.LoginConsent, agent.AllowedUserTypes, agent.SubjectAttribute)
+		agent.LoginConsent, agent.AllowedUserTypes, agent.AllowedAgentTypes, agent.SubjectAttribute)
 
 	if needsInboundClient(agent) {
 		oauthProfile := buildOAuthProfile(agent.InboundAuthConfig)
@@ -902,7 +902,7 @@ func (s *agentService) createInboundForAgent(ctx context.Context, agentID string
 	inboundmodel.InboundClient, *providers.OAuthProfile, *tidcommon.ServiceError) {
 	client := buildInboundClientRecord(agentID, agent.AuthFlowID, agent.RegistrationFlowID,
 		agent.IsRegistrationFlowEnabled, agent.ThemeID, agent.LayoutID, agent.Assertion,
-		agent.LoginConsent, agent.AllowedUserTypes, agent.SubjectAttribute)
+		agent.LoginConsent, agent.AllowedUserTypes, agent.AllowedAgentTypes, agent.SubjectAttribute)
 	setLogoProperty(&client, agent.LogoURL)
 
 	seedClientSubTypeAttribute(agent.InboundAuthConfig)
@@ -966,7 +966,7 @@ func (s *agentService) reconcileInboundForUpdate(ctx context.Context, agentID st
 
 	client := buildInboundClientRecord(agentID, profile.AuthFlowID, profile.RegistrationFlowID,
 		req.IsRegistrationFlowEnabled, req.ThemeID, req.LayoutID, req.Assertion,
-		req.LoginConsent, req.AllowedUserTypes, nil)
+		req.LoginConsent, req.AllowedUserTypes, req.AllowedAgentTypes, nil)
 	setLogoProperty(&client, req.LogoURL)
 	oauthProfile := buildOAuthProfile(req.InboundAuthConfig)
 	hasSecret := clientSecret != ""
@@ -1030,6 +1030,7 @@ func (s *agentService) composeGetResponse(ctx context.Context, e *providers.Enti
 	resp.Assertion = inbound.Assertion
 	resp.LoginConsent = inbound.LoginConsent
 	resp.AllowedUserTypes = inbound.AllowedUserTypes
+	resp.AllowedAgentTypes = inbound.AllowedAgentTypes
 	resp.LogoURL = logoURLFromProperties(inbound.Properties)
 
 	oauth, oauthErr := s.inboundClientService.GetOAuthProfileByEntityID(ctx, e.ID)
@@ -1170,6 +1171,7 @@ func needsInboundClient(agent *model.Agent) bool {
 		agent.Assertion != nil ||
 		agent.LoginConsent != nil ||
 		len(agent.AllowedUserTypes) > 0 ||
+		len(agent.AllowedAgentTypes) > 0 ||
 		len(agent.InboundAuthConfig) > 0
 }
 
@@ -1188,6 +1190,7 @@ func updateNeedsInboundClient(req *model.UpdateAgentRequest) bool {
 		req.Assertion != nil ||
 		req.LoginConsent != nil ||
 		len(req.AllowedUserTypes) > 0 ||
+		len(req.AllowedAgentTypes) > 0 ||
 		len(req.InboundAuthConfig) > 0
 }
 
@@ -1356,7 +1359,7 @@ func readSystemAttributes(raw json.RawMessage) (name, description, owner, client
 // buildInboundClientRecord constructs an InboundClient record from the agent's identity and inbound auth fields.
 func buildInboundClientRecord(agentID, authFlowID, regFlowID string, isRegEnabled bool,
 	themeID, layoutID string, assertion *inboundmodel.AssertionConfig,
-	loginConsent *inboundmodel.LoginConsentConfig, allowedUserTypes []string,
+	loginConsent *inboundmodel.LoginConsentConfig, allowedUserTypes, allowedAgentTypes []string,
 	subjectAttribute map[string]string) inboundmodel.InboundClient {
 	return inboundmodel.InboundClient{
 		ID:                        agentID,
@@ -1368,6 +1371,7 @@ func buildInboundClientRecord(agentID, authFlowID, regFlowID string, isRegEnable
 		Assertion:                 assertion,
 		LoginConsent:              loginConsent,
 		AllowedUserTypes:          allowedUserTypes,
+		AllowedAgentTypes:         allowedAgentTypes,
 		SubjectAttribute:          subjectAttribute,
 	}
 }
@@ -1513,7 +1517,7 @@ func convertGrantAndResponseTypes(
 func buildCompleteResponse(agentID, owner, clientID, clientSecret, agentType, name, description, logoURL string,
 	attributes json.RawMessage, authFlowID, regFlowID string, isRegEnabled bool,
 	themeID, layoutID string, assertion *inboundmodel.AssertionConfig,
-	loginConsent *inboundmodel.LoginConsentConfig, allowedUserTypes []string,
+	loginConsent *inboundmodel.LoginConsentConfig, allowedUserTypes, allowedAgentTypes []string,
 	inboundAuthConfig []providers.InboundAuthConfigWithSecret,
 ) *model.AgentCompleteResponse {
 	resp := &model.AgentCompleteResponse{
@@ -1533,6 +1537,7 @@ func buildCompleteResponse(agentID, owner, clientID, clientSecret, agentType, na
 			Assertion:                 assertion,
 			LoginConsent:              loginConsent,
 			AllowedUserTypes:          allowedUserTypes,
+			AllowedAgentTypes:         allowedAgentTypes,
 		},
 	}
 	if len(inboundAuthConfig) > 0 {
@@ -1838,7 +1843,11 @@ func translateInboundClientFKError(err error) *tidcommon.ServiceError {
 		return &ErrorLayoutNotFound
 	case errors.Is(err, inboundclient.ErrFKInvalidUserType):
 		return &ErrorInvalidUserType
+	case errors.Is(err, inboundclient.ErrFKInvalidAgentType):
+		return &ErrorInvalidAllowedAgentType
 	case errors.Is(err, inboundclient.ErrUserSchemaLookupFailed):
+		return &tidcommon.InternalServerError
+	case errors.Is(err, inboundclient.ErrAgentSchemaLookupFailed):
 		return &tidcommon.InternalServerError
 	case errors.Is(err, inboundclient.ErrUniqueAttributeLookupFailed):
 		return &tidcommon.InternalServerError

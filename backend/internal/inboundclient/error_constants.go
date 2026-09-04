@@ -51,10 +51,16 @@ var (
 	ErrFKInvalidUserType = errors.New("invalid user type")
 	// ErrFKInvalidSubjectAttributeMapping is returned when the specified subject attribute mapping is invalid.
 	ErrFKInvalidSubjectAttributeMapping = errors.New("invalid subject attribute mapping")
+	// ErrFKInvalidAgentType is returned when the specified agent type is invalid.
+	ErrFKInvalidAgentType = errors.New("invalid agent type")
 	// ErrUserSchemaLookupFailed is returned when the user-schema service fails (e.g. DB outage)
 	// while validating allowed user types. Distinct from ErrFKInvalidUserType so the handler
 	// can map it to a server error instead of a client validation error.
 	ErrUserSchemaLookupFailed = errors.New("user schema lookup failed")
+	// ErrAgentSchemaLookupFailed is returned when the agent-schema service fails (e.g. DB outage)
+	// while validating allowed agent types. Distinct from ErrFKInvalidAgentType so the handler
+	// can map it to a server error instead of a client validation error.
+	ErrAgentSchemaLookupFailed = errors.New("agent schema lookup failed")
 	// ErrUniqueAttributeLookupFailed is returned when the user-schema service fails (e.g. DB outage)
 	// while retrieving unique attributes for validation. Distinct from ErrFKInvalidSubjectAttributeMapping
 	// so the handler can map it to a server error instead of a client validation error.

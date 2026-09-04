@@ -1242,6 +1242,9 @@ func (s *inboundClientService) validateFKs(ctx context.Context, c *inboundmodel.
 	if err := s.validateAllowedUserTypes(ctx, c.AllowedUserTypes); err != nil {
 		return err
 	}
+	if err := s.validateAllowedAgentTypes(ctx, c.AllowedAgentTypes); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1333,23 +1336,44 @@ func (s *inboundClientService) validateLayoutID(ctx context.Context, layoutID st
 func (s *inboundClientService) validateAllowedUserTypes(
 	ctx context.Context, allowedUserTypes []string,
 ) error {
-	if len(allowedUserTypes) == 0 || s.entityType == nil {
+	return s.validateAllowedEntityTypes(ctx, entitytype.TypeCategoryUser, allowedUserTypes,
+		ErrFKInvalidUserType, ErrUserSchemaLookupFailed)
+}
+
+// validateAllowedAgentTypes validates that each allowed agent type corresponds to an existing agent type.
+func (s *inboundClientService) validateAllowedAgentTypes(
+	ctx context.Context, allowedAgentTypes []string,
+) error {
+	return s.validateAllowedEntityTypes(ctx, entitytype.TypeCategoryAgent, allowedAgentTypes,
+		ErrFKInvalidAgentType, ErrAgentSchemaLookupFailed)
+}
+
+// validateAllowedEntityTypes validates that each name in allowedTypes corresponds to an existing
+// entity type in the given category. invalidErr is returned for an unknown name; lookupErr is
+// returned when the entity type service itself fails, so the caller can tell a client validation
+// failure from a server fault.
+func (s *inboundClientService) validateAllowedEntityTypes(
+	ctx context.Context, category entitytype.TypeCategory, allowedTypes []string,
+	invalidErr, lookupErr error,
+) error {
+	if len(allowedTypes) == 0 || s.entityType == nil {
 		return nil
 	}
-	existingUserTypes := make(map[string]bool)
+	existingTypes := make(map[string]bool)
 	limit := serverconst.MaxPageSize
 	offset := 0
 	for {
 		// Runtime context: skip authorization checks when fetching entity types.
 		entityTypeList, svcErr := s.entityType.GetEntityTypeList(
-			security.WithRuntimeContext(ctx), entitytype.TypeCategoryUser, limit, offset, false)
+			security.WithRuntimeContext(ctx), category, limit, offset, false)
 		if svcErr != nil {
-			s.logger.Error(ctx, "Failed to retrieve user type list for validation",
+			s.logger.Error(ctx, "Failed to retrieve entity type list for validation",
+				log.String("category", string(category)),
 				log.String("error", svcErr.Error.DefaultValue), log.String("code", svcErr.Code))
-			return ErrUserSchemaLookupFailed
+			return lookupErr
 		}
 		for _, schema := range entityTypeList.Types {
-			existingUserTypes[schema.Name] = true
+			existingTypes[schema.Name] = true
 		}
 		if len(entityTypeList.Types) == 0 ||
 			offset+len(entityTypeList.Types) >= entityTypeList.TotalResults {
@@ -1357,9 +1381,9 @@ func (s *inboundClientService) validateAllowedUserTypes(
 		}
 		offset += limit
 	}
-	for _, userType := range allowedUserTypes {
-		if userType == "" || !existingUserTypes[userType] {
-			return ErrFKInvalidUserType
+	for _, entityTypeName := range allowedTypes {
+		if entityTypeName == "" || !existingTypes[entityTypeName] {
+			return invalidErr
 		}
 	}
 	return nil

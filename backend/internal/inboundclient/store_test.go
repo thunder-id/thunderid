@@ -83,6 +83,7 @@ func (suite *InboundClientStoreTestSuite) TestBuildInboundClientFromRow_Success(
 			ValidityPeriod: 5400,
 		},
 		AllowedUserTypes:      []string{"admin", "user"},
+		AllowedAgentTypes:     []string{"default"},
 		PasskeyAllowedOrigins: []string{"https://app.example.com"},
 		Properties:            map[string]interface{}{"template": "spa"},
 	}
@@ -117,6 +118,7 @@ func (suite *InboundClientStoreTestSuite) TestBuildInboundClientFromRow_Success(
 	suite.NotNil(result.LoginConsent)
 	suite.Equal(int64(5400), result.LoginConsent.ValidityPeriod)
 	suite.Equal([]string{"admin", "user"}, result.AllowedUserTypes)
+	suite.Equal([]string{"default"}, result.AllowedAgentTypes)
 	suite.Equal([]string{"https://app.example.com"}, result.PasskeyAllowedOrigins)
 	suite.NotNil(result.Properties)
 	suite.Equal("spa", result.Properties["template"])

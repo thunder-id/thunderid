@@ -266,6 +266,106 @@ func (s *ManagerTestSuite) TestAuthenticateUser_InvalidRequest() {
 	)
 }
 
+func (s *ManagerTestSuite) TestAuthenticateUser_SubjectNotAllowed() {
+	s.assertAuthenticateUserClientErrorMapping(
+		authnprovidercm.ErrorCodeSubjectNotAllowed,
+		"subject not allowed",
+		"the authenticated subject is not allowed to sign in to this application",
+		ErrorSubjectNotAllowed.Code,
+	)
+}
+
+func (s *ManagerTestSuite) TestAuthenticateUser_ResolvedAgentRejectedByConstraints() {
+	credentials := map[string]interface{}{"password": "secret"}
+	meta := &providers.AuthnMetadata{}
+	ctx := authnprovidercm.WithSubjectTypeConstraints(context.Background(),
+		authnprovidercm.SubjectTypeConstraints{AllowedUserTypes: []string{"customer"}})
+
+	s.mockProvider.On("Authenticate", ctx, mock.Anything, credentials, meta).
+		Return(&providers.AuthnResult{
+			EntityReference: &providers.EntityReference{
+				EntityID: "agent-1", EntityCategory: "agent", EntityType: "default", OUID: "ou-1",
+			},
+			Attributes: &providers.AttributesResponse{},
+		}, (*tidcommon.ServiceError)(nil))
+
+	returnedAuthUser, rtAttrs, svcErr := s.mgr.AuthenticateUser(ctx, nil, credentials,
+		nil, meta, providers.AuthUser{})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorSubjectNotAllowed.Code, svcErr.Code)
+	s.Nil(rtAttrs)
+	s.False(returnedAuthUser.IsAuthenticated())
+}
+
+func (s *ManagerTestSuite) TestAuthenticateUser_ResolvedAgentAllowedByConstraints() {
+	credentials := map[string]interface{}{"password": "secret"}
+	meta := &providers.AuthnMetadata{}
+	entityRef := &providers.EntityReference{
+		EntityID: "agent-1", EntityCategory: "agent", EntityType: "default", OUID: "ou-1",
+	}
+	ctx := authnprovidercm.WithSubjectTypeConstraints(context.Background(),
+		authnprovidercm.SubjectTypeConstraints{AllowedAgentTypes: []string{"default"}})
+
+	s.mockProvider.On("Authenticate", ctx, mock.Anything, credentials, meta).
+		Return(&providers.AuthnResult{
+			EntityReference: entityRef,
+			Attributes:      &providers.AttributesResponse{},
+		}, (*tidcommon.ServiceError)(nil))
+
+	returnedAuthUser, _, svcErr := s.mgr.AuthenticateUser(ctx, nil, credentials,
+		nil, meta, providers.AuthUser{})
+
+	s.Nil(svcErr)
+	s.True(returnedAuthUser.IsAuthenticated())
+	st, ok := returnedAuthUser.StateFor(defaultProviderName)
+	s.True(ok)
+	s.Equal(entityRef, st.EntityReference)
+}
+
+// A provider that has not resolved the subject yet returns an entity reference token instead of a
+// reference, so there is no category or type to check. GetEntityReference applies the check later.
+func (s *ManagerTestSuite) TestAuthenticateUser_UnresolvedSubjectDefersConstraintCheck() {
+	credentials := map[string]interface{}{"password": "secret"}
+	meta := &providers.AuthnMetadata{}
+	entityRefToken := map[string]interface{}{"sub": "agent-1"}
+	ctx := authnprovidercm.WithSubjectTypeConstraints(context.Background(),
+		authnprovidercm.SubjectTypeConstraints{})
+
+	s.mockProvider.On("Authenticate", ctx, mock.Anything, credentials, meta).
+		Return(&providers.AuthnResult{
+			EntityReferenceToken: entityRefToken,
+			AttributeToken:       entityRefToken,
+		}, (*tidcommon.ServiceError)(nil))
+
+	returnedAuthUser, _, svcErr := s.mgr.AuthenticateUser(ctx, nil, credentials,
+		nil, meta, providers.AuthUser{})
+
+	s.Nil(svcErr)
+	s.True(returnedAuthUser.IsAuthenticated())
+}
+
+// Entry points that are not scoped to an application (the credentials authentication API) carry no
+// constraints, so the check is skipped rather than defaulting to deny.
+func (s *ManagerTestSuite) TestAuthenticateUser_AgentAllowedWhenNoConstraintsOnContext() {
+	credentials := map[string]interface{}{"password": "secret"}
+	meta := &providers.AuthnMetadata{}
+
+	s.mockProvider.On("Authenticate", context.Background(), mock.Anything, credentials, meta).
+		Return(&providers.AuthnResult{
+			EntityReference: &providers.EntityReference{
+				EntityID: "agent-1", EntityCategory: "agent", EntityType: "default", OUID: "ou-1",
+			},
+			Attributes: &providers.AttributesResponse{},
+		}, (*tidcommon.ServiceError)(nil))
+
+	returnedAuthUser, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, credentials,
+		nil, meta, providers.AuthUser{})
+
+	s.Nil(svcErr)
+	s.True(returnedAuthUser.IsAuthenticated())
+}
+
 func (s *ManagerTestSuite) assertAuthenticateUserClientErrorMapping(
 	providerErrorCode, providerError, providerErrorDescription, expectedServiceErrorCode string,
 ) {
@@ -509,6 +609,37 @@ func (s *ManagerTestSuite) TestGetEntityReference_AlreadyResolved() {
 	s.Equal(entityRef, retRef)
 	s.Equal(authUser, retAuthUser)
 	s.mockProvider.AssertNotCalled(s.T(), "GetEntityReference")
+}
+
+func (s *ManagerTestSuite) TestGetEntityReference_ResolvedAgentRejectedByConstraints() {
+	// An SSO checkpoint replays an already-resolved agent reference into an application that allows
+	// no agent type, so the manager rejects it without consulting the provider.
+	entityRef := &providers.EntityReference{
+		EntityID: "agent-1", EntityCategory: "agent", EntityType: "default", OUID: "ou-1",
+	}
+	authUser := authenticatedAuthUserWithResolved(entityRef, &providers.AttributesResponse{})
+	ctx := authnprovidercm.WithSubjectTypeConstraints(context.Background(),
+		authnprovidercm.SubjectTypeConstraints{AllowedUserTypes: []string{"customer"}})
+
+	_, retRef, svcErr := s.mgr.GetEntityReference(ctx, authUser)
+
+	s.Nil(retRef)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorSubjectNotAllowed.Code, svcErr.Code)
+}
+
+func (s *ManagerTestSuite) TestGetEntityReference_ResolvedAgentAllowedByConstraints() {
+	entityRef := &providers.EntityReference{
+		EntityID: "agent-1", EntityCategory: "agent", EntityType: "default", OUID: "ou-1",
+	}
+	authUser := authenticatedAuthUserWithResolved(entityRef, &providers.AttributesResponse{})
+	ctx := authnprovidercm.WithSubjectTypeConstraints(context.Background(),
+		authnprovidercm.SubjectTypeConstraints{AllowedAgentTypes: []string{"default"}})
+
+	_, retRef, svcErr := s.mgr.GetEntityReference(ctx, authUser)
+
+	s.Nil(svcErr)
+	s.Equal(entityRef, retRef)
 }
 
 func (s *ManagerTestSuite) TestGetEntityReference_FetchFromProvider() {
@@ -920,6 +1051,27 @@ func (s *ManagerTestSuite) TestEnroll_Success() {
 	st, ok := authUser.StateFor(defaultProviderName)
 	s.True(ok)
 	s.Equal(entityRefToken, st.EntityReferenceToken)
+}
+
+func (s *ManagerTestSuite) TestEnroll_ResolvedAgentRejectedByConstraints() {
+	credentials := map[string]interface{}{"passkey": "cred"}
+	meta := &providers.AuthnMetadata{}
+	ctx := authnprovidercm.WithSubjectTypeConstraints(context.Background(),
+		authnprovidercm.SubjectTypeConstraints{AllowedUserTypes: []string{"customer"}})
+
+	s.mockProvider.On("Enroll", ctx, map[string]interface{}(nil), credentials, meta).
+		Return(&providers.AuthnResult{
+			EntityReference: &providers.EntityReference{
+				EntityID: "agent-1", EntityCategory: "agent", EntityType: "default", OUID: "ou-1",
+			},
+			Attributes: &providers.AttributesResponse{},
+		}, (*tidcommon.ServiceError)(nil))
+
+	authUser, _, svcErr := s.mgr.Enroll(ctx, nil, credentials, nil, meta, providers.AuthUser{})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorSubjectNotAllowed.Code, svcErr.Code)
+	s.False(authUser.IsAuthenticated())
 }
 
 func (s *ManagerTestSuite) TestEnroll_ServerError() {
