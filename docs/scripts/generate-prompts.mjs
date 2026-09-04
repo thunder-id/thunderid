@@ -20,9 +20,12 @@ const logger = createLogger('generate-prompts');
 // directly), matching the URL scheme used for every other doc-relative link in config.js.
 const PROMPT_ROOT_SEGMENT = 'prompts';
 
+// `versionPath` must match each version's served base path in docusaurus.config.ts:
+// the current/"Next" docs live at /docs/next, and v1.0.x is the lastVersion served at
+// the bare /docs root (empty segment).
 const VERSION_ROOTS = [
   {sourceDir: join(__dirname, '..', 'content'), versionPath: 'next'},
-  {sourceDir: join(__dirname, '..', 'versioned_docs', 'version-v1.0.x'), versionPath: 'v1.0.x'},
+  {sourceDir: join(__dirname, '..', 'versioned_docs', 'version-v1.0.x'), versionPath: ''},
 ];
 
 const STATIC_DOCS_DIR = join(__dirname, '..', 'static', 'docs');
@@ -60,7 +63,7 @@ function generatePrompts() {
     }
   }
 
-  logger.info(`✅ Copied ${written} prompt file(s) into static/docs/{${VERSION_ROOTS.map((v) => v.versionPath).join(',')}}`);
+  logger.info(`✅ Copied ${written} prompt file(s) into static/docs/{${VERSION_ROOTS.map((v) => v.versionPath || '(root)').join(',')}}`);
 }
 
 try {

@@ -191,10 +191,10 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
             },
             'v1.0.x': {
               label: 'v1.0.x',
-              // Explicit URL segment so the stable release lives at /docs/v1.0.x/
-              // instead of the bare doc root. The version tracks the 1.0 minor line
-              // (1.0.0, 1.0.1, ...), so patch releases reuse these docs.
-              path: 'v1.0.x',
+              // No `path` override, so as the lastVersion it is served at the bare doc
+              // root (/docs) as the latest release. The version tracks the 1.0 minor
+              // line (1.0.0, 1.0.1, ...), so patch releases reuse these docs. The
+              // current/"Next" docs stay at /docs/next as a preview.
               // Current stable release: not archived, so no "unmaintained" banner.
               banner: 'none',
               // No "Version: v1.0.x" pill at the top of every doc page.

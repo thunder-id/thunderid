@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useDocsVersion} from '@docusaurus/plugin-content-docs/client';
+import {useActiveVersion} from '@docusaurus/plugin-content-docs/client';
 import {useBaseUrlUtils} from '@docusaurus/useBaseUrl';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import {Button, styled} from '@wso2/oxygen-ui';
@@ -112,7 +112,7 @@ export default function SdkQuickstartDownload({
   promptFlow = undefined,
 }: SdkQuickstartDownloadProps): React.ReactElement | null {
   const {withBaseUrl} = useBaseUrlUtils();
-  const {version} = useDocsVersion();
+  const activeVersion = useActiveVersion(undefined);
   const {siteConfig} = useDocusaurusContext();
   const [asset, setAsset] = useState<SdkReleaseAsset | null>(null);
   const [packageName, setPackageName] = useState('');
@@ -139,13 +139,12 @@ export default function SdkQuickstartDownload({
     if (!promptFlow || copyState === 'copying') return;
     setCopyState('copying');
     try {
-      // Docusaurus "current" version (labeled "Next") -> 'next', matching the directory
-      // convention generate-prompts.mjs mirrors these files under (static/docs/<versionPath>/...).
-      const versionPath = version === 'current' ? 'next' : version;
+      // The prompt files are mirrored under each version's own docs path by
+      // generate-prompts.mjs, so fetch from the active version's resolved base
+      // (e.g. "/docs" for the last version at the root, "/docs/next" for current).
+      const versionBase = activeVersion?.path ?? withBaseUrl('/docs');
       const res = await fetch(
-        withBaseUrl(
-          `/docs/${versionPath}/getting-started/connect-your-application/prompts/${packageId}/${promptFlow}.txt`,
-        ),
+        `${versionBase}/getting-started/connect-your-application/prompts/${packageId}/${promptFlow}.txt`,
       );
       const text = await res.text();
       const config = siteConfig.customFields?.product as DocusaurusProductConfig;
