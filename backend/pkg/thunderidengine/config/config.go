@@ -122,10 +122,12 @@ type RedisConfig struct {
 
 // ServerConfig holds the server configuration details.
 type ServerConfig struct {
-	Hostname       string         `yaml:"hostname"   json:"hostname"`
-	Port           int            `yaml:"port"       json:"port"`
-	HTTPOnly       bool           `yaml:"http_only"  json:"http_only"`
-	PublicURL      string         `yaml:"public_url" json:"public_url"`
+	Hostname  string `yaml:"hostname"   json:"hostname"`
+	Port      int    `yaml:"port"       json:"port"`
+	HTTPOnly  bool   `yaml:"http_only"  json:"http_only"`
+	PublicURL string `yaml:"public_url" json:"public_url"`
+	// Identifier is the deployment id that scopes all persisted resources. It is put on every
+	// request's context at the edge, and it is the only value stores partition by.
 	Identifier     string         `yaml:"identifier" json:"identifier"`
 	SecurityConfig SecurityConfig `yaml:"security"   json:"security"`
 }

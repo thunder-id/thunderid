@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 )
 
 // ErrNotFound is the store-level not-found sentinel.
@@ -50,6 +51,12 @@ func newDefinitionStore() definitionStoreInterface {
 	}
 }
 
+// scope returns the deployment id this request acts for, falling back to the configured
+// identifier for a context that never passed through the edge.
+func (s *definitionStore) scope(ctx context.Context) string {
+	return deployment.Resolve(ctx, s.deploymentID)
+}
+
 // CreatePresentationDefinition inserts a new presentation definition into the config database.
 func (s *definitionStore) CreatePresentationDefinition(ctx context.Context, dto PresentationDefinitionDTO) error {
 	dbClient, err := s.dbProvider.GetConfigDBClient()
@@ -66,7 +73,7 @@ func (s *definitionStore) CreatePresentationDefinition(ctx context.Context, dto 
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryCreateDefinition,
 		dto.ID, dto.Handle, dto.OUID, dto.Name, dto.Description, dto.VCT, dto.Format, claimsJSON,
-		nullableBool(dto.EnforceTrustedIssuer), authoritiesJSON, s.deploymentID)
+		nullableBool(dto.EnforceTrustedIssuer), authoritiesJSON, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to create presentation definition: %w", err)
 	}
@@ -95,7 +102,7 @@ func (s *definitionStore) getOne(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
-	results, err := dbClient.QueryContext(ctx, query, identifier, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, query, identifier, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to query presentation definition: %w", err)
 	}
@@ -111,7 +118,7 @@ func (s *definitionStore) ListPresentationDefinitions(ctx context.Context) ([]Pr
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
-	results, err := dbClient.QueryContext(ctx, queryListDefinitions, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, queryListDefinitions, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list presentation definitions: %w", err)
 	}
@@ -134,7 +141,7 @@ func (s *definitionStore) ListPresentationDefinitionSummaries(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
-	results, err := dbClient.QueryContext(ctx, queryListDefinitionSummaries, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, queryListDefinitionSummaries, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list presentation definition summaries: %w", err)
 	}
@@ -168,7 +175,7 @@ func (s *definitionStore) UpdatePresentationDefinition(ctx context.Context, dto 
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryUpdateDefinition,
 		dto.ID, dto.Handle, dto.OUID, dto.Name, dto.Description, dto.VCT, dto.Format, claimsJSON,
-		nullableBool(dto.EnforceTrustedIssuer), authoritiesJSON, s.deploymentID)
+		nullableBool(dto.EnforceTrustedIssuer), authoritiesJSON, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to update presentation definition: %w", err)
 	}
@@ -181,7 +188,7 @@ func (s *definitionStore) DeletePresentationDefinition(ctx context.Context, id s
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
-	if _, err := dbClient.ExecuteContext(ctx, queryDeleteDefinition, id, s.deploymentID); err != nil {
+	if _, err := dbClient.ExecuteContext(ctx, queryDeleteDefinition, id, s.scope(ctx)); err != nil {
 		return fmt.Errorf("failed to delete presentation definition: %w", err)
 	}
 	return nil
