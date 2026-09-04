@@ -66,7 +66,6 @@ func newOTPExecutor(
 				ExecutorModeVerify,
 			},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
-				{Property: propertyKeyMaxOTPAttempts},
 				{Property: propertyKeyOTPLength},
 				{Property: propertyKeyOTPUseNumericOnly},
 				{Property: propertyKeyOTPValidityPeriodSeconds},
@@ -114,14 +113,6 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
 	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	attemptCount, err := e.validateAttempts(ctx, execResp, logger)
-	if err != nil {
-		return execResp, err
-	}
-	if execResp.Status == providers.ExecFailure {
-		return execResp, nil
-	}
-
 	userID, err := e.resolveUserID(ctx, execResp)
 	if err != nil {
 		return execResp, err
@@ -156,14 +147,20 @@ func (e *otpExecutor) executeGenerate(ctx *providers.NodeContext,
 	}
 
 	otpCfg := e.resolveOTPProperties(ctx)
-	sessionToken, otpValue, expirySeconds, svcErr :=
-		e.otpService.GenerateOTP(ctx.Context, recipient, recipientAttr, otpCfg)
+	previousSessionToken := ctx.RuntimeData[common.RuntimeKeyOTPSessionToken]
+	sessionToken, otpValue, expirySeconds, svcErr := e.otpService.GenerateOTP(
+		ctx.Context, recipient, recipientAttr, otpCfg, previousSessionToken)
 	if svcErr != nil {
+		if svcErr.Code == otp.ErrorMaxOTPAttemptsExceeded.Code {
+			logger.Debug(ctx.Context, "Maximum OTP generation attempts reached")
+			execResp.Status = providers.ExecFailure
+			execResp.Error = &ErrMaxOTPAttemptsReached
+			return execResp, nil
+		}
 		return execResp, fmt.Errorf("failed to generate OTP: %s", svcErr.ErrorDescription.DefaultValue)
 	}
 
 	execResp.RuntimeData[common.RuntimeKeyOTPSessionToken] = sessionToken
-	execResp.RuntimeData[common.RuntimeKeyOTPAttemptCount] = strconv.Itoa(attemptCount + 1)
 	// Published from the generated value rather than the configured otpLength property, since the
 	// property is clamped and may fall back to the server default.
 	execResp.AdditionalData[common.DataOTPLength] = strconv.Itoa(len(otpValue))
@@ -350,29 +347,6 @@ func (e *otpExecutor) getGenerateInputs(ctx *providers.NodeContext) []providers.
 	}
 }
 
-// validateAttempts checks the OTP generation attempt count against the maximum allowed.
-func (e *otpExecutor) validateAttempts(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
-	logger *log.Logger) (int, error) {
-	attemptCount := 0
-	if countStr := ctx.RuntimeData[common.RuntimeKeyOTPAttemptCount]; countStr != "" {
-		count, err := strconv.Atoi(countStr)
-		if err != nil {
-			return 0, fmt.Errorf("failed to parse attempt count: %w", err)
-		}
-		attemptCount = count
-	}
-
-	if attemptCount >= e.getMaxOTPAttempts(ctx) {
-		logger.Debug(ctx.Context, "Maximum OTP generation attempts reached",
-			log.Int("attemptCount", attemptCount))
-		execResp.Status = providers.ExecFailure
-		execResp.Error = errMaxOTPAttemptsReachedFor(attemptCount)
-		return 0, nil
-	}
-
-	return attemptCount, nil
-}
-
 // resolveOTPProperties reads flow-level OTP configuration overrides from NodeProperties.
 // Returns nil if no override is specified; otherwise returns an OTPConfig with only
 // the fields that were explicitly set and valid.
@@ -421,25 +395,4 @@ func isNumericOTP(otpValue string) bool {
 		}
 	}
 	return true
-}
-
-// getMaxOTPAttempts returns the maximum OTP generation attempts from NodeProperties,
-// falling back to 3 if not set or invalid.
-func (e *otpExecutor) getMaxOTPAttempts(ctx *providers.NodeContext) int {
-	const defaultMaxAttempts = 3
-	switch v := ctx.NodeProperties[propertyKeyMaxOTPAttempts].(type) {
-	case string:
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			return n
-		}
-	case int:
-		if v > 0 {
-			return v
-		}
-	case float64:
-		if n := int(v); n > 0 {
-			return n
-		}
-	}
-	return defaultMaxAttempts
 }
