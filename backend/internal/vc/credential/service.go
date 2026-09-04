@@ -112,6 +112,9 @@ func (s *configurationService) populateOUHandle(ctx context.Context, dtos ...*Cr
 func (s *configurationService) CreateCredentialConfiguration(
 	ctx context.Context, dto *CredentialConfigurationDTO,
 ) (*CredentialConfigurationDTO, *tidcommon.ServiceError) {
+	if isDeclarativeModeEnabled() {
+		return nil, &ErrorConfigurationDeclarativeModeCreateNotAllowed
+	}
 	if svcErr := validateConfiguration(dto); svcErr != nil {
 		return nil, svcErr
 	}

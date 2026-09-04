@@ -6,12 +6,15 @@ package credential
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/yaml.v3"
 
+	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -208,9 +211,9 @@ func (s *ConfigurationExporterTestSuite) TestLoadResourcesThroughStorer() {
 	s.Require().NoError(fileStore.GenericFileBasedStore.ClearByType())
 	storer := &credentialStorer{store: fileStore}
 
-	resource, err := parseToConfigurationDTOWrapper([]byte("id: cfg-1\nhandle: h\nvct: v\n"))
+	resource, err := parseToConfigurationDTOWrapper([]byte("id: cfg-1\nhandle: h\nvct: v\nouId: ou-1\n"))
 	s.Require().NoError(err)
-	s.Require().NoError(validateConfigurationWrapper(resource))
+	s.Require().NoError(validateConfigurationWrapper(resource, fileStore, nil, nil))
 	dto := resource.(*CredentialConfigurationDTO)
 	s.Require().NoError(storer.Create(dto.ID, dto))
 
@@ -248,14 +251,218 @@ func (s *ConfigurationExporterTestSuite) TestExportImportRoundTrip() {
 
 func (s *ConfigurationExporterTestSuite) TestValidateConfigurationWrapperRejectsMissingID() {
 	dto := &CredentialConfigurationDTO{Handle: "h", VCT: "v"}
-	s.Error(validateConfigurationWrapper(dto))
+	s.Error(validateConfigurationWrapper(dto, nil, nil, nil))
 }
 
 func (s *ConfigurationExporterTestSuite) TestValidateConfigurationWrapperRejectsInvalidConfig() {
 	dto := &CredentialConfigurationDTO{ID: "cfg-1", Handle: "", VCT: "v"}
-	s.Error(validateConfigurationWrapper(dto))
+	s.Error(validateConfigurationWrapper(dto, nil, nil, nil))
 }
 
 func (s *ConfigurationExporterTestSuite) TestValidateConfigurationWrapperRejectsWrongType() {
-	s.Error(validateConfigurationWrapper("not-a-dto"))
+	s.Error(validateConfigurationWrapper("not-a-dto", nil, nil, nil))
+}
+
+// TestDeclarativeYAMLCarriesOU verifies the declarative YAML shape accepts the same
+// organization unit the management API requires, by ID or by handle.
+func (s *ConfigurationExporterTestSuite) TestDeclarativeYAMLCarriesOU() {
+	parsed, err := parseToConfigurationDTOWrapper(
+		[]byte("id: cfg-1\nhandle: h\nvct: v\nouId: ou-123\n"))
+	s.Require().NoError(err)
+	s.Equal("ou-123", parsed.(*CredentialConfigurationDTO).OUID)
+
+	parsed, err = parseToConfigurationDTOWrapper(
+		[]byte("id: cfg-2\nhandle: h2\nvct: v\nouHandle: root/eng\n"))
+	s.Require().NoError(err)
+	s.Equal("root/eng", parsed.(*CredentialConfigurationDTO).OUHandle)
+}
+
+// TestValidateResolvesOUHandle verifies an ouHandle is resolved to an ouId at load time
+// and that only the resolved ID is retained on the stored resource.
+func (s *ConfigurationExporterTestSuite) TestValidateResolvesOUHandle() {
+	ouSvc := newOUServiceMock(s.T(), map[string]bool{"ou-123": true},
+		map[string]string{"root/eng": "ou-123"}, map[string]string{"ou-123": "root/eng"})
+
+	dto := &CredentialConfigurationDTO{ID: "cfg-1", Handle: "h", VCT: "v", OUHandle: "root/eng"}
+	s.Require().NoError(validateConfigurationWrapper(dto, nil, nil, ouSvc))
+	s.Equal("ou-123", dto.OUID)
+}
+
+// TestValidateRejectsUnknownOUHandle verifies an unresolvable handle fails the load
+// rather than silently producing a configuration with no organization unit.
+func (s *ConfigurationExporterTestSuite) TestValidateRejectsUnknownOUHandle() {
+	ouSvc := newOUServiceMock(s.T(), map[string]bool{}, map[string]string{}, map[string]string{})
+
+	dto := &CredentialConfigurationDTO{ID: "cfg-1", Handle: "h", VCT: "v", OUHandle: "no/such/ou"}
+	err := validateConfigurationWrapper(dto, nil, nil, ouSvc)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "no/such/ou")
+}
+
+// TestValidateRejectsMissingOU verifies a declarative configuration without an organization
+// unit is rejected, matching what the management API enforces on create.
+func (s *ConfigurationExporterTestSuite) TestValidateRejectsMissingOU() {
+	dto := &CredentialConfigurationDTO{ID: "cfg-1", Handle: "h", VCT: "v"}
+	err := validateConfigurationWrapper(dto, nil, nil, nil)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "ouId or ouHandle is required")
+}
+
+// TestValidateRejectsUnknownExplicitOUID verifies an explicit ouId that names no real
+// organization unit is rejected, rather than loading the resource under a dangling owner.
+func (s *ConfigurationExporterTestSuite) TestValidateRejectsUnknownExplicitOUID() {
+	ouSvc := newOUServiceMock(s.T(), map[string]bool{}, map[string]string{}, map[string]string{})
+
+	dto := &CredentialConfigurationDTO{ID: "cfg-1", Handle: "h", VCT: "v", OUID: "no-such-ou"}
+	err := validateConfigurationWrapper(dto, nil, nil, ouSvc)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "no-such-ou")
+}
+
+// TestValidateRejectsDuplicateIDAndHandle verifies a second declarative file cannot
+// silently overwrite or shadow a configuration already loaded from another file.
+func (s *ConfigurationExporterTestSuite) TestValidateRejectsDuplicateIDAndHandle() {
+	fileStore := newCredentialFileBasedStore()
+	s.Require().NoError(fileStore.GenericFileBasedStore.ClearByType())
+	storer := &credentialStorer{store: fileStore}
+
+	first := &CredentialConfigurationDTO{ID: "cfg-1", Handle: "h", VCT: "v", OUID: "ou-1"}
+	s.Require().NoError(validateConfigurationWrapper(first, fileStore, nil, nil))
+	s.Require().NoError(storer.Create(first.ID, first))
+
+	dupID := &CredentialConfigurationDTO{ID: "cfg-1", Handle: "other", VCT: "v", OUID: "ou-1"}
+	err := validateConfigurationWrapper(dupID, fileStore, nil, nil)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "duplicate credential configuration ID")
+
+	dupHandle := &CredentialConfigurationDTO{ID: "cfg-2", Handle: "h", VCT: "v", OUID: "ou-1"}
+	err = validateConfigurationWrapper(dupHandle, fileStore, nil, nil)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "duplicate credential configuration handle")
+}
+
+// TestValidateRejectsHandleAlreadyInDatabase verifies a declarative configuration cannot claim
+// a handle a runtime configuration already owns under a different ID. The composite store
+// resolves reads by checking the database first, so an unnoticed collision here would let
+// the database entry silently shadow the declarative one on every read.
+func (s *ConfigurationExporterTestSuite) TestValidateRejectsHandleAlreadyInDatabase() {
+	dbStore := newStatefulCredentialStore(s.T())
+	s.Require().NoError(dbStore.CreateCredentialConfiguration(context.Background(),
+		CredentialConfigurationDTO{ID: "cfg-db", Handle: "shared_handle", VCT: "v", OUID: "ou-1"}))
+
+	dto := &CredentialConfigurationDTO{ID: "cfg-decl", Handle: "shared_handle", VCT: "v", OUID: "ou-1"}
+	err := validateConfigurationWrapper(dto, nil, dbStore, nil)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "duplicate credential configuration handle")
+	s.Contains(err.Error(), "already used in the database store")
+}
+
+// TestValidateRejectsIDAlreadyInDatabase verifies a declarative configuration cannot claim
+// an ID a runtime configuration already owns, which in composite mode would otherwise be
+// shadowed by the database entry on every read.
+func (s *ConfigurationExporterTestSuite) TestValidateRejectsIDAlreadyInDatabase() {
+	dbStore := newStatefulCredentialStore(s.T())
+	s.Require().NoError(dbStore.CreateCredentialConfiguration(context.Background(),
+		CredentialConfigurationDTO{ID: "cfg-db", Handle: "runtime_handle", VCT: "v", OUID: "ou-1"}))
+
+	dto := &CredentialConfigurationDTO{ID: "cfg-db", Handle: "declarative_handle", VCT: "v", OUID: "ou-1"}
+	err := validateConfigurationWrapper(dto, nil, dbStore, nil)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "already exists in the database store")
+}
+
+// TestValidateAllowsUnusedIDWithDatabaseStore verifies the composite-mode duplicate check
+// lets a fresh ID through rather than rejecting every declarative resource.
+func (s *ConfigurationExporterTestSuite) TestValidateAllowsUnusedIDWithDatabaseStore() {
+	dbStore := newStatefulCredentialStore(s.T())
+
+	dto := &CredentialConfigurationDTO{ID: "cfg-fresh", Handle: "fresh_handle", VCT: "v", OUID: "ou-1"}
+	s.NoError(validateConfigurationWrapper(dto, nil, dbStore, nil))
+}
+
+// TestValidateSurfacesDatabaseLookupFailure verifies a database error during the duplicate
+// check fails the load instead of being mistaken for "no duplicate".
+func (s *ConfigurationExporterTestSuite) TestValidateSurfacesDatabaseLookupFailure() {
+	dbStore := newCredentialStoreInterfaceMock(s.T())
+	dbStore.EXPECT().GetCredentialConfigurationByID(mock.Anything, mock.Anything).
+		Return(nil, errors.New("db boom"))
+
+	dto := &CredentialConfigurationDTO{ID: "cfg-x", Handle: "h", VCT: "v", OUID: "ou-1"}
+	err := validateConfigurationWrapper(dto, nil, dbStore, nil)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "failed to check for duplicate")
+}
+
+// TestValidateSurfacesDatabaseHandleLookupFailure verifies a database error during the
+// handle half of the duplicate check fails the load instead of being mistaken for "no duplicate".
+func (s *ConfigurationExporterTestSuite) TestValidateSurfacesDatabaseHandleLookupFailure() {
+	dbStore := newCredentialStoreInterfaceMock(s.T())
+	dbStore.EXPECT().GetCredentialConfigurationByID(mock.Anything, mock.Anything).
+		Return(nil, ErrNotFound)
+	dbStore.EXPECT().GetCredentialConfigurationByHandle(mock.Anything, mock.Anything).
+		Return(nil, errors.New("db boom"))
+
+	dto := &CredentialConfigurationDTO{ID: "cfg-x", Handle: "h", VCT: "v", OUID: "ou-1"}
+	err := validateConfigurationWrapper(dto, nil, dbStore, nil)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "failed to check for duplicate")
+}
+
+// TestLoadDeclarativeResourcesNoResources verifies a server home without a resources
+// directory loads cleanly rather than failing startup.
+func (s *ConfigurationExporterTestSuite) TestLoadDeclarativeResourcesNoResources() {
+	config.ResetServerRuntime()
+	s.T().Cleanup(config.ResetServerRuntime)
+	s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{}))
+
+	fileStore := newCredentialFileBasedStore()
+	s.Require().NoError(fileStore.GenericFileBasedStore.ClearByType())
+
+	s.Require().NoError(loadDeclarativeResources(fileStore, nil, nil))
+}
+
+// TestLoadDeclarativeResourcesRejectsInvalidFile verifies a malformed declarative file
+// fails the load, so the server refuses to start rather than silently skipping it.
+func (s *ConfigurationExporterTestSuite) TestLoadDeclarativeResourcesRejectsInvalidFile() {
+	home := s.T().TempDir()
+	dir := filepath.Join(home, "config", "resources", "credential_configurations")
+	s.Require().NoError(os.MkdirAll(dir, 0o750))
+	s.Require().NoError(os.WriteFile(filepath.Join(dir, "bad.yaml"), []byte("id: [unterminated"), 0o600))
+
+	config.ResetServerRuntime()
+	s.T().Cleanup(config.ResetServerRuntime)
+	s.Require().NoError(config.InitializeServerRuntime(home, &config.Config{}))
+
+	fileStore := newCredentialFileBasedStore()
+	s.Require().NoError(fileStore.GenericFileBasedStore.ClearByType())
+
+	err := loadDeclarativeResources(fileStore, nil, nil)
+	s.Require().Error(err, "a malformed declarative file must fail the load")
+	s.Contains(err.Error(), "failed to load credential configuration resources")
+}
+
+// TestLoadDeclarativeResourcesFromDisk exercises the whole loader path against a real file:
+// parse, validate, resolve the organization unit handle, and store under the resource ID.
+func (s *ConfigurationExporterTestSuite) TestLoadDeclarativeResourcesFromDisk() {
+	home := s.T().TempDir()
+	dir := filepath.Join(home, "config", "resources", "credential_configurations")
+	s.Require().NoError(os.MkdirAll(dir, 0o750))
+	s.Require().NoError(os.WriteFile(filepath.Join(dir, "cfg.yaml"), []byte(
+		"id: cfg-disk\nhandle: disk_handle\nvct: urn:example:vct\nouHandle: root/eng\n"), 0o600))
+
+	config.ResetServerRuntime()
+	s.T().Cleanup(config.ResetServerRuntime)
+	s.Require().NoError(config.InitializeServerRuntime(home, &config.Config{}))
+
+	ouSvc := newOUServiceMock(s.T(), map[string]bool{"ou-123": true},
+		map[string]string{"root/eng": "ou-123"}, map[string]string{"ou-123": "root/eng"})
+
+	fileStore := newCredentialFileBasedStore()
+	s.Require().NoError(fileStore.GenericFileBasedStore.ClearByType())
+	s.Require().NoError(loadDeclarativeResources(fileStore, nil, ouSvc))
+
+	got, err := fileStore.GetCredentialConfigurationByID(context.Background(), "cfg-disk")
+	s.Require().NoError(err)
+	s.Equal("disk_handle", got.Handle)
+	s.Equal("ou-123", got.OUID, "ouHandle must be resolved to an ouId at load time")
 }

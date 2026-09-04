@@ -25,7 +25,7 @@ import (
 func Initialize(
 	mux *http.ServeMux, ouService ou.OrganizationUnitServiceInterface,
 ) (CredentialConfigurationServiceInterface, declarativeresource.ResourceExporter, error) {
-	store, err := initializeStore()
+	store, err := initializeStore(ouService)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -69,7 +69,7 @@ func registerRoutes(mux *http.ServeMux, h *configurationHandler) {
 }
 
 // initializeStore creates the credential store for the configured store mode, loading declarative resources as needed.
-func initializeStore() (credentialStoreInterface, error) {
+func initializeStore(ouService ou.OrganizationUnitServiceInterface) (credentialStoreInterface, error) {
 	mode, err := getCredentialStoreMode()
 	if err != nil {
 		return nil, err
@@ -77,19 +77,26 @@ func initializeStore() (credentialStoreInterface, error) {
 	switch mode {
 	case serverconst.StoreModeComposite:
 		fileStore := newCredentialFileBasedStore()
-		if err := loadDeclarativeResources(&credentialStorer{store: fileStore}); err != nil {
+		dbStore := newCredentialStore()
+		if err := loadDeclarativeResources(fileStore, dbStore, ouService); err != nil {
 			return nil, err
 		}
-		return newCompositeCredentialStore(fileStore, newCredentialStore()), nil
+		return newCompositeCredentialStore(fileStore, dbStore), nil
 	case serverconst.StoreModeDeclarative:
 		fileStore := newCredentialFileBasedStore()
-		if err := loadDeclarativeResources(&credentialStorer{store: fileStore}); err != nil {
+		if err := loadDeclarativeResources(fileStore, nil, ouService); err != nil {
 			return nil, err
 		}
 		return fileStore, nil
 	default:
 		return newCredentialStore(), nil
 	}
+}
+
+// isDeclarativeModeEnabled checks if immutable-only store mode is enabled for credential configurations.
+func isDeclarativeModeEnabled() bool {
+	mode, err := getCredentialStoreMode()
+	return err == nil && mode == serverconst.StoreModeDeclarative
 }
 
 // getCredentialStoreMode determines the credential store mode from configuration, defaulting based on declarative mode.

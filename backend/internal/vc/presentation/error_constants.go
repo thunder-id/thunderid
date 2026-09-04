@@ -156,6 +156,22 @@ var (
 			DefaultValue: "Claim name '{{param(claim)}}' is requested more than once",
 		},
 	}
+
+	// ErrorDefinitionDeclarativeModeCreateNotAllowed indicates a create was attempted while
+	// the store is in declarative-only mode, where definitions come from files.
+	ErrorDefinitionDeclarativeModeCreateNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2010",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_declarative_mode_create_not_allowed",
+			DefaultValue: "Cannot create presentation definition in declarative-only mode",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.vp.definition_declarative_mode_create_not_allowed_description",
+			DefaultValue: "Presentation definition creation is not allowed when running in " +
+				"declarative-only mode. Definitions must be defined in declarative configuration files",
+		},
+	}
 )
 
 // definitionClientErrorStatus maps a client-facing definition error to its HTTP status.

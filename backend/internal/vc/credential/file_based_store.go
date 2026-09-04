@@ -20,9 +20,9 @@ func newCredentialFileBasedStore() *credentialFileBasedStore {
 	return &credentialFileBasedStore{GenericFileBasedStore: genericStore}
 }
 
-// Create stores a credential configuration in the file-based store. In declarative
-// and composite modes the loader writes resources through this method (resources
-// loaded from YAML are immutable; management writes route to the database store).
+// Create stores a credential configuration in the file-based store. Declarative resources
+// are loaded through credentialStorer; the management API cannot reach this method because
+// the service refuses creates while the store is in declarative-only mode.
 func (f *credentialFileBasedStore) CreateCredentialConfiguration(
 	_ context.Context, dto CredentialConfigurationDTO,
 ) error {
@@ -60,7 +60,9 @@ func (f *credentialFileBasedStore) GetCredentialConfigurationByID(
 		declarativeresource.LogTypeAssertionError("credential configuration", id)
 		return nil, ErrConfigurationDataCorrupted
 	}
-	return dto, nil
+	// Hand out a copy so a caller cannot mutate the shared declarative entry.
+	stored := *dto
+	return &stored, nil
 }
 
 // GetByHandle retrieves a credential configuration by handle from the file-based store.
@@ -73,7 +75,8 @@ func (f *credentialFileBasedStore) GetCredentialConfigurationByHandle(
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	return data.(*CredentialConfigurationDTO), nil
+	stored := *data.(*CredentialConfigurationDTO)
+	return &stored, nil
 }
 
 // ListSummaries retrieves minimal listing data from the file-based store.
