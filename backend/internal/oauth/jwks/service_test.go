@@ -149,7 +149,7 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_MLDSA_Success() {
 
 func (suite *JWKSServiceTestSuite) TestGetMLDSAPublicKeyJWKS_NonMLDSAKey() {
 	ecdsaKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	_, ok := getMLDSAPublicKeyJWKS(&ecdsaKey.PublicKey, "kid-1", nil, "", "")
+	_, ok := getMLDSAPublicKeyJWKS(&ecdsaKey.PublicKey, "kid-1", "", nil, "", "")
 	assert.False(suite.T(), ok)
 }
 
@@ -201,6 +201,25 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_UnsupportedPublicKeyType() {
 func (suite *JWKSServiceTestSuite) TestGetJWKS_OnlyUnsupportedKeys() {
 	keys := []providers.PublicKeyInfo{
 		{KeyID: "kid-1", PublicKey: "unsupported-key-type", Thumbprint: "kid-1"},
+	}
+	suite.cryptoMock.EXPECT().GetPublicKeys(mock.Anything, providers.PublicKeyFilter{}).
+		Return(keys, nil)
+
+	resp, svcErr := suite.jwksService.GetJWKS(context.Background())
+	assert.Nil(suite.T(), resp)
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *JWKSServiceTestSuite) TestGetJWKS_EmptyKeyID() {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	keys := []providers.PublicKeyInfo{
+		{
+			KeyID:      "",
+			Algorithm:  string(cryptolib.AlgorithmRS256),
+			PublicKey:  &key.PublicKey,
+			Thumbprint: "kid-1",
+		},
 	}
 	suite.cryptoMock.EXPECT().GetPublicKeys(mock.Anything, providers.PublicKeyFilter{}).
 		Return(keys, nil)
