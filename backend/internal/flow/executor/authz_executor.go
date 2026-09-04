@@ -105,8 +105,8 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 	// resource server. Permission evaluation must be scoped to a resource server, so when none can be
 	// resolved the requested permission scopes are dropped rather than evaluated unscoped (which could
 	// authorize a permission the user only holds on a different resource server).
-	resourceServerID := a.resolveResourceServerID(ctx)
-	if resourceServerID == "" {
+	resourceServer := a.resolveResourceServer(ctx)
+	if resourceServer == nil || resourceServer.ID == "" {
 		logger.Debug(ctx.Context,
 			"No resource server bound to the request; dropping requested permission scopes",
 			log.Int("permissionCount", len(requestedPerms)))
@@ -123,14 +123,14 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 	if err != nil {
 		return nil, errors.Join(errors.New("Failed to extract group IDs"), err)
 	}
-
 	logger.Debug(ctx.Context, "Calling authorization service",
 		log.MaskedString(log.LoggerKeyUserID, userID),
 		log.Int("groupCount", len(groupIDs)),
 		log.Int("permissionCount", len(requestedPerms)))
 
 	authzResp, svcErr := a.authzService.EvaluateAccessBatch(ctx.Context,
-		a.buildAccessEvaluationsRequest(userID, groupIDs, requestedPerms, resourceServerID))
+		a.buildAccessEvaluationsRequest(
+			userID, groupIDs, requestedPerms, resourceServer.ID, resourceServer.Identifier))
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Authorization service call failed",
 			log.String("error", svcErr.Error.DefaultValue))
@@ -148,14 +148,12 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 	return execResp, nil
 }
 
-// resolveResourceServerID determines the internal ID of the single resource server that permission
+// resolveResourceServer determines the single resource server that permission
 // scopes are evaluated against. The binding is communicated as a resource server identifier: the OAuth
 // layer seeds it in runtime data, and a direct /flow/execute request (which does not go through the
-// authorization endpoint) may supply it as an input. The identifier is resolved to its internal ID
-// through the provider; an empty identifier asks a default-aware provider to resolve the deployment's
-// configured default resource server. Returns "" when none can be resolved (unknown identifier, no
-// default configured, or no resource provider available, for example the embedded engine).
-func (a *authorizationExecutor) resolveResourceServerID(ctx *providers.NodeContext) string {
+// authorization endpoint) may supply it as an input. The returned resource server preserves both its
+// internal ID and public identifier for AuthZEN mapping.
+func (a *authorizationExecutor) resolveResourceServer(ctx *providers.NodeContext) *providers.ResourceServer {
 	identifier := ctx.RuntimeData[common.RuntimeKeyResourceServerIdentifier]
 	if identifier == "" {
 		identifier = ctx.UserInputs[common.RuntimeKeyResourceServerIdentifier]
@@ -163,16 +161,16 @@ func (a *authorizationExecutor) resolveResourceServerID(ctx *providers.NodeConte
 	if a.resourceService == nil {
 		a.logger.Debug(ctx.Context,
 			"No resource server service available; dropping requested permission scopes")
-		return ""
+		return nil
 	}
 	rs, svcErr := a.resourceService.GetResourceServerByIdentifier(ctx.Context, identifier)
 	if svcErr != nil {
 		a.logger.Debug(ctx.Context,
 			"Resource server did not resolve; dropping requested permission scopes",
 			log.String("identifier", identifier))
-		return ""
+		return nil
 	}
-	return rs.ID
+	return rs
 }
 
 // extractRequestedPermissions extracts requested permissions from the context.
@@ -196,16 +194,22 @@ func (a *authorizationExecutor) buildAccessEvaluationsRequest(
 	groupIDs []string,
 	requestedPermissions []string,
 	resourceServerID string,
+	resourceServerIdentifier string,
 ) providers.AccessEvaluationsRequest {
 	evaluations := make([]providers.AccessEvaluationRequest, 0, len(requestedPermissions))
 	for _, permission := range requestedPermissions {
 		evaluations = append(evaluations, providers.AccessEvaluationRequest{
 			Subject: providers.Subject{
+				Type:     "user",
 				ID:       entityID,
 				GroupIDs: groupIDs,
 			},
-			ResourceServer: providers.AccessEvaluationResourceServer{ID: resourceServerID},
-			Permission:     providers.Permission{Name: permission},
+			ResourceServer: providers.AccessEvaluationResourceServer{
+				ID:         resourceServerID,
+				Type:       resourceServerIdentifier,
+				ResourceID: resourceServerID,
+			},
+			Permission: providers.Permission{Name: permission},
 		})
 	}
 	return providers.AccessEvaluationsRequest{Evaluations: evaluations}

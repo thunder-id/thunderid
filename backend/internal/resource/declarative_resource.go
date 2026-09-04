@@ -91,14 +91,15 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 
 	// Build providers.ResourceServer with nested structure
 	rs := &providers.ResourceServer{
-		ID:          server.ID,
-		Name:        server.Name,
-		Description: server.Description,
-		Identifier:  server.Identifier,
-		Type:        server.Type,
-		OUID:        server.OUID,
-		Delimiter:   server.Delimiter,
-		Resources:   []providers.Resource{},
+		ID:                  server.ID,
+		Name:                server.Name,
+		Description:         server.Description,
+		Identifier:          server.Identifier,
+		Type:                server.Type,
+		OUID:                server.OUID,
+		Delimiter:           server.Delimiter,
+		AuthorizationEngine: server.AuthorizationEngine,
+		Resources:           []providers.Resource{},
 	}
 
 	allResources, err := e.service.GetAllResourceList(ctx, id)
@@ -214,7 +215,7 @@ func loadDeclarativeResources(resourceStore resourceStoreInterface, resourceServ
 	resourceConfig := declarativeresource.ResourceConfig{
 		ResourceType:  "ResourceServer",
 		DirectoryName: "resource_servers",
-		Parser:        parseAndValidateResourceServerWrapper(resourceService),
+		Parser:        parseAndValidateResourceServerWrapper(),
 		Validator: func(data interface{}) error {
 			return validateResourceServerWrapper(data, fileStore, dbStore, resourceService)
 		},
@@ -232,7 +233,7 @@ func loadDeclarativeResources(resourceStore resourceStoreInterface, resourceServ
 }
 
 // parseAndValidateResourceServerWrapper combines parsing, processing, and validation for resource servers.
-func parseAndValidateResourceServerWrapper(resourceService ResourceServiceInterface) func([]byte) (interface{}, error) {
+func parseAndValidateResourceServerWrapper() func([]byte) (interface{}, error) {
 	return func(data []byte) (interface{}, error) {
 		// Parse YAML into providers.ResourceServer struct
 		rs, err := parseToResourceServer(data)

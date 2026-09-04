@@ -34,14 +34,24 @@ const (
 // that matches the /connections API and console — replacing the legacy "identity_provider" and
 // "notification_sender" resource types.
 type connectionExporter struct {
-	idpService    idp.IDPServiceInterface
-	senderService notification.NotificationSenderMgtSvcInterface
+	idpService      idp.IDPServiceInterface
+	senderService   notification.NotificationSenderMgtSvcInterface
+	authZENPDPStore authZENPDPStoreInterface
 }
 
 // newConnectionExporter creates a new connection exporter.
 func newConnectionExporter(idpService idp.IDPServiceInterface,
-	senderService notification.NotificationSenderMgtSvcInterface) *connectionExporter {
-	return &connectionExporter{idpService: idpService, senderService: senderService}
+	senderService notification.NotificationSenderMgtSvcInterface,
+	authZENPDPStores ...authZENPDPStoreInterface) *connectionExporter {
+	var authZENPDPStore authZENPDPStoreInterface
+	if len(authZENPDPStores) > 0 {
+		authZENPDPStore = authZENPDPStores[0]
+	}
+	return &connectionExporter{
+		idpService:      idpService,
+		senderService:   senderService,
+		authZENPDPStore: authZENPDPStore,
+	}
 }
 
 // NewConnectionExporterForTest creates a new connection exporter for testing purposes.
@@ -91,6 +101,16 @@ func (e *connectionExporter) GetAllResourceIDs(ctx context.Context) ([]string, *
 		}
 	}
 
+	if e.authZENPDPStore != nil {
+		pdpConnections, err := e.authZENPDPStore.list(ctx)
+		if err != nil {
+			return nil, &tidcommon.InternalServerError
+		}
+		for _, connection := range pdpConnections {
+			ids = append(ids, connection.ID)
+		}
+	}
+
 	return ids, nil
 }
 
@@ -117,14 +137,29 @@ func (e *connectionExporter) GetResourceByID(ctx context.Context, id string) (
 	}
 
 	senderDTO, svcErr := e.senderService.GetSender(ctx, id)
-	if svcErr != nil {
+	if svcErr == nil {
+		model, err := connectionModelFromSenderDTO(*senderDTO)
+		if err != nil {
+			return nil, "", &tidcommon.InternalServerError
+		}
+		return &model, model.Name, nil
+	}
+	if svcErr.Code != notification.ErrorSenderNotFound.Code {
 		return nil, "", svcErr
 	}
-	model, err := connectionModelFromSenderDTO(*senderDTO)
-	if err != nil {
-		return nil, "", &tidcommon.InternalServerError
+
+	if e.authZENPDPStore != nil {
+		pdpConnection, err := e.authZENPDPStore.get(ctx, id)
+		if err != nil {
+			return nil, "", &tidcommon.InternalServerError
+		}
+		if pdpConnection != nil {
+			model := connectionModelFromAuthZENPDP(*pdpConnection)
+			return &model, model.Name, nil
+		}
 	}
-	return &model, model.Name, nil
+
+	return nil, "", svcErr
 }
 
 // ValidateResource validates a connection resource prior to export.
@@ -172,6 +207,8 @@ func (e *connectionExporter) GetResourceRulesForResource(
 		return &declarativeresource.ResourceRules{Variables: []string{"AuthToken"}}
 	case "vonage":
 		return &declarativeresource.ResourceRules{Variables: []string{"APISecret"}}
+	case authZENPDPVendorName:
+		return &declarativeresource.ResourceRules{}
 	default:
 		// sms-gateway (and any future no-secret vendor) has nothing to externalize.
 		return &declarativeresource.ResourceRules{}
@@ -279,6 +316,24 @@ func connectionModelFromSenderDTO(dto ncommon.NotificationSenderDTO) (connection
 	return model, nil
 }
 
+// connectionModelFromAuthZENPDP builds the unified export model from an AuthZEN PDP connection.
+func connectionModelFromAuthZENPDP(connection authZENPDPConnection) connectionExportModel {
+	return connectionExportModel{
+		ID:                       connection.ID,
+		Type:                     authZENPDPVendorName,
+		Name:                     connection.Name,
+		Description:              connection.Description,
+		Endpoint:                 connection.Endpoint,
+		BatchEndpoint:            connection.BatchEndpoint,
+		TimeoutMS:                connection.TimeoutMS,
+		RetryCount:               connection.RetryCount,
+		SubjectProperties:        append([]string(nil), connection.SubjectProperties...),
+		SubjectPropertyMappings:  joinSubjectPropertyMappings(connection.SubjectPropertyMappings),
+		SubjectAttributeMappings: connection.SubjectAttributeMappings,
+		FailOpen:                 connection.FailOpen,
+	}
+}
+
 // connectionModelToDTO converts a parsed connection document into the underlying
 // identity-provider or notification-sender DTO, dispatching on the vendor discriminator.
 // Exactly one of the two returned DTOs is non-nil.
@@ -370,6 +425,24 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 	}
 }
 
+func connectionModelToAuthZENPDP(model connectionExportModel) *authZENPDPConnection {
+	connection := authZENPDPConnection{
+		ID:                       model.ID,
+		Name:                     model.Name,
+		Description:              model.Description,
+		Endpoint:                 model.Endpoint,
+		BatchEndpoint:            model.BatchEndpoint,
+		TimeoutMS:                model.TimeoutMS,
+		RetryCount:               model.RetryCount,
+		SubjectProperties:        append([]string(nil), model.SubjectProperties...),
+		SubjectPropertyMappings:  splitSubjectPropertyMappings(model.SubjectPropertyMappings),
+		SubjectAttributeMappings: model.SubjectAttributeMappings,
+		FailOpen:                 model.FailOpen,
+	}
+	connection.SubjectProperties, connection.SubjectPropertyMappings = normalizedSubjectMapping(connection)
+	return &connection
+}
+
 // ParseConnectionFromNode decodes a yaml.Node into the underlying identity-provider or
 // notification-sender DTO, dispatching on the vendor discriminator. Used by the runtime import
 // service. Exactly one of the two returned DTOs is non-nil.
@@ -381,12 +454,27 @@ func ParseConnectionFromNode(node *yaml.Node) (*providers.IDPDTO, *ncommon.Notif
 	return connectionModelToDTO(model)
 }
 
+// ParseAuthZENPDPConnectionFromNode decodes an AuthZEN PDP connection document.
+func ParseAuthZENPDPConnectionFromNode(node *yaml.Node) (*authZENPDPConnection, error) {
+	var model connectionExportModel
+	if err := node.Decode(&model); err != nil {
+		return nil, fmt.Errorf("failed to parse connection document: %w", err)
+	}
+	if model.Type != authZENPDPVendorName {
+		return nil, nil
+	}
+	return connectionModelToAuthZENPDP(model), nil
+}
+
 // parseToConnectionDTOWrapper wraps connectionModelToDTO to match ResourceConfig.Parser,
 // returning whichever of the two underlying DTOs the document's vendor maps to.
 func parseToConnectionDTOWrapper(data []byte) (interface{}, error) {
 	var model connectionExportModel
 	if err := yaml.Unmarshal(data, &model); err != nil {
 		return nil, err
+	}
+	if model.Type == authZENPDPVendorName {
+		return connectionModelToAuthZENPDP(model), nil
 	}
 	idpDTO, senderDTO, err := connectionModelToDTO(model)
 	if err != nil {
@@ -405,6 +493,8 @@ func connectionResourceID(dto interface{}) string {
 	case *providers.IDPDTO:
 		return d.ID
 	case *ncommon.NotificationSenderDTO:
+		return d.ID
+	case *authZENPDPConnection:
 		return d.ID
 	default:
 		return ""
@@ -441,6 +531,10 @@ func validateConnectionDTOWrapper(dto interface{}, idpService idp.IDPServiceInte
 		if d.Name == "" {
 			return fmt.Errorf("connection resource %q is missing a name", d.ID)
 		}
+	case *authZENPDPConnection:
+		if d.Name == "" || d.Endpoint == "" || d.BatchEndpoint == "" {
+			return fmt.Errorf("connection resource %q requires a name, endpoint, and batchEndpoint", d.ID)
+		}
 	}
 	return nil
 }
@@ -451,8 +545,9 @@ func validateConnectionDTOWrapper(dto interface{}, idpService idp.IDPServiceInte
 // the idp/notification services read via composite/declarative store modes — see
 // declarativeresource.GenericFileBasedStore, keyed by entity.KeyTypeIDP / KeyTypeNotificationSender.
 type connectionDeclarativeStore struct {
-	idpStore    *declarativeresource.GenericFileBasedStore
-	senderStore *declarativeresource.GenericFileBasedStore
+	idpStore        *declarativeresource.GenericFileBasedStore
+	senderStore     *declarativeresource.GenericFileBasedStore
+	authZENPDPStore authZENPDPStoreInterface
 }
 
 // Create implements declarativeresource.Storer, routing to the store matching the DTO type.
@@ -468,6 +563,15 @@ func (s *connectionDeclarativeStore) Create(id string, data interface{}) error {
 		return s.idpStore.Create(id, dto)
 	case *ncommon.NotificationSenderDTO:
 		return s.senderStore.Create(id, dto)
+	case *authZENPDPConnection:
+		if s.authZENPDPStore == nil {
+			return fmt.Errorf("AuthZEN PDP store is not configured")
+		}
+		dto.ID = id
+		if svcErr := normalizeAuthZENPDPEndpoints(dto); svcErr != nil {
+			return fmt.Errorf("invalid AuthZEN PDP endpoints for connection resource %q", id)
+		}
+		return s.authZENPDPStore.create(context.Background(), *dto)
 	default:
 		return fmt.Errorf("unsupported connection resource type: %T", data)
 	}
@@ -480,14 +584,16 @@ func (s *connectionDeclarativeStore) Create(id string, data interface{}) error {
 // (identity_provider.store) calls for loading, or when no connection files are present.
 // connectionDeclarativeStore.Create further gates IdP-typed documents individually so a
 // composite/declarative identity_provider.store is honored even when the global flag is off.
-func loadDeclarativeResources(idpService idp.IDPServiceInterface) error {
+func loadDeclarativeResources(idpService idp.IDPServiceInterface,
+	authZENPDPStore authZENPDPStoreInterface) error {
 	if !declarativeresource.IsDeclarativeModeEnabled() && !idp.ShouldLoadDeclarativeIDPResources() {
 		return nil
 	}
 
 	storer := &connectionDeclarativeStore{
-		idpStore:    declarativeresource.NewGenericFileBasedStore(entity.KeyTypeIDP),
-		senderStore: declarativeresource.NewGenericFileBasedStore(entity.KeyTypeNotificationSender),
+		idpStore:        declarativeresource.NewGenericFileBasedStore(entity.KeyTypeIDP),
+		senderStore:     declarativeresource.NewGenericFileBasedStore(entity.KeyTypeNotificationSender),
+		authZENPDPStore: authZENPDPStore,
 	}
 	resourceConfig := declarativeresource.ResourceConfig{
 		ResourceType:  paramTypeConnection,

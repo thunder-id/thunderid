@@ -73,7 +73,8 @@ type resourceStore struct {
 
 // resourceServerProperties represents the JSON structure of PROPERTIES column.
 type resourceServerProperties struct {
-	Delimiter string `json:"delimiter"`
+	Delimiter           string                               `json:"delimiter"`
+	AuthorizationEngine *providers.AuthorizationEngineConfig `json:"authorizationEngine,omitempty"`
 }
 
 // actionProperties represents the JSON structure of the ACTION.PROPERTIES column.
@@ -942,6 +943,9 @@ func resolveProperties(row map[string]interface{}, rs *providers.ResourceServer)
 		if len(propsBytes) > 0 {
 			if err := json.Unmarshal(propsBytes, &props); err == nil {
 				rs.Delimiter = props.Delimiter
+				if props.AuthorizationEngine != nil {
+					rs.AuthorizationEngine = *props.AuthorizationEngine
+				}
 			}
 		}
 	}
@@ -950,6 +954,9 @@ func resolveProperties(row map[string]interface{}, rs *providers.ResourceServer)
 // buildPropertiesJSON builds the PROPERTIES JSON for a providers.ResourceServer.
 func buildPropertiesJSON(rs providers.ResourceServer) interface{} {
 	properties := resourceServerProperties{Delimiter: rs.Delimiter}
+	if rs.AuthorizationEngine.Type != "" || rs.AuthorizationEngine.Properties.ExternalPDPConnectionID != "" {
+		properties.AuthorizationEngine = &rs.AuthorizationEngine
+	}
 	if propsJSON, err := json.Marshal(properties); err == nil {
 		return propsJSON
 	}

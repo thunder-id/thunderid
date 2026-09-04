@@ -212,7 +212,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 			return nil, scopeErr
 		}
 		authorizedNonOidc, authzErr := h.reauthorizeScopes(
-			ctx, subjectEntity, targetRS.ID, downscopedNonOidc, logger)
+			ctx, subjectEntity, targetRS.ID, targetRS.Identifier, downscopedNonOidc, logger)
 		if authzErr != nil {
 			return nil, authzErr
 		}
@@ -610,7 +610,8 @@ func credentialChangedSince(ctx context.Context, entity *providers.Entity, iat i
 // reauthorizeScopes re-evaluates the subject's permission scopes against their current role and group
 // assignments, dropping the ones they no longer hold.
 func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjectEntity *providers.Entity,
-	resourceServerID string, scopes []string, logger *log.Logger) ([]string, *model.ErrorResponse) {
+	resourceServerID string, resourceServerIdentifier string, scopes []string,
+	logger *log.Logger) ([]string, *model.ErrorResponse) {
 	// An unresolved subject (a mapped sub) would authorize nothing and strip every scope.
 	if len(scopes) == 0 || h.authzService == nil || subjectEntity == nil || subjectEntity.ID == "" {
 		return scopes, nil
@@ -636,7 +637,8 @@ func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjec
 	}
 
 	authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx,
-		buildAccessEvaluationsRequest(subject, groupIDs, scopes, resourceServerID))
+		buildAccessEvaluationsRequest(subject, subjectEntity.Category, groupIDs, scopes,
+			resourceServerID, resourceServerIdentifier))
 	if svcErr != nil {
 		logger.Error(ctx, "Failed to evaluate authorized permissions for refresh token subject",
 			log.MaskedString(log.LoggerKeyUserID, subject),

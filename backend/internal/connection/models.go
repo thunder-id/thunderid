@@ -35,6 +35,8 @@ var idpBackedVendors = []idpBackedVendor{
 // surfaced in the /connections/{vendor} path and the flat-list type.
 const smsGatewayVendorName = "sms-gateway"
 
+const authZENPDPVendorName = "external-authzen-pdp"
+
 // smsBackedVendor maps a connection path segment to an underlying message provider.
 type smsBackedVendor struct {
 	name     string
@@ -55,13 +57,14 @@ type connectionCategory string
 const (
 	categoryIdentityProvider connectionCategory = "identity-provider"
 	categorySMSProvider      connectionCategory = "sms-provider"
+	categoryAuthorizationPDP connectionCategory = "authorization-pdp"
 )
 
 // parseConnectionCategory validates the raw category query value. Empty means "no filter";
 // any other unrecognized value returns false.
 func parseConnectionCategory(raw string) (connectionCategory, bool) {
 	switch connectionCategory(raw) {
-	case "", categoryIdentityProvider, categorySMSProvider:
+	case "", categoryIdentityProvider, categorySMSProvider, categoryAuthorizationPDP:
 		return connectionCategory(raw), true
 	default:
 		return "", false

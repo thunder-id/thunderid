@@ -159,6 +159,23 @@ CREATE TABLE "NOTIFICATION_SENDER" (
 -- Composite index for name-based notification sender lookups
 CREATE INDEX idx_notification_sender_name_deployment ON "NOTIFICATION_SENDER" (DEPLOYMENT_ID, NAME);
 
+-- Table to store external AuthZEN PDP connections.
+CREATE TABLE "AUTHZEN_PDP_CONNECTION" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    ID VARCHAR(36) PRIMARY KEY,
+    NAME VARCHAR(255) NOT NULL,
+    DESCRIPTION VARCHAR(500),
+    ENDPOINT VARCHAR(2048) NOT NULL,
+    SUBJECT_PROPERTIES TEXT,
+    SUBJECT_PROPERTY_MAPPINGS TEXT,
+    CREATED_AT TEXT DEFAULT (datetime('now')),
+    UPDATED_AT TEXT DEFAULT (datetime('now')),
+    UNIQUE (DEPLOYMENT_ID, NAME)
+);
+
+CREATE INDEX idx_authzen_pdp_connection_deployment
+    ON "AUTHZEN_PDP_CONNECTION" (DEPLOYMENT_ID);
+
 -- Table to store certificates associated with various entities.
 CREATE TABLE "CERTIFICATE" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,

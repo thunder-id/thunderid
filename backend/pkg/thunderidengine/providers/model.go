@@ -191,16 +191,36 @@ type Resource struct {
 
 // ResourceServer represents a resource server in both declarative resources and service layer.
 type ResourceServer struct {
-	ID          string             `yaml:"id"                    json:"-"`
-	Name        string             `yaml:"name"                  json:"name"`
-	Description string             `yaml:"description,omitempty" json:"description,omitempty"`
-	Identifier  string             `yaml:"identifier"            json:"identifier"`
-	Type        ResourceServerType `yaml:"type,omitempty"        json:"type,omitempty"`
-	OUID        string             `yaml:"ouId,omitempty"        json:"ouId"`
-	OUHandle    string             `yaml:"ouHandle,omitempty"    json:"-"`
-	Delimiter   string             `yaml:"delimiter,omitempty"   json:"delimiter,omitempty"   yamlfmt:"quoted"`
-	IsReadOnly  bool               `yaml:"-"                     json:"-"`
-	Resources   []Resource         `yaml:"resources,omitempty"   json:"resources,omitempty"`
+	ID                  string                    `yaml:"id"                    json:"-"`
+	Name                string                    `yaml:"name"                  json:"name"`
+	Description         string                    `yaml:"description,omitempty" json:"description,omitempty"`
+	Identifier          string                    `yaml:"identifier"            json:"identifier"`
+	Type                ResourceServerType        `yaml:"type,omitempty"        json:"type,omitempty"`
+	OUID                string                    `yaml:"ouId,omitempty"        json:"ouId"`
+	OUHandle            string                    `yaml:"ouHandle,omitempty"    json:"-"`
+	Delimiter           string                    `yaml:"delimiter,omitempty"   json:"delimiter,omitempty"   yamlfmt:"quoted"`
+	AuthorizationEngine AuthorizationEngineConfig `yaml:"authorizationEngine,omitempty" json:"authorizationEngine,omitempty"`
+	IsReadOnly          bool                      `yaml:"-"                     json:"-"`
+	Resources           []Resource                `yaml:"resources,omitempty"   json:"resources,omitempty"`
+}
+
+// AuthorizationEngineTypeExternalAuthZENPDP identifies the external AuthZEN PDP authorization engine.
+const AuthorizationEngineTypeExternalAuthZENPDP = "external_authzen_pdp"
+
+// AuthorizationEngineConfig selects the authorization engine for a resource server.
+type AuthorizationEngineConfig struct {
+	Type       string                        `yaml:"type,omitempty"       json:"type,omitempty"`
+	Properties AuthorizationEngineProperties `yaml:"properties,omitempty" json:"properties,omitempty"`
+}
+
+// IsZero reports whether no authorization engine is configured.
+func (c AuthorizationEngineConfig) IsZero() bool {
+	return c.Type == "" && c.Properties.ExternalPDPConnectionID == ""
+}
+
+// AuthorizationEngineProperties configures the selected authorization engine.
+type AuthorizationEngineProperties struct {
+	ExternalPDPConnectionID string `yaml:"externalPDPConnectionId,omitempty" json:"externalPDPConnectionId,omitempty"`
 }
 
 // CompleteFlowDefinition represents a complete flow definition with all details.
@@ -1196,6 +1216,8 @@ type Subject struct {
 // AccessEvaluationResourceServer identifies the resource server for an access evaluation.
 type AccessEvaluationResourceServer struct {
 	ID         string                 `json:"id,omitempty"`
+	Type       string                 `json:"type,omitempty"`
+	ResourceID string                 `json:"resourceId,omitempty"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 

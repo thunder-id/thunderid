@@ -212,6 +212,38 @@ func (suite *HandlerTestSuite) TestHandleResourceServerPutRequest_Success() {
 	suite.Equal(http.StatusOK, w.Code)
 }
 
+func (suite *HandlerTestSuite) TestHandleResourceServerPutRequestExternalAuthZEN() {
+	reqBody := UpdateResourceServerRequest{
+		Name: "external-pdp",
+		OUID: "ou-123",
+		AuthorizationEngine: providers.AuthorizationEngineConfig{
+			Type: providers.AuthorizationEngineTypeExternalAuthZENPDP,
+			Properties: providers.AuthorizationEngineProperties{
+				ExternalPDPConnectionID: "pdp-123",
+			},
+		},
+	}
+	suite.mockService.On(
+		"UpdateResourceServer",
+		mock.Anything,
+		"rs-123",
+		mock.MatchedBy(func(rs providers.ResourceServer) bool {
+			return rs.AuthorizationEngine.Type == providers.AuthorizationEngineTypeExternalAuthZENPDP &&
+				rs.AuthorizationEngine.Properties.ExternalPDPConnectionID == "pdp-123"
+		}),
+	).Return(&providers.ResourceServer{ID: "rs-123", Name: reqBody.Name}, nil)
+
+	body, err := json.Marshal(reqBody)
+	suite.Require().NoError(err)
+	req := httptest.NewRequest("PUT", "/resource-servers/rs-123", bytes.NewReader(body))
+	req.SetPathValue("id", "rs-123")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerPutRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+}
+
 func (suite *HandlerTestSuite) TestHandleResourceServerDeleteRequest_Success() {
 	suite.mockService.On("DeleteResourceServer", mock.Anything,
 		"rs-123").Return(nil)

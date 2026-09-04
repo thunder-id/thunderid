@@ -55,7 +55,9 @@ func newConnectionTestHandler(t *testing.T) (*handler, *idpmock.IDPServiceInterf
 	t.Cleanup(config.ResetServerRuntime)
 	mockIDP := idpmock.NewIDPServiceInterfaceMock(t)
 	mockNotif := notificationmock.NewNotificationSenderMgtSvcInterfaceMock(t)
-	return newHandler(newService(mockIDP, mockNotif)), mockIDP, mockNotif
+	return newHandler(newService(
+		mockIDP, mockNotif, &testResourceServerLister{}, newTestAuthZENPDPStore(),
+	)), mockIDP, mockNotif
 }
 
 // mustProperty builds a property, failing the test on error.
@@ -72,9 +74,11 @@ func boolPtr(b bool) *bool { return &b }
 // ServeMux, exercising route registration, CORS/OPTIONS handling, and path-value extraction.
 type InitTestSuite struct {
 	suite.Suite
-	mux       *http.ServeMux
-	mockIDP   *idpmock.IDPServiceInterfaceMock
-	mockNotif *notificationmock.NotificationSenderMgtSvcInterfaceMock
+	mux             *http.ServeMux
+	mockIDP         *idpmock.IDPServiceInterfaceMock
+	mockNotif       *notificationmock.NotificationSenderMgtSvcInterfaceMock
+	mockResource    *testResourceServerLister
+	authZENPDPStore *testAuthZENPDPStore
 }
 
 func TestInitSuite(t *testing.T) {
@@ -83,10 +87,19 @@ func TestInitSuite(t *testing.T) {
 
 func (s *InitTestSuite) SetupTest() {
 	initConfigWithTestCryptoKey(s.T())
+	s.authZENPDPStore = newTestAuthZENPDPStore()
+	originalStoreFactory := newAuthZENPDPStoreForService
+	newAuthZENPDPStoreForService = func() authZENPDPStoreInterface {
+		return s.authZENPDPStore
+	}
+	s.T().Cleanup(func() {
+		newAuthZENPDPStoreForService = originalStoreFactory
+	})
 	s.mockIDP = idpmock.NewIDPServiceInterfaceMock(s.T())
 	s.mockNotif = notificationmock.NewNotificationSenderMgtSvcInterfaceMock(s.T())
+	s.mockResource = &testResourceServerLister{}
 	s.mux = http.NewServeMux()
-	_, err := Initialize(s.mux, s.mockIDP, s.mockNotif)
+	_, err := Initialize(s.mux, s.mockIDP, s.mockNotif, s.mockResource)
 	s.Require().NoError(err)
 }
 
@@ -148,6 +161,13 @@ func (s *InitTestSuite) TestRouteTable() {
 	s.mockNotif.On("GetSenderUsages", mock.Anything, "sg-1").
 		Return(emptyUsages, (*tidcommon.ServiceError)(nil))
 
+	s.authZENPDPStore.connections["pdp-1"] = authZENPDPConnection{
+		ID:            "pdp-1",
+		Name:          "PDP",
+		Endpoint:      "https://pdp.example.com/access/v1/evaluation",
+		BatchEndpoint: "https://pdp.example.com/access/v1/evaluations",
+	}
+
 	body, _ := json.Marshal(githubConnectionRequest{
 		Name: "GH", ClientID: "c", ClientSecret: "s", RedirectURI: "https://app/cb",
 	})
@@ -156,6 +176,10 @@ func (s *InitTestSuite) TestRouteTable() {
 	})
 	smsGatewayBody, _ := json.Marshal(smsGatewayConnectionRequest{
 		Name: "SG", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+	})
+	authZENPDPBody, _ := json.Marshal(authZENPDPConnectionRequest{
+		Name: "PDP", Endpoint: "https://pdp.example.com/access/v1/evaluation",
+		BatchEndpoint: "https://pdp.example.com/access/v1/evaluations",
 	})
 
 	cases := []struct {
@@ -192,6 +216,15 @@ func (s *InitTestSuite) TestRouteTable() {
 		{http.MethodOptions, "/connections/sms-gateway/sg-1", nil, http.StatusNoContent},
 		{http.MethodGet, "/connections/sms-gateway/sg-1/usages", nil, http.StatusOK},
 		{http.MethodOptions, "/connections/sms-gateway/sg-1/usages", nil, http.StatusNoContent},
+		{http.MethodPost, "/connections/external-authzen-pdp", authZENPDPBody, http.StatusCreated},
+		{http.MethodGet, "/connections/external-authzen-pdp", nil, http.StatusOK},
+		{http.MethodOptions, "/connections/external-authzen-pdp", nil, http.StatusNoContent},
+		{http.MethodGet, "/connections/external-authzen-pdp/pdp-1", nil, http.StatusOK},
+		{http.MethodPut, "/connections/external-authzen-pdp/pdp-1", authZENPDPBody, http.StatusOK},
+		{http.MethodGet, "/connections/external-authzen-pdp/pdp-1/usages", nil, http.StatusOK},
+		{http.MethodOptions, "/connections/external-authzen-pdp/pdp-1/usages", nil, http.StatusNoContent},
+		{http.MethodDelete, "/connections/external-authzen-pdp/pdp-1", nil, http.StatusNoContent},
+		{http.MethodOptions, "/connections/external-authzen-pdp/pdp-1", nil, http.StatusNoContent},
 	}
 	for _, tc := range cases {
 		req := httptest.NewRequest(tc.method, tc.path, bytes.NewReader(tc.body))

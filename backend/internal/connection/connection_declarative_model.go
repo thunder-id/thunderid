@@ -35,6 +35,24 @@ type connectionExportModel struct {
 	//nolint:lll // long struct tag: both yaml and json keys needed for declarative load/export and import
 	AttributeConfiguration *providers.AttributeConfiguration `yaml:"attributeConfiguration,omitempty" json:"attributeConfiguration,omitempty"`
 
+	// AuthZEN PDP connection fields.
+	//nolint:lll // long struct tag: both yaml and json keys are required
+	Endpoint string `yaml:"endpoint,omitempty"                 json:"endpoint,omitempty"`
+	//nolint:lll // long struct tag: both yaml and json keys are required
+	BatchEndpoint string `yaml:"batchEndpoint,omitempty"            json:"batchEndpoint,omitempty"`
+	//nolint:lll // long struct tag: both yaml and json keys are required
+	TimeoutMS int `yaml:"timeoutMs,omitempty"                json:"timeoutMs,omitempty"`
+	//nolint:lll // long struct tag: both yaml and json keys are required
+	RetryCount int `yaml:"retryCount,omitempty"               json:"retryCount,omitempty"`
+	//nolint:lll // long struct tag: both yaml and json keys are required
+	SubjectProperties []string `yaml:"subjectProperties,omitempty"        json:"subjectProperties,omitempty"`
+	//nolint:lll // long struct tag: both yaml and json keys are required
+	SubjectPropertyMappings string `yaml:"subjectPropertyMappings,omitempty"  json:"subjectPropertyMappings,omitempty"`
+	//nolint:lll // long struct tag: both yaml and json keys are required
+	SubjectAttributeMappings []authZENPDPSubjectAttributeMapping `yaml:"subjectAttributeMappings,omitempty" json:"subjectAttributeMappings,omitempty"`
+	//nolint:lll // long struct tag: both yaml and json keys are required
+	FailOpen bool `yaml:"failOpen,omitempty"                 json:"failOpen,omitempty"`
+
 	// SMS-backed vendor fields (twilio, vonage, sms-gateway).
 	AccountSID  string `yaml:"accountSid,omitempty"  json:"accountSid,omitempty"`
 	AuthToken   string `yaml:"authToken,omitempty"   json:"authToken,omitempty"`

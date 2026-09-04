@@ -106,12 +106,13 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 	status := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
-		case idp.ErrorIDPNotFound.Code, notification.ErrorSenderNotFound.Code:
+		case idp.ErrorIDPNotFound.Code, notification.ErrorSenderNotFound.Code, ErrorConnectionNotFound.Code:
 			status = http.StatusNotFound
 		case idp.ErrorIDPAlreadyExists.Code,
 			idp.ErrorIDPHasBlockingDependencies.Code,
 			notification.ErrorDuplicateSenderName.Code,
-			notification.ErrorSenderHasBlockingDependencies.Code:
+			notification.ErrorSenderHasBlockingDependencies.Code,
+			ErrorConnectionHasBlockingDependencies.Code:
 			status = http.StatusConflict
 		default:
 			status = http.StatusBadRequest

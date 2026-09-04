@@ -16,6 +16,7 @@ import (
 	agentmodel "github.com/thunder-id/thunderid/internal/agent/model"
 	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/connection"
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
@@ -64,6 +65,12 @@ type senderAdapter interface {
 		*ncommon.NotificationSenderDTO,
 		*tidcommon.ServiceError,
 	)
+}
+
+type authZENPDPAdapter interface {
+	Create(ctx context.Context, connection authzenpdp.AuthZENPDPConnection) error
+	Get(ctx context.Context, id string) (*authzenpdp.AuthZENPDPConnection, error)
+	Update(ctx context.Context, id string, connection authzenpdp.AuthZENPDPConnection) error
 }
 
 type flowAdapter interface {
@@ -219,6 +226,7 @@ type importService struct {
 	applicationService             applicationAdapter
 	idpService                     idpAdapter
 	senderService                  senderAdapter
+	authZENPDPService              authZENPDPAdapter
 	flowService                    flowAdapter
 	ouService                      ouAdapter
 	entityTypeService              entityTypeAdapter
@@ -255,11 +263,17 @@ func newImportService(
 	presentationDefinitionService presentationDefinitionAdapter,
 	credentialConfigurationService credentialConfigurationAdapter,
 	serverConfigService serverConfigAdapter,
+	authZENPDPServices ...authZENPDPAdapter,
 ) ImportServiceInterface {
+	var authZENPDPService authZENPDPAdapter
+	if len(authZENPDPServices) > 0 {
+		authZENPDPService = authZENPDPServices[0]
+	}
 	return &importService{
 		applicationService:             applicationService,
 		idpService:                     idpService,
 		senderService:                  senderService,
+		authZENPDPService:              authZENPDPService,
 		flowService:                    flowService,
 		ouService:                      ouService,
 		entityTypeService:              entityTypeService,
@@ -451,6 +465,17 @@ func (s *importService) importDocument(
 func (s *importService) importConnection(
 	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool,
 ) ImportItemOutcome {
+	if authZENPDP, err := connection.ParseAuthZENPDPConnectionFromNode(doc.Node); err != nil {
+		return ImportItemOutcome{
+			ResourceType: resourceTypeConnection,
+			Status:       statusFailed,
+			Code:         ErrorInvalidYAMLContent.Code,
+			Message:      fmt.Sprintf("failed to decode connection document: %v", err),
+		}
+	} else if authZENPDP != nil {
+		return s.importConnectionAuthZENPDP(ctx, authZENPDP, options, dryRun)
+	}
+
 	idpDTO, senderDTO, err := connection.ParseConnectionFromNode(doc.Node)
 	if err != nil {
 		return ImportItemOutcome{
@@ -465,6 +490,50 @@ func (s *importService) importConnection(
 		return s.importConnectionIDP(ctx, idpDTO, options, dryRun)
 	}
 	return s.importConnectionSender(ctx, senderDTO, options, dryRun)
+}
+
+func (s *importService) importConnectionAuthZENPDP(
+	ctx context.Context, req *authzenpdp.AuthZENPDPConnection, options *ImportOptions, dryRun bool,
+) ImportItemOutcome {
+	if s.authZENPDPService == nil {
+		return unsupportedAdapterOutcome(resourceTypeConnection, "external AuthZEN PDP")
+	}
+	if options.IsUpsertEnabled() && req.ID != "" {
+		existing, err := s.authZENPDPService.Get(ctx, req.ID)
+		if err != nil {
+			return authZENPDPImportError(req, operationUpdate, err)
+		}
+		if existing != nil {
+			if dryRun {
+				return successOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate)
+			}
+			if err := s.authZENPDPService.Update(ctx, req.ID, *req); err != nil {
+				return authZENPDPImportError(req, operationUpdate, err)
+			}
+			return successOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate)
+		}
+	}
+	if dryRun {
+		return successOutcome(resourceTypeConnection, req.ID, req.Name, operationCreate)
+	}
+	if err := s.authZENPDPService.Create(ctx, *req); err != nil {
+		return authZENPDPImportError(req, operationCreate, err)
+	}
+	return successOutcome(resourceTypeConnection, req.ID, req.Name, operationCreate)
+}
+
+func authZENPDPImportError(
+	req *authzenpdp.AuthZENPDPConnection, operation string, err error,
+) ImportItemOutcome {
+	return ImportItemOutcome{
+		ResourceType: resourceTypeConnection,
+		ResourceID:   req.ID,
+		ResourceName: req.Name,
+		Operation:    operation,
+		Status:       statusFailed,
+		Code:         ErrorInvalidImportRequest.Code,
+		Message:      err.Error(),
+	}
 }
 
 func (s *importService) importConnectionIDP(

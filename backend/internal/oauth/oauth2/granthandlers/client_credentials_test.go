@@ -139,6 +139,7 @@ func mockEvaluateAccessBatch(
 				if evaluation.Subject.ID != entityID ||
 					len(evaluation.Subject.GroupIDs) != 0 ||
 					evaluation.ResourceServer.ID != resourceServerID ||
+					evaluation.ResourceServer.ResourceID != resourceServerID ||
 					evaluation.Permission.Name != scope {
 					return false
 				}
@@ -146,6 +147,24 @@ func mockEvaluateAccessBatch(
 			return true
 		})).
 		Return(&providers.AccessEvaluationsResponse{Evaluations: evaluations}, nil)
+}
+
+func TestBuildAccessEvaluationsRequestUsesEntityCategory(t *testing.T) {
+	for _, test := range []struct {
+		category providers.EntityCategory
+		typeName string
+	}{
+		{category: providers.EntityCategoryApp, typeName: constants.SubTypeApp},
+		{category: providers.EntityCategoryAgent, typeName: constants.SubTypeAgent},
+		{category: providers.EntityCategoryUser, typeName: providers.EntityCategoryUser.String()},
+	} {
+		request := buildAccessEvaluationsRequest(
+			"entity-1", test.category, nil, []string{"bookings:view"}, "rs-1", "https://api.example.com",
+		)
+
+		assert.Len(t, request.Evaluations, 1)
+		assert.Equal(t, test.typeName, request.Evaluations[0].Subject.Type)
+	}
 }
 
 func (suite *ClientCredentialsGrantHandlerTestSuite) TestNewClientCredentialsGrantHandler() {

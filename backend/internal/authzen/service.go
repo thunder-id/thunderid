@@ -61,11 +61,13 @@ func (s *authzenService) EvaluateAccess(ctx context.Context, request AccessEvalu
 		return nil, svcErr
 	}
 
-	if svcErr := s.validateSubject(ctx, request.Subject); svcErr != nil {
+	resolvedSubject, svcErr := s.resolveSubject(ctx, request.Subject)
+	if svcErr != nil {
 		return nil, svcErr
 	}
+	request.Subject = resolvedSubject
 
-	resourceServerID, svcErr := s.resolveResourceServerID(ctx, request.Resource.Type)
+	resourceServerID, resourceServerIdentifier, svcErr := s.resolveResourceServerID(ctx, request.Resource)
 	if svcErr != nil {
 		if svcErr.Code == ErrorInvalidResource.Code {
 			return &AccessEvaluationResponse{
@@ -76,11 +78,12 @@ func (s *authzenService) EvaluateAccess(ctx context.Context, request AccessEvalu
 		return nil, svcErr
 	}
 
-	if svcErr := s.validateAction(ctx, resourceServerID, request.Action.Name); svcErr != nil {
+	permission := authZENPermission(request.Resource.Type, request.Action.Name)
+	if svcErr := s.validateAction(ctx, resourceServerID, permission); svcErr != nil {
 		if svcErr.Code == ErrorInvalidAction.Code {
 			return &AccessEvaluationResponse{
 				Decision: false,
-				Context:  buildInvalidActionContext(request.Action.Name),
+				Context:  buildInvalidActionContext(permission),
 			}, nil
 		}
 		return nil, svcErr
@@ -92,7 +95,7 @@ func (s *authzenService) EvaluateAccess(ctx context.Context, request AccessEvalu
 	}
 
 	authzResp, svcErr := s.authzService.EvaluateAccess(
-		ctx, toAuthzAccessEvaluationRequest(request, groupIDs, resourceServerID))
+		ctx, toAuthzAccessEvaluationRequest(request, groupIDs, resourceServerID, resourceServerIdentifier, permission))
 	if svcErr != nil {
 		s.logger.Error(ctx, "Authorization evaluation failed",
 			log.MaskedString(log.LoggerKeyUserID, request.Subject.ID),
@@ -112,13 +115,13 @@ func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request Access
 	if len(request.Evaluations) == 0 {
 		return nil, &ErrorMissingEvaluations
 	}
-
 	authzEvaluations := make([]providers.AccessEvaluationRequest, 0, len(request.Evaluations))
 	responses := make([]AccessEvaluationResponse, len(request.Evaluations))
 	authzEvaluationIndexes := make([]int, 0, len(request.Evaluations))
 	groupIDsBySubject := make(map[string][]string)
 	resourceServerIDsByIdentifier := make(map[string]string)
-	validSubjects := make(map[string]struct{})
+	resourceServerIdentifiers := make(map[string]string)
+	resolvedSubjects := make(map[string]Subject)
 	validActions := make(map[string]struct{})
 	for i, evaluation := range request.Evaluations {
 		if svcErr := validateEvaluationRequest(evaluation); svcErr != nil {
@@ -130,8 +133,9 @@ func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request Access
 		}
 
 		resourceServerID, ok := resourceServerIDsByIdentifier[evaluation.Resource.Type]
+		resourceServerIdentifier := resourceServerIdentifiers[evaluation.Resource.Type]
 		if !ok {
-			resolvedResourceServerID, svcErr := s.resolveResourceServerID(ctx, evaluation.Resource.Type)
+			resolvedResourceServerID, resolvedIdentifier, svcErr := s.resolveResourceServerID(ctx, evaluation.Resource)
 			if svcErr != nil {
 				if svcErr.Code == ErrorInvalidResource.Code {
 					responses[i] = AccessEvaluationResponse{
@@ -143,12 +147,17 @@ func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request Access
 				return nil, svcErr
 			}
 			resourceServerIDsByIdentifier[evaluation.Resource.Type] = resolvedResourceServerID
+			resourceServerIdentifiers[evaluation.Resource.Type] = resolvedIdentifier
 			resourceServerID = resolvedResourceServerID
+			resourceServerIdentifier = resolvedIdentifier
 		}
 
 		subjectKey := evaluation.Subject.Type + ":" + evaluation.Subject.ID
-		if _, ok := validSubjects[subjectKey]; !ok {
-			if svcErr := s.validateSubject(ctx, evaluation.Subject); svcErr != nil {
+		resolvedSubject, ok := resolvedSubjects[subjectKey]
+		if !ok {
+			var svcErr *tidcommon.ServiceError
+			resolvedSubject, svcErr = s.resolveSubject(ctx, evaluation.Subject)
+			if svcErr != nil {
 				if svcErr.Code == ErrorInvalidSubject.Code {
 					responses[i] = AccessEvaluationResponse{
 						Decision: false,
@@ -158,16 +167,18 @@ func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request Access
 				}
 				return nil, svcErr
 			}
-			validSubjects[subjectKey] = struct{}{}
+			resolvedSubjects[subjectKey] = resolvedSubject
 		}
+		evaluation.Subject = resolvedSubject
 
-		actionKey := resourceServerID + ":" + evaluation.Action.Name
+		permission := authZENPermission(evaluation.Resource.Type, evaluation.Action.Name)
+		actionKey := resourceServerID + ":" + permission
 		if _, ok := validActions[actionKey]; !ok {
-			if svcErr := s.validateAction(ctx, resourceServerID, evaluation.Action.Name); svcErr != nil {
+			if svcErr := s.validateAction(ctx, resourceServerID, permission); svcErr != nil {
 				if svcErr.Code == ErrorInvalidAction.Code {
 					responses[i] = AccessEvaluationResponse{
 						Decision: false,
-						Context:  buildInvalidActionContext(evaluation.Action.Name),
+						Context:  buildInvalidActionContext(permission),
 					}
 					continue
 				}
@@ -190,7 +201,8 @@ func (s *authzenService) EvaluateAccessBatch(ctx context.Context, request Access
 			groupIDs = resolvedGroupIDs
 		}
 		authzEvaluations = append(
-			authzEvaluations, toAuthzAccessEvaluationRequest(evaluation, groupIDs, resourceServerID))
+			authzEvaluations, toAuthzAccessEvaluationRequest(
+				evaluation, groupIDs, resourceServerID, resourceServerIdentifier, permission))
 		authzEvaluationIndexes = append(authzEvaluationIndexes, i)
 	}
 
@@ -233,8 +245,15 @@ func (s *authzenService) SearchActions(ctx context.Context, request AccessAction
 	if strings.TrimSpace(request.Resource.Type) == "" {
 		return nil, &ErrorMissingResource
 	}
+	if strings.TrimSpace(request.Subject.Type) == "" {
+		resolvedSubject, svcErr := s.resolveSubject(ctx, request.Subject)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		request.Subject = resolvedSubject
+	}
 
-	resourceServerID, svcErr := s.resolveResourceServerID(ctx, request.Resource.Type)
+	resourceServerID, resourceServerIdentifier, svcErr := s.resolveResourceServerID(ctx, request.Resource)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -259,7 +278,7 @@ func (s *authzenService) SearchActions(ctx context.Context, request AccessAction
 			continue
 		}
 		requestedPermissions = append(requestedPermissions, action.Permission)
-		actionByPermission[action.Permission] = Action{Name: action.Permission}
+		actionByPermission[action.Permission] = Action{Name: authZENActionName(action.Permission)}
 	}
 
 	authzEvaluations := make([]providers.AccessEvaluationRequest, 0, len(requestedPermissions))
@@ -273,6 +292,8 @@ func (s *authzenService) SearchActions(ctx context.Context, request AccessAction
 			},
 			ResourceServer: providers.AccessEvaluationResourceServer{
 				ID:         resourceServerID,
+				Type:       resourceServerIdentifier,
+				ResourceID: request.Resource.ID,
 				Properties: request.Resource.Properties,
 			},
 			Permission: providers.Permission{
@@ -423,33 +444,37 @@ func appendUniquePermissionActions(
 	return actions
 }
 
-// validateSubject verifies that the subject exists and matches its type.
-func (s *authzenService) validateSubject(ctx context.Context, subject Subject) *tidcommon.ServiceError {
+// resolveSubject verifies the subject and infers an omitted type from its entity category.
+func (s *authzenService) resolveSubject(ctx context.Context, subject Subject) (Subject, *tidcommon.ServiceError) {
 	if s.entityProvider == nil {
-		return nil
-	}
-	if strings.TrimSpace(subject.Type) == "" {
-		return nil
+		return subject, nil
 	}
 
 	entity, err := s.entityProvider.GetEntity(subject.ID)
 	if err != nil {
 		if err.Code == entityprovider.ErrorCodeNotImplemented {
-			return nil
+			return subject, nil
 		}
 		if err.Code == entityprovider.ErrorCodeEntityNotFound {
-			return &ErrorInvalidSubject
+			return Subject{}, &ErrorInvalidSubject
 		}
 		s.logger.Error(ctx, "Failed to validate subject",
 			log.MaskedString(log.LoggerKeyUserID, subject.ID),
 			log.String("error", err.Error()))
-		return &tidcommon.InternalServerError
+		return Subject{}, &tidcommon.InternalServerError
 	}
 
-	if entity == nil || entity.Category.String() != subject.Type {
-		return &ErrorInvalidSubject
+	if entity == nil {
+		return Subject{}, &ErrorInvalidSubject
 	}
-	return nil
+	if strings.TrimSpace(subject.Type) == "" {
+		subject.Type = entity.Category.String()
+		return subject, nil
+	}
+	if entity.Category.String() != subject.Type {
+		return Subject{}, &ErrorInvalidSubject
+	}
+	return subject, nil
 }
 
 // validateAction verifies that an action is registered on the resource server.
@@ -489,29 +514,43 @@ func validateEvaluationRequest(request AccessEvaluationRequest) *tidcommon.Servi
 	return nil
 }
 
-// resolveResourceServerID resolves a resource server identifier to its internal ID.
-func (s *authzenService) resolveResourceServerID(ctx context.Context, resourceServerIdentifier string) (
-	string, *tidcommon.ServiceError) {
-	if strings.TrimSpace(resourceServerIdentifier) == "" {
-		return "", &ErrorMissingResource
+// resolveResourceServerID resolves a resource server using the current and legacy AuthZEN forms.
+func (s *authzenService) resolveResourceServerID(ctx context.Context, authzenResource Resource) (
+	string, string, *tidcommon.ServiceError) {
+	resourceType := strings.TrimSpace(authzenResource.Type)
+	if resourceType == "" {
+		return "", "", &ErrorMissingResource
 	}
-
 	if s.resourceService == nil {
-		return resourceServerIdentifier, nil
+		return resourceType, resourceType, nil
 	}
 
-	resourceServer, svcErr := s.resourceService.GetResourceServerByIdentifier(ctx, resourceServerIdentifier)
+	resourceServer, svcErr := s.resourceService.GetResourceServerByIdentifier(ctx, resourceType)
+	if svcErr == nil {
+		return resourceServer.ID, resourceType, nil
+	}
+	if svcErr.Code != resource.ErrorResourceServerNotFound.Code {
+		s.logger.Error(ctx, "Failed to retrieve resource server by identifier",
+			log.String("resourceServerIdentifier", resourceType),
+			log.String("error", svcErr.Error.DefaultValue))
+		return "", "", &tidcommon.InternalServerError
+	}
+
+	resourceIdentifier := strings.TrimSpace(authzenResource.ID)
+	if resourceIdentifier == "" || resourceIdentifier == resourceType {
+		return "", "", &ErrorInvalidResource
+	}
+	resourceServer, svcErr = s.resourceService.GetResourceServerByIdentifier(ctx, resourceIdentifier)
 	if svcErr != nil {
 		if svcErr.Code == resource.ErrorResourceServerNotFound.Code {
-			return "", &ErrorInvalidResource
+			return "", "", &ErrorInvalidResource
 		}
 		s.logger.Error(ctx, "Failed to retrieve resource server by identifier",
-			log.String("resourceServerIdentifier", resourceServerIdentifier),
+			log.String("resourceServerIdentifier", resourceIdentifier),
 			log.String("error", svcErr.Error.DefaultValue))
-		return "", &tidcommon.InternalServerError
+		return "", "", &tidcommon.InternalServerError
 	}
-
-	return resourceServer.ID, nil
+	return resourceServer.ID, resourceIdentifier, nil
 }
 
 // resolveGroupIDs returns the transitive group IDs for an entity.
@@ -545,6 +584,8 @@ func toAuthzAccessEvaluationRequest(
 	request AccessEvaluationRequest,
 	groupIDs []string,
 	resourceServerID string,
+	resourceServerIdentifier string,
+	permission string,
 ) providers.AccessEvaluationRequest {
 	return providers.AccessEvaluationRequest{
 		Subject: providers.Subject{
@@ -555,14 +596,29 @@ func toAuthzAccessEvaluationRequest(
 		},
 		ResourceServer: providers.AccessEvaluationResourceServer{
 			ID:         resourceServerID,
+			Type:       resourceServerIdentifier,
+			ResourceID: request.Resource.ID,
 			Properties: request.Resource.Properties,
 		},
 		Permission: providers.Permission{
-			Name:       request.Action.Name,
+			Name:       permission,
 			Properties: request.Action.Properties,
 		},
 		Context: request.Context,
 	}
+}
+
+// authZENPermission converts an AuthZEN action into ThunderID's permission format.
+func authZENPermission(_ string, actionName string) string {
+	return actionName
+}
+
+// authZENActionName returns the final action segment for AuthZEN action-search responses.
+func authZENActionName(permission string) string {
+	if index := strings.LastIndex(permission, ":"); index >= 0 {
+		return permission[index+1:]
+	}
+	return permission
 }
 
 // buildDecisionContext returns the engine context or a default denial context.

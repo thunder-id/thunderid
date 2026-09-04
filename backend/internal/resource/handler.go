@@ -116,10 +116,11 @@ func (h *resourceHandler) HandleResourceServerPutRequest(w http.ResponseWriter, 
 
 	sanitized := sanitizeUpdateResourceServerRequest(req)
 	serviceReq := providers.ResourceServer{
-		Name:        sanitized.Name,
-		Description: sanitized.Description,
-		Identifier:  sanitized.Identifier,
-		OUID:        sanitized.OUID,
+		Name:                sanitized.Name,
+		Description:         sanitized.Description,
+		Identifier:          sanitized.Identifier,
+		OUID:                sanitized.OUID,
+		AuthorizationEngine: sanitized.AuthorizationEngine,
 	}
 
 	result, svcErr := h.resourceService.UpdateResourceServer(ctx, id, serviceReq)
@@ -607,11 +608,19 @@ func sanitizeCreateResourceServerRequest(req *CreateResourceServerRequest) Creat
 // sanitizeUpdateResourceServerRequest sanitizes input for updating a resource server.
 func sanitizeUpdateResourceServerRequest(req *UpdateResourceServerRequest) UpdateResourceServerRequest {
 	return UpdateResourceServerRequest{
-		Name:        sysutils.SanitizeString(req.Name),
-		Description: sysutils.SanitizeString(req.Description),
-		Identifier:  sysutils.SanitizeString(req.Identifier),
-		OUID:        sysutils.SanitizeString(req.OUID),
+		Name:                sysutils.SanitizeString(req.Name),
+		Description:         sysutils.SanitizeString(req.Description),
+		Identifier:          sysutils.SanitizeString(req.Identifier),
+		OUID:                sysutils.SanitizeString(req.OUID),
+		AuthorizationEngine: sanitizeAuthorizationEngine(req.AuthorizationEngine),
 	}
+}
+
+// sanitizeAuthorizationEngine sanitizes user-controlled authorization engine identifiers.
+func sanitizeAuthorizationEngine(engine providers.AuthorizationEngineConfig) providers.AuthorizationEngineConfig {
+	engine.Type = sysutils.SanitizeString(engine.Type)
+	engine.Properties.ExternalPDPConnectionID = sysutils.SanitizeString(engine.Properties.ExternalPDPConnectionID)
+	return engine
 }
 
 // sanitizeCreateResourceRequest sanitizes input for creating a resource.
@@ -666,14 +675,15 @@ func toResourceServerResponse(rs *providers.ResourceServer) *ResourceServerRespo
 		resType = providers.ResourceServerTypeCustom
 	}
 	return &ResourceServerResponse{
-		ID:          rs.ID,
-		Name:        rs.Name,
-		Description: rs.Description,
-		Identifier:  rs.Identifier,
-		Type:        resType,
-		OUID:        rs.OUID,
-		Delimiter:   rs.Delimiter,
-		IsReadOnly:  rs.IsReadOnly,
+		ID:                  rs.ID,
+		Name:                rs.Name,
+		Description:         rs.Description,
+		Identifier:          rs.Identifier,
+		Type:                resType,
+		OUID:                rs.OUID,
+		Delimiter:           rs.Delimiter,
+		AuthorizationEngine: rs.AuthorizationEngine,
+		IsReadOnly:          rs.IsReadOnly,
 	}
 }
 

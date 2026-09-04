@@ -9,14 +9,15 @@ import "github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 // ResourceServerResponse represents a resource server.
 type ResourceServerResponse struct {
-	ID          string                       `json:"id"`
-	Name        string                       `json:"name"`
-	Description string                       `json:"description,omitempty"`
-	Identifier  string                       `json:"identifier"`
-	Type        providers.ResourceServerType `json:"type"`
-	OUID        string                       `json:"ouId"`
-	Delimiter   string                       `json:"delimiter"`
-	IsReadOnly  bool                         `json:"isReadOnly"`
+	ID                  string                              `json:"id"`
+	Name                string                              `json:"name"`
+	Description         string                              `json:"description,omitempty"`
+	Identifier          string                              `json:"identifier"`
+	Type                providers.ResourceServerType        `json:"type"`
+	OUID                string                              `json:"ouId"`
+	Delimiter           string                              `json:"delimiter"`
+	AuthorizationEngine providers.AuthorizationEngineConfig `json:"authorizationEngine,omitempty"`
+	IsReadOnly          bool                                `json:"isReadOnly"`
 }
 
 // ResourceResponse represents a resource.
@@ -84,10 +85,11 @@ type CreateResourceServerRequest struct {
 
 // UpdateResourceServerRequest represents the request to update a resource server.
 type UpdateResourceServerRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Identifier  string `json:"identifier,omitempty"`
-	OUID        string `json:"ouId"                  native:"required"`
+	Name                string                              `json:"name"`
+	Description         string                              `json:"description,omitempty"`
+	Identifier          string                              `json:"identifier,omitempty"`
+	OUID                string                              `json:"ouId"                  native:"required"`
+	AuthorizationEngine providers.AuthorizationEngineConfig `json:"authorizationEngine,omitempty"`
 }
 
 // CreateResourceRequest represents the request to create a resource.

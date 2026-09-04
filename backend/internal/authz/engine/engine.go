@@ -33,6 +33,8 @@ type Subject struct {
 // ResourceServer identifies the resource server for an access evaluation.
 type ResourceServer struct {
 	ID         string
+	Type       string
+	ResourceID string
 	Properties map[string]interface{}
 }
 

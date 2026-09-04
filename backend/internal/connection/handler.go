@@ -244,6 +244,109 @@ func (h *handler) handleListConnections(w http.ResponseWriter, r *http.Request) 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
 }
 
+// createAuthZENPDPConnection creates an external AuthZEN PDP connection.
+func (h *handler) createAuthZENPDPConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	req, err := sysutils.DecodeJSONBody[authZENPDPConnectionRequest](r)
+	if err != nil {
+		writeInvalidBody(ctx, w)
+		return
+	}
+	created, svcErr := h.svc.createAuthZENPDP(ctx, authZENPDPFromRequest(*req))
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, authZENPDPToResponse(*created))
+}
+
+// listAuthZENPDPConnections lists configured external AuthZEN PDP connections.
+func (h *handler) listAuthZENPDPConnections(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	connections, svcErr := h.svc.listAuthZENPDP(ctx)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	summaries := make([]connectionInstanceSummary, 0, len(connections))
+	for _, connection := range connections {
+		summaries = append(summaries, connectionInstanceSummary{
+			ID:          connection.ID,
+			Name:        connection.Name,
+			Description: connection.Description,
+		})
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, summaries)
+}
+
+// getAuthZENPDPConnection returns an external AuthZEN PDP connection by ID.
+func (h *handler) getAuthZENPDPConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if strings.TrimSpace(id) == "" {
+		writeServiceError(ctx, w, &ErrorConnectionNotFound)
+		return
+	}
+	connection, svcErr := h.svc.getAuthZENPDP(ctx, id)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, authZENPDPToResponse(*connection))
+}
+
+// updateAuthZENPDPConnection updates an external AuthZEN PDP connection by ID.
+func (h *handler) updateAuthZENPDPConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if strings.TrimSpace(id) == "" {
+		writeServiceError(ctx, w, &ErrorConnectionNotFound)
+		return
+	}
+	req, err := sysutils.DecodeJSONBody[authZENPDPConnectionRequest](r)
+	if err != nil {
+		writeInvalidBody(ctx, w)
+		return
+	}
+	updated, svcErr := h.svc.updateAuthZENPDP(ctx, id, authZENPDPFromRequest(*req))
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, authZENPDPToResponse(*updated))
+}
+
+// deleteAuthZENPDPConnection deletes an external AuthZEN PDP connection by ID.
+func (h *handler) deleteAuthZENPDPConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if strings.TrimSpace(id) == "" {
+		writeServiceError(ctx, w, &ErrorConnectionNotFound)
+		return
+	}
+	if svcErr := h.svc.deleteAuthZENPDP(ctx, id); svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
+// usagesAuthZENPDPConnection lists resources that reference an external AuthZEN PDP connection.
+func (h *handler) usagesAuthZENPDPConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if strings.TrimSpace(id) == "" {
+		writeServiceError(ctx, w, &ErrorConnectionNotFound)
+		return
+	}
+	usages, svcErr := h.svc.usagesAuthZENPDP(ctx, id)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, usages)
+}
+
 // createSMSConnection decodes a typed request, maps it to a notification-sender DTO via the
 // vendor's mapper, delegates creation, and writes the encoded response.
 func createSMSConnection[Req any, Resp any](h *handler, w http.ResponseWriter, r *http.Request,

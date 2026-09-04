@@ -1,0 +1,57 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package authzenpdp
+
+import dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
+
+var (
+	queryCreateAuthZENPDPConnection = dbmodel.DBQuery{
+		ID: "CON-AUTHZEN-PDP-01",
+		Query: `INSERT INTO "AUTHZEN_PDP_CONNECTION"
+			(ID, DEPLOYMENT_ID, NAME, DESCRIPTION, ENDPOINT,
+			SUBJECT_PROPERTIES, SUBJECT_PROPERTY_MAPPINGS)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+	}
+
+	queryGetAuthZENPDPConnectionByID = dbmodel.DBQuery{
+		ID: "CON-AUTHZEN-PDP-02",
+		Query: `SELECT ID, NAME, DESCRIPTION, ENDPOINT,
+			SUBJECT_PROPERTIES, SUBJECT_PROPERTY_MAPPINGS
+			FROM "AUTHZEN_PDP_CONNECTION"
+			WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+
+	queryListAuthZENPDPConnections = dbmodel.DBQuery{
+		ID: "CON-AUTHZEN-PDP-03",
+		Query: `SELECT ID, NAME, DESCRIPTION, ENDPOINT,
+			SUBJECT_PROPERTIES, SUBJECT_PROPERTY_MAPPINGS
+			FROM "AUTHZEN_PDP_CONNECTION"
+			WHERE DEPLOYMENT_ID = $1
+			ORDER BY NAME ASC, ID ASC`,
+	}
+
+	queryUpdateAuthZENPDPConnection = dbmodel.DBQuery{
+		ID: "CON-AUTHZEN-PDP-04",
+		PostgresQuery: `UPDATE "AUTHZEN_PDP_CONNECTION"
+			SET NAME = $1, DESCRIPTION = $2, ENDPOINT = $3,
+			SUBJECT_PROPERTIES = $4, SUBJECT_PROPERTY_MAPPINGS = $5,
+			UPDATED_AT = NOW()
+			WHERE ID = $6 AND DEPLOYMENT_ID = $7`,
+		SQLiteQuery: `UPDATE "AUTHZEN_PDP_CONNECTION"
+			SET NAME = $1, DESCRIPTION = $2, ENDPOINT = $3,
+			SUBJECT_PROPERTIES = $4, SUBJECT_PROPERTY_MAPPINGS = $5,
+			UPDATED_AT = datetime('now')
+			WHERE ID = $6 AND DEPLOYMENT_ID = $7`,
+		Query: `UPDATE "AUTHZEN_PDP_CONNECTION"
+			SET NAME = $1, DESCRIPTION = $2, ENDPOINT = $3,
+			SUBJECT_PROPERTIES = $4, SUBJECT_PROPERTY_MAPPINGS = $5,
+			UPDATED_AT = datetime('now')
+			WHERE ID = $6 AND DEPLOYMENT_ID = $7`,
+	}
+
+	queryDeleteAuthZENPDPConnection = dbmodel.DBQuery{
+		ID:    "CON-AUTHZEN-PDP-05",
+		Query: `DELETE FROM "AUTHZEN_PDP_CONNECTION" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+)
