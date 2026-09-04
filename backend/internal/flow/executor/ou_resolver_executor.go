@@ -146,14 +146,46 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *providers.NodeContext,
 		)
 	}
 
-	// If the user already provided an OU selection, validate and accept it.
-	if selectedOUID, ok := ctx.UserInputs[ouIDKey]; ok && selectedOUID != "" {
-		// Validate that the selected OU belongs to the parent OU's subtree.
-		isDescendant, svcErr := e.ouService.IsParent(ctx.Context, parentOUID, selectedOUID)
+	// The user may submit either a literal OU ID (ouId) or a handle scoped to the default OU's
+	// children (ouHandle), but not both — each identifies the same selection unambiguously on its
+	// own, so accepting both at once would leave which one takes precedence undefined.
+	selectedID, hasID := ctx.UserInputs[ouIDKey]
+	hasID = hasID && selectedID != ""
+	selectedHandle, hasHandle := ctx.UserInputs[ouHandleKey]
+	hasHandle = hasHandle && selectedHandle != ""
+
+	if hasID && hasHandle {
+		logger.Debug(ctx.Context, "Both ouId and ouHandle were submitted; exactly one is expected")
+		execResp.Status = providers.ExecUserInputRequired
+		execResp.Inputs = e.promptInputs()
+		execResp.Error = &ErrInvalidOU
+		return execResp, nil
+	}
+
+	if hasID || hasHandle {
+		resolvedOUID := selectedID
+		if hasHandle {
+			handleOUID, svcErr := e.ouService.GetOrganizationUnitIDByHandle(ctx.Context, selectedHandle, &parentOUID)
+			if svcErr != nil {
+				if svcErr.Type == tidcommon.ClientErrorType {
+					logger.Debug(ctx.Context, "Selected OU handle could not be resolved",
+						log.String(ouHandleKey, selectedHandle))
+					execResp.Status = providers.ExecUserInputRequired
+					execResp.Inputs = e.promptInputs()
+					execResp.Error = &ErrInvalidOU
+					return execResp, nil
+				}
+				return nil, errors.New("failed to resolve organization unit by handle: " + svcErr.Error.DefaultValue)
+			}
+			resolvedOUID = handleOUID
+		}
+
+		// Validate that the resolved OU belongs to the parent OU's subtree.
+		isDescendant, svcErr := e.ouService.IsParent(ctx.Context, parentOUID, resolvedOUID)
 		if svcErr != nil {
 			if svcErr.Type == tidcommon.ClientErrorType {
 				execResp.Status = providers.ExecUserInputRequired
-				execResp.Inputs = e.GetDefaultInputs()
+				execResp.Inputs = e.promptInputs()
 				execResp.Error = &ErrInvalidOU
 				return execResp, nil
 			}
@@ -162,16 +194,16 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *providers.NodeContext,
 		}
 		if !isDescendant {
 			logger.Debug(ctx.Context, "Selected OU is not a descendant of the parent OU",
-				log.String(ouIDKey, selectedOUID),
+				log.String(ouIDKey, resolvedOUID),
 				log.String("parentOUID", parentOUID))
 			execResp.Status = providers.ExecUserInputRequired
-			execResp.Inputs = e.GetDefaultInputs()
+			execResp.Inputs = e.promptInputs()
 			execResp.Error = &ErrOUNotValidForUserType
 			return execResp, nil
 		}
 
-		logger.Debug(ctx.Context, "OU selected by user", log.String(ouIDKey, selectedOUID))
-		execResp.RuntimeData[ouIDKey] = selectedOUID
+		logger.Debug(ctx.Context, "OU selected by user", log.String(ouIDKey, resolvedOUID))
+		execResp.RuntimeData[ouIDKey] = resolvedOUID
 		execResp.Status = providers.ExecComplete
 		return execResp, nil
 	}
@@ -195,7 +227,7 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *providers.NodeContext,
 
 	execResp.Status = providers.ExecUserInputRequired
 
-	inputs := e.GetDefaultInputs()
+	inputs := e.promptInputs()
 	if len(inputs) > 0 {
 		input := inputs[0]
 		execResp.Inputs = []providers.Input{input}
@@ -205,6 +237,18 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *providers.NodeContext,
 	}
 
 	return execResp, nil
+}
+
+// promptInputs returns the default OU-selection input, keyed by ouHandleKey rather than ouIDKey:
+// the "prompt" strategy's frontend submits a child OU's handle, not its ID.
+func (e *ouResolverExecutor) promptInputs() []providers.Input {
+	defaults := e.GetDefaultInputs()
+	if len(defaults) == 0 {
+		return defaults
+	}
+	input := defaults[0]
+	input.Identifier = ouHandleKey
+	return []providers.Input{input}
 }
 
 // resolveFromPromptAll shows the full OU tree from root, allowing selection of any OU.

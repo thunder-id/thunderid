@@ -1469,7 +1469,7 @@ Resolves or selects an organizational unit based on a configured strategy. Overw
   1. Place **User Type Resolver** before this executor in registration flows
   2. Add a **Blank View** immediately after this executor with an OU selection component
   3. This executor will prompt only if the default OU has child OUs. Otherwise, it completes silently
-- **Failure conditions:** Default OU not found; selected OU is not a child of the default
+- **Failure conditions:** Default OU not found; both `ouId` and `ouHandle` submitted at once; selected handle does not match a child OU; selected OU is not a descendant of the default
 
 **`promptAll` strategy:**
 - Shows the full OU tree from root, independent of User Type Resolver
@@ -1482,7 +1482,13 @@ Resolves or selects an organizational unit based on a configured strategy. Overw
 - **Failure conditions:** OU service error
 
 **Input Configuration:**
-- `ouId` (required): the user's selected organizational unit. Used for `prompt` and `promptAll` strategies. Default: `ouId`
+
+The `prompt` strategy accepts exactly one of the two inputs below, never both:
+- `ouId`: a literal OU ID, for a caller that already knows the target OU. Default: `ouId`
+- `ouHandle`: a handle scoped to the default OU's children, as offered by the OU selection component. Default: `ouHandle`
+
+The `promptAll` strategy uses:
+- `ouId` (required): the selected OU's ID. Default: `ouId`
 
 **Example:**
 

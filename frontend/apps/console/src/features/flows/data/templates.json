@@ -12307,7 +12307,7 @@
                   {
                     "type": "OU_SELECT",
                     "id": "ou_selection_input",
-                    "ref": "ouId",
+                    "ref": "ouHandle",
                     "label": "{{ t(onboarding:forms.ou_selection.fields.ou.label) }}",
                     "required": true
                   },
@@ -12327,7 +12327,7 @@
               "inputs": [
                 {
                   "ref": "ou_selection_input",
-                  "identifier": "ouId",
+                  "identifier": "ouHandle",
                   "type": "OU_SELECT",
                   "required": true
                 }

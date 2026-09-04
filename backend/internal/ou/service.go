@@ -40,6 +40,9 @@ type OrganizationUnitServiceInterface interface {
 	IsOrganizationUnitExists(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 	IsOrganizationUnitDeclarative(ctx context.Context, id string) bool
 	IsParent(ctx context.Context, parentID, childID string) (bool, *tidcommon.ServiceError)
+	GetOrganizationUnitIDByHandle(
+		ctx context.Context, handle string, parentID *string,
+	) (string, *tidcommon.ServiceError)
 	UpdateOrganizationUnit(
 		ctx context.Context, id string, request providers.OrganizationUnitRequestWithID,
 	) (providers.OrganizationUnit, *tidcommon.ServiceError)
@@ -489,6 +492,29 @@ func (ous *organizationUnitService) IsOrganizationUnitExists(
 
 func (ous *organizationUnitService) IsOrganizationUnitDeclarative(ctx context.Context, id string) bool {
 	return ous.ouStore.IsOrganizationUnitDeclarative(ctx, id)
+}
+
+// GetOrganizationUnitIDByHandle resolves an organization unit's ID from its handle, scoped to the
+// given parent (or the root level when parentID is nil). Unlike GetOrganizationUnitByPath, this is
+// an unauthenticated lookup with no access check: it exists so that a self-service caller (e.g. a
+// flow resolving a human-readable org handle during registration) can resolve a handle without
+// already holding read access to the organization unit it names.
+func (ous *organizationUnitService) GetOrganizationUnitIDByHandle(
+	ctx context.Context, handle string, parentID *string,
+) (string, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
+	logger.Debug(ctx, "Resolving organization unit ID by handle", log.String("handle", handle))
+
+	ou, err := ous.ouStore.GetOrganizationUnitByHandle(ctx, handle, parentID)
+	if err != nil {
+		if errors.Is(err, ErrOrganizationUnitNotFound) {
+			return "", &ErrorOrganizationUnitNotFound
+		}
+		logger.Error(ctx, "Failed to resolve organization unit by handle", log.Error(err))
+		return "", &tidcommon.InternalServerError
+	}
+
+	return ou.ID, nil
 }
 
 // IsParent checks whether the provided parentID is an ancestor of childID.

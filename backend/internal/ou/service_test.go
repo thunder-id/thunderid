@@ -828,6 +828,78 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_IsOrganizationUnitE
 	}
 }
 
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitIDByHandle() {
+	parentID := "parent-1"
+
+	testCases := []struct {
+		name     string
+		parentID *string
+		setup    func(*organizationUnitStoreInterfaceMock)
+		wantErr  *tidcommon.ServiceError
+		want     string
+	}{
+		{
+			name:     "resolved at root level",
+			parentID: nil,
+			setup: func(store *organizationUnitStoreInterfaceMock) {
+				store.On("GetOrganizationUnitByHandle", mock.Anything, "acme-corp", (*string)(nil)).
+					Return(providers.OrganizationUnit{ID: "ou-1"}, nil).
+					Once()
+			},
+			want: "ou-1",
+		},
+		{
+			name:     "resolved as a child of the given parent",
+			parentID: &parentID,
+			setup: func(store *organizationUnitStoreInterfaceMock) {
+				store.On("GetOrganizationUnitByHandle", mock.Anything, "acme-corp", &parentID).
+					Return(providers.OrganizationUnit{ID: "ou-2"}, nil).
+					Once()
+			},
+			want: "ou-2",
+		},
+		{
+			name:     "not found",
+			parentID: nil,
+			setup: func(store *organizationUnitStoreInterfaceMock) {
+				store.On("GetOrganizationUnitByHandle", mock.Anything, "acme-corp", (*string)(nil)).
+					Return(providers.OrganizationUnit{}, ErrOrganizationUnitNotFound).
+					Once()
+			},
+			wantErr: &ErrorOrganizationUnitNotFound,
+		},
+		{
+			name:     "store error",
+			parentID: nil,
+			setup: func(store *organizationUnitStoreInterfaceMock) {
+				store.On("GetOrganizationUnitByHandle", mock.Anything, "acme-corp", (*string)(nil)).
+					Return(providers.OrganizationUnit{}, errors.New("boom")).
+					Once()
+			},
+			wantErr: &tidcommon.InternalServerError,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		suite.Run(tc.name, func() {
+			store := newOrganizationUnitStoreInterfaceMock(suite.T())
+			tc.setup(store)
+
+			service := suite.newService(store, newAllowAllAuthz(suite.T()))
+			result, err := service.GetOrganizationUnitIDByHandle(context.Background(), "acme-corp", tc.parentID)
+
+			if tc.wantErr != nil {
+				suite.Require().NotNil(err)
+				suite.Require().Equal(*tc.wantErr, *err)
+			} else {
+				suite.Require().Nil(err)
+				suite.Require().Equal(tc.want, result)
+			}
+		})
+	}
+}
+
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_IsParent() {
 	parentID := "parent-1"
 	childID := "child-1"
