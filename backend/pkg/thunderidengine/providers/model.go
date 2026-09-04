@@ -1016,6 +1016,24 @@ type Application struct {
 	InboundAuthProfile `yaml:",inline"`
 	InboundAuthConfig  []InboundAuthConfigWithSecret `yaml:"inboundAuthConfig,omitempty" json:"inboundAuthConfig,omitempty" jsonschema:"Inbound authentication configuration (OAuth2/OIDC settings)."`
 	Metadata           map[string]interface{}        `yaml:"metadata,omitempty" json:"metadata,omitempty" jsonschema:"Generic metadata key-value pairs."`
+
+	// EntityCategory is the category of the entity backing this runtime application view (app or
+	// agent). Runtime-only: never serialized on the application API or in declarative resources.
+	EntityCategory EntityCategory `yaml:"-" json:"-"`
+}
+
+// OAuthClientID returns the client_id of the application's OAuth inbound auth config, or an empty
+// string when it has no OAuth config.
+func (a *Application) OAuthClientID() string {
+	if a == nil {
+		return ""
+	}
+	for _, inbound := range a.InboundAuthConfig {
+		if inbound.Type == OAuthInboundAuthType && inbound.OAuthConfig != nil {
+			return inbound.OAuthConfig.ClientID
+		}
+	}
+	return ""
 }
 
 // InboundAuthProfile is the wire field block embedded in entity DTOs (requests and responses).

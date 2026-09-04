@@ -34,6 +34,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/httpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwemock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
@@ -98,7 +99,7 @@ func (suite *TokenBuilderTestSuite) TestNewTokenBuilder() {
 	jwtService := jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	builder := newTokenBuilder(oauthconfig.Config{
 		JWT: engineconfig.JWTConfig{Issuer: "https://example.com", ValidityPeriod: 3600},
-	}, jwtService, nil, nil)
+	}, jwtService, nil, nil, nil)
 
 	assert.NotNil(suite.T(), builder)
 	assert.Implements(suite.T(), (*TokenBuilderInterface)(nil), builder)
@@ -143,6 +144,45 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_Basic() {
 	assert.Equal(suite.T(), "test-client", result.ClientID)
 	assert.Equal(suite.T(), map[string]interface{}{"name": testUserName}, result.UserAttributes)
 	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_CarriesActorIDOntoTokenDTO() {
+	ctx := &AccessTokenBuildContext{
+		Subject:     "user123",
+		Audiences:   []string{"app123"},
+		ClientID:    "test-client",
+		GrantType:   string(providers.GrantTypeAuthorizationCode),
+		OAuthApp:    suite.oauthApp,
+		ActorClaims: &SubjectTokenClaims{Sub: "agent-entity-1"},
+	}
+
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user123", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "agent-entity-1", result.ActorID)
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_NoActorClaimsLeavesActorIDEmpty() {
+	ctx := &AccessTokenBuildContext{
+		Subject:   "agent-entity-1",
+		Audiences: []string{"app123"},
+		ClientID:  "test-client",
+		GrantType: string(providers.GrantTypeClientCredentials),
+		OAuthApp:  suite.oauthApp,
+	}
+
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "agent-entity-1", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), result.ActorID)
 }
 
 func (suite *TokenBuilderTestSuite) TestBuildAccessToken_ClientAttributes_MergesOUAndOwnClaims() {
@@ -2520,4 +2560,112 @@ func testRSAPublicKeyToJWKS(pub *rsa.PublicKey, use string) string {
 	}
 	b, _ := json.Marshal(map[string]interface{}{"keys": []interface{}{key}})
 	return string(b)
+}
+
+const (
+	subjectIdentityClientID = "client-entity-1"
+	subjectIdentityUserID   = "user-entity-1"
+)
+
+// authorization_code carries both values on the flow assertion, so the login path resolves nothing.
+// The builder is given no actor provider here: needing one would mean the fast path is not taken.
+func TestResolveSubjectIdentity_CarriedFromTheAssertion(t *testing.T) {
+	tb := &tokenBuilder{}
+
+	id, category := tb.resolveSubjectIdentity(&AccessTokenBuildContext{
+		Subject:         "alice@example.com",
+		SubjectEntityID: subjectIdentityUserID,
+		SubjectCategory: string(providers.EntityCategoryUser),
+	})
+
+	// The mapped subject attribute is reported as the resource ID, never as the token's own sub.
+	assert.Equal(t, subjectIdentityUserID, id)
+	assert.Equal(t, string(providers.EntityCategoryUser), category)
+}
+
+// An assertion that carried the ID but no category still reports the subject; only the category is
+// resolved.
+func TestResolveSubjectIdentity_AssertionIDWithoutCategory(t *testing.T) {
+	actors := actorprovidermock.NewActorProviderMock(t)
+	actors.On("GetActor", subjectIdentityUserID).
+		Return(&providers.Entity{ID: subjectIdentityUserID, Category: providers.EntityCategoryUser},
+			(*tidcommon.ServiceError)(nil))
+	tb := &tokenBuilder{actorProvider: actors}
+
+	id, category := tb.resolveSubjectIdentity(&AccessTokenBuildContext{
+		SubjectEntityID: subjectIdentityUserID,
+	})
+
+	assert.Equal(t, subjectIdentityUserID, id)
+	assert.Equal(t, string(providers.EntityCategoryUser), category)
+}
+
+// A client_credentials token is issued about the client itself, so both values are known without
+// resolving anything.
+func TestResolveSubjectIdentity_SubjectIsTheClient(t *testing.T) {
+	tb := &tokenBuilder{}
+
+	id, category := tb.resolveSubjectIdentity(&AccessTokenBuildContext{
+		Subject: subjectIdentityClientID,
+		OAuthApp: &providers.OAuthClient{
+			ID:             subjectIdentityClientID,
+			EntityCategory: providers.EntityCategoryAgent,
+		},
+	})
+
+	assert.Equal(t, subjectIdentityClientID, id)
+	assert.Equal(t, string(providers.EntityCategoryAgent), category)
+}
+
+// An agent can be a token subject as well as a token requester: agent A exchanging a subject token
+// minted for agent B must report an agent subject, not a user.
+func TestResolveSubjectIdentity_AgentSubjectOfAnExchange(t *testing.T) {
+	actors := actorprovidermock.NewActorProviderMock(t)
+	actors.On("GetActor", "agent-b").
+		Return(&providers.Entity{ID: "agent-b", Category: providers.EntityCategoryAgent},
+			(*tidcommon.ServiceError)(nil))
+	tb := &tokenBuilder{actorProvider: actors}
+
+	id, category := tb.resolveSubjectIdentity(&AccessTokenBuildContext{
+		Subject:  "agent-b",
+		OAuthApp: &providers.OAuthClient{ID: subjectIdentityClientID, EntityCategory: providers.EntityCategoryAgent},
+	})
+
+	assert.Equal(t, "agent-b", id)
+	assert.Equal(t, string(providers.EntityCategoryAgent), category)
+}
+
+// On an exchange the subject arrives as the presented token's sub, which is a mapped attribute when
+// the issuing application configured one. It resolves to no entity, and both fields are left empty
+// so the attribute — an email address here — is never published.
+func TestResolveSubjectIdentity_MappedAttributeIsNotReported(t *testing.T) {
+	actors := actorprovidermock.NewActorProviderMock(t)
+	actors.On("GetActor", "alice@example.com").
+		Return((*providers.Entity)(nil), &tidcommon.ServiceError{Code: "ENTITY-404"})
+	tb := &tokenBuilder{actorProvider: actors}
+
+	id, category := tb.resolveSubjectIdentity(&AccessTokenBuildContext{
+		Subject:  "alice@example.com",
+		OAuthApp: &providers.OAuthClient{ID: subjectIdentityClientID},
+	})
+
+	assert.Empty(t, id)
+	assert.Empty(t, category)
+}
+
+func TestResolveSubjectIdentity_NoProviderOrNoSubject(t *testing.T) {
+	tb := &tokenBuilder{}
+
+	// A subject that is not the client cannot be resolved without a provider, so it is not reported.
+	id, category := tb.resolveSubjectIdentity(&AccessTokenBuildContext{
+		Subject:  subjectIdentityUserID,
+		OAuthApp: &providers.OAuthClient{ID: subjectIdentityClientID},
+	})
+	assert.Empty(t, id)
+	assert.Empty(t, category)
+
+	// No subject at all.
+	id, category = tb.resolveSubjectIdentity(&AccessTokenBuildContext{})
+	assert.Empty(t, id)
+	assert.Empty(t, category)
 }

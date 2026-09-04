@@ -166,6 +166,8 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
 		DPoPJkt:           dpop.GetJkt(ctx),
 		TokenFamilyID:     authCode.TokenFamilyID,
+		SubjectEntityID:   authCode.SubjectID,
+		SubjectCategory:   authCode.SubjectCategory,
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}
@@ -183,7 +185,8 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 
 	// Build token response
 	tokenResponse := &model.TokenResponseDTO{
-		AccessToken: *accessToken,
+		AccessToken:   *accessToken,
+		CorrelationID: authCode.CorrelationID,
 	}
 
 	// Generate ID token if 'openid' scope is present

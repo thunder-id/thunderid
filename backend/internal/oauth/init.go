@@ -77,7 +77,7 @@ func Initialize(
 	}
 
 	tokenBuilder, tokenValidator := tokenservice.Initialize(
-		cfg, jwtService, jweService, resolver, idpService, enforcementService, jtiStore)
+		cfg, jwtService, jweService, resolver, idpService, enforcementService, jtiStore, actorProvider)
 	parService := par.Initialize(mux, actorProvider, authnProvider, jwtService, discoveryService,
 		resourceService, dpopVerifier, cfg, runtimeStore, jtiStore)
 	oauth2AuthzService, err := oauth2authz.Initialize(mux, actorProvider, resourceService,
