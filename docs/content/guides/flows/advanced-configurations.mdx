@@ -1127,6 +1127,8 @@ Creates a new user record in the user store. This executor persists the user's i
 
 **Prompt batching:** If `maxPerPrompt` is set, the executor forwards only that many missing inputs per prompt cycle, cycling through them across multiple flow iterations.
 
+**How existing users are detected:** Before creating the record, the executor checks whether a conflicting user already exists. It matches only on the attributes that the user type schema marks `unique` and that were collected for the new user, so a changed non-unique attribute does not hide an existing account. Credential attributes are never used for this check. When the user type declares no unique attributes, the executor skips the check and creates the record. The user store validates uniqueness on write in every case.
+
 **Cross-OU provisioning:** When `allowCrossOUProvisioning` is set and the user exists in a different OU, the executor creates the user in the target OU instead of failing.
 
 **Executor properties:**

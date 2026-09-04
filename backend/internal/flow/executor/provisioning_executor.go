@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -125,7 +127,7 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		return execResp, nil
 	}
 
-	identifyingAttrs, credentialAttrs, err := p.getAttributesForProvisioning(ctx)
+	identifyingAttrs, credentialAttrs, uniqueAttrs, err := p.getAttributesForProvisioning(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -136,23 +138,9 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		return execResp, nil
 	}
 
-	userID, err := p.IdentifyUser(ctx.Context, identifyingAttrs, execResp)
+	userID, err := p.identifyExistingUser(ctx, uniqueAttrs, execResp, logger)
 	if err != nil {
-		logger.Error(ctx.Context, "Failed to identify user", log.Error(err))
-		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrFailedToIdentifyUser
-		return execResp, nil
-	}
-	if execResp.Status == providers.ExecFailure &&
-		execResp.Error != nil && execResp.Error.Code == ErrAmbiguousUserIdentity.Code &&
-		isCrossOUProvisioningAllowed(ctx) {
-		resolved, err := p.resolveAmbiguousUserForProvisioning(ctx, identifyingAttrs)
-		if err != nil {
-			return nil, err
-		}
-		userID = resolved
-		execResp.Status = ""
-		execResp.Error = nil
+		return nil, err
 	}
 	if execResp.Status == providers.ExecFailure &&
 		(execResp.Error == nil || execResp.Error.Code != ErrUserNotFound.Code) {
@@ -218,6 +206,74 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 	}
 
 	return execResp, nil
+}
+
+// identifyExistingUser returns the user that would conflict with the one about to be provisioned,
+// or nil when there is none. A user this execution already resolved wins over the attribute lookup,
+// which resolves on a broader set and can pick a different user or none.
+func (p *provisioningExecutor) identifyExistingUser(ctx *providers.NodeContext,
+	uniqueAttrs map[string]interface{}, execResp *providers.ExecutorResponse,
+	logger *log.Logger) (*string, error) {
+	if resolvedID := p.GetUserIDFromContext(ctx, execResp, p.authnProvider); resolvedID != "" {
+		return &resolvedID, nil
+	}
+
+	if len(uniqueAttrs) == 0 {
+		logger.Debug(ctx.Context, "No unique attributes to identify an existing user with")
+		return nil, nil
+	}
+
+	// One lookup per attribute: a combined filter is conjunctive, while the store rejects the write
+	// when any single value is taken. Name order keeps the reported conflict stable.
+	for _, attr := range slices.Sorted(maps.Keys(uniqueAttrs)) {
+		filter := map[string]interface{}{attr: uniqueAttrs[attr]}
+		execResp.Status = ""
+		execResp.Error = nil
+
+		userID, err := p.IdentifyUser(ctx.Context, filter, execResp)
+		if err != nil {
+			logger.Error(ctx.Context, "Failed to identify user", log.Error(err))
+			execResp.Status = providers.ExecFailure
+			execResp.Error = &ErrFailedToIdentifyUser
+			return nil, nil
+		}
+
+		if execResp.Status == providers.ExecFailure {
+			code := ""
+			if execResp.Error != nil {
+				code = execResp.Error.Code
+			}
+			switch code {
+			case ErrUserNotFound.Code:
+				// Free; a later unique attribute can still conflict.
+				continue
+			case ErrAmbiguousUserIdentity.Code:
+				if !isCrossOUProvisioningAllowed(ctx) {
+					return nil, nil
+				}
+				resolved, err := p.resolveAmbiguousUserForProvisioning(ctx, filter)
+				if err != nil {
+					return nil, err
+				}
+				execResp.Status = ""
+				execResp.Error = nil
+				if resolved != nil {
+					return resolved, nil
+				}
+				continue
+			default:
+				return nil, nil
+			}
+		}
+
+		if userID != nil && *userID != "" {
+			logger.Debug(ctx.Context, "An existing user already holds a unique attribute value",
+				log.String("attribute", attr))
+			return userID, nil
+		}
+	}
+
+	return nil, nil
 }
 
 // authenticateProvisionedUser authenticates the newly provisioned user and updates the executor response.
@@ -579,24 +635,26 @@ func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, attr 
 }
 
 // getAttributesForProvisioning collects user attributes from context in a single schema pass,
-// returning identifying (non-credential) and credential attributes as separate maps.
-// Schema is the whitelist for both maps.
+// returning identifying (non-credential), credential, and unique attributes as separate maps.
+// Schema is the whitelist for all three maps. uniqueAttrs is the subset of identifyingAttrs the
+// schema declares unique, and is the only set that can identify a conflicting user.
 // Credential values are resolved from non-empty UserInputs then non-empty RuntimeData only.
 // Non-credential values additionally fall back to AuthenticatedUser.Attributes, and are converted
 // from the engine's string representation to the type declared by the schema attribute.
 func (p *provisioningExecutor) getAttributesForProvisioning(
 	ctx *providers.NodeContext,
-) (identifyingAttrs map[string]interface{}, credentialAttrs map[string]interface{}, err error) {
+) (identifyingAttrs, credentialAttrs, uniqueAttrs map[string]interface{}, err error) {
 	schemaAttrs, fetchErr := p.fetchSchemaAttributes(ctx, true, true)
 	if fetchErr != nil {
-		return nil, nil, fetchErr
+		return nil, nil, nil, fetchErr
 	}
 
 	identifyingAttrs = make(map[string]interface{})
 	credentialAttrs = make(map[string]interface{})
+	uniqueAttrs = make(map[string]interface{})
 
 	if len(schemaAttrs) == 0 {
-		return identifyingAttrs, credentialAttrs, nil
+		return identifyingAttrs, credentialAttrs, uniqueAttrs, nil
 	}
 
 	for _, a := range schemaAttrs {
@@ -612,10 +670,15 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(runtimeValue, a.Type)
 			}
+			if a.Unique {
+				if value, exists := identifyingAttrs[a.Attribute]; exists {
+					uniqueAttrs[a.Attribute] = value
+				}
+			}
 		}
 	}
 
-	return identifyingAttrs, credentialAttrs, nil
+	return identifyingAttrs, credentialAttrs, uniqueAttrs, nil
 }
 
 // createUserInStore provisions a user through the user management provider. The organization unit
