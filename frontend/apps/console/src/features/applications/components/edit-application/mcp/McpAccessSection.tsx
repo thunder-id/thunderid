@@ -301,7 +301,7 @@ export default function McpAccessSection({
           <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 2}}>
             {t(
               'applications:onboarding.mcp.connection.redirectUris.hint',
-              'Each URI must be a loopback address (http://localhost or http://127.0.0.1) or use HTTPS. At least one is required.',
+              'Each URI must use HTTPS or HTTP with localhost, 127.0.0.1, or [::1]. At least one is required.',
             )}
           </Typography>
 

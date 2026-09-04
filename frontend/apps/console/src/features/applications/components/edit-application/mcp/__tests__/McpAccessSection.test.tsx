@@ -141,7 +141,9 @@ describe('McpAccessSection', () => {
       fireEvent.change(uriInput, {target: {value: 'http://example.com/cb'}});
       fireEvent.blur(uriInput);
 
-      expect(screen.getByText(/enter a valid loopback/i)).toBeInTheDocument();
+      expect(
+        screen.getByText('Enter a valid HTTPS URI or an HTTP URI using localhost, 127.0.0.1, or [::1].'),
+      ).toBeInTheDocument();
       expect(mockOnFieldChange).not.toHaveBeenCalled();
     });
 
@@ -292,7 +294,7 @@ describe('McpAccessSection', () => {
     it('reports validation errors when a redirect URI is invalid', () => {
       const invalidUriConfig: OAuth2Config = {
         ...baseOAuth2Config,
-        redirectUris: ['not a url'],
+        redirectUris: ['enter a valid loopback'],
       } as OAuth2Config;
 
       render(

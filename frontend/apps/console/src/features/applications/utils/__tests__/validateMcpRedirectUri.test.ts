@@ -68,6 +68,15 @@ describe('validateMcpRedirectUri', () => {
       expect(result.errorKey).toBe('applications:onboarding.mcp.connection.redirectUris.error.invalid');
     });
 
+    it.each(['http://127.1/cb', 'http://127.0.0.2/cb', 'http://localhost.example.com/cb'])(
+      'rejects HTTP with a non-exact loopback host: %s',
+      (uri) => {
+        const result = validateMcpRedirectUri(uri);
+        expect(result.valid).toBe(false);
+        expect(result.errorKey).toBe('applications:onboarding.mcp.connection.redirectUris.error.invalid');
+      },
+    );
+
     it('rejects the ftp scheme', () => {
       const result = validateMcpRedirectUri('ftp://x');
       expect(result.valid).toBe(false);

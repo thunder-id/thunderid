@@ -924,6 +924,76 @@ describe('ApplicationEditPage', () => {
       expect(screen.getByRole('button', {name: /save changes/i})).toBeDisabled();
     });
 
+    it('disables save when authorization_code includes a remote HTTP redirect URI', async () => {
+      const user = userEvent.setup();
+      mockUseGetApplication.mockReturnValue({
+        data: {
+          ...mockApplication,
+          inboundAuthConfig: [
+            {
+              type: 'oauth2',
+              config: {
+                grantTypes: ['authorization_code'],
+                responseTypes: ['code'],
+                redirectUris: ['https://example.com/callback', 'http://example.com/callback'],
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as unknown as UseQueryResult<Application>);
+      renderComponent();
+
+      const nameSection = screen.getByText('Test Application').closest('div');
+      const editButton = nameSection?.querySelector('button');
+      await user.click(editButton!);
+      const nameInput = screen.getByRole('textbox');
+      await user.clear(nameInput);
+      await user.type(nameInput, 'Updated Application{Enter}');
+
+      await waitFor(() => {
+        expect(screen.getByText(/A redirect URI is required\./)).toBeInTheDocument();
+      });
+      expect(screen.getByRole('button', {name: /save changes/i})).toBeDisabled();
+    });
+
+    it('disables save when a remote HTTP redirect URI remains without authorization_code', async () => {
+      const user = userEvent.setup();
+      mockUseGetApplication.mockReturnValue({
+        data: {
+          ...mockApplication,
+          inboundAuthConfig: [
+            {
+              type: 'oauth2',
+              config: {
+                grantTypes: ['client_credentials'],
+                responseTypes: [],
+                redirectUris: ['http://example.com/callback'],
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as unknown as UseQueryResult<Application>);
+      renderComponent();
+
+      const nameSection = screen.getByText('Test Application').closest('div');
+      const editButton = nameSection?.querySelector('button');
+      await user.click(editButton!);
+      const nameInput = screen.getByRole('textbox');
+      await user.clear(nameInput);
+      await user.type(nameInput, 'Updated Application{Enter}');
+
+      await waitFor(() => {
+        expect(screen.getByText(/A redirect URI is required\./)).toBeInTheDocument();
+      });
+      expect(screen.getByRole('button', {name: /save changes/i})).toBeDisabled();
+    });
+
     it('freezes the flows tab when no user-facing grant is granted', async () => {
       const user = userEvent.setup();
       mockUseGetApplication.mockReturnValue({

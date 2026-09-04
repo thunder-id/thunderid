@@ -118,11 +118,13 @@ func ValidateRedirectURI(ctx context.Context, redirectURIs []string, redirectURI
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 			return fmt.Errorf("registered redirect URI is not fully qualified")
 		}
+		if strings.EqualFold(parsed.Scheme, "http") {
+			hostname := parsed.Hostname()
+			if !strings.EqualFold(hostname, "localhost") && hostname != "127.0.0.1" && hostname != "::1" {
+				return fmt.Errorf("http redirect URI must use localhost, 127.0.0.1, or [::1]")
+			}
+		}
 		return nil
-	}
-
-	if !matchAnyRedirectURIPattern(redirectURIs, redirectURI) {
-		return fmt.Errorf("your application's redirect URL does not match with the registered redirect URLs")
 	}
 
 	parsedRedirectURI, err := utils.ParseURL(redirectURI)
@@ -130,8 +132,17 @@ func ValidateRedirectURI(ctx context.Context, redirectURIs []string, redirectURI
 		logger.Error(ctx, "Failed to parse redirect URI", log.Error(err))
 		return fmt.Errorf("invalid redirect URI: %s", err.Error())
 	}
+	if strings.EqualFold(parsedRedirectURI.Scheme, "http") {
+		hostname := parsedRedirectURI.Hostname()
+		if !strings.EqualFold(hostname, "localhost") && hostname != "127.0.0.1" && hostname != "::1" {
+			return fmt.Errorf("http redirect URI must use localhost, 127.0.0.1, or [::1]")
+		}
+	}
 	if parsedRedirectURI.Fragment != "" {
 		return fmt.Errorf("redirect URI must not contain a fragment component")
+	}
+	if !matchAnyRedirectURIPattern(redirectURIs, redirectURI) {
+		return fmt.Errorf("your application's redirect URL does not match with the registered redirect URLs")
 	}
 
 	return nil

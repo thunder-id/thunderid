@@ -190,6 +190,60 @@ describe('ConfigureDetails', () => {
     expect(screen.getByTestId('application-configure-redirect-uris')).toBeInTheDocument();
   });
 
+  it('blocks readiness when a redirect-capable application contains a remote HTTP redirect URI', async () => {
+    const template = createTemplate('Browser App', []);
+    const onReadyChange = vi.fn();
+    const user = userEvent.setup();
+
+    renderWithContext(
+      {
+        technology: TechnologyApplicationTemplate.REACT,
+        platform: PlatformApplicationTemplate.BROWSER,
+        onReadyChange,
+      },
+      {
+        selectedTemplateConfig: template,
+        redirectUris: ['https://example.com/callback', 'http://example.com/callback'],
+      },
+    );
+
+    await user.type(
+      screen.getByPlaceholderText('applications:onboarding.configure.details.hostingUrl.placeholder'),
+      'https://example.com',
+    );
+
+    await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(false));
+  });
+
+  it('allows readiness when HTTP redirect URIs use the supported loopback hosts', async () => {
+    const template = createTemplate('Browser App', []);
+    const onReadyChange = vi.fn();
+    const user = userEvent.setup();
+
+    renderWithContext(
+      {
+        technology: TechnologyApplicationTemplate.REACT,
+        platform: PlatformApplicationTemplate.BROWSER,
+        onReadyChange,
+      },
+      {
+        selectedTemplateConfig: template,
+        redirectUris: [
+          'http://localhost:3000/callback',
+          'http://127.0.0.1:3000/callback',
+          'http://[::1]:3000/callback',
+        ],
+      },
+    );
+
+    await user.type(
+      screen.getByPlaceholderText('applications:onboarding.configure.details.hostingUrl.placeholder'),
+      'https://example.com',
+    );
+
+    await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(true));
+  });
+
   it('renders no configuration UI for a non-redirect-capable template with a prefilled redirect URI', () => {
     const template: ApplicationTemplate = {
       description: 'Backend App description',

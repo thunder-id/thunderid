@@ -826,7 +826,7 @@ describe('AgentEditPage', () => {
               config: {
                 grantTypes: ['authorization_code'],
                 responseTypes: ['code'],
-                redirectUris: ['https://example.com/cb'],
+                redirectUris: ['http://localhost:3000/cb'],
                 clientId: 'client-id-xyz',
               },
             },
@@ -843,6 +843,67 @@ describe('AgentEditPage', () => {
 
       expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
       expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
+    });
+
+    it('disables Save when authorization_code includes a remote HTTP redirect URI', async () => {
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {
+          ...baseAgent,
+          allowedUserTypes: ['employee'],
+          inboundAuthConfig: [
+            {
+              type: 'oauth2' as const,
+              config: {
+                grantTypes: ['authorization_code'],
+                responseTypes: ['code'],
+                redirectUris: ['https://example.com/cb', 'http://example.com/cb'],
+                clientId: 'client-id-xyz',
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+      await triggerAChange(user);
+
+      expect(screen.getByText('Before saving, add a redirect URI.')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+    });
+
+    it('disables Save when a remote HTTP redirect URI remains without authorization_code', async () => {
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {
+          ...baseAgent,
+          inboundAuthConfig: [
+            {
+              type: 'oauth2' as const,
+              config: {
+                grantTypes: ['client_credentials'],
+                responseTypes: [],
+                redirectUris: ['http://example.com/cb'],
+                clientId: 'client-id-xyz',
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+      await triggerAChange(user);
+
+      expect(screen.getByText('Before saving, add a redirect URI.')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
     });
 
     it('does not block Save when authorization_code is not selected', async () => {

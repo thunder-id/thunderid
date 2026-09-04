@@ -159,6 +159,34 @@ func (suite *OAuthClientTestSuite) TestValidateRedirectURI_NoMatch() {
 	assert.Error(suite.T(), err)
 }
 
+func (suite *OAuthClientTestSuite) TestValidateRedirectURI_HTTPTransport() {
+	suite.setupRuntime(suite.T(), sysconfig.OAuthConfig{})
+	tests := []struct {
+		name    string
+		uri     string
+		wantErr bool
+	}{
+		{name: "HTTPS remote host", uri: "https://example.com/callback"},
+		{name: "HTTP localhost", uri: "http://localhost:3000/callback"},
+		{name: "HTTP IPv4 loopback", uri: "http://127.0.0.1:3000/callback"},
+		{name: "HTTP IPv6 loopback", uri: "http://[::1]:3000/callback"},
+		{name: "HTTP remote host", uri: "http://example.com/callback", wantErr: true},
+		{name: "HTTP private IP", uri: "http://192.168.1.10/callback", wantErr: true},
+		{name: "HTTP other IPv4 loopback", uri: "http://127.0.0.2/callback", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		suite.T().Run(tt.name, func(t *testing.T) {
+			err := ValidateRedirectURI(context.Background(), []string{tt.uri}, tt.uri)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
 func (suite *OAuthClientTestSuite) TestValidateRedirectURI_EmptyURI() {
 	suite.setupRuntime(suite.T(), sysconfig.OAuthConfig{})
 
@@ -174,6 +202,16 @@ func (suite *OAuthClientTestSuite) TestValidateRedirectURI_EmptyURI() {
 
 	suite.T().Run("wildcard in single registered URI requires explicit URI", func(t *testing.T) {
 		err := ValidateRedirectURI(context.Background(), []string{"https://*.example.com/callback"}, "")
+		assert.Error(t, err)
+	})
+
+	suite.T().Run("single HTTP loopback URI defaults to it", func(t *testing.T) {
+		err := ValidateRedirectURI(context.Background(), []string{"http://localhost:3000/callback"}, "")
+		assert.NoError(t, err)
+	})
+
+	suite.T().Run("single remote HTTP URI is rejected", func(t *testing.T) {
+		err := ValidateRedirectURI(context.Background(), []string{"http://example.com/callback"}, "")
 		assert.Error(t, err)
 	})
 }

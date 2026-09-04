@@ -1823,6 +1823,39 @@ func (suite *InboundClientServiceTestSuite) TestResolveOAuthTokens_CarriesDefaul
 
 // ----- validateRedirectURIs error branches -----
 
+func (suite *InboundClientServiceTestSuite) TestValidateRedirectURIs_HTTPTransport() {
+	tests := []struct {
+		name    string
+		uri     string
+		wantErr bool
+	}{
+		{name: "HTTPS remote host", uri: "https://example.com/callback"},
+		{name: "HTTP localhost", uri: "http://localhost:3000/callback"},
+		{name: "HTTP uppercase localhost", uri: "http://LOCALHOST:3000/callback"},
+		{name: "HTTP IPv4 loopback", uri: "http://127.0.0.1:3000/callback"},
+		{name: "HTTP IPv6 loopback", uri: "http://[::1]:3000/callback"},
+		{name: "HTTP remote host", uri: "http://example.com/callback", wantErr: true},
+		{name: "HTTP private IP", uri: "http://192.168.1.10/callback", wantErr: true},
+		{name: "HTTP other IPv4 loopback", uri: "http://127.0.0.2/callback", wantErr: true},
+		{name: "HTTP localhost suffix", uri: "http://localhost.example.com/callback", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		suite.T().Run(tt.name, func(t *testing.T) {
+			p := &providers.OAuthProfile{
+				RedirectURIs: []string{tt.uri},
+				GrantTypes:   []string{"authorization_code"},
+			}
+			err := validateRedirectURIs(p)
+			if tt.wantErr {
+				assert.ErrorIs(t, err, ErrOAuthInvalidRedirectURI)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
 func (suite *InboundClientServiceTestSuite) TestValidateRedirectURIs_SchemeWildcardRejected() {
 	p := &providers.OAuthProfile{
 		RedirectURIs: []string{"htt*://app/cb"},

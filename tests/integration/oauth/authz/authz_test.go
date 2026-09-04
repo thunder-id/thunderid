@@ -25,7 +25,7 @@ const (
 	clientID                             = "authz_test_client_123"
 	clientSecret                         = "authz_test_secret_123"
 	appName                              = "AuthzTestApp"
-	redirectURI                          = "https://localhost:3000"
+	redirectURI                          = "http://localhost:3000"
 	authzDefaultResourceServerIdentifier = "https://authz-default.example.com"
 )
 
@@ -671,14 +671,14 @@ func (ts *AuthzTestSuite) TestRedirectURIValidation() {
 		Description    string
 	}{
 		{
-			Name:           "Valid HTTPS Redirect URI",
+			Name:           "Valid HTTP Loopback Redirect URI",
 			ClientID:       clientID,
 			RedirectURI:    redirectURI,
 			ResponseType:   "code",
 			Scope:          "openid",
-			State:          "redirect_test_valid_https",
+			State:          "redirect_test_valid_http_loopback",
 			ExpectedStatus: http.StatusFound,
-			Description:    "Standard HTTPS localhost should be valid",
+			Description:    "HTTP localhost loopback should be valid",
 		},
 		{
 			Name:           "Valid HTTPS with Path",
@@ -692,15 +692,15 @@ func (ts *AuthzTestSuite) TestRedirectURIValidation() {
 			Description:    "HTTPS with callback path should be rejected (not registered)",
 		},
 		{
-			Name:           "HTTP Redirect URI",
+			Name:           "Remote HTTP Redirect URI",
 			ClientID:       clientID,
-			RedirectURI:    "http://localhost:3000",
+			RedirectURI:    "http://example.com",
 			ResponseType:   "code",
 			Scope:          "openid",
-			State:          "redirect_test_http",
+			State:          "redirect_test_remote_http",
 			ExpectedStatus: http.StatusFound,
 			ExpectedError:  "invalid_request",
-			Description:    "HTTP should be rejected for security",
+			Description:    "Remote HTTP redirect URI should be rejected",
 		},
 		{
 			Name:           "Invalid Protocol",
@@ -771,7 +771,7 @@ func (ts *AuthzTestSuite) TestCompleteAuthorizationCodeFlow() {
 		{
 			Name:         "Successful Flow",
 			ClientID:     clientID,
-			RedirectURI:  "https://localhost:3000",
+			RedirectURI:  redirectURI,
 			ResponseType: "code",
 			Scope:        "openid",
 			State:        "test_state_456",
@@ -901,7 +901,7 @@ func (ts *AuthzTestSuite) TestAuthorizationCodeErrorScenarios() {
 		{
 			Name:           "Reused Authorization Code",
 			ClientID:       clientID,
-			RedirectURI:    "https://localhost:3000",
+			RedirectURI:    redirectURI,
 			ResponseType:   "code",
 			Scope:          "openid",
 			State:          "test_state_error",

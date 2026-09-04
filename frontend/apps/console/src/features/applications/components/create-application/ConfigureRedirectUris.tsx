@@ -22,6 +22,7 @@ import {useTranslation} from 'react-i18next';
 import CorsOriginsEditor from './CorsOriginsEditor';
 import DevServerLogo from './DevServerLogo';
 import useApplicationCreate from '../../contexts/ApplicationCreate/useApplicationCreate';
+import {isValidRedirectUriTransport} from '../../utils/isValidRedirectUriFormat';
 
 /** Pure URI-format check, permissive of path/host wildcards (the backend enforces wildcard rules). */
 function isValidUriFormat(uri: string): boolean {
@@ -87,12 +88,12 @@ function UriListEditor({
       });
       return false;
     }
-    if (!isValidUriFormat(uri)) {
+    if (!isValidUriFormat(uri) || (required && !isValidRedirectUriTransport(uri))) {
       setErrors((prev) => ({
         ...prev,
         [index]: t(
           'applications:edit.general.redirectUris.error.invalid',
-          'Invalid Redirect: Please enter a valid URL.',
+          'Invalid Redirect: Please enter a valid URL. HTTP requires localhost, 127.0.0.1, or [::1].',
         ),
       }));
       return false;

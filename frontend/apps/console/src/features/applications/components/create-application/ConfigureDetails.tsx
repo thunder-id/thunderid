@@ -38,6 +38,7 @@ import type {PlatformApplicationTemplate, TechnologyApplicationTemplate} from '.
 import getConfigurationTypeFromTemplate from '../../utils/getConfigurationTypeFromTemplate';
 import hasInvalidCorsRows from '../../utils/hasInvalidCorsRows';
 import isRedirectCapableTemplate from '../../utils/isRedirectCapableTemplate';
+import {isValidRedirectUriTransport} from '../../utils/isValidRedirectUriFormat';
 
 /**
  * Zod schema for validating URL inputs (hosting URLs and callback URLs).
@@ -294,6 +295,7 @@ export default function ConfigureDetails({
     setRelyingPartyName,
     appName,
     corsOrigins,
+    redirectUris,
   } = useApplicationCreate();
   const {
     control,
@@ -333,6 +335,15 @@ export default function ConfigureDetails({
   // selected template can't block a step that no longer shows them.
   const showsCorsEditor: boolean = effectiveIsRedirectCapable && Boolean(selectedTemplateConfig?.capabilities?.cors);
   const hasInvalidCorsOrigins: boolean = showsCorsEditor && hasInvalidCorsRows(corsOrigins);
+  const hasDisallowedHttpRedirectUri: boolean =
+    effectiveIsRedirectCapable &&
+    redirectUris.some((uri) => {
+      try {
+        return new URL(uri).protocol === 'http:' && !isValidRedirectUriTransport(uri);
+      } catch {
+        return false;
+      }
+    });
 
   const isWallet: boolean = selectedTemplateConfig?.id === 'wallet';
   const [walletVendor, setWalletVendor] = useState<string>(CUSTOM_WALLET_VENDOR);
@@ -486,7 +497,7 @@ export default function ConfigureDetails({
 
     // A malformed CORS origin used to be dropped on submit without a word, so block here instead.
     // This reads the same rows that get merged into the allow-list, so the two cannot disagree.
-    onReadyChange(ready && !hasInvalidCorsOrigins);
+    onReadyChange(ready && !hasInvalidCorsOrigins && !hasDisallowedHttpRedirectUri);
   }, [
     isValid,
     effectiveConfigurationType,
@@ -502,6 +513,7 @@ export default function ConfigureDetails({
     selectedTemplateConfig,
     isDuplicateWalletClientId,
     hasInvalidCorsOrigins,
+    hasDisallowedHttpRedirectUri,
   ]);
 
   // For platforms that don't require configuration AND no passkey configuration needed AND the

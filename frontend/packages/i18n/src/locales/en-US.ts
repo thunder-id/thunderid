@@ -1267,7 +1267,7 @@ const translations = {
     'edit.advanced.redirectUris.empty': 'No redirect URIs configured.',
     'edit.advanced.redirectUris.addUri': 'Add URI',
     'edit.advanced.redirectUris.error.empty': 'URI cannot be empty',
-    'edit.advanced.redirectUris.error.invalid': 'Enter a valid URL',
+    'edit.advanced.redirectUris.error.invalid': 'Enter a valid URL. HTTP requires localhost, 127.0.0.1, or [::1].',
     'edit.advanced.redirectUris.required': 'The Authorization Code grant requires at least one valid redirect URI.',
     'edit.advanced.oauthAccess.title': 'OAuth 2 Configuration',
     'edit.advanced.oauthAccess.description': 'Manage OAuth 2 settings for this agent.',
@@ -2325,11 +2325,12 @@ const translations = {
     'onboarding.mcp.connection.subtitle': 'Where should users be sent after they authorize this client?',
     'onboarding.mcp.connection.redirectUris.label': 'Redirect URIs',
     'onboarding.mcp.connection.redirectUris.hint':
-      'Each URI must be a loopback address (http://localhost or http://127.0.0.1) or use HTTPS. At least one is required.',
+      'Each URI must use HTTPS or HTTP with localhost, 127.0.0.1, or [::1]. At least one is required.',
     'onboarding.mcp.connection.redirectUris.addUri': 'Add redirect URI',
     'onboarding.mcp.connection.redirectUris.remove': 'Remove redirect URI',
     'onboarding.mcp.connection.redirectUris.error.empty': 'Enter a redirect URI.',
-    'onboarding.mcp.connection.redirectUris.error.invalid': 'Enter a valid loopback (http://127.0.0.1) or HTTPS URI.',
+    'onboarding.mcp.connection.redirectUris.error.invalid':
+      'Enter a valid HTTPS URI or an HTTP URI using localhost, 127.0.0.1, or [::1].',
     'onboarding.mcp.connection.inspectorHint.prefix': 'Testing with MCP Inspector? Use',
     'onboarding.mcp.oauthProfile.label': 'OAuth profile',
     'onboarding.mcp.oauthProfile.authCodePkce': 'Authorization Code + PKCE (required)',
@@ -2882,7 +2883,8 @@ const translations = {
     'edit.general.redirectUris.tooltip': 'OAuth2 redirect URIs where users will be redirected after authentication',
     'edit.general.redirectUris.addUri': 'Add URI',
     'edit.general.redirectUris.error.empty': 'Invalid Redirect: URI must not be empty.',
-    'edit.general.redirectUris.error.invalid': 'Invalid Redirect: Please enter a valid URL.',
+    'edit.general.redirectUris.error.invalid':
+      'Invalid Redirect: Please enter a valid URL. HTTP requires localhost, 127.0.0.1, or [::1].',
     'edit.general.postLogoutRedirectUris.title': 'Post-Logout Redirect URIs',
     'edit.general.postLogoutRedirectUris.description':
       'Allowed URIs to redirect to after logout. A post_logout_redirect_uri passed to the logout endpoint must match one of these.',

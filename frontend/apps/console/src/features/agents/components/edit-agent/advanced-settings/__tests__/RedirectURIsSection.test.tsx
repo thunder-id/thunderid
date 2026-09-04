@@ -73,6 +73,33 @@ describe('RedirectURIsSection', () => {
     expect(screen.queryByTestId('agent-redirect-uris-required')).not.toBeInTheDocument();
   });
 
+  it.each(['http://localhost:3000/callback', 'http://127.0.0.1:3000/callback', 'http://[::1]:3000/callback'])(
+    'accepts the HTTP loopback redirect URI %s',
+    (uri) => {
+      const oauth2Config: OAuthAgentConfig = {
+        grantTypes: ['authorization_code'],
+        responseTypes: ['code'],
+        redirectUris: [uri],
+      };
+
+      render(<RedirectURIsSection oauth2Config={oauth2Config} onOAuth2ConfigChange={mockOnChange} />);
+
+      expect(screen.queryByTestId('agent-redirect-uris-required')).not.toBeInTheDocument();
+    },
+  );
+
+  it('treats a remote HTTP redirect URI as invalid', () => {
+    const oauth2Config: OAuthAgentConfig = {
+      grantTypes: ['authorization_code'],
+      responseTypes: ['code'],
+      redirectUris: ['http://example.com/callback'],
+    };
+
+    render(<RedirectURIsSection oauth2Config={oauth2Config} onOAuth2ConfigChange={mockOnChange} />);
+
+    expect(screen.getByTestId('agent-redirect-uris-required')).toBeInTheDocument();
+  });
+
   it('treats blank entries as invalid', () => {
     const oauth2Config: OAuthAgentConfig = {
       grantTypes: ['authorization_code'],
@@ -190,7 +217,24 @@ describe('RedirectURIsSection', () => {
     await user.click(input);
     await user.tab();
 
-    expect(screen.getByText('Enter a valid URL')).toBeInTheDocument();
+    expect(screen.getByText('Enter a valid URL. HTTP requires localhost, 127.0.0.1, or [::1].')).toBeInTheDocument();
+  });
+
+  it('shows an inline error for a remote HTTP redirect URI', async () => {
+    const user = userEvent.setup();
+    const oauth2Config: OAuthAgentConfig = {
+      grantTypes: ['authorization_code'],
+      responseTypes: ['code'],
+      redirectUris: ['http://example.com/callback'],
+    };
+
+    render(<RedirectURIsSection oauth2Config={oauth2Config} onOAuth2ConfigChange={mockOnChange} />);
+
+    const input = screen.getByPlaceholderText('https://example.com/callback');
+    await user.click(input);
+    await user.tab();
+
+    expect(screen.getByText('Enter a valid URL. HTTP requires localhost, 127.0.0.1, or [::1].')).toBeInTheDocument();
   });
 
   it('hides the add button and delete buttons when not editable', () => {

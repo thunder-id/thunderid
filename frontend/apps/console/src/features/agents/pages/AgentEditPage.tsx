@@ -26,6 +26,7 @@ import {useState, useCallback, useMemo, type SyntheticEvent, type JSX, type Reac
 import {useTranslation} from 'react-i18next';
 import {Link, useLocation, useNavigate, useParams} from 'react-router';
 import RouteConfig from '../../../configs/RouteConfig';
+import {isValidRedirectUriTransport} from '../../applications/utils/isValidRedirectUriFormat';
 import useGetAgent from '../api/useGetAgent';
 import useUpdateAgent from '../api/useUpdateAgent';
 import ShowClientSecret from '../components/create-agent/ShowClientSecret';
@@ -217,15 +218,24 @@ export default function AgentEditPage(): JSX.Element {
   // that content unmounts when its tab isn't active — a callback-based report would be stale or
   // never fire if the user never visits the tab before saving.
   const hasAuthorizationCodeGrant = oauth2Config?.grantTypes?.includes('authorization_code') ?? false;
-  const hasValidRedirectUri = (oauth2Config?.redirectUris ?? []).some((uri) => {
+  const redirectUris = oauth2Config?.redirectUris ?? [];
+  const hasValidRedirectUri = redirectUris.some((uri) => {
     if (!uri.trim()) return false;
     try {
-      return Boolean(new URL(uri));
+      const parsedUri = new URL(uri);
+      return Boolean(parsedUri) && isValidRedirectUriTransport(uri);
     } catch {
       return false;
     }
   });
-  const isMissingRedirectUri = hasAuthorizationCodeGrant && !hasValidRedirectUri;
+  const hasDisallowedHttpRedirectUri = redirectUris.some((uri) => {
+    try {
+      return new URL(uri).protocol === 'http:' && !isValidRedirectUriTransport(uri);
+    } catch {
+      return false;
+    }
+  });
+  const isMissingRedirectUri = (hasAuthorizationCodeGrant && !hasValidRedirectUri) || hasDisallowedHttpRedirectUri;
   const allowedUserTypes = editedAgent.allowedUserTypes ?? agent.allowedUserTypes ?? [];
   const isMissingAllowedUserType = hasAuthorizationCodeGrant && allowedUserTypes.length === 0;
   const isMissingCertificate =

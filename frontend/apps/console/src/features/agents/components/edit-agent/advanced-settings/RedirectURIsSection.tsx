@@ -17,6 +17,7 @@ import {
 import {Plus, Trash} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import {isValidRedirectUriTransport} from '../../../../applications/utils/isValidRedirectUriFormat';
 import type {OAuthAgentConfig} from '../../../models/agent';
 
 const REDIRECT_USING_GRANTS = ['authorization_code'];
@@ -30,13 +31,7 @@ interface RedirectURIsSectionProps {
   disabled?: boolean;
 }
 
-const isValidURL = (value: string): boolean => {
-  try {
-    return Boolean(new URL(value));
-  } catch {
-    return false;
-  }
-};
+const isValidURL = (value: string): boolean => isValidRedirectUriTransport(value);
 
 export default function RedirectURIsSection({
   oauth2Config = undefined,
@@ -53,14 +48,7 @@ export default function RedirectURIsSection({
   // The authorization-code grant cannot complete without at least one valid redirect URI. The
   // page-level Save guard computes this same check independently from state (see AgentEditPage),
   // since this section unmounts when its tab isn't active.
-  const hasValidUri = uris.some((u) => {
-    if (!u.trim()) return false;
-    try {
-      return Boolean(new URL(u));
-    } catch {
-      return false;
-    }
-  });
+  const hasValidUri = uris.some((u) => u.trim() !== '' && isValidURL(u));
   const isMissingRequiredUri = usesRedirect && !hasValidUri;
 
   // Hide entirely when no redirect-using grant is selected — redirect URIs are meaningless then.
@@ -98,7 +86,10 @@ export default function RedirectURIsSection({
     if (!isValidURL(value)) {
       setErrors((prev) => ({
         ...prev,
-        [index]: t('agents:edit.advanced.redirectUris.error.invalid', 'Enter a valid URL'),
+        [index]: t(
+          'agents:edit.advanced.redirectUris.error.invalid',
+          'Enter a valid URL. HTTP requires localhost, 127.0.0.1, or [::1].',
+        ),
       }));
     }
   };
