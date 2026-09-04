@@ -513,6 +513,8 @@ var defaultMessages = map[string]string{
 	"error.eudi.unknown_state_description": "No active request was found for the supplied state value",
 	"error.eudi.verification_failed": "Presentation verification failed",
 	"error.eudi.verification_failed_description": "The presented credential could not be verified",
+	"error.exportservice.duplicate_template_variable": "Duplicate template variable",
+	"error.exportservice.duplicate_template_variable_description": "Two resources derive the same template variable, so both would import one value",
 	"error.exportservice.invalid_request": "Invalid export request",
 	"error.exportservice.invalid_request_description": "The provided export request is invalid or malformed",
 	"error.exportservice.nil_request_description": "Export request cannot be nil",
