@@ -391,6 +391,21 @@ const sidebars: SidebarsConfig = {
             },
           ],
         },
+        {
+          type: 'category',
+          label: 'Take Away Access Safely',
+          collapsible: true,
+          collapsed: true,
+          key: 'use-cases-account-lifecycle',
+          items: [
+            {
+              type: 'doc',
+              id: 'use-cases/account-lifecycle/overview',
+              label: 'Suspension & Locks',
+              key: 'account-lifecycle-overview',
+            },
+          ],
+        },
       ],
     },
 
