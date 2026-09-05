@@ -227,7 +227,7 @@ export default function CommunitySection(): JSX.Element {
               title="Contribute"
               description={`Help shape ${productName} by submitting features, fixes, or improvements.`}
               linkLabel="Start Contributing"
-              href={docsUrl('/docs/next/community/contributing/propose-a-feature')}
+              href={docsUrl('/community/contributing/propose-a-feature')}
             />
             <CommunityCard
               icon={<IssueIcon />}

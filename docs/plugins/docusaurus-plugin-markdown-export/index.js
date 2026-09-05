@@ -17,6 +17,10 @@ const {processMarkdownFile} = require('./mdxProcessor');
  *     → build/docs/v1.0.x/getting-started/foo.md
  *     → served at /docs/v1.0.x/getting-started/foo.md
  *
+ *   community/overview.mdx (permalink /community/overview)
+ *     → build/community/overview.md
+ *     → served at /community/overview.md
+ *
  * Deriving the output path from `doc.permalink` (rather than re-deriving a
  * slug from the source file path) keeps this in lockstep with
  * docusaurus-plugin-llms-txt, including for index/category-root docs whose
@@ -73,12 +77,14 @@ module.exports = function pluginMarkdownExport(context) {
 
     async allContentLoaded({allContent}) {
       const docsPlugin = allContent?.['docusaurus-plugin-content-docs'];
-      const docsContent = docsPlugin?.default;
-      if (!docsContent?.loadedVersions) {
+      // Collect every docs plugin instance: the versioned "default" one and the
+      // unversioned "community" one, which has a single "current" version.
+      const versions = Object.values(docsPlugin ?? {}).flatMap((instance) => instance?.loadedVersions ?? []);
+      if (versions.length === 0) {
         console.warn('[markdown-export] docs plugin content not found; skipping');
         return;
       }
-      loadedVersions = docsContent.loadedVersions;
+      loadedVersions = versions;
     },
 
     async postBuild({outDir}) {

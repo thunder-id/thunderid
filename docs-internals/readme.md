@@ -5,7 +5,7 @@ specification and the threat model for each feature area. These documents are wr
 development starts and reviewed on their own, separate from the implementation.
 
 **The workflow lives in the contributor guide:
-[Propose a Design](https://thunderid.dev/docs/next/community/contributing/propose-a-design).** Read
+[Propose a Design](https://thunderid.dev/community/contributing/propose-a-design).** Read
 it first. It covers when the two documents are required, how the design discussion comes before them,
 how the pull request is reviewed, and what happens after it is merged.
 

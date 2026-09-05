@@ -108,7 +108,7 @@ export default function Footer(): JSX.Element {
           <FooterColumn
             title="Community"
             links={[
-              {label: 'Contributing', href: '/docs/next/community/contributing/propose-a-feature'},
+              {label: 'Contributing', href: '/community/contributing/propose-a-feature'},
               {label: 'Events', href: '/events'},
               {label: 'Discussions', href: productConfig.project.source.github.discussionsUrl},
               {label: 'Report an Issue', href: productConfig.project.source.github.issuesUrl},

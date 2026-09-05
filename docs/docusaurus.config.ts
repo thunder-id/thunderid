@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {Options as DocsOptions} from '@docusaurus/plugin-content-docs';
 import type * as Preset from '@docusaurus/preset-classic';
 import type {Config} from '@docusaurus/types';
 import {themes as prismThemes} from 'prism-react-renderer';
@@ -44,6 +45,23 @@ const baseUrl =
 
 // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
 const siteUrl = process.env.DOCUSAURUS_URL || productConfig.documentation.deployment.production.url;
+
+// Replace {{ProductName}}, {{productSlug}}, and local-URL placeholders inside code blocks at
+// build time. Shared by every docs plugin instance.
+const docsRehypePlugins: DocsOptions['rehypePlugins'] = [
+  [
+    rehypeProductName,
+    {
+      productName: productConfig.project.name,
+      productSlug: productConfig.project.name.toLowerCase(),
+      replacements: {
+        '{{ConsoleUrl}}': productConfig.local.consoleUrl,
+        '{{WayFinderSampleUrl}}': productConfig.local.samples.wayfinderUrl,
+        '{{WayFinderMailUrl}}': productConfig.local.samples.wayfinderMailUrl,
+      },
+    },
+  ],
+];
 
 const config: Config = {
   title: productConfig.project.name,
@@ -167,6 +185,20 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     personaPlugin,
     './plugins/docusaurus-plugin-llms-txt',
     './plugins/docusaurus-plugin-markdown-export',
+    // Community docs are a separate, unversioned plugin instance. They describe how to
+    // contribute to the project as it stands today, so they are not snapshotted per
+    // release and are served from /community/ instead of /docs/<version>/community/.
+    [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'community',
+        path: 'community',
+        routeBasePath: 'community',
+        sidebarPath: './sidebarsCommunity.ts',
+        editUrl: productConfig.project.source.github.editUrls.content,
+        rehypePlugins: docsRehypePlugins,
+      } satisfies DocsOptions,
+    ],
   ],
 
   presets: [
@@ -201,21 +233,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
               badge: false,
             },
           },
-          // Replace {{ProductName}}, {{productSlug}}, and local-URL placeholders inside code blocks at build time.
-          rehypePlugins: [
-            [
-              rehypeProductName,
-              {
-                productName: productConfig.project.name,
-                productSlug: productConfig.project.name.toLowerCase(),
-                replacements: {
-                  '{{ConsoleUrl}}': productConfig.local.consoleUrl,
-                  '{{WayFinderSampleUrl}}': productConfig.local.samples.wayfinderUrl,
-                  '{{WayFinderMailUrl}}': productConfig.local.samples.wayfinderMailUrl,
-                },
-              },
-            ],
-          ],
+          rehypePlugins: docsRehypePlugins,
         },
         blog: {
           path: 'blog',
@@ -310,6 +328,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         {
           type: 'docSidebar',
           sidebarId: 'communitySidebar',
+          docsPluginId: 'community',
           position: 'right',
           label: 'Community',
         },

@@ -412,6 +412,8 @@ This creates:
 - `versioned_sidebars/version-1.0.0-sidebars.json`: Versioned sidebars
 - Updates `versions.json`
 
+Only `docs/content/` is snapshotted. The community docs in `docs/community/` are served by a separate, unversioned plugin instance and stay outside every version.
+
 ### Version Configuration
 
 ```typescript title="docusaurus.config.ts"
