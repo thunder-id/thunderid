@@ -1,0 +1,233 @@
+---
+title: Call OpenAI APIs with a {{ProductName}} Agent Identity
+docType: guide
+sidebar_position: 1
+persona: iam
+description: Federate a {{ProductName}} agent identity to OpenAI using workload identity federation, so an agent trades its own token for OpenAI access instead of holding a long-lived API key.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Call OpenAI APIs with a <ProductName /> Agent Identity
+
+OpenAI [workload identity federation](https://developers.openai.com/api/docs/guides/workload-identity-federation) accepts a signed token from an external issuer and returns a short-lived OpenAI access token in exchange. Point it at <ProductName /> and your agent reaches the OpenAI API with the identity it already has. No OpenAI API key sits in the agent's environment, no key is shared between agents, and disabling the agent in <ProductName /> ends its OpenAI access at the next exchange.
+
+This guide explains how to authenticate an agent to the OpenAI API using workload identity federation. This needs no special configuration on the <ProductName /> side. The agent gets an [Agent Token](../../../agents/authentication/agent-own-token) from <ProductName />. OpenAI verifies that token and issues a short-lived access token of its own. The agent sends that access token on its API calls.
+
+See [Workload Identity Federation](../overview) for what federation replaces and how the exchange works, and [Agent Token](../../../agents/authentication/agent-own-token) for how <ProductName /> issues that token and what it carries.
+
+## Prerequisites
+
+- A running <ProductName /> instance. See [Get <ProductName />](../../../../getting-started/get-thunderid).
+- An OpenAI [developer account](https://platform.openai.com/) with access to Organization Settings.
+- `curl` and `jq` available in your terminal.
+
+## Create the Agent
+
+1. Sign in to the <ProductName /> Console at `https://localhost:8090/console`.
+2. Navigate to **Agents** → **New Agent**.
+3. Enter an **Agent Name** (for example `research-agent`).
+4. Select an owner for the agent.
+5. Click **Create Agent**.
+6. Note down the **Agent ID**, OpenAI matches on this value.
+7. Record the **Client ID** and **Client Secret**. The secret is shown once.
+
+A new agent has the `client_credentials` grant enabled, so it can already request a token for itself. See [Agent Token](../../../agents/authentication/agent-own-token) on how to get a token.
+
+:::note[Setting the audience]
+OpenAI matches the token's `aud` claim against the audience registered on the provider, so the agent token has to carry that value. You can configure a default audience from the console, or send it as the `resource` parameter on every token request, which needs a [resource server](../../../../key-concepts/authorization/#resource-servers-and-permissions) registered in <ProductName />.
+:::
+
+A `client_credentials` request that carries no `resource` parameter now produces a token whose `aud` claim is the value of default resource (for example `https://api.openai.com`). This is the value you register with OpenAI below.
+
+## Register <ProductName /> as a Workload Identity Provider
+
+OpenAI verifies the agent token against a key set it holds for your issuer. It can either fetch that key set from your discovery document or store a copy you upload. Discovery needs an issuer served over public HTTPS with no custom port, so a <ProductName /> instance on `https://localhost:8090` cannot be discovered and has to upload the key set instead.
+
+<Tabs groupId="thunderid-reachability">
+<TabItem value="public" label="Public instance" default>
+
+1. In the [OpenAI platform dashboard](https://platform.openai.com/), navigate to **Settings** → **Organization settings** → **Security** → **Workload Identity Provider**.
+2. Click **Create identity provider**.
+3. Enter a **Name**, for example **<ProductName />**, and select **OIDC** as the provider type.
+4. Set **Issuer URL** to your <ProductName /> URL, for example `https://id.example.com`. This must equal the `jwt.issuer` value in `deployment.yaml`, which defaults to the server URL.
+5. Set **Audience** to the agent's default audience, `https://api.openai.com`.
+6. Leave the discovery settings untouched. Or you can configure a custom OIDC discovery URL by turning on **Use custom URL for OIDC discovery**.
+7. Click **Create**, then record the provider ID, a string such as `idp_a1B2c3D4e5F6g7H8i9J0kLmN`.
+
+A signing key rotation needs no change on the OpenAI side, because OpenAI refreshes the key set itself when it meets a `kid` it does not hold.
+
+</TabItem>
+<TabItem value="local" label="Local instance">
+
+1. Export the <ProductName /> signing keys. Keep the full response, including the surrounding `keys` array.
+    ```bash
+    curl -sk https://localhost:8090/oauth2/jwks
+    ```
+2. In the [OpenAI platform dashboard](https://platform.openai.com/), navigate to **Settings** → **Organization settings** → **Security** → **Workload Identity Provider**.
+3. Click **Create identity provider**.
+4. Enter a **Name**, for example **<ProductName />**, and select **OIDC** as the provider type.
+5. Set **Issuer URL** to `https://localhost:8090`. This must equal the `jwt.issuer` value in `deployment.yaml`, which defaults to the server URL.
+6. Set **Audience** to the agent's default audience, `https://api.openai.com`.
+7. Turn on **Use uploaded JWKS for token verification**, then paste the JWKS JSON from step 1.
+8. Click **Create**, then record the provider ID, a string such as `idp_a1B2c3D4e5F6g7H8i9J0kLmN`.
+
+:::warning[Re-upload the key set after a key rotation]
+An uploaded JWKS is a snapshot. OpenAI saves this and performs no discovery against the issuer, so rotating the <ProductName /> signing key invalidates every exchange until you upload the new key set.
+:::
+
+</TabItem>
+</Tabs>
+
+## Map the Agent to a Service Account
+
+The provider establishes which issuer OpenAI trusts. A service account mapping decides which OpenAI identity a given token may assume. Match on the `sub` claim: it carries the agent's ID, it is unique to that agent, and it survives a client secret rotation.
+
+1. Open the provider you created, then click on **create mapping**.
+2. Enter a **Name**, for example `mapping-research-agent`.
+3. Under the key value section, Set **Key** to `sub` and use the **Agent ID** as the value. You can add additional claim mappings if needed.
+4. Select the **Project** and the **Service Account** the agent acts as.
+5. Set **Permissions** to the narrowest scope set the agent needs, or leave it unrestricted to inherit the service account's own access.
+6. Save the mapping, then record the service account ID, a string such as `user-Ab1Cd2Ef3Gh4Ij5Kl6Mn7Op8`.
+
+Give each agent its own mapping, and keep the values distinct. OpenAI rejects an exchange when more than one enabled mapping matches it.
+
+## Run the Flow
+
+### Request the Agent Token
+
+Send a `client_credentials` request with the agent's credentials:
+
+```bash
+TOKEN_RESPONSE=$(curl -X POST https://localhost:8090/oauth2/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -u '<CLIENT_ID>:<CLIENT_SECRET>' \
+  -d 'grant_type=client_credentials')
+
+AGENT_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r .access_token)
+```
+
+You can inspect the claims before you exchange the token:
+
+```bash
+echo "$AGENT_TOKEN" | jq -R 'split(".")[1] | @base64d | fromjson'
+```
+
+Three claims decide whether the exchange succeeds:
+
+| Claim | Expected value |
+|---|---|
+| `iss` | The **Issuer URL** on the provider, for example `https://localhost:8090`. |
+| `aud` | The **Audience** on the provider, which is the agent's default audience. |
+| `sub` | The **Value** on the mapping, which is the Agent ID. |
+
+See [Agent Token](../../../agents/authentication/agent-own-token) for a detailed explaination on getting an agent token.
+
+### Exchange the Token at OpenAI
+
+```bash
+ACCESS_TOKEN=$(curl -s https://auth.openai.com/oauth/token \
+  -H 'content-type: application/json' \
+  --data '{
+    "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+    "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+    "subject_token": "'"$AGENT_TOKEN"'",
+    "identity_provider_id": "<IDENTITY_PROVIDER_ID>",
+    "service_account_id": "<SERVICE_ACCOUNT_ID>"
+  }' | jq -r .access_token)
+```
+
+OpenAI returns an access token that lasts at most 3600 seconds:
+
+```json
+{
+  "access_token": "<ACCESS_TOKEN>",
+  "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
+  "token_type": "Bearer",
+  "expires_in": 3600
+}
+```
+
+The exchange assumes an existing service account. It never creates a principal, a project, or a workspace membership, so an agent reaches only what you granted that service account beforehand.
+
+### Call the OpenAI API
+
+```bash
+curl -s https://api.openai.com/v1/responses \
+  -H "authorization: Bearer $ACCESS_TOKEN" \
+  -H 'content-type: application/json' \
+  --data '{
+    "model": "gpt-5.4-mini",
+    "input": "write a 3 word sentence",
+    "store": true
+  }'
+```
+
+## Use <ProductName /> with OpenAI SDK
+
+The OpenAI SDKs can run the exchange for you. Supply a subject token provider that fetches the agent token from <ProductName />, and pass the provider ID and service account ID alongside it.
+
+```python
+import os
+
+import requests
+from openai import OpenAI
+from openai.auth import SubjectTokenProvider
+
+TOKEN_ENDPOINT = "https://localhost:8090/oauth2/token"
+
+
+def thunderid_agent_token_provider() -> SubjectTokenProvider:
+    def get_token() -> str:
+        response = requests.post(
+            TOKEN_ENDPOINT,
+            data={"grant_type": "client_credentials"},
+            auth=(os.environ["AGENT_CLIENT_ID"], os.environ["AGENT_CLIENT_SECRET"]),
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()["access_token"]
+
+    return {"token_type": "jwt", "get_token": get_token}
+
+
+client = OpenAI(
+    workload_identity={
+        "identity_provider_id": os.environ["OPENAI_IDENTITY_PROVIDER_ID"],
+        "service_account_id": os.environ["OPENAI_SERVICE_ACCOUNT_ID"],
+        "provider": thunderid_agent_token_provider(),
+    },
+)
+
+response = client.responses.create(
+    model="gpt-5.4-mini",
+    input="write a 3 word sentence",
+)
+
+print(response.output_text)
+```
+
+:::note[Trusting the local certificate]
+In a local setup, <ProductName /> serves HTTPS with a self-signed certificate, so you need to trust the certificate in the shell where you run Python by setting `REQUESTS_CA_BUNDLE`. This prevents `requests` from raising an `SSLError` due to certificate verification.
+:::
+
+Store `AGENT_CLIENT_ID` and `AGENT_CLIENT_SECRET` in your secret manager, not in the image or the repository. An agent that must not hold a shared secret at all can authenticate with a signed assertion instead, which changes only how the subject token provider fetches the agent token. See [Agent Authentication](../../../agents/authentication).
+
+## Troubleshooting
+
+| Symptom | Likely cause |
+|---|---|
+| `invalid_client` from <ProductName /> | Wrong client ID or secret, or the agent has no OAuth configuration. |
+| `invalid_subject_token` from OpenAI | The agent token expired, its `iss` does not match the provider's issuer URL, or the signing key rotated and the uploaded JWKS is stale. |
+| The exchange fails on the audience | The token's `aud` is not the audience on the provider. Check whether you have configured the default audience in <ProductName />. |
+| No mapping matched the exchange | The token's `sub` differs from the **Value** on the mapping. Decode the token and compare it against the Agent ID. |
+| Several mappings matched the exchange | Two enabled mappings on the provider accept the same token. Disable the extra one. |
+| `401` from `api.openai.com` | The OpenAI access token expired. It lasts at most 3600 seconds, so exchange again rather than caching it longer. |
+| `403` from `api.openai.com` | The mapping's permissions are narrower than the call needs, or the service account has no access to the project. |
+
+## Next Steps
+
+- [Agent Token](../../../agents/authentication/agent-own-token)
+- [Agent Authentication](../../../agents/authentication)
+- [Create and Manage Agents](../../../agents/manage-agents)
