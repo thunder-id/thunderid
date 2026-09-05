@@ -229,6 +229,10 @@ func (n *nilSkippingRegistry) RegisterExecutor(name string, _ providers.Executor
 	n.inner.RegisterExecutor(name, nil)
 }
 
+func (n *nilSkippingRegistry) SetApplicationProvider(provider providers.ApplicationAdminProvider) {
+	n.inner.SetApplicationProvider(provider)
+}
+
 func (n *nilSkippingRegistry) IsRegistered(name string) bool {
 	return n.inner.IsRegistered(name)
 }

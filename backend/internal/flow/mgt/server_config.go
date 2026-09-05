@@ -74,6 +74,8 @@ func (h *FlowConfigHandler) Validate(incoming, _, _ any) error {
 		{cfg.RecoveryFlow, providers.FlowTypeRecovery, "recoveryFlow"},
 		{cfg.SignOutFlow, providers.FlowTypeSignOut, "signOutFlow"},
 		{cfg.UserDeletionFlow, providers.FlowTypeAdministration, "userDeletionFlow"},
+		{cfg.ApplicationDeletionFlow, providers.FlowTypeAdministration, "applicationDeletionFlow"},
+		{cfg.ClientSecretRegenerationFlow, providers.FlowTypeAdministration, "clientSecretRegenerationFlow"},
 	}
 	ctx := context.Background()
 
@@ -105,6 +107,10 @@ func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 		RecoveryFlow:       mergeFlowTypeConfig(ro.RecoveryFlow, wr.RecoveryFlow),
 		SignOutFlow:        mergeFlowTypeConfig(ro.SignOutFlow, wr.SignOutFlow),
 		UserDeletionFlow:   mergeFlowTypeConfig(ro.UserDeletionFlow, wr.UserDeletionFlow),
+		ApplicationDeletionFlow: mergeFlowTypeConfig(
+			ro.ApplicationDeletionFlow, wr.ApplicationDeletionFlow),
+		ClientSecretRegenerationFlow: mergeFlowTypeConfig(
+			ro.ClientSecretRegenerationFlow, wr.ClientSecretRegenerationFlow),
 	}
 }
 

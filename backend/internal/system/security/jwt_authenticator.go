@@ -38,6 +38,9 @@ const (
 	// claimAccessTokenSubject carries the end user behind a token minted for a delegated call. When
 	// present it, not sub, is the subject the deny list is evaluated against.
 	claimAccessTokenSubject = "access_token_sub"
+
+	// claimClientID names the OAuth client an access token was issued to.
+	claimClientID = "client_id"
 )
 
 // jwtAuthenticator handles authentication and authorization using JWT Bearer tokens.
@@ -106,8 +109,17 @@ func (h *jwtAuthenticator) Authenticate(r *http.Request) (*SecurityContext, erro
 	// federated token contributes no revocation subject and is enforced on jti and tfid alone.
 	if issuer, _ := attributes[claimIssuer].(string); issuer == config.GetServerRuntime().Config.JWT.Issuer {
 		securityCtx.revocationSubject = subject
-		if accessTokenSubject, _ := attributes[claimAccessTokenSubject].(string); accessTokenSubject != "" {
+		accessTokenSubject, _ := attributes[claimAccessTokenSubject].(string)
+		if accessTokenSubject != "" {
 			securityCtx.revocationSubject = accessTokenSubject
+		}
+		// The app.key dimension is revoked by the OAuth client the token was issued to. Access tokens
+		// carry it in client_id; refresh tokens carry no client_id and hold the owning client in sub,
+		// which is only safe to read when access_token_sub marks the token as a refresh token.
+		if clientID, _ := attributes[claimClientID].(string); clientID != "" {
+			securityCtx.revocationAppKey = clientID
+		} else if accessTokenSubject != "" {
+			securityCtx.revocationAppKey = subject
 		}
 		if issuedAt, ok := attributes[claimIssuedAt].(float64); ok {
 			securityCtx.establishedAt = time.Unix(int64(issuedAt), 0).UTC()

@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {describe, it, expect} from 'vitest';
@@ -183,8 +183,8 @@ describe('steps models', () => {
       expect(ExecutionTypes.PreDelete).toBe('PreDeleteExecutor');
     });
 
-    it('should have exactly 27 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(27);
+    it('should have exactly 31 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(31);
     });
   });
 

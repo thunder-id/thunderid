@@ -12,6 +12,9 @@ const LABELS: Record<string, string> = {
   'errors.APP-1039':
     "The {{sourceFlowType}} references a different {{flowType}} than the one configured for this application. Update the {{sourceFlowType}} so it calls the same {{flowType}}, or change the application's {{flowType}} configuration.",
   'update.error': 'Failed to update the application.',
+  'delete.error': 'Failed to delete application. Please try again.',
+  'common:errors.FET-1088': 'This application authenticates without a client secret, so there is none to regenerate.',
+  'errors.FET-1090': 'A feature-namespace message for {{attribute}}.',
 };
 
 function makeT(labels: Record<string, string>) {
@@ -43,7 +46,47 @@ function apiErrorFor(code: string, params?: {sourceFlowType?: string; flowType?:
   } as unknown as Error;
 }
 
+/**
+ * A refused administration-flow step, which reports its code on the thrown error rather than in a
+ * `response.data` envelope, since the refusal arrives inside a 200 response.
+ */
+function flowErrorFor(code: string, params?: Record<string, string>): Error {
+  const error = new Error('the flow did not complete') as Error & {
+    code: string;
+    error: {code: string; message?: {params?: Record<string, string>}};
+  };
+  error.code = code;
+  error.error = {code, message: params ? {params} : undefined};
+
+  return error;
+}
+
 describe('getApplicationErrorMessage', () => {
+  // Without this the console shows the generic "Failed to delete application", hiding the actual
+  // reason the flow refused.
+  it('resolves a refused flow step from the shared catalog', () => {
+    const error = flowErrorFor('FET-1088');
+
+    expect(getApplicationErrorMessage(error, t, 'delete.error')).toBe(
+      'This application authenticates without a client secret, so there is none to regenerate.',
+    );
+  });
+
+  // Mirrors getErrorMessage's two-tier lookup: the feature namespace wins over the shared catalog.
+  it('prefers the feature namespace over the shared catalog, resolving flow params', () => {
+    const error = flowErrorFor('FET-1090', {attribute: 'email'});
+
+    expect(getApplicationErrorMessage(error, t, 'delete.error')).toBe('A feature-namespace message for email.');
+  });
+
+  it('falls back to the generic message for an unmapped flow code', () => {
+    const error = flowErrorFor('FET-9999');
+
+    expect(getApplicationErrorMessage(error, t, 'delete.error')).toBe(
+      'Failed to delete application. Please try again.',
+    );
+  });
+
   it('builds an actionable message from APP-1039 params, using the Flows tab labels', () => {
     const error = apiErrorFor('APP-1039', {sourceFlowType: 'registration', flowType: 'authentication'});
 

@@ -39,8 +39,37 @@ const FLOW_TYPE_LABELS: Record<string, {key: string; defaultValue: string}> = {
 };
 
 /**
+ * Reads the error code an administration flow reports on a refused step.
+ *
+ * A refusal arrives as a failed step inside a 200 response, so its code rides on the thrown error
+ * rather than on `response.data`, which is what {@link getErrorMessage} reads.
+ */
+function extractFlowErrorCode(error: Error): string | undefined {
+  const candidate = error as Error & {code?: string; error?: {code?: string}};
+
+  return candidate.code ?? candidate.error?.code;
+}
+
+/**
+ * Reads the interpolation params the flow engine attaches to a parameterized error, so a mapped
+ * message resolves its placeholders instead of rendering them literally. Params ride on the
+ * message, with the description as a fallback.
+ */
+function extractFlowErrorParams(error: Error): Record<string, string> | undefined {
+  const candidate = error as Error & {
+    error?: {
+      description?: {params?: Record<string, string>};
+      message?: {params?: Record<string, string>};
+    };
+  };
+
+  return candidate.error?.message?.params ?? candidate.error?.description?.params;
+}
+
+/**
  * Extracts a localized error message from an application API error response, with a dedicated,
- * actionable message for APP-1039 (conflicting flow references).
+ * actionable message for APP-1039 (conflicting flow references), and code resolution for the
+ * administration flows the delete and secret-regeneration actions run through.
  *
  * For APP-1039, builds the message from the error's `sourceFlowType`/`flowType` params,
  * translated into the same flow labels shown on the application's Flows tab (e.g. "Sign-up Flow",
@@ -83,6 +112,20 @@ export default function getApplicationErrorMessage(
       return t(fallbackKey, {defaultValue: fallbackDefaultValue});
     }
     return t(fallbackKey);
+  }
+
+  const flowCode = extractFlowErrorCode(error);
+
+  if (flowCode && !apiError?.code) {
+    // The code came from a failed flow step getErrorMessage cannot see (response.data.code is
+    // absent), so resolve it here instead of delegating. Mirrors getErrorMessage's two-tier lookup:
+    // the feature namespace first, then the shared catalog for cross-service codes (e.g. FET-1086).
+    const options = {...extractFlowErrorParams(error), defaultValue: ''};
+    const specific = t(`errors.${flowCode}`, options) || t(`common:errors.${flowCode}`, options);
+
+    if (specific) {
+      return specific;
+    }
   }
 
   return getErrorMessage(error, t, fallbackKey, fallbackDefaultValue);

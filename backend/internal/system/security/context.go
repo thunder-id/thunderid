@@ -26,6 +26,7 @@ type SecurityContext struct {
 	revocationID      string
 	tokenFamilyID     string
 	revocationSubject string
+	revocationAppKey  string
 	establishedAt     time.Time
 	permissions       []string
 	attributes        map[string]interface{}

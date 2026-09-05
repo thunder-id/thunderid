@@ -95,6 +95,10 @@ CREATE TABLE "SSO_SESSION_PARTICIPANT" (
     PRIMARY KEY (SESSION_ID, DEPLOYMENT_ID, APP_ID)
 );
 
+-- Index for participation lookups by application, used when an application is deleted and its
+-- participation must be detached from every session it joined.
+CREATE INDEX idx_sso_session_participant_app ON "SSO_SESSION_PARTICIPANT" (DEPLOYMENT_ID, APP_ID);
+
 -- Table to store consent records.
 CREATE TABLE "CONSENT" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,

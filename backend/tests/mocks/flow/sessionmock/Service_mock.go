@@ -189,6 +189,63 @@ func (_c *ServiceMock_LoadCheckpoint_Call) RunAndReturn(run func(ctx context.Con
 	return _c
 }
 
+// RemoveApplication provides a mock function for the type ServiceMock
+func (_mock *ServiceMock) RemoveApplication(ctx context.Context, appID string) error {
+	ret := _mock.Called(ctx, appID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveApplication")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, appID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// ServiceMock_RemoveApplication_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveApplication'
+type ServiceMock_RemoveApplication_Call struct {
+	*mock.Call
+}
+
+// RemoveApplication is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+func (_e *ServiceMock_Expecter) RemoveApplication(ctx interface{}, appID interface{}) *ServiceMock_RemoveApplication_Call {
+	return &ServiceMock_RemoveApplication_Call{Call: _e.mock.On("RemoveApplication", ctx, appID)}
+}
+
+func (_c *ServiceMock_RemoveApplication_Call) Run(run func(ctx context.Context, appID string)) *ServiceMock_RemoveApplication_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ServiceMock_RemoveApplication_Call) Return(err error) *ServiceMock_RemoveApplication_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *ServiceMock_RemoveApplication_Call) RunAndReturn(run func(ctx context.Context, appID string) error) *ServiceMock_RemoveApplication_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Resolve provides a mock function for the type ServiceMock
 func (_mock *ServiceMock) Resolve(ctx context.Context, handle string, flowID string, flowVersion int, now time.Time) (*session.Session, error) {
 	ret := _mock.Called(ctx, handle, flowID, flowVersion, now)

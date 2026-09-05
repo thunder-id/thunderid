@@ -256,3 +256,43 @@ func (_c *ExecutorRegistryInterfaceMock_RegisterExecutor_Call) RunAndReturn(run 
 	_c.Run(run)
 	return _c
 }
+
+// SetApplicationProvider provides a mock function for the type ExecutorRegistryInterfaceMock
+func (_mock *ExecutorRegistryInterfaceMock) SetApplicationProvider(provider providers.ApplicationAdminProvider) {
+	_mock.Called(provider)
+	return
+}
+
+// ExecutorRegistryInterfaceMock_SetApplicationProvider_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetApplicationProvider'
+type ExecutorRegistryInterfaceMock_SetApplicationProvider_Call struct {
+	*mock.Call
+}
+
+// SetApplicationProvider is a helper method to define mock.On call
+//   - provider providers.ApplicationAdminProvider
+func (_e *ExecutorRegistryInterfaceMock_Expecter) SetApplicationProvider(provider interface{}) *ExecutorRegistryInterfaceMock_SetApplicationProvider_Call {
+	return &ExecutorRegistryInterfaceMock_SetApplicationProvider_Call{Call: _e.mock.On("SetApplicationProvider", provider)}
+}
+
+func (_c *ExecutorRegistryInterfaceMock_SetApplicationProvider_Call) Run(run func(provider providers.ApplicationAdminProvider)) *ExecutorRegistryInterfaceMock_SetApplicationProvider_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 providers.ApplicationAdminProvider
+		if args[0] != nil {
+			arg0 = args[0].(providers.ApplicationAdminProvider)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ExecutorRegistryInterfaceMock_SetApplicationProvider_Call) Return() *ExecutorRegistryInterfaceMock_SetApplicationProvider_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *ExecutorRegistryInterfaceMock_SetApplicationProvider_Call) RunAndReturn(run func(provider providers.ApplicationAdminProvider)) *ExecutorRegistryInterfaceMock_SetApplicationProvider_Call {
+	_c.Run(run)
+	return _c
+}

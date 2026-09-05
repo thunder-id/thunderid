@@ -2,23 +2,29 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * The `userDeletionFlow` entry of the `flow` server-config section.
+ * One entry of the `flow` server-config section, naming the administration flow for an action.
  *
- * There is no mode switch. Deletion runs through the flow when `defaultHandle` names an
- * administration flow that exists, and through `DELETE /users/{id}` otherwise, mirroring how user
- * onboarding falls back to manual creation when its flow is unavailable.
+ * There is no mode switch. An action runs through its flow when `defaultHandle` names an
+ * administration flow that exists, and through the native application endpoint otherwise, mirroring
+ * how user deletion falls back to `DELETE /users/{id}`.
  */
-export interface UserDeletionFlowConfig {
+export interface AdministrationFlowConfig {
   defaultHandle?: string;
   expirySeconds?: number;
 }
 
 /**
- * The subset of the `flow` server-config section this package reads.
+ * The subset of the `flow` server-config section the application administration paths read.
  */
 export interface FlowSectionConfig {
-  userDeletionFlow?: UserDeletionFlowConfig;
+  applicationDeletionFlow?: AdministrationFlowConfig;
+  clientSecretRegenerationFlow?: AdministrationFlowConfig;
 }
+
+/**
+ * Names of the `flow` server-config entries an application action can be driven by.
+ */
+export type ApplicationFlowConfigKey = keyof FlowSectionConfig;
 
 /**
  * `GET /server-config/{name}` returns the declarative and writable layers alongside the effective
@@ -66,12 +72,18 @@ export interface FlowExecutionError {
 }
 
 /**
- * The `POST /flow/execute` response, narrowed to what the deletion path inspects.
+ * The `POST /flow/execute` response, narrowed to what the application paths inspect.
+ *
+ * `data.additionalData` carries values a flow produces. The regeneration flow returns the new client
+ * secret there, which is the only moment it is readable.
  */
 export interface FlowExecutionResponse {
   flowStatus?: string;
   executionId?: string;
   error?: FlowExecutionError;
+  data?: {
+    additionalData?: Record<string, string>;
+  };
 }
 
 /**
@@ -84,14 +96,21 @@ export const FlowStatus = {
 } as const;
 
 /**
- * Flow type of the administration flows that can carry out a deletion.
+ * Flow type of the administration flows that can carry out an application action.
  */
 export const ADMINISTRATION_FLOW_TYPE = 'ADMINISTRATION';
 
 /**
- * Identifier of the input the deletion flow expects, matching the executor's declared input.
+ * Identifier of the input the application administration flows expect, matching the executor's
+ * declared input. It is not `applicationId`, which the execution request already uses at its top
+ * level for the application initiating the flow.
  */
-export const DELETION_SUBJECT_INPUT = 'subject';
+export const APPLICATION_TARGET_INPUT = 'targetApplicationId';
+
+/**
+ * Key the regeneration flow returns the new client secret under.
+ */
+export const CLIENT_SECRET_DATA_KEY = 'clientSecret';
 
 /**
  * Page size used when walking the flow listing to resolve a handle. Matches the server's maximum

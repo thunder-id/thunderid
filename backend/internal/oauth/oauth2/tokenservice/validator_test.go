@@ -2063,6 +2063,51 @@ func (suite *TokenValidatorTestSuite) TestRevocationIdentity_RefreshTokenUsesAcc
 	})
 }
 
+// An access token carries the owning client in client_id, so app.key is taken from there and sub is left
+// to the subject dimension.
+func (suite *TokenValidatorTestSuite) TestRevocationIdentity_AccessTokenAppKeyFromClientID() {
+	identity := revocationIdentity(map[string]interface{}{
+		"sub":       "user-123",
+		"client_id": "oauth-client",
+		"iat":       float64(1_700_000_000),
+	}, "at-jti", "at-family")
+
+	assert.Contains(suite.T(), identity.Criteria, revocation.Criterion{
+		Type: revocation.CriterionTypeApplicationKey, Value: "oauth-client",
+	})
+	assert.Contains(suite.T(), identity.Criteria, revocation.Criterion{
+		Type: revocation.CriterionTypeSubject, Value: "user-123",
+	})
+}
+
+// A refresh token carries no client_id and is minted with the owning client as sub, so app.key falls back
+// to sub there. Without this, refresh tokens would escape application revocation entirely.
+func (suite *TokenValidatorTestSuite) TestRevocationIdentity_RefreshTokenAppKeyFallsBackToSub() {
+	identity := revocationIdentity(map[string]interface{}{
+		"sub":              "oauth-client",
+		"access_token_sub": "user-123",
+		"iat":              float64(1_700_000_000),
+	}, "refresh-jti", "refresh-family")
+
+	assert.Contains(suite.T(), identity.Criteria, revocation.Criterion{
+		Type: revocation.CriterionTypeApplicationKey, Value: "oauth-client",
+	})
+}
+
+// The sub fallback must not apply to an access token, where sub holds the end user rather than the client.
+// Treating it as a client id would put a user identifier into the app.key dimension.
+func (suite *TokenValidatorTestSuite) TestRevocationIdentity_AccessTokenWithoutClientIDHasNoAppKey() {
+	identity := revocationIdentity(map[string]interface{}{
+		"sub": "user-123",
+		"iat": float64(1_700_000_000),
+	}, "at-jti", "")
+
+	for _, criterion := range identity.Criteria {
+		assert.NotEqual(suite.T(), revocation.CriterionTypeApplicationKey, criterion.Type,
+			"an access token with no client_id must contribute no app.key criterion")
+	}
+}
+
 // When the deny list cannot be consulted, the validator surfaces revocation.ErrEnforcementUnavailable
 // (fail-closed) rather than returning claims.
 func (suite *TokenValidatorTestSuite) TestValidateAccessToken_EnforcementUnavailable() {

@@ -62,6 +62,12 @@ type Service interface {
 	// grants first so no session is deleted while its tokens remain live. It is idempotent, returning
 	// nil when the subject holds no sessions.
 	TerminateBySubject(ctx context.Context, subjectID string) error
+
+	// RemoveApplication detaches an application from every SSO session it participates in: it revokes
+	// the token family of that participation and drops the participant row, deleting the session itself
+	// only when the application was its last participant. It is idempotent, returning nil when the
+	// application participates in none.
+	RemoveApplication(ctx context.Context, appID string) error
 }
 
 // LoadCheckpointInput carries what a Session join needs to restore a checkpoint. Session and Context
@@ -371,6 +377,67 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 
 // revokeSessionFamilies revokes the token family of every application participating in the session,
 // so signing out of a login drops all of that login's grants. It is a no-op when no family revoker is
+// RemoveApplication detaches an application from every SSO session it participates in, for use when the
+// application itself is being deleted.
+//
+// It is deliberately narrower than Terminate. An SSO session routinely spans several applications, so
+// ending every session the deleted application touched would sign the user out of applications that
+// still exist. Only that application's participation goes, and the session is deleted just when nothing
+// is left to participate: at that point it can no longer back SSO for anything.
+//
+// Each participation's token family is revoked before its row is dropped, because the row is the only
+// record linking the session to that grant, so losing it first would leave the grant unrevocable. All
+// writes share one transaction, so a partial failure leaves every session intact rather than some subset
+// detached.
+//
+// Applications that hold no tokens still participate: TFID is empty for a participant that joined
+// without a grant, and revoking an empty family is a no-op, so such a participation is simply dropped.
+func (s *service) RemoveApplication(ctx context.Context, appID string) error {
+	if appID == "" {
+		return nil
+	}
+	participations, err := s.store.ListByAppID(ctx, appID)
+	if err != nil {
+		return fmt.Errorf("failed to list session participation by application: %w", err)
+	}
+	if len(participations) == 0 {
+		return nil
+	}
+
+	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		for _, participation := range participations {
+			if s.criteriaRevoker != nil {
+				if revErr := s.criteriaRevoker.RevokeTokenFamily(txCtx, participation.TokenFamilyID); revErr != nil {
+					return revErr
+				}
+			}
+			if delErr := s.store.DeleteParticipant(txCtx, participation.SessionID, appID); delErr != nil {
+				return delErr
+			}
+			remaining, listErr := s.store.ListBySessionID(txCtx, participation.SessionID)
+			if listErr != nil {
+				return listErr
+			}
+			if len(remaining) > 0 {
+				continue
+			}
+			if delErr := s.store.DeleteSession(txCtx, participation.SessionID); delErr != nil {
+				return delErr
+			}
+			if delErr := s.store.Delete(txCtx, participation.SessionID); delErr != nil {
+				return delErr
+			}
+		}
+		return nil
+	}); txErr != nil {
+		return fmt.Errorf("failed to remove application from sessions: %w", txErr)
+	}
+
+	s.logger.Debug(ctx, "Detached application from SSO sessions",
+		log.Int("sessionCount", len(participations)))
+	return nil
+}
+
 // wired. A participant recorded before tfid was introduced (empty tfid) is skipped by the revoker.
 func (s *service) revokeSessionFamilies(ctx context.Context, sessionID string) error {
 	if s.criteriaRevoker == nil {

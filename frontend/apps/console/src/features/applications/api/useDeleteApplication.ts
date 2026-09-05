@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
@@ -6,6 +6,7 @@ import {ApplicationQueryKeys} from '@thunderid/configure-applications';
 import {useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
+import {deleteApplicationViaFlow, type HttpLike} from '../utils/applicationAdministrationFlow';
 
 /**
  * Custom React hook to delete an application from the server.
@@ -14,6 +15,10 @@ import {useTranslation} from 'react-i18next';
  * providing loading states and error handling. Upon successful deletion, it automatically
  * removes the application from cache and invalidates the applications list query to
  * trigger a refetch.
+ *
+ * The deletion runs through the configured administration flow, which revokes the application's
+ * tokens and detaches its sessions before the record is removed. It falls back to
+ * `DELETE /applications/{id}` when no such flow is configured.
  *
  * @returns TanStack Query mutation object for deleting applications with mutate function, loading state, and error information
  *
@@ -54,14 +59,7 @@ export default function useDeleteApplication(): UseMutationResult<void, Error, s
 
   return useMutation<void, Error, string>({
     mutationFn: async (applicationId: string): Promise<void> => {
-      const serverUrl: string = getServerUrl();
-      await http.request({
-        url: `${serverUrl}/applications/${applicationId}`,
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      } as unknown as Parameters<typeof http.request>[0]);
+      await deleteApplicationViaFlow(http as unknown as HttpLike, getServerUrl(), applicationId);
     },
     onSuccess: (_data, applicationId) => {
       // Remove the specific application from cache
