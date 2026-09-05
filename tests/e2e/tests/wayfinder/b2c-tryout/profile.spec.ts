@@ -87,7 +87,7 @@ describeOrSkip("Wayfinder B2C Tryout - Profile", { tag: [TestTags.WAYFINDER] }, 
     });
 
     await test.step("Change the password", async () => {
-      await profilePage.changePassword(newPassword);
+      await profilePage.changePassword(customer.password, newPassword);
     });
 
     await test.step("Sign back in with the new password to confirm the credential update took effect", async () => {

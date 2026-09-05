@@ -47,6 +47,8 @@ type UserServiceInterface interface {
 	GetUserMetadata(ctx context.Context, userID string) (*entitytype.EntityType, *tidcommon.ServiceError)
 	UpdateUserCredentials(ctx context.Context, userID string,
 		credentials json.RawMessage) *tidcommon.ServiceError
+	UpdateSelfUserCredentials(ctx context.Context, userID string, currentPassword string,
+		credentials json.RawMessage) *tidcommon.ServiceError
 	DeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError
 	ValidateDeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError
 	ResolveUserOUHandle(ctx context.Context, user *providers.User) *tidcommon.ServiceError
@@ -685,6 +687,86 @@ func (us *userService) UpdateUserAttributes(
 
 	logger.Debug(ctx, "Successfully updated user attributes", log.MaskedString(log.LoggerKeyUserID, userID))
 	return &existingUser, nil
+}
+
+// UpdateSelfUserCredentials updates the authenticated user's own password after verifying their
+// current one. Kept separate from UpdateUserCredentials (the admin reset path), since an admin
+// can't supply the target's current password.
+// A user with no password stored yet is treated as a first-time set.
+func (us *userService) UpdateSelfUserCredentials(
+	ctx context.Context,
+	userID string,
+	currentPassword string,
+	credentials json.RawMessage,
+) *tidcommon.ServiceError {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	if strings.TrimSpace(userID) == "" {
+		return &ErrorAuthenticationFailed
+	}
+
+	if svcErr := validateSelfCredentialPayload(credentials); svcErr != nil {
+		return svcErr
+	}
+
+	stored, err := us.entityService.GetCredentialsByType(ctx, userID, string(CredentialTypePassword))
+	if err != nil {
+		if errors.Is(err, entity.ErrEntityNotFound) {
+			return &ErrorUserNotFound
+		}
+		return logErrorAndReturnServerError(ctx, logger, "Failed to read stored credentials", err,
+			log.MaskedString(log.LoggerKeyUserID, userID))
+	}
+
+	if len(stored) > 0 {
+		if strings.TrimSpace(currentPassword) == "" {
+			return &ErrorInvalidCurrentPassword
+		}
+
+		_, authErr := us.entityService.AuthenticateEntityByID(
+			ctx, userID, map[string]interface{}{string(CredentialTypePassword): currentPassword})
+		if authErr != nil {
+			switch {
+			case errors.Is(authErr, entity.ErrAuthenticationFailed):
+				logger.Debug(ctx, "Current password verification failed",
+					log.MaskedString(log.LoggerKeyUserID, userID))
+				return &ErrorInvalidCurrentPassword
+			case errors.Is(authErr, entity.ErrEntityNotFound):
+				return &ErrorUserNotFound
+			default:
+				return logErrorAndReturnServerError(ctx, logger, "Failed to verify current password", authErr,
+					log.MaskedString(log.LoggerKeyUserID, userID))
+			}
+		}
+	}
+
+	return us.UpdateUserCredentials(ctx, userID, credentials)
+}
+
+// validateSelfCredentialPayload restricts a self-service credential write to the password.
+// Rejecting anything else is checked before the stored password is read, so an invalid payload
+// costs no lookup and reveals nothing about whether the account has a password set.
+func validateSelfCredentialPayload(credentials json.RawMessage) *tidcommon.ServiceError {
+	if len(credentials) == 0 {
+		return &ErrorMissingCredentials
+	}
+
+	var credentialsMap map[string]json.RawMessage
+	if err := json.Unmarshal(credentials, &credentialsMap); err != nil {
+		return &ErrorInvalidRequestFormat
+	}
+
+	if len(credentialsMap) == 0 {
+		return &ErrorMissingCredentials
+	}
+
+	for credType := range credentialsMap {
+		if CredentialType(credType) != CredentialTypePassword {
+			return &ErrorInvalidCredential
+		}
+	}
+
+	return nil
 }
 
 // UpdateUserCredentials updates schema-defined credentials for a user.

@@ -826,6 +826,77 @@ func (_c *UserServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run 
 	return _c
 }
 
+// UpdateSelfUserCredentials provides a mock function for the type UserServiceInterfaceMock
+func (_mock *UserServiceInterfaceMock) UpdateSelfUserCredentials(ctx context.Context, userID string, currentPassword string, credentials json.RawMessage) *common.ServiceError {
+	ret := _mock.Called(ctx, userID, currentPassword, credentials)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateSelfUserCredentials")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, json.RawMessage) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, userID, currentPassword, credentials)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// UserServiceInterfaceMock_UpdateSelfUserCredentials_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateSelfUserCredentials'
+type UserServiceInterfaceMock_UpdateSelfUserCredentials_Call struct {
+	*mock.Call
+}
+
+// UpdateSelfUserCredentials is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - currentPassword string
+//   - credentials json.RawMessage
+func (_e *UserServiceInterfaceMock_Expecter) UpdateSelfUserCredentials(ctx interface{}, userID interface{}, currentPassword interface{}, credentials interface{}) *UserServiceInterfaceMock_UpdateSelfUserCredentials_Call {
+	return &UserServiceInterfaceMock_UpdateSelfUserCredentials_Call{Call: _e.mock.On("UpdateSelfUserCredentials", ctx, userID, currentPassword, credentials)}
+}
+
+func (_c *UserServiceInterfaceMock_UpdateSelfUserCredentials_Call) Run(run func(ctx context.Context, userID string, currentPassword string, credentials json.RawMessage)) *UserServiceInterfaceMock_UpdateSelfUserCredentials_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 json.RawMessage
+		if args[3] != nil {
+			arg3 = args[3].(json.RawMessage)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_UpdateSelfUserCredentials_Call) Return(serviceError *common.ServiceError) *UserServiceInterfaceMock_UpdateSelfUserCredentials_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_UpdateSelfUserCredentials_Call) RunAndReturn(run func(ctx context.Context, userID string, currentPassword string, credentials json.RawMessage) *common.ServiceError) *UserServiceInterfaceMock_UpdateSelfUserCredentials_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateUser provides a mock function for the type UserServiceInterfaceMock
 func (_mock *UserServiceInterfaceMock) UpdateUser(ctx context.Context, userID string, user *providers.User) (*providers.User, *common.ServiceError) {
 	ret := _mock.Called(ctx, userID, user)

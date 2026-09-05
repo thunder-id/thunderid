@@ -3923,3 +3923,286 @@ func TestGetUserMetadata_GetEntityTypeSchemaError(t *testing.T) {
 	require.NotNil(t, svcErr)
 	require.Equal(t, entitytype.ErrorEntityTypeNotFound.Code, svcErr.Code)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UpdateSelfUserCredentials – current-password verification
+// ─────────────────────────────────────────────────────────────────────────────
+
+// storedPasswordCredential returns a stored credential value standing in for a hashed password.
+// The hash is never inspected: AuthenticateEntityByID is mocked, so only its presence matters.
+func storedPasswordCredential() []entitypkg.StoredCredential {
+	return []entitypkg.StoredCredential{{Value: "hashed-current-password"}}
+}
+
+func TestUserService_UpdateSelfUserCredentials_RejectsMissingUserID(t *testing.T) {
+	service := &userService{}
+
+	err := service.UpdateSelfUserCredentials(
+		context.Background(), "", "0ldP@ss", json.RawMessage(`{"password":"n3wP@ss"}`))
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorAuthenticationFailed, *err)
+}
+
+func TestUserService_UpdateSelfUserCredentials_RejectsWrongCurrentPassword(t *testing.T) {
+	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
+	entityMock.
+		On("GetCredentialsByType", mock.Anything, svcTestUserID1, "password").
+		Return(storedPasswordCredential(), nil).
+		Once()
+	entityMock.
+		On("AuthenticateEntityByID", mock.Anything, svcTestUserID1,
+			map[string]interface{}{"password": "wrong-password"}).
+		Return(nil, entitypkg.ErrAuthenticationFailed).
+		Once()
+
+	service := &userService{entityService: entityMock, authzService: newAllowAllAuthz(t)}
+
+	err := service.UpdateSelfUserCredentials(
+		context.Background(), svcTestUserID1, "wrong-password", json.RawMessage(`{"password":"n3wP@ss"}`))
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorInvalidCurrentPassword, *err)
+	// The write must not be attempted when verification fails.
+	entityMock.AssertNotCalled(t, "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUserService_UpdateSelfUserCredentials_RejectsEmptyCurrentPasswordWhenOneIsSet(t *testing.T) {
+	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
+	entityMock.
+		On("GetCredentialsByType", mock.Anything, svcTestUserID1, "password").
+		Return(storedPasswordCredential(), nil).
+		Once()
+
+	service := &userService{entityService: entityMock, authzService: newAllowAllAuthz(t)}
+
+	err := service.UpdateSelfUserCredentials(
+		context.Background(), svcTestUserID1, "   ", json.RawMessage(`{"password":"n3wP@ss"}`))
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorInvalidCurrentPassword, *err)
+	// Verification is skipped entirely when nothing was supplied.
+	entityMock.AssertNotCalled(t, "AuthenticateEntityByID",
+		mock.Anything, mock.Anything, mock.Anything)
+	entityMock.AssertNotCalled(t, "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUserService_UpdateSelfUserCredentials_WritesWhenCurrentPasswordMatches(t *testing.T) {
+	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
+	entityMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
+	entityMock.
+		On("GetCredentialsByType", mock.Anything, svcTestUserID1, "password").
+		Return(storedPasswordCredential(), nil).
+		Once()
+	entityMock.
+		On("AuthenticateEntityByID", mock.Anything, svcTestUserID1,
+			map[string]interface{}{"password": "0ldP@ss"}).
+		Return(&entitypkg.AuthenticateResult{EntityID: svcTestUserID1}, nil).
+		Once()
+	entityMock.
+		On("GetEntity", mock.Anything, svcTestUserID1).
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: "Person",
+		}, nil).
+		Once()
+	entityMock.
+		On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).
+		Return(nil).
+		Once()
+
+	service := &userService{entityService: entityMock, authzService: newAllowAllAuthz(t)}
+
+	err := service.UpdateSelfUserCredentials(
+		context.Background(), svcTestUserID1, "0ldP@ss", json.RawMessage(`{"password":"n3wP@ss"}`))
+
+	require.Nil(t, err)
+	entityMock.AssertNumberOfCalls(t, "UpdateCredentials", 1)
+}
+
+func TestUserService_UpdateSelfUserCredentials_AllowsFirstTimeSetWithoutStoredPassword(t *testing.T) {
+	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
+	entityMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
+	entityMock.
+		On("GetCredentialsByType", mock.Anything, svcTestUserID1, "password").
+		Return([]entitypkg.StoredCredential{}, nil).
+		Once()
+	entityMock.
+		On("GetEntity", mock.Anything, svcTestUserID1).
+		Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: "Person",
+		}, nil).
+		Once()
+	entityMock.
+		On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).
+		Return(nil).
+		Once()
+
+	service := &userService{entityService: entityMock, authzService: newAllowAllAuthz(t)}
+
+	err := service.UpdateSelfUserCredentials(
+		context.Background(), svcTestUserID1, "", json.RawMessage(`{"password":"n3wP@ss"}`))
+
+	require.Nil(t, err)
+	// Nothing to prove yet, so verification must not run.
+	entityMock.AssertNotCalled(t, "AuthenticateEntityByID",
+		mock.Anything, mock.Anything, mock.Anything)
+	entityMock.AssertNumberOfCalls(t, "UpdateCredentials", 1)
+}
+
+func TestUserService_UpdateSelfUserCredentials_RejectsNonPasswordCredentialTypes(t *testing.T) {
+	// UpdateUserCredentials accepts any schema-declared credential, so the self-service path has to
+	// narrow the payload itself. Proving the password must not authorize writing something else.
+	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
+	service := &userService{entityService: entityMock, authzService: newAllowAllAuthz(t)}
+
+	err := service.UpdateSelfUserCredentials(
+		context.Background(), svcTestUserID1, "0ldP@ssword!", json.RawMessage(`{"pin":"4321"}`))
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorInvalidCredential, *err)
+	entityMock.AssertNotCalled(t, "GetCredentialsByType", mock.Anything, mock.Anything, mock.Anything)
+	entityMock.AssertNotCalled(t, "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUserService_UpdateSelfUserCredentials_RejectsPasswordMixedWithAnotherCredentialType(t *testing.T) {
+	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
+	service := &userService{entityService: entityMock, authzService: newAllowAllAuthz(t)}
+
+	err := service.UpdateSelfUserCredentials(
+		context.Background(), svcTestUserID1, "0ldP@ssword!",
+		json.RawMessage(`{"password":"n3wP@ssword!","pin":"4321"}`))
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorInvalidCredential, *err)
+	entityMock.AssertNotCalled(t, "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUserService_UpdateSelfUserCredentials_RejectsNonPasswordCredentialWithNoProofSupplied(t *testing.T) {
+	// The first-time-set branch skips verification entirely. Without the payload restriction that
+	// branch would write any schema credential on the access token alone, which is the takeover
+	// path this endpoint exists to close.
+	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
+	service := &userService{entityService: entityMock, authzService: newAllowAllAuthz(t)}
+
+	err := service.UpdateSelfUserCredentials(
+		context.Background(), svcTestUserID1, "", json.RawMessage(`{"pin":"4321"}`))
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorInvalidCredential, *err)
+	entityMock.AssertNotCalled(t, "GetCredentialsByType", mock.Anything, mock.Anything, mock.Anything)
+	entityMock.AssertNotCalled(t, "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUserService_UpdateSelfUserCredentials_RejectsEmptyCredentialPayload(t *testing.T) {
+	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
+	service := &userService{entityService: entityMock, authzService: newAllowAllAuthz(t)}
+
+	err := service.UpdateSelfUserCredentials(
+		context.Background(), svcTestUserID1, "0ldP@ssword!", json.RawMessage(`{}`))
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorMissingCredentials, *err)
+	entityMock.AssertNotCalled(t, "GetCredentialsByType", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUserService_UpdateSelfUserCredentials_ReturnsServerErrorWhenStoredCredentialReadFails(t *testing.T) {
+	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
+	entityMock.
+		On("GetCredentialsByType", mock.Anything, svcTestUserID1, "password").
+		Return(nil, errors.New("store unavailable")).
+		Once()
+
+	service := &userService{entityService: entityMock, authzService: newAllowAllAuthz(t)}
+
+	err := service.UpdateSelfUserCredentials(
+		context.Background(), svcTestUserID1, "0ldP@ss", json.RawMessage(`{"password":"n3wP@ss"}`))
+
+	require.NotNil(t, err)
+	require.Equal(t, tidcommon.InternalServerError, *err)
+	entityMock.AssertNotCalled(t, "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUserService_UpdateSelfUserCredentials_ReturnsNotFoundWhenVerificationReportsUnknownEntity(t *testing.T) {
+	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
+	entityMock.
+		On("GetCredentialsByType", mock.Anything, svcTestUserID1, "password").
+		Return(storedPasswordCredential(), nil).
+		Once()
+	entityMock.
+		On("AuthenticateEntityByID", mock.Anything, svcTestUserID1,
+			map[string]interface{}{"password": "0ldP@ss"}).
+		Return(nil, entitypkg.ErrEntityNotFound).
+		Once()
+
+	service := &userService{entityService: entityMock, authzService: newAllowAllAuthz(t)}
+
+	err := service.UpdateSelfUserCredentials(
+		context.Background(), svcTestUserID1, "0ldP@ss", json.RawMessage(`{"password":"n3wP@ss"}`))
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorUserNotFound, *err)
+	entityMock.AssertNotCalled(t, "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUserService_UpdateSelfUserCredentials_ReturnsServerErrorWhenVerificationFailsUnexpectedly(t *testing.T) {
+	// An unexpected verification failure must not fall through to the write. Anything other than a
+	// clean "wrong password" leaves the caller unproven.
+	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
+	entityMock.
+		On("GetCredentialsByType", mock.Anything, svcTestUserID1, "password").
+		Return(storedPasswordCredential(), nil).
+		Once()
+	entityMock.
+		On("AuthenticateEntityByID", mock.Anything, svcTestUserID1,
+			map[string]interface{}{"password": "0ldP@ss"}).
+		Return(nil, errors.New("hash backend unavailable")).
+		Once()
+
+	service := &userService{entityService: entityMock, authzService: newAllowAllAuthz(t)}
+
+	err := service.UpdateSelfUserCredentials(
+		context.Background(), svcTestUserID1, "0ldP@ss", json.RawMessage(`{"password":"n3wP@ss"}`))
+
+	require.NotNil(t, err)
+	require.Equal(t, tidcommon.InternalServerError, *err)
+	entityMock.AssertNotCalled(t, "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUserService_UpdateSelfUserCredentials_RejectsAbsentCredentialPayload(t *testing.T) {
+	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
+	service := &userService{entityService: entityMock, authzService: newAllowAllAuthz(t)}
+
+	err := service.UpdateSelfUserCredentials(context.Background(), svcTestUserID1, "0ldP@ss", nil)
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorMissingCredentials, *err)
+	entityMock.AssertNotCalled(t, "GetCredentialsByType", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUserService_UpdateSelfUserCredentials_RejectsMalformedCredentialPayload(t *testing.T) {
+	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
+	service := &userService{entityService: entityMock, authzService: newAllowAllAuthz(t)}
+
+	err := service.UpdateSelfUserCredentials(
+		context.Background(), svcTestUserID1, "0ldP@ss", json.RawMessage(`{"password":`))
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorInvalidRequestFormat, *err)
+	entityMock.AssertNotCalled(t, "GetCredentialsByType", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUserService_UpdateSelfUserCredentials_ReturnsNotFoundForUnknownUser(t *testing.T) {
+	entityMock := entitymock.NewEntityServiceInterfaceMock(t)
+	entityMock.
+		On("GetCredentialsByType", mock.Anything, svcTestUserID1, "password").
+		Return(nil, entitypkg.ErrEntityNotFound).
+		Once()
+
+	service := &userService{entityService: entityMock, authzService: newAllowAllAuthz(t)}
+
+	err := service.UpdateSelfUserCredentials(
+		context.Background(), svcTestUserID1, "0ldP@ss", json.RawMessage(`{"password":"n3wP@ss"}`))
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorUserNotFound, *err)
+}
