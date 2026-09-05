@@ -248,33 +248,21 @@ var (
 )
 
 // buildGetOrganizationUnitsByIDsQuery dynamically builds a query to retrieve organization units by a list of IDs.
-// For PostgreSQL: WHERE OU_ID IN ($1, $2, ...) AND DEPLOYMENT_ID = $N
-// For SQLite: WHERE OU_ID IN (?, ?, ...) AND DEPLOYMENT_ID = ?
+// WHERE OU_ID IN ($1, $2, ...) AND DEPLOYMENT_ID = $N
 func buildGetOrganizationUnitsByIDsQuery(ids []string) dbmodel.DBQuery {
 	n := len(ids)
 
-	// Build PostgreSQL placeholders: $1, $2, ..., $N
-	pgPlaceholders := make([]string, n)
+	placeholders := make([]string, n)
 	for i := range ids {
-		pgPlaceholders[i] = fmt.Sprintf("$%d", i+1)
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
 	}
-	pgInClause := strings.Join(pgPlaceholders, ", ")
+	inClause := strings.Join(placeholders, ", ")
 	deploymentIDParam := fmt.Sprintf("$%d", n+1)
-
-	// Build SQLite placeholders: ?, ?, ...
-	sqlitePlaceholders := make([]string, n)
-	for i := range ids {
-		sqlitePlaceholders[i] = "?"
-	}
-	sqliteInClause := strings.Join(sqlitePlaceholders, ", ")
 
 	return dbmodel.DBQuery{
 		ID: "OUQ-OU_MGT-21",
-		PostgresQuery: `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT ` +
+		Query: `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT ` +
 			`FROM "ORGANIZATION_UNIT" ` +
-			`WHERE OU_ID IN (` + pgInClause + `) AND DEPLOYMENT_ID = ` + deploymentIDParam + ` ORDER BY NAME`,
-		SQLiteQuery: `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT ` +
-			`FROM "ORGANIZATION_UNIT" ` +
-			`WHERE OU_ID IN (` + sqliteInClause + `) AND DEPLOYMENT_ID = ? ORDER BY NAME`,
+			`WHERE OU_ID IN (` + inClause + `) AND DEPLOYMENT_ID = ` + deploymentIDParam + ` ORDER BY NAME`,
 	}
 }

@@ -69,12 +69,9 @@ func buildGetEntityTypeListByOUIDsQuery(ouIDs []string) dbmodel.DBQuery {
 	if n == 0 {
 		return dbmodel.DBQuery{
 			ID: "ASQ-ENTITY_TYPE-008",
-			PostgresQuery: `SELECT ID, CATEGORY, NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
+			Query: `SELECT ID, CATEGORY, NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
 				`SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
 				`WHERE 1=0 AND CATEGORY = $1 AND DEPLOYMENT_ID = $2 ORDER BY NAME LIMIT $3 OFFSET $4`,
-			SQLiteQuery: `SELECT ID, CATEGORY, NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
-				`SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
-				`WHERE 1=0 AND CATEGORY = ? AND DEPLOYMENT_ID = ? ORDER BY NAME LIMIT ? OFFSET ?`,
 		}
 	}
 
@@ -88,23 +85,13 @@ func buildGetEntityTypeListByOUIDsQuery(ouIDs []string) dbmodel.DBQuery {
 	pgLimit := fmt.Sprintf("$%d", n+3)
 	pgOffset := fmt.Sprintf("$%d", n+4)
 
-	sqlitePlaceholders := make([]string, n)
-	for i := range ouIDs {
-		sqlitePlaceholders[i] = "?"
-	}
-	sqliteInClause := strings.Join(sqlitePlaceholders, ", ")
-
 	return dbmodel.DBQuery{
 		ID: "ASQ-ENTITY_TYPE-008",
-		PostgresQuery: `SELECT ID, CATEGORY, NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
+		Query: `SELECT ID, CATEGORY, NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
 			`SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
 			`WHERE OU_ID IN (` + pgInClause + `) AND CATEGORY = ` + pgCategory +
 			` AND DEPLOYMENT_ID = ` + pgDeploymentID +
 			` ORDER BY NAME LIMIT ` + pgLimit + ` OFFSET ` + pgOffset,
-		SQLiteQuery: `SELECT ID, CATEGORY, NAME, OU_ID, ALLOW_SELF_REGISTRATION, ` +
-			`SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
-			`WHERE OU_ID IN (` + sqliteInClause + `) AND CATEGORY = ? AND DEPLOYMENT_ID = ? ` +
-			`ORDER BY NAME LIMIT ? OFFSET ?`,
 	}
 }
 
@@ -116,10 +103,8 @@ func buildGetEntityTypeCountByOUIDsQuery(ouIDs []string) dbmodel.DBQuery {
 	if n == 0 {
 		return dbmodel.DBQuery{
 			ID: "ASQ-ENTITY_TYPE-009",
-			PostgresQuery: `SELECT COUNT(*) AS total FROM "ENTITY_TYPES" ` +
+			Query: `SELECT COUNT(*) AS total FROM "ENTITY_TYPES" ` +
 				`WHERE 1=0 AND CATEGORY = $1 AND DEPLOYMENT_ID = $2`,
-			SQLiteQuery: `SELECT COUNT(*) AS total FROM "ENTITY_TYPES" ` +
-				`WHERE 1=0 AND CATEGORY = ? AND DEPLOYMENT_ID = ?`,
 		}
 	}
 
@@ -131,19 +116,11 @@ func buildGetEntityTypeCountByOUIDsQuery(ouIDs []string) dbmodel.DBQuery {
 	pgCategory := fmt.Sprintf("$%d", n+1)
 	pgDeploymentID := fmt.Sprintf("$%d", n+2)
 
-	sqlitePlaceholders := make([]string, n)
-	for i := range ouIDs {
-		sqlitePlaceholders[i] = "?"
-	}
-	sqliteInClause := strings.Join(sqlitePlaceholders, ", ")
-
 	return dbmodel.DBQuery{
 		ID: "ASQ-ENTITY_TYPE-009",
-		PostgresQuery: `SELECT COUNT(*) AS total FROM "ENTITY_TYPES" ` +
+		Query: `SELECT COUNT(*) AS total FROM "ENTITY_TYPES" ` +
 			`WHERE OU_ID IN (` + pgInClause + `) AND CATEGORY = ` + pgCategory +
 			` AND DEPLOYMENT_ID = ` + pgDeploymentID,
-		SQLiteQuery: `SELECT COUNT(*) AS total FROM "ENTITY_TYPES" ` +
-			`WHERE OU_ID IN (` + sqliteInClause + `) AND CATEGORY = ? AND DEPLOYMENT_ID = ?`,
 	}
 }
 
@@ -155,10 +132,8 @@ func buildGetDisplayAttributesByNamesQuery(names []string) dbmodel.DBQuery {
 	if n == 0 {
 		return dbmodel.DBQuery{
 			ID: "ASQ-ENTITY_TYPE-010",
-			PostgresQuery: `SELECT NAME, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
+			Query: `SELECT NAME, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
 				`WHERE 1=0 AND CATEGORY = $1 AND DEPLOYMENT_ID = $2`,
-			SQLiteQuery: `SELECT NAME, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
-				`WHERE 1=0 AND CATEGORY = ? AND DEPLOYMENT_ID = ?`,
 		}
 	}
 
@@ -170,18 +145,10 @@ func buildGetDisplayAttributesByNamesQuery(names []string) dbmodel.DBQuery {
 	pgCategory := fmt.Sprintf("$%d", n+1)
 	pgDeploymentID := fmt.Sprintf("$%d", n+2)
 
-	sqlitePlaceholders := make([]string, n)
-	for i := range names {
-		sqlitePlaceholders[i] = "?"
-	}
-	sqliteInClause := strings.Join(sqlitePlaceholders, ", ")
-
 	return dbmodel.DBQuery{
 		ID: "ASQ-ENTITY_TYPE-010",
-		PostgresQuery: `SELECT NAME, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
+		Query: `SELECT NAME, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
 			`WHERE NAME IN (` + pgInClause + `) AND CATEGORY = ` + pgCategory +
 			` AND DEPLOYMENT_ID = ` + pgDeploymentID,
-		SQLiteQuery: `SELECT NAME, SYSTEM_ATTRIBUTES FROM "ENTITY_TYPES" ` +
-			`WHERE NAME IN (` + sqliteInClause + `) AND CATEGORY = ? AND DEPLOYMENT_ID = ?`,
 	}
 }
