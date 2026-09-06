@@ -382,3 +382,101 @@ func (s *UtilsTestSuite) TestResolvePlaceholderSpecialCharactersInValue() {
 		})
 	}
 }
+
+func (s *UtilsTestSuite) TestResolveRequestPlaceholderFromInitiatorRequest() {
+	ctx := &providers.NodeContext{}
+	ctx.SetInitiatorRequest(&providers.InitiatorRequest{
+		Headers:     map[string][]string{"User-Agent": {"curl/8.0"}},
+		QueryParams: map[string][]string{"utm_source": {"newsletter"}},
+	})
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"Header default source", "{{request(header.User-Agent)}}", "curl/8.0"},
+		{"Header explicit init source", "{{request(init.header.User-Agent)}}", "curl/8.0"},
+		{"Header case-insensitive lookup", "{{request(header.user-agent)}}", "curl/8.0"},
+		{"Query default source", "{{request(query.utm_source)}}", "newsletter"},
+		{"Query explicit init source", "{{request(init.query.utm_source)}}", "newsletter"},
+		{"Embedded in larger value", "ua={{request(header.User-Agent)}}", "ua=curl/8.0"},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			result := ResolvePlaceholder(ctx, tt.input, nil, nil, nil)
+			s.Equal(tt.expected, result)
+		})
+	}
+}
+
+func (s *UtilsTestSuite) TestResolveRequestPlaceholderFromCurrentRequest() {
+	ctx := &providers.NodeContext{}
+	ctx.SetInitiatorRequest(&providers.InitiatorRequest{
+		Headers: map[string][]string{"User-Agent": {"init-agent"}},
+	})
+	ctx.SetCurrentRequest(&providers.InitiatorRequest{
+		Headers:     map[string][]string{"User-Agent": {"flow-agent"}},
+		QueryParams: map[string][]string{"step": {"otp"}},
+	})
+
+	s.Equal("flow-agent", ResolvePlaceholder(ctx, "{{request(flow.header.User-Agent)}}", nil, nil, nil))
+	s.Equal("otp", ResolvePlaceholder(ctx, "{{request(flow.query.step)}}", nil, nil, nil))
+	// Default source stays init even when a current request is present.
+	s.Equal("init-agent", ResolvePlaceholder(ctx, "{{request(header.User-Agent)}}", nil, nil, nil))
+}
+
+func (s *UtilsTestSuite) TestResolveRequestPlaceholderQueryIsCaseSensitive() {
+	ctx := &providers.NodeContext{}
+	ctx.SetInitiatorRequest(&providers.InitiatorRequest{
+		QueryParams: map[string][]string{"utm_source": {"newsletter"}},
+	})
+
+	s.Equal("{{request(query.UTM_SOURCE)}}",
+		ResolvePlaceholder(ctx, "{{request(query.UTM_SOURCE)}}", nil, nil, nil),
+		"query lookups must be case-sensitive")
+}
+
+func (s *UtilsTestSuite) TestResolveRequestPlaceholderFirstValueWins() {
+	ctx := &providers.NodeContext{}
+	ctx.SetInitiatorRequest(&providers.InitiatorRequest{
+		Headers: map[string][]string{"X-Forwarded-For": {"1.1.1.1", "2.2.2.2"}},
+	})
+
+	s.Equal("1.1.1.1", ResolvePlaceholder(ctx, "{{request(header.X-Forwarded-For)}}", nil, nil, nil))
+}
+
+func (s *UtilsTestSuite) TestResolveRequestPlaceholderUnresolvable() {
+	ctxWithReq := &providers.NodeContext{}
+	ctxWithReq.SetInitiatorRequest(&providers.InitiatorRequest{
+		Headers: map[string][]string{"User-Agent": {"curl/8.0"}},
+	})
+
+	ctxWithoutReq := &providers.NodeContext{}
+
+	tests := []struct {
+		name     string
+		ctx      *providers.NodeContext
+		input    string
+		expected string
+	}{
+		{"Nil initiator request", ctxWithoutReq, "{{request(header.User-Agent)}}",
+			"{{request(header.User-Agent)}}"},
+		{"Nil current request", ctxWithReq, "{{request(flow.header.User-Agent)}}",
+			"{{request(flow.header.User-Agent)}}"},
+		{"Unknown header", ctxWithReq, "{{request(header.X-Missing)}}", "{{request(header.X-Missing)}}"},
+		{"Unknown source", ctxWithReq, "{{request(other.header.User-Agent)}}",
+			"{{request(other.header.User-Agent)}}"},
+		{"Unknown type", ctxWithReq, "{{request(cookie.session)}}", "{{request(cookie.session)}}"},
+		{"Missing name", ctxWithReq, "{{request(header.)}}", "{{request(header.)}}"},
+		{"Missing type separator", ctxWithReq, "{{request(header)}}", "{{request(header)}}"},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			result := ResolvePlaceholder(tt.ctx, tt.input, nil, nil, nil)
+			s.Equal(tt.expected, result)
+		})
+	}
+}

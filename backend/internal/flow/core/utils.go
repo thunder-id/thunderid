@@ -16,7 +16,19 @@ import (
 // TODO: Extend to support {{user(key)}}, {{env(key)}}, etc.
 var placeholderPattern = regexp.MustCompile(`{{\s*ctx\(\s*(\w+)\s*\)\s*}}`)
 
-// ResolvePlaceholder resolves a single placeholder string using the "{{ctx(key)}}" syntax.
+// requestPlaceholderPattern matches {{request(<selector>)}} with optional whitespace, capturing the
+// raw selector so it can be parsed into an optional source, a type (header/query) and a name.
+var requestPlaceholderPattern = regexp.MustCompile(`{{\s*request\(\s*([^)]*?)\s*\)\s*}}`)
+
+// Request selector source tokens used in {{request(...)}} placeholders. requestSourceInit refers
+// to the flow-initiation request (the default) and requestSourceFlow to the current flow step request.
+const (
+	requestSourceInit = "init"
+	requestSourceFlow = "flow"
+)
+
+// ResolvePlaceholder resolves a single placeholder string using the "{{ctx(key)}}" and
+// "{{request(...)}}" syntaxes.
 // If no placeholder is found, the original value is returned.
 // If a placeholder is found but the key doesn't exist in any data source, the placeholder is kept as-is.
 func ResolvePlaceholder(ctx *providers.NodeContext, value string, execResp *providers.ExecutorResponse,
@@ -27,7 +39,16 @@ func ResolvePlaceholder(ctx *providers.NodeContext, value string, execResp *prov
 
 	var contextUserRef *providers.EntityReference
 
-	return placeholderPattern.ReplaceAllStringFunc(value, func(match string) string {
+	// Resolve {{ctx(...)}} first, then {{request(...)}}. Because ReplaceAllStringFunc does not
+	// re-scan its own output, resolving request placeholders last keeps any {{ctx(...)}}-looking
+	// text that a request header or query value happens to contain from being resolved as context.
+	//
+	// Note the request pass does run over the ctx pass's output, so a {{ctx(...)}} value that itself
+	// contains the literal text {{request(...)}} would be resolved. This is intentional (it keeps the
+	// two passes simple) and safe: credential-bearing request data is stripped at capture — sensitive
+	// headers via FilterSensitiveHeaders and client-credential query params via the OAuth capture
+	// deny-list — so no secret is reachable through a request placeholder regardless of its origin.
+	value = placeholderPattern.ReplaceAllStringFunc(value, func(match string) string {
 		submatches := placeholderPattern.FindStringSubmatch(match)
 		if len(submatches) < 2 {
 			return match
@@ -77,6 +98,97 @@ func ResolvePlaceholder(ctx *providers.NodeContext, value string, execResp *prov
 		// If not found, keep the placeholder as-is
 		return match
 	})
+
+	return resolveRequestPlaceholders(ctx, value)
+}
+
+// resolveRequestPlaceholders resolves {{request(...)}} placeholders using the HTTP request data
+// carried on the node context. The selector is "[source.]type.name" where source is "init"
+// (flow-initiation request, the default) or "flow" (current flow step request), and type is
+// "header" or "query". Header lookups are case-insensitive per RFC 7230; query lookups are
+// case-sensitive. When multiple values exist, the first is returned. Unresolvable placeholders
+// (missing request, unknown source/type, or absent name) are kept as-is.
+func resolveRequestPlaceholders(ctx *providers.NodeContext, value string) string {
+	return requestPlaceholderPattern.ReplaceAllStringFunc(value, func(match string) string {
+		submatches := requestPlaceholderPattern.FindStringSubmatch(match)
+		if len(submatches) < 2 {
+			return match
+		}
+
+		source, kind, name, ok := parseRequestSelector(submatches[1])
+		if !ok {
+			return match
+		}
+
+		var req *providers.InitiatorRequest
+		switch source {
+		case requestSourceInit:
+			req = ctx.GetInitiatorRequest()
+		case requestSourceFlow:
+			req = ctx.GetCurrentRequest()
+		}
+		if req == nil {
+			return match
+		}
+
+		var resolved string
+		var found bool
+		switch kind {
+		case "header":
+			resolved, found = firstHeaderValue(req.Headers, name)
+		case "query":
+			resolved, found = firstValue(req.QueryParams[name])
+		}
+		if !found {
+			return match
+		}
+		return resolved
+	})
+}
+
+// parseRequestSelector splits a request selector into its source, type and name components.
+// It accepts "type.name" (source defaults to "init") or "source.type.name". source must be
+// "init" or "flow" and type must be "header" or "query"; name is the remainder and may contain dots.
+func parseRequestSelector(selector string) (source, kind, name string, ok bool) {
+	source = requestSourceInit
+
+	head, rest, hasRest := strings.Cut(selector, ".")
+	if !hasRest {
+		return "", "", "", false
+	}
+	if head == requestSourceInit || head == requestSourceFlow {
+		source = head
+		head, rest, hasRest = strings.Cut(rest, ".")
+		if !hasRest {
+			return "", "", "", false
+		}
+	}
+
+	if head != "header" && head != "query" {
+		return "", "", "", false
+	}
+	if rest == "" {
+		return "", "", "", false
+	}
+	return source, head, rest, true
+}
+
+// firstHeaderValue returns the first value for a header, matching the name case-insensitively.
+func firstHeaderValue(headers map[string][]string, name string) (string, bool) {
+	for key, values := range headers {
+		if strings.EqualFold(key, name) {
+			return firstValue(values)
+		}
+	}
+	return "", false
+}
+
+// firstValue returns the first element of a string slice.
+func firstValue(values []string) (string, bool) {
+	if len(values) == 0 {
+		return "", false
+	}
+	return values[0], true
 }
 
 // fetchContextUserRef attempts to resolve the authenticated user's entity reference using the authn provider.
