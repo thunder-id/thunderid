@@ -108,19 +108,14 @@ func buildGetGroupsCountByOUIDsQuery(
 	}
 
 	postgresPlaceholders := make([]string, len(ouIDs))
-	sqlitePlaceholders := make([]string, len(ouIDs))
 	for i := range ouIDs {
 		postgresPlaceholders[i] = fmt.Sprintf("$%d", i+1)
-		sqlitePlaceholders[i] = "?"
 	}
 	deploymentIDIdx := len(ouIDs) + 1
 
 	postgresQuery := fmt.Sprintf(
 		`SELECT COUNT(*) as total FROM "GROUP" WHERE OU_ID IN (%s) AND DEPLOYMENT_ID = $%d`,
 		strings.Join(postgresPlaceholders, ","), deploymentIDIdx)
-	sqliteQuery := fmt.Sprintf(
-		`SELECT COUNT(*) as total FROM "GROUP" WHERE OU_ID IN (%s) AND DEPLOYMENT_ID = ?`,
-		strings.Join(sqlitePlaceholders, ","))
 
 	args := make([]interface{}, 0, len(ouIDs)+1)
 	for _, id := range ouIDs {
@@ -132,7 +127,7 @@ func buildGetGroupsCountByOUIDsQuery(
 		ID:            "GRQ-GROUP_MGT-03",
 		Query:         postgresQuery,
 		PostgresQuery: postgresQuery,
-		SQLiteQuery:   sqliteQuery,
+		SQLiteQuery:   postgresQuery,
 	}, args
 }
 
@@ -151,10 +146,8 @@ func buildGetGroupsByOUIDsQuery(
 	}
 
 	postgresPlaceholders := make([]string, len(ouIDs))
-	sqlitePlaceholders := make([]string, len(ouIDs))
 	for i := range ouIDs {
 		postgresPlaceholders[i] = fmt.Sprintf("$%d", i+1)
-		sqlitePlaceholders[i] = "?"
 	}
 	deploymentIDIdx := len(ouIDs) + 1
 	limitIdx := len(ouIDs) + 2
@@ -164,10 +157,6 @@ func buildGetGroupsByOUIDsQuery(
 		`SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" `+
 			`WHERE OU_ID IN (%s) AND DEPLOYMENT_ID = $%d ORDER BY NAME LIMIT $%d OFFSET $%d`,
 		strings.Join(postgresPlaceholders, ","), deploymentIDIdx, limitIdx, offsetIdx)
-	sqliteQuery := fmt.Sprintf(
-		`SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" `+
-			`WHERE OU_ID IN (%s) AND DEPLOYMENT_ID = ? ORDER BY NAME LIMIT ? OFFSET ?`,
-		strings.Join(sqlitePlaceholders, ","))
 
 	args := make([]interface{}, 0, len(ouIDs)+3)
 	for _, id := range ouIDs {
@@ -179,7 +168,7 @@ func buildGetGroupsByOUIDsQuery(
 		ID:            "GRQ-GROUP_MGT-04",
 		Query:         postgresQuery,
 		PostgresQuery: postgresQuery,
-		SQLiteQuery:   sqliteQuery,
+		SQLiteQuery:   postgresQuery,
 	}, args
 }
 
@@ -292,24 +281,21 @@ func buildGroupINClauseQuery(
 	args := make([]interface{}, len(groupIDs)+1)
 
 	postgresPlaceholders := make([]string, len(groupIDs))
-	sqlitePlaceholders := make([]string, len(groupIDs))
 
 	for i, groupID := range groupIDs {
 		postgresPlaceholders[i] = fmt.Sprintf("$%d", i+1)
-		sqlitePlaceholders[i] = "?"
 		args[i] = groupID
 	}
 	args[len(groupIDs)] = deploymentID
 
 	deploymentPlaceholder := fmt.Sprintf("$%d", len(groupIDs)+1)
 	postgresQuery := fmt.Sprintf(baseQuery, strings.Join(postgresPlaceholders, ","), deploymentPlaceholder)
-	sqliteQuery := fmt.Sprintf(baseQuery, strings.Join(sqlitePlaceholders, ","), "?")
 
 	query := dbmodel.DBQuery{
 		ID:            queryID,
 		Query:         postgresQuery,
 		PostgresQuery: postgresQuery,
-		SQLiteQuery:   sqliteQuery,
+		SQLiteQuery:   postgresQuery,
 	}
 
 	return query, args, nil
