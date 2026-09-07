@@ -485,7 +485,11 @@ importers:
         version: 3.0.0(@types/react@19.2.14)(react@19.2.3)
       '@scalar/api-reference-react':
         specifier: 0.9.38
+<<<<<<< HEAD
         version: 0.9.38(jwt-decode@4.0.0)(nprogress@0.2.0)(qrcode@1.5.4)(react@19.2.3)(supports-color@10.2.2)(tailwindcss@4.3.0)(typescript@5.9.3)(zod@4.6.6)
+=======
+        version: 0.9.38(jwt-decode@4.0.0)(nprogress@0.2.0)(qrcode@1.5.4)(react@19.2.3)(supports-color@10.2.2)(tailwindcss@4.3.0)(typescript@5.9.3)(zod@4.6.7)
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.90.5(react@19.2.3)
@@ -1059,6 +1063,7 @@ importers:
       vitest:
         specifier: '>=4.1.0'
         version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+<<<<<<< HEAD
 
   frontend/apps/console-cp:
     dependencies:
@@ -1339,6 +1344,8 @@ importers:
       vitest:
         specifier: '>=4.1.0'
         version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+=======
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
 
   frontend/apps/gate:
     dependencies:
@@ -1843,6 +1850,7 @@ importers:
       vitest:
         specifier: '>=4.1.0'
         version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+<<<<<<< HEAD
 
   frontend/packages/configure-applications:
     devDependencies:
@@ -1987,6 +1995,8 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.6.6
+=======
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
 
   frontend/packages/configure-connections:
     dependencies:
@@ -2210,6 +2220,7 @@ importers:
       vitest:
         specifier: '>=4.1.0'
         version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+<<<<<<< HEAD
 
   frontend/packages/configure-flows:
     devDependencies:
@@ -2507,6 +2518,8 @@ importers:
       vitest:
         specifier: '>=4.1.0'
         version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+=======
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
 
   frontend/packages/configure-groups:
     devDependencies:
@@ -2723,6 +2736,12 @@ importers:
 
   frontend/packages/configure-notification-templates:
     dependencies:
+<<<<<<< HEAD
+=======
+      '@hookform/resolvers':
+        specifier: 'catalog:'
+        version: 5.2.2(react-hook-form@7.65.0(react@19.2.3))(zod@4.6.6)
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.90.5(react@19.2.3)
@@ -3173,6 +3192,7 @@ importers:
       vitest:
         specifier: '>=4.1.0'
         version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+<<<<<<< HEAD
 
   frontend/packages/configure-resource-sharing:
     dependencies:
@@ -3261,6 +3281,8 @@ importers:
       vitest:
         specifier: '>=4.1.0'
         version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.7.2)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-istanbul@4.1.10)(jsdom@27.0.1(supports-color@10.2.2))(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+=======
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
 
   frontend/packages/configure-roles:
     devDependencies:
@@ -4763,10 +4785,17 @@ importers:
         version: 2.2.0(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))
       '@langchain/langgraph':
         specifier: ^1.3.0
+<<<<<<< HEAD
         version: 1.4.9(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))(react-dom@19.2.3(react@19.2.6))(react@19.2.6)(vue@3.5.42(typescript@5.9.3))(zod@4.6.6)
       '@langchain/mcp-adapters':
         specifier: ^1.1.0
         version: 1.1.3(@cfworker/json-schema@4.1.1)(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))(@langchain/langgraph@1.4.9(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))(react-dom@19.2.3(react@19.2.6))(react@19.2.6)(vue@3.5.42(typescript@5.9.3))(zod@4.6.6))(supports-color@10.2.2)
+=======
+        version: 1.4.9(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))(react-dom@19.2.3(react@19.2.6))(react@19.2.6)(vue@3.5.42(typescript@5.9.3))(zod@4.6.7)
+      '@langchain/mcp-adapters':
+        specifier: ^1.1.0
+        version: 1.1.3(@cfworker/json-schema@4.1.1)(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))(@langchain/langgraph@1.4.9(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))(react-dom@19.2.3(react@19.2.6))(react@19.2.6)(vue@3.5.42(typescript@5.9.3))(zod@4.6.7))(supports-color@10.2.2)
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
       '@thunderid/javascript':
         specifier: 0.0.5
         version: 0.0.5
@@ -4785,13 +4814,21 @@ importers:
     dependencies:
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.1
+<<<<<<< HEAD
         version: 1.32.1(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)(zod@4.6.6)
+=======
+        version: 1.32.1(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)(zod@4.6.7)
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
       dotenv:
         specifier: ^16.5.0
         version: 16.6.1
       zod:
         specifier: ^4.6.6
+<<<<<<< HEAD
         version: 4.6.6
+=======
+        version: 4.6.7
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
 
   samples/apps/wayfinder-sample/frontend:
     dependencies:
@@ -6351,11 +6388,25 @@ packages:
   '@emnapi/core@1.11.1':
     resolution: {integrity: sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ==}
 
+<<<<<<< HEAD
+  '@emnapi/runtime@1.11.1':
+    resolution: {integrity: sha512-vgj7R3y3Wgx24IQaGPA/R6YFXLHVMOZ0uVEyIQPaWs+rd1AzfEMXlAC22FYwO1XkKR6NPsq7mUandH8oIRdZFw==}
+=======
+  '@emnapi/core@1.11.1':
+    resolution: {integrity: sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ==}
+
+  '@emnapi/runtime@1.10.0':
+    resolution: {integrity: sha512-ewvYlk86xUoGI0zQRNq/mC+16R1QeDlKQy21Ki3oSYXNgLb45GV1P6A0M+/s6nyCuNDqe5VpaY84BzXGwVbwFA==}
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
+
   '@emnapi/runtime@1.11.1':
     resolution: {integrity: sha512-vgj7R3y3Wgx24IQaGPA/R6YFXLHVMOZ0uVEyIQPaWs+rd1AzfEMXlAC22FYwO1XkKR6NPsq7mUandH8oIRdZFw==}
 
   '@emnapi/runtime@1.11.3':
     resolution: {integrity: sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA==}
+
+  '@emnapi/wasi-threads@1.2.2':
+    resolution: {integrity: sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA==}
 
   '@emnapi/wasi-threads@1.2.2':
     resolution: {integrity: sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA==}
@@ -7677,11 +7728,20 @@ packages:
       '@emnapi/core': ^1.7.1
       '@emnapi/runtime': ^1.7.1
 
+<<<<<<< HEAD
   '@napi-rs/wasm-runtime@1.1.6':
     resolution: {integrity: sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg==}
     peerDependencies:
       '@emnapi/core': ^1.7.1
       '@emnapi/runtime': ^1.7.1
+=======
+  '@napi-rs/wasm-runtime@1.2.5':
+    resolution: {integrity: sha512-HshSvXzmBxNzqejd3k/KemgQ3hdREUYFRRrgxOZ+gPljDIsO2SDZrVZMd4Z/HsxudQbE62OVyVFE8z9BCurfjA==}
+    engines: {node: ^20.19.0 || ^22.13.0 || >=23.5.0}
+    peerDependencies:
+      '@emnapi/core': ^1.7.1 || ^2.0.0-alpha.4
+      '@emnapi/runtime': ^1.7.1 || ^2.0.0-alpha.4
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
 
   '@next/env@16.4.1':
     resolution: {integrity: sha512-5sUUrrSvs/2/2LnLoesybMGx12EtPB46fdZ6RhAw0XDGSPxU2LFyQBB7yuEiOFFJPKmBY6+q2jTr1/AMbnp0/g==}
@@ -8618,8 +8678,13 @@ packages:
   '@tybys/wasm-util@0.10.2':
     resolution: {integrity: sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg==}
 
+<<<<<<< HEAD
   '@tybys/wasm-util@0.10.3':
     resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
+=======
+  '@tybys/wasm-util@0.10.4':
+    resolution: {integrity: sha512-W3c4gRigFS0T/Ma4qIYF3GDAc5AQdHb1yL5znJT1Zv1YaD9Kitx656wBjvr19qbiosmZT8lWDM5BEMynUqX65A==}
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
 
   '@types/aria-query@5.0.4':
     resolution: {integrity: sha512-rfT93uj5s0PRL7EzccGMs3brplhcrghnDoV26NqKhCAS1hVo+WdNsPvE/yb6ilfr5hi2MEk6d5EWJTKdxg8jVw==}
@@ -15627,6 +15692,12 @@ packages:
 
   zod@4.6.6:
     resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
+<<<<<<< HEAD
+=======
+
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
 
   zustand@4.5.7:
     resolution: {integrity: sha512-CHOUy7mu3lbD6o6LJLfllpjkzhHXSBlX8B9+qPddUsIfeF5S/UZ5q0kmCsnRqT1UHFQZchNFDDzMbQsuesHWlw==}
@@ -15681,6 +15752,7 @@ snapshots:
 
   '@adobe/css-tools@4.4.4': {}
 
+<<<<<<< HEAD
   '@ai-sdk/gateway@3.0.13(zod@4.6.6)':
     dependencies:
       '@ai-sdk/provider': 3.0.2
@@ -15689,20 +15761,41 @@ snapshots:
       zod: 4.6.6
 
   '@ai-sdk/provider-utils@4.0.5(zod@4.6.6)':
+=======
+  '@ai-sdk/gateway@3.0.13(zod@4.6.7)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.2
+      '@ai-sdk/provider-utils': 4.0.5(zod@4.6.7)
+      '@vercel/oidc': 3.1.0
+      zod: 4.6.7
+
+  '@ai-sdk/provider-utils@4.0.5(zod@4.6.7)':
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
     dependencies:
       '@ai-sdk/provider': 3.0.2
       '@standard-schema/spec': 1.1.0
       eventsource-parser: 3.0.8
+<<<<<<< HEAD
       zod: 4.6.6
+=======
+      zod: 4.6.7
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
 
   '@ai-sdk/provider@3.0.2':
     dependencies:
       json-schema: 0.4.0
 
+<<<<<<< HEAD
   '@ai-sdk/vue@3.0.33(vue@3.5.42(typescript@5.9.3))(zod@4.6.6)':
     dependencies:
       '@ai-sdk/provider-utils': 4.0.5(zod@4.6.6)
       ai: 6.0.33(zod@4.6.6)
+=======
+  '@ai-sdk/vue@3.0.33(vue@3.5.42(typescript@5.9.3))(zod@4.6.7)':
+    dependencies:
+      '@ai-sdk/provider-utils': 4.0.5(zod@4.6.7)
+      ai: 6.0.33(zod@4.6.7)
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
       swrv: 1.2.0(vue@3.5.42(typescript@5.9.3))
       vue: 3.5.42(typescript@5.9.3)
     transitivePeerDependencies:
@@ -15821,12 +15914,20 @@ snapshots:
       package-manager-detector: 1.8.0
       tinyexec: 1.1.2
 
+<<<<<<< HEAD
   '@anthropic-ai/sdk@0.115.0(zod@4.6.6)':
+=======
+  '@anthropic-ai/sdk@0.115.0(zod@4.6.7)':
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
     dependencies:
       json-schema-to-ts: 3.1.1
       standardwebhooks: 1.0.0
     optionalDependencies:
+<<<<<<< HEAD
       zod: 4.6.6
+=======
+      zod: 4.6.7
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
 
   '@asamuzakjp/css-color@4.1.2':
     dependencies:
@@ -16717,7 +16818,11 @@ snapshots:
       chalk: 4.1.2
       semver: 7.8.5
       unplugin: 1.16.1
+<<<<<<< HEAD
       zod: 4.6.6
+=======
+      zod: 4.6.7
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
 
   '@codecov/vite-plugin@2.0.1(vite@8.1.6(@types/node@24.7.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))':
     dependencies:
@@ -18261,12 +18366,32 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
+<<<<<<< HEAD
+  '@emnapi/runtime@1.11.1':
+=======
+  '@emnapi/core@1.11.1':
+    dependencies:
+      '@emnapi/wasi-threads': 1.2.2
+      tslib: 2.8.1
+    optional: true
+
+  '@emnapi/runtime@1.10.0':
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
+    dependencies:
+      tslib: 2.8.1
+    optional: true
+
   '@emnapi/runtime@1.11.1':
     dependencies:
       tslib: 2.8.1
     optional: true
 
   '@emnapi/runtime@1.11.3':
+    dependencies:
+      tslib: 2.8.1
+    optional: true
+
+  '@emnapi/wasi-threads@1.2.2':
     dependencies:
       tslib: 2.8.1
     optional: true
@@ -19092,9 +19217,15 @@ snapshots:
 
   '@langchain/anthropic@1.5.2(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))':
     dependencies:
+<<<<<<< HEAD
       '@anthropic-ai/sdk': 0.115.0(zod@4.6.6)
       '@langchain/core': 1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0)
       zod: 4.6.6
+=======
+      '@anthropic-ai/sdk': 0.115.0(zod@4.6.7)
+      '@langchain/core': 1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0)
+      zod: 4.6.7
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
 
   '@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0)':
     dependencies:
@@ -19104,7 +19235,11 @@ snapshots:
       langsmith: 0.8.9(@opentelemetry/api@1.9.0)(ws@8.21.0)
       mustache: 4.2.0
       p-queue: 6.6.2
+<<<<<<< HEAD
       zod: 4.6.6
+=======
+      zod: 4.6.7
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
     transitivePeerDependencies:
       - '@opentelemetry/api'
       - '@opentelemetry/exporter-trace-otlp-proto'
@@ -19133,20 +19268,29 @@ snapshots:
       react-dom: 19.2.3(react@19.2.6)
       vue: 3.5.42(typescript@5.9.3)
 
+<<<<<<< HEAD
   '@langchain/langgraph@1.4.9(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))(react-dom@19.2.3(react@19.2.6))(react@19.2.6)(vue@3.5.42(typescript@5.9.3))(zod@4.6.6)':
+=======
+  '@langchain/langgraph@1.4.9(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))(react-dom@19.2.3(react@19.2.6))(react@19.2.6)(vue@3.5.42(typescript@5.9.3))(zod@4.6.7)':
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
     dependencies:
       '@langchain/core': 1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0)
       '@langchain/langgraph-checkpoint': 1.1.3(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))
       '@langchain/langgraph-sdk': 1.9.28(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))(react-dom@19.2.3(react@19.2.6))(react@19.2.6)(vue@3.5.42(typescript@5.9.3))
       '@langchain/protocol': 0.0.18
       '@standard-schema/spec': 1.1.0
+<<<<<<< HEAD
       zod: 4.6.6
+=======
+      zod: 4.6.7
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
     transitivePeerDependencies:
       - react
       - react-dom
       - svelte
       - vue
 
+<<<<<<< HEAD
   '@langchain/mcp-adapters@1.1.3(@cfworker/json-schema@4.1.1)(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))(@langchain/langgraph@1.4.9(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))(react-dom@19.2.3(react@19.2.6))(react@19.2.6)(vue@3.5.42(typescript@5.9.3))(zod@4.6.6))(supports-color@10.2.2)':
     dependencies:
       '@langchain/core': 1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0)
@@ -19154,6 +19298,15 @@ snapshots:
       '@modelcontextprotocol/sdk': 1.32.1(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)(zod@4.6.6)
       debug: 4.4.3(supports-color@10.2.2)
       zod: 4.6.6
+=======
+  '@langchain/mcp-adapters@1.1.3(@cfworker/json-schema@4.1.1)(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))(@langchain/langgraph@1.4.9(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))(react-dom@19.2.3(react@19.2.6))(react@19.2.6)(vue@3.5.42(typescript@5.9.3))(zod@4.6.7))(supports-color@10.2.2)':
+    dependencies:
+      '@langchain/core': 1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0)
+      '@langchain/langgraph': 1.4.9(@langchain/core@1.2.4(@opentelemetry/api@1.9.0)(ws@8.21.0))(react-dom@19.2.3(react@19.2.6))(react@19.2.6)(vue@3.5.42(typescript@5.9.3))(zod@4.6.7)
+      '@modelcontextprotocol/sdk': 1.32.1(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)(zod@4.6.7)
+      debug: 4.4.3(supports-color@10.2.2)
+      zod: 4.6.7
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
     optionalDependencies:
       extended-eventsource: 1.7.0
     transitivePeerDependencies:
@@ -19413,7 +19566,11 @@ snapshots:
     dependencies:
       '@chevrotain/types': 11.1.2
 
+<<<<<<< HEAD
   '@modelcontextprotocol/sdk@1.32.1(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)(zod@4.6.6)':
+=======
+  '@modelcontextprotocol/sdk@1.32.1(@cfworker/json-schema@4.1.1)(supports-color@10.2.2)(zod@4.6.7)':
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
     dependencies:
       '@hono/node-server': 2.1.0(hono@4.13.0)
       ajv: 8.18.0
@@ -19430,8 +19587,13 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
+<<<<<<< HEAD
       zod: 4.6.6
       zod-to-json-schema: 3.25.2(zod@4.6.6)
+=======
+      zod: 4.6.7
+      zod-to-json-schema: 3.25.2(zod@4.6.7)
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
     optionalDependencies:
       '@cfworker/json-schema': 4.1.1
     transitivePeerDependencies:
@@ -19732,11 +19894,22 @@ snapshots:
 
   '@napi-rs/wasm-runtime@0.2.12':
     dependencies:
+<<<<<<< HEAD
+=======
+      '@emnapi/core': 1.10.0
+      '@emnapi/runtime': 1.10.0
+      '@tybys/wasm-util': 0.10.2
+    optional: true
+
+  '@napi-rs/wasm-runtime@1.1.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)':
+    dependencies:
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
       '@emnapi/core': 1.11.1
       '@emnapi/runtime': 1.11.3
       '@tybys/wasm-util': 0.10.2
     optional: true
 
+<<<<<<< HEAD
   '@napi-rs/wasm-runtime@1.1.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)':
     dependencies:
       '@emnapi/core': 1.11.1
@@ -19771,6 +19944,35 @@ snapshots:
   '@next/swc-linux-x64-musl@16.4.1':
     optional: true
 
+=======
+  '@napi-rs/wasm-runtime@1.2.5(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)':
+    dependencies:
+      '@emnapi/core': 1.11.1
+      '@emnapi/runtime': 1.11.1
+      '@tybys/wasm-util': 0.10.4
+    optional: true
+
+  '@next/env@16.4.1': {}
+
+  '@next/swc-darwin-arm64@16.4.1':
+    optional: true
+
+  '@next/swc-darwin-x64@16.4.1':
+    optional: true
+
+  '@next/swc-linux-arm64-gnu@16.4.1':
+    optional: true
+
+  '@next/swc-linux-arm64-musl@16.4.1':
+    optional: true
+
+  '@next/swc-linux-x64-gnu@16.4.1':
+    optional: true
+
+  '@next/swc-linux-x64-musl@16.4.1':
+    optional: true
+
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
   '@next/swc-win32-arm64-msvc@16.4.1':
     optional: true
 
@@ -20114,7 +20316,11 @@ snapshots:
     dependencies:
       '@emnapi/core': 1.11.1
       '@emnapi/runtime': 1.11.1
+<<<<<<< HEAD
       '@napi-rs/wasm-runtime': 1.1.6(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
+=======
+      '@napi-rs/wasm-runtime': 1.2.5(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
     optional: true
 
   '@rolldown/binding-win32-arm64-msvc@1.0.0-beta.45':
@@ -20154,9 +20360,15 @@ snapshots:
       estree-walker: 2.0.2
       picomatch: 4.0.4
 
+<<<<<<< HEAD
   '@scalar/agent-chat@0.12.2(jwt-decode@4.0.0)(nprogress@0.2.0)(qrcode@1.5.4)(supports-color@10.2.2)(tailwindcss@4.3.0)(typescript@5.9.3)(zod@4.6.6)':
     dependencies:
       '@ai-sdk/vue': 3.0.33(vue@3.5.42(typescript@5.9.3))(zod@4.6.6)
+=======
+  '@scalar/agent-chat@0.12.2(jwt-decode@4.0.0)(nprogress@0.2.0)(qrcode@1.5.4)(supports-color@10.2.2)(tailwindcss@4.3.0)(typescript@5.9.3)(zod@4.6.7)':
+    dependencies:
+      '@ai-sdk/vue': 3.0.33(vue@3.5.42(typescript@5.9.3))(zod@4.6.7)
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
       '@scalar/api-client': 3.8.2(jwt-decode@4.0.0)(nprogress@0.2.0)(qrcode@1.5.4)(supports-color@10.2.2)(tailwindcss@4.3.0)(typescript@5.9.3)
       '@scalar/components': 0.25.0(supports-color@10.2.2)(tailwindcss@4.3.0)(typescript@5.9.3)
       '@scalar/helpers': 0.8.0
@@ -20170,7 +20382,11 @@ snapshots:
       '@scalar/validation': 0.5.0
       '@scalar/workspace-store': 0.51.0(typescript@5.9.3)
       '@vueuse/core': 13.9.0(vue@3.5.42(typescript@5.9.3))
+<<<<<<< HEAD
       ai: 6.0.33(zod@4.6.6)
+=======
+      ai: 6.0.33(zod@4.6.7)
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
       js-base64: 3.7.8
       neverpanic: 0.0.7(typescript@5.9.3)
       truncate-json: 3.0.1
@@ -20225,7 +20441,11 @@ snapshots:
       set-cookie-parser: 3.1.0
       vue: 3.5.42(typescript@5.9.3)
       yaml: 2.8.3
+<<<<<<< HEAD
       zod: 4.6.6
+=======
+      zod: 4.6.7
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
     transitivePeerDependencies:
       - '@vue/composition-api'
       - async-validator
@@ -20242,9 +20462,15 @@ snapshots:
       - typescript
       - universal-cookie
 
+<<<<<<< HEAD
   '@scalar/api-reference-react@0.9.38(jwt-decode@4.0.0)(nprogress@0.2.0)(qrcode@1.5.4)(react@19.2.3)(supports-color@10.2.2)(tailwindcss@4.3.0)(typescript@5.9.3)(zod@4.6.6)':
     dependencies:
       '@scalar/api-reference': 1.57.2(jwt-decode@4.0.0)(nprogress@0.2.0)(qrcode@1.5.4)(supports-color@10.2.2)(tailwindcss@4.3.0)(typescript@5.9.3)(zod@4.6.6)
+=======
+  '@scalar/api-reference-react@0.9.38(jwt-decode@4.0.0)(nprogress@0.2.0)(qrcode@1.5.4)(react@19.2.3)(supports-color@10.2.2)(tailwindcss@4.3.0)(typescript@5.9.3)(zod@4.6.7)':
+    dependencies:
+      '@scalar/api-reference': 1.57.2(jwt-decode@4.0.0)(nprogress@0.2.0)(qrcode@1.5.4)(supports-color@10.2.2)(tailwindcss@4.3.0)(typescript@5.9.3)(zod@4.6.7)
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
       '@scalar/types': 0.11.0
       react: 19.2.3
     transitivePeerDependencies:
@@ -20264,10 +20490,17 @@ snapshots:
       - universal-cookie
       - zod
 
+<<<<<<< HEAD
   '@scalar/api-reference@1.57.2(jwt-decode@4.0.0)(nprogress@0.2.0)(qrcode@1.5.4)(supports-color@10.2.2)(tailwindcss@4.3.0)(typescript@5.9.3)(zod@4.6.6)':
     dependencies:
       '@headlessui/vue': 1.7.23(vue@3.5.42(typescript@5.9.3))
       '@scalar/agent-chat': 0.12.2(jwt-decode@4.0.0)(nprogress@0.2.0)(qrcode@1.5.4)(supports-color@10.2.2)(tailwindcss@4.3.0)(typescript@5.9.3)(zod@4.6.6)
+=======
+  '@scalar/api-reference@1.57.2(jwt-decode@4.0.0)(nprogress@0.2.0)(qrcode@1.5.4)(supports-color@10.2.2)(tailwindcss@4.3.0)(typescript@5.9.3)(zod@4.6.7)':
+    dependencies:
+      '@headlessui/vue': 1.7.23(vue@3.5.42(typescript@5.9.3))
+      '@scalar/agent-chat': 0.12.2(jwt-decode@4.0.0)(nprogress@0.2.0)(qrcode@1.5.4)(supports-color@10.2.2)(tailwindcss@4.3.0)(typescript@5.9.3)(zod@4.6.7)
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
       '@scalar/api-client': 3.8.2(jwt-decode@4.0.0)(nprogress@0.2.0)(qrcode@1.5.4)(supports-color@10.2.2)(tailwindcss@4.3.0)(typescript@5.9.3)
       '@scalar/code-highlight': 0.3.4(supports-color@10.2.2)
       '@scalar/components': 0.25.0(supports-color@10.2.2)(tailwindcss@4.3.0)(typescript@5.9.3)
@@ -20421,7 +20654,11 @@ snapshots:
       '@scalar/helpers': 0.8.0
       nanoid: 5.1.16
       type-fest: 5.6.0
+<<<<<<< HEAD
       zod: 4.6.6
+=======
+      zod: 4.6.7
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
 
   '@scalar/use-codemirror@0.14.11(typescript@5.9.3)':
     dependencies:
@@ -20827,7 +21064,11 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
+<<<<<<< HEAD
   '@tybys/wasm-util@0.10.3':
+=======
+  '@tybys/wasm-util@0.10.4':
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
     dependencies:
       tslib: 2.8.1
     optional: true
@@ -21932,6 +22173,7 @@ snapshots:
       clean-stack: 2.2.0
       indent-string: 4.0.0
 
+<<<<<<< HEAD
   ai@6.0.33(zod@4.6.6):
     dependencies:
       '@ai-sdk/gateway': 3.0.13(zod@4.6.6)
@@ -21939,6 +22181,15 @@ snapshots:
       '@ai-sdk/provider-utils': 4.0.5(zod@4.6.6)
       '@opentelemetry/api': 1.9.0
       zod: 4.6.6
+=======
+  ai@6.0.33(zod@4.6.7):
+    dependencies:
+      '@ai-sdk/gateway': 3.0.13(zod@4.6.7)
+      '@ai-sdk/provider': 3.0.2
+      '@ai-sdk/provider-utils': 4.0.5(zod@4.6.7)
+      '@opentelemetry/api': 1.9.0
+      zod: 4.6.7
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
 
   ajv-draft-04@1.0.0(ajv@8.18.0):
     optionalDependencies:
@@ -23489,8 +23740,13 @@ snapshots:
       '@babel/parser': 7.29.3
       eslint: 9.39.5(jiti@2.7.0)(supports-color@10.2.2)
       hermes-parser: 0.25.1
+<<<<<<< HEAD
       zod: 4.6.6
       zod-validation-error: 4.0.2(zod@4.6.6)
+=======
+      zod: 4.6.7
+      zod-validation-error: 4.0.2(zod@4.6.7)
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
     transitivePeerDependencies:
       - supports-color
 
@@ -29187,6 +29443,7 @@ snapshots:
 
   yoctocolors@2.1.2: {}
 
+<<<<<<< HEAD
   zod-to-json-schema@3.25.2(zod@4.6.6):
     dependencies:
       zod: 4.6.6
@@ -29196,6 +29453,19 @@ snapshots:
       zod: 4.6.6
 
   zod@4.6.6: {}
+=======
+  zod-to-json-schema@3.25.2(zod@4.6.7):
+    dependencies:
+      zod: 4.6.7
+
+  zod-validation-error@4.0.2(zod@4.6.7):
+    dependencies:
+      zod: 4.6.7
+
+  zod@4.6.6: {}
+
+  zod@4.6.7: {}
+>>>>>>> 1ff139af1 (Fix user organization unit reset when updating a user)
 
   zustand@4.5.7(@types/react@19.2.14)(react@19.2.3):
     dependencies:
