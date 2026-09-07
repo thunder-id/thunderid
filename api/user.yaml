@@ -2234,7 +2234,12 @@ components:
           additionalProperties: false
         schema:
           type: object
-          description: "JSON Schema definition for the user type"
+          description: >-
+            JSON Schema definition for the user type. Property names must match
+            '^[A-Za-z][A-Za-z0-9$_-]*$' - the SCIM 2.0 attribute-name rule (RFC 7643 section 2.1):
+            a letter followed by letters, digits, '$', '-' and '_'. A '.' is not permitted because
+            it separates nested segments in attribute filter expressions. Use 'displayName' for a
+            human-readable label.
           additionalProperties:
             oneOf:
               - type: object
@@ -2293,7 +2298,9 @@ components:
                     description: "Whether this attribute must be provided for the user type"
                   properties:
                     type: object
-                    description: "Nested properties of the object"
+                    description: >-
+                      Nested properties of the object. Names follow the same rule as
+                      top-level property names.
                     additionalProperties:
                       $ref: "#/components/schemas/UserType/properties/schema/additionalProperties"
                 additionalProperties: false
@@ -2455,7 +2462,12 @@ components:
           $ref: "#/components/schemas/UserType/properties/systemAttributes"
         schema:
           type: object
-          description: "JSON Schema definition for the user type"
+          description: >-
+            JSON Schema definition for the user type. Property names must match
+            '^[A-Za-z][A-Za-z0-9$_-]*$' - the SCIM 2.0 attribute-name rule (RFC 7643 section 2.1):
+            a letter followed by letters, digits, '$', '-' and '_'. A '.' is not permitted because
+            it separates nested segments in attribute filter expressions. Use 'displayName' for a
+            human-readable label.
           additionalProperties:
             $ref: "#/components/schemas/UserType/properties/schema/additionalProperties"
 
@@ -2478,7 +2490,12 @@ components:
           $ref: "#/components/schemas/UserType/properties/systemAttributes"
         schema:
           type: object
-          description: "JSON Schema definition for the user type"
+          description: >-
+            JSON Schema definition for the user type. Property names must match
+            '^[A-Za-z][A-Za-z0-9$_-]*$' - the SCIM 2.0 attribute-name rule (RFC 7643 section 2.1):
+            a letter followed by letters, digits, '$', '-' and '_'. A '.' is not permitted because
+            it separates nested segments in attribute filter expressions. Use 'displayName' for a
+            human-readable label.
           additionalProperties:
             $ref: "#/components/schemas/UserType/properties/schema/additionalProperties"
 

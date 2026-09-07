@@ -1342,3 +1342,36 @@ func TestHandleSelfUserMetadataGetRequest_ServiceError(t *testing.T) {
 
 	require.Equal(t, http.StatusNotFound, rr.Code)
 }
+
+func TestParseFilterExpression_AttributeCharset(t *testing.T) {
+	// The filter grammar accepts the same attribute names an entity type schema can declare,
+	// so every declarable attribute is filterable (issue #1696).
+	valid := map[string]struct {
+		filter string
+		key    string
+	}{
+		"hyphen":      {`silver-mail eq "a@b.com"`, "silver-mail"},
+		"underscore":  {`given_name eq "Jane"`, "given_name"},
+		"dollar":      {`a$ref eq "x"`, "a$ref"},
+		"digits":      {`empNo2 eq "7"`, "empNo2"},
+		"nested path": {`address.post-code eq "10100"`, "address.post-code"},
+	}
+	for name, tc := range valid {
+		filters, err := parseFilterExpression(tc.filter)
+		require.NoError(t, err, name)
+		require.Contains(t, filters, tc.key, name)
+	}
+
+	invalid := map[string]string{
+		"space in name":  `work phone eq "111"`,
+		"at sign":        `x@y eq "1"`,
+		"leading digit":  `1email eq "a"`,
+		"leading hyphen": `-email eq "a"`,
+		"trailing dot":   `address. eq "a"`,
+		"sql injection":  `a') = 1 OR 1=1 -- eq "a"`,
+	}
+	for name, filter := range invalid {
+		_, err := parseFilterExpression(filter)
+		require.Error(t, err, name)
+	}
+}

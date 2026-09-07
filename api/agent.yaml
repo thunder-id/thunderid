@@ -2682,7 +2682,12 @@ components:
           additionalProperties: false
         schema:
           type: object
-          description: "JSON Schema definition for the agent type"
+          description: >-
+            JSON Schema definition for the agent type. Property names must match
+            '^[A-Za-z][A-Za-z0-9$_-]*$' - the SCIM 2.0 attribute-name rule (RFC 7643 section 2.1):
+            a letter followed by letters, digits, '$', '-' and '_'. A '.' is not permitted because
+            it separates nested segments in attribute filter expressions. Use 'displayName' for a
+            human-readable label.
           additionalProperties:
             oneOf:
               - type: object
@@ -2750,7 +2755,9 @@ components:
                     description: "Human-readable label shown in the UI for this property"
                   properties:
                     type: object
-                    description: "Nested properties of the object"
+                    description: >-
+                      Nested properties of the object. Names follow the same rule as
+                      top-level property names.
                     additionalProperties:
                       $ref: "#/components/schemas/AgentType/properties/schema/additionalProperties"
                 additionalProperties: false
@@ -2892,7 +2899,12 @@ components:
           $ref: "#/components/schemas/AgentType/properties/systemAttributes"
         schema:
           type: object
-          description: "JSON Schema definition for the agent type"
+          description: >-
+            JSON Schema definition for the agent type. Property names must match
+            '^[A-Za-z][A-Za-z0-9$_-]*$' - the SCIM 2.0 attribute-name rule (RFC 7643 section 2.1):
+            a letter followed by letters, digits, '$', '-' and '_'. A '.' is not permitted because
+            it separates nested segments in attribute filter expressions. Use 'displayName' for a
+            human-readable label.
           additionalProperties:
             $ref: "#/components/schemas/AgentType/properties/schema/additionalProperties"
 
@@ -2917,7 +2929,12 @@ components:
           $ref: "#/components/schemas/AgentType/properties/systemAttributes"
         schema:
           type: object
-          description: "JSON Schema definition for the agent type"
+          description: >-
+            JSON Schema definition for the agent type. Property names must match
+            '^[A-Za-z][A-Za-z0-9$_-]*$' - the SCIM 2.0 attribute-name rule (RFC 7643 section 2.1):
+            a letter followed by letters, digits, '$', '-' and '_'. A '.' is not permitted because
+            it separates nested segments in attribute filter expressions. Use 'displayName' for a
+            human-readable label.
           additionalProperties:
             $ref: "#/components/schemas/AgentType/properties/schema/additionalProperties"
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -263,6 +264,24 @@ func convertToFloat64(value interface{}) (float64, bool) {
 	}
 }
 
+// propertyNamePattern is the SCIM 2.0 attribute-name production (RFC 7643 section 2.1):
+// a letter, followed by any number of letters, digits, '$', '-' and '_'.
+//
+// '.' is excluded deliberately. Filter keys built from a schema join nested property names with
+// '.', and the query layer splits them back on '.', so a literal dot inside a name cannot be told
+// apart from traversal into a nested object.
+var propertyNamePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9$_-]*$`)
+
+// validatePropertyName reports whether name may be used as a schema property name. Property names
+// are machine names; use the 'displayName' field for a human-readable label.
+func validatePropertyName(name string) error {
+	if !propertyNamePattern.MatchString(name) {
+		return fmt.Errorf("invalid property name '%s': must start with a letter and contain only "+
+			"letters, digits, '-', '_' and '$'", name)
+	}
+	return nil
+}
+
 // CompileSchema compiles an entity type JSON Schema from the provided raw JSON.
 func CompileSchema(schema json.RawMessage) (*Schema, error) {
 	var schemaMap map[string]json.RawMessage
@@ -279,6 +298,9 @@ func CompileSchema(schema json.RawMessage) (*Schema, error) {
 	}
 
 	for propName, propRaw := range schemaMap {
+		if err := validatePropertyName(propName); err != nil {
+			return nil, err
+		}
 		compiledProp, err := compileProperty(propName, propRaw)
 		if err != nil {
 			return nil, fmt.Errorf("invalid property '%s': %w", propName, err)
