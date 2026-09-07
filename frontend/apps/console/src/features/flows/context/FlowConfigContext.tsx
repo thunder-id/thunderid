@@ -65,6 +65,22 @@ export interface FlowConfigContextProps {
    */
   setEdgeStyle: Dispatch<SetStateAction<EdgeStyleTypes>>;
   /**
+   * Whether node drags snap to the canvas background grid.
+   */
+  isSnapToGridEnabled: boolean;
+  /**
+   * Function to toggle or set the snap-to-grid state.
+   */
+  setIsSnapToGridEnabled: Dispatch<SetStateAction<boolean>>;
+  /**
+   * Whether the canvas navigation minimap is shown.
+   */
+  isMiniMapVisible: boolean;
+  /**
+   * Function to toggle or set the minimap visibility.
+   */
+  setIsMiniMapVisible: Dispatch<SetStateAction<boolean>>;
+  /**
    * Node types active in the flow.
    */
   flowNodeTypes: NodeTypes;

@@ -2,7 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {Box, IconButton, Tooltip} from '@wso2/oxygen-ui';
-import {Expand, LayoutGrid, Maximize, Minus, Plus, Redo2, Shrink, Undo2} from '@wso2/oxygen-ui-icons-react';
+import {
+  Expand,
+  LayoutGrid,
+  Magnet,
+  Map,
+  Maximize,
+  Minus,
+  Plus,
+  Redo2,
+  Shrink,
+  Undo2,
+} from '@wso2/oxygen-ui-icons-react';
 import {useReactFlow} from '@xyflow/react';
 import {type ReactElement} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -36,7 +47,15 @@ export default function CanvasToolbar({
 }: CanvasToolbarProps): ReactElement {
   const {t} = useTranslation();
   const {fitView, zoomIn, zoomOut} = useReactFlow();
-  const {edgeStyle, isVerboseMode, setIsVerboseMode} = useFlowConfig();
+  const {
+    edgeStyle,
+    isMiniMapVisible,
+    isSnapToGridEnabled,
+    isVerboseMode,
+    setIsMiniMapVisible,
+    setIsSnapToGridEnabled,
+    setIsVerboseMode,
+  } = useFlowConfig();
   const {anchorEl, handleClick: handleEdgeStyleClick, handleClose: handleEdgeStyleClose} = useEdgeStyleSelector();
 
   const showHistoryControls = Boolean(onUndo ?? onRedo);
@@ -139,6 +158,44 @@ export default function CanvasToolbar({
             aria-pressed={!isVerboseMode}
           >
             {isVerboseMode ? <Shrink size={16} /> : <Expand size={16} />}
+          </IconButton>
+        </Tooltip>
+
+        <ToolbarDivider />
+
+        <Tooltip
+          title={
+            isSnapToGridEnabled
+              ? t('flows:core.headerPanel.snapToGridDisableTooltip', 'Disable snap to grid')
+              : t('flows:core.headerPanel.snapToGridEnableTooltip', 'Enable snap to grid')
+          }
+        >
+          <IconButton
+            size="small"
+            onClick={() => setIsSnapToGridEnabled((prev) => !prev)}
+            sx={{borderRadius: 1, color: isSnapToGridEnabled ? 'primary.main' : 'text.secondary'}}
+            aria-label={t('flows:core.headerPanel.snapToGrid', 'Snap to grid')}
+            aria-pressed={isSnapToGridEnabled}
+          >
+            <Magnet size={16} />
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip
+          title={
+            isMiniMapVisible
+              ? t('flows:core.headerPanel.miniMapHideTooltip', 'Hide minimap')
+              : t('flows:core.headerPanel.miniMapShowTooltip', 'Show minimap')
+          }
+        >
+          <IconButton
+            size="small"
+            onClick={() => setIsMiniMapVisible((prev) => !prev)}
+            sx={{borderRadius: 1, color: isMiniMapVisible ? 'primary.main' : 'text.secondary'}}
+            aria-label={t('flows:core.headerPanel.miniMap', 'Minimap')}
+            aria-pressed={isMiniMapVisible}
+          >
+            <Map size={16} />
           </IconButton>
         </Tooltip>
 
