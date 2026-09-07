@@ -1,0 +1,77 @@
+---
+title: Sessions & Logout
+docType: use-case
+description: How long a customer stays signed in, how many applications that opens, and what happens when it ends.
+sidebar_position: 11
+---
+
+# Sessions & Logout
+
+A session decides whether a customer stays signed in or retypes a password on every page. It is also what a stranger
+picks up when someone walks away from a shared computer.
+
+This page covers the session <ProductName /> holds. For the token your application holds afterwards, see
+[Tokens & APIs](../tokens-and-apis).
+
+## How Many Applications One Sign-In Opens
+
+Signing in to one of your applications does not have to sign the customer in to all of them. Which ones a single
+sign-in opens is a security decision, because it sets how far that sign-in reaches if someone else picks it up.
+
+Group your applications by how much trust one sign-in should buy:
+
+- **Together** when signing in to any of them should open the rest, like a booking site and its points page.
+- **Apart** when it should not, like a staff console that issues refunds.
+
+Applications grouped together also share the sign-in journey, so they always offer the same sign-in methods. Start with
+one group per level of trust, not one group per application. <ProductName /> expresses the grouping through the
+authentication flow an application runs. See
+[Sessions and Single Sign-On](../../../key-concepts/authentication/sessions).
+
+## How Long It Lasts
+
+A short idle limit protects a device left unattended. A long one saves a returning customer from signing in twice in an
+afternoon. A short absolute limit caps the damage if a session is stolen quietly, because nothing extends it.
+
+Both apply to the whole deployment. Consumer products usually want a generous idle limit and an absolute limit measured
+in hours. To keep customers signed in for longer, use a refresh token rather than a longer session. See
+[Tokens & APIs](../tokens-and-apis#session-and-token-strategy).
+
+## What a Returning Customer Skips
+
+Decide which part of the sign-in a returning customer skips, and which part runs every time. Covering the password
+check is the usual choice. Keep a second factor outside it when the application is sensitive, so browsing stays quiet
+and changing a saved card does not.
+
+## Whether Sign-Out Asks First
+
+**Silent** fits a customer who clicked **Sign out** in your own application. **Confirm every time** fits a
+shared-device product. **Confirm only when the request does not name its application** is the safer pick when requests
+may not all come from your own code.
+
+## How Logout Reaches Your Other Applications
+
+Deleting the session stops the next sign-in from being silent. It does not clear what each application remembers.
+
+- **Use back-channel logout** when more than one application shares a session. The message still arrives if the browser
+  is closed, if frames are blocked, or if an administrator ended the session.
+- **Rely on short application sessions** only when one application shares the sign-in.
+- Do not rely on the browser to pass a logout between applications. It fails exactly when someone walks away from a
+  shared computer.
+
+Leave the session name switched on unless an application keeps one session per person. Without it, signing out in an
+airport lounge also signs the customer out on their phone.
+
+A failed message never blocks the sign-out, so decide what your team does with the record of it. See
+[Sign Them Out](../build-signout) and [Run & Observe](../operations).
+
+## Expected Outcome
+
+One sign-in opens the applications you grouped together and no others, and it runs out on two clocks. When it ends,
+every application that shared it is told directly.
+
+## Continue Designing Your Architecture
+
+Review the other architecture decisions that shape your B2C application.
+
+<B2CArchitectureDecisions currentDecision="sessions-and-logout" />
