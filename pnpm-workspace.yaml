@@ -94,6 +94,11 @@ overrides:
   openapi-to-postmanv2>ajv: 8.18.0
   ajv-draft-04>ajv: 8.18.0
   ajv-formats>ajv: 8.18.0
+  # JUSTIFICATION: Fixes GHSA-5jgf-p345-68v8, GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf, and
+  # GHSA-jqff-g426-hqxp — fast-uri host-confusion/SSRF issues via malformed IDN/IPv6/percent-encoding
+  # normalization. Transitive via ajv (pinned above to 8.18.0), which declares fast-uri@^3.0.1, so
+  # pinned to the latest compatible 3.x release rather than the breaking 4.x line.
+  fast-uri: 3.1.7
   flatted: 3.4.2
   vite: 'catalog:'
   # JUSTIFICATION: Fixes GHSA-fx2h-pf6j-xcff — vite `server.fs.deny` bypass on Windows alternate paths.
@@ -155,6 +160,10 @@ overrides:
   # Bounded to <8 so it stays on the patched 7.x line: @docusaurus/core and @vitest/coverage-istanbul
   # require Babel 7 and break on the 8.x ESM export changes.
   '@babel/core': '>=7.29.6 <8'
+  # JUSTIFICATION: Fixes GHSA-c83g-rgw3-j3cx (unbounded memory growth via unevicted query cache)
+  # and GHSA-73wf-gq98-2v4g (crash/prototype write via untrusted browserslist-stats.json). Transitive
+  # via @babel/helper-compilation-targets under the Docusaurus/Babel build chain.
+  browserslist: '>=4.28.7'
   # JUSTIFICATION: Transitive dep via docusaurus. Fixes CVE-2026-48038 (GHSA-q7cg-457f-vx79) — uncaught RangeError DoS in joi on deeply nested input through recursive link() schemas.
   joi: '>=18.2.1'
   # JUSTIFICATION: Fixes GHSA-gv7w-rqvm-qjhr — esbuild Deno module downloads native binaries without integrity verification, enabling RCE via NPM_CONFIG_REGISTRY.
@@ -249,6 +258,7 @@ auditConfig:
     # mdx-loader. No patched release exists on npm yet (advisory lists "Patched: None"); revisit
     # and add an override once image-size ships a fix.
     - GHSA-5p2g-fcmc-qvqq
+<<<<<<< HEAD
     # JUSTIFICATION: GHSA-qxc2-j82w-r537 — arbitrary code execution via faker's `helpers.fake`.
     # Transitive via docs -> openapi-to-postmanv2 -> postman-collection, which depends on the
     # deprecated @faker-js/faker@5.5.3. Not overridable: the fix landed in faker 10.5.0 (the
@@ -262,6 +272,16 @@ auditConfig:
     # such as `faker.address.city` for dynamic-variable substitution). The code is also
     # build-time only, run against this repo's own OpenAPI specs. Revisit once postman-collection
     # upgrades its faker dependency.
+=======
+    # JUSTIFICATION: Faker helpers.fake arbitrary code execution, transitive via
+    # docs>openapi-to-postmanv2>postman-collection, which pins @faker-js/faker to the exact
+    # vulnerable 5.5.3 release. The patched line (>=10.4.1) removed the v5-era API surface
+    # (faker.random, faker.datatype, faker.address, etc.) that postman-collection's dynamic
+    # variable generator (superstring/dynamic-variables.js) calls directly, so overriding would
+    # break docs/scripts/generate-postman-collections.mjs at runtime. Only reachable via a
+    # manually-run devDependency script, not CI. Revisit once postman-collection ships a
+    # compatible faker bump.
+>>>>>>> fd50e6674 (Update pnpm dependencies)
     - GHSA-qxc2-j82w-r537
 
 minimumReleaseAgeExclude:
