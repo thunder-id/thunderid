@@ -173,9 +173,15 @@ export default function ApplicationCreatePage(): JSX.Element {
   );
 
   // Application names already in use, so the details step can flag a duplicate before submission.
+  // The just-created application is excluded: the success-triggered list invalidation can refetch
+  // it before this wizard unmounts, and it would otherwise flag itself as a duplicate of its own name.
   const existingAppNames = useMemo(
-    (): string[] => (applicationsData?.applications ?? []).map((app) => app.name).filter(Boolean),
-    [applicationsData],
+    (): string[] =>
+      (applicationsData?.applications ?? [])
+        .filter((app) => app.id !== createApplication.data?.id)
+        .map((app) => app.name)
+        .filter(Boolean),
+    [applicationsData, createApplication.data?.id],
   );
 
   const [selectedUserTypes, setSelectedUserTypes] = useState<string[]>([]);
