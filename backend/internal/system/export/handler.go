@@ -62,6 +62,12 @@ func (eh *exportHandler) HandleExportRequest(w http.ResponseWriter, r *http.Requ
 	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusOK, jsonResponse)
 }
 
+// CombineResources joins exported files into the single document the import API takes, so a caller
+// that applies an export without going through HTTP builds the same payload the endpoint returns.
+func CombineResources(files []ExportFile) string {
+	return buildCombinedResources(files)
+}
+
 func buildCombinedResources(files []ExportFile) string {
 	var builder strings.Builder
 

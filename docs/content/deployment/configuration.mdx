@@ -35,6 +35,7 @@ Controls the <ProductName /> server's network settings and identity.
 | `server.http_only` | `false` | If `true`, disables HTTPS and uses HTTP only (not recommended for production) |
 | `server.public_url` | _(derived from server hostname, port and protocol)_ | The public URL clients use to reach the server, if it differs from the bind address. Derived when unset. |
 | `server.identifier` | `default-deployment` | Unique identifier for this deployment instance |
+| `server.max_gateways` | `1` | How many data planes this deployment may administer. A standalone deployment pairs with one; raise it only where something else manages the fleet. |
 
 When `server.public_url` is set, the `gate_client` settings below default to the corresponding hostname, port, and protocol from that URL. Most deployments only need to configure the server section.
 

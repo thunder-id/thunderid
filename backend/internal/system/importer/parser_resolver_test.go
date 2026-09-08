@@ -233,3 +233,30 @@ func TestParseDocuments_ExplicitResourceTypeOverridesAmbiguousStructure(t *testi
 	require.Len(t, docs, 1)
 	assert.Equal(t, resourceTypeConnection, docs[0].ResourceType)
 }
+
+// A deployment holds its own credentials as environment variables, so a configuration can travel
+// without them and still resolve where it lands.
+func TestResolveTemplateFillsAMissingVariableFromTheEnvironment(t *testing.T) {
+	t.Setenv("APP_SECRET", "from-the-environment")
+
+	resolved, err := resolveTemplate(`secret: "{{.APP_SECRET}}"`, nil)
+	require.NoError(t, err)
+	assert.Equal(t, `secret: "from-the-environment"`, resolved)
+}
+
+// What the caller supplies wins, so an apply that knows the value is not overridden by whatever the
+// deployment happens to have in its environment.
+func TestResolveTemplatePrefersTheSuppliedVariable(t *testing.T) {
+	t.Setenv("APP_URL", "from-the-environment")
+
+	resolved, err := resolveTemplate(`url: "{{.APP_URL}}"`,
+		map[string]interface{}{"APP_URL": "from-the-caller"})
+	require.NoError(t, err)
+	assert.Equal(t, `url: "from-the-caller"`, resolved)
+}
+
+// A placeholder nobody can supply still fails, rather than resolving to nothing.
+func TestResolveTemplateStillFailsWhenNothingSuppliesTheVariable(t *testing.T) {
+	_, err := resolveTemplate(`secret: "{{.NOBODY_HAS_THIS}}"`, nil)
+	assert.Error(t, err, "an unresolvable placeholder should fail the import")
+}

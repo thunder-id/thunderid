@@ -54,6 +54,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
+	"github.com/thunder-id/thunderid/internal/gateway"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
@@ -460,7 +461,12 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	_ = flowmeta.Initialize(mux, actorProvider, ouService, designResolveService, i18nService)
 
 	// Initialize export service with collected exporters
-	_ = export.Initialize(mux, exporters)
+	exportService := export.Initialize(mux, exporters)
+
+	// The gateways this control plane administers. Registration is bounded by server.max_gateways,
+	// which is one unless a deployment raises it. An apply sends what the exporter yields.
+	_, err = gateway.Initialize(mux, exportService)
+	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
 	// Initialize import service
 	importService := importer.Initialize(

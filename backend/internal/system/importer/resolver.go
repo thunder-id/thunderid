@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"text/template"
@@ -24,11 +25,20 @@ func resolveTemplate(content string, variables map[string]interface{}) (string, 
 		return "", fmt.Errorf("failed to parse import template: %w", err)
 	}
 
-	var data map[string]interface{}
-	if variables == nil {
-		data = map[string]interface{}{}
-	} else {
-		data = variables
+	// A variable the caller did not supply is filled from the environment, the same way a
+	// declarative resource read from disk is. A deployment holds its own credentials as environment
+	// variables, so a configuration can travel without them and still resolve where it lands.
+	data := map[string]interface{}{}
+	for name, value := range variables {
+		data[name] = value
+	}
+	for _, name := range templateVariableNames(protectedContent) {
+		if _, supplied := data[name]; supplied {
+			continue
+		}
+		if value, set := os.LookupEnv(name); set {
+			data[name] = value
+		}
 	}
 
 	var buf bytes.Buffer
@@ -130,4 +140,25 @@ func randomPlaceholderSuffix() string {
 	}
 
 	return hex.EncodeToString(buf)
+}
+
+// templateVariableNames returns the plain variable names a template refers to, so the ones the
+// caller left out can be looked for in the environment. Anything that is not a bare field
+// reference, such as a function call or a range, is left to the template engine.
+func templateVariableNames(content string) []string {
+	seen := map[string]bool{}
+	names := []string{}
+	for _, match := range templateExpressionRegexp.FindAllStringSubmatch(content, -1) {
+		expression := strings.TrimSpace(match[1])
+		if !strings.HasPrefix(expression, ".") {
+			continue
+		}
+		name := strings.TrimPrefix(expression, ".")
+		if name == "" || strings.ContainsAny(name, ". (") || seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	return names
 }

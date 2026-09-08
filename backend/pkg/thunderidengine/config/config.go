@@ -122,12 +122,19 @@ type RedisConfig struct {
 
 // ServerConfig holds the server configuration details.
 type ServerConfig struct {
-	Hostname       string         `yaml:"hostname"   json:"hostname"`
-	Port           int            `yaml:"port"       json:"port"`
-	HTTPOnly       bool           `yaml:"http_only"  json:"http_only"`
-	PublicURL      string         `yaml:"public_url" json:"public_url"`
-	Identifier     string         `yaml:"identifier" json:"identifier"`
-	SecurityConfig SecurityConfig `yaml:"security"   json:"security"`
+	Hostname   string `yaml:"hostname"   json:"hostname"`
+	Port       int    `yaml:"port"       json:"port"`
+	HTTPOnly   bool   `yaml:"http_only"  json:"http_only"`
+	PublicURL  string `yaml:"public_url" json:"public_url"`
+	Identifier string `yaml:"identifier" json:"identifier"`
+	// MaxGateways bounds how many data planes this control plane may administer. One is the
+	// supported number for a standalone deployment: it pairs with a single data plane, and a
+	// higher bound is only meaningful where something else manages the fleet.
+	//
+	// Zero means the default of one rather than none, so an unset value cannot leave a deployment
+	// unable to register the gateway it is expected to have.
+	MaxGateways    int            `yaml:"max_gateways" json:"max_gateways"`
+	SecurityConfig SecurityConfig `yaml:"security"     json:"security"`
 }
 
 // GateClientConfig holds the client configuration details.
