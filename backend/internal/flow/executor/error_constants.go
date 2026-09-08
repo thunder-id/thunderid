@@ -1844,6 +1844,34 @@ var (
 			DefaultValue: "A handle could not be created from the organization unit name. Enter a handle",
 		},
 	}
+
+	// ErrOUDeletionFailed is returned when rolling back an organization unit fails.
+	ErrOUDeletionFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1139",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.ou_deletion_failed",
+			DefaultValue: "Organization unit deletion failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.ou_deletion_failed_desc",
+			DefaultValue: "The organization unit could not be deleted",
+		},
+	}
+
+	// ErrUserRollbackFailed is returned when rolling back a provisioned user fails.
+	ErrUserRollbackFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1087",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.user_rollback_failed",
+			DefaultValue: "User rollback failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.user_rollback_failed_desc",
+			DefaultValue: "The provisioned user could not be rolled back",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

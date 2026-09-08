@@ -111,6 +111,8 @@ export const ExecutionTypes = {
   HTTPRequestExecutor: 'HTTPRequestExecutor',
   ExtensionExecutor: 'ExtensionExecutor',
   OUExecutor: 'OUExecutor',
+  OUDeleteExecutor: 'OUDeleteExecutor',
+  UserRollbackExecutor: 'UserRollbackExecutor',
   UserTypeResolver: 'UserTypeResolver',
   AgentTypeResolver: 'AgentTypeResolver',
   SSOCheck: 'SSOCheckExecutor',

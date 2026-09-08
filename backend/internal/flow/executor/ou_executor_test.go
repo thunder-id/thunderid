@@ -221,6 +221,7 @@ func (suite *OUExecutorTestSuite) TestExecute_Success() {
 			assert.NotNil(suite.T(), result)
 			assert.Equal(suite.T(), providers.ExecComplete, result.Status)
 			assert.Equal(suite.T(), tc.expectedOUID, result.RuntimeData[ouIDKey])
+			assert.Equal(suite.T(), tc.expectedOUID, result.RuntimeData[createdOUIDKey])
 			suite.mockOUService.AssertExpectations(suite.T())
 		})
 	}

@@ -171,6 +171,7 @@ func (o *ouExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRes
 
 	// Set the created OU ID in the runtime data for further use in the flow.
 	execResp.RuntimeData[ouIDKey] = createdOU.ID
+	execResp.RuntimeData[createdOUIDKey] = createdOU.ID
 
 	logger.Debug(ctx.Context, "Organization unit created successfully", log.String(ouIDKey, createdOU.ID))
 	execResp.Status = providers.ExecComplete

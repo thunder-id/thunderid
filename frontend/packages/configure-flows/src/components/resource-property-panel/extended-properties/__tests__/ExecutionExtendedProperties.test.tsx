@@ -1857,6 +1857,23 @@ describe('ExecutionExtendedProperties', () => {
     });
   });
 
+  describe('Rollback executors', () => {
+    it.each([ExecutionTypes.OUDeleteExecutor, ExecutionTypes.UserRollbackExecutor])(
+      'should render the forward failure option and hide the inputs editor for %s',
+      (name) => {
+        const rollbackResource = {
+          id: 'rollback-1',
+          data: {action: {executor: {name}}, properties: {}},
+        } as unknown as Resource;
+
+        render(<ExecutionExtendedProperties resource={rollbackResource} onChange={mockOnChange} />);
+
+        expect(screen.getByText('flows:core.executions.rollbackExecutor.forwardFailure.label')).toBeInTheDocument();
+        expect(screen.queryByText('flows:core.executions.inputs.title')).not.toBeInTheDocument();
+      },
+    );
+  });
+
   describe('Pre Suspend Executor', () => {
     const preSuspendResource = {
       id: 'pre-suspend-1',

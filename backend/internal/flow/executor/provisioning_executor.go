@@ -222,6 +222,7 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 	}
 	if category == entitytype.TypeCategoryUser {
 		execResp.RuntimeData[userAttributeUserID] = entityID
+		execResp.RuntimeData[common.RuntimeKeyProvisionedUserID] = entityID
 	}
 
 	return p.completeProvisioning(ctx, category, entityID, execResp, logger), nil

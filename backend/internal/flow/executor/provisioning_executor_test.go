@@ -5807,6 +5807,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_ProvisioningOUUserTypeCr
 	suite.Require().NoError(err)
 	suite.Equal(providers.ExecComplete, resp.Status)
 	suite.Equal(testNewUserID, resp.RuntimeData[userAttributeUserID])
+	suite.Equal(testNewUserID, resp.RuntimeData[common.RuntimeKeyProvisionedUserID])
 }
 
 // A sign-in flow runs no type resolver, so the user type's unit is the one the provisioned type belongs to.
