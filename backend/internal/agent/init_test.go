@@ -92,7 +92,7 @@ func (suite *InitializeTestSuite) TestInitialize_DeclarativeMode_EntityLoadError
 		Return(errors.New("entity load error")).Once()
 
 	mux := http.NewServeMux()
-	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole)
+	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()))
 
 	suite.Error(err)
 	suite.Equal("entity load error", err.Error())
@@ -119,7 +119,8 @@ func (suite *InitializeTestSuite) TestInitialize_InboundLoadError_AllDeclarative
 				Return(errors.New("inbound load error")).Once()
 
 			mux := http.NewServeMux()
-			svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole)
+			svc, exporter, err := Initialize(
+				mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()))
 
 			suite.Error(err)
 			suite.Equal("inbound load error", err.Error())
@@ -143,7 +144,7 @@ func (suite *InitializeTestSuite) TestInitialize_DeclarativeMode_Success() {
 	mockInbound.On("LoadDeclarativeResources", mock.Anything, mock.Anything).Return(nil).Once()
 
 	mux := http.NewServeMux()
-	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole)
+	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()))
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -164,7 +165,7 @@ func (suite *InitializeTestSuite) TestInitialize_CompositeMode_EntityLoadError()
 		Return(errors.New("entity composite load error")).Once()
 
 	mux := http.NewServeMux()
-	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole)
+	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()))
 
 	suite.Error(err)
 	suite.Equal("entity composite load error", err.Error())
@@ -182,7 +183,7 @@ func (suite *InitializeTestSuite) TestInitialize_MutableMode_SkipsDeclarativeLoa
 	mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
 
 	mux := http.NewServeMux()
-	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole)
+	svc, exporter, err := Initialize(mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()))
 
 	suite.NoError(err)
 	suite.NotNil(svc)

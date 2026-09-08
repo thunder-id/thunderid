@@ -60,6 +60,8 @@ const (
 	ResourceTypeUser ResourceType = "user"
 	// ResourceTypeGroup identifies a group resource.
 	ResourceTypeGroup ResourceType = "group"
+	// ResourceTypeAgent identifies an agent resource.
+	ResourceTypeAgent ResourceType = "agent"
 	// ResourceTypeUserType identifies a user-category entity type resource.
 	ResourceTypeUserType ResourceType = "usertype"
 	// ResourceTypeAgentType identifies an agent-category entity type resource.
@@ -107,6 +109,17 @@ const (
 	// ActionListGroups lists groups.
 	ActionListGroups Action = "group:list"
 
+	// ActionCreateAgent creates a new agent.
+	ActionCreateAgent Action = "agent:create"
+	// ActionReadAgent reads an agent.
+	ActionReadAgent Action = "agent:read"
+	// ActionUpdateAgent updates an agent.
+	ActionUpdateAgent Action = "agent:update"
+	// ActionDeleteAgent deletes an agent.
+	ActionDeleteAgent Action = "agent:delete"
+	// ActionListAgents lists agents.
+	ActionListAgents Action = "agent:list"
+
 	// ActionCreateUserType creates a new user type.
 	ActionCreateUserType Action = "usertype:create"
 	// ActionReadUserType reads a user type.
@@ -142,6 +155,8 @@ type SystemPermissions struct {
 	UserView      string
 	Group         string
 	GroupView     string
+	Agent         string
+	AgentView     string
 	UserType      string
 	UserTypeView  string
 	AgentType     string
@@ -175,6 +190,8 @@ func InitSystemPermissions(handle string) {
 		UserView:      buildPermission(handle, "system", "user", "view"),
 		Group:         buildPermission(handle, "system", "group"),
 		GroupView:     buildPermission(handle, "system", "group", "view"),
+		Agent:         buildPermission(handle, "system", "agent"),
+		AgentView:     buildPermission(handle, "system", "agent", "view"),
 		UserType:      buildPermission(handle, "system", "usertype"),
 		UserTypeView:  buildPermission(handle, "system", "usertype", "view"),
 		AgentType:     buildPermission(handle, "system", "agenttype"),
@@ -204,6 +221,13 @@ func InitSystemPermissions(handle string) {
 		ActionUpdateGroup: p.Group,
 		ActionDeleteGroup: p.Group,
 		ActionListGroups:  p.GroupView,
+
+		// Agent actions.
+		ActionCreateAgent: p.Agent,
+		ActionReadAgent:   p.AgentView,
+		ActionUpdateAgent: p.Agent,
+		ActionDeleteAgent: p.Agent,
+		ActionListAgents:  p.AgentView,
 
 		// User type actions.
 		ActionCreateUserType: p.UserType,
@@ -247,6 +271,13 @@ func InitSystemPermissions(handle string) {
 		{"GET /users/**", p.UserView},
 		{"PUT /users/**", p.User},
 		{"DELETE /users/**", p.User},
+
+		// Agent APIs.
+		{"GET /agents", p.AgentView},
+		{"POST /agents", p.Agent},
+		{"GET /agents/**", p.AgentView},
+		{"PUT /agents/**", p.Agent},
+		{"DELETE /agents/**", p.Agent},
 
 		// Group APIs.
 		{"GET /groups", p.GroupView},
