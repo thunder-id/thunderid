@@ -10,9 +10,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -30,6 +32,79 @@ type ServiceTestSuite struct {
 	mockNotif *notificationmock.NotificationSenderMgtSvcInterfaceMock
 }
 
+type testAuthZENPDPStore struct {
+	connections map[string]authzenpdp.AuthZENPDPConnection
+}
+
+type testResourceServerLister struct {
+	lists  map[int]*resource.ResourceServerList
+	err    *tidcommon.ServiceError
+	called []int
+}
+
+func (l *testResourceServerLister) GetResourceServerList(
+	_ context.Context,
+	_ int,
+	offset int,
+) (*resource.ResourceServerList, *tidcommon.ServiceError) {
+	l.called = append(l.called, offset)
+	if l.err != nil {
+		return nil, l.err
+	}
+	if list, ok := l.lists[offset]; ok {
+		return list, nil
+	}
+	return &resource.ResourceServerList{}, nil
+}
+
+func newTestAuthZENPDPStore() *testAuthZENPDPStore {
+	return &testAuthZENPDPStore{connections: map[string]authzenpdp.AuthZENPDPConnection{}}
+}
+
+func (s *testAuthZENPDPStore) Create(_ context.Context, connection authzenpdp.AuthZENPDPConnection) error {
+	s.connections[connection.ID] = connection
+	return nil
+}
+
+func (s *testAuthZENPDPStore) List(_ context.Context) ([]authzenpdp.AuthZENPDPConnection, error) {
+	connections := make([]authzenpdp.AuthZENPDPConnection, 0, len(s.connections))
+	for _, connection := range s.connections {
+		connections = append(connections, connection)
+	}
+	return connections, nil
+}
+
+func (s *testAuthZENPDPStore) Get(_ context.Context, id string) (*authzenpdp.AuthZENPDPConnection, error) {
+	connection, ok := s.connections[id]
+	if !ok {
+		return nil, nil
+	}
+	return &connection, nil
+}
+
+func (s *testAuthZENPDPStore) GetByName(_ context.Context,
+	name string) (*authzenpdp.AuthZENPDPConnection, error) {
+	for _, connection := range s.connections {
+		if connection.Name == name {
+			connectionCopy := connection
+			return &connectionCopy, nil
+		}
+	}
+	return nil, nil
+}
+
+func (s *testAuthZENPDPStore) Update(_ context.Context, id string,
+	connection authzenpdp.AuthZENPDPConnection) error {
+	connection.ID = id
+	s.connections[id] = connection
+	return nil
+}
+
+func (s *testAuthZENPDPStore) Delete(_ context.Context, id string) error {
+	delete(s.connections, id)
+	return nil
+}
+
 func TestServiceSuite(t *testing.T) {
 	suite.Run(t, new(ServiceTestSuite))
 }
@@ -38,7 +113,8 @@ func (s *ServiceTestSuite) SetupTest() {
 	initConfigWithTestCryptoKey(s.T())
 	s.mockIDP = idpmock.NewIDPServiceInterfaceMock(s.T())
 	s.mockNotif = notificationmock.NewNotificationSenderMgtSvcInterfaceMock(s.T())
-	s.svc = newService(s.mockIDP, s.mockNotif)
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{},
+		authzenpdp.NewService(newTestAuthZENPDPStore()))
 }
 
 func (s *ServiceTestSuite) TearDownTest() {
@@ -67,6 +143,62 @@ func (s *ServiceTestSuite) TestListByTypeError() {
 
 	_, svcErr := s.svc.listByType(context.Background(), providers.IDPTypeGoogle)
 	s.NotNil(svcErr)
+}
+
+func (s *ServiceTestSuite) TestCreateAuthZENPDPStoresConfiguredEndpoints() {
+	store := newTestAuthZENPDPStore()
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, authzenpdp.NewService(store))
+
+	created, svcErr := s.svc.createAuthZENPDP(context.Background(), authzenpdp.AuthZENPDPConnection{
+		Name:          "PDP",
+		Endpoint:      " https://pdp.example.com/access/v1/evaluation ",
+		BatchEndpoint: " https://pdp.example.com/access/v1/evaluations ",
+	})
+
+	s.Nil(svcErr)
+	s.Require().NotNil(created)
+	s.NotEmpty(created.ID)
+	s.Equal("https://pdp.example.com/access/v1/evaluation", created.Endpoint)
+	s.Equal("https://pdp.example.com/access/v1/evaluations", created.BatchEndpoint)
+	s.Equal(created.Endpoint, store.connections[created.ID].Endpoint)
+	s.Equal(created.BatchEndpoint, store.connections[created.ID].BatchEndpoint)
+}
+
+func (s *ServiceTestSuite) TestCreateAuthZENPDPRejectsDuplicateName() {
+	store := newTestAuthZENPDPStore()
+	store.connections["pdp-1"] = authzenpdp.AuthZENPDPConnection{Name: "PDP"}
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, authzenpdp.NewService(store))
+
+	created, svcErr := s.svc.createAuthZENPDP(context.Background(), authzenpdp.AuthZENPDPConnection{
+		Name:          "PDP",
+		Endpoint:      "https://pdp.example.com/access/v1/evaluation",
+		BatchEndpoint: "https://pdp.example.com/access/v1/evaluations",
+	})
+
+	s.Nil(created)
+	s.Equal(ErrorAuthZENPDPAlreadyExists.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestUpdateAuthZENPDPStoresConfiguredEndpoints() {
+	store := newTestAuthZENPDPStore()
+	store.connections["pdp-1"] = authzenpdp.AuthZENPDPConnection{
+		ID:            "pdp-1",
+		Name:          "PDP",
+		Endpoint:      "https://old-pdp.example.com/access/v1/evaluation",
+		BatchEndpoint: "https://old-pdp.example.com/access/v1/evaluations",
+	}
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, authzenpdp.NewService(store))
+
+	updated, svcErr := s.svc.updateAuthZENPDP(context.Background(), "pdp-1", authzenpdp.AuthZENPDPConnection{
+		Name:          "New PDP",
+		Endpoint:      "https://new-pdp.example.com/access/v1/evaluation",
+		BatchEndpoint: "https://new-pdp.example.com/access/v1/evaluations",
+	})
+
+	s.Nil(svcErr)
+	s.Require().NotNil(updated)
+	s.Equal("https://new-pdp.example.com/access/v1/evaluation", updated.Endpoint)
+	s.Equal("https://new-pdp.example.com/access/v1/evaluations", updated.BatchEndpoint)
 }
 
 func (s *ServiceTestSuite) TestListInstancesAllCategories() {
@@ -495,6 +627,95 @@ func (s *ServiceTestSuite) TestUsagesSMSByProviderDelegates() {
 	result, svcErr := s.svc.usagesSMSByProvider(context.Background(), ncommon.MessageProviderTypeTwilio, "tw-1")
 	s.Nil(svcErr)
 	s.Equal(usages, result)
+}
+
+func (s *ServiceTestSuite) TestUsagesAuthZENPDPReturnsReferencingResourceServers() {
+	store := newTestAuthZENPDPStore()
+	store.connections["pdp-1"] = authzenpdp.AuthZENPDPConnection{
+		ID:            "pdp-1",
+		Name:          "PDP",
+		Endpoint:      "https://pdp.example.com/access/v1/evaluation",
+		BatchEndpoint: "https://pdp.example.com/access/v1/evaluations",
+	}
+	resourceLister := &testResourceServerLister{
+		lists: map[int]*resource.ResourceServerList{
+			0: {
+				TotalResults: 2,
+				Count:        2,
+				ResourceServers: []providers.ResourceServer{
+					{
+						ID:   "rs-1",
+						Name: "Travel API",
+						AuthorizationEngine: providers.AuthorizationEngineConfig{
+							Type: providers.AuthorizationEngineTypeExternalAuthZENPDP,
+							Properties: providers.AuthorizationEngineProperties{
+								PDPConnectionID: "pdp-1",
+							},
+						},
+					},
+					{
+						ID:   "rs-2",
+						Name: "Billing API",
+						AuthorizationEngine: providers.AuthorizationEngineConfig{
+							Type: providers.AuthorizationEngineTypeExternalAuthZENPDP,
+							Properties: providers.AuthorizationEngineProperties{
+								PDPConnectionID: "other",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	s.svc = newService(s.mockIDP, s.mockNotif, resourceLister, authzenpdp.NewService(store))
+
+	result, svcErr := s.svc.usagesAuthZENPDP(context.Background(), "pdp-1")
+
+	s.Nil(svcErr)
+	s.Require().NotNil(result.TotalResults)
+	s.Equal(1, *result.TotalResults)
+	s.Equal(1, result.Count)
+	s.Equal(1, result.Summary[resourcedependency.ResourceTypeResourceServer])
+	s.Require().Len(result.Usages, 1)
+	s.Equal("rs-1", result.Usages[0].ID)
+	s.Equal("Travel API", result.Usages[0].DisplayName)
+	s.Equal(resourcedependency.BehaviorRestrict, result.Usages[0].BehaviorOnDelete)
+}
+
+func (s *ServiceTestSuite) TestDeleteAuthZENPDPBlocksWhenResourceServerReferencesIt() {
+	store := newTestAuthZENPDPStore()
+	store.connections["pdp-1"] = authzenpdp.AuthZENPDPConnection{
+		ID:            "pdp-1",
+		Name:          "PDP",
+		Endpoint:      "https://pdp.example.com/access/v1/evaluation",
+		BatchEndpoint: "https://pdp.example.com/access/v1/evaluations",
+	}
+	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{
+		lists: map[int]*resource.ResourceServerList{
+			0: {
+				TotalResults: 1,
+				Count:        1,
+				ResourceServers: []providers.ResourceServer{
+					{
+						ID:   "rs-1",
+						Name: "Travel API",
+						AuthorizationEngine: providers.AuthorizationEngineConfig{
+							Type: providers.AuthorizationEngineTypeExternalAuthZENPDP,
+							Properties: providers.AuthorizationEngineProperties{
+								PDPConnectionID: "pdp-1",
+							},
+						},
+					},
+				},
+			},
+		},
+	}, authzenpdp.NewService(store))
+
+	svcErr := s.svc.deleteAuthZENPDP(context.Background(), "pdp-1")
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorConnectionHasBlockingDependencies.Code, svcErr.Code)
+	s.Contains(store.connections, "pdp-1")
 }
 
 // TestUsagesSMSByProviderWrongProvider verifies a sender of another provider is not exposed

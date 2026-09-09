@@ -53,7 +53,6 @@ func createTestAuthzExecutorWithResource(t *testing.T,
 	mockFlowFactory.On("CreateExecutor", ExecutorNameAuthorization, providers.ExecutorTypeUtility,
 		[]providers.Input{}, []providers.Input{}, mock.Anything).
 		Return(createMockExecutor(t, "AuthorizationExecutor", providers.ExecutorTypeUtility))
-
 	return newAuthorizationExecutor(mockFlowFactory, mockAuthzService, mockEntityProvider, mockAuthnProvider,
 		resourceService)
 }

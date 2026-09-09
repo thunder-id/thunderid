@@ -119,6 +119,7 @@ func (s *MappingTestSuite) TestWriteServiceErrorStatusMapping() {
 		{&notification.ErrorDuplicateSenderName, http.StatusConflict},
 		{&notification.ErrorSenderHasBlockingDependencies, http.StatusConflict},
 		{&notification.ErrorInvalidProvider, http.StatusBadRequest},
+		{&ErrorConnectionHasBlockingDependencies, http.StatusConflict},
 		{&tidcommon.InternalServerError, http.StatusInternalServerError},
 	}
 	for _, tc := range cases {

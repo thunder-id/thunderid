@@ -3,7 +3,10 @@
 
 package connection
 
-import "github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+import (
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+)
 
 // connectionExportModel is the unified declarative/export representation of a connection,
 // matching the /connections API's typed, vendor-scoped shape (as opposed to the legacy
@@ -34,6 +37,23 @@ type connectionExportModel struct {
 
 	//nolint:lll // long struct tag: both yaml and json keys needed for declarative load/export and import
 	AttributeConfiguration *providers.AttributeConfiguration `yaml:"attributeConfiguration,omitempty" json:"attributeConfiguration,omitempty"`
+
+	// AuthZEN PDP connection fields.
+	//nolint:lll // long struct tag: both yaml and json keys are required
+	Endpoint string `yaml:"endpoint,omitempty"                 json:"endpoint,omitempty"`
+	//nolint:lll // long struct tag: both yaml and json keys are required
+	BatchEndpoint string `yaml:"batchEndpoint,omitempty"            json:"batchEndpoint,omitempty"`
+	//nolint:lll // long struct tag: both yaml and json keys are required
+	TimeoutMS int `yaml:"timeoutMs,omitempty"                json:"timeoutMs,omitempty"`
+	//nolint:lll // long struct tag: both yaml and json keys are required
+	RetryCount *int `yaml:"retryCount,omitempty"               json:"retryCount,omitempty"`
+	//nolint:lll // long struct tag: both yaml and json keys are required
+	SubjectProperties []string `yaml:"subjectProperties,omitempty"        json:"subjectProperties,omitempty"`
+	//nolint:lll // long struct tag: both yaml and json keys are required
+	SubjectPropertyMappings string `yaml:"subjectPropertyMappings,omitempty"  json:"subjectPropertyMappings,omitempty"`
+	//nolint:lll // long struct tag: both yaml and json keys are required
+	SubjectAttributeMappings []authzenpdp.SubjectAttributeMapping `yaml:"subjectAttributeMappings,omitempty" json:"subjectAttributeMappings,omitempty"`
+	//nolint:lll // long struct tag: both yaml and json keys are required
 
 	// SMS-backed vendor fields (twilio, vonage, sms-gateway).
 	AccountSID  string `yaml:"accountSid,omitempty"  json:"accountSid,omitempty"`

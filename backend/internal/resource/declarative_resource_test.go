@@ -20,6 +20,22 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func TestProcessResourceServerAuthorizationEngine(t *testing.T) {
+	for _, engineType := range []string{"", providers.AuthorizationEngineTypeRBAC} {
+		t.Run("default_"+engineType, func(t *testing.T) {
+			rs := &providers.ResourceServer{AuthorizationEngine: providers.AuthorizationEngineConfig{
+				Type:       engineType,
+				Properties: providers.AuthorizationEngineProperties{PDPConnectionID: "old-pdp"},
+			}}
+			assert.NoError(t, ProcessResourceServer(rs))
+			assert.Equal(t, providers.AuthorizationEngineTypeRBAC, rs.AuthorizationEngine.Type)
+			assert.Empty(t, rs.AuthorizationEngine.Properties.PDPConnectionID)
+		})
+	}
+	rs := &providers.ResourceServer{AuthorizationEngine: providers.AuthorizationEngineConfig{Type: "invalid"}}
+	assert.Error(t, ProcessResourceServer(rs))
+}
+
 // ResourceServerExporterTestSuite tests the resourceServerExporter.
 type ResourceServerExporterTestSuite struct {
 	suite.Suite
@@ -122,6 +138,12 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_Success() {
 		Identifier:  "test-server",
 		OUID:        "ou1",
 		Delimiter:   ":",
+		AuthorizationEngine: providers.AuthorizationEngineConfig{
+			Type: providers.AuthorizationEngineTypeExternalAuthZENPDP,
+			Properties: providers.AuthorizationEngineProperties{
+				PDPConnectionID: "pdp-1",
+			},
+		},
 	}
 
 	resources := []providers.Resource{
@@ -167,9 +189,20 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_Success() {
 	assert.True(s.T(), ok)
 	assert.Equal(s.T(), serverID, dto.ID)
 	assert.Equal(s.T(), "Test Server", dto.Name)
+	assert.Equal(s.T(), server.AuthorizationEngine, dto.AuthorizationEngine)
 	assert.Len(s.T(), dto.Resources, 1)
 	assert.Len(s.T(), dto.Resources[0].Actions, 1)
 	assert.Equal(s.T(), providers.ActionKindTool, dto.Resources[0].Actions[0].Kind)
+
+	yamlBytes, marshalErr := yaml.Marshal(dto)
+	assert.NoError(s.T(), marshalErr)
+	assert.Contains(s.T(), string(yamlBytes), "type: authzen_pdp")
+	assert.Contains(s.T(), string(yamlBytes), "pdpConnectionId: pdp-1")
+
+	imported, parseErr := parseToResourceServer(yamlBytes)
+	s.Require().NoError(parseErr)
+	s.Require().NotNil(imported)
+	assert.Equal(s.T(), server.AuthorizationEngine, imported.AuthorizationEngine)
 }
 
 func (s *ResourceServerExporterTestSuite) TestGetResourceByID_MCPExportImportRoundTrip() {
@@ -226,6 +259,7 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_MCPExportImportRou
 	// accepts the nested action carrying a kind.
 	yamlBytes, marshalErr := yaml.Marshal(dto)
 	assert.NoError(s.T(), marshalErr)
+	assert.NotContains(s.T(), string(yamlBytes), "authorizationEngine:")
 
 	imported, parseErr := parseToResourceServer(yamlBytes)
 	s.Require().NoError(parseErr)
@@ -516,7 +550,7 @@ type: "MCP"
 ouId: "ou1"
 `)
 
-	parser := parseAndValidateResourceServerWrapper(nil)
+	parser := parseAndValidateResourceServerWrapper()
 	result, err := parser(yamlData)
 
 	assert.NoError(t, err)
@@ -534,7 +568,7 @@ type: "BOGUS"
 ouId: "ou1"
 `)
 
-	parser := parseAndValidateResourceServerWrapper(nil)
+	parser := parseAndValidateResourceServerWrapper()
 	result, err := parser(yamlData)
 
 	assert.Error(t, err)
@@ -812,7 +846,7 @@ resources:
     parent: "users"
 `)
 
-	parser := parseAndValidateResourceServerWrapper(nil)
+	parser := parseAndValidateResourceServerWrapper()
 	result, err := parser(yamlData)
 
 	assert.NoError(t, err)
@@ -841,7 +875,7 @@ resources:
     parent: "ops"
 `)
 
-	parser := parseAndValidateResourceServerWrapper(nil)
+	parser := parseAndValidateResourceServerWrapper()
 	result, err := parser(yamlData)
 
 	assert.Error(t, err)
@@ -868,7 +902,7 @@ resources:
         kind: "resource"
 `)
 
-	parser := parseAndValidateResourceServerWrapper(nil)
+	parser := parseAndValidateResourceServerWrapper()
 	result, err := parser(yamlData)
 
 	assert.NoError(t, err)
@@ -881,7 +915,7 @@ resources:
 func TestParseAndValidateResourceServerWrapper_InvalidYAML(t *testing.T) {
 	yamlData := []byte(`::invalid`)
 
-	parser := parseAndValidateResourceServerWrapper(nil)
+	parser := parseAndValidateResourceServerWrapper()
 	result, err := parser(yamlData)
 
 	assert.Error(t, err)

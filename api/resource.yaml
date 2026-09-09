@@ -327,6 +327,10 @@ paths:
               description: "Updated description for booking operations"
               identifier: "https://api.example.com/booking/v2"
               ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
+              authorizationEngine:
+                type: authzen_pdp
+                properties:
+                  pdpConnectionId: "05d6e254-a3ca-49dd-89b7-2cf78fee6b23"
       responses:
         "200":
           description: Resource server updated
@@ -342,6 +346,10 @@ paths:
                 type: "API"
                 ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                 delimiter: ":"
+                authorizationEngine:
+                  type: authzen_pdp
+                  properties:
+                    pdpConnectionId: "05d6e254-a3ca-49dd-89b7-2cf78fee6b23"
         "400":
           description: Bad request
           content:
@@ -2290,6 +2298,8 @@ components:
         delimiter:
           type: string
           description: Character used to separate permission hierarchy levels (immutable after creation)
+        authorizationEngine:
+          $ref: '#/components/schemas/AuthorizationEngineConfig'
         isReadOnly:
           type: boolean
           description: Whether the resource server is read-only (system-managed)
@@ -2336,6 +2346,25 @@ components:
           type: string
           format: uuid
           description: ID of the organization unit this resource server belongs to
+        authorizationEngine:
+          $ref: '#/components/schemas/AuthorizationEngineConfig'
+
+    AuthorizationEngineConfig:
+      type: object
+      description: Authorization engine configuration for the resource server.
+      properties:
+        type:
+          type: string
+          enum: [rbac, authzen_pdp]
+          default: rbac
+          description: Use local RBAC by default, or select an external AuthZEN PDP for authorization decisions.
+        properties:
+          type: object
+          properties:
+            pdpConnectionId:
+              type: string
+              format: uuid
+              description: ID of the external AuthZEN PDP connection to use.
 
     Resource:
       type: object

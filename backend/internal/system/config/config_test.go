@@ -17,6 +17,19 @@ import (
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
+func TestAuthZENPDPDefaultsMergeAndValidation(t *testing.T) {
+	defaultRetries, zeroRetries := 1, 0
+	base := Config{AuthZENPDP: AuthZENPDPConfig{TimeoutMS: 500, RetryCount: &defaultRetries}}
+	user := Config{AuthZENPDP: AuthZENPDPConfig{TimeoutMS: 2000, RetryCount: &zeroRetries}}
+	mergeConfigs(&base, &user)
+	assert.Equal(t, 2000, base.AuthZENPDP.TimeoutMS)
+	assert.Equal(t, 0, *base.AuthZENPDP.RetryCount)
+	assert.NoError(t, base.AuthZENPDP.Validate())
+	negative := -1
+	assert.Error(t, (AuthZENPDPConfig{TimeoutMS: -1}).Validate())
+	assert.Error(t, (AuthZENPDPConfig{RetryCount: &negative}).Validate())
+}
+
 type ConfigTestSuite struct {
 	suite.Suite
 	originalEnvVars map[string]string
