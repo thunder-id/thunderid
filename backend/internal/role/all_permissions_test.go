@@ -497,6 +497,109 @@ func TestCrossStoreAllPermissions_RemovedRoleIsStillSkipped(t *testing.T) {
 	assert.Empty(t, result)
 }
 
+// A role defined declaratively in the file store but assigned to the user via the DB must still
+// appear in the user's role names, not just in GetRoleAssignments/GetAllPermissionsForAssignees.
+func TestGetUserRoles_BridgesDBAssignmentOntoFileDefinedRole(t *testing.T) {
+	ctx := context.Background()
+	dbStore := newRoleStoreInterfaceMock(t)
+	fileStore := newRoleStoreInterfaceMock(t)
+	store := newCompositeRoleStore(fileStore, dbStore)
+
+	dbStore.EXPECT().GetUserRoles(ctx, "user1", []string{}).Return([]string{"dbRole"}, nil).Once()
+	fileStore.EXPECT().GetUserRoles(ctx, "user1", []string{}).Return([]string{}, nil).Once()
+	dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}).Return([]string{"declarativeRole"}, nil).Once()
+	fileStore.EXPECT().IsRoleExist(ctx, "declarativeRole").Return(true, nil).Once()
+	fileStore.EXPECT().GetRole(ctx, "declarativeRole").
+		Return(RoleWithPermissions{Name: "Declarative Admin"}, nil).Once()
+
+	result, err := store.GetUserRoles(ctx, "user1", []string{})
+
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"dbRole", "Declarative Admin"}, result)
+}
+
+// A role ID from a DB assignment that is not declarative is already covered by dbStore.GetUserRoles,
+// so it must not be resolved (or double-counted) via the file store.
+func TestCrossStoreUserRoles_DBOnlyRoleIsSkipped(t *testing.T) {
+	ctx := context.Background()
+	dbStore := newRoleStoreInterfaceMock(t)
+	fileStore := newRoleStoreInterfaceMock(t)
+	store := newCompositeRoleStore(fileStore, dbStore)
+
+	dbStore.EXPECT().GetUserRoles(ctx, "user1", []string{}).Return([]string{"dbRole"}, nil).Once()
+	fileStore.EXPECT().GetUserRoles(ctx, "user1", []string{}).Return([]string{}, nil).Once()
+	dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}).Return([]string{"dbOnlyRole"}, nil).Once()
+	fileStore.EXPECT().IsRoleExist(ctx, "dbOnlyRole").Return(false, nil).Once()
+
+	result, err := store.GetUserRoles(ctx, "user1", []string{})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"dbRole"}, result)
+}
+
+// A role whose declarative definition was removed after the assignment was made genuinely confers
+// no name, so skipping it remains correct.
+func TestCrossStoreUserRoles_RemovedRoleIsSkipped(t *testing.T) {
+	ctx := context.Background()
+	dbStore := newRoleStoreInterfaceMock(t)
+	fileStore := newRoleStoreInterfaceMock(t)
+	store := newCompositeRoleStore(fileStore, dbStore)
+
+	dbStore.EXPECT().GetUserRoles(ctx, "user1", []string{}).Return([]string{}, nil).Once()
+	fileStore.EXPECT().GetUserRoles(ctx, "user1", []string{}).Return([]string{}, nil).Once()
+	dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}).Return([]string{"gone"}, nil).Once()
+	fileStore.EXPECT().IsRoleExist(ctx, "gone").Return(true, nil).Once()
+	fileStore.EXPECT().GetRole(ctx, "gone").Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
+
+	result, err := store.GetUserRoles(ctx, "user1", []string{})
+
+	require.NoError(t, err)
+	assert.Empty(t, result)
+}
+
+// Corruption is skipped here (unlike crossStoreAllPermissions' fail-closed enumeration): role names
+// feed an informational token claim, not an authorization decision, so this mirrors
+// crossStoreAuthorizedPermissions in skipping both ErrRoleNotFound and ErrRoleDataCorrupted.
+func TestCrossStoreUserRoles_CorruptRoleIsSkipped(t *testing.T) {
+	ctx := context.Background()
+	dbStore := newRoleStoreInterfaceMock(t)
+	fileStore := newRoleStoreInterfaceMock(t)
+	store := newCompositeRoleStore(fileStore, dbStore)
+
+	dbStore.EXPECT().GetUserRoles(ctx, "user1", []string{}).Return([]string{}, nil).Once()
+	fileStore.EXPECT().GetUserRoles(ctx, "user1", []string{}).Return([]string{}, nil).Once()
+	dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}).Return([]string{"corrupt"}, nil).Once()
+	fileStore.EXPECT().IsRoleExist(ctx, "corrupt").Return(true, nil).Once()
+	fileStore.EXPECT().GetRole(ctx, "corrupt").
+		Return(RoleWithPermissions{}, ErrRoleDataCorrupted).Once()
+
+	result, err := store.GetUserRoles(ctx, "user1", []string{})
+
+	require.NoError(t, err)
+	assert.Empty(t, result)
+}
+
+// A load failure other than ErrRoleNotFound/ErrRoleDataCorrupted is an actionable storage/IO error
+// and must propagate rather than silently producing an incomplete roles claim.
+func TestCrossStoreUserRoles_OtherErrorPropagates(t *testing.T) {
+	ctx := context.Background()
+	dbStore := newRoleStoreInterfaceMock(t)
+	fileStore := newRoleStoreInterfaceMock(t)
+	store := newCompositeRoleStore(fileStore, dbStore)
+
+	dbStore.EXPECT().GetUserRoles(ctx, "user1", []string{}).Return([]string{}, nil).Once()
+	fileStore.EXPECT().GetUserRoles(ctx, "user1", []string{}).Return([]string{}, nil).Once()
+	dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}).Return([]string{"broken"}, nil).Once()
+	fileStore.EXPECT().IsRoleExist(ctx, "broken").Return(true, nil).Once()
+	fileStore.EXPECT().GetRole(ctx, "broken").
+		Return(RoleWithPermissions{}, errors.New("disk read failure")).Once()
+
+	result, err := store.GetUserRoles(ctx, "user1", []string{})
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+}
+
 // A role widened between the pre-transaction check and the write must not be assignable on the
 // strength of the earlier result. The second CanGrantMembership call, made inside the transaction,
 // is what closes that window.
