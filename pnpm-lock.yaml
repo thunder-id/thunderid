@@ -460,9 +460,12 @@ importers:
       '@docusaurus/core':
         specifier: 3.9.2
         version: 3.9.2(@mdx-js/react@3.0.0(@types/react@19.2.14)(react@19.2.3))(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(debug@4.4.3(supports-color@10.2.2))(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(typescript@5.9.3)(uglify-js@3.19.3)
+<<<<<<< HEAD
       '@docusaurus/plugin-client-redirects':
         specifier: 3.9.2
         version: 3.9.2(@mdx-js/react@3.0.0(@types/react@19.2.14)(react@19.2.3))(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(debug@4.4.3(supports-color@10.2.2))(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(typescript@5.9.3)(uglify-js@3.19.3)
+=======
+>>>>>>> 48791b63b (Fix high and critical pnpm audit advisories)
       '@docusaurus/plugin-content-blog':
         specifier: 3.9.2
         version: 3.9.2(@docusaurus/plugin-content-docs@3.9.2(@mdx-js/react@3.0.0(@types/react@19.2.14)(react@19.2.3))(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(debug@4.4.3(supports-color@10.2.2))(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(typescript@5.9.3)(uglify-js@3.19.3))(@mdx-js/react@3.0.0(@types/react@19.2.14)(react@19.2.3))(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(debug@4.4.3(supports-color@10.2.2))(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(typescript@5.9.3)(uglify-js@3.19.3)
@@ -8402,8 +8405,13 @@ packages:
     resolution: {integrity: sha512-ir1UPr3dkwexU7FdV8qBBbNDRUhMmIekYMFZfi+C/sLNnRESKPl23nB9b2pltqfOQNnGzsDdId90AEtG5tCx4A==}
     engines: {node: '>=6.0.0'}
 
+<<<<<<< HEAD
   baseline-browser-mapping@2.11.14:
     resolution: {integrity: sha512-JyJ954WzuIR8/FFzX0o5krdSTrBAkcCSRfWSleRsIHSWV+cZe2FI1PKggVkFke1hBldRs+LRxUczzE9iPmgZww==}
+=======
+  baseline-browser-mapping@2.11.21:
+    resolution: {integrity: sha512-uh8vpY/1/YyFkunIDFH/12p7/7VdPKA1hejMVEbdkEaWnUz0Hesvx5EbiU6XxjyHZIOju+ZMbQJkRh+es3/spQ==}
+>>>>>>> 48791b63b (Fix high and critical pnpm audit advisories)
     engines: {node: '>=6.0.0'}
     hasBin: true
 
@@ -8521,8 +8529,13 @@ packages:
   caniuse-api@3.0.0:
     resolution: {integrity: sha512-bsTwuIg/BZZK/vreVTYYbSWoe2F+71P7K5QGEX+pT250DZbfU1MQ5prOKpPR+LL6uWKK3KMwMCAS74QB3Um1uw==}
 
+<<<<<<< HEAD
   caniuse-lite@1.0.30001809:
     resolution: {integrity: sha512-xxWVywk6a6Arlk+hymeycyn/VgqEfLDxupvhH/xiY5SJ/18kmi9o6MiO320DCUzypORHLtvh0I4i04tUhCNHNQ==}
+=======
+  caniuse-lite@1.0.30001810:
+    resolution: {integrity: sha512-TITQPUkaz+aVk5GL6NhOdwk1aEaNTSDPsGFWrTuhKGtjTF70jL/Oht2W4c6rXUe5fu7Ie19VIahAXHIIiWWNeg==}
+>>>>>>> 48791b63b (Fix high and critical pnpm audit advisories)
 
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
@@ -16222,6 +16235,7 @@ snapshots:
       - uglify-js
       - webpack-cli
 
+<<<<<<< HEAD
   '@docusaurus/plugin-client-redirects@3.9.2(@mdx-js/react@3.0.0(@types/react@19.2.14)(react@19.2.3))(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(debug@4.4.3(supports-color@10.2.2))(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(typescript@5.9.3)(uglify-js@3.19.3)':
     dependencies:
       '@docusaurus/core': 3.9.2(@mdx-js/react@3.0.0(@types/react@19.2.14)(react@19.2.3))(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(debug@4.4.3(supports-color@10.2.2))(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(typescript@5.9.3)(uglify-js@3.19.3)
@@ -16263,6 +16277,12 @@ snapshots:
     dependencies:
       '@docusaurus/core': 3.9.2(@mdx-js/react@3.0.0(@types/react@19.2.14)(react@19.2.3))(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(debug@4.4.3(supports-color@10.2.2))(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(typescript@5.9.3)(uglify-js@3.19.3)
       '@docusaurus/logger': 3.9.2
+=======
+  '@docusaurus/plugin-content-blog@3.9.2(@docusaurus/plugin-content-docs@3.9.2(@mdx-js/react@3.0.0(@types/react@19.2.14)(react@19.2.3))(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(debug@4.4.3(supports-color@10.2.2))(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(typescript@5.9.3)(uglify-js@3.19.3))(@mdx-js/react@3.0.0(@types/react@19.2.14)(react@19.2.3))(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(debug@4.4.3(supports-color@10.2.2))(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(typescript@5.9.3)(uglify-js@3.19.3)':
+    dependencies:
+      '@docusaurus/core': 3.9.2(@mdx-js/react@3.0.0(@types/react@19.2.14)(react@19.2.3))(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(debug@4.4.3(supports-color@10.2.2))(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(typescript@5.9.3)(uglify-js@3.19.3)
+      '@docusaurus/logger': 3.9.2
+>>>>>>> 48791b63b (Fix high and critical pnpm audit advisories)
       '@docusaurus/mdx-loader': 3.9.2(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(uglify-js@3.19.3)
       '@docusaurus/plugin-content-docs': 3.9.2(@mdx-js/react@3.0.0(@types/react@19.2.14)(react@19.2.3))(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(debug@4.4.3(supports-color@10.2.2))(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(typescript@5.9.3)(uglify-js@3.19.3)
       '@docusaurus/theme-common': 3.9.2(@docusaurus/plugin-content-docs@3.9.2(@mdx-js/react@3.0.0(@types/react@19.2.14)(react@19.2.3))(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(debug@4.4.3(supports-color@10.2.2))(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(typescript@5.9.3)(uglify-js@3.19.3))(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(uglify-js@3.19.3)
@@ -16768,7 +16788,11 @@ snapshots:
       '@docusaurus/theme-common': 3.9.2(@docusaurus/plugin-content-docs@3.9.2(@mdx-js/react@3.0.0(@types/react@19.2.14)(react@19.2.3))(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(debug@4.4.3(supports-color@10.2.2))(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(typescript@5.9.3)(uglify-js@3.19.3))(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(uglify-js@3.19.3)
       '@docusaurus/types': 3.9.2(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(uglify-js@3.19.3)
       '@docusaurus/utils-validation': 3.9.2(@swc/core@1.15.33(@swc/helpers@0.5.23))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.23))(csso@5.0.5)(esbuild@0.28.1)(html-minifier-terser@7.2.0)(lightningcss@1.32.0)(postcss@8.5.23)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)(uglify-js@3.19.3)
+<<<<<<< HEAD
       mermaid: 11.17.2
+=======
+      mermaid: 11.16.0
+>>>>>>> 48791b63b (Fix high and critical pnpm audit advisories)
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
       tslib: 2.8.1
@@ -20837,8 +20861,13 @@ snapshots:
 
   autoprefixer@10.5.0(postcss@8.5.23):
     dependencies:
+<<<<<<< HEAD
       browserslist: 4.28.8
       caniuse-lite: 1.0.30001809
+=======
+      browserslist: 4.28.9
+      caniuse-lite: 1.0.30001810
+>>>>>>> 48791b63b (Fix high and critical pnpm audit advisories)
       fraction.js: 5.3.4
       picocolors: 1.1.1
       postcss: 8.5.23
@@ -20913,7 +20942,11 @@ snapshots:
 
   base64url@3.0.1: {}
 
+<<<<<<< HEAD
   baseline-browser-mapping@2.11.14: {}
+=======
+  baseline-browser-mapping@2.11.21: {}
+>>>>>>> 48791b63b (Fix high and critical pnpm audit advisories)
 
   batch@0.6.1: {}
 
@@ -21049,12 +21082,21 @@ snapshots:
 
   caniuse-api@3.0.0:
     dependencies:
+<<<<<<< HEAD
       browserslist: 4.28.8
       caniuse-lite: 1.0.30001809
       lodash.memoize: 4.1.2
       lodash.uniq: 4.5.0
 
   caniuse-lite@1.0.30001809: {}
+=======
+      browserslist: 4.28.9
+      caniuse-lite: 1.0.30001810
+      lodash.memoize: 4.1.2
+      lodash.uniq: 4.5.0
+
+  caniuse-lite@1.0.30001810: {}
+>>>>>>> 48791b63b (Fix high and critical pnpm audit advisories)
 
   ccount@2.0.1: {}
 
@@ -24721,8 +24763,13 @@ snapshots:
     dependencies:
       '@next/env': 16.3.4
       '@swc/helpers': 0.5.23
+<<<<<<< HEAD
       baseline-browser-mapping: 2.11.14
       caniuse-lite: 1.0.30001809
+=======
+      baseline-browser-mapping: 2.11.21
+      caniuse-lite: 1.0.30001810
+>>>>>>> 48791b63b (Fix high and critical pnpm audit advisories)
       postcss: 8.5.23
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
