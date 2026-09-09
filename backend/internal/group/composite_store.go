@@ -366,6 +366,23 @@ func (c *compositeGroupStore) GetGroupsByIDs(ctx context.Context, groupIDs []str
 	return append(dbGroups, fileGroups...), nil
 }
 
+// GetGroupsByNames returns groups matching the given names from both stores. Unlike GetGroupsByIDs, a
+// name is not unique across organization units, so both stores are always queried in full rather than
+// stopping once a name is found in one of them.
+func (c *compositeGroupStore) GetGroupsByNames(ctx context.Context, names []string) ([]GroupBasicDAO, error) {
+	dbGroups, err := c.dbStore.GetGroupsByNames(ctx, names)
+	if err != nil {
+		return nil, err
+	}
+
+	fileGroups, err := c.fileStore.GetGroupsByNames(ctx, names)
+	if err != nil {
+		return nil, err
+	}
+
+	return mergeGroupBasicDAOs(dbGroups, fileGroups), nil
+}
+
 // IsGroupDeclarative checks if the group exists in the file-based store.
 func (c *compositeGroupStore) IsGroupDeclarative(ctx context.Context, id string) (bool, error) {
 	return c.fileStore.IsGroupDeclarative(ctx, id)

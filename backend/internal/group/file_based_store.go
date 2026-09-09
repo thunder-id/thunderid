@@ -458,6 +458,46 @@ func (f *fileBasedGroupStore) GetGroupsByIDs(ctx context.Context, groupIDs []str
 	return groups, nil
 }
 
+// GetGroupsByNames returns groups matching any of the given names, regardless of organization unit.
+func (f *fileBasedGroupStore) GetGroupsByNames(ctx context.Context, names []string) ([]GroupBasicDAO, error) {
+	if len(names) == 0 {
+		return []GroupBasicDAO{}, nil
+	}
+
+	wanted := make(map[string]bool, len(names))
+	for _, name := range names {
+		wanted[name] = true
+	}
+
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	groups := make([]GroupBasicDAO, 0, len(names))
+	for _, item := range list {
+		grpData, err := groupFromDeclarativeData(item.ID.ID, item.Data)
+		if err != nil {
+			log.GetLogger().Warn(ctx, "Skipping malformed group in GetGroupsByNames",
+				log.String("groupID", item.ID.ID),
+				log.Error(err))
+			continue
+		}
+		if !wanted[grpData.Name] {
+			continue
+		}
+		groups = append(groups, GroupBasicDAO{
+			ID:          grpData.ID,
+			Name:        grpData.Name,
+			Description: grpData.Description,
+			OUID:        grpData.OUID,
+			IsReadOnly:  true,
+		})
+	}
+
+	return groups, nil
+}
+
 // IsGroupDeclarative returns true for all groups in the file-based store.
 func (f *fileBasedGroupStore) IsGroupDeclarative(ctx context.Context, id string) (bool, error) {
 	_, err := f.GenericFileBasedStore.Get(id)

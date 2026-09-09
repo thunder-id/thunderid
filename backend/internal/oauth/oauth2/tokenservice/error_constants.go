@@ -20,4 +20,10 @@ var (
 
 	// ErrAssertionReplayed indicates the assertion's jti has already been recorded in the replay cache.
 	ErrAssertionReplayed = errors.New("assertion has already been used")
+
+	// ErrAuthorizationMappingUnavailable indicates authorization mapping resolution failed because a
+	// dependency (the role, group, or resource service) was unavailable, rather than because the
+	// token's issuer is untrusted. Callers must map this to server_error, not to an issuer-trust or
+	// request-validation failure.
+	ErrAuthorizationMappingUnavailable = errors.New("authorization mapping resolution unavailable")
 )

@@ -87,10 +87,12 @@ const (
 
 // Executor property keys
 const (
-	propertyKeyAssignGroup    = "assignGroup"
-	propertyKeyAssignRole     = "assignRole"
-	propertyKeyRequiredScopes = "requiredScopes"
-	propertyKeyEmailTemplate  = "emailTemplate"
+	propertyKeyAssignGroup           = "assignGroup"
+	propertyKeyAssignRole            = "assignRole"
+	propertyKeySeedGroupsFromMapping = "seedGroupsFromMapping"
+	propertyKeySeedRolesFromMapping  = "seedRolesFromMapping"
+	propertyKeyRequiredScopes        = "requiredScopes"
+	propertyKeyEmailTemplate         = "emailTemplate"
 	// TODO: Revisit propertyKeyTokenExpiry and propertyKeyMagicLinkURL — these should not be node properties.
 	propertyKeyTokenExpiry                             = "tokenExpiry"
 	propertyKeyMagicLinkURL                            = "magicLinkURL"

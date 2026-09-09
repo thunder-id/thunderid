@@ -2867,6 +2867,45 @@ func TestGetGroupsByIDs_StoreError(t *testing.T) {
 	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 }
 
+// TestGetGroupsByNames_DedupesInputAndGroupsAmbiguousMatches confirms duplicate input names are
+// deduped before the store call, and that more than one group sharing a name are both returned under
+// that name rather than one silently overwriting the other.
+func TestGetGroupsByNames_DedupesInputAndGroupsAmbiguousMatches(t *testing.T) {
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("GetGroupsByNames", mock.Anything, []string{"engineering"}).
+		Return([]GroupBasicDAO{
+			{ID: "grp-1", Name: "engineering", OUID: "ou-1"},
+			{ID: "grp-2", Name: "engineering", OUID: "ou-2"},
+		}, nil).Once()
+
+	service := &groupService{groupStore: storeMock}
+
+	result, err := service.GetGroupsByNames(context.Background(), []string{"engineering", "engineering"})
+	require.Nil(t, err)
+	require.Len(t, result["engineering"], 2)
+}
+
+func TestGetGroupsByNames_EmptyInputReturnsEmptyMap(t *testing.T) {
+	service := &groupService{groupStore: newGroupStoreInterfaceMock(t)}
+
+	result, err := service.GetGroupsByNames(context.Background(), nil)
+	require.Nil(t, err)
+	require.Empty(t, result)
+}
+
+func TestGetGroupsByNames_StoreError(t *testing.T) {
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("GetGroupsByNames", mock.Anything, []string{"engineering"}).
+		Return(nil, errors.New("store fail")).Once()
+
+	service := &groupService{groupStore: storeMock}
+
+	result, err := service.GetGroupsByNames(context.Background(), []string{"engineering"})
+	require.Nil(t, result)
+	require.NotNil(t, err)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
+}
+
 func TestPopulateGroupOUHandles_ServiceError(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("GetOrganizationUnitHandlesByIDs", mock.Anything, []string{testOUID1}).

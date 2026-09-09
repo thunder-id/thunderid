@@ -113,13 +113,88 @@ type AccountLinking struct {
 	Attributes []string `json:"attributes,omitempty"`
 }
 
-// AttributeConfiguration is the connection's user-type resolution, per-user-type attribute mappings
-// and account-linking configuration. Mirrors the /connections wire format; pointers so a nil section
-// stays distinguishable from an empty one.
+// AuthorizationTarget names one local role, group, or permission an AuthorizationRuleMapping value
+// resolves to. Role and group targets carry ID; a permission target carries ResourceServerID and
+// Permission instead, since a permission is only meaningful on a resource server.
+type AuthorizationTarget struct {
+	Type             string `json:"type"`
+	ID               string `json:"id,omitempty"`
+	ResourceServerID string `json:"resourceServerId,omitempty"`
+	Permission       string `json:"permission,omitempty"`
+}
+
+// AuthorizationRule matches a claim token against Value using Operator, interpreted per the owning
+// mapping's ValueType, and grants Targets when it matches. Mirrors providers.AuthorizationRule.
+type AuthorizationRule struct {
+	Operator string                `json:"operator"`
+	Value    string                `json:"value"`
+	Targets  []AuthorizationTarget `json:"targets"`
+}
+
+// AuthorizationRuleMapping maps values of one external claim to local authorization targets. Delimiter
+// splits a string claim into candidate tokens; a list-valued claim is split into tokens regardless of
+// Delimiter. ValueType governs how a token and a rule's Value are parsed for comparison; it defaults
+// to "string" server-side when omitted.
+type AuthorizationRuleMapping struct {
+	Claim     string              `json:"claim"`
+	ValueType string              `json:"valueType,omitempty"`
+	Delimiter string              `json:"delimiter,omitempty"`
+	Values    []AuthorizationRule `json:"values"`
+}
+
+// AuthorizationDirectMapping feeds every value of one external claim directly onto local roles,
+// groups, or permissions of TargetType, using each value as the name (or permission string) to look
+// up, rather than an explicit per-value rule table. Mirrors providers.AuthorizationDirectMapping.
+type AuthorizationDirectMapping struct {
+	Claim            string `json:"claim"`
+	Delimiter        string `json:"delimiter,omitempty"`
+	TargetType       string `json:"targetType"`
+	ResourceServerID string `json:"resourceServerId,omitempty"`
+}
+
+// Authorization target type constants, mirroring providers.AuthorizationTargetType.
+const (
+	AuthorizationTargetRole       = "role"
+	AuthorizationTargetGroup      = "group"
+	AuthorizationTargetPermission = "permission"
+)
+
+// Authorization operator constants, mirroring providers.AuthorizationOperator.
+const (
+	AuthorizationOperatorEquals             = "equals"
+	AuthorizationOperatorNotEquals          = "not_equals"
+	AuthorizationOperatorGreaterThan        = "greater_than"
+	AuthorizationOperatorLessThan           = "less_than"
+	AuthorizationOperatorGreaterThanOrEqual = "greater_than_or_equal"
+	AuthorizationOperatorLessThanOrEqual    = "less_than_or_equal"
+	AuthorizationOperatorIncludes           = "includes"
+	AuthorizationOperatorNotIncludes        = "not_includes"
+)
+
+// Authorization value type constants, mirroring providers.AuthorizationValueType.
+const (
+	AuthorizationValueTypeString  = "string"
+	AuthorizationValueTypeNumber  = "number"
+	AuthorizationValueTypeBoolean = "boolean"
+	AuthorizationValueTypeArray   = "array"
+)
+
+// AuthorizationMapping holds a connection's authorization mapping configuration: explicit
+// value-to-target rules, direct name-based lookups, or both together, in which case their resolved
+// targets union. Mirrors providers.AuthorizationMapping.
+type AuthorizationMapping struct {
+	Rules  []AuthorizationRuleMapping   `json:"rules,omitempty"`
+	Direct []AuthorizationDirectMapping `json:"direct,omitempty"`
+}
+
+// AttributeConfiguration is the connection's user-type resolution, per-user-type attribute mappings,
+// account-linking configuration, and authorization mapping. Mirrors the /connections wire format;
+// pointers so a nil section stays distinguishable from an empty one.
 type AttributeConfiguration struct {
 	UserTypeResolution        *UserTypeResolution        `json:"userTypeResolution,omitempty"`
 	UserTypeAttributeMappings []UserTypeAttributeMapping `json:"userTypeAttributeMappings,omitempty"`
 	AccountLinking            *AccountLinking            `json:"accountLinking,omitempty"`
+	AuthorizationMapping      *AuthorizationMapping      `json:"authorizationMapping,omitempty"`
 }
 
 // IDP represents an identity provider in the system

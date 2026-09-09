@@ -39,7 +39,10 @@ type connectionInstance struct {
 
 // errorResponse mirrors the standard API error envelope.
 type errorResponse struct {
-	Code string `json:"code"`
+	Code        string `json:"code"`
+	Description struct {
+		Key string `json:"key"`
+	} `json:"description"`
 }
 
 // httpResult captures a decoded response body alongside its status code.
@@ -52,6 +55,15 @@ func (r httpResult) errorCode() string {
 	var e errorResponse
 	_ = json.Unmarshal(r.body, &e)
 	return e.Code
+}
+
+// errorMessageKey returns the response's i18n description key, which (unlike errorCode, shared by
+// every attribute-configuration validation class) identifies which specific validation rejected the
+// request.
+func (r httpResult) errorMessageKey() string {
+	var e errorResponse
+	_ = json.Unmarshal(r.body, &e)
+	return e.Description.Key
 }
 
 func (r httpResult) decode(v interface{}) error {
@@ -172,9 +184,12 @@ const maskedSecretValue = "******"
 
 type ConnectionAPITestSuite struct {
 	suite.Suite
-	ouID         string
-	userTypeID   string
-	userTypeName string
+	ouID                  string
+	userTypeID            string
+	userTypeName          string
+	authzResourceServerID string
+	authzRoleID           string
+	authzGroupID          string
 }
 
 func TestConnectionAPISuite(t *testing.T) {
@@ -214,9 +229,40 @@ func (s *ConnectionAPITestSuite) SetupSuite() {
 	s.Require().NoError(err, "failed to create user type")
 	s.userTypeID = userTypeID
 	s.userTypeName = userType.Name
+
+	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name:       "Connection Attribute Config API",
+		Identifier: "connection-attr-config-api",
+		OUID:       ouID,
+	}, []testutils.Action{{Name: "Read", Handle: "read", Description: "Read access"}})
+	s.Require().NoError(err, "failed to create resource server")
+	s.authzResourceServerID = rsID
+
+	roleID, err := testutils.CreateRole(testutils.Role{Name: "Connection Attr Config Role", OUID: ouID})
+	s.Require().NoError(err, "failed to create role")
+	s.authzRoleID = roleID
+
+	groupID, err := testutils.CreateGroup(testutils.Group{Name: "Connection Attr Config Group", OUID: ouID})
+	s.Require().NoError(err, "failed to create group")
+	s.authzGroupID = groupID
 }
 
 func (s *ConnectionAPITestSuite) TearDownSuite() {
+	if s.authzGroupID != "" {
+		if err := testutils.DeleteGroup(s.authzGroupID); err != nil {
+			s.T().Logf("failed to delete group: %v", err)
+		}
+	}
+	if s.authzRoleID != "" {
+		if err := testutils.DeleteRole(s.authzRoleID); err != nil {
+			s.T().Logf("failed to delete role: %v", err)
+		}
+	}
+	if s.authzResourceServerID != "" {
+		if err := testutils.DeleteResourceServer(s.authzResourceServerID); err != nil {
+			s.T().Logf("failed to delete resource server: %v", err)
+		}
+	}
 	if s.userTypeID != "" {
 		if err := testutils.DeleteUserType(s.userTypeID); err != nil {
 			s.T().Logf("failed to delete user type: %v", err)
@@ -591,10 +637,14 @@ func (s *ConnectionAPITestSuite) oauthRequestWithConfig(
 type invalidAttributeConfig struct {
 	name   string
 	config *testutils.AttributeConfiguration
+	// wantErrorKey, when set, is the i18n message key the rejection must carry. errorCode alone is not
+	// enough to prove a class was rejected for its own reason: every authorization mapping validation
+	// class shares the same code, differing only in this key.
+	wantErrorKey string
 }
 
 // invalidAttributeConfigs enumerates one configuration per validation class the IdP service enforces.
-// Shared by the create cases (A3-A9) and the update table (A16): create and update reach validation by
+// Shared by the create cases (A3-A9, A20-A22) and the update table (A16): create and update reach validation by
 // separate paths, so a class proven on one says nothing about the other.
 func (s *ConnectionAPITestSuite) invalidAttributeConfigs() []invalidAttributeConfig {
 	mapping := func(attrs ...testutils.AttributeMapping) []testutils.UserTypeAttributeMapping {
@@ -672,6 +722,345 @@ func (s *ConnectionAPITestSuite) invalidAttributeConfigs() []invalidAttributeCon
 					ExternalAttribute: "user_type",
 					ValueMapping:      map[string]string{"staff": "no_such_user_type"},
 				},
+			},
+		},
+		{
+			name:         "A20_authorization_mapping_role_not_found",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_role_not_found_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets: []testutils.AuthorizationTarget{
+							{Type: testutils.AuthorizationTargetRole, ID: "00000000-0000-0000-0000-000000000001"},
+						},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "A21_authorization_mapping_group_not_found",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_group_not_found_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "editors",
+						Targets: []testutils.AuthorizationTarget{
+							{Type: testutils.AuthorizationTargetGroup, ID: "00000000-0000-0000-0000-000000000002"},
+						},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "A22_authorization_mapping_permission_not_found",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_permission_not_found_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "writers",
+						Targets: []testutils.AuthorizationTarget{{
+							Type:             testutils.AuthorizationTargetPermission,
+							ResourceServerID: "00000000-0000-0000-0000-000000000003",
+							Permission:       "write",
+						}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "A24_authorization_mapping_includes_requires_multi_valued",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_membership_requires_multi_valued_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "department",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorIncludes,
+						Value:    "platform",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_claim_required",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_claim_required_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_value_type_invalid",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_value_type_invalid_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim:     "groups",
+					ValueType: "not_a_real_type",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_delimiter_requires_string",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_delimiter_requires_string_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim:     "level",
+					ValueType: testutils.AuthorizationValueTypeNumber,
+					Delimiter: ",",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "5",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_values_required",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_values_required_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim:  "groups",
+					Values: []testutils.AuthorizationRule{},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_operator_invalid",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_operator_invalid_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: "not_a_real_operator",
+						Value:    "admins",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_multi_valued_requires_membership",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_multi_valued_requires_membership_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim:     "groups",
+					ValueType: testutils.AuthorizationValueTypeArray,
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_operator_requires_number",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_operator_requires_number_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "level",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorGreaterThan,
+						Value:    "5",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_empty_value",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_empty_value_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_value_not_number",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_value_not_number_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim:     "level",
+					ValueType: testutils.AuthorizationValueTypeNumber,
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "not-a-number",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_value_not_boolean",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_value_not_boolean_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim:     "isAdmin",
+					ValueType: testutils.AuthorizationValueTypeBoolean,
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "not-a-bool",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_no_targets",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_no_targets_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets:  []testutils.AuthorizationTarget{},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_target_id_required",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_target_id_required_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets:  []testutils.AuthorizationTarget{{Type: testutils.AuthorizationTargetRole}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_permission_target_incomplete",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_permission_target_incomplete_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets: []testutils.AuthorizationTarget{
+							{Type: testutils.AuthorizationTargetPermission, ResourceServerID: s.authzResourceServerID},
+						},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_rule_mapping_target_type_invalid",
+			wantErrorKey: "error.idpservice.authorization_rule_mapping_target_type_invalid_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+					Claim: "groups",
+					Values: []testutils.AuthorizationRule{{
+						Operator: testutils.AuthorizationOperatorEquals,
+						Value:    "admins",
+						Targets:  []testutils.AuthorizationTarget{{Type: "not_a_real_type"}},
+					}},
+				}}},
+			},
+		},
+		{
+			name:         "authorization_direct_mapping_claim_required",
+			wantErrorKey: "error.idpservice.authorization_direct_mapping_claim_required_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Direct: []testutils.AuthorizationDirectMapping{{
+					Claim:      "",
+					TargetType: testutils.AuthorizationTargetRole,
+				}}},
+			},
+		},
+		{
+			name:         "authorization_direct_mapping_resource_server_not_allowed",
+			wantErrorKey: "error.idpservice.authorization_direct_mapping_resource_server_not_allowed_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Direct: []testutils.AuthorizationDirectMapping{{
+					Claim:            "groups",
+					TargetType:       testutils.AuthorizationTargetRole,
+					ResourceServerID: s.authzResourceServerID,
+				}}},
+			},
+		},
+		{
+			name:         "authorization_direct_mapping_resource_server_required",
+			wantErrorKey: "error.idpservice.authorization_direct_mapping_resource_server_required_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Direct: []testutils.AuthorizationDirectMapping{{
+					Claim:      "perms",
+					TargetType: testutils.AuthorizationTargetPermission,
+				}}},
+			},
+		},
+		{
+			name:         "authorization_direct_mapping_resource_server_not_found",
+			wantErrorKey: "error.idpservice.authorization_direct_mapping_resource_server_not_found_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Direct: []testutils.AuthorizationDirectMapping{{
+					Claim:            "perms",
+					TargetType:       testutils.AuthorizationTargetPermission,
+					ResourceServerID: "00000000-0000-0000-0000-000000000099",
+				}}},
+			},
+		},
+		{
+			name:         "authorization_direct_mapping_target_type_invalid",
+			wantErrorKey: "error.idpservice.authorization_direct_mapping_target_type_invalid_description",
+			config: &testutils.AttributeConfiguration{
+				UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+				AuthorizationMapping: &testutils.AuthorizationMapping{Direct: []testutils.AuthorizationDirectMapping{{
+					Claim:      "groups",
+					TargetType: "not_a_real_type",
+				}}},
 			},
 		},
 	}
@@ -809,7 +1198,7 @@ func (s *ConnectionAPITestSuite) TestOIDCAttributeConfigurationRoundTrip() {
 	s.Equal(updated, afterUpdate.AttributeConfiguration)
 }
 
-// A3-A9: every validation class is rejected on create. The unit tests for these call the service's
+// A3-A9, A20-A22: every validation class is rejected on create. The unit tests for these call the service's
 // private validator directly, so nothing previously proved the create path rejects them.
 func (s *ConnectionAPITestSuite) TestAttributeConfigurationValidationOnCreate() {
 	for _, invalid := range s.invalidAttributeConfigs() {
@@ -820,12 +1209,16 @@ func (s *ConnectionAPITestSuite) TestAttributeConfigurationValidationOnCreate() 
 			s.Equal(http.StatusBadRequest, res.status,
 				"expected 400 for %s, got %d: %s", invalid.name, res.status, string(res.body))
 			s.NotEmpty(res.errorCode(), "error response should carry a code")
+			if invalid.wantErrorKey != "" {
+				s.Equal(invalid.wantErrorKey, res.errorMessageKey(),
+					"%s should be rejected for its own validation reason, not a substituted one", invalid.name)
+			}
 		})
 	}
 }
 
 // A16: the same classes rejected on update. Create and update validate through separate call sites, so
-// A3-A9 passing says nothing about this path.
+// A3-A9, A20-A22 passing says nothing about this path.
 func (s *ConnectionAPITestSuite) TestAttributeConfigurationValidationOnUpdate() {
 	created := s.createConnection("oauth",
 		s.oauthRequestWithConfig("OAuth Invalid Update Base", s.validAttributeConfig()))
@@ -838,6 +1231,10 @@ func (s *ConnectionAPITestSuite) TestAttributeConfigurationValidationOnUpdate() 
 			s.Require().NoError(err)
 			s.Equal(http.StatusBadRequest, res.status,
 				"expected 400 for %s, got %d: %s", invalid.name, res.status, string(res.body))
+			if invalid.wantErrorKey != "" {
+				s.Equal(invalid.wantErrorKey, res.errorMessageKey(),
+					"%s should be rejected for its own validation reason, not a substituted one", invalid.name)
+			}
 		})
 	}
 }
@@ -1118,4 +1515,39 @@ func (s *ConnectionAPITestSuite) TestNilVersusEmptyConfigurationSections() {
 			s.deleteConnection("google", created.ID)
 		}
 	})
+}
+
+// A23: authorization mapping targets that name a real role, group, and resource-server permission are
+// accepted on both create and update. A20-A22 prove the rejection side of the existence check; this is
+// the accepting side, so the check is proven to gate on existence rather than reject everything.
+func (s *ConnectionAPITestSuite) TestAttributeConfigurationWithExistingAuthorizationRuleMappingTargetsAccepted() {
+	config := &testutils.AttributeConfiguration{
+		UserTypeResolution: &testutils.UserTypeResolution{Default: s.userTypeName},
+		AuthorizationMapping: &testutils.AuthorizationMapping{Rules: []testutils.AuthorizationRuleMapping{{
+			Claim: "groups",
+			Values: []testutils.AuthorizationRule{{
+				Operator: testutils.AuthorizationOperatorEquals,
+				Value:    "admins",
+				Targets: []testutils.AuthorizationTarget{
+					{Type: testutils.AuthorizationTargetRole, ID: s.authzRoleID},
+					{Type: testutils.AuthorizationTargetGroup, ID: s.authzGroupID},
+					{
+						Type:             testutils.AuthorizationTargetPermission,
+						ResourceServerID: s.authzResourceServerID,
+						Permission:       "read",
+					},
+				},
+			}},
+		}}},
+	}
+
+	created := s.createConnection("oauth", s.oauthRequestWithConfig("OAuth Authz Mapping Accepted", config))
+	defer s.deleteConnection("oauth", created.ID)
+	s.Require().NotNil(created.AttributeConfiguration, "create response should echo the configuration")
+	s.Equal(config.AuthorizationMapping, created.AttributeConfiguration.AuthorizationMapping)
+
+	updateRes, err := doRequest(http.MethodPut, "/connections/oauth/"+created.ID,
+		s.oauthRequestWithConfig("OAuth Authz Mapping Accepted", config))
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, updateRes.status, string(updateRes.body))
 }

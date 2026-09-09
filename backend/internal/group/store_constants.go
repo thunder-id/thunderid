@@ -332,3 +332,13 @@ func buildGetGroupsByIDsQuery(groupIDs []string, deploymentID string) (dbmodel.D
 		groupIDs, deploymentID,
 	)
 }
+
+// buildGetGroupsByNamesQuery constructs a query to fetch groups by a list of names, regardless of
+// organization unit. A name may match more than one group, unlike an ID.
+func buildGetGroupsByNamesQuery(names []string, deploymentID string) (dbmodel.DBQuery, []interface{}, error) {
+	return buildGroupINClauseQuery(
+		"GRQ-GROUP_MGT-25",
+		`SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" WHERE NAME IN (%s) AND DEPLOYMENT_ID = %s`,
+		names, deploymentID,
+	)
+}

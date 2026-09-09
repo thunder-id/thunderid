@@ -14,7 +14,9 @@ import (
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/revocation"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -205,6 +207,53 @@ func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorRe
 	execResp.AuthUser = authUser
 	if svcErr == nil && entityRef != nil {
 		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists
+	}
+}
+
+// resolveAndSetMappedAuthorizationTargets resolves the IDP's AuthorizationRuleMapping (explicit value
+// rules) and AuthorizationDirectMapping (direct name-based lookup) against federatedAttributes,
+// unions their targets, and stores the result as runtime data for later executors. Logs and continues
+// without the affected targets when the IDP or direct targets can't be resolved, rather than failing
+// the federated login over what is best-effort enrichment of its runtime state.
+func resolveAndSetMappedAuthorizationTargets(
+	ctx context.Context, execResp *providers.ExecutorResponse,
+	idpService idp.IDPServiceInterface, idpID string, federatedAttributes map[string]interface{},
+	logger *log.Logger,
+) {
+	idpDTO, svcErr := idpService.GetIdentityProvider(ctx, idpID)
+	if svcErr != nil {
+		logger.Warn(ctx, "Failed to resolve IDP for authorization mapping, skipping",
+			log.String("idpId", idpID), log.String("error", svcErr.Error.DefaultValue))
+		return
+	}
+	targets := idp.GetRuleAuthorizationTargets(idpDTO, federatedAttributes)
+	directTargets, svcErr := idpService.GetDirectAuthorizationTargets(ctx, idpDTO, federatedAttributes)
+	if svcErr != nil {
+		logger.Warn(ctx, "Failed to resolve direct authorization targets, continuing with rule-based targets only",
+			log.String("idpId", idpID), log.String("error", svcErr.Error.DefaultValue))
+	} else {
+		targets = append(targets, directTargets...)
+	}
+	setMappedAuthorizationTargets(execResp, targets)
+}
+
+// setMappedAuthorizationTargets splits resolved authorization mapping targets (rule-based or direct)
+// by kind and stores them as runtime data for later executors. No-op when there is nothing to store.
+func setMappedAuthorizationTargets(execResp *providers.ExecutorResponse, targets []providers.AuthorizationTarget) {
+	if len(targets) == 0 {
+		return
+	}
+	roleIDs, groupIDs, permissions := idp.SplitAuthorizationTargets(targets)
+	if len(roleIDs) > 0 {
+		execResp.RuntimeData[common.RuntimeKeyMappedRoleIDs] = systemutils.StringifyStringArray(roleIDs, " ")
+	}
+	if len(groupIDs) > 0 {
+		execResp.RuntimeData[common.RuntimeKeyMappedGroupIDs] = systemutils.StringifyStringArray(groupIDs, " ")
+	}
+	if len(permissions) > 0 {
+		if encoded, err := json.Marshal(permissions); err == nil {
+			execResp.RuntimeData[common.RuntimeKeyMappedPermissions] = string(encoded)
+		}
 	}
 }
 

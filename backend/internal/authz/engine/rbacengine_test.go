@@ -40,7 +40,7 @@ func (suite *RBACEngineTestSuite) TestEvaluateAccessSuccess() {
 	}
 
 	suite.mockRoleService.On("GetAuthorizedPermissionsByResourceServer", mock.Anything, testUserID1,
-		[]string{"group1"}, "", []string{"document:read"}).
+		[]string{"group1"}, mock.Anything, "", []string{"document:read"}).
 		Return([]string{"document:read"}, nil)
 
 	result, err := suite.engine.EvaluateAccess(context.Background(), request)
@@ -58,7 +58,7 @@ func (suite *RBACEngineTestSuite) TestEvaluateAccessDenied() {
 	}
 
 	suite.mockRoleService.On("GetAuthorizedPermissionsByResourceServer", mock.Anything, testUserID1,
-		[]string{"group1"}, "", []string{"document:delete"}).
+		[]string{"group1"}, mock.Anything, "", []string{"document:delete"}).
 		Return([]string{}, nil)
 
 	result, err := suite.engine.EvaluateAccess(context.Background(), request)
@@ -85,7 +85,7 @@ func (suite *RBACEngineTestSuite) TestEvaluateAccessBatchPreservesOrder() {
 	}
 
 	suite.mockRoleService.On("GetAuthorizedPermissionsByResourceServer", mock.Anything, testUserID1,
-		[]string{"group1"}, "", []string{"document:read", "document:delete"}).
+		[]string{"group1"}, mock.Anything, "", []string{"document:read", "document:delete"}).
 		Return([]string{"document:read"}, nil)
 
 	result, err := suite.engine.EvaluateAccessBatch(context.Background(), request)
@@ -115,10 +115,10 @@ func (suite *RBACEngineTestSuite) TestEvaluateAccessBatchScopesByResourceServerI
 	}
 
 	suite.mockRoleService.On("GetAuthorizedPermissionsByResourceServer", mock.Anything, testUserID1,
-		[]string{"group1"}, "booking-api", []string{"read"}).
+		[]string{"group1"}, mock.Anything, "booking-api", []string{"read"}).
 		Return([]string{"read"}, nil)
 	suite.mockRoleService.On("GetAuthorizedPermissionsByResourceServer", mock.Anything, testUserID1,
-		[]string{"group1"}, "invoice-api", []string{"read"}).
+		[]string{"group1"}, mock.Anything, "invoice-api", []string{"read"}).
 		Return([]string{}, nil)
 
 	result, err := suite.engine.EvaluateAccessBatch(context.Background(), request)
@@ -139,7 +139,7 @@ func (suite *RBACEngineTestSuite) TestEvaluateAccessUsesActionNameAsPermission()
 	}
 
 	suite.mockRoleService.On("GetAuthorizedPermissionsByResourceServer", mock.Anything, testUserID1,
-		[]string(nil), "", []string{"document:read"}).
+		[]string(nil), mock.Anything, "", []string{"document:read"}).
 		Return([]string{"document:read"}, nil)
 
 	result, err := suite.engine.EvaluateAccess(context.Background(), request)
@@ -176,7 +176,7 @@ func (suite *RBACEngineTestSuite) TestEvaluateAccessRoleServiceError() {
 	}
 
 	suite.mockRoleService.On("GetAuthorizedPermissionsByResourceServer", mock.Anything, testUserID1,
-		[]string{"group1"}, "", []string{"document:read"}).
+		[]string{"group1"}, mock.Anything, "", []string{"document:read"}).
 		Return([]string(nil), roleServiceError)
 
 	result, err := suite.engine.EvaluateAccess(context.Background(), request)
