@@ -224,6 +224,44 @@ func (suite *OUExecutorTestSuite) TestExecute_Success() {
 	}
 }
 
+// TestExecute_AuthenticatedUserWithEntityReference_StillCreatesOU guards against reintroducing the
+// #5276 bug: OUExecutor used to skip creation entirely whenever the current AuthUser already had an
+// entity reference (e.g. a user just provisioned earlier in the same execution), which made it
+// impossible to place OU Creation after Provisioning. Since suite.mockAuthnProvider has no
+// expectation configured for GetEntityReference, this test also fails loudly if that call is ever
+// made again.
+func (suite *OUExecutorTestSuite) TestExecute_AuthenticatedUserWithEntityReference_StillCreatesOU() {
+	authUser := providers.AuthUser{}
+	authUser.SetStateFor("default", providers.AuthState{
+		EntityReference: &providers.EntityReference{EntityID: "existing-user-123"},
+		Attributes:      &providers.AttributesResponse{},
+	})
+	suite.Require().True(authUser.IsAuthenticated())
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeRegistration,
+		AuthUser:    authUser,
+		UserInputs: map[string]string{
+			userInputOuName:   "Branch Office",
+			userInputOuHandle: "branch-office",
+		},
+		RuntimeData: map[string]string{},
+	}
+
+	expectedRequest := providers.OrganizationUnitRequestWithID{Name: "Branch Office", Handle: "branch-office"}
+	suite.mockOUService.On("CreateOrganizationUnit", mock.Anything, expectedRequest).
+		Return(providers.OrganizationUnit{ID: testOUID, Name: "Branch Office", Handle: "branch-office"}, nil)
+
+	result, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, result.Status)
+	assert.Equal(suite.T(), testOUID, result.RuntimeData[ouIDKey])
+	suite.mockOUService.AssertExpectations(suite.T())
+	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "GetEntityReference", mock.Anything, mock.Anything)
+}
+
 type ExecuteNonRegistrationFlowTestCase struct {
 	name     string
 	flowType providers.FlowType

@@ -1208,6 +1208,34 @@ var (
 			DefaultValue: "The user could not be deleted",
 		},
 	}
+
+	// ErrOUDeletionFailed is returned when rolling back an organization unit fails.
+	ErrOUDeletionFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1086",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.ou_deletion_failed",
+			DefaultValue: "Organization unit deletion failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.ou_deletion_failed_desc",
+			DefaultValue: "The organization unit could not be deleted",
+		},
+	}
+
+	// ErrUserRollbackFailed is returned when rolling back a provisioned user fails.
+	ErrUserRollbackFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1087",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.user_rollback_failed",
+			DefaultValue: "User rollback failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.user_rollback_failed_desc",
+			DefaultValue: "The provisioned user could not be rolled back",
+		},
+	}
 )
 
 // errAttributeNotUniqueFor returns a ServiceError for a specific attribute that is not unique.

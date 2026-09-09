@@ -10,7 +10,6 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/ou"
@@ -87,27 +86,6 @@ func (o *ouExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRes
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrOUCreationPrereqFailed
 		return execResp, nil
-	}
-
-	if execResp.AuthUser.IsAuthenticated() {
-		// Check if the user already has an entity reference (existing user).
-		// If so, skip OU creation as the user already belongs to an OU.
-		authUser, entityRef, svcErr := o.authnProvider.GetEntityReference(ctx.Context, execResp.AuthUser)
-		if svcErr != nil {
-			if svcErr.Code != authnprovidermgr.ErrorUserNotFound.Code &&
-				svcErr.Code != authnprovidermgr.ErrorAmbiguousUser.Code {
-				execResp.Status = providers.ExecFailure
-				execResp.Error = &ErrFailedToIdentifyUser
-				return execResp, nil
-			}
-			logger.Debug(ctx.Context, "User not found or ambiguous, proceeding with OU creation")
-		}
-		execResp.AuthUser = authUser
-		if entityRef != nil {
-			logger.Debug(ctx.Context, "User already has an entity reference, skipping OU creation")
-			execResp.Status = providers.ExecComplete
-			return execResp, nil
-		}
 	}
 
 	if !o.HasRequiredInputs(ctx, execResp) {

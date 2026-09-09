@@ -368,6 +368,7 @@ Every flow you deploy must reference only executors that are registered on the s
 | **Resolve Federated User** | Resolves ambiguous federated user after social login. | OAuth/OIDC executor must have run; Identify User must have run |
 | **User Type Resolver** | Resolves the user type based on configured rules. | User type configured on the application |
 | **Provisioning** | Creates or updates the user record in the store. | - |
+| **User Rollback** | Rolls back the user provisioned earlier in the same flow execution. | Provisioning must have run |
 | **Attribute Collector** | Collects additional user attributes defined in the user type. | - |
 | **Validate Attribute Uniqueness** | Checks that unique attributes are not already registered. | User Type Resolver must have run |
 | **Set Credentials** | Sets credentials (e.g., password) for an existing user. | - |
@@ -376,6 +377,7 @@ Every flow you deploy must reference only executors that are registered on the s
 | **User Consent** | Records explicit user consent for defined scopes or terms. | - |
 | **Validate Permission** | Checks that the request has required scope/permissions. | - |
 | **OU Creation** | Creates an organizational unit for the user. | - |
+| **OU Delete** | Rolls back the organizational unit created earlier in the same flow execution. | OU Creation must have run |
 | **Resolve OU** | Resolves or selects an organizational unit based on strategy. | Varies by strategy |
 | **Generate Invite** | Generates an invite link for user registration. | - |
 | **Verify Invite** | Verifies an invite token before completing registration. | Generate Invite must have run |
@@ -1178,6 +1180,47 @@ Creates a new user record in the user store. This executor persists the user's i
 </details>
 
 <details>
+<summary>User Rollback</summary>
+
+Revokes every token issued to the user provisioned earlier in the same flow execution, terminates their sessions, then deletes that user, reading their ID from runtime data. A no-op if no user was recorded, since that means there is nothing to roll back.
+
+**When to use:** As an opt-in compensation step wired into a flow's own `onFailure` branch, for when a node after Provisioning fails and the newly provisioned user should not be left behind. This executor only ever acts on the user this same execution created, taking no caller-supplied target, so unlike User Delete, it requires no separate validation/planning executor beforehand.
+
+**Two ways to route after the rollback:** As with OU Delete, where User Rollback's own `onSuccess` and `onFailure` lead determines whether the user is ever told why registration did not complete.
+
+- **Silent rollback:** Send User Rollback's `onSuccess` and `onFailure` straight to the flow's END node. Revocation, session termination, and deletion happen in the same response as the original failure, with no PROMPT node in between. The user learns that registration did not complete, but not why.
+- **Show the reason after rolling back:** Send User Rollback's `onSuccess` to a PROMPT node instead of straight to END. The rollback still runs immediately, before anything is shown to the user. The flow then pauses at that PROMPT node to display the original failure reason, then reaches END once that node's action is submitted.
+
+**Prerequisites:**
+- A Provisioning node must have run earlier in the same flow execution and recorded a user ID in runtime data.
+
+**Input Configuration:** None. Reads the user ID directly from runtime data.
+
+**Executor properties:** None.
+
+**Example:**
+
+```json
+{
+  "id": "user_rollback",
+  "type": "TASK_EXECUTION",
+  "executor": {
+    "name": "UserRollbackExecutor"
+  },
+  "onSuccess": "error_prompt",
+  "onFailure": "error_prompt"
+}
+```
+
+**Failure conditions:**
+- Revoking the user's tokens fails
+- Terminating the user's sessions fails
+- The user has dependent resources that block deletion
+- User store error
+
+</details>
+
+<details>
 <summary>Attribute Collector</summary>
 
 Checks the authenticated user's existing profile attributes against the node's configured required inputs, then prompts only for what is missing. Skips automatically in registration flows.
@@ -1655,7 +1698,7 @@ Validates that the incoming API request has the required permission/scope to pro
 <details>
 <summary>OU Creation</summary>
 
-Creates a new Organizational Unit. The created OU is available for use by downstream executors.
+Creates a new Organizational Unit. The created OU is available for use by downstream executors. Always attempts creation, regardless of whether the current user was already authenticated or provisioned earlier in the same flow execution.
 
 **When to use:** B2B self-registration flows, place after Provisioning, once the user account exists.
 
@@ -1693,6 +1736,45 @@ Creates a new Organizational Unit. The created OU is available for use by downst
 - An OU with the same name already exists at the target parent: re-prompts the user to change the name
 - An OU with the same handle already exists: re-prompts the user to change the handle
 - Specified `parentOuId` does not exist
+- OU service error
+
+</details>
+
+<details>
+<summary>OU Delete</summary>
+
+Deletes the organization unit created earlier in the same flow execution by an OU Creation node, reading its ID from runtime data. A no-op if no OU was recorded, since that means there's nothing to roll back.
+
+**When to use:** As an opt-in compensation step wired into a flow's own `onFailure` branch, for when a node after OU Creation fails and the newly created OU should not be left behind. This executor only ever acts on the OU this same execution created, taking no caller-supplied target, so unlike User Delete, it requires no separate validation/planning executor beforehand.
+
+**Two ways to route after the rollback:** Where OU Delete's own `onSuccess` and `onFailure` lead determines whether the user is ever told why registration did not complete. A forwarded failure reason is only shown once the flow reaches a PROMPT node. The client is not required to show a button for that node. It can submit the node's action on its own as soon as it renders the failure reason, so the flow moves on without waiting for a click.
+
+- **Silent rollback:** Send OU Delete's `onSuccess` and `onFailure` straight to the flow's END node. The organization unit is deleted and the flow completes in the same response as the original failure, with no PROMPT node in between. The user learns that registration did not complete, but not why.
+- **Show the reason after rolling back:** Send OU Delete's `onSuccess` to a PROMPT node instead of straight to END. The rollback still runs immediately, before anything is shown to the user. The flow then pauses at that PROMPT node to display the original failure reason, then reaches END once that node's action is submitted.
+
+**Prerequisites:**
+- An OU Creation node must have run earlier in the same flow execution and recorded an OU ID in runtime data.
+
+**Input Configuration:** None. Reads the OU ID directly from runtime data.
+
+**Executor properties:** None.
+
+**Example:**
+
+```json
+{
+  "id": "ou_rollback",
+  "type": "TASK_EXECUTION",
+  "executor": {
+    "name": "OUDeleteExecutor"
+  },
+  "onSuccess": "error_prompt",
+  "onFailure": "error_prompt"
+}
+```
+
+**Failure conditions:**
+- The OU has dependent resources (child OUs, users, or groups) that block deletion
 - OU service error
 
 </details>

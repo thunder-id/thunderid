@@ -594,6 +594,28 @@ func (s *ValidatorTestSuite) TestValidateTaskExecutionNode_OnFailurePointsToNonP
 	s.Equal(ErrorInvalidNodeConfig.Code, err.Code)
 }
 
+func (s *ValidatorTestSuite) TestValidateTaskExecutionNode_OnFailurePointsToOUDeleteExecutor() {
+	nodes := []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "task"},
+		{
+			ID: "task", Type: string(common.NodeTypeTaskExecution),
+			Executor:  &providers.ExecutorDefinition{Name: "exec"},
+			OnSuccess: "end",
+			OnFailure: "rollback", // TASK_EXECUTION, not a PROMPT node, but OUDeleteExecutor is exempt
+		},
+		{
+			ID: "rollback", Type: string(common.NodeTypeTaskExecution),
+			Executor:  &providers.ExecutorDefinition{Name: executor.ExecutorNameOUDelete},
+			OnSuccess: "end",
+		},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	index, _ := buildNodeIndex(nodes)
+	node := &nodes[1]
+	err := s.v.validateTaskExecutionNode(node, index)
+	s.Nil(err)
+}
+
 func (s *ValidatorTestSuite) TestValidateTaskExecutionNode_OnIncompletePointsToNonPrompt() {
 	nodes := []providers.NodeDefinition{
 		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "task"},

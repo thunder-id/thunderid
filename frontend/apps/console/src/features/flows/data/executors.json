@@ -485,6 +485,50 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
+      "header": "OU Delete Executor",
+      "label": "OU Rollback",
+      "description": "Delete the organization unit created earlier in this flow execution",
+      "image": "assets/images/icons/form.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "OUDeleteExecutor"
+        },
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "User Rollback Executor",
+      "label": "User Rollback",
+      "description": "Revoke tokens and delete the user provisioned earlier in this flow execution",
+      "image": "assets/images/icons/user.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "UserRollbackExecutor"
+        },
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
       "header": "HTTP Request Executor",
       "label": "HTTP Request",
       "description": "Call an external API over HTTP",

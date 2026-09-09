@@ -190,6 +190,9 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 			reg.RegisterExecutor(ExecutorNameOUCreation, newOUExecutor(deps.FlowFactory, deps.OUService,
 				deps.AuthnProvider, deps.EntityTypeService))
 		},
+		ExecutorNameOUDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameOUDelete, newOUDeleteExecutor(deps.FlowFactory, deps.OUService))
+		},
 		ExecutorNameAttributeCollect: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAttributeCollect, newAttributeCollector(
 				deps.FlowFactory, deps.EntityProvider, deps.AuthnProvider))
@@ -286,6 +289,10 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameUserDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameUserDelete,
 				newUserDeleteExecutor(deps.FlowFactory, deps.UserService))
+		},
+		ExecutorNameUserRollback: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameUserRollback,
+				newUserRollbackExecutor(deps.FlowFactory, deps.UserService, deps.CriteriaRevoker, deps.SessionService))
 		},
 	}
 }
