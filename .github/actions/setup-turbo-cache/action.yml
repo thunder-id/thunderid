@@ -15,7 +15,7 @@ runs:
     # because a failed attempt still saves at post time, so without it a partial
     # cache from attempt 1 would be frozen in for the attempts that follow.
     - name: 🗂️ Cache Turbo
-      uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: .turbo
         key: turbo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('pnpm-lock.yaml') }}--${{ github.run_id }}-${{ github.run_attempt }}
