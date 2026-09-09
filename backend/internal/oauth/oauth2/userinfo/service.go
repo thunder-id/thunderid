@@ -165,6 +165,10 @@ func (s *userInfoService) buildResponseFromClaims(
 
 	oauthApp := s.getOAuthApp(ctx, tokenClaims)
 
+	if svcErr := s.validateAudience(ctx, accessTokenClaims, oauthApp); svcErr != nil {
+		return nil, svcErr
+	}
+
 	// Extract allowed user attributes
 	var allowedUserAttributes []string
 	if oauthApp != nil && oauthApp.UserInfo != nil {
@@ -404,6 +408,22 @@ func (s *userInfoService) validateGrantType(
 		return &errorClientCredentialsNotSupported
 	}
 
+	return nil
+}
+
+// validateAudience validates that the access token's audience is the client's own default
+// audience (its configured DefaultAudience, or the server issuer ID when unset). A token whose
+// audience was bound to an external resource server via the 'resource' parameter is scoped to
+// that resource server and must not be redeemable at the UserInfo endpoint.
+func (s *userInfoService) validateAudience(
+	ctx context.Context, accessTokenClaims *tokenservice.AccessTokenClaims, oauthApp *providers.OAuthClient,
+) *tidcommon.ServiceError {
+	expectedAud := oauthApp.ResolveDefaultAudience(s.cfg.JWT.Issuer)
+	if !slices.Contains(accessTokenClaims.Aud, expectedAud) {
+		s.logger.Debug(ctx, "UserInfo request token audience does not match the client's default audience",
+			log.String("client_id", accessTokenClaims.ClientID))
+		return &errorAudienceNotAccepted
+	}
 	return nil
 }
 
