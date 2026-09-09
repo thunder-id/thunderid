@@ -3,52 +3,56 @@
 
 package executor
 
-// Executor name constants
+import "github.com/thunder-id/thunderid/internal/flow/executormeta"
+
+// Executor name constants. The values live in executormeta, which carries no runtime dependency,
+// so flow validation can name an executor without linking the executor itself. These aliases keep
+// the existing executor.ExecutorNameX references working.
 const (
-	ExecutorNameCredentialsAuth = "CredentialsAuthExecutor"
-	ExecutorNameMagicLink       = "MagicLinkExecutor"
+	ExecutorNameCredentialsAuth = executormeta.ExecutorNameCredentialsAuth
+	ExecutorNameMagicLink       = executormeta.ExecutorNameMagicLink
 	// nolint:gosec // G101: This is an executor name, not a credential
-	ExecutorNamePasskeyAuth                  = "PasskeyAuthExecutor"
-	ExecutorNameOAuth                        = "OAuthExecutor"
-	ExecutorNameOIDCAuth                     = "OIDCAuthExecutor"
-	ExecutorNameGitHubAuth                   = "GithubOAuthExecutor"
-	ExecutorNameGoogleAuth                   = "GoogleOIDCAuthExecutor"
-	ExecutorNameOpenID4VPVerify              = "OpenID4VPVerifyExecutor"
-	ExecutorNameIdentifying                  = "IdentifyingExecutor"
-	ExecutorNameAuthAssert                   = "AuthAssertExecutor"
-	ExecutorNameProvisioning                 = "ProvisioningExecutor"
-	ExecutorNameAttributeCollect             = "AttributeCollector"
-	ExecutorNameAuthorization                = "AuthorizationExecutor"
-	ExecutorNamePermissionValidator          = "PermissionValidator"
-	ExecutorNameOUCreation                   = "OUExecutor"
-	ExecutorNameHTTPRequest                  = "HTTPRequestExecutor"
-	ExecutorNameUserTypeResolver             = "UserTypeResolver"
-	ExecutorNameInviteExecutor               = "InviteExecutor"
-	ExecutorNameEmailExecutor                = "EmailExecutor"
-	ExecutorNameCredentialSetter             = "CredentialSetter"
-	ExecutorNameConsent                      = "ConsentExecutor"
-	ExecutorNameOUResolver                   = "OUResolverExecutor"
-	ExecutorNameAttributeUniquenessValidator = "AttributeUniquenessValidator"
-	ExecutorNameSMSExecutor                  = "SMSExecutor"
-	ExecutorNameFederatedAuthResolver        = "FederatedAuthResolverExecutor"
-	ExecutorNameSSOCheck                     = "SSOCheckExecutor"
-	ExecutorNameSession                      = "SessionExecutor"
-	ExecutorNameSessionSignOut               = "SessionSignOutExecutor"
-	ExecutorNameOTPExecutor                  = "OTPExecutor"
-	ExecutorNamePreDelete                    = "PreDeleteExecutor"
-	ExecutorNameCriteriaRevocation           = "CriteriaRevocationExecutor"
-	ExecutorNameSessionRevocation            = "SessionRevocationExecutor"
-	ExecutorNameUserDelete                   = "UserDeleteExecutor"
+	ExecutorNamePasskeyAuth                  = executormeta.ExecutorNamePasskeyAuth
+	ExecutorNameOAuth                        = executormeta.ExecutorNameOAuth
+	ExecutorNameOIDCAuth                     = executormeta.ExecutorNameOIDCAuth
+	ExecutorNameGitHubAuth                   = executormeta.ExecutorNameGitHubAuth
+	ExecutorNameGoogleAuth                   = executormeta.ExecutorNameGoogleAuth
+	ExecutorNameOpenID4VPVerify              = executormeta.ExecutorNameOpenID4VPVerify
+	ExecutorNameIdentifying                  = executormeta.ExecutorNameIdentifying
+	ExecutorNameAuthAssert                   = executormeta.ExecutorNameAuthAssert
+	ExecutorNameProvisioning                 = executormeta.ExecutorNameProvisioning
+	ExecutorNameAttributeCollect             = executormeta.ExecutorNameAttributeCollect
+	ExecutorNameAuthorization                = executormeta.ExecutorNameAuthorization
+	ExecutorNamePermissionValidator          = executormeta.ExecutorNamePermissionValidator
+	ExecutorNameOUCreation                   = executormeta.ExecutorNameOUCreation
+	ExecutorNameHTTPRequest                  = executormeta.ExecutorNameHTTPRequest
+	ExecutorNameUserTypeResolver             = executormeta.ExecutorNameUserTypeResolver
+	ExecutorNameInviteExecutor               = executormeta.ExecutorNameInviteExecutor
+	ExecutorNameEmailExecutor                = executormeta.ExecutorNameEmailExecutor
+	ExecutorNameCredentialSetter             = executormeta.ExecutorNameCredentialSetter
+	ExecutorNameConsent                      = executormeta.ExecutorNameConsent
+	ExecutorNameOUResolver                   = executormeta.ExecutorNameOUResolver
+	ExecutorNameAttributeUniquenessValidator = executormeta.ExecutorNameAttributeUniquenessValidator
+	ExecutorNameSMSExecutor                  = executormeta.ExecutorNameSMSExecutor
+	ExecutorNameFederatedAuthResolver        = executormeta.ExecutorNameFederatedAuthResolver
+	ExecutorNameSSOCheck                     = executormeta.ExecutorNameSSOCheck
+	ExecutorNameSession                      = executormeta.ExecutorNameSession
+	ExecutorNameSessionSignOut               = executormeta.ExecutorNameSessionSignOut
+	ExecutorNameOTPExecutor                  = executormeta.ExecutorNameOTPExecutor
+	ExecutorNamePreDelete                    = executormeta.ExecutorNamePreDelete
+	ExecutorNameCriteriaRevocation           = executormeta.ExecutorNameCriteriaRevocation
+	ExecutorNameSessionRevocation            = executormeta.ExecutorNameSessionRevocation
+	ExecutorNameUserDelete                   = executormeta.ExecutorNameUserDelete
 )
 
 // Executor mode constants
 const (
-	ExecutorModeSend       = "send"
-	ExecutorModeGenerate   = "generate"
-	ExecutorModeVerify     = "verify"
-	ExecutorModeIdentify   = "identify"
-	ExecutorModeResolve    = "resolve"
-	ExecutorModeCheckState = "check_state"
+	ExecutorModeSend       = executormeta.ExecutorModeSend
+	ExecutorModeGenerate   = executormeta.ExecutorModeGenerate
+	ExecutorModeVerify     = executormeta.ExecutorModeVerify
+	ExecutorModeIdentify   = executormeta.ExecutorModeIdentify
+	ExecutorModeResolve    = executormeta.ExecutorModeResolve
+	ExecutorModeCheckState = executormeta.ExecutorModeCheckState
 )
 
 // User attribute and input constants
