@@ -61,7 +61,7 @@ type AuthenticationServiceInterface interface {
 	) (*common.AuthenticationResponse, *tidcommon.ServiceError)
 	// Passkey methods
 	StartPasskeyRegistration(ctx context.Context, userID, relyingPartyID, relyingPartyName string,
-		authSelection *PasskeyAuthenticatorSelectionDTO, attestation string,
+		authSelection *PasskeyAuthenticatorSelectionDTO, attestation, assertion string,
 	) (interface{}, *tidcommon.ServiceError)
 	FinishPasskeyRegistration(ctx context.Context, credential PasskeyPublicKeyCredentialDTO,
 		sessionToken string, skipAssertion bool, existingAssertion string,
@@ -571,6 +571,32 @@ func (as *authenticationService) extractClaimsFromAssertion(ctx context.Context,
 	return &assuranceCtx, sub, nil
 }
 
+// verifyAssertionSubject rejects the request unless assertion is a valid auth assertion whose
+// subject is userID. Callers use it to gate operations that act on an account rather than merely
+// reporting on one, where a caller supplied user ID is not trustworthy on its own.
+func (as *authenticationService) verifyAssertionSubject(ctx context.Context, assertion, userID string,
+	logger *log.Logger) *tidcommon.ServiceError {
+	// Callers arriving over HTTP are already stopped by the required-field validation on the DTO,
+	// which treats a blank string as absent. This guards the service contract for any other caller.
+	if strings.TrimSpace(assertion) == "" {
+		logger.Debug(ctx, "Assertion missing on a request that requires proof of the target user")
+		return &common.ErrorInvalidAssertion
+	}
+
+	_, assertionSub, svcErr := as.extractClaimsFromAssertion(ctx, assertion, logger)
+	if svcErr != nil {
+		return svcErr
+	}
+
+	if assertionSub != userID {
+		logger.Debug(ctx, "Assertion subject does not match the target user",
+			log.MaskedString("assertionSub", assertionSub), log.MaskedString(log.LoggerKeyUserID, userID))
+		return &common.ErrorAssertionSubjectMismatch
+	}
+
+	return nil
+}
+
 // mapFederatedAuthnError maps provider manager errors to federated-authentication-specific service errors.
 func (as *authenticationService) mapFederatedAuthnError(ctx context.Context, svcErr *tidcommon.ServiceError,
 	logger *log.Logger) *tidcommon.ServiceError {
@@ -724,10 +750,17 @@ func (as *authenticationService) verifyAndDecodeSessionToken(ctx context.Context
 // StartPasskeyRegistration starts the passkey registration process.
 func (as *authenticationService) StartPasskeyRegistration(
 	ctx context.Context, userID, relyingPartyID, relyingPartyName string,
-	authSelection *PasskeyAuthenticatorSelectionDTO, attestation string,
+	authSelection *PasskeyAuthenticatorSelectionDTO, attestation, assertion string,
 ) (interface{}, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, svcLoggerComponentName))
 	logger.Debug(ctx, "Starting Passkey registration")
+
+	// Enrollment binds a new credential to an account, so it is gated on proof that the caller
+	// holds that account. The challenge is bound to userID here, which makes this the only point
+	// where the check is effective.
+	if svcErr := as.verifyAssertionSubject(ctx, assertion, userID, logger); svcErr != nil {
+		return nil, svcErr
+	}
 
 	var passkeyAuthSel *passkey.AuthenticatorSelection
 	if authSelection != nil {

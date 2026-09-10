@@ -128,6 +128,11 @@ flow:
 server_config:
   store: composite
 
+passkey:
+  allowed_origins:
+    - "https://localhost:8095"
+    - "http://localhost:8095"
+
 oauth:
   allow_wildcard_redirect_uri: true
   send_server_errors_to_client: true
