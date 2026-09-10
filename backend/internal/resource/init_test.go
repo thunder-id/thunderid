@@ -333,7 +333,6 @@ func (suite *InitTestSuite) TestNewResourceStore() {
 	resStore, ok := store.(*resourceStore)
 	suite.True(ok)
 	suite.NotNil(resStore.dbProvider)
-	suite.Equal("test-deployment", resStore.deploymentID)
 }
 
 // TestRegisterRoutes_AllOPTIONSRoutes tests that all OPTIONS routes return NoContent

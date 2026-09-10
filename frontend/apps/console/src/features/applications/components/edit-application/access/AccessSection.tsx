@@ -5,11 +5,12 @@ import {zodResolver} from '@hookform/resolvers/zod';
 import {SettingsCard} from '@thunderid/components';
 import type {Application} from '@thunderid/configure-applications';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
-import {Stack, TextField, Chip, Autocomplete, CircularProgress, FormControl, FormLabel} from '@wso2/oxygen-ui';
+import {Autocomplete, Chip, CircularProgress, FormControl, FormLabel, Stack, Switch, TextField} from '@wso2/oxygen-ui';
 import {useEffect} from 'react';
 import {useForm, Controller} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import {z} from 'zod';
+import ApplicationConstants from '../../../constants/application-constants';
 
 /**
  * Props for the {@link AccessSection} component.
@@ -35,8 +36,8 @@ interface AccessSectionProps {
    */
   onValidationChange?: (hasErrors: boolean) => void;
   /**
-   * Whether to show user-facing access config (allowed user types). Hidden for clients with no
-   * user-facing grant.
+   * Whether to show user-facing access config (allowed user types and agent sign-in). Hidden for
+   * clients with no user-facing grant.
    */
   showUserAccessConfig?: boolean;
 }
@@ -46,6 +47,7 @@ interface AccessSectionProps {
  *
  * Provides configuration for:
  * - Allowed user types selection
+ * - Agent sign-in toggle
  * - Application access URL, with room for future access-related configuration (e.g. discoverability)
  *
  * Includes form validation using Zod schema and react-hook-form.
@@ -64,6 +66,16 @@ export default function AccessSection({
   const {data: userTypesData, isLoading: loadingUserTypes} = useGetUserTypes();
 
   const userTypeOptions = userTypesData?.types.map((schema) => schema.name) ?? [];
+
+  // Agent access is a single on/off choice in the console for now: on means the default agent type (only type)
+  // is the only allowed one, off means no agent type is allowed.
+  const isAgentSignInEnabled = (editedApp.allowedAgentTypes ?? application.allowedAgentTypes ?? []).length > 0;
+
+  const handleAgentSignInToggle = (enabled: boolean): void => {
+    onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.DEFAULT_AGENT_TYPE] : []);
+  };
+
+  const agentSignInLabel = t('applications:edit.access.agentSignIn.toggle.label', 'Enable Agent Sign-In');
 
   const accessSchema = z.object({
     url: z.string().url('Please enter a valid URL').or(z.literal('')).optional(),
@@ -141,6 +153,26 @@ export default function AccessSection({
               disableClearable={false}
             />
           </FormControl>
+        </SettingsCard>
+      )}
+
+      {showUserAccessConfig && (
+        <SettingsCard
+          title={t('applications:edit.access.sections.agentSignIn.title', 'Agent Sign-In')}
+          description={t(
+            'applications:edit.access.sections.agentSignIn.description',
+            'Allow agents to sign in to this application using the sign-in flow.',
+          )}
+          headerAction={
+            <Switch
+              checked={isAgentSignInEnabled}
+              onChange={(event) => handleAgentSignInToggle(event.target.checked)}
+              disabled={application.isReadOnly}
+              slotProps={{input: {'aria-label': agentSignInLabel}}}
+            />
+          }
+        >
+          {null}
         </SettingsCard>
       )}
 

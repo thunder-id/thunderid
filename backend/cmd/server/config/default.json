@@ -326,7 +326,7 @@
     "timeout": 5,
     "max_retries": 3
   },
-  "user_provider": {
+  "user_mgt_provider": {
     "type": "default"
   },
   "openid4vp": {

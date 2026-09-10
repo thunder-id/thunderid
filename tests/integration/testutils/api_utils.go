@@ -663,6 +663,11 @@ func CreateApplication(app Application) (string, error) {
 		appData["allowedUserTypes"] = app.AllowedUserTypes
 	}
 
+	// Add allowed_agent_types if provided
+	if len(app.AllowedAgentTypes) > 0 {
+		appData["allowedAgentTypes"] = app.AllowedAgentTypes
+	}
+
 	// Add subject attribute mapping if provided
 	if len(app.SubjectAttribute) > 0 {
 		appData["subjectAttribute"] = app.SubjectAttribute
@@ -2523,6 +2528,52 @@ func AuthenticateWithCredential(identifierKey, identifierValue, credentialKey, c
 	}
 	body, _ := io.ReadAll(resp.Body)
 	return false, fmt.Errorf("unexpected auth status %d: %s", resp.StatusCode, string(body))
+}
+
+// ObtainAuthAssertion authenticates a user with a password and returns the auth assertion from the
+// response. Enrolling a credential requires an assertion proving the target user, so suites that
+// bootstrap a passkey through the direct API need the user to hold another credential first.
+func ObtainAuthAssertion(username, password string) (string, error) {
+	reqBody := map[string]interface{}{
+		"identifiers": map[string]interface{}{"username": username},
+		"credentials": map[string]interface{}{"password": password},
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal auth request: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, TestServerURL+"/auth/credentials/authenticate",
+		bytes.NewReader(bodyBytes))
+	if err != nil {
+		return "", fmt.Errorf("failed to create auth request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return "", fmt.Errorf("auth request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read auth response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected auth status %d: %s", resp.StatusCode, responseBody)
+	}
+
+	var authResponse AuthenticationResponse
+	if err := json.Unmarshal(responseBody, &authResponse); err != nil {
+		return "", fmt.Errorf("failed to decode auth response: %w", err)
+	}
+	if authResponse.Assertion == "" {
+		return "", fmt.Errorf("authentication for %s returned no assertion", username)
+	}
+
+	return authResponse.Assertion, nil
 }
 
 // CreateAgent creates an agent via API and returns its ID.

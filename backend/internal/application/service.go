@@ -13,7 +13,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/cert"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
@@ -54,7 +54,7 @@ type ApplicationServiceInterface interface {
 type applicationService struct {
 	logger               *log.Logger
 	inboundClientService inboundclient.InboundClientServiceInterface
-	entityProvider       entityprovider.EntityProviderInterface
+	entityService        entity.EntityServiceInterface
 	ouService            oupkg.OrganizationUnitServiceInterface
 	i18nService          i18nmgt.I18nServiceInterface
 	cryptoSvc            providers.RuntimeCryptoProvider
@@ -65,7 +65,7 @@ type applicationService struct {
 // newApplicationService creates a new instance of ApplicationService.
 func newApplicationService(
 	inboundClientSvc inboundclient.InboundClientServiceInterface,
-	entityProvider entityprovider.EntityProviderInterface,
+	entityService entity.EntityServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	i18nService i18nmgt.I18nServiceInterface,
 	cryptoSvc providers.RuntimeCryptoProvider,
@@ -74,7 +74,7 @@ func newApplicationService(
 	return &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
 		inboundClientService: inboundClientSvc,
-		entityProvider:       entityProvider,
+		entityService:        entityService,
 		ouService:            ouService,
 		i18nService:          i18nService,
 		cryptoSvc:            cryptoSvc,
@@ -83,7 +83,7 @@ func newApplicationService(
 }
 
 func (as *applicationService) deleteEntityCompensation(ctx context.Context, appID string) {
-	if delErr := as.entityProvider.DeleteEntity(appID); delErr != nil {
+	if delErr := as.entityService.DeleteEntity(ctx, appID); delErr != nil {
 		as.logger.Error(ctx, "Failed to delete entity during compensation", log.Error(delErr),
 			log.String("appID", appID))
 	}
@@ -153,13 +153,13 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 		return nil, &tidcommon.InternalServerError
 	}
 
-	_, epErr := as.entityProvider.CreateEntity(appEntity, sysCredsJSON)
-	if epErr != nil {
-		if svcErr := mapEntityProviderError(epErr); svcErr != nil {
+	_, entErr := as.entityService.CreateEntity(ctx, appEntity, sysCredsJSON)
+	if entErr != nil {
+		if svcErr := mapEntityError(entErr); svcErr != nil {
 			return nil, svcErr
 		}
 		as.logger.Error(ctx, "Failed to create application entity",
-			log.String("appID", appID), log.Error(epErr))
+			log.String("appID", appID), log.Error(entErr))
 		return nil, &tidcommon.InternalServerError
 	}
 
@@ -277,16 +277,16 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 // GetApplicationList list the applications.
 func (as *applicationService) GetApplicationList(
 	ctx context.Context) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
-	totalResults, epErr := as.entityProvider.GetEntityListCount(providers.EntityCategoryApp, nil)
-	if epErr != nil {
-		as.logger.Error(ctx, "Failed to count application entities", log.Error(epErr))
+	totalResults, entErr := as.entityService.GetEntityListCount(ctx, providers.EntityCategoryApp, nil)
+	if entErr != nil {
+		as.logger.Error(ctx, "Failed to count application entities", log.Error(entErr))
 		return nil, &tidcommon.InternalServerError
 	}
 
-	entities, epErr := as.entityProvider.GetEntityList(
-		providers.EntityCategoryApp, serverconst.MaxCompositeStoreRecords, 0, nil)
-	if epErr != nil {
-		as.logger.Error(ctx, "Failed to list application entities", log.Error(epErr))
+	entities, entErr := as.entityService.GetEntityList(
+		ctx, providers.EntityCategoryApp, serverconst.MaxCompositeStoreRecords, 0, nil)
+	if entErr != nil {
+		as.logger.Error(ctx, "Failed to list application entities", log.Error(entErr))
 		return nil, &tidcommon.InternalServerError
 	}
 	if len(entities) == 0 {
@@ -353,13 +353,13 @@ func (as *applicationService) GetOAuthApplication(
 		return nil, &ErrorApplicationNotFound
 	}
 
-	entity, epErr := as.entityProvider.GetEntity(client.ID)
-	if epErr != nil && epErr.Code != entityprovider.ErrorCodeEntityNotFound {
+	appEntity, entErr := as.entityService.GetEntity(ctx, client.ID)
+	if entErr != nil && !errors.Is(entErr, entity.ErrEntityNotFound) {
 		as.logger.Error(ctx, "Failed to load entity for OAuth client",
-			log.String("entityID", client.ID), log.Error(epErr))
+			log.String("entityID", client.ID), log.Error(entErr))
 		return nil, &tidcommon.InternalServerError
 	}
-	if entity == nil || entity.Category != providers.EntityCategoryApp {
+	if appEntity == nil || appEntity.Category != providers.EntityCategoryApp {
 		return nil, &ErrorApplicationNotFound
 	}
 	return client, nil
@@ -471,12 +471,12 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 		return &tidcommon.InternalServerError
 	}
 
-	if epErr := as.entityProvider.UpdateSystemAttributes(appID, sysAttrsJSON); epErr != nil {
-		if svcErr := mapEntityProviderError(epErr); svcErr != nil {
+	if entErr := as.entityService.UpdateSystemAttributes(ctx, appID, sysAttrsJSON); entErr != nil {
+		if svcErr := mapEntityError(entErr); svcErr != nil {
 			return svcErr
 		}
 		as.logger.Error(ctx, "Failed to update entity system attributes",
-			log.String("appID", appID), log.Error(epErr))
+			log.String("appID", appID), log.Error(entErr))
 		return &tidcommon.InternalServerError
 	}
 
@@ -491,12 +491,12 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 			as.logger.Error(ctx, "Failed to build flow secret credentials for update", log.Error(marshalErr))
 			return &tidcommon.InternalServerError
 		}
-		if epErr := as.entityProvider.UpdateSystemCredentials(appID, flowSecretJSON); epErr != nil {
-			if svcErr := mapEntityProviderError(epErr); svcErr != nil {
+		if entErr := as.entityService.UpdateSystemCredentials(ctx, appID, flowSecretJSON); entErr != nil {
+			if svcErr := mapEntityError(entErr); svcErr != nil {
 				return svcErr
 			}
 			as.logger.Error(ctx, "Failed to update flow secret credentials",
-				log.String("appID", appID), log.Error(epErr))
+				log.String("appID", appID), log.Error(entErr))
 			return &tidcommon.InternalServerError
 		}
 	}
@@ -519,12 +519,12 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 		return &tidcommon.InternalServerError
 	}
 
-	if epErr := as.entityProvider.UpdateSystemCredentials(appID, sysCredsJSON); epErr != nil {
-		if svcErr := mapEntityProviderError(epErr); svcErr != nil {
+	if entErr := as.entityService.UpdateSystemCredentials(ctx, appID, sysCredsJSON); entErr != nil {
+		if svcErr := mapEntityError(entErr); svcErr != nil {
 			return svcErr
 		}
 		as.logger.Error(ctx, "Failed to update entity system credentials",
-			log.String("appID", appID), log.Error(epErr))
+			log.String("appID", appID), log.Error(entErr))
 		return &tidcommon.InternalServerError
 	}
 
@@ -609,10 +609,10 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 		return &ErrorInvalidApplicationID
 	}
 
-	if existing, epErr := as.entityProvider.GetEntity(appID); epErr != nil {
-		if epErr.Code != entityprovider.ErrorCodeEntityNotFound {
+	if existing, entErr := as.entityService.GetEntity(ctx, appID); entErr != nil {
+		if !errors.Is(entErr, entity.ErrEntityNotFound) {
 			as.logger.Error(ctx, "Failed to load entity before delete",
-				log.String("appID", appID), log.Error(epErr))
+				log.String("appID", appID), log.Error(entErr))
 			return &tidcommon.InternalServerError
 		}
 	} else if existing != nil && existing.Category != providers.EntityCategoryApp {
@@ -645,13 +645,15 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 		return &tidcommon.InternalServerError
 	}
 
-	// Delete entity.
-	if epErr := as.entityProvider.DeleteEntity(appID); epErr != nil {
-		if svcErr := mapEntityProviderError(epErr); svcErr != nil {
+	// Delete entity. A missing entity is non-fatal (e.g. on a retry after a partial delete) so the
+	// remaining delete steps still run.
+	if entErr := as.entityService.DeleteEntity(ctx, appID); entErr != nil &&
+		!errors.Is(entErr, entity.ErrEntityNotFound) {
+		if svcErr := mapEntityError(entErr); svcErr != nil {
 			return svcErr
 		}
 		as.logger.Error(ctx, "Failed to delete application entity",
-			log.String("appID", appID), log.Error(epErr))
+			log.String("appID", appID), log.Error(entErr))
 		return &tidcommon.InternalServerError
 	}
 
@@ -675,10 +677,10 @@ func (as *applicationService) GetResourceDependencies(
 		return []resourcedependency.ResourceDependency{}, nil
 	}
 
-	entities, epErr := as.entityProvider.GetEntitiesByIDs(ids)
-	if epErr != nil {
-		as.logger.Error(ctx, "Failed to get entities by IDs", log.Error(epErr))
-		return nil, epErr
+	entities, entErr := as.entityService.GetEntitiesByIDs(ctx, ids)
+	if entErr != nil {
+		as.logger.Error(ctx, "Failed to get entities by IDs", log.Error(entErr))
+		return nil, entErr
 	}
 
 	usages := make([]resourcedependency.ResourceDependency, 0, len(entities))
@@ -747,13 +749,13 @@ func (as *applicationService) ValidateReferenceUpdate(
 // (used during declarative loading and updates where the entity already exists).
 func (as *applicationService) isIdentifierTaken(
 	ctx context.Context, key, value, excludeID string) (bool, *tidcommon.ServiceError) {
-	entityID, epErr := as.entityProvider.IdentifyEntity(map[string]interface{}{key: value})
-	if epErr != nil {
-		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
+	entityID, entErr := as.entityService.IdentifyEntity(ctx, map[string]interface{}{key: value})
+	if entErr != nil {
+		if errors.Is(entErr, entity.ErrEntityNotFound) {
 			return false, nil
 		}
 		as.logger.Error(ctx, "Failed to check identifier availability",
-			log.String("key", key), log.String("value", value), log.Error(epErr))
+			log.String("key", key), log.String("value", value), log.Error(entErr))
 		return false, &tidcommon.InternalServerError
 	}
 	if entityID == nil {
@@ -777,18 +779,18 @@ func (as *applicationService) getApplication(
 		return nil, &ErrorApplicationNotFound
 	}
 
-	entity, epErr := as.entityProvider.GetEntity(appID)
-	if epErr != nil {
-		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
-			entity = nil
+	appEntity, entErr := as.entityService.GetEntity(ctx, appID)
+	if entErr != nil {
+		if errors.Is(entErr, entity.ErrEntityNotFound) {
+			appEntity = nil
 		} else {
 			as.logger.Error(ctx, "Failed to get entity for application",
-				log.String("appID", appID), log.Error(epErr))
+				log.String("appID", appID), log.Error(entErr))
 			return nil, &tidcommon.InternalServerError
 		}
 	}
 
-	if entity != nil && entity.Category != providers.EntityCategoryApp {
+	if appEntity != nil && appEntity.Category != providers.EntityCategoryApp {
 		return nil, &ErrorApplicationNotFound
 	}
 
@@ -799,21 +801,21 @@ func (as *applicationService) getApplication(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	dto := toProcessedDTO(entity, inboundClient, oauthProfile)
+	dto := toProcessedDTO(appEntity, inboundClient, oauthProfile)
 	return dto, nil
 }
 
-// mapEntityProviderError maps entity provider error codes to application service errors.
-func mapEntityProviderError(epErr *entityprovider.EntityProviderError) *tidcommon.ServiceError {
-	if epErr == nil {
-		return nil
-	}
-	switch epErr.Code {
-	case entityprovider.ErrorCodeEntityNotFound:
+// mapEntityError maps entity service sentinel errors to application service errors. Schema
+// validation and attribute conflict are omitted: the entity service raises them only for
+// categories that use an entity type, which excludes applications.
+func mapEntityError(err error) *tidcommon.ServiceError {
+	switch {
+	case errors.Is(err, entity.ErrEntityNotFound):
 		return &ErrorApplicationNotFound
-	default:
-		return nil
+	case errors.Is(err, entity.ErrInvalidCredential):
+		return &ErrorInvalidCredential
 	}
+	return nil
 }
 
 // toInboundClient extracts gateway config fields from a full ApplicationProcessedDTO.
@@ -831,6 +833,7 @@ func toInboundClient(dto *model.ApplicationProcessedDTO) inboundmodel.InboundCli
 		Assertion:                 dto.Assertion,
 		LoginConsent:              dto.LoginConsent,
 		AllowedUserTypes:          dto.AllowedUserTypes,
+		AllowedAgentTypes:         dto.AllowedAgentTypes,
 		SubjectAttribute:          dto.SubjectAttribute,
 		PasskeyAllowedOrigins:     dto.PasskeyAllowedOrigins,
 		Attestation:               dto.Attestation,
@@ -888,6 +891,7 @@ func toProcessedDTO(
 			Assertion:                 dao.Assertion,
 			LoginConsent:              dao.LoginConsent,
 			AllowedUserTypes:          dao.AllowedUserTypes,
+			AllowedAgentTypes:         dao.AllowedAgentTypes,
 			SubjectAttribute:          dao.SubjectAttribute,
 			PasskeyAllowedOrigins:     dao.PasskeyAllowedOrigins,
 			Attestation:               dao.Attestation.WithoutCredentials(),
@@ -1584,7 +1588,11 @@ func translateInboundClientFKError(err error) *tidcommon.ServiceError {
 		return &ErrorLayoutNotFound
 	case errors.Is(err, inboundclient.ErrFKInvalidUserType):
 		return &ErrorInvalidUserType
+	case errors.Is(err, inboundclient.ErrFKInvalidAgentType):
+		return &ErrorInvalidAgentType
 	case errors.Is(err, inboundclient.ErrUserSchemaLookupFailed):
+		return &tidcommon.InternalServerError
+	case errors.Is(err, inboundclient.ErrAgentSchemaLookupFailed):
 		return &tidcommon.InternalServerError
 	case errors.Is(err, inboundclient.ErrUniqueAttributeLookupFailed):
 		return &tidcommon.InternalServerError
@@ -1847,6 +1855,7 @@ func buildApplicationResponse(dto *model.ApplicationProcessedDTO) *providers.App
 			LayoutID:                  dto.LayoutID,
 			Assertion:                 dto.Assertion,
 			AllowedUserTypes:          dto.AllowedUserTypes,
+			AllowedAgentTypes:         dto.AllowedAgentTypes,
 			SubjectAttribute:          dto.SubjectAttribute,
 			PasskeyAllowedOrigins:     dto.PasskeyAllowedOrigins,
 			LoginConsent:              dto.LoginConsent,
@@ -1960,6 +1969,7 @@ func buildBaseApplicationProcessedDTO(appID string, app *model.ApplicationDTO,
 			LayoutID:                  app.LayoutID,
 			Assertion:                 assertion,
 			AllowedUserTypes:          app.AllowedUserTypes,
+			AllowedAgentTypes:         app.AllowedAgentTypes,
 			SubjectAttribute:          app.SubjectAttribute,
 			PasskeyAllowedOrigins:     app.PasskeyAllowedOrigins,
 			LoginConsent:              app.LoginConsent,
@@ -2046,6 +2056,7 @@ func buildReturnApplicationDTO(
 			LayoutID:                  app.LayoutID,
 			Assertion:                 assertion,
 			AllowedUserTypes:          app.AllowedUserTypes,
+			AllowedAgentTypes:         app.AllowedAgentTypes,
 			SubjectAttribute:          app.SubjectAttribute,
 			PasskeyAllowedOrigins:     app.PasskeyAllowedOrigins,
 			LoginConsent:              app.LoginConsent,

@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Product Docker Image
+# Built from source for `make docker-build*`. The release pipeline uses
+# .github/docker/Dockerfile.release. Keep the runtime stages in sync.
 # Build stage - compile the Go binary and build frontend for the target architecture
 FROM golang:1.26-alpine3.23 AS builder
 

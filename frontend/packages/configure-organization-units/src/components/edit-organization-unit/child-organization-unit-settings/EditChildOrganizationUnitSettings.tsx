@@ -23,7 +23,7 @@ interface EditChildOrganizationUnitSettingsProps {
  * Child Organization Units tab content for the Organization Unit edit page.
  *
  * Displays sections for:
- * - Managing child organization units (DataGrid with navigation)
+ * - Managing child organization units (lazy-loaded hierarchy)
  *
  * @param props - Component props
  * @returns Child OUs tab content

@@ -40,6 +40,7 @@ const (
 	// immutable: the management API must reject updates and deletes.
 	declConfigID     = "decl-credential-config-1"
 	declConfigHandle = "decl_credential_config_1"
+	declConfigOUID   = "decl-ou-1"
 	declConfigVCT    = "https://credentials.thunderid.local/DeclarativeTestCredential"
 )
 
@@ -478,6 +479,7 @@ func (ts *CredentialConfigurationAPITestSuite) TestDeclarativeVisibility() {
 	ts.Equal(declConfigHandle, fetched["handle"])
 	ts.Equal(declConfigVCT, fetched["vct"])
 	ts.Equal("dc+sd-jwt", fetched["format"])
+	ts.Equal(declConfigOUID, fetched["ouId"], "the ouId declared in YAML must survive the load")
 
 	ts.Equal("Declarative Test Credential", fetched["name"])
 	ts.Equal("A declarative credential configuration", fetched["description"])

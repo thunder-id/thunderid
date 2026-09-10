@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
@@ -74,6 +75,14 @@ func (e *ssoCheckExecutor) Execute(ctx *providers.NodeContext) (*providers.Execu
 		execResp.RuntimeData[common.RuntimeKeySSOSessionHandle] = resolved.HandleID
 	}
 
+	// A request may demand a fresh authentication even when a live session exists: prompt=login
+	// asks for one outright, and a max_age smaller than the session's age makes the existing
+	// authentication too old to satisfy. Both are answered by re-authenticating here, at the
+	// branch point, rather than by failing at the end of the flow once the assertion is due.
+	if resolved != nil && reauthRequired(ctx, resolved.AuthenticatedAt, logger) {
+		resolved = nil
+	}
+
 	var snapshot *session.SessionContext
 	if resolved != nil && checkpoint != "" {
 		if snapshot, err = e.sso.FindCheckpoint(ctx.Context, resolved.SessionID, checkpoint); err != nil {
@@ -104,6 +113,46 @@ func (e *ssoCheckExecutor) Execute(ctx *providers.NodeContext) (*providers.Execu
 	}
 
 	return execResp, nil
+}
+
+// reauthRequired reports whether the request rules out reusing a session that authenticated at
+// authenticatedAt: prompt=login always does, and max_age does when more than that many seconds
+// have passed since. A malformed max_age is treated as no constraint, matching the assurance
+// check that also reads it.
+func reauthRequired(ctx *providers.NodeContext, authenticatedAt time.Time, logger *log.Logger) bool {
+	if ctx.RuntimeData[common.RuntimeKeyForceReauth] == dataValueTrue {
+		logger.Debug(ctx.Context, "prompt=login requires a fresh authentication; not reusing the session")
+		return true
+	}
+
+	// A silent request cannot answer a credential prompt, and the authorize endpoint already
+	// confirmed this session satisfies it. Re-deciding here would compare max_age against a later
+	// clock than that check used, so a session on the boundary would be declined and the flow would
+	// prompt a request that forbids prompting. prompt=none cannot be combined with prompt=login, so
+	// the forced-reauth case above still takes precedence.
+	if ctx.RuntimeData[common.RuntimeKeySilentAuthOnly] == dataValueTrue {
+		logger.Debug(ctx.Context,
+			"Silent request already validated at the authorize endpoint; reusing the session")
+		return false
+	}
+
+	rawMaxAge := ctx.RuntimeData[common.RuntimeKeyMaxAge]
+	if rawMaxAge == "" || authenticatedAt.IsZero() {
+		return false
+	}
+	maxAge, err := strconv.ParseInt(rawMaxAge, 10, 64)
+	if err != nil || maxAge < 0 {
+		logger.Debug(ctx.Context, "Ignoring malformed max_age", log.String("maxAge", rawMaxAge))
+		return false
+	}
+	// max_age=0 admits no elapsed time at all, so it demands re-authentication even within the same
+	// second as the authentication (OIDC Core 3.1.2.1 treats it as equivalent to prompt=login)
+	if maxAge == 0 || time.Now().UTC().Unix()-authenticatedAt.Unix() > maxAge {
+		logger.Debug(ctx.Context, "Session authentication is older than max_age; re-authenticating",
+			log.String("maxAge", rawMaxAge))
+		return true
+	}
+	return false
 }
 
 // checkpointRef returns the Session (join) node id this SSO-Check node guards, read from

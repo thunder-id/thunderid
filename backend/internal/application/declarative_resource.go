@@ -175,6 +175,7 @@ func parseToApplicationDTO(data []byte) (*model.ApplicationDTO, error) {
 			Assertion:                 appRequest.Assertion,
 			LoginConsent:              appRequest.LoginConsent,
 			AllowedUserTypes:          appRequest.AllowedUserTypes,
+			AllowedAgentTypes:         appRequest.AllowedAgentTypes,
 			PasskeyAllowedOrigins:     appRequest.PasskeyAllowedOrigins,
 			Attestation:               appRequest.Attestation,
 		},

@@ -7,69 +7,52 @@ package auth
 import (
 	"context"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
 
-	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
-	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
-// NewTokenVerifier creates a TokenVerifier function that verifies tokens
-// issued by the OAuth server. This implements the auth.TokenVerifier
-// function type from the MCP SDK.
-func NewTokenVerifier(
-	jwtService jwt.JWTServiceInterface,
-	issuer string,
-	mcpURL string,
-) auth.TokenVerifier {
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "MCPTokenVerifier"))
+// securityContextExtraKey is the key under which the authenticated security.SecurityContext is
+// stored in TokenInfo.Extra. The go-sdk's TokenVerifier can only return a *TokenInfo — it has no
+// way to attach anything else to the request context that RequireBearerToken hands to the next
+// handler — so this is how the SecurityContext reaches the caller that mounts the guard (see
+// mcp.DefaultGuard, which reads it back via SecurityContextFromTokenInfo).
+const securityContextExtraKey = "securityContext"
 
+// NewTokenVerifier creates a TokenVerifier that authenticates MCP requests using
+// bearerAuthenticator — the same verification and revocation logic the REST API gate uses. This
+// implements the auth.TokenVerifier function type from the MCP SDK.
+func NewTokenVerifier(bearerAuthenticator *security.BearerAuthenticator) auth.TokenVerifier {
 	return func(ctx context.Context, token string, req *http.Request) (*auth.TokenInfo, error) {
-		// Verify JWT signature and claims (iss, aud, exp, nbf)
-		if err := jwtService.VerifyJWT(ctx, token, mcpURL, issuer); err != nil {
-			logger.Error(ctx, "JWT verification failed", log.String("error", err.Error.DefaultValue))
-			return nil, auth.ErrInvalidToken
-		}
-
-		// Decode payload to extract claims for TokenInfo
-		payload, err := jwt.DecodeJWTPayload(token)
+		securityCtx, err := bearerAuthenticator.Authenticate(ctx, token)
 		if err != nil {
-			logger.Error(ctx, "Failed to decode JWT payload", log.Error(err))
 			return nil, auth.ErrInvalidToken
 		}
 
-		// Extract expiration time for SDK middleware
+		enrichedCtx := security.WithSecurityContext(ctx, securityCtx)
+
 		var expiration time.Time
-		if exp, ok := payload["exp"].(float64); ok {
+		if exp, ok := security.GetAttribute(enrichedCtx, "exp").(float64); ok {
 			expiration = time.Unix(int64(exp), 0)
 		}
 
-		// Extract scopes from token
-		var scopes []string
-		if scopeStr, ok := payload["scope"].(string); ok && scopeStr != "" {
-			scopes = strings.Fields(scopeStr)
-			logger.Debug(ctx, "Token scopes extracted",
-				log.String("scopes", strings.Join(scopes, ",")),
-				log.String("path", req.URL.Path))
-		} else {
-			logger.Warn(ctx, "Token missing 'scope' claim", log.String("path", req.URL.Path))
-		}
-
-		// Extract user ID from 'sub' claim
-		userID := ""
-		if sub, ok := payload["sub"].(string); ok && sub != "" {
-			userID = sub
-		}
-
-		// Build TokenInfo with user ID, scopes, and expiration
-		tokenInfo := &auth.TokenInfo{
-			UserID:     userID,
-			Scopes:     scopes,
+		return &auth.TokenInfo{
+			UserID:     security.GetSubject(enrichedCtx),
+			Scopes:     security.GetPermissions(enrichedCtx),
 			Expiration: expiration,
-		}
-
-		return tokenInfo, nil
+			Extra:      map[string]any{securityContextExtraKey: securityCtx},
+		}, nil
 	}
+}
+
+// SecurityContextFromTokenInfo returns the security.SecurityContext embedded in ti.Extra by the
+// verifier built by NewTokenVerifier, or nil if ti is nil or carries none.
+func SecurityContextFromTokenInfo(ti *auth.TokenInfo) *security.SecurityContext {
+	if ti == nil {
+		return nil
+	}
+	sc, _ := ti.Extra[securityContextExtraKey].(*security.SecurityContext)
+	return sc
 }

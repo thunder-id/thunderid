@@ -51,19 +51,18 @@ func newThemeMgtService(themeMgtStore themeMgtStoreInterface) ThemeMgtServiceInt
 }
 
 // GetThemeList retrieves a list of theme configurations.
-func (ts *themeMgtService) GetThemeList(
-	ctx context.Context, limit, offset int) (*ThemeList, *tidcommon.ServiceError) {
+func (ts *themeMgtService) GetThemeList(ctx context.Context, limit, offset int) (*ThemeList, *tidcommon.ServiceError) {
 	if err := validatePaginationParams(limit, offset); err != nil {
 		return nil, err
 	}
 
-	totalCount, err := ts.themeMgtStore.GetThemeListCount()
+	totalCount, err := ts.themeMgtStore.GetThemeListCount(ctx)
 	if err != nil {
 		ts.logger.Error(ctx, "Failed to get theme count", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 
-	themes, err := ts.themeMgtStore.GetThemeList(limit, offset)
+	themes, err := ts.themeMgtStore.GetThemeList(ctx, limit, offset)
 	if err != nil {
 		ts.logger.Error(ctx, "Failed to list themes", log.Error(err))
 		return nil, &tidcommon.InternalServerError
@@ -81,8 +80,8 @@ func (ts *themeMgtService) GetThemeList(
 }
 
 // CreateTheme creates a new theme configuration.
-func (ts *themeMgtService) CreateTheme(
-	ctx context.Context, theme CreateThemeRequestWithID) (*Theme, *tidcommon.ServiceError) {
+func (ts *themeMgtService) CreateTheme(ctx context.Context, theme CreateThemeRequestWithID) (*Theme,
+	*tidcommon.ServiceError) {
 	ts.logger.Debug(ctx, "Creating theme configuration")
 
 	if theme.DisplayName == "" {
@@ -98,7 +97,7 @@ func (ts *themeMgtService) CreateTheme(
 		return nil, &ErrorCannotModifyDeclarativeResource
 	}
 
-	conflict, err := ts.themeMgtStore.IsThemeHandleConflict(theme.Handle, "")
+	conflict, err := ts.themeMgtStore.IsThemeHandleConflict(ctx, theme.Handle, "")
 	if err != nil {
 		ts.logger.Error(ctx, "Failed to check theme handle conflict", log.Error(err))
 		return nil, &tidcommon.InternalServerError
@@ -128,7 +127,7 @@ func (ts *themeMgtService) CreateTheme(
 		Theme:       theme.Theme,
 	}
 
-	if err := ts.themeMgtStore.CreateTheme(id, storeReq); err != nil {
+	if err := ts.themeMgtStore.CreateTheme(ctx, id, storeReq); err != nil {
 		ts.logger.Error(ctx, "Failed to create theme", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
@@ -153,7 +152,7 @@ func (ts *themeMgtService) GetTheme(ctx context.Context, id string) (*Theme, *ti
 		return nil, &ErrorInvalidThemeID
 	}
 
-	theme, err := ts.themeMgtStore.GetTheme(id)
+	theme, err := ts.themeMgtStore.GetTheme(ctx, id)
 	if err != nil {
 		if errors.Is(err, errThemeNotFound) {
 			ts.logger.Debug(ctx, "Theme not found", log.String("id", id))
@@ -168,8 +167,8 @@ func (ts *themeMgtService) GetTheme(ctx context.Context, id string) (*Theme, *ti
 }
 
 // UpdateTheme updates an existing theme configuration.
-func (ts *themeMgtService) UpdateTheme(
-	ctx context.Context, id string, theme UpdateThemeRequest) (*Theme, *tidcommon.ServiceError) {
+func (ts *themeMgtService) UpdateTheme(ctx context.Context, id string, theme UpdateThemeRequest) (*Theme,
+	*tidcommon.ServiceError) {
 	ts.logger.Debug(ctx, "Updating theme", log.String("id", id))
 
 	if id == "" {
@@ -181,12 +180,12 @@ func (ts *themeMgtService) UpdateTheme(
 	}
 
 	// Check if the theme is declarative (read-only)
-	if ts.themeMgtStore.IsThemeDeclarative(id) {
+	if ts.themeMgtStore.IsThemeDeclarative(ctx, id) {
 		return nil, &ErrorCannotModifyDeclarativeResource
 	}
 
 	// Fetch existing theme to enforce handle immutability
-	existingTheme, err := ts.themeMgtStore.GetTheme(id)
+	existingTheme, err := ts.themeMgtStore.GetTheme(ctx, id)
 	if err != nil {
 		if errors.Is(err, errThemeNotFound) {
 			return nil, &ErrorThemeNotFound
@@ -204,7 +203,7 @@ func (ts *themeMgtService) UpdateTheme(
 		return nil, err
 	}
 
-	if err := ts.themeMgtStore.UpdateTheme(id, theme); err != nil {
+	if err := ts.themeMgtStore.UpdateTheme(ctx, id, theme); err != nil {
 		ts.logger.Error(ctx, "Failed to update theme", log.String("id", id), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
@@ -230,12 +229,12 @@ func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *tidcommo
 	}
 
 	// Check if the theme is declarative (read-only)
-	if ts.themeMgtStore.IsThemeDeclarative(id) {
+	if ts.themeMgtStore.IsThemeDeclarative(ctx, id) {
 		return &ErrorCannotModifyDeclarativeResource
 	}
 
 	// Check if theme exists. Return success for non-existing themes (idempotent delete).
-	exists, err := ts.themeMgtStore.IsThemeExist(id)
+	exists, err := ts.themeMgtStore.IsThemeExist(ctx, id)
 	if err != nil {
 		ts.logger.Error(ctx, "Failed to check theme existence", log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
@@ -249,7 +248,7 @@ func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *tidcommo
 	// A theme can be deleted even while applications reference it: those applications keep their
 	// reference and fall back to the system default theme at read time (see the design resolve
 	// service). References are surfaced informationally through GetThemeUsages.
-	if err := ts.themeMgtStore.DeleteTheme(id); err != nil {
+	if err := ts.themeMgtStore.DeleteTheme(ctx, id); err != nil {
 		ts.logger.Error(ctx, "Failed to delete theme", log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
@@ -264,7 +263,7 @@ func (ts *themeMgtService) IsThemeExist(ctx context.Context, id string) (bool, *
 		return false, &ErrorInvalidThemeID
 	}
 
-	exists, err := ts.themeMgtStore.IsThemeExist(id)
+	exists, err := ts.themeMgtStore.IsThemeExist(ctx, id)
 	if err != nil {
 		ts.logger.Error(ctx, "Failed to check theme existence", log.String("id", id), log.Error(err))
 		return false, &tidcommon.InternalServerError
@@ -291,7 +290,7 @@ func (ts *themeMgtService) GetThemeUsages(
 		return nil, err
 	}
 
-	exists, err := ts.themeMgtStore.IsThemeExist(id)
+	exists, err := ts.themeMgtStore.IsThemeExist(ctx, id)
 	if err != nil {
 		ts.logger.Error(ctx, "Failed to check theme existence", log.String("id", id), log.Error(err))
 		return nil, &tidcommon.InternalServerError

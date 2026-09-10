@@ -37,12 +37,6 @@ func (suite *DisabledEntityProviderTestSuite) TestGetEntity() {
 	suite.Equal(errNotImplemented, err)
 }
 
-func (suite *DisabledEntityProviderTestSuite) TestCreateEntity() {
-	e, err := suite.provider.CreateEntity(&providers.Entity{}, json.RawMessage{})
-	suite.Nil(e)
-	suite.Equal(errNotImplemented, err)
-}
-
 func (suite *DisabledEntityProviderTestSuite) TestUpdateEntity() {
 	e, err := suite.provider.UpdateEntity("entity-id", &providers.Entity{})
 	suite.Nil(e)

@@ -5,7 +5,7 @@ description: AI agents should use this file when creating and reviewing document
 
 # ThunderID Documentation — Agent Instructions
 
-Documentation content under `docs/content/` is handled by one skill, `docs` (`.agent/skills/docs/SKILL.md`), covering every stage: scaffolding, writing, and review. **Invoke it instead of creating, editing, or reviewing a doc page by hand** — it enforces the project's writing standards directly, so the rules live in one executable place, not duplicated in prose here. This applies even when the request doesn't name it: "write documentation for X," "document this feature," "add a section on Y," "review this page," and "does this doc meet standards" should all route to it, not to a manual edit or review.
+Documentation content under `docs/content/` and `docs/community/` is handled by one skill, `docs` (`.agent/skills/docs/SKILL.md`), covering every stage: scaffolding, writing, and review. **Invoke it instead of creating, editing, or reviewing a doc page by hand** — it enforces the project's writing standards directly, so the rules live in one executable place, not duplicated in prose here. This applies even when the request doesn't name it: "write documentation for X," "document this feature," "add a section on Y," "review this page," and "does this doc meet standards" should all route to it, not to a manual edit or review.
 
 The skill's `SKILL.md` is a dispatch table over its reference files, each covering one stage:
 

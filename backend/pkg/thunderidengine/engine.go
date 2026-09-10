@@ -38,6 +38,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/usermgtprovider"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -146,6 +147,9 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	}
 	flowFactory, graphCache := core.Initialize(engineCtx.cacheManager)
 	engineCtx.flowFactory = flowFactory
+	if engineCtx.userMgtProvider == nil {
+		engineCtx.userMgtProvider = usermgtprovider.NewDisabledUserMgtProvider()
+	}
 	execDeps := executor.ExecutorDependencies{
 		FlowFactory:       engineCtx.flowFactory,
 		AttributeCacheSvc: engineCtx.attributeCacheService,
@@ -155,6 +159,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		JWTService:        engineCtx.jwtService,
 		AuthAssertGen:     engineCtx.authAssertGen,
 		ResourceService:   engineCtx.resourceProvider,
+		UserMgtProvider:   engineCtx.userMgtProvider,
 	}
 	interceptorDeps := interceptor.InterceptorDependencies{
 		FlowFactory:    engineCtx.flowFactory,
@@ -221,7 +226,10 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.jweService, engineCtx.flowExecService, engineCtx.observabilitySvc, engineCtx.runtimeCryptoSvc,
 		engineCtx.ouProvider, engineCtx.attributeCacheService, engineCtx.authzProvider, engineCtx.resourceProvider,
 		engineCtx.i18nProvider, engineCtx.idpProvider, engineCtx.dpopVerifier, engineCtx.runtimeStoreProvider,
-		engineCtx.transactioner, revocationEnforcer, revocationService, oauthConfig)
+		engineCtx.transactioner, revocationEnforcer, revocationService,
+		// The embedded engine has no SSO session store, so prompt=none keeps answering
+		// login_required rather than consulting a session.
+		nil, engineCtx.flowProvider, oauthConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}
@@ -370,6 +378,7 @@ type engineContext struct {
 	originConfig           engineconfig.OriginConfig
 
 	actorProvider             providers.ActorProvider
+	userMgtProvider           providers.UserMgtProvider
 	defaultAuthnProvider      providers.AuthnProviderInterface
 	customAuthnProviders      map[string]providers.CustomAuthnProvider
 	resourceProvider          providers.ResourceServerProvider
@@ -465,6 +474,13 @@ func WithObservabilityConfig(config engineconfig.ObservabilityConfig) Option {
 // WithActorProvider supplies the actor provider.
 func WithActorProvider(provider providers.ActorProvider) Option {
 	return func(c *engineContext) { c.actorProvider = provider }
+}
+
+// WithUserMgtProvider supplies the user management provider. Omitting it leaves user provisioning
+// disabled: runtime capabilities that provision users then fail with ErrorUserProvisioningDisabled
+// rather than the engine refusing to start.
+func WithUserMgtProvider(provider providers.UserMgtProvider) Option {
+	return func(c *engineContext) { c.userMgtProvider = provider }
 }
 
 // WithDefaultAuthnProvider supplies the default authentication provider.

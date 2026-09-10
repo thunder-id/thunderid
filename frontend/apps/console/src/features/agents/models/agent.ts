@@ -31,6 +31,7 @@ export interface Agent {
   clientId?: string;
   attributes?: Record<string, unknown>;
   allowedUserTypes?: string[];
+  allowedAgentTypes?: string[];
   inboundAuthConfig?: AgentInboundAuthConfig[];
   // Inbound-client fields the agent shares with applications. Populated only when an inbound
   // client row exists for the agent (i.e., create modes 2 or 3 — not entity-only).
@@ -81,6 +82,7 @@ export interface UpdateAgentRequest {
   owner?: string;
   attributes?: Record<string, unknown>;
   allowedUserTypes?: string[];
+  allowedAgentTypes?: string[];
   inboundAuthConfig?: AgentInboundAuthConfig[];
   authFlowId?: string;
   registrationFlowId?: string;

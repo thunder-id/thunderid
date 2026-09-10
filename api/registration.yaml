@@ -47,11 +47,19 @@ paths:
           description: >
             Bad Request: The request body is malformed or contains invalid data. Client-side
             failures (invalid input, user not found, etc.) surface as a single enrollment failure
-            code (AUTHN-PSK-1002).
+            code (AUTHN-PSK-1002). A request that does not prove the target user is rejected
+            before any challenge is issued: an `assertion` that cannot be verified returns
+            AUTHN-1009, and one whose subject is not `userId` returns AUTHN-1010. A missing,
+            empty or blank `assertion` (or `userId`) is a required-field violation and is
+            rejected by request validation before the handler runs, which returns the
+            `INVALID_INPUT_METADATA` shape with a per-field `errors` map instead of the codes
+            above.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                oneOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/ValidationError'
               examples:
                 enrollmentFailed:
                   value:
@@ -62,6 +70,31 @@ paths:
                     description:
                       key: "error.authnservice.passkey_enrollment_failed_description"
                       defaultValue: "The passkey enrollment attempt failed"
+                missingAssertion:
+                  value:
+                    code: "INVALID_INPUT_METADATA"
+                    message: "Validation Failed"
+                    description: "One or more inbound fields failed structural edge-boundary rules."
+                    errors:
+                      assertion: "The field 'assertion' is missing but is strictly required."
+                invalidAssertion:
+                  value:
+                    code: "AUTHN-1009"
+                    message:
+                      key: "error.authnservice.invalid_assertion"
+                      defaultValue: "Invalid assertion"
+                    description:
+                      key: "error.authnservice.invalid_assertion_description"
+                      defaultValue: "The provided assertion token is invalid"
+                assertionSubjectMismatch:
+                  value:
+                    code: "AUTHN-1010"
+                    message:
+                      key: "error.authnservice.assertion_subject_mismatch"
+                      defaultValue: "Assertion subject mismatch"
+                    description:
+                      key: "error.authnservice.assertion_subject_mismatch_description"
+                      defaultValue: "The subject in the assertion does not match the authenticated user"
         "500":
           description: 'Internal Server Error: An unexpected error occurred while processing the request'
           content:
@@ -177,9 +210,18 @@ components:
           description: Attestation conveyance preference
           enum: ["none", "indirect", "direct", "enterprise"]
           example: "none"
+        assertion:
+          type: string
+          description: >
+            Auth assertion obtained from a prior authentication, proving the caller holds the
+            account named by `userId`. The credential is enrolled only for the assertion subject,
+            so the assertion `sub` and `userId` must be the same user. Holding the Direct Auth
+            Secret is not sufficient on its own.
+          example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1NTBlODQwMC1lMjliIn0.signature"
       required:
         - userId
         - relyingPartyId
+        - assertion
 
     PasskeyRegistrationStartResponse:
       type: object
@@ -432,6 +474,36 @@ components:
           $ref: '#/components/schemas/I18nMessage'
         description:
           $ref: '#/components/schemas/I18nMessage'
+
+    ValidationError:
+      type: object
+      description: >
+        Returned when a request fails required-field or bounds validation, which happens before the
+        handler runs. Unlike `Error`, its `message` and `description` are plain strings rather than
+        internationalized objects, and it carries an `errors` map naming each field that failed.
+      required:
+        - code
+        - message
+        - description
+        - errors
+      properties:
+        code:
+          type: string
+          description: Always `INVALID_INPUT_METADATA` for a validation failure.
+          example: "INVALID_INPUT_METADATA"
+        message:
+          type: string
+          example: "Validation Failed"
+        description:
+          type: string
+          example: "One or more inbound fields failed structural edge-boundary rules."
+        errors:
+          type: object
+          description: One entry per field that failed validation, keyed by the field's JSON name.
+          additionalProperties:
+            type: string
+          example:
+            assertion: "The field 'assertion' is missing but is strictly required."
 
     I18nMessage:
       type: object

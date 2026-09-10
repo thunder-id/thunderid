@@ -266,13 +266,18 @@ type AuthnProviderConfig struct {
 	Rest RestConfig `yaml:"rest" json:"rest"`
 }
 
-// UserProviderConfig holds the user provider configuration details.
-type UserProviderConfig struct {
+// UserMgtProviderConfig holds the user management provider configuration details.
+type UserMgtProviderConfig struct {
 	Type string `yaml:"type" json:"type"`
 }
 
 // EntityProviderConfig holds the entity provider configuration details.
 type EntityProviderConfig struct {
+	Type string `yaml:"type" json:"type"`
+}
+
+// AgentMgtProviderConfig holds the agent provider configuration details.
+type AgentMgtProviderConfig struct {
 	Type string `yaml:"type" json:"type"`
 }
 
@@ -644,8 +649,9 @@ type Config struct {
 	OpenID4VP            OpenID4VPConfig                   `yaml:"openid4vp"             json:"openid4vp"`
 	OpenID4VCI           OpenID4VCIConfig                  `yaml:"openid4vci"            json:"openid4vci"`
 	AuthnProvider        AuthnProviderConfig               `yaml:"authn_provider"        json:"authn_provider"`
-	UserProvider         UserProviderConfig                `yaml:"user_provider"         json:"user_provider"`
+	UserMgtProvider      UserMgtProviderConfig             `yaml:"user_mgt_provider"     json:"user_mgt_provider"`
 	EntityProvider       EntityProviderConfig              `yaml:"entity_provider"       json:"entity_provider"`
+	AgentMgtProvider     AgentMgtProviderConfig            `yaml:"agent_mgt_provider"        json:"agent_mgt_provider"`
 	Group                GroupConfig                       `yaml:"group"                 json:"group"`
 	Role                 RoleConfig                        `yaml:"role"                  json:"role"`
 	Theme                ThemeConfig                       `yaml:"theme"                 json:"theme"`

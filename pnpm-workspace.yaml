@@ -60,7 +60,7 @@ catalog:
   jsdom: 27.0.1
   lodash-es: 4.18.1
   lucide-react: 0.545.0
-  next: 16.2.12
+  next: 16.3.4
   playwright: 1.60.0
   prettier: 3.6.2
   react: 19.2.3
@@ -115,8 +115,9 @@ overrides:
   yaml: 2.8.3
   path-to-regexp: 0.1.13
   # JUSTIFICATION: Fixes GHSA-2p49-hgcm-8545 — SVGO removeScripts plugin leaves some executable
-  # content in place. Transitive via docs and icon tooling.
-  svgo: 3.3.4
+  # content in place, and GHSA-w27v-7q3p-w38r — removeScripts allows executable links through
+  # namespace and control-character bypasses. Transitive via docs and icon tooling.
+  svgo: 3.3.5
   # JUSTIFICATION: Fixes GHSA-v56q-mh7h-f735 (List 32-bit trie overflow DoS) and
   # GHSA-xvcm-6775-5m9r (hash-collision algorithmic complexity DoS). Transitive via sass under
   # the @codecov/vite-plugin chain; bounded to the vulnerable 5.x range.
@@ -131,11 +132,13 @@ overrides:
   brace-expansion: 5.0.9
   lodash: 4.18.1
   # JUSTIFICATION: Fixes GHSA-52cp-r559-cp3m — YAML merge-key chains forcing quadratic CPU consumption,
-  # and GHSA-5p4m-2wfm-xmqj (CVE-2026-59870) — quadratic CPU consumption in !!omap resolution.
-  js-yaml@>=4.0.0 <4.3.1: 4.3.1
+  # GHSA-5p4m-2wfm-xmqj (CVE-2026-59870) — quadratic CPU consumption in !!omap resolution, and
+  # GHSA-2883-xcg3-v3hh — maxTotalMergeKeys does not limit CPU use for empty merge sources.
+  js-yaml@>=4.0.0 <4.3.2: 4.3.2
   # JUSTIFICATION: Fixes GHSA-h67p-54hq-rp68 — quadratic-complexity DoS in js-yaml merge key handling,
-  # and GHSA-5p4m-2wfm-xmqj (CVE-2026-59870) — quadratic CPU consumption in !!omap resolution.
-  js-yaml@<3.15.1: 3.15.1
+  # GHSA-5p4m-2wfm-xmqj (CVE-2026-59870) — quadratic CPU consumption in !!omap resolution, and
+  # GHSA-2883-xcg3-v3hh — maxTotalMergeKeys does not limit CPU use for empty merge sources.
+  js-yaml@<3.15.2: 3.15.2
   # JUSTIFICATION: Fixes GHSA-64mm-vxmg-q3vj — http-proxy-middleware router host+path substring match bypass.
   http-proxy-middleware: 2.0.10
   # TODO: Remove once `nuxt` bumps `devalue` to 5.8.1 or later.
@@ -190,9 +193,11 @@ overrides:
   webpack-dev-server: '5.2.6'
   '@hono/node-server': '>=2.0.5'
   # JUSTIFICATION: Fixes GHSA-f88m-g3jw-g9cj (CVE-2026-33327, CVE-2026-33328, CVE-2026-35590,
-  # CVE-2026-35591) — libvips vulnerabilities inherited by sharp. Transitive via next's optional
-  # image-optimization dependency, which pins sharp to the vulnerable <0.35.0 range.
-  sharp: '>=0.35.3'
+  # CVE-2026-35591) — libvips vulnerabilities inherited by sharp, and GHSA-rgj7-g3m4-5g8c
+  # (GHSA-g89c-p67h-r497, GHSA-2jg2-4ch7-h545) — libheif vulnerabilities inherited by sharp.
+  # Transitive via next's optional image-optimization dependency, which pins sharp to the
+  # vulnerable <0.35.0 range.
+  sharp: '>=0.35.4'
   # JUSTIFICATION: Fixes GHSA-28wg-ghj8-5hjv — nanoid non-secure generators can loop indefinitely
   # with negative size. Transitive via @scalar packages, which use the nanoid 5.x line. Pinned
   # exact (not an open range) so the resolver can't dedupe this edge onto an untested major.

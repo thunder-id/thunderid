@@ -242,6 +242,14 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		}
 	}
 
+	// With no actor_token, the acting party is the authenticated client itself. Agents (and
+	// applications that opt in) record that delegation as an RFC 8693 act claim, matching the
+	// authorization_code and CIBA paths, so a token an agent exchanges on a user's behalf stays
+	// attributable to the agent. An explicit actor_token identifies the actor and takes precedence.
+	if actorClaims == nil && oauthApp.ShouldAppendActorClaim() {
+		actorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}
+	}
+
 	// Determine final scopes
 	finalScopes, errResp := h.getScopes(tokenRequest, subjectClaims.Scopes)
 	if errResp != nil {

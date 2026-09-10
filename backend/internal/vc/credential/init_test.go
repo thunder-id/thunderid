@@ -4,6 +4,7 @@
 package credential
 
 import (
+	"context"
 	"net/http"
 	"testing"
 
@@ -91,4 +92,28 @@ func (s *InitTestSuite) TestGetCredentialStoreModeDefaults() {
 	got, err := getCredentialStoreMode()
 	s.Require().NoError(err)
 	s.Equal(serverconst.StoreModeMutable, got)
+}
+
+// TestDeclarativeModeRejectsCreate verifies the management API cannot create a
+// configuration when the store is declarative-only. The write would otherwise land in
+// the in-memory declarative store and disappear on restart.
+func (s *InitTestSuite) TestDeclarativeModeRejectsCreate() {
+	original := config.GetServerRuntime().Config.OpenID4VCI.Store
+	defer func() { config.GetServerRuntime().Config.OpenID4VCI.Store = original }()
+	config.GetServerRuntime().Config.OpenID4VCI.Store = string(serverconst.StoreModeDeclarative)
+
+	ouSvc := newOUServiceMock(s.T(), map[string]bool{"ou-1": true},
+		map[string]string{"root": "ou-1"}, map[string]string{"ou-1": "root"})
+	fileStore, err := initializeStore(ouSvc)
+	s.Require().NoError(err)
+
+	svc := newCredentialConfigurationService(fileStore, ouSvc)
+	_, svcErr := svc.CreateCredentialConfiguration(context.Background(), &CredentialConfigurationDTO{
+		Handle: "decl-mode-create",
+		OUID:   "ou-1",
+		VCT:    "urn:example:vct",
+	})
+
+	s.Require().NotNil(svcErr, "a create must be rejected in declarative-only mode")
+	s.Equal(ErrorConfigurationDeclarativeModeCreateNotAllowed.Code, svcErr.Code)
 }

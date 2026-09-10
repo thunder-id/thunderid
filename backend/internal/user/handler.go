@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -96,7 +98,7 @@ func (uh *userHandler) HandleUserPostRequest(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	user := &User{
+	user := &providers.User{
 		OUID:       createRequest.OUID,
 		Type:       createRequest.Type,
 		Attributes: createRequest.Attributes,
@@ -219,7 +221,7 @@ func (uh *userHandler) HandleUserPutRequest(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	updateRequest, err := sysutils.DecodeJSONBody[User](r)
+	updateRequest, err := sysutils.DecodeJSONBody[providers.User](r)
 	if err != nil {
 		var valErr *sysutils.ValidationError
 		if errors.As(err, &valErr) {

@@ -796,6 +796,135 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithAct
 	assert.NotNil(suite.T(), result)
 }
 
+// With no actor_token, the act claim follows the authenticated client: an agent exchanging a
+// user's token always gets an OBO actor claim naming itself, while an application gets one only
+// when it opts in through includeActClaim.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ImplicitActorClaim_WithoutActorToken() {
+	const actAppID = "act-entity-id"
+	testCases := []struct {
+		name            string
+		entityCategory  providers.EntityCategory
+		includeActClaim bool
+		expectActor     bool
+	}{
+		{name: "AgentClientAlwaysAppendsActor", entityCategory: providers.EntityCategoryAgent,
+			includeActClaim: false, expectActor: true},
+		{name: "AppClientWithoutFlagOmitsActor", entityCategory: providers.EntityCategoryApp,
+			includeActClaim: false, expectActor: false},
+		{name: "AppClientWithFlagAppendsActor", entityCategory: providers.EntityCategoryApp,
+			includeActClaim: true, expectActor: true},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.oauthApp.ID = actAppID
+			suite.oauthApp.EntityCategory = tc.entityCategory
+			suite.oauthApp.IncludeActClaim = tc.includeActClaim
+
+			now := time.Now().Unix()
+			subjectToken := suite.createTestJWT(map[string]interface{}{
+				"sub": testUserID,
+				"iss": testCustomIssuer,
+				"exp": float64(now + 3600),
+			})
+			tokenRequest := suite.createBasicTokenRequest(subjectToken)
+
+			suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+				Return(&tokenservice.SubjectTokenClaims{
+					Sub:            testUserID,
+					Iss:            testCustomIssuer,
+					UserAttributes: map[string]interface{}{},
+					NestedAct:      nil,
+				}, nil)
+
+			var capturedActor *tokenservice.SubjectTokenClaims
+			suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+				mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+					capturedActor = ctx.ActorClaims
+					return ctx.Subject == testUserID
+				})).Return(&model.TokenDTO{
+				Token:     testTokenExchangeJWT,
+				TokenType: constants.TokenTypeBearer,
+				IssuedAt:  now,
+				ExpiresIn: 7200,
+				ClientID:  testClientID,
+			}, nil)
+
+			result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+			assert.Nil(suite.T(), errResp)
+			assert.NotNil(suite.T(), result)
+			if tc.expectActor {
+				suite.Require().NotNil(capturedActor)
+				assert.Equal(suite.T(), actAppID, capturedActor.Sub)
+				assert.Empty(suite.T(), capturedActor.Iss)
+			} else {
+				assert.Nil(suite.T(), capturedActor)
+			}
+		})
+	}
+}
+
+// An explicit actor_token identifies the acting party, so it takes precedence over the implicit
+// client actor an agent would otherwise contribute.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ActorTokenTakesPrecedenceOverImplicitActor() {
+	suite.oauthApp.ID = "act-entity-id"
+	suite.oauthApp.EntityCategory = providers.EntityCategoryAgent
+
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID,
+		"iss": testCustomIssuer,
+		"exp": float64(now + 3600),
+	})
+	actorToken := suite.createTestJWT(map[string]interface{}{
+		"sub": "service456",
+		"iss": testCustomIssuer,
+		"exp": float64(now + 3600),
+	})
+
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+	tokenRequest.ActorToken = actorToken
+	tokenRequest.ActorTokenType = string(constants.TokenTypeIdentifierAccessToken)
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:            testUserID,
+			Iss:            testCustomIssuer,
+			UserAttributes: map[string]interface{}{},
+			NestedAct:      nil,
+		}, nil)
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, actorToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:            "service456",
+			Iss:            testCustomIssuer,
+			UserAttributes: map[string]interface{}{},
+			NestedAct:      nil,
+		}, nil)
+
+	var capturedActor *tokenservice.SubjectTokenClaims
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			capturedActor = ctx.ActorClaims
+			return ctx.Subject == testUserID
+		})).Return(&model.TokenDTO{
+		Token:     testTokenExchangeJWT,
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  now,
+		ExpiresIn: 7200,
+		ClientID:  testClientID,
+	}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	suite.Require().NotNil(capturedActor)
+	assert.Equal(suite.T(), "service456", capturedActor.Sub)
+	assert.Equal(suite.T(), testCustomIssuer, capturedActor.Iss)
+}
+
 // The RFC 8693 audience parameter is ignored: with no resource parameter, the token is bound to
 // the configured default resource server, not the requested audience.
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_AudienceParameterIgnored() {

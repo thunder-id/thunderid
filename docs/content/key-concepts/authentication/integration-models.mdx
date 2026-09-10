@@ -352,6 +352,8 @@ On a fresh setup, the `setup.sh` / `setup.ps1` script generates a secret, writes
 
 This suits the intended Direct API callers, such as CLI tools, automation scripts, and server-to-server integrations, which can hold a configured secret. Browser and mobile applications, which cannot safely store a static secret, should use the [Redirect-Based](#redirect-based) or [App-Native](#app-native) model instead.
 
+The secret identifies the calling integration, not the end user, and every caller shares the same value. So it authorizes use of the Direct API but never stands in for a user's own identity. Endpoints that act on a specific account require separate proof of that user: enrolling a passkey through `/register/passkey/start`, for example, also requires the `assertion` from a prior authentication, and enrolls the credential only for that assertion's subject. See [Passkeys](../passwordless/passkeys#registration-flow).
+
 ```bash
 curl -X POST https://localhost:8090/auth/credentials/authenticate \
   -H 'Content-Type: application/json' \

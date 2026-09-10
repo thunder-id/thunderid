@@ -43,6 +43,7 @@ type FederatedProvisioningTestSuite struct {
 
 	parentOUID string
 	ouAID      string
+	ouAChildID string
 	ouBID      string
 	ouAName    string
 	ouAHandle  string
@@ -177,6 +178,16 @@ func (ts *FederatedProvisioningTestSuite) SetupSuite() {
 		Handle: "fedprov-ou-b", Name: "Federated Provisioning OU B", Parent: &ts.parentOUID,
 	})
 	ts.Require().NoError(err, "Failed to create OU B")
+
+	// A child of OU-A, holding no user types of its own. Scenario 11 provisions into it to show the
+	// resolved OU overriding the user type's own OU. It must sit inside OU-A's subtree because a
+	// user type may only be used in its own organization unit or one beneath it; a sibling of OU-A
+	// would be rejected by the user service. It is kept out of OU-B so the self-registration type
+	// counts the other scenarios rely on are unaffected.
+	ts.ouAChildID, err = testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "fedprov-ou-a-child", Name: "Federated Provisioning OU A Child", Parent: &ts.ouAID,
+	})
+	ts.Require().NoError(err, "Failed to create OU A child")
 
 	// OU-A owns the only self-registration-enabled type used by scenario 10, so the resolved OU is
 	// distinguishable from the one scenario 11 selects.
@@ -316,7 +327,8 @@ func (ts *FederatedProvisioningTestSuite) TearDownSuite() {
 			ts.T().Logf("Failed to delete user type %s: %v", typeID, err)
 		}
 	}
-	for _, ouID := range []string{ts.ouAID, ts.ouBID, ts.parentOUID} {
+	// Children before parents: an organization unit cannot be removed while it still has children.
+	for _, ouID := range []string{ts.ouAChildID, ts.ouAID, ts.ouBID, ts.parentOUID} {
 		if err := testutils.DeleteOrganizationUnit(ouID); err != nil {
 			ts.T().Logf("Failed to delete OU %s: %v", ouID, err)
 		}
@@ -455,6 +467,31 @@ func (ts *FederatedProvisioningTestSuite) TestSingleSelfRegistrationTypeProvisio
 	ts.Require().NoError(err, "The assertion must carry the provisioned user type and OU")
 }
 
+// Scenario 12: a user type may only be used in its own organization unit or one beneath it. When a
+// flow resolves an OU outside that subtree the user service rejects the create, and the executor
+// must surface that error rather than flattening it to the generic provisioning failure, so the
+// caller can tell a misconfigured flow from an outage.
+func (ts *FederatedProvisioningTestSuite) TestProvisioningSurfacesUserServiceErrorForCrossOUType() {
+	sub := "fedprov-crossou-" + common.GenerateUniqueUsername("sub")
+	email := sub + "@example.com"
+
+	flowStep := ts.federatedLogin(ts.promptAllAppID, sub, email)
+	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "ouId"),
+		"promptAll must prompt for an OU selection, got inputs %+v", flowStep.Data.Inputs)
+
+	// OU-B is a sibling of OU-A, so the primary user type defined in OU-A is not usable there.
+	flowStep, err := common.CompleteFlow(flowStep.ExecutionID,
+		map[string]string{"ouId": ts.ouBID}, "action_ou", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the OU selection")
+
+	ts.Require().Equal("ERROR", flowStep.FlowStatus, "Provisioning must fail for a cross-OU user type")
+	ts.Require().NotNil(flowStep.Error, "The failure must carry an error")
+	ts.Equal("USR-1023", flowStep.Error.Code,
+		"The user service error must reach the flow unchanged, not be flattened to FET-1021")
+
+	ts.Empty(ts.usersWithEmail(email), "A rejected provisioning must not persist a user")
+}
+
 // Scenario 11: when OUResolverExecutor supplies an OU, getTargetEntityRef keeps it and takes only the
 // user type from the default entity ref (provisioning_executor.go:691-696). promptAll is used because
 // plain prompt needs the defaultOUID that UserTypeResolver would have set, and this flow has none.
@@ -470,9 +507,11 @@ func (ts *FederatedProvisioningTestSuite) TestResolvedOUKeptWhileUserTypeComesFr
 	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "ouId"),
 		"promptAll must prompt for an OU selection, got inputs %+v", flowStep.Data.Inputs)
 
-	// Select OU-B, which is NOT the primary user type's own OU.
+	// Select OU-A's child, which is NOT the primary user type's own OU but sits inside its subtree.
+	// A sibling such as OU-B would be rejected: a user type may only be used in its own
+	// organization unit or one beneath it.
 	flowStep, err := common.CompleteFlow(flowStep.ExecutionID,
-		map[string]string{"ouId": ts.ouBID}, "action_ou", flowStep.ChallengeToken)
+		map[string]string{"ouId": ts.ouAChildID}, "action_ou", flowStep.ChallengeToken)
 	ts.Require().NoError(err, "Failed to submit the OU selection")
 	ts.Require().Equal("COMPLETE", flowStep.FlowStatus,
 		"Provisioning must complete with a resolved OU and a defaulted user type")
@@ -481,7 +520,7 @@ func (ts *FederatedProvisioningTestSuite) TestResolvedOUKeptWhileUserTypeComesFr
 	ts.Require().Len(created, 1, "Exactly one user must be provisioned")
 	ts.createdUserIDs = append(ts.createdUserIDs, created[0].ID)
 
-	ts.Equal(ts.ouBID, created[0].OUID,
+	ts.Equal(ts.ouAChildID, created[0].OUID,
 		"The explicitly resolved OU must win over the user type's own OU")
 	ts.Equal(ts.primaryTypeName, created[0].Type,
 		"The user type must still come from the default entity ref")

@@ -194,6 +194,10 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 			return authUser, nil, &ErrorAuthenticationFailed
 		}
 	}
+	if svcErr := m.checkSubjectAllowed(ctx, authResult.EntityReference); svcErr != nil {
+		return authUser, nil, svcErr
+	}
+
 	authUser, svcErr = m.updateAuthUser(ctx, authResult, authUser, selectedProviderName)
 	if svcErr != nil {
 		return authUser, nil, svcErr
@@ -266,7 +270,32 @@ func (m *authnProviderManager) GetEntityReference(ctx context.Context, authUser 
 		seen = true
 	}
 
+	if svcErr := m.checkSubjectAllowed(ctx, entityRef); svcErr != nil {
+		return authUser, nil, svcErr
+	}
+
 	return authUser, entityRef, nil
+}
+
+// checkSubjectAllowed rejects a resolved subject whose category and type the application/ agent driving the
+// current authentication does not accept. A nil reference means the subject is not resolved yet (the provider
+// returned an entity reference token for an entity it has not provisioned), and the check applies once
+// GetEntityReference resolves it.
+func (m *authnProviderManager) checkSubjectAllowed(
+	ctx context.Context, entityRef *providers.EntityReference) *tidcommon.ServiceError {
+	if entityRef == nil {
+		return nil
+	}
+	constraints, ok := authnprovidercm.SubjectTypeConstraintsFrom(ctx)
+	if !ok || constraints.PermitsSubject(
+		providers.EntityCategory(entityRef.EntityCategory), entityRef.EntityType) {
+		return nil
+	}
+	m.logger.Debug(ctx, "resolved subject is not allowed for the application",
+		log.String("entityId", entityRef.EntityID),
+		log.String("entityCategory", entityRef.EntityCategory),
+		log.String("entityType", entityRef.EntityType))
+	return &ErrorSubjectNotAllowed
 }
 
 // GetUserAvailableAttributes returns the merged attributes available across
@@ -374,6 +403,10 @@ func (m *authnProviderManager) Enroll(ctx context.Context, identifiers, credenti
 			return authUser, nil, &ErrorEnrollmentFailed
 		}
 	}
+	if svcErr := m.checkSubjectAllowed(ctx, authResult.EntityReference); svcErr != nil {
+		return authUser, nil, svcErr
+	}
+
 	authUser, svcErr = m.updateAuthUser(ctx, authResult, authUser, selectedProviderName)
 	if svcErr != nil {
 		return authUser, nil, svcErr

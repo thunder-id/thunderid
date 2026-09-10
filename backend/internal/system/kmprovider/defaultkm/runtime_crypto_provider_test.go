@@ -625,6 +625,7 @@ func TestGetPublicKeys_RSA(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, keys, 1)
 	assert.Equal(t, "key1", keys[0].KeyID)
+	assert.Equal(t, "thumbprint-1", keys[0].Kid)
 	assert.Equal(t, string(cryptolib.AlgorithmRS256), keys[0].Algorithm)
 	assert.Equal(t, &rsaKey.PublicKey, keys[0].PublicKey)
 	assert.Equal(t, "thumbprint-1", keys[0].Thumbprint)
@@ -700,6 +701,7 @@ func TestGetPublicKeys_UnsupportedKeyTypeSkipped(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, keys, 1)
 	assert.Equal(t, "good", keys[0].KeyID)
+	assert.Equal(t, "tp", keys[0].Kid)
 }
 
 func TestGetPublicKeys_FilterByKeyID(t *testing.T) {
@@ -723,6 +725,7 @@ func TestGetPublicKeys_FilterByKeyID(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, keys, 1)
 	assert.Equal(t, "rsa-key", keys[0].KeyID)
+	assert.Equal(t, "rsa-tp", keys[0].Kid)
 }
 
 func TestGetPublicKeys_FilterByAlgorithm(t *testing.T) {
@@ -747,6 +750,7 @@ func TestGetPublicKeys_FilterByAlgorithm(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, keys, 1)
 	assert.Equal(t, "ec-key", keys[0].KeyID)
+	assert.Equal(t, "ec-tp", keys[0].Kid)
 }
 
 // Sign
@@ -949,6 +953,8 @@ func TestMLDSA_RuntimeSignVerifyAndGetPublicKeys(t *testing.T) {
 	keys, err := svc.GetPublicKeys(ctx, providers.PublicKeyFilter{})
 	require.NoError(t, err)
 	require.Len(t, keys, 1)
+	assert.Equal(t, keyID, keys[0].KeyID)
+	assert.Equal(t, thumbprint, keys[0].Kid)
 	assert.Equal(t, string(cryptolib.AlgorithmMLDSA65), keys[0].Algorithm)
 	assert.Equal(t, thumbprint, keys[0].Thumbprint)
 

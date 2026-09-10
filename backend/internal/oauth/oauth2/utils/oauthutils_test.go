@@ -1731,6 +1731,45 @@ func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_ValidWithAllCla
 	suite.Equal(int64(1700000002), claims.AuthTime.Unix())
 }
 
+// TestDecodeFlowAssertionClaims_AuthTimeWinsOverIat covers the SSO path, where the subject
+// authenticated before this assertion was issued. auth_time carries that earlier moment and must
+// win over iat, or the claim would advance on every authorization within one session.
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_AuthTimeWinsOverIat() {
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub":       "user-sso",
+		"iat":       float64(1700000000),
+		"auth_time": float64(1699990000),
+	})
+
+	claims, _, err := DecodeFlowAssertionClaims(assertion)
+	suite.NoError(err)
+	suite.Equal(int64(1699990000), claims.AuthTime.Unix())
+}
+
+// TestDecodeFlowAssertionClaims_NoAuthTimeFallsBackToIat covers an assertion minted without the
+// claim, where the fresh-authentication reading of iat remains correct.
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_NoAuthTimeFallsBackToIat() {
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub": "user-fresh",
+		"iat": float64(1700000000),
+	})
+
+	claims, _, err := DecodeFlowAssertionClaims(assertion)
+	suite.NoError(err)
+	suite.Equal(int64(1700000000), claims.AuthTime.Unix())
+}
+
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_AuthTimeUnexpectedType_ReturnsError() {
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub":       "user-bad",
+		"iat":       float64(1700000000),
+		"auth_time": "not-a-number",
+	})
+
+	_, _, err := DecodeFlowAssertionClaims(assertion)
+	suite.Error(err)
+}
+
 func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_IatUnexpectedType_ReturnsError() {
 	assertion := buildTestAssertion(map[string]interface{}{
 		"sub": "user-x",

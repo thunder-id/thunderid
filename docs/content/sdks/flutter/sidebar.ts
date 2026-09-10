@@ -82,6 +82,11 @@ const sidebar: SidebarsConfig = {
       items: [
         {
           type: 'doc',
+          id: 'sdks/flutter/guides/try-the-sample-app',
+          label: 'Try the Sample App',
+        },
+        {
+          type: 'doc',
           id: 'sdks/flutter/guides/accessing-protected-apis',
           label: 'Accessing Protected APIs',
         },

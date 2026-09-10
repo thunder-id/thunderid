@@ -15,6 +15,8 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 const testDeploymentID = "test-deployment-id"
@@ -32,6 +34,7 @@ func TestIDPStoreTestSuite(t *testing.T) {
 
 func (s *IDPStoreTestSuite) SetupTest() {
 	testConfig := &config.Config{
+		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
 		Database: config.DatabaseConfig{
 			Config: config.DataSource{
 				Type:   "sqlite",
@@ -43,14 +46,16 @@ func (s *IDPStoreTestSuite) SetupTest() {
 			},
 		},
 	}
+	// The store resolves its deployment from the runtime rather than holding one, and other suites in
+	// this package reset the runtime, so load it per test.
+	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test", testConfig)
 
 	s.mockDBProvider = &providermock.DBProviderInterfaceMock{}
 	s.mockDBClient = &providermock.DBClientInterfaceMock{}
 
 	s.store = &idpStore{
-		dbProvider:   s.mockDBProvider,
-		deploymentID: testDeploymentID,
+		dbProvider: s.mockDBProvider,
 	}
 }
 

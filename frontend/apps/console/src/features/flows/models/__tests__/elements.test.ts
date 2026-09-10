@@ -66,6 +66,7 @@ describe('elements models', () => {
       expect(ElementTypes.DynamicInputPlaceholder).toBe('DYNAMIC_INPUT_PLACEHOLDER');
       expect(ElementTypes.Resend).toBe('RESEND');
       expect(ElementTypes.Timer).toBe('TIMER');
+      expect(ElementTypes.QrCode).toBe('QR_CODE');
     });
 
     it('should have consent types', () => {
@@ -77,8 +78,8 @@ describe('elements models', () => {
       expect(ElementTypes.Custom).toBe('CUSTOM');
     });
 
-    it('should have exactly 24 element types', () => {
-      expect(Object.keys(ElementTypes)).toHaveLength(24);
+    it('should have exactly 25 element types', () => {
+      expect(Object.keys(ElementTypes)).toHaveLength(25);
     });
   });
 

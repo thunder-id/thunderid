@@ -23,7 +23,8 @@ var (
 	}
 
 	testUserType = testutils.UserType{
-		Name: "employee",
+		Name:             "employee",
+		SystemAttributes: &testutils.UserTypeSystemAttributes{Display: "username"},
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type":     "string",
@@ -233,6 +234,103 @@ func (suite *UserTreeAPITestSuite) TestGetUsersByPathWithPagination() {
 	suite.GreaterOrEqual(userListResponse.TotalResults, 0)
 	suite.Equal(userListResponse.StartIndex, 1)
 	suite.LessOrEqual(userListResponse.Count, 5)
+}
+
+// TestGetUsersByPathWithDisplay covers the display-resolution branch of GetUsersByPath, which runs
+// only when include=display is requested and the organization unit holds at least one user.
+func (suite *UserTreeAPITestSuite) TestGetUsersByPathWithDisplay() {
+	username := "display.user"
+	userID := suite.createUserInTestOU(username, "display.user@example.com")
+	defer func() { _ = testutils.DeleteUser(userID) }()
+
+	resp := suite.doTree(http.MethodGet,
+		"/users/tree/"+pathTestOU.Handle+"?include=display", nil)
+	defer func() { _ = resp.Body.Close() }()
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var listResp testutils.UserListResponse
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+	suite.Require().NotEmpty(listResp.Users)
+
+	created := suite.findUser(listResp.Users, userID)
+	suite.Require().NotNil(created, "the created user must appear in the listing")
+	suite.Equal(username, created.Display,
+		"display must resolve to the user type's display attribute, not the identifier")
+	suite.Equal(pathTestOU.Handle, created.OUHandle)
+}
+
+// TestGetUsersByPathWithoutDisplayOmitsDisplay pins display as opt-in. Resolution costs a batch
+// entity fetch per request, so a change that made it unconditional would be a silent cost and
+// exposure increase that only asserting its absence catches.
+func (suite *UserTreeAPITestSuite) TestGetUsersByPathWithoutDisplayOmitsDisplay() {
+	username := "nodisplay.user"
+	userID := suite.createUserInTestOU(username, "nodisplay.user@example.com")
+	defer func() { _ = testutils.DeleteUser(userID) }()
+
+	resp := suite.doTree(http.MethodGet, "/users/tree/"+pathTestOU.Handle, nil)
+	defer func() { _ = resp.Body.Close() }()
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var listResp testutils.UserListResponse
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+
+	created := suite.findUser(listResp.Users, userID)
+	suite.Require().NotNil(created)
+	suite.Empty(created.Display, "display must not be returned unless requested")
+}
+
+// TestGetUsersByPathWithDisplayOnEmptyOU covers the second half of the branch guard: an empty
+// organization unit must skip resolution and return an empty list rather than erroring.
+func (suite *UserTreeAPITestSuite) TestGetUsersByPathWithDisplayOnEmptyOU() {
+	emptyOU := testutils.OrganizationUnit{
+		Handle: "tree-display-empty-ou",
+		Name:   "Tree Display Empty OU",
+	}
+	ouID, err := testutils.CreateOrganizationUnit(emptyOU)
+	suite.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()
+
+	resp := suite.doTree(http.MethodGet, "/users/tree/"+emptyOU.Handle+"?include=display", nil)
+	defer func() { _ = resp.Body.Close() }()
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var listResp testutils.UserListResponse
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+	suite.Equal(0, listResp.TotalResults)
+	suite.Empty(listResp.Users)
+}
+
+// createUserInTestOU creates a user under the suite's organization unit and returns its id.
+func (suite *UserTreeAPITestSuite) createUserInTestOU(username, email string) string {
+	suite.T().Helper()
+
+	reqBody, err := json.Marshal(CreateUserByPathRequest{
+		Type: "employee",
+		Attributes: json.RawMessage(
+			`{"username":"` + username + `","email":"` + email + `","department":"Engineering"}`),
+	})
+	suite.Require().NoError(err)
+
+	resp := suite.doTree(http.MethodPost, "/users/tree/"+pathTestOU.Handle, bytes.NewBuffer(reqBody))
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+	suite.Require().Equal(http.StatusCreated, resp.StatusCode, "create failed: %s", string(body))
+
+	var created testutils.User
+	suite.Require().NoError(json.Unmarshal(body, &created))
+	suite.Require().NotEmpty(created.ID)
+	return created.ID
+}
+
+// findUser returns the listed user with the given id, or nil.
+func (suite *UserTreeAPITestSuite) findUser(users []testutils.User, id string) *testutils.User {
+	for i := range users {
+		if users[i].ID == id {
+			return &users[i]
+		}
+	}
+	return nil
 }
 
 // doTree issues a request against the tree routes and returns the response.

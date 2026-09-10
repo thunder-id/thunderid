@@ -19,6 +19,9 @@ import (
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+
+	"github.com/thunder-id/thunderid/internal/system/config"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 const testDeploymentID = "test-deployment-id"
@@ -35,11 +38,11 @@ func TestOrganizationUnitStoreTestSuite(t *testing.T) {
 }
 
 func (suite *OrganizationUnitStoreTestSuite) SetupTest() {
+	loadRuntimeForScope()
 	suite.providerMock = providermock.NewDBProviderInterfaceMock(suite.T())
 	suite.dbClientMock = providermock.NewDBClientInterfaceMock(suite.T())
 	suite.store = &organizationUnitStore{
-		dbProvider:   suite.providerMock,
-		deploymentID: testDeploymentID,
+		dbProvider: suite.providerMock,
 	}
 }
 
@@ -2431,5 +2434,15 @@ func TestBuildChildrenOUListQuery(t *testing.T) {
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unsupported operator")
+	})
+}
+
+// loadRuntimeForScope loads a server runtime naming the deployment these tests assert on. The store
+// resolves its deployment from the runtime rather than holding one, and other suites in this package
+// reset the runtime, so it is loaded per test rather than once for the package.
+func loadRuntimeForScope() {
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{
+		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
 	})
 }

@@ -465,6 +465,48 @@ describe('ResourceProperties', () => {
     });
   });
 
+  describe('Display Category - QR Code Type', () => {
+    it('should render the source TextPropertyField for QrCode type', () => {
+      const resource = createMockResource({
+        category: ElementCategories.Display,
+        type: ElementTypes.QrCode,
+        source: 'openid4vpWalletUri',
+      } as Partial<Resource>);
+
+      render(
+        <ResourceProperties
+          resource={resource}
+          properties={{}}
+          onChange={mockOnChange}
+          onVariantChange={mockOnVariantChange}
+        />,
+      );
+
+      expect(screen.getByTestId('text-property-field-source')).toHaveAttribute(
+        'data-property-value',
+        'openid4vpWalletUri',
+      );
+    });
+
+    it('should handle an unset source value', () => {
+      const resource = createMockResource({
+        category: ElementCategories.Display,
+        type: ElementTypes.QrCode,
+      } as Partial<Resource>);
+
+      render(
+        <ResourceProperties
+          resource={resource}
+          properties={{}}
+          onChange={mockOnChange}
+          onVariantChange={mockOnVariantChange}
+        />,
+      );
+
+      expect(screen.getByTestId('text-property-field-source')).toHaveAttribute('data-property-value', '');
+    });
+  });
+
   describe('Display Category - Other Types', () => {
     it('should render default property factories for other Display types', () => {
       const resource = createMockResource({

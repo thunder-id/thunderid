@@ -15,10 +15,21 @@ type MockedUseGetUserTypes = ReturnType<typeof useGetUserTypes>;
 
 // Mock the Components
 vi.mock('@thunderid/components', () => ({
-  SettingsCard: ({title, description, children}: {title: string; description: string; children: React.ReactNode}) => (
+  SettingsCard: ({
+    title,
+    description,
+    children,
+    headerAction = undefined,
+  }: {
+    title: string;
+    description: string;
+    children: React.ReactNode;
+    headerAction?: React.ReactNode;
+  }) => (
     <div data-testid="settings-card">
       <div data-testid="card-title">{title}</div>
       <div data-testid="card-description">{description}</div>
+      {headerAction}
       {children}
     </div>
   ),
@@ -64,7 +75,7 @@ describe('AccessSection', () => {
       render(<AccessSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
 
       const titles = screen.getAllByTestId('card-title').map((el) => el.textContent);
-      expect(titles).toEqual(['Allowed User Types', 'Application Access']);
+      expect(titles).toEqual(['Allowed User Types', 'Agent Sign-In', 'Application Access']);
     });
 
     it('should render allowed user types autocomplete', () => {
@@ -106,6 +117,7 @@ describe('AccessSection', () => {
       );
 
       expect(screen.queryByLabelText('Allowed User Types')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Enable Agent Sign-In')).not.toBeInTheDocument();
       // The generic application URL field stays visible for every client type.
       expect(screen.getByLabelText('Application URL')).toBeInTheDocument();
     });
@@ -182,6 +194,85 @@ describe('AccessSection', () => {
         expect(screen.getAllByText('admin').length).toBeGreaterThan(0);
         expect(screen.getAllByText('guest').length).toBeGreaterThan(0);
       });
+    });
+  });
+
+  describe('Agent Sign-In', () => {
+    const agentSignInToggle = (): HTMLElement => screen.getByLabelText('Enable Agent Sign-In');
+
+    beforeEach(() => {
+      vi.mocked(useGetUserTypes).mockReturnValue({
+        data: mockUserTypes,
+        isLoading: false,
+      } as unknown as MockedUseGetUserTypes);
+    });
+
+    it('should render the toggle off when no agent type is allowed', () => {
+      render(<AccessSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
+
+      expect(agentSignInToggle()).not.toBeChecked();
+    });
+
+    it('should render the toggle on when an agent type is allowed', () => {
+      render(
+        <AccessSection
+          application={{...mockApplication, allowedAgentTypes: ['default']}}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(agentSignInToggle()).toBeChecked();
+    });
+
+    it('should prefer the agent types from editedApp over application', () => {
+      render(
+        <AccessSection
+          application={{...mockApplication, allowedAgentTypes: ['default']}}
+          editedApp={{allowedAgentTypes: []}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(agentSignInToggle()).not.toBeChecked();
+    });
+
+    it('should allow the default agent type when enabled', async () => {
+      const user = userEvent.setup();
+
+      render(<AccessSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
+
+      await user.click(agentSignInToggle());
+
+      expect(mockOnFieldChange).toHaveBeenCalledWith('allowedAgentTypes', ['default']);
+    });
+
+    it('should clear every allowed agent type when disabled', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <AccessSection
+          application={{...mockApplication, allowedAgentTypes: ['default']}}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      await user.click(agentSignInToggle());
+
+      expect(mockOnFieldChange).toHaveBeenCalledWith('allowedAgentTypes', []);
+    });
+
+    it('should disable the toggle for a read-only application', () => {
+      render(
+        <AccessSection
+          application={{...mockApplication, isReadOnly: true}}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(agentSignInToggle()).toBeDisabled();
     });
   });
 

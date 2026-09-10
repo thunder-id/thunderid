@@ -27,8 +27,8 @@ vi.mock('@/api/useGetOrganizationUnits', () => ({
 
 const mockUseGetOrganizationUnit = vi.fn();
 vi.mock('@/api/useGetOrganizationUnit', () => ({
-  default: () =>
-    mockUseGetOrganizationUnit() as {
+  default: (id: string | undefined, enabled?: boolean) =>
+    mockUseGetOrganizationUnit(id, enabled) as {
       data: OrganizationUnit | undefined;
       isLoading: boolean;
       error: Error | null;
@@ -37,8 +37,8 @@ vi.mock('@/api/useGetOrganizationUnit', () => ({
 
 const mockUseGetChildOrganizationUnits = vi.fn();
 vi.mock('@/api/useGetChildOrganizationUnits', () => ({
-  default: () =>
-    mockUseGetChildOrganizationUnits() as {
+  default: (parentId: string | undefined) =>
+    mockUseGetChildOrganizationUnits(parentId) as {
       data: OrganizationUnitListResponse | undefined;
       isLoading: boolean;
       error: Error | null;
@@ -684,6 +684,188 @@ describe('OrganizationUnitTreePicker', () => {
         expect(screen.getByText('Child One')).toBeInTheDocument();
         expect(screen.getByText('Child Two')).toBeInTheDocument();
       });
+    });
+
+    it('should render only the root OU children when the root is hidden', async () => {
+      mockUseGetOrganizationUnit.mockReturnValue({data: undefined, isLoading: true, error: null});
+      mockUseGetChildOrganizationUnits.mockReturnValue({data: childOUsResponse, isLoading: false, error: null});
+
+      renderWithProviders(<OrganizationUnitTreePicker {...defaultProps} rootOuId="root-ou-1" hideRoot />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Child One')).toBeInTheDocument();
+        expect(screen.getByText('Child Two')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('Root OU')).not.toBeInTheDocument();
+      expect(mockUseGetOrganizationUnit).toHaveBeenCalledWith('root-ou-1', false);
+      expect(mockUseGetChildOrganizationUnits).toHaveBeenCalledWith('root-ou-1');
+    });
+
+    it('should lazy-load nested children when a visible child is expanded', async () => {
+      const onItemActivate = vi.fn();
+      const nestedChildResponse: OrganizationUnitListResponse = {
+        totalResults: 1,
+        startIndex: 1,
+        count: 1,
+        organizationUnits: [
+          {
+            id: 'grandchild-1',
+            handle: 'grandchild-1-handle',
+            name: 'Grandchild One',
+            description: null,
+            parent: 'child-1',
+          },
+        ],
+      };
+      mockUseGetOrganizationUnit.mockReturnValue({data: undefined, isLoading: false, error: null});
+      mockUseGetChildOrganizationUnits.mockReturnValue({data: childOUsResponse, isLoading: false, error: null});
+      mockHttpRequest.mockResolvedValue({data: nestedChildResponse});
+
+      renderWithProviders(
+        <OrganizationUnitTreePicker {...defaultProps} rootOuId="root-ou-1" hideRoot onItemActivate={onItemActivate} />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Child One')).toBeInTheDocument();
+      });
+
+      const expandIcons = document.querySelectorAll('.MuiTreeItem-iconContainer');
+      fireEvent.click(expandIcons[0]);
+
+      await waitFor(() => {
+        const request = mockHttpRequest.mock.calls[0]?.[0] as {url: string} | undefined;
+        expect(request?.url).toContain('/organization-units/child-1/ous');
+        expect(screen.getByText('Grandchild One')).toBeInTheDocument();
+      });
+      expect(onItemActivate).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByText('Grandchild One'));
+      expect(onItemActivate).toHaveBeenCalledWith('grandchild-1');
+    });
+
+    it('should activate a visible child from the keyboard', async () => {
+      const onItemActivate = vi.fn();
+      mockUseGetOrganizationUnit.mockReturnValue({data: undefined, isLoading: false, error: null});
+      mockUseGetChildOrganizationUnits.mockReturnValue({data: childOUsResponse, isLoading: false, error: null});
+
+      renderWithProviders(
+        <OrganizationUnitTreePicker {...defaultProps} rootOuId="root-ou-1" hideRoot onItemActivate={onItemActivate} />,
+      );
+
+      const childRow = (await screen.findByText('Child One')).closest('[role="button"]');
+      expect(childRow).not.toBeNull();
+
+      fireEvent.keyDown(childRow!, {key: 'Enter'});
+      fireEvent.keyDown(childRow!, {key: ' '});
+      fireEvent.keyDown(childRow!, {key: 'Escape'});
+
+      expect(onItemActivate).toHaveBeenNthCalledWith(1, 'child-1');
+      expect(onItemActivate).toHaveBeenNthCalledWith(2, 'child-1');
+      expect(onItemActivate).toHaveBeenCalledTimes(2);
+    });
+
+    it('should load more children within a nested branch', async () => {
+      const firstNestedPage: OrganizationUnitListResponse = {
+        totalResults: 3,
+        startIndex: 1,
+        count: 2,
+        organizationUnits: [
+          {
+            id: 'grandchild-1',
+            handle: 'grandchild-1-handle',
+            name: 'Grandchild One',
+            description: null,
+            parent: 'child-1',
+          },
+          {
+            id: 'grandchild-2',
+            handle: 'grandchild-2-handle',
+            name: 'Grandchild Two',
+            description: null,
+            parent: 'child-1',
+          },
+        ],
+      };
+      const secondNestedPage: OrganizationUnitListResponse = {
+        totalResults: 3,
+        startIndex: 3,
+        count: 1,
+        organizationUnits: [
+          {
+            id: 'grandchild-3',
+            handle: 'grandchild-3-handle',
+            name: 'Grandchild Three',
+            description: null,
+            parent: 'child-1',
+          },
+        ],
+      };
+      mockUseGetOrganizationUnit.mockReturnValue({data: undefined, isLoading: false, error: null});
+      mockUseGetChildOrganizationUnits.mockReturnValue({data: childOUsResponse, isLoading: false, error: null});
+      mockHttpRequest.mockResolvedValueOnce({data: firstNestedPage}).mockResolvedValueOnce({data: secondNestedPage});
+
+      renderWithProviders(<OrganizationUnitTreePicker {...defaultProps} rootOuId="root-ou-1" hideRoot />);
+
+      await screen.findByText('Child One');
+      fireEvent.click(document.querySelectorAll('.MuiTreeItem-iconContainer')[0]);
+
+      const loadMore = await screen.findByText(t('organizationUnits:listing.treeView.loadMore'));
+      fireEvent.click(loadMore);
+
+      await waitFor(() => {
+        expect(screen.getByText('Grandchild Three')).toBeInTheDocument();
+      });
+      const request = mockHttpRequest.mock.calls[1]?.[0] as {url: string} | undefined;
+      expect(request?.url).toContain('/organization-units/child-1/ous');
+      expect(request?.url).toContain('offset=2');
+    });
+
+    it('should load more direct children when the root is hidden', async () => {
+      const paginatedChildrenResponse = {...childOUsResponse, totalResults: 3};
+      const nextPageResponse: OrganizationUnitListResponse = {
+        totalResults: 3,
+        startIndex: 3,
+        count: 1,
+        organizationUnits: [
+          {id: 'child-3', handle: 'child-3-handle', name: 'Child Three', description: null, parent: 'root-ou-1'},
+        ],
+      };
+      mockUseGetOrganizationUnit.mockReturnValue({data: undefined, isLoading: false, error: null});
+      mockUseGetChildOrganizationUnits.mockReturnValue({
+        data: paginatedChildrenResponse,
+        isLoading: false,
+        error: null,
+      });
+      mockHttpRequest.mockResolvedValue({data: nextPageResponse});
+
+      renderWithProviders(<OrganizationUnitTreePicker {...defaultProps} rootOuId="root-ou-1" hideRoot />);
+
+      await waitFor(() => {
+        expect(screen.getByText(t('organizationUnits:listing.treeView.loadMore'))).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText(t('organizationUnits:listing.treeView.loadMore')));
+
+      await waitFor(() => {
+        expect(screen.getByText('Child Three')).toBeInTheDocument();
+      });
+      const request = mockHttpRequest.mock.calls[0]?.[0] as {url: string} | undefined;
+      expect(request?.url).toContain('/organization-units/root-ou-1/ous');
+      expect(request?.url).toContain('offset=2');
+    });
+
+    it('should show an aligned empty state when the hidden root has no children', async () => {
+      mockUseGetOrganizationUnit.mockReturnValue({data: undefined, isLoading: false, error: null});
+      mockUseGetChildOrganizationUnits.mockReturnValue({
+        data: {totalResults: 0, startIndex: 1, count: 0, organizationUnits: []},
+        isLoading: false,
+        error: null,
+      });
+
+      renderWithProviders(<OrganizationUnitTreePicker {...defaultProps} rootOuId="root-ou-1" hideRoot />);
+
+      const emptyState = await screen.findByText(t('organizationUnits:listing.treeView.noChildren'));
+      expect(emptyState).toHaveStyle({paddingLeft: '8px'});
+      expect(screen.queryByRole('tree')).not.toBeInTheDocument();
     });
 
     it('should auto-expand root OU node', async () => {

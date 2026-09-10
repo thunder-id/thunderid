@@ -291,6 +291,13 @@ var requestScopedSnapshotDenyList = map[string]struct{}{
 	common.RuntimeKeyAuthorizationRequestID:      {},
 	// The token family id is minted fresh per flow execution, so it must not ride a reused snapshot.
 	common.RuntimeKeyTokenFamilyID: {},
+	// force_reauth and max_age state what the establishing app's authorization request demanded of
+	// this authentication. Replaying either onto a later join would impose that demand on an app that
+	// never asked: a stale force_reauth re-prompts every reuse, and a stale max_age fails the
+	// assurance check once auth_time is sourced from the session rather than the current time.
+	common.RuntimeKeyForceReauth:    {},
+	common.RuntimeKeyMaxAge:         {},
+	common.RuntimeKeySilentAuthOnly: {},
 	// applicationId has no shared constant (set as a raw literal in enrichRuntimeData).
 	"applicationId": {},
 }

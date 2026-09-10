@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
@@ -18,6 +20,15 @@ import (
 
 type ConfigurationServiceTestSuite struct {
 	suite.Suite
+}
+
+// SetupTest pins the store mode to mutable so the service's declarative-mode guard has a
+// runtime to read. Suites in this package reset the runtime, so it is re-initialized here.
+func (s *ConfigurationServiceTestSuite) SetupTest() {
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime("", &config.Config{
+		OpenID4VCI: config.OpenID4VCIConfig{Store: string(serverconst.StoreModeMutable)},
+	}))
 }
 
 func TestConfigurationServiceTestSuite(t *testing.T) {

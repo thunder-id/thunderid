@@ -143,6 +143,14 @@ vi.mock('../adapters/TimerAdapter', () => ({
   ),
 }));
 
+vi.mock('../adapters/QrCodeAdapter', () => ({
+  default: ({resource}: {resource: Element}) => (
+    <div data-testid="qr-code-adapter" data-resource-id={resource.id}>
+      Qr Code Adapter
+    </div>
+  ),
+}));
+
 vi.mock('../adapters/CustomAdapter', () => ({
   default: ({resource}: {resource: Element}) => (
     <div data-testid="custom-adapter" data-resource-id={resource.id}>
@@ -454,6 +462,19 @@ describe('CommonElementFactory', () => {
 
       expect(screen.getByTestId('timer-adapter')).toBeInTheDocument();
       expect(screen.getByTestId('timer-adapter')).toHaveAttribute('data-resource-id', 'element-1');
+    });
+  });
+
+  describe('QR Code Element', () => {
+    it('should render QrCodeAdapter for QrCode type', () => {
+      const qrCodeElement = createMockElement({
+        type: ElementTypes.QrCode,
+      });
+
+      render(<CommonElementFactory stepId="step-1" resource={qrCodeElement} />);
+
+      expect(screen.getByTestId('qr-code-adapter')).toBeInTheDocument();
+      expect(screen.getByTestId('qr-code-adapter')).toHaveAttribute('data-resource-id', 'element-1');
     });
   });
 

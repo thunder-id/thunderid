@@ -2,7 +2,7 @@
 
 Read with the root [AGENTS.md](../AGENTS.md). The backend is a Go application under `backend/` (module `github.com/thunder-id/thunderid`): domain packages under `backend/internal/`, entry points under `backend/cmd/`, public packages under `backend/pkg/`.
 
-For the canonical, deeper reference (flat package/file layout, export rules, logging), see the [Backend Development overview](../docs/content/community/contributing/contributing-code/backend-development/overview.mdx).
+For the canonical, deeper reference (flat package/file layout, export rules, logging), see the [Backend Development overview](../docs/community/contributing/contributing-code/backend-development/overview.mdx).
 
 ## When to Load Other Guides
 

@@ -2041,6 +2041,12 @@ components:
             type: string
           description: User types that can sign up through this agent.
           example: ["employee", "contractor"]
+        allowedAgentTypes:
+          type: array
+          items:
+            type: string
+          description: Agent types allowed to sign in to this agent. An agent can authenticate only when its agent type is listed here; when the list is empty no agent can sign in.
+          example: ["default"]
         inboundAuthConfig:
           type: array
           items:
@@ -2117,6 +2123,11 @@ components:
           items:
             type: string
           example: ["employee", "contractor"]
+        allowedAgentTypes:
+          type: array
+          items:
+            type: string
+          example: ["default"]
         inboundAuthConfig:
           type: array
           items:
@@ -2191,6 +2202,11 @@ components:
           items:
             type: string
           example: ["employee", "contractor"]
+        allowedAgentTypes:
+          type: array
+          items:
+            type: string
+          example: ["default"]
         inboundAuthConfig:
           type: array
           items:
@@ -2268,6 +2284,11 @@ components:
           items:
             type: string
           example: ["employee", "contractor"]
+        allowedAgentTypes:
+          type: array
+          items:
+            type: string
+          example: ["default"]
         inboundAuthConfig:
           type: array
           items:

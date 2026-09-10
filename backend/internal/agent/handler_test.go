@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/stretchr/testify/assert"
 
@@ -22,7 +23,7 @@ import (
 
 type InlineStubAgentService struct {
 	OnCreateAgent func(
-		ctx context.Context, agent *model.Agent,
+		ctx context.Context, agent *providers.Agent,
 	) (*model.AgentCompleteResponse, *tidcommon.ServiceError)
 	OnUpdateAgent func(
 		ctx context.Context, id string, req *model.UpdateAgentRequest,
@@ -43,7 +44,7 @@ type InlineStubAgentService struct {
 }
 
 func (s *InlineStubAgentService) CreateAgent(
-	ctx context.Context, agent *model.Agent) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
+	ctx context.Context, agent *providers.Agent) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
 	if s.OnCreateAgent != nil {
 		return s.OnCreateAgent(ctx, agent)
 	}
@@ -101,7 +102,7 @@ func (s *InlineStubAgentService) GetAgentRoles(
 }
 
 func (s *InlineStubAgentService) ValidateAgent(
-	ctx context.Context, agent *model.Agent, flowID string,
+	ctx context.Context, agent *providers.Agent, flowID string,
 ) (string, string, inboundmodel.InboundClient, *tidcommon.ServiceError) {
 	return "", "", inboundmodel.InboundClient{}, nil
 }
@@ -116,7 +117,7 @@ func (s *InlineStubAgentService) SetDependencyRegistry(resourcedependency.Regist
 func TestHandleAgentPostRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{
 		OnCreateAgent: func(
-			ctx context.Context, agent *model.Agent,
+			ctx context.Context, agent *providers.Agent,
 		) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
 			return &model.AgentCompleteResponse{ID: "agent-123"}, nil
 		},

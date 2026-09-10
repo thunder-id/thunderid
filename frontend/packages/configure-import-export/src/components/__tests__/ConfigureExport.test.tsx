@@ -372,6 +372,18 @@ type: google
       label: 'Server Configurations',
       body: (idx) => `resource_type: server_config\nname: Server Config ${idx}`,
     },
+    {
+      resourceType: 'credential_configuration',
+      label: 'Credential Configurations',
+      body: (idx) =>
+        `resource_type: credential_configuration\nname: Credential Config ${idx}\nhandle: credential-config-${idx}\nvct: VerifiableId`,
+    },
+    {
+      resourceType: 'presentation_definition',
+      label: 'Presentation Definitions',
+      body: (idx) =>
+        `resource_type: presentation_definition\nname: Presentation Definition ${idx}\nhandle: presentation-definition-${idx}\nvct: VerifiableId`,
+    },
   ];
 
   describe.each(resourceTypeCases)('$resourceType resource section', ({label, body}) => {

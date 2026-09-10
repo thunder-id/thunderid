@@ -84,8 +84,10 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_NilApplicationService() 
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, err.Code)
 }
 
-// Test ResolveDesign - Application not found
-func (suite *ResolveServiceTestSuite) TestResolveDesign_ApplicationNotFound() {
+// Test ResolveDesign - an unknown application reports the same error as a known one with no design
+// configured. The resolve endpoint is unauthenticated, so a distinct error here would let an
+// anonymous caller confirm which application IDs exist.
+func (suite *ResolveServiceTestSuite) TestResolveDesign_UnknownApplicationIsIndistinguishable() {
 	suite.mockAppService.On("GetApplication", mock.Anything, "00000000-0000-0000-0000-000000000099").
 		Return(nil, &application.ErrorApplicationNotFound)
 
@@ -94,7 +96,9 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_ApplicationNotFound() {
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
-	assert.Equal(suite.T(), common.ErrorApplicationNotFound.Code, err.Code)
+	assert.Equal(suite.T(), common.ErrorApplicationHasNoDesign.Code, err.Code)
+	assert.Equal(suite.T(), common.ErrorApplicationHasNoDesign.Error, err.Error)
+	assert.Equal(suite.T(), common.ErrorApplicationHasNoDesign.ErrorDescription, err.ErrorDescription)
 }
 
 // Test ResolveDesign - Invalid application ID (passed through to app service)

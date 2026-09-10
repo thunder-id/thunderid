@@ -16,6 +16,13 @@
 # backend/internal/system/i18n/core/defaults.go, is exactly this case: 1300+
 # lines of map literal and no functions.
 #
+# A second form of expected absence is a file outside the binary the integration
+# suite exercises. Those tests drive the server, and Go only instruments packages
+# linked into it, so such a file emits no records however it is written. That is
+# a property of the import graph rather than a coverage gap, and it is listed in
+# NOT_IN_SERVER_BINARY below with the reason. Entries are exact paths, not
+# prefixes, so exempting a package root never quietly exempts its subpackages.
+#
 # Arguments:
 #   $1 - file listing changed backend production Go paths, one per line
 #   $2 - file listing every source path present in the integration profiles
@@ -27,7 +34,14 @@ set -euo pipefail
 CHANGED_LIST="${1:?changed-file list is required}"
 INSTRUMENTED_LIST="${2:?instrumented-file list is required}"
 
+# Files the server binary never links, so the integration suite cannot reach them.
+
+NOT_IN_SERVER_BINARY=(
+  "backend/pkg/thunderidengine/engine.go"
+)
+
 missing=()
+exempt_unlinked=()
 
 while IFS= read -r file; do
   [ -n "$file" ] || continue
@@ -38,10 +52,27 @@ while IFS= read -r file; do
     continue
   fi
 
+  # Absent because the server binary does not link it. Reported below rather than
+  # skipped silently, so an exemption that outlives its reason stays visible.
+  if printf '%s\n' "${NOT_IN_SERVER_BINARY[@]}" | grep -qxF "$file"; then
+    exempt_unlinked+=("$file")
+    continue
+  fi
+
   if ! grep -qxF "$file" "$INSTRUMENTED_LIST"; then
     missing+=("$file")
   fi
 done < "$CHANGED_LIST"
+
+if [ "${#exempt_unlinked[@]}" -gt 0 ]; then
+  {
+    echo "ℹ️ Exempt from the instrumentation check — not linked into the server binary:"
+    for file in "${exempt_unlinked[@]}"; do
+      echo "- \`${file}\`"
+    done
+    echo
+  } | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
+fi
 
 if [ "${#missing[@]}" -gt 0 ]; then
   {

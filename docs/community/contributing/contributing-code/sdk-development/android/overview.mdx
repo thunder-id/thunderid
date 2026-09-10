@@ -1,0 +1,64 @@
+---
+title: Android SDK Development
+docType: community
+description: "Repository layout, build commands, and code style for contributing to the {{ProductName}} Android SDK."
+sidebar_position: 1
+hide_table_of_contents: false
+---
+
+# Android SDK Development
+
+The Android SDK lives in [android-sdks](https://github.com/thunder-id/android-sdks), a Kotlin library split into a platform layer and a Compose component library.
+
+```text
+src/main/kotlin/dev/thunderid/
+  android/              Core SDK
+    auth/               PKCE and flow execution
+    http/               HTTP client
+    token/              Token store, validator, refresher, JWKS cache
+  compose/              Jetpack Compose component library
+    components/
+      actions/          SignInButton, SignOutButton, SignUpButton
+      guards/           SignedIn, SignedOut, Loading
+      presentation/     SignIn, SignUp, user and organization components
+    i18n/               Localization
+src/test/kotlin/        Unit tests
+samples/quickstart/     Demo app, not part of the SDK
+tests/e2e/              End-to-end suite
+```
+
+The layering runs core → Compose → sample. The sample depends on the SDK through `includeBuild`, so a change to the SDK is picked up when you rebuild the sample.
+
+Every Compose component ships in two variants: a **styled** one with opinionated Material 3 defaults, such as `SignInButton`, and a **base** slot-based one for full customization, such as `BaseSignInButton`.
+
+## Commands
+
+```bash
+./gradlew build
+./gradlew test
+./gradlew lint ktlintCheck
+```
+
+Build and install the sample onto a running emulator with `./gradlew installDebug` from `samples/quickstart`. That directory is its own Gradle build, so `ktlintCheck` does not exist there; run lint from the repository root.
+
+## Code Style
+
+- Kotlin targeting JVM 17. `minSdk` 26 for the SDK, 24 for the sample.
+- Jetpack Compose via BOM `2024.02.00`.
+- No dependency injection framework. State reaches components through `CompositionLocal` (`LocalThunderID`).
+- Coroutines (`suspend` and `Flow`) rather than callbacks.
+- No third-party networking. `HttpClient` wraps `HttpURLConnection`.
+- Token storage uses `EncryptedSharedPreferences` behind the `StorageAdapter` interface.
+- Errors use the typed `IAMErrorCode` enum and `IAMException`.
+
+`ktlintCheck` gates CI and every violation fails the build. The rules worth remembering are a 120-character line limit, alphabetically sorted imports with no wildcards, trailing commas on multi-line declarations but not at call sites, and `} else {` on one line.
+
+## Vendor Naming
+
+The SDK is white-labelable through `ThunderIDConfig.vendor`. Do not hardcode `thunderid` in a runtime name that override should control, such as an `EncryptedSharedPreferences` key or a log tag. Resolve it from `config.vendor` instead.
+
+An entry point whose purpose is to represent the SDK itself, such as `ThunderIDClient`, is a fixed identity and keeps the name.
+
+## Next Steps
+
+- [Testing](../testing)

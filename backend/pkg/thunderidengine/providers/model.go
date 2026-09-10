@@ -692,6 +692,34 @@ type OAuthProfile struct {
 	AcrValues                          []string            `json:"acrValues,omitempty"`
 }
 
+// User represents a user in the system.
+type User struct {
+	ID         string          `json:"id,omitempty"`
+	OUID       string          `json:"ouId,omitempty"`
+	OUHandle   string          `json:"ouHandle,omitempty"`
+	Type       string          `json:"type,omitempty"`
+	Attributes json.RawMessage `json:"attributes,omitempty"`
+	Display    string          `json:"display,omitempty"`
+	IsReadOnly bool            `json:"isReadOnly"`
+}
+
+// Agent is the service-level model for agent create operations.
+type Agent struct {
+	ID          string          `json:"id,omitempty"`
+	OUID        string          `json:"ouId"`
+	OUHandle    string          `json:"ouHandle,omitempty"`
+	Type        string          `json:"type"`
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	LogoURL     string          `json:"logoUrl,omitempty"`
+	Owner       string          `json:"owner,omitempty"`
+	Attributes  json.RawMessage `json:"attributes,omitempty"`
+
+	// The service-level model carries the full internal profile.
+	InboundAuthProfile
+	InboundAuthConfig []InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
+}
+
 // InboundClient is the persistence shape for protocol-agnostic inbound client record.
 type InboundClient struct {
 	ID                        string
@@ -706,6 +734,7 @@ type InboundClient struct {
 	Assertion                 *AssertionConfig
 	LoginConsent              *LoginConsentConfig
 	AllowedUserTypes          []string
+	AllowedAgentTypes         []string
 	SubjectAttribute          map[string]string
 	PasskeyAllowedOrigins     []string
 	// Attestation holds the optional platform attestation config that lets a mobile client prove
@@ -1016,6 +1045,24 @@ type Application struct {
 	InboundAuthProfile `yaml:",inline"`
 	InboundAuthConfig  []InboundAuthConfigWithSecret `yaml:"inboundAuthConfig,omitempty" json:"inboundAuthConfig,omitempty" jsonschema:"Inbound authentication configuration (OAuth2/OIDC settings)."`
 	Metadata           map[string]interface{}        `yaml:"metadata,omitempty" json:"metadata,omitempty" jsonschema:"Generic metadata key-value pairs."`
+
+	// EntityCategory is the category of the entity backing this runtime application view (app or
+	// agent). Runtime-only: never serialized on the application API or in declarative resources.
+	EntityCategory EntityCategory `yaml:"-" json:"-"`
+}
+
+// OAuthClientID returns the client_id of the application's OAuth inbound auth config, or an empty
+// string when it has no OAuth config.
+func (a *Application) OAuthClientID() string {
+	if a == nil {
+		return ""
+	}
+	for _, inbound := range a.InboundAuthConfig {
+		if inbound.Type == OAuthInboundAuthType && inbound.OAuthConfig != nil {
+			return inbound.OAuthConfig.ClientID
+		}
+	}
+	return ""
 }
 
 // InboundAuthProfile is the wire field block embedded in entity DTOs (requests and responses).
@@ -1034,7 +1081,8 @@ type InboundAuthProfile struct {
 	LayoutID                  string              `json:"layoutId,omitempty"               yaml:"layoutId,omitempty"               jsonschema:"Layout configuration ID. Optional. Customizes the screen structure and component positioning of login pages."`
 	Assertion                 *AssertionConfig    `json:"assertion,omitempty"              yaml:"assertion,omitempty"              jsonschema:"Assertion configuration. Optional. Customize assertion validity periods and included user attributes."`
 	LoginConsent              *LoginConsentConfig `json:"loginConsent,omitempty"           yaml:"loginConsent,omitempty"           jsonschema:"Login consent configuration settings."`
-	AllowedUserTypes          []string            `json:"allowedUserTypes,omitempty"           yaml:"allowedUserTypes,omitempty"           jsonschema:"Allowed user types. Optional. Restricts which user types can register or sign up through this resource."`
+	AllowedUserTypes          []string            `json:"allowedUserTypes,omitempty"           yaml:"allowedUserTypes,omitempty"           jsonschema:"Allowed user types. Optional. Restricts which user types can authenticate to, register, or sign up through this resource."`
+	AllowedAgentTypes         []string            `json:"allowedAgentTypes,omitempty"          yaml:"allowedAgentTypes,omitempty"          jsonschema:"Allowed agent types. Optional. Agents may authenticate to this resource only when their agent type is listed here; when the list is empty no agent can authenticate."`
 	SubjectAttribute          map[string]string   `json:"subjectAttribute,omitempty"           yaml:"subjectAttribute,omitempty"           jsonschema:"Per-user-type mapping of the schema attribute to use as the token subject (sub) claim, keyed by user type name. The attribute must be unique, required, and string-typed in that user type's schema. When no entry applies, the user's ID is used as the subject."`
 	PasskeyAllowedOrigins     []string            `json:"passkeyAllowedOrigins,omitempty"      yaml:"passkeyAllowedOrigins,omitempty"      jsonschema:"Allowed origins for WebAuthn/passkey operations for this application. Optional. When set, overrides the server-level passkey allowed origins for flow-based passkey operations."`
 	Attestation               *AttestationConfig  `json:"attestation,omitempty"                yaml:"attestation,omitempty"                jsonschema:"Platform attestation configuration. Optional. Enables a mobile client to initiate flows directly by proving its binary identity (e.g. Google Play Integrity), regardless of protocol. The service account credentials are write-only and never returned in responses."`
@@ -1359,7 +1407,10 @@ type CryptoDetails struct {
 
 // PublicKeyInfo describes a public key returned by GetPublicKeys.
 type PublicKeyInfo struct {
-	KeyID               string
+	KeyID string // Unique identifier for the key within the system.
+	Kid   string // Key ID used in JWKS and JWT headers; may be the same as KeyID or thumbprint
+	// Algorithm is the JWA algorithm name for this key (e.g. "RS256", "ES256", "EdDSA", "ML-DSA-65").
+	// Providers must always populate it: it is published verbatim as the JWK "alg" with no fallback.
 	Algorithm           string
 	PublicKey           gocrypto.PublicKey
 	Thumbprint          string

@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/user"
 )
 
 type entityRef struct {
@@ -33,6 +34,7 @@ type provisioningExecutor struct {
 	providers.Executor
 	identifyingExecutorInterface
 	entityProvider        entityprovider.EntityProviderInterface
+	userMgtProvider       providers.UserMgtProvider
 	groupService          group.GroupServiceInterface
 	roleService           role.RoleServiceInterface
 	roleAssignmentService role.RoleAssignmentServiceInterface
@@ -51,6 +53,7 @@ func newProvisioningExecutor(
 	roleService role.RoleServiceInterface,
 	roleAssignmentService role.RoleAssignmentServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
+	userMgtProvider providers.UserMgtProvider,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 ) *provisioningExecutor {
@@ -81,6 +84,7 @@ func newProvisioningExecutor(
 		Executor:                     base,
 		identifyingExecutorInterface: identifyingExec,
 		entityProvider:               entityProvider,
+		userMgtProvider:              userMgtProvider,
 		groupService:                 groupService,
 		roleService:                  roleService,
 		roleAssignmentService:        roleAssignmentService,
@@ -175,10 +179,10 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 	for k, v := range credentialAttrs {
 		userAttributes[k] = v
 	}
-	createdEntity, err := p.createUserInStore(ctx, userAttributes)
-	if err != nil {
+	createdEntity, createErr := p.createUserInStore(ctx, userAttributes)
+	if createErr != nil {
 		execResp.Status = providers.ExecFailure
-		execResp.Error = p.handleCreateUserError(ctx, err, logger)
+		execResp.Error = p.handleCreateUserError(ctx, createErr, logger)
 		return execResp, nil
 	}
 	if createdEntity == nil || createdEntity.ID == "" {
@@ -614,67 +618,64 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 	return identifyingAttrs, credentialAttrs, nil
 }
 
-// createUserInStore creates a new user in the user store with the provided attributes.
+// createUserInStore provisions a user through the user management provider. The organization unit
+// and user type carried on the request are validated by the user service, which owns those rules.
 func (p *provisioningExecutor) createUserInStore(nodeCtx *providers.NodeContext,
-	userAttributes map[string]interface{}) (*providers.Entity, error) {
+	userAttributes map[string]interface{}) (*providers.User, *tidcommon.ServiceError) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, nodeCtx.ExecutionID))
 	logger.Debug(nodeCtx.Context, "Creating the user account")
 
-	entityRef, err := p.getTargetEntityRef(nodeCtx)
-	if err != nil {
-		return nil, err
-	}
-	ouID := entityRef.ouID
-	if ouID == "" {
-		return nil, fmt.Errorf("organization unit ID not found")
-	}
-	userType := entityRef.entityType
-	if userType == "" {
-		return nil, fmt.Errorf("user type not found")
+	if p.userMgtProvider == nil {
+		logger.Error(nodeCtx.Context, "User management provider is not configured")
+		return nil, &ErrProvisioningFailed
 	}
 
-	newEntity := providers.Entity{
-		Category: providers.EntityCategoryUser,
-		State:    providers.EntityStateActive,
-		OUID:     ouID,
-		Type:     userType,
+	entityRef, err := p.getTargetEntityRef(nodeCtx)
+	if err != nil {
+		logger.Error(nodeCtx.Context, "Failed to resolve the provisioning target", log.Error(err))
+		return nil, &ErrProvisioningFailed
 	}
 
 	attributesJSON, err := json.Marshal(userAttributes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal user attributes: %w", err)
+		logger.Error(nodeCtx.Context, "Failed to marshal user attributes", log.Error(err))
+		return nil, &ErrProvisioningFailed
 	}
-	newEntity.Attributes = attributesJSON
 
-	retEntity, svcErr := p.entityProvider.CreateEntity(&newEntity, nil)
+	createdUser, svcErr := p.userMgtProvider.CreateUser(nodeCtx.Context, &providers.User{
+		OUID:       entityRef.ouID,
+		Type:       entityRef.entityType,
+		Attributes: attributesJSON,
+	})
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	if retEntity != nil && retEntity.ID != "" {
+	if createdUser != nil && createdUser.ID != "" {
 		logger.Debug(nodeCtx.Context, "User account created successfully",
-			log.MaskedString(log.LoggerKeyUserID, retEntity.ID))
+			log.MaskedString(log.LoggerKeyUserID, createdUser.ID))
 	}
 
-	return retEntity, nil
+	return createdUser, nil
 }
 
-// handleCreateUserError maps an entity provider error during user creation to the appropriate ServiceError.
+// handleCreateUserError surfaces a user creation failure to the flow. Errors raised by the user
+// service are returned unchanged so the caller can tell an attribute clash it can retry from a
+// configuration problem it cannot. Only the attribute conflict is rewritten, to keep the
+// flow-facing wording it already had.
 func (p *provisioningExecutor) handleCreateUserError(
 	ctx *providers.NodeContext,
-	err error,
+	svcErr *tidcommon.ServiceError,
 	logger *log.Logger,
 ) *tidcommon.ServiceError {
-	var epErr *entityprovider.EntityProviderError
-	if errors.As(err, &epErr) {
-		if epErr.Code == entityprovider.ErrorCodeAttributeConflict {
-			return &ErrProvisioningAttributeConflict
-		}
-		logger.Error(ctx.Context, "Failed to create user in the store",
-			log.String("errorCode", string(epErr.Code)), log.String("message", epErr.Message))
+	if svcErr == nil {
 		return &ErrProvisioningFailed
 	}
-	logger.Error(ctx.Context, "Failed to create user in the store", log.Error(err))
-	return &ErrProvisioningFailed
+	if svcErr.Code == user.ErrorAttributeConflict.Code {
+		return &ErrProvisioningAttributeConflict
+	}
+	logger.Error(ctx.Context, "Failed to create user in the store",
+		log.String("errorCode", svcErr.Code), log.String("message", svcErr.Error.DefaultValue))
+	return svcErr
 }
 
 // getTargetEntityRef retrieves the target entity reference (user type and OU ID) for provisioning.

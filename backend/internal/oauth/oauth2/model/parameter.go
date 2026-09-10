@@ -32,6 +32,7 @@ type OAuthParameters struct {
 	MaxAge              string
 	DPoPJkt             string
 	Prompt              string
+	IDTokenHint         string
 }
 
 // VerifiedClaimsMember is the OIDC Identity Assurance member name that may appear in the

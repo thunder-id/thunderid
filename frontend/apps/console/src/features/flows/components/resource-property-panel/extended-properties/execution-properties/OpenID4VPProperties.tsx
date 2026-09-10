@@ -7,6 +7,7 @@ import {useTranslation} from 'react-i18next';
 import CheckboxWithHint from './CheckboxWithHint';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import PresentationDefinitionSelect from '@/features/flows/components/resource-property-panel/PresentationDefinitionSelect';
+import useResourceFieldError from '@/features/flows/hooks/useResourceFieldError';
 import type {StepData} from '@/features/flows/models/steps';
 
 /**
@@ -22,6 +23,8 @@ function OpenID4VPProperties({resource, onChange}: CommonResourcePropertiesProps
     return stepData?.properties ?? {};
   }, [resource]);
 
+  const errorMessage: string = useResourceFieldError(resource?.id, 'data.properties.presentation_definition_id');
+
   return (
     <Stack gap={2}>
       <Typography variant="body2" color="text.secondary">
@@ -31,6 +34,7 @@ function OpenID4VPProperties({resource, onChange}: CommonResourcePropertiesProps
         propertyKey="presentation_definition_id"
         value={(properties.presentation_definition_id as string) ?? ''}
         onChange={(value: string) => onChange('data.properties.presentation_definition_id', value, resource)}
+        errorMessage={errorMessage}
       />
       <CheckboxWithHint
         checked={!!properties.allowAuthenticationWithoutLocalUser}

@@ -7,6 +7,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/internal/system/config"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 type StoreConstantsTestSuite struct {
@@ -274,4 +277,12 @@ func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryHybrid_NonIndexed_UsesCO
 	s.Contains(q.SQLiteQuery, "COALESCE")
 	s.Contains(q.SQLiteQuery, "json_extract(e.ATTRIBUTES, '$.clientId')")
 	s.Contains(q.SQLiteQuery, "json_extract(e.SYSTEM_ATTRIBUTES, '$.clientId')")
+}
+
+// The stores resolve their deployment from the loaded server runtime rather than holding one, so
+// these tests load a runtime naming the id the query assertions below expect.
+func init() {
+	_ = config.InitializeServerRuntime("", &config.Config{
+		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
+	})
 }

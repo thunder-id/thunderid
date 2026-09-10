@@ -554,12 +554,6 @@ describe('UserEditPage', () => {
         error: null,
         refetch: mockRefetch,
       });
-      mockUseGetUserTypes.mockReturnValue({
-        data: {...mockSchemasData, types: [{...mockSchemasData.types[0], ouId: ''}]},
-        isLoading: false,
-        error: null,
-        refetch: mockRefetchUserTypes,
-      });
 
       render(<UserEditPage />);
 
@@ -658,16 +652,16 @@ describe('UserEditPage', () => {
       });
     });
 
-    it('uses schema organization unit when updating user', async () => {
+    it('keeps the user organization unit when the user type declares a different one', async () => {
       const user = userEvent.setup();
       mockUseGetUser.mockReturnValue({
-        data: {...mockUserData, ouId: 'stale-ou'},
+        data: {...mockUserData, ouId: 'sub-ou'},
         isLoading: false,
         error: null,
         refetch: mockRefetch,
       });
       mockUseGetUserTypes.mockReturnValue({
-        data: {...mockSchemasData, types: [{...mockSchemasData.types[0], ouId: 'schema-ou'}]},
+        data: {...mockSchemasData, types: [{...mockSchemasData.types[0], ouId: 'default-ou'}]},
         isLoading: false,
         error: null,
         refetch: mockRefetchUserTypes,
@@ -680,13 +674,18 @@ describe('UserEditPage', () => {
       await user.click(screen.getByRole('button', {name: 'Save'}));
 
       await waitFor(() => {
-        expect(mockUpdateMutateAsync).toHaveBeenCalled();
-        const callArgs = mockUpdateMutateAsync.mock.calls[0][0] as {data: {ouId: string}};
-        expect(callArgs.data.ouId).toBe('schema-ou');
+        expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
+          userId: 'user123',
+          data: {
+            ouId: 'sub-ou',
+            type: 'Employee',
+            attributes: {department: 'sales'},
+          },
+        });
       });
     });
 
-    it('falls back to user organization unit when schema does not provide one', async () => {
+    it('sends the user organization unit when the user type declares none', async () => {
       const user = userEvent.setup();
       mockUseGetUserTypes.mockReturnValue({
         data: {...mockSchemasData, types: [{...mockSchemasData.types[0], ouId: ''}]},
@@ -702,9 +701,14 @@ describe('UserEditPage', () => {
       await user.click(screen.getByRole('button', {name: 'Save'}));
 
       await waitFor(() => {
-        expect(mockUpdateMutateAsync).toHaveBeenCalled();
-        const callArgs = mockUpdateMutateAsync.mock.calls[0][0] as {data: {ouId: string}};
-        expect(callArgs.data.ouId).toBe('test-ou');
+        expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
+          userId: 'user123',
+          data: {
+            ouId: 'test-ou',
+            type: 'Employee',
+            attributes: {department: 'sales'},
+          },
+        });
       });
     });
 

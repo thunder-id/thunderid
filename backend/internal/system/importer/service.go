@@ -25,7 +25,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
 )
@@ -160,9 +159,9 @@ type layoutAdapter interface {
 }
 
 type userAdapter interface {
-	CreateUser(ctx context.Context, user *user.User) (*user.User, *tidcommon.ServiceError)
-	GetUser(ctx context.Context, userID string, includeDisplay bool) (*user.User, *tidcommon.ServiceError)
-	UpdateUser(ctx context.Context, userID string, user *user.User) (*user.User, *tidcommon.ServiceError)
+	CreateUser(ctx context.Context, user *providers.User) (*providers.User, *tidcommon.ServiceError)
+	GetUser(ctx context.Context, userID string, includeDisplay bool) (*providers.User, *tidcommon.ServiceError)
+	UpdateUser(ctx context.Context, userID string, user *providers.User) (*providers.User, *tidcommon.ServiceError)
 	DeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError
 	UpdateUserCredentials(ctx context.Context, userID string, credentials json.RawMessage) *tidcommon.ServiceError
 }
@@ -174,7 +173,7 @@ type translationAdapter interface {
 }
 
 type agentAdapter interface {
-	CreateAgent(ctx context.Context, agent *agentmodel.Agent) (
+	CreateAgent(ctx context.Context, agent *providers.Agent) (
 		*agentmodel.AgentCompleteResponse, *tidcommon.ServiceError)
 	GetAgent(ctx context.Context, agentID string, includeDisplay bool) (
 		*agentmodel.AgentGetResponse, *tidcommon.ServiceError)
@@ -958,6 +957,7 @@ func applicationRequestToDTO(req *appmodel.ApplicationRequestWithID) *appmodel.A
 			Assertion:                 req.Assertion,
 			LoginConsent:              req.LoginConsent,
 			AllowedUserTypes:          req.AllowedUserTypes,
+			AllowedAgentTypes:         req.AllowedAgentTypes,
 		},
 		Type:       req.Type,
 		Template:   req.Template,

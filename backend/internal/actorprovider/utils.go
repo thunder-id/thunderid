@@ -44,9 +44,14 @@ func assembleApplication(
 			Assertion:             client.Assertion,
 			LoginConsent:          client.LoginConsent,
 			AllowedUserTypes:      client.AllowedUserTypes,
+			AllowedAgentTypes:     client.AllowedAgentTypes,
 			SubjectAttribute:      client.SubjectAttribute,
 			PasskeyAllowedOrigins: client.PasskeyAllowedOrigins,
 		},
+	}
+
+	if entity != nil {
+		app.EntityCategory = entity.Category
 	}
 
 	entityAttrs := readEntitySystemAttributes(entity)

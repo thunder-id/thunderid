@@ -51,6 +51,19 @@ var (
 			`WHERE SESSION_ID = $7 AND DEPLOYMENT_ID = $8 AND VERSION = $9`,
 	}
 
+	// queryTouchAuthenticatedAt refreshes the session's authentication time after the subject
+	// authenticated again within an existing session (prompt=login, or a max_age the previous
+	// authentication no longer satisfied). It is separate from queryUpdateSession because that
+	// statement carries the optimistic-concurrency guard for liveness updates, whereas this one
+	// records a fact about an authentication that has already happened: losing a race with a
+	// concurrent slide must not discard it.
+	queryTouchAuthenticatedAt = model.DBQuery{
+		ID: "SSO-SESS-11",
+		Query: `UPDATE "SSO_SESSION" SET AUTHENTICATED_AT = $1, LAST_ACTIVE_AT = $2, ` +
+			`IDLE_EXPIRES_AT = $3, VERSION = VERSION + 1, UPDATED_AT = CURRENT_TIMESTAMP ` +
+			`WHERE SESSION_ID = $4 AND DEPLOYMENT_ID = $5 AND AUTHENTICATED_AT <= $1`,
+	}
+
 	// queryCreateSessionContext upserts a checkpoint's session context. Re-saving the same checkpoint
 	// (re-execution or a concurrent request) overwrites it rather than erroring on the primary key.
 	// The ON CONFLICT ... DO UPDATE form is valid in both PostgreSQL and SQLite.

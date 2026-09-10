@@ -72,13 +72,13 @@ Grounded in the Diátaxis framework and comparable identity platforms (Auth0, Cl
 - **Match placement to what the reader is doing at that moment**, not just shared keywords — a reader debugging a token issue and one learning what tokens are may belong in different sections on the same subject.
 
 ### Step 1: Read the sidebar
-Read `docs/sidebars.ts` in full; for `docs/content/sdks/<sdk>/` pages, also read `docs/content/sdks/<sdk>/sidebar.ts`.
+Read `docs/sidebars.ts` in full; for `docs/content/sdks/<sdk>/` pages, also read `docs/content/sdks/<sdk>/sidebar.ts`; for `docs/community/` pages, read `docs/sidebarsCommunity.ts` instead.
 
 ### Step 2: Determine the target sidebar file
 | File path prefix | Edit this file |
 |---|---|
 | `docs/content/sdks/<sdk>/` | `docs/content/sdks/<sdk>/sidebar.ts` |
-| `docs/content/community/` | `docs/sidebars.ts` → `communitySidebar` |
+| `docs/community/` (unversioned) | `docs/sidebarsCommunity.ts` → `communitySidebar` |
 | Everything else | `docs/sidebars.ts` → `docsSidebar` |
 
 ### Step 3: Determine the target section

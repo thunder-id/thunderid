@@ -48,7 +48,7 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 
 	// Parse the form data from the request body.
 	if err := r.ParseForm(); err != nil {
-		publishTokenIssuanceFailedEvent(th.observabilitySvc, r.Context(), "", "", "",
+		publishTokenIssuanceFailedEvent(th.observabilitySvc, r.Context(), nil, "", "", "",
 			http.StatusBadRequest, err.Error(), startTime)
 		utils.WriteJSONError(r.Context(), w, constants.ErrorInvalidRequest,
 			"Failed to parse request body", http.StatusBadRequest, nil)
@@ -58,7 +58,7 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 	// The DPoP header must appear at most once.
 	dpopHeaders := r.Header.Values(constants.HeaderDPoP)
 	if len(dpopHeaders) > 1 {
-		publishTokenIssuanceFailedEvent(th.observabilitySvc, r.Context(), "", "", "",
+		publishTokenIssuanceFailedEvent(th.observabilitySvc, r.Context(), nil, "", "", "",
 			http.StatusBadRequest, "Multiple DPoP headers", startTime)
 		utils.WriteJSONError(r.Context(), w, constants.ErrorInvalidDPoPProof,
 			"Multiple DPoP headers", http.StatusBadRequest, nil)

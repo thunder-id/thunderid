@@ -9,9 +9,9 @@ import (
 	"fmt"
 
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
-	"github.com/thunder-id/thunderid/internal/system/config"
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -24,6 +24,7 @@ type inboundClientJSONBlob struct {
 	Assertion             *inboundmodel.AssertionConfig    `json:"assertion,omitempty"`
 	LoginConsent          *inboundmodel.LoginConsentConfig `json:"loginConsent,omitempty"`
 	AllowedUserTypes      []string                         `json:"allowedUserTypes,omitempty"`
+	AllowedAgentTypes     []string                         `json:"allowedAgentTypes,omitempty"`
 	SubjectAttribute      map[string]string                `json:"subjectAttribute,omitempty"`
 	PasskeyAllowedOrigins []string                         `json:"passkeyAllowedOrigins,omitempty"`
 	Attestation           *providers.AttestationConfig     `json:"attestation,omitempty"`
@@ -56,8 +57,7 @@ type inboundClientStoreInterface interface {
 
 // store implements inboundClientStoreInterface using the configured config database.
 type store struct {
-	dbProvider   provider.DBProviderInterface
-	deploymentID string
+	dbProvider provider.DBProviderInterface
 }
 
 // getDBProvider is a package-level indirection to allow test override.
@@ -76,14 +76,15 @@ func newStore() (inboundClientStoreInterface, providers.Transactioner, error) {
 		return nil, nil, err
 	}
 
-	deploymentID := config.GetServerRuntime().Config.Server.Identifier
+	// Table verification runs at start-up, outside any request, so this resolves to the configured
+	// identifier.
+	deploymentID := deployment.Resolve(context.Background())
 	if _, err := client.QueryContext(context.Background(), queryGetInboundClientCount, deploymentID); err != nil {
 		return nil, nil, fmt.Errorf("failed to verify inbound client table: %w", err)
 	}
 
 	return &store{
-		dbProvider:   dbProvider,
-		deploymentID: deploymentID,
+		dbProvider: dbProvider,
 	}, transactioner, nil
 }
 
@@ -100,6 +101,7 @@ func marshalInboundClient(c inboundmodel.InboundClient) (
 		Assertion:             c.Assertion,
 		LoginConsent:          c.LoginConsent,
 		AllowedUserTypes:      c.AllowedUserTypes,
+		AllowedAgentTypes:     c.AllowedAgentTypes,
 		SubjectAttribute:      c.SubjectAttribute,
 		PasskeyAllowedOrigins: c.PasskeyAllowedOrigins,
 		Attestation:           c.Attestation,
@@ -133,6 +135,12 @@ func marshalInboundClient(c inboundmodel.InboundClient) (
 		recoveryFlowID, signOutFlowID, registrationFlowID, themeID, layoutID, nil
 }
 
+// scope returns the deployment id this request acts for, falling back to the configured
+// identifier for a context that never passed through the edge.
+func (st *store) scope(ctx context.Context) string {
+	return deployment.Resolve(ctx)
+}
+
 // CreateInboundClient creates a new inbound client entry.
 func (st *store) CreateInboundClient(ctx context.Context, client inboundmodel.InboundClient) error {
 	dbClient, err := st.dbProvider.GetConfigDBClient()
@@ -149,7 +157,7 @@ func (st *store) CreateInboundClient(ctx context.Context, client inboundmodel.In
 	_, err = dbClient.ExecuteContext(ctx, queryCreateInboundClient,
 		client.ID, client.AuthFlowID, registrationFlowID, isRegEnabledStr,
 		recoveryFlowID, isRecoveryEnabledStr, signOutFlowID,
-		themeID, layoutID, propsBytes, st.deploymentID)
+		themeID, layoutID, propsBytes, st.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to insert inbound client: %w", err)
 	}
@@ -170,7 +178,7 @@ func (st *store) CreateOAuthProfile(ctx context.Context, entityID string,
 		return err
 	}
 
-	_, err = dbClient.ExecuteContext(ctx, queryCreateOAuthProfile, entityID, profileJSON, st.deploymentID)
+	_, err = dbClient.ExecuteContext(ctx, queryCreateOAuthProfile, entityID, profileJSON, st.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to insert OAuth profile: %w", err)
 	}
@@ -184,7 +192,7 @@ func (st *store) GetInboundClientByEntityID(ctx context.Context, entityID string
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryGetInboundClientByEntityID, entityID, st.deploymentID)
+	results, err := dbClient.QueryContext(ctx, queryGetInboundClientByEntityID, entityID, st.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -201,7 +209,7 @@ func (st *store) GetOAuthProfileByEntityID(ctx context.Context, entityID string)
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryGetOAuthProfileByEntityID, entityID, st.deploymentID)
+	results, err := dbClient.QueryContext(ctx, queryGetOAuthProfileByEntityID, entityID, st.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -218,7 +226,7 @@ func (st *store) GetInboundClientList(ctx context.Context, limit int) ([]provide
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryGetInboundClientList, st.deploymentID, limit)
+	results, err := dbClient.QueryContext(ctx, queryGetInboundClientList, st.scope(ctx), limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -239,7 +247,7 @@ func (st *store) GetInboundClientList(ctx context.Context, limit int) ([]provide
 // cannot reference a resource type it has no column for.
 func (st *store) GetEntityIDsByReference(
 	ctx context.Context, refType, refID string, limit, offset int) ([]string, int, error) {
-	countQuery, listQuery, filterArgs, ok := referenceQueries(refType, refID, st.deploymentID)
+	countQuery, listQuery, filterArgs, ok := referenceQueries(refType, refID, st.scope(ctx))
 	if !ok {
 		return []string{}, 0, nil
 	}
@@ -319,7 +327,7 @@ func (st *store) GetTotalInboundClientCount(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryGetInboundClientCount, st.deploymentID)
+	results, err := dbClient.QueryContext(ctx, queryGetInboundClientCount, st.scope(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -349,7 +357,7 @@ func (st *store) UpdateInboundClient(ctx context.Context, client inboundmodel.In
 	rowsAffected, err := dbClient.ExecuteContext(ctx, queryUpdateInboundClientByEntityID,
 		client.ID, client.AuthFlowID, registrationFlowID, isRegEnabledStr,
 		recoveryFlowID, isRecoveryEnabledStr, signOutFlowID,
-		themeID, layoutID, propsBytes, st.deploymentID)
+		themeID, layoutID, propsBytes, st.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to update inbound client: %w", err)
 	}
@@ -374,7 +382,7 @@ func (st *store) UpdateOAuthProfile(ctx context.Context, entityID string,
 	}
 
 	rowsAffected, err := dbClient.ExecuteContext(ctx, queryUpdateOAuthProfileByEntityID,
-		entityID, profileJSON, st.deploymentID)
+		entityID, profileJSON, st.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to update OAuth profile: %w", err)
 	}
@@ -404,7 +412,7 @@ func (st *store) DeleteInboundClient(ctx context.Context, entityID string) error
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	_, err = dbClient.ExecuteContext(ctx, queryDeleteInboundClientByEntityID, entityID, st.deploymentID)
+	_, err = dbClient.ExecuteContext(ctx, queryDeleteInboundClientByEntityID, entityID, st.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to delete inbound client: %w", err)
 	}
@@ -418,7 +426,7 @@ func (st *store) DeleteOAuthProfile(ctx context.Context, entityID string) error 
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	_, err = dbClient.ExecuteContext(ctx, queryDeleteOAuthProfileByEntityID, entityID, st.deploymentID)
+	_, err = dbClient.ExecuteContext(ctx, queryDeleteOAuthProfileByEntityID, entityID, st.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to delete OAuth profile: %w", err)
 	}
@@ -432,7 +440,7 @@ func (st *store) InboundClientExists(ctx context.Context, entityID string) (bool
 		return false, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryCheckInboundClientExistsByEntityID, entityID, st.deploymentID)
+	results, err := dbClient.QueryContext(ctx, queryCheckInboundClientExistsByEntityID, entityID, st.scope(ctx))
 	if err != nil {
 		return false, fmt.Errorf("failed to execute existence check query: %w", err)
 	}
@@ -491,6 +499,7 @@ func buildInboundClientFromRow(ctx context.Context, row map[string]interface{}) 
 			client.Assertion = blob.Assertion
 			client.LoginConsent = blob.LoginConsent
 			client.AllowedUserTypes = blob.AllowedUserTypes
+			client.AllowedAgentTypes = blob.AllowedAgentTypes
 			client.SubjectAttribute = blob.SubjectAttribute
 			client.PasskeyAllowedOrigins = blob.PasskeyAllowedOrigins
 			client.Attestation = blob.Attestation

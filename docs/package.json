@@ -20,12 +20,12 @@
     "documentation"
   ],
   "scripts": {
-    "build": "pnpm setup && docusaurus build",
+    "build": "pnpm run setup && docusaurus build",
     "clean": "pnpm clean:dist && pnpm clean:node_modules",
     "clean:dist": "docusaurus clear",
     "clean:node_modules": "rimraf node_modules",
     "deploy": "docusaurus deploy",
-    "dev": "pnpm setup && docusaurus start --port 5180",
+    "dev": "pnpm run setup && docusaurus start --port 5180",
     "docusaurus": "docusaurus",
     "generate:api-specs": "node ./scripts/merge-openapi-specs.mjs",
     "generate:changelog": "node ./scripts/generate-changelog.mjs",
@@ -45,6 +45,7 @@
   "dependencies": {
     "@docsearch/docusaurus-adapter": "catalog:",
     "@docusaurus/core": "3.9.2",
+    "@docusaurus/plugin-client-redirects": "3.9.2",
     "@docusaurus/plugin-content-blog": "3.9.2",
     "@docusaurus/plugin-content-docs": "3.9.2",
     "@docusaurus/preset-classic": "3.9.2",

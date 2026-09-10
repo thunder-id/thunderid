@@ -33,6 +33,10 @@ vi.mock('../AllowedUserTypesSection', () => ({
   default: () => <div data-testid="allowed-user-types-section">Allowed User Types</div>,
 }));
 
+vi.mock('../AgentSignInSection', () => ({
+  default: () => <div data-testid="agent-sign-in-section">Agent Sign-In</div>,
+}));
+
 vi.mock('../DangerZoneSection', () => ({
   default: ({onDeleteClick}: {onDeleteClick: () => void}) => (
     <button type="button" data-testid="danger-zone-section" onClick={onDeleteClick}>
@@ -83,6 +87,7 @@ describe('EditAdvancedSettings', () => {
     expect(screen.getByTestId('operation-modes-section')).toBeInTheDocument();
     expect(screen.getByTestId('owner-section')).toBeInTheDocument();
     expect(screen.getByTestId('allowed-user-types-section')).toBeInTheDocument();
+    expect(screen.getByTestId('agent-sign-in-section')).toBeInTheDocument();
     expect(screen.getByTestId('danger-zone-section')).toBeInTheDocument();
   });
 

@@ -11,8 +11,11 @@ import (
 	"strings"
 	"time"
 
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/thunder-id/thunderid/internal/actorprovider"
 	"github.com/thunder-id/thunderid/internal/agent"
+	"github.com/thunder-id/thunderid/internal/agentmgtprovider"
 	"github.com/thunder-id/thunderid/internal/application"
 	"github.com/thunder-id/thunderid/internal/attestation"
 	"github.com/thunder-id/thunderid/internal/attributecache"
@@ -86,6 +89,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki"
 	"github.com/thunder-id/thunderid/internal/system/log"
+
 	"github.com/thunder-id/thunderid/internal/system/mcp"
 	"github.com/thunder-id/thunderid/internal/system/observability"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -93,6 +97,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/template"
 	"github.com/thunder-id/thunderid/internal/user"
+	"github.com/thunder-id/thunderid/internal/usermgtprovider"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -108,7 +113,7 @@ var observabilitySvc observability.ObservabilityServiceInterface
 // to the number of services. Eventhough it has many branching statements, almost all are early exits so cognitive
 // complexity is low.
 func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterface) (
-	jwt.JWTServiceInterface, kmprovider.RuntimeCryptoProvider, importer.ImportServiceInterface) {
+	jwt.JWTServiceInterface, kmprovider.RuntimeCryptoProvider, importer.ImportServiceInterface, *mcpsdk.Server) {
 	logger := log.GetLogger()
 
 	// Service registration runs during application startup, outside any request.
@@ -139,7 +144,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	observabilitySvc = observability.Initialize(config.GetServerRuntime().Config.Observability)
 
 	// Initialize MCP server early so packages initializing below can register tools.
-	mcpServer := mcp.Initialize(mux, jwtService)
+	// Route mounting (mcp.Initialize) happens later in main(), once the token-revocation enforcer
+	// exists — mcp.DefaultGuard needs it to reject revoked tokens the same way the REST gate does.
+	mcpServer := mcp.NewServer()
 
 	// List to collect exporters from each package
 	var exporters []declarativeresource.ResourceExporter
@@ -186,6 +193,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize UserService")
 	exporters = append(exporters, userExporter)
+
+	// Initialize user management provider
+	userMgtProvider := usermgtprovider.Initialize(userService)
 
 	groupService, ouGroupResolver, groupExporter, err := group.Initialize(
 		mux, dbprovider.GetDBProvider(), ouService, entityService, entityTypeService, ouAuthzService,
@@ -356,6 +366,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			RoleService:           roleService,
 			RoleAssignmentService: roleAssignmentService,
 			EntityProvider:        entityProvider,
+			UserMgtProvider:       userMgtProvider,
 			AttributeCacheSvc:     attributeCacheService,
 			EmailClient:           emailClient,
 			TemplateService:       templateService,
@@ -404,9 +415,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// flow services (which themselves depend on the enforcer) are initialized.
 	consentEnforcer.SetConsentService(initConsentService(ctx, logger, inboundClientService))
 
-	// TODO: Remove entityService dependency after finalizing declarative resource loading pattern
 	applicationService, applicationExporter, err := application.Initialize(
-		mux, mcpServer, entityProvider, entityService, inboundClientService, ouService, i18nService,
+		mux, mcpServer, entityService, inboundClientService, ouService, i18nService,
 		runtimeCryptoSvc, serverConfigService)
 	fatalOnError(ctx, logger, err, "Failed to initialize ApplicationService")
 	exporters = append(exporters, applicationExporter)
@@ -415,6 +425,13 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		roleService)
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
+
+	// Initialize agent management provider. It has no runtime consumer yet: the provisioning
+	// executor gains its agent branch in a follow-up change, at which point this is handed to the
+	// executor registry. It is constructed here so the package is linked into the server binary and
+	// its integration coverage is reported as uncovered rather than silently dropped.
+	// TODO: pass to the provisioning executor once agent provisioning lands.
+	_ = agentmgtprovider.Initialize(agentService)
 
 	// Wire the dependency registry into the consuming services (two-phase init to avoid cyclic
 	// imports). flowMgtService is both a consumer and a provider: it reports which flows reference an
@@ -478,7 +495,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	tokenValidator, err := oauth.Initialize(mux, actorProvider, authnProvider, jwtService, jweService,
 		flowExecService, observabilitySvc, runtimeCryptoSvc, ouService, attributeCacheService, authZService,
 		resourceServerProvider, i18nService, idpService, dpopVerifier,
-		runtimeStoreProvider, transactioner, revocationEnforcer, revocationSvc, oauthCfg)
+		runtimeStoreProvider, transactioner, revocationEnforcer, revocationSvc,
+		sessionService, flowMgtService, oauthCfg)
 	fatalOnError(ctx, logger, err, "Failed to initialize OAuth services")
 
 	// Initialized after the OAuth services because credential issuance validates the presented
@@ -497,7 +515,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	healthSvc := healthcheckservice.Initialize(dbprovider.GetDBProvider(), dbprovider.GetRedisProvider())
 	services.NewHealthCheckService(mux, healthSvc)
 
-	return jwtService, runtimeCryptoSvc, importService
+	return jwtService, runtimeCryptoSvc, importService, mcpServer
 }
 
 // initAttestationProvider initializes the platform attestation provider, terminating server startup

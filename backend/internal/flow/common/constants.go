@@ -174,6 +174,18 @@ const (
 	// RuntimeKeyForceConsentReprompt indicates that consent must be re-prompted for all required
 	// claims, set when the authorization request includes prompt=consent.
 	RuntimeKeyForceConsentReprompt = "force_consent_reprompt"
+	// RuntimeKeySilentAuthOnly indicates that the authorization request forbids any interaction with
+	// the subject, set when the request includes prompt=none. The authorize endpoint has already
+	// verified that the existing session satisfies the request, so the SSO-Check node must reuse it
+	// rather than re-deciding against a later clock: max_age is compared against a fresh time.Now()
+	// in both places, so a session sitting exactly on the boundary can pass there and fail here,
+	// which would prompt a request that forbids prompting.
+	RuntimeKeySilentAuthOnly = "silent_auth_only"
+
+	// RuntimeKeyForceReauth indicates that the subject must authenticate again in this execution
+	// even when a live SSO session exists, set when the authorization request includes
+	// prompt=login.
+	RuntimeKeyForceReauth = "force_reauth"
 	// RuntimeKeyStoredInviteToken holds the generated invite token stored during the invite send phase.
 	RuntimeKeyStoredInviteToken = "storedInviteToken"
 	// RuntimeKeyUserAttributesCacheTTLSeconds indicates the TTL of the user attributes cache.

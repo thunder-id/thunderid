@@ -6,6 +6,8 @@ package presentation
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -15,7 +17,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
 type DefinitionExporterTestSuite struct {
@@ -173,9 +178,9 @@ func (s *DefinitionExporterTestSuite) TestLoadResourcesThroughStorer() {
 	s.Require().NoError(fileStore.GenericFileBasedStore.ClearByType())
 	storer := &definitionStorer{store: fileStore}
 
-	dto, err := parseToDefinitionDTO([]byte("id: def-1\nhandle: h\nvct: v\n"))
+	dto, err := parseToDefinitionDTO([]byte("id: def-1\nhandle: h\nvct: v\nouId: ou-1\n"))
 	s.Require().NoError(err)
-	s.Require().NoError(validateDefinitionWrapper(dto))
+	s.Require().NoError(validateDefinitionWrapper(dto, fileStore, nil, nil))
 	s.Require().NoError(storer.Create(dto.ID, dto))
 
 	got, err := fileStore.GetPresentationDefinitionByID(context.Background(), "def-1")
@@ -214,14 +219,14 @@ func (s *DefinitionExporterTestSuite) TestExportImportRoundTrip() {
 
 func (s *DefinitionExporterTestSuite) TestValidateDefinitionWrapperRejectsMissingID() {
 	dto := &PresentationDefinitionDTO{Handle: "h", VCT: "v"}
-	s.Error(validateDefinitionWrapper(dto))
+	s.Error(validateDefinitionWrapper(dto, nil, nil, nil))
 }
 
 func (s *DefinitionExporterTestSuite) TestValidateDefinitionWrapperRejectsInvalidDefinition() {
 	// ID is present, so the wrapper proceeds to validateDefinition, which rejects
 	// the missing VCT.
 	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: ""}
-	s.Error(validateDefinitionWrapper(dto))
+	s.Error(validateDefinitionWrapper(dto, nil, nil, nil))
 }
 
 func (s *DefinitionExporterTestSuite) TestParseToDefinitionDTOInvalidYAML() {
@@ -272,7 +277,7 @@ func (s *DefinitionExporterTestSuite) TestGetAllResourceIDsExcludesDeclarative()
 }
 
 func (s *DefinitionExporterTestSuite) TestValidateDefinitionWrapperRejectsWrongType() {
-	s.Error(validateDefinitionWrapper("not-a-dto"))
+	s.Error(validateDefinitionWrapper("not-a-dto", nil, nil, nil))
 }
 
 func (s *DefinitionExporterTestSuite) TestParseToDefinitionDTOWrapper() {
@@ -294,5 +299,211 @@ func (s *DefinitionExporterTestSuite) TestLoadDeclarativeResourcesNoResources() 
 	fileStore := newDefinitionFileBasedStore()
 	s.Require().NoError(fileStore.GenericFileBasedStore.ClearByType())
 
-	s.Require().NoError(loadDeclarativeResources(&definitionStorer{store: fileStore}))
+	s.Require().NoError(loadDeclarativeResources(fileStore, nil, nil))
+}
+
+// TestDeclarativeYAMLCarriesOU verifies the declarative YAML shape accepts the same
+// organization unit the management API requires, by ID or by handle.
+func (s *DefinitionExporterTestSuite) TestDeclarativeYAMLCarriesOU() {
+	dto, err := parseToDefinitionDTO([]byte("id: def-1\nhandle: h\nvct: v\nouId: ou-123\n"))
+	s.Require().NoError(err)
+	s.Equal("ou-123", dto.OUID)
+
+	dto, err = parseToDefinitionDTO([]byte("id: def-2\nhandle: h2\nvct: v\nouHandle: root/eng\n"))
+	s.Require().NoError(err)
+	s.Equal("root/eng", dto.OUHandle)
+}
+
+// TestValidateResolvesOUHandle verifies an ouHandle is resolved to an ouId at load time
+// and that only the resolved ID is retained on the stored resource.
+func (s *DefinitionExporterTestSuite) TestValidateResolvesOUHandle() {
+	ouSvc := newOUServiceMock(s.T(), map[string]bool{"ou-123": true},
+		map[string]string{"root/eng": "ou-123"}, map[string]string{"ou-123": "root/eng"})
+
+	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v", OUHandle: "root/eng"}
+	s.Require().NoError(validateDefinitionWrapper(dto, nil, nil, ouSvc))
+	s.Equal("ou-123", dto.OUID)
+}
+
+// TestValidateRejectsUnknownOUHandle verifies an unresolvable handle fails the load
+// rather than silently producing a definition with no organization unit.
+func (s *DefinitionExporterTestSuite) TestValidateRejectsUnknownOUHandle() {
+	ouSvc := newOUServiceMock(s.T(), map[string]bool{}, map[string]string{}, map[string]string{})
+
+	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v", OUHandle: "no/such/ou"}
+	err := validateDefinitionWrapper(dto, nil, nil, ouSvc)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "no/such/ou")
+}
+
+// TestValidateResolvesOUHandleUsesRuntimeContext verifies the ouHandle lookup carries a runtime
+// context. Declarative resources load at server boot with no authenticated caller, and
+// GetOrganizationUnitByPath's authorization check denies unauthenticated, non-runtime callers;
+// a plain context here would make every ouHandle-based resource fail to load with a misleading
+// "organization unit ... not found" error even though the OU exists. Regression test for that.
+func (s *DefinitionExporterTestSuite) TestValidateResolvesOUHandleUsesRuntimeContext() {
+	ouSvc := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	ouSvc.EXPECT().
+		GetOrganizationUnitByPath(mock.MatchedBy(security.IsRuntimeContext), "root/eng").
+		Return(providers.OrganizationUnit{ID: "ou-123"}, nil).Once()
+	ouSvc.EXPECT().IsOrganizationUnitExists(mock.Anything, "ou-123").Return(true, nil).Once()
+
+	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v", OUHandle: "root/eng"}
+	s.Require().NoError(validateDefinitionWrapper(dto, nil, nil, ouSvc))
+	s.Equal("ou-123", dto.OUID)
+}
+
+// TestValidateRejectsMissingOU verifies a declarative definition without an organization
+// unit is rejected, matching what the management API enforces on create.
+func (s *DefinitionExporterTestSuite) TestValidateRejectsMissingOU() {
+	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v"}
+	err := validateDefinitionWrapper(dto, nil, nil, nil)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "ouId or ouHandle is required")
+}
+
+// TestValidateRejectsUnknownExplicitOUID verifies an explicit ouId that names no real
+// organization unit is rejected, rather than loading the resource under a dangling owner.
+func (s *DefinitionExporterTestSuite) TestValidateRejectsUnknownExplicitOUID() {
+	ouSvc := newOUServiceMock(s.T(), map[string]bool{}, map[string]string{}, map[string]string{})
+
+	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v", OUID: "no-such-ou"}
+	err := validateDefinitionWrapper(dto, nil, nil, ouSvc)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "no-such-ou")
+}
+
+// TestValidateRejectsDuplicateIDAndHandle verifies a second declarative file cannot
+// silently overwrite or shadow a definition already loaded from another file.
+func (s *DefinitionExporterTestSuite) TestValidateRejectsDuplicateIDAndHandle() {
+	fileStore := newDefinitionFileBasedStore()
+	s.Require().NoError(fileStore.GenericFileBasedStore.ClearByType())
+	storer := &definitionStorer{store: fileStore}
+
+	first := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v", OUID: "ou-1"}
+	s.Require().NoError(validateDefinitionWrapper(first, fileStore, nil, nil))
+	s.Require().NoError(storer.Create(first.ID, first))
+
+	dupID := &PresentationDefinitionDTO{ID: "def-1", Handle: "other", VCT: "v", OUID: "ou-1"}
+	err := validateDefinitionWrapper(dupID, fileStore, nil, nil)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "duplicate presentation definition ID")
+
+	dupHandle := &PresentationDefinitionDTO{ID: "def-2", Handle: "h", VCT: "v", OUID: "ou-1"}
+	err = validateDefinitionWrapper(dupHandle, fileStore, nil, nil)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "duplicate presentation definition handle")
+}
+
+// TestValidateRejectsHandleAlreadyInDatabase verifies a declarative definition cannot claim
+// a handle a runtime definition already owns under a different ID. The composite store
+// resolves reads by checking the database first, so an unnoticed collision here would let
+// the database entry silently shadow the declarative one on every read.
+func (s *DefinitionExporterTestSuite) TestValidateRejectsHandleAlreadyInDatabase() {
+	dbStore := newStatefulDefinitionStore(s.T())
+	s.Require().NoError(dbStore.CreatePresentationDefinition(context.Background(),
+		PresentationDefinitionDTO{ID: "def-db", Handle: "shared_handle", VCT: "v", OUID: "ou-1"}))
+
+	dto := &PresentationDefinitionDTO{ID: "def-decl", Handle: "shared_handle", VCT: "v", OUID: "ou-1"}
+	err := validateDefinitionWrapper(dto, nil, dbStore, nil)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "duplicate presentation definition handle")
+	s.Contains(err.Error(), "already used in the database store")
+}
+
+// TestValidateRejectsIDAlreadyInDatabase verifies a declarative definition cannot claim an
+// ID a runtime definition already owns, which in composite mode would otherwise be shadowed
+// by the database entry on every read.
+func (s *DefinitionExporterTestSuite) TestValidateRejectsIDAlreadyInDatabase() {
+	dbStore := newStatefulDefinitionStore(s.T())
+	s.Require().NoError(dbStore.CreatePresentationDefinition(context.Background(),
+		PresentationDefinitionDTO{ID: "def-db", Handle: "runtime_handle", VCT: "v", OUID: "ou-1"}))
+
+	dto := &PresentationDefinitionDTO{ID: "def-db", Handle: "declarative_handle", VCT: "v", OUID: "ou-1"}
+	err := validateDefinitionWrapper(dto, nil, dbStore, nil)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "already exists in the database store")
+}
+
+// TestValidateAllowsUnusedIDWithDatabaseStore verifies the composite-mode duplicate check
+// lets a fresh ID through rather than rejecting every declarative resource.
+func (s *DefinitionExporterTestSuite) TestValidateAllowsUnusedIDWithDatabaseStore() {
+	dbStore := newStatefulDefinitionStore(s.T())
+
+	dto := &PresentationDefinitionDTO{ID: "def-fresh", Handle: "fresh_handle", VCT: "v", OUID: "ou-1"}
+	s.NoError(validateDefinitionWrapper(dto, nil, dbStore, nil))
+}
+
+// TestValidateSurfacesDatabaseLookupFailure verifies a database error during the duplicate
+// check fails the load instead of being mistaken for "no duplicate".
+func (s *DefinitionExporterTestSuite) TestValidateSurfacesDatabaseLookupFailure() {
+	dbStore := newDefinitionStoreInterfaceMock(s.T())
+	dbStore.EXPECT().GetPresentationDefinitionByID(mock.Anything, mock.Anything).
+		Return(nil, errors.New("db boom"))
+
+	dto := &PresentationDefinitionDTO{ID: "def-x", Handle: "h", VCT: "v", OUID: "ou-1"}
+	err := validateDefinitionWrapper(dto, nil, dbStore, nil)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "failed to check for duplicate")
+}
+
+// TestValidateSurfacesDatabaseHandleLookupFailure verifies a database error during the
+// handle half of the duplicate check fails the load instead of being mistaken for "no duplicate".
+func (s *DefinitionExporterTestSuite) TestValidateSurfacesDatabaseHandleLookupFailure() {
+	dbStore := newDefinitionStoreInterfaceMock(s.T())
+	dbStore.EXPECT().GetPresentationDefinitionByID(mock.Anything, mock.Anything).
+		Return(nil, ErrNotFound)
+	dbStore.EXPECT().GetPresentationDefinitionByHandle(mock.Anything, mock.Anything).
+		Return(nil, errors.New("db boom"))
+
+	dto := &PresentationDefinitionDTO{ID: "def-x", Handle: "h", VCT: "v", OUID: "ou-1"}
+	err := validateDefinitionWrapper(dto, nil, dbStore, nil)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "failed to check for duplicate")
+}
+
+// TestLoadDeclarativeResourcesRejectsInvalidFile verifies a malformed declarative file
+// fails the load, so the server refuses to start rather than silently skipping it.
+func (s *DefinitionExporterTestSuite) TestLoadDeclarativeResourcesRejectsInvalidFile() {
+	home := s.T().TempDir()
+	dir := filepath.Join(home, "config", "resources", "presentation_definitions")
+	s.Require().NoError(os.MkdirAll(dir, 0o750))
+	s.Require().NoError(os.WriteFile(filepath.Join(dir, "bad.yaml"), []byte("id: [unterminated"), 0o600))
+
+	config.ResetServerRuntime()
+	s.T().Cleanup(config.ResetServerRuntime)
+	s.Require().NoError(config.InitializeServerRuntime(home, &config.Config{}))
+
+	fileStore := newDefinitionFileBasedStore()
+	s.Require().NoError(fileStore.GenericFileBasedStore.ClearByType())
+
+	err := loadDeclarativeResources(fileStore, nil, nil)
+	s.Require().Error(err, "a malformed declarative file must fail the load")
+	s.Contains(err.Error(), "failed to load presentation definition resources")
+}
+
+// TestLoadDeclarativeResourcesFromDisk exercises the whole loader path against a real file:
+// parse, validate, resolve the organization unit handle, and store under the resource ID.
+func (s *DefinitionExporterTestSuite) TestLoadDeclarativeResourcesFromDisk() {
+	home := s.T().TempDir()
+	dir := filepath.Join(home, "config", "resources", "presentation_definitions")
+	s.Require().NoError(os.MkdirAll(dir, 0o750))
+	s.Require().NoError(os.WriteFile(filepath.Join(dir, "def.yaml"), []byte(
+		"id: def-disk\nhandle: disk_handle\nvct: urn:example:vct\nouHandle: root/eng\n"), 0o600))
+
+	config.ResetServerRuntime()
+	s.T().Cleanup(config.ResetServerRuntime)
+	s.Require().NoError(config.InitializeServerRuntime(home, &config.Config{}))
+
+	ouSvc := newOUServiceMock(s.T(), map[string]bool{"ou-123": true},
+		map[string]string{"root/eng": "ou-123"}, map[string]string{"ou-123": "root/eng"})
+
+	fileStore := newDefinitionFileBasedStore()
+	s.Require().NoError(fileStore.GenericFileBasedStore.ClearByType())
+	s.Require().NoError(loadDeclarativeResources(fileStore, nil, ouSvc))
+
+	got, err := fileStore.GetPresentationDefinitionByID(context.Background(), "def-disk")
+	s.Require().NoError(err)
+	s.Equal("disk_handle", got.Handle)
+	s.Equal("ou-123", got.OUID, "ouHandle must be resolved to an ouId at load time")
 }

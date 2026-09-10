@@ -326,6 +326,20 @@ var (
 			DefaultValue: "One or more user types in allowed_user_types do not exist in the system",
 		},
 	}
+	// ErrorInvalidAgentType is the error returned when an invalid agent type is provided in
+	// allowedAgentTypes.
+	ErrorInvalidAgentType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1046",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_agent_type",
+			DefaultValue: "Invalid agent type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_agent_type_description",
+			DefaultValue: "One or more agent types in allowedAgentTypes do not exist in the system",
+		},
+	}
 	// ErrorThemeNotFound is the error returned when theme is not found.
 	ErrorThemeNotFound = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -573,6 +587,19 @@ var (
 			Key: "error.applicationservice.invalid_subject_attribute_mapping_description",
 			DefaultValue: "The subject attribute mapping must reference an attribute that is unique, required, " +
 				"and string-typed in an allowed user type",
+		},
+	}
+	// ErrorInvalidCredential is returned when a supplied credential is invalid.
+	ErrorInvalidCredential = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1046",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_credential",
+			DefaultValue: "Invalid credential",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_credential_description",
+			DefaultValue: "The provided credential is invalid",
 		},
 	}
 )

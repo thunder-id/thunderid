@@ -92,7 +92,7 @@ func (a *ouUserResolverAdapter) GetResourceDependencies(
 
 // resolveOUUserDisplayPaths collects user types and resolves their display attribute paths.
 func resolveOUUserDisplayPaths(
-	ctx context.Context, users []User, schemaService entitytype.EntityTypeServiceInterface,
+	ctx context.Context, users []providers.User, schemaService entitytype.EntityTypeServiceInterface,
 ) map[string]string {
 	userTypes := make([]string, 0, len(users))
 	for _, u := range users {

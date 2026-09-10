@@ -38,16 +38,16 @@ func (_m *i18nStoreInterfaceMock) EXPECT() *i18nStoreInterfaceMock_Expecter {
 }
 
 // DeleteTranslation provides a mock function for the type i18nStoreInterfaceMock
-func (_mock *i18nStoreInterfaceMock) DeleteTranslation(language string, key string, namespace string) error {
-	ret := _mock.Called(language, key, namespace)
+func (_mock *i18nStoreInterfaceMock) DeleteTranslation(ctx context.Context, language string, key string, namespace string) error {
+	ret := _mock.Called(ctx, language, key, namespace)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteTranslation")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(string, string, string) error); ok {
-		r0 = returnFunc(language, key, namespace)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) error); ok {
+		r0 = returnFunc(ctx, language, key, namespace)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -60,18 +60,19 @@ type i18nStoreInterfaceMock_DeleteTranslation_Call struct {
 }
 
 // DeleteTranslation is a helper method to define mock.On call
+//   - ctx context.Context
 //   - language string
 //   - key string
 //   - namespace string
-func (_e *i18nStoreInterfaceMock_Expecter) DeleteTranslation(language interface{}, key interface{}, namespace interface{}) *i18nStoreInterfaceMock_DeleteTranslation_Call {
-	return &i18nStoreInterfaceMock_DeleteTranslation_Call{Call: _e.mock.On("DeleteTranslation", language, key, namespace)}
+func (_e *i18nStoreInterfaceMock_Expecter) DeleteTranslation(ctx interface{}, language interface{}, key interface{}, namespace interface{}) *i18nStoreInterfaceMock_DeleteTranslation_Call {
+	return &i18nStoreInterfaceMock_DeleteTranslation_Call{Call: _e.mock.On("DeleteTranslation", ctx, language, key, namespace)}
 }
 
-func (_c *i18nStoreInterfaceMock_DeleteTranslation_Call) Run(run func(language string, key string, namespace string)) *i18nStoreInterfaceMock_DeleteTranslation_Call {
+func (_c *i18nStoreInterfaceMock_DeleteTranslation_Call) Run(run func(ctx context.Context, language string, key string, namespace string)) *i18nStoreInterfaceMock_DeleteTranslation_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
 		}
 		var arg1 string
 		if args[1] != nil {
@@ -81,10 +82,15 @@ func (_c *i18nStoreInterfaceMock_DeleteTranslation_Call) Run(run func(language s
 		if args[2] != nil {
 			arg2 = args[2].(string)
 		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -95,7 +101,7 @@ func (_c *i18nStoreInterfaceMock_DeleteTranslation_Call) Return(err error) *i18n
 	return _c
 }
 
-func (_c *i18nStoreInterfaceMock_DeleteTranslation_Call) RunAndReturn(run func(language string, key string, namespace string) error) *i18nStoreInterfaceMock_DeleteTranslation_Call {
+func (_c *i18nStoreInterfaceMock_DeleteTranslation_Call) RunAndReturn(run func(ctx context.Context, language string, key string, namespace string) error) *i18nStoreInterfaceMock_DeleteTranslation_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -164,16 +170,16 @@ func (_c *i18nStoreInterfaceMock_DeleteTranslationsByKey_Call) RunAndReturn(run 
 }
 
 // DeleteTranslationsByLanguage provides a mock function for the type i18nStoreInterfaceMock
-func (_mock *i18nStoreInterfaceMock) DeleteTranslationsByLanguage(language string) error {
-	ret := _mock.Called(language)
+func (_mock *i18nStoreInterfaceMock) DeleteTranslationsByLanguage(ctx context.Context, language string) error {
+	ret := _mock.Called(ctx, language)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteTranslationsByLanguage")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(string) error); ok {
-		r0 = returnFunc(language)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, language)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -186,19 +192,25 @@ type i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call struct {
 }
 
 // DeleteTranslationsByLanguage is a helper method to define mock.On call
+//   - ctx context.Context
 //   - language string
-func (_e *i18nStoreInterfaceMock_Expecter) DeleteTranslationsByLanguage(language interface{}) *i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call {
-	return &i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call{Call: _e.mock.On("DeleteTranslationsByLanguage", language)}
+func (_e *i18nStoreInterfaceMock_Expecter) DeleteTranslationsByLanguage(ctx interface{}, language interface{}) *i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call {
+	return &i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call{Call: _e.mock.On("DeleteTranslationsByLanguage", ctx, language)}
 }
 
-func (_c *i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call) Run(run func(language string)) *i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call {
+func (_c *i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call) Run(run func(ctx context.Context, language string)) *i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -209,7 +221,7 @@ func (_c *i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call) Return(err e
 	return _c
 }
 
-func (_c *i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call) RunAndReturn(run func(language string) error) *i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call {
+func (_c *i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call) RunAndReturn(run func(ctx context.Context, language string) error) *i18nStoreInterfaceMock_DeleteTranslationsByLanguage_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -272,8 +284,8 @@ func (_c *i18nStoreInterfaceMock_DeleteTranslationsByNamespace_Call) RunAndRetur
 }
 
 // GetDistinctLanguages provides a mock function for the type i18nStoreInterfaceMock
-func (_mock *i18nStoreInterfaceMock) GetDistinctLanguages() ([]string, error) {
-	ret := _mock.Called()
+func (_mock *i18nStoreInterfaceMock) GetDistinctLanguages(ctx context.Context) ([]string, error) {
+	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetDistinctLanguages")
@@ -281,18 +293,18 @@ func (_mock *i18nStoreInterfaceMock) GetDistinctLanguages() ([]string, error) {
 
 	var r0 []string
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func() ([]string, error)); ok {
-		return returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) ([]string, error)); ok {
+		return returnFunc(ctx)
 	}
-	if returnFunc, ok := ret.Get(0).(func() []string); ok {
-		r0 = returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) []string); ok {
+		r0 = returnFunc(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]string)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func() error); ok {
-		r1 = returnFunc()
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -305,13 +317,20 @@ type i18nStoreInterfaceMock_GetDistinctLanguages_Call struct {
 }
 
 // GetDistinctLanguages is a helper method to define mock.On call
-func (_e *i18nStoreInterfaceMock_Expecter) GetDistinctLanguages() *i18nStoreInterfaceMock_GetDistinctLanguages_Call {
-	return &i18nStoreInterfaceMock_GetDistinctLanguages_Call{Call: _e.mock.On("GetDistinctLanguages")}
+//   - ctx context.Context
+func (_e *i18nStoreInterfaceMock_Expecter) GetDistinctLanguages(ctx interface{}) *i18nStoreInterfaceMock_GetDistinctLanguages_Call {
+	return &i18nStoreInterfaceMock_GetDistinctLanguages_Call{Call: _e.mock.On("GetDistinctLanguages", ctx)}
 }
 
-func (_c *i18nStoreInterfaceMock_GetDistinctLanguages_Call) Run(run func()) *i18nStoreInterfaceMock_GetDistinctLanguages_Call {
+func (_c *i18nStoreInterfaceMock_GetDistinctLanguages_Call) Run(run func(ctx context.Context)) *i18nStoreInterfaceMock_GetDistinctLanguages_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -321,14 +340,14 @@ func (_c *i18nStoreInterfaceMock_GetDistinctLanguages_Call) Return(strings []str
 	return _c
 }
 
-func (_c *i18nStoreInterfaceMock_GetDistinctLanguages_Call) RunAndReturn(run func() ([]string, error)) *i18nStoreInterfaceMock_GetDistinctLanguages_Call {
+func (_c *i18nStoreInterfaceMock_GetDistinctLanguages_Call) RunAndReturn(run func(ctx context.Context) ([]string, error)) *i18nStoreInterfaceMock_GetDistinctLanguages_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetTranslations provides a mock function for the type i18nStoreInterfaceMock
-func (_mock *i18nStoreInterfaceMock) GetTranslations() (map[string]map[string]Translation, error) {
-	ret := _mock.Called()
+func (_mock *i18nStoreInterfaceMock) GetTranslations(ctx context.Context) (map[string]map[string]Translation, error) {
+	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetTranslations")
@@ -336,18 +355,18 @@ func (_mock *i18nStoreInterfaceMock) GetTranslations() (map[string]map[string]Tr
 
 	var r0 map[string]map[string]Translation
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func() (map[string]map[string]Translation, error)); ok {
-		return returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (map[string]map[string]Translation, error)); ok {
+		return returnFunc(ctx)
 	}
-	if returnFunc, ok := ret.Get(0).(func() map[string]map[string]Translation); ok {
-		r0 = returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) map[string]map[string]Translation); ok {
+		r0 = returnFunc(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(map[string]map[string]Translation)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func() error); ok {
-		r1 = returnFunc()
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -360,13 +379,20 @@ type i18nStoreInterfaceMock_GetTranslations_Call struct {
 }
 
 // GetTranslations is a helper method to define mock.On call
-func (_e *i18nStoreInterfaceMock_Expecter) GetTranslations() *i18nStoreInterfaceMock_GetTranslations_Call {
-	return &i18nStoreInterfaceMock_GetTranslations_Call{Call: _e.mock.On("GetTranslations")}
+//   - ctx context.Context
+func (_e *i18nStoreInterfaceMock_Expecter) GetTranslations(ctx interface{}) *i18nStoreInterfaceMock_GetTranslations_Call {
+	return &i18nStoreInterfaceMock_GetTranslations_Call{Call: _e.mock.On("GetTranslations", ctx)}
 }
 
-func (_c *i18nStoreInterfaceMock_GetTranslations_Call) Run(run func()) *i18nStoreInterfaceMock_GetTranslations_Call {
+func (_c *i18nStoreInterfaceMock_GetTranslations_Call) Run(run func(ctx context.Context)) *i18nStoreInterfaceMock_GetTranslations_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -376,14 +402,14 @@ func (_c *i18nStoreInterfaceMock_GetTranslations_Call) Return(stringToStringToTr
 	return _c
 }
 
-func (_c *i18nStoreInterfaceMock_GetTranslations_Call) RunAndReturn(run func() (map[string]map[string]Translation, error)) *i18nStoreInterfaceMock_GetTranslations_Call {
+func (_c *i18nStoreInterfaceMock_GetTranslations_Call) RunAndReturn(run func(ctx context.Context) (map[string]map[string]Translation, error)) *i18nStoreInterfaceMock_GetTranslations_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetTranslationsByKey provides a mock function for the type i18nStoreInterfaceMock
-func (_mock *i18nStoreInterfaceMock) GetTranslationsByKey(key string, namespace string) (map[string]Translation, error) {
-	ret := _mock.Called(key, namespace)
+func (_mock *i18nStoreInterfaceMock) GetTranslationsByKey(ctx context.Context, key string, namespace string) (map[string]Translation, error) {
+	ret := _mock.Called(ctx, key, namespace)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetTranslationsByKey")
@@ -391,18 +417,18 @@ func (_mock *i18nStoreInterfaceMock) GetTranslationsByKey(key string, namespace 
 
 	var r0 map[string]Translation
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(string, string) (map[string]Translation, error)); ok {
-		return returnFunc(key, namespace)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (map[string]Translation, error)); ok {
+		return returnFunc(ctx, key, namespace)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string, string) map[string]Translation); ok {
-		r0 = returnFunc(key, namespace)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) map[string]Translation); ok {
+		r0 = returnFunc(ctx, key, namespace)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(map[string]Translation)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(string, string) error); ok {
-		r1 = returnFunc(key, namespace)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, key, namespace)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -415,17 +441,91 @@ type i18nStoreInterfaceMock_GetTranslationsByKey_Call struct {
 }
 
 // GetTranslationsByKey is a helper method to define mock.On call
+//   - ctx context.Context
 //   - key string
 //   - namespace string
-func (_e *i18nStoreInterfaceMock_Expecter) GetTranslationsByKey(key interface{}, namespace interface{}) *i18nStoreInterfaceMock_GetTranslationsByKey_Call {
-	return &i18nStoreInterfaceMock_GetTranslationsByKey_Call{Call: _e.mock.On("GetTranslationsByKey", key, namespace)}
+func (_e *i18nStoreInterfaceMock_Expecter) GetTranslationsByKey(ctx interface{}, key interface{}, namespace interface{}) *i18nStoreInterfaceMock_GetTranslationsByKey_Call {
+	return &i18nStoreInterfaceMock_GetTranslationsByKey_Call{Call: _e.mock.On("GetTranslationsByKey", ctx, key, namespace)}
 }
 
-func (_c *i18nStoreInterfaceMock_GetTranslationsByKey_Call) Run(run func(key string, namespace string)) *i18nStoreInterfaceMock_GetTranslationsByKey_Call {
+func (_c *i18nStoreInterfaceMock_GetTranslationsByKey_Call) Run(run func(ctx context.Context, key string, namespace string)) *i18nStoreInterfaceMock_GetTranslationsByKey_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *i18nStoreInterfaceMock_GetTranslationsByKey_Call) Return(stringToTranslation map[string]Translation, err error) *i18nStoreInterfaceMock_GetTranslationsByKey_Call {
+	_c.Call.Return(stringToTranslation, err)
+	return _c
+}
+
+func (_c *i18nStoreInterfaceMock_GetTranslationsByKey_Call) RunAndReturn(run func(ctx context.Context, key string, namespace string) (map[string]Translation, error)) *i18nStoreInterfaceMock_GetTranslationsByKey_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetTranslationsByNamespace provides a mock function for the type i18nStoreInterfaceMock
+func (_mock *i18nStoreInterfaceMock) GetTranslationsByNamespace(ctx context.Context, namespace string) (map[string]map[string]Translation, error) {
+	ret := _mock.Called(ctx, namespace)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetTranslationsByNamespace")
+	}
+
+	var r0 map[string]map[string]Translation
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (map[string]map[string]Translation, error)); ok {
+		return returnFunc(ctx, namespace)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) map[string]map[string]Translation); ok {
+		r0 = returnFunc(ctx, namespace)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]map[string]Translation)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, namespace)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// i18nStoreInterfaceMock_GetTranslationsByNamespace_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTranslationsByNamespace'
+type i18nStoreInterfaceMock_GetTranslationsByNamespace_Call struct {
+	*mock.Call
+}
+
+// GetTranslationsByNamespace is a helper method to define mock.On call
+//   - ctx context.Context
+//   - namespace string
+func (_e *i18nStoreInterfaceMock_Expecter) GetTranslationsByNamespace(ctx interface{}, namespace interface{}) *i18nStoreInterfaceMock_GetTranslationsByNamespace_Call {
+	return &i18nStoreInterfaceMock_GetTranslationsByNamespace_Call{Call: _e.mock.On("GetTranslationsByNamespace", ctx, namespace)}
+}
+
+func (_c *i18nStoreInterfaceMock_GetTranslationsByNamespace_Call) Run(run func(ctx context.Context, namespace string)) *i18nStoreInterfaceMock_GetTranslationsByNamespace_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
 		}
 		var arg1 string
 		if args[1] != nil {
@@ -439,89 +539,27 @@ func (_c *i18nStoreInterfaceMock_GetTranslationsByKey_Call) Run(run func(key str
 	return _c
 }
 
-func (_c *i18nStoreInterfaceMock_GetTranslationsByKey_Call) Return(stringToTranslation map[string]Translation, err error) *i18nStoreInterfaceMock_GetTranslationsByKey_Call {
-	_c.Call.Return(stringToTranslation, err)
-	return _c
-}
-
-func (_c *i18nStoreInterfaceMock_GetTranslationsByKey_Call) RunAndReturn(run func(key string, namespace string) (map[string]Translation, error)) *i18nStoreInterfaceMock_GetTranslationsByKey_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// GetTranslationsByNamespace provides a mock function for the type i18nStoreInterfaceMock
-func (_mock *i18nStoreInterfaceMock) GetTranslationsByNamespace(namespace string) (map[string]map[string]Translation, error) {
-	ret := _mock.Called(namespace)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetTranslationsByNamespace")
-	}
-
-	var r0 map[string]map[string]Translation
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(string) (map[string]map[string]Translation, error)); ok {
-		return returnFunc(namespace)
-	}
-	if returnFunc, ok := ret.Get(0).(func(string) map[string]map[string]Translation); ok {
-		r0 = returnFunc(namespace)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(map[string]map[string]Translation)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(string) error); ok {
-		r1 = returnFunc(namespace)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// i18nStoreInterfaceMock_GetTranslationsByNamespace_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTranslationsByNamespace'
-type i18nStoreInterfaceMock_GetTranslationsByNamespace_Call struct {
-	*mock.Call
-}
-
-// GetTranslationsByNamespace is a helper method to define mock.On call
-//   - namespace string
-func (_e *i18nStoreInterfaceMock_Expecter) GetTranslationsByNamespace(namespace interface{}) *i18nStoreInterfaceMock_GetTranslationsByNamespace_Call {
-	return &i18nStoreInterfaceMock_GetTranslationsByNamespace_Call{Call: _e.mock.On("GetTranslationsByNamespace", namespace)}
-}
-
-func (_c *i18nStoreInterfaceMock_GetTranslationsByNamespace_Call) Run(run func(namespace string)) *i18nStoreInterfaceMock_GetTranslationsByNamespace_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
-		if args[0] != nil {
-			arg0 = args[0].(string)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
 func (_c *i18nStoreInterfaceMock_GetTranslationsByNamespace_Call) Return(stringToStringToTranslation map[string]map[string]Translation, err error) *i18nStoreInterfaceMock_GetTranslationsByNamespace_Call {
 	_c.Call.Return(stringToStringToTranslation, err)
 	return _c
 }
 
-func (_c *i18nStoreInterfaceMock_GetTranslationsByNamespace_Call) RunAndReturn(run func(namespace string) (map[string]map[string]Translation, error)) *i18nStoreInterfaceMock_GetTranslationsByNamespace_Call {
+func (_c *i18nStoreInterfaceMock_GetTranslationsByNamespace_Call) RunAndReturn(run func(ctx context.Context, namespace string) (map[string]map[string]Translation, error)) *i18nStoreInterfaceMock_GetTranslationsByNamespace_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // UpsertTranslation provides a mock function for the type i18nStoreInterfaceMock
-func (_mock *i18nStoreInterfaceMock) UpsertTranslation(trans Translation) error {
-	ret := _mock.Called(trans)
+func (_mock *i18nStoreInterfaceMock) UpsertTranslation(ctx context.Context, trans Translation) error {
+	ret := _mock.Called(ctx, trans)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpsertTranslation")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(Translation) error); ok {
-		r0 = returnFunc(trans)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, Translation) error); ok {
+		r0 = returnFunc(ctx, trans)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -534,19 +572,25 @@ type i18nStoreInterfaceMock_UpsertTranslation_Call struct {
 }
 
 // UpsertTranslation is a helper method to define mock.On call
+//   - ctx context.Context
 //   - trans Translation
-func (_e *i18nStoreInterfaceMock_Expecter) UpsertTranslation(trans interface{}) *i18nStoreInterfaceMock_UpsertTranslation_Call {
-	return &i18nStoreInterfaceMock_UpsertTranslation_Call{Call: _e.mock.On("UpsertTranslation", trans)}
+func (_e *i18nStoreInterfaceMock_Expecter) UpsertTranslation(ctx interface{}, trans interface{}) *i18nStoreInterfaceMock_UpsertTranslation_Call {
+	return &i18nStoreInterfaceMock_UpsertTranslation_Call{Call: _e.mock.On("UpsertTranslation", ctx, trans)}
 }
 
-func (_c *i18nStoreInterfaceMock_UpsertTranslation_Call) Run(run func(trans Translation)) *i18nStoreInterfaceMock_UpsertTranslation_Call {
+func (_c *i18nStoreInterfaceMock_UpsertTranslation_Call) Run(run func(ctx context.Context, trans Translation)) *i18nStoreInterfaceMock_UpsertTranslation_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 Translation
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(Translation)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 Translation
+		if args[1] != nil {
+			arg1 = args[1].(Translation)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -557,7 +601,7 @@ func (_c *i18nStoreInterfaceMock_UpsertTranslation_Call) Return(err error) *i18n
 	return _c
 }
 
-func (_c *i18nStoreInterfaceMock_UpsertTranslation_Call) RunAndReturn(run func(trans Translation) error) *i18nStoreInterfaceMock_UpsertTranslation_Call {
+func (_c *i18nStoreInterfaceMock_UpsertTranslation_Call) RunAndReturn(run func(ctx context.Context, trans Translation) error) *i18nStoreInterfaceMock_UpsertTranslation_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -620,16 +664,16 @@ func (_c *i18nStoreInterfaceMock_UpsertTranslations_Call) RunAndReturn(run func(
 }
 
 // UpsertTranslationsByLanguage provides a mock function for the type i18nStoreInterfaceMock
-func (_mock *i18nStoreInterfaceMock) UpsertTranslationsByLanguage(language string, translations []Translation) error {
-	ret := _mock.Called(language, translations)
+func (_mock *i18nStoreInterfaceMock) UpsertTranslationsByLanguage(ctx context.Context, language string, translations []Translation) error {
+	ret := _mock.Called(ctx, language, translations)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpsertTranslationsByLanguage")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(string, []Translation) error); ok {
-		r0 = returnFunc(language, translations)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []Translation) error); ok {
+		r0 = returnFunc(ctx, language, translations)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -642,25 +686,31 @@ type i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call struct {
 }
 
 // UpsertTranslationsByLanguage is a helper method to define mock.On call
+//   - ctx context.Context
 //   - language string
 //   - translations []Translation
-func (_e *i18nStoreInterfaceMock_Expecter) UpsertTranslationsByLanguage(language interface{}, translations interface{}) *i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call {
-	return &i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call{Call: _e.mock.On("UpsertTranslationsByLanguage", language, translations)}
+func (_e *i18nStoreInterfaceMock_Expecter) UpsertTranslationsByLanguage(ctx interface{}, language interface{}, translations interface{}) *i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call {
+	return &i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call{Call: _e.mock.On("UpsertTranslationsByLanguage", ctx, language, translations)}
 }
 
-func (_c *i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call) Run(run func(language string, translations []Translation)) *i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call {
+func (_c *i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call) Run(run func(ctx context.Context, language string, translations []Translation)) *i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
 		}
-		var arg1 []Translation
+		var arg1 string
 		if args[1] != nil {
-			arg1 = args[1].([]Translation)
+			arg1 = args[1].(string)
+		}
+		var arg2 []Translation
+		if args[2] != nil {
+			arg2 = args[2].([]Translation)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -671,7 +721,7 @@ func (_c *i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call) Return(err e
 	return _c
 }
 
-func (_c *i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call) RunAndReturn(run func(language string, translations []Translation) error) *i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call {
+func (_c *i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call) RunAndReturn(run func(ctx context.Context, language string, translations []Translation) error) *i18nStoreInterfaceMock_UpsertTranslationsByLanguage_Call {
 	_c.Call.Return(run)
 	return _c
 }

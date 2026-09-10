@@ -10,6 +10,9 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+// mutatedValue is written to a returned DTO to prove the store hands out a copy.
+const mutatedValue = "mutated"
+
 type CredentialFileBasedStoreTestSuite struct {
 	suite.Suite
 	store  *credentialFileBasedStore
@@ -153,4 +156,32 @@ func (s *CredentialFileBasedStoreTestSuite) TestIsDeclarative() {
 	isDeclarative, err = s.store.IsCredentialConfigurationDeclarative(s.ctx, "missing")
 	s.Require().NoError(err)
 	s.False(isDeclarative)
+}
+
+func (s *CredentialFileBasedStoreTestSuite) TestGetReturnsIsolatedCopy() {
+	s.seed("cfg-copy", "eudi-pid", "urn:eudi:pid:1")
+
+	// The service stamps OUHandle onto every configuration it reads, so without a copy
+	// each read would write into the shared declarative entry.
+	first, err := s.store.GetCredentialConfigurationByID(s.ctx, "cfg-copy")
+	s.Require().NoError(err)
+	first.OUHandle = mutatedValue
+	first.Handle = mutatedValue
+
+	second, err := s.store.GetCredentialConfigurationByID(s.ctx, "cfg-copy")
+	s.Require().NoError(err)
+	s.Empty(second.OUHandle, "a caller must not be able to mutate the declarative store")
+	s.Equal("eudi-pid", second.Handle)
+}
+
+func (s *CredentialFileBasedStoreTestSuite) TestGetByHandleReturnsIsolatedCopy() {
+	s.seed("cfg-copy-h", "eudi-pid", "urn:eudi:pid:1")
+
+	first, err := s.store.GetCredentialConfigurationByHandle(s.ctx, "eudi-pid")
+	s.Require().NoError(err)
+	first.VCT = mutatedValue
+
+	second, err := s.store.GetCredentialConfigurationByHandle(s.ctx, "eudi-pid")
+	s.Require().NoError(err)
+	s.Equal("urn:eudi:pid:1", second.VCT)
 }

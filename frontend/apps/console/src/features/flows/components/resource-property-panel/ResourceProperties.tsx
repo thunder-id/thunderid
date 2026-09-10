@@ -258,6 +258,19 @@ function ResourceProperties({
           </>
         );
       }
+      if (resource.type === ElementTypes.QrCode) {
+        return (
+          <>
+            {renderElementId(true)}
+            <TextPropertyField
+              resource={resource}
+              propertyKey="source"
+              propertyValue={(resource as Element & {source?: string}).source ?? ''}
+              onChange={(_key, value, res) => handleChange('source', value, res, true)}
+            />
+          </>
+        );
+      }
       return (
         <>
           {renderElementId(true)}

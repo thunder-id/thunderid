@@ -409,6 +409,59 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_ActorClaim(
 	}
 }
 
+// The code carries the subject resolved during login. Reporting it depends on the handler passing it
+// to the builder, so assert on the build context rather than on the response: without it the builder
+// falls back to resolving the token subject, which is a mapped attribute on some deployments and
+// resolves to nothing, silently dropping the subject from the issuance events.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_PassesCodeSubjectToTheBuilder() {
+	authCode := suite.testAuthzCode
+	authCode.SubjectID = "user-entity-1"
+	authCode.SubjectCategory = string(providers.EntityCategoryUser)
+
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authCode, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(tokenCtx *tokenservice.AccessTokenBuildContext) bool {
+			return tokenCtx.SubjectEntityID == "user-entity-1" &&
+				tokenCtx.SubjectCategory == string(providers.EntityCategoryUser)
+		})).Return(&model.TokenDTO{
+		Token:     "test-jwt-token",
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresIn: 3600,
+		ClientID:  testClientID,
+		Subject:   testUserID,
+	}, nil)
+
+	_, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_CarriesCodeCorrelationID() {
+	authCode := suite.testAuthzCode
+	authCode.CorrelationID = "flow-exec-1"
+
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authCode, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token:     "test-jwt-token",
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresIn: 3600,
+		ClientID:  testClientID,
+		Subject:   testUserID,
+	}, nil)
+
+	result, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), "flow-exec-1", result.CorrelationID)
+}
+
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_InvalidAuthorizationCode() {
 	// Mock authorization code store to return error
 	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
@@ -1607,4 +1660,33 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_DownscopeVa
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), constants.ErrorServerError, err.Error)
+}
+
+// TestResolveAuthTime_ZeroFallsBackToCreation covers codes minted before AuthTime existed as a field:
+// they unmarshal from the runtime store with a zero value, so a code still in flight across an
+// upgrade must not report a year-1 authentication. Its creation time is the right stand-in, since
+// authorization did not consult an existing session for those codes.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestResolveAuthTime_ZeroFallsBackToCreation() {
+	created := time.Now().Add(-2 * time.Minute)
+	code := &authz.AuthorizationCode{TimeCreated: created}
+
+	got := resolveAuthTime(code)
+
+	suite.Equal(created.Unix(), got, "a zero AuthTime should fall back to the code's creation time")
+	suite.Positive(got, "the fallback must never yield a negative Unix timestamp")
+}
+
+// TestResolveAuthTime_PrefersAuthTime verifies the normal path: when the field is set it wins, which
+// is what keeps auth_time stable across a reused session.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestResolveAuthTime_PrefersAuthTime() {
+	authenticated := time.Now().Add(-time.Hour)
+	code := &authz.AuthorizationCode{
+		TimeCreated: time.Now(),
+		AuthTime:    authenticated,
+	}
+
+	got := resolveAuthTime(code)
+
+	suite.Equal(authenticated.Unix(), got,
+		"auth_time must report the authentication, not when the code was minted")
 }

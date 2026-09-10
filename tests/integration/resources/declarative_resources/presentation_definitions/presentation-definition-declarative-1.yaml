@@ -1,6 +1,7 @@
 resource_type: presentation_definition
 id: decl-presentation-def-1
 handle: decl_presentation_def_1
+ouId: decl-ou-1
 name: Declarative Test Presentation
 description: A declarative presentation definition
 vct: https://credentials.thunderid.local/DeclarativeTestCredential

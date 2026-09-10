@@ -5,7 +5,7 @@ Read with the root [AGENTS.md](../AGENTS.md). The frontend is a pnpm monorepo un
 feature packages under `frontend/packages/`.
 
 For feature-package layout and app boundaries, see the
-[Frontend Development overview](../docs/content/community/contributing/contributing-code/frontend-development/overview.mdx).
+[Frontend Development overview](../docs/community/contributing/contributing-code/frontend-development/overview.mdx).
 
 ## Feature Packages
 

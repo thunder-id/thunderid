@@ -21,10 +21,6 @@ type EntityProviderInterface interface {
 	// GetEntity retrieves an entity by ID. Credentials are never returned.
 	GetEntity(entityID string) (*providers.Entity, *EntityProviderError)
 
-	// CreateEntity creates a new entity.
-	CreateEntity(entity *providers.Entity,
-		systemCredentials json.RawMessage) (*providers.Entity, *EntityProviderError)
-
 	// UpdateEntity updates an existing entity's core fields.
 	UpdateEntity(entityID string, entity *providers.Entity) (*providers.Entity, *EntityProviderError)
 

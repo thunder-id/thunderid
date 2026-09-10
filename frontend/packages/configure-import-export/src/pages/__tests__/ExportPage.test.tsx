@@ -66,6 +66,8 @@ describe('ExportPage', () => {
           groups: ['*'],
           agents: ['*'],
           serverConfigs: ['*'],
+          credentialConfigurations: ['*'],
+          presentationDefinitions: ['*'],
         }),
       );
     });

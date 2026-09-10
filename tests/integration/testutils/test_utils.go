@@ -5,6 +5,7 @@ package testutils
 
 import (
 	"archive/zip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -385,6 +386,10 @@ func ReplaceResources(zipFilePattern string) error {
 		return fmt.Errorf("failed to replace default.json: %v", err)
 	}
 
+	if err := addExtraSigningKeys(defaultConfigDestPath); err != nil {
+		return fmt.Errorf("failed to add extra signing keys: %v", err)
+	}
+
 	return nil
 }
 
@@ -450,6 +455,67 @@ func CopyDeclarativeResources(zipFilePattern string) error {
 		log.Printf("Copied declarative resources for %s", dir)
 	}
 
+	return nil
+}
+
+// extraSigningKeys are JWT signing keys added to the test server on top of the
+// RSA and ECDSA keys the bundled default.json already configures. They give the
+// JWKS endpoint an EdDSA key and an ML-DSA (post-quantum) key so every branch of
+// the JWKS serialization runs during the integration suite. The cert/key
+// fixtures live in testutils/testdata; the RSA and ECDSA material is generated
+// by the distribution's setup.sh.
+var extraSigningKeys = []struct {
+	id      string
+	fixture string
+}{
+	{id: "ed25519-key", fixture: "ed25519-signing"},
+	{id: "mldsa-key", fixture: "mldsa-signing"},
+}
+
+// addExtraSigningKeys copies the EdDSA and ML-DSA signing fixtures into the
+// extracted product's config/certs directory and registers them in default.json.
+func addExtraSigningKeys(defaultConfigPath string) error {
+	certsDir := filepath.Join(extractedProductHome, "config", "certs")
+	if err := os.MkdirAll(certsDir, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create certs directory: %w", err)
+	}
+
+	data, err := os.ReadFile(defaultConfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to read default.json: %w", err)
+	}
+	var cfg map[string]interface{}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("failed to parse default.json: %w", err)
+	}
+	crypto, ok := cfg["crypto"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("default.json has no crypto section")
+	}
+	keys, _ := crypto["keys"].([]interface{})
+
+	for _, k := range extraSigningKeys {
+		for _, ext := range []string{"cert", "key"} {
+			src := filepath.Join("testutils", "testdata", k.fixture+"."+ext)
+			if err := copyFile(src, filepath.Join(certsDir, k.fixture+"."+ext)); err != nil {
+				return fmt.Errorf("failed to copy signing fixture %s: %w", src, err)
+			}
+		}
+		keys = append(keys, map[string]interface{}{
+			"id":        k.id,
+			"cert_file": "config/certs/" + k.fixture + ".cert",
+			"key_file":  "config/certs/" + k.fixture + ".key",
+		})
+	}
+	crypto["keys"] = keys
+
+	out, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal default.json: %w", err)
+	}
+	if err := os.WriteFile(defaultConfigPath, out, 0644); err != nil {
+		return fmt.Errorf("failed to write default.json: %w", err)
+	}
 	return nil
 }
 

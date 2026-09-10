@@ -11,17 +11,6 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// User represents a user in the system.
-type User struct {
-	ID         string          `json:"id,omitempty"`
-	OUID       string          `json:"ouId,omitempty"`
-	OUHandle   string          `json:"ouHandle,omitempty"`
-	Type       string          `json:"type,omitempty"`
-	Attributes json.RawMessage `json:"attributes,omitempty"`
-	Display    string          `json:"display,omitempty"`
-	IsReadOnly bool            `json:"isReadOnly"`
-}
-
 // Credential represents the credentials of a user.
 type Credential struct {
 	StorageType       string                   `json:"storageType"`
@@ -37,11 +26,11 @@ type Credentials map[CredentialType][]Credential
 
 // UserListResponse represents the response for listing users with pagination.
 type UserListResponse struct {
-	TotalResults int          `json:"totalResults"`
-	StartIndex   int          `json:"startIndex"`
-	Count        int          `json:"count"`
-	Users        []User       `json:"users"`
-	Links        []utils.Link `json:"links"`
+	TotalResults int              `json:"totalResults"`
+	StartIndex   int              `json:"startIndex"`
+	Count        int              `json:"count"`
+	Users        []providers.User `json:"users"`
+	Links        []utils.Link     `json:"links"`
 }
 
 // UserGroup represents a group with basic information for user endpoints.
@@ -94,8 +83,8 @@ type CreateUserByPathRequest struct {
 }
 
 // entityToUser converts an Entity to a User.
-func entityToUser(e *providers.Entity) User {
-	return User{
+func entityToUser(e *providers.Entity) providers.User {
+	return providers.User{
 		ID:         e.ID,
 		OUID:       e.OUID,
 		Type:       e.Type,
@@ -105,8 +94,8 @@ func entityToUser(e *providers.Entity) User {
 }
 
 // entitiesToUsers converts a slice of Entity to a slice of User.
-func entitiesToUsers(entities []providers.Entity) []User {
-	users := make([]User, len(entities))
+func entitiesToUsers(entities []providers.Entity) []providers.User {
+	users := make([]providers.User, len(entities))
 	for i := range entities {
 		users[i] = entityToUser(&entities[i])
 	}
@@ -114,7 +103,7 @@ func entitiesToUsers(entities []providers.Entity) []User {
 }
 
 // userToEntity converts a User to an Entity for storage.
-func userToEntity(u *User) *providers.Entity {
+func userToEntity(u *providers.User) *providers.Entity {
 	return &providers.Entity{
 		ID:         u.ID,
 		Category:   providers.EntityCategoryUser,

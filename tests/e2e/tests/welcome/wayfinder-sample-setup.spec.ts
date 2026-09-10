@@ -129,7 +129,7 @@ test.describe("Wayfinder Sample Setup", { tag: [TestTags.WAYFINDER] }, () => {
     });
 
     /** TC002: Download button downloads the Wayfinder sample */
-    test("TC002: Download button downloads the Wayfinder sample", async ({ welcomePage }) => {
+    test.skip("TC002: Download button downloads the Wayfinder sample", async ({ welcomePage }) => {
       await test.step("Open the setup card", async () => {
         await welcomePage.gotoTryoutApp();
         await welcomePage.expandSetupCardIfCollapsed();

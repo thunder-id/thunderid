@@ -613,3 +613,23 @@ func (suite *SecurityServiceTestSuite) TestProcess_AuthorizationFailure_Insuffic
 	assert.Nil(suite.T(), ctx)
 	assert.ErrorIs(suite.T(), err, errInsufficientPermissions)
 }
+
+// Test that a path longer than the matcher limit is refused without being evaluated against the
+// API permission map.
+//
+// The path sits under "GET /users/me/**", which any authenticated subject may access, and the
+// subject here holds the root permission. Either of those would let the request through had the map
+// been consulted, so the rejection is what shows the scan was skipped and that skipping it fails
+// closed.
+func (suite *SecurityServiceTestSuite) TestProcess_OversizedPath_SkipsPermissionMap() {
+	req := httptest.NewRequest(http.MethodGet,
+		"/users/me/"+strings.Repeat("a", maxAPIPermissionPathLength), nil)
+
+	suite.mockAuth1.On("CanHandle", req).Return(true)
+	suite.mockAuth1.On("Authenticate", req).Return(suite.testCtx, nil)
+
+	ctx, err := suite.service.Process(req)
+
+	assert.Nil(suite.T(), ctx)
+	assert.ErrorIs(suite.T(), err, errForbidden)
+}

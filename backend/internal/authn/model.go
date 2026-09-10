@@ -73,13 +73,15 @@ type PasskeyAuthenticatorSelectionDTO struct {
 	UserVerification        string `json:"userVerification,omitempty"`
 }
 
-// PasskeyRegisterStartRequestDTO is the request to start passkey registration.
+// PasskeyRegisterStartRequestDTO is the request to start passkey registration. Assertion carries
+// the proof that the caller holds UserID; both are required, and the two must agree.
 type PasskeyRegisterStartRequestDTO struct {
-	UserID                 string                            `json:"userId"`
-	RelyingPartyID         string                            `json:"relyingPartyId"`
+	UserID                 string                            `json:"userId"         native:"required"`
+	RelyingPartyID         string                            `json:"relyingPartyId" native:"required"`
 	RelyingPartyName       string                            `json:"relyingPartyName"`
 	AuthenticatorSelection *PasskeyAuthenticatorSelectionDTO `json:"authenticatorSelection,omitempty"`
 	Attestation            string                            `json:"attestation,omitempty"`
+	Assertion              string                            `json:"assertion"      native:"required"`
 }
 
 // PasskeyPublicKeyCredentialDTO represents a WebAuthn public key credential.

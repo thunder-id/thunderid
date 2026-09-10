@@ -44,7 +44,7 @@ func (e *translationExporter) GetParameterizerType() string {
 // One file per language.
 func (e *translationExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
 	// Get all translations from store
-	languages, err := e.store.GetDistinctLanguages()
+	languages, err := e.store.GetDistinctLanguages(ctx)
 	if err != nil {
 		return nil, &tidcommon.ServiceError{
 			Code: "I18N_EXPORT_ERROR",
@@ -62,7 +62,7 @@ func (e *translationExporter) GetAllResourceIDs(ctx context.Context) ([]string, 
 func (e *translationExporter) GetResourceByID(ctx context.Context, id string) (
 	interface{}, string, *tidcommon.ServiceError,
 ) {
-	translations, err := e.store.GetTranslations()
+	translations, err := e.store.GetTranslations(ctx)
 	if err != nil {
 		return nil, "", &tidcommon.ServiceError{
 			Code: "I18N_FETCH_ERROR",

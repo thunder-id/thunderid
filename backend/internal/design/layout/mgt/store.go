@@ -4,6 +4,7 @@
 package layoutmgt
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,15 +18,15 @@ var errLayoutNotFound = errors.New("layout not found")
 
 // layoutMgtStoreInterface defines the interface for layout management store operations.
 type layoutMgtStoreInterface interface {
-	GetLayoutListCount() (int, error)
-	GetLayoutList(limit, offset int) ([]Layout, error)
-	CreateLayout(id string, layout CreateLayoutRequest) error
-	GetLayout(id string) (Layout, error)
-	IsLayoutExist(id string) (bool, error)
-	UpdateLayout(id string, layout UpdateLayoutRequest) error
-	DeleteLayout(id string) error
-	IsLayoutDeclarative(id string) bool
-	IsLayoutHandleConflict(handle string, excludeID string) (bool, error)
+	GetLayoutListCount(ctx context.Context) (int, error)
+	GetLayoutList(ctx context.Context, limit, offset int) ([]Layout, error)
+	CreateLayout(ctx context.Context, id string, layout CreateLayoutRequest) error
+	GetLayout(ctx context.Context, id string) (Layout, error)
+	IsLayoutExist(ctx context.Context, id string) (bool, error)
+	UpdateLayout(ctx context.Context, id string, layout UpdateLayoutRequest) error
+	DeleteLayout(ctx context.Context, id string) error
+	IsLayoutDeclarative(ctx context.Context, id string) bool
+	IsLayoutHandleConflict(ctx context.Context, handle string, excludeID string) (bool, error)
 }
 
 // layoutMgtStore is the default implementation of layoutMgtStoreInterface.
@@ -43,7 +44,7 @@ func newLayoutMgtStore() layoutMgtStoreInterface {
 }
 
 // GetLayoutListCount retrieves the total count of layout configurations.
-func (s *layoutMgtStore) GetLayoutListCount() (int, error) {
+func (s *layoutMgtStore) GetLayoutListCount(ctx context.Context) (int, error) {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return 0, err
@@ -58,7 +59,7 @@ func (s *layoutMgtStore) GetLayoutListCount() (int, error) {
 }
 
 // GetLayoutList retrieves layout configurations with pagination.
-func (s *layoutMgtStore) GetLayoutList(limit, offset int) ([]Layout, error) {
+func (s *layoutMgtStore) GetLayoutList(ctx context.Context, limit, offset int) ([]Layout, error) {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return nil, err
@@ -82,7 +83,7 @@ func (s *layoutMgtStore) GetLayoutList(limit, offset int) ([]Layout, error) {
 }
 
 // CreateLayout creates a new layout configuration in the database.
-func (s *layoutMgtStore) CreateLayout(id string, layout CreateLayoutRequest) error {
+func (s *layoutMgtStore) CreateLayout(ctx context.Context, id string, layout CreateLayoutRequest) error {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return err
@@ -103,7 +104,7 @@ func (s *layoutMgtStore) CreateLayout(id string, layout CreateLayoutRequest) err
 }
 
 // GetLayout retrieves a layout configuration by its id.
-func (s *layoutMgtStore) GetLayout(id string) (Layout, error) {
+func (s *layoutMgtStore) GetLayout(ctx context.Context, id string) (Layout, error) {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return Layout{}, err
@@ -126,7 +127,7 @@ func (s *layoutMgtStore) GetLayout(id string) (Layout, error) {
 }
 
 // IsLayoutExist checks if a layout configuration exists by its ID.
-func (s *layoutMgtStore) IsLayoutExist(id string) (bool, error) {
+func (s *layoutMgtStore) IsLayoutExist(ctx context.Context, id string) (bool, error) {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return false, err
@@ -150,7 +151,7 @@ func (s *layoutMgtStore) IsLayoutExist(id string) (bool, error) {
 }
 
 // UpdateLayout updates a layout configuration.
-func (s *layoutMgtStore) UpdateLayout(id string, layout UpdateLayoutRequest) error {
+func (s *layoutMgtStore) UpdateLayout(ctx context.Context, id string, layout UpdateLayoutRequest) error {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return err
@@ -170,7 +171,7 @@ func (s *layoutMgtStore) UpdateLayout(id string, layout UpdateLayoutRequest) err
 }
 
 // DeleteLayout deletes a layout configuration.
-func (s *layoutMgtStore) DeleteLayout(id string) error {
+func (s *layoutMgtStore) DeleteLayout(ctx context.Context, id string) error {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return err
@@ -185,7 +186,7 @@ func (s *layoutMgtStore) DeleteLayout(id string) error {
 }
 
 // IsLayoutDeclarative checks if a layout is immutable (in database store, all layouts are mutable).
-func (s *layoutMgtStore) IsLayoutDeclarative(id string) bool {
+func (s *layoutMgtStore) IsLayoutDeclarative(ctx context.Context, id string) bool {
 	return false
 }
 
@@ -337,7 +338,7 @@ func (s *layoutMgtStore) buildLayoutFromResultRow(row map[string]interface{}) (L
 }
 
 // IsLayoutHandleConflict checks if a layout handle already exists for the deployment, excluding a specific ID.
-func (s *layoutMgtStore) IsLayoutHandleConflict(handle string, excludeID string) (bool, error) {
+func (s *layoutMgtStore) IsLayoutHandleConflict(ctx context.Context, handle string, excludeID string) (bool, error) {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return false, err

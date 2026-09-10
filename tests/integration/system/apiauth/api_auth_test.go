@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +18,11 @@ import (
 )
 
 const testServerURL = testutils.TestServerURL
+
+// maxRequestPathLength mirrors the maximum request path length the server matches against the API
+// permission map. The server-side constant is unexported and lives in a separate module, so the
+// value is repeated here.
+const maxRequestPathLength = 4096
 
 // i18nMessage mirrors the i18n message structure returned in API error responses.
 type i18nMessage struct {
@@ -190,6 +196,24 @@ func (suite *APIAuthTestSuite) TestNonSystemScopeIsForbidden() {
 	suite.Empty(resp.Header.Get("WWW-Authenticate"))
 }
 
+// Authorization: a request path longer than the matcher limit is forbidden.
+//
+// The system token carries the root permission, so this request would be authorized had the path
+// been matched against the API permission map. The 403 is what shows it was refused on length alone,
+// and that refusing rather than matching fails closed.
+func (suite *APIAuthTestSuite) TestOversizedPathIsForbidden() {
+	req, err := http.NewRequest(http.MethodGet, suite.oversizedPathURL(), nil)
+	suite.Require().NoError(err)
+
+	resp, err := suite.adminClient.Do(req)
+	suite.Require().NoError(err)
+	defer closeBodyQuietly(suite.T(), resp.Body)
+
+	suite.assertSecurityError(resp, http.StatusForbidden, "AUTH-4030",
+		"You do not have sufficient permissions to access this resource")
+	suite.Empty(resp.Header.Get("WWW-Authenticate"))
+}
+
 func (suite *APIAuthTestSuite) assertSecurityError(resp *http.Response, expectedStatus int,
 	expectedCode, expectedDescription string) {
 	suite.Equal(expectedStatus, resp.StatusCode)
@@ -206,6 +230,12 @@ func (suite *APIAuthTestSuite) assertSecurityError(resp *http.Response, expected
 
 func (suite *APIAuthTestSuite) protectedResourceURL() string {
 	return fmt.Sprintf("%s/organization-units/%s", testServerURL, suite.ouID)
+}
+
+// oversizedPathURL returns the URL of an existing route whose path exceeds maxRequestPathLength.
+func (suite *APIAuthTestSuite) oversizedPathURL() string {
+	return fmt.Sprintf("%s/organization-units/%s", testServerURL,
+		strings.Repeat("a", maxRequestPathLength))
 }
 
 func closeBodyQuietly(t *testing.T, body io.ReadCloser) {

@@ -39,6 +39,7 @@ const (
 	// immutable: the management API must reject updates and deletes.
 	declDefinitionID     = "decl-presentation-def-1"
 	declDefinitionHandle = "decl_presentation_def_1"
+	declDefinitionOUID   = "decl-ou-1"
 	declDefinitionVCT    = "https://credentials.thunderid.local/DeclarativeTestCredential"
 )
 
@@ -489,6 +490,7 @@ func (ts *PresentationDefinitionAPITestSuite) TestDeclarativeVisibility() {
 	ts.Equal(declDefinitionHandle, fetched["handle"])
 	ts.Equal(declDefinitionVCT, fetched["vct"])
 	ts.Equal("dc+sd-jwt", fetched["format"])
+	ts.Equal(declDefinitionOUID, fetched["ouId"], "the ouId declared in YAML must survive the load")
 
 	requested, ok := fetched["requestedClaims"].([]any)
 	ts.Require().Truef(ok, "requestedClaims missing: %s", string(res.Body))

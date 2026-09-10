@@ -1,0 +1,63 @@
+# Copyright 2026 The ThunderID Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Built by .github/workflows/release-builder.yml from the published distribution
+# instead of from source. The build context is a directory of Linux archives.
+# Keep the runtime stage in sync with ./Dockerfile.
+
+# Unpack the target architecture's archive, on the build platform to avoid emulation.
+FROM --platform=$BUILDPLATFORM alpine:3.19 AS dist
+
+ARG TARGETARCH
+
+RUN apk add --no-cache unzip
+
+WORKDIR /dist
+
+COPY thunderid-*-linux-*.zip ./
+
+RUN set -eux; \
+    case "$TARGETARCH" in \
+      amd64) archive_arch=x64 ;; \
+      arm64) archive_arch=arm64 ;; \
+      *) echo "unsupported target architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    archive="$(ls thunderid-*-linux-"$archive_arch".zip)"; \
+    unzip -q "$archive" -d /extracted; \
+    mkdir -p /opt/thunderid; \
+    cp -r /extracted/thunderid-*/. /opt/thunderid/
+
+# ./Dockerfile edits these before compiling; here the archive is already packaged.
+RUN sed -i 's/hostname: "localhost"/hostname: "0.0.0.0"/' /opt/thunderid/deployment.yaml && \
+    sed -i '/hostname: "0.0.0.0"/a\  public_url: "https://localhost:8090"' /opt/thunderid/deployment.yaml
+
+# Security material (TLS/JWT/AES keys) is not baked into the image; the setup step generates it per deployment.
+
+# Runtime stage
+FROM alpine:3.19
+
+RUN apk add --no-cache \
+    ca-certificates \
+    lsof \
+    sqlite \
+    bash \
+    curl \
+    openssl \
+    unzip
+
+RUN addgroup -S thunderid -g 10001 && adduser -S thunderid -u 10001 -G thunderid
+
+WORKDIR /opt/thunderid
+
+COPY --from=dist --chown=thunderid:thunderid /opt/thunderid /opt/thunderid
+
+RUN chmod +x thunderid start.sh setup.sh scripts/init_script.sh && \
+    (find bootstrap -name "*.sh" -type f -exec chmod +x {} \; 2>/dev/null || true)
+
+EXPOSE 8090
+
+USER thunderid
+
+ENV BACKEND_PORT=8090
+
+CMD ["./start.sh"]

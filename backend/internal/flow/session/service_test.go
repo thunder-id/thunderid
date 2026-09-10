@@ -22,6 +22,9 @@ import (
 // under a different flow is never reused.
 const testOtherFlowID = "other-flow"
 
+// testHandle is the session handle the suite's fixtures are keyed by.
+const testHandle = "handle-abc"
+
 type ServiceTestSuite struct {
 	suite.Suite
 }
@@ -209,10 +212,18 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_AttachesToExisting() {
 	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, c SessionContext) error { savedCtx = c; return nil })
 	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	// Saving a checkpoint into an existing session means the subject just authenticated again, so the
+	// session's authentication time moves forward with it.
+	var touchedAt, touchedIdle time.Time
+	m.store.EXPECT().TouchAuthenticatedAt(mock.Anything, "sess-1", mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, _ string, at, idle time.Time) error {
+			touchedAt, touchedIdle = at, idle
+			return nil
+		})
 
 	in := saveInput()
 	in.Checkpoint = "step_up"
-	in.HandleHint = "handle-abc"
+	in.HandleHint = testHandle
 
 	res, err := svc.SaveCheckpoint(context.Background(), in)
 	suite.Require().NoError(err)
@@ -221,6 +232,50 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_AttachesToExisting() {
 	suite.Equal("handle-abc", res.Handle)
 	suite.Equal("sess-1", savedCtx.SessionID)
 	suite.Equal("step_up", savedCtx.CheckpointID)
+	suite.False(touchedAt.IsZero(), "the re-authentication must refresh the session's auth time")
+	suite.True(touchedIdle.After(touchedAt), "the idle deadline must slide past the new auth time")
+}
+
+// TestSaveCheckpoint_ReauthRefreshFailureStillSaves pins the degradation: a failure to refresh the
+// authentication time must not cost the user their login, since the checkpoint itself is still valid.
+func (suite *ServiceTestSuite) TestSaveCheckpoint_ReauthRefreshFailureStillSaves() {
+	svc, m := suite.newService()
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
+	runTx(m)
+	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().TouchAuthenticatedAt(mock.Anything, "sess-1", mock.Anything, mock.Anything).
+		Return(errors.New("db down"))
+
+	in := saveInput()
+	in.HandleHint = testHandle
+
+	res, err := svc.SaveCheckpoint(context.Background(), in)
+	suite.Require().NoError(err, "a refresh failure must not fail the login")
+	suite.False(res.Skipped, "the checkpoint should still be saved")
+	suite.Equal("handle-abc", res.Handle)
+}
+
+// TestSaveCheckpoint_NewSessionDoesNotTouch verifies the refresh is scoped to re-authentication: a
+// freshly minted session already carries the right authentication time from establishSession.
+func (suite *ServiceTestSuite) TestSaveCheckpoint_NewSessionDoesNotTouch() {
+	svc, m := suite.newService()
+	// Same establish sequence as TestSaveCheckpoint_Establishes: no session exists, so this call
+	// mints one and re-reads its own row.
+	var created *Session
+	m.store.EXPECT().GetByExecutionID(mock.Anything, mock.Anything).RunAndReturn(
+		func(context.Context, string) (*Session, error) { return created, nil })
+	m.store.EXPECT().Create(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, s Session) error { created = &s; return nil })
+	runTx(m)
+	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+
+	res, err := svc.SaveCheckpoint(context.Background(), saveInput())
+	suite.Require().NoError(err)
+	suite.True(res.Created, "no existing session means this call minted one")
+	m.store.AssertNotCalled(suite.T(), "TouchAuthenticatedAt",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (suite *ServiceTestSuite) TestSaveCheckpoint_SubjectMismatchSkips() {
@@ -230,7 +285,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_SubjectMismatchSkips() {
 	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(existing, nil)
 
 	in := saveInput()
-	in.HandleHint = "handle-abc"
+	in.HandleHint = testHandle
 
 	res, err := svc.SaveCheckpoint(context.Background(), in)
 	suite.Require().NoError(err)

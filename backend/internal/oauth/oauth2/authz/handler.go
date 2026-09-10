@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/thunder-id/thunderid/internal/flow/session"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
@@ -26,6 +27,9 @@ type AuthorizeHandlerInterface interface {
 type authorizeHandler struct {
 	cfg          oauthconfig.Config
 	authZService AuthorizeServiceInterface
+	// ssoTransport reads the inbound SSO handle cookies; the authorize endpoint only reads them,
+	// the flow endpoint remains the sole writer.
+	ssoTransport session.HandleTransport
 	logger       *log.Logger
 }
 
@@ -34,17 +38,23 @@ func newAuthorizeHandler(authZService AuthorizeServiceInterface, cfg oauthconfig
 	return &authorizeHandler{
 		cfg:          cfg,
 		authZService: authZService,
+		ssoTransport: session.NewCookieTransport(true),
 		logger:       log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthorizeHandler")),
 	}
 }
 
 // HandleAuthorizeGetRequest handles the GET request for OAuth2 authorization.
 func (ah *authorizeHandler) HandleAuthorizeGetRequest(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	// Validate the request before touching it: getOAuthMessage handles a nil request or response
+	// writer, and both the context and the cookie read below dereference it.
 	oAuthMessage := ah.getOAuthMessage(r, w)
 	if oAuthMessage == nil {
 		return
 	}
+
+	// Carry the inbound SSO handle cookies so prompt=none can be answered from an existing
+	// session. The per-flow cookie is selected later, once the client's flow is known.
+	ctx := session.WithInbound(r.Context(), ah.ssoTransport.Read(r))
 
 	result, authErr := ah.authZService.HandleInitialAuthorizationRequest(ctx, oAuthMessage)
 	if authErr != nil {

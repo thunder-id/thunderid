@@ -136,6 +136,17 @@ func (s *securityService) Process(r *http.Request) (context.Context, error) {
 // authorize checks whether the permissions stored in the request context satisfy
 // the requirements for the requested path using hierarchical scope matching.
 func (s *securityService) authorize(r *http.Request) error {
+	// The permission map evaluates the path against every entry it holds, at a cost linear in the
+	// path length. A path beyond the limit cannot match a route, so it is refused without being
+	// scanned. Nothing is compared, so this is a refusal rather than a permission decision.
+	if len(r.URL.Path) > maxAPIPermissionPathLength {
+		s.logger.Warn(r.Context(), "Request path exceeds the maximum length matched against the "+
+			"API permission map",
+			log.Int("limit", maxAPIPermissionPathLength),
+			log.Int("length", len(r.URL.Path)))
+		return errForbidden
+	}
+
 	required := s.getRequiredPermissionForAPI(r.Method, r.URL.Path)
 	// Empty required means any authenticated user may access the path.
 	if required == "" {

@@ -57,7 +57,7 @@ func (s *FileBasedStoreTestSuite) TestCreateAndGetDistinctLanguages() {
 	assert.NoError(s.T(), err)
 
 	// Verify distinct languages
-	languages, err := s.store.GetDistinctLanguages()
+	languages, err := s.store.GetDistinctLanguages(context.Background())
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), languages, 2)
 	assert.Contains(s.T(), languages, "en-US")
@@ -92,7 +92,7 @@ func (s *FileBasedStoreTestSuite) TestGetTranslations() {
 	assert.NoError(s.T(), err)
 
 	// Get all translations
-	translations, err := s.store.GetTranslations()
+	translations, err := s.store.GetTranslations(context.Background())
 	assert.NoError(s.T(), err)
 
 	// Verify structure
@@ -127,7 +127,7 @@ func (s *FileBasedStoreTestSuite) TestGetTranslationsByNamespace() {
 	assert.NoError(s.T(), err)
 
 	// Get translations for ns1
-	translations, err := s.store.GetTranslationsByNamespace("ns1")
+	translations, err := s.store.GetTranslationsByNamespace(context.Background(), "ns1")
 	assert.NoError(s.T(), err)
 
 	assert.Contains(s.T(), translations, "ns1|key1")
@@ -160,7 +160,7 @@ func (s *FileBasedStoreTestSuite) TestGetTranslationsByKey() {
 	assert.NoError(s.T(), err)
 
 	// Get translation for key1 in ns1
-	translations, err := s.store.GetTranslationsByKey("key1", "ns1")
+	translations, err := s.store.GetTranslationsByKey(context.Background(), "key1", "ns1")
 	assert.NoError(s.T(), err)
 	assert.NotNil(s.T(), translations)
 
@@ -185,13 +185,13 @@ func (s *FileBasedStoreTestSuite) TestGetTranslationsByKey_NotFound() {
 	assert.NoError(s.T(), err)
 
 	// Wrong key
-	translations, err := s.store.GetTranslationsByKey("key2", "ns1")
+	translations, err := s.store.GetTranslationsByKey(context.Background(), "key2", "ns1")
 	assert.NoError(s.T(), err)
 	assert.NotNil(s.T(), translations)
 	assert.Empty(s.T(), translations)
 
 	// Wrong namespace
-	translations, err = s.store.GetTranslationsByKey("key1", "ns2")
+	translations, err = s.store.GetTranslationsByKey(context.Background(), "key1", "ns2")
 	assert.NoError(s.T(), err)
 	assert.NotNil(s.T(), translations)
 	assert.Empty(s.T(), translations)
@@ -217,25 +217,25 @@ func (s *FileBasedStoreTestSuite) TestIsTranslationExists() {
 }
 
 func (s *FileBasedStoreTestSuite) TestUpsertTranslationsByLanguage_NotSupported() {
-	err := s.store.UpsertTranslationsByLanguage("en-US", []Translation{})
+	err := s.store.UpsertTranslationsByLanguage(context.Background(), "en-US", []Translation{})
 	assert.Error(s.T(), err)
 	assert.Contains(s.T(), err.Error(), "not supported")
 }
 
 func (s *FileBasedStoreTestSuite) TestUpsertTranslation_NotSupported() {
-	err := s.store.UpsertTranslation(Translation{})
+	err := s.store.UpsertTranslation(context.Background(), Translation{})
 	assert.Error(s.T(), err)
 	assert.Contains(s.T(), err.Error(), "not supported")
 }
 
 func (s *FileBasedStoreTestSuite) TestDeleteTranslationsByLanguage_NotSupported() {
-	err := s.store.DeleteTranslationsByLanguage("en-US")
+	err := s.store.DeleteTranslationsByLanguage(context.Background(), "en-US")
 	assert.Error(s.T(), err)
 	assert.Contains(s.T(), err.Error(), "not supported")
 }
 
 func (s *FileBasedStoreTestSuite) TestDeleteTranslation_NotSupported() {
-	err := s.store.DeleteTranslation("en-US", "key", "ns")
+	err := s.store.DeleteTranslation(context.Background(), "en-US", "key", "ns")
 	assert.Error(s.T(), err)
 	assert.Contains(s.T(), err.Error(), "not supported")
 }

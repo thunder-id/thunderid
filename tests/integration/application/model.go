@@ -12,6 +12,7 @@ type Application struct {
 	Type                      string              `json:"type,omitempty"`
 	ClientID                  string              `json:"clientId,omitempty"`
 	ClientSecret              string              `json:"clientSecret,omitempty"`
+	FlowSecret                string              `json:"flowSecret,omitempty"`
 	AuthFlowID                string              `json:"authFlowId,omitempty"`
 	RegistrationFlowID        string              `json:"registrationFlowId,omitempty"`
 	IsRegistrationFlowEnabled bool                `json:"isRegistrationFlowEnabled"`

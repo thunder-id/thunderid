@@ -21,7 +21,6 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
 )
@@ -692,7 +691,7 @@ func (s *importService) importUser(
 			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal user attributes: %v", err)}
 	}
 
-	userReq := &user.User{
+	userReq := &providers.User{
 		ID:         req.ID,
 		OUID:       req.OUID,
 		Type:       req.Type,
@@ -935,7 +934,7 @@ func (s *importService) importAgent(
 
 	normalizeAgentOAuthConfigForImport(ctx, &req)
 
-	createReq := &agentmodel.Agent{
+	createReq := &providers.Agent{
 		ID:          req.ID,
 		OUID:        req.OUID,
 		OUHandle:    req.OUHandle,
@@ -961,6 +960,7 @@ func (s *importService) importAgent(
 			Assertion:                 req.Assertion,
 			LoginConsent:              req.LoginConsent,
 			AllowedUserTypes:          req.AllowedUserTypes,
+			AllowedAgentTypes:         req.AllowedAgentTypes,
 			PasskeyAllowedOrigins:     req.PasskeyAllowedOrigins,
 			Attestation:               req.Attestation,
 		},

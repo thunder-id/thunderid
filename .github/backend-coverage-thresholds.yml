@@ -37,7 +37,13 @@ default: 70
 # Applies regardless of labels, but only when the applicable tags say nothing
 # about the package. A tag that sets a `default` therefore overrides these, so an
 # exemption recorded here does not survive such a label.
-packages: {}
+packages:
+  # The agent management provider is linked into the server binary but has no runtime consumer
+  # yet: the provisioning executor gains its agent branch in a follow-up change. Linking it keeps
+  # its lines reported as uncovered rather than silently dropped from the percentage, and this
+  # entry stops that expected 0% from failing the check.
+  # TODO: remove this entry once the provisioning executor consumes the provider.
+  backend/internal/agentmgtprovider: 0
   # backend/internal/system/i18n: 0
 
 # Thresholds grouped by pull request label. A group applies only when the pull

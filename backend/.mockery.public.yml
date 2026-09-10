@@ -569,6 +569,18 @@ packages:
           structname: '{{.InterfaceName}}Mock'
           pkgname: actorprovidermock
           filename: "{{.InterfaceName}}_mock.go"
+      AgentMgtProvider:
+        config:
+          dir: tests/mocks/agentmgtprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: agentmgtprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      UserMgtProvider:
+        config:
+          dir: tests/mocks/usermgtprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: usermgtprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
       FlowProvider:
         config:
           dir: tests/mocks/flow/flowexecmock

@@ -79,7 +79,7 @@ func (suite *InitTestSuite) TestInitialize() {
 		mux,
 		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil),
 		suite.mockResourceService,
-		suite.mockJWTService, suite.mockFlowExecService, nil, nil, testhelpers.OAuthConfig(),
+		suite.mockJWTService, suite.mockFlowExecService, nil, nil, nil, nil, testhelpers.OAuthConfig(),
 		inmemory.Initialize("test-deployment"), transaction.NewNoOpTransactioner(),
 	)
 
@@ -95,7 +95,7 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 		mux,
 		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil),
 		suite.mockResourceService,
-		suite.mockJWTService, suite.mockFlowExecService, nil, nil, testhelpers.OAuthConfig(),
+		suite.mockJWTService, suite.mockFlowExecService, nil, nil, nil, nil, testhelpers.OAuthConfig(),
 		inmemory.Initialize("test-deployment"), transaction.NewNoOpTransactioner(),
 	)
 	assert.NoError(suite.T(), err)
@@ -113,7 +113,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSConfiguration() {
 		mux,
 		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil),
 		suite.mockResourceService,
-		suite.mockJWTService, suite.mockFlowExecService, nil, nil, testhelpers.OAuthConfig(),
+		suite.mockJWTService, suite.mockFlowExecService, nil, nil, nil, nil, testhelpers.OAuthConfig(),
 		inmemory.Initialize("test-deployment"), transaction.NewNoOpTransactioner(),
 	)
 	assert.NoError(suite.T(), err)

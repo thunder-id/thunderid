@@ -14,15 +14,15 @@ import (
 
 // i18nStoreInterface defines the interface for i18n store operations.
 type i18nStoreInterface interface {
-	GetDistinctLanguages() ([]string, error)
-	GetTranslations() (map[string]map[string]Translation, error)
-	GetTranslationsByNamespace(namespace string) (map[string]map[string]Translation, error)
-	GetTranslationsByKey(key string, namespace string) (map[string]Translation, error)
-	UpsertTranslationsByLanguage(language string, translations []Translation) error
-	UpsertTranslation(trans Translation) error
+	GetDistinctLanguages(ctx context.Context) ([]string, error)
+	GetTranslations(ctx context.Context) (map[string]map[string]Translation, error)
+	GetTranslationsByNamespace(ctx context.Context, namespace string) (map[string]map[string]Translation, error)
+	GetTranslationsByKey(ctx context.Context, key string, namespace string) (map[string]Translation, error)
+	UpsertTranslationsByLanguage(ctx context.Context, language string, translations []Translation) error
+	UpsertTranslation(ctx context.Context, trans Translation) error
 	UpsertTranslations(ctx context.Context, translations []Translation) error
-	DeleteTranslationsByLanguage(language string) error
-	DeleteTranslation(language string, key string, namespace string) error
+	DeleteTranslationsByLanguage(ctx context.Context, language string) error
+	DeleteTranslation(ctx context.Context, language string, key string, namespace string) error
 	DeleteTranslationsByNamespace(ctx context.Context, namespace string) error
 	DeleteTranslationsByKey(ctx context.Context, namespace string, key string) error
 }
@@ -51,7 +51,7 @@ func (s *i18nStore) getDBClient() (provider.DBClientInterface, error) {
 }
 
 // GetDistinctLanguages retrieves all distinct language codes that have translations.
-func (s *i18nStore) GetDistinctLanguages() ([]string, error) {
+func (s *i18nStore) GetDistinctLanguages(ctx context.Context) ([]string, error) {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ func (s *i18nStore) GetDistinctLanguages() ([]string, error) {
 
 // GetTranslations retrieves all translations.
 // This implements TranslationStoreInterface.
-func (s *i18nStore) GetTranslations() (map[string]map[string]Translation, error) {
+func (s *i18nStore) GetTranslations(ctx context.Context) (map[string]map[string]Translation, error) {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return nil, err
@@ -92,7 +92,8 @@ func (s *i18nStore) GetTranslations() (map[string]map[string]Translation, error)
 
 // GetTranslations retrieves all translations of the given namespace.
 // This implements TranslationStoreInterface.
-func (s *i18nStore) GetTranslationsByNamespace(namespace string) (map[string]map[string]Translation, error) {
+func (s *i18nStore) GetTranslationsByNamespace(ctx context.Context,
+	namespace string) (map[string]map[string]Translation, error) {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return nil, err
@@ -108,7 +109,8 @@ func (s *i18nStore) GetTranslationsByNamespace(namespace string) (map[string]map
 }
 
 // GetTranslationsByKey retrieves a single translation by key, and namespace.
-func (s *i18nStore) GetTranslationsByKey(key string, namespace string) (map[string]Translation, error) {
+func (s *i18nStore) GetTranslationsByKey(ctx context.Context, key string, namespace string) (map[string]Translation,
+	error) {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return nil, err
@@ -123,7 +125,8 @@ func (s *i18nStore) GetTranslationsByKey(key string, namespace string) (map[stri
 }
 
 // InsertTranslation inserts a new translation.
-func (s *i18nStore) UpsertTranslationsByLanguage(language string, translations []Translation) error {
+func (s *i18nStore) UpsertTranslationsByLanguage(ctx context.Context, language string,
+	translations []Translation) error {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return err
@@ -162,7 +165,7 @@ func (s *i18nStore) UpsertTranslationsByLanguage(language string, translations [
 
 // UpsertTranslation creates or updates a translation.
 // Used for bulk operations where we want to insert or update as needed.
-func (s *i18nStore) UpsertTranslation(trans Translation) error {
+func (s *i18nStore) UpsertTranslation(ctx context.Context, trans Translation) error {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return err
@@ -195,7 +198,7 @@ func (s *i18nStore) UpsertTranslations(ctx context.Context, translations []Trans
 }
 
 // DeleteTranslation deletes a translation by language, key, and namespace.
-func (s *i18nStore) DeleteTranslation(language string, key string, namespace string) error {
+func (s *i18nStore) DeleteTranslation(ctx context.Context, language string, key string, namespace string) error {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return err
@@ -209,7 +212,7 @@ func (s *i18nStore) DeleteTranslation(language string, key string, namespace str
 }
 
 // DeleteTranslationsByLanguage deletes all translations for the given language.
-func (s *i18nStore) DeleteTranslationsByLanguage(language string) error {
+func (s *i18nStore) DeleteTranslationsByLanguage(ctx context.Context, language string) error {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return err

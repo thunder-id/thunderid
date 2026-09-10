@@ -1286,7 +1286,7 @@ func resolveGroupOUHandle(
 		return nil
 	}
 
-	ou, svcErr := ouService.GetOrganizationUnitByPath(ctx, grp.OUHandle)
+	ou, svcErr := ouService.GetOrganizationUnitByPath(security.WithRuntimeContext(ctx), grp.OUHandle)
 	if svcErr != nil {
 		return fmt.Errorf("organization unit with handle %q not found: %v", grp.OUHandle, svcErr)
 	}

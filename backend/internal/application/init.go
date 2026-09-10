@@ -11,7 +11,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/thunder-id/thunderid/internal/entity"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
@@ -26,7 +25,6 @@ import (
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
-	entityProvider entityprovider.EntityProviderInterface,
 	entityService entity.EntityServiceInterface,
 	inboundClient inboundclient.InboundClientServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
@@ -35,7 +33,7 @@ func Initialize(
 	serverConfigSvc serverconfig.ServerConfigService,
 ) (ApplicationServiceInterface, declarativeresource.ResourceExporter, error) {
 	appService := newApplicationService(
-		inboundClient, entityProvider, ouService, i18nService, cryptoSvc, serverConfigSvc,
+		inboundClient, entityService, ouService, i18nService, cryptoSvc, serverConfigSvc,
 	)
 
 	if err := entityService.LoadIndexedAttributes(getAppIndexedAttributes()); err != nil {
@@ -43,6 +41,7 @@ func Initialize(
 	}
 
 	storeMode := getApplicationStoreMode()
+	// TODO: Revisit once the declarative resource loading pattern is finalized.
 	if storeMode == serverconst.StoreModeComposite || storeMode == serverconst.StoreModeDeclarative {
 		if err := entityService.LoadDeclarativeResources(makeAppDeclarativeConfig(appService)); err != nil {
 			return nil, nil, err

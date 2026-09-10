@@ -229,6 +229,95 @@ func (s *StoreTestSuite) TestUpdate_Success() {
 	s.mockDBClient.AssertExpectations(s.T())
 }
 
+// TestTouchAuthenticatedAt_Success pins the parameter order of the refresh statement. The query
+// binds the new authentication time twice (AUTHENTICATED_AT and LAST_ACTIVE_AT) before the idle
+// deadline, so a reordering here would silently write the wrong column rather than fail.
+func (s *StoreTestSuite) TestTouchAuthenticatedAt_Success() {
+	sess := s.sampleSession()
+	authAt := sess.LastActiveAt.Add(time.Hour)
+	idleAt := authAt.Add(30 * time.Minute)
+
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("ExecuteContext", context.Background(), queryTouchAuthenticatedAt,
+		authAt, authAt, idleAt, sess.SessionID, testDeploymentID).
+		Return(int64(1), nil)
+
+	err := s.store.TouchAuthenticatedAt(context.Background(), sess.SessionID, authAt, idleAt)
+
+	s.NoError(err)
+	s.mockDBClient.AssertExpectations(s.T())
+}
+
+// TestTouchAuthenticatedAt_NoRowsIsNotAnError verifies the deliberate absence of a version guard: a
+// session deleted concurrently matches no row, and that is not a failure worth surfacing, unlike
+// Update where a zero row count means a lost optimistic-lock race.
+func (s *StoreTestSuite) TestTouchAuthenticatedAt_NoRowsIsNotAnError() {
+	sess := s.sampleSession()
+	authAt := sess.LastActiveAt
+
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("ExecuteContext", context.Background(), queryTouchAuthenticatedAt,
+		authAt, authAt, authAt, sess.SessionID, testDeploymentID).
+		Return(int64(0), nil)
+
+	err := s.store.TouchAuthenticatedAt(context.Background(), sess.SessionID, authAt, authAt)
+
+	s.NoError(err, "a vanished session must not fail the refresh")
+	s.mockDBClient.AssertExpectations(s.T())
+}
+
+// TestTouchAuthenticatedAt_IsMonotonic covers two re-authentications whose writes reach the
+// database in the reverse order to their timestamps. The statement is monotonic in
+// AUTHENTICATED_AT, so the older write matches no row and the newer authentication stands; both
+// calls report success, since in each case the column ends up at least as fresh as the value
+// written. Without the predicate the late-arriving older write would move the authentication
+// backwards, under-reporting auth_time and failing a max_age the subject actually satisfies.
+func (s *StoreTestSuite) TestTouchAuthenticatedAt_IsMonotonic() {
+	sess := s.sampleSession()
+	older := sess.LastActiveAt.Add(time.Minute)
+	newer := older.Add(time.Minute)
+
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	// The newer authentication lands first and updates the row.
+	s.mockDBClient.On("ExecuteContext", context.Background(), queryTouchAuthenticatedAt,
+		newer, newer, newer, sess.SessionID, testDeploymentID).
+		Return(int64(1), nil)
+	// The older one arrives second; the predicate excludes the row, so nothing is overwritten.
+	s.mockDBClient.On("ExecuteContext", context.Background(), queryTouchAuthenticatedAt,
+		older, older, older, sess.SessionID, testDeploymentID).
+		Return(int64(0), nil)
+
+	s.Require().NoError(s.store.TouchAuthenticatedAt(context.Background(), sess.SessionID, newer, newer))
+	s.NoError(s.store.TouchAuthenticatedAt(context.Background(), sess.SessionID, older, older),
+		"an out-of-order touch that changes nothing is still a success")
+
+	s.mockDBClient.AssertExpectations(s.T())
+}
+
+// TestTouchAuthenticatedAt_QueryGuardsMonotonicity pins the predicate itself, so removing it from
+// the statement fails here rather than silently reintroducing the backwards-write race.
+func (s *StoreTestSuite) TestTouchAuthenticatedAt_QueryGuardsMonotonicity() {
+	s.Contains(queryTouchAuthenticatedAt.Query, "AUTHENTICATED_AT <= $1",
+		"the refresh must not move a session's authentication time backwards")
+}
+
+// TestTouchAuthenticatedAt_ExecuteError surfaces a genuine database failure to the caller, which
+// degrades it to a log rather than failing the login.
+func (s *StoreTestSuite) TestTouchAuthenticatedAt_ExecuteError() {
+	sess := s.sampleSession()
+	authAt := sess.LastActiveAt
+
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("ExecuteContext", context.Background(), queryTouchAuthenticatedAt,
+		authAt, authAt, authAt, sess.SessionID, testDeploymentID).
+		Return(int64(0), errors.New("db down"))
+
+	err := s.store.TouchAuthenticatedAt(context.Background(), sess.SessionID, authAt, authAt)
+
+	s.Error(err)
+	s.mockDBClient.AssertExpectations(s.T())
+}
+
 func (s *StoreTestSuite) TestUpdate_VersionConflict() {
 	sess := s.sampleSession()
 

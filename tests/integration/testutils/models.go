@@ -28,7 +28,9 @@ type UserTypeSystemAttributes struct {
 type User struct {
 	ID         string          `json:"id"`
 	OUID       string          `json:"ouId"`
+	OUHandle   string          `json:"ouHandle,omitempty"`
 	Type       string          `json:"type"`
+	Display    string          `json:"display,omitempty"`
 	Attributes json.RawMessage `json:"attributes"`
 }
 
@@ -48,6 +50,7 @@ type Application struct {
 	ClientSecret              string                   `json:"clientSecret,omitempty"`
 	RedirectURIs              []string                 `json:"redirectUris,omitempty"`
 	AllowedUserTypes          []string                 `json:"allowedUserTypes,omitempty"`
+	AllowedAgentTypes         []string                 `json:"allowedAgentTypes,omitempty"`
 	SubjectAttribute          map[string]string        `json:"subjectAttribute,omitempty"`
 	Certificate               map[string]interface{}   `json:"certificate,omitempty"`
 	PasskeyAllowedOrigins     []string                 `json:"passkeyAllowedOrigins,omitempty"`

@@ -159,12 +159,16 @@ var (
 		Description: "Organization unit for passkey authentication flow tests",
 	}
 
+	// The password is only here to bootstrap: enrolling a passkey through the direct API requires an
+	// assertion proving the target user, so the user needs another credential to authenticate with
+	// first. The flows under test never use it.
 	passkeyFlowEntityType = testutils.UserType{
 		Name: "passkey_flow_user",
 		Schema: map[string]interface{}{
 			"username":    map[string]interface{}{"type": "string"},
 			"email":       map[string]interface{}{"type": "string"},
 			"displayName": map[string]interface{}{"type": "string"},
+			"password":    map[string]interface{}{"type": "string", "credential": true},
 		},
 	}
 
@@ -173,7 +177,8 @@ var (
 		Attributes: json.RawMessage(`{
 			"username": "passkeyflowuser",
 			"email": "passkeyflowuser@example.com",
-			"displayName": "Passkey Flow User"
+			"displayName": "Passkey Flow User",
+			"password": "PasskeyFlowPassword123!"
 		}`),
 	}
 
@@ -232,9 +237,13 @@ func (ts *PasskeyAuthFlowTestSuite) SetupSuite() {
 	ts.userID = userIDs[0]
 
 	// Register a credential through the direct API. Flow tests exercise authentication, and
-	// registration through a flow is covered by the registration suite.
+	// registration through a flow is covered by the registration suite. The direct API enrolls only
+	// for the subject of a supplied assertion, so authenticate with the bootstrap password first.
+	assertion, err := testutils.ObtainAuthAssertion("passkeyflowuser", "PasskeyFlowPassword123!")
+	ts.Require().NoError(err, "Failed to obtain an auth assertion for the test user")
+
 	authenticator, userHandle, err := testutils.RegisterPasskeyCredential(
-		ts.userID, passkeyFlowRelyingPartyID, passkeyFlowRelyingPartyName, passkeyFlowOrigin)
+		ts.userID, passkeyFlowRelyingPartyID, passkeyFlowRelyingPartyName, passkeyFlowOrigin, assertion)
 	ts.Require().NoError(err, "Failed to register a passkey credential for the test user")
 	ts.authenticator = authenticator
 	ts.webAuthnUserHandle = userHandle

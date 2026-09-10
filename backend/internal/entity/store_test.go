@@ -35,7 +35,6 @@ func (s *DBStoreTestSuite) SetupTest() {
 	s.provider = providermock.NewDBProviderInterfaceMock(s.T())
 	s.client = providermock.NewDBClientInterfaceMock(s.T())
 	s.store = &entityDBStore{
-		deploymentID:      "dep1",
 		indexedAttributes: map[string]bool{},
 		dbProvider:        s.provider,
 		logger:            log.GetLogger(),

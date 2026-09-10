@@ -39,11 +39,6 @@ func (p *disabledEntityProvider) GetEntity(
 	return nil, errNotImplemented
 }
 
-func (p *disabledEntityProvider) CreateEntity(_ *providers.Entity,
-	_ json.RawMessage) (*providers.Entity, *EntityProviderError) {
-	return nil, errNotImplemented
-}
-
 func (p *disabledEntityProvider) UpdateEntity(_ string,
 	_ *providers.Entity) (*providers.Entity, *EntityProviderError) {
 	return nil, errNotImplemented

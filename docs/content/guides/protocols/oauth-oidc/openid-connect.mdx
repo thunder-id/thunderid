@@ -55,18 +55,32 @@ These parameters on the authorization request control *how* the user authenticat
 | Parameter | Purpose | Notes |
 |---|---|---|
 | `nonce` | Replay protection for the ID Token | Max 64 characters. Required for clients that accept the ID Token. |
-| `prompt` | Control re-authentication | Only `login` and `consent` is currently honored, see below |
+| `prompt` | Control re-authentication | `login`, `none`, and `consent` are honored, see below |
+| `max_age` | Limit how old the authentication may be | Seconds. An existing session older than this is not reused, so the user authenticates again. |
+| `id_token_hint` | Name the user the request expects | An ID Token this <ProductName /> instance issued. Used with `prompt=none` to confirm the existing session belongs to that user. |
 | `acr_values` | Request a specific authentication context | <ProductName /> selects an authentication flow that satisfies the requested ACR |
 | `claims` | Request specific claims claim-by-claim | See [Claims & Scopes](../claims-and-scopes) |
+
+`prompt`, `max_age`, and `id_token_hint` are answered from the SSO session the authentication flow maintains, so they apply to applications whose flow includes a **Check SSO Session** node. See [Single Sign-On](../../../flows/single-sign-on) for how a flow establishes one. The remaining parameters do not depend on a session.
+
+:::note
+`prompt=none` is answered by checking that a live session exists for the application's flow. A flow containing more than one **Check SSO Session** node, such as a step-up authentication flow, can therefore pass that check and still need to prompt at a later node, in which case the request fails rather than completing silently.
+:::
 
 ### `prompt` Values
 
 | Value | Behavior |
 |---|---|
-| `login` | Forces the user to authenticate. **Supported.** |
-| `none` | Returns `login_required`. <ProductName /> does not yet maintain server-side sessions, so silent re-authentication is not available. |
+| `login` | Forces the user to authenticate, even when a session exists. **Supported.** |
+| `none` | Completes without any user interaction when a session satisfies the request. Returns `login_required` when no session exists, when `id_token_hint` names a different user, or when the authentication is older than `max_age`. |
 | `consent` | Forces the user to re-grant consent for all required attributes, even if consent was previously granted. |
 | `select_account` | Returns `account_selection_required`: account selection is not currently supported. |
+
+### `max_age` and `auth_time`
+
+`max_age` bounds how long ago the user authenticated. <ProductName /> compares it against the session's authentication time, not the time the authorization request arrived, so reusing a session does not make the authentication look fresher than it is.
+
+The ID Token's `auth_time` claim reports that same moment. Two authorizations that reuse one session therefore carry the same `auth_time`, while an authorization that re-authenticated carries a later one.
 
 ## Try It in <ProductName />
 
