@@ -1,0 +1,89 @@
+---
+title: Session and Sign-Out Decisions
+docType: use-case
+sidebar_position: 5
+description: The choices behind sign in once, sign out everywhere, and what to pick instead when your applications, your users, or your appetite for risk differ from Wayfinder's.
+---
+
+# Session and Sign-Out Decisions
+
+You have seen the pattern in the [Overview](../sessions-overview) and followed John through
+[Sign In Once for Every Application](../sessions-sign-in-once), [Sign Out](../sessions-sign-out), and
+[Sign Out Everywhere](../sessions-sign-out-everywhere). This page is the reasoning behind that shape: the choices Wayfinder
+made, and what to choose instead when your situation differs. It sits beside the wider
+[Design Decisions & Alternatives](../architecture-decisions) for consumer access, which covers the token and API
+choices these pages take for granted.
+
+The decisions fall into four groups:
+
+- Which applications share one sign-in.
+- How long a sign-in lasts.
+- How each application signs out.
+- What happens when a sign-out message cannot be delivered.
+
+## Choose Which Applications Share a Sign-In
+
+Applications share a session when they sign people in through the same flow, which makes the flow your grouping tool.
+
+- Put applications that carry the same level of risk on one flow, so one sign-in covers them. Wayfinder Web, Wayfinder
+  Rewards, and the Help Center are one group.
+- Give a more sensitive application its own flow, with stronger steps, so a session from the everyday group never opens
+  it. The payments page is the example.
+- Within a flow, place the steps that a remembered sign-in may skip inside the checkpoint, and keep any step that must
+  always run outside it.
+
+See [Single Sign-On for Flows](../../../guides/flows/single-sign-on) for how the flow is built.
+
+## Choose How Long a Sign-In Lasts
+
+Two clocks bound every session, an idle limit and a total limit, and both are set once for the whole deployment.
+
+- Shorten the idle limit when people use shared or public computers, such as the lounge, so a forgotten session ends on
+  its own sooner. Lengthen it when people work inside one application all day and a prompt would only interrupt them.
+- The total limit is the longest a sign-in can ever be trusted, however active the person is. Keep it in step with how
+  often you want people to prove who they are.
+- The idle limit cannot be longer than the total limit.
+- A session that runs out of time sends no sign-out message to applications. Keep each application's own sign-in short
+  enough that this does not matter.
+
+See [Configure Session Lifetime](../../../guides/flows/single-sign-on#configure-session-lifetime).
+
+## Choose How Each Application Signs Out
+
+Every application already has a sign-out flow, so the choices here are about the experience and the reach.
+
+- Use the sign-out address for an application that sends the browser to <ProductName /> to sign in. Register the page
+  it should return people to, so <ProductName /> can send them back.
+- Run the sign-out flow through the API for an application that draws its own screens.
+- Decide whether to ask "Are you sure?" The default flow ends the session without asking. Choose the
+  **Confirm & Sign Out** template to ask every time, or **Conditional Confirmation** to ask only when the request does
+  not say who is signing out.
+- Give each application a back-channel logout address so it is told when a session it shared ends. An application
+  without one is never told, and keeps its own sign-in until that expires.
+- Turn on **Require session identifier** for an application that may hold more than one session for the same person,
+  such as one on a laptop and one on a phone, so a sign-out ends exactly the right one.
+
+See [RP-Initiated Logout](../../../guides/protocols/oauth-oidc/rp-initiated-logout) and
+[Build a Sign-Out Flow](../../../guides/flows/build-a-flow#go-further).
+
+## Choose What Happens When a Message Cannot Be Delivered
+
+Back-channel delivery is built so that one slow or broken application never spoils sign-out for the person or for the
+other applications. What is left to decide is how much you rely on it.
+
+- Treat the sign-out message as the fast path, not the only path. Keep each application's own sign-in short, so that a
+  message that never arrives costs minutes rather than days.
+- Use the delivery records to find applications that keep failing. Every attempt is recorded with the application, the
+  session, the outcome, and the time, and never with the message itself.
+- Keep the production default, which only delivers to `https` addresses. For development, an operator can allow plain
+  `http` addresses for the whole deployment.
+
+## Expected Outcome
+
+With these choices made, signed in and signed out mean the same thing to every Wayfinder application: one session in
+<ProductName /> that applications borrow, grouped by how much trust each one needs, ended by a click, an
+administrator, or a clock, and announced to every application that shared it.
+
+If a choice on this page does not fit, change that choice and recheck the pages that depend on it. Grouping
+applications differently changes which sessions are shared. Changing the clocks changes when a session ends on its own.
+The sign-out choices are made per application and do not affect the others.

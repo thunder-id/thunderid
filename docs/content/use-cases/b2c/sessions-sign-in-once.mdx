@@ -1,0 +1,85 @@
+---
+title: Sign In Once for Every Application
+docType: use-case
+sidebar_position: 2
+description: How a {{ProductName}} session lets John Doe sign in to Wayfinder Web and open the other Wayfinder applications without signing in again, and how long that lasts.
+---
+
+# Sign In Once for Every Application
+
+John sits down at the lounge computer and opens Wayfinder Web. The site has no sign-in screen of its own. It sends his
+browser to <ProductName />, which shows the Wayfinder sign-in page. He signs in as `john.doe`, <ProductName /> checks
+the password, and sends him back to the site signed in. This page follows what <ProductName /> remembered at that
+moment, what it lets the next application skip, and when it forgets.
+
+## The Session
+
+When John's password checks out, <ProductName /> creates a **session**: its record that this person signed in, from
+this browser, at this time. The session is stored in <ProductName />. The browser gets only a small reference to it, a
+random handle that means nothing on its own, kept in a browser cookie. The cookie carries no name, no password, and
+nothing else about John. The next time the browser comes back to <ProductName />, it presents the handle, and
+<ProductName /> looks up the session.
+
+The session belongs to the browser John used. Signing in on the lounge computer does not sign in his phone. If he
+opens Wayfinder Rewards on his phone, he signs in there separately, and that creates a second session. Keeping
+sessions apart by browser is what later lets <ProductName /> sign out the lounge computer without touching his phone.
+
+## Already Signed In
+
+John now opens Wayfinder Rewards. Like the booking site, it sends him to <ProductName /> to sign in. This time
+<ProductName /> finds a session for his browser, sees that it already covers the password step, and sends him straight
+back to Wayfinder Rewards as a signed-in user. He never sees the sign-in page. This is **single sign-on** (SSO): one
+sign-in, reused by every application that shares it.
+
+Which applications share it is a choice, not an accident. In <ProductName />, every application signs people in through
+a **flow**: the ordered steps a person goes through, such as entering a password or typing a code from a text message.
+Applications that use the same flow share one session. Applications on a different flow do not, even for the same
+person in the same browser. The flow is the grouping key.
+
+Wayfinder uses that to sort its applications by how sensitive they are:
+
+- Wayfinder Web, Wayfinder Rewards, and the Wayfinder Help Center all use the **customer sign-in** flow, which asks for
+  a password. One sign-in covers all three.
+- The payments page, where members keep their saved cards, uses its own **payments sign-in** flow, which asks for a
+  password and a code sent to the member's phone. John's customer session does not open it. When he goes to update a
+  card, he signs in again, with the extra step.
+
+Even within one flow, the person who designs it chooses which steps a remembered sign-in may skip and which always run.
+The part that may be skipped is called a **checkpoint**. On John's first sign-in, the flow runs the password step and
+saves the checkpoint under his session. On his next sign-in through the same flow, the checkpoint is reused and the
+password step is skipped. A step placed outside the checkpoint runs every time.
+
+## How Long It Lasts
+
+A session does not last forever. Two clocks run on it at once:
+
+| Clock | What it measures | Default |
+|---|---|---|
+| Idle time | How long since the session was last used. Every use resets it, so an active session stays alive. | 30 minutes |
+| Total time | How long since the session was created. Nothing resets it. | 8 hours |
+
+The session ends when either clock runs out. If John's flight is delayed and he wanders off for 2 hours, the idle clock
+has run out by the time he comes back, and the next application he opens asks him to sign in again. If he works through
+the whole day, the total clock ends the session after 8 hours no matter how busy he was. An administrator sets both
+limits once for the whole deployment.
+
+A session can also end early, when someone signs out. That is the next page.
+
+## Behind the Scenes
+
+For the technical reader, the pieces above map to these parts of <ProductName />:
+
+- The session model, the per-flow cookie, and the two timeouts are described in
+  [Sessions and Single Sign-On](../../../key-concepts/authentication/sessions).
+- The checkpoint is built from two nodes in the flow, **Check SSO Session** and **Save / Load Session**, described in
+  [Single Sign-On for Flows](../../../guides/flows/single-sign-on).
+- The session lifetime is set in the `session` server configuration, described in
+  [Configure Session Lifetime](../../../guides/flows/single-sign-on#configure-session-lifetime).
+- The sign-in flow John goes through is the one built in [Build the Sign-In Flows](../build-flows).
+
+## Next Steps
+
+- [Sign Out](../sessions-sign-out) follows John's **Sign out** click, and what has to happen at the application and at
+  <ProductName />.
+- [Session and Sign-Out Decisions](../sessions-decisions) covers how to group applications into flows and how to set the two
+  clocks.

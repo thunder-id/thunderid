@@ -204,6 +204,38 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'category',
+              label: 'Sign In Once, Sign Out Everywhere',
+              key: 'b2c-sessions',
+              link: {type: 'doc', id: 'use-cases/b2c/sessions-index'},
+              collapsible: true,
+              collapsed: true,
+              items: [
+                {
+                  type: 'doc',
+                  id: 'use-cases/b2c/sessions-overview',
+                  label: 'Overview',
+                  key: 'b2c-sessions-overview',
+                },
+                {
+                  type: 'doc',
+                  id: 'use-cases/b2c/sessions-sign-in-once',
+                  label: 'Sign In Once for Every Application',
+                },
+                {type: 'doc', id: 'use-cases/b2c/sessions-sign-out', label: 'Sign Out'},
+                {
+                  type: 'doc',
+                  id: 'use-cases/b2c/sessions-sign-out-everywhere',
+                  label: 'Sign Out Everywhere',
+                },
+                {
+                  type: 'doc',
+                  id: 'use-cases/b2c/sessions-decisions',
+                  label: 'Session and Sign-Out Decisions',
+                },
+              ],
+            },
+            {
+              type: 'category',
               label: 'Design Decisions & Alternatives',
               link: {type: 'doc', id: 'use-cases/b2c/architecture-decisions'},
               collapsible: true,
