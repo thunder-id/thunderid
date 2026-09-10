@@ -40,4 +40,10 @@ export const Timeouts = {
    * connections, flows, application rewiring) rather than running a single test.
    */
   SUITE_SETUP: 60 * 1000,
+
+  /**
+   * Wait for the Wayfinder AI agent's chat reply: a real LLM call, often followed by an MCP tool
+   * round trip, so it runs far longer than a plain UI action.
+   */
+  LLM_RESPONSE: 45 * 1000,
 } as const;

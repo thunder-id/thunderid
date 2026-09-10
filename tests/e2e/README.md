@@ -84,6 +84,21 @@ To override specific values (e.g. a different server or different test credentia
 cp .env.example .env
 ```
 
+The Wayfinder AI agent tryout tests (`tests/wayfinder/ai-agent-tryout/**`) additionally need a real
+LLM API key. Set it here, along with the provider and model the agent should use:
+
+| Value          | Purpose                                                              |
+| :------------- | :------------------------------------------------------------------- |
+| `LLM_API_KEY`  | API key for the provider. Required; nothing else here has any effect without it. |
+| `LLM_PROVIDER` | `anthropic` (default) or `google`.                                   |
+| `MODEL_NAME`   | Model override. Leave unset to use the provider's default model.     |
+
+`run-e2e.sh` writes all three into `samples/apps/wayfinder-sample/ai-agent/.env`, overwriting any
+values already there, then imports the Wayfinder config bundle and starts the Wayfinder backend and
+AI agent for phase 2. Without a key none of that happens and the agent tests are skipped; the rest
+of phase 2 runs as usual, with `wayfinder-sample-setup.spec.ts` importing the bundle through the
+console UI later on.
+
 ---
 
 ## 🛠 CI/CD Configuration
@@ -103,8 +118,13 @@ To customize the CI environment, add the following to **Settings > Secrets and v
 | `PLAYWRIGHT_TEST_USER_PASSWORD` | **Secret** | Test User Password  | `admin`                  |
 | `PLAYWRIGHT_WORKERS`            | Variable   | Parallel Processing | `6`                      |
 | `PLAYWRIGHT_DEBUG_AUTH`         | Variable   | Auth Debug Logs     | `false`                  |
+| `PLAYWRIGHT_LLM_API_KEY`        | **Secret** | Wayfinder AI agent LLM key | _none - agent tests skip_ |
+| `PLAYWRIGHT_LLM_PROVIDER`       | Variable   | LLM provider        | `anthropic`              |
+| `PLAYWRIGHT_LLM_MODEL_NAME`     | Variable   | LLM model override  | provider default         |
 
 CI runs the suite in two phases against two independently provisioned servers: everything except the `@wayfinder`-tagged tests first, then the Wayfinder tests alone against a fresh server with its own sample app and mock SMTP inbox. `run-e2e.sh` reproduces both phases locally (see its `--phase` flag).
+
+The AI agent tryout tests are gated on `PLAYWRIGHT_LLM_API_KEY` in the same way as locally: the workflow only imports the Wayfinder config bundle and starts the Wayfinder backend and AI agent when that secret is set. Forked pull requests receive no secrets, so those tests skip there and no LLM calls are billed.
 
 ---
 
