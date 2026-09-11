@@ -112,6 +112,18 @@ func (s *SelfUserEndpointsSuite) doUserRequest(method, path string, payload inte
 	return s.userClient.Do(req)
 }
 
+// doUserRequestRawBody sends a body verbatim rather than marshalling a Go value, so a test can
+// exercise byte-level shapes that json.Marshal would normalise away.
+func (s *SelfUserEndpointsSuite) doUserRequestRawBody(method, path, rawBody string) (*http.Response, error) {
+	req, err := http.NewRequest(method, testutils.TestServerURL+path, bytes.NewReader([]byte(rawBody)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	return s.userClient.Do(req)
+}
+
 func (s *SelfUserEndpointsSuite) TestSelfUserGetProfile() {
 	resp, err := s.doUserRequest(http.MethodGet, "/users/me", nil)
 	s.Require().NoError(err)
@@ -162,6 +174,7 @@ func (s *SelfUserEndpointsSuite) TestSelfUserUpdateProfile() {
 func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentials() {
 	newPassword := s.password + "!"
 	payload := map[string]interface{}{
+		"currentPassword": s.password,
 		"attributes": map[string]interface{}{
 			"password": newPassword,
 		},
@@ -320,4 +333,98 @@ func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsMissingAttributesR
 	s.Require().NoError(err)
 	defer verifyResp.Body.Close()
 	s.Equal(http.StatusOK, verifyResp.StatusCode, "the existing password must still grant access")
+}
+
+// requireExistingPasswordStillWorks asserts that a rejected credential update left the account's
+// password untouched, by authenticating with it and reading the profile back.
+func (s *SelfUserEndpointsSuite) requireExistingPasswordStillWorks() {
+	s.T().Helper()
+
+	client, err := testutils.GetHTTPClientForUser(s.username, s.password)
+	s.Require().NoError(err, "the existing password must still authenticate")
+
+	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+"/users/me", nil)
+	s.Require().NoError(err)
+	verifyResp, err := client.Do(req)
+	s.Require().NoError(err)
+	defer verifyResp.Body.Close()
+	s.Equal(http.StatusOK, verifyResp.StatusCode, "the existing password must still grant access")
+}
+
+// TestSelfUserUpdateCredentialsWrongCurrentPasswordRejected verifies that possession of a valid
+// access token is not on its own enough to rotate the password. This is the takeover path the
+// current-password check exists to close.
+func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsWrongCurrentPasswordRejected() {
+	resp, err := s.doUserRequest(http.MethodPost, "/users/me/update-credentials",
+		map[string]interface{}{
+			"currentPassword": s.password + "-wrong",
+			"attributes":      map[string]interface{}{"password": s.password + "-new"},
+		})
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+
+	s.requireSelfError(resp, http.StatusForbidden, "USR-1029")
+	s.requireExistingPasswordStillWorks()
+}
+
+// TestSelfUserUpdateCredentialsMissingCurrentPasswordRejected verifies that omitting the current
+// password fails the same way as supplying a wrong one, so the response does not reveal whether
+// the account has a password set.
+func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsMissingCurrentPasswordRejected() {
+	resp, err := s.doUserRequest(http.MethodPost, "/users/me/update-credentials",
+		map[string]interface{}{
+			"attributes": map[string]interface{}{"password": s.password + "-new"},
+		})
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+
+	s.requireSelfError(resp, http.StatusForbidden, "USR-1029")
+	s.requireExistingPasswordStillWorks()
+}
+
+// TestSelfUserUpdateCredentialsNonPasswordTypeRejected verifies that the self-service endpoint
+// writes only the password. Without this, proving the password would authorise writing any other
+// schema-declared credential.
+func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsNonPasswordTypeRejected() {
+	resp, err := s.doUserRequest(http.MethodPost, "/users/me/update-credentials",
+		map[string]interface{}{
+			"currentPassword": s.password,
+			"attributes":      map[string]interface{}{"pin": "4321"},
+		})
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+
+	s.requireSelfError(resp, http.StatusBadRequest, "USR-1024")
+	s.requireExistingPasswordStillWorks()
+}
+
+// TestSelfUserUpdateCredentialsNonObjectAttributesRejected verifies that an `attributes` value
+// which is valid JSON but not an object is refused. The handler only checks that the raw value is
+// non-empty and not literally "{}", so the service is what has to reject this shape.
+func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsNonObjectAttributesRejected() {
+	resp, err := s.doUserRequest(http.MethodPost, "/users/me/update-credentials",
+		map[string]interface{}{
+			"currentPassword": s.password,
+			"attributes":      "not-an-object",
+		})
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+
+	s.requireSelfError(resp, http.StatusBadRequest, "USR-1001")
+	s.requireExistingPasswordStillWorks()
+}
+
+// TestSelfUserUpdateCredentialsWhitespaceEmptyAttributesRejected verifies the service backstops the
+// handler. The handler rejects an empty attribute object by comparing the trimmed body against the
+// exact string "{}", which "{ }" does not match, so the request reaches the service and must be
+// refused there rather than treated as a credential write.
+func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsWhitespaceEmptyAttributesRejected() {
+	body := fmt.Sprintf(`{"currentPassword":%q,"attributes":{ }}`, s.password)
+
+	resp, err := s.doUserRequestRawBody(http.MethodPost, "/users/me/update-credentials", body)
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+
+	s.requireSelfError(resp, http.StatusBadRequest, "USR-1017")
+	s.requireExistingPasswordStillWorks()
 }

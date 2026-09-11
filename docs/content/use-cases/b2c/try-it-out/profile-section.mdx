@@ -24,7 +24,7 @@ Complete [Set Up Your Environment](../../build-environment) before starting this
 <PatternPicker>
 <Pattern value="redirect" label="Redirect-based" description="Hosted screens, simplest to add" icon="external-link" default>
 
-In the redirect-based pattern, the consumer application renders the profile screen itself. Profile attributes are read from `/users/me` and ID token. Updates go through <ProductName />'s self-service endpoints: `/users/me` for attribute changes, `/users/me/meta` for schema metadata retrieve, and `/users/me/update-credentials` for password changes. These endpoints act on the signed-in user's own record, so no extra permissions are needed; the access token alone is enough.
+In the redirect-based pattern, the consumer application renders the profile screen itself. Profile attributes are read from `/users/me` and the ID token. Updates go through <ProductName />'s self-service endpoints: `/users/me` for attribute changes, `/users/me/meta` for schema metadata retrieval, and `/users/me/update-credentials` for password changes. These endpoints act on the signed-in user's own record, so no extra permissions are needed and the access token alone is enough to read attributes and schema metadata. Changing a password requires the user's current password in the request body when the account already has a stored password. Accounts without an existing password can set one without `currentPassword`. The endpoint returns `403` with code `USR-1029` when a stored-password account omits or supplies an incorrect `currentPassword`.
 
 **Try the Use Case**
 
