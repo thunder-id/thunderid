@@ -220,7 +220,7 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 		statusCode = http.StatusBadRequest
 		if svcErr.Code == ErrorEntityTypeNotFound.Code {
 			statusCode = http.StatusNotFound
-		} else if svcErr.Code == ErrorEntityTypeNameConflict.Code {
+		} else if svcErr.Code == ErrorEntityTypeNameConflict.Code || svcErr.Code == ErrorUserTypeHasExistingUsers.Code {
 			statusCode = http.StatusConflict
 		} else if svcErr.Code == ErrorCannotModifyDeclarativeResource.Code {
 			statusCode = http.StatusForbidden

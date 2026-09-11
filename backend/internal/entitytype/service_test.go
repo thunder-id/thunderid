@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -1403,6 +1404,83 @@ func TestDeleteEntityType(t *testing.T) {
 	storeMock.On("DeleteEntityTypeByID", mock.Anything, mock.Anything, schemaID).Return(nil).Once()
 
 	service := &entityTypeService{
+		entityTypeStore:    storeMock,
+		transactioner:      &mockTransactioner{},
+		authzService:       newAllowAllAuthz(t),
+		dependencyRegistry: newNoBlockingEntityTypeUsagesRegistry(),
+	}
+
+	svcErr := service.DeleteEntityType(context.Background(), TypeCategoryUser, schemaID)
+
+	require.Nil(t, svcErr)
+	storeMock.AssertExpectations(t)
+}
+
+func TestDeleteEntityType_BlockedByExistingUsers(t *testing.T) {
+	const schemaID = "schema-456"
+
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{
+			Enabled: false,
+		},
+	}
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	require.NoError(t, err)
+	defer config.ResetServerRuntime()
+
+	storeMock := newEntityTypeStoreInterfaceMock(t)
+	storeMock.On("GetEntityTypeByID", mock.Anything, mock.Anything, schemaID).Return(EntityType{
+		ID:     schemaID,
+		OUID:   testOUID1,
+		Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+	}, nil).Once()
+	storeMock.On("IsEntityTypeDeclarative", TypeCategoryUser, schemaID).Return(false).Once()
+
+	total := 1
+	blockingRegistry := &stubUsageRegistry{resp: &resourcedependency.DependenciesResponse{
+		TotalResults: &total,
+		Usages: []resourcedependency.ResourceDependency{
+			{ResourceType: resourcedependency.ResourceTypeUser, BehaviorOnDelete: resourcedependency.BehaviorRestrict},
+		},
+	}}
+	service := &entityTypeService{
+		entityTypeStore:    storeMock,
+		transactioner:      &mockTransactioner{},
+		authzService:       newAllowAllAuthz(t),
+		dependencyRegistry: blockingRegistry,
+	}
+
+	svcErr := service.DeleteEntityType(context.Background(), TypeCategoryUser, schemaID)
+
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorUserTypeHasExistingUsers.Code, svcErr.Code)
+	storeMock.AssertExpectations(t)
+	storeMock.AssertNotCalled(t, "DeleteEntityTypeByID", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestDeleteEntityType_NilDependencyRegistry_FailsClosed(t *testing.T) {
+	const schemaID = "schema-456"
+
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{
+			Enabled: false,
+		},
+	}
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	require.NoError(t, err)
+	defer config.ResetServerRuntime()
+
+	storeMock := newEntityTypeStoreInterfaceMock(t)
+	storeMock.On("GetEntityTypeByID", mock.Anything, mock.Anything, schemaID).Return(EntityType{
+		ID:     schemaID,
+		OUID:   testOUID1,
+		Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+	}, nil).Once()
+	storeMock.On("IsEntityTypeDeclarative", TypeCategoryUser, schemaID).Return(false).Once()
+
+	service := &entityTypeService{
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    newAllowAllAuthz(t),
@@ -1410,8 +1488,41 @@ func TestDeleteEntityType(t *testing.T) {
 
 	svcErr := service.DeleteEntityType(context.Background(), TypeCategoryUser, schemaID)
 
-	require.Nil(t, svcErr)
-	storeMock.AssertExpectations(t)
+	require.NotNil(t, svcErr)
+	require.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+	storeMock.AssertNotCalled(t, "DeleteEntityTypeByID", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// stubUsageRegistry is a minimal resourcedependency.Registry for tests.
+type stubUsageRegistry struct {
+	resp *resourcedependency.DependenciesResponse
+	err  error
+}
+
+func (s *stubUsageRegistry) RegisterProvider(resourcedependency.Provider) {}
+
+func (s *stubUsageRegistry) GetDependencies(
+	_ context.Context, _, _ string) (*resourcedependency.DependenciesResponse, error) {
+	return s.resp, s.err
+}
+
+func (s *stubUsageRegistry) CascadeDelete(_ context.Context, _, _ string) (int, error) {
+	return 0, nil
+}
+
+func (s *stubUsageRegistry) ValidateReferenceUpdate(
+	_ context.Context, _, _ string) *tidcommon.ServiceError {
+	return nil
+}
+
+// newNoBlockingEntityTypeUsagesRegistry returns a registry reporting confirmed-empty dependencies,
+// so deletion is permitted by the blocking guard.
+func newNoBlockingEntityTypeUsagesRegistry() *stubUsageRegistry {
+	total := 0
+	return &stubUsageRegistry{resp: &resourcedependency.DependenciesResponse{
+		TotalResults: &total,
+		Usages:       []resourcedependency.ResourceDependency{},
+	}}
 }
 
 func TestCreateEntityType_AgentTypeRejectsNonDefaultName(t *testing.T) {

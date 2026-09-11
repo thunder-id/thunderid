@@ -94,6 +94,81 @@ func (ts *DeleteUserTypeTestSuite) TestDeleteUserType() {
 	ts.Assert().Equal(http.StatusNotFound, getResp.StatusCode, "Schema should not exist after deletion")
 }
 
+// TestDeleteUserTypeWithExistingUsers_Conflict tests that DELETE /user-types/{id} is refused with
+// a 409 Conflict when users still exist for that type, and succeeds once those users are removed.
+func (ts *DeleteUserTypeTestSuite) TestDeleteUserTypeWithExistingUsers_Conflict() {
+	schema := CreateUserTypeRequest{
+		Name: "schema-with-existing-users",
+		Schema: json.RawMessage(`{
+			"email": {"type": "string"}
+		}`),
+	}
+	schema.OUID = ts.oUID
+
+	schemaID := ts.createTestSchema(schema)
+
+	user := testutils.User{
+		OUID:       ts.oUID,
+		Type:       schema.Name,
+		Attributes: json.RawMessage(`{"email": "blocked-delete@example.com"}`),
+	}
+	userID, err := testutils.CreateUser(user)
+	ts.Require().NoError(err)
+
+	// Deletion should be refused while the user still references this type.
+	req, err := http.NewRequest("DELETE", testServerURL+"/user-types/"+schemaID, nil)
+	if err != nil {
+		ts.T().Fatalf("Failed to create request: %v", err)
+	}
+
+	resp, err := ts.client.Do(req)
+	if err != nil {
+		ts.T().Fatalf("Failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	ts.Assert().Equal(http.StatusConflict, resp.StatusCode,
+		"Should return 409 Conflict when users still reference the type")
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		ts.T().Fatalf("Failed to read response body: %v", err)
+	}
+
+	var errorResp ErrorResponse
+	if err := json.Unmarshal(bodyBytes, &errorResp); err != nil {
+		ts.T().Fatalf("Failed to unmarshal error response: %v", err)
+	}
+	ts.Assert().Equal("USRS-1016", errorResp.Code, "Error code should indicate blocking usages")
+
+	// The type must still be intact after the refused deletion.
+	getReq, err := http.NewRequest("GET", testServerURL+"/user-types/"+schemaID, nil)
+	if err != nil {
+		ts.T().Fatalf("Failed to create get request: %v", err)
+	}
+	getResp, err := ts.client.Do(getReq)
+	if err != nil {
+		ts.T().Fatalf("Failed to send get request: %v", err)
+	}
+	defer getResp.Body.Close()
+	ts.Assert().Equal(http.StatusOK, getResp.StatusCode, "Schema should still exist after refused deletion")
+
+	// Once the user is removed, deletion should succeed.
+	ts.Require().NoError(testutils.DeleteUser(userID))
+	ts.deleteSchema(schemaID)
+
+	getReq2, err := http.NewRequest("GET", testServerURL+"/user-types/"+schemaID, nil)
+	if err != nil {
+		ts.T().Fatalf("Failed to create get request: %v", err)
+	}
+	getResp2, err := ts.client.Do(getReq2)
+	if err != nil {
+		ts.T().Fatalf("Failed to send get request: %v", err)
+	}
+	defer getResp2.Body.Close()
+	ts.Assert().Equal(http.StatusNotFound, getResp2.StatusCode, "Schema should not exist after deletion")
+}
+
 // TestDeleteUserTypeNotFound tests DELETE /user-types/{id} with non-existent ID
 func (ts *DeleteUserTypeTestSuite) TestDeleteUserTypeNotFound() {
 	nonExistentID := "550e8400-e29b-41d4-a716-446655440000"

@@ -17,6 +17,7 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -75,14 +76,19 @@ type EntityTypeServiceInterface interface {
 	GetEntityTypeSchema(
 		ctx context.Context, category TypeCategory, userTypeName string,
 	) (*EntityType, *tidcommon.ServiceError)
+
+	// SetDependencyRegistry injects the dependency registry used to check for blocking usages
+	// before deleting a user type.
+	SetDependencyRegistry(r resourcedependency.Registry)
 }
 
 // entityTypeService is the default implementation of the EntityTypeServiceInterface.
 type entityTypeService struct {
-	entityTypeStore entityTypeStoreInterface
-	ouService       oupkg.OrganizationUnitServiceInterface
-	transactioner   providers.Transactioner
-	authzService    sysauthz.SystemAuthorizationServiceInterface
+	entityTypeStore    entityTypeStoreInterface
+	ouService          oupkg.OrganizationUnitServiceInterface
+	transactioner      providers.Transactioner
+	authzService       sysauthz.SystemAuthorizationServiceInterface
+	dependencyRegistry resourcedependency.Registry
 }
 
 // newEntityTypeService creates a new instance of entityTypeService.
@@ -98,6 +104,12 @@ func newEntityTypeService(
 		transactioner:   transactioner,
 		authzService:    authzService,
 	}
+}
+
+// SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
+// provider services are initialized to avoid a cyclic import.
+func (us *entityTypeService) SetDependencyRegistry(r resourcedependency.Registry) {
+	us.dependencyRegistry = r
 }
 
 // GetEntityTypeList lists entity types for the given category with pagination.
@@ -504,6 +516,12 @@ func (us *entityTypeService) DeleteEntityType(ctx context.Context, category Type
 		return &ErrorCannotModifyDeclarativeResource
 	}
 
+	if category == TypeCategoryUser {
+		if svcErr := us.ensureNoBlockingEntityTypeUsages(ctx, schemaID, logger); svcErr != nil {
+			return svcErr
+		}
+	}
+
 	if err := us.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		return us.entityTypeStore.DeleteEntityTypeByID(txCtx, category, schemaID)
 	}); err != nil {
@@ -511,6 +529,36 @@ func (us *entityTypeService) DeleteEntityType(ctx context.Context, category Type
 	}
 
 	return nil
+}
+
+// ensureNoBlockingEntityTypeUsages refuses deletion when existing entities still reference this
+// user type (e.g. users created with it). Because deletion is destructive, it fails closed: if
+// dependency data cannot be determined, the deletion is refused rather than allowed.
+func (us *entityTypeService) ensureNoBlockingEntityTypeUsages(
+	ctx context.Context, schemaID string, logger *log.Logger) *tidcommon.ServiceError {
+	if us.dependencyRegistry == nil {
+		logger.Error(ctx, "Dependency registry not set; refusing to delete user type",
+			log.String("schemaID", schemaID))
+		return &tidcommon.InternalServerError
+	}
+
+	deps, err := us.dependencyRegistry.GetDependencies(ctx, resourcedependency.ResourceTypeUserType, schemaID)
+	if err != nil {
+		return logAndReturnServerError(ctx, logger, "Failed to evaluate user type dependencies", err)
+	}
+	// Fail closed: nil TotalResults means a provider failed to report, so usage is unknown.
+	if deps == nil || deps.TotalResults == nil {
+		logger.Error(ctx, "User type dependency data unavailable; refusing to delete user type",
+			log.String("schemaID", schemaID))
+		return &tidcommon.InternalServerError
+	}
+
+	if len(resourcedependency.BlockingUsages(deps)) == 0 {
+		return nil
+	}
+
+	logger.Debug(ctx, "User type has existing users; deletion refused", log.String("schemaID", schemaID))
+	return &ErrorUserTypeHasExistingUsers
 }
 
 // ValidateEntity validates entity attributes against the schema for the given category and entity type.

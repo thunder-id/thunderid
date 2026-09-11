@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/stretchr/testify/assert"
@@ -117,6 +118,8 @@ func (s *InlineStubEntityTypeService) GetEntityTypeSchema(
 ) (*EntityType, *tidcommon.ServiceError) {
 	return &EntityType{Name: name, Category: cat}, nil
 }
+
+func (s *InlineStubEntityTypeService) SetDependencyRegistry(r resourcedependency.Registry) {}
 
 // --- POST ENDPOINT TESTS ---
 

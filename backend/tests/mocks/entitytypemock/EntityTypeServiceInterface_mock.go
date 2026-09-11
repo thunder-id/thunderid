@@ -10,6 +10,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -793,6 +794,46 @@ func (_c *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call) Return(s
 
 func (_c *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call) RunAndReturn(run func(ctx context.Context, entityType *entitytype.EntityType) *common.ServiceError) *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call {
 	_c.Call.Return(run)
+	return _c
+}
+
+// SetDependencyRegistry provides a mock function for the type EntityTypeServiceInterfaceMock
+func (_mock *EntityTypeServiceInterfaceMock) SetDependencyRegistry(r resourcedependency.Registry) {
+	_mock.Called(r)
+	return
+}
+
+// EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetDependencyRegistry'
+type EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call struct {
+	*mock.Call
+}
+
+// SetDependencyRegistry is a helper method to define mock.On call
+//   - r resourcedependency.Registry
+func (_e *EntityTypeServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call {
+	return &EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
+}
+
+func (_c *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call) Run(run func(r resourcedependency.Registry)) *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 resourcedependency.Registry
+		if args[0] != nil {
+			arg0 = args[0].(resourcedependency.Registry)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call) Return() *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run func(r resourcedependency.Registry)) *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Run(run)
 	return _c
 }
 

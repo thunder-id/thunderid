@@ -600,6 +600,12 @@ func buildGetEntitiesByIDsQuery(entityIDs []string, deploymentID string) (model.
 	)
 }
 
+// QueryGetEntityCountByType is the query to get the count of entities of a given category and type.
+var QueryGetEntityCountByType = model.DBQuery{
+	ID:    "ASQ-ENTITY_MGT-30",
+	Query: `SELECT COUNT(*) AS total FROM "ENTITY" WHERE CATEGORY = $1 AND TYPE = $2 AND DEPLOYMENT_ID = $3`,
+}
+
 // buildDualColumnConditions returns AND conditions for both Postgres and SQLite that match a key
 // against both ATTRIBUTES and SYSTEM_ATTRIBUTES using COALESCE (one parameter per key).
 func buildDualColumnConditions(tablePrefix, key string, paramIndex int) (pgCond, sqCond string) {

@@ -850,6 +850,8 @@ const translations = {
     'errors.USRS-1011': 'Display attribute must reference an attribute defined in the schema.',
     'errors.USRS-1012': 'Display attribute must reference a string or number type.',
     'errors.USRS-1013': 'Display attribute cannot reference a credential attribute.',
+    'errors.USRS-1016':
+      'This user type cannot be deleted because existing users are still assigned to it. Reassign or delete those users first.',
 
     // Edit page
     'manageUserType.title': 'Manage User Type',

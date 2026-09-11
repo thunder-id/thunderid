@@ -176,6 +176,22 @@ var (
 			DefaultValue: "The default agent type cannot be deleted. Edit the schema instead",
 		},
 	}
+
+	// ErrorUserTypeHasExistingUsers is returned when an attempt is made to delete a user type
+	// that is still assigned to existing users.
+	ErrorUserTypeHasExistingUsers = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USRS-1016",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.user_type_has_existing_users",
+			DefaultValue: "User type cannot be deleted",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.entitytypeservice.user_type_has_existing_users_description",
+			DefaultValue: "This user type cannot be deleted because existing users are still assigned to it. " +
+				"Reassign or delete those users first",
+		},
+	}
 )
 
 // Per-category ServiceError constants — used as the actual returned errors.

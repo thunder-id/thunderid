@@ -16,7 +16,9 @@ import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/hashmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
@@ -757,4 +759,61 @@ func (s *ServiceTestSuite) TestUpdateSystemAttributes_NoMarkerPassesThrough() {
 
 	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID, json.RawMessage(`{"name":"New"}`)))
 	s.JSONEq(`{"name":"New"}`, string(written))
+}
+
+func (s *ServiceTestSuite) TestGetResourceDependencies_IgnoresOtherResourceTypes() {
+	svc, _ := s.newSvcWithEntityType()
+	deps, err := svc.GetResourceDependencies(s.ctx, resourcedependency.ResourceTypeUser, "user-1")
+	s.NoError(err)
+	s.Empty(deps)
+}
+
+func (s *ServiceTestSuite) TestGetResourceDependencies_TypeNotFound_NoBlockingUsages() {
+	svc, ets := s.newSvcWithEntityType()
+	ets.On("GetEntityType", mock.Anything, entitytype.TypeCategoryUser, "type-1", false).
+		Return(nil, &tidcommon.ServiceError{Code: "USRS-1002"})
+
+	deps, err := svc.GetResourceDependencies(s.ctx, resourcedependency.ResourceTypeUserType, "type-1")
+	s.NoError(err)
+	s.Empty(deps)
+}
+
+func (s *ServiceTestSuite) TestGetResourceDependencies_NoExistingUsers() {
+	svc, ets := s.newSvcWithEntityType()
+	ets.On("GetEntityType", mock.Anything, entitytype.TypeCategoryUser, "type-1", false).
+		Return(&entitytype.EntityType{ID: "type-1", Name: "employee"}, nil)
+	s.store.On("GetEntityCountByType", mock.Anything, string(providers.EntityCategoryUser), "employee").
+		Return(0, nil)
+
+	deps, err := svc.GetResourceDependencies(s.ctx, resourcedependency.ResourceTypeUserType, "type-1")
+	s.NoError(err)
+	s.Empty(deps)
+}
+
+func (s *ServiceTestSuite) TestGetResourceDependencies_ExistingUsersBlock() {
+	svc, ets := s.newSvcWithEntityType()
+	ets.On("GetEntityType", mock.Anything, entitytype.TypeCategoryUser, "type-1", false).
+		Return(&entitytype.EntityType{ID: "type-1", Name: "employee"}, nil)
+	s.store.On("GetEntityCountByType", mock.Anything, string(providers.EntityCategoryUser), "employee").
+		Return(2, nil)
+
+	deps, err := svc.GetResourceDependencies(s.ctx, resourcedependency.ResourceTypeUserType, "type-1")
+	s.NoError(err)
+	s.Len(deps, 2)
+	for _, d := range deps {
+		s.Equal(resourcedependency.ResourceTypeUser, d.ResourceType)
+		s.Equal(resourcedependency.BehaviorRestrict, d.BehaviorOnDelete)
+	}
+}
+
+func (s *ServiceTestSuite) TestGetResourceDependencies_CountError() {
+	svc, ets := s.newSvcWithEntityType()
+	ets.On("GetEntityType", mock.Anything, entitytype.TypeCategoryUser, "type-1", false).
+		Return(&entitytype.EntityType{ID: "type-1", Name: "employee"}, nil)
+	s.store.On("GetEntityCountByType", mock.Anything, string(providers.EntityCategoryUser), "employee").
+		Return(0, s.testErr)
+
+	deps, err := svc.GetResourceDependencies(s.ctx, resourcedependency.ResourceTypeUserType, "type-1")
+	s.Error(err)
+	s.Nil(deps)
 }

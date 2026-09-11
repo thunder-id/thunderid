@@ -298,6 +298,21 @@ func (c *entityCompositeStore) GetGroupCountForEntity(ctx context.Context, entit
 	return c.dbStore.GetGroupCountForEntity(ctx, entityID)
 }
 
+// GetEntityCountByType sums the counts from both stores. The two stores use disjoint ID spaces,
+// so a plain sum is accurate without the dedup a distinct listing would need.
+func (c *entityCompositeStore) GetEntityCountByType(ctx context.Context,
+	category, entityType string) (int, error) {
+	dbCount, err := c.dbStore.GetEntityCountByType(ctx, category, entityType)
+	if err != nil {
+		return 0, err
+	}
+	fileCount, err := c.fileStore.GetEntityCountByType(ctx, category, entityType)
+	if err != nil {
+		return 0, err
+	}
+	return dbCount + fileCount, nil
+}
+
 // GetEntityGroups delegates to DB store only (groups are for mutable entities).
 func (c *entityCompositeStore) GetEntityGroups(ctx context.Context, entityID string,
 	limit, offset int) ([]providers.EntityGroup, error) {

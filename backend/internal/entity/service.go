@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -78,6 +79,10 @@ type EntityServiceInterface interface {
 
 	// GroupMembershipProvider registration
 	SetGroupMembershipProvider(provider GroupMembershipProvider)
+
+	// GetResourceDependencies implements resourcedependency.Provider.
+	GetResourceDependencies(
+		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 }
 
 // GroupMembershipProvider resolves group memberships for entities. Implemented by the group
@@ -439,6 +444,40 @@ func (s *entityService) GetEntityGroups(ctx context.Context, entityID string,
 // SetGroupMembershipProvider registers the group store used to resolve all group memberships.
 func (s *entityService) SetGroupMembershipProvider(provider GroupMembershipProvider) {
 	s.groupMembershipProvider = provider
+}
+
+// GetResourceDependencies implements resourcedependency.Provider. For a user type, it reports the
+// users still assigned to that type, which block its deletion (deleting the type out from under
+// existing users would leave them without a schema for attribute validation and display resolution).
+// Other resource types have no entity-level dependencies.
+func (s *entityService) GetResourceDependencies(
+	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
+	if resourceType != resourcedependency.ResourceTypeUserType {
+		return []resourcedependency.ResourceDependency{}, nil
+	}
+
+	schema, svcErr := s.entityTypeService.GetEntityType(ctx, entitytype.TypeCategoryUser, id, false)
+	if svcErr != nil {
+		// The type is already gone or inaccessible; nothing left to block on.
+		return []resourcedependency.ResourceDependency{}, nil
+	}
+
+	count, err := s.store.GetEntityCountByType(ctx, string(providers.EntityCategoryUser), schema.Name)
+	if err != nil {
+		return nil, err
+	}
+	if count == 0 {
+		return []resourcedependency.ResourceDependency{}, nil
+	}
+
+	deps := make([]resourcedependency.ResourceDependency, count)
+	for i := range deps {
+		deps[i] = resourcedependency.ResourceDependency{
+			ResourceType:     resourcedependency.ResourceTypeUser,
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		}
+	}
+	return deps, nil
 }
 
 // GetTransitiveEntityGroups retrieves all groups an entity belongs to, including nested group membership.
