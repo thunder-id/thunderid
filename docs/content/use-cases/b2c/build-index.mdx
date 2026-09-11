@@ -46,6 +46,25 @@ flowchart TD
   su -->|gets a| sr
 ```
 
+One sign-in then has to open every Wayfinder application, and one sign-out has to end it everywhere. That is a third
+set of pieces, built around the sign-in flow:
+
+```mermaid
+flowchart TD
+  app(["Wayfinder application"])
+  rewards(["Wayfinder Rewards application"])
+  auth["Sign-in flow, with a session checkpoint"]
+  sess(["One session, shared by both applications"])
+  out["Sign-out flow"]
+
+  app -->|signs customers in through| auth
+  rewards -->|signs customers in through| auth
+  auth -->|saves the checkpoint under| sess
+  out -->|ends| sess
+  sess -.->|ending it notifies| app
+  sess -.->|ending it notifies| rewards
+```
+
 You will build it in order, each page picking up where the last left off:
 
 1. **[Set Up Your Environment](../build-environment)** gets <ProductName /> and the sample running.
@@ -54,4 +73,6 @@ You will build it in order, each page picking up where the last left off:
 4. **[Build the Sign-In Flows](../build-flows)** builds the registration and account-recovery journeys.
 5. **[Register the Application](../build-application)** registers the OAuth2 client that runs them.
 6. **[Onboard Internal Staff](../build-onboarding)** adds staff roles and an invitation flow.
-7. **[How It All Runs](../build-run)** traces the finished solution across a single request.
+7. **[Keep Them Signed In](../build-sessions)** adds the session checkpoint, and a second application that shares it.
+8. **[Sign Them Out Everywhere](../build-signout)** ends the session and tells every application that shared it.
+9. **[How It All Runs](../build-run)** traces the finished solution across a single request.

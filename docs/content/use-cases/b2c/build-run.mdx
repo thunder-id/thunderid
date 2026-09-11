@@ -1,7 +1,7 @@
 ---
 title: How It All Runs
 docType: use-case
-sidebar_position: 7
+sidebar_position: 9
 description: See how the pieces you built play out on every request, from sign-in to an authorized API call.
 ---
 
@@ -20,9 +20,11 @@ sequenceDiagram
   participant API as Booking API
   C->>App: Opens the app, taps sign in
   App->>IL: Starts the sign-in flow (authorization code + PKCE)
+  IL->>IL: Checks for a session at the checkpoint, and finds none on a first sign-in
   IL-->>C: Presents the sign-in screen
   C->>IL: Enters credentials
   IL->>IL: Verifies the credential against the Customer user type
+  IL->>IL: Saves the checkpoint under a new session
   IL->>IL: Reads the Traveler role and its booking permissions
   IL-->>App: Returns an authorization code (redirect back)
   App->>IL: Exchanges the code and PKCE verifier for a token
@@ -53,6 +55,9 @@ the identity layer, no password anywhere near your backend. Decoded, it is an or
 token was issued for, and `iss` is the <ProductName /> instance that signed it. See
 [Token Formats](../../../guides/protocols/oauth-oidc/token-formats) for the full set of claims (the fields inside the token).
 
+That sequence runs in full only on a first sign-in. The session saved along the way shortens the next one, and every
+application on the same flow reads it. [Sign Them Out Everywhere](../build-signout) shows how it unwinds.
+
 ## What You've Built
 
 A complete consumer access solution, assembled by hand and running on standard OAuth2/OIDC:
@@ -60,6 +65,8 @@ A complete consumer access solution, assembled by hand and running on standard O
 - Customers sign themselves up, sign in, and recover their own accounts.
 - Staff join by invitation, each scoped to a single job.
 - A role decides what every customer may do, and the Booking API enforces it on every request.
+- One sign-in opens every application you grouped together, and runs out on its own on two clocks.
+- One sign-out ends it everywhere, even in applications the customer never went back to.
 - Your application stores no passwords and makes no access decisions of its own. The identity layer and the token
   carry that weight.
 
@@ -67,4 +74,5 @@ A complete consumer access solution, assembled by hand and running on standard O
 
 [See It in a Sample App](../try-it-out) walks these same journeys in the running Wayfinder sample: sign in as John
 Doe, sign up a new customer, recover a password, and onboard a staff member. When you want the reasoning behind the
-defaults, and what to change when your constraints differ, see [Design Decisions](../architecture-decisions).
+defaults, and what to change when your
+constraints differ, see [Design Decisions](../architecture-decisions).

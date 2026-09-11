@@ -11,11 +11,12 @@ You have now seen the [consumer access pattern](../overview), how [you build it,
 and [run it in Wayfinder](../try-it-out). This page is the reasoning behind that shape: the boundaries it assumes, and
 what to pick instead when your product does not fit those assumptions.
 
-The decisions fall into four groups:
+The decisions fall into five groups:
 
 - Which system renders identity screens.
 - Which system owns customer records.
 - Which tokens and permissions backend APIs trust.
+- How long a sign-in lasts, how many applications it opens, and what ends it.
 - Which operational controls your team needs before production.
 
 ## Decision Map
@@ -57,6 +58,18 @@ Decide how backend services will know what the signed-in customer can do.
 - Use scopes and audiences so APIs can validate whether an access token is meant for them.
 
 See [Tokens and APIs](../tokens-and-apis) for session, token, and API protection choices.
+
+## Choose the Session and Logout Model
+
+Decide how long a sign-in lasts, how many applications it opens, and what happens when it ends.
+
+- Put applications on one sign-in flow when a single sign-in should open all of them.
+- Use the idle and absolute limits to cap how long a customer stays signed in.
+- Put the session checkpoint around the steps a returning customer may skip, and keep sensitive ones outside it.
+- Give every application that shares a session a back-channel logout address, so ending the session reaches each one
+  directly instead of through the browser.
+
+See [Sessions & Logout](../sessions-and-logout) for the full decision.
 
 ## Choose the Operating Model
 

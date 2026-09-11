@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Link from '@docusaurus/Link';
+import {useActiveVersion} from '@docusaurus/plugin-content-docs/client';
 import {Box} from '@wso2/oxygen-ui';
 import {
   BarChart3,
@@ -2592,11 +2593,12 @@ export function B2CSolutionPatternsRoadmap() {
 }
 
 interface ArchDecisionCard {
-  id: 'integration' | 'identity-sources' | 'tokens-and-apis' | 'operations';
+  id: 'integration' | 'identity-sources' | 'tokens-and-apis' | 'sessions-and-logout' | 'operations';
   title: string;
   question: string;
   href: string;
   icon: React.ReactNode;
+  hiddenInVersions?: string[];
 }
 
 const b2cArchDecisions: ArchDecisionCard[] = [
@@ -2638,6 +2640,19 @@ const b2cArchDecisions: ArchDecisionCard[] = [
         <circle cx="7.5" cy="15.5" r="5.5" />
         <path d="m21 2-9.6 9.6" />
         <path d="m15.5 7.5 3 3L22 7l-3-3" />
+      </svg>
+    ),
+  },
+  {
+    id: 'sessions-and-logout',
+    title: 'Sessions & Logout',
+    question: 'How long does a sign-in last, how far does it reach, and what ends it?',
+    href: '../sessions-and-logout',
+    hiddenInVersions: ['v1.0.x'],
+    icon: (
+      <svg viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <polyline points="12 7 12 12 16 14" />
       </svg>
     ),
   },
@@ -2702,13 +2717,13 @@ export function B2CArchitectureDecisions({
   currentDecision?: ArchDecisionCard['id'];
   prioritizeIntegration?: boolean;
 } = {}) {
-  const cards = currentDecision
-    ? b2cArchDecisions.filter((d) => d.id !== currentDecision)
-    : b2cArchDecisions;
+  const activeVersion = useActiveVersion(undefined);
+  const available = b2cArchDecisions.filter((d) => !d.hiddenInVersions?.includes(activeVersion?.name ?? ''));
+  const cards = currentDecision ? available.filter((d) => d.id !== currentDecision) : available;
 
   if (prioritizeIntegration) {
-    const integration = b2cArchDecisions.find((d) => d.id === 'integration') ?? b2cArchDecisions[0];
-    const supporting = b2cArchDecisions.filter((d) => d.id !== 'integration');
+    const integration = available.find((d) => d.id === 'integration') ?? available[0];
+    const supporting = available.filter((d) => d.id !== 'integration');
     return (
       <Box sx={archDecisionsPrioritizedSx}>
         <Box sx={archDecisionsPrimarySx}>
