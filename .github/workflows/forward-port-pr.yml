@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout Target Branch
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
@@ -112,7 +112,7 @@ jobs:
 
       - name: 👥 Collect Assignees
         id: collect_assignees
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           AUTOMATION_BOT_LOGIN: ${{ env.RELEASE_GIT_USER_NAME }}
@@ -150,7 +150,7 @@ jobs:
 
       - name: 🔔 Create Forward-port PR
         id: create_pr
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           FORWARD_BRANCH: ${{ steps.cherry_pick.outputs.forward_branch }}
           SOURCE_BRANCH: ${{ steps.cherry_pick.outputs.source_branch }}
@@ -204,7 +204,7 @@ jobs:
             core.setOutput('pr_url', created.data.html_url);
 
       - name: 🏷️ Assign Users and Comment
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           NEW_PR_NUMBER: ${{ steps.create_pr.outputs.pr_number }}
           ORIGINAL_PR_NUMBER: ${{ steps.cherry_pick.outputs.pr_number }}

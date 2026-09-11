@@ -80,8 +80,13 @@ jobs:
       commit_version: ${{ steps.get_version.outputs.commit_version }}
       cli_suite: ${{ steps.cli_suite.outputs.present }}
     steps:
+<<<<<<< HEAD
       - name: 📥 Checkout Release Branch
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+=======
+      - name: 📥 Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+>>>>>>> 0aec1f42c (Move every pinned action to Node 24)
         with:
           fetch-depth: 0
           ref: ${{ env.RELEASE_BRANCH }}
@@ -261,6 +266,7 @@ jobs:
           echo "Building \`${{ steps.get_version.outputs.version }}\` from \`${RELEASE_BRANCH}\` at commit \`${{ steps.commit.outputs.sha }}\`." \
             >> "$GITHUB_STEP_SUMMARY"
 
+<<<<<<< HEAD
   test-unit:
     name: 🧪 Backend Unit Tests
     needs: resolve
@@ -281,6 +287,14 @@ jobs:
             exit 1
           fi
           echo "✅ Workspace is at the release commit $ACTUAL"
+=======
+      - name: 📦 Install Dependencies  
+        run: |  
+          cd backend  
+          go mod download  
+          cd ../tests/integration  
+          go mod download  
+>>>>>>> 0aec1f42c (Move every pinned action to Node 24)
 
       - name: ⚙️ Set up Go Environment
         uses: ./.github/actions/setup-go
@@ -368,6 +382,7 @@ jobs:
       - name: 🔨 Build Release Artifacts
         uses: ./.github/actions/build-multiplatform
 
+<<<<<<< HEAD
       - name: 🔍 Verify the Distribution Set
         run: |
           # The archives are named from version.txt, which the release job renames to the
@@ -401,6 +416,10 @@ jobs:
 
       - name: 📦 Upload the Release Distribution
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+=======
+      - name: 📦 Upload Built Distribution
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+>>>>>>> 0aec1f42c (Move every pinned action to Node 24)
         with:
           name: product-distribution
           path: target/dist/*.zip
@@ -429,8 +448,13 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
+<<<<<<< HEAD
       - name: 📥 Checkout the Release Commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+=======
+      - name: 📥 Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+>>>>>>> 0aec1f42c (Move every pinned action to Node 24)
         with:
           ref: ${{ needs.resolve.outputs.sha }}
           persist-credentials: false
@@ -445,6 +469,7 @@ jobs:
           fi
           echo "✅ Workspace is at the release commit $ACTUAL"
 
+<<<<<<< HEAD
       # Keyed off the tree under test. The action below compiles the whole suite.
       - name: 🗄️ Cache Go Modules
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -461,6 +486,14 @@ jobs:
         with:
           name: product-distribution
           path: target/dist/
+=======
+      - name: 📦 Install Dependencies
+        run: |
+          cd backend
+          go mod download
+          cd ../tests/integration
+          go mod download
+>>>>>>> 0aec1f42c (Move every pinned action to Node 24)
 
       - name: 📋 Record the Archive Under Test
         run: |
@@ -487,6 +520,7 @@ jobs:
     needs: build
     runs-on: windows-latest
     steps:
+<<<<<<< HEAD
       - name: 📥 Download the Release Distribution
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -637,12 +671,23 @@ jobs:
     steps:
       - name: 📥 Checkout the Release Commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+=======
+      - name: 📥 Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+>>>>>>> 0aec1f42c (Move every pinned action to Node 24)
         with:
           fetch-depth: 0
           ref: ${{ needs.resolve.outputs.sha }}
           persist-credentials: false
 
+<<<<<<< HEAD
       - name: 🔒 Assert the Release Commit
+=======
+      - name: ⚙️ Set up Go Environment
+        uses: ./.github/actions/setup-go
+
+      - name: 📦 Install Dependencies
+>>>>>>> 0aec1f42c (Move every pinned action to Node 24)
         run: |
           EXPECTED='${{ needs.resolve.outputs.sha }}'
           ACTUAL="$(git rev-parse HEAD)"
@@ -652,6 +697,7 @@ jobs:
           fi
           echo "✅ Workspace is at the release commit $ACTUAL"
 
+<<<<<<< HEAD
       - name: ⚙️ Setup Samples Environment
         uses: ./.github/actions/setup-samples-environment
         with:
@@ -702,12 +748,21 @@ jobs:
 
       - name: 📦 Install pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+=======
+      - name: 📦 Install pnpm for Frontend Build
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+>>>>>>> 0aec1f42c (Move every pinned action to Node 24)
         with:
           run_install: false
           version: ${{ env.PNPM_VERSION }}
 
+<<<<<<< HEAD
       - name: ⚙️ Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+=======
+      - name: ⚙️ Set up Node.js for Frontend Build
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+>>>>>>> 0aec1f42c (Move every pinned action to Node 24)
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -731,9 +786,40 @@ jobs:
           E2E_PRODUCT_DIST: ${{ github.workspace }}/target/dist
         run: pnpm run test:no-sample
 
+<<<<<<< HEAD
       - name: 📄 Upload CLI Verification Report on Failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+=======
+          if [ "$BUILT_VERSION" == "$RELEASE_VERSION" ]; then
+            echo "✅ Distributions already carry the release version $RELEASE_VERSION"
+            exit 0
+          fi
+
+          echo "📦 Renaming distributions from $BUILT_VERSION to $RELEASE_VERSION"
+          RENAMED=0
+          for zip in target/dist/${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-*.zip; do
+            [ -e "$zip" ] || continue
+            SUFFIX="${zip#target/dist/${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-}"
+            mv "$zip" "target/dist/${PRODUCT_NAME_LOWER}-${RELEASE_VERSION}-${SUFFIX}"
+            echo "  ${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-${SUFFIX} -> ${PRODUCT_NAME_LOWER}-${RELEASE_VERSION}-${SUFFIX}"
+            RENAMED=$((RENAMED + 1))
+          done
+
+          if [ "$RENAMED" -eq 0 ]; then
+            echo "❌ Error: no distributions matched ${PRODUCT_NAME_LOWER}-${BUILT_VERSION}-*.zip"
+            ls -l target/dist/
+            exit 1
+          fi
+          echo "✅ Renamed $RENAMED distribution(s) to $RELEASE_VERSION"
+
+      - name: 📝 Read Updated Version
+        id: version
+        run: echo "version=$(cat version.txt)" >> $GITHUB_OUTPUT
+
+      - name: 📦 Upload Backend Distribution Artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+>>>>>>> 0aec1f42c (Move every pinned action to Node 24)
         with:
           name: release-cli-verification
           path: |
@@ -801,10 +887,10 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: 🐳 Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: 🔐 Log in to GitHub Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -836,6 +922,197 @@ jobs:
 
           echo "✅ Docker image pushed successfully!"
           echo "📦 Image available at: ${IMAGE_NAME}:${DOCKER_VERSION}"
+<<<<<<< HEAD
+=======
+          echo "📦 Image available at: ${IMAGE_NAME}:latest"
+
+      - name: 📦 Publish Docker Compose (Quick Start) to GHCR
+        run: |
+          OWNER_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          DOCKER_VERSION="${{ needs.build.outputs.version }}"
+          if [[ $DOCKER_VERSION == v* ]]; then
+            DOCKER_VERSION="${DOCKER_VERSION#v}"
+          fi
+
+          COMPOSE_IMAGE="ghcr.io/${OWNER_NAME}/${PRODUCT_NAME_LOWER}-quick-start"
+
+          docker compose -f install/quick-start/docker-compose.yml publish \
+            --resolve-image-digests -y "${COMPOSE_IMAGE}:${DOCKER_VERSION}"
+
+          docker compose -f install/quick-start/docker-compose.yml publish \
+            --resolve-image-digests -y "${COMPOSE_IMAGE}:latest"
+
+          echo "✅ Docker Compose published successfully!"
+          echo "📦 Available at: ${COMPOSE_IMAGE}:${DOCKER_VERSION}"
+          echo "📦 Available at: ${COMPOSE_IMAGE}:latest"
+
+      - name: 🏷️ Update Helm Values Image Tag
+        run: |
+          # Get version without 'v' prefix
+          CHART_VERSION="${{ needs.build.outputs.version }}"
+          if [[ $CHART_VERSION == v* ]]; then
+            CHART_VERSION="${CHART_VERSION#v}"
+          fi
+          
+          echo "📝 Updating Helm values.yaml with image tag ${CHART_VERSION}"
+          
+          # Check if the file exists and has the expected pattern
+          if ! grep -q "tag: \"" install/helm/values.yaml; then
+            echo "❌ Error: Could not find 'tag: \"' pattern in install/helm/values.yaml"
+            echo "File may have been modified or corrupted"
+            exit 1
+          fi
+          
+          # Update values.yaml with the new image tag
+          sed -i "s/tag: \"[^\"]*\"/tag: \"${CHART_VERSION}\"/" install/helm/values.yaml
+
+          # Verify the replacement was successful
+          if ! grep -q "tag: \"${CHART_VERSION}\"" install/helm/values.yaml; then
+            echo "❌ Error: Failed to update image tag in values.yaml"
+            echo "Expected to find: tag: \"${CHART_VERSION}\""
+            echo "Current content:"
+            grep "tag:" install/helm/values.yaml
+            exit 1
+          fi
+          
+          echo "✅ Successfully updated values.yaml with image tag: ${CHART_VERSION}"
+          echo "✅ Verification passed - new tag is present in file"
+          grep "tag:" install/helm/values.yaml | head -1
+
+      - name: ⚙️ Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: 'v3.12.3'
+
+      - name: 📦 Package and Push Helm Chart to GHCR
+        run: |
+          CHART_NAME="$PRODUCT_NAME_LOWER"
+          OWNER_NAME=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          HELM_REGISTRY="ghcr.io/${OWNER_NAME}"
+          
+          # Get version without 'v' prefix for Helm chart version
+          CHART_VERSION="${{ needs.build.outputs.version }}"
+          if [[ $CHART_VERSION == v* ]]; then
+            CHART_VERSION="${CHART_VERSION#v}"
+          fi
+          
+          echo "📦 Packaging Helm chart: ${CHART_NAME} version ${CHART_VERSION}"
+
+          # Ensure target directory exists
+          mkdir -p target/dist/
+          
+          # Package the Helm chart
+          helm package install/helm --version "${CHART_VERSION}" --app-version "${CHART_VERSION}" --destination target/dist/
+
+          # Validate package was created
+          if [ ! -f "target/dist/${CHART_NAME}-${CHART_VERSION}.tgz" ]; then
+            echo "❌ Error: Helm chart package not found"
+            exit 1
+          fi
+
+          # Authenticate Helm to GHCR
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+          
+          # Push the Helm chart to GHCR
+          helm push "target/dist/${CHART_NAME}-${CHART_VERSION}.tgz" "oci://${HELM_REGISTRY}/helm-charts"
+          
+          echo "✅ Helm chart pushed successfully!"
+          echo "📦 Helm chart available at: oci://${HELM_REGISTRY}/helm-charts"
+
+      - name: 📝 Calculate Next Version
+        id: next_version
+        run: |
+          # Get the current release version and remove 'v' prefix
+          RELEASE_VERSION="${{ needs.build.outputs.version }}"
+          if [[ $RELEASE_VERSION == v* ]]; then
+            RELEASE_VERSION="${RELEASE_VERSION#v}"
+          fi
+          
+          # Parse version components (handle both X.Y and X.Y.Z formats)
+          if [[ $RELEASE_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            # X.Y.Z format
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+          elif [[ $RELEASE_VERSION =~ ^([0-9]+)\.([0-9]+) ]]; then
+            # X.Y format
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="0"
+          else
+            echo "❌ Error: Unable to parse version format: $RELEASE_VERSION"
+            exit 1
+          fi
+          
+          # Bump minor version for next development cycle
+          NEXT_MINOR=$((MINOR + 1))
+          NEXT_VERSION="${MAJOR}.${NEXT_MINOR}.0"
+          
+          echo "✅ Next development version: $NEXT_VERSION"
+          echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: 🏷️ Update Product Version
+        run: |
+          NEXT_VERSION="v${{ steps.next_version.outputs.next_version }}"
+          echo "$NEXT_VERSION" > version.txt
+          echo "✅ Updated version.txt to $NEXT_VERSION"
+
+      - name: 📦 Install pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          run_install: false
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: ⚙️ Set up Node.js for Version Update
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 🏷️ Update Sample Apps Version
+        run: |
+          NEXT_VERSION="${{ steps.next_version.outputs.next_version }}"
+          echo "📝 Setting sample apps version to $NEXT_VERSION"
+
+          for sample in vanilla-sample react-sdk-sample react-api-based-sample wayfinder-sample; do
+            cd "$GITHUB_WORKSPACE/samples/apps/$sample"
+            pnpm version "$NEXT_VERSION" --no-git-tag-version --no-git-checks --allow-same-version
+          done
+
+          cd "$GITHUB_WORKSPACE"
+          echo "✅ Updated sample apps version to $NEXT_VERSION"
+
+
+  package-samples:
+    name: 📦 Package Samples
+    runs-on: ubuntu-latest
+    needs: [build, build-and-package]
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_BRANCH }}
+
+      - name: ⚙️ Setup Samples Environment
+        uses: ./.github/actions/setup-samples-environment
+        with:
+          download-certificates: 'false'
+
+      - name: 📝 Update Sample Apps Version
+        uses: ./.github/actions/update-sample-versions
+        with:
+          version: ${{ needs.build.outputs.version }}
+
+      - name: 📦 Build and Package Samples
+        run: ./scripts/package-samples.sh
+
+      - name: 📦 Upload Sample Artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.PRODUCT_NAME_LOWER }}-samples
+          path: target/dist/*.zip
+          if-no-files-found: error
+>>>>>>> 0aec1f42c (Move every pinned action to Node 24)
 
   release:
     name: 🚀 Release
@@ -852,9 +1129,14 @@ jobs:
     outputs:
       release_tag: ${{ steps.release_info.outputs.release_tag }}
     steps:
+<<<<<<< HEAD
       # The only job that writes to the repository, so the only checkout with credentials.
       - name: 📥 Checkout the Release Commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+=======
+      - name: 📥 Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+>>>>>>> 0aec1f42c (Move every pinned action to Node 24)
         with:
           fetch-depth: 0
           ref: ${{ needs.resolve.outputs.sha }}
@@ -931,13 +1213,13 @@ jobs:
           echo "✅ Tagged $(git rev-parse HEAD) as $TAG_VERSION"
 
       - name: 📥 Download Backend Artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: product-distribution
           path: ./backend-artifacts
 
       - name: 📥 Download Sample Artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ env.PRODUCT_NAME_LOWER }}-samples
           path: ./sample-artifacts
@@ -987,7 +1269,7 @@ jobs:
           echo "✅ Renamed $RENAMED distribution(s) to $RELEASE_VERSION"
 
       - name: 📦 Upload Final Combined Artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: final-distribution
           path: target/dist/*.zip
@@ -1066,7 +1348,7 @@ jobs:
 
       - name: 📝 Generate Automatic Release Notes
         id: generate_notes
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const currentTag = '${{ needs.resolve.outputs.version }}';
@@ -1264,7 +1546,7 @@ jobs:
 
       - name: 📦 Create GitHub Release
         id: create_release
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ needs.resolve.outputs.version }}
           name: ${{ env.PRODUCT_NAME }} ${{ needs.resolve.outputs.version }}
@@ -1347,8 +1629,16 @@ jobs:
       && needs.release.result == 'success'
       && needs.resolve.outputs.run_performance_test == 'true' }}
     steps:
+<<<<<<< HEAD
+=======
+      - name: 📥 Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_BRANCH }}
+
+>>>>>>> 0aec1f42c (Move every pinned action to Node 24)
       - name: ⚡ Trigger Performance Test Workflows
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.THUNDER_GITHUB_BOT_TOKEN }}
           script: |
@@ -1386,7 +1676,7 @@ jobs:
     if: ${{ !cancelled() && needs.release.result == 'success' }}
     steps:
       - name: 📚 Trigger Deploy Documentation Workflow
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
           script: |
