@@ -17,9 +17,11 @@ const (
 	GitHubArchiveURL = "https://codeload.github.com/thunder-id/thunderid/zip/refs/heads/main"
 )
 
-// DocsVersionURL is the root of the current versioned docs tree, indexed at
-// https://thunderid.dev/llms.txt. Bump this when the docs site cuts a new version.
-const DocsVersionURL = "https://thunderid.dev/docs/v1.0.x"
+// DocsVersionURL is the root of the current docs tree, indexed at
+// https://thunderid.dev/llms.txt. The latest release is served at the bare
+// /docs root (not a versioned path); only /docs/next carries a path segment,
+// for the unreleased preview.
+const DocsVersionURL = "https://thunderid.dev/docs"
 
 // DocsBaseURL is the canonical per-platform "connect your application" guide directory.
 // Appending "/<slug>.md" fetches the raw markdown guide; appending "/<slug>" (no
