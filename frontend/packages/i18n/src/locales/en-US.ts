@@ -3648,6 +3648,9 @@ const translations = {
     'core.executions.ouResolver.resolveFrom.caller': 'Caller',
     'core.executions.ouResolver.resolveFrom.prompt': 'Prompt',
     'core.executions.ouResolver.resolveFrom.promptAll': 'Prompt All',
+    'core.executions.ouResolver.promptUseHandle.label': 'Use OU handle for selection',
+    'core.executions.ouResolver.promptUseHandle.hint':
+      'Offer child OUs as a dropdown of handles instead of requiring a literal OU ID.',
 
     // Invite executor
     'core.executions.invite.description': 'Configure the invite executor mode.',

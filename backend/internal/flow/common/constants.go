@@ -123,6 +123,10 @@ const (
 	// NodePropertyOUResolveFrom specifies the strategy for resolving the organization unit.
 	// Supported values: "caller" (use the caller's OU).
 	NodePropertyOUResolveFrom = "resolveFrom"
+	// NodePropertyOUPromptUseHandle switches the "prompt" strategy's OU selection input from a
+	// literal OU ID (ouId, the default) to a human-readable handle (ouHandle), scoped to the
+	// default OU's children and offered as selectable options.
+	NodePropertyOUPromptUseHandle = "promptUseHandle"
 	// NodePropertyAuthMethodMapping maps authentication classes to action refs on login_options PROMPT nodes.
 	NodePropertyAuthMethodMapping = "authMethodMapping"
 	// NodePropertySkipInterceptors indicates whether to skip interceptor execution for the current node.

@@ -17,9 +17,12 @@ const (
 )
 
 // ouStrategyFlowNodes builds a registration flow that resolves the user type, then the OU with the
-// given strategy, then provisions the user. The strategy is the only thing that varies between the
-// flows this suite creates.
-func ouStrategyFlowNodes(resolveFrom string) []map[string]interface{} {
+// given strategy, then provisions the user. ouInputIdentifier is the OU selection PROMPT node's own
+// declared input identifier — the engine only considers that node's required input satisfied when a
+// submission arrives under this exact key, regardless of what the executor itself would also accept
+// (e.g. the "prompt" strategy resolves either ouId or ouHandle, but a flow whose declared identifier
+// is "ouId" still requires a submission keyed "ouId" to ever reach that resolution logic).
+func ouStrategyFlowNodes(resolveFrom, ouInputIdentifier string) []map[string]interface{} {
 	return []map[string]interface{}{
 		{
 			"id":        "start",
@@ -54,7 +57,7 @@ func ouStrategyFlowNodes(resolveFrom string) []map[string]interface{} {
 					"inputs": []map[string]interface{}{
 						{
 							"ref":        "ou_selection_input",
-							"identifier": "ouId",
+							"identifier": ouInputIdentifier,
 							"type":       "OU_SELECT",
 							"required":   true,
 						},
@@ -153,6 +156,7 @@ type OUResolverStrategiesTestSuite struct {
 
 	promptParentAppID string
 	promptChildAppID  string
+	promptHandleAppID string
 	callerAppID       string
 	unsupportedAppID  string
 
@@ -210,10 +214,16 @@ func (ts *OUResolverStrategiesTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create isolated auth flow")
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, ts.isolatedAuthFlowID)
 
-	promptFlowID := ts.createFlow("OU Resolver Prompt Flow", "registration_flow_ou_prompt_test", "prompt")
-	callerFlowID := ts.createFlow("OU Resolver Caller Flow", "registration_flow_ou_caller_test", "caller")
+	promptFlowID := ts.createFlow("OU Resolver Prompt Flow", "registration_flow_ou_prompt_test", "prompt", "ouId")
+	// A dedicated flow whose OU selection PROMPT node declares "ouHandle" as its own identifier,
+	// since the engine only accepts a submission for the node's declared identifier — the shared
+	// promptFlowID above always requires "ouId", regardless of the prompt strategy's own dual
+	// ouId/ouHandle support.
+	promptHandleFlowID := ts.createFlow("OU Resolver Prompt Handle Flow",
+		"registration_flow_ou_prompt_handle_test", "prompt", "ouHandle")
+	callerFlowID := ts.createFlow("OU Resolver Caller Flow", "registration_flow_ou_caller_test", "caller", "ouId")
 	unsupportedFlowID := ts.createFlow("OU Resolver Unsupported Flow",
-		"registration_flow_ou_unsupported_test", "notAStrategy")
+		"registration_flow_ou_unsupported_test", "notAStrategy", "ouId")
 
 	// The prompt flow is bound twice: once with a user type whose OU has children, and once with a
 	// user type whose OU has none, which is what decides whether a selection is asked for.
@@ -221,20 +231,22 @@ func (ts *OUResolverStrategiesTestSuite) SetupSuite() {
 		promptFlowID, ts.parentTypeName)
 	ts.promptChildAppID = ts.createApp("OU Strategy Prompt Child App", "ou_strategy_prompt_child_client",
 		promptFlowID, ts.childTypeName)
+	ts.promptHandleAppID = ts.createApp("OU Strategy Prompt Handle App", "ou_strategy_prompt_handle_client",
+		promptHandleFlowID, ts.parentTypeName)
 	ts.callerAppID = ts.createApp("OU Strategy Caller App", "ou_strategy_caller_client",
 		callerFlowID, ts.parentTypeName)
 	ts.unsupportedAppID = ts.createApp("OU Strategy Unsupported App", "ou_strategy_unsupported_client",
 		unsupportedFlowID, ts.parentTypeName)
 }
 
-func (ts *OUResolverStrategiesTestSuite) createFlow(name, handle, resolveFrom string) string {
+func (ts *OUResolverStrategiesTestSuite) createFlow(name, handle, resolveFrom, ouInputIdentifier string) string {
 	ts.T().Helper()
 
 	flowID, err := testutils.CreateFlow(testutils.Flow{
 		Name:     name,
 		FlowType: "REGISTRATION",
 		Handle:   handle,
-		Nodes:    ouStrategyFlowNodes(resolveFrom),
+		Nodes:    ouStrategyFlowNodes(resolveFrom, ouInputIdentifier),
 	})
 	ts.Require().NoError(err, "Failed to create flow %s", handle)
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, flowID)
@@ -262,7 +274,7 @@ func (ts *OUResolverStrategiesTestSuite) createApp(name, clientID, flowID, userT
 
 func (ts *OUResolverStrategiesTestSuite) TearDownSuite() {
 	for _, appID := range []string{
-		ts.promptParentAppID, ts.promptChildAppID, ts.callerAppID, ts.unsupportedAppID,
+		ts.promptParentAppID, ts.promptChildAppID, ts.promptHandleAppID, ts.callerAppID, ts.unsupportedAppID,
 	} {
 		if appID == "" {
 			continue
@@ -389,4 +401,29 @@ func (ts *OUResolverStrategiesTestSuite) TestUnsupportedStrategy_Fails() {
 	ts.Require().NotNil(step.Error, "An unsupported strategy must be reported")
 	ts.Equal(errCodeOUResolutionFailed, step.Error.Code,
 		"An unsupported strategy must fail OU resolution")
+}
+
+// The prompt strategy resolves a submitted handle scoped to the parent OU whose children were
+// offered, not just a raw ID — the human-readable identifier path #5122 added.
+func (ts *OUResolverStrategiesTestSuite) TestPrompt_HandleSubmissionResolved() {
+	step, err := common.InitiateRegistrationFlow(ts.promptHandleAppID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate registration flow")
+	ts.Require().True(common.HasInput(step.Data.Inputs, "ouHandle"), "The flow should prompt for an OU")
+
+	step, err = common.CompleteFlow(step.ExecutionID,
+		map[string]string{"ouHandle": "ou_strategy_child_test_ou"}, "action_ou", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the OU handle")
+	ts.Require().Nil(step.Error, "A valid handle among the parent's children must resolve")
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "The flow should move on to user details")
+
+	username := common.GenerateUniqueUsername("ou_prompt_handle")
+	completed, err := common.CompleteFlow(step.ExecutionID, map[string]string{
+		"username": username,
+		"email":    username + "@ou-strategy.test",
+	}, "action_details", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit user details")
+	ts.Require().Equal("COMPLETE", completed.FlowStatus, "Registration should provision the user")
+
+	user := ts.trackRegisteredUser(username)
+	ts.Equal(ts.childOUID, user.OUID, "A handle submission must resolve to the same OU as the raw ID would")
 }

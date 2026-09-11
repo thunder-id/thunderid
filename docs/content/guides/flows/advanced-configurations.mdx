@@ -1447,7 +1447,7 @@ Resolves or selects an organizational unit based on a configured strategy. Overw
 
 | Property | UI Label | Required | Default | Behavior |
 |---|---|---|---|---|
-| `resolveFrom` | Resolve From | Yes | - | Strategy for OU resolution: `caller`, `prompt`, or `promptAll` |
+| `resolveFrom` | Resolve From | Yes | - | Strategy for OU resolution: `caller` or `prompt`. |
 
 **Resolution Strategies:**
 
@@ -1469,20 +1469,17 @@ Resolves or selects an organizational unit based on a configured strategy. Overw
   1. Place **User Type Resolver** before this executor in registration flows
   2. Add a **Blank View** immediately after this executor with an OU selection component
   3. This executor will prompt only if the default OU has child OUs. Otherwise, it completes silently
-- **Failure conditions:** Default OU not found; selected OU is not a child of the default
-
-**`promptAll` strategy:**
-- Shows the full OU tree from root, independent of User Type Resolver
-- **When to use:** Advanced onboarding with full OU tree visibility
-- **Prerequisites:** A Blank View with OU selection component must follow this executor
-- **Setup:**
-  1. No need to run User Type Resolver first (unlike `prompt` strategy)
-  2. Add a **Blank View** immediately after this executor with an OU selection component
-  3. The executor will display the complete OU tree starting from root
-- **Failure conditions:** OU service error
+- **Failure conditions:** Default OU not found; both `ouId` and `ouHandle` submitted at once; selected handle does not match a child OU; selected OU is not a descendant of the default
 
 **Input Configuration:**
-- `ouId` (required): the user's selected organizational unit. Used for `prompt` and `promptAll` strategies. Default: `ouId`
+
+The `prompt` strategy accepts exactly one of the two inputs below, never both:
+- `ouId` (default): a literal OU ID, for a caller that already knows the target OU
+- `ouHandle`: a handle scoped to the default OU's children, offered as selectable dropdown options
+
+Set the node property `promptUseHandle` to `true` to switch the rendered input from `ouId` to
+`ouHandle` and have the executor populate the child OUs' handles as selectable options. Configure
+the OU selection component's own input identifier to match (`ouHandle`).
 
 **Example:**
 

@@ -1048,6 +1048,44 @@ describe('ExecutionExtendedProperties', () => {
 
       expect(mockOnChange).toHaveBeenCalledWith('data.properties.resolveFrom', 'prompt', ouResolverResource);
     });
+
+    it('should not show the handle-selection toggle for the caller strategy', () => {
+      render(<ExecutionExtendedProperties resource={ouResolverResource} onChange={mockOnChange} />);
+
+      expect(screen.queryByText('flows:core.executions.ouResolver.promptUseHandle.label')).not.toBeInTheDocument();
+    });
+
+    it('should show the handle-selection toggle for the prompt strategy', () => {
+      const promptResource = {
+        ...ouResolverResource,
+        data: {
+          ...(ouResolverResource as unknown as {data: object}).data,
+          properties: {resolveFrom: 'prompt'},
+        },
+      } as unknown as Resource;
+
+      render(<ExecutionExtendedProperties resource={promptResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.ouResolver.promptUseHandle.label')).toBeInTheDocument();
+      expect(screen.getByRole('checkbox')).not.toBeChecked();
+    });
+
+    it('should call onChange when the handle-selection toggle is checked', async () => {
+      const user = userEvent.setup();
+      const promptResource = {
+        ...ouResolverResource,
+        data: {
+          ...(ouResolverResource as unknown as {data: object}).data,
+          properties: {resolveFrom: 'prompt'},
+        },
+      } as unknown as Resource;
+
+      render(<ExecutionExtendedProperties resource={promptResource} onChange={mockOnChange} />);
+
+      await user.click(screen.getByRole('checkbox'));
+
+      expect(mockOnChange).toHaveBeenCalledWith('data.properties.promptUseHandle', true, promptResource);
+    });
   });
 
   describe('Invite Executor', () => {

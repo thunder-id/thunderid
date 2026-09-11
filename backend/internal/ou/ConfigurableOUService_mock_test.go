@@ -772,6 +772,80 @@ func (_c *ConfigurableOUServiceMock_GetOrganizationUnitHandlesByIDs_Call) RunAnd
 	return _c
 }
 
+// GetOrganizationUnitIDByHandle provides a mock function for the type ConfigurableOUServiceMock
+func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitIDByHandle(ctx context.Context, handle string, parentID *string) (string, *common.ServiceError) {
+	ret := _mock.Called(ctx, handle, parentID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetOrganizationUnitIDByHandle")
+	}
+
+	var r0 string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string) (string, *common.ServiceError)); ok {
+		return returnFunc(ctx, handle, parentID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string) string); ok {
+		r0 = returnFunc(ctx, handle, parentID)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, handle, parentID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ConfigurableOUServiceMock_GetOrganizationUnitIDByHandle_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetOrganizationUnitIDByHandle'
+type ConfigurableOUServiceMock_GetOrganizationUnitIDByHandle_Call struct {
+	*mock.Call
+}
+
+// GetOrganizationUnitIDByHandle is a helper method to define mock.On call
+//   - ctx context.Context
+//   - handle string
+//   - parentID *string
+func (_e *ConfigurableOUServiceMock_Expecter) GetOrganizationUnitIDByHandle(ctx interface{}, handle interface{}, parentID interface{}) *ConfigurableOUServiceMock_GetOrganizationUnitIDByHandle_Call {
+	return &ConfigurableOUServiceMock_GetOrganizationUnitIDByHandle_Call{Call: _e.mock.On("GetOrganizationUnitIDByHandle", ctx, handle, parentID)}
+}
+
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitIDByHandle_Call) Run(run func(ctx context.Context, handle string, parentID *string)) *ConfigurableOUServiceMock_GetOrganizationUnitIDByHandle_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 *string
+		if args[2] != nil {
+			arg2 = args[2].(*string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitIDByHandle_Call) Return(s string, serviceError *common.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitIDByHandle_Call {
+	_c.Call.Return(s, serviceError)
+	return _c
+}
+
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitIDByHandle_Call) RunAndReturn(run func(ctx context.Context, handle string, parentID *string) (string, *common.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitIDByHandle_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetOrganizationUnitList provides a mock function for the type ConfigurableOUServiceMock
 func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitList(ctx context.Context, limit int, offset int, f *common.FilterGroup) (*providers.OrganizationUnitListResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, limit, offset, f)

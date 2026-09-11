@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/ou"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
@@ -58,6 +59,7 @@ func newOUResolverExecutor(
 		&providers.ExecutorMeta{
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: common.NodePropertyOUResolveFrom},
+				{Property: common.NodePropertyOUPromptUseHandle},
 			},
 		},
 	)
@@ -146,14 +148,46 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *providers.NodeContext,
 		)
 	}
 
-	// If the user already provided an OU selection, validate and accept it.
-	if selectedOUID, ok := ctx.UserInputs[ouIDKey]; ok && selectedOUID != "" {
-		// Validate that the selected OU belongs to the parent OU's subtree.
-		isDescendant, svcErr := e.ouService.IsParent(ctx.Context, parentOUID, selectedOUID)
+	// The user may submit either a literal OU ID (ouId) or a handle scoped to the default OU's
+	// children (ouHandle), but not both — each identifies the same selection unambiguously on its
+	// own, so accepting both at once would leave which one takes precedence undefined.
+	selectedID, hasID := ctx.UserInputs[ouIDKey]
+	hasID = hasID && selectedID != ""
+	selectedHandle, hasHandle := ctx.UserInputs[ouHandleKey]
+	hasHandle = hasHandle && selectedHandle != ""
+
+	if hasID && hasHandle {
+		logger.Debug(ctx.Context, "Both ouId and ouHandle were submitted; exactly one is expected")
+		execResp.Status = providers.ExecUserInputRequired
+		execResp.Inputs = e.promptInputs(ctx)
+		execResp.Error = &ErrInvalidOU
+		return execResp, nil
+	}
+
+	if hasID || hasHandle {
+		resolvedOUID := selectedID
+		if hasHandle {
+			handleOUID, svcErr := e.ouService.GetOrganizationUnitIDByHandle(ctx.Context, selectedHandle, &parentOUID)
+			if svcErr != nil {
+				if svcErr.Type == tidcommon.ClientErrorType {
+					logger.Debug(ctx.Context, "Selected OU handle could not be resolved",
+						log.String(ouHandleKey, selectedHandle))
+					execResp.Status = providers.ExecUserInputRequired
+					execResp.Inputs = e.promptInputs(ctx)
+					execResp.Error = &ErrInvalidOU
+					return execResp, nil
+				}
+				return nil, errors.New("failed to resolve organization unit by handle: " + svcErr.Error.DefaultValue)
+			}
+			resolvedOUID = handleOUID
+		}
+
+		// Validate that the resolved OU belongs to the parent OU's subtree.
+		isDescendant, svcErr := e.ouService.IsParent(ctx.Context, parentOUID, resolvedOUID)
 		if svcErr != nil {
 			if svcErr.Type == tidcommon.ClientErrorType {
 				execResp.Status = providers.ExecUserInputRequired
-				execResp.Inputs = e.GetDefaultInputs()
+				execResp.Inputs = e.promptInputs(ctx)
 				execResp.Error = &ErrInvalidOU
 				return execResp, nil
 			}
@@ -162,22 +196,28 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *providers.NodeContext,
 		}
 		if !isDescendant {
 			logger.Debug(ctx.Context, "Selected OU is not a descendant of the parent OU",
-				log.String(ouIDKey, selectedOUID),
+				log.String(ouIDKey, resolvedOUID),
 				log.String("parentOUID", parentOUID))
 			execResp.Status = providers.ExecUserInputRequired
-			execResp.Inputs = e.GetDefaultInputs()
+			execResp.Inputs = e.promptInputs(ctx)
 			execResp.Error = &ErrOUNotValidForUserType
 			return execResp, nil
 		}
 
-		logger.Debug(ctx.Context, "OU selected by user", log.String(ouIDKey, selectedOUID))
-		execResp.RuntimeData[ouIDKey] = selectedOUID
+		logger.Debug(ctx.Context, "OU selected by user", log.String(ouIDKey, resolvedOUID))
+		execResp.RuntimeData[ouIDKey] = resolvedOUID
 		execResp.Status = providers.ExecComplete
 		return execResp, nil
 	}
 
-	// Check if the parent OU has child OUs.
-	children, svcErr := e.ouService.GetOrganizationUnitChildren(ctx.Context, parentOUID, 1, 0, nil)
+	// Check if the parent OU has child OUs. In handle mode every child is fetched so its handle can
+	// be offered as a selectable option; otherwise only the count is needed.
+	useHandle := e.isPromptUseHandle(ctx)
+	childrenLimit := 1
+	if useHandle {
+		childrenLimit = serverconst.MaxPageSize
+	}
+	children, svcErr := e.ouService.GetOrganizationUnitChildren(ctx.Context, parentOUID, childrenLimit, 0, nil)
 	if svcErr != nil {
 		return nil, errors.New("failed to check child organization units: " + svcErr.Error.DefaultValue)
 	}
@@ -195,9 +235,14 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *providers.NodeContext,
 
 	execResp.Status = providers.ExecUserInputRequired
 
-	inputs := e.GetDefaultInputs()
+	inputs := e.promptInputs(ctx)
 	if len(inputs) > 0 {
 		input := inputs[0]
+		if useHandle {
+			// Offer each child's handle as a selectable option; a caller that already knows the
+			// target OU's ID may still submit it directly under ouId instead.
+			input.Options = organizationUnitHandles(children.OrganizationUnits)
+		}
 		execResp.Inputs = []providers.Input{input}
 		// Forward the root OU ID so the frontend knows where to start the tree picker.
 		execResp.AdditionalData[common.DataRootOUID] = parentOUID
@@ -205,6 +250,45 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *providers.NodeContext,
 	}
 
 	return execResp, nil
+}
+
+// isPromptUseHandle returns the value of the promptUseHandle node property, defaulting to false
+// (offer a literal OU ID) if absent or not a bool.
+func (e *ouResolverExecutor) isPromptUseHandle(ctx *providers.NodeContext) bool {
+	if ctx.NodeProperties == nil {
+		return false
+	}
+	if val, ok := ctx.NodeProperties[common.NodePropertyOUPromptUseHandle]; ok {
+		if boolVal, ok := val.(bool); ok {
+			return boolVal
+		}
+	}
+	return false
+}
+
+// promptInputs returns the "prompt" strategy's OU-selection input. When promptUseHandle is
+// enabled it is keyed by ouHandleKey and typed as a plain SELECT — a flat list of handles with no
+// tree data, the same shape a generic SELECT input already renders, so no dedicated OU_SELECT
+// frontend support is needed. Otherwise it falls back to the default input (ouIDKey, OU_SELECT).
+func (e *ouResolverExecutor) promptInputs(ctx *providers.NodeContext) []providers.Input {
+	defaults := e.GetDefaultInputs()
+	if !e.isPromptUseHandle(ctx) || len(defaults) == 0 {
+		return defaults
+	}
+	input := defaults[0]
+	input.Identifier = ouHandleKey
+	input.Type = providers.InputTypeSelect
+	return []providers.Input{input}
+}
+
+// organizationUnitHandles extracts the handle of each organization unit, in order, for use as a
+// selectable input's options.
+func organizationUnitHandles(units []providers.OrganizationUnitBasic) []string {
+	handles := make([]string, 0, len(units))
+	for _, unit := range units {
+		handles = append(handles, unit.Handle)
+	}
+	return handles
 }
 
 // resolveFromPromptAll shows the full OU tree from root, allowing selection of any OU.
