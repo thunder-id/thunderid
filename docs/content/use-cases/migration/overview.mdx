@@ -1,0 +1,58 @@
+---
+title: Upgrade {{ProductName}} Across Versions
+docType: use-case
+sidebar_position: 1
+description: Plan {{ProductName}} upgrades while preserving identity data and configuration.
+---
+
+# Upgrade <ProductName /> Across Versions
+
+An administrator runs <ProductName /> against databases that hold the users, applications, flows, roles, and other
+identity data their organization depends on. When a new release becomes available, they need to know whether the
+existing installation is compatible, what must change, and how to recover if the upgrade fails. The migration feature
+defines a controlled path for moving an installation from one published version to the next.
+
+## Use Cases Covered
+
+### Plan an Upgrade
+
+Before changing the installation, an administrator can check whether the upgrade can proceed, what stored data it will
+change, and what currently blocks it. The assessment also identifies required changes to administrator-owned
+configuration and declarative resource files without modifying them.
+
+This information helps the administrator decide whether to schedule a maintenance window, create a backup, or resolve
+compatibility problems before starting the upgrade.
+
+### Preserve an Existing Installation
+
+An administrator can move through patch, minor, and major releases without rebuilding the installation or losing
+existing identity data. <ProductName /> brings its supported data stores forward, including required changes to database
+structure and stored content.
+
+Installations in which multiple deployments share stored data are covered by the same migration process. Short-lived
+data may be discarded instead of transformed when retaining it is unnecessary.
+
+### Recover from an Upgrade Failure
+
+If an upgrade does not complete, the administrator receives a report describing what failed and where the installation
+stands. The migration process provides a defined recovery path so the administrator can return the installation to a
+working state or safely continue the interrupted work.
+
+### Carry Storage Changes Through Development
+
+A developer whose change affects stored structure or content has a defined place to declare what an existing
+installation needs. The release records whether migration is required and carries the necessary change alongside the
+feature, so verification covers both fresh and existing installations.
+
+## Scope Boundaries
+
+- <ProductName /> migrates the databases and stored data it owns.
+- <ProductName /> validates administrator-owned configuration and declarative resources, then reports required changes
+  instead of rewriting those files.
+- API and SDK compatibility, secrets and key material, upgrades from versions before `v1.0.0`, and reverting a completed
+  upgrade remain outside this feature.
+
+## Next Steps
+
+Follow the <RepoLink path="/issues/5208">version upgrade feature issue</RepoLink> for the detailed requirements and
+implementation status.

@@ -391,6 +391,19 @@ const sidebars: SidebarsConfig = {
             },
           ],
         },
+        {
+          type: 'category',
+          label: `Upgrading ${productConfig.project.name}`,
+          collapsed: true,
+          collapsible: true,
+          items: [
+            {
+              type: 'doc',
+              id: 'use-cases/migration/overview',
+              label: 'Upgrade Across Versions',
+            },
+          ],
+        },
       ],
     },
 
