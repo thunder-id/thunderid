@@ -91,9 +91,9 @@ func (suite *ProvisioningExecutorTestSuite) expectSchemaForProvisioning() {
 	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
 		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
 		Return([]model.AttributeInfo{
-			{Attribute: "username", Required: false},
+			{Attribute: "username", Required: false, Unique: true},
 			{Attribute: attributeEmail, Required: false},
-			{Attribute: "sub", Required: false},
+			{Attribute: "sub", Required: false, Unique: true},
 		}, nil).Maybe()
 }
 
@@ -170,9 +170,9 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Success() {
 		},
 	}
 
+	// Only "username" is unique in the schema, so it is the sole value probed for a duplicate.
 	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
-		"username":     "newuser",
-		attributeEmail: "new@example.com",
+		"username": "newuser",
 	}).Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	createdUser := &providers.User{
@@ -238,6 +238,174 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_UserAlreadyExists() {
 	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
 	assert.Contains(suite.T(), resp.Error.Error.DefaultValue, "User already exists")
 	suite.mockEntityProvider.AssertExpectations(suite.T())
+}
+
+// expectSchema mocks the schema service with the given attributes, for tests that need to control
+// which attributes the user type marks unique.
+func (suite *ProvisioningExecutorTestSuite) expectSchema(attrs ...model.AttributeInfo) {
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return(attrs, nil).Maybe()
+}
+
+// onboardingContext builds a registration context carrying the given inputs as both user inputs
+// and node inputs, with the provisioning target resolved.
+func onboardingContext(inputs map[string]string) *providers.NodeContext {
+	nodeInputs := make([]providers.Input, 0, len(inputs))
+	for identifier := range inputs {
+		nodeInputs = append(nodeInputs, providers.Input{Identifier: identifier, Type: "string", Required: true})
+	}
+	return &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeRegistration,
+		UserInputs:  inputs,
+		RuntimeData: map[string]string{
+			ouIDKey:     testOUID,
+			userTypeKey: testUserType,
+		},
+		NodeInputs: nodeInputs,
+	}
+}
+
+// A user type that marks no attribute unique has no notion of a duplicate, so an attribute-identical
+// user must still be provisioned. Regression test for the reported inability to create the same user
+// when none of the attributes are required to be unique.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_NoUniqueAttributes_SkipsIdentifyAndCreates() {
+	suite.expectSchema(
+		model.AttributeInfo{Attribute: "username"},
+		model.AttributeInfo{Attribute: attributeEmail},
+	)
+	ctx := onboardingContext(map[string]string{
+		"username":     "duplicateuser",
+		attributeEmail: "duplicate@example.com",
+	})
+
+	suite.mockUserMgtProvider.On("CreateUser", mock.Anything, mock.MatchedBy(func(u *providers.User) bool {
+		return u.OUID == testOUID && u.Type == testUserType
+	})).Return(&providers.User{ID: testNewUserID, OUID: testOUID, Type: testUserType}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity")
+	suite.mockUserMgtProvider.AssertExpectations(suite.T())
+}
+
+// A value shared with an existing user on a non-unique attribute is not a duplicate, so it must not
+// be probed and must not block provisioning.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_NonUniqueAttrSharedWithExistingUser_StillCreates() {
+	suite.expectSchema(
+		model.AttributeInfo{Attribute: "username", Unique: true},
+		model.AttributeInfo{Attribute: attributeEmail},
+	)
+	ctx := onboardingContext(map[string]string{
+		"username":     "freshuser",
+		attributeEmail: "shared@example.com",
+	})
+
+	// Only the unique attribute is probed. The strict mock fails the test if "email" is probed too.
+	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"username": "freshuser"}).
+		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+	suite.mockUserMgtProvider.On("CreateUser", mock.Anything, mock.Anything).
+		Return(&providers.User{ID: testNewUserID, OUID: testOUID, Type: testUserType}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockEntityProvider.AssertExpectations(suite.T())
+}
+
+// Each unique attribute is probed on its own, so a collision on one of several unique attributes is
+// caught before the write and returns a retryable prompt rather than failing the flow at create time.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_UniqueAttrConflict_OnlyOneOfSeveral_Retryable() {
+	suite.expectSchema(
+		model.AttributeInfo{Attribute: "username", Unique: true},
+		model.AttributeInfo{Attribute: attributeEmail, Unique: true},
+	)
+	ctx := onboardingContext(map[string]string{
+		"username":     "existinguser",
+		attributeEmail: "brand-new@example.com",
+	})
+
+	// Override GetRequiredInputs to return node inputs so the retry path is exercised.
+	provMock := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
+	for _, call := range provMock.ExpectedCalls {
+		if call.Method == methodGetRequiredInputs {
+			call.Unset()
+		}
+	}
+	provMock.On(methodGetRequiredInputs, mock.Anything).Return(ctx.NodeInputs).Maybe()
+
+	// Probed in name order: the free email first, then the taken username.
+	suite.mockEntityProvider.On("IdentifyEntity",
+		map[string]interface{}{attributeEmail: "brand-new@example.com"}).
+		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
+	existingUserID := "user-existing"
+	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"username": "existinguser"}).
+		Return(&existingUserID, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
+	assert.Equal(suite.T(), ErrUserAlreadyExists.Code, resp.Error.Code)
+	suite.mockEntityProvider.AssertExpectations(suite.T())
+	suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "CreateUser")
+}
+
+// Every unique attribute is probed when none of them collide, and provisioning then proceeds.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_AllUniqueAttrsProbedWhenNoneConflict() {
+	suite.expectSchema(
+		model.AttributeInfo{Attribute: "username", Unique: true},
+		model.AttributeInfo{Attribute: attributeEmail, Unique: true},
+	)
+	ctx := onboardingContext(map[string]string{
+		"username":     "freshuser",
+		attributeEmail: "fresh@example.com",
+	})
+
+	notFound := entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", "")
+	suite.mockEntityProvider.On("IdentifyEntity",
+		map[string]interface{}{attributeEmail: "fresh@example.com"}).Return(nil, notFound)
+	suite.mockEntityProvider.On("IdentifyEntity",
+		map[string]interface{}{"username": "freshuser"}).Return(nil, notFound)
+	suite.mockUserMgtProvider.On("CreateUser", mock.Anything, mock.Anything).
+		Return(&providers.User{ID: testNewUserID, OUID: testOUID, Type: testUserType}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockEntityProvider.AssertExpectations(suite.T())
+}
+
+// A unique attribute IdentifyUser cannot search on is skipped rather than probed, since the stripped
+// filter would otherwise be an unconstrained lookup matching every entity.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_UniqueNonSearchableAttr_NotProbed() {
+	suite.expectSchema(
+		model.AttributeInfo{Attribute: "token", Unique: true},
+		model.AttributeInfo{Attribute: "username"},
+	)
+	ctx := onboardingContext(map[string]string{
+		"token":    "opaque-value",
+		"username": "someuser",
+	})
+
+	suite.mockUserMgtProvider.On("CreateUser", mock.Anything, mock.Anything).
+		Return(&providers.User{ID: testNewUserID, OUID: testOUID, Type: testUserType}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity")
 }
 
 func (suite *ProvisioningExecutorTestSuite) TestExecute_NoUserAttributes() {
@@ -393,7 +561,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Con
 		NodeInputs:  []providers.Input{},
 	}
 
-	result, _, _ := suite.executor.getAttributesForProvisioning(ctx)
+	result, _, _, _ := suite.executor.getAttributesForProvisioning(ctx)
 
 	assert.Equal(suite.T(), "testuser", result["username"])
 	assert.Equal(suite.T(), true, result["active"])
@@ -417,7 +585,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Unp
 		NodeInputs:  []providers.Input{},
 	}
 
-	result, _, _ := suite.executor.getAttributesForProvisioning(ctx)
+	result, _, _, _ := suite.executor.getAttributesForProvisioning(ctx)
 
 	assert.Equal(suite.T(), "affirmative", result["active"])
 }
@@ -431,7 +599,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Sch
 		NodeInputs:  []providers.Input{},
 	}
 
-	result, _, _ := suite.executor.getAttributesForProvisioning(ctx)
+	result, _, _, _ := suite.executor.getAttributesForProvisioning(ctx)
 
 	assert.Empty(suite.T(), result)
 }
@@ -453,7 +621,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Sch
 		NodeInputs:  []providers.Input{},
 	}
 
-	result, _, _ := suite.executor.getAttributesForProvisioning(ctx)
+	result, _, _, _ := suite.executor.getAttributesForProvisioning(ctx)
 
 	assert.Equal(suite.T(), "testuser", result["username"])
 	assert.NotContains(suite.T(), result, "userID")
@@ -483,7 +651,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Req
 		NodeInputs: []providers.Input{},
 	}
 
-	result, _, _ := suite.executor.getAttributesForProvisioning(ctx)
+	result, _, _, _ := suite.executor.getAttributesForProvisioning(ctx)
 
 	assert.Equal(suite.T(), "testuser", result["username"])
 	assert.Equal(suite.T(), "auth@example.com", result[attributeEmail])
@@ -513,7 +681,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Con
 		NodeInputs: []providers.Input{},
 	}
 
-	result, _, _ := suite.executor.getAttributesForProvisioning(ctx)
+	result, _, _, _ := suite.executor.getAttributesForProvisioning(ctx)
 
 	// UserInputs is checked first — wins for email.
 	assert.Equal(suite.T(), "userinput@example.com", result[attributeEmail])
@@ -542,7 +710,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_All
 		NodeInputs: []providers.Input{},
 	}
 
-	result, _, _ := suite.executor.getAttributesForProvisioning(ctx)
+	result, _, _, _ := suite.executor.getAttributesForProvisioning(ctx)
 
 	assert.Equal(suite.T(), "user@example.com", result[attributeEmail])
 	assert.Equal(suite.T(), "+1234567890", result["phone"],
@@ -574,7 +742,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Opt
 		NodeInputs:  nodeInputs,
 	}
 
-	result, _, _ := exec.getAttributesForProvisioning(ctx)
+	result, _, _, _ := exec.getAttributesForProvisioning(ctx)
 
 	assert.Equal(suite.T(), "user@example.com", result[attributeEmail])
 	assert.Equal(suite.T(), "+1234567890", result["phone"],
@@ -599,7 +767,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Emp
 		NodeInputs: []providers.Input{},
 	}
 
-	_, credentialAttrs, err := suite.executor.getAttributesForProvisioning(ctx)
+	_, credentialAttrs, _, err := suite.executor.getAttributesForProvisioning(ctx)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "runtime-secret", credentialAttrs[attributePassword])
@@ -623,7 +791,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Cre
 		NodeInputs: []providers.Input{},
 	}
 
-	_, credentialAttrs, err := suite.executor.getAttributesForProvisioning(ctx)
+	_, credentialAttrs, _, err := suite.executor.getAttributesForProvisioning(ctx)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "input-secret", credentialAttrs[attributePassword])
@@ -674,7 +842,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Fil
 		NodeInputs:  nodeInputs,
 	}
 
-	result, _, _ := exec.getAttributesForProvisioning(ctx)
+	result, _, _, _ := exec.getAttributesForProvisioning(ctx)
 
 	assert.Equal(suite.T(), "testuser", result["username"])
 	assert.Equal(suite.T(), "test@example.com", result[attributeEmail])
@@ -708,7 +876,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Fil
 		NodeInputs: nodeInputs,
 	}
 
-	result, _, _ := exec.getAttributesForProvisioning(ctx)
+	result, _, _, _ := exec.getAttributesForProvisioning(ctx)
 
 	assert.Equal(suite.T(), "testuser", result["username"])
 	assert.Equal(suite.T(), "federated@example.com", result[attributeEmail])
@@ -738,7 +906,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Fil
 		NodeInputs: nodeInputs,
 	}
 
-	result, _, _ := exec.getAttributesForProvisioning(ctx)
+	result, _, _, _ := exec.getAttributesForProvisioning(ctx)
 
 	assert.Equal(suite.T(), "userinput@example.com", result[attributeEmail],
 		"UserInputs must win over RuntimeData for the same key")
@@ -811,7 +979,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_NewUser_NoGroupOrRolePro
 		Attributes: attrsJSON,
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"username": "newuser"}).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 	suite.mockUserMgtProvider.On("CreateUser", mock.Anything, mock.MatchedBy(func(u *providers.User) bool {
 		return u.OUID == testOUID && u.Type == testUserType
@@ -867,7 +1035,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_UserEligibleForProvision
 		Attributes: attrsJSON,
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity",
+		map[string]interface{}{"username": "provisioneduser"}).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 	suite.mockUserMgtProvider.On("CreateUser", mock.Anything, mock.MatchedBy(func(u *providers.User) bool {
 		return u.OUID == testOUID && u.Type == testUserType
@@ -915,7 +1084,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_UserAutoProvisionedFlag_
 		Attributes: attrsJSON,
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity", attrs).Return(nil,
+	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"username": "newuser"}).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 	suite.mockUserMgtProvider.On("CreateUser", mock.Anything, mock.Anything).Return(createdUser, nil)
 
@@ -1444,9 +1613,9 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Success_WithGroupAndRole
 		},
 	}
 
+	// Only "username" is unique in the schema, so it is the sole value probed for a duplicate.
 	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
-		"username":     "newuser",
-		attributeEmail: "new@example.com",
+		"username": "newuser",
 	}).Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
 	createdUser := &providers.User{
@@ -2725,7 +2894,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Sch
 		NodeInputs: []providers.Input{},
 	}
 
-	result, _, _ := suite.executor.getAttributesForProvisioning(ctx)
+	result, _, _, _ := suite.executor.getAttributesForProvisioning(ctx)
 
 	assert.Equal(suite.T(), "testuser", result["username"])
 	assert.Equal(suite.T(), "test@example.com", result[attributeEmail])
@@ -2747,7 +2916,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Opt
 		NodeInputs:  []providers.Input{},
 	}
 
-	result, _, _ := suite.executor.getAttributesForProvisioning(ctx)
+	result, _, _, _ := suite.executor.getAttributesForProvisioning(ctx)
 
 	assert.Equal(suite.T(), "user@example.com", result[attributeEmail])
 	assert.Equal(suite.T(), "+1234567890", result["phone"],
@@ -2765,7 +2934,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Sch
 		NodeInputs:  []providers.Input{},
 	}
 
-	result, _, err := suite.executor.getAttributesForProvisioning(ctx)
+	result, _, _, err := suite.executor.getAttributesForProvisioning(ctx)
 
 	assert.Nil(suite.T(), result, "schema service error must return nil map")
 	assert.Error(suite.T(), err, "schema service error must propagate as an error")
@@ -2788,7 +2957,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Opt
 		NodeInputs:  nodeInputs,
 	}
 
-	result, _, err := exec.getAttributesForProvisioning(ctx)
+	result, _, _, err := exec.getAttributesForProvisioning(ctx)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "user@example.com", result[attributeEmail])
@@ -3202,7 +3371,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Inc
 		},
 	}
 
-	result, _, err := exec.getAttributesForProvisioning(ctx)
+	result, _, _, err := exec.getAttributesForProvisioning(ctx)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "user@example.com", result[attributeEmail])
@@ -3235,7 +3404,7 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Inc
 		NodeProperties: map[string]interface{}{},
 	}
 
-	result, _, err := exec.getAttributesForProvisioning(ctx)
+	result, _, _, err := exec.getAttributesForProvisioning(ctx)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "user@example.com", result[attributeEmail])
@@ -3414,6 +3583,91 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_AmbiguousUser_Ma
 }
 
 // Ambiguous user + cross-OU NOT allowed → fail immediately without searching.
+// Cross-OU provisioning may continue past a user held in another OU, so a foreign-OU match must not
+// end the search. A later unique attribute held by a user already in the target OU is the one that
+// has to block provisioning, and it must be reported as a recoverable conflict rather than being
+// missed and left to fail at create time.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_TargetOUMatchOnLaterUniqueAttr_Blocks() {
+	suite.expectSchema(
+		model.AttributeInfo{Attribute: attributeEmail, Unique: true},
+		model.AttributeInfo{Attribute: "username", Unique: true},
+	)
+	ctx := onboardingContext(map[string]string{
+		attributeEmail: "taken-elsewhere@example.com",
+		"username":     "taken-here",
+	})
+	ctx.NodeProperties = map[string]interface{}{
+		common.NodePropertyAllowCrossOUProvisioning: true,
+	}
+
+	// Override GetRequiredInputs to return node inputs so the retry path is exercised.
+	provMock := suite.executor.Executor.(*coremock.ExecutorInterfaceMock)
+	for _, call := range provMock.ExpectedCalls {
+		if call.Method == methodGetRequiredInputs {
+			call.Unset()
+		}
+	}
+	provMock.On(methodGetRequiredInputs, mock.Anything).Return(ctx.NodeInputs).Maybe()
+
+	// Probed in name order: email first, matching a user in another OU, then username, matching a
+	// user already in the target OU.
+	foreignUserID := "user-in-other-ou"
+	targetUserID := "user-in-target-ou"
+	suite.mockEntityProvider.On("IdentifyEntity",
+		map[string]interface{}{attributeEmail: "taken-elsewhere@example.com"}).Return(&foreignUserID, nil)
+	suite.mockEntityProvider.On("IdentifyEntity",
+		map[string]interface{}{"username": "taken-here"}).Return(&targetUserID, nil)
+	suite.mockEntityProvider.On("GetEntity", foreignUserID).
+		Return(&providers.Entity{ID: foreignUserID, OUID: "ou-other"}, nil)
+	suite.mockEntityProvider.On("GetEntity", targetUserID).
+		Return(&providers.Entity{ID: targetUserID, OUID: testOUID}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
+	assert.Equal(suite.T(), ErrUserAlreadyExistsInTargetOU.Code, resp.Error.Code)
+	suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "CreateUser")
+}
+
+// When every unique attribute is held only by users outside the target OU, cross-OU provisioning
+// still proceeds, and the first foreign-OU match is the one carried forward.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_AllMatchesOutsideTargetOU_Proceeds() {
+	suite.expectSchema(
+		model.AttributeInfo{Attribute: attributeEmail, Unique: true},
+		model.AttributeInfo{Attribute: "username", Unique: true},
+	)
+	ctx := onboardingContext(map[string]string{
+		attributeEmail: "elsewhere@example.com",
+		"username":     "also-elsewhere",
+	})
+	ctx.NodeProperties = map[string]interface{}{
+		common.NodePropertyAllowCrossOUProvisioning: true,
+	}
+
+	firstForeignID := "user-in-ou-a"
+	secondForeignID := "user-in-ou-b"
+	suite.mockEntityProvider.On("IdentifyEntity",
+		map[string]interface{}{attributeEmail: "elsewhere@example.com"}).Return(&firstForeignID, nil)
+	suite.mockEntityProvider.On("IdentifyEntity",
+		map[string]interface{}{"username": "also-elsewhere"}).Return(&secondForeignID, nil)
+	suite.mockEntityProvider.On("GetEntity", firstForeignID).
+		Return(&providers.Entity{ID: firstForeignID, OUID: "ou-a"}, nil)
+	suite.mockEntityProvider.On("GetEntity", secondForeignID).
+		Return(&providers.Entity{ID: secondForeignID, OUID: "ou-b"}, nil)
+	suite.mockUserMgtProvider.On("CreateUser", mock.Anything, mock.MatchedBy(func(u *providers.User) bool {
+		return u.OUID == testOUID && u.Type == testUserType
+	})).Return(&providers.User{ID: testNewUserID, OUID: testOUID, Type: testUserType}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockUserMgtProvider.AssertExpectations(suite.T())
+}
+
 func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_AmbiguousUser_CrossOUNotAllowed_Fails() {
 	suite.expectSchemaForProvisioning()
 	attrs := map[string]interface{}{"sub": "user-sub-123"}

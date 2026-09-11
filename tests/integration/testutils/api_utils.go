@@ -1188,6 +1188,70 @@ func FindUserByAttribute(key, value string) (*User, error) {
 	return nil, nil
 }
 
+// userListPageSize is the page size used when walking the paginated users API. It matches the
+// API's maximum allowed limit, keeping the number of requests down.
+const userListPageSize = 100
+
+// FindUsersByAttribute retrieves all users and returns every user with a matching attribute key and
+// value. Use it instead of FindUserByAttribute when the attribute is not unique and more than one
+// user is expected to carry the value. The users API paginates, so every page is walked before
+// matching: user IDs are time-ordered, which puts freshly created users on the last page.
+func FindUsersByAttribute(key, value string) ([]User, error) {
+	matched := make([]User, 0)
+
+	for offset := 0; ; {
+		page, err := listUsersPage(userListPageSize, offset)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, user := range page.Users {
+			attrs, attrErr := GetUserAttributes(user)
+			if attrErr != nil {
+				continue
+			}
+			if v, ok := attrs[key]; ok && v == value {
+				matched = append(matched, user)
+			}
+		}
+
+		offset += len(page.Users)
+		if len(page.Users) == 0 || offset >= page.TotalResults {
+			return matched, nil
+		}
+	}
+}
+
+// listUsersPage fetches a single page of the user list.
+func listUsersPage(limit, offset int) (*UserListResponse, error) {
+	client := GetHTTPClient()
+
+	req, err := http.NewRequest("GET",
+		fmt.Sprintf("%s/users?limit=%d&offset=%d", TestServerURL, limit, offset), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user list request: %w", err)
+	}
+
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send user list request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get user list, status: %d", resp.StatusCode)
+	}
+
+	var userListResponse UserListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&userListResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse user list response: %w", err)
+	}
+
+	return &userListResponse, nil
+}
+
 // CreateGroup creates a group via API and returns the group ID
 func CreateGroup(group Group) (string, error) {
 	groupJSON, err := json.Marshal(group)

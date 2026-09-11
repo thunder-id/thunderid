@@ -191,8 +191,11 @@ var (
 				"type":       "string",
 				"credential": true,
 			},
+			// The IdP subject is the identity anchor for a federated user, so it is what makes a
+			// repeat registration of the same Google account a duplicate.
 			"sub": map[string]interface{}{
-				"type": "string",
+				"type":   "string",
+				"unique": true,
 			},
 			"email": map[string]interface{}{
 				"type": "string",

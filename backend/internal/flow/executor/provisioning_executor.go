@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -27,6 +28,13 @@ import (
 type entityRef struct {
 	entityType string
 	ouID       string
+}
+
+// uniqueAttribute pairs a schema attribute the user type marks unique with the value
+// collected for it during the flow.
+type uniqueAttribute struct {
+	name  string
+	value interface{}
 }
 
 // provisioningExecutor implements the ExecutorInterface for user provisioning in a flow.
@@ -125,7 +133,7 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		return execResp, nil
 	}
 
-	identifyingAttrs, credentialAttrs, err := p.getAttributesForProvisioning(ctx)
+	identifyingAttrs, credentialAttrs, uniqueAttrs, err := p.getAttributesForProvisioning(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -136,33 +144,15 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		return execResp, nil
 	}
 
-	userID, err := p.IdentifyUser(ctx.Context, identifyingAttrs, execResp)
+	existingUserIDs, err := p.identifyExistingUsers(ctx, uniqueAttrs, execResp)
 	if err != nil {
-		logger.Error(ctx.Context, "Failed to identify user", log.Error(err))
-		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrFailedToIdentifyUser
+		return nil, err
+	}
+	if execResp.Status == providers.ExecFailure {
 		return execResp, nil
 	}
-	if execResp.Status == providers.ExecFailure &&
-		execResp.Error != nil && execResp.Error.Code == ErrAmbiguousUserIdentity.Code &&
-		isCrossOUProvisioningAllowed(ctx) {
-		resolved, err := p.resolveAmbiguousUserForProvisioning(ctx, identifyingAttrs)
-		if err != nil {
-			return nil, err
-		}
-		userID = resolved
-		execResp.Status = ""
-		execResp.Error = nil
-	}
-	if execResp.Status == providers.ExecFailure &&
-		(execResp.Error == nil || execResp.Error.Code != ErrUserNotFound.Code) {
-		return execResp, nil
-	}
-	// clear execResp set by IdentifyUser
-	execResp.Status = ""
-	execResp.Error = nil
-	if userID != nil && *userID != "" {
-		shouldContinue, err := p.handleExistingUser(ctx, *userID, execResp, logger)
+	if len(existingUserIDs) > 0 {
+		shouldContinue, err := p.handleExistingUser(ctx, existingUserIDs, execResp, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -272,11 +262,11 @@ func (p *provisioningExecutor) handleNonProvisionableUserInRegistration(ctx *pro
 	execResp.Error = existsErr
 }
 
-// handleExistingUser handles the case where a user with the given ID already exists.
-// Returns true if provisioning should proceed (cross-OU case), false if execution should stop.
-func (p *provisioningExecutor) handleExistingUser(ctx *providers.NodeContext, userID string,
+// handleExistingUser handles the case where users already hold one or more of the colliding unique
+// values. Returns true if provisioning should proceed (cross-OU case), false if execution should stop.
+func (p *provisioningExecutor) handleExistingUser(ctx *providers.NodeContext, userIDs []string,
 	execResp *providers.ExecutorResponse, logger *log.Logger) (bool, error) {
-	logger.Debug(ctx.Context, "User already exists", log.MaskedString(log.LoggerKeyUserID, userID))
+	logger.Debug(ctx.Context, "User already exists", log.Int("matchCount", len(userIDs)))
 
 	if !isCrossOUProvisioningAllowed(ctx) {
 		logger.Debug(ctx.Context, "Cross OU provisioning is not allowed")
@@ -305,9 +295,21 @@ func (p *provisioningExecutor) handleExistingUser(ctx *providers.NodeContext, us
 		return false, nil
 	}
 
-	existingUser, getUserErr := p.entityProvider.GetEntity(userID)
-	if getUserErr != nil {
-		return false, errors.New("failed to retrieve existing user")
+	// Among the users holding a colliding unique value, one already in the target OU is the one that
+	// blocks provisioning, so it takes precedence over a match in another OU.
+	var existingUser *providers.Entity
+	for _, userID := range userIDs {
+		candidate, getUserErr := p.entityProvider.GetEntity(userID)
+		if getUserErr != nil {
+			return false, errors.New("failed to retrieve existing user")
+		}
+		if candidate.OUID == targetOUID {
+			existingUser = candidate
+			break
+		}
+		if existingUser == nil {
+			existingUser = candidate
+		}
 	}
 
 	if existingUser.OUID == targetOUID {
@@ -325,6 +327,68 @@ func (p *provisioningExecutor) handleExistingUser(ctx *providers.NodeContext, us
 		log.String("existingOUID", existingUser.OUID),
 		log.String("targetOUID", targetOUID))
 	return true, nil
+}
+
+// identifyExistingUsers looks for users that already hold one of the values supplied for a unique
+// schema attribute. Duplicate detection follows the entity type's uniqueness constraints, the same
+// rule the user service applies on create: each unique attribute is probed on its own, and a user
+// type that declares no unique attributes has no notion of a duplicate, so provisioning proceeds.
+//
+// Every unique attribute is probed when cross-OU provisioning is allowed, because that mode carries
+// on past a user held in another OU and the caller has to see a match in the target OU to block it.
+// Otherwise any match already blocks provisioning, so the first one is returned on its own.
+//
+// Returns an empty slice when every value is free; a non-empty execResp.Status means the caller must
+// return execResp as-is, and a returned error is a server error the caller must propagate.
+func (p *provisioningExecutor) identifyExistingUsers(ctx *providers.NodeContext,
+	uniqueAttrs []uniqueAttribute, execResp *providers.ExecutorResponse) ([]string, error) {
+	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
+
+	var existingUserIDs []string
+
+	for _, attr := range uniqueAttrs {
+		filter := map[string]interface{}{attr.name: attr.value}
+
+		userID, err := p.IdentifyUser(ctx.Context, filter, execResp)
+		if err != nil {
+			logger.Error(ctx.Context, "Failed to identify user", log.Error(err))
+			execResp.Status = providers.ExecFailure
+			execResp.Error = &ErrFailedToIdentifyUser
+			return nil, nil
+		}
+
+		if execResp.Status == providers.ExecFailure &&
+			execResp.Error != nil && execResp.Error.Code == ErrAmbiguousUserIdentity.Code &&
+			isCrossOUProvisioningAllowed(ctx) {
+			resolved, resolveErr := p.resolveAmbiguousUserForProvisioning(ctx, filter)
+			if resolveErr != nil {
+				return nil, resolveErr
+			}
+			userID = resolved
+			execResp.Status = ""
+			execResp.Error = nil
+		}
+		if execResp.Status == providers.ExecFailure {
+			if execResp.Error != nil && execResp.Error.Code == ErrUserNotFound.Code {
+				// This value is free, keep checking the remaining unique attributes.
+				execResp.Status = ""
+				execResp.Error = nil
+				continue
+			}
+			return nil, nil
+		}
+		if userID == nil || *userID == "" {
+			continue
+		}
+		if !isCrossOUProvisioningAllowed(ctx) {
+			return []string{*userID}, nil
+		}
+		if !slices.Contains(existingUserIDs, *userID) {
+			existingUserIDs = append(existingUserIDs, *userID)
+		}
+	}
+
+	return existingUserIDs, nil
 }
 
 // resolveAmbiguousUserForProvisioning is called when IdentifyUser reports ambiguity and cross-OU
@@ -579,24 +643,29 @@ func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, attr 
 }
 
 // getAttributesForProvisioning collects user attributes from context in a single schema pass,
-// returning identifying (non-credential) and credential attributes as separate maps.
+// returning identifying (non-credential) and credential attributes as separate maps, plus the
+// subset of identifying attributes the schema marks unique.
 // Schema is the whitelist for both maps.
 // Credential values are resolved from non-empty UserInputs then non-empty RuntimeData only.
 // Non-credential values additionally fall back to AuthenticatedUser.Attributes, and are converted
 // from the engine's string representation to the type declared by the schema attribute.
+// The unique subset drives duplicate detection, so it is sorted by attribute name to keep the
+// probe order stable, and skips non-searchable attributes which IdentifyUser would strip from
+// the filter, leaving a lookup that matches every entity.
 func (p *provisioningExecutor) getAttributesForProvisioning(
 	ctx *providers.NodeContext,
-) (identifyingAttrs map[string]interface{}, credentialAttrs map[string]interface{}, err error) {
+) (identifyingAttrs map[string]interface{}, credentialAttrs map[string]interface{},
+	uniqueAttrs []uniqueAttribute, err error) {
 	schemaAttrs, fetchErr := p.fetchSchemaAttributes(ctx, true, true)
 	if fetchErr != nil {
-		return nil, nil, fetchErr
+		return nil, nil, nil, fetchErr
 	}
 
 	identifyingAttrs = make(map[string]interface{})
 	credentialAttrs = make(map[string]interface{})
 
 	if len(schemaAttrs) == 0 {
-		return identifyingAttrs, credentialAttrs, nil
+		return identifyingAttrs, credentialAttrs, nil, nil
 	}
 
 	for _, a := range schemaAttrs {
@@ -612,10 +681,19 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(runtimeValue, a.Type)
 			}
+			if a.Unique && !slices.Contains(nonSearchableInputs, a.Attribute) {
+				if value, collected := identifyingAttrs[a.Attribute]; collected {
+					uniqueAttrs = append(uniqueAttrs, uniqueAttribute{name: a.Attribute, value: value})
+				}
+			}
 		}
 	}
 
-	return identifyingAttrs, credentialAttrs, nil
+	slices.SortFunc(uniqueAttrs, func(a, b uniqueAttribute) int {
+		return strings.Compare(a.name, b.name)
+	})
+
+	return identifyingAttrs, credentialAttrs, uniqueAttrs, nil
 }
 
 // createUserInStore provisions a user through the user management provider. The organization unit

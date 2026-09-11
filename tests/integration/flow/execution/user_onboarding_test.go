@@ -388,6 +388,56 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_ChildOUPromptsForUserType() {
 	ts.Equal(ts.childTypeName, user.Type, "The selected user type must be the one applied")
 }
 
+// Neither user type in this suite marks an attribute unique, so the same username and email carry no
+// notion of a duplicate and must be provisionable twice. Regression test for onboarding refusing the
+// second create with "user already exists" while POST /users accepted it.
+func (ts *UserOnboardingTestSuite) TestOnboarding_SameUserInTwoOUs_WhenNoAttributeIsUnique() {
+	username := common.GenerateUniqueUsername("onboard_dup")
+	email := username + "@onboarding.test"
+
+	// First user lands in the root OU, whose single user type is auto-selected.
+	step := ts.initiateOnboarding(nil)
+	step, err := common.CompleteFlow(step.ExecutionID,
+		map[string]string{"ouId": ts.rootOUID}, "action_ou", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the OU selection for the first user")
+	completed, err := common.CompleteFlow(step.ExecutionID,
+		map[string]string{"username": username, "email": email}, "action_details", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit user details for the first user")
+	ts.Require().Equal("COMPLETE", completed.FlowStatus, "The first user should be provisioned")
+
+	// The same attribute values are then onboarded into the child OU.
+	step = ts.initiateOnboarding(nil)
+	step, err = common.CompleteFlow(step.ExecutionID,
+		map[string]string{"ouId": ts.childOUID}, "action_ou", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the OU selection for the second user")
+	step, err = common.CompleteFlow(step.ExecutionID,
+		map[string]string{"userType": ts.childTypeName}, "action_usertype", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the user type selection for the second user")
+
+	completed, err = common.CompleteFlow(step.ExecutionID,
+		map[string]string{"username": username, "email": email}, "action_details", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit user details for the second user")
+
+	// Track whatever was provisioned before asserting, so a failure does not leak the first user.
+	// FindUserByAttribute cannot be used here: the username is deliberately held by both users.
+	users, lookupErr := testutils.FindUsersByAttribute("username", username)
+	ts.Require().NoError(lookupErr, "Failed to look up the onboarded users")
+	for _, user := range users {
+		if user.ID != "" {
+			ts.config.CreatedUserIDs = append(ts.config.CreatedUserIDs, user.ID)
+		}
+	}
+
+	ts.Require().Nil(completed.Error, "An attribute-identical user must not be refused as a duplicate")
+	ts.Require().Equal("COMPLETE", completed.FlowStatus,
+		"The second user should be provisioned when no attribute is unique")
+	ts.Require().Len(users, 2, "Both users should exist with the same username")
+
+	ouIDs := []string{users[0].OUID, users[1].OUID}
+	ts.ElementsMatch([]string{ts.rootOUID, ts.childOUID}, ouIDs,
+		"The two users must sit in the two different OUs")
+}
+
 // An OU id that does not exist is refused and the selection is asked for again, so a bad id cannot
 // carry the flow into provisioning.
 func (ts *UserOnboardingTestSuite) TestOnboarding_UnknownOURejected() {
