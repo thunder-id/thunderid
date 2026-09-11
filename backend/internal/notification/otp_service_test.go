@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -77,25 +78,29 @@ func (suite *OTPServiceTestSuite) SetupTest() {
 		Length:                6,
 		UseNumericOnly:        boolPtr(true),
 		ValidityPeriodSeconds: 120,
+		MaxGenerationAttempts: 3,
 	}
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 
+	cacheManager := cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment")
+
 	suite.service = &otpService{
-		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OTPService")),
-		jwtService: suite.mockJWTService,
+		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OTPService")),
+		jwtService:      suite.mockJWTService,
+		usedTokensCache: cache.GetCache[bool](cacheManager, "UsedOTPSessionTokensCache"),
 	}
 }
 
 // --- GenerateOTP tests ---
 
 func (suite *OTPServiceTestSuite) TestGenerateOTP_EmptyRecipient() {
-	_, _, _, err := suite.service.GenerateOTP(context.Background(), "", "mobile_number", nil)
+	_, _, _, err := suite.service.GenerateOTP(context.Background(), "", "mobile_number", nil, "")
 	suite.NotNil(err)
 	suite.Equal(ErrorInvalidRecipient.Code, err.Code)
 }
 
 func (suite *OTPServiceTestSuite) TestGenerateOTP_WhitespaceRecipient() {
-	_, _, _, err := suite.service.GenerateOTP(context.Background(), "   ", "mobile_number", nil)
+	_, _, _, err := suite.service.GenerateOTP(context.Background(), "   ", "mobile_number", nil, "")
 	suite.NotNil(err)
 	suite.Equal(ErrorInvalidRecipient.Code, err.Code)
 }
@@ -103,11 +108,14 @@ func (suite *OTPServiceTestSuite) TestGenerateOTP_WhitespaceRecipient() {
 func (suite *OTPServiceTestSuite) TestGenerateOTP_Success() {
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything, otpSessionAudience, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			data, ok := claims["otp_data"].(otpSessionData)
+			return ok && data.AttemptCount == 1
+		}), mock.Anything, mock.Anything,
 	).Return("session-token-123", int64(0), (*tidcommon.ServiceError)(nil)).Once()
 
 	sessionToken, otpValue, expirySeconds, err := suite.service.GenerateOTP(
-		context.Background(), "+15559876543", "mobile_number", nil)
+		context.Background(), "+15559876543", "mobile_number", nil, "")
 
 	suite.Nil(err)
 	suite.Equal("session-token-123", sessionToken)
@@ -116,6 +124,78 @@ func (suite *OTPServiceTestSuite) TestGenerateOTP_Success() {
 	for _, ch := range otpValue {
 		suite.Contains("9245378016", string(ch))
 	}
+}
+
+func (suite *OTPServiceTestSuite) TestGenerateOTP_WithPreviousSessionToken_IncrementsAttemptCount() {
+	prevSessionData := otpSessionData{
+		Recipient:     "+15559876543",
+		RecipientAttr: "mobile_number",
+		OTPValue:      cryptolib.GenerateThumbprintFromString("123456"),
+		ExpiryTime:    9999999999999,
+		AttemptCount:  1,
+	}
+	prevToken := buildTestJWT(prevSessionData)
+
+	suite.mockJWTService.On("VerifyJWT",
+		mock.Anything, prevToken, otpSessionAudience, mock.Anything,
+	).Return((*tidcommon.ServiceError)(nil)).Once()
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, otpSessionAudience, mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			data, ok := claims["otp_data"].(otpSessionData)
+			return ok && data.AttemptCount == 2
+		}), mock.Anything, mock.Anything,
+	).Return("session-token-456", int64(0), (*tidcommon.ServiceError)(nil)).Once()
+
+	sessionToken, otpValue, _, err := suite.service.GenerateOTP(
+		context.Background(), "+15559876543", "mobile_number", nil, prevToken)
+
+	suite.Nil(err)
+	suite.Equal("session-token-456", sessionToken)
+	suite.Len(otpValue, 6)
+}
+
+func (suite *OTPServiceTestSuite) TestGenerateOTP_ExceedsMaxGenerationAttempts() {
+	prevSessionData := otpSessionData{
+		Recipient:     "+15559876543",
+		RecipientAttr: "mobile_number",
+		OTPValue:      cryptolib.GenerateThumbprintFromString("123456"),
+		ExpiryTime:    9999999999999,
+		AttemptCount:  3, // max is 3
+	}
+	prevToken := buildTestJWT(prevSessionData)
+
+	suite.mockJWTService.On("VerifyJWT",
+		mock.Anything, prevToken, otpSessionAudience, mock.Anything,
+	).Return((*tidcommon.ServiceError)(nil)).Once()
+
+	sessionToken, otpValue, _, err := suite.service.GenerateOTP(
+		context.Background(), "+15559876543", "mobile_number", nil, prevToken)
+
+	suite.Empty(sessionToken)
+	suite.Empty(otpValue)
+	suite.NotNil(err)
+	suite.Equal(ErrorMaxOTPAttemptsExceeded.Code, err.Code)
+}
+
+func (suite *OTPServiceTestSuite) TestGenerateOTP_InvalidPreviousSessionToken() {
+	jwtErr := &tidcommon.ServiceError{
+		Type:  tidcommon.ClientErrorType,
+		Code:  "JWT-0002",
+		Error: tidcommon.I18nMessage{DefaultValue: "Invalid JWT"},
+	}
+	suite.mockJWTService.On("VerifyJWT",
+		mock.Anything, "invalid-token", otpSessionAudience, mock.Anything,
+	).Return(jwtErr).Once()
+
+	sessionToken, otpValue, _, err := suite.service.GenerateOTP(
+		context.Background(), "+15559876543", "mobile_number", nil, "invalid-token")
+
+	suite.Empty(sessionToken)
+	suite.Empty(otpValue)
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidSessionToken.Code, err.Code)
 }
 
 func (suite *OTPServiceTestSuite) TestGenerateOTP_JWTError() {
@@ -130,7 +210,7 @@ func (suite *OTPServiceTestSuite) TestGenerateOTP_JWTError() {
 	).Return("", int64(0), jwtErr).Once()
 
 	sessionToken, otpValue, _, err := suite.service.GenerateOTP(
-		context.Background(), "+15559876543", "mobile_number", nil)
+		context.Background(), "+15559876543", "mobile_number", nil, "")
 
 	suite.Empty(sessionToken)
 	suite.Empty(otpValue)
@@ -150,7 +230,7 @@ func (suite *OTPServiceTestSuite) TestGenerateOTP_WithLengthOverride() {
 	).Return("session-token-123", int64(0), (*tidcommon.ServiceError)(nil)).Once()
 
 	sessionToken, otpValue, expirySeconds, err := suite.service.GenerateOTP(
-		context.Background(), "+15559876543", "mobile_number", cfg)
+		context.Background(), "+15559876543", "mobile_number", cfg, "")
 
 	suite.Nil(err)
 	suite.Equal("session-token-123", sessionToken)
@@ -171,7 +251,7 @@ func (suite *OTPServiceTestSuite) TestGenerateOTP_WithAlphanumericOverride() {
 	).Return("session-token-123", int64(0), (*tidcommon.ServiceError)(nil)).Once()
 
 	sessionToken, otpValue, expirySeconds, err := suite.service.GenerateOTP(
-		context.Background(), "+15559876543", "mobile_number", cfg)
+		context.Background(), "+15559876543", "mobile_number", cfg, "")
 
 	suite.Nil(err)
 	suite.Equal("session-token-123", sessionToken)
@@ -192,7 +272,7 @@ func (suite *OTPServiceTestSuite) TestGenerateOTP_WithValidityOverride() {
 	).Return("session-token-123", int64(0), (*tidcommon.ServiceError)(nil)).Once()
 
 	sessionToken, otpValue, expirySeconds, err := suite.service.GenerateOTP(
-		context.Background(), "+15559876543", "mobile_number", cfg)
+		context.Background(), "+15559876543", "mobile_number", cfg, "")
 
 	suite.Nil(err)
 	suite.Equal("session-token-123", sessionToken)
@@ -327,7 +407,8 @@ func (suite *OTPServiceTestSuite) TestVerifyOTP_MalformedJWTPayload() {
 }
 
 func (suite *OTPServiceTestSuite) TestNewOTPService_Constructor() {
-	svc := newOTPService(suite.mockJWTService)
+	cacheManager := cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment")
+	svc := newOTPService(cacheManager, suite.mockJWTService)
 	suite.NotNil(svc)
 }
 

@@ -15,6 +15,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -30,6 +31,7 @@ type otpSessionData struct {
 	RecipientAttr string `json:"recipientAttr,omitempty"`
 	OTPValue      string `json:"otp_value"`
 	ExpiryTime    int64  `json:"expiry_time"`
+	AttemptCount  int    `json:"attempt_count,omitempty"`
 }
 
 // generatedOTP holds the raw OTP value and its expiry timestamp.
@@ -40,7 +42,8 @@ type generatedOTP struct {
 
 // OTPServiceInterface defines the interface for OTP operations.
 type OTPServiceInterface interface {
-	GenerateOTP(ctx context.Context, recipient, recipientAttr string, otpCfg *common.OTPConfig) (
+	GenerateOTP(ctx context.Context, recipient, recipientAttr string, otpCfg *common.OTPConfig,
+		previousSessionToken string) (
 		sessionToken string, otpValue string, expirySeconds int64, svcErr *tidcommon.ServiceError)
 	VerifyOTP(ctx context.Context, request common.VerifyOTPDTO) (
 		*common.VerifyOTPResultDTO, *tidcommon.ServiceError)
@@ -48,27 +51,56 @@ type OTPServiceInterface interface {
 
 // otpService implements the OTPServiceInterface.
 type otpService struct {
-	logger     *log.Logger
-	jwtService jwt.JWTServiceInterface
+	logger          *log.Logger
+	jwtService      jwt.JWTServiceInterface
+	usedTokensCache cache.CacheInterface[bool]
 }
 
 // newOTPService returns a new instance of OTPServiceInterface.
-func newOTPService(jwtSvc jwt.JWTServiceInterface) OTPServiceInterface {
+func newOTPService(cacheManager cache.CacheManagerInterface, jwtSvc jwt.JWTServiceInterface) OTPServiceInterface {
 	return &otpService{
-		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OTPService")),
-		jwtService: jwtSvc,
+		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OTPService")),
+		jwtService:      jwtSvc,
+		usedTokensCache: cache.GetCache[bool](cacheManager, "UsedOTPSessionTokensCache"),
 	}
 }
 
 // GenerateOTP generates an OTP and session token for the recipient without delivering it.
 // An optional otpCfg override can override the global OTP configuration (pass nil to use defaults).
-func (s *otpService) GenerateOTP(ctx context.Context, recipient, recipientAttr string, otpCfg *common.OTPConfig) (
+func (s *otpService) GenerateOTP(ctx context.Context, recipient, recipientAttr string,
+	otpCfg *common.OTPConfig, previousSessionToken string) (
 	string, string, int64, *tidcommon.ServiceError) {
 	logger := s.logger
 
 	recipient = strings.TrimSpace(recipient)
 	if recipient == "" {
 		return "", "", 0, &ErrorInvalidRecipient
+	}
+
+	attemptCount := 1
+	if previousSessionToken != "" {
+		cacheKey := cache.CacheKey{Key: cryptolib.GenerateThumbprintFromString(previousSessionToken)}
+		if _, found := s.usedTokensCache.Get(ctx, cacheKey); found {
+			logger.Debug(ctx, "Previous session token has already been used to generate a new OTP")
+			return "", "", 0, &ErrorInvalidSessionToken
+		}
+
+		prevData, svcErr := s.verifyAndDecodeSessionToken(ctx, previousSessionToken, logger)
+		if svcErr != nil {
+			return "", "", 0, svcErr
+		}
+		// Validate token binding to current request
+		if prevData.Recipient != recipient || prevData.RecipientAttr != recipientAttr {
+			logger.Debug(ctx, "Previous session token does not match current recipient or attribute")
+			return "", "", 0, &ErrorInvalidSessionToken
+		}
+		attemptCount = prevData.AttemptCount + 1
+	}
+
+	maxAttempts := s.resolveOTPConfig(otpCfg).MaxGenerationAttempts
+	if maxAttempts > 0 && attemptCount > maxAttempts {
+		logger.Debug(ctx, "Maximum OTP generation attempts reached", log.Int("attemptCount", attemptCount))
+		return "", "", 0, &ErrorMaxOTPAttemptsExceeded
 	}
 
 	otp, err := s.generateOTP(otpCfg)
@@ -82,12 +114,20 @@ func (s *otpService) GenerateOTP(ctx context.Context, recipient, recipientAttr s
 		RecipientAttr: recipientAttr,
 		OTPValue:      cryptolib.GenerateThumbprintFromString(otp.Value),
 		ExpiryTime:    otp.ExpiryTimeInMillis,
+		AttemptCount:  attemptCount,
 	}
 
 	sessionToken, err := s.createSessionToken(ctx, sessionData)
 	if err != nil {
 		logger.Error(ctx, "Failed to create OTP session token", log.Error(err))
 		return "", "", 0, &tidcommon.InternalServerError
+	}
+
+	if previousSessionToken != "" {
+		cacheKey := cache.CacheKey{Key: cryptolib.GenerateThumbprintFromString(previousSessionToken)}
+		if err := s.usedTokensCache.Set(ctx, cacheKey, true); err != nil {
+			logger.Warn(ctx, "Failed to cache used OTP session token", log.Error(err))
+		}
 	}
 
 	expirySeconds := s.getOTPValidityPeriodInMillis(otpCfg) / 1000

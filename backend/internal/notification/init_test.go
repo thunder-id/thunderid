@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
@@ -49,6 +50,7 @@ func TestMain(m *testing.M) {
 type InitTestSuite struct {
 	suite.Suite
 	mockJWTService *jwtmock.JWTServiceInterfaceMock
+	cacheManager   cache.CacheManagerInterface
 }
 
 func TestInitTestSuite(t *testing.T) {
@@ -82,6 +84,7 @@ func (suite *InitTestSuite) SetupSuite() {
 
 func (suite *InitTestSuite) SetupTest() {
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
+	suite.cacheManager = cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment")
 }
 
 func (suite *InitTestSuite) TearDownSuite() {
@@ -89,7 +92,7 @@ func (suite *InitTestSuite) TearDownSuite() {
 }
 
 func (suite *InitTestSuite) TestInitialize() {
-	mgtService, _, _, err := Initialize(suite.mockJWTService)
+	mgtService, _, _, err := Initialize(suite.cacheManager, suite.mockJWTService)
 	suite.NoError(err)
 
 	suite.NotNil(mgtService)
@@ -103,7 +106,7 @@ func (suite *InitTestSuite) TestInitialize_StoreErrorPropagates() {
 	getDBProvider = func() provider.DBProviderInterface { return mockProvider }
 	defer func() { getDBProvider = originalGetDBProvider }()
 
-	mgtService, otpService, senderService, err := Initialize(suite.mockJWTService)
+	mgtService, otpService, senderService, err := Initialize(suite.cacheManager, suite.mockJWTService)
 
 	suite.Error(err)
 	suite.Nil(mgtService)

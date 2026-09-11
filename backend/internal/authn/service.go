@@ -46,7 +46,8 @@ var crossAllowedIDPTypes = []providers.IDPType{providers.IDPTypeOAuth, providers
 type AuthenticationServiceInterface interface {
 	AuthenticateWithCredentials(ctx context.Context, identifiers, credentials map[string]interface{},
 		skipAssertion bool, existingAssertion string) (*common.AuthenticationResponse, *tidcommon.ServiceError)
-	SendOTP(ctx context.Context, senderID string, channel notifcommon.ChannelType, recipient string) (
+	SendOTP(ctx context.Context, senderID string, channel notifcommon.ChannelType,
+		recipient, priorSessionToken string) (
 		string, *tidcommon.ServiceError)
 	VerifyOTP(ctx context.Context, sessionToken string, skipAssertion bool, existingAssertion, otp string) (
 		*common.AuthenticationResponse, *tidcommon.ServiceError)
@@ -199,10 +200,20 @@ func (as *authenticationService) AuthenticateWithCredentials(ctx context.Context
 
 // SendOTP generates an OTP, renders the SMS template, and delivers it to the recipient.
 func (as *authenticationService) SendOTP(ctx context.Context, senderID string, channel notifcommon.ChannelType,
-	recipient string) (string, *tidcommon.ServiceError) {
+	recipient, priorSessionToken string) (string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, svcLoggerComponentName))
 
-	sessionToken, otpValue, expirySeconds, svcErr := as.otpService.GenerateOTP(ctx, recipient, "mobile_number", nil)
+	var recipientAttr string
+	switch channel {
+	case notifcommon.ChannelTypeSMS:
+		recipientAttr = "mobile_number"
+	default:
+		logger.Error(ctx, "Unsupported notification channel for OTP", log.String("channel", string(channel)))
+		return "", &tidcommon.InternalServerError
+	}
+
+	sessionToken, otpValue, expirySeconds, svcErr := as.otpService.GenerateOTP(
+		ctx, recipient, recipientAttr, nil, priorSessionToken)
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ServerErrorType {
 			logger.Error(ctx, "Failed to generate OTP", log.String("error", svcErr.Code))
