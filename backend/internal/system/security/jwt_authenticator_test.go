@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 )
 
@@ -97,10 +98,18 @@ func (suite *JWTAuthenticatorTestSuite) TestCanHandle() {
 }
 
 func (suite *JWTAuthenticatorTestSuite) TestAuthenticate() {
-	// Valid JWT token with attributes (simplified representation)
-	// Payload: {"sub":"user123","scope":"system users:read","ouId":"ou1","app_id":"app1"}
-	//nolint:gosec,lll // Test data, not a real credential
-	validToken := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTIzIiwic2NvcGUiOiJzeXN0ZW0gdXNlcnM6cmVhZCIsIm91SWQiOiJvdTEiLCJhcHBfaWQiOiJhcHAxIn0.signature"
+	// A self-issued token only authenticates as an access token, so every fixture that is meant to
+	// reach signature verification carries the RFC 9068 typ header.
+	validToken := buildFakeJWT(
+		accessTokenHeader(),
+		map[string]interface{}{
+			"sub": "user123", "scope": "system users:read", "ouId": "ou1", "app_id": "app1",
+		},
+	)
+	badSignatureToken := buildFakeJWT(accessTokenHeader(), map[string]interface{}{"sub": "user123"})
+	expiredToken := buildFakeJWT(accessTokenHeader(), map[string]interface{}{"sub": "expired-user"})
+	malformedBase64PayloadToken := accessTokenHeaderB64() + ".invalid!base64!payload.signature"
+	malformedJSONPayloadToken := accessTokenHeaderB64() + ".bm90X3ZhbGlkX2pzb24.signature"
 
 	tests := []struct {
 		name           string
@@ -142,9 +151,9 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate() {
 		},
 		{
 			name:       "Invalid JWT signature",
-			authHeader: "Bearer invalid.jwt.token",
+			authHeader: "Bearer " + badSignatureToken,
 			setupMock: func(m *jwtmock.JWTServiceInterfaceMock) {
-				m.On("VerifyJWT", mock.Anything, "invalid.jwt.token", "", "").Return(&tidcommon.ServiceError{
+				m.On("VerifyJWT", mock.Anything, badSignatureToken, "", "").Return(&tidcommon.ServiceError{
 					Type:             tidcommon.ServerErrorType,
 					Code:             "INVALID_SIGNATURE",
 					Error:            tidcommon.I18nMessage{DefaultValue: "Invalid signature"},
@@ -155,9 +164,9 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate() {
 		},
 		{
 			name:       "Expired JWT token",
-			authHeader: "Bearer expired.jwt.token",
+			authHeader: "Bearer " + expiredToken,
 			setupMock: func(m *jwtmock.JWTServiceInterfaceMock) {
-				m.On("VerifyJWT", mock.Anything, "expired.jwt.token", "", "").Return(&tidcommon.ServiceError{
+				m.On("VerifyJWT", mock.Anything, expiredToken, "", "").Return(&tidcommon.ServiceError{
 					Type:             tidcommon.ClientErrorType,
 					Code:             "JWT-60005",
 					Error:            tidcommon.I18nMessage{DefaultValue: "Token has expired"},
@@ -167,28 +176,26 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate() {
 			expectedError: errInvalidToken,
 		},
 		{
-			name:       "Invalid JWT format - decoding error",
-			authHeader: "Bearer invalidjwtformat", // Not 3 parts separated by dots
-			setupMock: func(m *jwtmock.JWTServiceInterfaceMock) {
-				m.On("VerifyJWT", mock.Anything, "invalidjwtformat", "", "").Return(nil)
-			},
+			// Not 3 parts separated by dots, so the header cannot be decoded and the token is
+			// rejected as not an access token, before any verifier is consulted.
+			name:          "Invalid JWT format - decoding error",
+			authHeader:    "Bearer invalidjwtformat",
+			setupMock:     func(m *jwtmock.JWTServiceInterfaceMock) {},
 			expectedError: errInvalidToken,
 		},
 		{
 			name:       "Invalid JWT payload - malformed base64",
-			authHeader: "Bearer eyJhbGciOiJIUzI1NiJ9.invalid!base64!payload.signature",
+			authHeader: "Bearer " + malformedBase64PayloadToken,
 			setupMock: func(m *jwtmock.JWTServiceInterfaceMock) {
-				const tok = "eyJhbGciOiJIUzI1NiJ9.invalid!base64!payload.signature"
-				m.On("VerifyJWT", mock.Anything, tok, "", "").Return(nil)
+				m.On("VerifyJWT", mock.Anything, malformedBase64PayloadToken, "", "").Return(nil)
 			},
 			expectedError: errInvalidToken,
 		},
 		{
-			name:       "Invalid JWT payload - malformed JSON",
-			authHeader: "Bearer eyJhbGciOiJIUzI1NiJ9.bm90X3ZhbGlkX2pzb24.signature", // "not_valid_json" base64 encoded
+			name:       "Invalid JWT payload - malformed JSON", // "not_valid_json" base64 encoded
+			authHeader: "Bearer " + malformedJSONPayloadToken,
 			setupMock: func(m *jwtmock.JWTServiceInterfaceMock) {
-				const tok = "eyJhbGciOiJIUzI1NiJ9.bm90X3ZhbGlkX2pzb24.signature"
-				m.On("VerifyJWT", mock.Anything, tok, "", "").Return(nil)
+				m.On("VerifyJWT", mock.Anything, malformedJSONPayloadToken, "", "").Return(nil)
 			},
 			expectedError: errInvalidToken,
 		},
@@ -233,7 +240,7 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate() {
 // resource-indicator audience check; the REST gate's own jwtAuthenticator always passes "" here.
 func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_DoesNotValidateAudience() {
 	token := buildFakeJWT(
-		map[string]interface{}{"alg": "RS256", "kid": "test-kid"},
+		accessTokenHeader(),
 		map[string]interface{}{"sub": "user123", "aud": "https://some-other-resource/mcp"},
 	)
 
@@ -299,11 +306,13 @@ func (suite *JWTAuthenticatorTestSuite) TestExtractPermissionsFromJWTClaims() {
 			expectedPermissions: []string{"users:read"},
 		},
 		{
-			name: "ThunderID assertion authorized_permissions attribute",
+			// An assertion's authorized_permissions never becomes a caller's permissions. Only an
+			// access token authenticates, and its scopes are carried in scope.
+			name: "Assertion authorized_permissions attribute is ignored",
 			attributes: map[string]interface{}{
 				"authorized_permissions": "perm1 perm2 perm3",
 			},
-			expectedPermissions: []string{"perm1", "perm2", "perm3"},
+			expectedPermissions: []string{},
 		},
 	}
 
@@ -480,6 +489,19 @@ const (
 )
 
 // buildFakeJWT creates a fake JWT string with the given header and payload claims.
+// accessTokenHeader returns the header of a self-issued access token, the only self-issued token the
+// gate authenticates.
+func accessTokenHeader() map[string]interface{} {
+	return map[string]interface{}{"alg": "RS256", "kid": "test-kid", "typ": jwt.TokenTypeAccessToken}
+}
+
+// accessTokenHeaderB64 returns that header already encoded, for building tokens whose payload is
+// deliberately malformed and so cannot go through buildFakeJWT.
+func accessTokenHeaderB64() string {
+	headerJSON, _ := json.Marshal(accessTokenHeader())
+	return base64.RawURLEncoding.EncodeToString(headerJSON)
+}
+
 func buildFakeJWT(header, payload map[string]interface{}) string {
 	headerJSON, _ := json.Marshal(header)
 	payloadJSON, _ := json.Marshal(payload)
@@ -892,7 +914,7 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_SelfIssuedTokenUnderFed
 	_ = config.InitializeServerRuntime("", federatedConfigWithLocalIssuer())
 
 	token := buildFakeJWT(
-		map[string]interface{}{"alg": "RS256", "kid": "local-kid"},
+		map[string]interface{}{"alg": "RS256", "kid": "local-kid", "typ": jwt.TokenTypeAccessToken},
 		map[string]interface{}{
 			"sub":              "service-app",
 			"access_token_sub": "user-123",
@@ -929,7 +951,7 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_SelfIssuedTokenInvalidU
 	_ = config.InitializeServerRuntime("", federatedConfigWithLocalIssuer())
 
 	token := buildFakeJWT(
-		map[string]interface{}{"alg": "RS256", "kid": "local-kid"},
+		map[string]interface{}{"alg": "RS256", "kid": "local-kid", "typ": jwt.TokenTypeAccessToken},
 		map[string]interface{}{"sub": "service-app", "iss": testLocalIssuer},
 	)
 
@@ -975,4 +997,108 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_UnknownIssuerUnderFeder
 	assert.Nil(suite.T(), authCtx)
 	mockJWT.AssertNotCalled(suite.T(), "VerifyJWT")
 	mockJWT.AssertNotCalled(suite.T(), "VerifyJWTWithJWKS")
+}
+
+// TestAuthenticate_RequiresAccessTokenTypeForSelfIssuedToken asserts the gate accepts only an access
+// token (RFC 9068 typ) on the self-issued branch, so no other JWT this server signs with the same key
+// — an auth assertion, ID token, magic link, OTP, consent or flow token — passes as an API credential.
+func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_RequiresAccessTokenTypeForSelfIssuedToken() {
+	tests := []struct {
+		name     string
+		typ      interface{}
+		accepted bool
+	}{
+		{name: "at+jwt is accepted", typ: jwt.TokenTypeAccessToken, accepted: true},
+		{name: "media type form is accepted", typ: jwt.TokenTypeAccessTokenWithPrefix, accepted: true},
+		{name: "typ is compared case insensitively", typ: "AT+JWT", accepted: true},
+		{name: "plain JWT is rejected", typ: jwt.TokenTypeJWT, accepted: false},
+		{name: "ID-JAG is rejected", typ: jwt.TokenTypeIDJAG, accepted: false},
+		{name: "missing typ is rejected", typ: nil, accepted: false},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			header := map[string]interface{}{"alg": "RS256", "kid": "test-kid"}
+			if tt.typ != nil {
+				header["typ"] = tt.typ
+			}
+			token := buildFakeJWT(header, map[string]interface{}{"sub": "user123"})
+
+			mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
+			if tt.accepted {
+				mockJWT.On("VerifyJWT", mock.Anything, token, "", "").Return(nil)
+			}
+			auth := newJWTAuthenticator(mockJWT)
+
+			req := httptest.NewRequest(http.MethodGet, "/users", nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+
+			authCtx, err := auth.Authenticate(req)
+
+			if tt.accepted {
+				assert.NoError(suite.T(), err)
+				assert.NotNil(suite.T(), authCtx)
+			} else {
+				assert.ErrorIs(suite.T(), err, errInvalidToken)
+				assert.Nil(suite.T(), authCtx)
+				// The type check must short-circuit before signature verification.
+				mockJWT.AssertNotCalled(suite.T(), "VerifyJWT")
+			}
+			mockJWT.AssertExpectations(suite.T())
+		})
+	}
+}
+
+// TestAuthenticate_RejectsFlowAuthAssertion covers the concrete confusion the type check closes. The
+// assertion the sign-in flow returns is self-issued and carries authorized_permissions, which the
+// gate read as the caller's permissions; it is meant only for exchange at the token endpoint.
+func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_RejectsFlowAuthAssertion() {
+	assertion := buildFakeJWT(
+		map[string]interface{}{"alg": "RS256", "kid": "test-kid", "typ": jwt.TokenTypeJWT},
+		map[string]interface{}{
+			"sub":                    "user123",
+			"aud":                    "app1",
+			"assurance":              map[string]interface{}{"aal": "AAL1", "ial": "IAL1"},
+			"authorized_permissions": "users:read users:write",
+		},
+	)
+
+	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
+	auth := newJWTAuthenticator(mockJWT)
+
+	req := httptest.NewRequest(http.MethodGet, "/users", nil)
+	req.Header.Set("Authorization", "Bearer "+assertion)
+
+	authCtx, err := auth.Authenticate(req)
+
+	assert.ErrorIs(suite.T(), err, errInvalidToken)
+	assert.Nil(suite.T(), authCtx)
+}
+
+// TestAuthenticate_FederatedTokenTypeNotRestricted pins the access-token type check to self-issued
+// tokens only. A trusted issuer may be a generic OIDC provider that stamps typ JWT on its access
+// tokens, and those must keep authenticating.
+func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_FederatedTokenTypeNotRestricted() {
+	config.ResetServerRuntime()
+	defer config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", federatedConfigWithLocalIssuer())
+
+	token := buildFakeJWT(
+		map[string]interface{}{"alg": "RS256", "kid": "test-kid", "typ": jwt.TokenTypeJWT},
+		map[string]interface{}{"sub": "federated-user", "iss": testFederatedIssuer},
+	)
+
+	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
+	mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token,
+		testFederatedJWKSURL, testFederatedAudience, testFederatedIssuer).Return(nil)
+	auth := newJWTAuthenticator(mockJWT)
+
+	req := httptest.NewRequest(http.MethodGet, "/users", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	authCtx, err := auth.Authenticate(req)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), authCtx)
+	mockJWT.AssertExpectations(suite.T())
 }

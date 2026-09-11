@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const testServerURL = testutils.TestServerURL
@@ -216,16 +216,23 @@ func (suite *APIAuthTestSuite) TestOversizedPathIsForbidden() {
 
 func (suite *APIAuthTestSuite) assertSecurityError(resp *http.Response, expectedStatus int,
 	expectedCode, expectedDescription string) {
-	suite.Equal(expectedStatus, resp.StatusCode)
+	assertSecurityErrorResponse(&suite.Suite, resp, expectedStatus, expectedCode, expectedDescription)
+}
+
+// assertSecurityErrorResponse asserts the status and error body the security middleware returns.
+// Shared by the suites in this package.
+func assertSecurityErrorResponse(s *suite.Suite, resp *http.Response, expectedStatus int,
+	expectedCode, expectedDescription string) {
+	s.Equal(expectedStatus, resp.StatusCode)
 
 	bodyBytes, err := io.ReadAll(resp.Body)
-	suite.Require().NoError(err)
+	s.Require().NoError(err)
 
 	var errResp apiErrorResponse
-	suite.Require().NoError(json.Unmarshal(bodyBytes, &errResp))
+	s.Require().NoError(json.Unmarshal(bodyBytes, &errResp))
 
-	suite.Equal(expectedCode, errResp.Code)
-	suite.Equal(expectedDescription, errResp.Description.DefaultValue)
+	s.Equal(expectedCode, errResp.Code)
+	s.Equal(expectedDescription, errResp.Description.DefaultValue)
 }
 
 func (suite *APIAuthTestSuite) protectedResourceURL() string {

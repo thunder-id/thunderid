@@ -19,7 +19,7 @@ export const serverUrl = process.env.SERVER_URL || "https://localhost:8090";
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 
 // One token per worker process, shared by every helper in it. getAdminToken costs two
-// /flow/execute round trips and the assertion is valid for far longer than a suite run. A
+// /flow/execute round trips plus a token exchange, and the access token outlives a suite run. A
 // failed fetch clears the memo so one flaky start does not poison every later test in the worker.
 let tokenPromise: Promise<string> | undefined;
 

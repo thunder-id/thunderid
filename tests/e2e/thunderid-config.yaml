@@ -1,8 +1,10 @@
 ---
 resource_type: application
 # Embedded server-side application used exclusively by E2E test infrastructure for admin API
-# authentication. It has no OAuth profile, so it initiates the admin authentication flow directly
-# via the Flow Execution API and is issued a Flow Secret.
+# authentication. It initiates the admin authentication flow directly via the Flow Execution API
+# using its Flow Secret, then exchanges the resulting assertion for an access token through its own
+# OAuth profile below. The API gate accepts only access tokens, so the exchange is required: an
+# assertion is an intermediate credential, not an API credential.
 id: 019e3a5c-0501-7f3e-a66e-66fc7918c3a7
 ouHandle: default
 name: E2E Admin Native App
@@ -16,7 +18,23 @@ authFlowHandle: default-flow
 # also what this file can rely on existing before any sample-app config is imported.
 allowedUserTypes:
   - Person
-  
+# Token exchange only. The assertion this app is issued names this app in its `aud` claim, and the
+# subject-token validator requires the exchanging client to be that same app, so the OAuth profile
+# has to live here rather than on a separate client. Test-only credentials.
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: E2E_ADMIN
+      clientSecret: e2e-admin-client-secret
+      grantTypes:
+        - urn:ietf:params:oauth:grant-type:token-exchange
+      tokenEndpointAuthMethod: client_secret_basic
+      publicClient: false
+      token:
+        accessToken:
+          userConfig:
+            validityPeriod: 3600
+
 ---
 resource_type: server_config
 # Allows the sample apps' browser origins to reach the API during E2E tests. CORS origins come only from
