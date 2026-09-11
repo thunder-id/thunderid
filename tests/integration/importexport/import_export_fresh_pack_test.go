@@ -10,6 +10,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -310,6 +312,8 @@ func (suite *ImportExportFreshPackSuite) TestExportImportAcrossFreshPack() {
 	suite.Require().NoError(err)
 	suite.Require().NotEmpty(yamlContent)
 
+	suite.assertExportedOUHasTimestamps(yamlContent, ouID)
+
 	err = suite.resetToFreshPack()
 	suite.Require().NoError(err)
 
@@ -494,6 +498,31 @@ vct: urn:import:invalid-ou
 	for _, result := range response.Results {
 		suite.Equal("failed", result.Status)
 		suite.NotEmpty(result.Code)
+	}
+}
+
+// assertExportedOUHasTimestamps verifies the exported organization unit document carries
+// real createdAt/updatedAt values rather than blank keys.
+func (suite *ImportExportFreshPackSuite) assertExportedOUHasTimestamps(yamlContent, ouID string) {
+	var ouDoc string
+	for _, doc := range strings.Split(yamlContent, "\n---\n") {
+		if strings.Contains(doc, "resource_type: organization_unit") && strings.Contains(doc, ouID) {
+			ouDoc = doc
+			break
+		}
+	}
+	suite.Require().NotEmpty(ouDoc, "exported content should contain the organization unit document")
+
+	for _, field := range []string{"createdAt", "updatedAt"} {
+		matches := regexp.MustCompile(`(?m)^` + field + `: *(.*)$`).FindStringSubmatch(ouDoc)
+		suite.Require().Len(matches, 2, "exported OU should contain a %s field", field)
+
+		value := strings.TrimSpace(matches[1])
+		suite.Require().NotEmpty(value, "exported OU %s should not be blank", field)
+
+		parsed, err := time.Parse(time.RFC3339, value)
+		suite.Require().NoError(err, "exported OU %s should be a valid RFC3339 timestamp", field)
+		suite.False(parsed.IsZero(), "exported OU %s should not be the zero time", field)
 	}
 }
 
