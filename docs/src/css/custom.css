@@ -281,6 +281,10 @@ h5 {
   padding: 0.1em 0.4em;
   font-size: 0.875em;
   color: var(--ifm-color-primary-light, var(--ifm-color-primary));
+  /* When a pill wraps across lines, give each fragment a complete box
+     instead of slicing the border and padding at the break */
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 /* ------------------------------ Code blocks ----------------------------- */
