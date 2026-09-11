@@ -5,31 +5,71 @@ description: How federation, user stores, and data ownership decisions shape a B
 sidebar_position: 8
 ---
 
-
 # Identity Sources and Data
 
-Where consumer identities come from and where they live shape almost everything else about the system. Federation decides who can bring an existing identity to your app. User stores decide who owns the canonical record once they arrive.
+Where consumer identities come from and where they live shape almost everything else about the system. Federation
+decides who can bring an existing identity to your app. User stores decide who owns the canonical record once they
+arrive.
 
 ## Identity Federation
 
-External identity providers, both social and enterprise, let users bring an identity they already have to your app instead of managing a separate credential. Done well, federation creates one user record per real person regardless of how many sign-in methods they end up using. Most consumer apps adopt at least one social provider (Google, GitHub, and similar), and prosumer apps add enterprise sign-in through OpenID Connect.
+External identity providers, both social and enterprise, let users bring an identity they already have to your app
+instead of managing a separate credential. Done well, federation creates one user record per real person regardless of
+how many sign-in methods they end up using. Most consumer apps adopt at least one social provider (Google, GitHub, and
+similar), and prosumer apps add enterprise sign-in through OpenID Connect.
 
-Federation requires a few specific decisions:
+There are three main questions that need to be decided here. How does a user record come into existence the first time
+someone federates in, and how does a second sign-in method attach to a person who already has one, and does signing out
+of your app also end that user's <ProductName /> session, so a returning visit requires federating in again?
 
-- Should a user record be created the first time someone signs in through a provider (just-in-time provisioning), or
-  only after an invitation?
-- Should multiple federated identities link to one user, and what is the linking signal: verified email, explicit
-  linking, or both?
-- Should signing out of your app end that user's <ProductName /> session immediately, so a returning visit requires
-  federating in again?
+### Just-in-Time Provisioning
 
-Each of these is configurable independently.
+The first time someone signs in through a provider, no local record exists for them. Just-in-time provisioning creates
+one on the spot from whatever the provider returns, so the person gets in without filling out a registration form.
+
+The alternative is to require the record first. Someone invites, imports, or pre-registers the person, or the person has
+to create the account by any other means, and federation only signs in people who are already known. Most consumer apps
+want the open path. Apps with a paid tier, a waitlist, or a closed beta usually want the gated one, and plenty want
+both, open for Google and gated for the enterprise provider.
+
+Provisioning also decides what the new record starts with. A provider usually hands back an email address and a display
+name, sometimes a picture. Anything else, a country or a marketing opt-in, has to come from the user after the sign-in.
+There is another decision to be made here, whether later sign-ins refresh those attributes, or the local copy is
+preserved after it is made, or a mix of these.
+
+### Account Linking
+
+Account linking stops different authenticators creating different identities for one person. So a user who logs in with
+email password, Google and GitHub is treated as one person rather than having three different user accounts.
+
+Most apps use different methods to link accounts:
+
+- **Automatic linking on a trusted signal:** the provider returns an identifier that already matches a record, almost
+  always a verified email address, and the two join silently. The lowest user-friction of the four, and safe only if the
+  provider verifies that signal itself. The downside is an unverified email from a provider that lets anyone claim any
+  address is an account takeover waiting to happen.
+- **User-confirmed linking:** federation spots the match, then waits. The person signs in with the original credential
+  or confirms a code sent to the address on file before anything links. Slower, and the right default for accounts
+  holding payment details or other sensitive information.
+- **Explicit linking from the profile:** a signed-in user connects another provider from account settings. Your app
+  doesn't do user inference, since the user session is already there, and this is the only type that lets someone add a
+  method without having to authenticate with that.
+- **No linking:** every provider identity stays its own record. Simple, and fine when those identities really are
+  separate people. Might result in user confusion.
+
+Unlinking deserves the same attention. Decide whether a person can detach a provider themselves, and what happens if
+they detach the last sign-in method they have.
 
 ## User Stores
 
-Where consumer identities live affects sign-in performance, recovery options, federation behavior, and migration paths. Most consumer apps run a directly-managed user directory inside the identity product. The other option is no local record at all, relying entirely on federation for identity.
+Where consumer identities live affects sign-in performance, recovery options, federation behavior, and migration paths.
+Most consumer apps run a directly-managed user directory inside the identity product. The other option is no local
+record at all, relying entirely on federation for identity.
 
-The choice comes down to who owns the canonical record. A directly-managed directory gives you the most features and the simplest operational model: profile attributes, credentials, and recovery state all live in one place. Relying entirely on federation removes that local record, at the cost of depending on the federated provider staying available and accurate for every sign-in.
+The choice comes down to who owns the record. A directly-managed directory gives you the most features and the simplest
+operational model: profile attributes, credentials, and recovery state all live in one place, but have the attribute
+syncing decision. Relying entirely on federation removes that local record, at the cost of depending on the federated
+provider staying available and accurate for every sign-in.
 
 ## Continue Designing Your Architecture
 
