@@ -236,7 +236,9 @@ Fill this in only if the change processes personal data.
 
 <Bounded, accepted, or in-progress risks for this area.>
 
-- <residual risk> (tracking: <issue link>)
+| Risk | Description | Current Status | Recommendation |
+| --- | --- | --- | --- |
+| <short risk name> | <what the risk is and why it exists> | <current status> | <the current mitigation, if any, and the concrete next step> (tracking: <issue link>) |
 
 ## Appendix
 
