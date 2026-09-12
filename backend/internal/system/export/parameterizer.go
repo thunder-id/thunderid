@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -516,6 +517,10 @@ func (p *parameterizer) isEmptyValue(v reflect.Value) bool {
 		return v.Float() == 0
 	case reflect.Interface, reflect.Ptr:
 		return v.IsNil()
+	case reflect.Struct:
+		if t, ok := v.Interface().(time.Time); ok {
+			return t.IsZero()
+		}
 	}
 	return false
 }
@@ -868,6 +873,16 @@ func (p *parameterizer) fieldToNode(
 
 	switch v.Kind() {
 	case reflect.Struct:
+		// time.Time exposes no exported fields, so it must be rendered as an RFC3339
+		// scalar rather than walked as a generic struct (which yields an empty mapping).
+		// RFC3339Nano keeps sub-second precision
+		if t, ok := v.Interface().(time.Time); ok {
+			return &yaml.Node{
+				Kind:  yaml.ScalarNode,
+				Tag:   "!!str",
+				Value: t.UTC().Format(time.RFC3339Nano),
+			}, nil
+		}
 		return p.handleStructNode(v, rules, currentPath, resourceName)
 
 	case reflect.Slice, reflect.Array:

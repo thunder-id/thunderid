@@ -57,8 +57,8 @@ type OrganizationUnit struct {
 	TosURI                    string    `json:"tosUri,omitempty"             yaml:"tosUri,omitempty"`
 	PolicyURI                 string    `json:"policyUri,omitempty"          yaml:"policyUri,omitempty"`
 	CookiePolicyURI           string    `json:"cookiePolicyUri,omitempty"    yaml:"cookiePolicyUri,omitempty"`
-	CreatedAt                 time.Time `json:"createdAt"                    yaml:"createdAt"`
-	UpdatedAt                 time.Time `json:"updatedAt"                    yaml:"updatedAt"`
+	CreatedAt                 time.Time `json:"createdAt"                    yaml:"createdAt,omitempty"`
+	UpdatedAt                 time.Time `json:"updatedAt"                    yaml:"updatedAt,omitempty"`
 }
 
 // OrganizationUnitRequestWithID represents the request body for creating an organization unit
