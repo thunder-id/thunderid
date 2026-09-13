@@ -272,6 +272,32 @@ describe('ConfigureRedirectUris', () => {
     expect(setRedirectUris).toHaveBeenCalledWith(['', '']);
   });
 
+  it('allows an HTTP localhost redirect URI', async () => {
+    renderWithContext({
+      selectedTemplateConfig: expressTemplate,
+      redirectUris: ['http://localhost:3000/callback'],
+    });
+
+    const input = screen.getByDisplayValue('http://localhost:3000/callback');
+    await user.click(input);
+    await user.tab();
+
+    expect(screen.queryByText('applications:edit.general.redirectUris.error.invalid')).not.toBeInTheDocument();
+  });
+
+  it('rejects an HTTP redirect URI with a non-loopback host', async () => {
+    renderWithContext({
+      selectedTemplateConfig: expressTemplate,
+      redirectUris: ['http://example.com/callback'],
+    });
+
+    const input = screen.getByDisplayValue('http://example.com/callback');
+    await user.click(input);
+    await user.tab();
+
+    expect(screen.getByText('applications:edit.general.redirectUris.error.invalid')).toBeInTheDocument();
+  });
+
   it('flags an invalid CORS origin (a path is not a bare origin) instead of accepting it as a pattern', async () => {
     const setCorsOrigins = vi.fn();
 

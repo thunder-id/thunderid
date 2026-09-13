@@ -728,6 +728,43 @@ describe('OAuth2ConfigSection', () => {
       expect(onOAuth2ConfigChange).toHaveBeenCalledWith({redirectUris: ['https://example.com/callback']});
     });
 
+    it('should commit an HTTP localhost redirect URI on blur', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      render(
+        <OAuth2ConfigSection
+          oauth2Config={{...baseConfig, redirectUris: ['http://localhost:3000/callback']}}
+          onOAuth2ConfigChange={onOAuth2ConfigChange}
+        />,
+      );
+
+      const uriInput = screen.getByDisplayValue('http://localhost:3000/callback');
+      await user.click(uriInput);
+      await user.tab();
+
+      expect(onOAuth2ConfigChange).toHaveBeenCalledWith({redirectUris: ['http://localhost:3000/callback']});
+    });
+
+    it('should reject an HTTP redirect URI with a non-loopback host on blur', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      render(
+        <OAuth2ConfigSection
+          oauth2Config={{...baseConfig, redirectUris: ['http://example.com/callback']}}
+          onOAuth2ConfigChange={onOAuth2ConfigChange}
+        />,
+      );
+
+      const uriInput = screen.getByDisplayValue('http://example.com/callback');
+      await user.click(uriInput);
+      await user.tab();
+
+      expect(onOAuth2ConfigChange).not.toHaveBeenCalledWith(
+        expect.objectContaining({redirectUris: expect.anything() as unknown}),
+      );
+      expect(screen.getByText('applications:edit.general.redirectUris.error.invalid')).toBeInTheDocument();
+    });
+
     it('should not commit and should show an error when an invalid redirect URI is blurred', async () => {
       const user = userEvent.setup();
       const onOAuth2ConfigChange = vi.fn();

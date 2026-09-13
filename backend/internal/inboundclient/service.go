@@ -1020,6 +1020,12 @@ func validateRedirectURIs(p *providers.OAuthProfile) error {
 			(!isWebScheme && parsedURI.Host == "" && parsedURI.Path == "") {
 			return ErrOAuthInvalidRedirectURI
 		}
+		if strings.EqualFold(parsedURI.Scheme, "http") {
+			hostname := parsedURI.Hostname()
+			if !strings.EqualFold(hostname, "localhost") && hostname != "127.0.0.1" && hostname != "::1" {
+				return ErrOAuthInvalidRedirectURI
+			}
+		}
 		if parsedURI.Fragment != "" {
 			return ErrOAuthRedirectURIFragmentNotAllowed
 		}

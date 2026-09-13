@@ -47,7 +47,7 @@ import getApplicationErrorMessage from '../utils/getApplicationErrorMessage';
 import getTemplateCapabilities from '../utils/getTemplateCapabilities';
 import getTemplateFieldConstraints from '../utils/getTemplateFieldConstraints';
 import getTemplateMetadata from '../utils/getTemplateMetadata';
-import isValidRedirectUriFormat from '../utils/isValidRedirectUriFormat';
+import isValidRedirectUriFormat, {isValidRedirectUriTransport} from '../utils/isValidRedirectUriFormat';
 import {hasUserAccess} from '../utils/oauth2Rules';
 
 interface TabConfig {
@@ -268,8 +268,19 @@ export default function ApplicationEditPage() {
   // MCP clients run their own validation via McpConnectTab, so these are skipped there.
   const grantTypes = oauth2Config?.grantTypes ?? [];
   const hasAuthorizationCodeGrant = grantTypes.includes(OAuth2GrantTypes.AUTHORIZATION_CODE);
-  const hasValidRedirectUri = (oauth2Config?.redirectUris ?? []).some((uri) => isValidRedirectUriFormat(uri));
-  const isMissingRedirectUri = !isMcpClient && hasAuthorizationCodeGrant && !hasValidRedirectUri;
+  const redirectUris = oauth2Config?.redirectUris ?? [];
+  const hasValidRedirectUri = redirectUris.some(
+    (uri) => isValidRedirectUriFormat(uri) && isValidRedirectUriTransport(uri),
+  );
+  const hasDisallowedHttpRedirectUri = redirectUris.some((uri) => {
+    try {
+      return new URL(uri).protocol === 'http:' && !isValidRedirectUriTransport(uri);
+    } catch {
+      return false;
+    }
+  });
+  const isMissingRedirectUri =
+    !isMcpClient && ((hasAuthorizationCodeGrant && !hasValidRedirectUri) || hasDisallowedHttpRedirectUri);
   const isMissingCertificate =
     !isMcpClient &&
     oauth2Config?.tokenEndpointAuthMethod === TokenEndpointAuthMethods.PRIVATE_KEY_JWT &&

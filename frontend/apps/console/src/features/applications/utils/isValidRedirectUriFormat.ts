@@ -35,3 +35,22 @@ export default function isValidRedirectUriFormat(uri: string): boolean {
     return false;
   }
 }
+
+/**
+ * Allows insecure HTTP redirect URIs only when they use an exact loopback hostname.
+ * HTTPS and custom-scheme redirect URIs are unaffected.
+ */
+export function isValidRedirectUriTransport(uri: string): boolean {
+  try {
+    const trimmedUri = uri.trim();
+    const parsedUri = new URL(trimmedUri);
+    if (parsedUri.protocol !== 'http:') return true;
+
+    const hostname = /^http:\/\/(?:[^@/?#]+@)?(\[[^\]]+\]|[^:/?#]+)(?::\d+)?(?:[/?#]|$)/i
+      .exec(trimmedUri)?.[1]
+      ?.toLowerCase();
+    return hostname !== undefined && ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
+  } catch {
+    return false;
+  }
+}
