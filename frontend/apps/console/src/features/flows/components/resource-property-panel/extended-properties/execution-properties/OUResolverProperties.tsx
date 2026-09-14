@@ -1,8 +1,17 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FormLabel, MenuItem, Select, Stack, Typography} from '@wso2/oxygen-ui';
-import {useMemo, type ReactNode} from 'react';
+import {
+  Checkbox,
+  FormControlLabel,
+  FormHelperText,
+  FormLabel,
+  MenuItem,
+  Select,
+  Stack,
+  Typography,
+} from '@wso2/oxygen-ui';
+import {useCallback, useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {OU_RESOLVE_FROM_OPTIONS} from './constants';
 import type {CommonResourcePropertiesPropsInterface} from './types';
@@ -17,6 +26,13 @@ function OUResolverProperties({resource, onChange}: CommonResourcePropertiesProp
   }, [resource]);
 
   const currentResolveFrom = (properties.resolveFrom as string) || 'caller';
+
+  const handleBooleanPropertyChange = useCallback(
+    (propertyName: string, value: boolean): void => {
+      onChange(`data.properties.${propertyName}`, value, resource);
+    },
+    [resource, onChange],
+  );
 
   return (
     <Stack gap={2}>
@@ -39,6 +55,22 @@ function OUResolverProperties({resource, onChange}: CommonResourcePropertiesProp
           ))}
         </Select>
       </div>
+
+      {currentResolveFrom === 'prompt' && (
+        <div>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={!!properties.promptUseHandle}
+                onChange={(e) => handleBooleanPropertyChange('promptUseHandle', e.target.checked)}
+                size="small"
+              />
+            }
+            label={t('flows:core.executions.ouResolver.promptUseHandle.label')}
+          />
+          <FormHelperText>{t('flows:core.executions.ouResolver.promptUseHandle.hint')}</FormHelperText>
+        </div>
+      )}
     </Stack>
   );
 }

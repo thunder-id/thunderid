@@ -2549,6 +2549,62 @@ func (s *PromptOnlyNodeTestSuite) TestSyntheticMeta_ExistingComponentPromotedToP
 	s.Equal(true, comp["required"], "existing meta component must reflect promoted required flag")
 }
 
+func (s *PromptOnlyNodeTestSuite) TestSyntheticMeta_ExistingComponentPromotedWithOptions() {
+	meta := map[string]interface{}{
+		"components": []interface{}{
+			map[string]interface{}{
+				"id":       "ou_selection_input",
+				"ref":      "ouHandle",
+				"type":     "SELECT",
+				"label":    "Organization",
+				"required": true,
+			},
+		},
+	}
+	node := newPromptNode("prompt-1", map[string]interface{}{}, false, false)
+	pn := node.(PromptNodeInterface)
+	pn.SetMeta(meta)
+	pn.SetPrompts([]common.Prompt{
+		{
+			Inputs: []providers.Input{{Ref: "ouHandle", Identifier: "ouHandle", Type: "SELECT", Required: true}},
+			Action: &common.Action{Ref: "submit", NextNode: "next"},
+		},
+	})
+
+	ctx := &providers.NodeContext{
+		ExecutionID:   "test-flow",
+		CurrentAction: "submit",
+		UserInputs:    map[string]string{},
+		Verbose:       true,
+		ForwardedData: map[string]interface{}{
+			common.ForwardedDataKeyInputs: []providers.Input{
+				{
+					Identifier: "ouHandle", Type: "SELECT", Required: true,
+					Options: []string{"acme-corp", "beta-inc"},
+				},
+			},
+		},
+	}
+	resp, err := node.Execute(ctx)
+
+	s.Nil(err)
+	s.NotNil(resp)
+	s.NotNil(resp.Meta)
+	s.Require().Len(resp.Inputs, 1)
+	s.Equal([]string{"acme-corp", "beta-inc"}, resp.Inputs[0].Options)
+
+	metaMap, ok := resp.Meta.(map[string]interface{})
+	s.Require().True(ok)
+	comps, ok := metaMap["components"].([]interface{})
+	s.Require().True(ok)
+	s.Require().Len(comps, 1)
+
+	comp, ok := comps[0].(map[string]interface{})
+	s.Require().True(ok)
+	s.Equal([]string{"acme-corp", "beta-inc"}, comp["options"],
+		"existing meta component must be promoted with the options the executor forwarded")
+}
+
 func (s *PromptOnlyNodeTestSuite) TestSyntheticMeta_PromotionDoesNotMutateSharedMeta() {
 	original := map[string]interface{}{
 		"components": []interface{}{
