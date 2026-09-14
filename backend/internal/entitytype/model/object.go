@@ -158,6 +158,9 @@ func compileObjectProperty(propMap map[string]json.RawMessage) (property, error)
 	}
 
 	for nestedName, nestedRaw := range nestedProps {
+		if err := validatePropertyName(nestedName); err != nil {
+			return nil, err
+		}
 		compiledNested, err := compileProperty(nestedName, nestedRaw)
 		if err != nil {
 			return nil, fmt.Errorf("invalid nested property '%s': %w", nestedName, err)
