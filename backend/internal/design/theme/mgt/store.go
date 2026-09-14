@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 )
 
 var errThemeNotFound = errors.New("theme not found")
@@ -31,15 +31,20 @@ type themeMgtStoreInterface interface {
 
 // themeMgtStore is the default implementation of themeMgtStoreInterface.
 type themeMgtStore struct {
-	dbProvider   provider.DBProviderInterface
-	deploymentID string
+	dbProvider provider.DBProviderInterface
+}
+
+// scope returns the deployment id this request acts for. The id is put on the context at the
+// edge, so a request scopes by what it names; a context that never passed through the edge,
+// such as a start-up task or a background job, falls back to the configured identifier.
+func (s *themeMgtStore) scope(ctx context.Context) string {
+	return deployment.Resolve(ctx)
 }
 
 // newThemeMgtStore creates a new instance of themeMgtStore.
 func newThemeMgtStore() themeMgtStoreInterface {
 	return &themeMgtStore{
-		dbProvider:   provider.GetDBProvider(),
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
+		dbProvider: provider.GetDBProvider(),
 	}
 }
 
@@ -50,7 +55,7 @@ func (s *themeMgtStore) GetThemeListCount(ctx context.Context) (int, error) {
 		return 0, err
 	}
 
-	countResults, err := dbClient.Query(queryGetThemeListCount, s.deploymentID)
+	countResults, err := dbClient.Query(queryGetThemeListCount, s.scope(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute count query: %w", err)
 	}
@@ -65,7 +70,7 @@ func (s *themeMgtStore) GetThemeList(ctx context.Context, limit, offset int) ([]
 		return nil, err
 	}
 
-	results, err := dbClient.Query(queryGetThemeList, limit, offset, s.deploymentID)
+	results, err := dbClient.Query(queryGetThemeList, limit, offset, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute theme list query: %w", err)
 	}
@@ -95,7 +100,7 @@ func (s *themeMgtStore) CreateTheme(ctx context.Context, id string, theme Create
 	}
 
 	_, err = dbClient.Execute(queryCreateTheme, id, theme.Handle, theme.DisplayName, theme.Description,
-		themeJSON, s.deploymentID)
+		themeJSON, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -110,7 +115,7 @@ func (s *themeMgtStore) GetTheme(ctx context.Context, id string) (Theme, error) 
 		return Theme{}, err
 	}
 
-	results, err := dbClient.Query(queryGetThemeByID, id, s.deploymentID)
+	results, err := dbClient.Query(queryGetThemeByID, id, s.scope(ctx))
 	if err != nil {
 		return Theme{}, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -133,7 +138,7 @@ func (s *themeMgtStore) IsThemeExist(ctx context.Context, id string) (bool, erro
 		return false, err
 	}
 
-	results, err := dbClient.Query(queryCheckThemeExists, id, s.deploymentID)
+	results, err := dbClient.Query(queryCheckThemeExists, id, s.scope(ctx))
 	if err != nil {
 		return false, fmt.Errorf("failed to check theme existence: %w", err)
 	}
@@ -162,7 +167,7 @@ func (s *themeMgtStore) UpdateTheme(ctx context.Context, id string, theme Update
 		return fmt.Errorf("failed to marshal theme: %w", err)
 	}
 
-	_, err = dbClient.Execute(queryUpdateTheme, theme.DisplayName, theme.Description, themeJSON, id, s.deploymentID)
+	_, err = dbClient.Execute(queryUpdateTheme, theme.DisplayName, theme.Description, themeJSON, id, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -177,7 +182,7 @@ func (s *themeMgtStore) DeleteTheme(ctx context.Context, id string) error {
 		return err
 	}
 
-	_, err = dbClient.Execute(queryDeleteTheme, id, s.deploymentID)
+	_, err = dbClient.Execute(queryDeleteTheme, id, s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -361,7 +366,7 @@ func (s *themeMgtStore) IsThemeHandleConflict(ctx context.Context, handle string
 		return false, err
 	}
 
-	results, err := dbClient.Query(queryCheckThemeHandleConflict, handle, s.deploymentID, excludeID)
+	results, err := dbClient.Query(queryCheckThemeHandleConflict, handle, s.scope(ctx), excludeID)
 	if err != nil {
 		return false, fmt.Errorf("failed to check theme handle conflict: %w", err)
 	}
