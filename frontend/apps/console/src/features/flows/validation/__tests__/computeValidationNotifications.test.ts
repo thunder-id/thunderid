@@ -181,6 +181,36 @@ describe('computeValidationNotifications', () => {
       expect(result.has('exec-1_REQUIRED_FIELD_ERROR')).toBe(true);
     });
 
+    it('should require idpId on the eSignet executor', () => {
+      const unconfigured = [
+        createNode({
+          id: 'exec-1',
+          data: {
+            action: {executor: {name: 'ESignetOIDCExecutor'}},
+            properties: {idpId: '{{IDP_ID}}'},
+          } as unknown as StepData,
+        }),
+      ];
+
+      expect(computeValidationNotifications(unconfigured, VALIDATION_RULES, t).has('exec-1_REQUIRED_FIELD_ERROR')).toBe(
+        true,
+      );
+
+      const configured = [
+        createNode({
+          id: 'exec-1',
+          data: {
+            action: {executor: {name: 'ESignetOIDCExecutor'}},
+            properties: {idpId: 'esignet-idp-123'},
+          } as unknown as StepData,
+        }),
+      ];
+
+      expect(computeValidationNotifications(configured, VALIDATION_RULES, t).has('exec-1_REQUIRED_FIELD_ERROR')).toBe(
+        false,
+      );
+    });
+
     it('should treat {{SENDER_ID}} placeholder as missing value', () => {
       const nodes = [
         createNode({

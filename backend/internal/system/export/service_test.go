@@ -6,6 +6,7 @@ package export
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"text/template"
 
@@ -943,6 +944,61 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Proper
 
 	assert.NotNil(suite.T(), result.EnvFile)
 	assert.Contains(suite.T(), result.EnvFile.Content, "CONNECTION_EXPORT_TEST_IDP_CLIENT_SECRET=super-secret")
+}
+
+// TestExportResources_ESignetConnection_SigningKeyExternalized verifies that an eSignet
+// connection's PEM signing key never reaches the exported YAML in plaintext. eSignet issues no
+// client secret, so the signing key is the secret that must be externalized to the .env file.
+func (suite *ExportServiceTestSuite) TestExportResources_ESignetConnection_SigningKeyExternalized() {
+	idpID := "test-esignet-idp"
+	request := &ExportRequest{
+		Connections: []string{idpID},
+		Options: &ExportOptions{
+			Format: "yaml",
+		},
+	}
+
+	// The stored key is single-line: newlines written as the two-character sequence \n, so it
+	// can occupy exactly one .env line. Note the backquotes.
+	const signingKey = `-----BEGIN RSA PRIVATE KEY-----\nkey-material\n-----END RSA PRIVATE KEY-----` // #nosec G101
+
+	clientIDProp, _ := cmodels.NewProperty(idp.PropClientID, "thunderid-esignet", false)
+	signingKeyProp, _ := cmodels.NewProperty(idp.PropSigningKey, signingKey, true)
+	signingKeyIDProp, _ := cmodels.NewProperty(idp.PropSigningKeyID, "kid-1", false)
+
+	mockIDP := &providers.IDPDTO{
+		ID:          idpID,
+		Name:        "Export eSignet",
+		Description: "Test eSignet connection for signing key externalization",
+		Type:        providers.IDPTypeESignet,
+		Properties: []cmodels.Property{
+			*clientIDProp,
+			*signingKeyProp,
+			*signingKeyIDProp,
+		},
+	}
+
+	suite.idpServiceMock.EXPECT().GetIdentityProvider(mock.Anything, idpID).Return(mockIDP, nil)
+
+	result, err := suite.exportService.ExportResources(context.Background(), request)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Len(suite.T(), result.Files, 1)
+
+	yamlContent := result.Files[0].Content
+
+	assert.Contains(suite.T(), yamlContent, "signingKey: {{.CONNECTION_EXPORT_E_SIGNET_SIGNING_KEY}}")
+	assert.NotContains(suite.T(), yamlContent, "BEGIN RSA PRIVATE KEY")
+	assert.Contains(suite.T(), yamlContent, "signingKeyId: kid-1")
+	assert.Contains(suite.T(), yamlContent, "clientId: thunderid-esignet")
+
+	assert.NotNil(suite.T(), result.EnvFile)
+	assert.Contains(suite.T(), result.EnvFile.Content, "CONNECTION_EXPORT_E_SIGNET_SIGNING_KEY="+signingKey)
+
+	// Regression guard on the .env format: one line per variable. A multi-line value here would
+	// silently corrupt every line-based reader of the file (start scripts, console parsers).
+	assert.Equal(suite.T(), 1, strings.Count(result.EnvFile.Content, "\n"))
 }
 
 // TestExportResources_IdentityProvider_PropertyStructure verifies that a connection with

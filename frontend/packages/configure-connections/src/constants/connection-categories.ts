@@ -9,6 +9,7 @@ import type {ConnectionCategory} from '../models/connection';
  */
 export const CONNECTION_CATEGORIES: ConnectionCategory[] = [
   'social-login',
+  'login-provider',
   'enterprise',
   'sms',
   'email',

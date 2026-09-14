@@ -14,7 +14,7 @@ const SYNONYMS: Record<string, string[]> = {
   '2fa': ['otp', 'passcode', 'factor'],
   mfa: ['otp', 'passcode', 'factor'],
   passwordless: ['passkey', 'magic link', 'wallet'],
-  social: ['google', 'github', 'oauth', 'oidc', 'federated'],
+  social: ['google', 'github', 'oauth', 'oidc', 'esignet', 'mosip', 'federated'],
   sso: ['oauth', 'oidc', 'federated'],
 };
 

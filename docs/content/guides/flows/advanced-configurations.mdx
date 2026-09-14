@@ -295,6 +295,7 @@ Widgets are pre-built, reusable flow segments that combine a View node and one o
 | **Username + Password** | A login form wired to the Identifier + Password executor. |
 | **Continue with Google** | Social login using Google. |
 | **Continue with GitHub** | Social login using GitHub. |
+| **Continue with eSignet** | Federated login using MOSIP eSignet. |
 | **Continue with SMS OTP** | An OTP input view wired to the Verify OTP executor. |
 | **Sign In with Passkey** | A passkey prompt wired to the passkey verification executors. |
 | **Provisioning** | A Provisioning executor wired to a dynamic input view that prompts for missing schema attributes. |
@@ -355,6 +356,7 @@ Every flow you deploy must reference only executors that are registered on the s
 | **OIDC Auth** | Authenticates via generic OIDC provider. | OIDC identity provider configured |
 | **Google** | Authenticates the user via Google sign-in. | Google identity provider configured |
 | **GitHub** | Authenticates the user via GitHub sign-in. | GitHub identity provider configured |
+| **eSignet** | Authenticates the user via MOSIP eSignet sign-in. | eSignet identity provider configured |
 | **Request Passkey** | Initiates a passkey authentication challenge. | Relying party configured |
 | **Verify Passkey** | Verifies the user's passkey response. | Request Passkey must have run |
 | **Start Passkey Registration** | Begins the passkey registration ceremony. | Relying party configured |

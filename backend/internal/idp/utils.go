@@ -367,8 +367,9 @@ func validateIDPProperties(ctx context.Context, idpType providers.IDPType, prope
 		}
 	}
 
-	// Ensure openid scope for OIDC and Google IDPs
-	if idpType == providers.IDPTypeOIDC || idpType == providers.IDPTypeGoogle {
+	// Ensure openid scope for OIDC, Google and eSignet IDPs
+	if idpType == providers.IDPTypeOIDC || idpType == providers.IDPTypeGoogle ||
+		idpType == providers.IDPTypeESignet {
 		if err := ensureOpenIDScope(ctx, filteredPropsMap, logger); err != nil {
 			return nil, err
 		}

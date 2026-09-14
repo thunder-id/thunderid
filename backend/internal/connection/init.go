@@ -76,6 +76,11 @@ func registerRoutes(mux *http.ServeMux, h *handler) {
 		getHandler(h, providers.IDPTypeOIDC, oidcFromIDPDTO),
 		updateHandler(h, providers.IDPTypeOIDC, oidcToIDPDTO, oidcFromIDPDTO),
 		collectionOpts, itemOpts)
+	registerVendorRoutes(mux, h, "/connections/esignet", providers.IDPTypeESignet,
+		createHandler(h, esignetToIDPDTO, esignetFromIDPDTO),
+		getHandler(h, providers.IDPTypeESignet, esignetFromIDPDTO),
+		updateHandler(h, providers.IDPTypeESignet, esignetToIDPDTO, esignetFromIDPDTO),
+		collectionOpts, itemOpts)
 	registerVendorRoutes(mux, h, "/connections/oauth", providers.IDPTypeOAuth,
 		createHandler(h, oauthToIDPDTO, oauthFromIDPDTO),
 		getHandler(h, providers.IDPTypeOAuth, oauthFromIDPDTO),

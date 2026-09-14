@@ -708,7 +708,7 @@ function findPrecedingPromptNode(
  * List of OAuth/OIDC executor names that require a 'code' input for OAuth callback.
  * These executors handle external authentication and don't inherit form inputs.
  */
-const OAUTH_EXECUTOR_NAMES = new Set(['GoogleOIDCAuthExecutor', 'GithubOAuthExecutor']);
+const OAUTH_EXECUTOR_NAMES = new Set(['GoogleOIDCAuthExecutor', 'GithubOAuthExecutor', 'ESignetOIDCExecutor']);
 
 /**
  * Creates the standard OAuth code input for OAuth/OIDC executors.

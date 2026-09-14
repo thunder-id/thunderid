@@ -15,6 +15,7 @@ import {ExecutionTypes} from '../models/steps';
 const IDP_TYPE_TO_EXECUTOR: Record<string, string> = {
   [IdentityProviderTypes.GOOGLE]: ExecutionTypes.GoogleFederation,
   [IdentityProviderTypes.GITHUB]: ExecutionTypes.GithubFederation,
+  [IdentityProviderTypes.ESIGNET]: ExecutionTypes.ESignetFederation,
 };
 
 export interface ComputeExecutorConnectionsParams {

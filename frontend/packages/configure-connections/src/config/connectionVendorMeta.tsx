@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {GithubIcon, GoogleIcon, ResourceAvatar} from '@thunderid/components';
+import {ESignetIcon, GithubIcon, GoogleIcon, ResourceAvatar} from '@thunderid/components';
 import {MessageSquare, Send} from '@wso2/oxygen-ui-icons-react';
 import {CONNECTION_CATEGORIES} from '../constants/connection-categories';
 import ConnectionConstants from '../constants/connection-constants';
@@ -17,7 +17,7 @@ const AVATAR_SIZE = 48;
 /**
  * Frontend-owned catalog of every connection vendor the console presents.
  *
- * The backend `/connections` API only knows `google`/`github`/`oidc`/`oauth`; this map adds all
+ * The backend `/connections` API only knows `google`/`github`/`oidc`/`oauth`/`esignet`; this map adds all
  * presentation (logo, name, categories) plus the coming-soon placeholder vendors that are
  * not yet wired to an API.
  */
@@ -32,6 +32,17 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
     presentation: 'branded',
     supportsAttributeMapping: true,
     createHintKey: 'connections:configure.hint.google',
+  },
+  {
+    key: 'esignet',
+    backendType: ConnectionTypes.ESIGNET,
+    displayName: 'eSignet Login',
+    descriptionKey: 'connections:vendor.esignet.description',
+    logo: <ResourceAvatar transparent variant="rounded" size={AVATAR_SIZE} fallback={<ESignetIcon size={34} />} />,
+    categories: ['login-provider'],
+    presentation: 'branded',
+    supportsAttributeMapping: true,
+    createHintKey: 'connections:configure.hint.esignet',
   },
   {
     key: 'github',

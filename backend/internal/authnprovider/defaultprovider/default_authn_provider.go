@@ -382,6 +382,9 @@ func (p *defaultAuthnProvider) authenticateWithCredential(
 	if vpCred, ok := credentials[authnprovidercm.CredentialTypeOpenID4VP]; ok {
 		return p.authenticateWithOpenID4VP(ctx, vpCred)
 	}
+	if claimsCred, ok := credentials[authnprovidercm.CredentialTypeFederatedClaims]; ok {
+		return p.authenticateWithFederatedClaims(claimsCred)
+	}
 	if userID, ok := identifiers[authnprovidercm.UserAttributeUserID]; ok && userID != "" {
 		return p.authenticateByUserID(ctx, userID, credentials)
 	}
@@ -547,6 +550,36 @@ func (p *defaultAuthnProvider) authenticateWithOpenID4VP(
 			log.String("error", svcErr.ErrorDescription.DefaultValue))
 	}
 	return result, nil
+}
+
+// authenticateWithFederatedClaims resolves a returning user for claims a federated executor has
+// already verified out-of-band. The raw credential is expected to be a FederatedClaimsCredential
+// with a non-empty subject and match attribute; identification is deferred to buildAuthnResult,
+// which looks the entity up by MatchAttribute==Subject and falls back to the caller's
+// entity/attribute reference tokens (for JIT provisioning) when no local user is found.
+func (p *defaultAuthnProvider) authenticateWithFederatedClaims(
+	raw interface{},
+) (*authncommon.AuthnResult, *tidcommon.ServiceError) {
+	cred, ok := raw.(*authncommon.FederatedClaimsCredential)
+	if !ok || cred == nil {
+		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
+			"Invalid federated claims payload", "The provided federated claims credential is invalid")
+	}
+	if cred.Subject == "" || cred.MatchAttribute == "" {
+		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
+			"Invalid federated claims payload",
+			"The federated claims credential must include a non-empty subject and match attribute")
+	}
+
+	claims := make(map[string]interface{}, len(cred.Claims))
+	for k, v := range cred.Claims {
+		claims[k] = v
+	}
+
+	return &authncommon.AuthnResult{
+		Token:               map[string]interface{}{cred.MatchAttribute: cred.Subject},
+		AuthenticatedClaims: claims,
+	}, nil
 }
 
 // authenticateByUserID authenticates the user using a user ID and credentials.

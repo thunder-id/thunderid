@@ -85,6 +85,7 @@ export const StaticStepTypes = {
 export const ExecutionTypes = {
   GoogleFederation: 'GoogleOIDCAuthExecutor',
   GithubFederation: 'GithubOAuthExecutor',
+  ESignetFederation: 'ESignetOIDCExecutor',
   OpenID4VPVerify: 'OpenID4VPVerifyExecutor',
   OAuthExecutor: 'OAuthExecutor',
   OIDCAuthExecutor: 'OIDCAuthExecutor',

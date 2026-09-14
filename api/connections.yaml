@@ -382,6 +382,108 @@ paths:
         "403": { $ref: '#/components/responses/Forbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
 
+  /connections/esignet:
+    get:
+      tags: [Connections]
+      summary: List configured eSignet connections
+      responses:
+        "200": { $ref: '#/components/responses/InstanceList' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create an eSignet connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ESignetConnectionCreateRequest' }
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ESignetConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/esignet/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get an eSignet connection
+      responses:
+        "200":
+          description: Connection details (signing key masked)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ESignetConnectionResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update an eSignet connection
+      description: Omit signingKey to keep the stored value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ESignetConnectionUpdateRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ESignetConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete an eSignet connection
+      responses:
+        "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/esignet/{id}/usages:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get eSignet connection usages
+      description: |
+        Returns the resources that reference this connection, aggregated across all resource
+        types (for example, flows that use it). Informational only — it drives the pre-delete
+        confirmation dialog in the UI and does not gate deletion on the server.
+
+        Each usage entry includes a `behaviorOnDelete` field describing what happens to the
+        referencing resource if the connection is deleted:
+        - `fallback`: the reference is kept as-is.
+        - `cascade`: the resource is permanently deleted along with the connection.
+        - `restrict`: the resource blocks deletion of the connection.
+
+        When usage data is unavailable (e.g. the server has not fully initialised),
+        `totalResults` and `summary` are `null` rather than `0`/empty. Consumers must treat
+        `null` as "unknown" and `0` as "confirmed empty".
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionUsages' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
   /connections/twilio:
     get:
       tags: [Connections]
@@ -929,7 +1031,7 @@ components:
           type: string
           description: >-
             Lowercase vendor identifier. `sms-gateway` denotes a generic HTTP webhook SMS sender.
-          enum: [google, github, oidc, oauth, twilio, vonage, sms-gateway]
+          enum: [google, github, oidc, oauth, esignet, twilio, vonage, sms-gateway]
           example: "google"
         categories:
           type: array
@@ -1128,6 +1230,62 @@ components:
         tokenExchangeEnabled: { type: boolean }
         idJagEnabled: { type: boolean, description: "Enable ID-JAG issuance for this identity provider (draft-ietf-oauth-identity-assertion-authz-grant), so that self-issued ID tokens naming it as issuer can be trusted for the jwt-bearer grant. Requires issuer and jwksEndpoint to be set." }
         trustedTokenAudience: { type: string }
+        attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+
+    ESignetConnectionUpdateRequest:
+      type: object
+      description: |
+        MOSIP eSignet connection. eSignet authenticates its clients with `private_key_jwt`, so
+        there is no client secret. Instead, `signingKey` is the PEM-encoded RSA private key that
+        signs the client assertion, and `signingKeyId` is the identifier of the matching JWK
+        registered with eSignet. `signingKey` is stored encrypted and is write-only.
+      required:
+        - name
+        - clientId
+        - redirectUri
+        - authorizationEndpoint
+        - tokenEndpoint
+        - userInfoEndpoint
+        - jwksEndpoint
+        - signingKeyId
+      properties:
+        name: { type: string }
+        description: { type: string }
+        clientId: { type: string }
+        redirectUri: { type: string }
+        authorizationEndpoint: { type: string }
+        tokenEndpoint: { type: string }
+        userInfoEndpoint: { type: string }
+        jwksEndpoint: { type: string }
+        signingKey: { type: string, description: "Write-only. PEM-encoded RSA private key used to sign client assertions. Omit to keep the stored value on update." }
+        signingKeyId: { type: string, description: "Identifier (kid) of the JWK registered with eSignet for the signing key." }
+        scopes: { type: array, items: { type: string } }
+        acrValues: { type: string, description: "Requested authentication context class references, space separated." }
+        usernamePrefix: { type: string, description: "Prefix for usernames generated for newly provisioned eSignet users." }
+        attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+    ESignetConnectionCreateRequest:
+      allOf:
+        - $ref: '#/components/schemas/ESignetConnectionUpdateRequest'
+        - type: object
+          required: [signingKey]
+    ESignetConnectionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        type: { type: string, example: "esignet" }
+        clientId: { type: string }
+        redirectUri: { type: string }
+        authorizationEndpoint: { type: string }
+        tokenEndpoint: { type: string }
+        userInfoEndpoint: { type: string }
+        jwksEndpoint: { type: string }
+        signingKey: { type: string, example: "******" }
+        signingKeyId: { type: string }
+        scopes: { type: array, items: { type: string } }
+        acrValues: { type: string }
+        usernamePrefix: { type: string }
         attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
 
     OAuthConnectionUpdateRequest:

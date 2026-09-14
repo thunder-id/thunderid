@@ -221,6 +221,106 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_Google_WithCustomEndpoints
 	s.Equal(googleTokenEndpoint, foundProperties[PropTokenEndpoint])
 }
 
+// esignetRequiredProperties returns the minimum property set an eSignet connection must carry.
+func esignetRequiredProperties(s *IDPUtilsTestSuite) []cmodels.Property {
+	s.T().Helper()
+	values := map[string]string{
+		PropClientID:              "thunderid-esignet",
+		PropRedirectURI:           "https://localhost:8090/gate/callback",
+		PropAuthorizationEndpoint: "https://esignet.example.com/authorize",
+		PropTokenEndpoint:         "https://esignet.example.com/token",
+		PropUserInfoEndpoint:      "https://esignet.example.com/userinfo",
+		PropJwksEndpoint:          "https://esignet.example.com/jwks.json",
+		PropSigningKey:            "pem-key-material",
+		PropSigningKeyID:          "kid-1",
+	}
+	properties := make([]cmodels.Property, 0, len(values))
+	for name, value := range values {
+		prop, err := cmodels.NewProperty(name, value, false)
+		s.Require().NoError(err)
+		properties = append(properties, *prop)
+	}
+	return properties
+}
+
+func (s *IDPUtilsTestSuite) TestValidateIDPProperties_ESignet_WithDefaults() {
+	result, err := validateIDPProperties(
+		context.Background(), providers.IDPTypeESignet, esignetRequiredProperties(s), s.logger)
+
+	s.Nil(err)
+	s.NotNil(result)
+
+	foundProperties := make(map[string]string)
+	for _, prop := range result {
+		value, _ := prop.GetValue()
+		foundProperties[prop.GetName()] = value
+	}
+
+	s.Equal("thunderid-esignet", foundProperties[PropClientID])
+	s.Equal("pem-key-material", foundProperties[PropSigningKey])
+	s.Equal("kid-1", foundProperties[PropSigningKeyID])
+	// eSignet emits no email claim, so the default scope set is narrower than the OIDC one.
+	s.Equal(defaultESignetScopes, foundProperties[PropScopes])
+	// private_key_jwt means there is no client secret to seed.
+	s.NotContains(foundProperties, PropClientSecret)
+}
+
+func (s *IDPUtilsTestSuite) TestValidateIDPProperties_ESignet_KeepsConfiguredScopes() {
+	prop, err := cmodels.NewProperty(PropScopes, "profile", false)
+	s.Require().NoError(err)
+	properties := append(esignetRequiredProperties(s), *prop)
+
+	result, svcErr := validateIDPProperties(
+		context.Background(), providers.IDPTypeESignet, properties, s.logger)
+
+	s.Nil(svcErr)
+	foundProperties := make(map[string]string)
+	for _, resultProp := range result {
+		value, _ := resultProp.GetValue()
+		foundProperties[resultProp.GetName()] = value
+	}
+	// openid is seeded onto whatever the operator configured, rather than replacing it.
+	s.Contains(foundProperties[PropScopes], "openid")
+	s.Contains(foundProperties[PropScopes], "profile")
+}
+
+func (s *IDPUtilsTestSuite) TestValidateIDPProperties_ESignet_OptionalProperties() {
+	acr, err := cmodels.NewProperty(PropACRValues, "mosip:idp:acr:generated-code", false)
+	s.Require().NoError(err)
+	prefix, err := cmodels.NewProperty(PropUsernamePrefix, "esignet-", false)
+	s.Require().NoError(err)
+	properties := append(esignetRequiredProperties(s), *acr, *prefix)
+
+	result, svcErr := validateIDPProperties(
+		context.Background(), providers.IDPTypeESignet, properties, s.logger)
+
+	s.Nil(svcErr)
+	foundProperties := make(map[string]string)
+	for _, resultProp := range result {
+		value, _ := resultProp.GetValue()
+		foundProperties[resultProp.GetName()] = value
+	}
+	s.Equal("mosip:idp:acr:generated-code", foundProperties[PropACRValues])
+	s.Equal("esignet-", foundProperties[PropUsernamePrefix])
+}
+
+func (s *IDPUtilsTestSuite) TestValidateIDPProperties_ESignet_MissingRequiredProperty() {
+	properties := esignetRequiredProperties(s)
+	filtered := make([]cmodels.Property, 0, len(properties))
+	for _, prop := range properties {
+		if prop.GetName() != PropSigningKeyID {
+			filtered = append(filtered, prop)
+		}
+	}
+
+	result, svcErr := validateIDPProperties(
+		context.Background(), providers.IDPTypeESignet, filtered, s.logger)
+
+	s.Nil(result)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvalidIDPProperty.Code, svcErr.Code)
+}
+
 func (s *IDPUtilsTestSuite) TestValidateIDPProperties_GitHub_WithDefaults() {
 	prop1, _ := cmodels.NewProperty(PropClientID, "test-client", false)
 	prop2, _ := cmodels.NewProperty(PropClientSecret, "test-secret", false)

@@ -165,6 +165,12 @@ export const VALIDATION_RULES: ValidationRuleDefinition[] = [
     fields: [{name: 'data.properties.idpId', errorMessageKey: 'flows:core.validation.fields.input.idpId'}],
     generalMessageKey: 'flows:core.validation.fields.executor.general',
   },
+  // eSignet federation executor
+  {
+    match: (r) => (r as {data?: StepData}).data?.action?.executor?.name === ExecutionTypes.ESignetFederation,
+    fields: [{name: 'data.properties.idpId', errorMessageKey: 'flows:core.validation.fields.input.idpId'}],
+    generalMessageKey: 'flows:core.validation.fields.executor.general',
+  },
   // SMS executor
   {
     match: (r) => (r as {data?: StepData}).data?.action?.executor?.name === ExecutionTypes.SMSExecutor,

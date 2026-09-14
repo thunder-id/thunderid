@@ -179,6 +179,35 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
+      "header": "eSignet Executor",
+      "label": "eSignet Login",
+      "description": "Authenticate the user with MOSIP eSignet",
+      "image": "assets/images/icons/esignet.svg",
+      "preserveImageColor": true,
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "ESignetOIDCExecutor"
+        },
+        "onSuccess": "",
+        "onFailure": "",
+        "onIncomplete": ""
+      },
+      "properties": {
+        "idpId": "{{IDP_ID}}",
+        "allowAuthenticationWithoutLocalUser": false,
+        "allowRegistrationWithExistingUser": false
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
       "header": "Google Executor",
       "label": "Google Login",
       "description": "Authenticate the user with Google",

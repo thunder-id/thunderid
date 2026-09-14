@@ -1263,6 +1263,62 @@ var (
 			DefaultValue: "The client secret could not be regenerated",
 		},
 	}
+
+	// ErrESignetConfigInvalid is returned when the eSignet OIDC executor node is misconfigured.
+	ErrESignetConfigInvalid = tidcommon.ServiceError{
+		Type: tidcommon.ServerErrorType,
+		Code: "FET-1090",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.esignet_config_invalid",
+			DefaultValue: "eSignet executor is misconfigured",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.esignet_config_invalid_desc",
+			DefaultValue: "The eSignet OIDC executor node does not reference a usable eSignet connection",
+		},
+	}
+
+	// ErrESignetTokenExchangeFailed is returned when the authorization code exchange with eSignet fails.
+	ErrESignetTokenExchangeFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1091",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.esignet_token_exchange_failed",
+			DefaultValue: "eSignet token exchange failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.esignet_token_exchange_failed_desc",
+			DefaultValue: "Failed to exchange the authorization code for tokens with eSignet",
+		},
+	}
+
+	// ErrESignetInvalidIDToken is returned when the eSignet ID token fails verification.
+	ErrESignetInvalidIDToken = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1092",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.esignet_invalid_id_token",
+			DefaultValue: "Invalid eSignet ID token",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.esignet_invalid_id_token_desc",
+			DefaultValue: "The eSignet ID token failed signature, audience or nonce verification",
+		},
+	}
+
+	// ErrESignetUserInfoFailed is returned when retrieving or verifying the eSignet userinfo response fails.
+	ErrESignetUserInfoFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1093",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.esignet_userinfo_failed",
+			DefaultValue: "Failed to retrieve eSignet user information",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.esignet_userinfo_failed_desc",
+			DefaultValue: "Failed to retrieve or verify the signed userinfo response from eSignet",
+		},
+	}
 )
 
 // errAttributeNotUniqueFor returns a ServiceError for a specific attribute that is not unique.
