@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -40,6 +41,7 @@ type groupStoreInterface interface {
 	RemoveGroupMembers(ctx context.Context, groupID string, members []Member) error
 	DeleteMembershipsByMember(ctx context.Context, memberType, memberID string) (int64, error)
 	GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]GroupBasicDAO, error)
+	GetGroupsByNames(ctx context.Context, names []string) ([]GroupBasicDAO, error)
 	IsGroupDeclarative(ctx context.Context, id string) (bool, error)
 	GetTransitiveGroupsForEntity(ctx context.Context, entityID string) ([]providers.EntityGroup, error)
 	GetDirectGroupParents(ctx context.Context, groupIDs []string) ([]string, error)
@@ -559,9 +561,23 @@ func (s *groupStore) DeleteMembershipsByMember(
 
 // GetGroupsByIDs retrieves groups by a list of IDs.
 func (s *groupStore) GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]GroupBasicDAO, error) {
+	return s.getGroupsInBatches(ctx, groupIDs, buildGetGroupsByIDsQuery)
+}
+
+// GetGroupsByNames retrieves groups by a list of names, regardless of organization unit.
+func (s *groupStore) GetGroupsByNames(ctx context.Context, names []string) ([]GroupBasicDAO, error) {
+	return s.getGroupsInBatches(ctx, names, buildGetGroupsByNamesQuery)
+}
+
+// getGroupsInBatches runs buildQuery over values in chunks of batchSize, collecting every matching
+// group. Shared by GetGroupsByIDs and GetGroupsByNames, which differ only in which query they build.
+func (s *groupStore) getGroupsInBatches(
+	ctx context.Context, values []string,
+	buildQuery func(chunk []string, deploymentID string) (dbmodel.DBQuery, []interface{}, error),
+) ([]GroupBasicDAO, error) {
 	const batchSize = 100
 
-	if len(groupIDs) == 0 {
+	if len(values) == 0 {
 		return []GroupBasicDAO{}, nil
 	}
 
@@ -570,18 +586,18 @@ func (s *groupStore) GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]G
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	groups := make([]GroupBasicDAO, 0, len(groupIDs))
+	groups := make([]GroupBasicDAO, 0, len(values))
 
-	for start := 0; start < len(groupIDs); start += batchSize {
+	for start := 0; start < len(values); start += batchSize {
 		end := start + batchSize
-		if end > len(groupIDs) {
-			end = len(groupIDs)
+		if end > len(values) {
+			end = len(values)
 		}
-		chunk := groupIDs[start:end]
+		chunk := values[start:end]
 
-		query, args, err := buildGetGroupsByIDsQuery(chunk, s.scope(ctx))
+		query, args, err := buildQuery(chunk, s.scope(ctx))
 		if err != nil {
-			return nil, fmt.Errorf("failed to build get groups by IDs query: %w", err)
+			return nil, fmt.Errorf("failed to build query: %w", err)
 		}
 
 		results, err := dbClient.QueryContext(ctx, query, args...)

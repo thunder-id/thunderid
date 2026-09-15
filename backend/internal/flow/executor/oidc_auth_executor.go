@@ -37,6 +37,7 @@ type oidcAuthExecutorInterface interface {
 // oidcAuthExecutor implements the OIDCAuthExecutorInterface for handling generic OIDC authentication flows.
 type oidcAuthExecutor struct {
 	oAuthExecutorInterface
+	idpService    idp.IDPServiceInterface
 	authService   authnoidc.OIDCAuthnCoreServiceInterface
 	authnProvider providers.AuthnProviderManager
 	idpType       providers.IDPType
@@ -71,6 +72,7 @@ func newOIDCAuthExecutor(
 
 	return &oidcAuthExecutor{
 		oAuthExecutorInterface: base,
+		idpService:             idpService,
 		authService:            authService,
 		authnProvider:          authnProvider,
 		idpType:                idpType,
@@ -220,6 +222,8 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *providers.NodeContext,
 			execResp.RuntimeData[key] = systemutils.ConvertInterfaceValueToString(value)
 		}
 	}
+
+	resolveAndSetMappedAuthorizationTargets(ctx.Context, execResp, o.idpService, idpID, federatedAttributes, logger)
 
 	setFederatedEntityState(ctx.Context, execResp, o.authnProvider)
 

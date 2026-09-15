@@ -48,6 +48,9 @@ type GroupServiceInterface interface {
 	// of its own: the authorization layer calls it, so gating it would be circular.
 	GetTransitiveAncestorGroups(ctx context.Context, groupID string) ([]string, *tidcommon.ServiceError)
 	GetGroupsByIDs(ctx context.Context, groupIDs []string) (map[string]*Group, *tidcommon.ServiceError)
+	// GetGroupsByNames returns every group matching each name, keyed by name. A name is not
+	// guaranteed unique: the caller decides how to handle more than one match for a name.
+	GetGroupsByNames(ctx context.Context, names []string) (map[string][]*Group, *tidcommon.ServiceError)
 	AddGroupMembers(ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError)
 	RemoveGroupMembers(ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError)
 	AddMembersToGroups(ctx context.Context, members []Member,
@@ -1188,6 +1191,46 @@ func (gs *groupService) GetGroupsByIDs(
 			OUID:        dao.OUID,
 		})
 		result[dao.ID] = &group
+	}
+
+	return result, nil
+}
+
+// GetGroupsByNames retrieves groups by a list of names, keyed by name. A name may resolve to more
+// than one group across organization units; the caller decides how to handle that ambiguity.
+func (gs *groupService) GetGroupsByNames(
+	ctx context.Context, names []string,
+) (map[string][]*Group, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	if len(names) == 0 {
+		return map[string][]*Group{}, nil
+	}
+
+	seen := make(map[string]struct{}, len(names))
+	uniqueNames := make([]string, 0, len(names))
+	for _, name := range names {
+		if _, ok := seen[name]; !ok {
+			seen[name] = struct{}{}
+			uniqueNames = append(uniqueNames, name)
+		}
+	}
+
+	groupDAOs, err := gs.groupStore.GetGroupsByNames(ctx, uniqueNames)
+	if err != nil {
+		logger.Error(ctx, "Failed to get groups by names", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	result := make(map[string][]*Group, len(groupDAOs))
+	for _, dao := range groupDAOs {
+		group := convertGroupDAOToGroup(GroupDAO{
+			ID:          dao.ID,
+			Name:        dao.Name,
+			Description: dao.Description,
+			OUID:        dao.OUID,
+		})
+		result[dao.Name] = append(result[dao.Name], &group)
 	}
 
 	return result, nil

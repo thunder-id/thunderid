@@ -109,7 +109,7 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 			}
 
 			authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx,
-				buildAccessEvaluationsRequest(oauthApp.ID, groupIDs, scopes, targetRS.ID))
+				tokenservice.BuildAccessEvaluationsRequest(oauthApp.ID, groupIDs, nil, scopes, targetRS.ID))
 			if svcErr != nil {
 				logger.Error(ctx, "Failed to get authorized permissions for app",
 					log.String("appID", oauthApp.ID), log.String("error", svcErr.Error.DefaultValue))
@@ -119,7 +119,7 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 				}
 			}
 
-			scopes = filterAuthorizedScopes(scopes, authzResp.Evaluations)
+			scopes = tokenservice.FilterAuthorizedScopes(scopes, authzResp.Evaluations)
 		}
 	}
 
@@ -152,34 +152,4 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	return &model.TokenResponseDTO{
 		AccessToken: *accessToken,
 	}, nil
-}
-
-func buildAccessEvaluationsRequest(
-	entityID string,
-	groupIDs []string,
-	permissions []string,
-	resourceServerID string,
-) providers.AccessEvaluationsRequest {
-	evaluations := make([]providers.AccessEvaluationRequest, 0, len(permissions))
-	for _, permission := range permissions {
-		evaluations = append(evaluations, providers.AccessEvaluationRequest{
-			Subject: providers.Subject{
-				ID:       entityID,
-				GroupIDs: groupIDs,
-			},
-			ResourceServer: providers.AccessEvaluationResourceServer{ID: resourceServerID},
-			Permission:     providers.Permission{Name: permission},
-		})
-	}
-	return providers.AccessEvaluationsRequest{Evaluations: evaluations}
-}
-
-func filterAuthorizedScopes(scopes []string, evaluations []providers.AccessEvaluationResponse) []string {
-	authorizedScopes := make([]string, 0, len(evaluations))
-	for i, evaluation := range evaluations {
-		if evaluation.Decision && i < len(scopes) {
-			authorizedScopes = append(authorizedScopes, scopes[i])
-		}
-	}
-	return authorizedScopes
 }

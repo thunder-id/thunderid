@@ -250,7 +250,7 @@ func (suite *TokenValidatorTestSuite) TestExtractSubjectTokenClaims_MapsReserved
 	}
 
 	result, err := suite.validator.extractSubjectTokenClaims(
-		"", "https://example.com", claims, suite.oauthApp, mappings)
+		"", "https://example.com", claims, suite.oauthApp, mappings, MappedAuthorization{})
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -2435,6 +2435,8 @@ func (suite *ExternalIDPValidatorTestSuite) SetupTest() {
 
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
+	suite.mockIDPService.On("GetDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, (*tidcommon.ServiceError)(nil)).Maybe()
 	suite.mockEnforcementService = revocationmock.NewEnforcementServiceInterfaceMock(suite.T())
 	suite.mockEnforcementService.On("EnsureNotRevoked", mock.Anything, mock.Anything).Return(nil).Maybe()
 	suite.validator = &tokenValidator{
@@ -2690,6 +2692,9 @@ func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), result)
 	assert.Contains(suite.T(), err.Error(), "invalid subject token signature")
+	// Direct mapping must not resolve (real DB lookups) before the signature verification fails.
+	suite.mockIDPService.AssertNotCalled(suite.T(), "GetDirectAuthorizationTargets",
+		mock.Anything, mock.Anything, mock.Anything)
 	suite.mockIDPService.AssertExpectations(suite.T())
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
@@ -2980,6 +2985,8 @@ func (suite *IDJAGValidatorTestSuite) SetupTest() {
 
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
+	suite.mockIDPService.On("GetDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, (*tidcommon.ServiceError)(nil)).Maybe()
 	suite.mockEnforcementService = revocationmock.NewEnforcementServiceInterfaceMock(suite.T())
 	suite.mockEnforcementService.On("EnsureNotRevoked", mock.Anything, mock.Anything).Return(nil).Maybe()
 	suite.mockJTIStore = jtimock.NewJTIStoreInterfaceMock(suite.T())
@@ -3159,6 +3166,9 @@ func (suite *IDJAGValidatorTestSuite) TestValidateIDJAGAssertion_InvalidSignatur
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), result)
 	assert.Contains(suite.T(), err.Error(), "invalid assertion signature")
+	// Direct mapping must not resolve (real DB lookups) before the signature verification fails.
+	suite.mockIDPService.AssertNotCalled(suite.T(), "GetDirectAuthorizationTargets",
+		mock.Anything, mock.Anything, mock.Anything)
 	suite.mockIDPService.AssertExpectations(suite.T())
 	suite.mockJWTService.AssertExpectations(suite.T())
 }

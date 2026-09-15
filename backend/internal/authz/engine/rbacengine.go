@@ -64,7 +64,8 @@ func (e *rbacEngine) EvaluateAccessBatch(
 	evaluations := make([]AccessEvaluationResponse, len(request.Evaluations))
 	for _, group := range groupEvaluations(request.Evaluations) {
 		authorizedPerms, svcErr := e.roleService.GetAuthorizedPermissionsByResourceServer(
-			ctx, group.subject.ID, group.subject.GroupIDs, group.resourceServerID, group.permissions)
+			ctx, group.subject.ID, group.subject.GroupIDs, group.subject.RoleIDs,
+			group.resourceServerID, group.permissions)
 		if svcErr != nil {
 			return nil, fmt.Errorf("role service error: %s", svcErr.Error)
 		}
@@ -107,6 +108,7 @@ func findEvaluationGroup(groups []evaluationGroup, subject Subject, resourceServ
 		if group.subject.Type == subject.Type &&
 			group.subject.ID == subject.ID &&
 			slices.Equal(group.subject.GroupIDs, subject.GroupIDs) &&
+			slices.Equal(group.subject.RoleIDs, subject.RoleIDs) &&
 			group.resourceServerID == resourceServerID {
 			return i
 		}
