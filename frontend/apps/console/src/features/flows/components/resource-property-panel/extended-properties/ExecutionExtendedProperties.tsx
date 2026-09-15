@@ -3,6 +3,7 @@
 
 import {Stack} from '@wso2/oxygen-ui';
 import {useCallback, useMemo, type ReactNode} from 'react';
+import AttributeUniquenessProperties from './execution-properties/AttributeUniquenessProperties';
 import ConsentProperties from './execution-properties/ConsentProperties';
 import {EXECUTOR_TO_IDP_TYPE_MAP, EXECUTORS_WITH_FIXED_INPUTS} from './execution-properties/constants';
 import EmailProperties from './execution-properties/EmailProperties';
@@ -123,8 +124,10 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     case ExecutionTypes.SessionSignOut:
       executorSpecificProperties = <SessionSignOutProperties resource={resource} onChange={onChange} />;
       break;
-    case ExecutionTypes.CredentialSetter:
     case ExecutionTypes.AttributeUniquenessValidator:
+      executorSpecificProperties = <AttributeUniquenessProperties resource={resource} onChange={onChange} />;
+      break;
+    case ExecutionTypes.CredentialSetter:
     case ExecutionTypes.Session:
       executorSpecificProperties = <NoConfigProperties />;
       break;
