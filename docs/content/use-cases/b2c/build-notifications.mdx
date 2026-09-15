@@ -1,0 +1,74 @@
+---
+title: Customize Notifications
+docType: use-case
+sidebar_position: 5
+description: Tailor the email and SMS messages your consumer flows send, per locale and per brand, without editing server files.
+---
+
+# Customize Notifications
+
+The flows you built send messages: the recovery flow emails a reset link, and a sign-in flow can email or text a
+one-time code. You can tailor what those messages say and how they look, at runtime through the Console or the management
+API, instead of editing files on the server. For the template format that ships today and the runtime values each
+scenario provides, see the [Notification Templates](../../../guides/notifications/templates) guide.
+
+## Notification Templates
+
+A notification template is the content <ProductName /> sends for one **scenario** on one **channel**, so the password
+recovery email and the SMS one-time code are two separate templates. Each is stored as a **scenario type**, identified by
+its channel and scenario (such as `email` + `OTP`) and referenced by a flow node. A scenario type carries one
+**content variant per locale**, each holding the subject and body for that language with no branding mixed in. A
+template <ProductName /> ships and one an
+administrator creates are the same kind of resource; the defaults are preloaded at installation.
+
+```yaml
+id: 'sms-otp'
+displayName: 'SMS OTP Verification'
+scenario: 'OTP'
+type: 'sms'
+contentType: 'text/plain'
+body: 'Your verification code is: {{ctx(otpCode)}}. It expires in {{ctx(expiryTime)}}.'
+```
+
+## Working with a Template
+
+Every template is handled the same way, whether it shipped by default or an administrator creates it. Managing templates
+requires administrative authorization. To author and use a template:
+
+<Stepper stepNode="h3" as="h3">
+
+### Manage the content
+
+Create a scenario type for a scenario the product does not cover yet, or open a preloaded one, then edit its content. An
+email type carries a subject and an HTML body; an SMS type a plain-text body. Use `{{ctx(...)}}` variables for the values
+the scenario provides at send time, such as `otpCode`. Add a content variant per locale, keyed by a BCP-47 language tag
+such as `en-US`, each edited independently of the others.
+
+### Engage it in a flow
+
+A flow's email or SMS node sends a type by referencing it. The recovery flow's email node references the
+`PASSWORD_RECOVERY` type (see [Build the Sign-In Flows](../build-flows#build-the-account-recovery-flow)), so reaching
+that node sends the template. Preloaded types are already referenced by the flows that use them.
+
+### Preview the notification
+
+Check the resolved content with a chosen locale and branding applied, with `{{ctx(...)}}` shown as-is, before it goes
+out.
+
+</Stepper>
+
+Branding is configured in [Design](../../../guides/design/overview), not in the template, so one change covers every
+email; SMS carries no branding.
+
+## How It Works
+
+When a flow reaches a node that sends a notification, <ProductName /> selects the content for the recipient's locale,
+falling back to the default locale when none matches. It composes branding onto the content for email, substitutes the
+`{{ctx(...)}}` variables with the runtime values, and hands the finished message to the sender. The flows you built pass
+the application and recipient locale into this resolution, so they need no change.
+
+## Next Steps
+
+- Customize the message your recovery flow sends in
+  [Build the Sign-In Flows](../build-flows#build-the-account-recovery-flow).
+- See the whole solution run end to end in [How It All Runs](../build-run).
