@@ -471,6 +471,10 @@ func (tb *tokenBuilder) buildRefreshTokenClaims(ctx *RefreshTokenBuildContext) (
 		claims[constants.ClaimTokenFamilyID] = ctx.TokenFamilyID
 	}
 
+	if ctx.SessionID != "" {
+		claims[constants.ClaimSessionID] = ctx.SessionID
+	}
+
 	return claims, nil
 }
 
@@ -594,6 +598,13 @@ func (tb *tokenBuilder) buildIDTokenClaims(ctx *IDTokenBuildContext) map[string]
 
 	for key, value := range claimData {
 		claims[key] = value
+	}
+
+	// Written after the attribute merge so an allow-listed user attribute named sid can never displace
+	// the session id: a logout notification derived from it would target a session the grant does not
+	// belong to.
+	if ctx.SessionID != "" {
+		claims[constants.ClaimSessionID] = ctx.SessionID
 	}
 
 	return claims

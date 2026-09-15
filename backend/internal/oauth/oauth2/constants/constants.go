@@ -283,6 +283,13 @@ const (
 	// family at once. Revocation-only and not a client-managed identifier: it rides the token JWTs
 	// but is not part of any client-facing API.
 	ClaimTokenFamilyID string = "tfid"
+	// ClaimSessionID identifies the SSO session an authentication belongs to. It is the session's id,
+	// minted when the session is established and stable for its lifetime, published to relying parties
+	// in the ID token as the OIDC sid claim (OpenID Connect Core 1.0 and Back-Channel Logout 1.0) so an
+	// RP can name the session that ended. Absent when the login flow established no SSO session; it is
+	// never synthesized, because a sid no termination can reference would promise a logout
+	// notification that cannot come. Access tokens never carry it.
+	ClaimSessionID string = "sid"
 	// ClaimCorrelationID carries the login flow's execution id on the flow assertion so the
 	// authorization code, and in turn the token issuance events, report the same correlation
 	// identifier as the flow's own observability events. Observability-only: it rides the internal
