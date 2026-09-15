@@ -116,6 +116,10 @@ type SaveCheckpointResult struct {
 	Handle  string
 	Created bool
 	Skipped bool
+	// AuthenticatedAt is when the subject authenticated for this session, as the session records
+	// it. The caller publishes it so auth_time is read from the session on the fresh-login path
+	// too, rather than being re-derived from the clock when the assertion is built.
+	AuthenticatedAt time.Time
 }
 
 // CriteriaRevoker revokes a token family (one authorization grant) by its id. It is injected so session
@@ -220,7 +224,11 @@ func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 	}
 
 	s.logger.Debug(ctx, "Saved SSO checkpoint", log.String("checkpoint", in.Checkpoint))
-	return SaveCheckpointResult{Handle: target.HandleID, Created: created}, nil
+	return SaveCheckpointResult{
+		Handle:          target.HandleID,
+		Created:         created,
+		AuthenticatedAt: target.AuthenticatedAt,
+	}, nil
 }
 
 // LoadCheckpoint implements Service.

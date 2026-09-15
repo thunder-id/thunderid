@@ -80,7 +80,7 @@ These parameters on the authorization request control *how* the user authenticat
 
 `max_age` bounds how long ago the user authenticated. <ProductName /> compares it against the session's authentication time, not the time the authorization request arrived, so reusing a session does not make the authentication look fresher than it is.
 
-The ID Token's `auth_time` claim reports that same moment. Two authorizations that reuse one session therefore carry the same `auth_time`, while an authorization that re-authenticated carries a later one.
+The ID Token's `auth_time` claim reports that same moment, taken from the session rather than from the clock at the time the token is built. That applies to the ID Token issued by the login itself, not only to later authorizations, so a login and every authorization that reuses its session report an identical `auth_time`. An authorization that re-authenticated, whether because of `prompt=login` or a `max_age` the previous authentication no longer satisfied, carries a later one.
 
 ## Try It in <ProductName />
 
