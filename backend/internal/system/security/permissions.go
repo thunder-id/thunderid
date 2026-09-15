@@ -45,6 +45,11 @@ var publicPaths = []string{
 	"/auth/**",
 	"/register/passkey/**",
 	"/access/**",
+	// SCIM discovery endpoints exposed without authentication
+	// (ServiceProviderConfig, ResourceTypes).
+	"/scim/v2/ServiceProviderConfig",
+	"/scim/v2/ResourceTypes",
+	"/scim/v2/ResourceTypes/**",
 }
 
 // ---- Resource types ----
@@ -247,6 +252,24 @@ func InitSystemPermissions(handle string) {
 		{"GET /users/**", p.UserView},
 		{"PUT /users/**", p.User},
 		{"DELETE /users/**", p.User},
+
+		// SCIM API.
+		{"GET /scim/v2/Me", ""},
+		{"PUT /scim/v2/Me", ""},
+		{"GET /scim/v2/Schemas", ""},
+		{"GET /scim/v2/Schemas/**", ""},
+		{"GET /scim/v2/Users", p.UserView},
+		{"POST /scim/v2/Users", p.User},
+		{"POST /scim/v2/Users/.search", p.UserView},
+		{"GET /scim/v2/Users/**", p.UserView},
+		{"PUT /scim/v2/Users/**", p.User},
+		{"DELETE /scim/v2/Users/**", p.User},
+		{"GET /scim/v2/Groups", p.GroupView},
+		{"POST /scim/v2/Groups", p.Group},
+		{"GET /scim/v2/Groups/**", p.GroupView},
+		{"PUT /scim/v2/Groups/**", p.Group},
+		{"PATCH /scim/v2/Groups/**", p.Group},
+		{"DELETE /scim/v2/Groups/**", p.Group},
 
 		// Group APIs.
 		{"GET /groups", p.GroupView},
