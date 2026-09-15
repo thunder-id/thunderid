@@ -4,23 +4,27 @@
 package authzen
 
 type subject struct {
-	Type string `json:"type,omitempty"`
-	ID   string `json:"id,omitempty"`
+	Type       string                 `json:"type,omitempty"`
+	ID         string                 `json:"id,omitempty"`
+	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 
 type resource struct {
-	Type string `json:"type,omitempty"`
-	ID   string `json:"id,omitempty"`
+	Type       string                 `json:"type,omitempty"`
+	ID         string                 `json:"id,omitempty"`
+	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 
 type action struct {
-	Name string `json:"name,omitempty"`
+	Name       string                 `json:"name,omitempty"`
+	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 
 type evaluationRequest struct {
-	Subject  subject  `json:"subject"`
-	Resource resource `json:"resource"`
-	Action   action   `json:"action"`
+	Subject  subject                `json:"subject"`
+	Resource resource               `json:"resource"`
+	Action   action                 `json:"action"`
+	Context  map[string]interface{} `json:"context,omitempty"`
 }
 
 type evaluationResponse struct {

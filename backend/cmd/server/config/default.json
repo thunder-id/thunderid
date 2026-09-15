@@ -320,6 +320,10 @@
       }
     }
   },
+  "authzen_pdp": {
+    "timeout_ms": 500,
+    "retry_count": 1
+  },
   "consent": {
     "enabled": false,
     "base_url": "",

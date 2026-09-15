@@ -670,6 +670,18 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ValidationErrors
 			resourceServer: providers.ResourceServer{Name: "test-rs", OUID: ""},
 			expectedError:  ErrorInvalidRequestFormat,
 		},
+		{
+			name: "UnsupportedAuthorizationEngine",
+			id:   "rs-123",
+			resourceServer: providers.ResourceServer{
+				Name: "test-rs",
+				OUID: "ou-123",
+				AuthorizationEngine: providers.AuthorizationEngineConfig{
+					Type: "unsupported",
+				},
+			},
+			expectedError: ErrorInvalidRequestFormat,
+		},
 	}
 
 	for _, tc := range testCases {

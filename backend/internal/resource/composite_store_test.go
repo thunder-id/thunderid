@@ -218,9 +218,10 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServerList_VerifiesIsRe
 
 	// Verify all resource servers have correct IsReadOnly flags
 	for _, rs := range result {
-		if rs.ID == "rs-db1" || rs.ID == "rs-db2" {
+		switch rs.ID {
+		case "rs-db1", "rs-db2":
 			assert.False(s.T(), rs.IsReadOnly, "DB resource server %s should have IsReadOnly=false", rs.ID)
-		} else if rs.ID == "rs-file1" {
+		case "rs-file1":
 			assert.True(s.T(), rs.IsReadOnly, "File resource server %s should have IsReadOnly=true", rs.ID)
 		}
 	}
@@ -252,9 +253,10 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServerList_Deduplicates
 
 	// Verify IsReadOnly flags are correct
 	for _, rs := range result {
-		if rs.ID == testRS1ID || rs.ID == "rs2" {
+		switch rs.ID {
+		case testRS1ID, "rs2":
 			assert.False(s.T(), rs.IsReadOnly, "DB resource server %s should have IsReadOnly=false", rs.ID)
-		} else if rs.ID == "rs3" {
+		case "rs3":
 			assert.True(s.T(), rs.IsReadOnly, "File resource server %s should have IsReadOnly=true", rs.ID)
 		}
 	}
@@ -1144,9 +1146,10 @@ func (s *CompositeResourceStoreTestSuite) TestMergeAndDeduplicateResourceServers
 
 	// Verify IsReadOnly flags are correct
 	for _, rs := range result {
-		if rs.ID == "rs-db1" || rs.ID == "rs-db2" {
+		switch rs.ID {
+		case "rs-db1", "rs-db2":
 			assert.False(s.T(), rs.IsReadOnly, "DB resource server %s should have IsReadOnly=false", rs.ID)
-		} else if rs.ID == "rs-file1" || rs.ID == "rs-file2" {
+		case "rs-file1", "rs-file2":
 			assert.True(s.T(), rs.IsReadOnly, "File resource server %s should have IsReadOnly=true", rs.ID)
 		}
 	}

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
@@ -242,6 +243,109 @@ func (h *handler) handleListConnections(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
+}
+
+// createAuthZENPDPConnection creates an external AuthZEN PDP connection.
+func (h *handler) createAuthZENPDPConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	req, err := sysutils.DecodeJSONBody[authzenpdp.ConnectionRequest](r)
+	if err != nil {
+		writeServiceError(ctx, w, &ErrorInvalidRequestFormat)
+		return
+	}
+	created, svcErr := h.svc.createAuthZENPDP(ctx, authzenpdp.FromRequest(*req))
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, authzenpdp.ToResponse(*created))
+}
+
+// listAuthZENPDPConnections lists configured external AuthZEN PDP connections.
+func (h *handler) listAuthZENPDPConnections(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	connections, svcErr := h.svc.listAuthZENPDP(ctx)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	summaries := make([]connectionInstanceSummary, 0, len(connections))
+	for _, connection := range connections {
+		summaries = append(summaries, connectionInstanceSummary{
+			ID:          connection.ID,
+			Name:        connection.Name,
+			Description: connection.Description,
+		})
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, summaries)
+}
+
+// getAuthZENPDPConnection returns an external AuthZEN PDP connection by ID.
+func (h *handler) getAuthZENPDPConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if strings.TrimSpace(id) == "" {
+		writeServiceError(ctx, w, &ErrorConnectionNotFound)
+		return
+	}
+	connection, svcErr := h.svc.getAuthZENPDP(ctx, id)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, authzenpdp.ToResponse(*connection))
+}
+
+// updateAuthZENPDPConnection updates an external AuthZEN PDP connection by ID.
+func (h *handler) updateAuthZENPDPConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if strings.TrimSpace(id) == "" {
+		writeServiceError(ctx, w, &ErrorConnectionNotFound)
+		return
+	}
+	req, err := sysutils.DecodeJSONBody[authzenpdp.ConnectionRequest](r)
+	if err != nil {
+		writeServiceError(ctx, w, &ErrorInvalidRequestFormat)
+		return
+	}
+	updated, svcErr := h.svc.updateAuthZENPDP(ctx, id, authzenpdp.FromRequest(*req))
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, authzenpdp.ToResponse(*updated))
+}
+
+// deleteAuthZENPDPConnection deletes an external AuthZEN PDP connection by ID.
+func (h *handler) deleteAuthZENPDPConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if strings.TrimSpace(id) == "" {
+		writeServiceError(ctx, w, &ErrorConnectionNotFound)
+		return
+	}
+	if svcErr := h.svc.deleteAuthZENPDP(ctx, id); svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
+// usagesAuthZENPDPConnection lists resources that reference an external AuthZEN PDP connection.
+func (h *handler) usagesAuthZENPDPConnection(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if strings.TrimSpace(id) == "" {
+		writeServiceError(ctx, w, &ErrorConnectionNotFound)
+		return
+	}
+	usages, svcErr := h.svc.usagesAuthZENPDP(ctx, id)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, usages)
 }
 
 // createSMSConnection decodes a typed request, maps it to a notification-sender DTO via the

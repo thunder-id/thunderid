@@ -109,7 +109,8 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 			}
 
 			authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx,
-				buildAccessEvaluationsRequest(oauthApp.ID, groupIDs, scopes, targetRS.ID))
+				buildAccessEvaluationsRequest(oauthApp.ID, oauthApp.EntityCategory, groupIDs, scopes,
+					targetRS.ID))
 			if svcErr != nil {
 				logger.Error(ctx, "Failed to get authorized permissions for app",
 					log.String("appID", oauthApp.ID), log.String("error", svcErr.Error.DefaultValue))
@@ -156,6 +157,7 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 
 func buildAccessEvaluationsRequest(
 	entityID string,
+	entityCategory providers.EntityCategory,
 	groupIDs []string,
 	permissions []string,
 	resourceServerID string,
@@ -164,14 +166,29 @@ func buildAccessEvaluationsRequest(
 	for _, permission := range permissions {
 		evaluations = append(evaluations, providers.AccessEvaluationRequest{
 			Subject: providers.Subject{
+				Type:     authZENSubjectType(entityCategory),
 				ID:       entityID,
 				GroupIDs: groupIDs,
 			},
-			ResourceServer: providers.AccessEvaluationResourceServer{ID: resourceServerID},
-			Permission:     providers.Permission{Name: permission},
+			ResourceServer: providers.AccessEvaluationResourceServer{
+				ID: resourceServerID,
+			},
+			Permission: providers.Permission{Name: permission},
 		})
 	}
 	return providers.AccessEvaluationsRequest{Evaluations: evaluations}
+}
+
+// authZENSubjectType maps a ThunderID entity category to its AuthZEN subject type.
+func authZENSubjectType(entityCategory providers.EntityCategory) string {
+	switch entityCategory {
+	case providers.EntityCategoryApp:
+		return constants.SubTypeApp
+	case providers.EntityCategoryAgent:
+		return constants.SubTypeAgent
+	default:
+		return entityCategory.String()
+	}
 }
 
 func filterAuthorizedScopes(scopes []string, evaluations []providers.AccessEvaluationResponse) []string {

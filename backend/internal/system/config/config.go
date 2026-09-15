@@ -622,8 +622,23 @@ func (c OAuthConfig) ToEngineConfig() engineconfig.OAuthConfig {
 	}
 }
 
+// AuthZENPDPConfig holds server defaults for AuthZEN PDP connections.
+type AuthZENPDPConfig struct {
+	TimeoutMS  int  `yaml:"timeout_ms" json:"timeout_ms"`
+	RetryCount *int `yaml:"retry_count" json:"retry_count"`
+}
+
+// Validate checks the default timeout and retry count.
+func (c AuthZENPDPConfig) Validate() error {
+	if c.TimeoutMS < 0 || (c.RetryCount != nil && *c.RetryCount < 0) {
+		return fmt.Errorf("AuthZEN PDP timeout and retry defaults must not be negative")
+	}
+	return nil
+}
+
 // Config holds the complete configuration details of the server.
 type Config struct {
+	AuthZENPDP           AuthZENPDPConfig                  `yaml:"authzen_pdp" json:"authzen_pdp"`
 	Server               engineconfig.ServerConfig         `yaml:"server"                json:"server"`
 	Log                  LogConfig                         `yaml:"log"                   json:"log"`
 	GateClient           engineconfig.GateClientConfig     `yaml:"gate_client"           json:"gate_client"`
@@ -757,6 +772,9 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 		return nil, err
 	}
 	if err := cfg.Notification.Validate(); err != nil {
+		return nil, err
+	}
+	if err := cfg.AuthZENPDP.Validate(); err != nil {
 		return nil, err
 	}
 

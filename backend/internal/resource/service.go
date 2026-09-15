@@ -275,6 +275,14 @@ func (rs *resourceService) CreateResourceServer(
 	}
 
 	// Set default type if not provided
+	if resourceServer.AuthorizationEngine.Type == "" {
+		resourceServer.AuthorizationEngine.Type = providers.AuthorizationEngineTypeRBAC
+	}
+
+	if resourceServer.AuthorizationEngine.Type == providers.AuthorizationEngineTypeRBAC {
+		resourceServer.AuthorizationEngine.Properties = providers.AuthorizationEngineProperties{}
+	}
+
 	if resourceServer.Type == "" {
 		resourceServer.Type = providers.ResourceServerTypeCustom
 	}
@@ -312,13 +320,14 @@ func (rs *resourceService) CreateResourceServer(
 		}
 
 		createdRS = &providers.ResourceServer{
-			ID:          id,
-			Name:        resourceServer.Name,
-			Description: resourceServer.Description,
-			Identifier:  resourceServer.Identifier,
-			Type:        resourceServer.Type,
-			OUID:        resourceServer.OUID,
-			Delimiter:   resourceServer.Delimiter,
+			ID:                  id,
+			Name:                resourceServer.Name,
+			Description:         resourceServer.Description,
+			Identifier:          resourceServer.Identifier,
+			Type:                resourceServer.Type,
+			OUID:                resourceServer.OUID,
+			Delimiter:           resourceServer.Delimiter,
+			AuthorizationEngine: resourceServer.AuthorizationEngine,
 		}
 		return nil
 	}); err != nil {
@@ -444,6 +453,16 @@ func (rs *resourceService) UpdateResourceServer(
 	// Type is immutable and always preserved from the existing record
 	resourceServer.Type = existingResServer.Type
 
+	if resourceServer.AuthorizationEngine.Type == "" {
+		resourceServer.AuthorizationEngine = existingResServer.AuthorizationEngine
+	}
+	if resourceServer.AuthorizationEngine.Type == "" {
+		resourceServer.AuthorizationEngine.Type = providers.AuthorizationEngineTypeRBAC
+	}
+	if resourceServer.AuthorizationEngine.Type == providers.AuthorizationEngineTypeRBAC {
+		resourceServer.AuthorizationEngine.Properties = providers.AuthorizationEngineProperties{}
+	}
+
 	// Identifier: preserve existing if not provided; check uniqueness if changed
 	if resourceServer.Identifier == "" {
 		resourceServer.Identifier = existingResServer.Identifier
@@ -489,13 +508,14 @@ func (rs *resourceService) UpdateResourceServer(
 		}
 
 		updatedRS = &providers.ResourceServer{
-			ID:          id,
-			Name:        resourceServer.Name,
-			Description: resourceServer.Description,
-			Identifier:  resourceServer.Identifier,
-			Type:        resourceServer.Type,
-			OUID:        resourceServer.OUID,
-			Delimiter:   resourceServer.Delimiter,
+			ID:                  id,
+			Name:                resourceServer.Name,
+			Description:         resourceServer.Description,
+			Identifier:          resourceServer.Identifier,
+			Type:                resourceServer.Type,
+			OUID:                resourceServer.OUID,
+			Delimiter:           resourceServer.Delimiter,
+			AuthorizationEngine: resourceServer.AuthorizationEngine,
 		}
 		return nil
 	}); err != nil {
@@ -1364,6 +1384,11 @@ func (rs *resourceService) validateResourceServerCreate(
 	if resourceServer.Type != "" && !resourceServer.Type.IsValid() {
 		return &ErrorInvalidRequestFormat
 	}
+	if resourceServer.AuthorizationEngine.Type != "" &&
+		resourceServer.AuthorizationEngine.Type != providers.AuthorizationEngineTypeRBAC &&
+		resourceServer.AuthorizationEngine.Type != providers.AuthorizationEngineTypeExternalAuthZENPDP {
+		return &ErrorInvalidRequestFormat
+	}
 	if resourceServer.Delimiter != "" {
 		if err := validateDelimiter(resourceServer.Delimiter); err != nil {
 			return err
@@ -1380,6 +1405,11 @@ func (rs *resourceService) validateResourceServerUpdate(
 		return &ErrorInvalidRequestFormat
 	}
 	if resourceServer.OUID == "" {
+		return &ErrorInvalidRequestFormat
+	}
+	if resourceServer.AuthorizationEngine.Type != "" &&
+		resourceServer.AuthorizationEngine.Type != providers.AuthorizationEngineTypeRBAC &&
+		resourceServer.AuthorizationEngine.Type != providers.AuthorizationEngineTypeExternalAuthZENPDP {
 		return &ErrorInvalidRequestFormat
 	}
 	return nil

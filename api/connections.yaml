@@ -35,7 +35,7 @@ paths:
       summary: List configured connection instances
       description: >-
         Returns a paginated list of the configured connection instances across the
-        identity-provider and notification-sender backed connection types, optionally
+        identity-provider, notification-sender, and authorization PDP backed connection types, optionally
         filtered by functional category. Omit the category parameter to return all instances.
       parameters:
         - name: category
@@ -44,7 +44,7 @@ paths:
           description: Filter instances by functional category. Omit to return all instances.
           schema:
             type: string
-            enum: [identity-provider, sms-provider]
+            enum: [identity-provider, sms-provider, authorization-pdp]
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
       responses:
@@ -74,6 +74,94 @@ paths:
                     categories: ["sms-provider"]
                 links: []
         "400": { $ref: '#/components/responses/BadRequest' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/authzen-pdp:
+    get:
+      tags: [Connections]
+      summary: List configured external AuthZEN PDP connections
+      responses:
+        "200": { $ref: '#/components/responses/ExternalAuthZENPDPInstanceList' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create an external AuthZEN PDP connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExternalAuthZENPDPConnectionCreateRequest' }
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExternalAuthZENPDPConnectionResponse' }
+        "400": { $ref: '#/components/responses/ExternalAuthZENPDPBadRequest' }
+        "409": { $ref: '#/components/responses/ExternalAuthZENPDPConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/authzen-pdp/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get an external AuthZEN PDP connection
+      responses:
+        "200":
+          description: Connection details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExternalAuthZENPDPConnectionResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update an external AuthZEN PDP connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExternalAuthZENPDPConnectionUpdateRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExternalAuthZENPDPConnectionResponse' }
+        "400": { $ref: '#/components/responses/ExternalAuthZENPDPBadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/ExternalAuthZENPDPConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete an external AuthZEN PDP connection
+      responses:
+        "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/ConnectionDependencyConflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/authzen-pdp/{id}/usages:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get external AuthZEN PDP connection usages
+      description: Returns the resource servers that reference this external AuthZEN PDP connection.
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionUsages' }
+        "404": { $ref: '#/components/responses/NotFound' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
@@ -845,6 +933,18 @@ components:
             type: array
             items:
               $ref: '#/components/schemas/ConnectionInstanceSummary'
+    ExternalAuthZENPDPInstanceList:
+      description: Configured external AuthZEN PDP connections
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/ConnectionInstanceSummary'
+          example:
+            - id: "05d6e254-a3ca-49dd-89b7-2cf78fee6b23"
+              name: "Cerbos"
+              description: "External Cerbos AuthZEN PDP"
     ConnectionUsages:
       description: Resources that reference this connection
       content:
@@ -860,16 +960,87 @@ components:
                 id: "f1b2c3d4-0000-0000-0000-000000000001"
                 displayName: "Login Flow"
                 behaviorOnDelete: restrict
+    ExternalAuthZENPDPBadRequest:
+      description: Invalid external AuthZEN PDP connection request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            invalid-request-format:
+              summary: Invalid request format
+              value:
+                code: "CON-1007"
+                message:
+                  key: "error.connectionservice.invalid_request_format"
+                  defaultValue: "Invalid request format"
+                description:
+                  key: "error.connectionservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed or contains invalid data"
+            invalid-authzen-pdp-endpoint:
+              summary: Invalid AuthZEN PDP endpoint
+              value:
+                code: "CON-1006"
+                message:
+                  key: "error.connectionservice.invalid_authzen_pdp_endpoint"
+                  defaultValue: "Invalid AuthZEN PDP endpoint"
+                description:
+                  key: "error.connectionservice.invalid_authzen_pdp_endpoint_description"
+                  defaultValue: "The single and batch evaluation endpoints must be absolute URLs."
+    ExternalAuthZENPDPConflict:
+      description: An external AuthZEN PDP connection with the same name already exists
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: "CON-1008"
+            message:
+              key: "error.connectionservice.authzen_pdp_already_exists"
+              defaultValue: "An AuthZEN PDP connection with the same name already exists"
+            description:
+              key: "error.connectionservice.authzen_pdp_already_exists_description"
+              defaultValue: "Choose a different name for the AuthZEN PDP connection"
+    ConnectionDependencyConflict:
+      description: The connection cannot be deleted because it is still in use
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: "CON-1005"
+            message:
+              key: "error.connectionservice.connection_has_blocking_dependencies"
+              defaultValue: "Connection cannot be deleted"
+            description:
+              key: "error.connectionservice.connection_has_blocking_dependencies_description"
+              defaultValue: "The connection cannot be deleted because other resources depend on it. Remove or reassign them first."
     BadRequest:
       description: Bad request
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            invalid-request-format:
+              summary: Invalid request format
+              value:
+                code: "IDP-1001"
+                message:
+                  key: "error.idpservice.invalid_request_format"
+                  defaultValue: "Invalid request format"
+                description:
+                  key: "error.idpservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed or contains invalid data"
     NotFound:
       description: Connection not found
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: "CON-1004"
+            message:
+              key: "error.connectionservice.connection_not_found"
+              defaultValue: "Connection not found"
+            description:
+              key: "error.connectionservice.connection_not_found_description"
+              defaultValue: "No connection exists for the supplied identifier"
     Conflict:
       description: A connection with the same name already exists
       content:
@@ -880,13 +1051,40 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: "AUTH-4010"
+            message:
+              key: "error.unauthorized"
+              defaultValue: "Unauthorized"
+            description:
+              key: "error.unauthorized_description"
+              defaultValue: "Authentication is required to access this resource"
     Forbidden:
       description: Insufficient permissions to perform this operation
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: "AUTH-4030"
+            message:
+              key: "error.forbidden"
+              defaultValue: "Forbidden"
+            description:
+              key: "error.forbidden_description"
+              defaultValue: "You do not have sufficient permissions to access this resource"
     InternalServerError:
       description: Internal server error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: "SSE-5000"
+            message:
+              key: "error.internal_server_error"
+              defaultValue: "Internal server error"
+            description:
+              key: "error.internal_server_error_description"
+              defaultValue: "An unexpected error occurred while processing the request"
 
   schemas:
     ConnectionListResponse:
@@ -929,14 +1127,14 @@ components:
           type: string
           description: >-
             Lowercase vendor identifier. `sms-gateway` denotes a generic HTTP webhook SMS sender.
-          enum: [google, github, oidc, oauth, twilio, vonage, sms-gateway]
+          enum: [google, github, oidc, oauth, twilio, vonage, sms-gateway, authzen-pdp]
           example: "google"
         categories:
           type: array
           minItems: 1
           items:
             type: string
-            enum: [identity-provider, sms-provider]
+            enum: [identity-provider, sms-provider, authorization-pdp]
           example: ["identity-provider"]
 
     ConnectionInstanceSummary:
@@ -1171,6 +1369,76 @@ components:
         scopes: { type: array, items: { type: string } }
         prompt: { type: string }
         attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+
+    ExternalAuthZENPDPConnectionUpdateRequest:
+      type: object
+      required: [name, endpoint, batchEndpoint]
+      properties:
+        name: { type: string, example: "Travel Booking PDP" }
+        description: { type: string }
+        endpoint:
+          type: string
+          format: uri
+          pattern: '^https?://'
+          description: HTTP endpoint for a single AuthZEN access evaluation.
+          example: "https://pdp.example.com/access/v1/evaluation"
+        batchEndpoint:
+          type: string
+          format: uri
+          pattern: '^https?://'
+          description: HTTP endpoint for batched AuthZEN access evaluations.
+          example: "https://pdp.example.com/access/v1/evaluations"
+        timeoutMs:
+          type: integer
+          minimum: 1
+          default: 500
+          description: Timeout for each PDP request in milliseconds.
+        retryCount:
+          type: integer
+          minimum: 0
+          default: 1
+          description: Number of retries for transient PDP or network failures.
+        subjectProperties:
+          type: string
+          description: Space-, comma-, or newline-separated ThunderID subject properties allowed to reach the PDP.
+          example: "username email groups"
+        subjectPropertyMappings:
+          type: string
+          description: Comma-separated source-to-PDP subject property mappings.
+          example: "username: preferred_username"
+        subjectAttributeMappings:
+          type: array
+          items: { $ref: '#/components/schemas/ExternalAuthZENPDPSubjectAttributeMapping' }
+    ExternalAuthZENPDPConnectionCreateRequest:
+      $ref: '#/components/schemas/ExternalAuthZENPDPConnectionUpdateRequest'
+    ExternalAuthZENPDPConnectionResponse:
+      allOf:
+        - $ref: '#/components/schemas/ExternalAuthZENPDPConnectionUpdateRequest'
+        - type: object
+          required: [id, type]
+          properties:
+            id: { type: string, format: uuid }
+            type: { type: string, enum: [authzen-pdp] }
+
+    ExternalAuthZENPDPSubjectAttributeMapping:
+      type: object
+      required: [userType, attributes]
+      properties:
+        userType:
+          type: string
+          description: ThunderID user type to which this mapping applies.
+        attributes:
+          type: array
+          items:
+            type: object
+            required: [attribute]
+            properties:
+              attribute:
+                type: string
+                description: ThunderID user attribute name.
+              pdpAttribute:
+                type: string
+                description: AuthZEN PDP subject property name. Defaults to attribute when omitted.
 
     TwilioConnectionUpdateRequest:
       type: object

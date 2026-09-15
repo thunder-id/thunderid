@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	"github.com/thunder-id/thunderid/internal/idp"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
@@ -192,6 +193,39 @@ func (s *DeclarativeResourceTestSuite) TestConnectionModelToDTOUnsupportedVendor
 	s.Error(err)
 }
 
+func (s *DeclarativeResourceTestSuite) TestAuthZENPDPConnectionExportModelRoundTrip() {
+	doc := []byte(`
+id: pdp-1
+type: authzen-pdp
+name: Cerbos PDP
+endpoint: http://localhost:3592/access/v1/evaluation
+batchEndpoint: http://localhost:3592/access/v1/evaluations
+subjectProperties:
+  - accountStatus
+subjectPropertyMappings: "accountStatus: account_status"
+subjectAttributeMappings:
+  - userType: TravelCustomer
+    attributes:
+      - attribute: accountStatus
+        pdpAttribute: account_status
+`)
+
+	dto, err := parseToConnectionDTOWrapper(doc)
+	s.Require().NoError(err)
+	pdp, ok := dto.(*authzenpdp.AuthZENPDPConnection)
+	s.Require().True(ok)
+	s.Equal("pdp-1", pdp.ID)
+	s.Equal("authzen-pdp", connectionModelFromAuthZENPDP(*pdp).Type)
+	s.Equal("http://localhost:3592/access/v1/evaluation", pdp.Endpoint)
+	s.Equal("http://localhost:3592/access/v1/evaluations", pdp.BatchEndpoint)
+	s.Equal("account_status", pdp.SubjectPropertyMappings["accountStatus"])
+	exported := connectionModelFromAuthZENPDP(*pdp)
+	s.Equal("pdp-1", connectionResourceID(pdp))
+
+	roundTripped := connectionModelToAuthZENPDP(exported)
+	s.Require().NotNil(roundTripped)
+}
+
 func (s *DeclarativeResourceTestSuite) TestParseConnectionFromNodeIDPVendor() {
 	doc := `
 id: corp-google
@@ -347,6 +381,7 @@ func (s *DeclarativeResourceTestSuite) TestGetResourceRulesForResourceSecretSele
 		{connectionExportModel{Type: "google"}, nil}, // no secret set -> nothing to externalize
 		{connectionExportModel{Type: "twilio"}, []string{"AuthToken"}},
 		{connectionExportModel{Type: "vonage"}, []string{"APISecret"}},
+		{connectionExportModel{Type: authzenpdp.VendorName}, nil},
 		{connectionExportModel{Type: smsGatewayVendorName}, nil},
 	}
 	for _, tc := range cases {
@@ -425,6 +460,46 @@ func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreDispatchesB
 	s.Equal(senderDTO, got)
 
 	s.Error(store.Create("bad", "not-a-dto"))
+}
+
+func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreStoresAuthZENPDPEndpoints() {
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime("/tmp/test", &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: true},
+	}))
+	s.T().Cleanup(config.ResetServerRuntime)
+
+	store := newTestAuthZENPDPStore()
+	declarativeStore := &connectionDeclarativeStore{authZENPDPService: authzenpdp.NewService(store)}
+
+	dto := &authzenpdp.AuthZENPDPConnection{
+		Name:          "PDP",
+		Endpoint:      "https://pdp.example.com/access/v1/evaluation",
+		BatchEndpoint: "https://pdp.example.com/access/v1/evaluations",
+	}
+
+	s.Require().NoError(declarativeStore.Create("pdp-1", dto))
+	s.Equal("https://pdp.example.com/access/v1/evaluation", store.connections["pdp-1"].Endpoint)
+	s.Equal("https://pdp.example.com/access/v1/evaluations", store.connections["pdp-1"].BatchEndpoint)
+}
+
+func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreSkipsAuthZENPDPWhenDisabled() {
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime("/tmp/test", &config.Config{
+		IdentityProvider: config.IdentityProviderConfig{Store: "composite"},
+	}))
+	s.T().Cleanup(config.ResetServerRuntime)
+
+	store := newTestAuthZENPDPStore()
+	declarativeStore := &connectionDeclarativeStore{authZENPDPService: authzenpdp.NewService(store)}
+	dto := &authzenpdp.AuthZENPDPConnection{
+		Name:          "PDP",
+		Endpoint:      "https://pdp.example.com/access/v1/evaluation",
+		BatchEndpoint: "https://pdp.example.com/access/v1/evaluations",
+	}
+
+	s.Require().NoError(declarativeStore.Create("pdp-1", dto))
+	s.NotContains(store.connections, "pdp-1")
 }
 
 // TestConnectionDeclarativeStoreSkipsIDPWhenIDPStoreModeIsMutable verifies that IdP-typed
