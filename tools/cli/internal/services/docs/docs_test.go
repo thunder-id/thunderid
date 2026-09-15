@@ -45,7 +45,7 @@ func TestFetchGuide_ErrorsOnNon200(t *testing.T) {
 
 func TestSiteURL_NoMarkdownExtension(t *testing.T) {
 	assert.Equal(t,
-		"https://thunderid.dev/docs/v1.0.x/getting-started/connect-your-application/react",
+		"https://thunderid.dev/docs/getting-started/connect-your-application/react",
 		SiteURL("react"),
 	)
 }
