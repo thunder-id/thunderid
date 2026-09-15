@@ -299,6 +299,78 @@ func (_c *entityStoreInterfaceMock_GetEntity_Call) RunAndReturn(run func(ctx con
 	return _c
 }
 
+// GetEntityCountByType provides a mock function for the type entityStoreInterfaceMock
+func (_mock *entityStoreInterfaceMock) GetEntityCountByType(ctx context.Context, category string, entityType string) (int, error) {
+	ret := _mock.Called(ctx, category, entityType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEntityCountByType")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (int, error)); ok {
+		return returnFunc(ctx, category, entityType)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) int); ok {
+		r0 = returnFunc(ctx, category, entityType)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, category, entityType)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// entityStoreInterfaceMock_GetEntityCountByType_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEntityCountByType'
+type entityStoreInterfaceMock_GetEntityCountByType_Call struct {
+	*mock.Call
+}
+
+// GetEntityCountByType is a helper method to define mock.On call
+//   - ctx context.Context
+//   - category string
+//   - entityType string
+func (_e *entityStoreInterfaceMock_Expecter) GetEntityCountByType(ctx interface{}, category interface{}, entityType interface{}) *entityStoreInterfaceMock_GetEntityCountByType_Call {
+	return &entityStoreInterfaceMock_GetEntityCountByType_Call{Call: _e.mock.On("GetEntityCountByType", ctx, category, entityType)}
+}
+
+func (_c *entityStoreInterfaceMock_GetEntityCountByType_Call) Run(run func(ctx context.Context, category string, entityType string)) *entityStoreInterfaceMock_GetEntityCountByType_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_GetEntityCountByType_Call) Return(n int, err error) *entityStoreInterfaceMock_GetEntityCountByType_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *entityStoreInterfaceMock_GetEntityCountByType_Call) RunAndReturn(run func(ctx context.Context, category string, entityType string) (int, error)) *entityStoreInterfaceMock_GetEntityCountByType_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetEntityGroups provides a mock function for the type entityStoreInterfaceMock
 func (_mock *entityStoreInterfaceMock) GetEntityGroups(ctx context.Context, entityID string, limit int, offset int) ([]providers.EntityGroup, error) {
 	ret := _mock.Called(ctx, entityID, limit, offset)

@@ -54,6 +54,9 @@ type entityStoreInterface interface {
 	GetGroupCountForEntity(ctx context.Context, entityID string) (int, error)
 	GetEntityGroups(ctx context.Context, entityID string, limit, offset int) ([]providers.EntityGroup, error)
 
+	// GetEntityCountByType retrieves the count of entities of a given category and type.
+	GetEntityCountByType(ctx context.Context, category, entityType string) (int, error)
+
 	// Declarative
 	IsEntityDeclarative(ctx context.Context, id string) (bool, error)
 
@@ -761,6 +764,28 @@ func (es *entityDBStore) GetGroupCountForEntity(ctx context.Context, entityID st
 	countResults, err := dbClient.QueryContext(ctx, QueryGetGroupCountForEntity, entityID, es.scope(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("failed to get group count for entity: %w", err)
+	}
+
+	if len(countResults) == 0 {
+		return 0, nil
+	}
+
+	if count, ok := countResults[0]["total"].(int64); ok {
+		return int(count), nil
+	}
+	return 0, fmt.Errorf("unexpected type for total: %T", countResults[0]["total"])
+}
+
+// GetEntityCountByType retrieves the count of entities of a given category and type.
+func (es *entityDBStore) GetEntityCountByType(ctx context.Context, category, entityType string) (int, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	countResults, err := dbClient.QueryContext(ctx, QueryGetEntityCountByType, category, entityType, es.scope(ctx))
+	if err != nil {
+		return 0, fmt.Errorf("failed to get entity count for type: %w", err)
 	}
 
 	if len(countResults) == 0 {

@@ -222,6 +222,11 @@ func (s *cacheBackedEntityStore) GetGroupCountForEntity(ctx context.Context,
 	return s.store.GetGroupCountForEntity(ctx, entityID)
 }
 
+func (s *cacheBackedEntityStore) GetEntityCountByType(ctx context.Context,
+	category, entityType string) (int, error) {
+	return s.store.GetEntityCountByType(ctx, category, entityType)
+}
+
 func (s *cacheBackedEntityStore) GetEntityGroups(ctx context.Context,
 	entityID string, limit, offset int) ([]providers.EntityGroup, error) {
 	return s.store.GetEntityGroups(ctx, entityID, limit, offset)

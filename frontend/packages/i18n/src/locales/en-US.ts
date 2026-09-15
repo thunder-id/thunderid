@@ -792,7 +792,6 @@ const translations = {
     addUserType: 'Add User Type',
     createUserType: 'Create User Type',
     editUserType: 'Edit User Type',
-    deleteUserType: 'Delete User Type',
     userTypeDetails: 'User Type Details',
     typeName: 'Type Name',
     typeNamePlaceholder: 'e.g., Employee, Customer, Partner',
@@ -842,7 +841,6 @@ const translations = {
     'listing.columns.allowSelfRegistration': 'Self Registration',
     'listing.columns.actions': 'Actions',
     noOrganizationUnits: 'No organization units available',
-    confirmDeleteUserType: 'Are you sure you want to delete this user type?',
     'errors.USRS-1002': 'This user type no longer exists. It may have already been deleted.',
     'errors.USRS-1003': 'A user type with the same name already exists.',
     'errors.USRS-1004': 'The user type request is missing required fields or contains invalid data.',
@@ -850,6 +848,8 @@ const translations = {
     'errors.USRS-1011': 'Display attribute must reference an attribute defined in the schema.',
     'errors.USRS-1012': 'Display attribute must reference a string or number type.',
     'errors.USRS-1013': 'Display attribute cannot reference a credential attribute.',
+    'errors.USRS-1016':
+      'This user type cannot be deleted because existing users are still assigned to it. Reassign or delete those users first.',
 
     // Edit page
     'manageUserType.title': 'Manage User Type',
@@ -913,6 +913,9 @@ const translations = {
     'delete.message':
       'Are you sure you want to delete this user type? This action cannot be undone and may affect existing users of this type.',
     'delete.disclaimer': 'All associated schema definitions will be permanently removed.',
+    'delete.usages.loading': 'Checking affected resources…',
+    'delete.blocking.title':
+      'This user type cannot be deleted because {{count}} existing user(s) are still assigned to it. Reassign or delete those users first.',
     'delete.success': 'User type deleted successfully.',
     'delete.error': 'Failed to delete user type. Please try again.',
     'removeCredentialDialog.title': 'Remove Credential Flag',
