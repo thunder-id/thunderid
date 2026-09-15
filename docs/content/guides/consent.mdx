@@ -23,6 +23,7 @@ As of now, <ProductName /> only supports **attribute consent**.
 When users authenticate with an application that requires specific profile attributes, <ProductName /> can prompt them to consent to sharing specific attributes with the application.
 
 Attribute consent requirements are driven by the requested attributes during application configuration. If an application requires specific user attributes (e.g., username, email), the user will be asked to grant consent before the login process completes.
+Only attributes the user actually holds are included in the prompt. Requested attributes that are not present in the user's profile are omitted, and if the profile holds no attributes at all, no attribute consent is prompted. Where the attribute set cannot be determined for example when the provider returns a signed or encrypted token rather than individual claims no filtering is applied and all requested attributes are prompted for.
 
 ## Configuring Consent in Flows
 

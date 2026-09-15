@@ -1110,6 +1110,23 @@ func (s *ConsentEnforcerServiceTestSuite) TestBuildUserAttributeSet_Empty() {
 	}
 
 	result := buildUserAttributeSet(available)
+
+	// A known empty profile is distinct from an unavailable one, so the set is empty but not nil.
+	s.NotNil(result)
+	s.Empty(result)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestBuildUserAttributeSet_OpaqueJWT() {
+	available := &providers.AttributesResponse{
+		Attributes: map[string]*providers.AttributeResponse{
+			providers.RawJWTAttributeKey: {Value: "header.payload.signature"},
+		},
+	}
+
+	result := buildUserAttributeSet(available)
+
+	// The attribute names inside the token are not visible here, so the profile is treated
+	// as unavailable rather than as a profile holding a single "_jwt" attribute.
 	s.Nil(result)
 }
 
@@ -1821,6 +1838,84 @@ func (s *ConsentEnforcerServiceTestSuite) TestBuildPermissionPurposePrompt_Empty
 	consented := map[string]bool{purposeElementKey(purpose.Name, "p1"): true}
 	_, ok := buildPermissionPurposePrompt(purpose, consented, []string{"p1"})
 	s.False(ok)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) attributePurpose() consent.ConsentPurpose {
+	return consent.ConsentPurpose{
+		ID:   "attr-1",
+		Name: consent.AttributePurposeName("app1"),
+		Elements: []consent.PurposeElement{
+			{Name: "email"},
+			{Name: "phone"},
+		},
+	}
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestBuildAttributePurposePrompt_KnownEmptyProfileProducesNoPrompt() {
+	userAttributeSet := buildUserAttributeSet(&providers.AttributesResponse{
+		Attributes: map[string]*providers.AttributeResponse{},
+	})
+
+	_, ok := buildAttributePurposePrompt(s.attributePurpose(), []string{"email"}, []string{"phone"},
+		map[string]bool{}, userAttributeSet)
+
+	s.False(ok)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestBuildAttributePurposePrompt_PopulatedProfileFiltersToPresentAttributes() {
+	userAttributeSet := buildUserAttributeSet(&providers.AttributesResponse{
+		Attributes: map[string]*providers.AttributeResponse{"email": {}},
+	})
+
+	prompt, ok := buildAttributePurposePrompt(s.attributePurpose(), []string{"email"}, []string{"phone"},
+		map[string]bool{}, userAttributeSet)
+
+	s.True(ok)
+	s.Len(prompt.Essential, 1)
+	s.Equal("email", prompt.Essential[0].Name)
+	s.Empty(prompt.Optional)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestBuildAttributePurposePrompt_OnlyInjectedKeysFiltersEverything() {
+	// The consent executor augments every non-nil profile with presence-only keys such as
+	// "groups" and "roles", so an empty profile reaches this function carrying just those.
+	userAttributeSet := buildUserAttributeSet(&providers.AttributesResponse{
+		Attributes: map[string]*providers.AttributeResponse{
+			"groups": {},
+			"roles":  {},
+		},
+	})
+
+	_, ok := buildAttributePurposePrompt(s.attributePurpose(), []string{"email"}, []string{"phone"},
+		map[string]bool{}, userAttributeSet)
+
+	s.False(ok)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestBuildAttributePurposePrompt_UnavailableProfileDoesNotFilter() {
+	userAttributeSet := buildUserAttributeSet(nil)
+
+	prompt, ok := buildAttributePurposePrompt(s.attributePurpose(), []string{"email"}, []string{"phone"},
+		map[string]bool{}, userAttributeSet)
+
+	s.True(ok)
+	s.Len(prompt.Essential, 1)
+	s.Len(prompt.Optional, 1)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestBuildAttributePurposePrompt_OpaqueProfileDoesNotFilter() {
+	userAttributeSet := buildUserAttributeSet(&providers.AttributesResponse{
+		Attributes: map[string]*providers.AttributeResponse{
+			providers.RawJWTAttributeKey: {Value: "header.payload.signature"},
+		},
+	})
+
+	prompt, ok := buildAttributePurposePrompt(s.attributePurpose(), []string{"email"}, []string{"phone"},
+		map[string]bool{}, userAttributeSet)
+
+	s.True(ok)
+	s.Len(prompt.Essential, 1)
+	s.Len(prompt.Optional, 1)
 }
 
 func (s *ConsentEnforcerServiceTestSuite) TestBuildPromptedPurposeSet_AndElementSet() {
