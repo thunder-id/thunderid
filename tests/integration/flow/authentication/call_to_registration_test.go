@@ -18,11 +18,10 @@ import (
 // provisioning failure routes to the caller's onFailure target without panicking.
 type CallToRegistrationFlowTestSuite struct {
 	suite.Suite
-	config            *common.TestSuiteConfig
-	ouID              string
-	entityTypeID      string
-	appID             string
-	duplicateUsername string
+	config       *common.TestSuiteConfig
+	ouID         string
+	entityTypeID string
+	appID        string
 }
 
 func TestCallToRegistrationFlowTestSuite(t *testing.T) {
@@ -31,7 +30,6 @@ func TestCallToRegistrationFlowTestSuite(t *testing.T) {
 
 func (ts *CallToRegistrationFlowTestSuite) SetupSuite() {
 	ts.config = &common.TestSuiteConfig{}
-	ts.duplicateUsername = "call_reg_existing_user"
 
 	ou := testutils.OrganizationUnit{
 		Handle:      "call-to-reg-test-ou",
@@ -55,9 +53,12 @@ func (ts *CallToRegistrationFlowTestSuite) SetupSuite() {
 				"type":       "string",
 				"credential": true,
 			},
+			// The regex gives the error-path test a failure the provisioning executor cannot
+			// recover from by re-prompting, which is what routes the CALL node to onFailure.
 			"email": map[string]interface{}{
 				"type":     "string",
 				"required": true,
+				"regex":    "^[a-zA-Z0-9._%+-]+@example\\.com$",
 			},
 		},
 		AllowSelfRegistration: true,
@@ -65,20 +66,6 @@ func (ts *CallToRegistrationFlowTestSuite) SetupSuite() {
 	entityTypeID, err := testutils.CreateUserType(userType)
 	ts.Require().NoError(err, "Failed to create user type")
 	ts.entityTypeID = entityTypeID
-
-	// Pre-create a user whose username the error-path test will attempt to duplicate
-	existingUser := testutils.User{
-		Type: userType.Name,
-		OUID: ts.ouID,
-		Attributes: []byte(`{
-			"username": "call_reg_existing_user",
-			"password": "Existing@1234",
-			"email": "call_reg_existing@example.com"
-		}`),
-	}
-	userIDs, err := testutils.CreateMultipleUsers(existingUser)
-	ts.Require().NoError(err, "Failed to pre-create existing user")
-	ts.config.CreatedUserIDs = userIDs
 
 	// Create the REGISTRATION callee flow: START → user_type_resolver → prompt_user_data → provision_user → END
 	regFlow := testutils.Flow{
@@ -324,11 +311,13 @@ func (ts *CallToRegistrationFlowTestSuite) TestCallToRegistration_CalleeFails_Ro
 	ts.Require().NoError(err)
 	ts.Require().Equal("INCOMPLETE", calleeStep.FlowStatus)
 
-	// Step 3: Submit duplicate username — provisioning executor fails, engine pops the frame
-	// and routes to caller CALL node's onFailure (END). Flow ends without auth assertion
+	// Step 3: Submit an email the schema regex rejects — provisioning executor fails, engine pops
+	// the frame and routes to caller CALL node's onFailure (END). Flow ends without auth assertion.
+	// A schema violation is used rather than a duplicate unique attribute because the provisioning
+	// executor reports a duplicate as recoverable and re-prompts for it instead of failing.
 	inputs := map[string]string{
-		"username": ts.duplicateUsername,
-		"email":    "duplicate@example.com",
+		"username": "call_reg_invalid_email_user",
+		"email":    "not-a-valid-email",
 		"password": "Secure@1234",
 	}
 	failStep, err := common.CompleteFlow(calleeStep.ExecutionID, inputs, "action_submit",
