@@ -524,6 +524,12 @@ User management settings.
 |---------|---------|-------------|
 | `user.indexed_attributes` | `["username", "email", "mobile_number", "sub"]` | User attributes that are indexed for fast `lookups` |
 
+An indexed attribute's value can be a single scalar value or a list of scalar values. A list indexes each scalar element separately, so a user can be looked up by any one of them. Non-scalar elements in the list (for example, a nested object) are skipped and are not indexed. For example, a user with `email` set to `["primary@example.com", "secondary@example.com"]` can be identified by either address.
+
+:::note
+If the same attribute name is present in both schema attributes and system attributes, the system attribute's scalar value or values are indexed and the schema attribute's scalar value or values are not.
+:::
+
 ## Declarative Resources
 
 Controls declarative configuration support.
