@@ -1102,3 +1102,31 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_FederatedTokenTypeNotRe
 	assert.NotNil(suite.T(), authCtx)
 	mockJWT.AssertExpectations(suite.T())
 }
+
+// The REST gate keys the scope dimensions on the token's audience, and RFC 7519 allows aud in either a
+// string or an array form. Reading only the string form left an array-encoded token with no audience,
+// which drops the scope dimensions silently rather than failing closed.
+func (suite *JWTAuthenticatorTestSuite) TestRevocationAudience_ReadsBothEncodings() {
+	const audience = "https://api.dmv.ca.gov"
+
+	assert.Equal(suite.T(), audience,
+		revocationAudience(map[string]interface{}{claimAudience: audience}, false),
+		"a string audience must be read")
+	assert.Equal(suite.T(), audience,
+		revocationAudience(map[string]interface{}{claimAudience: []interface{}{audience}}, false),
+		"an array audience must be read the same way")
+	assert.Empty(suite.T(), revocationAudience(map[string]interface{}{}, false))
+}
+
+// A refresh token's own aud is the issuer, so its access tokens' audience is read from
+// access_token_aud instead, in either encoding.
+func (suite *JWTAuthenticatorTestSuite) TestRevocationAudience_ReadsRefreshTokenAudience() {
+	const audience = "https://api.dmv.ca.gov"
+
+	assert.Equal(suite.T(), audience,
+		revocationAudience(map[string]interface{}{claimAccessTokenAudience: []interface{}{audience}}, true))
+	assert.Equal(suite.T(), audience,
+		revocationAudience(map[string]interface{}{claimAccessTokenAudience: audience}, true))
+	assert.Empty(suite.T(), revocationAudience(map[string]interface{}{claimAudience: audience}, true),
+		"a refresh token's own aud is the issuer and must not be used")
+}

@@ -18,15 +18,22 @@ type revokedCache struct {
 	families map[string]time.Time
 	subjects map[string]revokedEntry
 	appKeys  map[string]revokedEntry
+	// entityScopes and scopes are keyed by digest, so their values are never readable here. They are
+	// separate maps for the same reason every other dimension is: a value of one type must never
+	// match another.
+	entityScopes map[string]revokedEntry
+	scopes       map[string]revokedEntry
 }
 
 // newRevokedCache creates an empty cache. It holds nothing until the first snapshot is loaded.
 func newRevokedCache() *revokedCache {
 	return &revokedCache{
-		tokens:   make(map[string]time.Time),
-		families: make(map[string]time.Time),
-		subjects: make(map[string]revokedEntry),
-		appKeys:  make(map[string]revokedEntry),
+		tokens:       make(map[string]time.Time),
+		families:     make(map[string]time.Time),
+		subjects:     make(map[string]revokedEntry),
+		appKeys:      make(map[string]revokedEntry),
+		entityScopes: make(map[string]revokedEntry),
+		scopes:       make(map[string]revokedEntry),
 	}
 }
 
@@ -37,11 +44,15 @@ func (c *revokedCache) replace(snapshot revokedSnapshot) {
 	families := indexByValue(snapshot.Families)
 	subjects := indexEntriesByValue(snapshot.Subjects)
 	appKeys := indexEntriesByValue(snapshot.AppKeys)
+	entityScopes := indexEntriesByValue(snapshot.EntityScopes)
+	scopes := indexEntriesByValue(snapshot.Scopes)
 	c.mu.Lock()
 	c.tokens = tokens
 	c.families = families
 	c.subjects = subjects
 	c.appKeys = appKeys
+	c.entityScopes = entityScopes
+	c.scopes = scopes
 	c.mu.Unlock()
 }
 
@@ -57,6 +68,22 @@ func (c *revokedCache) isSubjectRevoked(subject string, establishedAt time.Time)
 func (c *revokedCache) isAppKeyRevoked(appKey string, establishedAt time.Time) bool {
 	c.mu.RLock()
 	entry, ok := c.appKeys[appKey]
+	c.mu.RUnlock()
+	return matchesEntry(entry, ok, establishedAt)
+}
+
+// isEntityScopeRevoked reports whether one principal has lost one scope on one resource server.
+func (c *revokedCache) isEntityScopeRevoked(digest string, establishedAt time.Time) bool {
+	c.mu.RLock()
+	entry, ok := c.entityScopes[digest]
+	c.mu.RUnlock()
+	return matchesEntry(entry, ok, establishedAt)
+}
+
+// isScopeRevoked reports whether a scope has been revoked for every principal on a resource server.
+func (c *revokedCache) isScopeRevoked(digest string, establishedAt time.Time) bool {
+	c.mu.RLock()
+	entry, ok := c.scopes[digest]
 	c.mu.RUnlock()
 	return matchesEntry(entry, ok, establishedAt)
 }

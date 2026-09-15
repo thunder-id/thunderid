@@ -5,6 +5,7 @@ package executor
 
 import (
 	"fmt"
+	"strconv"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -1263,6 +1264,215 @@ var (
 			DefaultValue: "The client secret could not be regenerated",
 		},
 	}
+
+	// ErrRoleAssignmentRemovalNotAllowed is returned when the target role assignment cannot be removed
+	// and the validator gave no more specific reason.
+	ErrRoleAssignmentRemovalNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1090",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_assignment_removal_not_allowed",
+			DefaultValue: "Role assignment removal not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_assignment_removal_not_allowed_desc",
+			DefaultValue: "The role assignment cannot be removed",
+		},
+	}
+
+	// ErrRoleAssignmentRemovalFailed is returned when removing the role assignment was refused.
+	ErrRoleAssignmentRemovalFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1091",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_assignment_removal_failed",
+			DefaultValue: "Role assignment removal failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_assignment_removal_failed_desc",
+			DefaultValue: "Failed to remove the role assignment",
+		},
+	}
+
+	// ErrRoleDeletionNotAllowed is returned when the target role cannot be deleted and the validator
+	// gave no more specific reason.
+	ErrRoleDeletionNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1092",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_deletion_not_allowed",
+			DefaultValue: "Role deletion not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_deletion_not_allowed_desc",
+			DefaultValue: "The role cannot be deleted",
+		},
+	}
+
+	// ErrRoleDeletionFailed is returned when a permitted role deletion cannot be completed.
+	ErrRoleDeletionFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1093",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_deletion_failed",
+			DefaultValue: "Role deletion failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_deletion_failed_desc",
+			DefaultValue: "The role could not be deleted",
+		},
+	}
+
+	// ErrRolePermissionRemovalNotAllowed is returned when the target role's permissions cannot be
+	// changed and the validator gave no more specific reason.
+	ErrRolePermissionRemovalNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1094",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_permission_removal_not_allowed",
+			DefaultValue: "Role permission change not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_permission_removal_not_allowed_desc",
+			DefaultValue: "The permissions the role grants cannot be changed",
+		},
+	}
+
+	// ErrRolePermissionRemovalFailed is returned when a permitted role permission change cannot be
+	// completed.
+	ErrRolePermissionRemovalFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1095",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_permission_removal_failed",
+			DefaultValue: "Role permission change failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_permission_removal_failed_desc",
+			DefaultValue: "The permissions the role grants could not be changed",
+		},
+	}
+
+	// ErrGroupDeletionNotAllowed is returned when the target group cannot be deleted and the validator
+	// gave no more specific reason.
+	ErrGroupDeletionNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1096",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.group_deletion_not_allowed",
+			DefaultValue: "Group deletion not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.group_deletion_not_allowed_desc",
+			DefaultValue: "The group cannot be deleted",
+		},
+	}
+
+	// ErrGroupDeletionFailed is returned when a permitted group deletion cannot be completed.
+	ErrGroupDeletionFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1097",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.group_deletion_failed",
+			DefaultValue: "Group deletion failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.group_deletion_failed_desc",
+			DefaultValue: "The group could not be deleted",
+		},
+	}
+
+	// ErrGroupMembershipRemovalNotAllowed is returned when the member cannot be removed from the group
+	// and the validator gave no more specific reason.
+	ErrGroupMembershipRemovalNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1098",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.group_membership_removal_not_allowed",
+			DefaultValue: "Group membership removal not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.group_membership_removal_not_allowed_desc",
+			DefaultValue: "The member cannot be removed from the group",
+		},
+	}
+
+	// ErrGroupMembershipRemovalFailed is returned when a permitted group membership removal cannot be
+	// completed.
+	ErrGroupMembershipRemovalFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1099",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.group_membership_removal_failed",
+			DefaultValue: "Group membership removal failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.group_membership_removal_failed_desc",
+			DefaultValue: "Failed to remove the member from the group",
+		},
+	}
+
+	// ErrScopeDeletionNotAllowed is returned when the target scope cannot be deleted and the validator
+	// gave no more specific reason.
+	ErrScopeDeletionNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1100",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.scope_deletion_not_allowed",
+			DefaultValue: "Scope deletion not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.scope_deletion_not_allowed_desc",
+			DefaultValue: "The scope cannot be deleted",
+		},
+	}
+
+	// ErrScopeDeletionFailed is returned when a permitted scope deletion cannot be completed.
+	ErrScopeDeletionFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1101",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.scope_deletion_failed",
+			DefaultValue: "Scope deletion failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.scope_deletion_failed_desc",
+			DefaultValue: "The scope could not be deleted",
+		},
+	}
+
+	// ErrInvalidRolePermissions is returned when the permission set a role permission change carries is
+	// not readable. It is a client refusal reported before anything is revoked, because the payload is
+	// the caller's and a malformed one must not cost every holder their tokens.
+	ErrInvalidRolePermissions = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1102",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.invalid_role_permissions",
+			DefaultValue: "Invalid role permissions",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.invalid_role_permissions_desc",
+			DefaultValue: "The permissions supplied for the role could not be read: {{reason}}",
+		},
+	}
+
+	// ErrRevocationFanOutTooLarge is returned when the change would deny more than the configured number
+	// of criteria. The change is refused outright: a partially written plan would leave some principals
+	// revoked and others not, with no record of which.
+	ErrRevocationFanOutTooLarge = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1103",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.revocation_fan_out_too_large",
+			DefaultValue: "Change affects too many principals",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "flows.executor.errors.revocation_fan_out_too_large_desc",
+			DefaultValue: "The change would revoke {{criteria}} scopes, more than the {{max}} " +
+				"one revocation may record",
+		},
+	}
 )
 
 // errAttributeNotUniqueFor returns a ServiceError for a specific attribute that is not unique.
@@ -1279,5 +1489,18 @@ func errMaxOTPAttemptsReachedFor(count int) *tidcommon.ServiceError {
 	e := ErrMaxOTPAttemptsReached
 	e.ErrorDescription.DefaultValue = fmt.Sprintf(
 		"The maximum number of OTP verification attempts (%d) has been reached", count)
+	return &e
+}
+
+// errRevocationFanOutTooLargeFor returns the fan-out refusal, naming how far the change reached and
+// what the ceiling is. Both numbers are needed: an operator who sees only the cap cannot tell whether
+// the change is slightly over it or thousands of rows over it.
+func errRevocationFanOutTooLargeFor(criteria, max int) *tidcommon.ServiceError {
+	params := map[string]string{
+		"criteria": strconv.Itoa(criteria),
+		"max":      strconv.Itoa(max),
+	}
+	e := ErrRevocationFanOutTooLarge
+	e.ErrorDescription.Params = params
 	return &e
 }

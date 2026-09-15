@@ -183,8 +183,8 @@ describe('steps models', () => {
       expect(ExecutionTypes.PreDelete).toBe('PreDeleteExecutor');
     });
 
-    it('should have exactly 30 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(30);
+    it('should have exactly 43 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(43);
     });
   });
 

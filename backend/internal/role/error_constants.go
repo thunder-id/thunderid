@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package role
@@ -184,6 +184,48 @@ var (
 				"Roles must be defined in declarative configuration files",
 		},
 	}
+	// ErrorGroupNestingTooDeep is returned when expanding a group's members descends further than the
+	// supported nesting depth. It is reported rather than truncated: a partial expansion would revoke
+	// for some members and silently miss others, and the caller could not tell which.
+	ErrorGroupNestingTooDeep = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1023",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.group_nesting_too_deep",
+			DefaultValue: "Group nesting is too deep",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.roleservice.group_nesting_too_deep_description",
+			DefaultValue: "The group's members are nested more than {{max}} levels deep, which cannot be expanded",
+		},
+	}
+
+	// ErrorMissingAssigneeID is the error returned when an assignee id is required but absent.
+	ErrorMissingAssigneeID = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1019",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.missing_assignee_id",
+			DefaultValue: "Assignee ID is required",
+		},
+	}
+
+	// ErrorRoleAssignmentNotFound is returned when a removal names an assignee that does not hold the
+	// role. The removal itself is a silent no-op in that case, so an administration flow that revoked
+	// first would deny the principal scopes while changing nothing.
+	ErrorRoleAssignmentNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1020",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.role_assignment_not_found",
+			DefaultValue: "Role assignment not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.roleservice.role_assignment_not_found_description",
+			DefaultValue: "The assignee does not hold this role",
+		},
+	}
+
 	// ErrorInvalidAssigneeType is the error returned when the assignee type query parameter is invalid.
 	ErrorInvalidAssigneeType = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

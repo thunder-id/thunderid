@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -31,6 +32,16 @@ type revocationPlan struct {
 	// application revocation is keyed by the OAuth client id while the delete and the session detachment
 	// need the application id, so the two travel separately rather than one being re-derived.
 	TargetID string `json:"targetId,omitempty"`
+	// AssigneeID is the principal a role or group action acts on, when the action names two resources
+	// rather than one: the assignee losing a role, or the member leaving a group. It travels beside
+	// TargetID for the same reason that does: the acting node needs it and it is not derivable from a
+	// criterion value, which is a digest.
+	AssigneeID string `json:"assigneeId,omitempty"`
+	// ActionArgs carries the arguments the acting node needs that no criterion is derived from and that
+	// TargetID does not hold: the remaining segments of a target that is a path rather than a single id,
+	// or a payload such as a role's new permission set. They are keyed by the flow input they came from,
+	// so a node reading the wrong plan finds nothing rather than the wrong value.
+	ActionArgs map[string]string `json:"actionArgs,omitempty"`
 	// TTLSeconds is how long the deny-list row must live to outlast the artifacts the criteria match.
 	// Zero leaves the revocation service on its configured default.
 	TTLSeconds int64 `json:"ttlSeconds,omitempty"`
@@ -278,4 +289,55 @@ func validateFederatedIdentifierConsistency(ctx *providers.NodeContext,
 	}
 
 	return true
+}
+
+// textInput describes one text input a preparatory node declares.
+func textInput(identifier string) providers.Input {
+	return providers.Input{Identifier: identifier, Type: providers.InputTypeText, Required: true}
+}
+
+// decodeRolePermissions reads the permission set a role permission change carries in its plan.
+//
+// An absent or empty array is accepted and means the role should grant nothing, which is a legitimate
+// edit: it is the largest permission removal there is. Only malformed JSON is an error.
+func decodeRolePermissions(encoded string) ([]revocation.RolePermissions, error) {
+	if encoded == "" {
+		return nil, nil
+	}
+	var permissions []revocation.RolePermissions
+	if err := json.Unmarshal([]byte(encoded), &permissions); err != nil {
+		return nil, fmt.Errorf("failed to decode role permissions: %w", err)
+	}
+	return permissions, nil
+}
+
+// revocationPlanFor returns the identifiers the trusted plan's action operates on, after checking the
+// plan was produced for that action.
+//
+// The reason check is what makes a mispaired graph fail cleanly: nothing in flow validation stops a
+// preparatory node for one action being wired to the acting node of another, and that pairing would
+// otherwise revoke one thing and then mutate a different one.
+func revocationPlanFor(data map[string]string, want revocation.Reason) (revocationPlan, error) {
+	plan, err := decodeRevocationPlan(data)
+	if err != nil {
+		return revocationPlan{}, err
+	}
+	if plan.Reason != want {
+		return revocationPlan{}, fmt.Errorf("trusted revocation plan was produced for %q, not %q",
+			plan.Reason, want)
+	}
+	if plan.TargetID == "" {
+		return revocationPlan{}, errors.New("trusted revocation plan has no target")
+	}
+	return plan, nil
+}
+
+// internalFailure reports a server-side fault as a service error, so a node converts it to a flow
+// failure the way it treats any other server error. An unwired seam and a malformed trusted plan are
+// both deployment or graph faults rather than anything the caller did, and must not be reported to the
+// caller as refusals they could correct.
+func internalFailure(err error) *tidcommon.ServiceError {
+	svcErr := tidcommon.InternalServerError
+	svcErr.Error.DefaultValue = err.Error()
+	return &svcErr
 }

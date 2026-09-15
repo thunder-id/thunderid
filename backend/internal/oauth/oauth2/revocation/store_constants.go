@@ -51,11 +51,66 @@ var queryInsertRevocationCriterion = dbmodel.DBQuery{
 		`THEN "REVOCATION_CRITERIA".REASON `+
 		`ELSE excluded.REASON END, `+
 		`REVOKED_AT = CASE WHEN "REVOCATION_CRITERIA".REASON NOT IN (%s) `+
+		`OR "REVOCATION_CRITERIA".REVOKED_AT > excluded.REVOKED_AT `+
 		`THEN "REVOCATION_CRITERIA".REVOKED_AT `+
 		`ELSE excluded.REVOKED_AT END, `+
 		`EXPIRY_TIME = CASE WHEN "REVOCATION_CRITERIA".EXPIRY_TIME > excluded.EXPIRY_TIME `+
 		`THEN "REVOCATION_CRITERIA".EXPIRY_TIME ELSE excluded.EXPIRY_TIME END`,
 		boundaryReasonSQLList(), boundaryReasonSQLList()),
+}
+
+// criteriaInsertColumns is how many columns one criteria row writes, which sets how many query
+// parameters each row in a batch consumes.
+const criteriaInsertColumns = 7
+
+// maxCriteriaRowsPerStatement bounds how many rows one INSERT ... VALUES statement carries, kept well
+// under Postgres's 65535-parameter ceiling. It is a statement-shape limit only, separate from
+// oauth.revocation.criteria.max_criteria, which bounds one revocation's total rows across statements.
+const maxCriteriaRowsPerStatement = 500
+
+// insertRevocationCriteriaQueryID identifies the bulk criteria insert, built per call because its text
+// varies with the batch size.
+const insertRevocationCriteriaQueryID = "RVQ-RCS-04"
+
+// buildInsertRevocationCriteriaQuery builds one INSERT ... VALUES ON CONFLICT statement for up to
+// maxCriteriaRowsPerStatement rows, the batched form of queryInsertRevocationCriterion. It panics
+// rather than truncate, since a dropped row is a revocation that was planned but never written.
+// Callers must deduplicate (type, value) first, as one statement cannot hit the same target twice.
+func buildInsertRevocationCriteriaQuery(rows []revocationCriterion, deploymentID string) (
+	dbmodel.DBQuery, []interface{}) {
+	if len(rows) > maxCriteriaRowsPerStatement {
+		panic(fmt.Sprintf(
+			"buildInsertRevocationCriteriaQuery: %d rows exceeds the %d-row limit for one statement",
+			len(rows), maxCriteriaRowsPerStatement))
+	}
+
+	args := make([]interface{}, 0, len(rows)*criteriaInsertColumns)
+	valueGroups := make([]string, 0, len(rows))
+	paramIndex := 1
+	for _, row := range rows {
+		valueGroups = append(valueGroups, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d)",
+			paramIndex, paramIndex+1, paramIndex+2, paramIndex+3,
+			paramIndex+4, paramIndex+5, paramIndex+6))
+		args = append(args, row.ID, string(row.Type), row.Value, string(row.Reason),
+			row.RevokedAt, row.ExpiryTime, deploymentID)
+		paramIndex += criteriaInsertColumns
+	}
+
+	query := fmt.Sprintf(`INSERT INTO "REVOCATION_CRITERIA" (ID, CRITERION_TYPE, CRITERION_VALUE, REASON, `+
+		`REVOKED_AT, EXPIRY_TIME, DEPLOYMENT_ID) VALUES %s `+
+		`ON CONFLICT (DEPLOYMENT_ID, CRITERION_TYPE, CRITERION_VALUE) DO UPDATE SET `+
+		`REASON = CASE WHEN "REVOCATION_CRITERIA".REASON NOT IN (%s) `+
+		`THEN "REVOCATION_CRITERIA".REASON `+
+		`ELSE excluded.REASON END, `+
+		`REVOKED_AT = CASE WHEN "REVOCATION_CRITERIA".REASON NOT IN (%s) `+
+		`OR "REVOCATION_CRITERIA".REVOKED_AT > excluded.REVOKED_AT `+
+		`THEN "REVOCATION_CRITERIA".REVOKED_AT `+
+		`ELSE excluded.REVOKED_AT END, `+
+		`EXPIRY_TIME = CASE WHEN "REVOCATION_CRITERIA".EXPIRY_TIME > excluded.EXPIRY_TIME `+
+		`THEN "REVOCATION_CRITERIA".EXPIRY_TIME ELSE excluded.EXPIRY_TIME END`,
+		strings.Join(valueGroups, ", "), boundaryReasonSQLList(), boundaryReasonSQLList())
+
+	return dbmodel.DBQuery{ID: insertRevocationCriteriaQueryID, Query: query}, args
 }
 
 // criteriaRevokedQueryID identifies the criteria deny-list existence check. The query text varies

@@ -28,8 +28,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/email"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -179,6 +181,10 @@ type ExecutorDependencies struct {
 	ResourceService       providers.ResourceServerProvider
 	UserService           user.UserServiceInterface
 	CriteriaRevoker       revocation.CriteriaRevoker
+	// RoleGroupAdminProvider and ResourceAdminProvider are the administration seams the role, group and
+	// scope flows act through.
+	RoleGroupAdminProvider role.AdminProviderInterface
+	ResourceAdminProvider  resource.AdminProviderInterface
 }
 
 type builtInExecutorRegistrar func(ExecutorRegistryInterface, ExecutorDependencies)
@@ -314,6 +320,64 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 			reg.RegisterExecutor(ExecutorNameCriteriaRevocation,
 				newCriteriaRevocationExecutor(deps.FlowFactory, deps.CriteriaRevoker))
 		},
+		ExecutorNameCriteriaRevocationRestamp: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameCriteriaRevocationRestamp,
+				newCriteriaRevocationRestampExecutor(deps.FlowFactory, deps.CriteriaRevoker))
+		},
+		ExecutorNamePreRoleAssignmentRemoval: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNamePreRoleAssignmentRemoval,
+				newPreRoleAssignmentRemovalExecutor(deps.FlowFactory, configuredMaxRevocationCriteria(),
+					deps.RoleGroupAdminProvider))
+		},
+		ExecutorNamePreRoleDeletion: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNamePreRoleDeletion,
+				newPreRoleDeletionExecutor(deps.FlowFactory, configuredMaxRevocationCriteria(),
+					deps.RoleGroupAdminProvider))
+		},
+		ExecutorNameRoleDeletion: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameRoleDeletion,
+				newRoleDeletionExecutor(deps.FlowFactory, deps.RoleGroupAdminProvider))
+		},
+		ExecutorNamePreRolePermissionRemoval: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNamePreRolePermissionRemoval,
+				newPreRolePermissionRemovalExecutor(deps.FlowFactory, configuredMaxRevocationCriteria(),
+					deps.RoleGroupAdminProvider))
+		},
+		ExecutorNameRolePermissionRemoval: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameRolePermissionRemoval,
+				newRolePermissionRemovalExecutor(deps.FlowFactory, deps.RoleGroupAdminProvider))
+		},
+		ExecutorNamePreGroupDeletion: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNamePreGroupDeletion,
+				newPreGroupDeletionExecutor(deps.FlowFactory, configuredMaxRevocationCriteria(),
+					deps.RoleGroupAdminProvider))
+		},
+		ExecutorNameGroupDeletion: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameGroupDeletion,
+				newGroupDeletionExecutor(deps.FlowFactory, deps.RoleGroupAdminProvider))
+		},
+		ExecutorNamePreGroupMembershipRemoval: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNamePreGroupMembershipRemoval,
+				newPreGroupMembershipRemovalExecutor(deps.FlowFactory, configuredMaxRevocationCriteria(),
+					deps.RoleGroupAdminProvider))
+		},
+		ExecutorNameGroupMembershipRemoval: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameGroupMembershipRemoval,
+				newGroupMembershipRemovalExecutor(deps.FlowFactory, deps.RoleGroupAdminProvider))
+		},
+		ExecutorNamePreScopeDeletion: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNamePreScopeDeletion,
+				newPreScopeDeletionExecutor(deps.FlowFactory, configuredMaxRevocationCriteria(),
+					deps.ResourceAdminProvider))
+		},
+		ExecutorNameScopeDeletion: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameScopeDeletion,
+				newScopeDeletionExecutor(deps.FlowFactory, deps.ResourceAdminProvider))
+		},
+		ExecutorNameRoleAssignmentRemoval: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameRoleAssignmentRemoval,
+				newRoleAssignmentRemovalExecutor(deps.FlowFactory, deps.RoleGroupAdminProvider))
+		},
 		ExecutorNameSessionRevocation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSessionRevocation,
 				newSessionRevocationExecutor(deps.FlowFactory, deps.SessionService))
@@ -425,4 +489,47 @@ type applicationAdminProvider interface {
 		*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError)
 	ApplyCredentialAction(ctx context.Context, appID string, action appmodel.CredentialAction) (
 		string, *tidcommon.ServiceError)
+}
+
+// roleAdminProvider is the role seam the role administration executors consume. Like the application
+// seam it is declared here rather than in pkg so it stays internal: the role service's administration
+// provider satisfies it structurally.
+type roleAdminProvider interface {
+	ValidateRemoveRoleAssignment(ctx context.Context, roleID, assigneeID string) (
+		*revocation.ScopeRevocationTarget, *tidcommon.ServiceError)
+	RemoveRoleAssignment(ctx context.Context, roleID, assigneeID string) *tidcommon.ServiceError
+	ValidateRoleScopeChange(ctx context.Context, roleID string) (
+		*revocation.ScopeRevocationTarget, *tidcommon.ServiceError)
+	DeleteRole(ctx context.Context, roleID string) *tidcommon.ServiceError
+	UpdateRolePermissions(ctx context.Context, roleID string,
+		permissions []revocation.RolePermissions) *tidcommon.ServiceError
+}
+
+// groupAdminProvider is the group seam the group administration executors consume. One object satisfies
+// it and roleAdminProvider both, because a group's scopes are the scopes of the roles it holds; the two
+// interfaces keep each executor depending only on the half it uses.
+type groupAdminProvider interface {
+	ValidateGroupMembershipChange(ctx context.Context, groupID, memberID string) (
+		*revocation.ScopeRevocationTarget, *tidcommon.ServiceError)
+	DeleteGroup(ctx context.Context, groupID string) *tidcommon.ServiceError
+	RemoveGroupMember(ctx context.Context, groupID, memberID string) *tidcommon.ServiceError
+}
+
+// resourceAdminProvider is the resource-catalog seam the scope deletion executors consume. It is its
+// own seam rather than part of groupAdminProvider because deleting a scope is a change to the catalog,
+// not to who holds what: it needs no role or group lookup, and it revokes deployment-wide.
+type resourceAdminProvider interface {
+	ValidateDeleteAction(ctx context.Context, resourceServerID, resourceID, actionID string) (
+		*revocation.ScopeRevocationTarget, *tidcommon.ServiceError)
+	DeleteAction(ctx context.Context, resourceServerID, resourceID, actionID string) *tidcommon.ServiceError
+}
+
+// configuredMaxRevocationCriteria returns the configured fan-out ceiling for one administrative
+// revocation. A non-positive value, including when runtime config is not loaded, leaves the
+// preparatory executors on their built-in ceiling.
+func configuredMaxRevocationCriteria() int {
+	if !config.IsServerRuntimeInitialized() {
+		return 0
+	}
+	return config.GetServerRuntime().Config.OAuth.Revocation.Criteria.MaxCriteria
 }

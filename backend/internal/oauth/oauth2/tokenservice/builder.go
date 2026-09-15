@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package tokenservice
@@ -436,7 +436,7 @@ func (tb *tokenBuilder) buildRefreshTokenClaims(ctx *RefreshTokenBuildContext) (
 	}
 
 	claims["access_token_sub"] = ctx.AccessTokenSubject
-	claims["access_token_aud"] = ctx.AccessTokenAudiences
+	claims[constants.ClaimAccessTokenAudience] = ctx.AccessTokenAudiences
 	claims["grant_type"] = ctx.GrantType
 
 	if ctx.ActorSub != "" {

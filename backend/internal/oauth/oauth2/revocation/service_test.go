@@ -344,3 +344,94 @@ func (s *RevocationServiceTestSuite) TestRevokeByCriteria_ZeroTTLUsesTheConfigur
 
 	s.Require().NoError(err)
 }
+
+func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_EmptySliceSkipsTheStore() {
+	store := newRevocationStoreInterfaceMock(s.T())
+
+	revoker := newRevocationService(nil, store, time.Hour, false, nil)
+	err := revoker.RevokeCriteriaBatch(context.Background(), nil)
+
+	s.Require().NoError(err)
+	store.AssertNotCalled(s.T(), "insertCriteria", mock.Anything, mock.Anything)
+}
+
+// Every entry validates a criterion with an empty value as a no-op, the same as RevokeByCriteria. A
+// batch of only such entries has nothing left to write once they are filtered, so it must not reach
+// the store as an empty call either.
+func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_EmptyValuesAreFilteredNotWritten() {
+	store := newRevocationStoreInterfaceMock(s.T())
+
+	revoker := newRevocationService(nil, store, time.Hour, false, nil)
+	err := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{
+		{Criterion: Criterion{Type: CriterionTypeSubject, Value: ""}, Mode: RevocationModeAll,
+			Reason: RevocationReasonUserDeleted},
+	})
+
+	s.Require().NoError(err)
+	store.AssertNotCalled(s.T(), "insertCriteria", mock.Anything, mock.Anything)
+}
+
+// A batch is validated in full before anything is written, for the same reason the flow that builds
+// one refuses a change before writing anything: a batch that failed partway through would leave some
+// principals revoked and others not, with no record of where it stopped. One invalid entry among
+// several valid ones must therefore write none of them.
+func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_OneInvalidEntryWritesNothing() {
+	store := newRevocationStoreInterfaceMock(s.T())
+
+	revoker := newRevocationService(nil, store, time.Hour, false, nil)
+	err := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{
+		{Criterion: Criterion{Type: CriterionTypeEntityScope, Value: "digest-1"},
+			Mode: RevocationModeBeforeAction, Cutoff: time.Now().UTC(),
+			Reason: RevocationReasonRoleAssignmentRemoved},
+		{Criterion: Criterion{Type: CriterionTypeEntityScope, Value: "digest-2"},
+			Mode: RevocationModeBeforeAction, Reason: RevocationReasonRoleAssignmentRemoved},
+	})
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "cutoff is required")
+	store.AssertNotCalled(s.T(), "insertCriteria", mock.Anything, mock.Anything)
+}
+
+// Every valid entry reaches the store together in one call, each carrying its own resolved
+// revokedAt and expiry, the same rules RevokeByCriteria applies to a single entry.
+func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_WritesEveryEntryInOneCall() {
+	store := newRevocationStoreInterfaceMock(s.T())
+	before := time.Now().UTC()
+	boundaryCutoff := before.Add(-time.Minute).Truncate(time.Second)
+	store.On("insertCriteria", mock.Anything, mock.MatchedBy(func(rows []revocationCriterion) bool {
+		if len(rows) != 2 {
+			return false
+		}
+		// A terminal entry's RevokedAt is the time of the call, the same as a lone RevokeByCriteria
+		// call would record — RevocationModeAll carries no cutoff to record instead.
+		return rows[0].Type == CriterionTypeApplicationKey && rows[0].Value == "client-1" &&
+			!rows[0].RevokedAt.Before(before) &&
+			rows[1].Type == CriterionTypeEntityScope && rows[1].Value == "digest-1" &&
+			rows[1].RevokedAt.Equal(boundaryCutoff)
+	})).Return(nil)
+
+	revoker := newRevocationService(nil, store, time.Hour, false, nil)
+	err := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{
+		{Criterion: Criterion{Type: CriterionTypeApplicationKey, Value: "client-1"},
+			Mode: RevocationModeAll, Reason: RevocationReasonApplicationDeleted},
+		{Criterion: Criterion{Type: CriterionTypeEntityScope, Value: "digest-1"},
+			Mode: RevocationModeBeforeAction, Cutoff: boundaryCutoff,
+			Reason: RevocationReasonRoleAssignmentRemoved},
+	})
+
+	s.Require().NoError(err)
+}
+
+func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_PropagatesStoreError() {
+	store := newRevocationStoreInterfaceMock(s.T())
+	store.On("insertCriteria", mock.Anything, mock.Anything).Return(errors.New("db down"))
+
+	revoker := newRevocationService(nil, store, time.Hour, false, nil)
+	err := revoker.RevokeCriteriaBatch(context.Background(), []CriteriaRevocation{
+		{Criterion: Criterion{Type: CriterionTypeSubject, Value: "user-1"}, Mode: RevocationModeAll,
+			Reason: RevocationReasonUserDeleted},
+	})
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "db down")
+}

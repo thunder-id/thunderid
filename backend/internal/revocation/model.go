@@ -25,7 +25,9 @@ const (
 	ReasonApplicationDeleted           Reason = "application_deleted"
 	ReasonApplicationSecretRegenerated Reason = "application_secret_regenerated"
 	ReasonRoleAssignmentRemoved        Reason = "role_assignment_removed"
+	ReasonRolePermissionRemoved        Reason = "role_permission_removed"
 	ReasonRoleDeleted                  Reason = "role_deleted"
+	ReasonScopeDeleted                 Reason = "scope_deleted"
 	ReasonGroupMembershipRemoved       Reason = "group_membership_removed"
 	ReasonOrganizationUnitChanged      Reason = "organization_unit_changed"
 	ReasonConsentRevoked               Reason = "consent_revoked"
@@ -47,6 +49,12 @@ const (
 	CriterionTypeRole             CriterionType = "role.id"
 	CriterionTypeGroup            CriterionType = "group.id"
 	CriterionTypeConsent          CriterionType = "consent.id"
+	// CriterionTypeEntityScope names the per-principal scope dimension. Its value is the digest of
+	// the entity, the audience and the scope, produced by EntityScopeCriterionValue.
+	CriterionTypeEntityScope CriterionType = "entity.scope"
+	// CriterionTypeScope names the deployment-wide scope dimension, used when a scope stops existing
+	// rather than when one principal loses it. Its value comes from ScopeCriterionValue.
+	CriterionTypeScope CriterionType = "scope"
 	// CriterionTypeCredentialVersion names the credential-version dimension. The value is a version
 	// marker, not a credential.
 	CriterionTypeCredentialVersion CriterionType = "credential.version" // #nosec G101 -- dimension name, not a secret
@@ -94,6 +102,9 @@ type CriteriaRevocation struct {
 var boundaryReasons = []Reason{
 	ReasonApplicationSecretRegenerated,
 	ReasonRoleAssignmentRemoved,
+	ReasonRolePermissionRemoved,
+	ReasonRoleDeleted,
+	ReasonScopeDeleted,
 	ReasonGroupMembershipRemoved,
 	ReasonOrganizationUnitChanged,
 	ReasonConsentRevoked,
@@ -108,4 +119,35 @@ func BoundaryReasons() []Reason {
 // IsBoundaryReason reports whether the reason affects only artifacts established before the action.
 func IsBoundaryReason(reason Reason) bool {
 	return slices.Contains(boundaryReasons, reason)
+}
+
+// ScopeRevocationTarget is what an administration flow needs to plan a revocation against an
+// authorization change: which principals lose which scopes, on which resource server.
+type ScopeRevocationTarget struct {
+	// EntityIDs are the principals losing the scopes, expanded from the assignee. A group assignee
+	// expands to its transitive members, because it is their tokens that carry the scopes.
+	//
+	// An empty list means the revocation is deployment-wide rather than per-principal: the scope itself
+	// has stopped existing, so no principal should hold it and there is nobody to enumerate. That is
+	// the only case in which a populated Scopes with no EntityIDs is not "nothing to revoke".
+	EntityIDs []string
+	// Scopes are the lost permissions, each paired with the resource server that defines it. A
+	// permission string is unique only within its server, so the two travel together.
+	Scopes []AudienceScope
+}
+
+// RolePermissions pairs a resource server with the permissions a role grants on it. It is the shape an
+// administration flow carries a role's new permission set in, so a flow executor need not depend on
+// the role service's own types.
+type RolePermissions struct {
+	ResourceServerID string   `json:"resourceServerId"`
+	Permissions      []string `json:"permissions"`
+}
+
+// AudienceScope pairs a permission with the resource server audience that gives it meaning.
+type AudienceScope struct {
+	// Audience is the resource server identifier, the value a token carries in aud.
+	Audience string
+	// Scope is the permission string as it appears in a token's scope claim.
+	Scope string
 }

@@ -20,3 +20,15 @@ value:
     defaultHandle: default-application-deletion-flow
   secretRegenerationFlow:
     defaultHandle: default-secret-regeneration-flow
+  roleAssignmentRemovalFlow:
+    defaultHandle: default-role-assignment-removal-flow
+  roleDeletionFlow:
+    defaultHandle: default-role-deletion-flow
+  rolePermissionRemovalFlow:
+    defaultHandle: default-role-permission-removal-flow
+  groupDeletionFlow:
+    defaultHandle: default-group-deletion-flow
+  groupMembershipRemovalFlow:
+    defaultHandle: default-group-membership-removal-flow
+  scopeDeletionFlow:
+    defaultHandle: default-scope-deletion-flow

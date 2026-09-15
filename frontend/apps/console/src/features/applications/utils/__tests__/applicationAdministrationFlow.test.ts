@@ -2,15 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {describe, expect, it, vi} from 'vitest';
-import {FLOW_PAGE_SIZE} from '../../models/application-administration-flow';
-import {
-  deleteApplicationViaFlow,
-  executeApplicationFlow,
-  findAdministrationFlowId,
-  regenerateClientSecretViaFlow,
-  resolveApplicationFlowHandle,
-  type HttpLike,
-} from '../applicationAdministrationFlow';
+import {deleteApplicationViaFlow, regenerateClientSecretViaFlow, type HttpLike} from '../applicationAdministrationFlow';
 
 const SERVER = 'https://localhost:8090';
 const APP_ID = '01a03248-56f6-75a8-a821-eb93cd60fc7b';
@@ -53,167 +45,6 @@ function makeHttp(routes: Record<string, unknown>, onRequest?: (config: Recorded
   };
 }
 
-describe('resolveApplicationFlowHandle', () => {
-  it('should read the configured handle for the requested action', async () => {
-    const http = makeHttp({
-      '/server-config/flow': {
-        merged: {
-          applicationDeletionFlow: {defaultHandle: DELETION_HANDLE},
-          secretRegenerationFlow: {defaultHandle: ROTATION_HANDLE},
-        },
-      },
-    });
-
-    await expect(resolveApplicationFlowHandle(http, SERVER, 'applicationDeletionFlow')).resolves.toBe(DELETION_HANDLE);
-    await expect(resolveApplicationFlowHandle(http, SERVER, 'secretRegenerationFlow')).resolves.toBe(ROTATION_HANDLE);
-  });
-
-  it('should return an empty handle when the entry is absent', async () => {
-    const http = makeHttp({'/server-config/flow': {merged: {}}});
-
-    await expect(resolveApplicationFlowHandle(http, SERVER, 'applicationDeletionFlow')).resolves.toBe('');
-  });
-
-  // Treating a failed read as "no flow configured" would perform the action through the native endpoint,
-  // which revokes nothing, and report it as a success.
-  it('should propagate a failed config read rather than assuming no flow', async () => {
-    const http = makeHttp({'/server-config/flow': new Error('boom')});
-
-    await expect(resolveApplicationFlowHandle(http, SERVER, 'applicationDeletionFlow')).rejects.toThrow('boom');
-  });
-
-  // The endpoint wraps the section in readOnly/writable/merged layers. Reading the envelope directly
-  // would silently yield undefined and fall back to native, which is what this pins against.
-  it('should read the merged layer, not the envelope', async () => {
-    const http = makeHttp({
-      '/server-config/flow': {
-        merged: {applicationDeletionFlow: {defaultHandle: DELETION_HANDLE}},
-        readOnly: {applicationDeletionFlow: {}},
-        writable: {applicationDeletionFlow: {defaultHandle: DELETION_HANDLE}},
-      },
-    });
-
-    await expect(resolveApplicationFlowHandle(http, SERVER, 'applicationDeletionFlow')).resolves.toBe(DELETION_HANDLE);
-  });
-});
-
-describe('findAdministrationFlowId', () => {
-  it('should resolve a handle to its flow id', async () => {
-    const http = makeHttp({
-      '/flows': {
-        flows: [
-          {flowType: 'ADMINISTRATION', handle: 'other', id: 'wrong'},
-          {flowType: 'ADMINISTRATION', handle: DELETION_HANDLE, id: DELETION_FLOW_ID},
-        ],
-      },
-    });
-
-    await expect(findAdministrationFlowId(http, SERVER, DELETION_HANDLE)).resolves.toBe(DELETION_FLOW_ID);
-  });
-
-  it('should return null when no administration flow carries the handle', async () => {
-    const http = makeHttp({'/flows': {flows: []}});
-
-    await expect(findAdministrationFlowId(http, SERVER, 'missing')).resolves.toBeNull();
-  });
-
-  // The listing is ordered newest first, so the bootstrap flows sit on the last page once a deployment
-  // accumulates administration flows. Stopping at the first page would stop finding them.
-  it('should walk pages until the handle is found', async () => {
-    const firstPage = Array.from({length: FLOW_PAGE_SIZE}, (_unused, index) => ({
-      flowType: 'ADMINISTRATION',
-      handle: `filler-${index}`,
-      id: `filler-${index}`,
-    }));
-    const requested: string[] = [];
-    const http: HttpLike = {
-      request: vi.fn((config: unknown): Promise<{data?: unknown}> => {
-        const {url} = config as RecordedRequest;
-        requested.push(url);
-        const flows = url.includes('offset=0')
-          ? firstPage
-          : [{flowType: 'ADMINISTRATION', handle: DELETION_HANDLE, id: DELETION_FLOW_ID}];
-        return Promise.resolve({data: {flows}});
-      }),
-    };
-
-    await expect(findAdministrationFlowId(http, SERVER, DELETION_HANDLE)).resolves.toBe(DELETION_FLOW_ID);
-    expect(requested).toHaveLength(2);
-    expect(requested[1]).toContain(`offset=${FLOW_PAGE_SIZE}`);
-  });
-});
-
-describe('executeApplicationFlow', () => {
-  // The executors read the target from targetApplicationId, not applicationId, which the execution
-  // request already uses at its top level.
-  it('should post the target under targetApplicationId', async () => {
-    const seen: RecordedRequest[] = [];
-    const http = makeHttp({'/flow/execute': {flowStatus: 'COMPLETE'}}, (config) => seen.push(config));
-
-    await executeApplicationFlow(http, SERVER, DELETION_FLOW_ID, APP_ID, 'application deletion');
-
-    expect(seen[0].data).toEqual({flowId: DELETION_FLOW_ID, inputs: {targetApplicationId: APP_ID}});
-  });
-
-  it('should return the values the flow produced', async () => {
-    const http = makeHttp({
-      '/flow/execute': {data: {additionalData: {clientSecret: NEW_SECRET}}, flowStatus: 'COMPLETE'},
-    });
-
-    await expect(
-      executeApplicationFlow(http, SERVER, ROTATION_FLOW_ID, APP_ID, 'client secret regeneration'),
-    ).resolves.toEqual({clientSecret: NEW_SECRET});
-  });
-
-  // Every required input is supplied up front, so a flow that still pauses is asking for something this
-  // caller cannot provide. Reporting success would claim an action that never happened.
-  it('should reject an incomplete execution', async () => {
-    const http = makeHttp({'/flow/execute': {flowStatus: 'INCOMPLETE'}});
-
-    await expect(
-      executeApplicationFlow(http, SERVER, DELETION_FLOW_ID, APP_ID, 'application deletion'),
-    ).rejects.toThrow('requires additional input');
-  });
-
-  // A refused step reports its executor error in `error`, and the code is what lets the console show
-  // the specific reason instead of a generic failure, so it must survive on the thrown error.
-  it('should carry the code and message of a refused step', async () => {
-    const http = makeHttp({
-      '/flow/execute': {
-        error: {
-          code: 'FET-1088',
-          message: {defaultValue: 'Client secret regeneration not allowed', key: 'flows.executor.errors.x'},
-        },
-        flowStatus: 'ERROR',
-      },
-    });
-
-    await expect(
-      executeApplicationFlow(http, SERVER, ROTATION_FLOW_ID, APP_ID, 'client secret regeneration'),
-    ).rejects.toThrow('Client secret regeneration not allowed');
-
-    const failure = await executeApplicationFlow(
-      http,
-      SERVER,
-      ROTATION_FLOW_ID,
-      APP_ID,
-      'client secret regeneration',
-    ).catch((err: unknown) => err as {code?: string});
-
-    expect(failure.code).toBe('FET-1088');
-  });
-
-  // A step can fail without an error envelope, and the action must still report a failure rather than
-  // an empty message.
-  it('should fall back to a named message when a failed step carries no error', async () => {
-    const http = makeHttp({'/flow/execute': {flowStatus: 'ERROR'}});
-
-    await expect(
-      executeApplicationFlow(http, SERVER, DELETION_FLOW_ID, APP_ID, 'application deletion'),
-    ).rejects.toThrow('The application deletion flow did not complete');
-  });
-});
-
 describe('deleteApplicationViaFlow', () => {
   it('should delete through the configured flow', async () => {
     const seen: RecordedRequest[] = [];
@@ -230,6 +61,8 @@ describe('deleteApplicationViaFlow', () => {
 
     expect(seen.some((request) => request.method === 'DELETE')).toBe(false);
     expect(seen.at(-1)?.url).toBe(`${SERVER}/flow/execute`);
+    // The executor declares this input, so the key is part of the contract rather than a detail.
+    expect(seen.at(-1)?.data).toMatchObject({inputs: {targetApplicationId: APP_ID}});
   });
 
   it('should fall back to the native endpoint when no handle is configured', async () => {

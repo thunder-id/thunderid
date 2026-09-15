@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package resource
@@ -76,12 +76,13 @@ func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, exporter, err := Initialize(mux, suite.mockOUService)
+	service, exporter, adminProvider, err := Initialize(mux, suite.mockOUService)
 
 	// Assert
 	suite.NoError(err)
 	suite.NotNil(service)
 	suite.NotNil(exporter)
+	suite.NotNil(adminProvider)
 	suite.Implements((*ResourceServiceInterface)(nil), service)
 }
 
@@ -375,7 +376,7 @@ func (suite *InitTestSuite) TestInitialize_IntegrationFlow() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, _, err := Initialize(mux, suite.mockOUService)
+	service, _, _, err := Initialize(mux, suite.mockOUService)
 
 	// Assert service is created
 	suite.NoError(err)

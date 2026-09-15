@@ -43,6 +43,9 @@ type revocationStoreInterface interface {
 	// insertCriterion records a criteria-based revocation. The write is idempotent per
 	// (deployment, type, value).
 	insertCriterion(ctx context.Context, criterion revocationCriterion) error
+	// insertCriteria records a set of criteria-based revocations in as few round trips as the deny
+	// list allows. Idempotent per (deployment, type, value), the same as insertCriterion.
+	insertCriteria(ctx context.Context, criteria []revocationCriterion) error
 	// areCriteriaRevoked reports whether a non-expired criteria entry exists for any of the supplied
 	// (type, value) pairs, in a single round trip. An empty slice is not revoked.
 	areCriteriaRevoked(ctx context.Context, criteria []Criterion, establishedAt time.Time) (bool, error)
@@ -121,9 +124,53 @@ func (s *revocationStore) insertCriterion(ctx context.Context, criterion revocat
 	}
 
 	_, err = dbClient.ExecuteContext(ctx, queryInsertRevocationCriterion, id, string(criterion.Type),
-		criterion.Value, string(criterion.Reason), criterion.RevokedAt, criterion.ExpiryTime, s.deploymentID)
+		criterion.Value, string(criterion.Reason), criterion.RevokedAt, criterion.ExpiryTime,
+		s.deploymentID)
 	if err != nil {
 		return fmt.Errorf("error inserting revocation criterion: %w", err)
+	}
+
+	return nil
+}
+
+// insertCriteria records a set of criteria-based revocations in as few round trips as the deny list
+// allows. A repeated (deployment, type, value) keeps only its last occurrence, since one statement
+// cannot affect the same ON CONFLICT target twice, and a missing id is generated as insertCriterion
+// does.
+func (s *revocationStore) insertCriteria(ctx context.Context, criteria []revocationCriterion) error {
+	if len(criteria) == 0 {
+		return nil
+	}
+	dbClient, err := s.dbProvider.GetRuntimePersistentDBClient()
+	if err != nil {
+		return fmt.Errorf("failed to get runtime persistent database client: %w", err)
+	}
+
+	rows := make([]revocationCriterion, 0, len(criteria))
+	indexByKey := make(map[string]int, len(criteria))
+	for _, criterion := range criteria {
+		if criterion.ID == "" {
+			id, err := utils.GenerateUUIDv7()
+			if err != nil {
+				return fmt.Errorf("failed to generate revocation criterion id: %w", err)
+			}
+			criterion.ID = id
+		}
+		key := string(criterion.Type) + "\x00" + criterion.Value
+		if i, ok := indexByKey[key]; ok {
+			rows[i] = criterion
+			continue
+		}
+		indexByKey[key] = len(rows)
+		rows = append(rows, criterion)
+	}
+
+	for start := 0; start < len(rows); start += maxCriteriaRowsPerStatement {
+		end := min(start+maxCriteriaRowsPerStatement, len(rows))
+		query, args := buildInsertRevocationCriteriaQuery(rows[start:end], s.deploymentID)
+		if _, err := dbClient.ExecuteContext(ctx, query, args...); err != nil {
+			return fmt.Errorf("error inserting revocation criteria: %w", err)
+		}
 	}
 
 	return nil
