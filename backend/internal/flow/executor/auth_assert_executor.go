@@ -186,6 +186,9 @@ var reservedAssertionClaims = map[string]bool{
 	oauth2const.ClaimSubjectID:     true,
 	oauth2const.ClaimSubjectType:   true,
 	oauth2const.ClaimCorrelationID: true,
+	// The session id addresses logout. A schema attribute named sid replacing it would point the ID
+	// token, and any logout notification derived from it, at a session the grant does not belong to.
+	oauth2const.ClaimSessionID: true,
 }
 
 // addSubjectIdentityClaims carries the authenticated entity's resource ID and category onto the
@@ -311,6 +314,13 @@ func (a *authAssertExecutor) generateAuthAssertion(
 	// the grant's access and refresh tokens, are stamped with it for family-scoped revocation.
 	if tokenFamilyID, exists := ctx.RuntimeData[common.RuntimeKeyTokenFamilyID]; exists && tokenFamilyID != "" {
 		jwtClaims[oauth2const.ClaimTokenFamilyID] = tokenFamilyID
+	}
+
+	// Carry the SSO session id (published by the Session node) so the authorization code, and in turn
+	// the ID token, are stamped with it as the sid claim. Absent for a flow with no Session node: there
+	// is no session to name, and no termination that could notify the relying party about one.
+	if sessionID, exists := ctx.RuntimeData[common.RuntimeKeySSOSessionID]; exists && sessionID != "" {
+		jwtClaims[oauth2const.ClaimSessionID] = sessionID
 	}
 
 	requiredAttributes := a.getRequiredUserAttributes(ctx)

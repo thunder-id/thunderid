@@ -980,6 +980,10 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 		claims.tokenFamilyID = v
 	}
 
+	if v, ok := payload[oauth2const.ClaimSessionID].(string); ok {
+		claims.sessionID = v
+	}
+
 	if v, ok := payload[oauth2const.ClaimCorrelationID].(string); ok {
 		claims.correlationID = v
 	}
@@ -1092,6 +1096,7 @@ func createAuthorizationCode(
 		CorrelationID:       claims.correlationID,
 		SubjectID:           claims.subjectID,
 		SubjectCategory:     claims.subjectCategory,
+		SessionID:           claims.sessionID,
 	}, nil
 }
 

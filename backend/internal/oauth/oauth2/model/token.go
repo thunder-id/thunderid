@@ -86,4 +86,9 @@ type TokenResponseDTO struct {
 	// authorization code). Reported on the token issuance event so it stitches to the flow's own
 	// events; never returned to the client.
 	CorrelationID string
+	// SessionID is the SSO session id (sid) of the authorization grant these tokens were issued
+	// against, when the grant has one. Carried so the refresh token issued alongside the access token
+	// is stamped with it and a refreshed ID token keeps naming the same session. Access tokens never
+	// carry it, so it rides the response rather than the access token DTO. Never returned to the client.
+	SessionID string
 }

@@ -197,6 +197,7 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	tokenResponse := &model.TokenResponseDTO{
 		AccessToken:   *accessToken,
 		CorrelationID: authCode.CorrelationID,
+		SessionID:     authCode.SessionID,
 	}
 
 	// Generate ID token if 'openid' scope is present
@@ -211,6 +212,7 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 			ClaimsRequest:  authCode.ClaimsRequest,
 			Nonce:          authCode.Nonce,
 			CompletedACR:   authCode.CompletedACR,
+			SessionID:      authCode.SessionID,
 		})
 		if err != nil {
 			logger.Error(ctx, "Failed to generate ID token", log.Error(err))

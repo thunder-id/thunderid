@@ -109,13 +109,15 @@ type SaveCheckpointInput struct {
 	TokenFamilyID string
 }
 
-// SaveCheckpointResult reports the outcome of a save. Handle is the session's handle; Created is
-// true only when this call minted the session (so the caller emits the cookie); Skipped is true
-// when the save was declined because of a subject mismatch.
+// SaveCheckpointResult reports the outcome of a save. Handle is the session's handle; SessionID is
+// the session's id, published to relying parties as the OIDC sid claim; Created is true only when
+// this call minted the session (so the caller emits the cookie); Skipped is true when the save was
+// declined because of a subject mismatch.
 type SaveCheckpointResult struct {
-	Handle  string
-	Created bool
-	Skipped bool
+	Handle    string
+	SessionID string
+	Created   bool
+	Skipped   bool
 	// AuthenticatedAt is when the subject authenticated for this session, as the session records
 	// it. The caller publishes it so auth_time is read from the session on the fresh-login path
 	// too, rather than being re-derived from the clock when the assertion is built.
@@ -226,6 +228,7 @@ func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 	s.logger.Debug(ctx, "Saved SSO checkpoint", log.String("checkpoint", in.Checkpoint))
 	return SaveCheckpointResult{
 		Handle:          target.HandleID,
+		SessionID:       target.SessionID,
 		Created:         created,
 		AuthenticatedAt: target.AuthenticatedAt,
 	}, nil

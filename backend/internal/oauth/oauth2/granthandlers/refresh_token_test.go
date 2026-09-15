@@ -2782,3 +2782,76 @@ func TestSetRefreshSubjectIdentity_CacheIDWithoutCategory(t *testing.T) {
 	assert.Equal(t, refreshCachedSubjectID, tokenCtx.SubjectEntityID)
 	assert.Empty(t, tokenCtx.SubjectCategory)
 }
+
+// A refreshed ID token must name the same SSO session as the original, so the sid restored from the
+// refresh token is passed to the ID token builder and carried on the response for the rotated token.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_IDTokenCarriesSessionID() {
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(&tokenservice.RefreshTokenClaims{
+			ClientID:  testRefreshTokenClientID,
+			Sub:       testRefreshTokenUserID,
+			Audiences: []string{testRefreshTokenAudience},
+			Scopes:    []string{"openid", "read"},
+			GrantType: "authorization_code",
+			Iat:       int64(suite.validClaims["iat"].(float64)),
+			SessionID: testSessionID,
+		}, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token:     "new.access.token",
+		IssuedAt:  time.Now().Unix(),
+		ExpiresIn: 3600,
+		Scopes:    []string{"openid", "read"},
+	}, nil)
+	suite.mockTokenBuilder.On("BuildIDToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.IDTokenBuildContext) bool {
+			return ctx.SessionID == testSessionID
+		})).Return(&model.TokenDTO{Token: "new.id.token"}, nil)
+
+	tokenReq := &model.TokenRequest{
+		GrantType:    string(providers.GrantTypeRefreshToken),
+		ClientID:     testRefreshTokenClientID,
+		RefreshToken: suite.validRefreshToken,
+		Scope:        "openid read",
+	}
+
+	response, err := suite.handler.HandleGrant(context.Background(), tokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), "new.id.token", response.IDToken.Token)
+	assert.Equal(suite.T(), testSessionID, response.SessionID)
+	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_CarriesResponseSessionID() {
+	suite.mockTokenBuilder.On("BuildRefreshToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.RefreshTokenBuildContext) bool {
+			return ctx.SessionID == testSessionID && ctx.TokenFamilyID == "tfid-1"
+		})).Return(&model.TokenDTO{Token: "new.refresh.token"}, nil)
+
+	tokenResponse := &model.TokenResponseDTO{SessionID: testSessionID}
+
+	err := suite.handler.IssueRefreshToken(context.Background(), tokenResponse, suite.oauthApp,
+		testRefreshTokenUserID, []string{testRefreshTokenAudience},
+		"authorization_code", []string{"openid"}, nil, "", "", "tfid-1", 0)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), "new.refresh.token", tokenResponse.RefreshToken.Token)
+	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}
+
+// A nil response is tolerated: the token is built and the call returns cleanly instead of panicking
+// on the session id read.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_NilResponseDoesNotPanic() {
+	suite.mockTokenBuilder.On("BuildRefreshToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.RefreshTokenBuildContext) bool { return ctx.SessionID == "" })).
+		Return(&model.TokenDTO{Token: "new.refresh.token"}, nil)
+
+	err := suite.handler.IssueRefreshToken(context.Background(), nil, suite.oauthApp,
+		testRefreshTokenUserID, []string{testRefreshTokenAudience},
+		"authorization_code", []string{"openid"}, nil, "", "", "tfid-1", 0)
+
+	assert.Nil(suite.T(), err)
+	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}

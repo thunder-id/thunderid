@@ -59,6 +59,12 @@ type AuthorizationCode struct {
 	// resource ID rather than the possibly-mapped token subject.
 	SubjectID       string
 	SubjectCategory string
+	// SessionID is the SSO session id published by the login flow's Session node and carried on the
+	// flow assertion. It is stamped into the ID token as the sid claim so a relying party can name the
+	// session a later logout notification refers to. Empty when the flow established no SSO session;
+	// it is never minted here, because a sid no termination can reference would promise a logout
+	// notification that cannot come.
+	SessionID string
 }
 
 // AuthZPostResponse represents the response body for the authorization POST request.
@@ -88,6 +94,7 @@ type assertionClaims struct {
 	completedACR           string
 	authorizationRequestID string
 	tokenFamilyID          string
+	sessionID              string
 	correlationID          string
 	subjectID              string
 	subjectCategory        string

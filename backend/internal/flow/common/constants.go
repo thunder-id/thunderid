@@ -262,6 +262,12 @@ const (
 	// to the transport layer for the per-flow cookie. Using the generic EngineData channel keeps SSO
 	// concepts out of the reusable engine contract.
 	RuntimeKeySSOSessionHandle = "ssoSessionHandle"
+	// RuntimeKeySSOSessionID carries the SSO session's id across nodes so the auth assertion can stamp
+	// it as the OIDC sid claim. It is the session id, not the handle: the handle is a bearer credential
+	// that would let any relying party resume the session, while the id confers nothing and no API
+	// accepts it. Like RuntimeKeyTokenFamilyID it is excluded from the session snapshot, because a
+	// value replayed from a snapshot could name a session other than the one now in force.
+	RuntimeKeySSOSessionID = "ssoSessionId"
 	// RuntimeKeySSOSessionCleared is the ExecutorResponse EngineData signal the session sign-out node
 	// raises once it has terminated the session, telling the transport layer to clear the per-flow
 	// cookie. Like RuntimeKeySSOSessionHandle it rides the engine-only EngineData channel, keeping SSO
