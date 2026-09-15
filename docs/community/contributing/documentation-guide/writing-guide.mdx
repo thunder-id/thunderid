@@ -425,6 +425,8 @@ Run the following to start {{ProductName}}:
 
 :::warning Never hardcode the product name
 Do **not** write `ThunderID`, or any other hardcoded product name string in documentation. Use `<ProductName />` in prose, `{{ProductName}}` in frontmatter and code blocks.
+
+**Exception for API identifiers.** SDK symbols that begin with the product name (`ThunderIDProvider`, `ThunderIDRoot`, `useThunderID`, `getThunderIDContext`, the `ThunderID` Swift module) are code identifiers, not product names. They keep their spelling if the product is renamed, so write them literally. Never assemble one from the component or the placeholder: `<ProductName />Provider` glues the rendered product name onto a suffix, and a component inside a code span is not substituted at all.
 :::
 
 ## Adding User Guides
