@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -390,7 +391,7 @@ func (s *CacheBackedEntityStoreTestSuite) TestDeleteEntity_StoreError() {
 
 // CreateEntity tests
 
-func (s *CacheBackedEntityStoreTestSuite) TestCreateEntity_CachesEntityByID() {
+func (s *CacheBackedEntityStoreTestSuite) TestCreateEntity_DoesNotCacheCallerEntityByID() {
 	entity := s.makeEntity(testEntityID, "client-1")
 	s.mockStore.On("CreateEntity", mock.Anything, entity, json.RawMessage(nil),
 		json.RawMessage(nil)).Return(nil).Once()
@@ -399,14 +400,35 @@ func (s *CacheBackedEntityStoreTestSuite) TestCreateEntity_CachesEntityByID() {
 	s.Nil(err)
 	s.mockStore.AssertExpectations(s.T())
 
-	cached, ok := s.entityByIDCache.Get(context.Background(), cache.CacheKey{Key: entity.ID})
-	s.True(ok)
-	s.Equal(entity.ID, cached.ID)
+	// The caller's struct carries no store-generated timestamps, so it must not be cached.
+	_, ok := s.entityByIDCache.Get(context.Background(), cache.CacheKey{Key: entity.ID})
+	s.False(ok)
 
 	cachedID, ok := s.entityIDByIdentifierCache.Get(context.Background(),
 		cache.CacheKey{Key: "clientId:client-1"})
 	s.True(ok)
 	s.Equal(entity.ID, *cachedID)
+}
+
+// TestCreateEntity_GetEntityReadsThroughToStore is a regression test: a create must not leave a
+// timestamp-less struct in the by-ID cache for subsequent reads to serve.
+func (s *CacheBackedEntityStoreTestSuite) TestCreateEntity_GetEntityReadsThroughToStore() {
+	entity := s.makeEntity(testEntityID, "client-1")
+	stored := entity
+	stored.CreatedAt = time.Date(2026, 8, 17, 9, 12, 3, 0, time.UTC)
+	stored.UpdatedAt = stored.CreatedAt
+
+	s.mockStore.On("CreateEntity", mock.Anything, entity, json.RawMessage(nil),
+		json.RawMessage(nil)).Return(nil).Once()
+	s.mockStore.On("GetEntity", mock.Anything, entity.ID).Return(stored, nil).Once()
+
+	s.Nil(s.cachedStore.CreateEntity(context.Background(), entity, nil, nil))
+
+	got, err := s.cachedStore.GetEntity(context.Background(), entity.ID)
+	s.NoError(err)
+	s.Equal(stored.CreatedAt, got.CreatedAt)
+	s.Equal(stored.UpdatedAt, got.UpdatedAt)
+	s.mockStore.AssertExpectations(s.T())
 }
 
 func (s *CacheBackedEntityStoreTestSuite) TestCreateEntity_StoreError_DoesNotCache() {
@@ -428,7 +450,7 @@ func (s *CacheBackedEntityStoreTestSuite) TestCreateEntity_StoreError_DoesNotCac
 
 // UpdateEntity tests
 
-func (s *CacheBackedEntityStoreTestSuite) TestUpdateEntity_InvalidatesAndRecachesEntity() {
+func (s *CacheBackedEntityStoreTestSuite) TestUpdateEntity_InvalidatesEntityByIDCache() {
 	entity := s.makeEntity(testEntityID, "client-1")
 	s.entityByIDData[entity.ID] = &entity
 
@@ -438,10 +460,9 @@ func (s *CacheBackedEntityStoreTestSuite) TestUpdateEntity_InvalidatesAndRecache
 	s.Nil(err)
 	s.mockStore.AssertExpectations(s.T())
 
-	// Updated entity must be present in the by-ID cache.
-	cached, ok := s.entityByIDCache.Get(context.Background(), cache.CacheKey{Key: entity.ID})
-	s.True(ok)
-	s.Equal(entity.ID, cached.ID)
+	// The caller's struct carries no store-refreshed timestamps, so the entry must be dropped.
+	_, ok := s.entityByIDCache.Get(context.Background(), cache.CacheKey{Key: entity.ID})
+	s.False(ok)
 }
 
 // IdentifyEntity cache tests

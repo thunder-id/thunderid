@@ -32,6 +32,8 @@ type User struct {
 	Type       string          `json:"type"`
 	Display    string          `json:"display,omitempty"`
 	Attributes json.RawMessage `json:"attributes"`
+	CreatedAt  string          `json:"createdAt"`
+	UpdatedAt  string          `json:"updatedAt"`
 }
 
 // Application represents an application in the system
