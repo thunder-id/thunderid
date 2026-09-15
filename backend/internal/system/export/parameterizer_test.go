@@ -7,7 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -2190,4 +2192,170 @@ func TestInlineEmbed_InsideNestedStructFlattened(t *testing.T) {
 	assert.Contains(t, out, "child:")
 	assert.Contains(t, out, "y: outer")
 	assert.Contains(t, out, "a: alpha")
+}
+
+// Test structs covering time.Time serialization
+type TimestampTestStruct struct {
+	Name      string    `yaml:"name"`
+	CreatedAt time.Time `yaml:"createdAt"`
+	UpdatedAt time.Time `yaml:"updatedAt,omitempty"`
+}
+
+type NestedTimestampStruct struct {
+	Name     string                `yaml:"name"`
+	Metadata TimestampTestStruct   `yaml:"metadata"`
+	History  []TimestampTestStruct `yaml:"history,omitempty"`
+}
+
+func TestTimeField_RenderedAsRFC3339Scalar(t *testing.T) {
+	obj := &TimestampTestStruct{
+		Name:      "TestOU",
+		CreatedAt: time.Date(2026, 9, 8, 9, 16, 26, 0, time.UTC),
+		UpdatedAt: time.Date(2026, 9, 8, 9, 16, 26, 0, time.UTC),
+	}
+
+	parameterizer := newParameterizer(templatingRules{})
+	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj,
+		"OrganizationUnit", "TestOU", &declarativeresource.ResourceRules{})
+
+	require.NoError(t, err)
+	assert.Contains(t, result, "createdAt: 2026-09-08T09:16:26Z",
+		"time.Time should serialize as an RFC3339 scalar, not an empty mapping")
+	assert.Contains(t, result, "updatedAt: 2026-09-08T09:16:26Z")
+	assert.NotContains(t, result, "createdAt:\n",
+		"timestamp key should never be emitted with a blank value")
+}
+
+func TestTimeField_NormalizedToUTC(t *testing.T) {
+	zone := time.FixedZone("IST", 5*3600+1800)
+	obj := &TimestampTestStruct{
+		Name:      "TestOU",
+		CreatedAt: time.Date(2026, 9, 8, 14, 46, 26, 0, zone),
+	}
+
+	parameterizer := newParameterizer(templatingRules{})
+	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj,
+		"OrganizationUnit", "TestOU", &declarativeresource.ResourceRules{})
+
+	require.NoError(t, err)
+	assert.Contains(t, result, "createdAt: 2026-09-08T09:16:26Z",
+		"non-UTC timestamps should be normalized to UTC")
+}
+
+func TestTimeField_ZeroValueOmittedWithOmitempty(t *testing.T) {
+	obj := &TimestampTestStruct{
+		Name:      "TestOU",
+		CreatedAt: time.Date(2026, 9, 8, 9, 16, 26, 0, time.UTC),
+	}
+
+	parameterizer := newParameterizer(templatingRules{})
+	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj,
+		"OrganizationUnit", "TestOU", &declarativeresource.ResourceRules{})
+
+	require.NoError(t, err)
+	assert.Contains(t, result, "createdAt: 2026-09-08T09:16:26Z")
+	assert.NotContains(t, result, "updatedAt",
+		"zero timestamp with omitempty should be dropped entirely")
+}
+
+func TestTimeField_ZeroValueRenderedWithoutOmitempty(t *testing.T) {
+	obj := &TimestampTestStruct{Name: "TestOU"}
+
+	parameterizer := newParameterizer(templatingRules{})
+	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj,
+		"OrganizationUnit", "TestOU", &declarativeresource.ResourceRules{})
+
+	require.NoError(t, err)
+	assert.Contains(t, result, "createdAt: 0001-01-01T00:00:00Z",
+		"without omitempty a zero timestamp should still render a scalar, not a blank value")
+}
+
+func TestTimeField_NestedAndInSlice(t *testing.T) {
+	ts := time.Date(2026, 9, 8, 9, 16, 26, 0, time.UTC)
+	obj := &NestedTimestampStruct{
+		Name:     "Parent",
+		Metadata: TimestampTestStruct{Name: "Child", CreatedAt: ts, UpdatedAt: ts},
+		History:  []TimestampTestStruct{{Name: "Entry", CreatedAt: ts}},
+	}
+
+	parameterizer := newParameterizer(templatingRules{})
+	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj,
+		"OrganizationUnit", "Parent", &declarativeresource.ResourceRules{})
+
+	require.NoError(t, err)
+	assert.Equal(t, 3, strings.Count(result, "2026-09-08T09:16:26Z"),
+		"timestamps should render in nested struct and slice positions")
+}
+
+func TestOrganizationUnitExport_IncludesTimestamps(t *testing.T) {
+	created := time.Date(2026, 9, 8, 9, 16, 26, 0, time.UTC)
+	updated := time.Date(2026, 9, 9, 10, 30, 0, 0, time.UTC)
+	parent := "01900000-0000-7000-8000-000000000001"
+
+	ou := &providers.OrganizationUnit{
+		ID:        "01a08051-11b3-71d2-8952-ffe7f57000af",
+		Handle:    "clever-ants-kneel",
+		Name:      "Clever Ants Kneel",
+		Parent:    &parent,
+		CreatedAt: created,
+		UpdatedAt: updated,
+	}
+
+	parameterizer := newParameterizer(templatingRules{})
+	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), ou,
+		"OrganizationUnit", ou.Name, &declarativeresource.ResourceRules{})
+
+	require.NoError(t, err)
+	assert.Contains(t, result, "createdAt: 2026-09-08T09:16:26Z")
+	assert.Contains(t, result, "updatedAt: 2026-09-09T10:30:00Z")
+
+	// The exported document must decode back into an OU with the same instants so that
+	// import-side preservation can consume it.
+	var decoded providers.OrganizationUnit
+	require.NoError(t, yaml.Unmarshal([]byte(result), &decoded))
+	assert.True(t, created.Equal(decoded.CreatedAt), "createdAt should round-trip")
+	assert.True(t, updated.Equal(decoded.UpdatedAt), "updatedAt should round-trip")
+}
+
+func TestOrganizationUnitExport_ZeroTimestampsOmitted(t *testing.T) {
+	ou := &providers.OrganizationUnit{
+		ID:     "01a08050-c2b5-7f06-8769-f2848a9c82f1",
+		Handle: "root-ou1",
+		Name:   "root-ou1",
+	}
+
+	parameterizer := newParameterizer(templatingRules{})
+	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), ou,
+		"OrganizationUnit", ou.Name, &declarativeresource.ResourceRules{})
+
+	require.NoError(t, err)
+	assert.NotContains(t, result, "createdAt",
+		"declarative OUs without timestamps should omit the keys rather than export a zero date")
+	assert.NotContains(t, result, "updatedAt")
+}
+
+func TestTimeField_PreservesSubSecondPrecision(t *testing.T) {
+	created := time.Date(2026, 9, 8, 9, 16, 26, 123456789, time.UTC)
+	ou := &providers.OrganizationUnit{
+		ID:        "01a08051-11b3-71d2-8952-ffe7f57000af",
+		Handle:    "clever-ants-kneel",
+		Name:      "Clever Ants Kneel",
+		CreatedAt: created,
+		UpdatedAt: created,
+	}
+
+	parameterizer := newParameterizer(templatingRules{})
+	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), ou,
+		"OrganizationUnit", ou.Name, &declarativeresource.ResourceRules{})
+
+	require.NoError(t, err)
+	assert.Contains(t, result, "createdAt: 2026-09-08T09:16:26.123456789Z",
+		"fractional seconds should survive serialization")
+
+	var decoded providers.OrganizationUnit
+	require.NoError(t, yaml.Unmarshal([]byte(result), &decoded))
+	assert.True(t, created.Equal(decoded.CreatedAt),
+		"decoded createdAt should represent the same instant, including nanoseconds")
+	assert.True(t, created.Equal(decoded.UpdatedAt),
+		"decoded updatedAt should represent the same instant, including nanoseconds")
 }
