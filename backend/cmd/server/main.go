@@ -106,6 +106,9 @@ func main() {
 	// Mount the MCP server's routes now that the revocation enforcer exists — DefaultGuard uses it
 	// to authenticate MCP requests with the same verification and revocation logic as the REST gate.
 	mcpGuard, mcpResourceMeta := mcp.DefaultGuard(jwtService, revocationEnforcer)
+	// A mismatched identifier surfaces as clients failing to authenticate, not as a config error.
+	logger.Info(ctx, "MCP resource identifier resolved",
+		log.String("resource", mcpResourceMeta.Resource))
 	mcp.Initialize(mux, mcpServer, mcpGuard, mcpResourceMeta)
 
 	// Register static file handlers for frontend applications.
@@ -237,7 +240,7 @@ func accessLogExcludePaths(configured []string) []string {
 // createHTTPServer creates and configures an HTTP server with common settings.
 func createHTTPServer(ctx context.Context, logger *log.Logger, cfg *config.Config, mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface, revocationEnforcer revocationcache.EnforcerInterface) *http.Server {
-	securityMiddleware := createSecurityMiddleware(ctx, logger, mux, jwtService, revocationEnforcer)
+	securityMiddleware := createSecurityMiddleware(ctx, logger, cfg, mux, jwtService, revocationEnforcer)
 
 	// Build the middleware chain with proper execution order.
 	// Request flow: CorrelationID (outermost) -> DeploymentID -> SecurityHeaders -> AccessLog ->
@@ -286,9 +289,21 @@ func createTLSListener(ctx context.Context, logger *log.Logger, server *http.Ser
 	return ln
 }
 
-func createSecurityMiddleware(ctx context.Context, logger *log.Logger, mux *http.ServeMux,
-	jwtService jwt.JWTServiceInterface, revocationEnforcer revocationcache.EnforcerInterface) http.Handler {
-	middlewareFunc, err := security.Initialize(jwtService, revocationEnforcer)
+func createSecurityMiddleware(ctx context.Context, logger *log.Logger, cfg *config.Config,
+	mux *http.ServeMux, jwtService jwt.JWTServiceInterface,
+	revocationEnforcer revocationcache.EnforcerInterface) http.Handler {
+	// An unenforced gate must be visible in the logs, not inferred from a missing config key.
+	// Config validation already rejected an explicitly empty value, so a non-nil one enforces.
+	expectedAud := ""
+	if restAudience := cfg.Server.SecurityConfig.REST.Audience; restAudience != nil {
+		expectedAud = *restAudience
+		logger.Info(ctx, "REST audience validation is enabled", log.String("audience", expectedAud))
+	} else {
+		logger.Warn(ctx, "REST audience validation is disabled; "+
+			"set server.security.rest.audience to bind tokens to a resource server")
+	}
+
+	middlewareFunc, err := security.Initialize(jwtService, revocationEnforcer, expectedAud)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize security middleware", log.Error(err))
 	}

@@ -1110,6 +1110,73 @@ notification:
 	}
 }
 
+// TestLoadConfig_GateAudiences round-trips server.security.rest.audience and
+// server.security.mcp.audience, and locks in that a block carrying no audience leaves it unset —
+// the shape deployment.yaml ships, where the keys are present only as commented-out examples.
+func (suite *ConfigTestSuite) TestLoadConfig_GateAudiences() {
+	load := func(content string) *Config {
+		tempDir := suite.T().TempDir()
+		userFile := suite.createTempFile(tempDir, "rest-audience*.yaml", content)
+		cfg, err := LoadConfig(userFile, "", tempDir)
+		suite.Require().NoError(err)
+		suite.Require().NotNil(cfg)
+		return cfg
+	}
+
+	suite.Run("configured audience reaches the loaded config", func() {
+		cfg := load(`
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+server:
+  hostname: "localhost"
+  port: 8090
+  security:
+    rest:
+      audience: "https://localhost:8090/mcp"
+`)
+		suite.Require().NotNil(cfg.Server.SecurityConfig.REST.Audience)
+		assert.Equal(suite.T(), "https://localhost:8090/mcp", *cfg.Server.SecurityConfig.REST.Audience)
+	})
+
+	suite.Run("mcp audience reaches the loaded config", func() {
+		cfg := load(`
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+server:
+  hostname: "localhost"
+  port: 8090
+  security:
+    mcp:
+      audience: "https://id.example.com/mcp"
+`)
+		suite.Require().NotNil(cfg.Server.SecurityConfig.MCP.Audience)
+		assert.Equal(suite.T(), "https://id.example.com/mcp", *cfg.Server.SecurityConfig.MCP.Audience)
+	})
+
+	suite.Run("rest block with no audience leaves it unset", func() {
+		cfg := load(`
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+server:
+  hostname: "localhost"
+  port: 8090
+  security:
+    rest:
+      # audience: "https://localhost:8090/mcp"
+`)
+		assert.Nil(suite.T(), cfg.Server.SecurityConfig.REST.Audience)
+	})
+}
+
 func (suite *ConfigTestSuite) TestLoadConfig_InvalidYAML() {
 	// Test YAML decode error - using a simple syntax error
 	invalidYAMLContent := "invalid: yaml: content"

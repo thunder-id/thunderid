@@ -198,6 +198,21 @@ spec:
                 # Must match the System resource_server identifier in declarativeResources.
                 # Empty (default) derives it as "<serverPublicUrl>/mcp"; set to override.
                 resourceIdentifier: { type: string, default: "" }
+            security:
+              type: object
+              default: {}
+              properties:
+                # MCP resource identifier (RFC 8707): the audience MCP tokens must carry and the
+                # RFC 9728 "resource" the server advertises. Must match the System resource_server
+                # identifier in declarativeResources. Empty (default) derives it as
+                # "<serverPublicUrl>/mcp"; set to override. The check is mandatory per the MCP
+                # specification and cannot be disabled.
+                #
+                # The REST API gate has a matching server.security.rest.audience, but it is not
+                # exposed here: an empty value must omit the key entirely (an explicitly empty one
+                # is rejected at startup), and this template can only interpolate values, not drop
+                # lines. Set it through configOverrides.deploymentYaml.
+                mcpAudience: { type: string, default: "" }
             jwt:
               type: object
               default: {}
@@ -384,6 +399,14 @@ spec:
               public_url: "${environmentConfigs.serverPublicUrl}"
               port: ${parameters.runtime.port}
               http_only: ${!parameters.runtime.tls.enabled}
+              security:
+                mcp:
+                  # Kept equal to the System resource_server identifier seeded below, so the guard
+                  # and the advertised RFC 9728 "resource" both match the tokens clients receive.
+                  # Falls back through the Console's resource indicator before the derived default:
+                  # Console-issued tokens carry that identifier, so deriving independently here
+                  # would make the MCP guard reject them whenever it is customised.
+                  audience: "${parameters.runtime.security.mcpAudience != '' ? parameters.runtime.security.mcpAudience : (parameters.runtime.console.resourceIdentifier != '' ? parameters.runtime.console.resourceIdentifier : environmentConfigs.serverPublicUrl + '/mcp')}"
 
             tls:
               min_version: "${parameters.runtime.tls.minVersion}"
@@ -498,6 +521,14 @@ spec:
               public_url: "${environmentConfigs.serverPublicUrl}"
               port: ${parameters.runtime.port}
               http_only: ${!parameters.runtime.tls.enabled}
+              security:
+                mcp:
+                  # Kept equal to the System resource_server identifier seeded below, so the guard
+                  # and the advertised RFC 9728 "resource" both match the tokens clients receive.
+                  # Falls back through the Console's resource indicator before the derived default:
+                  # Console-issued tokens carry that identifier, so deriving independently here
+                  # would make the MCP guard reject them whenever it is customised.
+                  audience: "${parameters.runtime.security.mcpAudience != '' ? parameters.runtime.security.mcpAudience : (parameters.runtime.console.resourceIdentifier != '' ? parameters.runtime.console.resourceIdentifier : environmentConfigs.serverPublicUrl + '/mcp')}"
 
             tls:
               min_version: "${parameters.runtime.tls.minVersion}"

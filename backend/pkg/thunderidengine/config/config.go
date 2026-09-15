@@ -50,6 +50,22 @@ type SecurityConfig struct {
 	// When set, callers must present this value in the Direct-Auth-Secret header; when empty, those
 	// endpoints are blocked (secure by default).
 	DirectAuthSecret string `yaml:"direct_auth_secret" json:"direct_auth_secret"`
+
+	REST RESTConfig `yaml:"rest" json:"rest"`
+	MCP  MCPConfig  `yaml:"mcp"  json:"mcp"`
+}
+
+// RESTConfig configures the REST API gate. Audience is the RFC 8707 resource indicator a
+// self-issued token must carry; nil leaves it unchecked, since REST authorizes by scope.
+type RESTConfig struct {
+	Audience *string `yaml:"audience" json:"audience"`
+}
+
+// MCPConfig configures the MCP server. Audience is the MCP resource identifier: both the required
+// token audience and the RFC 9728 published "resource". The MCP spec makes the check mandatory, so
+// nil falls back to the derived identifier rather than disabling it.
+type MCPConfig struct {
+	Audience *string `yaml:"audience" json:"audience"`
 }
 
 // TokenRevocationConfig configures the Resource Server's token-revocation enforcement: an in-memory

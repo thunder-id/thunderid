@@ -269,7 +269,8 @@ The `ResourceType` exposes further parameters for production hardening:
 
 - `runtime.tls.enabled` serves HTTPS from the container and configures the gateway to originate TLS to the backend. It requires the serving pair (`server.cert` / `server.key`) as additional properties at the store path.
 - `runtime.certs.storeKey` reads the certificate and key files from a separate store entry instead of `secretStore.key`, for independent rotation or access control.
-- `configOverrides` replaces the generated `deployment.yaml`, Gate `config.js`, or Console `config.js` files when the built-in templates do not cover a setting.
+- `runtime.security.mcpAudience` sets the MCP resource identifier: the audience MCP tokens must carry and the `resource` published in the protected resource metadata. Leave it empty (the default) and it follows `runtime.console.resourceIdentifier`, falling back to `<serverPublicUrl>/mcp`. Because Console-issued tokens carry the Console resource indicator, these must resolve to the same value as the System `resource_server` identifier in `declarativeResources`, or the MCP endpoint rejects tokens the Console obtained successfully. The check is mandatory and cannot be disabled.
+- `configOverrides` replaces the generated `deployment.yaml`, Gate `config.js`, or Console `config.js` files when the built-in templates do not cover a setting. The REST API gate's audience (`server.security.rest.audience`) is set this way: it is opt-in and must be omitted entirely when unused, which the built-in template cannot express.
 
 For the full parameter reference, see the documentation at `install/openchoreo/thunderid-oc-resourcetype/README.md`.
 
