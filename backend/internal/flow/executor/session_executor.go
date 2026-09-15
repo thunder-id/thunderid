@@ -117,6 +117,12 @@ func (e *sessionExecutor) saveCheckpoint(ctx *providers.NodeContext, execResp *p
 		execResp.RuntimeData[common.RuntimeKeyTokenFamilyID] = tokenFamilyID
 	}
 
+	// Carry a session id resolved earlier in this execution so a re-executed join, which returns at the
+	// idempotency guard below without calling the service, still publishes it for the assertion node.
+	if sessionID := ctx.RuntimeData[common.RuntimeKeySSOSessionID]; sessionID != "" {
+		execResp.RuntimeData[common.RuntimeKeySSOSessionID] = sessionID
+	}
+
 	// Idempotency: if this checkpoint was already saved in this flow execution, re-emit its handle
 	// instead of saving again.
 	savedKey := common.SSOCheckpointKey(common.RuntimeKeySSOSessionSaved, checkpoint)
@@ -173,6 +179,11 @@ func (e *sessionExecutor) saveCheckpoint(ctx *providers.NodeContext, execResp *p
 	// Publish the session handle as the shared hint so later joins in this execution attach to the
 	// same session directly.
 	execResp.RuntimeData[common.RuntimeKeySSOSessionHandle] = result.Handle
+	// Publish the session id so the auth-assertion node stamps it as the sid claim. Unlike the handle
+	// this never leaves the server as a credential; it only names the session for logout.
+	if result.SessionID != "" {
+		execResp.RuntimeData[common.RuntimeKeySSOSessionID] = result.SessionID
+	}
 	// Emit the cookie only when this call minted the session, and only now that its first checkpoint
 	// is durably saved — so a context-write failure never leaves a cookie for an empty session.
 	if result.Created {
@@ -268,6 +279,11 @@ func (e *sessionExecutor) loadCheckpoint(ctx *providers.NodeContext, execResp *p
 	if tokenFamilyID != "" {
 		execResp.RuntimeData[common.RuntimeKeyTokenFamilyID] = tokenFamilyID
 	}
+	// Same for the session id: it comes from the session now in force, not from the replayed snapshot,
+	// so the sid claim always names the session this grant actually belongs to.
+	if ssoSession.SessionID != "" {
+		execResp.RuntimeData[common.RuntimeKeySSOSessionID] = ssoSession.SessionID
+	}
 
 	logger.Debug(ctx.Context, "Loaded SSO checkpoint",
 		log.String("flowId", session.SSOInputsFrom(ctx.Context).FlowID),
@@ -291,6 +307,10 @@ var requestScopedSnapshotDenyList = map[string]struct{}{
 	common.RuntimeKeyAuthorizationRequestID:      {},
 	// The token family id is minted fresh per flow execution, so it must not ride a reused snapshot.
 	common.RuntimeKeyTokenFamilyID: {},
+	// The SSO session id is resolved fresh per flow execution from the session actually in force. A
+	// replayed copy could name a different session, so the sid claim would point at a session the
+	// grant does not belong to.
+	common.RuntimeKeySSOSessionID: {},
 	// force_reauth and max_age state what the establishing app's authorization request demanded of
 	// this authentication. Replaying either onto a later join would impose that demand on an app that
 	// never asked: a stale force_reauth re-prompts every reuse, and a stale max_age fails the

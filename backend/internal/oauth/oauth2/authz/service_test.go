@@ -2622,3 +2622,38 @@ func (suite *AuthorizeServiceTestSuite) TestHandleFailedCallback_UnsetToggleSupp
 	assert.Equal(suite.T(), oauth2const.ErrorServerError, authErr.Code)
 	assert.False(suite.T(), authErr.SendErrorToClient)
 }
+
+func (suite *AuthorizeServiceTestSuite) TestCreateAuthorizationCode_PreservesIncomingSessionID() {
+	// The Session node published the SSO session id and the assertion carried it; the code must keep
+	// that exact value so the ID token's sid names the session the grant belongs to.
+	authCtx := &authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{
+			ClientID:    "test-client",
+			RedirectURI: "https://client.example.com/callback",
+		},
+	}
+	claims := &assertionClaims{userID: "user-1", sessionID: "sess-from-sso"}
+
+	code, err := createAuthorizationCode(authorizeServiceCfgFromRuntime(), authCtx, claims, time.Now())
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "sess-from-sso", code.SessionID)
+}
+
+func (suite *AuthorizeServiceTestSuite) TestCreateAuthorizationCode_NoSessionIDWithoutSession() {
+	// Unlike the token family id, the session id is never minted here: a flow without a Session node
+	// has no session a logout could ever reference, so the code carries none.
+	authCtx := &authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{
+			ClientID:    "test-client",
+			RedirectURI: "https://client.example.com/callback",
+		},
+	}
+	claims := &assertionClaims{userID: "user-1"}
+
+	code, err := createAuthorizationCode(authorizeServiceCfgFromRuntime(), authCtx, claims, time.Now())
+
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), code.SessionID)
+	assert.NotEmpty(suite.T(), code.TokenFamilyID, "the tfid fallback is unaffected")
+}

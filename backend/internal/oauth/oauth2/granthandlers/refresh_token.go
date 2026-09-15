@@ -281,6 +281,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	// Prepare the token response
 	tokenResponse := &model.TokenResponseDTO{
 		AccessToken: *accessToken,
+		SessionID:   refreshTokenClaims.SessionID,
 	}
 
 	// Generate ID token if 'openid' scope is present
@@ -292,6 +293,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 			UserAttributes: attrs,
 			OAuthApp:       oauthApp,
 			ClaimsRequest:  refreshTokenClaims.ClaimsRequest,
+			SessionID:      refreshTokenClaims.SessionID,
 		})
 		if idErr != nil {
 			logger.Error(ctx, "Failed to generate ID token", log.Error(idErr))
@@ -390,6 +392,9 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 	tokenFamilyID string,
 	expiresAt int64,
 ) *model.ErrorResponse {
+	if tokenResponse == nil {
+		tokenResponse = &model.TokenResponseDTO{}
+	}
 	tokenCtx := &tokenservice.RefreshTokenBuildContext{
 		ExpiresAt:            expiresAt,
 		ClientID:             oauthApp.ClientID,
@@ -403,6 +408,10 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 		ClaimsLocales:        claimsLocales,
 		DPoPJkt:              dpopJktForRefresh(ctx, oauthApp),
 		TokenFamilyID:        tokenFamilyID,
+		// The session id rides the grant's response rather than the parameter list: it is grant-level
+		// metadata the access token never carries, and the response is what every issuer of a refresh
+		// token (first issuance and rotation) already hands in.
+		SessionID: tokenResponse.SessionID,
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		tokenCtx.ActorSub = oauthApp.ID
@@ -417,9 +426,6 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 		}
 	}
 
-	if tokenResponse == nil {
-		tokenResponse = &model.TokenResponseDTO{}
-	}
 	tokenResponse.RefreshToken = *refreshToken
 	return nil
 }
