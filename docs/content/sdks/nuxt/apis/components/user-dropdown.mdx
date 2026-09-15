@@ -1,12 +1,12 @@
 ---
-title: <ThunderIDUserDropdown />
+title: <UserDropdown />
 docType: reference
 description: User dropdown menu with profile access and sign-out action for authenticated users in Nuxt apps.
 ---
 
-# `<ThunderIDUserDropdown />`
+# `<UserDropdown />`
 
-The `ThunderIDUserDropdown` component renders a button showing the user's avatar or name. When clicked, it opens a dropdown menu with links to the user profile and a sign-out action. It is auto-registered by the Nuxt module.
+The `UserDropdown` component renders a button showing the user's avatar or name. When clicked, it opens a dropdown menu with links to the user profile and a sign-out action. It is auto-registered by the Nuxt module.
 
 ## Usage
 
@@ -15,12 +15,12 @@ The `ThunderIDUserDropdown` component renders a button showing the user's avatar
 ```vue title="components/NavBar.vue" showLineNumbers
 <template>
   <nav>
-    <ThunderIDSignedIn>
-      <ThunderIDUserDropdown />
-    </ThunderIDSignedIn>
-    <ThunderIDSignedOut>
-      <ThunderIDSignInButton />
-    </ThunderIDSignedOut>
+    <SignedIn>
+      <UserDropdown />
+    </SignedIn>
+    <SignedOut>
+      <SignInButton />
+    </SignedOut>
   </nav>
 </template>
 ```

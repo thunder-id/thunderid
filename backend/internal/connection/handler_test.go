@@ -52,9 +52,9 @@ func (s *HandlerTestSuite) mockListFixtures() {
 	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
 		Return([]ncommon.NotificationSenderDTO{
 			{ID: "s1", Name: "Twilio SMS", Type: ncommon.NotificationSenderTypeMessage,
-				Provider: ncommon.MessageProviderTypeTwilio},
+				Provider: ncommon.NotificationProviderTypeTwilio},
 			{ID: "s2", Name: "Gateway", Type: ncommon.NotificationSenderTypeMessage,
-				Provider: ncommon.MessageProviderTypeCustom},
+				Provider: ncommon.NotificationProviderTypeCustom},
 		}, (*tidcommon.ServiceError)(nil))
 }
 
@@ -204,9 +204,9 @@ func (s *HandlerTestSuite) TestListConnectionsSMSProviderCategory() {
 	s.mockNotif.On("ListSendersByType", mock.Anything, ncommon.NotificationSenderTypeMessage).
 		Return([]ncommon.NotificationSenderDTO{
 			{ID: "s1", Name: "Twilio SMS", Type: ncommon.NotificationSenderTypeMessage,
-				Provider: ncommon.MessageProviderTypeTwilio},
+				Provider: ncommon.NotificationProviderTypeTwilio},
 			{ID: "s2", Name: "Gateway", Type: ncommon.NotificationSenderTypeMessage,
-				Provider: ncommon.MessageProviderTypeCustom},
+				Provider: ncommon.NotificationProviderTypeCustom},
 		}, (*tidcommon.ServiceError)(nil))
 
 	rr, resp := s.listConnections("/connections?category=sms-provider")
@@ -377,7 +377,7 @@ func (s *HandlerTestSuite) TestUsagesSuccess() {
 	s.Equal("restrict", resp.Usages[0].BehaviorOnDelete)
 }
 
-const stubProvider = ncommon.MessageProviderTypeTwilio
+const stubProvider = ncommon.NotificationProviderTypeTwilio
 
 type smsStubReq struct {
 	Name string `json:"name"`
@@ -562,7 +562,7 @@ func (s *SMSHandlerTestSuite) TestListInstancesSuccess() {
 				ID: "tw-1", Name: "A", Description: "d",
 				Type: ncommon.NotificationSenderTypeMessage, Provider: stubProvider,
 			},
-			{ID: "vo-1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeVonage},
+			{ID: "vo-1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeVonage},
 		}, (*tidcommon.ServiceError)(nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/connections/twilio", nil)

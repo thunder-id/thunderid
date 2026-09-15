@@ -1,12 +1,12 @@
 ---
-title: <ThunderIDSignedIn />
+title: <SignedIn />
 docType: reference
 description: Conditionally render template content only when a user is currently signed in to the application.
 ---
 
-# `<ThunderIDSignedIn />`
+# `<SignedIn />`
 
-The `ThunderIDSignedIn` component renders its default slot only when the user is authenticated. It is the Vue equivalent of the React `<SignedIn />` component and is auto-registered by the Nuxt module.
+The `SignedIn` component renders its default slot only when the user is authenticated. It is the Vue equivalent of the React `<SignedIn />` component and is auto-registered by the Nuxt module.
 
 ## Usage
 
@@ -14,9 +14,9 @@ The `ThunderIDSignedIn` component renders its default slot only when the user is
 
 ```vue title="pages/index.vue" showLineNumbers
 <template>
-  <ThunderIDSignedIn>
+  <SignedIn>
     <p>Welcome! You are signed in.</p>
-  </ThunderIDSignedIn>
+  </SignedIn>
 </template>
 ```
 
@@ -30,12 +30,12 @@ Use the `fallback` slot to show alternative content when the user is not authent
 
 ```vue title="pages/index.vue" showLineNumbers
 <template>
-  <ThunderIDSignedIn>
+  <SignedIn>
     <p>Welcome! You are signed in.</p>
     <template #fallback>
       <p>Please sign in to continue.</p>
     </template>
-  </ThunderIDSignedIn>
+  </SignedIn>
 </template>
 ```
 

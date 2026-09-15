@@ -894,7 +894,12 @@ func (s *AgentTokenExchangeTestSuite) SetupSuite() {
 
 	s.agentID, err = s.createTokenExchangeAgent()
 	s.Require().NoError(err)
+}
 
+// SetupTest mints a fresh assertion before every test. An assertion is redeemable exactly once, so a
+// suite-scoped one would be spent by the first test that exchanges it and every later exchange would
+// be refused as a replay.
+func (s *AgentTokenExchangeTestSuite) SetupTest() {
 	s.assertionToken = s.getUserAssertion()
 }
 

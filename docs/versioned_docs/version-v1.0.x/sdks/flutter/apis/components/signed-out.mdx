@@ -1,12 +1,12 @@
 ---
-title: ThunderIDSignedOut
+title: SignedOut
 docType: reference
 description: Conditional guard widget that renders content only when the user is not signed in
 ---
 
-# `ThunderIDSignedOut`
+# `SignedOut`
 
-`ThunderIDSignedOut` is a guard widget that renders its `child` only when the user is **not** authenticated. When the user is signed in it renders `fallback` instead (or nothing, if no fallback is provided).
+`SignedOut` is a guard widget that renders its `child` only when the user is **not** authenticated. When the user is signed in it renders `fallback` instead (or nothing, if no fallback is provided).
 
 This widget re-renders automatically whenever the auth state in the parent `ThunderIDProvider` changes.
 
@@ -15,13 +15,13 @@ This widget re-renders automatically whenever the auth state in the parent `Thun
 ```dart
 import 'package:thunderid_flutter/thunderid_flutter.dart';
 
-ThunderIDSignedOut(
+SignedOut(
   child: const AuthScreen(),
   fallback: const HomeScreen(),
 )
 ```
 
-Using `ThunderIDSignedOut` and `ThunderIDSignedIn` together in a root router:
+Using `SignedOut` and `SignedIn` together in a root router:
 
 ```dart
 Widget build(BuildContext context) {
@@ -36,8 +36,8 @@ Widget build(BuildContext context) {
   return Scaffold(
     body: Stack(
       children: [
-        ThunderIDSignedIn(child: const HomeScreen()),
-        ThunderIDSignedOut(child: const AuthScreen()),
+        SignedIn(child: const HomeScreen()),
+        SignedOut(child: const AuthScreen()),
       ],
     ),
   );

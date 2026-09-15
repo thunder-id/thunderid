@@ -10,6 +10,7 @@ const (
 	AssigneeTypeUser  AssigneeType = "user"
 	AssigneeTypeGroup AssigneeType = "group"
 	AssigneeTypeApp   AssigneeType = "app"
+	AssigneeTypeAgent AssigneeType = "agent"
 )
 
 // Assignment represents a role assignment
@@ -94,4 +95,71 @@ type ErrorResponse struct {
 type ResourcePermissions struct {
 	ResourceServerID string   `json:"resourceServerId"`
 	Permissions      []string `json:"permissions"`
+}
+
+// OURole represents a role as returned by the organization unit role listing endpoints
+type OURole struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	IsReadOnly  bool   `json:"isReadOnly"`
+}
+
+// OURoleListResponse represents the paginated role listing of an organization unit
+type OURoleListResponse struct {
+	TotalResults int      `json:"totalResults"`
+	StartIndex   int      `json:"startIndex"`
+	Count        int      `json:"count"`
+	Links        []Link   `json:"links,omitempty"`
+	Roles        []OURole `json:"roles"`
+}
+
+// ExportRequest represents the request to export resources
+type ExportRequest struct {
+	Roles []string `json:"roles,omitempty"`
+}
+
+// ExportResponse represents the export response carrying the rendered YAML documents
+type ExportResponse struct {
+	Resources string `json:"resources"`
+}
+
+// Member represents a member of a group
+type Member struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+}
+
+// EvaluationSubject identifies the principal an access evaluation is made for
+type EvaluationSubject struct {
+	Type string `json:"type,omitempty"`
+	ID   string `json:"id,omitempty"`
+}
+
+// EvaluationResource identifies the resource server and instance being accessed
+type EvaluationResource struct {
+	Type string `json:"type,omitempty"`
+	ID   string `json:"id,omitempty"`
+}
+
+// EvaluationAction names the permission being evaluated
+type EvaluationAction struct {
+	Name string `json:"name,omitempty"`
+}
+
+// EvaluationRequest represents an access evaluation request
+type EvaluationRequest struct {
+	Subject  EvaluationSubject  `json:"subject"`
+	Resource EvaluationResource `json:"resource"`
+	Action   EvaluationAction   `json:"action"`
+}
+
+// EvaluationResponse represents the decision returned for an access evaluation
+type EvaluationResponse struct {
+	Decision bool `json:"decision"`
+}
+
+// MembersRequest represents add/remove group members request
+type MembersRequest struct {
+	Members []Member `json:"members"`
 }

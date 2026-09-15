@@ -374,6 +374,170 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_RecoveryDisa
 // Flow: prompt_username → identify_user → generate_recovery_token → send_recovery_email →
 //
 //	email_sent_status → verify_recovery_token → prompt_new_password → set_credential → recovery_complete → end
+//
+// TestCredentialSetter_EmptyPassword submits an empty password at prompt_new_password. The input is
+// declared required, so the engine is expected to hold the flow rather than run the executor with an
+// empty credential.
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestCredentialSetter_EmptyPassword() {
+	ts.mockSMTP.ClearEmails()
+
+	flowStep := ts.driveRecoveryToPasswordPrompt()
+
+	finalStep, err := common.CompleteFlow(
+		flowStep.ExecutionID,
+		map[string]string{"password": ""},
+		"action_submit_password",
+		flowStep.ChallengeToken,
+	)
+	if err != nil {
+		// A rejected submission is an acceptable outcome; the credential must not have been set.
+		ts.assertPasswordUnchanged()
+		return
+	}
+
+	ts.Require().NotEqual("COMPLETE", finalStep.FlowStatus,
+		"An empty password must not complete the recovery flow")
+	ts.assertPasswordUnchanged()
+}
+
+// TestCredentialSetter_NoUserInContext runs CredentialSetter in a recovery flow that never
+// identifies a user, so the executor has no user ID to set credentials for.
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestCredentialSetter_NoUserInContext() {
+	// The flow is structurally valid, since CredentialSetter declares no required properties and the
+	// prompt supplies its required password input. Only at runtime is there no user to act on, so
+	// this exercises the executor's guard rather than flow validation.
+	flowID, err := testutils.CreateFlow(buildCredentialSetterWithoutUserFlow())
+	ts.Require().NoError(err, "Failed to create the recovery flow without an identify step")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, flowID)
+
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID:                  ts.testOUID,
+		Name:                  "Recovery Without Identify Test App",
+		Description:           "Application for testing CredentialSetter without an identified user",
+		IsRecoveryFlowEnabled: true,
+		ClientID:              "recovery_no_identify_client",
+		ClientSecret:          "recovery_no_identify_secret",
+		RedirectURIs:          []string{"http://localhost:3000/callback"},
+		AllowedUserTypes:      []string{basicRecoveryUserSchema.Name},
+		AuthFlowID:            ts.authFlowID,
+		RecoveryFlowID:        flowID,
+	})
+	ts.Require().NoError(err, "Failed to create application for the no-identify recovery flow")
+	defer func() {
+		if err := testutils.DeleteApplication(appID); err != nil {
+			ts.T().Logf("failed to delete no-identify test app: %v", err)
+		}
+	}()
+
+	flowStep, err := common.InitiateRecoveryFlow(appID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate the no-identify recovery flow")
+	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "password"),
+		"Expected the flow to prompt for a password")
+
+	finalStep, err := common.CompleteFlow(
+		flowStep.ExecutionID,
+		map[string]string{"password": "ShouldNotApply123!"},
+		"action_submit_password",
+		flowStep.ChallengeToken,
+	)
+	if err == nil {
+		ts.Require().NotEqual("COMPLETE", finalStep.FlowStatus,
+			"CredentialSetter must not complete without an identified user")
+	}
+
+	ts.assertPasswordUnchanged()
+}
+
+// driveRecoveryToPasswordPrompt runs the recovery flow up to prompt_new_password and returns that
+// step, so tests that only care about the credential setting stage can skip the setup.
+func (ts *EmailLinkPasswordRecoveryTestSuite) driveRecoveryToPasswordPrompt() *common.FlowStep {
+	flowStep, err := common.InitiateRecoveryFlow(ts.testAppID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate recovery flow")
+
+	flowStep, err = common.CompleteFlow(
+		flowStep.ExecutionID,
+		map[string]string{"username": ts.testUsername},
+		"action_submit_username",
+		flowStep.ChallengeToken,
+	)
+	ts.Require().NoError(err, "Failed to submit username")
+
+	// GetLastEmail removes what it returns, so poll for the first arrival rather than sleeping a
+	// fixed amount and hoping the send has landed.
+	var email *testutils.EmailMessage
+	for i := 0; i < 20 && email == nil; i++ {
+		if received := ts.mockSMTP.GetLastEmail(); received != nil {
+			email = received
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	ts.Require().NotNil(email, "Expected recovery email to be captured by mock SMTP server")
+	recoveryToken := testutils.ExtractQueryParam(email.ExtractRecoveryLink(), "inviteToken")
+	ts.Require().NotEmpty(recoveryToken, "Expected inviteToken query param in recovery link")
+
+	flowStep, err = common.CompleteFlow(
+		flowStep.ExecutionID,
+		map[string]string{"inviteToken": recoveryToken},
+		"",
+		flowStep.ChallengeToken,
+	)
+	ts.Require().NoError(err, "Failed to submit recovery token")
+	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "password"),
+		"Expected password input at prompt_new_password")
+
+	return flowStep
+}
+
+// assertPasswordUnchanged confirms the user's current password still authenticates, so a failed
+// credential set is verified by its absence of effect rather than by the flow status alone.
+func (ts *EmailLinkPasswordRecoveryTestSuite) assertPasswordUnchanged() {
+	ok, err := testutils.AuthenticateWithCredential(
+		"username", ts.testUsername, "password", ts.testPassword)
+	ts.Require().NoError(err, "Failed to authenticate with the existing password")
+	ts.Require().True(ok, "The existing password should still authenticate after a failed credential set")
+}
+
+// buildCredentialSetterWithoutUserFlow builds a recovery flow that prompts for a password and runs
+// CredentialSetter without ever identifying a user.
+func buildCredentialSetterWithoutUserFlow() testutils.Flow {
+	return testutils.Flow{
+		Name:     "Recovery Without Identify Test",
+		Handle:   "recovery-without-identify-test",
+		FlowType: "RECOVERY",
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "prompt_new_password"},
+			{
+				"id":   "prompt_new_password",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": []map[string]interface{}{
+							{
+								"ref":        "input_new_password",
+								"identifier": "password",
+								"type":       "PASSWORD_INPUT",
+								"required":   true,
+							},
+						},
+						"action": map[string]interface{}{
+							"ref":      "action_submit_password",
+							"nextNode": "set_credential",
+						},
+					},
+				},
+			},
+			{
+				"id":        "set_credential",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "CredentialSetter"},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
+}
+
 func buildEmailLinkPasswordRecoveryFlow() testutils.Flow {
 	return testutils.Flow{
 		Name:     "Email Link Password Recovery Flow Test",

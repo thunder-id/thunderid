@@ -478,6 +478,54 @@ nodes:
 
 ---
 resource_type: flow
+id: 0193b0a1-1001-7000-8000-000000000003
+name: Wayfinder Sign Out Flow
+handle: wayfinder-signout-flow
+flowType: SIGNOUT
+nodes:
+  - id: start
+    type: START
+    onSuccess: session_signout
+  - id: session_signout
+    type: TASK_EXECUTION
+    properties:
+      promptOnSignOut: false
+    executor:
+      name: SessionSignOutExecutor
+    onSuccess: end
+    onIncomplete: prompt_confirm
+  - id: prompt_confirm
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: text_signout_title
+          label: Sign out?
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: text_signout_desc
+          label: You'll need to sign in again to continue.
+          variant: HEADING_6
+        - type: BLOCK
+          id: block_signout
+          components:
+            - type: ACTION
+              id: action_confirm
+              label: Sign out
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - action:
+          ref: action_confirm
+          type: CONFIRM
+          nextNode: session_signout
+  - id: end
+    type: END
+
+---
+resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000005
 name: Wayfinder Staff Onboarding Flow
 handle: wayfinder-onboarding-flow
@@ -1101,6 +1149,7 @@ logoUrl: "emoji:✈️"
 authFlowHandle: wayfinder-app-auth-flow
 registrationFlowHandle: wayfinder-registration-flow
 recoveryFlowHandle: wayfinder-recovery-flow
+signOutFlowHandle: wayfinder-signout-flow
 isRegistrationFlowEnabled: true
 isRecoveryFlowEnabled: true
 assertion:

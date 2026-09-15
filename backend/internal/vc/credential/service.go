@@ -10,6 +10,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -33,6 +34,14 @@ type CredentialConfigurationServiceInterface interface {
 	IsCredentialConfigurationDeclarative(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 }
 
+// credentialConfigurationDeclarativeService resolves organization-unit handles
+// while loading declarative credential configurations.
+type credentialConfigurationDeclarativeService interface {
+	ResolveCredentialConfigurationOUHandle(
+		ctx context.Context, dto *CredentialConfigurationDTO,
+	) *tidcommon.ServiceError
+}
+
 type configurationService struct {
 	store     credentialStoreInterface
 	ouService ou.OrganizationUnitServiceInterface
@@ -43,7 +52,7 @@ type configurationService struct {
 // newCredentialConfigurationService builds a credential-configuration service over the given store.
 func newCredentialConfigurationService(
 	store credentialStoreInterface, ouService ou.OrganizationUnitServiceInterface,
-) CredentialConfigurationServiceInterface {
+) *configurationService {
 	return &configurationService{
 		store:     store,
 		ouService: ouService,
@@ -52,19 +61,33 @@ func newCredentialConfigurationService(
 	}
 }
 
-// resolveOU resolves ouHandle to ouId when needed and verifies the OU exists.
+// ResolveCredentialConfigurationOUHandle resolves a declarative OU handle to its ID.
+func (s *configurationService) ResolveCredentialConfigurationOUHandle(
+	ctx context.Context, dto *CredentialConfigurationDTO,
+) *tidcommon.ServiceError {
+	if dto.OUID != "" {
+		return s.resolveOU(ctx, dto)
+	}
+	if strings.TrimSpace(dto.OUHandle) == "" {
+		return nil
+	}
+	if s.ouService == nil {
+		return &ErrorConfigurationInvalidOU
+	}
+	resolved, svcErr := s.ouService.GetOrganizationUnitByPath(security.WithRuntimeContext(ctx), dto.OUHandle)
+	if svcErr != nil {
+		return &ErrorConfigurationInvalidOU
+	}
+	dto.OUID = resolved.ID
+	return s.resolveOU(ctx, dto)
+}
+
+// resolveOU verifies the requested organization unit exists.
 func (s *configurationService) resolveOU(
 	ctx context.Context, dto *CredentialConfigurationDTO,
 ) *tidcommon.ServiceError {
 	if s.ouService == nil {
 		return nil
-	}
-	if dto.OUID == "" && strings.TrimSpace(dto.OUHandle) != "" {
-		resolved, svcErr := s.ouService.GetOrganizationUnitByPath(ctx, dto.OUHandle)
-		if svcErr != nil {
-			return &ErrorConfigurationInvalidOU
-		}
-		dto.OUID = resolved.ID
 	}
 	if strings.TrimSpace(dto.OUID) == "" {
 		return &ErrorConfigurationInvalidOU
@@ -112,6 +135,9 @@ func (s *configurationService) populateOUHandle(ctx context.Context, dtos ...*Cr
 func (s *configurationService) CreateCredentialConfiguration(
 	ctx context.Context, dto *CredentialConfigurationDTO,
 ) (*CredentialConfigurationDTO, *tidcommon.ServiceError) {
+	if isDeclarativeModeEnabled() {
+		return nil, &ErrorConfigurationDeclarativeModeCreateNotAllowed
+	}
 	if svcErr := validateConfiguration(dto); svcErr != nil {
 		return nil, svcErr
 	}
@@ -341,6 +367,33 @@ func validateConfiguration(dto *CredentialConfigurationDTO) *tidcommon.ServiceEr
 	}
 	if dto.ValiditySeconds != nil && *dto.ValiditySeconds <= 0 {
 		return &ErrorConfigurationInvalidRequest
+	}
+	return validateClaims(dto.Claims)
+}
+
+// reservedClaimNames are the claim names that cannot be selectively disclosed.
+var reservedClaimNames = map[string]bool{
+	"iss": true, "nbf": true, "exp": true, "cnf": true, "vct": true, "status": true,
+	"_sd": true, "_sd_alg": true, "...": true,
+	"sub": true, "iat": true,
+}
+
+// validateClaims enforces non-empty, unique and non-reserved claim names. Claim names are compared
+// case-sensitively because they become JSON object keys in the issued credential.
+func validateClaims(claims []ClaimMapping) *tidcommon.ServiceError {
+	seen := make(map[string]bool, len(claims))
+	for _, claim := range claims {
+		name := strings.TrimSpace(claim.Name)
+		if name == "" {
+			return &ErrorConfigurationEmptyClaimName
+		}
+		if reservedClaimNames[name] {
+			return ErrorConfigurationReservedClaim.WithParams(map[string]string{"claim": name})
+		}
+		if seen[name] {
+			return ErrorConfigurationDuplicateClaim.WithParams(map[string]string{"claim": name})
+		}
+		seen[name] = true
 	}
 	return nil
 }

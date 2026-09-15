@@ -18,6 +18,9 @@ import (
 const (
 	testServerURL = "https://localhost:8095"
 	rolesBasePath = "/roles"
+
+	// testAgentName is the display name of the agent assigned in the agent-type tests.
+	testAgentName = "Role Test Agent"
 )
 
 var (
@@ -79,6 +82,7 @@ var (
 	testUserID2  string
 	testGroupID  string
 	testAppID    string
+	testAgentID  string
 	sharedRoleID string // Shared role created in SetupSuite for tests that need a pre-existing role
 	entityTypeID string
 
@@ -147,6 +151,16 @@ func (suite *RoleAPITestSuite) SetupSuite() {
 	suite.Require().NoError(err, "Failed to create test application")
 	testAppID = appID
 
+	// Create test agent (agent entity), using the bootstrapped `default` agent type
+	agentID, err := testutils.CreateAgent(testutils.Agent{
+		Type:        "default",
+		Name:        testAgentName,
+		Description: "Agent for role assignment testing",
+		OUID:        testOUID,
+	})
+	suite.Require().NoError(err, "Failed to create test agent")
+	testAgentID = agentID
+
 	// Create test resource servers
 	rs1 := testutils.ResourceServer{
 		Name:        "Test Booking System",
@@ -210,6 +224,9 @@ func (suite *RoleAPITestSuite) TearDownSuite() {
 	// Then group and users
 	if testGroupID != "" {
 		_ = testutils.DeleteGroup(testGroupID)
+	}
+	if testAgentID != "" {
+		_ = testutils.DeleteAgent(testAgentID)
 	}
 	if testAppID != "" {
 		_ = testutils.DeleteApplication(testAppID)
@@ -1629,6 +1646,690 @@ func (suite *RoleAPITestSuite) TestRoleRoundTrip_SpecialCharactersPreserved() {
 	}
 }
 
+// Create Role - Name Conflict within the same organization unit
+func (suite *RoleAPITestSuite) TestCreateRole_NameConflict() {
+	roleRequest := CreateRoleRequest{
+		Name: "Duplicate Name Role",
+		OUID: testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+		},
+	}
+
+	role, err := suite.createRole(roleRequest)
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	resp := suite.doRoleRequest(http.MethodPost, rolesBasePath, mustMarshal(suite.T(), roleRequest))
+	defer resp.Body.Close()
+
+	suite.Equal(http.StatusConflict, resp.StatusCode, "a duplicate role name must be rejected as a conflict")
+	suite.Equal("ROL-1004", decodeErrorCode(suite.T(), resp))
+}
+
+// Update Role - Name Conflict with a sibling role in the same organization unit
+func (suite *RoleAPITestSuite) TestUpdateRole_NameConflict() {
+	existing, err := suite.createRole(CreateRoleRequest{
+		Name: "Update Conflict Occupant",
+		OUID: testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+		},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(existing.ID)
+
+	target, err := suite.createRole(CreateRoleRequest{
+		Name: "Update Conflict Target",
+		OUID: testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+		},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(target.ID)
+
+	updateRequest := UpdateRoleRequest{
+		Name: existing.Name,
+		OUID: testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+		},
+	}
+
+	resp := suite.doRoleRequest(http.MethodPut, rolesBasePath+"/"+target.ID, mustMarshal(suite.T(), updateRequest))
+	defer resp.Body.Close()
+
+	suite.Equal(http.StatusConflict, resp.StatusCode, "renaming onto a sibling's name must be rejected")
+	suite.Equal("ROL-1004", decodeErrorCode(suite.T(), resp))
+}
+
+// Update Role - Organization Unit Not Found
+func (suite *RoleAPITestSuite) TestUpdateRole_NonExistentOU() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "Role Moved To Missing OU",
+		OUID: testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+		},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	updated, err := suite.updateRole(role.ID, UpdateRoleRequest{
+		Name:        "Role Moved To Missing OU",
+		OUID:        "nonexistent-ou",
+		Permissions: []ResourcePermissions{},
+	})
+	suite.Error(err)
+	suite.Nil(updated)
+	suite.Contains(err.Error(), "ROL-1005")
+}
+
+// Malformed JSON bodies are rejected on every write endpoint.
+func (suite *RoleAPITestSuite) TestWriteRequests_MalformedJSON() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "Role For Malformed Bodies",
+		OUID: testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+		},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	testCases := []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{"Create", http.MethodPost, rolesBasePath},
+		{"Update", http.MethodPut, rolesBasePath + "/" + role.ID},
+		{"AddAssignments", http.MethodPost, rolesBasePath + "/" + role.ID + "/assignments/add"},
+		{"RemoveAssignments", http.MethodPost, rolesBasePath + "/" + role.ID + "/assignments/remove"},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			resp := suite.doRoleRequest(tc.method, tc.path, []byte("{not json"))
+			defer resp.Body.Close()
+
+			suite.Equal(http.StatusBadRequest, resp.StatusCode, "a malformed body must be rejected")
+			suite.Equal("ROL-1001", decodeErrorCode(suite.T(), resp))
+		})
+	}
+}
+
+// A structurally valid update body that violates the field constraints is reported as a
+// field-level validation failure rather than a generic malformed-body error.
+func (suite *RoleAPITestSuite) TestUpdateRole_ValidationErrors() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "Role For Update Validation",
+		OUID: testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+		},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	for _, tc := range []struct {
+		name string
+		body UpdateRoleRequest
+	}{
+		{"MissingName", UpdateRoleRequest{OUID: testOUID, Permissions: []ResourcePermissions{}}},
+		{"MissingOUID", UpdateRoleRequest{Name: "Named", Permissions: []ResourcePermissions{}}},
+	} {
+		suite.Run(tc.name, func() {
+			resp := suite.doRoleRequest(http.MethodPut, rolesBasePath+"/"+role.ID, mustMarshal(suite.T(), tc.body))
+			defer resp.Body.Close()
+
+			suite.Equal(http.StatusBadRequest, resp.StatusCode)
+			suite.Equal("INVALID_INPUT_METADATA", decodeErrorCode(suite.T(), resp))
+		})
+	}
+}
+
+// Every role route answers a CORS preflight, so the Console can call them from a browser.
+func (suite *RoleAPITestSuite) TestRoleRoutes_CORSPreflight() {
+	suite.Require().NotEmpty(sharedRoleID, "Shared role must be created in SetupSuite")
+
+	for _, path := range []string{
+		rolesBasePath,
+		rolesBasePath + "/" + sharedRoleID,
+		rolesBasePath + "/" + sharedRoleID + "/assignments",
+		rolesBasePath + "/" + sharedRoleID + "/assignments/add",
+		rolesBasePath + "/" + sharedRoleID + "/assignments/remove",
+	} {
+		resp := suite.doRoleRequest(http.MethodOptions, path, nil)
+		resp.Body.Close()
+		suite.Equal(http.StatusNoContent, resp.StatusCode, "OPTIONS %s must be answered", path)
+	}
+}
+
+// Assignment requests carrying no assignments are rejected.
+func (suite *RoleAPITestSuite) TestAssignments_EmptyList() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "Role For Empty Assignment Lists",
+		OUID: testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+		},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	for _, action := range []string{"add", "remove"} {
+		suite.Run(action, func() {
+			body := mustMarshal(suite.T(), AssignmentsRequest{Assignments: []Assignment{}})
+			resp := suite.doRoleRequest(http.MethodPost,
+				rolesBasePath+"/"+role.ID+"/assignments/"+action, body)
+			defer resp.Body.Close()
+
+			suite.Equal(http.StatusBadRequest, resp.StatusCode, "an empty assignment list must be rejected")
+			suite.Equal("ROL-1001", decodeErrorCode(suite.T(), resp))
+		})
+	}
+}
+
+// Add Assignments - claimed type does not match the assignee's actual category
+func (suite *RoleAPITestSuite) TestAddAssignments_TypeMismatch() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "Role For Type Mismatch",
+		OUID: testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+		},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	// testUserID1 is a user; claiming it is an app must be rejected rather than silently stored.
+	err = suite.addAssignments(role.ID, AssignmentsRequest{
+		Assignments: []Assignment{{ID: testUserID1, Type: AssigneeTypeApp}},
+	})
+	suite.Error(err)
+	suite.Contains(err.Error(), "ROL-1007")
+}
+
+// Add Assignments - the same ID claimed under two different types in one request
+func (suite *RoleAPITestSuite) TestAddAssignments_ConflictingTypesForSameID() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "Role For Conflicting Assignment Types",
+		OUID: testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+		},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	err = suite.addAssignments(role.ID, AssignmentsRequest{
+		Assignments: []Assignment{
+			{ID: testUserID1, Type: AssigneeTypeUser},
+			{ID: testUserID1, Type: AssigneeTypeApp},
+		},
+	})
+	suite.Error(err)
+	suite.Contains(err.Error(), "ROL-1007")
+}
+
+// Unknown sub-resources under a role are not routed.
+func (suite *RoleAPITestSuite) TestGetRole_UnknownSubPath() {
+	suite.Require().NotEmpty(sharedRoleID, "Shared role must be created in SetupSuite")
+
+	for _, path := range []string{
+		rolesBasePath + "/" + sharedRoleID + "/unknown",
+		rolesBasePath + "/" + sharedRoleID + "/assignments/extra",
+	} {
+		resp := suite.doRoleRequest(http.MethodGet, path, nil)
+		resp.Body.Close()
+		suite.Equal(http.StatusNotFound, resp.StatusCode, "unknown sub-resource %q must not be routed", path)
+	}
+}
+
+// Requests that omit the role id, or name a role that does not exist, are reported
+// against the role rather than surfacing as a routing failure.
+func (suite *RoleAPITestSuite) TestRoleRequests_MissingAndUnknownRole() {
+	resp := suite.doRoleRequest(http.MethodGet, rolesBasePath+"/", nil)
+	suite.Equal(http.StatusBadRequest, resp.StatusCode, "a request without a role id must be rejected")
+	suite.Equal("ROL-1002", decodeErrorCode(suite.T(), resp))
+	resp.Body.Close()
+
+	const unknownRoleID = "nonexistent-role-for-assignments"
+	assignments := mustMarshal(suite.T(), AssignmentsRequest{
+		Assignments: []Assignment{{ID: testUserID1, Type: AssigneeTypeUser}},
+	})
+
+	for _, tc := range []struct {
+		name   string
+		method string
+		path   string
+		body   []byte
+	}{
+		{"GetAssignments", http.MethodGet, "/assignments", nil},
+		{"AddAssignments", http.MethodPost, "/assignments/add", assignments},
+		{"RemoveAssignments", http.MethodPost, "/assignments/remove", assignments},
+	} {
+		suite.Run(tc.name, func() {
+			resp := suite.doRoleRequest(tc.method, rolesBasePath+"/"+unknownRoleID+tc.path, tc.body)
+			defer resp.Body.Close()
+
+			suite.Equal(http.StatusNotFound, resp.StatusCode, "%s on an unknown role must report the role missing", tc.name)
+			suite.Equal("ROL-1003", decodeErrorCode(suite.T(), resp))
+		})
+	}
+}
+
+// Pagination parameters are validated on both listing endpoints.
+func (suite *RoleAPITestSuite) TestPagination_InvalidParameters() {
+	suite.Require().NotEmpty(sharedRoleID, "Shared role must be created in SetupSuite")
+
+	testCases := []struct {
+		name         string
+		query        string
+		expectedCode string
+	}{
+		{"NonNumericLimit", "?limit=abc", "ROL-1008"},
+		{"NonNumericOffset", "?offset=abc", "ROL-1009"},
+		{"LimitAboveMaximum", "?limit=101", "ROL-1008"},
+		{"NegativeLimit", "?limit=-1", "ROL-1008"},
+		{"NegativeOffset", "?limit=10&offset=-1", "ROL-1009"},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			for _, base := range []string{
+				rolesBasePath,
+				rolesBasePath + "/" + sharedRoleID + "/assignments",
+			} {
+				resp := suite.doRoleRequest(http.MethodGet, base+tc.query, nil)
+				suite.Equal(http.StatusBadRequest, resp.StatusCode,
+					"%s%s must be rejected", base, tc.query)
+				suite.Equal(tc.expectedCode, decodeErrorCode(suite.T(), resp))
+				resp.Body.Close()
+			}
+		})
+	}
+}
+
+// Agent assignments are stored and can be filtered by the agent type.
+func (suite *RoleAPITestSuite) TestAssignments_AgentType() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "Role For Agent Assignment",
+		OUID: testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+		},
+		Assignments: []Assignment{
+			{ID: testUserID1, Type: AssigneeTypeUser},
+			{ID: testAgentID, Type: AssigneeTypeAgent},
+		},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	agentAssignments, err := suite.getRoleAssignmentsByType(role.ID, 0, 30, "agent")
+	suite.Require().NoError(err)
+	suite.Require().Equal(1, agentAssignments.TotalResults, "only the agent assignment should match")
+	suite.Equal(testAgentID, agentAssignments.Assignments[0].ID)
+	suite.Equal(AssigneeTypeAgent, agentAssignments.Assignments[0].Type)
+
+	// The agent must not leak into the user-filtered page.
+	userAssignments, err := suite.getRoleAssignmentsByType(role.ID, 0, 30, "user")
+	suite.Require().NoError(err)
+	suite.Require().Equal(1, userAssignments.TotalResults)
+	suite.Equal(testUserID1, userAssignments.Assignments[0].ID)
+}
+
+// Display names resolve for app and agent assignees, not only users and groups.
+func (suite *RoleAPITestSuite) TestGetRoleAssignments_AppAndAgentDisplay() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "Role For App And Agent Display",
+		OUID: testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+		},
+		Assignments: []Assignment{
+			{ID: testAppID, Type: AssigneeTypeApp},
+			{ID: testAgentID, Type: AssigneeTypeAgent},
+		},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	assignments, err := suite.getRoleAssignmentsWithInclude(role.ID, 0, 30, "display")
+	suite.Require().NoError(err)
+	suite.Require().Equal(2, assignments.TotalResults)
+
+	displayByID := map[string]string{}
+	for _, a := range assignments.Assignments {
+		displayByID[a.ID] = a.Display
+	}
+	suite.Equal("Role Test App", displayByID[testAppID], "app display should be the application name")
+	suite.Equal(testAgentName, displayByID[testAgentID], "agent display should be the agent name")
+}
+
+// A type-filtered page starting past the filtered total returns an empty page rather than
+// an error, and still reports the full filtered count.
+func (suite *RoleAPITestSuite) TestGetRoleAssignments_TypeFilterOffsetBeyondTotal() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "Role For Type Filter Overflow",
+		OUID: testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+		},
+		Assignments: []Assignment{
+			{ID: testUserID1, Type: AssigneeTypeUser},
+			{ID: testGroupID, Type: AssigneeTypeGroup},
+		},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	assignments, err := suite.getRoleAssignmentsByType(role.ID, 25, 30, "user")
+	suite.Require().NoError(err)
+	suite.Equal(1, assignments.TotalResults, "the filtered total is independent of the requested page")
+	suite.Equal(0, assignments.Count)
+	suite.Empty(assignments.Assignments)
+}
+
+// The group type filter paginates at the store level.
+func (suite *RoleAPITestSuite) TestGetRoleAssignments_GroupTypeFilterPagination() {
+	secondGroupID, err := testutils.CreateGroup(testutils.Group{
+		Name:        "Second Role Test Group",
+		Description: "Second group used for group-filter pagination",
+		OUID:        testOUID,
+	})
+	suite.Require().NoError(err)
+	defer func() { _ = testutils.DeleteGroup(secondGroupID) }()
+
+	role, err := suite.createRole(CreateRoleRequest{
+		Name: "Role For Group Filter Pagination",
+		OUID: testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+		},
+		Assignments: []Assignment{
+			{ID: testGroupID, Type: AssigneeTypeGroup},
+			{ID: testUserID1, Type: AssigneeTypeUser},
+			{ID: secondGroupID, Type: AssigneeTypeGroup},
+		},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	page1, err := suite.getRoleAssignmentsByType(role.ID, 0, 1, "group")
+	suite.Require().NoError(err)
+	suite.Equal(2, page1.TotalResults, "TotalResults must reflect the group-filtered count")
+	suite.Require().Equal(1, page1.Count)
+
+	page2, err := suite.getRoleAssignmentsByType(role.ID, 1, 1, "group")
+	suite.Require().NoError(err)
+	suite.Equal(2, page2.TotalResults)
+	suite.Require().Equal(1, page2.Count)
+	suite.NotEqual(page1.Assignments[0].ID, page2.Assignments[0].ID,
+		"the two pages must return different groups")
+}
+
+// Roles are listed under their organization unit.
+func (suite *RoleAPITestSuite) TestListRolesByOU() {
+	role1, err := suite.createRole(CreateRoleRequest{
+		Name:        "OU Listing Role 1",
+		OUID:        testOUID,
+		Permissions: []ResourcePermissions{},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role1.ID)
+
+	role2, err := suite.createRole(CreateRoleRequest{
+		Name:        "OU Listing Role 2",
+		OUID:        testOUID,
+		Permissions: []ResourcePermissions{},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role2.ID)
+
+	response, err := suite.listOURoles(fmt.Sprintf("/organization-units/%s/roles", testOUID), 0, 100)
+	suite.Require().NoError(err)
+	suite.Require().NotNil(response)
+	suite.GreaterOrEqual(response.TotalResults, 2)
+
+	ids := ouRoleIDs(response)
+	suite.Contains(ids, role1.ID)
+	suite.Contains(ids, role2.ID)
+	for _, r := range response.Roles {
+		suite.False(r.IsReadOnly, "database-backed roles must be reported as mutable")
+	}
+
+	// A single-item page must still report the full count.
+	page, err := suite.listOURoles(fmt.Sprintf("/organization-units/%s/roles", testOUID), 0, 1)
+	suite.Require().NoError(err)
+	suite.Equal(1, page.Count)
+	suite.Equal(response.TotalResults, page.TotalResults)
+}
+
+// Roles are listed under their organization unit addressed by handle path.
+func (suite *RoleAPITestSuite) TestListRolesByOUPath() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name:        "OU Path Listing Role",
+		OUID:        testOUID,
+		Permissions: []ResourcePermissions{},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	response, err := suite.listOURoles("/organization-units/tree/"+testOU.Handle+"/roles", 0, 100)
+	suite.Require().NoError(err)
+	suite.Require().NotNil(response)
+	suite.Contains(ouRoleIDs(response), role.ID)
+}
+
+// The declarative organization unit lists its file-backed role as read-only. The role is
+// declared with an ouHandle rather than an ouId, so this also covers the loader resolving the
+// handle to the organization unit.
+func (suite *RoleAPITestSuite) TestListRolesByOU_Declarative() {
+	const declOUID = "decl-ou-1"
+	const declRoleID = "decl-role-1"
+
+	for _, path := range []string{
+		"/organization-units/" + declOUID + "/roles",
+		"/organization-units/tree/" + declOUID + "/roles",
+	} {
+		response, err := suite.listOURoles(path, 0, 100)
+		suite.Require().NoError(err, "listing roles via %s should succeed", path)
+		suite.Require().NotNil(response)
+
+		var declRole *OURole
+		for i := range response.Roles {
+			if response.Roles[i].ID == declRoleID {
+				declRole = &response.Roles[i]
+				break
+			}
+		}
+		suite.Require().NotNilf(declRole, "%s must list the declarative role", path)
+		suite.True(declRole.IsReadOnly, "a file-backed role must be reported as read-only")
+	}
+}
+
+// A declarative role cannot be updated through the API.
+func (suite *RoleAPITestSuite) TestUpdateRole_DeclarativeImmutable() {
+	updated, err := suite.updateRole("decl-role-1", UpdateRoleRequest{
+		Name:        "Renamed Declarative Role",
+		OUID:        "decl-ou-1",
+		Permissions: []ResourcePermissions{},
+	})
+	suite.Error(err)
+	suite.Nil(updated)
+	suite.Contains(err.Error(), "ROL-1013")
+}
+
+// A declarative role cannot be deleted through the API.
+func (suite *RoleAPITestSuite) TestDeleteRole_DeclarativeImmutable() {
+	err := suite.deleteRole("decl-role-1")
+	suite.Error(err)
+	suite.Contains(err.Error(), "ROL-1013")
+
+	// The role must survive the refused delete.
+	role, err := suite.getRole("decl-role-1")
+	suite.Require().NoError(err)
+	suite.Equal("decl-role-1", role.ID)
+}
+
+// The type filters on a declarative role merge the assignments declared in the file with
+// the ones added through the API, which live in the database.
+func (suite *RoleAPITestSuite) TestGetRoleAssignments_DeclarativeRoleByType() {
+	const declRoleID = "decl-role-1"
+	const declUserID = "decl-user-1"
+	const declGroupID = "decl-group-1"
+
+	// Declared in the file: one user and one group. Both must be visible before anything is added.
+	userAssignments, err := suite.getRoleAssignmentsByType(declRoleID, 0, 30, "user")
+	suite.Require().NoError(err)
+	suite.Require().Equal(1, userAssignments.TotalResults, "the declared user assignment must be listed")
+	suite.Equal(declUserID, userAssignments.Assignments[0].ID)
+
+	assignmentsRequest := AssignmentsRequest{
+		Assignments: []Assignment{{ID: testGroupID, Type: AssigneeTypeGroup}},
+	}
+	suite.Require().NoError(suite.addAssignments(declRoleID, assignmentsRequest))
+	defer func() {
+		suite.NoError(suite.removeAssignments(declRoleID, assignmentsRequest))
+	}()
+
+	groupAssignments, err := suite.getRoleAssignmentsByType(declRoleID, 0, 30, "group")
+	suite.Require().NoError(err)
+	suite.Require().Equal(2, groupAssignments.TotalResults,
+		"the declared group and the added group must both be listed")
+
+	groupIDs := make([]string, 0, len(groupAssignments.Assignments))
+	for _, a := range groupAssignments.Assignments {
+		groupIDs = append(groupIDs, a.ID)
+	}
+	suite.Contains(groupIDs, declGroupID, "the file-declared group assignment must survive the merge")
+	suite.Contains(groupIDs, testGroupID, "the database-backed group assignment must be included")
+
+	// Adding a group must not change what the user filter returns.
+	userAssignments, err = suite.getRoleAssignmentsByType(declRoleID, 0, 30, "user")
+	suite.Require().NoError(err)
+	suite.Equal(1, userAssignments.TotalResults, "a group assignment must not match the user filter")
+}
+
+// Permissions carried by a declarative role are honoured by access evaluation, whether
+// the assignment is declared in the file or added at runtime through the API. The two bindings are
+// stored in different places, so each is resolved by a different path through the composite store.
+func (suite *RoleAPITestSuite) TestAccessEvaluation_DeclarativeRolePermissions() {
+	const declRoleID = "decl-role-1"
+	const declUserID = "decl-user-1"
+	const declResourceServer = "https://localhost:8090/decl-rs-1"
+	const grantedPermission = "test-resource:read"
+	const withheldPermission = "test-resource:write"
+
+	// The user declared in the role's YAML: resolved from the file store alone.
+	suite.True(suite.evaluateAccess(declUserID, declResourceServer, grantedPermission),
+		"the declared assignee must hold the declarative role's permission")
+	suite.False(suite.evaluateAccess(declUserID, declResourceServer, withheldPermission),
+		"a permission the declarative role does not carry must be denied")
+
+	// A user assigned at runtime: the role definition lives in the file store while the assignment
+	// lives in the database, so neither store can resolve this on its own.
+	user := testUser1
+	user.OUID = testOUID
+	user.Attributes = json.RawMessage(`{
+		"email": "declrolepermuser@example.com",
+		"given_name": "Decl",
+		"family_name": "PermUser",
+		"password": "TestPassword123!"
+	}`)
+	runtimeUserID, err := testutils.CreateUser(user)
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(testutils.DeleteUser(runtimeUserID)) }()
+
+	assignmentsRequest := AssignmentsRequest{
+		Assignments: []Assignment{{ID: runtimeUserID, Type: AssigneeTypeUser}},
+	}
+	suite.Require().NoError(suite.addAssignments(declRoleID, assignmentsRequest))
+	defer func() { suite.NoError(suite.removeAssignments(declRoleID, assignmentsRequest)) }()
+
+	suite.True(suite.evaluateAccess(runtimeUserID, declResourceServer, grantedPermission),
+		"a runtime assignment to a declarative role must confer its permissions")
+	suite.False(suite.evaluateAccess(runtimeUserID, declResourceServer, withheldPermission),
+		"a permission the declarative role does not carry must be denied")
+
+	// Removing the assignment must withdraw the permission.
+	suite.Require().NoError(suite.removeAssignments(declRoleID, assignmentsRequest))
+	suite.False(suite.evaluateAccess(runtimeUserID, declResourceServer, grantedPermission),
+		"the permission must be withdrawn once the assignment is removed")
+}
+
+// A role is exported as a declarative document carrying its permissions and assignments.
+func (suite *RoleAPITestSuite) TestExportRole() {
+	role, err := suite.createRole(CreateRoleRequest{
+		Name:        "Exportable Role",
+		Description: "Role exercised by the export endpoint",
+		OUID:        testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+		},
+		Assignments: []Assignment{
+			{ID: testUserID1, Type: AssigneeTypeUser},
+		},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(role.ID)
+
+	resources, err := suite.exportRoles([]string{role.ID})
+	suite.Require().NoError(err)
+	suite.Require().NotEmpty(resources)
+
+	suite.Contains(resources, "resource_type: role")
+	suite.Contains(resources, "name: Exportable Role")
+	suite.Contains(resources, testResourceServer1ID)
+	suite.Contains(resources, testUserID1, "the role's assignments must be part of the export")
+}
+
+// A wildcard export enumerates every role in the database store. Declarative roles are excluded:
+// they already exist as YAML resources and are not re-emitted by the exporter.
+func (suite *RoleAPITestSuite) TestExportAllRoles_Wildcard() {
+	first, err := suite.createRole(CreateRoleRequest{
+		Name:        "Wildcard Exportable Role One",
+		Description: "First role picked up by the wildcard export",
+		OUID:        testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
+		},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(first.ID)
+
+	second, err := suite.createRole(CreateRoleRequest{
+		Name:        "Wildcard Exportable Role Two",
+		Description: "Second role picked up by the wildcard export",
+		OUID:        testOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: testResourceServer2ID, Permissions: []string{testPermission3}},
+		},
+		Assignments: []Assignment{
+			{ID: testGroupID, Type: AssigneeTypeGroup},
+		},
+	})
+	suite.Require().NoError(err)
+	defer suite.deleteRole(second.ID)
+
+	resources, err := suite.exportRoles([]string{"*"})
+	suite.Require().NoError(err)
+	suite.Require().NotEmpty(resources)
+
+	suite.Contains(resources, "name: Wildcard Exportable Role One")
+	suite.Contains(resources, "name: Wildcard Exportable Role Two")
+	suite.Contains(resources, testGroupID, "assignments must be carried through the wildcard export")
+	// This behaviour may change based on #4966 issue, but for now the declarative role is excluded from the export.
+	suite.NotContains(resources, "decl-role-1",
+		"declarative roles must be excluded from the wildcard export")
+	suite.NotContains(resources, "name: Declarative Test Role",
+		"declarative roles must be excluded from the wildcard export")
+}
+
 // Helper methods
 
 func (suite *RoleAPITestSuite) createRole(request CreateRoleRequest) (*Role, error) {
@@ -1886,4 +2587,156 @@ func (suite *RoleAPITestSuite) getRoleAssignmentsWithParams(roleID string, offse
 	}
 
 	return &response, nil
+}
+
+// doRoleRequest issues a request against the test server and returns the raw response, so that
+// tests can assert on status codes and error payloads the typed helpers hide.
+func (suite *RoleAPITestSuite) doRoleRequest(method, path string, body []byte) *http.Response {
+	suite.T().Helper()
+
+	var bodyReader io.Reader
+	if body != nil {
+		bodyReader = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequest(method, testServerURL+path, bodyReader)
+	suite.Require().NoError(err)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := suite.client.Do(req)
+	suite.Require().NoError(err)
+	return resp
+}
+
+// listOURoles fetches a paginated role listing from one of the organization unit role endpoints.
+func (suite *RoleAPITestSuite) listOURoles(path string, offset, limit int) (*OURoleListResponse, error) {
+	url := fmt.Sprintf("%s%s?offset=%d&limit=%d", testServerURL, path, offset, limit)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := suite.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp ErrorResponse
+		json.Unmarshal(respBody, &errResp)
+		return nil, fmt.Errorf("failed to list organization unit roles: %s - %s", errResp.Code, errResp.Message)
+	}
+
+	var response OURoleListResponse
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return nil, err
+	}
+
+	return &response, nil
+}
+
+// exportRoles exports the given roles and returns the rendered declarative documents.
+func (suite *RoleAPITestSuite) exportRoles(roleIDs []string) (string, error) {
+	body, err := json.Marshal(ExportRequest{Roles: roleIDs})
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest("POST", testServerURL+"/export", bytes.NewBuffer(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := suite.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to export roles, status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var response ExportResponse
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return "", err
+	}
+
+	return response.Resources, nil
+}
+
+// evaluateAccess asks the access evaluation endpoint whether the entity holds the given permission
+// on the given resource server, and returns the decision.
+func (suite *RoleAPITestSuite) evaluateAccess(entityID, resourceServer, permission string) bool {
+	suite.T().Helper()
+
+	body, err := json.Marshal(EvaluationRequest{
+		Subject:  EvaluationSubject{Type: "user", ID: entityID},
+		Resource: EvaluationResource{Type: resourceServer, ID: "role-test-resource-instance"},
+		Action:   EvaluationAction{Name: permission},
+	})
+	suite.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/access/v1/evaluation", bytes.NewBuffer(body))
+	suite.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := suite.client.Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+	suite.Require().Equal(http.StatusOK, resp.StatusCode, "access evaluation failed: %s", string(respBody))
+
+	var evaluation EvaluationResponse
+	suite.Require().NoError(json.Unmarshal(respBody, &evaluation))
+	return evaluation.Decision
+}
+
+// ouRoleIDs collects the role IDs from an organization unit role listing.
+func ouRoleIDs(response *OURoleListResponse) []string {
+	ids := make([]string, 0, len(response.Roles))
+	for _, r := range response.Roles {
+		ids = append(ids, r.ID)
+	}
+	return ids
+}
+
+// mustMarshal serializes a request body, failing the test rather than returning an error.
+func mustMarshal(t *testing.T, v interface{}) []byte {
+	t.Helper()
+
+	body, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("failed to marshal request body: %v", err)
+	}
+	return body
+}
+
+// decodeErrorCode reads the error code from an error response body. Only the code is decoded:
+// message and description are localized objects rather than plain strings.
+func decodeErrorCode(t *testing.T, resp *http.Response) string {
+	t.Helper()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed to read error response body: %v", err)
+	}
+
+	var errResp struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(body, &errResp); err != nil {
+		t.Fatalf("failed to decode error response %q: %v", string(body), err)
+	}
+	return errResp.Code
 }

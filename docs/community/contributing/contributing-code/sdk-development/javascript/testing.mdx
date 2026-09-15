@@ -1,0 +1,117 @@
+---
+title: JavaScript SDK Testing
+docType: community
+description: "How to run and write the Vitest unit tests and the Playwright end-to-end suite for the {{ProductName}} JavaScript SDKs."
+sidebar_position: 2
+hide_table_of_contents: false
+---
+
+# Testing
+
+## Unit Tests
+
+Unit tests run on [Vitest](https://vitest.dev) and live beside the source they cover, in `src/**/__tests__/*.test.ts`. The Nuxt package is the exception, keeping its tests in `packages/nuxt/tests/unit`.
+
+```bash
+pnpm test                                  # every package
+pnpm --filter @thunderid/react test        # one package
+```
+
+Packages that render components (`browser`, `react`, `react-router`, `tanstack-router`) also expose `test:browser`, which runs the same specs in a real browser environment.
+
+## End-to-end Testing
+
+The end-to-end suite lives in `tests/e2e` and runs on [Playwright](https://playwright.dev). It drives the sample apps in a real browser against a real <ProductName /> server, covering what unit tests cannot: the redirect handoff to Gate, cookie and session behaviour across a reload, and each framework integration wiring the core SDK up correctly.
+
+Six sample apps are exercised, each on its own port:
+
+| Sample | Port |
+|--------|------|
+| browser | 5173 |
+| react | 5174 |
+| vue | 5175 |
+| express | 3000 |
+| nextjs | 3001 |
+| nuxt | 3002 |
+
+The `samples/node/quickstart` app has no UI and is spawned directly by its own spec.
+
+### Configure and Run
+
+You need `curl`, `jq`, `unzip`, `pnpm`, and `lsof` on your PATH. One script does everything:
+
+```bash
+cd tests/e2e
+./run-e2e.sh
+```
+
+Arguments pass through to Playwright, so run a single spec with:
+
+```bash
+./run-e2e.sh tests/react-quickstart/sign-in-out.spec.ts
+```
+
+The script owns the whole lifecycle. It downloads and starts a server, mints an admin token, imports the test applications, writes each sample's `.env`, starts all six apps, runs the tests, then stops the apps and restores any `.env` it replaced.
+
+:::note
+`run-e2e.sh` aborts if anything already answers on `https://localhost:8090`. Stop any server you started by hand before running it.
+:::
+
+Set `THUNDERID_VERSION` to pin a specific server release instead of taking the latest:
+
+```bash
+THUNDERID_VERSION=1.0.1 ./run-e2e.sh
+```
+
+Configuration comes from `defaults.env`, copied to `.env` on the first run. Values in `.env` win, and `defaults.env` fills the gaps:
+
+| Variable | Default |
+|----------|---------|
+| `SERVER_URL` | `https://localhost:8090` |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / `admin` |
+| `TEST_USER_USERNAME` | `e2e-test-user` |
+| `TEST_USER_PASSWORD` | `E2ePassword@123` |
+| `BROWSER_APP_URL` | `http://localhost:5173` |
+| `REACT_APP_URL` | `http://localhost:5174` |
+| `VUE_APP_URL` | `http://localhost:5175` |
+| `EXPRESS_APP_URL` | `http://localhost:3000` |
+| `NEXTJS_APP_URL` | `http://localhost:3001` |
+| `NUXT_APP_URL` | `http://localhost:3002` |
+
+`global-setup.ts` fails the run and lists anything missing, so a partial `.env` surfaces immediately rather than midway through a spec.
+
+Once a run has finished, `pnpm report` opens the HTML report and `pnpm ui` opens Playwright's interactive mode against an already-running server.
+
+### Writing Tests
+
+Applications are declared, not created by hand. `thunderid-config/sample-apps.yaml` holds one entry per sample with a fixed application ID, imported through `/import` with `upsert` enabled. Add a sample by adding an entry there rather than clicking through the Console, so every contributor and CI provision the same thing.
+
+The test user is different: `global-setup.ts` creates it through the API before the run and `global-teardown.ts` deletes it afterward. Teardown fails loudly if the delete does not succeed, so a leaked user surfaces as a failure rather than silently accumulating.
+
+Tests use the page object model. Shared page classes live in `pages/`, and Playwright fixtures in `fixtures/sample-apps/` expose one page object per sample. A spec asks for the fixture it needs and never constructs a page itself:
+
+```ts
+test('TC001: signs in with valid credentials', async ({reactQuickstartPage}) => {
+  await reactQuickstartPage.goto(appUrl);
+  await reactQuickstartPage.verifyHomePageLoaded();
+  await reactQuickstartPage.clickSignInButton();
+  await reactQuickstartPage.verifyLoginPageLoaded();
+  await reactQuickstartPage.login(username, password);
+  await reactQuickstartPage.verifyLoggedIn();
+});
+```
+
+Specs are grouped one directory per sample under `tests/`, and each test name carries a `TCnnn:` identifier.
+
+Put assertions about the login screen in the shared `gate-login.page.ts`, since every sample redirects to the same Gate DOM. The React, Vue, Next.js, and Nuxt samples share `thunderid-web-sample.page.ts` because they render the same markup; only the browser and Express samples need their own page objects.
+
+#### Things to Know
+
+- **The server uses a self-signed certificate.** Playwright sets `ignoreHTTPSErrors`, and direct API calls go through an undici agent configured to accept it. A new HTTP call made outside those helpers fails certificate validation.
+- **There is no Playwright `webServer` block.** One backend and six sample apps are shared across the run, so the script starts them rather than Playwright.
+- **Do not run a sample's own `prepare-dev.cjs`.** It rewrites `workspace:*` dependencies to `latest`, which takes the sample off your local build.
+- Cleanup frees ports 8090, 5173-5175, and 3000-3002, and removes the downloaded server. A run interrupted with Ctrl+C may leave a port bound; rerun the script and it clears them.
+
+## Continuous Integration
+
+`pr-builder.yml` runs on every pull request: an audit, dependency review, a build-lint-test job, and the end-to-end suite through the `run-e2e-suite` composite action. `e2e-nightly.yml` runs the same suite on a schedule at 18:30 UTC and uploads its report as an artifact.

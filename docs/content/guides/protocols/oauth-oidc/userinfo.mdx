@@ -58,7 +58,7 @@ UserInfo is always available for tokens that carry the `openid` scope. To custom
 1. Open **Applications** or **Agents** in the <ProductName /> Console and select your client.
 2. Open the **Token** tab and find the **UserInfo** section.
 3. Pick the **Response Type** (`JSON` / `JWS` / `JWE` / `NESTED_JWT`).
-4. Signed responses (`JWS`, `NESTED_JWT`) use the deployment signing key. For encrypted responses (`JWE`, `NESTED_JWT`), pick the encryption algorithms and configure a certificate.
+4. Signed responses (`JWS`, `NESTED_JWT`) use the deployment's signing key. For encrypted responses (`JWE`, `NESTED_JWT`), pick the encryption algorithms and configure a certificate.
 5. Choose the **User Attributes** to return. These typically mirror the ID Token attributes.
 6. Save.
 
@@ -80,7 +80,7 @@ Content-Type: application/json
 }
 ```
 
-Signed responses use the deployment signing key. Encrypted responses require `userinfo_encrypted_response_alg`, `userinfo_encrypted_response_enc`, and a client certificate (`jwks` or `jwks_uri`). See [Token Formats](../token-formats) for the full algorithm tables.
+Signed responses use the deployment's signing key, unless the client selects an algorithm with `userinfo_signed_response_alg` at registration. Encrypted responses require `userinfo_encrypted_response_alg`, `userinfo_encrypted_response_enc`, and a client certificate (`jwks` or `jwks_uri`). See [Token Formats](../token-formats) for the full algorithm tables.
 
 </TabItem>
 </Tabs>

@@ -25,6 +25,9 @@ const (
 type TokenConfig struct {
 	Issuer         string
 	ValidityPeriod int64
+	// SigningAlg is the client-configured JWS algorithm. Empty means the server's preferred
+	// signing key algorithm is used.
+	SigningAlg string
 }
 
 // AccessTokenBuildContext contains all the information needed to build an access token.
@@ -59,6 +62,13 @@ type AccessTokenBuildContext struct {
 	// TokenFamilyID, when set, is stamped as the `tfid` claim so the token can be revoked as part of
 	// its authorization grant's family. It is constant across refresh rotation.
 	TokenFamilyID string
+	// SubjectEntityID is the resource ID of the entity Subject refers to, and SubjectCategory its
+	// entity category. Grant handlers set them when an upstream layer already knows the answer (the
+	// flow assertion for authorization_code), which spares the builder an entity read. Left empty the
+	// builder resolves them itself, so a grant that does not set them still reports the subject.
+	// Neither is emitted as a token claim; both are carried for observability.
+	SubjectEntityID string
+	SubjectCategory string
 }
 
 // RefreshTokenBuildContext contains all the information needed to build a refresh token.

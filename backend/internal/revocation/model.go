@@ -81,6 +81,10 @@ type CriteriaRevocation struct {
 	Mode      Mode
 	Cutoff    time.Time
 	Reason    Reason
+	// TTL is how long the deny-list row must survive, for a producer that knows the lifetime of the
+	// artifacts its criterion matches. It only raises the row's lifetime: the service writes the longer of
+	// this and its own default, so zero keeps the default.
+	TTL time.Duration
 }
 
 // boundaryReasons is the single source of truth for reasons that revoke only the artifacts

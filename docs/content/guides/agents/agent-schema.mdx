@@ -8,7 +8,7 @@ description: The agent schema in {{ProductName}} defines the attributes every ag
 
 # Agent Schema
 
-The agent schema defines the set of attributes every agent carries. There is one built-in schema, shared by all agents, and each agent holds its own values for the attributes the schema defines. Attributes describe and classify an agent, for example which model it runs or what function it serves, and any attribute can be added to the agent's tokens for a downstream service to read.
+The agent schema defines the set of attributes every agent carries. There is one built-in schema, shared by all agents: it belongs to the single agent type, `default`, and <ProductName /> does not accept other agent types, so there is no per-agent-class schema. Each agent holds its own values for the attributes the schema defines. Attributes describe and classify an agent, for example which model it runs or what function it serves, and any attribute can be added to the agent's tokens for a downstream service to read.
 
 ## Why an agent has a schema
 

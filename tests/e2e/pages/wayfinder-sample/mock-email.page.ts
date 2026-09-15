@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import { Page, Locator, expect } from "@playwright/test";
+import { Page } from "@playwright/test";
 import { BasePage } from "../base.page";
 import { Timeouts } from "../../constants/timeouts";
 
@@ -36,14 +36,16 @@ export class MockEmailAppPage extends BasePage {
 
   /**
    * Click a link in the email body containing the specified text.
+   * The email body renders inside a sandboxed iframe (see the inbox UI's MessageDetail
+   * component), so the link must be located via frameLocator rather than on the top-level page.
    * Returns a promise that resolves to the new page opened by the link.
    * @param linkText - The text of the link to click (can be a string or regex)
    * @returns The new page that opens after clicking the link
    */
   async clickLinkInEmail(linkText: string | RegExp): Promise<Page> {
-    const link = this.page.getByRole("link", { name: linkText }).first();
+    const link = this.page.frameLocator('iframe[title="Email body"]').getByRole("link", { name: linkText }).first();
     await link.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
-    
+
     const pagePromise = this.page.context().waitForEvent("page");
     await link.click();
     return await pagePromise;

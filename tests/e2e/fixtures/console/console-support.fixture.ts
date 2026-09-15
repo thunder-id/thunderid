@@ -7,20 +7,27 @@
  * An independent branch off the raw Playwright base, merged in `./index.ts`
  * (same shape as `console-routes.fixture.ts`).
  *
- * - `usersApi` / `applicationsApi`: the shared API helpers bound to the test's request context.
- *   `beforeAll`/`afterAll` cannot take test-scoped fixtures, so they construct `new UsersApi(request)`
- *   (etc.) themselves - same class, so no logic lives in two places.
+ * - `usersApi` / `userTypesApi` / `applicationsApi` / `flowsApi` / `connectionsApi`: the shared
+ *   API helpers bound to the test's request context. `beforeAll`/`afterAll` cannot take
+ *   test-scoped fixtures, so they construct `new UsersApi(request)` (etc.) themselves - same
+ *   class, so no logic lives in two places.
  * - `isolatedPage`: a page in a throwaway browser context, closed on teardown. For
  *   flows that must not run inside the admin session (e.g. accepting an invite).
  */
 
 import { test as base, type Page } from "@playwright/test";
 import { UsersApi } from "../../utils/users-api";
+import { UserTypesApi } from "../../utils/user-types-api";
 import { ApplicationsApi } from "../../utils/applications-api";
+import { FlowsApi } from "../../utils/flows-api";
+import { ConnectionsApi } from "../../utils/connections-api";
 
 type SupportFixtures = {
   usersApi: UsersApi;
+  userTypesApi: UserTypesApi;
   applicationsApi: ApplicationsApi;
+  flowsApi: FlowsApi;
+  connectionsApi: ConnectionsApi;
   isolatedPage: Page;
 };
 
@@ -29,18 +36,27 @@ export const test = base.extend<SupportFixtures>({
     await use(new UsersApi(request));
   },
 
+  userTypesApi: async ({ request }, use) => {
+    await use(new UserTypesApi(request));
+  },
+
   applicationsApi: async ({ request }, use) => {
     await use(new ApplicationsApi(request));
+  },
+
+  flowsApi: async ({ request }, use) => {
+    await use(new FlowsApi(request));
+  },
+
+  connectionsApi: async ({ request }, use) => {
+    await use(new ConnectionsApi(request));
   },
 
   isolatedPage: async ({ browser }, use) => {
     // browser.newContext() does NOT inherit `use.ignoreHTTPSErrors` from playwright.config,
     // and the gate is served over HTTPS with a self-signed cert locally.
     const context = await browser.newContext({ ignoreHTTPSErrors: true });
-    try {
-      await use(await context.newPage());
-    } finally {
-      await context.close();
-    }
+    await use(await context.newPage());
+    await context.close();
   },
 });

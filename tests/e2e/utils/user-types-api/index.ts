@@ -35,14 +35,13 @@ export class UserTypesApi {
     const pageSize = 100;
     const all: ApiUserType[] = [];
 
-    for (let offset = 0; ; ) {
+    for (let offset = 0; ; offset += pageSize) {
       const response = await sendOk(this.request, "GET", `/user-types?limit=${pageSize}&offset=${offset}`);
       const body = (await response.json()) as { types?: ApiUserType[]; totalResults?: number };
       const types = body.types ?? [];
       all.push(...types);
 
       if (types.length === 0 || all.length >= (body.totalResults ?? 0)) return all;
-      offset += types.length;
     }
   }
 

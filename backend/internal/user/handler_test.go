@@ -34,7 +34,7 @@ func TestHandleSelfUserGetRequest_Success(t *testing.T) {
 	authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
 
 	mockSvc := NewUserServiceInterfaceMock(t)
-	expectedUser := &User{
+	expectedUser := &providers.User{
 		ID:         userID,
 		Attributes: json.RawMessage(`{"username":"alice"}`),
 	}
@@ -50,7 +50,7 @@ func TestHandleSelfUserGetRequest_Success(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.Contains(t, rr.Header().Get("Content-Type"), "application/json")
 
-	var respUser User
+	var respUser providers.User
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&respUser))
 	require.Equal(t, expectedUser.ID, respUser.ID)
 	require.JSONEq(t, string(expectedUser.Attributes), string(respUser.Attributes))
@@ -61,7 +61,7 @@ func TestHandleSelfUserGetRequest_IncludeDisplay(t *testing.T) {
 	authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
 
 	mockSvc := NewUserServiceInterfaceMock(t)
-	expectedUser := &User{ID: userID}
+	expectedUser := &providers.User{ID: userID}
 	mockSvc.On("GetUser", mock.Anything, userID, true).Return(expectedUser, nil)
 
 	handler := newUserHandler(mockSvc)
@@ -96,7 +96,7 @@ func TestHandleSelfUserPutRequest_Success(t *testing.T) {
 	attributes := json.RawMessage(`{"email":"alice@example.com"}`)
 
 	mockSvc := NewUserServiceInterfaceMock(t)
-	updatedUser := &User{
+	updatedUser := &providers.User{
 		ID:         userID,
 		Type:       "employee",
 		Attributes: attributes,
@@ -113,7 +113,7 @@ func TestHandleSelfUserPutRequest_Success(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rr.Code)
 
-	var respUser User
+	var respUser providers.User
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&respUser))
 	require.Equal(t, updatedUser.ID, respUser.ID)
 	require.JSONEq(t, string(updatedUser.Attributes), string(respUser.Attributes))
@@ -435,7 +435,7 @@ func TestHandleUserListRequest_Success(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
 	expectedResp := &UserListResponse{
 		TotalResults: 10,
-		Users:        []User{{ID: "user-1"}},
+		Users:        []providers.User{{ID: "user-1"}},
 	}
 	mockSvc.On("GetUserList", mock.Anything, 10, 0, mock.Anything, false).Return(expectedResp, nil)
 
@@ -455,7 +455,7 @@ func TestHandleUserListRequest_WithIncludeDisplay(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
 	expectedResp := &UserListResponse{
 		TotalResults: 1,
-		Users:        []User{{ID: "user-1", Display: "Alice"}},
+		Users:        []providers.User{{ID: "user-1", Display: "Alice"}},
 	}
 	mockSvc.On("GetUserList", mock.Anything, 10, 0, mock.Anything, true).Return(expectedResp, nil)
 
@@ -475,7 +475,7 @@ func TestHandleUserListRequest_WithInvalidIncludeParam(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
 	expectedResp := &UserListResponse{
 		TotalResults: 1,
-		Users:        []User{{ID: "user-1"}},
+		Users:        []providers.User{{ID: "user-1"}},
 	}
 	// Invalid include value should be treated as no include (includeDisplay=false).
 	mockSvc.On("GetUserList", mock.Anything, 10, 0, mock.Anything, false).Return(expectedResp, nil)
@@ -499,7 +499,7 @@ func TestHandleUserPostRequest_Success(t *testing.T) {
 		Type:       "employee",
 		Attributes: json.RawMessage(`{"username":"bob"}`),
 	}
-	createdUser := &User{ID: "user-bob", Type: "employee", Attributes: json.RawMessage(`{"username":"bob"}`)}
+	createdUser := &providers.User{ID: "user-bob", Type: "employee", Attributes: json.RawMessage(`{"username":"bob"}`)}
 	mockSvc.On("CreateUser", mock.Anything, mock.Anything).Return(createdUser, nil)
 
 	handler := newUserHandler(mockSvc)
@@ -510,7 +510,7 @@ func TestHandleUserPostRequest_Success(t *testing.T) {
 	handler.HandleUserPostRequest(rr, req)
 
 	require.Equal(t, http.StatusCreated, rr.Code)
-	var resp User
+	var resp providers.User
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 	require.Equal(t, createdUser.ID, resp.ID)
 }
@@ -518,7 +518,7 @@ func TestHandleUserPostRequest_Success(t *testing.T) {
 func TestHandleUserGetRequest_Success(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
 	userID := testUserID123
-	expectedUser := &User{ID: userID}
+	expectedUser := &providers.User{ID: userID}
 	mockSvc.On("GetUser", mock.Anything, userID, false).Return(expectedUser, nil)
 
 	handler := newUserHandler(mockSvc)
@@ -530,7 +530,7 @@ func TestHandleUserGetRequest_Success(t *testing.T) {
 	handler.HandleUserGetRequest(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp User
+	var resp providers.User
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 	require.Equal(t, userID, resp.ID)
 }
@@ -538,7 +538,7 @@ func TestHandleUserGetRequest_Success(t *testing.T) {
 func TestHandleUserGetRequest_IncludeDisplay(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
 	userID := testUserID123
-	expectedUser := &User{ID: userID}
+	expectedUser := &providers.User{ID: userID}
 	mockSvc.On("GetUser", mock.Anything, userID, true).Return(expectedUser, nil)
 
 	handler := newUserHandler(mockSvc)
@@ -555,8 +555,8 @@ func TestHandleUserGetRequest_IncludeDisplay(t *testing.T) {
 func TestHandleUserPutRequest_Success(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
 	userID := testUserID123
-	userReq := &User{Attributes: json.RawMessage(`{"name":"Updated"}`)}
-	updatedUser := &User{ID: userID, Attributes: json.RawMessage(`{"name":"Updated"}`)}
+	userReq := &providers.User{Attributes: json.RawMessage(`{"name":"Updated"}`)}
+	updatedUser := &providers.User{ID: userID, Attributes: json.RawMessage(`{"name":"Updated"}`)}
 	mockSvc.On("UpdateUser", mock.Anything, userID, mock.Anything).Return(updatedUser, nil)
 
 	handler := newUserHandler(mockSvc)
@@ -568,7 +568,7 @@ func TestHandleUserPutRequest_Success(t *testing.T) {
 	handler.HandleUserPutRequest(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp User
+	var resp providers.User
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 	require.Equal(t, userID, resp.ID)
 }
@@ -592,7 +592,7 @@ func TestHandleUserListByPathRequest_Success(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
 	expectedResp := &UserListResponse{
 		TotalResults: 5,
-		Users:        []User{{ID: "user-path-1"}},
+		Users:        []providers.User{{ID: "user-path-1"}},
 	}
 	mockSvc.On("GetUsersByPath", mock.Anything, "root/engineering", 10, 0,
 		mock.Anything, false).Return(expectedResp, nil)
@@ -611,7 +611,7 @@ func TestHandleUserListByPathRequest_WithIncludeDisplay(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
 	expectedResp := &UserListResponse{
 		TotalResults: 1,
-		Users:        []User{{ID: "user-1", Display: "Bob"}},
+		Users:        []providers.User{{ID: "user-1", Display: "Bob"}},
 	}
 	mockSvc.On("GetUsersByPath", mock.Anything, "root/engineering", 10, 0,
 		mock.Anything, true).Return(expectedResp, nil)
@@ -632,7 +632,7 @@ func TestHandleUserListByPathRequest_WithIncludeDisplay(t *testing.T) {
 
 func TestHandleUserPostByPathRequest_Success(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	createdUser := &User{ID: "user-new", Type: "customer"}
+	createdUser := &providers.User{ID: "user-new", Type: "customer"}
 	mockSvc.On("CreateUserByPath", mock.Anything, "root/sales", mock.Anything).Return(createdUser, nil)
 
 	handler := newUserHandler(mockSvc)

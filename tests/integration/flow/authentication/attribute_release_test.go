@@ -37,6 +37,9 @@ const (
 	attrReleaseEmail       = "attr.release@test.com"
 	attrReleaseGivenName   = "Attribute"
 	attrReleaseFamilyName  = "Release"
+	// attrReleaseSpoofedSubID is carried by a user attribute deliberately named after the reserved
+	// sub_id assertion claim. The assertion must never report this value as the subject identity.
+	attrReleaseSpoofedSubID = "spoofed-subject-identity"
 )
 
 var attrReleaseOU = testutils.OrganizationUnit{
@@ -54,6 +57,9 @@ var attrReleaseUserType = testutils.UserType{
 		"email":       map[string]interface{}{"type": "string"},
 		"given_name":  map[string]interface{}{"type": "string"},
 		"family_name": map[string]interface{}{"type": "string"},
+		// Deliberately named after a reserved assertion claim, to pin the guard that keeps a schema
+		// attribute from replacing the server-derived subject identity.
+		"sub_id": map[string]interface{}{"type": "string"},
 	},
 }
 
@@ -109,7 +115,7 @@ var attrReleaseApp = testutils.Application{
 	AllowedUserTypes:          []string{"attr-release-person"},
 	Attestation:               map[string]interface{}{"devMode": true},
 	AssertionConfig: map[string]interface{}{
-		"userAttributes": []string{"email", "given_name", "family_name"},
+		"userAttributes": []string{"email", "given_name", "family_name", "sub_id"},
 	},
 	InboundAuthConfig: []map[string]interface{}{
 		{
@@ -179,6 +185,7 @@ func (ts *AttributeReleaseBranchTestSuite) SetupSuite() {
 		"email":       attrReleaseEmail,
 		"given_name":  attrReleaseGivenName,
 		"family_name": attrReleaseFamilyName,
+		"sub_id":      attrReleaseSpoofedSubID,
 	})
 	ts.Require().NoError(err, "Failed to marshal user attributes")
 
@@ -280,6 +287,25 @@ func (ts *AttributeReleaseBranchTestSuite) TestAppNativeFlow_InlinesUserAttribut
 
 	_, hasACI := claims["aci"]
 	ts.False(hasACI, fmt.Sprintf("App-native assertion should not carry an aci claim, got claims %v", claims))
+}
+
+// TestAppNativeFlow_ReservedClaimIsNotOverwrittenByAnAttribute pins the guard that keeps a resolved
+// user attribute from replacing a server-derived assertion claim. App-Native flows inline every
+// resolved attribute as a top-level claim, so a schema attribute named after a reserved claim would
+// otherwise overwrite it. That matters most for sub_id: the assertion's subject identity is what
+// token issuance reports as the event subject, so an overwritten value would publish the attribute
+// in its place, which is the mapped-attribute disclosure the reserved list exists to prevent.
+func (ts *AttributeReleaseBranchTestSuite) TestAppNativeFlow_ReservedClaimIsNotOverwrittenByAnAttribute() {
+	claims, err := testutils.DecodeJWTPayloadMap(ts.authenticateAppNatively())
+	ts.Require().NoError(err, "Failed to decode the app-native assertion")
+
+	ts.Equal(ts.userID, claims["sub_id"],
+		"sub_id must remain the authenticated entity's resource ID")
+	ts.NotEqual(attrReleaseSpoofedSubID, claims["sub_id"],
+		"A user attribute named after a reserved claim must not reach the assertion")
+
+	// The guard is specific to the reserved names: ordinary attributes are still inlined.
+	ts.Equal(attrReleaseEmail, claims["email"], "Non-reserved attributes must still be inlined")
 }
 
 // TestOAuthInitiatedFlow_ReferencesAttributeCacheViaACI covers case 6: the same application and the

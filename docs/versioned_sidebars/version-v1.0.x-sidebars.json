@@ -371,50 +371,79 @@
               "collapsed": true,
               "link": {
                 "type": "doc",
-                "id": "use-cases/ai-agents/overview"
+                "id": "use-cases/ai-agents/index"
               },
               "items": [
                 {
                   "type": "doc",
-                  "id": "use-cases/ai-agents/managed-agent-identity",
-                  "label": "Managed Identity"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/invoking-the-agent",
-                  "label": "Invoking the Agent"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/agent-as-subject",
-                  "label": "Agent as Subject"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/model-interaction",
-                  "label": "Model Interaction Controls"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/internal-services",
-                  "label": "Internal Business Services"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/external-integration",
-                  "label": "External Integration"
-                },
-                {
-                  "type": "doc",
-                  "id": "use-cases/ai-agents/multi-agent",
-                  "label": "Multi-Agent Interactions"
+                  "id": "use-cases/ai-agents/overview",
+                  "label": "Understand It",
+                  "key": "ai-agents-understand-it"
                 },
                 {
                   "type": "category",
-                  "label": "Try It Out",
+                  "label": "Solve It",
                   "collapsible": true,
                   "collapsed": true,
-                  "key": "ai-agents-try-it-out",
+                  "link": {
+                    "type": "doc",
+                    "id": "use-cases/ai-agents/solve-index"
+                  },
+                  "items": [
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-playground",
+                      "label": "Set Up the Playground"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-identity",
+                      "label": "Give the Agent an Identity"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-sign-in",
+                      "label": "Authenticate the Agent"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-credentials",
+                      "label": "Protect Its Credential"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-access",
+                      "label": "What the Agent May Do"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-acts-for-user",
+                      "label": "Act for a User"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-agent-as-resource",
+                      "label": "Who May Call the Agent"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-ambient",
+                      "label": "Approve Without a Browser"
+                    },
+                    {
+                      "type": "doc",
+                      "id": "use-cases/ai-agents/solve-run",
+                      "label": "How It All Runs",
+                      "key": "ai-agents-how-it-all-runs"
+                    }
+                  ]
+                },
+                {
+                  "type": "category",
+                  "label": "See It in a Sample App",
+                  "collapsible": true,
+                  "collapsed": true,
+                  "key": "ai-agents-see-it-in-a-sample-app",
                   "link": {
                     "type": "doc",
                     "id": "use-cases/ai-agents/try-it-out/index"
@@ -457,6 +486,12 @@
                       ]
                     }
                   ]
+                },
+                {
+                  "type": "doc",
+                  "id": "use-cases/ai-agents/architecture-decisions",
+                  "label": "Design Decisions & Alternatives",
+                  "key": "ai-agents-architecture-decisions"
                 }
               ]
             },
@@ -721,6 +756,11 @@
                 },
                 {
                   "type": "doc",
+                  "id": "guides/agents/authentication/agent-sign-in",
+                  "label": "Agent Sign-In"
+                },
+                {
+                  "type": "doc",
                   "id": "guides/agents/authentication/on-behalf-of-user",
                   "label": "On Behalf of a User"
                 },
@@ -855,6 +895,11 @@
               "items": [
                 {
                   "type": "doc",
+                  "id": "guides/notifications/templates",
+                  "label": "Notification Templates"
+                },
+                {
+                  "type": "doc",
                   "id": "guides/smtp-server/smtp-server-configuration",
                   "label": "SMTP Server"
                 },
@@ -900,6 +945,30 @@
                   "type": "doc",
                   "id": "guides/integrations/apim-gateways/krakend",
                   "label": "KrakenD"
+                }
+              ]
+            },
+            {
+              "type": "category",
+              "label": "Workload Identity Federation",
+              "collapsed": true,
+              "collapsible": true,
+              "items": [
+                {
+                  "type": "doc",
+                  "id": "guides/integrations/workload-identity-federation/overview",
+                  "label": "Overview",
+                  "key": "wif-overview"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/integrations/workload-identity-federation/openai",
+                  "label": "OpenAI"
+                },
+                {
+                  "type": "doc",
+                  "id": "guides/integrations/workload-identity-federation/claude",
+                  "label": "Claude"
                 }
               ]
             }
@@ -1576,17 +1645,17 @@
                 {
                   "type": "doc",
                   "id": "sdks/nuxt/apis/components/signed-in",
-                  "label": "<ThunderIDSignedIn />"
+                  "label": "<SignedIn />"
                 },
                 {
                   "type": "doc",
                   "id": "sdks/nuxt/apis/components/signed-out",
-                  "label": "<ThunderIDSignedOut />"
+                  "label": "<SignedOut />"
                 },
                 {
                   "type": "doc",
                   "id": "sdks/nuxt/apis/components/loading",
-                  "label": "<ThunderIDLoading />"
+                  "label": "<Loading />"
                 }
               ]
             },
@@ -1598,17 +1667,17 @@
                 {
                   "type": "doc",
                   "id": "sdks/nuxt/apis/components/sign-in-button",
-                  "label": "<ThunderIDSignInButton />"
+                  "label": "<SignInButton />"
                 },
                 {
                   "type": "doc",
                   "id": "sdks/nuxt/apis/components/sign-out-button",
-                  "label": "<ThunderIDSignOutButton />"
+                  "label": "<SignOutButton />"
                 },
                 {
                   "type": "doc",
                   "id": "sdks/nuxt/apis/components/sign-up-button",
-                  "label": "<ThunderIDSignUpButton />"
+                  "label": "<SignUpButton />"
                 }
               ]
             },
@@ -1620,17 +1689,17 @@
                 {
                   "type": "doc",
                   "id": "sdks/nuxt/apis/components/user",
-                  "label": "<ThunderIDUser />"
+                  "label": "<User />"
                 },
                 {
                   "type": "doc",
                   "id": "sdks/nuxt/apis/components/user-profile",
-                  "label": "<ThunderIDUserProfile />"
+                  "label": "<UserProfile />"
                 },
                 {
                   "type": "doc",
                   "id": "sdks/nuxt/apis/components/user-dropdown",
-                  "label": "<ThunderIDUserDropdown />"
+                  "label": "<UserDropdown />"
                 }
               ]
             }
@@ -1793,6 +1862,11 @@
                   "type": "doc",
                   "id": "sdks/react/apis/components/user",
                   "label": "<User />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks/react/apis/components/change-credential",
+                  "label": "<ChangeCredential />"
                 }
               ]
             }
@@ -2073,6 +2147,11 @@
                   "type": "doc",
                   "id": "sdks/vue/apis/components/user",
                   "label": "<User />"
+                },
+                {
+                  "type": "doc",
+                  "id": "sdks/vue/apis/components/change-credential",
+                  "label": "<ChangeCredential />"
                 }
               ]
             }
@@ -2152,6 +2231,53 @@
           "type": "doc",
           "id": "sdks/browser/apis/hooks",
           "label": "Event Hooks"
+        },
+        {
+          "type": "category",
+          "label": "Utilities",
+          "collapsed": true,
+          "items": [
+            {
+              "type": "doc",
+              "id": "sdks/browser/apis/utilities/update-me-credentials",
+              "label": "updateMeCredentials()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks/browser/apis/utilities/evaluate-password-policy",
+              "label": "evaluatePasswordPolicy()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks/browser/apis/utilities/evaluate-change-password-form",
+              "label": "evaluateChangePasswordForm()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks/browser/apis/utilities/resolve-change-credential-policy",
+              "label": "resolveChangeCredentialPolicy()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks/browser/apis/utilities/supports-credential",
+              "label": "supportsCredential()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks/browser/apis/utilities/map-credential-update-error",
+              "label": "mapCredentialUpdateError()"
+            },
+            {
+              "type": "doc",
+              "id": "sdks/browser/apis/utilities/credential-constants",
+              "label": "CredentialConstants"
+            },
+            {
+              "type": "doc",
+              "id": "sdks/browser/apis/utilities/create-http-client-fetcher",
+              "label": "createHttpClientFetcher()"
+            }
+          ]
         }
       ]
     },
@@ -2418,6 +2544,11 @@
       "items": [
         {
           "type": "doc",
+          "id": "sdks/ios/guides/try-the-sample-app",
+          "label": "Try the Sample App"
+        },
+        {
+          "type": "doc",
           "id": "sdks/ios/guides/accessing-protected-apis",
           "label": "Accessing Protected APIs"
         }
@@ -2502,6 +2633,11 @@
       "items": [
         {
           "type": "doc",
+          "id": "sdks/android/guides/try-the-sample-app",
+          "label": "Try the Sample App"
+        },
+        {
+          "type": "doc",
           "id": "sdks/android/guides/accessing-protected-apis",
           "label": "Accessing Protected APIs"
         }
@@ -2562,17 +2698,17 @@
             {
               "type": "doc",
               "id": "sdks/flutter/apis/components/signed-in",
-              "label": "ThunderIDSignedIn"
+              "label": "SignedIn"
             },
             {
               "type": "doc",
               "id": "sdks/flutter/apis/components/signed-out",
-              "label": "ThunderIDSignedOut"
+              "label": "SignedOut"
             },
             {
               "type": "doc",
               "id": "sdks/flutter/apis/components/user-profile",
-              "label": "ThunderIDUserProfile"
+              "label": "UserProfile"
             }
           ]
         }
@@ -2586,258 +2722,13 @@
       "items": [
         {
           "type": "doc",
+          "id": "sdks/flutter/guides/try-the-sample-app",
+          "label": "Try the Sample App"
+        },
+        {
+          "type": "doc",
           "id": "sdks/flutter/guides/accessing-protected-apis",
           "label": "Accessing Protected APIs"
-        }
-      ]
-    }
-  ],
-  "communitySidebar": [
-    {
-      "type": "html",
-      "value": "<div class=\"sidebar-section-label\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2\"/><circle cx=\"9\" cy=\"7\" r=\"4\"/><path d=\"M23 21v-2a4 4 0 0 0-3-3.87\"/><path d=\"M16 3.13a4 4 0 0 1 0 7.75\"/></svg><span>Community</span></div>",
-      "className": "sidebar-html-section-header"
-    },
-    {
-      "type": "category",
-      "label": "Community",
-      "className": "sidebar-section",
-      "collapsed": false,
-      "collapsible": false,
-      "items": [
-        {
-          "type": "doc",
-          "id": "community/overview",
-          "label": "Join the Community",
-          "key": "community-overview"
-        },
-        {
-          "type": "doc",
-          "id": "community/contributors",
-          "label": "Contributors"
-        },
-        {
-          "type": "doc",
-          "id": "community/code-of-conduct",
-          "label": "Code of Conduct"
-        }
-      ]
-    },
-    {
-      "type": "html",
-      "value": "<div class=\"sidebar-section-label\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polyline points=\"16 18 22 12 16 6\"/><polyline points=\"8 6 2 12 8 18\"/></svg><span>Contribute</span></div>",
-      "className": "sidebar-html-section-header"
-    },
-    {
-      "type": "category",
-      "label": "Contribute",
-      "className": "sidebar-section",
-      "collapsed": false,
-      "collapsible": false,
-      "items": [
-        {
-          "type": "doc",
-          "id": "community/contributing/report-a-bug",
-          "label": "Report a Bug"
-        },
-        {
-          "type": "doc",
-          "id": "community/contributing/contribute-ideas",
-          "label": "Contribute Ideas"
-        },
-        {
-          "type": "category",
-          "label": "Contribute Code",
-          "collapsed": false,
-          "collapsible": true,
-          "items": [
-            {
-              "type": "doc",
-              "id": "community/contributing/contributing-code/prerequisites",
-              "label": "Prerequisites"
-            },
-            {
-              "type": "doc",
-              "id": "community/contributing/contributing-code/configure-and-run",
-              "label": "Configure and Run"
-            },
-            {
-              "type": "category",
-              "label": "Optional Setup",
-              "key": "code-optional-setup",
-              "collapsed": true,
-              "collapsible": true,
-              "items": [
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/optional-setup/build-the-project",
-                  "label": "Build the Project"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/optional-setup/useful-commands",
-                  "label": "Useful Commands"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/optional-setup/setup-and-data-seeding",
-                  "label": "Setup and Data Seeding"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/optional-setup/advanced-setup",
-                  "label": "Advanced Setup (Manual Mode)"
-                }
-              ]
-            },
-            {
-              "type": "doc",
-              "id": "community/contributing/contributing-code/debugging",
-              "label": "Debugging"
-            },
-            {
-              "type": "category",
-              "label": "Backend Development",
-              "collapsed": true,
-              "collapsible": true,
-              "items": [
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/backend-development/overview",
-                  "label": "Overview",
-                  "key": "backend-overview"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/backend-development/observability",
-                  "label": "Observability"
-                }
-              ]
-            },
-            {
-              "type": "category",
-              "label": "Frontend Development",
-              "collapsed": true,
-              "collapsible": true,
-              "items": [
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/frontend-development/overview",
-                  "label": "Overview",
-                  "key": "frontend-overview"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/frontend-development/conventions",
-                  "label": "Conventions",
-                  "key": "frontend-conventions"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/frontend-development/best-practices",
-                  "label": "Best Practices",
-                  "key": "frontend-best-practices"
-                }
-              ]
-            },
-            {
-              "type": "category",
-              "label": "SDK Development",
-              "collapsed": true,
-              "collapsible": true,
-              "items": [
-                {
-                  "type": "doc",
-                  "id": "community/contributing/contributing-code/sdk-development/overview",
-                  "label": "Overview",
-                  "key": "sdk-overview"
-                }
-              ]
-            },
-            {
-              "type": "category",
-              "label": "Documentation Development",
-              "collapsed": true,
-              "collapsible": true,
-              "items": [
-                {
-                  "type": "doc",
-                  "id": "community/contributing/documentation-guide/overview",
-                  "label": "Overview"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/documentation-guide/configure-and-run",
-                  "label": "Configure & Run"
-                },
-                {
-                  "type": "category",
-                  "label": "Optional Setup",
-                  "key": "docs-optional-setup",
-                  "collapsed": true,
-                  "collapsible": true,
-                  "items": [
-                    {
-                      "type": "doc",
-                      "id": "community/contributing/documentation-guide/build-the-documentation",
-                      "label": "Build the Documentation"
-                    },
-                    {
-                      "type": "doc",
-                      "id": "community/contributing/documentation-guide/useful-commands",
-                      "label": "Useful Commands",
-                      "key": "docs-useful-commands"
-                    }
-                  ]
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/documentation-guide/style-guide",
-                  "label": "Style Guide"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/documentation-guide/writing-guide",
-                  "label": "Writing Guide"
-                },
-                {
-                  "type": "doc",
-                  "id": "community/contributing/documentation-guide/advanced-topics",
-                  "label": "Advanced Topics"
-                }
-              ]
-            },
-            {
-              "type": "doc",
-              "id": "community/contributing/contributing-code/pull-request-workflow",
-              "label": "Pull Request Workflow",
-              "key": "code-development-pipeline"
-            }
-          ]
-        },
-        {
-          "type": "doc",
-          "id": "community/contributing/documentation-guide/glossary",
-          "label": "Glossary"
-        }
-      ]
-    },
-    {
-      "type": "html",
-      "value": "<div class=\"sidebar-section-label\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14\"/></svg><span>Maintenance</span></div>",
-      "className": "sidebar-html-section-header"
-    },
-    {
-      "type": "category",
-      "label": "Maintenance",
-      "className": "sidebar-section",
-      "collapsed": false,
-      "collapsible": false,
-      "items": [
-        {
-          "type": "doc",
-          "id": "community/release-operations",
-          "label": "Release Operations"
         }
       ]
     }

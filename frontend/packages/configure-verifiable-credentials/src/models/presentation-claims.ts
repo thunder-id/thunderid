@@ -34,6 +34,28 @@ export const emptyClaimRow = (): ClaimRow => ({
 
 type ClaimFields = Pick<VerifiablePresentation, 'mandatoryClaims' | 'optionalClaims' | 'claimValues'>;
 
+/**
+ * findDuplicateClaimNames flags rows whose claim name repeats an earlier row. A name may appear
+ * only once across the whole editor, since a claim cannot be both mandatory and optional. Blank
+ * rows are ignored, as they are dropped before the request is built.
+ */
+export function findDuplicateClaimNames(rows: ClaimRow[]): Record<string, true> {
+  const duplicates: Record<string, true> = {};
+  const seen = new Set<string>();
+  rows.forEach((row: ClaimRow): void => {
+    const name = row.name.trim();
+    if (name === '') {
+      return;
+    }
+    if (seen.has(name)) {
+      duplicates[row.id] = true;
+      return;
+    }
+    seen.add(name);
+  });
+  return duplicates;
+}
+
 /** Builds editor rows from a stored definition (edit mode), preserving order and de-duplicating. */
 export function definitionToClaimRows(vp?: ClaimFields): ClaimRow[] {
   if (!vp) {

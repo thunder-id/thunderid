@@ -11,7 +11,8 @@
   ],
   "creationFlow": {
     "steps": ["ORGANIZATION_UNIT", "DETAILS", "COMPLETE"],
-    "previewSteps": []
+    "previewSteps": [],
+    "allowsUserLogins": false
   },
   "defaults": {
     "name": "Backend Application",

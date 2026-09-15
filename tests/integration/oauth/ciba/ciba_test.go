@@ -349,6 +349,8 @@ func (ts *CIBATestSuite) TestCIBAGrantFlow() {
 	claims, err := testutils.DecodeJWT(tokenRes.accessToken)
 	ts.Require().NoError(err, "issued access token should be a decodable JWT")
 	ts.Require().Equal(ts.userID, claims.Sub, "token subject should be the CIBA user")
+	ts.Require().NotContains(claims.Additional, "act",
+		"an application that has not opted in must not get an act claim")
 
 	// Step 7: A second poll is rejected — the request is CONSUMED (one-time use).
 	reuse := ts.cibaPollToken(bcResp.AuthReqID, "")

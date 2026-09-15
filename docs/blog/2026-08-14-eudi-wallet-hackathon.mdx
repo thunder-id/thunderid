@@ -1,0 +1,208 @@
+---
+slug: eudi-wallet-hackathon
+title: "Verifiable Credentials for Real-World Authority: What ThunderID Makes Possible"
+description: "Learn how ThunderID acts as the identity backbone for verifiable credentials and digital wallet-enabled apps, powering CitizenVerify, the public sector winner at the EUDI Wallet Hackathon 2026."
+docType: community
+authors: [thisara]
+tags: [thunderid, identity, security, "2026"]
+category: Product
+featured: true
+heroGradient: "linear-gradient(135deg,#152a5e 0%,#3f6fe0 100%)"
+heroIcon: globe
+thumbnail: /assets/images/blog/eudi-wallet-hackathon/authority-card.jpg
+---
+
+export const SEQ_ICONS = '/assets/images/blog/eudi-wallet-hackathon';
+
+export const SeqDiagram = ({participants, steps}) => {
+  const n = participants.length;
+  const colW = 170;
+  const marginX = 90;
+  const labelLH = 15;
+  const maxLines = participants.reduce((m, p) => Math.max(m, Array.isArray(p.label) ? p.label.length : (p.label ? 1 : 0)), 1);
+  const labelY0 = 74;
+  const headerH = labelY0 + (maxLines - 1) * labelLH + 12;
+  const rowH = 52;
+  const topPad = 26;
+  const W = marginX * 2 + colW * (n - 1);
+  const H = headerH + topPad + steps.length * rowH + 20;
+  const cx = (i) => marginX + i * colW;
+  const line = 'var(--ifm-color-emphasis-500)';
+  const textC = 'var(--ifm-font-color-base)';
+  const noteFill = 'var(--ifm-color-emphasis-200)';
+  const noteStroke = 'var(--ifm-color-emphasis-400)';
+  const halo = 'var(--ifm-background-color)';
+  return (
+    <div style={{overflowX: 'auto', margin: '1.5rem 0'}}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{width: '100%', height: 'auto', maxWidth: `${W}px`, display: 'block', margin: '0 auto'}} role="img" aria-label="Sequence diagram">
+        <defs>
+          <marker id="seqArrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+            <path d="M0,0 L7,3 L0,6 Z" fill={line} />
+          </marker>
+        </defs>
+        {participants.map((p, i) => (
+          <line key={`ll${i}`} x1={cx(i)} y1={headerH} x2={cx(i)} y2={H - 10} stroke={line} strokeWidth="1.5" strokeDasharray="4 6" />
+        ))}
+        {participants.map((p, i) => {
+          const h = p.h != null ? p.h : (p.wide ? 34 : 54);
+          const w = p.wide ? h * (p.ratio || 3) : h;
+          const iconBottom = 58;
+          const lines = p.label == null ? [] : (Array.isArray(p.label) ? p.label : [p.label]);
+          return (
+            <g key={`ic${i}`}>
+              <image href={`${SEQ_ICONS}/${p.src}.png`} x={cx(i) - w / 2} y={iconBottom - h} width={w} height={h} preserveAspectRatio="xMidYMid meet" />
+              {lines.map((ln, li) => (
+                <text key={li} x={cx(i)} y={labelY0 + li * labelLH} textAnchor="middle" fontSize="12.5" fontWeight="600" fill={textC}>{ln}</text>
+              ))}
+            </g>
+          );
+        })}
+        {steps.map((s, i) => {
+          const y = headerH + topPad + i * rowH;
+          if (s.note != null) {
+            const w = Math.max(96, s.note.length * 6.6 + 26);
+            return (
+              <g key={`s${i}`}>
+                <rect x={cx(s.at) - w / 2} y={y - 15} width={w} height={26} rx="4" fill={noteFill} stroke={noteStroke} />
+                <text x={cx(s.at)} y={y + 2} textAnchor="middle" fontSize="12" fill={textC}>{s.note}</text>
+              </g>
+            );
+          }
+          const a = cx(s.from);
+          const b = cx(s.to);
+          return (
+            <g key={`s${i}`}>
+              <line x1={a} y1={y} x2={b} y2={y} stroke={line} strokeWidth="1.5" strokeDasharray={s.dashed ? '6 5' : undefined} markerEnd="url(#seqArrow)" markerStart={s.both ? 'url(#seqArrow)' : undefined} />
+              <text x={(a + b) / 2} y={y - 8} textAnchor="middle" fontSize="12" fill={textC} style={{paintOrder: 'stroke', stroke: halo, strokeWidth: '3px', strokeLinejoin: 'round'}}>{s.label}</text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+};
+
+<ProductName /> is an open source IAM stack built from scratch for AI agents, post-quantum security, and decentralized identity, with a lightweight Go runtime and GitOps support. One of its four foundational pillars is decentralized identity: digital wallets, verifiable credentials, and DIDs.
+
+An early priority for us is closing the gap between application development and existing decentralized identity infrastructure. Developers shouldn't have to become DID or verifiable credential specialists to use them, especially those building citizen-facing or public-sector applications. Adding decentralized identity capabilities to an app should be as straightforward as adding any other identity feature, so teams can build directly on that infrastructure instead of around it.
+
+[CitizenVerify](https://github.com/crt-alt-verify/CitizenVerify) is a demo application built for the [EUDI Wallet Hackathon 2026](https://eudi-wallet.gov.de/en/news/eudi-wallet-hackathon-2026). We entered as team [Ctrl Alt Verify](https://eudi-wallet.gov.de/en/news/eudi-wallet-hackathon-2026#2-results-and-learnings) and won the [Public Sector Track](https://eudi-wallet.gov.de/en/news/eudi-wallet-hackathon-2026#2-results-and-learnings). CitizenVerify enables citizens to verify the authority of public officials using verifiable credentials and digital wallets, with [<ProductName />](https://thunderid.dev/) powering both credential issuance and verification end to end.
+
+<!-- truncate -->
+
+## What we built
+
+![Police officer showing a badge at a citizen's door](/assets/images/blog/eudi-wallet-hackathon/police-at-door.svg)
+
+Picture this. It's 11 p.m. There's a knock at your door. Someone shows a badge and says they're from the police, here to conduct a drug search.
+
+Would you just let them in?
+
+They have a badge. But are they authorized to conduct that search right now? Are they even real police officers? You have no way to check. So you do what most people do: you let them in and hope for the best.
+
+This isn't a rare edge case. A gas technician needs access to your building. A bailiff arrives with a court order. A health inspector shows up unannounced. It happens constantly, and every time, citizens are expected to just trust.
+
+You've probably felt that moment at the door: no real way to verify, just a gut feeling and a hope that the badge is real. CitizenVerify removes that guesswork.
+
+## How CitizenVerify works
+
+You open the CitizenVerify website or mobile app, find the type of authority you need to check, and tap it: police officer, gas technician, bailiff. The app generates a QR code on the spot.
+
+You show that code to the person at your door. They scan it with their EUDI Wallet, review what is being requested, and consent to share their authority credential.
+
+Your screen then shows the result: who they are, what authority they hold, and the details of what they are permitted to do. You can compare the verified details on your screen against the person in front of you. No hotline call. No squinting at a badge. A scan and a straight answer.
+
+If a verification fails, a silent alert can fire to a trusted contact along with your location. You don't have to say anything. Someone simply knows.
+
+That is one layer. The same infrastructure extends further: a full audit trail of every official interaction at your address, the same protection for landlords, hospitals, and schools, cross-border checks when an EU official turns up where they shouldn't, and the same trust model applied to digital interactions rather than physical ones.
+
+<SeqDiagram
+  participants={[
+    {src: 'citizen', label: 'Citizen'},
+    {src: 'citizenverify', wide: true, ratio: 3.09, h: 48, label: 'CitizenVerify'},
+    {src: 'police-officer', label: 'Police officer'},
+    {src: 'eudi-wallet', wide: true, ratio: 3.03, h: 48, label: ['Digital Identity', 'Wallet']},
+  ]}
+  steps={[
+    {from: 0, to: 1, label: 'Visit website / app'},
+    {from: 0, to: 1, label: 'Select policy and claims to verify', dashed: true, both: true},
+    {from: 1, to: 0, label: 'Generate QR'},
+    {from: 0, to: 2, label: 'Show to the police officer'},
+    {from: 2, to: 3, label: 'Scan and approve request', dashed: true, both: true},
+    {from: 3, to: 1, label: 'Send request claims'},
+    {from: 1, to: 0, label: 'Show the results'},
+  ]}
+/>
+
+Our team Ctrl Alt Verify built CitizenVerify for the EUDI Wallet Hackathon 2026, and won the Public Sector Track. As one of the winning teams, we presented CitizenVerify at the EUDI ON 2026 Community Event in Berlin, to an audience of digital identity experts, government representatives, and industry leaders.
+
+## What happens behind the scenes
+
+### The idea: authority as a credential
+
+The central idea behind CitizenVerify is simple. Authority can be represented as a credential.
+
+![Traditional identification versus CitizenVerify: authority encoded as a verifiable credential](/assets/images/blog/eudi-wallet-hackathon/authority-as-credential.svg)
+
+Traditional identification proves identity. A badge might tell you who someone claims to be, but it says little about what they are authorized to do. CitizenVerify encodes the authority itself as a verifiable credential. These credentials carry structured capability claims, so the credential proves delegated authority, not just identity.
+
+The solution is envisioned around a government-operated trust framework aligned with eIDAS 2.0 and national trust infrastructure. Only issuers registered within that framework are recognized, and only registered relying parties can request presentations.
+
+Two things happen behind the scenes, and <ProductName /> drives both: issuing the credential, and verifying it.
+
+**Issuance.** A government body, say the police department, grants an officer an authority credential through <ProductName />, using OpenID4VCI, the issuance protocol of the EUDI Wallet ecosystem. The officer authenticates, consents, and the signed credential is delivered to their EUDI Wallet, cryptographically bound to them. Behind this sits the government-operated trust framework: only issuers registered within it are recognized, so a credential is only as good as the institution standing behind it. If the officer's authority is later suspended or revoked, the issuer updates a status list, and every future verification reflects it.
+
+<SeqDiagram
+  participants={[
+    {src: 'police-officer', label: 'Officer'},
+    {src: 'eudi-wallet', wide: true, ratio: 3.03, h: 48, label: ['Digital Identity', 'Wallet']},
+    {src: 'thunderid', wide: true, ratio: 3.18, h: 48, label: ['Credential Issuer +', 'Authorization Server']},
+  ]}
+  steps={[
+    {from: 0, to: 2, label: 'Interact'},
+    {from: 1, to: 2, label: 'Initiate issuance'},
+    {from: 2, to: 0, label: 'Authentication / consent', dashed: true, both: true},
+    {from: 1, to: 2, label: 'Credential request'},
+    {from: 2, to: 1, label: 'Credential response with credential'},
+  ]}
+/>
+
+**Verification.** When the officer arrives at your door, CitizenVerify shows you a QR code. The trust runs both ways: the request behind that code is signed by <ProductName /> as a relying party registered in the same trust framework, so the officer's wallet knows it's talking to a legitimate verifier before sharing anything.
+
+The officer scans, consents, and their wallet returns a signed presentation over OpenID4VP. <ProductName /> then verifies it end to end: is the credential genuine, does it belong to this wallet, is the issuer registered and trusted, has the authority been revoked, and does it hold here and now, within this jurisdiction, at this time? In effect, <ProductName /> walks the whole chain from the institution registered in the trust framework down to the individual standing at your door.
+
+Trust is never assumed. It is verified each time.
+
+<ProductName /> then translates the outcome into a plain answer a citizen can read at a glance. The complexity stays under the hood.
+
+<SeqDiagram
+  participants={[
+    {src: 'citizenverify', wide: true, ratio: 3.09, h: 48, label: 'CitizenVerify'},
+    {src: 'eudi-wallet', wide: true, ratio: 3.03, h: 48, label: ['Digital Identity', 'Wallet']},
+    {src: 'thunderid', wide: true, ratio: 3.18, h: 48, label: 'Credential Verifier'},
+  ]}
+  steps={[
+    {from: 0, to: 2, label: 'Request QR to verify officer and authorities'},
+    {from: 2, to: 0, label: 'QR code'},
+    {at: 1, note: 'Scan the QR'},
+    {from: 1, to: 2, label: 'Authorization request'},
+    {from: 2, to: 1, label: 'Request object (what to prove)'},
+    {at: 1, note: 'Consent and selective disclosure'},
+    {from: 1, to: 2, label: 'vp_token'},
+    {from: 2, to: 0, label: 'Show the results'},
+  ]}
+/>
+
+## How <ProductName /> simplifies wallet-based application development
+
+Building wallet-enabled applications today often means learning an entirely new identity stack. Developers need to understand verifiable credentials, OpenID4VCI, OpenID4VP, trust registries, presentation queries, cryptographic proofs, and evolving standards before they can build even a simple application.
+
+Building CitizenVerify reinforced just how much of that complexity sits below the surface. The application itself is conceptually simple. The difficult part isn't the user experience, it's implementing the wallet protocols, managing trust, validating cryptographic proofs, handling selective disclosure, and keeping pace with evolving standards.
+
+That experience shaped how <ProductName /> is built. Instead of requiring every application to implement these building blocks, <ProductName /> provides them as platform capabilities. For CitizenVerify, <ProductName /> handled both sides of the credential lifecycle: on the issuance side, credential offers, wallet interactions, and binding credentials to authorized officials; on the verification side, QR-code generation, signed presentation requests, presentation verification, issuer trust validation, key binding, and policy enforcement. The application simply requested an issuance or a verification and focused on presenting the result to the user.
+
+Most of the work is configuration rather than code. Credential types, presentation requirements, and trust policies are defined declaratively, while <ProductName /> executes the OpenID4VCI and OpenID4VP flows, validates cryptographic proofs, and enforces trust and privacy behind the scenes. As a result, developers spend their time building applications instead of implementing decentralized identity protocols.
+
+Whether you're issuing professional credentials, verifying public officials, authorizing AI agents, or enabling cross-border trust, the underlying infrastructure should already be there.
+
+Want to see it in action? Try the CitizenVerify demo yourself, and check the <ProductName /> docs on wallet-based credential issuance and verification to see how to build the same flow into your own application.

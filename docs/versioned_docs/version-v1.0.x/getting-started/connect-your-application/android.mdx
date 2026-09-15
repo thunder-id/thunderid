@@ -71,6 +71,12 @@ Once it's running, the console is available at [https://localhost:8090/console](
 Copy the **Application ID** from the **General** tab, under **Quick Copy**. You'll need it when configuring the SDK.
 :::
 
+10. Open the **Advanced Settings** tab, turn on **Dev Mode** under **Platform Attestation**, then click **Save**.
+
+:::warning Platform attestation
+Mobile applications prove their binary identity before starting a sign-in flow. If platform attestation is not configured and **Dev Mode** is off, sign-in fails with `FES-1016`, `Attestation not configured`. Dev Mode is a bypass for local development; configure platform attestation for production.
+:::
+
 ## Create an Android App
 
 In Android Studio, create a new project using the **Empty Activity** template with **Kotlin** as the language and **Jetpack Compose** enabled.
@@ -111,6 +117,22 @@ dependencies {
 ```
 :::
 
+Set `minSdk` to 26, which the SDK requires:
+
+```kotlin title="build.gradle.kts" showLineNumbers
+android {
+    defaultConfig {
+        minSdk = 26
+    }
+}
+```
+
+Declare the internet permission in `AndroidManifest.xml`:
+
+```xml title="AndroidManifest.xml" showLineNumbers
+<uses-permission android:name="android.permission.INTERNET" />
+```
+
 ## Initialize the SDK
 
 Open your `MainActivity` and wrap the content you pass to `setContent` with the `ThunderIDProvider` composable. This provides `ThunderIDState` to all child composables through `LocalThunderID`.
@@ -122,6 +144,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
+import dev.thunderid.android.EncryptedStorageAdapter
 import dev.thunderid.android.ThunderIDConfig
 import dev.thunderid.compose.ThunderIDProvider
 
@@ -133,9 +156,11 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 ThunderIDProvider(
                     config = ThunderIDConfig(
-                        baseUrl = "https://10.0.2.2:8090",
+                        baseUrl = "https://localhost:8090",
                         scopes = listOf("openid", "profile", "email"),
-                        applicationId = "<your-application-id>"
+                        applicationId = "<your-application-id>",
+                        storage = EncryptedStorageAdapter(applicationContext),
+                        allowInsecureConnections = true
                     )
                 ) {
                     ContentView()
@@ -149,7 +174,7 @@ class MainActivity : ComponentActivity() {
 :::warning Configuration
 Replace `<your-application-id>` with the **Application ID** from your <ProductName /> application settings.
 
-On the Android Emulator, `localhost` refers to the emulator itself, not your host machine, so `baseUrl` uses the special alias `10.0.2.2` to reach the host's `localhost:8090` instead. If you're running on a physical device, use your host machine's LAN IP address (e.g. `https://192.168.1.100:8090`) rather than `10.0.2.2`.
+To reach a local instance from an emulator or device, forward the port as shown in [Run the App](#run-the-app).
 :::
 
 ### Configuration Parameters
@@ -159,6 +184,8 @@ On the Android Emulator, `localhost` refers to the emulator itself, not your hos
 | `baseUrl` | Your <ProductName /> instance URL. Must use HTTPS. |
 | `scopes` | OAuth 2.0 scopes to request. Include `"openid"` at minimum. |
 | `applicationId` | The Application ID used for the app-native sign-in and sign-up flows |
+| `storage` | Required on Android. Without it the SDK fails to initialize with `A StorageAdapter is required on Android`. |
+| `allowInsecureConnections` | Accepts the self-signed certificate a local instance serves. For local development only. Remove it before you build for production, so certificate validation stays on. |
 
 ## Add Sign-In and Sign-Out
 
@@ -276,6 +303,18 @@ fun HomeView() {
 ## Run the App
 
 In Android Studio, select an API 26+ emulator or device and press **Run** (▶).
+
+:::note Reaching a local instance
+An emulator's `localhost` is the emulator itself. Forward the port with `adb` from the Android SDK's `platform-tools`, which maps the device's `localhost:8090` to the same port on your development machine:
+
+```bash
+adb reverse tcp:8090 tcp:8090
+```
+
+Re-run this after each emulator restart. It also works for a device connected over USB.
+
+The emulator also exposes your machine's loopback interface as `10.0.2.2`, but apps targeting API 37 or later cannot reach it without additional permissions.
+:::
 
 :::note Test credentials
 You'll need a user to sign in with. If you haven't created one yet, open <ConsoleUrl />, navigate to **Users**, and add a test user with an email and password.

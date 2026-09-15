@@ -644,8 +644,8 @@ func (_c *AuthenticationServiceInterfaceMock_StartPasskeyAuthentication_Call) Ru
 }
 
 // StartPasskeyRegistration provides a mock function for the type AuthenticationServiceInterfaceMock
-func (_mock *AuthenticationServiceInterfaceMock) StartPasskeyRegistration(ctx context.Context, userID string, relyingPartyID string, relyingPartyName string, authSelection *PasskeyAuthenticatorSelectionDTO, attestation string) (interface{}, *common0.ServiceError) {
-	ret := _mock.Called(ctx, userID, relyingPartyID, relyingPartyName, authSelection, attestation)
+func (_mock *AuthenticationServiceInterfaceMock) StartPasskeyRegistration(ctx context.Context, userID string, relyingPartyID string, relyingPartyName string, authSelection *PasskeyAuthenticatorSelectionDTO, attestation string, assertion string) (interface{}, *common0.ServiceError) {
+	ret := _mock.Called(ctx, userID, relyingPartyID, relyingPartyName, authSelection, attestation, assertion)
 
 	if len(ret) == 0 {
 		panic("no return value specified for StartPasskeyRegistration")
@@ -653,18 +653,18 @@ func (_mock *AuthenticationServiceInterfaceMock) StartPasskeyRegistration(ctx co
 
 	var r0 interface{}
 	var r1 *common0.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, *PasskeyAuthenticatorSelectionDTO, string) (interface{}, *common0.ServiceError)); ok {
-		return returnFunc(ctx, userID, relyingPartyID, relyingPartyName, authSelection, attestation)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, *PasskeyAuthenticatorSelectionDTO, string, string) (interface{}, *common0.ServiceError)); ok {
+		return returnFunc(ctx, userID, relyingPartyID, relyingPartyName, authSelection, attestation, assertion)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, *PasskeyAuthenticatorSelectionDTO, string) interface{}); ok {
-		r0 = returnFunc(ctx, userID, relyingPartyID, relyingPartyName, authSelection, attestation)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, *PasskeyAuthenticatorSelectionDTO, string, string) interface{}); ok {
+		r0 = returnFunc(ctx, userID, relyingPartyID, relyingPartyName, authSelection, attestation, assertion)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(interface{})
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, *PasskeyAuthenticatorSelectionDTO, string) *common0.ServiceError); ok {
-		r1 = returnFunc(ctx, userID, relyingPartyID, relyingPartyName, authSelection, attestation)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, *PasskeyAuthenticatorSelectionDTO, string, string) *common0.ServiceError); ok {
+		r1 = returnFunc(ctx, userID, relyingPartyID, relyingPartyName, authSelection, attestation, assertion)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common0.ServiceError)
@@ -685,11 +685,12 @@ type AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call struct {
 //   - relyingPartyName string
 //   - authSelection *PasskeyAuthenticatorSelectionDTO
 //   - attestation string
-func (_e *AuthenticationServiceInterfaceMock_Expecter) StartPasskeyRegistration(ctx interface{}, userID interface{}, relyingPartyID interface{}, relyingPartyName interface{}, authSelection interface{}, attestation interface{}) *AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call {
-	return &AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call{Call: _e.mock.On("StartPasskeyRegistration", ctx, userID, relyingPartyID, relyingPartyName, authSelection, attestation)}
+//   - assertion string
+func (_e *AuthenticationServiceInterfaceMock_Expecter) StartPasskeyRegistration(ctx interface{}, userID interface{}, relyingPartyID interface{}, relyingPartyName interface{}, authSelection interface{}, attestation interface{}, assertion interface{}) *AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call {
+	return &AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call{Call: _e.mock.On("StartPasskeyRegistration", ctx, userID, relyingPartyID, relyingPartyName, authSelection, attestation, assertion)}
 }
 
-func (_c *AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call) Run(run func(ctx context.Context, userID string, relyingPartyID string, relyingPartyName string, authSelection *PasskeyAuthenticatorSelectionDTO, attestation string)) *AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call {
+func (_c *AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call) Run(run func(ctx context.Context, userID string, relyingPartyID string, relyingPartyName string, authSelection *PasskeyAuthenticatorSelectionDTO, attestation string, assertion string)) *AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -715,6 +716,10 @@ func (_c *AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call) Run(
 		if args[5] != nil {
 			arg5 = args[5].(string)
 		}
+		var arg6 string
+		if args[6] != nil {
+			arg6 = args[6].(string)
+		}
 		run(
 			arg0,
 			arg1,
@@ -722,6 +727,7 @@ func (_c *AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call) Run(
 			arg3,
 			arg4,
 			arg5,
+			arg6,
 		)
 	})
 	return _c
@@ -732,7 +738,7 @@ func (_c *AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call) Retu
 	return _c
 }
 
-func (_c *AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call) RunAndReturn(run func(ctx context.Context, userID string, relyingPartyID string, relyingPartyName string, authSelection *PasskeyAuthenticatorSelectionDTO, attestation string) (interface{}, *common0.ServiceError)) *AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call {
+func (_c *AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call) RunAndReturn(run func(ctx context.Context, userID string, relyingPartyID string, relyingPartyName string, authSelection *PasskeyAuthenticatorSelectionDTO, attestation string, assertion string) (interface{}, *common0.ServiceError)) *AuthenticationServiceInterfaceMock_StartPasskeyRegistration_Call {
 	_c.Call.Return(run)
 	return _c
 }

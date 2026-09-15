@@ -72,6 +72,12 @@ Once it's running, the console is available at [https://localhost:8090/console](
 Copy the **Application ID** from the **General** tab, under **Quick Copy**. You'll need it when configuring the SDK.
 :::
 
+10. Open the **Advanced Settings** tab, turn on **Dev Mode** under **Platform Attestation**, then click **Save**.
+
+:::warning Platform attestation
+Mobile applications prove their binary identity before starting a sign-in flow. If platform attestation is not configured and **Dev Mode** is off, sign-in fails with `FES-1016`, `Attestation not configured`. Dev Mode is a bypass for local development; configure platform attestation for production.
+:::
+
 ## Create an iOS App
 
 In Xcode, create a new project using the **iOS > App** template. Choose **SwiftUI** as the interface and **Swift** as the language.

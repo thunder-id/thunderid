@@ -18,7 +18,7 @@ Use the export API to retrieve <ProductName /> resources:
 ```json
 {
   "resources": "# File: My_App.yaml\napiVersion: thunder/v1\n...",
-  "environment_variables": "MY_APP_CLIENT_ID=\nMY_APP_CLIENT_SECRET=\n"
+  "environment_variables": "APPLICATION_MY_APP_CLIENT_ID=\nAPPLICATION_MY_APP_CLIENT_SECRET=\n"
 }
 ```
 
@@ -31,24 +31,75 @@ If the export has no template variables, `environment_variables` is an empty str
 
 ## Template Variable Names
 
-Each parameterized field becomes a template variable named after its resource and the field, in uppercase. The `clientId` field of an application named `My App` becomes `MY_APP_CLIENT_ID`.
+Each parameterized field becomes a template variable named after the resource type, the resource name
+and the field, in uppercase. The `clientId` field of an application named `My App` becomes
+`APPLICATION_MY_APP_CLIENT_ID`.
 
-<ProductName /> normalizes the resource name so that the generated name is valid in a template placeholder:
+The resource type leads the name because a name is only unique within its own type. An application
+and an agent may both be called `Dummy`, and without the type both would claim `DUMMY_CLIENT_ID`. One
+value would win and the other resource would import with the wrong credential.
 
-- Every character that is not a letter or a digit becomes an underscore, and consecutive underscores collapse into one.
-- A trailing underscore is removed, so a name ending in a separator produces the same variable name as the name without it.
-- A name that starts with a digit gets a leading underscore.
+<ProductName /> normalizes the resource name so that the generated name is valid in a template
+placeholder:
 
-Normalization applies to generated variable names only. Exported file names and the `name` field inside the exported YAML keep the original resource name.
+- Every character that is not a letter or a digit becomes an underscore, and consecutive underscores
+  collapse into one.
+- Leading and trailing underscores are removed, so a name ending in a separator produces the same
+  variable name as the name without it.
+- A name that would start with a digit gets a leading underscore. The resource type leads every
+  generated name, so this applies only where a name is derived without one.
 
-| Resource name | Variable name for `clientId` |
-| --- | --- |
-| `My App` | `MY_APP_CLIENT_ID` |
-| `My-App` | `MY_APP_CLIENT_ID` |
-| `My App-` | `MY_APP_CLIENT_ID` |
-| `2FA App` | `_2FA_APP_CLIENT_ID` |
+Normalization applies to generated variable names only. Exported file names and the `name` field
+inside the exported YAML keep the original resource name.
 
-Because normalization maps several names onto the same prefix, two resources in one export can compete for the same variable name. In that case, the second resource gets a numeric suffix. Exporting both `Wayfinder-Concierge` and `Wayfinder_Concierge` produces `WAYFINDER_CONCIERGE_CLIENT_ID` and `WAYFINDER_CONCIERGE_2_CLIENT_ID`, so each resource keeps its own value in the environment file. Resource types share one namespace, so an application and a connection with the same name also get distinct variable names.
+| Resource type | Resource name | Variable name for `clientId` |
+| --- | --- | --- |
+| `application` | `My App` | `APPLICATION_MY_APP_CLIENT_ID` |
+| `application` | `My-App` | `APPLICATION_MY_APP_CLIENT_ID` |
+| `application` | `My App-` | `APPLICATION_MY_APP_CLIENT_ID` |
+| `application` | `2FA App` | `APPLICATION_2FA_APP_CLIENT_ID` |
+| `agent` | `My App` | `AGENT_MY_APP_CLIENT_ID` |
+
+Because normalization maps several names onto the same prefix, two resources of one type in a single
+export can compete for the same variable name. In that case, the second resource gets a numeric
+suffix. Exporting both `Wayfinder-Concierge` and `Wayfinder_Concierge` produces
+`APPLICATION_WAYFINDER_CONCIERGE_CLIENT_ID` and `APPLICATION_WAYFINDER_CONCIERGE_2_CLIENT_ID`, so each
+resource keeps its own value in the environment file.
+
+### Updating an Existing Environment File
+
+Variable names generated before the resource type was added carry no type prefix. An environment file
+kept from an earlier export sets names such as `MY_APP_CLIENT_ID`, which a current export no longer
+asks for. Rename each entry to include its resource type, or export again and fill in the new file.
+
+## User Credentials
+
+An exported user carries its password as a template variable rather than a value:
+
+```yaml
+credentials:
+  password: "{{.USER_ALICE_EXAMPLE_COM_PASSWORD}}"
+```
+
+A stored password is a one-way hash, so the original cannot be exported. Naming it here means the
+importing server supplies the password from its own environment or secret provider and hashes it on
+the way in, which leaves the imported user able to sign in. Without the placeholder the user would
+import with no credential at all.
+
+Only the password is carried. It is the credential every user type defines, and a device-bound
+credential such as a passkey means nothing on another deployment.
+
+A user with no username exports no credentials, because the variable is named after the username and
+there is nothing to name it after.
+
+The password placeholder is named directly from the username, so it does not take the numeric suffix
+that resolves competing names for other fields. Two users whose usernames normalize to the same name,
+such as `alice@example.com` and `alice.example.com`, would therefore claim one password variable and
+both import with the same password.
+
+<ProductName /> refuses the whole export in that case, with the error `EXP-1003` naming the two
+resources. The bundle is not returned at all, because one that dropped a resource silently would look
+complete. Rename one of the users, or export them separately.
 
 ## Internal API Model Reference
 
@@ -65,12 +116,12 @@ The API reference schema also defines an internal `ExportResponse` model (see `E
   ],
   "envFile": {
     "fileName": ".env",
-    "content": "GOOGLE_CLIENT_ID=\nGOOGLE_CLIENT_SECRET=\n",
-    "size": 40
+    "content": "CONNECTION_GOOGLE_CLIENT_ID=\nCONNECTION_GOOGLE_CLIENT_SECRET=\n",
+    "size": 62
   },
   "summary": {
     "totalFiles": 2,
-    "totalSizeBytes": 168
+    "totalSizeBytes": 190
   }
 }
 ```

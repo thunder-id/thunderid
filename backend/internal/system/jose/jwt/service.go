@@ -94,22 +94,23 @@ func newJWTService(
 
 // GenerateJWT generates a JWT signed with the server's private key.
 // The typ parameter sets the JWT header "typ" field. If empty, defaults to "JWT".
-// The alg parameter overrides the signing algorithm (e.g. "RS256"). When empty, the server's
-// default algorithm is used. When set but incompatible with the server's private key,
-// ErrorUnsupportedJWSAlgorithm is returned.
+// The alg parameter selects the signing algorithm (e.g. "RS256"). When empty, the server's
+// preferred key and its algorithm are used. When set, the configured key matching that
+// algorithm signs the token and its thumbprint is used as the "kid". When no configured key
+// supports the algorithm, ErrorUnsupportedJWSAlgorithm is returned.
 // claims["aud"] must be set by the caller as either a string or []string; omitting it
 // or providing another type is a programmer error and returns InternalServerError.
 func (js *jwtService) GenerateJWT(
 	ctx context.Context, sub, iss string, validityPeriod int64, claims map[string]interface{}, typ, alg string,
 ) (string, int64, *tidcommon.ServiceError) {
-	if alg != "" {
-		if alg != js.jwsAlg {
-			return "", 0, &ErrorUnsupportedJWSAlgorithm
-		}
-	}
 	if js.cryptoProvider == nil {
 		js.logger.Error(ctx, "Crypto provider not initialized for JWT generation")
 		return "", 0, &tidcommon.InternalServerError
+	}
+
+	signKeyRef, signAlg, signKid, svcErr := js.resolveSigningKey(ctx, alg)
+	if svcErr != nil {
+		return "", 0, svcErr
 	}
 
 	// Validate that claims["aud"] is present and of an accepted type.
@@ -131,9 +132,9 @@ func (js *jwtService) GenerateJWT(
 		typ = TokenTypeJWT
 	}
 	header := map[string]string{
-		"alg": js.jwsAlg,
+		"alg": signAlg,
 		"typ": typ,
-		"kid": js.kid,
+		"kid": signKid,
 	}
 
 	headerJSON, err := json.Marshal(header)
@@ -194,7 +195,7 @@ func (js *jwtService) GenerateJWT(
 
 	// Create the signing input and sign it with the crypto provider.
 	signingInput := headerBase64 + "." + payloadBase64
-	signature, err := js.cryptoProvider.Sign(ctx, js.keyRef, js.jwsAlg, []byte(signingInput))
+	signature, err := js.cryptoProvider.Sign(ctx, signKeyRef, signAlg, []byte(signingInput))
 	if err != nil {
 		js.logger.Error(ctx, "Failed to sign JWT: "+err.Error())
 		return "", 0, &tidcommon.InternalServerError
@@ -204,6 +205,30 @@ func (js *jwtService) GenerateJWT(
 	signatureBase64 := base64.RawURLEncoding.EncodeToString(signature)
 
 	return signingInput + "." + signatureBase64, iat.Unix(), nil
+}
+
+// resolveSigningKey returns the key reference, JWS algorithm and "kid" to sign with. An empty
+// alg selects the server's preferred key. Otherwise the configured key whose algorithm matches
+// alg is used, so the "kid" always identifies the key that produced the signature.
+func (js *jwtService) resolveSigningKey(ctx context.Context, alg string) (
+	providers.KeyRef, string, string, *tidcommon.ServiceError,
+) {
+	if alg == "" || alg == js.jwsAlg {
+		return js.keyRef, js.jwsAlg, js.kid, nil
+	}
+
+	keys, err := js.cryptoProvider.GetPublicKeys(ctx, providers.PublicKeyFilter{Algorithm: alg})
+	if err != nil {
+		js.logger.Error(ctx, "Failed to retrieve public keys for JWT signing",
+			log.String("alg", alg), log.Error(err))
+		return providers.KeyRef{}, "", "", &tidcommon.InternalServerError
+	}
+	if len(keys) == 0 {
+		return providers.KeyRef{}, "", "", &ErrorUnsupportedJWSAlgorithm
+	}
+
+	key := keys[0]
+	return providers.KeyRef{KeyID: key.KeyID}, key.Algorithm, key.Thumbprint, nil
 }
 
 // VerifyJWT verifies the JWT token using the server's public key.

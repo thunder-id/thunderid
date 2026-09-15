@@ -12,6 +12,7 @@ type Application struct {
 	Type                      string              `json:"type,omitempty"`
 	ClientID                  string              `json:"clientId,omitempty"`
 	ClientSecret              string              `json:"clientSecret,omitempty"`
+	FlowSecret                string              `json:"flowSecret,omitempty"`
 	AuthFlowID                string              `json:"authFlowId,omitempty"`
 	RegistrationFlowID        string              `json:"registrationFlowId,omitempty"`
 	IsRegistrationFlowEnabled bool                `json:"isRegistrationFlowEnabled"`
@@ -117,6 +118,7 @@ type IDTokenConfig struct {
 	ValidityPeriod int64    `json:"validityPeriod,omitempty"`
 	UserAttributes []string `json:"userAttributes,omitempty"`
 	ResponseType   string   `json:"responseType,omitempty"`
+	SigningAlg     string   `json:"signingAlg,omitempty"`
 	EncryptionAlg  string   `json:"encryptionAlg,omitempty"`
 	EncryptionEnc  string   `json:"encryptionEnc,omitempty"`
 }

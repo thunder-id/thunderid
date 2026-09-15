@@ -28,7 +28,9 @@ type UserTypeSystemAttributes struct {
 type User struct {
 	ID         string          `json:"id"`
 	OUID       string          `json:"ouId"`
+	OUHandle   string          `json:"ouHandle,omitempty"`
 	Type       string          `json:"type"`
+	Display    string          `json:"display,omitempty"`
 	Attributes json.RawMessage `json:"attributes"`
 }
 
@@ -48,6 +50,7 @@ type Application struct {
 	ClientSecret              string                   `json:"clientSecret,omitempty"`
 	RedirectURIs              []string                 `json:"redirectUris,omitempty"`
 	AllowedUserTypes          []string                 `json:"allowedUserTypes,omitempty"`
+	AllowedAgentTypes         []string                 `json:"allowedAgentTypes,omitempty"`
 	SubjectAttribute          map[string]string        `json:"subjectAttribute,omitempty"`
 	Certificate               map[string]interface{}   `json:"certificate,omitempty"`
 	PasskeyAllowedOrigins     []string                 `json:"passkeyAllowedOrigins,omitempty"`
@@ -415,11 +418,10 @@ type CredentialDisplay struct {
 
 // CredentialConfiguration is the request body for the OpenID4VCI credential
 // configuration management API. Handle is both the credential_configuration_id
-// and the OAuth scope; VCT and an OU (OUID or OUHandle) are required.
+// and the OAuth scope; VCT and OUID are required.
 type CredentialConfiguration struct {
 	Handle          string             `json:"handle"`
 	OUID            string             `json:"ouId,omitempty"`
-	OUHandle        string             `json:"ouHandle,omitempty"`
 	Name            string             `json:"name,omitempty"`
 	Description     string             `json:"description,omitempty"`
 	Format          string             `json:"format,omitempty"`
@@ -431,11 +433,10 @@ type CredentialConfiguration struct {
 
 // PresentationDefinition is the request body for the OpenID4VP presentation
 // definition management API. Handle is the definition_id used on initiate and
-// the DCQL credential id; VCT and an OU (OUID or OUHandle) are required.
+// the DCQL credential id; VCT and OUID are required.
 type PresentationDefinition struct {
 	Handle               string              `json:"handle"`
 	OUID                 string              `json:"ouId,omitempty"`
-	OUHandle             string              `json:"ouHandle,omitempty"`
 	Name                 string              `json:"name,omitempty"`
 	Description          string              `json:"description,omitempty"`
 	VCT                  string              `json:"vct"`

@@ -1570,6 +1570,86 @@ func (s *ConsentEnforcerServiceTestSuite) TestFillMissingDecisions_MissingPurpos
 	s.False(added.Elements[1].Approved)
 }
 
+func (s *ConsentEnforcerServiceTestSuite) TestFillMissingDecisions_RootDeniedFillsMissingElements() {
+	session := &consentSessionData{
+		Purposes: []consentSessionPurpose{
+			{PurposeName: "p1", Essential: []string{"email"}, Optional: []string{"phone"}},
+		},
+	}
+	// Client sent a minimal deny payload: root approved=false and the purpose is present but its
+	// element list is empty. The backend fills in every prompted element as denied.
+	decisions := &providers.ConsentDecisions{
+		Approved: false,
+		Purposes: []providers.PurposeDecision{
+			{PurposeName: "p1", Approved: false, Elements: []providers.ElementDecision{}},
+		},
+	}
+	fillMissingDecisions(session, decisions)
+
+	s.Len(decisions.Purposes, 1)
+	filled := decisions.Purposes[0]
+	s.Len(filled.Elements, 2)
+	s.Equal("email", filled.Elements[0].Name)
+	s.False(filled.Elements[0].Approved)
+	s.Equal("phone", filled.Elements[1].Name)
+	s.False(filled.Elements[1].Approved)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestFillMissingDecisions_PurposeDeniedFillsMissingElements() {
+	session := &consentSessionData{
+		Purposes: []consentSessionPurpose{
+			{PurposeName: "p1", Optional: []string{"address"}},
+			{PurposeName: "p2", Essential: []string{"phone"}, Optional: []string{"birthday"}},
+		},
+	}
+	// Root is approved but p2 is denied and its elements were omitted. Missing elements under the
+	// denied purpose must be filled in as denied.
+	decisions := &providers.ConsentDecisions{
+		Approved: true,
+		Purposes: []providers.PurposeDecision{
+			{PurposeName: "p1", Approved: true, Elements: []providers.ElementDecision{
+				{Name: "address", Approved: true}}},
+			{PurposeName: "p2", Approved: false},
+		},
+	}
+	fillMissingDecisions(session, decisions)
+
+	s.Len(decisions.Purposes, 2)
+	// p1 is unchanged: parent approved so omitted elements stay omitted
+	s.Len(decisions.Purposes[0].Elements, 1)
+	s.Equal("address", decisions.Purposes[0].Elements[0].Name)
+	s.True(decisions.Purposes[0].Elements[0].Approved)
+	// p2 gets both prompted elements filled in as denied
+	deniedPurpose := decisions.Purposes[1]
+	s.Len(deniedPurpose.Elements, 2)
+	s.Equal("phone", deniedPurpose.Elements[0].Name)
+	s.False(deniedPurpose.Elements[0].Approved)
+	s.Equal("birthday", deniedPurpose.Elements[1].Name)
+	s.False(deniedPurpose.Elements[1].Approved)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestFillMissingDecisions_ApprovedPurposeLeftUntouched() {
+	session := &consentSessionData{
+		Purposes: []consentSessionPurpose{
+			{PurposeName: "p1", Essential: []string{"email"}, Optional: []string{"phone"}},
+		},
+	}
+	// Approval is not propagated down, so an omitted optional element under an approved parent
+	// stays omitted (treated as not-consented on subsequent reads).
+	decisions := &providers.ConsentDecisions{
+		Approved: true,
+		Purposes: []providers.PurposeDecision{
+			{PurposeName: "p1", Approved: true, Elements: []providers.ElementDecision{
+				{Name: "email", Approved: true}}},
+		},
+	}
+	fillMissingDecisions(session, decisions)
+
+	s.Len(decisions.Purposes, 1)
+	s.Len(decisions.Purposes[0].Elements, 1)
+	s.Equal("email", decisions.Purposes[0].Elements[0].Name)
+}
+
 // buildEssentialElementSet / hasEssentialDenials tests
 
 func (s *ConsentEnforcerServiceTestSuite) TestBuildEssentialElementSet() {

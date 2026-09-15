@@ -1,21 +1,37 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FormHelperText, FormLabel, Stack, Typography} from '@wso2/oxygen-ui';
-import {useMemo, type ReactNode} from 'react';
+import {Checkbox, FormControlLabel, FormHelperText, FormLabel, Stack, Typography} from '@wso2/oxygen-ui';
+import {useCallback, useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import {clampToInteger} from './utils';
 import type {StepData} from '@/features/flows/models/steps';
 
+interface ConsentPropertyValues {
+  timeout?: string;
+  failOnDeny?: boolean;
+}
+
 function ConsentProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
   const {t} = useTranslation();
 
-  const currentTimeout = useMemo(() => {
+  const properties = useMemo<ConsentPropertyValues>(() => {
     const stepData = resource?.data as StepData | undefined;
-    return (stepData?.properties as {timeout?: string})?.timeout ?? '0';
+    return (stepData?.properties as ConsentPropertyValues | undefined) ?? {};
   }, [resource]);
+
+  const currentTimeout = properties.timeout ?? '0';
+
+  const failOnDenyChecked = !!properties.failOnDeny;
+
+  const handleFailOnDenyChange = useCallback(
+    (checked: boolean): void => {
+      onChange('data.properties.failOnDeny', checked, resource);
+    },
+    [resource, onChange],
+  );
 
   return (
     <Stack gap={2}>
@@ -38,6 +54,20 @@ function ConsentProperties({resource, onChange}: CommonResourcePropertiesPropsIn
           inputProps={{min: 0}}
         />
         <FormHelperText>{t('flows:core.executions.consent.timeout.hint')}</FormHelperText>
+      </div>
+
+      <div>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={failOnDenyChecked}
+              onChange={(e) => handleFailOnDenyChange(e.target.checked)}
+              size="small"
+            />
+          }
+          label={t('flows:core.executions.consent.failOnDeny.label')}
+        />
+        <FormHelperText>{t('flows:core.executions.consent.failOnDeny.hint')}</FormHelperText>
       </div>
     </Stack>
   );

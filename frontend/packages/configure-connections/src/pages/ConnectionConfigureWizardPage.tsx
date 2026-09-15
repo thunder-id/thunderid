@@ -157,7 +157,7 @@ export default function ConnectionConfigureWizardPage(): JSX.Element | null {
         </Paper>
 
         {generalError && (
-          <Alert severity="error" onClose={clearCreateError}>
+          <Alert severity="error" onClose={clearCreateError} data-testid="wizard-create-error">
             {generalError}
           </Alert>
         )}

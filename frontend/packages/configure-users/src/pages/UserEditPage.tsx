@@ -107,8 +107,6 @@ export default function UserEditPage() {
   const matchedSchema = userTypeList?.types?.find((s) => s.name === user?.type);
 
   const schemaId = matchedSchema?.id;
-  const trimmedOuId = matchedSchema?.ouId?.trim();
-  const schemaOuId = trimmedOuId === '' ? undefined : trimmedOuId;
 
   const {
     data: userTypeDetails,
@@ -173,8 +171,7 @@ export default function UserEditPage() {
   );
 
   const handleSave = useCallback(async () => {
-    const organizationUnitId = schemaOuId ?? user?.ouId;
-    if (!userId || !organizationUnitId || !user?.type) return;
+    if (!userId || !user?.ouId || !user.type) return;
 
     // Drop stale optional attribute values so an untouched mismatch doesn't block the update.
     const attributes = dropNonConformingOptionalAttributes(
@@ -186,7 +183,7 @@ export default function UserEditPage() {
       await updateUserMutation.mutateAsync({
         userId,
         data: {
-          ouId: organizationUnitId,
+          ouId: user.ouId,
           type: user.type,
           attributes,
         },
@@ -197,7 +194,7 @@ export default function UserEditPage() {
     } catch (err) {
       logger.error('Failed to update user', {error: err});
     }
-  }, [schemaOuId, user, userId, editedUser, userTypeDetails, updateUserMutation, refetch, logger]);
+  }, [user, userId, editedUser, userTypeDetails, updateUserMutation, refetch, logger]);
 
   const hasChanges = useMemo(
     () => Object.entries(editedUser).some(([key, value]) => !isEqualIgnoringEmpty(value, user?.[key as keyof User])),

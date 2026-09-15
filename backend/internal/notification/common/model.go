@@ -20,12 +20,12 @@ type NotificationData struct {
 
 // NotificationSenderDTO represents the data transfer object for a notification sender.
 type NotificationSenderDTO struct {
-	ID          string                 `yaml:"id,omitempty"`
-	Name        string                 `yaml:"name"`
-	Description string                 `yaml:"description,omitempty"`
-	Type        NotificationSenderType `yaml:"-"`
-	Provider    MessageProviderType    `yaml:"provider"`
-	Properties  []cmodels.Property     `yaml:"properties,omitempty"`
+	ID          string                   `yaml:"id,omitempty"`
+	Name        string                   `yaml:"name"`
+	Description string                   `yaml:"description,omitempty"`
+	Type        NotificationSenderType   `yaml:"-"`
+	Provider    NotificationProviderType `yaml:"provider"`
+	Properties  []cmodels.Property       `yaml:"properties,omitempty"`
 }
 
 // VerifyOTPDTO represents the service layer data structure for verifying an OTP.

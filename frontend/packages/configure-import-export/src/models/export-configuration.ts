@@ -68,6 +68,14 @@ export interface ExportRequest {
    */
   serverConfigs?: string[];
   /**
+   * List of credential configuration (OID4VCI template) IDs to export. Use `["*"]` to export all.
+   */
+  credentialConfigurations?: string[];
+  /**
+   * List of presentation definition (OID4VP) IDs to export. Use `["*"]` to export all.
+   */
+  presentationDefinitions?: string[];
+  /**
    * Optional configuration for export behavior
    */
   options?: ExportOptions;

@@ -126,6 +126,9 @@ func (s *tokenIntrospectionService) prepareValidResponse(payload map[string]inte
 	if sub, ok := payload[constants.ClaimSub].(string); ok {
 		response.Sub = sub
 	}
+	if subType, ok := payload[constants.ClaimSubType].(string); ok {
+		response.SubType = subType
+	}
 	switch aud := payload[constants.ClaimAud].(type) {
 	case string:
 		response.Aud = aud

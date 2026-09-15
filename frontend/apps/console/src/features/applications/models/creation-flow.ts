@@ -15,6 +15,8 @@ import type {ApplicationCreateFlowStep} from './application-create-flow';
 export interface CreationFlow {
   /** Ordered list of wizard steps for this flow. */
   steps: ApplicationCreateFlowStep[];
+  /** Whether the application supports authentication for end users. */
+  allowsUserLogins?: boolean;
   /**
    * Which of `steps` render the live sign-in preview panel. Templates with no hosted sign-in
    * screen at all (e.g. machine-to-machine backends) declare this as an empty array so the

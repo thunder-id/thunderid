@@ -326,6 +326,20 @@ var (
 			DefaultValue: "One or more user types in allowed_user_types do not exist in the system",
 		},
 	}
+	// ErrorInvalidAgentType is the error returned when an invalid agent type is provided in
+	// allowedAgentTypes.
+	ErrorInvalidAgentType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1046",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_agent_type",
+			DefaultValue: "Invalid agent type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_agent_type_description",
+			DefaultValue: "One or more agent types in allowedAgentTypes do not exist in the system",
+		},
+	}
 	// ErrorThemeNotFound is the error returned when theme is not found.
 	ErrorThemeNotFound = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -573,6 +587,62 @@ var (
 			Key: "error.applicationservice.invalid_subject_attribute_mapping_description",
 			DefaultValue: "The subject attribute mapping must reference an attribute that is unique, required, " +
 				"and string-typed in an allowed user type",
+		},
+	}
+	// ErrorInvalidCredential is returned when a supplied credential is invalid.
+	ErrorInvalidCredential = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1046",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_credential",
+			DefaultValue: "Invalid credential",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_credential_description",
+			DefaultValue: "The provided credential is invalid",
+		},
+	}
+	// ErrorApplicationHasNoClientSecret is the error returned when a client secret regeneration targets an
+	// application that authenticates without one: a public client, or one using private_key_jwt.
+	ErrorApplicationHasNoClientSecret = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1047",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.application_has_no_client_secret",
+			DefaultValue: "Application has no client secret",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.application_has_no_client_secret_description",
+			DefaultValue: "A client secret is not applicable to this application: it authenticates without one",
+		},
+	}
+	// ErrorApplicationHasBlockingDependencies is the error returned when the application cannot be deleted
+	// because another resource holds a reference that forbids it.
+	ErrorApplicationHasBlockingDependencies = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1048",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.application_has_blocking_dependencies",
+			DefaultValue: "Application has blocking dependencies",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.applicationservice.application_has_blocking_dependencies_description",
+			DefaultValue: "The application cannot be deleted because other resources depend on it. " +
+				"Remove or reassign them first",
+		},
+	}
+	// ErrorUnsupportedCredentialAction is the error returned when a credential action the service does
+	// not implement is requested.
+	ErrorUnsupportedCredentialAction = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1049",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.unsupported_credential_action",
+			DefaultValue: "Unsupported credential action",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.unsupported_credential_action_description",
+			DefaultValue: "The requested action is not supported for this application's credential",
 		},
 	}
 )

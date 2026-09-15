@@ -202,6 +202,14 @@ describe('TokenUserAttributesSection', () => {
       expect(screen.getByTestId('jwt-preview')).toBeInTheDocument();
     });
 
+    // A user-subject token has a user as its subject, so the server never stamps sub_type here.
+    it('does not show sub_type in a user token preview', () => {
+      render(<TokenUserAttributesSection {...baseProps} sharedAttributes={[]} />);
+
+      const payload = screen.getByTestId('jwt-preview-payload').textContent ?? '';
+      expect(payload).not.toContain('sub_type');
+    });
+
     it('shows sharedAttributes in the JWT preview payload', () => {
       render(<TokenUserAttributesSection {...baseProps} userAttributes={['email']} sharedAttributes={['email']} />);
 

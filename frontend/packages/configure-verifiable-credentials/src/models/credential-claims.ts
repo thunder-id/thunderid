@@ -30,6 +30,55 @@ export function credentialToClaimRows(credential?: VerifiableCredential): ClaimR
   });
 }
 
+/**
+ * Claim names that cannot be selectively disclosed. iss, nbf, exp, cnf, vct and status must not
+ * appear in the Disclosures per SD-JWT VC; _sd, _sd_alg and '...' are structural to SD-JWT itself.
+ * sub and iat may be disclosed per the specification, but this issuer always writes both into the
+ * credential payload, so disclosing them would collide. Kept in step with the server-side set.
+ */
+export const RESERVED_CLAIM_NAMES: readonly string[] = [
+  'iss',
+  'nbf',
+  'exp',
+  'cnf',
+  'vct',
+  'status',
+  '_sd',
+  '_sd_alg',
+  '...',
+  'sub',
+  'iat',
+];
+
+/** The reason a claim row's name is invalid, keyed by row id. */
+export type ClaimNameError = 'duplicate' | 'reserved';
+
+/**
+ * findClaimNameErrors flags rows whose claim name is reserved or repeats an earlier row. Names are
+ * compared case-sensitively because they become JSON keys in the issued credential. Blank rows are
+ * ignored, since they are dropped before the request is built.
+ */
+export function findClaimNameErrors(rows: ClaimRow[]): Record<string, ClaimNameError> {
+  const errors: Record<string, ClaimNameError> = {};
+  const seen = new Set<string>();
+  rows.forEach((row: ClaimRow): void => {
+    const name = row.name.trim();
+    if (name === '') {
+      return;
+    }
+    if (RESERVED_CLAIM_NAMES.includes(name)) {
+      errors[row.id] = 'reserved';
+      return;
+    }
+    if (seen.has(name)) {
+      errors[row.id] = 'duplicate';
+      return;
+    }
+    seen.add(name);
+  });
+  return errors;
+}
+
 /** claimRowsToRequest maps editor rows to the API claims array, dropping unnamed rows. */
 export function claimRowsToRequest(rows: ClaimRow[]): ClaimMapping[] {
   return rows

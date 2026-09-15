@@ -11,13 +11,26 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
+const testOUID = "ou-1"
+
 type ConfigurationServiceTestSuite struct {
 	suite.Suite
+}
+
+// SetupTest pins the store mode to mutable so the service's declarative-mode guard has a
+// runtime to read. Suites in this package reset the runtime, so it is re-initialized here.
+func (s *ConfigurationServiceTestSuite) SetupTest() {
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime("", &config.Config{
+		OpenID4VCI: config.OpenID4VCIConfig{Store: string(serverconst.StoreModeMutable)},
+	}))
 }
 
 func TestConfigurationServiceTestSuite(t *testing.T) {
@@ -185,13 +198,13 @@ func (s *ConfigurationServiceTestSuite) TestDeleteIsIdempotent() {
 
 func (s *ConfigurationServiceTestSuite) TestListAndListSummaries() {
 	resolver := newOUServiceMock(s.T(),
-		map[string]bool{"ou-1": true},
-		map[string]string{"default": "ou-1"},
-		map[string]string{"ou-1": "default"})
+		map[string]bool{testOUID: true},
+		map[string]string{"default": testOUID},
+		map[string]string{testOUID: "default"})
 	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver)
 
 	dto := s.validDTO()
-	dto.OUHandle = "default"
+	dto.OUID = testOUID
 	_, err := svc.CreateCredentialConfiguration(context.Background(), dto)
 	s.Require().Nil(err)
 
@@ -352,18 +365,17 @@ func (s *ConfigurationServiceTestSuite) TestCreateOUVerificationError() {
 		Return(false, &tidcommon.InternalServerError).Maybe()
 	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver)
 	dto := s.validDTO()
-	dto.OUID = "ou-1"
+	dto.OUID = testOUID
 	_, err := svc.CreateCredentialConfiguration(context.Background(), dto)
 	s.Require().NotNil(err)
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
-func (s *ConfigurationServiceTestSuite) TestCreateOUResolveByPathError() {
+func (s *ConfigurationServiceTestSuite) TestCreateRejectsMissingOUID() {
 	resolver := newOUServiceMock(s.T(),
 		map[string]bool{}, map[string]string{}, map[string]string{})
 	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver)
 	dto := s.validDTO()
-	dto.OUHandle = "unknown-path"
 	_, err := svc.CreateCredentialConfiguration(context.Background(), dto)
 	s.Require().NotNil(err)
 	s.Equal(ErrorConfigurationInvalidOU.Code, err.Code)
@@ -519,21 +531,21 @@ func (s *ConfigurationServiceTestSuite) TestPopulateOUHandleResolveError() {
 	resolver.EXPECT().IsOrganizationUnitExists(mock.Anything, mock.Anything).Return(true, nil).Maybe()
 	resolver.EXPECT().GetOrganizationUnitByPath(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, _ string) (providers.OrganizationUnit, *tidcommon.ServiceError) {
-			return providers.OrganizationUnit{ID: "ou-1"}, nil
+			return providers.OrganizationUnit{ID: testOUID}, nil
 		}).Maybe()
 	resolver.EXPECT().GetOrganizationUnitHandlesByIDs(mock.Anything, mock.Anything).
 		Return(nil, &tidcommon.InternalServerError).Maybe()
 	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver)
 
 	dto := s.validDTO()
-	dto.OUID = "ou-1"
+	dto.OUID = testOUID
 	created, err := svc.CreateCredentialConfiguration(context.Background(), dto)
 	s.Require().Nil(err)
 
 	// Resolution failure is logged and swallowed; the call still succeeds.
 	got, err := svc.GetCredentialConfiguration(context.Background(), created.ID)
 	s.Require().Nil(err)
-	s.Equal("ou-1", got.OUID)
+	s.Equal(testOUID, got.OUID)
 
 	summaries, err := svc.ListCredentialConfigurationSummaries(context.Background())
 	s.Require().Nil(err)
@@ -542,9 +554,9 @@ func (s *ConfigurationServiceTestSuite) TestPopulateOUHandleResolveError() {
 
 func (s *ConfigurationServiceTestSuite) TestCreateResolvesAndValidatesOU() {
 	resolver := newOUServiceMock(s.T(),
-		map[string]bool{"ou-1": true},
-		map[string]string{"default": "ou-1"},
-		map[string]string{"ou-1": "default"})
+		map[string]bool{testOUID: true},
+		map[string]string{"default": testOUID},
+		map[string]string{testOUID: "default"})
 	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver)
 
 	dto := s.validDTO()
@@ -553,13 +565,70 @@ func (s *ConfigurationServiceTestSuite) TestCreateResolvesAndValidatesOU() {
 	s.Equal(ErrorConfigurationInvalidOU.Code, err.Code)
 
 	dto = s.validDTO()
-	dto.OUHandle = "default"
+	dto.OUID = testOUID
 	created, err := svc.CreateCredentialConfiguration(context.Background(), dto)
 	s.Require().Nil(err)
-	s.Equal("ou-1", created.OUID)
+	s.Equal(testOUID, created.OUID)
 
 	got, err := svc.GetCredentialConfiguration(context.Background(), created.ID)
 	s.Require().Nil(err)
-	s.Equal("ou-1", got.OUID)
+	s.Equal(testOUID, got.OUID)
 	s.Equal("default", got.OUHandle)
+}
+
+func (s *ConfigurationServiceTestSuite) TestCreateRejectsDuplicateClaimName() {
+	svc := s.newService()
+	dto := s.validDTO()
+	dto.Claims = []ClaimMapping{
+		{Name: "full_name", DisplayName: "Full Name"},
+		{Name: "tier", DisplayName: "Tier"},
+		{Name: "full_name", DisplayName: "Full Name Again"},
+	}
+
+	_, err := svc.CreateCredentialConfiguration(context.Background(), dto)
+	s.Require().NotNil(err)
+	s.Equal(ErrorConfigurationDuplicateClaim.Code, err.Code)
+	s.Equal("full_name", err.ErrorDescription.Params["claim"])
+}
+
+func (s *ConfigurationServiceTestSuite) TestCreateRejectsReservedClaimName() {
+	reserved := []string{
+		"iss", "nbf", "exp", "cnf", "vct", "status",
+		"_sd", "_sd_alg", "...",
+		"sub", "iat",
+	}
+	for _, name := range reserved {
+		svc := s.newService()
+		dto := s.validDTO()
+		dto.Claims = []ClaimMapping{{Name: name, DisplayName: "Reserved"}}
+
+		_, err := svc.CreateCredentialConfiguration(context.Background(), dto)
+		s.Require().NotNil(err, "claim %q must be rejected", name)
+		s.Equal(ErrorConfigurationReservedClaim.Code, err.Code)
+		s.Equal(name, err.ErrorDescription.Params["claim"])
+	}
+}
+
+func (s *ConfigurationServiceTestSuite) TestCreateRejectsEmptyClaimName() {
+	svc := s.newService()
+	dto := s.validDTO()
+	dto.Claims = []ClaimMapping{{Name: "   ", DisplayName: "Blank"}}
+
+	_, err := svc.CreateCredentialConfiguration(context.Background(), dto)
+	s.Require().NotNil(err)
+	s.Equal(ErrorConfigurationEmptyClaimName.Code, err.Code)
+}
+
+func (s *ConfigurationServiceTestSuite) TestCreateAcceptsDistinctClaimNames() {
+	svc := s.newService()
+	dto := s.validDTO()
+	dto.Claims = []ClaimMapping{
+		{Name: "full_name", DisplayName: "Full Name"},
+		{Name: "Full_Name", DisplayName: "Case Differs"},
+		{Name: "tier", DisplayName: "Tier"},
+	}
+
+	created, err := svc.CreateCredentialConfiguration(context.Background(), dto)
+	s.Require().Nil(err)
+	s.Len(created.Claims, 3)
 }

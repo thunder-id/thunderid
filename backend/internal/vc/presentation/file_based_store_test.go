@@ -10,6 +10,9 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+// mutatedValue is written to a returned DTO to prove the store hands out a copy.
+const mutatedValue = "mutated"
+
 type DefinitionFileBasedStoreTestSuite struct {
 	suite.Suite
 	store  *definitionFileBasedStore
@@ -134,4 +137,32 @@ func (s *DefinitionFileBasedStoreTestSuite) TestDeleteNotSupported() {
 	s.seed("def-1", "h1", "v1")
 	err := s.store.DeletePresentationDefinition(s.ctx, "def-1")
 	s.Error(err)
+}
+
+func (s *DefinitionFileBasedStoreTestSuite) TestGetReturnsIsolatedCopy() {
+	s.seed("def-copy", "eudi-pid", "urn:eudi:pid:1")
+
+	// The service stamps OUHandle onto every definition it reads, so without a copy each
+	// read would write into the shared declarative entry.
+	first, err := s.store.GetPresentationDefinitionByID(s.ctx, "def-copy")
+	s.Require().NoError(err)
+	first.OUHandle = mutatedValue
+	first.Handle = mutatedValue
+
+	second, err := s.store.GetPresentationDefinitionByID(s.ctx, "def-copy")
+	s.Require().NoError(err)
+	s.Empty(second.OUHandle, "a caller must not be able to mutate the declarative store")
+	s.Equal("eudi-pid", second.Handle)
+}
+
+func (s *DefinitionFileBasedStoreTestSuite) TestGetByHandleReturnsIsolatedCopy() {
+	s.seed("def-copy-h", "eudi-pid", "urn:eudi:pid:1")
+
+	first, err := s.store.GetPresentationDefinitionByHandle(s.ctx, "eudi-pid")
+	s.Require().NoError(err)
+	first.VCT = mutatedValue
+
+	second, err := s.store.GetPresentationDefinitionByHandle(s.ctx, "eudi-pid")
+	s.Require().NoError(err)
+	s.Equal("urn:eudi:pid:1", second.VCT)
 }

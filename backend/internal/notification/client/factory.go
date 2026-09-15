@@ -31,11 +31,11 @@ func (p *clientFactory) GetClient(ctx context.Context, sender common.Notificatio
 	var _client NotificationClientInterface
 	var err error
 	switch sender.Provider {
-	case common.MessageProviderTypeVonage:
+	case common.NotificationProviderTypeVonage:
 		_client, err = newVonageClient(ctx, sender)
-	case common.MessageProviderTypeTwilio:
+	case common.NotificationProviderTypeTwilio:
 		_client, err = newTwilioClient(ctx, sender)
-	case common.MessageProviderTypeCustom:
+	case common.NotificationProviderTypeCustom:
 		_client, err = newCustomClient(ctx, sender)
 	default:
 		return nil, &ErrorInvalidProvider

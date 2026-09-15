@@ -1,0 +1,265 @@
+---
+title: Observability
+docType: community
+description: Learn how to instrument your code with observability events and understand the observability architecture.
+hide_table_of_contents: false
+sidebar_position: 3
+---
+
+# Observability
+
+This guide explains how to instrument your code with observability events and provides an overview of the observability architecture. The guide is intended for developers adding new features or components to <ProductName />.
+
+## Table of Contents
+
+1. [Integration Guide](#integration-guide)
+2. [Event Anatomy](#event-anatomy)
+3. [Distributed Tracing](#distributed-tracing)
+4. [Architecture Overview](#architecture-overview)
+5. [Extending Observability](#extending-observability)
+
+## Integration Guide
+
+<ProductName /> uses a dependency injection pattern for observability. To instrument your component:
+
+### 1. Inject the Observability Service
+
+Your component should accept `ObservabilityServiceInterface` in its constructor or initialization method.
+
+```go
+import "github.com/thunder-id/thunderid/internal/system/observability"
+
+type MyComponent struct {
+    obsSvc observability.ObservabilityServiceInterface
+}
+
+func NewMyComponent(obsSvc observability.ObservabilityServiceInterface) *MyComponent {
+    return &MyComponent{
+        obsSvc: obsSvc,
+    }
+}
+```
+
+### 2. Publish Events
+
+Use the injected service to publish events. Always check if the service is enabled (though the service handles no-ops, checking avoids unnecessary object creation).
+
+```go
+import "github.com/thunder-id/thunderid/internal/system/observability/event"
+
+func (c *MyComponent) DoSomething(ctx context.Context) {
+    // 1. Check if enabled
+    if c.obsSvc == nil || !c.obsSvc.IsEnabled() {
+        return
+    }
+
+    // 2. Create event
+    traceID := uuid.NewString() // Or get from context
+    evt := event.NewEvent(traceID, event.EventTypeTokenIssued, event.ComponentAuthHandler).
+        WithStatus(event.StatusSuccess).
+        WithData(event.DataKey.UserID, "user-123")
+
+    // 3. Publish
+    c.obsSvc.PublishEvent(evt)
+}
+```
+
+Use the predefined component constants when setting the component name:
+
+| Constant | Value | Usage |
+|----------|-------|-------|
+| `event.ComponentFlowEngine` | `FlowEngine` | Events from the flow execution engine |
+| `event.ComponentAuthHandler` | `AuthHandler` | Events from authentication handlers |
+
+## Event Anatomy
+
+### Required Fields
+- **TraceID**: UUID or hex string for trace correlation.
+- **EventType**: Predefined constant from the `event` package (e.g., `event.EventTypeFlowStarted`).
+- **Component**: Your component name. Use a predefined constant from the `event` package where one exists.
+
+### Optional Fields
+- **Status**: `event.StatusSuccess`, `event.StatusFailure`, or `event.StatusInProgress`.
+- **Data**: Key-value pairs using `event.DataKey` constants.
+
+### Defined Event Types
+
+Always use the predefined constants. Do not pass raw strings as event types.
+
+**Authentication events** (category: `observability.authentication`):
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `event.EventTypeTokenIssuanceStarted` | `TOKEN_ISSUANCE_STARTED` | Token issuance begins |
+| `event.EventTypeTokenIssued` | `TOKEN_ISSUED` | Token successfully issued |
+| `event.EventTypeTokenIssuanceFailed` | `TOKEN_ISSUANCE_FAILED` | Token issuance failed |
+
+**Flow execution events** (category: `observability.flows`):
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `event.EventTypeFlowStarted` | `FLOW_STARTED` | Flow execution begins |
+| `event.EventTypeFlowNodeExecutionStarted` | `FLOW_NODE_EXECUTION_STARTED` | A flow node begins executing |
+| `event.EventTypeFlowNodeExecutionCompleted` | `FLOW_NODE_EXECUTION_COMPLETED` | A flow node completes successfully |
+| `event.EventTypeFlowNodeExecutionFailed` | `FLOW_NODE_EXECUTION_FAILED` | A flow node fails |
+| `event.EventTypeFlowUserInputRequired` | `FLOW_USER_INPUT_REQUIRED` | Flow pauses waiting for user input |
+| `event.EventTypeFlowCompleted` | `FLOW_COMPLETED` | Flow execution succeeds |
+| `event.EventTypeFlowFailed` | `FLOW_FAILED` | Flow execution fails |
+
+### Event Categories
+
+Categories control event routing. Each event type maps to exactly one category. Subscribers declare which categories they are interested in and receive only matching events.
+
+| Category | Description |
+|----------|-------------|
+| `observability.authentication` | Token issuance events |
+| `observability.authorization` | Authorization-related events |
+| `observability.flows` | Flow execution events |
+| `observability.all` | Special category that matches all events regardless of type |
+
+### Common Data Keys
+
+Always use predefined keys from `event.DataKey` for consistency. See <RepoLink path="/blob/main/backend/internal/system/observability/event/datakeys.go">`event/datakeys.go`</RepoLink> for the complete list.
+
+**Identity keys:**
+
+| Constant | Key | Usage |
+|----------|-----|-------|
+| `event.DataKey.Username` | `username` | Username |
+| `event.DataKey.ClientID` | `client_id` | OAuth client identifier |
+| `event.DataKey.EntityID` | `app_id` | Application identifier |
+
+**Principal and delegation keys:**
+
+Authentication events carry the kind of principal involved, so agent traffic can be filtered without resolving a client ID against the registry. The subject and actor axes are named after the token claims they mirror, so one vocabulary covers both tokens and events.
+
+| Constant | Key | Usage |
+|----------|-----|-------|
+| `event.DataKey.Subject` | `sub` | Resource ID of the principal the token or flow is about |
+| `event.DataKey.SubjectType` | `sub_type` | Principal type of the subject: `user`, `agent`, or `application` |
+| `event.DataKey.ActorSub` | `act_sub` | Resource ID of the actor acting for the subject, on delegated (on-behalf-of) issuance |
+| `event.DataKey.ActorType` | `act_type` | Principal type of the acting party |
+| `event.DataKey.IsDelegated` | `is_delegated` | Whether the issuance carries actor-to-subject delegation |
+
+On an on-behalf-of issuance the agent appears as `act_sub` against the user's `sub`, matching the token's [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693) `act` claim, so agent-for-user delegation is directly observable.
+
+`sub` and `act_sub` are always entity resource IDs. The token's own `sub` claim is not used: an application can map it to a schema attribute through `subjectAttribute`, so it may hold a directly identifying value such as an email address, and it varies per application for the same principal. The resource ID is opaque, stable across applications, and names the same principal on the flow events and the token events, so it recurs across every authentication that principal performs rather than identifying one of them. Join the events of a single authentication on `correlation_id`, which carries the flow's execution ID. Use `event.PrincipalType` to derive `sub_type` and `act_type` from an entity category; it is the single place the entity vocabulary's `app` is reconciled with the `application` spelling used by the token's `sub_type` claim.
+
+`sub` is omitted rather than guessed when the subject cannot be resolved to an entity, so filtering on `sub` returns nothing for those events rather than returning them with a wrong value; `sub_type` accompanies it when the category is recognized. `act_sub` is resolved separately and is emitted whenever the actor is known, and `is_delegated` is always present on a successful issuance. A delegated issuance whose subject cannot be resolved therefore reports `act_sub` and `is_delegated: true` with no `sub`. Two cases produce an unresolved subject:
+
+- On token exchange, jwt-bearer, and ID-JAG, when the subject arriving on the presented token is a mapped attribute rather than a resource ID, since a mapped attribute resolves to no entity. Only `authorization_code` and `client_credentials` report the subject on every deployment: the first carries the resource ID on the flow assertion, and the second's subject is the client itself. Nothing is added to a client-facing token to close this gap. `refresh_token` is not affected: the login records the subject's resource ID on the attribute cache entry that the refresh token already points at, and the refresh reads it from there, so a refreshed token reports the subject even when its own `sub` claim is a mapped attribute. It is omitted only where the login wrote no entry, as in an App Native flow or when there were no attributes to cache.
+- On flow events before just-in-time provisioning, where the authenticating provider returns an entity reference token instead of a reference because the entity does not exist yet. A first-time social login therefore reports no subject on the nodes that precede provisioning, and reports one from there on. There is no resource ID to report until the entity exists.
+
+**Flow execution keys:**
+
+| Constant | Key | Usage |
+|----------|-----|-------|
+| `event.DataKey.ExecutionID` | `execution_id` | Flow execution identifier |
+| `event.DataKey.FlowType` | `flow_type` | Type of flow being executed |
+| `event.DataKey.NodeID` | `node_id` | Flow node identifier |
+| `event.DataKey.NodeType` | `node_type` | Flow node type |
+| `event.DataKey.NodeStatus` | `node_status` | Execution status of the node |
+| `event.DataKey.ExecutorName` | `executor_name` | Name of the executor running the node |
+| `event.DataKey.ExecutorType` | `executor_type` | Type of the executor |
+| `event.DataKey.StepNumber` | `step_number` | Step number within the flow |
+| `event.DataKey.AttemptNumber` | `attempt_number` | Retry attempt number |
+| `event.DataKey.AuthMethod` | `auth_method` | Authentication method used |
+| `event.DataKey.RedirectTo` | `redirect_to` | Redirect destination |
+| `event.DataKey.FailedStep` | `failed_step` | Step at which the flow failed |
+
+**OAuth and token keys:**
+
+| Constant | Key | Usage |
+|----------|-----|-------|
+| `event.DataKey.Scope` | `scope` | OAuth scopes |
+| `event.DataKey.GrantType` | `grant_type` | OAuth grant type |
+
+**Event metadata keys:**
+
+| Constant | Key | Usage |
+|----------|-----|-------|
+| `event.DataKey.Message` | `message` | Human-readable message |
+| `event.DataKey.Error` | `error` | Error message for failures |
+| `event.DataKey.ErrorCode` | `error_code` | Machine-readable error code |
+| `event.DataKey.ErrorType` | `error_type` | Error classification |
+| `event.DataKey.DurationMs` | `duration_ms` | Operation duration in milliseconds |
+| `event.DataKey.LatencyUs` | `latency_us` | Operation latency in microseconds |
+| `event.DataKey.TraceParent` | `trace_parent` | W3C traceparent header value for OTel span linking |
+| `event.DataKey.CorrelationID` | `correlation_id` | Identifier grouping related events across requests: the flow's execution ID where the event has one, otherwise the request's trace ID |
+
+## Distributed Tracing
+
+Events with the same `TraceID` are automatically grouped into a single trace by the OpenTelemetry subscriber.
+
+### Correlating Across Requests
+
+An authentication spans several HTTP requests, each with its own trace ID, so `TraceID` alone cannot stitch a login to the token issued from it. The `correlation_id` data key carries an identifier across them, falling back to the request's trace ID wherever a flow-scoped one is not available:
+
+- Flow events use the flow's execution ID, which every event of that execution shares. A flow that fails before its context loads has no execution ID and reports the request's trace ID instead.
+- The execution ID rides the flow assertion onto the authorization code, and `TOKEN_ISSUED` for that code reports it.
+- A grant issued in a single request, such as `client_credentials`, correlates on its own trace ID.
+
+`TOKEN_ISSUANCE_STARTED` and `TOKEN_ISSUANCE_FAILED` always report the request's trace ID, because the authorization code is read by the grant handler after the started event is published and is never read on the paths that fail before it. A login's execution ID therefore matches its flow events and `TOKEN_ISSUED`, but not the started event of the same exchange, and a failed redemption of a code cannot be joined to the login it came from. Use `grant_type` and `client_id` on those two events instead.
+
+Flow and token events also cross-reference the same principal both ways: flow events carry the OAuth `client_id` alongside `app_id`, and token events carry `app_id` alongside `client_id`.
+
+### Hierarchical Tracing
+To create parent-child relationships between spans, include the `TraceParent` key:
+
+```go
+// Child operation
+childEvt := event.NewEvent(traceID, event.EventTypeFlowNodeExecutionStarted, event.ComponentFlowEngine).
+    WithData(event.DataKey.TraceParent, parentSpanID)
+obs.PublishEvent(childEvt)
+```
+
+## Architecture Overview
+
+The Observability component follows a **Publisher-Subscriber** pattern, decoupled from core business logic.
+
+### Core Components
+
+1.  **Service (`Service`)**: The main entry point. Manages lifecycle and configuration.
+2.  **Publisher (`CategoryPublisher`)**: Acts as the event bus. Distributes events to subscribers based on categories.
+3.  **Subscribers (`SubscriberInterface`)**: Consume events (e.g., Console, File, OTel).
+
+### Directory Structure
+
+```text
+backend/internal/system/observability/
+├── service.go          # Main service implementation
+├── event/              # Event definitions
+├── publisher/          # Publisher implementation
+├── subscriber/         # Subscriber implementations
+└── opentelemetry/      # OpenTelemetry configuration
+```
+
+## Extending Observability
+
+To add a new subscriber (e.g., to send logs to a webhook):
+
+1.  **Create a new file** in `backend/internal/system/observability/subscriber/`.
+2.  **Implement `SubscriberInterface`**:
+    ```go
+    type SubscriberInterface interface {
+        Initialize() error
+        IsEnabled() bool
+        GetID() string
+        GetCategories() []event.EventCategory
+        OnEvent(evt *event.Event) error
+        Close() error
+    }
+    ```
+3.  **Register the Factory**:
+    Add an `init()` function to register your subscriber factory.
+    ```go
+    func init() {
+        RegisterSubscriberFactory("my-subscriber", func() SubscriberInterface {
+            return NewMySubscriber()
+        })
+    }
+    ```
+4.  **Add Configuration**: Update `backend/internal/system/config/config.go`.
+
+## Further Reading
+- <RepoLink path="/tree/main/backend/internal/system/observability">Observability source code</RepoLink>

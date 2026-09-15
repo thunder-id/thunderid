@@ -25,8 +25,8 @@ Registering the booking frontend gives it credentials and the rules <ProductName
 - Which flow runs for each journey it offers, from the bundled `default-flow` to the ones you build.
 
 ```mermaid
-flowchart LR
-  app[["Application (OAuth2 client)"]] --> facts["Organization Unit: Default<br/>Allowed user type: Customer<br/>Flow: default-flow"]
+flowchart TD
+  app["Application (OAuth2 client)"] --> facts["Organization Unit: Default<br/>Allowed user type: Customer<br/>Flow: default-flow"]
 ```
 
 Wayfinder's browser frontend would typically be registered using the authorization code grant with PKCE

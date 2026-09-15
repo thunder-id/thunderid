@@ -1,0 +1,29 @@
+name: Verify CLI E2E Ports Are Free
+description: >-
+  Fails the job if any port the CLI e2e suite needs is already bound on the runner,
+  rather than letting the suite fail later with a confusing port-conflict assertion.
+
+inputs:
+  extra-ports:
+    description: >-
+      Additional space-separated ports to check beyond the suite's fixed set (8090 for
+      ThunderID, 5173/8787/8788/2525/8795 for the Wayfinder sample). Used for a local
+      release server, for example.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: 🔌 Verify Required Ports Are Free
+      shell: bash
+      env:
+        EXTRA_PORTS: ${{ inputs.extra-ports }}
+      run: |
+        for port in 8090 5173 8787 8788 2525 8795 $EXTRA_PORTS; do
+          if lsof -ti "tcp:$port" >/dev/null 2>&1; then
+            echo "::error::port $port is already in use on this runner"
+            lsof -i "tcp:$port"
+            exit 1
+          fi
+        done

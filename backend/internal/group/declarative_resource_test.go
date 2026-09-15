@@ -20,6 +20,9 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
 // GroupExporterTestSuite contains tests for the groupExporter.
@@ -516,6 +519,29 @@ func (suite *GroupExporterTestSuite) TestValidateGroupWrapper_MissingOUID() {
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "ouId or ouHandle is required")
+}
+
+// TestValidateGroupWrapper_OUHandleUsesRuntimeContext verifies the ouHandle lookup carries a
+// runtime context. Declarative resources load at server boot with no authenticated caller, and
+// GetOrganizationUnitByPath's authorization check denies unauthenticated, non-runtime callers;
+// a plain context here would make every ouHandle-based group fail to load with a misleading
+// "organization unit ... not found" error even though the OU exists. Regression test for that.
+func (suite *GroupExporterTestSuite) TestValidateGroupWrapper_OUHandleUsesRuntimeContext() {
+	ouSvc := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouSvc.EXPECT().
+		GetOrganizationUnitByPath(mock.MatchedBy(security.IsRuntimeContext), "root/eng").
+		Return(providers.OrganizationUnit{ID: "ou-123"}, nil).Once()
+
+	grp := &groupDeclarativeResource{
+		ID:       "group1",
+		Name:     "Admins",
+		OUHandle: "root/eng",
+	}
+
+	err := validateGroupWrapper(grp, nil, nil, ouSvc)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "ou-123", grp.OUID)
 }
 
 // Test validateGroupWrapper - duplicate ID in DB store

@@ -228,8 +228,22 @@ func (s *logoutService) clientIDFromIDTokenHint(ctx context.Context, idTokenHint
 	if svcErr := s.jwtService.VerifyJWTSignature(ctx, idTokenHint); svcErr != nil {
 		return "", errInvalidIDTokenHint
 	}
+	header, err := jwt.DecodeJWTHeader(idTokenHint)
+	if err != nil {
+		return "", errInvalidIDTokenHint
+	}
+	// The hint must be an ID token, not any other JWT this server signs. An access token issued to an
+	// application with no configured default audience carries aud=client_id, so without this check it
+	// would resolve to a client and be accepted as a hint, which suppresses the End-User sign-out
+	// confirmation.
+	if typ, _ := header["typ"].(string); typ != jwt.TokenTypeJWT {
+		return "", errInvalidIDTokenHint
+	}
 	payload, err := jwt.DecodeJWTPayload(idTokenHint)
 	if err != nil {
+		return "", errInvalidIDTokenHint
+	}
+	if _, isRefreshToken := payload[constants.ClaimAccessTokenSubject]; isRefreshToken {
 		return "", errInvalidIDTokenHint
 	}
 	if iss, _ := payload[constants.ClaimIss].(string); iss != s.issuer {

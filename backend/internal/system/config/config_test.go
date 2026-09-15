@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -525,7 +526,7 @@ func (suite *ConfigTestSuite) TestMergeStructs() {
 			Issuer:         "base-issuer",
 			ValidityPeriod: 3600,
 		},
-		OAuth: engineconfig.OAuthConfig{
+		OAuth: OAuthConfig{
 			RefreshToken: engineconfig.RefreshTokenConfig{
 				RenewOnGrant:   false,
 				ValidityPeriod: 7200,
@@ -572,7 +573,7 @@ func (suite *ConfigTestSuite) TestMergeStructs() {
 			Issuer: "user-issuer", // Override
 			// ValidityPeriod: 0 (zero value, should not override)
 		},
-		OAuth: engineconfig.OAuthConfig{
+		OAuth: OAuthConfig{
 			RefreshToken: engineconfig.RefreshTokenConfig{
 				RenewOnGrant: true, // Override
 				// ValidityPeriod: 0 (zero value, should not override)
@@ -863,7 +864,7 @@ func (suite *ConfigTestSuite) TestMergeConfigs_BoolPointerOverride() {
 		return &Config{
 			Notification: NotificationConfig{OTP: OTPConfig{UseNumericOnly: boolPtr(true)}},
 			OpenID4VP:    OpenID4VPConfig{EnforceKeyBinding: boolPtr(true)},
-			OAuth: engineconfig.OAuthConfig{
+			OAuth: OAuthConfig{
 				RefreshToken:    engineconfig.RefreshTokenConfig{RevokePreviousOnRenew: boolPtr(true)},
 				TokenRevocation: engineconfig.OAuthTokenRevocationConfig{Enabled: boolPtr(true)},
 				Logout:          engineconfig.LogoutConfig{Enabled: boolPtr(true)},
@@ -884,7 +885,7 @@ func (suite *ConfigTestSuite) TestMergeConfigs_BoolPointerOverride() {
 		user := &Config{
 			Notification: NotificationConfig{OTP: OTPConfig{UseNumericOnly: boolPtr(false)}},
 			OpenID4VP:    OpenID4VPConfig{EnforceKeyBinding: boolPtr(false)},
-			OAuth: engineconfig.OAuthConfig{
+			OAuth: OAuthConfig{
 				RefreshToken:    engineconfig.RefreshTokenConfig{RevokePreviousOnRenew: boolPtr(false)},
 				TokenRevocation: engineconfig.OAuthTokenRevocationConfig{Enabled: boolPtr(false)},
 				Logout:          engineconfig.LogoutConfig{Enabled: boolPtr(false)},
@@ -1621,4 +1622,86 @@ func (suite *ConfigTestSuite) TestNotificationConfig_Validate_DelegatesToOTP() {
 	err := cfg.Validate()
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "notification.otp.length")
+}
+
+func (suite *ConfigTestSuite) TestOAuthConfig_ToEngineConfig_CopiesYAMLFields() {
+	sendErrs := true
+	src := OAuthConfig{
+		RefreshToken:             engineconfig.RefreshTokenConfig{RenewOnGrant: true, ValidityPeriod: 7200},
+		AuthorizationCode:        engineconfig.AuthorizationCodeConfig{ValidityPeriod: 300},
+		AuthorizationRequest:     engineconfig.AuthorizationRequestConfig{ValidityPeriod: 60},
+		DCR:                      engineconfig.DCRConfig{Insecure: true},
+		PAR:                      engineconfig.PARConfig{ExpiresIn: 600, RequirePAR: true},
+		DPoP:                     engineconfig.DPoPConfig{Required: true, AllowedAlgs: []string{"ES256"}},
+		CIBA:                     engineconfig.CIBAConfig{IDTokenHintMaxAgeDays: 30},
+		TokenExchange:            engineconfig.TokenExchangeConfig{TokenFamily: "inherit"},
+		AllowWildcardRedirectURI: true,
+		AllowedGrantTypes:        []string{"authorization_code"},
+		AllowedResponseTypes:     []string{"code"},
+		AllowedAuthMethods:       []string{"client_secret_basic"},
+		SendServerErrorsToClient: &sendErrs,
+	}
+
+	dst := src.ToEngineConfig()
+
+	assert.Equal(suite.T(), src.RefreshToken, dst.RefreshToken)
+	assert.Equal(suite.T(), src.AuthorizationCode, dst.AuthorizationCode)
+	assert.Equal(suite.T(), src.AuthorizationRequest, dst.AuthorizationRequest)
+	assert.Equal(suite.T(), src.DCR, dst.DCR)
+	assert.Equal(suite.T(), src.PAR, dst.PAR)
+	assert.Equal(suite.T(), src.DPoP, dst.DPoP)
+	assert.Equal(suite.T(), src.CIBA, dst.CIBA)
+	assert.Equal(suite.T(), src.TokenExchange, dst.TokenExchange)
+	assert.Equal(suite.T(), src.AllowWildcardRedirectURI, dst.AllowWildcardRedirectURI)
+	assert.Equal(suite.T(), src.AllowedGrantTypes, dst.AllowedGrantTypes)
+	assert.Equal(suite.T(), src.AllowedResponseTypes, dst.AllowedResponseTypes)
+	assert.Equal(suite.T(), src.AllowedAuthMethods, dst.AllowedAuthMethods)
+	assert.Equal(suite.T(), src.SendServerErrorsToClient, dst.SendServerErrorsToClient)
+
+	// The four engine-only OIDC discovery fields are not settable through the yaml struct
+	// and must remain zero after conversion.
+	assert.Empty(suite.T(), dst.AllowedScopes)
+	assert.Empty(suite.T(), dst.AllowedClaims)
+	assert.Empty(suite.T(), dst.DefaultScopeClaimsMapping)
+	assert.Empty(suite.T(), dst.AllowedSubjectTypes)
+}
+
+func (suite *ConfigTestSuite) TestOAuthConfig_YAMLDoesNotBindOIDCFields() {
+	// The four engine-only OIDC discovery fields must not be bindable through yaml. Under
+	// strict decoding (KnownFields(true), as used by the production loader) any yaml document
+	// that tries to set them should fail with an "unknown field" error.
+	cases := []string{
+		"allowed_scopes:\n  - openid\n",
+		"allowed_claims:\n  - sub\n",
+		"default_scope_claims_mapping:\n  openid:\n    - sub\n",
+		"allowed_subject_types:\n  - public\n",
+	}
+	for _, doc := range cases {
+		var cfg OAuthConfig
+		dec := yaml.NewDecoder(strings.NewReader(doc))
+		dec.KnownFields(true)
+		err := dec.Decode(&cfg)
+		suite.Require().Error(err, "yaml %q should be rejected by strict decoder", doc)
+		suite.Contains(err.Error(), "not found in type")
+	}
+
+	// Lenient decoding must silently drop the keys rather than populate a struct field.
+	const combined = `
+allowed_scopes:
+  - openid
+allowed_claims:
+  - sub
+default_scope_claims_mapping:
+  openid:
+    - sub
+allowed_subject_types:
+  - public
+`
+	var cfg OAuthConfig
+	suite.Require().NoError(yaml.Unmarshal([]byte(combined), &cfg))
+	dst := cfg.ToEngineConfig()
+	assert.Empty(suite.T(), dst.AllowedScopes)
+	assert.Empty(suite.T(), dst.AllowedClaims)
+	assert.Empty(suite.T(), dst.DefaultScopeClaimsMapping)
+	assert.Empty(suite.T(), dst.AllowedSubjectTypes)
 }

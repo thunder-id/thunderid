@@ -127,6 +127,22 @@ func (st *store) Update(ctx context.Context, s *Session) error {
 	})
 }
 
+// TouchAuthenticatedAt records that the subject authenticated again inside an existing session,
+// sliding the idle deadline along with it. Unlike Update it carries no version guard: the write
+// records an authentication that already happened, so a concurrent liveness slide must not cause it
+// to be dropped.
+func (st *store) TouchAuthenticatedAt(ctx context.Context, sessionID string, authenticatedAt,
+	idleExpiresAt time.Time) error {
+	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		_, err := dbClient.ExecuteContext(ctx, queryTouchAuthenticatedAt,
+			authenticatedAt, authenticatedAt, nullableTime(idleExpiresAt), sessionID, st.deploymentID)
+		if err != nil {
+			return fmt.Errorf("failed to refresh session authentication time: %w", err)
+		}
+		return nil
+	})
+}
+
 // CreateContext persists the session context. It rejects payloads exceeding MaxSessionContextBytes.
 func (st *store) CreateContext(ctx context.Context, c SessionContext) error {
 	payload, err := c.serializePayload()
@@ -271,6 +287,41 @@ func (st *store) DeleteBySessionID(ctx context.Context, sessionID string) error 
 		_, err := dbClient.ExecuteContext(ctx, queryDeleteParticipantsBySessionID, sessionID, st.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to delete session participants: %w", err)
+		}
+		return nil
+	})
+}
+
+// ListByAppID returns every participation of the application, across sessions, oldest first.
+func (st *store) ListByAppID(ctx context.Context, appID string) ([]Participant, error) {
+	var result []Participant
+
+	err := withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		results, queryErr := dbClient.QueryContext(ctx, queryListParticipantsByAppID, appID, st.deploymentID)
+		if queryErr != nil {
+			return fmt.Errorf("failed to execute query: %w", queryErr)
+		}
+		for _, row := range results {
+			p, buildErr := buildParticipantFromRow(row)
+			if buildErr != nil {
+				return buildErr
+			}
+			result = append(result, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// DeleteParticipant removes one application's participation in one session.
+func (st *store) DeleteParticipant(ctx context.Context, sessionID, appID string) error {
+	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		_, err := dbClient.ExecuteContext(ctx, queryDeleteParticipant, sessionID, appID, st.deploymentID)
+		if err != nil {
+			return fmt.Errorf("failed to delete session participant: %w", err)
 		}
 		return nil
 	})

@@ -85,9 +85,13 @@ export interface ConfigureApplicationDetailsProps {
   hasDesignStep: boolean;
 
   /**
-   * Available user types. The User Access section only renders when there are two or more.
+   * Available user types. The User Access section only renders for applications that allow user
+   * logins with two or more user types.
    */
   userTypes: UserTypeListItem[];
+
+  /** Whether this application supports authentication for end users. */
+  allowsUserLogins: boolean;
 
   /**
    * Currently selected user type names.
@@ -115,7 +119,7 @@ export interface ConfigureApplicationDetailsProps {
  * than one exists), name the application, choose which of that organization unit's configured
  * defaults (sign in / sign up / recovery / sign out flow, theme, layout) to snapshot into the new
  * application instead of building each one from scratch, and pick which user types can sign up
- * through it.
+ * through it when the application allows user logins.
  */
 export default function ConfigureApplicationDetails({
   hasMultipleOUs,
@@ -130,6 +134,7 @@ export default function ConfigureApplicationDetails({
   onOuDefaultsChange,
   hasSecurityStep,
   hasDesignStep,
+  allowsUserLogins,
   userTypes,
   selectedUserTypes,
   onUserTypesChange,
@@ -146,9 +151,18 @@ export default function ConfigureApplicationDetails({
     if (!onReadyChange) return;
     const nameReady = appName.trim().length > 0 && !isDuplicateName;
     const ouReady = !hasMultipleOUs || selectedOuId.length > 0;
-    const userAccessReady = userTypes.length < 2 || selectedUserTypes.length > 0;
+    const userAccessReady = !allowsUserLogins || userTypes.length < 2 || selectedUserTypes.length > 0;
     onReadyChange(nameReady && ouReady && userAccessReady);
-  }, [appName, isDuplicateName, hasMultipleOUs, selectedOuId, userTypes, selectedUserTypes, onReadyChange]);
+  }, [
+    appName,
+    isDuplicateName,
+    hasMultipleOUs,
+    selectedOuId,
+    allowsUserLogins,
+    userTypes,
+    selectedUserTypes,
+    onReadyChange,
+  ]);
 
   // Default to "allow all" the first time user types load, mirroring the master checkbox's
   // default-checked state in UserAccessSection. Seeds at most once — otherwise this would fight
@@ -156,12 +170,12 @@ export default function ConfigureApplicationDetails({
   // very next render.
   const hasSeededUserTypesRef = useRef(false);
   useEffect((): void => {
-    if (hasSeededUserTypesRef.current || userTypes.length < 2) return;
+    if (hasSeededUserTypesRef.current || !allowsUserLogins || userTypes.length < 2) return;
     hasSeededUserTypesRef.current = true;
     if (selectedUserTypes.length === 0) {
       onUserTypesChange(userTypes.map((userType) => userType.name));
     }
-  }, [userTypes, selectedUserTypes.length, onUserTypesChange]);
+  }, [allowsUserLogins, userTypes, selectedUserTypes.length, onUserTypesChange]);
 
   // Pre-check whichever organization-unit defaults are actually available, once per resolved OU
   // id, so admins don't have to manually opt into inheriting them. Keyed by OU id (not a boolean)
@@ -189,7 +203,7 @@ export default function ConfigureApplicationDetails({
         computeOrganizationUnitDefaultAvailability(organizationUnit, {hasSecurityStep, hasDesignStep}),
       ).some(Boolean),
   );
-  const showUserAccess = userTypes.length >= 2;
+  const showUserAccess = allowsUserLogins && userTypes.length >= 2;
 
   return (
     <Stack direction="column" spacing={4} data-testid="application-configure-details">

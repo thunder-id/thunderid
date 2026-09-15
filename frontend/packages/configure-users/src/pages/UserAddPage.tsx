@@ -10,7 +10,6 @@ import {
   EmbeddedFlowComponentType,
   EmbeddedFlowEventType,
   InviteUser,
-  useThunderID,
   type EmbeddedFlowComponent,
   type InviteUserRenderProps,
 } from '@thunderid/react';
@@ -42,6 +41,7 @@ import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import {z} from 'zod';
 import CredentialFieldInput from '../components/CredentialFieldInput';
+import useFlowTextResolver from '../hooks/useFlowTextResolver';
 import useUserRoutes from '../hooks/useUserRoutes';
 import getUserErrorMessage from '../utils/getUserErrorMessage';
 
@@ -178,8 +178,7 @@ function InviteUserStepContent({
     resetFlow,
     isValid: propsIsValid,
   } = renderProps;
-  const {resolveFlowTemplateLiterals: rawResolve} = useThunderID();
-  const resolve = useCallback((text?: string) => (text ? rawResolve(text) : undefined), [rawResolve]);
+  const resolve = useFlowTextResolver();
   const {t} = useTranslation();
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
 
@@ -953,8 +952,7 @@ function InviteUserFlowBridge({
   onClearFlowError: () => void;
   onResetFlowAvailable?: (resetFn: () => void) => void;
 }): JSX.Element {
-  const {resolveFlowTemplateLiterals: rawResolve} = useThunderID();
-  const resolve = useCallback((text?: string) => (text ? rawResolve(text) : undefined), [rawResolve]);
+  const resolve = useFlowTextResolver();
   const {t} = useTranslation();
   const components = renderProps.components as EmbeddedFlowComponent[] | undefined;
 

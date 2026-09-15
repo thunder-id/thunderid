@@ -6,6 +6,7 @@ import {
   DELETION_SUBJECT_INPUT,
   FLOW_PAGE_SIZE,
   FlowStatus,
+  type FlowExecutionError,
   type FlowExecutionResponse,
   type FlowListResponse,
   type FlowSectionConfig,
@@ -78,6 +79,27 @@ export async function findAdministrationFlowId(
  * pausing. An INCOMPLETE result therefore means the configured flow asks for something this caller
  * cannot provide, and is surfaced as an error rather than silently leaving the user undeleted.
  */
+/**
+ * An error carrying the code and params of a flow step that refused, so getUserErrorMessage can
+ * resolve it to the localized message for that code.
+ *
+ * A refusal arrives with HTTP 200 and a failed step rather than as a transport error, so there is no
+ * `response.data.code` for the shared mapper to read. Attaching the envelope here is what lets a
+ * refusal reach the user instead of a generic failure.
+ */
+class FlowExecutionFailure extends Error {
+  readonly code?: string;
+
+  readonly error: FlowExecutionError;
+
+  constructor(flowError: FlowExecutionError, fallbackMessage: string) {
+    super(flowError.message?.defaultValue ?? flowError.description?.defaultValue ?? fallbackMessage);
+    this.name = 'FlowExecutionFailure';
+    this.code = flowError.code;
+    this.error = flowError;
+  }
+}
+
 export async function executeDeletionFlow(
   http: HttpLike,
   serverUrl: string,
@@ -103,7 +125,7 @@ export async function executeDeletionFlow(
     throw new Error('The user deletion flow requires additional input and could not be completed');
   }
 
-  throw new Error(result.failureReason ?? 'The user deletion flow did not complete');
+  throw new FlowExecutionFailure(result.error ?? {}, 'The user deletion flow did not complete');
 }
 
 /**

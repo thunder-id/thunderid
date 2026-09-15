@@ -36,6 +36,8 @@ var (
 		Parent:      nil,
 	}
 
+	// The optional password is used only in setup to obtain an assertion and enroll the shared
+	// passkey through the direct API. Authentication tests use the resulting passkey.
 	passkeyEntityType = testutils.UserType{
 		Name: "passkey_user",
 		Schema: map[string]interface{}{
@@ -48,8 +50,17 @@ var (
 			"displayName": map[string]interface{}{
 				"type": "string",
 			},
+			"password": map[string]interface{}{
+				"type":       "string",
+				"credential": true,
+			},
 		},
 	}
+)
+
+const (
+	credentialUsername = "passkeytest_credential_user"
+	credentialPassword = "PasskeyCredentialPassword123!"
 )
 
 // PasskeyRegisterStartRequest represents the request to start passkey registration
@@ -59,6 +70,7 @@ type PasskeyRegisterStartRequest struct {
 	RelyingPartyName       string                          `json:"relyingPartyName,omitempty"`
 	AuthenticatorSelection *AuthenticatorSelectionCriteria `json:"authenticatorSelection,omitempty"`
 	Attestation            string                          `json:"attestation,omitempty"`
+	Assertion              string                          `json:"assertion,omitempty"`
 }
 
 // AuthenticatorSelectionCriteria represents authenticator selection criteria
@@ -186,7 +198,6 @@ type AuthenticatorAssertionResponse struct {
 
 type PasskeyAuthTestSuite struct {
 	suite.Suite
-	client       *http.Client
 	testUserID   string
 	entityTypeID string
 	ouID         string
@@ -208,8 +219,6 @@ func TestPasskeyAuthTestSuite(t *testing.T) {
 }
 
 func (suite *PasskeyAuthTestSuite) SetupSuite() {
-	suite.client = testutils.GetHTTPClient()
-
 	// Create test organization unit
 	ouID, err := testutils.CreateOrganizationUnit(passkeyTestOU)
 	if err != nil {
@@ -244,17 +253,19 @@ func (suite *PasskeyAuthTestSuite) SetupSuite() {
 	suite.Require().NoError(err, "Failed to create test user")
 	suite.testUserID = userID
 
-	// Create a second user to own a registered passkey. testUserID is deliberately left without
-	// credentials, since several tests assert the behaviour for a user that has none.
+	// Create a second user of the same type to own a registered passkey.
+	// testUserID is deliberately left without a passkey and without any other credential, since
+	// several tests assert the behaviour for a user that has none.
 	credentialAttributes, err := json.Marshal(map[string]interface{}{
-		"username":    "passkeytest_credential_user",
+		"username":    credentialUsername,
 		"email":       "passkeytest_credential@example.com",
 		"displayName": "Passkey Credential User",
+		"password":    credentialPassword,
 	})
 	suite.Require().NoError(err, "Failed to marshal credential user attributes")
 
 	credentialUserID, err := testutils.CreateUser(testutils.User{
-		Type:       "passkey_user",
+		Type:       passkeyEntityType.Name,
 		OUID:       suite.ouID,
 		Attributes: json.RawMessage(credentialAttributes),
 	})
@@ -262,53 +273,20 @@ func (suite *PasskeyAuthTestSuite) SetupSuite() {
 	suite.credentialUserID = credentialUserID
 
 	// Register a credential the authentication tests can reuse. Doing it here rather than in a test
-	// keeps the authentication tests independent of execution order.
-	suite.authenticator, suite.webAuthnUserHandle = suite.registerCredential(suite.credentialUserID)
-	suite.sharedCredentialID = suite.authenticator.CredentialID()
-}
+	// keeps the authentication tests independent of execution order. Enrollment is gated on an
+	// assertion proving the target user, so authenticate with the bootstrap password first; the
+	// enrollment ceremony itself is exercised by PasskeyEnrollmentTestSuite.
+	credentialUserAssertion, err := testutils.ObtainAuthAssertion(credentialUsername, credentialPassword)
+	suite.Require().NoError(err, "Failed to obtain an auth assertion for the credential user")
 
-// registerCredential runs a full registration ceremony for the given user using a fresh virtual
-// authenticator, and returns the authenticator along with the WebAuthn user handle the server
-// issued for that user. Each authenticator owns a single credential ID, so callers that need a
-// distinct credential must call this again rather than reusing an existing authenticator.
-func (suite *PasskeyAuthTestSuite) registerCredential(
-	userID string,
-) (*testutils.VirtualAuthenticator, string) {
-	authenticator, err := testutils.NewVirtualAuthenticator(testRelyingPartyID, testPasskeyOrigin)
-	suite.Require().NoError(err, "Failed to create virtual authenticator")
+	authenticator, userHandle, err := testutils.RegisterPasskeyCredential(
+		suite.credentialUserID, testRelyingPartyID, testRelyingPartyName, testPasskeyOrigin,
+		credentialUserAssertion)
+	suite.Require().NoError(err, "Failed to register a passkey for the credential user")
 
-	startResponse, statusCode, err := suite.sendPasskeyRegisterStartRequest(PasskeyRegisterStartRequest{
-		UserID:           userID,
-		RelyingPartyID:   testRelyingPartyID,
-		RelyingPartyName: testRelyingPartyName,
-		AuthenticatorSelection: &AuthenticatorSelectionCriteria{
-			ResidentKey:      "required",
-			UserVerification: "required",
-		},
-	})
-	suite.Require().NoError(err, "Failed to start passkey registration")
-	suite.Require().Equal(http.StatusOK, statusCode, "Expected status 200 for registration start")
-
-	credentialID, clientDataJSON, attestationObject, err := authenticator.CreateAttestationResponse(
-		startResponse.PublicKeyCredentialCreationOptions.Challenge, true)
-	suite.Require().NoError(err, "Failed to build attestation response")
-
-	_, statusCode, err = suite.sendPasskeyRegisterFinishRequest(PasskeyRegisterFinishRequest{
-		PublicKeyCredential: PublicKeyCredentialAttestation{
-			ID:    credentialID,
-			Type:  "public-key",
-			RawID: credentialID,
-			Response: AuthenticatorAttestationResponse{
-				ClientDataJSON:    clientDataJSON,
-				AttestationObject: attestationObject,
-			},
-		},
-		SessionToken: startResponse.SessionToken,
-	})
-	suite.Require().NoError(err, "Failed to finish passkey registration")
-	suite.Require().Equal(http.StatusOK, statusCode, "Expected status 200 for registration finish")
-
-	return authenticator, startResponse.PublicKeyCredentialCreationOptions.User.ID
+	suite.authenticator = authenticator
+	suite.webAuthnUserHandle = userHandle
+	suite.sharedCredentialID = authenticator.CredentialID()
 }
 
 func (suite *PasskeyAuthTestSuite) TearDownSuite() {
@@ -327,7 +305,7 @@ func (suite *PasskeyAuthTestSuite) TearDownSuite() {
 		}
 	}
 
-	// Delete user type
+	// Delete the shared user type after both users.
 	if suite.entityTypeID != "" {
 		err := testutils.DeleteUserType(suite.entityTypeID)
 		if err != nil {
@@ -343,94 +321,6 @@ func (suite *PasskeyAuthTestSuite) TearDownSuite() {
 	}
 }
 
-// TestPasskeyRegistrationStart tests the start of passkey registration
-func (suite *PasskeyAuthTestSuite) TestPasskeyRegistrationStart() {
-	registerRequest := PasskeyRegisterStartRequest{
-		UserID:           suite.testUserID,
-		RelyingPartyID:   testRelyingPartyID,
-		RelyingPartyName: testRelyingPartyName,
-	}
-
-	response, statusCode, err := suite.sendPasskeyRegisterStartRequest(registerRequest)
-	suite.Require().NoError(err, "Failed to send passkey register start request")
-	suite.Equal(http.StatusOK, statusCode, "Expected status 200 for successful registration start")
-
-	// Verify response structure
-	suite.NotEmpty(response.SessionToken, "Response should contain session token")
-	suite.NotEmpty(response.PublicKeyCredentialCreationOptions.Challenge, "Response should contain challenge")
-	suite.Equal(testRelyingPartyID, response.PublicKeyCredentialCreationOptions.RelyingParty.ID,
-		"Response should contain correct RP ID")
-	suite.Equal(testRelyingPartyName, response.PublicKeyCredentialCreationOptions.RelyingParty.Name,
-		"Response should contain correct RP name")
-	suite.NotEmpty(response.PublicKeyCredentialCreationOptions.User.ID, "Response should contain user ID")
-	suite.NotEmpty(response.PublicKeyCredentialCreationOptions.PubKeyCredParams,
-		"Response should contain credential parameters")
-
-	// Verify challenge is valid base64
-	_, err = base64.RawURLEncoding.DecodeString(response.PublicKeyCredentialCreationOptions.Challenge)
-	suite.NoError(err, "Challenge should be valid base64")
-}
-
-// TestPasskeyRegistrationStartWithAuthenticatorSelection tests registration with authenticator selection
-func (suite *PasskeyAuthTestSuite) TestPasskeyRegistrationStartWithAuthenticatorSelection() {
-	registerRequest := PasskeyRegisterStartRequest{
-		UserID:           suite.testUserID,
-		RelyingPartyID:   testRelyingPartyID,
-		RelyingPartyName: testRelyingPartyName,
-		AuthenticatorSelection: &AuthenticatorSelectionCriteria{
-			AuthenticatorAttachment: "platform",
-			RequireResidentKey:      true,
-			ResidentKey:             "required",
-			UserVerification:        "required",
-		},
-		Attestation: "direct",
-	}
-
-	response, statusCode, err := suite.sendPasskeyRegisterStartRequest(registerRequest)
-	suite.Require().NoError(err, "Failed to send passkey register start request")
-	suite.Equal(http.StatusOK, statusCode, "Expected status 200 for successful registration start")
-
-	// Verify response includes authenticator selection
-	suite.NotNil(response.PublicKeyCredentialCreationOptions.AuthenticatorSelection,
-		"Response should contain authenticator selection")
-	suite.Equal("platform",
-		response.PublicKeyCredentialCreationOptions.AuthenticatorSelection.AuthenticatorAttachment)
-	suite.Equal("direct", response.PublicKeyCredentialCreationOptions.Attestation)
-}
-
-// TestPasskeyRegistrationStartInvalidUserID tests registration with invalid user ID
-func (suite *PasskeyAuthTestSuite) TestPasskeyRegistrationStartInvalidUserID() {
-	registerRequest := PasskeyRegisterStartRequest{
-		UserID:         "invalid-user-id",
-		RelyingPartyID: testRelyingPartyID,
-	}
-
-	_, statusCode, _ := suite.sendPasskeyRegisterStartRequest(registerRequest)
-	suite.Equal(http.StatusBadRequest, statusCode, "Expected status 400 for invalid user ID")
-}
-
-// TestPasskeyRegistrationStartEmptyUserID tests registration with empty user ID
-func (suite *PasskeyAuthTestSuite) TestPasskeyRegistrationStartEmptyUserID() {
-	registerRequest := PasskeyRegisterStartRequest{
-		UserID:         "",
-		RelyingPartyID: testRelyingPartyID,
-	}
-
-	_, statusCode, _ := suite.sendPasskeyRegisterStartRequest(registerRequest)
-	suite.Equal(http.StatusBadRequest, statusCode, "Expected status 400 for empty user ID")
-}
-
-// TestPasskeyRegistrationStartEmptyRelyingPartyID tests registration with empty relying party ID
-func (suite *PasskeyAuthTestSuite) TestPasskeyRegistrationStartEmptyRelyingPartyID() {
-	registerRequest := PasskeyRegisterStartRequest{
-		UserID:         suite.testUserID,
-		RelyingPartyID: "",
-	}
-
-	_, statusCode, _ := suite.sendPasskeyRegisterStartRequest(registerRequest)
-	suite.Equal(http.StatusBadRequest, statusCode, "Expected status 400 for empty relying party ID")
-}
-
 // TestPasskeyAuthenticationStartNoCredentials tests authentication start when user has no credentials
 func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationStartNoCredentials() {
 	authRequest := PasskeyAuthStartRequest{
@@ -438,7 +328,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationStartNoCredentials()
 		RelyingPartyID: testRelyingPartyID,
 	}
 
-	_, statusCode, _ := suite.sendPasskeyAuthStartRequest(authRequest)
+	_, statusCode, _ := sendPasskeyAuthStartRequest(authRequest)
 	// Should return 404 or specific error when no credentials exist
 	suite.True(statusCode == http.StatusNotFound || statusCode == http.StatusBadRequest,
 		"Expected status 404 or 400 when user has no registered credentials")
@@ -451,7 +341,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationStartInvalidUserID()
 		RelyingPartyID: testRelyingPartyID,
 	}
 
-	_, statusCode, _ := suite.sendPasskeyAuthStartRequest(authRequest)
+	_, statusCode, _ := sendPasskeyAuthStartRequest(authRequest)
 	suite.Equal(http.StatusBadRequest, statusCode, "Expected status 400 for invalid user ID")
 }
 
@@ -462,34 +352,13 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationStartEmptyUserID() {
 		RelyingPartyID: testRelyingPartyID,
 	}
 
-	response, statusCode, err := suite.sendPasskeyAuthStartRequest(authRequest)
+	response, statusCode, err := sendPasskeyAuthStartRequest(authRequest)
 	// Usernameless authentication should succeed
 	suite.NoError(err, "Failed to send passkey auth start request")
 	suite.Equal(http.StatusOK, statusCode, "Expected status 200 for usernameless authentication")
 	suite.NotNil(response, "Response should not be nil")
 	suite.NotEmpty(response.SessionToken, "Response should contain session token")
 	suite.NotEmpty(response.PublicKeyCredentialRequestOptions.Challenge, "Response should contain challenge")
-}
-
-// TestPasskeyRegistrationFinishInvalidSessionToken tests finish registration with invalid session
-func (suite *PasskeyAuthTestSuite) TestPasskeyRegistrationFinishInvalidSessionToken() {
-	// Create mock credential response
-	finishRequest := PasskeyRegisterFinishRequest{
-		PublicKeyCredential: PublicKeyCredentialAttestation{
-			ID:    "mock-credential-id",
-			Type:  "public-key",
-			RawID: base64.RawURLEncoding.EncodeToString([]byte("mock-credential-id")),
-			Response: AuthenticatorAttestationResponse{
-				ClientDataJSON:    base64.RawURLEncoding.EncodeToString([]byte(`{"type":"webauthn.create"}`)),
-				AttestationObject: base64.RawURLEncoding.EncodeToString([]byte("mock-attestation")),
-			},
-		},
-		SessionToken: "invalid-session-token",
-	}
-
-	_, statusCode, _ := suite.sendPasskeyRegisterFinishRequest(finishRequest)
-	suite.True(statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest,
-		"Expected status 401 or 400 for invalid session token")
 }
 
 // TestPasskeyAuthenticationFinishInvalidSessionToken tests finish authentication with invalid session
@@ -507,7 +376,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationFinishInvalidSession
 		SessionToken: "invalid-session-token",
 	}
 
-	_, statusCode, _ := suite.sendPasskeyAuthFinishRequest(finishRequest)
+	_, statusCode, _ := sendPasskeyAuthFinishRequest(finishRequest)
 	suite.True(statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest,
 		"Expected status 401 or 400 for invalid session token")
 }
@@ -519,7 +388,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationUsernamelessFlow() {
 		RelyingPartyID: testRelyingPartyID,
 	}
 
-	startResponse, statusCode, err := suite.sendPasskeyAuthStartRequest(authStartRequest)
+	startResponse, statusCode, err := sendPasskeyAuthStartRequest(authStartRequest)
 	suite.Require().NoError(err, "Failed to send usernameless passkey auth start request")
 	suite.Equal(http.StatusOK, statusCode, "Expected status 200 for usernameless authentication start")
 	suite.NotNil(startResponse, "Start response should not be nil")
@@ -550,7 +419,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationUsernamelessFlowWith
 		RelyingPartyID: testRelyingPartyID,
 	}
 
-	startResponse, statusCode, err := suite.sendPasskeyAuthStartRequest(authStartRequest)
+	startResponse, statusCode, err := sendPasskeyAuthStartRequest(authStartRequest)
 	suite.Require().NoError(err, "Failed to send usernameless passkey auth start request")
 	suite.Equal(http.StatusOK, statusCode, "Expected status 200 for usernameless authentication start")
 	suite.NotNil(startResponse, "Start response should not be nil")
@@ -566,69 +435,9 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationUsernamelessFlowEmpt
 		RelyingPartyID: "", // Missing RP ID
 	}
 
-	_, statusCode, _ := suite.sendPasskeyAuthStartRequest(authStartRequest)
+	_, statusCode, _ := sendPasskeyAuthStartRequest(authStartRequest)
 	suite.Equal(http.StatusBadRequest, statusCode,
 		"Expected status 400 for usernameless flow with missing RP ID")
-}
-
-// TestPasskeyAuthenticationFinishUsernamelessWithValidCredential tests finish authentication for usernameless flow
-// This test covers the ValidatePasskeyLogin path including the type assertion of user interface
-func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationFinishUsernamelessWithValidCredential() {
-	registerStartRequest := PasskeyRegisterStartRequest{
-		UserID:           suite.testUserID,
-		RelyingPartyID:   testRelyingPartyID,
-		RelyingPartyName: testRelyingPartyName,
-		AuthenticatorSelection: &AuthenticatorSelectionCriteria{
-			ResidentKey:      "required",
-			UserVerification: "required",
-		},
-	}
-
-	registerStartResponse, statusCode, err := suite.sendPasskeyRegisterStartRequest(registerStartRequest)
-	suite.Require().NoError(err, "Failed to send passkey register start request")
-	suite.Require().Equal(http.StatusOK, statusCode, "Expected status 200 for registration start")
-	suite.Require().NotEmpty(registerStartResponse.SessionToken, "Session token should not be empty")
-
-	authStartRequest := PasskeyAuthStartRequest{
-		UserID:         "", // Empty userID for usernameless flow
-		RelyingPartyID: testRelyingPartyID,
-	}
-
-	authStartResponse, statusCode, err := suite.sendPasskeyAuthStartRequest(authStartRequest)
-	suite.Require().NoError(err, "Failed to send usernameless passkey auth start request")
-	suite.Equal(http.StatusOK, statusCode, "Expected status 200 for usernameless authentication start")
-	suite.NotNil(authStartResponse, "Auth start response should not be nil")
-	suite.NotEmpty(authStartResponse.SessionToken, "Session token should not be empty")
-
-	// Verify the response structure for usernameless flow
-	suite.Empty(authStartResponse.PublicKeyCredentialRequestOptions.AllowCredentials,
-		"AllowCredentials should be empty for usernameless flow")
-	suite.NotEmpty(authStartResponse.PublicKeyCredentialRequestOptions.Challenge,
-		"Challenge should be present")
-	suite.Equal(testRelyingPartyID, authStartResponse.PublicKeyCredentialRequestOptions.RelyingPartyID,
-		"RelyingPartyID should match")
-
-	finishRequest := PasskeyAuthFinishRequest{
-		PublicKeyCredential: PublicKeyCredentialAssertion{
-			ID:   "mock-credential-id",
-			Type: "public-key",
-			Response: AuthenticatorAssertionResponse{
-				ClientDataJSON: base64.RawURLEncoding.EncodeToString([]byte(
-					`{"type":"webauthn.get","challenge":"` +
-						authStartResponse.PublicKeyCredentialRequestOptions.Challenge + `","origin":"http://localhost"}`)),
-				AuthenticatorData: base64.RawURLEncoding.EncodeToString([]byte(
-					"mock-auth-data-with-sufficient-length-for-parsing")),
-				Signature:  base64.RawURLEncoding.EncodeToString([]byte("mock-signature")),
-				UserHandle: base64.StdEncoding.EncodeToString([]byte(suite.testUserID)),
-			},
-		},
-		SessionToken: authStartResponse.SessionToken,
-	}
-
-	_, statusCode, _ = suite.sendPasskeyAuthFinishRequest(finishRequest)
-	// Should fail validation but the code path including type assertion should be exercised
-	suite.True(statusCode == http.StatusBadRequest || statusCode == http.StatusUnauthorized,
-		"Expected validation error status for mock credential")
 }
 
 // TestPasskeyAuthenticationFinishUsernamelessWithInvalidUserHandle tests usernameless flow with invalid userHandle
@@ -640,7 +449,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationFinishUsernamelessWi
 		RelyingPartyID: testRelyingPartyID,
 	}
 
-	authStartResponse, statusCode, err := suite.sendPasskeyAuthStartRequest(authStartRequest)
+	authStartResponse, statusCode, err := sendPasskeyAuthStartRequest(authStartRequest)
 	suite.Require().NoError(err, "Failed to send usernameless passkey auth start request")
 	suite.Require().Equal(http.StatusOK, statusCode, "Expected status 200 for usernameless authentication start")
 
@@ -661,7 +470,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationFinishUsernamelessWi
 		SessionToken: authStartResponse.SessionToken,
 	}
 
-	_, statusCode, _ = suite.sendPasskeyAuthFinishRequest(finishRequest)
+	_, statusCode, _ = sendPasskeyAuthFinishRequest(finishRequest)
 	suite.True(statusCode == http.StatusBadRequest || statusCode == http.StatusUnauthorized,
 		"Expected error status for invalid user handle")
 }
@@ -674,7 +483,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationFinishUsernamelessWi
 		RelyingPartyID: testRelyingPartyID,
 	}
 
-	authStartResponse, statusCode, err := suite.sendPasskeyAuthStartRequest(authStartRequest)
+	authStartResponse, statusCode, err := sendPasskeyAuthStartRequest(authStartRequest)
 	suite.Require().NoError(err, "Failed to send usernameless passkey auth start request")
 	suite.Require().Equal(
 		http.StatusOK, statusCode, "Expected status 200 for usernameless authentication start")
@@ -694,7 +503,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationFinishUsernamelessWi
 		SessionToken: authStartResponse.SessionToken,
 	}
 
-	_, statusCode, _ = suite.sendPasskeyAuthFinishRequest(finishRequest)
+	_, statusCode, _ = sendPasskeyAuthFinishRequest(finishRequest)
 	suite.True(statusCode == http.StatusBadRequest || statusCode == http.StatusUnauthorized,
 		"Expected error status when userHandle is missing in usernameless flow")
 }
@@ -708,7 +517,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationFinishUsernamelessWi
 		RelyingPartyID: testRelyingPartyID,
 	}
 
-	authStartResponse, statusCode, err := suite.sendPasskeyAuthStartRequest(authStartRequest)
+	authStartResponse, statusCode, err := sendPasskeyAuthStartRequest(authStartRequest)
 	suite.Require().NoError(err, "Failed to send usernameless passkey auth start request")
 	suite.Require().Equal(http.StatusOK, statusCode, "Expected status 200 for usernameless authentication start")
 
@@ -730,7 +539,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationFinishUsernamelessWi
 		SessionToken: authStartResponse.SessionToken,
 	}
 
-	_, statusCode, _ = suite.sendPasskeyAuthFinishRequest(finishRequest)
+	_, statusCode, _ = sendPasskeyAuthFinishRequest(finishRequest)
 	suite.True(statusCode >= http.StatusBadRequest,
 		"Expected error status for non-existent user in usernameless flow")
 }
@@ -744,7 +553,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationUsernamelessValidati
 		RelyingPartyID: testRelyingPartyID,
 	}
 
-	authStartResponse, statusCode, err := suite.sendPasskeyAuthStartRequest(authStartRequest)
+	authStartResponse, statusCode, err := sendPasskeyAuthStartRequest(authStartRequest)
 	suite.Require().NoError(err, "Failed to send usernameless passkey auth start request")
 	suite.Require().Equal(http.StatusOK, statusCode, "Expected status 200 for usernameless authentication start")
 	suite.Require().NotEmpty(authStartResponse.SessionToken, "Session token should not be empty")
@@ -766,7 +575,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationUsernamelessValidati
 		SessionToken: authStartResponse.SessionToken,
 	}
 
-	_, statusCode, _ = suite.sendPasskeyAuthFinishRequest(finishRequest)
+	_, statusCode, _ = sendPasskeyAuthFinishRequest(finishRequest)
 	suite.True(statusCode == http.StatusBadRequest || statusCode == http.StatusUnauthorized,
 		"Expected validation error status for usernameless flow with invalid signature")
 }
@@ -780,67 +589,16 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationUsernameBasedValidat
 		RelyingPartyID: testRelyingPartyID,
 	}
 
-	registerStartRequest := PasskeyRegisterStartRequest{
-		UserID:           suite.testUserID,
-		RelyingPartyID:   testRelyingPartyID,
-		RelyingPartyName: testRelyingPartyName,
-	}
-
-	_, regStatus, _ := suite.sendPasskeyRegisterStartRequest(registerStartRequest)
-	suite.Require().Equal(http.StatusOK, regStatus, "Registration start should succeed")
-
-	_, statusCode, _ := suite.sendPasskeyAuthStartRequest(authStartRequest)
+	_, statusCode, _ := sendPasskeyAuthStartRequest(authStartRequest)
 
 	suite.True(statusCode == http.StatusNotFound || statusCode == http.StatusBadRequest,
 		"Expected error when user has no registered credentials for username-based flow")
 }
 
-// TestPasskeyRegisterFinishSuccess completes a registration ceremony with a credential that carries
-// a real signature, and confirms the credential is persisted against the user.
-func (suite *PasskeyAuthTestSuite) TestPasskeyRegisterFinishSuccess() {
-	// Register against a dedicated user so the credential does not affect other tests.
-	attributes, err := json.Marshal(map[string]interface{}{
-		"username":    "passkeytest_register_user",
-		"email":       "passkeytest_register@example.com",
-		"displayName": "Passkey Register User",
-	})
-	suite.Require().NoError(err, "Failed to marshal user attributes")
-
-	userID, err := testutils.CreateUser(testutils.User{
-		Type:       "passkey_user",
-		OUID:       suite.ouID,
-		Attributes: json.RawMessage(attributes),
-	})
-	suite.Require().NoError(err, "Failed to create user for registration test")
-	defer func() {
-		if err := testutils.DeleteUser(userID); err != nil {
-			suite.T().Logf("Failed to delete registration test user: %v", err)
-		}
-	}()
-
-	authenticator, _ := suite.registerCredential(userID)
-
-	// Stored credentials are not exposed by any API, so persistence is confirmed by starting an
-	// authentication ceremony and checking the credential is offered back.
-	startResponse, statusCode, err := suite.sendPasskeyAuthStartRequest(PasskeyAuthStartRequest{
-		UserID:         userID,
-		RelyingPartyID: testRelyingPartyID,
-	})
-	suite.Require().NoError(err, "Failed to start authentication after registration")
-	suite.Require().Equal(http.StatusOK, statusCode, "Expected status 200 for authentication start")
-
-	credentialIDs := make([]string, 0, len(startResponse.PublicKeyCredentialRequestOptions.AllowCredentials))
-	for _, credential := range startResponse.PublicKeyCredentialRequestOptions.AllowCredentials {
-		credentialIDs = append(credentialIDs, credential.ID)
-	}
-	suite.Contains(credentialIDs, authenticator.CredentialID(),
-		"Registered credential should be offered back in allowCredentials")
-}
-
 // TestPasskeyAuthenticationUsernameBasedSuccess authenticates a user that has a registered
 // credential, by supplying the user ID up front.
 func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationUsernameBasedSuccess() {
-	startResponse, statusCode, err := suite.sendPasskeyAuthStartRequest(PasskeyAuthStartRequest{
+	startResponse, statusCode, err := sendPasskeyAuthStartRequest(PasskeyAuthStartRequest{
 		UserID:         suite.credentialUserID,
 		RelyingPartyID: testRelyingPartyID,
 	})
@@ -854,7 +612,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationUsernameBasedSuccess
 			startResponse.PublicKeyCredentialRequestOptions.Challenge, true)
 	suite.Require().NoError(err, "Failed to build assertion response")
 
-	response, statusCode, err := suite.sendPasskeyAuthFinishRequest(PasskeyAuthFinishRequest{
+	response, statusCode, err := sendPasskeyAuthFinishRequest(PasskeyAuthFinishRequest{
 		PublicKeyCredential: PublicKeyCredentialAssertion{
 			ID:    credentialID,
 			Type:  "public-key",
@@ -877,7 +635,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationUsernameBasedSuccess
 // TestPasskeyAuthenticationUsernamelessSuccess authenticates without supplying a user ID, so the
 // user is resolved from the credential's user handle through the discoverable credential path.
 func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationUsernamelessSuccess() {
-	startResponse, statusCode, err := suite.sendPasskeyAuthStartRequest(PasskeyAuthStartRequest{
+	startResponse, statusCode, err := sendPasskeyAuthStartRequest(PasskeyAuthStartRequest{
 		UserID:         "",
 		RelyingPartyID: testRelyingPartyID,
 	})
@@ -891,7 +649,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationUsernamelessSuccess(
 			startResponse.PublicKeyCredentialRequestOptions.Challenge, true)
 	suite.Require().NoError(err, "Failed to build assertion response")
 
-	response, statusCode, err := suite.sendPasskeyAuthFinishRequest(PasskeyAuthFinishRequest{
+	response, statusCode, err := sendPasskeyAuthFinishRequest(PasskeyAuthFinishRequest{
 		PublicKeyCredential: PublicKeyCredentialAssertion{
 			ID:    credentialID,
 			Type:  "public-key",
@@ -912,26 +670,9 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationUsernamelessSuccess(
 	suite.NotEmpty(response.Assertion, "A JWT assertion should be issued on success")
 }
 
-// TestPasskeyRegisterFinishWrongOrigin rejects a credential collected from an origin the server
-// does not allow.
-func (suite *PasskeyAuthTestSuite) TestPasskeyRegisterFinishWrongOrigin() {
-	statusCode := suite.attemptRegistrationWithAuthenticator(testRelyingPartyID,
-		"https://evil.example.com")
-	suite.Equal(http.StatusBadRequest, statusCode,
-		"Expected status 400 for a credential collected from a disallowed origin")
-}
-
-// TestPasskeyRegisterFinishWrongRPID rejects a credential whose authenticator data was bound to a
-// different relying party.
-func (suite *PasskeyAuthTestSuite) TestPasskeyRegisterFinishWrongRPID() {
-	statusCode := suite.attemptRegistrationWithAuthenticator("example.com", testPasskeyOrigin)
-	suite.Equal(http.StatusBadRequest, statusCode,
-		"Expected status 400 for a credential bound to a different relying party")
-}
-
 // TestPasskeyAuthenticationReplayedSessionToken confirms a session token cannot be used twice.
 func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationReplayedSessionToken() {
-	startResponse, statusCode, err := suite.sendPasskeyAuthStartRequest(PasskeyAuthStartRequest{
+	startResponse, statusCode, err := sendPasskeyAuthStartRequest(PasskeyAuthStartRequest{
 		UserID:         suite.credentialUserID,
 		RelyingPartyID: testRelyingPartyID,
 	})
@@ -959,11 +700,11 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationReplayedSessionToken
 		}
 	}
 
-	_, statusCode, err = suite.sendPasskeyAuthFinishRequest(finishRequest())
+	_, statusCode, err = sendPasskeyAuthFinishRequest(finishRequest())
 	suite.Require().NoError(err, "Failed to finish passkey authentication")
 	suite.Require().Equal(http.StatusOK, statusCode, "First use of the session token should succeed")
 
-	_, statusCode, err = suite.sendPasskeyAuthFinishRequest(finishRequest())
+	_, statusCode, err = sendPasskeyAuthFinishRequest(finishRequest())
 	suite.Require().NoError(err, "Failed to send replayed authentication finish")
 	suite.True(statusCode == http.StatusBadRequest || statusCode == http.StatusUnauthorized,
 		"Replaying a consumed session token should be rejected, got %d", statusCode)
@@ -973,7 +714,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationReplayedSessionToken
 // accepted. The library flags it through Authenticator.CloneWarning but returns no error, and that
 // flag is never inspected, so cloned authenticators are not currently detected.
 func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationSignCountRegression() {
-	startResponse, statusCode, err := suite.sendPasskeyAuthStartRequest(PasskeyAuthStartRequest{
+	startResponse, statusCode, err := sendPasskeyAuthStartRequest(PasskeyAuthStartRequest{
 		UserID:         suite.credentialUserID,
 		RelyingPartyID: testRelyingPartyID,
 	})
@@ -986,7 +727,7 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationSignCountRegression(
 			startResponse.PublicKeyCredentialRequestOptions.Challenge, true)
 	suite.Require().NoError(err, "Failed to build assertion response")
 
-	_, statusCode, err = suite.sendPasskeyAuthFinishRequest(PasskeyAuthFinishRequest{
+	_, statusCode, err = sendPasskeyAuthFinishRequest(PasskeyAuthFinishRequest{
 		PublicKeyCredential: PublicKeyCredentialAssertion{
 			ID:    credentialID,
 			Type:  "public-key",
@@ -1005,45 +746,9 @@ func (suite *PasskeyAuthTestSuite) TestPasskeyAuthenticationSignCountRegression(
 		"A regressed signature counter is currently accepted; update this test if clone detection is added")
 }
 
-// attemptRegistrationWithAuthenticator runs a registration ceremony where the authenticator is
-// built with the given relying party ID and origin, and returns the status of the finish call. The
-// start call is expected to succeed, since these mismatches are only detectable at finish.
-func (suite *PasskeyAuthTestSuite) attemptRegistrationWithAuthenticator(rpID, origin string) int {
-	authenticator, err := testutils.NewVirtualAuthenticator(rpID, origin)
-	suite.Require().NoError(err, "Failed to create virtual authenticator")
-
-	startResponse, statusCode, err := suite.sendPasskeyRegisterStartRequest(PasskeyRegisterStartRequest{
-		UserID:           suite.testUserID,
-		RelyingPartyID:   testRelyingPartyID,
-		RelyingPartyName: testRelyingPartyName,
-	})
-	suite.Require().NoError(err, "Failed to start passkey registration")
-	suite.Require().Equal(http.StatusOK, statusCode, "Expected status 200 for registration start")
-
-	credentialID, clientDataJSON, attestationObject, err := authenticator.CreateAttestationResponse(
-		startResponse.PublicKeyCredentialCreationOptions.Challenge, true)
-	suite.Require().NoError(err, "Failed to build attestation response")
-
-	_, statusCode, err = suite.sendPasskeyRegisterFinishRequest(PasskeyRegisterFinishRequest{
-		PublicKeyCredential: PublicKeyCredentialAttestation{
-			ID:    credentialID,
-			Type:  "public-key",
-			RawID: credentialID,
-			Response: AuthenticatorAttestationResponse{
-				ClientDataJSON:    clientDataJSON,
-				AttestationObject: attestationObject,
-			},
-		},
-		SessionToken: startResponse.SessionToken,
-	})
-	suite.Require().NoError(err, "Failed to finish passkey registration")
-
-	return statusCode
-}
-
 // Helper methods
 
-func (suite *PasskeyAuthTestSuite) sendPasskeyRegisterStartRequest(
+func sendPasskeyRegisterStartRequest(
 	request PasskeyRegisterStartRequest,
 ) (*PasskeyRegisterStartResponse, int, error) {
 	requestBody, err := json.Marshal(request)
@@ -1059,7 +764,7 @@ func (suite *PasskeyAuthTestSuite) sendPasskeyRegisterStartRequest(
 
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := suite.client.Do(req)
+	resp, err := testutils.GetHTTPClient().Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -1082,7 +787,7 @@ func (suite *PasskeyAuthTestSuite) sendPasskeyRegisterStartRequest(
 	return &response, resp.StatusCode, nil
 }
 
-func (suite *PasskeyAuthTestSuite) sendPasskeyRegisterFinishRequest(
+func sendPasskeyRegisterFinishRequest(
 	request PasskeyRegisterFinishRequest,
 ) (*testutils.AuthenticationResponse, int, error) {
 	requestBody, err := json.Marshal(request)
@@ -1098,7 +803,7 @@ func (suite *PasskeyAuthTestSuite) sendPasskeyRegisterFinishRequest(
 
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := suite.client.Do(req)
+	resp, err := testutils.GetHTTPClient().Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -1121,7 +826,7 @@ func (suite *PasskeyAuthTestSuite) sendPasskeyRegisterFinishRequest(
 	return &response, resp.StatusCode, nil
 }
 
-func (suite *PasskeyAuthTestSuite) sendPasskeyAuthStartRequest(
+func sendPasskeyAuthStartRequest(
 	request PasskeyAuthStartRequest,
 ) (*PasskeyAuthStartResponse, int, error) {
 	requestBody, err := json.Marshal(request)
@@ -1137,7 +842,7 @@ func (suite *PasskeyAuthTestSuite) sendPasskeyAuthStartRequest(
 
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := suite.client.Do(req)
+	resp, err := testutils.GetHTTPClient().Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -1160,7 +865,7 @@ func (suite *PasskeyAuthTestSuite) sendPasskeyAuthStartRequest(
 	return &response, resp.StatusCode, nil
 }
 
-func (suite *PasskeyAuthTestSuite) sendPasskeyAuthFinishRequest(
+func sendPasskeyAuthFinishRequest(
 	request PasskeyAuthFinishRequest,
 ) (*testutils.AuthenticationResponse, int, error) {
 	requestBody, err := json.Marshal(request)
@@ -1176,7 +881,7 @@ func (suite *PasskeyAuthTestSuite) sendPasskeyAuthFinishRequest(
 
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := suite.client.Do(req)
+	resp, err := testutils.GetHTTPClient().Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to send request: %w", err)
 	}

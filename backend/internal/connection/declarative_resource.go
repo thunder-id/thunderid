@@ -262,15 +262,15 @@ func connectionModelFromSenderDTO(dto ncommon.NotificationSenderDTO) (connection
 		Description: dto.Description,
 	}
 	switch dto.Provider {
-	case ncommon.MessageProviderTypeTwilio:
+	case ncommon.NotificationProviderTypeTwilio:
 		model.AccountSID = values[ncommon.TwilioPropKeyAccountSID]
 		model.AuthToken = values[ncommon.TwilioPropKeyAuthToken]
 		model.SenderID = values[ncommon.TwilioPropKeySenderID]
-	case ncommon.MessageProviderTypeVonage:
+	case ncommon.NotificationProviderTypeVonage:
 		model.APIKey = values[ncommon.VonagePropKeyAPIKey]
 		model.APISecret = values[ncommon.VonagePropKeyAPISecret]
 		model.SenderID = values[ncommon.VonagePropKeySenderID]
-	case ncommon.MessageProviderTypeCustom:
+	case ncommon.NotificationProviderTypeCustom:
 		model.URL = values[ncommon.CustomPropKeyURL]
 		model.HTTPMethod = values[ncommon.CustomPropKeyHTTPMethod]
 		model.HTTPHeaders = values[ncommon.CustomPropKeyHTTPHeaders]

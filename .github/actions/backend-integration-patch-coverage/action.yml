@@ -9,12 +9,21 @@ inputs:
   base-ref:
     description: 'Git ref or SHA the diff is compared against'
     required: true
-  fail-under:
+  threshold-config:
     description: >-
-      Minimum percentage of changed coverable backend lines that the integration
-      suite must execute. Compared exactly, with no tolerance.
+      Path to the per-package threshold config. Thresholds are grouped by pull
+      request label and inherited down the package tree; see the file itself for
+      the resolution rules.
     required: false
-    default: '70'
+    default: '.github/backend-coverage-thresholds.yml'
+  pr-labels:
+    description: >-
+      The pull request's labels, as a JSON array or a comma-separated list. Labels
+      select which threshold groups apply. Empty means no group applies, so
+      thresholds come from the base `packages` map and then the global default.
+      That is also the merge-queue case.
+    required: false
+    default: ''
   artifact-pattern:
     description: 'Pattern matching the integration coverage artifacts to download'
     required: false
@@ -30,7 +39,7 @@ runs:
     # Left unmerged (the default) so each artifact lands in its own directory:
     # the database name is read back from the directory name to label the report.
     - name: 📥 Download Integration Coverage Artifacts
-      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
         pattern: ${{ inputs.artifact-pattern }}
         path: coverage-artifacts
@@ -39,5 +48,6 @@ runs:
       shell: bash
       env:
         BASE_REF: ${{ inputs.base-ref }}
-        FAIL_UNDER: ${{ inputs.fail-under }}
+        THRESHOLD_CONFIG: ${{ inputs.threshold-config }}
+        PR_LABELS: ${{ inputs.pr-labels }}
       run: bash "${{ github.action_path }}/compute-integration-patch-coverage.sh"

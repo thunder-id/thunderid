@@ -63,10 +63,10 @@ func (suite *LayoutServiceTestSuite) TestGetLayoutList_Success() {
 		},
 	}
 
-	suite.mockStore.On("GetLayoutListCount").Return(2, nil)
-	suite.mockStore.On("GetLayoutList", 10, 0).Return(layouts, nil)
+	suite.mockStore.On("GetLayoutListCount", testCtx()).Return(2, nil)
+	suite.mockStore.On("GetLayoutList", testCtx(), 10, 0).Return(layouts, nil)
 
-	result, err := suite.service.GetLayoutList(context.Background(), 10, 0)
+	result, err := suite.service.GetLayoutList(testCtx(), 10, 0)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -78,9 +78,9 @@ func (suite *LayoutServiceTestSuite) TestGetLayoutList_Success() {
 
 // Test GetLayoutList - Store Count Error
 func (suite *LayoutServiceTestSuite) TestGetLayoutList_CountError() {
-	suite.mockStore.On("GetLayoutListCount").Return(0, errors.New("database error"))
+	suite.mockStore.On("GetLayoutListCount", testCtx()).Return(0, errors.New("database error"))
 
-	result, err := suite.service.GetLayoutList(context.Background(), 10, 0)
+	result, err := suite.service.GetLayoutList(testCtx(), 10, 0)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -88,10 +88,10 @@ func (suite *LayoutServiceTestSuite) TestGetLayoutList_CountError() {
 
 // Test GetLayoutList - Store Error
 func (suite *LayoutServiceTestSuite) TestGetLayoutList_StoreError() {
-	suite.mockStore.On("GetLayoutListCount").Return(2, nil)
-	suite.mockStore.On("GetLayoutList", 10, 0).Return(nil, errors.New("database error"))
+	suite.mockStore.On("GetLayoutListCount", testCtx()).Return(2, nil)
+	suite.mockStore.On("GetLayoutList", testCtx(), 10, 0).Return(nil, errors.New("database error"))
 
-	result, err := suite.service.GetLayoutList(context.Background(), 10, 0)
+	result, err := suite.service.GetLayoutList(testCtx(), 10, 0)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -99,7 +99,7 @@ func (suite *LayoutServiceTestSuite) TestGetLayoutList_StoreError() {
 
 // Test GetLayoutList - Invalid Pagination
 func (suite *LayoutServiceTestSuite) TestGetLayoutList_InvalidLimit() {
-	result, err := suite.service.GetLayoutList(context.Background(), -1, 0)
+	result, err := suite.service.GetLayoutList(testCtx(), -1, 0)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -107,7 +107,7 @@ func (suite *LayoutServiceTestSuite) TestGetLayoutList_InvalidLimit() {
 }
 
 func (suite *LayoutServiceTestSuite) TestGetLayoutList_InvalidOffset() {
-	result, err := suite.service.GetLayoutList(context.Background(), 10, -1)
+	result, err := suite.service.GetLayoutList(testCtx(), 10, -1)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -123,11 +123,11 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_Success() {
 		Layout:      json.RawMessage(`{"structure": "grid"}`),
 	}
 
-	suite.mockStore.On("IsLayoutHandleConflict", "new-layout", "").Return(false, nil)
-	suite.mockStore.On("CreateLayout", mock.AnythingOfType("string"),
+	suite.mockStore.On("IsLayoutHandleConflict", testCtx(), "new-layout", "").Return(false, nil)
+	suite.mockStore.On("CreateLayout", testCtx(), mock.AnythingOfType("string"),
 		mock.AnythingOfType("CreateLayoutRequest")).Return(nil)
 
-	result, err := suite.service.CreateLayout(context.Background(), layoutRequest)
+	result, err := suite.service.CreateLayout(testCtx(), layoutRequest)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -147,11 +147,11 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_HonorsProvidedID() {
 		Layout:      json.RawMessage(`{"structure": "grid"}`),
 	}
 
-	suite.mockStore.On("IsLayoutHandleConflict", "new-layout", "").Return(false, nil)
-	suite.mockStore.On("CreateLayout", "provided-layout-id",
+	suite.mockStore.On("IsLayoutHandleConflict", testCtx(), "new-layout", "").Return(false, nil)
+	suite.mockStore.On("CreateLayout", testCtx(), "provided-layout-id",
 		mock.AnythingOfType("CreateLayoutRequest")).Return(nil)
 
-	result, err := suite.service.CreateLayout(context.Background(), layoutRequest)
+	result, err := suite.service.CreateLayout(testCtx(), layoutRequest)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -167,7 +167,7 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_MissingDisplayName() {
 		Layout:      json.RawMessage(`{"structure": "grid"}`),
 	}
 
-	result, err := suite.service.CreateLayout(context.Background(), layoutRequest)
+	result, err := suite.service.CreateLayout(testCtx(), layoutRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -183,7 +183,7 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_MissingHandle() {
 		Layout:      json.RawMessage(`{"structure": "grid"}`),
 	}
 
-	result, err := suite.service.CreateLayout(context.Background(), layoutRequest)
+	result, err := suite.service.CreateLayout(testCtx(), layoutRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -199,9 +199,9 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_DuplicateHandle() {
 		Layout:      json.RawMessage(`{"structure": "grid"}`),
 	}
 
-	suite.mockStore.On("IsLayoutHandleConflict", "existing-layout", "").Return(true, nil)
+	suite.mockStore.On("IsLayoutHandleConflict", testCtx(), "existing-layout", "").Return(true, nil)
 
-	result, err := suite.service.CreateLayout(context.Background(), layoutRequest)
+	result, err := suite.service.CreateLayout(testCtx(), layoutRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -220,7 +220,7 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_DeclarativeModeEnabled() {
 		Layout:      json.RawMessage(`{"structure": "grid"}`),
 	}
 
-	result, err := suite.service.CreateLayout(context.Background(), layoutRequest)
+	result, err := suite.service.CreateLayout(testCtx(), layoutRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -236,9 +236,9 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_InvalidJSON() {
 		Layout:      json.RawMessage(`{invalid json}`),
 	}
 
-	suite.mockStore.On("IsLayoutHandleConflict", "my-layout", "").Return(false, nil)
+	suite.mockStore.On("IsLayoutHandleConflict", testCtx(), "my-layout", "").Return(false, nil)
 
-	result, err := suite.service.CreateLayout(context.Background(), layoutRequest)
+	result, err := suite.service.CreateLayout(testCtx(), layoutRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -254,12 +254,12 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_StoreError() {
 		Layout:      json.RawMessage(`{"structure": "grid"}`),
 	}
 
-	suite.mockStore.On("IsLayoutHandleConflict", "my-layout", "").Return(false, nil)
-	suite.mockStore.On("CreateLayout", mock.AnythingOfType("string"),
+	suite.mockStore.On("IsLayoutHandleConflict", testCtx(), "my-layout", "").Return(false, nil)
+	suite.mockStore.On("CreateLayout", testCtx(), mock.AnythingOfType("string"),
 		mock.AnythingOfType("CreateLayoutRequest")).
 		Return(errors.New("database error"))
 
-	result, err := suite.service.CreateLayout(context.Background(), layoutRequest)
+	result, err := suite.service.CreateLayout(testCtx(), layoutRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -274,9 +274,9 @@ func (suite *LayoutServiceTestSuite) TestGetLayout_Success() {
 		Layout:      json.RawMessage(`{"structure": "centered"}`),
 	}
 
-	suite.mockStore.On("GetLayout", "layout-123").Return(layout, nil)
+	suite.mockStore.On("GetLayout", testCtx(), "layout-123").Return(layout, nil)
 
-	result, err := suite.service.GetLayout(context.Background(), "layout-123")
+	result, err := suite.service.GetLayout(testCtx(), "layout-123")
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -286,7 +286,7 @@ func (suite *LayoutServiceTestSuite) TestGetLayout_Success() {
 
 // Test GetLayout - Invalid ID
 func (suite *LayoutServiceTestSuite) TestGetLayout_InvalidID() {
-	result, err := suite.service.GetLayout(context.Background(), "")
+	result, err := suite.service.GetLayout(testCtx(), "")
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -295,9 +295,9 @@ func (suite *LayoutServiceTestSuite) TestGetLayout_InvalidID() {
 
 // Test GetLayout - Not Found
 func (suite *LayoutServiceTestSuite) TestGetLayout_NotFound() {
-	suite.mockStore.On("GetLayout", "non-existent").Return(Layout{}, errLayoutNotFound)
+	suite.mockStore.On("GetLayout", testCtx(), "non-existent").Return(Layout{}, errLayoutNotFound)
 
-	result, err := suite.service.GetLayout(context.Background(), "non-existent")
+	result, err := suite.service.GetLayout(testCtx(), "non-existent")
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -306,9 +306,9 @@ func (suite *LayoutServiceTestSuite) TestGetLayout_NotFound() {
 
 // Test GetLayout - Store Error
 func (suite *LayoutServiceTestSuite) TestGetLayout_StoreError() {
-	suite.mockStore.On("GetLayout", "layout-123").Return(Layout{}, errors.New("database error"))
+	suite.mockStore.On("GetLayout", testCtx(), "layout-123").Return(Layout{}, errors.New("database error"))
 
-	result, err := suite.service.GetLayout(context.Background(), "layout-123")
+	result, err := suite.service.GetLayout(testCtx(), "layout-123")
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -327,11 +327,11 @@ func (suite *LayoutServiceTestSuite) TestUpdateLayout_Success() {
 		Handle: "my-layout",
 	}
 
-	suite.mockStore.On("IsLayoutDeclarative", "layout-123").Return(false)
-	suite.mockStore.On("GetLayout", "layout-123").Return(existingLayout, nil)
-	suite.mockStore.On("UpdateLayout", "layout-123", updateRequest).Return(nil)
+	suite.mockStore.On("IsLayoutDeclarative", testCtx(), "layout-123").Return(false)
+	suite.mockStore.On("GetLayout", testCtx(), "layout-123").Return(existingLayout, nil)
+	suite.mockStore.On("UpdateLayout", testCtx(), "layout-123", updateRequest).Return(nil)
 
-	result, err := suite.service.UpdateLayout(context.Background(), "layout-123", updateRequest)
+	result, err := suite.service.UpdateLayout(testCtx(), "layout-123", updateRequest)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -353,11 +353,11 @@ func (suite *LayoutServiceTestSuite) TestUpdateLayout_OmittedHandle_UsesExisting
 		Handle: "existing-handle",
 	}
 
-	suite.mockStore.On("IsLayoutDeclarative", "layout-123").Return(false)
-	suite.mockStore.On("GetLayout", "layout-123").Return(existingLayout, nil)
-	suite.mockStore.On("UpdateLayout", "layout-123", updateRequest).Return(nil)
+	suite.mockStore.On("IsLayoutDeclarative", testCtx(), "layout-123").Return(false)
+	suite.mockStore.On("GetLayout", testCtx(), "layout-123").Return(existingLayout, nil)
+	suite.mockStore.On("UpdateLayout", testCtx(), "layout-123", updateRequest).Return(nil)
 
-	result, err := suite.service.UpdateLayout(context.Background(), "layout-123", updateRequest)
+	result, err := suite.service.UpdateLayout(testCtx(), "layout-123", updateRequest)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -373,7 +373,7 @@ func (suite *LayoutServiceTestSuite) TestUpdateLayout_InvalidID() {
 		Layout:      json.RawMessage(`{"structure": "grid"}`),
 	}
 
-	result, err := suite.service.UpdateLayout(context.Background(), "", updateRequest)
+	result, err := suite.service.UpdateLayout(testCtx(), "", updateRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -389,7 +389,7 @@ func (suite *LayoutServiceTestSuite) TestUpdateLayout_MissingDisplayName() {
 		Layout:      json.RawMessage(`{"structure": "grid"}`),
 	}
 
-	result, err := suite.service.UpdateLayout(context.Background(), "layout-123", updateRequest)
+	result, err := suite.service.UpdateLayout(testCtx(), "layout-123", updateRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -409,10 +409,10 @@ func (suite *LayoutServiceTestSuite) TestUpdateLayout_ImmutableHandle() {
 		Handle: "my-layout",
 	}
 
-	suite.mockStore.On("IsLayoutDeclarative", "layout-123").Return(false)
-	suite.mockStore.On("GetLayout", "layout-123").Return(existingLayout, nil)
+	suite.mockStore.On("IsLayoutDeclarative", testCtx(), "layout-123").Return(false)
+	suite.mockStore.On("GetLayout", testCtx(), "layout-123").Return(existingLayout, nil)
 
-	result, err := suite.service.UpdateLayout(context.Background(), "layout-123", updateRequest)
+	result, err := suite.service.UpdateLayout(testCtx(), "layout-123", updateRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -428,10 +428,10 @@ func (suite *LayoutServiceTestSuite) TestUpdateLayout_NotFound() {
 		Layout:      json.RawMessage(`{"structure": "grid"}`),
 	}
 
-	suite.mockStore.On("IsLayoutDeclarative", "non-existent").Return(false)
-	suite.mockStore.On("GetLayout", "non-existent").Return(Layout{}, errLayoutNotFound)
+	suite.mockStore.On("IsLayoutDeclarative", testCtx(), "non-existent").Return(false)
+	suite.mockStore.On("GetLayout", testCtx(), "non-existent").Return(Layout{}, errLayoutNotFound)
 
-	result, err := suite.service.UpdateLayout(context.Background(), "non-existent", updateRequest)
+	result, err := suite.service.UpdateLayout(testCtx(), "non-existent", updateRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -450,9 +450,9 @@ func (suite *LayoutServiceTestSuite) TestUpdateLayout_InvalidJSON() {
 		ID:     "layout-123",
 		Handle: "my-layout",
 	}
-	suite.mockStore.On("IsLayoutDeclarative", "layout-123").Return(false)
-	suite.mockStore.On("GetLayout", "layout-123").Return(existingLayout, nil)
-	result, err := suite.service.UpdateLayout(context.Background(), "layout-123", updateRequest)
+	suite.mockStore.On("IsLayoutDeclarative", testCtx(), "layout-123").Return(false)
+	suite.mockStore.On("GetLayout", testCtx(), "layout-123").Return(existingLayout, nil)
+	result, err := suite.service.UpdateLayout(testCtx(), "layout-123", updateRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -461,18 +461,18 @@ func (suite *LayoutServiceTestSuite) TestUpdateLayout_InvalidJSON() {
 
 // Test DeleteLayout - Success
 func (suite *LayoutServiceTestSuite) TestDeleteLayout_Success() {
-	suite.mockStore.On("IsLayoutDeclarative", "layout-123").Return(false)
-	suite.mockStore.On("IsLayoutExist", "layout-123").Return(true, nil)
-	suite.mockStore.On("DeleteLayout", "layout-123").Return(nil)
+	suite.mockStore.On("IsLayoutDeclarative", testCtx(), "layout-123").Return(false)
+	suite.mockStore.On("IsLayoutExist", testCtx(), "layout-123").Return(true, nil)
+	suite.mockStore.On("DeleteLayout", testCtx(), "layout-123").Return(nil)
 
-	err := suite.service.DeleteLayout(context.Background(), "layout-123")
+	err := suite.service.DeleteLayout(testCtx(), "layout-123")
 
 	assert.Nil(suite.T(), err)
 }
 
 // Test DeleteLayout - Invalid ID
 func (suite *LayoutServiceTestSuite) TestDeleteLayout_InvalidID() {
-	err := suite.service.DeleteLayout(context.Background(), "")
+	err := suite.service.DeleteLayout(testCtx(), "")
 
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), "LAY-1002", err.Code)
@@ -480,30 +480,30 @@ func (suite *LayoutServiceTestSuite) TestDeleteLayout_InvalidID() {
 
 // Test DeleteLayout - Not Found (idempotent delete returns success)
 func (suite *LayoutServiceTestSuite) TestDeleteLayout_NotFound() {
-	suite.mockStore.On("IsLayoutDeclarative", "non-existent").Return(false)
-	suite.mockStore.On("IsLayoutExist", "non-existent").Return(false, nil)
+	suite.mockStore.On("IsLayoutDeclarative", testCtx(), "non-existent").Return(false)
+	suite.mockStore.On("IsLayoutExist", testCtx(), "non-existent").Return(false, nil)
 
-	err := suite.service.DeleteLayout(context.Background(), "non-existent")
+	err := suite.service.DeleteLayout(testCtx(), "non-existent")
 
 	assert.Nil(suite.T(), err)
 }
 
 // Test DeleteLayout - Store Error
 func (suite *LayoutServiceTestSuite) TestDeleteLayout_StoreError() {
-	suite.mockStore.On("IsLayoutDeclarative", "layout-123").Return(false)
-	suite.mockStore.On("IsLayoutExist", "layout-123").Return(true, nil)
-	suite.mockStore.On("DeleteLayout", "layout-123").Return(errors.New("database error"))
+	suite.mockStore.On("IsLayoutDeclarative", testCtx(), "layout-123").Return(false)
+	suite.mockStore.On("IsLayoutExist", testCtx(), "layout-123").Return(true, nil)
+	suite.mockStore.On("DeleteLayout", testCtx(), "layout-123").Return(errors.New("database error"))
 
-	err := suite.service.DeleteLayout(context.Background(), "layout-123")
+	err := suite.service.DeleteLayout(testCtx(), "layout-123")
 
 	assert.NotNil(suite.T(), err)
 }
 
 // Test IsLayoutExist - Exists
 func (suite *LayoutServiceTestSuite) TestIsLayoutExist_True() {
-	suite.mockStore.On("IsLayoutExist", "layout-123").Return(true, nil)
+	suite.mockStore.On("IsLayoutExist", testCtx(), "layout-123").Return(true, nil)
 
-	exists, err := suite.service.IsLayoutExist(context.Background(), "layout-123")
+	exists, err := suite.service.IsLayoutExist(testCtx(), "layout-123")
 
 	assert.Nil(suite.T(), err)
 	assert.True(suite.T(), exists)
@@ -511,9 +511,9 @@ func (suite *LayoutServiceTestSuite) TestIsLayoutExist_True() {
 
 // Test IsLayoutExist - Not Exists
 func (suite *LayoutServiceTestSuite) TestIsLayoutExist_False() {
-	suite.mockStore.On("IsLayoutExist", "non-existent").Return(false, nil)
+	suite.mockStore.On("IsLayoutExist", testCtx(), "non-existent").Return(false, nil)
 
-	exists, err := suite.service.IsLayoutExist(context.Background(), "non-existent")
+	exists, err := suite.service.IsLayoutExist(testCtx(), "non-existent")
 
 	assert.Nil(suite.T(), err)
 	assert.False(suite.T(), exists)
@@ -521,9 +521,9 @@ func (suite *LayoutServiceTestSuite) TestIsLayoutExist_False() {
 
 // Test IsLayoutExist - Store Error
 func (suite *LayoutServiceTestSuite) TestIsLayoutExist_StoreError() {
-	suite.mockStore.On("IsLayoutExist", "layout-123").Return(false, errors.New("database error"))
+	suite.mockStore.On("IsLayoutExist", testCtx(), "layout-123").Return(false, errors.New("database error"))
 
-	exists, err := suite.service.IsLayoutExist(context.Background(), "layout-123")
+	exists, err := suite.service.IsLayoutExist(testCtx(), "layout-123")
 
 	assert.NotNil(suite.T(), err)
 	assert.False(suite.T(), exists)
@@ -538,9 +538,10 @@ func (suite *LayoutServiceTestSuite) TestCreateLayout_HandleConflictError() {
 		Layout:      json.RawMessage(`{"structure": "grid"}`),
 	}
 
-	suite.mockStore.On("IsLayoutHandleConflict", "my-layout", "").Return(false, errors.New("database error"))
+	suite.mockStore.On("IsLayoutHandleConflict", testCtx(), "my-layout", "").Return(false,
+		errors.New("database error"))
 
-	result, err := suite.service.CreateLayout(context.Background(), layoutRequest)
+	result, err := suite.service.CreateLayout(testCtx(), layoutRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -555,10 +556,10 @@ func (suite *LayoutServiceTestSuite) TestUpdateLayout_GetLayoutError() {
 		Layout:      json.RawMessage(`{"structure": "grid"}`),
 	}
 
-	suite.mockStore.On("IsLayoutDeclarative", "layout-123").Return(false)
-	suite.mockStore.On("GetLayout", "layout-123").Return(Layout{}, errors.New("database error"))
+	suite.mockStore.On("IsLayoutDeclarative", testCtx(), "layout-123").Return(false)
+	suite.mockStore.On("GetLayout", testCtx(), "layout-123").Return(Layout{}, errors.New("database error"))
 
-	result, err := suite.service.UpdateLayout(context.Background(), "layout-123", updateRequest)
+	result, err := suite.service.UpdateLayout(testCtx(), "layout-123", updateRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -590,7 +591,7 @@ func (s *stubUsageRegistry) ValidateReferenceUpdate(
 
 // Test GetLayoutUsages - Empty ID
 func (suite *LayoutServiceTestSuite) TestGetLayoutUsages_EmptyID() {
-	result, err := suite.service.GetLayoutUsages(context.Background(), "", 10, 0)
+	result, err := suite.service.GetLayoutUsages(testCtx(), "", 10, 0)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -599,9 +600,9 @@ func (suite *LayoutServiceTestSuite) TestGetLayoutUsages_EmptyID() {
 
 // Test GetLayoutUsages - Layout not found
 func (suite *LayoutServiceTestSuite) TestGetLayoutUsages_NotFound() {
-	suite.mockStore.On("IsLayoutExist", "missing").Return(false, nil)
+	suite.mockStore.On("IsLayoutExist", testCtx(), "missing").Return(false, nil)
 
-	result, err := suite.service.GetLayoutUsages(context.Background(), "missing", 10, 0)
+	result, err := suite.service.GetLayoutUsages(testCtx(), "missing", 10, 0)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -610,9 +611,9 @@ func (suite *LayoutServiceTestSuite) TestGetLayoutUsages_NotFound() {
 
 // Test GetLayoutUsages - registry not set returns unknown (nil totalResults)
 func (suite *LayoutServiceTestSuite) TestGetLayoutUsages_RegistryNotSet() {
-	suite.mockStore.On("IsLayoutExist", "layout-123").Return(true, nil)
+	suite.mockStore.On("IsLayoutExist", testCtx(), "layout-123").Return(true, nil)
 
-	result, err := suite.service.GetLayoutUsages(context.Background(), "layout-123", 10, 0)
+	result, err := suite.service.GetLayoutUsages(testCtx(), "layout-123", 10, 0)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -622,7 +623,7 @@ func (suite *LayoutServiceTestSuite) TestGetLayoutUsages_RegistryNotSet() {
 
 // Test GetLayoutUsages - registry returns usages
 func (suite *LayoutServiceTestSuite) TestGetLayoutUsages_WithUsages() {
-	suite.mockStore.On("IsLayoutExist", "layout-123").Return(true, nil)
+	suite.mockStore.On("IsLayoutExist", testCtx(), "layout-123").Return(true, nil)
 	total := 1
 	suite.service.SetDependencyRegistry(&stubUsageRegistry{
 		resp: &resourcedependency.DependenciesResponse{
@@ -636,7 +637,7 @@ func (suite *LayoutServiceTestSuite) TestGetLayoutUsages_WithUsages() {
 		},
 	})
 
-	result, err := suite.service.GetLayoutUsages(context.Background(), "layout-123", 10, 0)
+	result, err := suite.service.GetLayoutUsages(testCtx(), "layout-123", 10, 0)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -647,7 +648,7 @@ func (suite *LayoutServiceTestSuite) TestGetLayoutUsages_WithUsages() {
 
 // Test GetLayoutUsages - pagination narrows the usages window while keeping the full total
 func (suite *LayoutServiceTestSuite) TestGetLayoutUsages_Pagination() {
-	suite.mockStore.On("IsLayoutExist", "layout-123").Return(true, nil)
+	suite.mockStore.On("IsLayoutExist", testCtx(), "layout-123").Return(true, nil)
 	total := 3
 	suite.service.SetDependencyRegistry(&stubUsageRegistry{
 		resp: &resourcedependency.DependenciesResponse{
@@ -665,7 +666,7 @@ func (suite *LayoutServiceTestSuite) TestGetLayoutUsages_Pagination() {
 		},
 	})
 
-	result, err := suite.service.GetLayoutUsages(context.Background(), "layout-123", 1, 1)
+	result, err := suite.service.GetLayoutUsages(testCtx(), "layout-123", 1, 1)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -678,11 +679,20 @@ func (suite *LayoutServiceTestSuite) TestGetLayoutUsages_Pagination() {
 
 // Test GetLayoutUsages - registry returns error
 func (suite *LayoutServiceTestSuite) TestGetLayoutUsages_RegistryError() {
-	suite.mockStore.On("IsLayoutExist", "layout-123").Return(true, nil)
+	suite.mockStore.On("IsLayoutExist", testCtx(), "layout-123").Return(true, nil)
 	suite.service.SetDependencyRegistry(&stubUsageRegistry{err: errors.New("registry error")})
 
-	result, err := suite.service.GetLayoutUsages(context.Background(), "layout-123", 10, 0)
+	result, err := suite.service.GetLayoutUsages(testCtx(), "layout-123", 10, 0)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
+}
+
+// ctxKeyForTest marks a context so a store expectation can assert the service carried the caller's
+// context through, rather than substituting one of its own.
+type ctxKeyForTest struct{}
+
+// testCtx returns a context distinguishable from any other, including context.Background().
+func testCtx() context.Context {
+	return context.WithValue(context.Background(), ctxKeyForTest{}, "carried")
 }

@@ -52,7 +52,7 @@ func (suite *InitTestSuite) SetupTest() {
 	_ = config.InitializeServerRuntime(
 		"test-home",
 		&config.Config{
-			OAuth: engineconfig.OAuthConfig{
+			OAuth: config.OAuthConfig{
 				DPoP: engineconfig.DPoPConfig{
 					AllowedAlgs: []string{"ES256", "PS256"},
 				},

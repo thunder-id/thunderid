@@ -7,7 +7,9 @@ import (
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
+	"github.com/thunder-id/thunderid/internal/flow/session"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -23,16 +25,20 @@ func Initialize(
 	flowExecService flowexec.FlowExecServiceInterface,
 	parService par.PARServiceInterface,
 	criteriaRevoker revocation.CriteriaRevokerInterface,
+	ssoSession session.Service,
+	flowProvider providers.FlowProvider,
 	cfg oauthconfig.Config,
 	storeProvider providers.RuntimeStoreProvider,
 	transactioner providers.Transactioner,
+	jtiStore jti.JTIStoreInterface,
 ) (AuthorizeServiceInterface, error) {
 	authzCodeStore := newAuthorizationCodeStore(storeProvider)
 	authzReqStore := newAuthorizationRequestStore(storeProvider, cfg.OAuth.AuthorizationRequest.ValidityPeriod)
 
 	authzService := newAuthorizeService(
 		actorProvider, resourceService, jwtService, flowExecService,
-		authzCodeStore, authzReqStore, parService, transactioner, criteriaRevoker, cfg,
+		authzCodeStore, authzReqStore, parService, transactioner, criteriaRevoker,
+		ssoSession, flowProvider, cfg, jtiStore,
 	)
 	authzHandler := newAuthorizeHandler(authzService, cfg)
 	registerRoutes(mux, authzHandler)

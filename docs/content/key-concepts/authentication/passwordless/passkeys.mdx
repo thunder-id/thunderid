@@ -82,13 +82,25 @@ This approach requires **no custom UI development** or direct WebAuthn API calls
 
 ### Registration Flow
 
+Enrolling a passkey adds a credential that can then be used to sign in as the user, so registration
+requires proof that the caller holds the account. Pass the `assertion` returned by a prior
+authentication, such as a password or OTP login. The credential is enrolled only for the subject of
+that assertion, so the assertion and `userId` must refer to the same user. The `Direct-Auth-Secret`
+header is not sufficient on its own: it identifies the calling integration, not the end user.
+
+This means a user needs an existing credential before they can enroll their first passkey through
+the Direct API. To register a passkey as the very first credential on an account, drive a
+registration [flow](../../../../guides/flows/what-are-flows) instead.
+
 1) **Start registration.** Create WebAuthn creation options and a session token.
 
 ```bash
 curl -k -X POST https://localhost:8090/register/passkey/start \
   -H "Content-Type: application/json" \
+  -H "Direct-Auth-Secret: <secret>" \
   -d '{
     "userId": "<user-id>",
+    "assertion": "<assertion-from-a-prior-authentication>",
     "relyingPartyId": "localhost",
     "relyingPartyName": "{{ProductName}}",
     "authenticatorSelection": {
@@ -102,6 +114,11 @@ Response fields:
 - `publicKeyCredentialCreationOptions`: pass directly to `navigator.credentials.create()` (after Base64URL→ArrayBuffer conversion).
 - `sessionToken`: required for the finish call.
 
+A start request whose assertion cannot be verified is rejected with `AUTHN-1009`, and one whose
+assertion belongs to a different user with `AUTHN-1010`. Omitting `assertion` or `userId` entirely,
+or sending either as an empty or blank string, is a required-field violation: those are rejected by
+request validation with the `INVALID_INPUT_METADATA` code and an `errors` map naming the field.
+
 2) **Run the WebAuthn ceremony in the browser.** Call `navigator.credentials.create()` with the returned options. See the sample implementation in `samples/apps/vanilla-sample/src/services/authService.ts`.
 
 3) **Finish registration.** Send the attestation result with the session token.
@@ -109,6 +126,7 @@ Response fields:
 ```bash
 curl -k -X POST https://localhost:8090/register/passkey/finish \
   -H "Content-Type: application/json" \
+  -H "Direct-Auth-Secret: <secret>" \
   -d '{
     "publicKeyCredential": {
       "id": "<credential-id>",
@@ -132,6 +150,7 @@ On success, the API returns passkey registration metadata for the newly created 
 ```bash
 curl -k -X POST https://localhost:8090/auth/passkey/start \
   -H "Content-Type: application/json" \
+  -H "Direct-Auth-Secret: <secret>" \
   -d '{
     "userId": "<user-id-optional>",
     "relyingPartyId": "localhost"
@@ -150,6 +169,7 @@ curl -k -X POST https://localhost:8090/auth/passkey/start \
 ```bash
 curl -k -X POST https://localhost:8090/auth/passkey/finish \
   -H "Content-Type: application/json" \
+  -H "Direct-Auth-Secret: <secret>" \
   -d '{
     "publicKeyCredential": {
       "id": "<credential-id>",

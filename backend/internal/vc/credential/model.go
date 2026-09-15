@@ -44,8 +44,7 @@ type CredentialConfigurationDTO struct {
 // credentialConfigurationRequest is the API request body for create/update.
 type credentialConfigurationRequest struct {
 	Handle          string             `json:"handle"`
-	OUID            string             `json:"ouId"`
-	OUHandle        string             `json:"ouHandle"`
+	OUID            string             `json:"ouId" native:"required"`
 	Name            string             `json:"name"`
 	Description     string             `json:"description"`
 	Format          string             `json:"format"`

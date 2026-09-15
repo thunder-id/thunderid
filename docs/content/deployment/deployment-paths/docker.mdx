@@ -36,7 +36,7 @@ docker run hello-world
 Pin to a specific release tag for reproducible deployments:
 
 ```bash
-docker pull ghcr.io/thunder-id/thunderid:latest
+docker pull ghcr.io/thunder-id/thunderid:<version>
 ```
 
 ### Step 2: Set Up the Server
@@ -48,7 +48,7 @@ docker run -it --rm \
   -v thunderid-data:/opt/thunderid/database \
   -v thunderid-certs:/opt/thunderid/config/certs \
   -v thunderid-secrets:/opt/thunderid/config/secrets \
-  ghcr.io/thunder-id/thunderid:latest \
+  ghcr.io/thunder-id/thunderid:<version> \
   ./setup.sh
 ```
 
@@ -66,7 +66,7 @@ docker run -d \
   -v thunderid-data:/opt/thunderid/database \
   -v thunderid-certs:/opt/thunderid/config/certs \
   -v thunderid-secrets:/opt/thunderid/config/secrets \
-  ghcr.io/thunder-id/thunderid:latest
+  ghcr.io/thunder-id/thunderid:<version>
 ```
 
 <ProductName /> is now running at `https://localhost:8090`. Mount the same `thunderid-certs` and `thunderid-secrets` volumes you used during setup so the server reads the generated key material and the Direct Auth Secret.
@@ -101,7 +101,7 @@ docker run -d \
   -v thunderid-data:/opt/thunderid/database \
   -v thunderid-certs:/opt/thunderid/config/certs \
   -v thunderid-secrets:/opt/thunderid/config/secrets \
-  ghcr.io/thunder-id/thunderid:latest
+  ghcr.io/thunder-id/thunderid:<version>
 ```
 
 To also use custom TLS certificates, mount them alongside the configuration:
@@ -117,7 +117,7 @@ docker run -d \
   -v thunderid-data:/opt/thunderid/database \
   -v thunderid-certs:/opt/thunderid/config/certs \
   -v thunderid-secrets:/opt/thunderid/config/secrets \
-  ghcr.io/thunder-id/thunderid:latest
+  ghcr.io/thunder-id/thunderid:<version>
 ```
 
 The mounted files provide the server TLS certificate; the JWT signing and encryption keys still come from the `thunderid-certs` volume that setup populated.

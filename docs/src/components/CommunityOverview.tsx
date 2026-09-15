@@ -112,10 +112,10 @@ export default function CommunityOverview(): React.ReactElement {
     },
     {
       description: 'Have an idea for a new feature? Share it with the community.',
-      href: '../contributing/contribute-ideas',
+      href: '../contributing/propose-a-feature',
       icon: <MessageSquare size={20} />,
-      label: 'Submit an Idea',
-      title: 'Contribute Ideas',
+      label: 'Propose a Feature',
+      title: 'Propose a Feature',
     },
     {
       description: 'Ready to write code? Follow the contributor guide to submit a pull request.',

@@ -103,7 +103,16 @@ export default function OrganizationUnitEditPage({
   const updateOrganizationUnit = useUpdateOrganizationUnit();
   const {resetTreeState} = useOrganizationUnit();
 
-  const [activeTab, setActiveTab] = useState(0);
+  const [tabState, setTabState] = useState<{organizationUnitId: string | undefined; value: number}>({
+    organizationUnitId: id,
+    value: 0,
+  });
+
+  if (tabState.organizationUnitId !== id) {
+    setTabState({organizationUnitId: id, value: 0});
+  }
+
+  const activeTab = tabState.organizationUnitId === id ? tabState.value : 0;
   const [editedOU, setEditedOU] = useState<Partial<OrganizationUnit>>({});
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -125,7 +134,7 @@ export default function OrganizationUnitEditPage({
     : t('organizationUnits:edit.page.back', 'Back to Organization Units');
 
   const handleTabChange = (_event: SyntheticEvent, newValue: number): void => {
-    setActiveTab(newValue);
+    setTabState({organizationUnitId: id, value: newValue});
   };
 
   const handleFieldChange = useCallback(

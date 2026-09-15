@@ -62,6 +62,24 @@ To set a timeout for user input in the consent flow:
 4. Expand the **Components** section, and drag and drop the **Timer** component into the **Consent View** step.
 5. Save the flow configuration.
 
+### Fail the flow when the user denies consent
+
+:::note Available from 1.0.1
+This setting is available from the 1.0.1 patch release. If you are using an earlier version, please upgrade to 1.0.1 or later to access this feature.
+:::
+
+By default, the login flow still completes when the user clicks **Deny** on the consent prompt, as long as every requested attribute and permission is optional. Only a denial of an essential attribute or permission terminates the login on the default setting.
+
+Enable **Fail flow when user denies consent** on the **User Consent** node when the flow must fail instead.
+
+When enabled, the flow also fails if the consent prompt times out without a response.
+
+To enable this setting:
+
+1. In the flow builder, select the **User Consent** node.
+2. In the node configuration panel, enable **Fail flow when user denies consent**.
+3. Save the flow configuration.
+
 ### Configure validity period for granted consent
 
 By default, once a user grants consent, it remains valid indefinitely until the user revokes it. However, you can configure a validity period for granted consent to require users to re-consent after a certain duration.

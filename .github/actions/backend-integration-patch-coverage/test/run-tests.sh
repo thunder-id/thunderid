@@ -81,10 +81,40 @@ profile() {
   done
 }
 
+# write_config <min_changed_lines> <default> [tags-yaml-body] [base-packages-yaml-body]
+# Cases that do not call this get the default written by run_case.
+write_config() {
+  local min="$1" default="$2" tags="${3:-}" base="${4:-}"
+  mkdir -p .github
+  {
+    echo "min_changed_lines: ${min}"
+    echo "default: ${default}"
+    if [ -n "$base" ]; then
+      echo "packages:"
+      printf '%s\n' "$base"
+    else
+      echo "packages: {}"
+    fi
+    if [ -n "$tags" ]; then
+      echo "tags:"
+      printf '%s\n' "$tags"
+    else
+      echo "tags: {}"
+    fi
+  } > .github/backend-coverage-thresholds.yml
+}
+
 run_case() {
-  local name="$1" expected_status="$2" expected_text="$3"
+  local name="$1" expected_status="$2" expected_text="$3" labels="${4:-}"
   local out status
-  out=$(BASE_REF=main FAIL_UNDER=70 GITHUB_STEP_SUMMARY=/dev/null \
+
+  # min_changed_lines is 0 here on purpose. These fixtures change a handful of
+  # lines, so any floor above zero would make every package exempt and the whole
+  # suite would pass without measuring anything.
+  [ -f .github/backend-coverage-thresholds.yml ] || write_config 0 70
+
+  out=$(BASE_REF=main THRESHOLD_CONFIG=.github/backend-coverage-thresholds.yml \
+    PR_LABELS="$labels" GITHUB_STEP_SUMMARY=/dev/null \
     bash "$COMPUTE" 2>&1)
   status=$?
 
@@ -226,6 +256,297 @@ GO
   printf 'mode: set\nnot a cover profile line\n' \
     > coverage-artifacts/integration-coverage-sqlite/coverage_integration.out
   run_case "unparseable profile reports why instead of exiting silently" 1 "no usable source records"
+
+# ---------------------------------------------------------------------------
+# 10. No labels: every package falls back to the global default
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/thr-default"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 12
+  git add -A && git commit -q -m "uncovered change, no labels"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  profile sqlite 6 "$total" 0
+  write_config 0 70
+  run_case "no labels uses the global default" 1 "global default"
+
+# ---------------------------------------------------------------------------
+# 11. A tag may loosen below the global default
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/thr-loosen"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 10
+  git add -A && git commit -q -m "half covered"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  # Cover the first half of the added body, leave the rest uncovered.
+  half=$(( (6 + total) / 2 ))
+  profile sqlite 6 "$half" 1 $((half + 1)) "$total" 0
+  write_config 0 70 "  experimental:
+    packages:
+      backend/internal/demo: 10"
+  run_case "a tag can lower the bar below the default" 0 "tag \`experimental\`" "[\"experimental\"]"
+
+# ---------------------------------------------------------------------------
+# 12. Threshold is inherited from a parent package path
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/thr-inherit"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 12
+  git add -A && git commit -q -m "uncovered change"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  profile sqlite 6 "$total" 0
+  write_config 0 70 "  strict:
+    packages:
+      backend/internal: 95"
+  run_case "threshold is inherited from the parent path" 1 "inherited from" "[\"strict\"]"
+
+# ---------------------------------------------------------------------------
+# 13. Multiple applicable tags: the highest threshold applies
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/thr-max"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 10
+  git add -A && git commit -q -m "half covered"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  half=$(( (6 + total) / 2 ))
+  profile sqlite 6 "$half" 1 $((half + 1)) "$total" 0
+  # Roughly half covered. The lower tag would pass, the higher one fails, so the
+  # verdict shows which one was chosen without needing an impossible threshold.
+  write_config 0 70 "  lower:
+    packages:
+      backend/internal/demo: 40
+  higher:
+    packages:
+      backend/internal/demo: 60"
+  run_case "highest threshold wins across applicable tags" 1 "60%" "[\"lower\",\"higher\"]"
+
+# ---------------------------------------------------------------------------
+# 14. A label with no matching tag group changes nothing
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/thr-unknown-label"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 12
+  git add -A && git commit -q -m "uncovered change"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  profile sqlite 6 "$total" 0
+  write_config 0 70 "  strict:
+    packages:
+      backend/internal/demo: 95"
+  run_case "an unrelated label leaves the default in place" 1 "global default" "[\"unrelated\"]"
+
+# ---------------------------------------------------------------------------
+# 15. min_changed_lines exempts a small package
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/thr-minlines"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 6
+  git add -A && git commit -q -m "small uncovered change"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  profile sqlite 6 "$total" 0
+  write_config 500 70
+  run_case "a package under min_changed_lines is exempt" 0 "exempt"
+
+# ---------------------------------------------------------------------------
+# 16. A config path that does not exist fails the check
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/thr-stale"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 12
+  git add -A && git commit -q -m "uncovered change"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  profile sqlite 6 "$total" 0
+  write_config 0 70 "  strict:
+    packages:
+      backend/internal/gone: 95"
+  run_case "a stale config path fails rather than rotting" 1 "do not exist" "[\"strict\"]"
+
+# ---------------------------------------------------------------------------
+# 17. Base packages apply when no label is present
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/base-pkg"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 12
+  git add -A && git commit -q -m "uncovered change"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  profile sqlite 6 "$total" 0
+  write_config 0 70 "" "  backend/internal/demo: 0"
+  run_case "a base package entry applies with no labels" 0 "base entry"
+
+# ---------------------------------------------------------------------------
+# 18. A tag default overrides a base package entry
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/tagdefault-beats-base"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 12
+  git add -A && git commit -q -m "uncovered change"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  profile sqlite 6 "$total" 0
+  # Base exempts this package at 0, but the tag sets a default and names nothing,
+  # so the tag default wins and the package fails.
+  write_config 0 70 "  strict:
+    default: 85" "  backend/internal/demo: 0"
+  run_case "a tag default overrides a base package entry" 1 "tag \`strict\` default" "[\"strict\"]"
+
+# ---------------------------------------------------------------------------
+# 19. A tag package entry overrides a base package entry, and may loosen
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/tagpkg-beats-base"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 12
+  git add -A && git commit -q -m "uncovered change"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  profile sqlite 6 "$total" 0
+  write_config 0 70 "  experimental:
+    packages:
+      backend/internal/demo: 0" "  backend/internal/demo: 95"
+  run_case "a tag package entry overrides base and may loosen" 0 "tag \`experimental\`" "[\"experimental\"]"
+
+# ---------------------------------------------------------------------------
+# 20. A named package beats another applicable tag's default
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/named-beats-default"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 10
+  git add -A && git commit -q -m "half covered"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  half=$(( (6 + total) / 2 ))
+  profile sqlite 6 "$half" 1 $((half + 1)) "$total" 0
+  # Roughly half covered. The naming tag's 40 passes, the other tag's default of 60
+  # would fail, so passing proves the named entry won over the default.
+  write_config 0 70 "  naming:
+    packages:
+      backend/internal/demo: 40
+  defaulting:
+    default: 60"
+  run_case "a named package beats another tag's default" 0 "tag \`naming\`" "[\"naming\",\"defaulting\"]"
+
+# ---------------------------------------------------------------------------
+# 21. An applicable tag that says nothing falls through to the base layer
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/tag-silent"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 12
+  git add -A && git commit -q -m "uncovered change"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  profile sqlite 6 "$total" 0
+  # The referenced package must exist, or the stale-path guard fires first. An
+  # untracked empty directory is enough and stays out of the diff.
+  mkdir -p backend/internal/other
+  # The tag applies but names another package and sets no default, so the base
+  # entry is still what decides.
+  write_config 0 70 "  narrow:
+    packages:
+      backend/internal/other: 95" "  backend/internal/demo: 0"
+  run_case "a silent tag falls through to the base layer" 0 "base entry" "[\"narrow\"]"
+
+# ---------------------------------------------------------------------------
+# 22. Frontend-only diff is out of scope
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/frontend-only"
+  git checkout -q -b feature
+  mkdir -p frontend/apps/console/src
+  echo "export const x = 1;" > frontend/apps/console/src/app.ts
+  git add -A && git commit -q -m "frontend only"
+  profile sqlite 3 5 1
+  run_case "frontend-only diff reports N/A" 0 "N/A — no backend production Go changes"
+
+# ---------------------------------------------------------------------------
+# 23. Docs-only diff is out of scope
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/docs-only"
+  git checkout -q -b feature
+  mkdir -p docs/content
+  echo "# Heading" > docs/content/page.md
+  git add -A && git commit -q -m "docs only"
+  profile sqlite 3 5 1
+  run_case "docs-only diff reports N/A" 0 "N/A — no backend production Go changes"
+
+# ---------------------------------------------------------------------------
+# 24. Comments-only change to an instrumented backend file
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/comments-only"
+  git checkout -q -b feature
+  # The file is in the profile and declares functions, so it is in scope. Only a
+  # comment changes, so it contributes no coverable lines.
+  echo "// A trailing comment, no executable statement." >> backend/internal/demo/service.go
+  git add -A && git commit -q -m "comment only"
+  profile sqlite 3 5 1
+  run_case "comments-only backend change is not a coverage failure" 0 ""
+
+# ---------------------------------------------------------------------------
+# 25. A package with nothing coverable is exempt, not a division by zero
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/zero-coverable"
+  git checkout -q -b feature
+  echo "// Only a comment." >> backend/internal/demo/service.go
+  git add -A && git commit -q -m "comment only"
+  # The file is in the profile, so it can appear in the report with no coverable
+  # changed lines. min_changed_lines is 0 here, so only an explicit guard saves it.
+  profile sqlite 3 5 1
+  write_config 0 70
+  run_case "a package with nothing coverable does not divide by zero" 0 ""
+
+# ---------------------------------------------------------------------------
+# 26. A negative threshold is rejected, not silently satisfied by anything
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/cfg-negative"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 12
+  git add -A && git commit -q -m "uncovered change"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  profile sqlite 6 "$total" 0
+  write_config 0 -1
+  run_case "a negative threshold is rejected" 1 "between 0 and 100"
+
+# ---------------------------------------------------------------------------
+# 27. A non-numeric threshold reports why, instead of a bare traceback
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/cfg-string"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 12
+  git add -A && git commit -q -m "uncovered change"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  profile sqlite 6 "$total" 0
+  write_config 0 '"seventy"'
+  run_case "a non-numeric threshold reports why" 1 "must be a number"
+
+# ---------------------------------------------------------------------------
+# 28. A negative min_changed_lines is rejected
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/cfg-minlines"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 12
+  git add -A && git commit -q -m "uncovered change"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  profile sqlite 6 "$total" 0
+  write_config -5 70
+  run_case "a negative min_changed_lines is rejected" 1 "non-negative integer"
+
+# ---------------------------------------------------------------------------
+# 29. The pre-nesting flat tag schema is rejected with a pointer to the fix
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/cfg-flat"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 12
+  git add -A && git commit -q -m "uncovered change"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  profile sqlite 6 "$total" 0
+  # Package paths directly under the tag, without the `packages` key. This parses
+  # cleanly and would otherwise resolve to the global default while looking right.
+  write_config 0 70 "  strict:
+    backend/internal/demo: 95"
+  run_case "the flat tag schema is rejected, not silently ignored" 1 "belong under"
+
+# ---------------------------------------------------------------------------
+# 30. An exempt package reports its counts and where its threshold came from
+# ---------------------------------------------------------------------------
+  new_repo "$TMPROOT/exempt-report"
+  git checkout -q -b feature
+  add_func backend/internal/demo/service.go Added 6
+  git add -A && git commit -q -m "small change"
+  total=$(wc -l < backend/internal/demo/service.go | tr -d " ")
+  profile sqlite 6 "$total" 1
+  write_config 500 70
+  run_case "an exempt package reports counts and provenance" 0 "changed coverable lines covered, would need 70% (global default)"
 
 echo
 rm -rf "$TMPROOT"

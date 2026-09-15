@@ -63,6 +63,55 @@ vi.mock('react-router', async () => {
   };
 });
 
+const {logoA, logoB} = vi.hoisted(() => ({
+  logoA: 'https://example.com/logo-a.png',
+  logoB: 'emoji:🚀',
+}));
+
+// Only ResourceAvatar is stubbed; LogoPicker's own behavior is covered by its own tests.
+vi.mock('@thunderid/components', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@thunderid/components')>();
+  return {
+    ...actual,
+    ResourceAvatar: ({
+      value = undefined,
+      fallback = undefined,
+      editable = false,
+      onSelect = undefined,
+      onSave = undefined,
+      editAriaLabel = undefined,
+    }: {
+      value?: string;
+      fallback?: string;
+      editable?: boolean;
+      onSelect?: (value: string) => void;
+      onSave?: () => void | Promise<void>;
+      editAriaLabel?: string;
+    }) => (
+      // Each affordance is keyed to the prop that actually enables it in ResourceAvatar: the
+      // pencil to `editable`, the picker to `onSelect`, and persisting to `onSave`.
+      <div data-testid="resource-avatar" data-value={value ?? ''} data-fallback={fallback ?? ''}>
+        {editable && onSelect && <button type="button" aria-label={editAriaLabel} />}
+        {onSelect && (
+          <>
+            <button type="button" onClick={() => onSelect(logoA)}>
+              Pick logo A
+            </button>
+            <button type="button" onClick={() => onSelect(logoB)}>
+              Pick logo B
+            </button>
+          </>
+        )}
+        {onSave && (
+          <button type="button" onClick={() => void onSave()}>
+            Save logo
+          </button>
+        )}
+      </div>
+    ),
+  };
+});
+
 vi.mock('../../api/useGetAgent', () => ({
   default: (id: string) => mockUseGetAgent(id),
 }));
@@ -338,6 +387,153 @@ describe('AgentEditPage', () => {
       descInput.dispatchEvent(new FocusEvent('blur', {bubbles: true}));
 
       expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Logo', () => {
+    const renderWithLogo = (logoUrl?: string): void => {
+      mockUseGetAgent.mockReturnValue({
+        data: logoUrl === undefined ? baseAgent : {...baseAgent, logoUrl},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+      render(<AgentEditPage />);
+    };
+
+    it('offers the logo picker for a writable agent', () => {
+      renderWithLogo();
+
+      expect(screen.getByRole('button', {name: 'Update Logo'})).toBeInTheDocument();
+    });
+
+    it('does not offer the logo picker for a read-only agent', () => {
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, isReadOnly: true},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+
+      expect(screen.queryByRole('button', {name: 'Update Logo'})).not.toBeInTheDocument();
+      // ResourceAvatar opens its picker from the avatar itself whenever onSelect is set, so the
+      // callback has to be withheld rather than just hiding the pencil.
+      expect(screen.queryByRole('button', {name: 'Pick logo B'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Save logo'})).not.toBeInTheDocument();
+    });
+
+    it("shows the agent's current logo as the initial value", () => {
+      renderWithLogo(logoA);
+
+      expect(screen.getByTestId('resource-avatar')).toHaveAttribute('data-value', logoA);
+    });
+
+    it('falls back to the default agent avatar when no logo is set', () => {
+      renderWithLogo();
+
+      const avatar = screen.getByTestId('resource-avatar');
+      expect(avatar).toHaveAttribute('data-value', '');
+      expect(avatar).toHaveAttribute('data-fallback', AgentConstants.DEFAULT_AVATAR);
+    });
+
+    it('stages a picked logo and surfaces the unsaved-changes bar', async () => {
+      const user = userEvent.setup();
+      renderWithLogo();
+
+      await user.click(screen.getByRole('button', {name: 'Pick logo B'}));
+
+      expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
+      expect(screen.getByTestId('resource-avatar')).toHaveAttribute('data-value', logoB);
+    });
+
+    it('hides the bar when the logo is picked back to its original value', async () => {
+      const user = userEvent.setup();
+      renderWithLogo(logoA);
+
+      await user.click(screen.getByRole('button', {name: 'Pick logo B'}));
+      expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', {name: 'Pick logo A'}));
+
+      await waitFor(() => {
+        expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
+      });
+      expect(screen.getByTestId('resource-avatar')).toHaveAttribute('data-value', logoA);
+    });
+
+    it('sends the picked logo when the picker saves', async () => {
+      const user = userEvent.setup();
+      renderWithLogo();
+
+      await user.click(screen.getByRole('button', {name: 'Pick logo B'}));
+      await user.click(screen.getByRole('button', {name: 'Save logo'}));
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            agentId: 'agent-1',
+            data: expect.objectContaining({logoUrl: logoB}) as Record<string, unknown>,
+          }),
+        );
+      });
+    });
+
+    it('cannot save from the picker while the agent fails page validation', async () => {
+      const user = userEvent.setup();
+      mockUseGetAgent.mockReturnValue({
+        data: {
+          ...baseAgent,
+          allowedUserTypes: [],
+          inboundAuthConfig: [
+            {
+              type: 'oauth2' as const,
+              config: {
+                grantTypes: ['authorization_code'],
+                responseTypes: ['code'],
+                redirectUris: [],
+                clientId: 'client-id-xyz',
+              },
+            },
+          ],
+        },
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+
+      // The picker still stages a pick, but persisting it would send the whole invalid payload.
+      expect(screen.queryByRole('button', {name: 'Save logo'})).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', {name: 'Pick logo B'}));
+
+      expect(mockMutateAsync).not.toHaveBeenCalled();
+      expect(
+        screen.getByText('Before saving, add a redirect URI and select at least one allowed user type.'),
+      ).toBeInTheDocument();
+    });
+
+    it('resets a stale save error when the logo changes', async () => {
+      const user = userEvent.setup();
+      const mockReset = vi.fn();
+      mockUseUpdateAgent.mockReturnValue({
+        mutateAsync: mockMutateAsync,
+        isPending: false,
+        error: new Error('Boom'),
+        isError: true,
+        reset: mockReset,
+      });
+      renderWithLogo();
+
+      await user.click(screen.getByRole('button', {name: 'Pick logo B'}));
+
+      expect(mockReset).toHaveBeenCalled();
     });
   });
 

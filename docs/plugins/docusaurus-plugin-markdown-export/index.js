@@ -13,14 +13,25 @@ const {processMarkdownFile} = require('./mdxProcessor');
  *     → build/docs/next/getting-started/foo.md
  *     → served at /docs/next/getting-started/foo.md
  *
- *   versioned_docs/version-v1.0.x/getting-started/foo.mdx (permalink /docs/v1.0.x/getting-started/foo)
- *     → build/docs/v1.0.x/getting-started/foo.md
- *     → served at /docs/v1.0.x/getting-started/foo.md
+ *   versioned_docs/version-v1.0.x/getting-started/foo.mdx (v1.0.x is the
+ *   lastVersion, so its permalink is the bare /docs/getting-started/foo)
+ *     → build/docs/getting-started/foo.md
+ *     → served at /docs/getting-started/foo.md
+ *
+ *   community/overview.mdx (permalink /community/overview)
+ *     → build/community/overview.md
+ *     → served at /community/overview.md
  *
  * Deriving the output path from `doc.permalink` (rather than re-deriving a
  * slug from the source file path) keeps this in lockstep with
  * docusaurus-plugin-llms-txt, including for index/category-root docs whose
  * permalink has no trailing "/index" segment.
+ *
+ * The lastVersion's docs also get a copy written under their old
+ * /docs/<versionName>/... path (e.g. /docs/v1.0.x/getting-started/foo.md),
+ * matching the alias @docusaurus/plugin-client-redirects generates for the
+ * HTML pages, so links and tooling built against the pre-lastVersion-move
+ * .md URLs (see tools/cli/internal/product.DocsVersionURL) keep working.
  */
 module.exports = function pluginMarkdownExport(context) {
   const {siteDir, siteConfig} = context;
@@ -37,6 +48,20 @@ module.exports = function pluginMarkdownExport(context) {
   // relative to `outDir`, which Docusaurus serves mounted at baseUrl.
   function stripBaseUrl(permalink) {
     return permalink.startsWith(baseUrl) ? permalink.slice(baseUrl.length - 1) : permalink;
+  }
+
+  // For the lastVersion, also resolve the pre-move URL (e.g. "/docs/getting-started/foo"
+  // → "/docs/v1.0.x/getting-started/foo") so its .md files stay reachable at their old
+  // path. Returns null for every other version, since only the lastVersion's URL moved.
+  function legacyLastVersionAlias(relPermalink, version) {
+    if (!version.isLast || version.versionName === 'current') {
+      return null;
+    }
+    const [routeBase, ...rest] = relPermalink.split('/').filter(Boolean);
+    if (!routeBase) {
+      return null;
+    }
+    return '/' + [routeBase, version.versionName, ...rest].join('/');
   }
 
   async function exportVersion(outDir, version) {
@@ -60,6 +85,14 @@ module.exports = function pluginMarkdownExport(context) {
         fs.mkdirSync(path.dirname(outputPath), {recursive: true});
         fs.writeFileSync(outputPath, cleaned);
         written++;
+
+        const aliasPermalink = legacyLastVersionAlias(relPermalink, version);
+        if (aliasPermalink) {
+          const aliasOutputPath = path.join(outDir, aliasPermalink + '.md');
+          fs.mkdirSync(path.dirname(aliasOutputPath), {recursive: true});
+          fs.writeFileSync(aliasOutputPath, cleaned);
+          written++;
+        }
       } catch (err) {
         console.error(`[markdown-export] Error processing ${fullPath}: ${err.message}`);
       }
@@ -73,12 +106,14 @@ module.exports = function pluginMarkdownExport(context) {
 
     async allContentLoaded({allContent}) {
       const docsPlugin = allContent?.['docusaurus-plugin-content-docs'];
-      const docsContent = docsPlugin?.default;
-      if (!docsContent?.loadedVersions) {
+      // Collect every docs plugin instance: the versioned "default" one and the
+      // unversioned "community" one, which has a single "current" version.
+      const versions = Object.values(docsPlugin ?? {}).flatMap((instance) => instance?.loadedVersions ?? []);
+      if (versions.length === 0) {
         console.warn('[markdown-export] docs plugin content not found; skipping');
         return;
       }
-      loadedVersions = docsContent.loadedVersions;
+      loadedVersions = versions;
     },
 
     async postBuild({outDir}) {

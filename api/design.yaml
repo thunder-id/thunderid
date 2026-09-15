@@ -762,19 +762,23 @@ paths:
         "400":
           $ref: '#/components/responses/BadRequest'
         "404":
-          description: Entity not found or has no design configuration
+          description: >
+            No design could be resolved for the given entity. This endpoint is unauthenticated, so
+            it answers identically whether the entity has no theme or layout configured or does not
+            exist at all: a response that distinguished the two would let an anonymous caller
+            confirm which entity IDs are real.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               example:
-                code: "DSR-1004"
+                code: "DSR-1005"
                 message:
-                  key: "design.resolve.error.app_not_found"
-                  defaultValue: "Application not found"
+                  key: "design.resolve.error.app_no_design"
+                  defaultValue: "Application has no design configuration"
                 description:
-                  key: "design.resolve.error.app_not_found_description"
-                  defaultValue: "The application with the specified id does not exist"
+                  key: "design.resolve.error.app_no_design_description"
+                  defaultValue: "The specified application does not have an associated theme or layout configuration"
         "500":
           $ref: '#/components/responses/InternalServerError'
 

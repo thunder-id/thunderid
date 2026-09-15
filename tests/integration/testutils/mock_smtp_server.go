@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -188,6 +189,22 @@ func extractSMTPAngle(s string) string {
 	s = strings.TrimPrefix(s, "<")
 	s = strings.TrimSuffix(s, ">")
 	return strings.TrimSpace(s)
+}
+
+// otpCellPattern matches the OTP the email template renders inside its own table cell.
+var otpCellPattern = regexp.MustCompile(`>\s*([A-Za-z0-9]{4,10})\s*</td>`)
+
+// ExtractOTP returns the one time code carried by an OTP email, which the template renders as the
+// sole contents of a table cell. Returns "" if no code is found.
+func (e *EmailMessage) ExtractOTP() string {
+	// Undo quoted-printable soft line breaks, which can split the code across lines.
+	body := strings.ReplaceAll(e.Body, "=\r\n", "")
+	body = strings.ReplaceAll(body, "=\n", "")
+
+	if match := otpCellPattern.FindStringSubmatch(body); match != nil {
+		return match[1]
+	}
+	return ""
 }
 
 // ExtractRecoveryLink searches the email body for a URL containing "inviteToken"

@@ -64,6 +64,12 @@ export const ConsoleRoutes = {
    */
   userDetails: (userId: string) => `/console/users/${userId}`,
 
+  /** User types list page */
+  userTypes: "/console/user-types",
+
+  /** Create new user type wizard page */
+  userTypeCreate: "/console/user-types/create",
+
   /** Settings page */
   settings: "/console/settings",
 
@@ -84,6 +90,21 @@ export const ConsoleRoutes = {
    * @param agentId - The agent identifier
    */
   agentDetails: (agentId: string) => `/console/agents/${agentId}`,
+  /** Connections list page */
+  connections: "/console/connections",
+
+  /**
+   * Configure wizard for a branded (singleton) connection vendor, e.g. "google"
+   * @param type - The connection vendor type
+   */
+  connectionConfigure: (type: string) => `/console/connections/${type}/configure`,
+
+  /**
+   * Connection details page
+   * @param type - The connection vendor type
+   * @param id - The connection identifier
+   */
+  connectionDetails: (type: string, id: string) => `/console/connections/${type}/${id}`,
 } as const;
 
 export type ConsoleRoute = (typeof ConsoleRoutes)[keyof typeof ConsoleRoutes];

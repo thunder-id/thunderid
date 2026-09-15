@@ -6,10 +6,10 @@
  *
  * Page Object Model for the React SDK Sample App login functionality. Home-page chrome
  * (sign-in button, post-login landing) is specific to this app's SDK-rendered button; the login
- * form and logout flow are shared gate behavior, inherited from GateLoginPage.
+ * form is shared gate behavior, inherited from GateLoginPage. logout() is defined here
  */
 
-import { Page, expect } from "@playwright/test";
+import { Page, expect, Response } from "@playwright/test";
 import { GateLoginPage } from "../gate-login.page";
 import { Timeouts } from "../../constants/timeouts";
 
@@ -44,6 +44,17 @@ export class SampleAppLoginPage extends GateLoginPage {
   }
 
   /**
+   * Click a "Continue with <provider>" social login trigger rendered by the auth flow.
+   * The browser navigates away to the provider's (or its mock's) authorize endpoint as a result.
+   * @param provider - Provider name as it appears on the button, e.g. "Google" or "GitHub"
+   */
+  async clickContinueWith(provider: string) {
+    const socialButton = this.page.locator(`button:has-text("Continue with ${provider}")`).first();
+    await socialButton.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
+    await socialButton.click();
+  }
+
+  /**
    * Navigate to the sample app and click through to the sign-in form.
    * @param url - Sample app URL
    */
@@ -55,11 +66,67 @@ export class SampleAppLoginPage extends GateLoginPage {
   }
 
   /**
+   * Drive the sample app through "Continue with <provider>", waiting for the flow-execute
+   * response that carries the final assertion rather than a post-login UI redirect - the
+   * browser round-trips through the provider's (or its mock's) authorize endpoint and back, and
+   * network-level assertion is robust to exactly when the SPA finishes re-rendering (see
+   * sample-app-mfa-login.spec.ts TC003 for the same rationale).
+   * @param provider - Provider name as it appears on the button, e.g. "Google" or "GitHub"
+   * @param url - Sample app URL
+   */
+  async loginWithProvider(provider: string, url: string): Promise<Response> {
+    await this.gotoLoginPage(url);
+
+    const [completionResponse] = await Promise.all([
+      this.page.waitForResponse(
+        async resp => {
+          if (!resp.url().includes("/flow/execute") || resp.request().method() !== "POST") return false;
+          try {
+            const body = await resp.json();
+            return body.flowStatus === "COMPLETE";
+          } catch {
+            return false;
+          }
+        },
+        { timeout: Timeouts.REDIRECT }
+      ),
+      this.clickContinueWith(provider),
+    ]);
+
+    return completionResponse;
+  }
+
+  /**
+   * Verify a sign-in-failed error is shown, e.g. after a social provider denies access.
+   */
+  async verifySignInError() {
+    const errorLocator = this.page.locator('.MuiAlert-colorError, [role="alert"]').first();
+    await expect(errorLocator, "an error must be shown when sign-in fails").toBeVisible({
+      timeout: Timeouts.REDIRECT,
+    });
+  }
+
+  /**
    * Verify specific user information is displayed
    * @param userInfo - Expected user information (e.g., username, email)
    */
   async verifyUserInfo(userInfo: string) {
     await expect(this.page.locator(`text=${userInfo}`)).toBeVisible({ timeout: Timeouts.DEFAULT_ACTION });
+  }
+
+  /**
+   * Click logout button, composed from GateLoginPage's shared primitives (there is no shared
+   * logout() to override - see gate-login.page.ts). This app's RP-initiated logout always shows
+   * the gate's sign-out confirmation screen before completing, so it's confirmed here.
+   */
+  async logout() {
+    await this.triggerSignOutFromAvatarMenu();
+
+    const confirmSignOutButton = this.page.getByRole("button", { name: "Sign out", exact: true });
+    await confirmSignOutButton.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
+    await confirmSignOutButton.click();
+
+    await this.waitForRedirectAwayFromGate();
   }
 
   /**

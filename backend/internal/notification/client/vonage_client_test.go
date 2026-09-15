@@ -44,7 +44,7 @@ func (suite *VonageClientTestSuite) SetupSuite() {
 func (suite *VonageClientTestSuite) getValidVonageSender() common.NotificationSenderDTO {
 	return common.NotificationSenderDTO{
 		Name:     "Test Vonage",
-		Provider: common.MessageProviderTypeVonage,
+		Provider: common.NotificationProviderTypeVonage,
 		Properties: []cmodels.Property{
 			createProperty("api_key", "test-api-key", true),
 			createProperty("api_secret", "test-api-secret", true),

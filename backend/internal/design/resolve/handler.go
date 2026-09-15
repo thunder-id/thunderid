@@ -65,8 +65,7 @@ func (
 			common.ErrorMissingResolveID.Code,
 			common.ErrorUnsupportedResolveType.Code:
 			statusCode = http.StatusBadRequest
-		case common.ErrorApplicationHasNoDesign.Code,
-			common.ErrorApplicationNotFound.Code:
+		case common.ErrorApplicationHasNoDesign.Code:
 			statusCode = http.StatusNotFound
 		default:
 			statusCode = http.StatusBadRequest

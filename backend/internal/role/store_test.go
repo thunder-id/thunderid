@@ -14,6 +14,9 @@ import (
 
 	"github.com/thunder-id/thunderid/tests/mocks/database/modelmock"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+
+	"github.com/thunder-id/thunderid/internal/system/config"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 const testDeploymentID = "test-deployment-id"
@@ -50,12 +53,12 @@ func TestRoleStoreTestSuite(t *testing.T) {
 
 // SetupTest sets up the test suite.
 func (suite *RoleStoreTestSuite) SetupTest() {
+	loadRuntimeForScope()
 	suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
 	suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 	suite.mockTx = modelmock.NewTxInterfaceMock(suite.T())
 	suite.store = &roleStore{
-		dbProvider:   suite.mockDBProvider,
-		deploymentID: testDeploymentID,
+		dbProvider: suite.mockDBProvider,
 	}
 }
 
@@ -111,8 +114,7 @@ func (suite *RoleStoreTestSuite) TestGetRoleListCount() {
 			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
 			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 			suite.store = &roleStore{
-				dbProvider:   suite.mockDBProvider,
-				deploymentID: testDeploymentID,
+				dbProvider: suite.mockDBProvider,
 			}
 
 			tc.setupMocks()
@@ -211,8 +213,7 @@ func (suite *RoleStoreTestSuite) TestGetRoleList() {
 			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
 			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 			suite.store = &roleStore{
-				dbProvider:   suite.mockDBProvider,
-				deploymentID: testDeploymentID,
+				dbProvider: suite.mockDBProvider,
 			}
 
 			tc.setupMocks()
@@ -290,8 +291,7 @@ func (suite *RoleStoreTestSuite) TestGetRoleListCountByOUID() {
 			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
 			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 			suite.store = &roleStore{
-				dbProvider:   suite.mockDBProvider,
-				deploymentID: testDeploymentID,
+				dbProvider: suite.mockDBProvider,
 			}
 
 			tc.setupMocks()
@@ -390,8 +390,7 @@ func (suite *RoleStoreTestSuite) TestGetRoleListByOUID() {
 			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
 			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 			suite.store = &roleStore{
-				dbProvider:   suite.mockDBProvider,
-				deploymentID: testDeploymentID,
+				dbProvider: suite.mockDBProvider,
 			}
 
 			tc.setupMocks()
@@ -568,8 +567,7 @@ func (suite *RoleStoreTestSuite) TestCreateRole() {
 			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 			suite.mockTx = modelmock.NewTxInterfaceMock(suite.T())
 			suite.store = &roleStore{
-				dbProvider:   suite.mockDBProvider,
-				deploymentID: testDeploymentID,
+				dbProvider: suite.mockDBProvider,
 			}
 
 			tc.setupMocks()
@@ -777,8 +775,7 @@ func (suite *RoleStoreTestSuite) TestGetRole() {
 			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
 			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 			suite.store = &roleStore{
-				dbProvider:   suite.mockDBProvider,
-				deploymentID: testDeploymentID,
+				dbProvider: suite.mockDBProvider,
 			}
 
 			tc.setupMocks()
@@ -872,8 +869,7 @@ func (suite *RoleStoreTestSuite) TestIsRoleExist() {
 			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
 			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 			suite.store = &roleStore{
-				dbProvider:   suite.mockDBProvider,
-				deploymentID: testDeploymentID,
+				dbProvider: suite.mockDBProvider,
 			}
 
 			tc.setupMocks()
@@ -974,8 +970,7 @@ func (suite *RoleStoreTestSuite) TestDeleteRole() {
 			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
 			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 			suite.store = &roleStore{
-				dbProvider:   suite.mockDBProvider,
-				deploymentID: testDeploymentID,
+				dbProvider: suite.mockDBProvider,
 			}
 
 			tc.setupMocks()
@@ -1137,8 +1132,7 @@ func (suite *RoleStoreTestSuite) TestUpdateRole() {
 			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 			suite.mockTx = modelmock.NewTxInterfaceMock(suite.T())
 			suite.store = &roleStore{
-				dbProvider:   suite.mockDBProvider,
-				deploymentID: testDeploymentID,
+				dbProvider: suite.mockDBProvider,
 			}
 
 			tc.setupMocks()
@@ -1212,8 +1206,7 @@ func (suite *RoleStoreTestSuite) TestAddAssignments() {
 			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 			suite.mockTx = modelmock.NewTxInterfaceMock(suite.T())
 			suite.store = &roleStore{
-				dbProvider:   suite.mockDBProvider,
-				deploymentID: testDeploymentID,
+				dbProvider: suite.mockDBProvider,
 			}
 
 			tc.setupMocks()
@@ -1287,8 +1280,7 @@ func (suite *RoleStoreTestSuite) TestRemoveAssignments() {
 			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 			suite.mockTx = modelmock.NewTxInterfaceMock(suite.T())
 			suite.store = &roleStore{
-				dbProvider:   suite.mockDBProvider,
-				deploymentID: testDeploymentID,
+				dbProvider: suite.mockDBProvider,
 			}
 
 			tc.setupMocks()
@@ -1378,8 +1370,7 @@ func (suite *RoleStoreTestSuite) TestCheckRoleNameExists() {
 			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
 			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 			suite.store = &roleStore{
-				dbProvider:   suite.mockDBProvider,
-				deploymentID: testDeploymentID,
+				dbProvider: suite.mockDBProvider,
 			}
 
 			tc.setupMocks()
@@ -1470,8 +1461,7 @@ func (suite *RoleStoreTestSuite) TestCheckRoleNameExistsExcludingID() {
 			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
 			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 			suite.store = &roleStore{
-				dbProvider:   suite.mockDBProvider,
-				deploymentID: testDeploymentID,
+				dbProvider: suite.mockDBProvider,
 			}
 
 			tc.setupMocks()
@@ -2205,5 +2195,15 @@ func (suite *RoleStoreTestSuite) TestDeleteRolePermission() {
 
 		suite.Error(err)
 		suite.Equal(int64(0), deleted)
+	})
+}
+
+// loadRuntimeForScope loads a server runtime naming the deployment these tests assert on. The store
+// resolves its deployment from the runtime rather than holding one, and other suites in this package
+// reset the runtime, so it is loaded per test rather than once for the package.
+func loadRuntimeForScope() {
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{
+		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
 	})
 }

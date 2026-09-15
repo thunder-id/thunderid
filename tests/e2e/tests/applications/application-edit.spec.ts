@@ -76,12 +76,11 @@ test.describe("Application Edit", () => {
     }
   });
 
-  /** TC006: Edit page - Overview tab shows application details */
-  test("TC006: Edit page - Overview tab shows application details", async ({ applicationsPage }) => {
+  /** TC004: Edit page - Overview tab shows application details */
+  test("TC004: Edit page - Overview tab shows application details", async ({ applicationsPage }) => {
     await test.step("Navigate to application edit page", async () => {
       console.log(`Navigating to edit page for app: ${testAppId}`);
       await applicationsPage.gotoEdit(testAppId);
-      await applicationsPage.screenshot("tc006-edit-page");
     });
 
     await test.step("Click Overview tab", async () => {
@@ -94,17 +93,15 @@ test.describe("Application Edit", () => {
     await test.step("Verify Application ID field is visible in application details", async () => {
       await expect(applicationsPage.applicationIdField).toBeVisible();
       console.log("Application ID field visible");
-      await applicationsPage.screenshot("tc006-application-details");
     });
   });
 
-  /** TC007: Edit page - Add and save a redirect URI */
-  test("TC007: Edit page - Add and save a redirect URI", async ({ applicationsPage }) => {
+  /** TC005: Edit page - Add and save a redirect URI */
+  test("TC005: Edit page - Add and save a redirect URI", async ({ applicationsPage }) => {
     const testUri = "https://example.com/callback";
 
     await test.step("Navigate to application edit page", async () => {
       await applicationsPage.gotoEdit(testAppId);
-      await applicationsPage.screenshot("tc007-edit-page");
     });
 
     await test.step("Click Advanced tab", async () => {
@@ -114,14 +111,12 @@ test.describe("Application Edit", () => {
     await test.step("Add a redirect URI", async () => {
       console.log("Adding redirect URI:", testUri);
       await applicationsPage.addRedirectUri(testUri);
-      await applicationsPage.screenshot("tc007-uri-added");
     });
 
     await test.step("Save changes and verify no error alert", async () => {
       await applicationsPage.saveChanges();
       await expect(applicationsPage.errorAlert).not.toBeVisible();
       console.log("Saved successfully with no error");
-      await applicationsPage.screenshot("tc007-saved");
     });
 
     await test.step("Verify URI remains after save", async () => {
@@ -131,8 +126,8 @@ test.describe("Application Edit", () => {
     });
   });
 
-  /** TC008: Edit page - Application URL rejects invalid URL */
-  test("TC008: Edit page - Application URL rejects invalid URL", async ({ applicationsPage }) => {
+  /** TC006: Edit page - Application URL rejects invalid URL */
+  test("TC006: Edit page - Application URL rejects invalid URL", async ({ applicationsPage }) => {
     await test.step("Navigate to application edit page", async () => {
       await applicationsPage.gotoEdit(testAppId);
     });
@@ -146,7 +141,6 @@ test.describe("Application Edit", () => {
       await applicationsPage.applicationUrlInput.fill("not-a-valid-url");
       await applicationsPage.applicationUrlInput.blur();
       console.log("Entered invalid URL value");
-      await applicationsPage.screenshot("tc008-invalid-url");
     });
 
     await test.step("Verify inline validation error is shown for invalid URL", async () => {
@@ -155,12 +149,11 @@ test.describe("Application Edit", () => {
         .or(applicationsPage.page.getByText(/invalid url/i));
       await expect(validationError.first()).toBeVisible();
       console.log("Inline validation error shown for invalid URL — correct");
-      await applicationsPage.screenshot("tc008-validation-error");
     });
   });
 
-  /** TC009: Edit page - Flows tab renders flow selectors */
-  test("TC009: Edit page - Flows tab renders flow selectors", async ({ applicationsPage }) => {
+  /** TC007: Edit page - Flows tab renders flow selectors */
+  test("TC007: Edit page - Flows tab renders flow selectors", async ({ applicationsPage }) => {
     await test.step("Navigate to application edit page", async () => {
       await applicationsPage.gotoEdit(testAppId);
     });
@@ -168,7 +161,6 @@ test.describe("Application Edit", () => {
     await test.step("Click Flows tab", async () => {
       await applicationsPage.clickTab("Flows");
       console.log("Clicked Flows tab");
-      await applicationsPage.screenshot("tc009-flows-tab");
     });
 
     await test.step("Verify sign-in and sign-up flow selectors are visible", async () => {
@@ -182,12 +174,11 @@ test.describe("Application Edit", () => {
       await expect(authFlowSelector.first()).toBeVisible();
       await expect(registrationFlowSelector.first()).toBeVisible();
       console.log("Sign-in and Sign-up flow selectors visible");
-      await applicationsPage.screenshot("tc009-flow-selectors");
     });
   });
 
-  /** TC010: Edit page - Customization tab renders contact fields */
-  test("TC010: Edit page - Customization tab renders contact fields", async ({ applicationsPage }) => {
+  /** TC008: Edit page - Customization tab renders contact fields */
+  test("TC008: Edit page - Customization tab renders contact fields", async ({ applicationsPage }) => {
     await test.step("Navigate to application edit page", async () => {
       await applicationsPage.gotoEdit(testAppId);
     });
@@ -195,7 +186,6 @@ test.describe("Application Edit", () => {
     await test.step("Click Customization tab", async () => {
       await applicationsPage.clickTab("Customization");
       console.log("Clicked Customization tab");
-      await applicationsPage.screenshot("tc010-customization-tab");
     });
 
     await test.step("Verify Terms of Service and Privacy Policy URI fields are visible", async () => {
@@ -209,17 +199,15 @@ test.describe("Application Edit", () => {
       await expect(tosField.first()).toBeVisible();
       await expect(privacyField.first()).toBeVisible();
       console.log("Terms of Service and Privacy Policy URI fields visible");
-      await applicationsPage.screenshot("tc010-fields-visible");
     });
   });
 
-  /** TC011: Edit page - Inline name edit persists */
-  test("TC011: Edit page - Inline name edit persists", async ({ applicationsPage }) => {
+  /** TC009: Edit page - Inline name edit persists */
+  test("TC009: Edit page - Inline name edit persists", async ({ applicationsPage }) => {
     const newName = `TestApp_RENAMED_${Date.now()}`;
 
     await test.step("Navigate to application edit page", async () => {
       await applicationsPage.gotoEdit(testAppId);
-      await applicationsPage.screenshot("tc011-edit-page");
     });
 
     await test.step("Click the edit icon next to the application name and rename it", async () => {
@@ -235,7 +223,6 @@ test.describe("Application Edit", () => {
       await nameInput.fill(newName);
       await nameInput.press("Enter");
       console.log("Renamed application to:", newName);
-      await applicationsPage.screenshot("tc011-renamed");
     });
 
     await test.step("Verify heading shows new name", async () => {
@@ -247,7 +234,6 @@ test.describe("Application Edit", () => {
     await test.step("Save changes", async () => {
       await applicationsPage.saveChanges();
       console.log("Saved name change");
-      await applicationsPage.screenshot("tc011-saved");
     });
 
     await test.step("Reload page and verify new name persists", async () => {
@@ -255,13 +241,12 @@ test.describe("Application Edit", () => {
       const persistedHeading = applicationsPage.page.locator("h3").filter({ hasText: newName });
       await expect(persistedHeading.first()).toBeVisible();
       console.log("New name persists after page reload:", newName);
-      await applicationsPage.screenshot("tc011-name-persisted");
       testAppName = newName;
     });
   });
 
-  /** TC012: Delete application from Danger Zone */
-  test("TC012: Delete application from Danger Zone", async ({ applicationsPage, applicationsApi }) => {
+  /** TC010: Delete application from Danger Zone */
+  test("TC010: Delete application from Danger Zone", async ({ applicationsPage, applicationsApi }) => {
     let deleteTestAppName: string = "";
 
     await test.step("Create a dedicated application for delete test", async () => {
@@ -280,7 +265,6 @@ test.describe("Application Edit", () => {
 
     await test.step("Navigate to application edit page", async () => {
       await applicationsPage.gotoEdit(deleteTestAppId!);
-      await applicationsPage.screenshot("tc012-before-delete");
     });
 
     await test.step("Click Advanced tab", async () => {
@@ -297,7 +281,6 @@ test.describe("Application Edit", () => {
       await applicationsPage.page.waitForURL(/\/console\/applications$/, { timeout: 15000 });
       await applicationsPage.verifyPageLoaded();
       console.log("Redirected to applications list after delete");
-      await applicationsPage.screenshot("tc012-after-delete");
     });
 
     await test.step("Verify deleted app no longer appears in list", async () => {

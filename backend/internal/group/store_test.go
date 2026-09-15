@@ -16,6 +16,9 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+
+	"github.com/thunder-id/thunderid/internal/system/config"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 type GroupStoreTestSuite struct {
@@ -79,7 +82,7 @@ func (suite *GroupStoreTestSuite) runGroupNameConflictTestCases(testCases []grou
 		suite.Run(tc.name, func() {
 			providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
 			dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
-			store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+			store := &groupStore{dbProvider: providerMock}
 
 			if tc.setupDB != nil {
 				tc.setupDB(dbClientMock)
@@ -170,7 +173,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupListCount() {
 		suite.Run(tc.name, func() {
 			providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
 			dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
-			store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+			store := &groupStore{dbProvider: providerMock}
 
 			if tc.setup != nil {
 				tc.setup(providerMock, dbClientMock)
@@ -313,7 +316,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupList() {
 		suite.Run(tc.name, func() {
 			providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
 			dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
-			store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+			store := &groupStore{dbProvider: providerMock}
 
 			if tc.setup != nil {
 				tc.setup(providerMock, dbClientMock)
@@ -487,7 +490,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroup() {
 		suite.Run(tc.name, func() {
 			providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
 			dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
-			store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+			store := &groupStore{dbProvider: providerMock}
 
 			if tc.setup != nil {
 				tc.setup(providerMock, dbClientMock)
@@ -595,7 +598,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupMembers() {
 		suite.Run(tc.name, func() {
 			providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
 			dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
-			store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+			store := &groupStore{dbProvider: providerMock}
 
 			if tc.setup != nil {
 				tc.setup(providerMock, dbClientMock)
@@ -725,7 +728,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupMemberCount() {
 		suite.Run(tc.name, func() {
 			providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
 			dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
-			store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+			store := &groupStore{dbProvider: providerMock}
 
 			if tc.setup != nil {
 				tc.setup(providerMock, dbClientMock)
@@ -868,7 +871,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_UpdateGroup() {
 			providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
 			dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
 
-			store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+			store := &groupStore{dbProvider: providerMock}
 
 			if tc.setup != nil {
 				tc.setup(providerMock, dbClientMock)
@@ -1011,7 +1014,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_DeleteGroup() {
 			providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
 			dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
 
-			store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+			store := &groupStore{dbProvider: providerMock}
 
 			if tc.setup != nil {
 				tc.setup(providerMock, dbClientMock)
@@ -1182,7 +1185,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_ValidateGroupIDs() {
 				tc.setup(providerMock, dbClientMock)
 			}
 
-			store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+			store := &groupStore{dbProvider: providerMock}
 			invalid, err := store.ValidateGroupIDs(context.Background(), tc.groupIDs)
 
 			if tc.wantErr != "" {
@@ -1285,7 +1288,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupsByOrganizationUnitCoun
 		suite.Run(tc.name, func() {
 			providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
 			dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
-			store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+			store := &groupStore{dbProvider: providerMock}
 
 			if tc.setup != nil {
 				tc.setup(providerMock, dbClientMock)
@@ -1392,7 +1395,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupsByOrganizationUnit() {
 		suite.Run(tc.name, func() {
 			providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
 			dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
-			store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+			store := &groupStore{dbProvider: providerMock}
 
 			if tc.setup != nil {
 				tc.setup(providerMock, dbClientMock)
@@ -1773,7 +1776,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupsByIDs() {
 				tc.setup(providerMock, dbClientMock)
 			}
 
-			store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+			store := &groupStore{dbProvider: providerMock}
 			groups, err := store.GetGroupsByIDs(context.Background(), tc.groupIDs)
 
 			if tc.wantErr != "" {
@@ -1947,7 +1950,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetTransitiveGroupsForEntity() 
 		suite.Run(tc.name, func() {
 			providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
 			dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
-			store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+			store := &groupStore{dbProvider: providerMock}
 
 			tc.setup(providerMock, dbClientMock)
 
@@ -1974,7 +1977,7 @@ func (suite *GroupStoreTestSuite) TestDeleteMembershipsByMember() {
 		dbClientMock.On("ExecuteContext", mock.Anything, QueryDeleteGroupMembershipsByMember,
 			string(memberTypeEntity), "user-1", testDeploymentID).Return(int64(2), nil).Once()
 
-		store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+		store := &groupStore{dbProvider: providerMock}
 		deleted, err := store.DeleteMembershipsByMember(
 			context.Background(), string(memberTypeEntity), "user-1")
 
@@ -1989,11 +1992,21 @@ func (suite *GroupStoreTestSuite) TestDeleteMembershipsByMember() {
 		dbClientMock.On("ExecuteContext", mock.Anything, QueryDeleteGroupMembershipsByMember,
 			string(memberTypeEntity), "user-1", testDeploymentID).Return(int64(0), errors.New("db error")).Once()
 
-		store := &groupStore{dbProvider: providerMock, deploymentID: testDeploymentID}
+		store := &groupStore{dbProvider: providerMock}
 		deleted, err := store.DeleteMembershipsByMember(
 			context.Background(), string(memberTypeEntity), "user-1")
 
 		require.Error(suite.T(), err)
 		require.Equal(suite.T(), int64(0), deleted)
+	})
+}
+
+// SetupTest loads a server runtime naming the deployment these tests assert on. The store resolves
+// its deployment from the runtime rather than holding one, and other suites in this package reset
+// the runtime, so it is loaded per test rather than once for the package.
+func (suite *GroupStoreTestSuite) SetupTest() {
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{
+		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
 	})
 }

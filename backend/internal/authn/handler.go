@@ -300,6 +300,7 @@ func (ah *authenticationHandler) HandlePasskeyRegisterStartRequest(w http.Respon
 		regRequest.RelyingPartyName,
 		regRequest.AuthenticatorSelection,
 		regRequest.Attestation,
+		regRequest.Assertion,
 	)
 	if svcErr != nil {
 		ah.handleServiceError(ctx, w, svcErr)

@@ -5,7 +5,11 @@
  * Playwright E2E Test Configuration
  *
  * This configuration sets up test projects for Chromium, Firefox, and Webkit.
- * All projects depend on the `setup` project for authentication.
+ * There is no dedicated login project: the `authenticatedPage` fixture lazily logs in on a
+ * test's first use and caches the session per worker (see console-admin-auth-utils.ts) so
+ * concurrent workers never share a single-use refresh token. globalSetup (below) clears any such
+ * cached files left on disk by a previous run against a different server instance, so every
+ * project - regardless of `--project`/`--grep` filtering - always logs in fresh against this run.
  *
  * Reports are generated in both HTML and Blob format (for merging).
  *
@@ -35,17 +39,25 @@ const BROWSERS = [
 ];
 
 /**
- * Specs that mutate global, non-partitionable server state: the CORS allowed-origins list and
- * the shared sample app's flow bindings and server-wide notification-sender setting. Running
- * them in more than one browser project at a time is racy, so they run on chromium only.
+ * Specs that mutate global, non-partitionable server state: the CORS allowed-origins list, the
+ * shared sample app's flow bindings, the server-wide notification-sender and
+ * identity_provider.<vendor>_base_url settings, each mock server's fixed port, and each branded
+ * connection vendor's single fixed-name instance. Running them in more than one browser project at
+ * a time is not just racy, it cannot work - the mock ports the backend is configured to call
+ * collide outright, and a branded connection's name is hardcoded to the vendor's display name
+ * (`name: meta.displayName` in ConnectionConfigureWizardPage.tsx), so concurrent projects cannot
+ * hold separate instances and each one's create/teardown deletes the others' connection mid-test.
  *
- * They assert server behavior (flow COMPLETE, Access-Control-Allow-Origin, a scope update
- * surviving a reload), so one run is the whole coverage; the shared form and unsaved-changes UI is
- * exercised cross-browser by the applications and accessibility specs.
+ * They assert server behavior (flow COMPLETE, /user/emails called, Access-Control-Allow-Origin,
+ * a scope update surviving a reload), so one run is the whole coverage; the shared form and
+ * unsaved-changes UI is exercised cross-browser by the applications and accessibility specs. They
+ * run on chromium only.
  */
 const SERVER_STATE_SPECS = [
   "**/settings/cors-allowed-origins.spec.ts",
   "**/sample-app-authentication/sample-app-mfa-login.spec.ts",
+  "**/sample-app-authentication/sample-app-social-login.spec.ts",
+  "**/connections/branded-connection-crud.spec.ts",
 ];
 
 /**
@@ -58,7 +70,24 @@ const SERVER_STATE_SPECS = [
  * testIgnore exclusion has no ordering mechanism, only a project `dependencies:` graph does.
  */
 const WAYFINDER_SETUP_SPEC = "**/welcome/wayfinder-sample-setup.spec.ts";
-const WAYFINDER_TRYOUT_SPECS = ["**/wayfinder/*.spec.ts"];
+// `**` after wayfinder/ matches both direct children (mock-email-flows.spec.ts) and specs grouped
+// into a subdirectory (b2c-tryout/authentication.spec.ts).
+const WAYFINDER_TRYOUT_SPECS = ["**/wayfinder/**/*.spec.ts"];
+
+/**
+ * mock-email-flows.spec.ts reads from the shared mock SMTP inbox (see that file's header), which
+ * has no per-recipient filtering - two of its tests running at once, even in different browsers,
+ * can grab each other's email. It is excluded from WAYFINDER_TRYOUT_SPECS's fully-parallel,
+ * three-browser projects below and instead runs `.serial` in its own single chromium-only project.
+ */
+const MOCK_EMAIL_TRYOUT_SPEC = "**/wayfinder/mock-email-flows.spec.ts";
+
+/**
+ * Specs that have possible collisions in the system, and so must not run while
+ * anything else is running. They are run in a separate project after all the
+ * other specs have finished.
+ */
+const ORDERED_LAST_SPECS = ["**/applications/application-user-access.spec.ts"];
 
 export default defineConfig({
   /** Directory containing test files */
@@ -105,7 +134,7 @@ export default defineConfig({
 
   /**
    * Run local dev server before starting the tests.
-   * This ensures the server is up before the setup project tries to authenticate.
+   * This ensures the server is up before the first test's fixture tries to authenticate.
    */
   webServer: {
     command:
@@ -144,15 +173,9 @@ export default defineConfig({
    * authenticated session take `authenticatedPage`; tests that need a signed-out one take `page`.
    */
   projects: [
-    /** Setup project - only runs auth.setup.ts */
-    {
-      name: "setup",
-      testMatch: "**/*.setup.ts",
-      use: { ...devices["Desktop Chrome"], ignoreHTTPSErrors: true },
-    },
-
     /**
-     * Every spec runs in one flat fan-out; the server-state specs (see SERVER_STATE_SPECS) are
+     * Every spec runs in one flat fan-out,except ORDERED_LAST_SPECS (excluded here, picked up by
+     * the `${browser}-ordered-last` projects below); the server-state specs (see SERVER_STATE_SPECS) are
      * excluded from the non-chromium projects instead of being duplicated and serialized. The
      * Wayfinder setup/tryout specs are excluded from every browser project unconditionally - they
      * run exclusively through the two dedicated projects below.
@@ -163,26 +186,45 @@ export default defineConfig({
       testIgnore: [
         WAYFINDER_SETUP_SPEC,
         ...WAYFINDER_TRYOUT_SPECS,
+        ...ORDERED_LAST_SPECS,
         ...(browser.id === "chromium" ? [] : SERVER_STATE_SPECS),
       ],
       use: { ...browser.device },
-      dependencies: ["setup"],
+    })),
+
+    /**
+     * Runs ORDERED_LAST_SPECS only once every browser project has finished, so nothing else can
+     * still be mutating the state they read.
+     */
+    ...BROWSERS.map(browser => ({
+      name: `${browser.id}-ordered-last`,
+      testMatch: ORDERED_LAST_SPECS,
+      use: { ...browser.device },
+      dependencies: BROWSERS.map(b => b.id),
     })),
 
     /**
      * tests/wayfinder/** reads data (the seed user, the "Wayfinder" OAuth client) that only
      * exists once wayfinder-sample-setup.spec.ts's import has completed, so wayfinder-tryout must
-     * not start until wayfinder-setup finishes
+     * not start until wayfinder-setup finishes.
      */
     {
       name: "wayfinder-setup",
       testMatch: WAYFINDER_SETUP_SPEC,
       use: { ...devices["Desktop Chrome"] },
-      dependencies: ["setup"],
     },
-    {
-      name: "wayfinder-tryout",
+    ...BROWSERS.map(browser => ({
+      name: `${browser.id}-wayfinder-tryout`,
       testMatch: WAYFINDER_TRYOUT_SPECS,
+      testIgnore: [MOCK_EMAIL_TRYOUT_SPEC],
+      // Run the tryout specs in parallel across browsers, but only after wayfinder-setup has completed
+      fullyParallel: true,
+      use: { ...browser.device },
+      dependencies: ["wayfinder-setup"],
+    })),
+    {
+      name: "wayfinder-mock-email",
+      testMatch: MOCK_EMAIL_TRYOUT_SPEC,
       use: { ...devices["Desktop Chrome"] },
       dependencies: ["wayfinder-setup"],
     },

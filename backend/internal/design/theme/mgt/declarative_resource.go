@@ -191,6 +191,9 @@ func parseToTheme(data []byte) (*Theme, error) {
 // validateThemeWrapper wraps validateThemeForDeclarativeResource to match ResourceConfig.Validator signature.
 // It also checks for duplicates across database stores in composite mode.
 func validateThemeWrapper(dto interface{}, dbStore themeMgtStoreInterface) error {
+	// Declarative resources are validated as they are loaded, outside any request, so there
+	// is no context to carry a deployment id and the configured identifier applies.
+	ctx := context.Background()
 	theme, ok := dto.(*Theme)
 	if !ok {
 		return fmt.Errorf("invalid type: expected *Theme")
@@ -203,7 +206,7 @@ func validateThemeWrapper(dto interface{}, dbStore themeMgtStoreInterface) error
 
 	// In composite mode, check for duplicates in database store
 	if dbStore != nil {
-		exists, err := dbStore.IsThemeExist(theme.ID)
+		exists, err := dbStore.IsThemeExist(ctx, theme.ID)
 		if err != nil {
 			return fmt.Errorf("failed to check for duplicate theme ID '%s': %w", theme.ID, err)
 		}

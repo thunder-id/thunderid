@@ -384,6 +384,127 @@ func (s *ApplicationImportExportSuite) TestExportImportRoundTrip_PublicClientAut
 
 // --- Helpers ---
 
+// TestExportImportRoundTrip_ClientCredentialsSubType covers the sub_type claim across the whole
+// lifecycle: creation selects it, export carries the selection, and import restores it. Nothing else
+// asserts that the selection survives an export, which is how a GitOps adoption inherits the claim.
+func (s *ApplicationImportExportSuite) TestExportImportRoundTrip_ClientCredentialsSubType() {
+	appName := "App RT CC " + s.handleSuffix
+	clientID := "app-rt-cc-client-" + s.handleSuffix
+	clientSecret := "app-rt-cc-secret-" + s.handleSuffix
+
+	createdID, err := createApplication(Application{
+		OUID:        s.ouID,
+		Name:        appName,
+		Description: "Round-trip client_credentials application",
+		Type:        "m2m",
+		InboundAuthConfig: []InboundAuthConfig{
+			{
+				Type: "oauth2",
+				OAuthAppConfig: &OAuthAppConfig{
+					ClientID:                clientID,
+					ClientSecret:            clientSecret,
+					GrantTypes:              []string{"client_credentials"},
+					TokenEndpointAuthMethod: "client_secret_basic",
+				},
+			},
+		},
+	})
+	s.Require().NoError(err, "failed to create source application")
+
+	getResp, err := s.appGet(createdID)
+	s.Require().NoError(err)
+	var pre Application
+	s.Require().NoError(json.Unmarshal(getResp, &pre))
+	s.Require().Contains(clientAttributesOf(pre), "sub_type",
+		"creation must select sub_type for a client_credentials application")
+
+	exportResp, err := s.exportApps(appExportRequest{Applications: []string{createdID}})
+	s.Require().NoError(err)
+	yamlContent := exportResp.Resources
+	s.Assert().Contains(yamlContent, "sub_type", "the exported selection must carry the claim")
+
+	s.Require().NoError(deleteApplication(createdID))
+
+	// The exporter parameterizes redirectUris even for a client that has none, so the variable has to
+	// be supplied as an empty list for the template to resolve.
+	vars := s.extractTemplateVariables(yamlContent, map[string]interface{}{
+		"clientId":     clientID,
+		"clientSecret": clientSecret,
+		"redirectUris": []string{},
+	})
+	importResp, err := s.importApps(appImportRequest{
+		Content:   yamlContent,
+		Options:   appImportOptions{Upsert: true, ContinueOnError: false, Target: "runtime"},
+		Variables: vars,
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(1, importResp.Summary.Imported, "import results: %+v", importResp.Results)
+
+	importedID := importResp.Results[0].ResourceID
+	s.Require().NotEmpty(importedID)
+	defer func() { _ = deleteApplication(importedID) }()
+
+	restoredResp, err := s.appGet(importedID)
+	s.Require().NoError(err)
+	var restored Application
+	s.Require().NoError(json.Unmarshal(restoredResp, &restored))
+
+	s.Assert().Contains(clientAttributesOf(restored), "sub_type",
+		"the selection must survive the export and import round-trip")
+}
+
+// TestImportApplication_SeedsSubTypeWhenOmitted covers a hand-written declarative document that does
+// not mention the claim. An import with target runtime creates the application through the same
+// service as the API, so the claim is selected for it rather than being absent until edited.
+func (s *ApplicationImportExportSuite) TestImportApplication_SeedsSubTypeWhenOmitted() {
+	clientID := "app-imp-seed-client-" + s.handleSuffix
+	yamlContent := fmt.Sprintf(`resource_type: application
+name: App Imp Seed %s
+type: m2m
+ouId: %s
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: %s
+      clientSecret: app-imp-seed-secret-%s
+      grantTypes:
+        - client_credentials
+      tokenEndpointAuthMethod: client_secret_basic
+`, s.handleSuffix, s.ouID, clientID, s.handleSuffix)
+
+	importResp, err := s.importApps(appImportRequest{
+		Content: yamlContent,
+		Options: appImportOptions{Upsert: true, ContinueOnError: false, Target: "runtime"},
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(1, importResp.Summary.Imported, "import results: %+v", importResp.Results)
+
+	importedID := importResp.Results[0].ResourceID
+	s.Require().NotEmpty(importedID)
+	defer func() { _ = deleteApplication(importedID) }()
+
+	restoredResp, err := s.appGet(importedID)
+	s.Require().NoError(err)
+	var restored Application
+	s.Require().NoError(json.Unmarshal(restoredResp, &restored))
+
+	s.Assert().Contains(clientAttributesOf(restored), "sub_type",
+		"an imported client_credentials application must have the claim selected for it")
+}
+
+// clientAttributesOf returns the application's client-token attribute selection, or nil when unset.
+func clientAttributesOf(app Application) []string {
+	if len(app.InboundAuthConfig) == 0 {
+		return nil
+	}
+	cfg := app.InboundAuthConfig[0].OAuthAppConfig
+	if cfg == nil || cfg.Token == nil || cfg.Token.AccessToken == nil ||
+		cfg.Token.AccessToken.ClientConfig == nil {
+		return nil
+	}
+	return cfg.Token.AccessToken.ClientConfig.Attributes
+}
+
 func (s *ApplicationImportExportSuite) appGet(appID string) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodGet, testServerURL+"/applications/"+appID, nil)
 	if err != nil {

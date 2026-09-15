@@ -47,12 +47,31 @@ export interface FlowListResponse {
 }
 
 /**
+ * One localizable message of a flow error, as the engine serializes it.
+ */
+export interface FlowI18nMessage {
+  key?: string;
+  defaultValue?: string;
+  params?: Record<string, string>;
+}
+
+/**
+ * The error a failed step carries. A node that refuses reports its own executor error here, so this
+ * is where a refusal's code and reason come from.
+ */
+export interface FlowExecutionError {
+  code?: string;
+  message?: FlowI18nMessage;
+  description?: FlowI18nMessage;
+}
+
+/**
  * The `POST /flow/execute` response, narrowed to what the deletion path inspects.
  */
 export interface FlowExecutionResponse {
   flowStatus?: string;
   executionId?: string;
-  failureReason?: string;
+  error?: FlowExecutionError;
 }
 
 /**

@@ -177,6 +177,17 @@ export const VALIDATION_RULES: ValidationRuleDefinition[] = [
     fields: [],
     generalMessageKey: 'flows:core.validation.fields.executor.general',
   },
+  // OpenID4VP verify executor
+  {
+    match: (r) => (r as {data?: StepData}).data?.action?.executor?.name === ExecutionTypes.OpenID4VPVerify,
+    fields: [
+      {
+        name: 'data.properties.presentation_definition_id',
+        errorMessageKey: 'flows:core.validation.fields.input.presentationDefinitionId',
+      },
+    ],
+    generalMessageKey: 'flows:core.validation.fields.executor.general',
+  },
 
   // ---------------------------------------------------------------------------
   // Node Validation Rules

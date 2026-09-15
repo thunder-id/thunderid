@@ -48,6 +48,62 @@ func (s *DCRServiceTestSuite) SetupTest() {
 	s.service = newDCRService(s.mockAppService, s.mockOUService, nil, &MockTransactioner{})
 }
 
+// TestBuildIDTokenConfig verifies that the response type is derived from the algorithm fields, so
+// a client requesting only a signing algorithm still gets a stored config.
+func (s *DCRServiceTestSuite) TestBuildIDTokenConfig() {
+	testCases := []struct {
+		name         string
+		request      *DCRRegistrationRequest
+		expectNil    bool
+		responseType providers.IDTokenResponseType
+		signingAlg   string
+	}{
+		{
+			name:      "NoAlgFieldsYieldsNilConfig",
+			request:   &DCRRegistrationRequest{},
+			expectNil: true,
+		},
+		{
+			name:         "SigningOnlyYieldsJWT",
+			request:      &DCRRegistrationRequest{IDTokenSignedResponseAlg: "ES256"},
+			responseType: providers.IDTokenResponseTypeJWT,
+			signingAlg:   "ES256",
+		},
+		{
+			name:         "EncryptionOnlyYieldsJWE",
+			request:      &DCRRegistrationRequest{IDTokenEncryptedResponseAlg: "RSA-OAEP"},
+			responseType: providers.IDTokenResponseTypeJWE,
+		},
+		{
+			name:         "EncryptionEncAloneStillYieldsJWE",
+			request:      &DCRRegistrationRequest{IDTokenEncryptedResponseEnc: "A256GCM"},
+			responseType: providers.IDTokenResponseTypeJWE,
+		},
+		{
+			name: "SigningAndEncryptionYieldsNestedJWT",
+			request: &DCRRegistrationRequest{
+				IDTokenSignedResponseAlg:    "ES256",
+				IDTokenEncryptedResponseAlg: "RSA-OAEP",
+			},
+			responseType: providers.IDTokenResponseTypeNESTEDJWT,
+			signingAlg:   "ES256",
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			cfg := buildIDTokenConfig(tc.request)
+			if tc.expectNil {
+				s.Nil(cfg)
+				return
+			}
+			s.NotNil(cfg)
+			s.Equal(tc.responseType, cfg.ResponseType)
+			s.Equal(tc.signingAlg, cfg.SigningAlg)
+		})
+	}
+}
+
 // TestNewDCRService tests the service constructor
 func (s *DCRServiceTestSuite) TestNewDCRService() {
 	service := newDCRService(s.mockAppService, s.mockOUService, nil, &MockTransactioner{})

@@ -26,12 +26,12 @@ Place `<ThunderIDRoot>` at the top of your application layout so that all pages 
 <template>
   <ThunderIDRoot>
     <header>
-      <ThunderIDSignedIn>
-        <ThunderIDUserDropdown />
-      </ThunderIDSignedIn>
-      <ThunderIDSignedOut>
-        <ThunderIDSignInButton />
-      </ThunderIDSignedOut>
+      <SignedIn>
+        <UserDropdown />
+      </SignedIn>
+      <SignedOut>
+        <SignInButton />
+      </SignedOut>
     </header>
     <main>
       <slot />

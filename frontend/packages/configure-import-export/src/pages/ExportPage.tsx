@@ -37,6 +37,8 @@ export default function ExportPage(): JSX.Element {
       groups: ['*'],
       agents: ['*'],
       serverConfigs: ['*'],
+      credentialConfigurations: ['*'],
+      presentationDefinitions: ['*'],
     });
   }, [mutate]);
 

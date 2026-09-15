@@ -498,7 +498,7 @@ func (s *entityService) AuthenticateEntityByID(
 		return nil, ErrEntityNotFound
 	}
 
-	if err := s.verifyCredentials(credentials, result.SchemaCredentials, result.SystemCredentials); err != nil {
+	if err := s.verifyCredentials(ctx, credentials, result.SchemaCredentials, result.SystemCredentials); err != nil {
 		return nil, err
 	}
 
@@ -511,7 +511,7 @@ func (s *entityService) AuthenticateEntityByID(
 }
 
 // verifyCredentials verifies provided credentials from both schema and system credentials.
-func (s *entityService) verifyCredentials(credentials map[string]interface{},
+func (s *entityService) verifyCredentials(ctx context.Context, credentials map[string]interface{},
 	schemaCredsJSON, systemCredsJSON json.RawMessage) error {
 	// Merge both credential columns for verification.
 	storedCreds := make(map[string][]StoredCredential)
@@ -561,16 +561,17 @@ func (s *entityService) verifyCredentials(credentials map[string]interface{},
 		verified := false
 		for _, stored := range credList {
 			ref := cryptolib.Credential{
-				Algorithm: stored.StorageAlgo,
-				Hash:      stored.Value,
-				Parameters: cryptolib.CredParameters{
-					Salt:       stored.StorageAlgoParams.Salt,
-					Iterations: stored.StorageAlgoParams.Iterations,
-					KeySize:    stored.StorageAlgoParams.KeySize,
-				},
+				Algorithm:  stored.StorageAlgo,
+				Hash:       stored.Value,
+				Parameters: stored.StorageAlgoParams,
 			}
 			ok, verifyErr := s.hashService.Verify([]byte(credValue), ref)
-			if verifyErr == nil && ok {
+			if verifyErr != nil {
+				s.logger.Debug(ctx, "Credential verification error", log.String("credentialType", credType),
+					log.Any("error", verifyErr))
+				continue
+			}
+			if ok {
 				verified = true
 				break
 			}
@@ -1097,13 +1098,9 @@ func (s *entityService) hashPlaintextCredentials(creds json.RawMessage) (json.Ra
 			}
 			result[credType] = []StoredCredential{
 				{
-					StorageAlgo: credHash.Algorithm,
-					StorageAlgoParams: cryptolib.CredParameters{
-						Salt:       credHash.Parameters.Salt,
-						Iterations: credHash.Parameters.Iterations,
-						KeySize:    credHash.Parameters.KeySize,
-					},
-					Value: credHash.Hash,
+					StorageAlgo:       credHash.Algorithm,
+					StorageAlgoParams: credHash.Parameters,
+					Value:             credHash.Hash,
 				},
 			}
 		default:

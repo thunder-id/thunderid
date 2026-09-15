@@ -199,7 +199,7 @@ func makeAgentEntityParser(
 			attributesJSON = raw
 		}
 
-		agent := &model.Agent{
+		agent := &providers.Agent{
 			ID:          req.ID,
 			OUID:        req.OUID,
 			OUHandle:    req.OUHandle,
@@ -225,6 +225,7 @@ func makeAgentEntityParser(
 				Assertion:                 req.Assertion,
 				LoginConsent:              req.LoginConsent,
 				AllowedUserTypes:          req.AllowedUserTypes,
+				AllowedAgentTypes:         req.AllowedAgentTypes,
 				PasskeyAllowedOrigins:     req.PasskeyAllowedOrigins,
 				Attestation:               req.Attestation,
 			},
@@ -272,7 +273,7 @@ func makeAgentInboundParser(agentSvc AgentServiceInterface) func([]byte) (*inbou
 			return nil, fmt.Errorf("failed to parse agent YAML: %w", err)
 		}
 
-		agent := &model.Agent{
+		agent := &providers.Agent{
 			ID:          req.ID,
 			OUID:        req.OUID,
 			OUHandle:    req.OUHandle,
@@ -297,6 +298,7 @@ func makeAgentInboundParser(agentSvc AgentServiceInterface) func([]byte) (*inbou
 				Assertion:                 req.Assertion,
 				LoginConsent:              req.LoginConsent,
 				AllowedUserTypes:          req.AllowedUserTypes,
+				AllowedAgentTypes:         req.AllowedAgentTypes,
 				PasskeyAllowedOrigins:     req.PasskeyAllowedOrigins,
 				Attestation:               req.Attestation,
 			},

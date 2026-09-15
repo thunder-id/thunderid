@@ -1,12 +1,12 @@
 ---
-title: <ThunderIDSignInButton />
+title: <SignInButton />
 docType: reference
 description: Trigger the sign-in authentication flow from a pre-styled button component in Nuxt applications.
 ---
 
-# `<ThunderIDSignInButton />`
+# `<SignInButton />`
 
-The `ThunderIDSignInButton` component initiates the sign-in flow when clicked. It is auto-registered by the Nuxt module and requires no imports.
+The `SignInButton` component initiates the sign-in flow when clicked. It is auto-registered by the Nuxt module and requires no imports.
 
 ## Usage
 
@@ -14,7 +14,7 @@ The `ThunderIDSignInButton` component initiates the sign-in flow when clicked. I
 
 ```vue title="pages/index.vue" showLineNumbers
 <template>
-  <ThunderIDSignInButton />
+  <SignInButton />
 </template>
 ```
 
@@ -24,7 +24,7 @@ Pass text content to override the default button label:
 
 ```vue title="pages/index.vue" showLineNumbers
 <template>
-  <ThunderIDSignInButton>Log in to your account</ThunderIDSignInButton>
+  <SignInButton>Log in to your account</SignInButton>
 </template>
 ```
 
@@ -32,9 +32,9 @@ Pass text content to override the default button label:
 
 ```vue title="pages/index.vue" showLineNumbers
 <template>
-  <ThunderIDSignInButton class="btn btn-primary">
+  <SignInButton class="btn btn-primary">
     Sign In
-  </ThunderIDSignInButton>
+  </SignInButton>
 </template>
 ```
 
@@ -44,7 +44,7 @@ Access the `signIn` function and `isLoading` state via the default scoped slot t
 
 ```vue title="components/CustomSignInButton.vue" showLineNumbers
 <template>
-  <ThunderIDSignInButton>
+  <SignInButton>
     <template #default="{ signIn, isLoading }">
       <button
         :disabled="isLoading"
@@ -54,7 +54,7 @@ Access the `signIn` function and `isLoading` state via the default scoped slot t
         {{ isLoading ? 'Signing in...' : 'Sign In' }}
       </button>
     </template>
-  </ThunderIDSignInButton>
+  </SignInButton>
 </template>
 ```
 

@@ -13,6 +13,9 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+
+	"github.com/thunder-id/thunderid/internal/system/config"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 const testDeploymentID = "test-deployment-id"
@@ -29,11 +32,11 @@ func TestDefinitionStoreTestSuite(t *testing.T) {
 }
 
 func (suite *DefinitionStoreTestSuite) SetupTest() {
+	loadRuntimeForScope()
 	suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
 	suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 	suite.store = &definitionStore{
-		dbProvider:   suite.mockDBProvider,
-		deploymentID: testDeploymentID,
+		dbProvider: suite.mockDBProvider,
 	}
 }
 
@@ -41,8 +44,7 @@ func (suite *DefinitionStoreTestSuite) refreshMocks() {
 	suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
 	suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 	suite.store = &definitionStore{
-		dbProvider:   suite.mockDBProvider,
-		deploymentID: testDeploymentID,
+		dbProvider: suite.mockDBProvider,
 	}
 }
 
@@ -631,4 +633,14 @@ func (suite *DefinitionStoreTestSuite) TestBuildDefinitionDTOFromRowMalformedTru
 	got, err := buildDefinitionDTOFromRow(row)
 	suite.Error(err)
 	suite.Nil(got)
+}
+
+// loadRuntimeForScope loads a server runtime naming the deployment these tests assert on. The store
+// resolves its deployment from the runtime rather than holding one, and other suites in this package
+// reset the runtime, so it is loaded per test rather than once for the package.
+func loadRuntimeForScope() {
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{
+		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
+	})
 }

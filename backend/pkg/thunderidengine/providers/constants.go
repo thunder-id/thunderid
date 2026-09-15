@@ -279,6 +279,11 @@ const (
 	UserInfoResponseTypeNESTEDJWT UserInfoResponseType = "NESTED_JWT"
 )
 
+// RawJWTAttributeKey is the AttributesResponse.Attributes key an authn provider uses to return
+// an opaque JWT/JWE from its backing identity system in place of individual claims. When present,
+// it is the only key in the map and its value is passed through as-is rather than treated as a claim.
+const RawJWTAttributeKey = "_jwt"
+
 // CertificateType represents the type of certificates in the system.
 type CertificateType string
 

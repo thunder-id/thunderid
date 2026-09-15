@@ -515,7 +515,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RevokedActorTok
 			Sub: testUserID, Iss: "https://auth.example.com", Scopes: []string{"read"},
 			JTI: "subject-jti-ok",
 		}, nil)
-	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, actorToken, suite.oauthApp).
+	suite.mockTokenValidator.On("ValidateActorToken", mock.Anything, actorToken, suite.oauthApp).
 		Return(nil, revocation.ErrTokenRevoked)
 
 	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
@@ -570,7 +570,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ActorTokenEnfor
 			Sub: testUserID, Iss: "https://auth.example.com", Scopes: []string{"read"},
 			JTI: "subject-jti-ok",
 		}, nil)
-	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, actorToken, suite.oauthApp).
+	suite.mockTokenValidator.On("ValidateActorToken", mock.Anything, actorToken, suite.oauthApp).
 		Return(nil, revocation.ErrEnforcementUnavailable)
 
 	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
@@ -699,7 +699,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithAct
 			UserAttributes: map[string]interface{}{},
 			NestedAct:      nil,
 		}, nil)
-	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, actorToken, suite.oauthApp).
+	suite.mockTokenValidator.On("ValidateActorToken", mock.Anything, actorToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            "service456",
 			Iss:            testCustomIssuer,
@@ -767,7 +767,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithAct
 				"iss": "https://existing-actor.com",
 			},
 		}, nil)
-	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, actorToken, suite.oauthApp).
+	suite.mockTokenValidator.On("ValidateActorToken", mock.Anything, actorToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            "service456",
 			Iss:            testCustomIssuer,
@@ -794,6 +794,135 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithAct
 
 	assert.Nil(suite.T(), errResp)
 	assert.NotNil(suite.T(), result)
+}
+
+// With no actor_token, the act claim follows the authenticated client: an agent exchanging a
+// user's token always gets an OBO actor claim naming itself, while an application gets one only
+// when it opts in through includeActClaim.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ImplicitActorClaim_WithoutActorToken() {
+	const actAppID = "act-entity-id"
+	testCases := []struct {
+		name            string
+		entityCategory  providers.EntityCategory
+		includeActClaim bool
+		expectActor     bool
+	}{
+		{name: "AgentClientAlwaysAppendsActor", entityCategory: providers.EntityCategoryAgent,
+			includeActClaim: false, expectActor: true},
+		{name: "AppClientWithoutFlagOmitsActor", entityCategory: providers.EntityCategoryApp,
+			includeActClaim: false, expectActor: false},
+		{name: "AppClientWithFlagAppendsActor", entityCategory: providers.EntityCategoryApp,
+			includeActClaim: true, expectActor: true},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.oauthApp.ID = actAppID
+			suite.oauthApp.EntityCategory = tc.entityCategory
+			suite.oauthApp.IncludeActClaim = tc.includeActClaim
+
+			now := time.Now().Unix()
+			subjectToken := suite.createTestJWT(map[string]interface{}{
+				"sub": testUserID,
+				"iss": testCustomIssuer,
+				"exp": float64(now + 3600),
+			})
+			tokenRequest := suite.createBasicTokenRequest(subjectToken)
+
+			suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+				Return(&tokenservice.SubjectTokenClaims{
+					Sub:            testUserID,
+					Iss:            testCustomIssuer,
+					UserAttributes: map[string]interface{}{},
+					NestedAct:      nil,
+				}, nil)
+
+			var capturedActor *tokenservice.SubjectTokenClaims
+			suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+				mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+					capturedActor = ctx.ActorClaims
+					return ctx.Subject == testUserID
+				})).Return(&model.TokenDTO{
+				Token:     testTokenExchangeJWT,
+				TokenType: constants.TokenTypeBearer,
+				IssuedAt:  now,
+				ExpiresIn: 7200,
+				ClientID:  testClientID,
+			}, nil)
+
+			result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+			assert.Nil(suite.T(), errResp)
+			assert.NotNil(suite.T(), result)
+			if tc.expectActor {
+				suite.Require().NotNil(capturedActor)
+				assert.Equal(suite.T(), actAppID, capturedActor.Sub)
+				assert.Empty(suite.T(), capturedActor.Iss)
+			} else {
+				assert.Nil(suite.T(), capturedActor)
+			}
+		})
+	}
+}
+
+// An explicit actor_token identifies the acting party, so it takes precedence over the implicit
+// client actor an agent would otherwise contribute.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ActorTokenTakesPrecedenceOverImplicitActor() {
+	suite.oauthApp.ID = "act-entity-id"
+	suite.oauthApp.EntityCategory = providers.EntityCategoryAgent
+
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID,
+		"iss": testCustomIssuer,
+		"exp": float64(now + 3600),
+	})
+	actorToken := suite.createTestJWT(map[string]interface{}{
+		"sub": "service456",
+		"iss": testCustomIssuer,
+		"exp": float64(now + 3600),
+	})
+
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+	tokenRequest.ActorToken = actorToken
+	tokenRequest.ActorTokenType = string(constants.TokenTypeIdentifierAccessToken)
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:            testUserID,
+			Iss:            testCustomIssuer,
+			UserAttributes: map[string]interface{}{},
+			NestedAct:      nil,
+		}, nil)
+	suite.mockTokenValidator.On("ValidateActorToken", mock.Anything, actorToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:            "service456",
+			Iss:            testCustomIssuer,
+			UserAttributes: map[string]interface{}{},
+			NestedAct:      nil,
+		}, nil)
+
+	var capturedActor *tokenservice.SubjectTokenClaims
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			capturedActor = ctx.ActorClaims
+			return ctx.Subject == testUserID
+		})).Return(&model.TokenDTO{
+		Token:     testTokenExchangeJWT,
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  now,
+		ExpiresIn: 7200,
+		ClientID:  testClientID,
+	}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	suite.Require().NotNil(capturedActor)
+	assert.Equal(suite.T(), "service456", capturedActor.Sub)
+	assert.Equal(suite.T(), testCustomIssuer, capturedActor.Iss)
 }
 
 // The RFC 8693 audience parameter is ignored: with no resource parameter, the token is bound to
@@ -1037,15 +1166,18 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_InvalidSubjectT
 }
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_InvalidSubjectToken_DecodeError() {
+	// The header must be well-formed so the token reaches the validator: a token declared as an
+	// access token is type-checked first, and an undecodable header is rejected there instead.
+	subjectToken := suite.createTestJWTWithTyp("at+jwt", map[string]interface{}{"sub": "user123"})
 	tokenRequest := &model.TokenRequest{
 		GrantType:        string(providers.GrantTypeTokenExchange),
 		ClientID:         testClientID,
-		SubjectToken:     "invalid.jwt.format",
+		SubjectToken:     subjectToken,
 		SubjectTokenType: string(constants.TokenTypeIdentifierAccessToken),
 	}
 
 	// Mock token validator to return decode error
-	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, "invalid.jwt.format", suite.oauthApp).
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
 		Return(nil, errors.New("invalid token format"))
 
 	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
@@ -1131,7 +1263,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_InvalidActorTok
 			UserAttributes: map[string]interface{}{},
 			NestedAct:      nil,
 		}, nil)
-	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, actorToken, suite.oauthApp).
+	suite.mockTokenValidator.On("ValidateActorToken", mock.Anything, actorToken, suite.oauthApp).
 		Return(nil, errors.New("invalid subject token signature: invalid signature"))
 
 	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
@@ -1201,7 +1333,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ActorTokenRejec
 					Iss:            testCustomIssuer,
 					UserAttributes: map[string]interface{}{},
 				}, nil)
-			suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, actorToken, suite.oauthApp).
+			suite.mockTokenValidator.On("ValidateActorToken", mock.Anything, actorToken, suite.oauthApp).
 				Return(nil, tc.validationErr)
 
 			result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
@@ -1413,7 +1545,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ActorTokenIDTok
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub: testUserID, Iss: testCustomIssuer, Scopes: []string{"read"},
 		}, nil).Maybe()
-	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, actorToken, suite.oauthApp).
+	suite.mockTokenValidator.On("ValidateActorToken", mock.Anything, actorToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub: "svc123", Iss: testCustomIssuer,
 		}, nil).Maybe()
@@ -1789,7 +1921,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestRFC8693_ActorDelegationChai
 				"iss": "https://previous-issuer.com",
 			},
 		}, nil)
-	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, actorToken, suite.oauthApp).
+	suite.mockTokenValidator.On("ValidateActorToken", mock.Anything, actorToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            "current-actor",
 			Iss:            testCustomIssuer,
@@ -1869,7 +2001,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_Success_WithAct
 			UserAttributes: map[string]interface{}{},
 			NestedAct:      nil,
 		}, nil)
-	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, actorToken, suite.oauthApp).
+	suite.mockTokenValidator.On("ValidateActorToken", mock.Anything, actorToken, suite.oauthApp).
 		Return(&tokenservice.SubjectTokenClaims{
 			Sub:            "current-actor",
 			Iss:            testCustomIssuer,

@@ -79,6 +79,30 @@ func (suite *AuthAssertExecutorTestSuite) TestCheckAssurance_MaxAgeFreshAuth() {
 	assert.Nil(suite.T(), suite.executor.checkAssurance(ctx, suite.executor.logger))
 }
 
+// TestCheckAssurance_MaxAgeZeroFreshAuthSatisfied covers max_age=0 answered by an authentication
+// that just completed. The SSO-Check node and the authorize endpoint reject max_age=0 outright,
+// because both decide whether to reuse an existing authentication and zero admits none. This node
+// asks a different question — is the authentication being asserted fresh enough — and a
+// just-completed one is, so it must not be rejected. Otherwise max_age=0 would be unsatisfiable
+// even immediately after the re-authentication it triggered.
+func (suite *AuthAssertExecutorTestSuite) TestCheckAssurance_MaxAgeZeroFreshAuthSatisfied() {
+	ctx := assuranceCtx(map[string]string{common.RuntimeKeyMaxAge: "0"})
+	assert.Nil(suite.T(), suite.executor.checkAssurance(ctx, suite.executor.logger),
+		"a freshly completed authentication must satisfy max_age=0")
+}
+
+// TestCheckAssurance_MaxAgeZeroStaleSessionRejected is the counterpart: a reused session carrying
+// an older auth_time does not satisfy max_age=0, so the assertion is refused.
+func (suite *AuthAssertExecutorTestSuite) TestCheckAssurance_MaxAgeZeroStaleSessionRejected() {
+	ctx := assuranceCtx(map[string]string{
+		common.RuntimeKeyMaxAge:   "0",
+		common.RuntimeKeyAuthTime: strconv.FormatInt(time.Now().UTC().Unix()-60, 10),
+	})
+	svcErr := suite.executor.checkAssurance(ctx, suite.executor.logger)
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), ErrInteractionRequired.Code, svcErr.Code)
+}
+
 func (suite *AuthAssertExecutorTestSuite) TestCheckAssurance_MaxAgeMalformedIgnored() {
 	ctx := assuranceCtx(map[string]string{common.RuntimeKeyMaxAge: "not-a-number"})
 	assert.Nil(suite.T(), suite.executor.checkAssurance(ctx, suite.executor.logger))

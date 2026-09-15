@@ -28,7 +28,8 @@ func NodeUpgradeHint() string {
 func DetectNodeVersion() (string, error) {
 	out, err := exec.Command("node", "--version").Output()
 	if err != nil {
-		return "", fmt.Errorf("node.js not found — v%s or later is required to run sample apps; install it from https://nodejs.org/en/download", MinNodeVersion)
+		return "", fmt.Errorf("node.js not found — v%s or later is required to run sample apps; install it from "+
+			"https://nodejs.org/en/download", MinNodeVersion)
 	}
 	return strings.TrimPrefix(strings.TrimSpace(string(out)), "v"), nil
 }

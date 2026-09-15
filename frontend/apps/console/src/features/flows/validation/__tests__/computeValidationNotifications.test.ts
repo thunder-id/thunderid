@@ -196,6 +196,38 @@ describe('computeValidationNotifications', () => {
 
       expect(result.has('sms-1_REQUIRED_FIELD_ERROR')).toBe(true);
     });
+
+    it('should flag an OpenID4VP executor with no presentation definition', () => {
+      const nodes = [
+        createNode({
+          id: 'vp-1',
+          data: {
+            action: {executor: {name: 'OpenID4VPVerifyExecutor'}},
+            properties: {presentation_definition_id: ''},
+          } as unknown as StepData,
+        }),
+      ];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      expect(result.has('vp-1_REQUIRED_FIELD_ERROR')).toBe(true);
+    });
+
+    it('should not flag an OpenID4VP executor with a presentation definition', () => {
+      const nodes = [
+        createNode({
+          id: 'vp-2',
+          data: {
+            action: {executor: {name: 'OpenID4VPVerifyExecutor'}},
+            properties: {presentation_definition_id: 'eudi-pid'},
+          } as unknown as StepData,
+        }),
+      ];
+
+      const result = computeValidationNotifications(nodes, VALIDATION_RULES, t);
+
+      expect(result.has('vp-2_REQUIRED_FIELD_ERROR')).toBe(false);
+    });
   });
 
   describe('Multiple element types', () => {

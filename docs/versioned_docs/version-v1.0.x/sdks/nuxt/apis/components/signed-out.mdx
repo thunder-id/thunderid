@@ -1,12 +1,12 @@
 ---
-title: <ThunderIDSignedOut />
+title: <SignedOut />
 docType: reference
 description: Conditionally render template content only when no user is currently signed in to the application.
 ---
 
-# `<ThunderIDSignedOut />`
+# `<SignedOut />`
 
-The `ThunderIDSignedOut` component renders its default slot only when the user is **not** authenticated. It is auto-registered by the Nuxt module.
+The `SignedOut` component renders its default slot only when the user is **not** authenticated. It is auto-registered by the Nuxt module.
 
 ## Usage
 
@@ -14,9 +14,9 @@ The `ThunderIDSignedOut` component renders its default slot only when the user i
 
 ```vue title="pages/index.vue" showLineNumbers
 <template>
-  <ThunderIDSignedOut>
-    <ThunderIDSignInButton />
-  </ThunderIDSignedOut>
+  <SignedOut>
+    <SignInButton />
+  </SignedOut>
 </template>
 ```
 
@@ -26,12 +26,12 @@ Use the `fallback` slot to show content when the user is signed in:
 
 ```vue title="components/NavBar.vue" showLineNumbers
 <template>
-  <ThunderIDSignedOut>
-    <ThunderIDSignInButton />
+  <SignedOut>
+    <SignInButton />
     <template #fallback>
-      <ThunderIDUserDropdown />
+      <UserDropdown />
     </template>
-  </ThunderIDSignedOut>
+  </SignedOut>
 </template>
 ```
 

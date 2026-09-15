@@ -5,7 +5,8 @@
   "description": "Fully customizable application with all configuration options available",
   "creationFlow": {
     "steps": ["ORGANIZATION_UNIT", "DETAILS", "COMPLETE"],
-    "previewSteps": []
+    "previewSteps": [],
+    "allowsUserLogins": false
   },
   "defaults": {
     "name": "My Application",

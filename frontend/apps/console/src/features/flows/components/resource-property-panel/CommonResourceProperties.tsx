@@ -69,6 +69,7 @@ const TOP_LEVEL_EDITABLE_PROPS = [
   'required',
   'src',
   'alt',
+  'source',
   'width',
   'height',
   'startIcon',

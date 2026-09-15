@@ -1,11 +1,11 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {getErrorMessage} from '@thunderid/utils';
 import {Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button, Alert} from '@wso2/oxygen-ui';
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import useDeleteApplication from '../api/useDeleteApplication';
+import getApplicationErrorMessage from '../utils/getApplicationErrorMessage';
 
 export interface ApplicationDeleteDialogProps {
   /**
@@ -56,7 +56,7 @@ export default function ApplicationDeleteDialog({
         onSuccess?.();
       },
       onError: (err: Error) => {
-        setError(getErrorMessage(err, t, 'delete.error', 'Failed to delete application. Please try again.'));
+        setError(getApplicationErrorMessage(err, t, 'delete.error', 'Failed to delete application. Please try again.'));
       },
     });
   };

@@ -140,6 +140,12 @@ const translations = {
     'errors.FET-1024': 'A user with these details already exists in the selected organization unit.',
     'errors.FET-1061': 'A user already exists with the provided {{attribute}}.',
     'errors.FET-1080': 'A user with the same unique attribute value already exists.',
+    'errors.FET-1084': 'This user cannot be deleted in their current state.',
+    'errors.FET-1085': 'The user could not be deleted. Please try again.',
+    'errors.FET-1086': 'This application cannot be deleted in its current state.',
+    'errors.FET-1087': 'The application could not be deleted. Please try again.',
+    'errors.FET-1088': 'This application authenticates without a client secret, so there is none to regenerate.',
+    'errors.FET-1089': 'The client secret could not be regenerated. Please try again.',
 
     // External links
     learnMore: 'Learn more',
@@ -1121,6 +1127,7 @@ const translations = {
     'edit.page.errorTitle': 'Failed to load agent',
     'edit.page.notFound': 'Agent not found',
     'edit.page.back': 'Back to agents',
+    'edit.page.logoUpdate.label': 'Update Logo',
     'edit.page.description.empty': 'No description',
     'edit.page.description.placeholder': 'Add a description',
     'edit.page.tabs.overview': 'Overview',
@@ -1261,6 +1268,9 @@ const translations = {
       'This agent authenticates with its own credentials without user interaction, using Client Credentials.',
     'edit.advanced.mode.onBehalfOfUser.description':
       'This agent acts on behalf of a signed-in user, using Authorization Code with PKCE.',
+    'edit.advanced.agentSignIn.title': 'Agent Sign-In',
+    'edit.advanced.agentSignIn.description': 'Allow agents to sign in through this agent using the sign-in flow.',
+    'edit.advanced.agentSignIn.toggle.label': 'Enable Agent Sign-In',
     'edit.advanced.redirectUris.title': 'Authorized redirect URIs',
     'edit.advanced.redirectUris.description': 'For use with requests from a web server',
     'edit.advanced.redirectUris.empty': 'No redirect URIs configured.',
@@ -2843,6 +2853,11 @@ const translations = {
     // Access tab
     'edit.access.sections.userTypes.title': 'Allowed User Types',
     'edit.access.sections.userTypes.description': 'Choose which user types can sign up through this application.',
+    'edit.access.sections.agentSignIn.title': 'Agent Sign-In',
+    'edit.access.sections.agentSignIn.description':
+      'Allow agents to sign in to this application using the sign-in flow.',
+    'edit.access.agentSignIn.toggle.label': 'Enable Agent Sign-In',
+    'edit.access.agentSignIn.toggle.hint': 'When enabled, agents can sign in to this client using the sign-in flow.',
     'edit.access.sections.applicationAccess.title': 'Application Access',
     'edit.access.sections.applicationAccess.description': 'Configure where this application is accessed from.',
 
@@ -3123,12 +3138,17 @@ const translations = {
     'delete.success': 'Application deleted successfully.',
     'delete.error': 'Failed to delete application. Please try again.',
     'regenerateSecret.snackbar.success': 'Client secret regenerated successfully.',
+    'errors.APP-1001': 'This application no longer exists. It may have been deleted elsewhere.',
+    'errors.APP-1002': 'The application identifier is not valid.',
     'errors.APP-1012': 'One or more redirect URIs are not valid.',
     'errors.APP-1015': 'The certificate value is invalid. Check the JWKS content and try again.',
     'errors.APP-1016': 'The JWKS URL is not valid.',
     'errors.APP-1020': 'An application with this name already exists. Choose a different name.',
     'errors.APP-1030': 'This application is managed declaratively and cannot be edited or deleted.',
     'errors.APP-1035': 'One or more user attributes are not valid for the selected user types.',
+    'errors.APP-1047': 'A client secret is not applicable to this application: it authenticates without one.',
+    'errors.APP-1048':
+      'This application cannot be deleted because {{dependencies}} depend on it. Remove or reassign them first.',
     'errors.APP-1039':
       "The {{sourceFlowType}} references a different {{flowType}} than the one configured for this application. Update the {{sourceFlowType}} so it calls the same {{flowType}}, or change the application's {{flowType}} configuration.",
   },
@@ -3223,6 +3243,8 @@ const translations = {
     'configureExport.labels.resourceServers': 'Resource Servers',
     'configureExport.labels.roles': 'Roles',
     'configureExport.labels.groups': 'Groups',
+    'configureExport.labels.credentialConfigurations': 'Credential Configurations',
+    'configureExport.labels.presentationDefinitions': 'Presentation Definitions',
     'configureExport.fallback.unnamedApplication': 'Unnamed Application',
     'configureExport.fallback.unnamedProvider': 'Unnamed Provider',
     'configureExport.fallback.unnamedFlow': 'Unnamed Flow',
@@ -3591,6 +3613,9 @@ const translations = {
     'core.executions.consent.timeout.label': 'Consent Timeout (seconds)',
     'core.executions.consent.timeout.placeholder': '0',
     'core.executions.consent.timeout.hint': 'Time in seconds before the consent request expires. Use 0 for no timeout.',
+    'core.executions.consent.failOnDeny.label': 'Fail flow when user denies consent',
+    'core.executions.consent.failOnDeny.hint':
+      'When enabled, the flow fails if the user denies the consent prompt or lets it time out, even if all requested attributes and permissions are optional.',
 
     // Identifying executor modes
     'core.executions.identifying.mode.identify': 'Identify',
@@ -3805,6 +3830,7 @@ const translations = {
     'core.validation.fields.input.idpName': 'Identity provider name is required',
     'core.validation.fields.input.idpId': 'Connection is required',
     'core.validation.fields.input.senderId': 'Notification sender is required',
+    'core.validation.fields.input.presentationDefinitionId': 'Presentation definition is required',
     'core.validation.fields.input.label': 'Label is required',
     'core.validation.fields.input.ref': 'Attribute is required',
 
@@ -5006,6 +5032,7 @@ const translations = {
     'claims.name': 'Claim',
     'claims.nameHint':
       'The claim path to request from the wallet, and whether it must be disclosed (Mandatory) or may be withheld (Optional).',
+    'claims.errors.duplicate': 'This claim is already requested. Each claim can be listed only once.',
     'claims.requirement': 'Requirement',
     'claims.mandatory': 'Mandatory',
     'claims.optional': 'Optional',
@@ -5140,6 +5167,8 @@ const translations = {
     'claims.name': 'Attribute Name',
     'claims.displayName': 'Display Name',
     'claims.nameHint': 'Must match a user profile attribute name; the value is sourced from the user.',
+    'claims.errors.duplicate': 'This attribute is already added. Each attribute can be listed only once.',
+    'claims.errors.reserved': 'This name is reserved by the credential format and cannot be used as an attribute.',
 
     // Offer dialog
     'offer.title': 'Credential Offer',

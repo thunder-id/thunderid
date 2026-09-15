@@ -633,6 +633,17 @@ func (s *ServiceTestSuite) TestAuthenticateEntityByID_WrongCredentials() {
 	s.ErrorIs(err, ErrAuthenticationFailed)
 }
 
+func (s *ServiceTestSuite) TestAuthenticateEntityByID_VerifyError() {
+	storedCreds := testCredentialsJSON()
+	e := testEntity("auth-verify-err-1")
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: storedCreds}, nil)
+	s.hashService.On("Verify", []byte("password123"), mock.Anything).Return(false, s.testErr)
+
+	_, err := s.svc.AuthenticateEntityByID(s.ctx, e.ID, map[string]interface{}{"password": "password123"})
+	s.ErrorIs(err, ErrAuthenticationFailed)
+}
+
 func (s *ServiceTestSuite) TestAuthenticateEntity_DelegatesToByID() {
 	id := "delegate-1"
 	filters := map[string]interface{}{"username": "user1"}

@@ -183,6 +183,9 @@ export default function ApplicationCreatePage(): JSX.Element {
   // (e.g. beyond the pagination limit). Treated as additional existing names so the details step
   // flags them and blocks readiness until the name is edited, avoiding a resubmit-and-fail loop.
   const [rejectedAppNames, setRejectedAppNames] = useState<string[]>([]);
+  // The applications query is invalidated on success and can briefly return the new application
+  // while this wizard is still mounted for navigation.
+  const [isCreationSubmitted, setIsCreationSubmitted] = useState(false);
 
   const knownAppNames = useMemo(
     (): string[] => [...existingAppNames, ...rejectedAppNames],
@@ -390,6 +393,9 @@ export default function ApplicationCreatePage(): JSX.Element {
     (): boolean => creationFlow.steps.includes(ApplicationCreateFlowStep.SECURITY),
     [creationFlow],
   );
+  const allowsUserLogins =
+    (creationFlow.allowsUserLogins ?? true) &&
+    (!isMcpClientTemplate || mcpClientType === McpClientTypes.USER_DELEGATED);
 
   // Whether this template's flow ever presents a Design step at all. Templates without one (e.g.
   // machine-to-machine backends) have no theme/layout of their own, so inheriting the organization
@@ -587,6 +593,7 @@ export default function ApplicationCreatePage(): JSX.Element {
 
     const userTypes = userTypesData?.types ?? [];
     const allowedUserTypes = (() => {
+      if (!allowsUserLogins) return undefined;
       if (userTypes.length === 1) return [userTypes[0].name];
       if (userTypes.length > 1) return selectedUserTypes.length > 0 ? selectedUserTypes : undefined;
       return undefined;
@@ -658,6 +665,7 @@ export default function ApplicationCreatePage(): JSX.Element {
       }),
     };
 
+    setIsCreationSubmitted(true);
     createApplication.mutate(applicationData, {
       onSuccess: (createdApp: Application): void => {
         // CORS is a deployment-wide setting, not per-application, so origins entered on the
@@ -728,6 +736,7 @@ export default function ApplicationCreatePage(): JSX.Element {
         });
       },
       onError: (err: Error) => {
+        setIsCreationSubmitted(false);
         // The client-side pre-check can miss names beyond the fetched list; when the backend rejects
         // a name as a duplicate, record it so the details step flags it and stays un-ready until the
         // name is edited (preventing a resubmit-and-fail loop), then return there.
@@ -922,11 +931,12 @@ export default function ApplicationCreatePage(): JSX.Element {
             onOuDefaultsChange={setOuDefaults}
             hasSecurityStep={hasSecurityStep}
             hasDesignStep={hasDesignStep}
+            allowsUserLogins={allowsUserLogins}
             userTypes={userTypesData?.types ?? []}
             selectedUserTypes={selectedUserTypes}
             onUserTypesChange={handleUserTypesChange}
             onReadyChange={handleDetailsStepReadyChange}
-            existingAppNames={knownAppNames}
+            existingAppNames={isCreationSubmitted ? knownAppNames.filter((name) => name !== appName) : knownAppNames}
           />
         );
 

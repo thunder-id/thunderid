@@ -1,0 +1,59 @@
+# Per-package thresholds for the 🛡️ Backend Integration Patch Coverage check.
+#
+# The check measures how much of a pull request's changed backend production Go
+# was executed by the integration suite. This file decides the bar each package
+# has to clear, so packages with genuinely different testability are not all held
+# to one number.
+#
+# Resolution, per changed package. Applicable tags are the `tags` entries whose
+# name is a label on the pull request.
+#
+#   If any tag applies, the tag layer decides on its own:
+#     1. Tags that name the package win, highest value across them. Tag defaults
+#        are not considered at this point.
+#     2. Otherwise the highest `default` among the applicable tags applies.
+#
+#   The base layer is used only when no tag applies, or when the applicable tags
+#   neither name the package nor set a default:
+#     3. The `packages` entry below, longest matching prefix.
+#     4. Otherwise `default` below.
+#
+# In every package map the longest matching prefix wins, so a threshold on a
+# parent path is inherited by its subpackages.
+#
+# A package with fewer than `min_changed_lines` changed coverable lines is exempt.
+# Any non-exempt package below its threshold fails the check. A package path
+# listed anywhere here that does not exist also fails the check, so entries
+# cannot rot unnoticed through a refactor.
+
+# Per-package granularity shrinks denominators: without a floor, a package with
+# three changed coverable lines fails a 70% bar at two of three. Calibrate this
+# against real pull requests rather than treating it as settled.
+min_changed_lines: 10
+
+# Applies when nothing more specific does.
+default: 70
+
+# Applies regardless of labels, but only when the applicable tags say nothing
+# about the package. A tag that sets a `default` therefore overrides these, so an
+# exemption recorded here does not survive such a label.
+packages:
+  # The agent management provider is linked into the server binary but has no runtime consumer
+  # yet: the provisioning executor gains its agent branch in a follow-up change. Linking it keeps
+  # its lines reported as uncovered rather than silently dropped from the percentage, and this
+  # entry stops that expected 0% from failing the check.
+  # TODO: remove this entry once the provisioning executor consumes the provider.
+  backend/internal/agentmgtprovider: 0
+  # backend/internal/system/i18n: 0
+
+# Thresholds grouped by pull request label. A group applies only when the pull
+# request carries that label. A group may set values below `default`, which lowers
+# the bar for the packages it names.
+tags: {}
+  # security-critical:
+  #   default: 85
+  #   packages:
+  #     backend/internal/oauth: 90
+  # data-migration:
+  #   packages:
+  #     backend/internal/oauth: 80
