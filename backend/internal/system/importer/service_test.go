@@ -2498,6 +2498,42 @@ func TestImportResources_ApplicationTypePassedToService(t *testing.T) {
 	assert.Equal(t, model.ApplicationTypeBrowser, appSvc.created[0].Type)
 }
 
+func TestImportResources_ApplicationAttestationPassedToService(t *testing.T) {
+	appSvc := &fakeApplicationService{existing: map[string]*providers.Application{}}
+	svc := newImportService(
+		appSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: strings.Join([]string{
+			"resource_type: application",
+			"name: My Mobile App",
+			"type: mobile",
+			"attestation:",
+			"  devMode: true",
+			"  android:",
+			"    packageName: com.example.app",
+			"    certificateSha256Digests:",
+			"      - AA:BB:CC",
+			"    serviceAccountCredentials: '{\"type\":\"service_account\"}'",
+			"",
+		}, "\n"),
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, appSvc.created, 1)
+
+	attestation := appSvc.created[0].Attestation
+	require.NotNil(t, attestation)
+	assert.True(t, attestation.DevMode)
+	require.NotNil(t, attestation.Android)
+	assert.Equal(t, "com.example.app", attestation.Android.PackageName)
+	assert.Equal(t, []string{"AA:BB:CC"}, attestation.Android.CertificateSha256Digests)
+	assert.Equal(t, `{"type":"service_account"}`, attestation.Android.ServiceAccountCredentials)
+}
+
 func TestImportResources_ApplicationAuthFlowHandlePassedToService(t *testing.T) {
 	appSvc := &fakeApplicationService{existing: map[string]*providers.Application{}}
 	svc := newImportService(
