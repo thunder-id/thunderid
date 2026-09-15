@@ -50,7 +50,7 @@ import getTemplateMetadata from '../utils/getTemplateMetadata';
 import isValidRedirectUriFormat from '../utils/isValidRedirectUriFormat';
 import {hasUserAccess} from '../utils/oauth2Rules';
 
-interface McpTabConfig {
+interface TabConfig {
   key: string;
   label: string;
   panel: React.ReactNode;
@@ -106,7 +106,7 @@ export default function ApplicationEditPage() {
   const justCreatedSecret = (location.state as {justCreatedSecret?: JustCreatedSecret} | null)?.justCreatedSecret;
   const [secretDialogOpen, setSecretDialogOpen] = useState(Boolean(justCreatedSecret));
 
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTabKey, setActiveTabKey] = useState('overview');
   const [editedApp, setEditedApp] = useState<Partial<Application>>({});
   // Bumped on Save/Reset to force AccessSection/McpAccessSection/UrlsSection to remount with a
   // clean form — they keep local state (redirect URI list, react-hook-form defaults) that a
@@ -127,8 +127,11 @@ export default function ApplicationEditPage() {
     await navigate(RouteConfig.applications.list());
   };
 
-  const handleTabChange = (_event: SyntheticEvent, newValue: number) => {
-    setActiveTab(newValue);
+  const createTabChangeHandler = (tabs: TabConfig[]) => (_event: SyntheticEvent, newValue: number) => {
+    const tab = tabs[newValue];
+    if (tab) {
+      setActiveTabKey(tab.key);
+    }
   };
 
   const oauth2Constraints = useMemo(
@@ -285,7 +288,7 @@ export default function ApplicationEditPage() {
   const unsavedChangesMessage =
     validationIssues.length > 0 ? validationIssues.join(' ') : t('applications:edit.page.unsavedChanges');
 
-  const baseMcpTabs: McpTabConfig[] = isMcpClient
+  const baseMcpTabs: TabConfig[] = isMcpClient
     ? (
         [
           {
@@ -362,14 +365,14 @@ export default function ApplicationEditPage() {
               />
             ),
           },
-        ] satisfies McpTabConfig[]
+        ] satisfies TabConfig[]
       ).filter((tab) => !tab.hidden)
     : [];
 
   const mcpFlowsTabIndex = baseMcpTabs.findIndex((tab) => tab.key === 'flows');
   const mcpCustomizationTabIndex = baseMcpTabs.findIndex((tab) => tab.key === 'customization');
 
-  const mcpTabs: McpTabConfig[] = isMcpClient
+  const mcpTabs: TabConfig[] = isMcpClient
     ? [
         {
           key: 'overview',
@@ -378,10 +381,8 @@ export default function ApplicationEditPage() {
             <IntegrationGuides
               application={application}
               oauth2Config={oauth2Config}
-              onGoToFlows={mcpFlowsTabIndex >= 0 ? () => setActiveTab(mcpFlowsTabIndex + 1) : undefined}
-              onGoToCustomization={
-                mcpCustomizationTabIndex >= 0 ? () => setActiveTab(mcpCustomizationTabIndex + 1) : undefined
-              }
+              onGoToFlows={mcpFlowsTabIndex >= 0 ? () => setActiveTabKey('flows') : undefined}
+              onGoToCustomization={mcpCustomizationTabIndex >= 0 ? () => setActiveTabKey('customization') : undefined}
             />
           ),
         },
@@ -389,7 +390,117 @@ export default function ApplicationEditPage() {
       ]
     : [];
 
-  const safeActiveTab = mcpTabs.length > 0 ? Math.min(activeTab, mcpTabs.length - 1) : 0;
+  const standardTabs: TabConfig[] = !isMcpClient
+    ? [
+        {
+          key: 'overview',
+          label: t('applications:edit.page.tabs.overview'),
+          panel: (
+            <IntegrationGuides
+              application={application}
+              oauth2Config={oauth2Config}
+              onGoToFlows={() => setActiveTabKey('flows')}
+              onGoToCustomization={() => setActiveTabKey('customization')}
+            />
+          ),
+        },
+        {
+          key: 'access',
+          label: t('applications:edit.page.tabs.access', 'Access'),
+          panel: (
+            <EditAccessSettings
+              application={application}
+              editedApp={editedApp}
+              onFieldChange={handleFieldChange}
+              onValidationChange={setAccessSettingsInvalid}
+              showUserAccessConfig={userAccessUnlocked}
+              sectionResetKey={sectionResetKey}
+            />
+          ),
+        },
+        {
+          key: 'credentials',
+          label: t('applications:edit.page.tabs.credentials', 'Credentials'),
+          panel: (
+            <EditCredentialsSettings
+              application={application}
+              editedApp={editedApp}
+              oauth2Config={oauth2Config}
+              onFieldChange={handleFieldChange}
+              showAttestation={supportsAttestation}
+              onValidationChange={setCredentialsSettingsInvalid}
+            />
+          ),
+        },
+        {
+          key: 'flows',
+          label: t('applications:edit.page.tabs.flows'),
+          panel: (
+            <SettingsLockNotice isUnlocked={userAccessUnlocked} message={userAccessLockMessage}>
+              <EditFlowsSettings
+                application={userGatedApplication}
+                editedApp={editedApp}
+                onFieldChange={handleFieldChange}
+              />
+            </SettingsLockNotice>
+          ),
+        },
+        {
+          key: 'customization',
+          label: t('applications:edit.page.tabs.customization'),
+          panel: (
+            <SettingsLockNotice isUnlocked={userAccessUnlocked} message={userAccessLockMessage}>
+              <EditCustomizationSettings
+                application={userGatedApplication}
+                editedApp={editedApp}
+                onFieldChange={handleFieldChange}
+                onValidationChange={setCustomizationSettingsInvalid}
+                sectionResetKey={sectionResetKey}
+              />
+            </SettingsLockNotice>
+          ),
+        },
+        {
+          key: 'token',
+          label: t('applications:edit.page.tabs.token'),
+          panel: (
+            <EditTokenSettingsTabs
+              sectionResetKey={sectionResetKey}
+              application={application}
+              editedApp={editedApp}
+              oauth2Config={oauth2Config}
+              onFieldChange={handleFieldChange}
+              onValidationChange={setHasValidationErrors}
+            />
+          ),
+        },
+        {
+          key: 'advanced',
+          label: t('applications:edit.page.tabs.advanced'),
+          panel: (
+            <EditAdvancedSettings
+              application={application}
+              editedApp={editedApp}
+              oauth2Config={oauth2Config}
+              oauth2Constraints={oauth2Constraints}
+              onFieldChange={handleFieldChange}
+              showRedirectUris={userAccessUnlocked}
+              sectionResetKey={sectionResetKey}
+              onValidationChange={setAdvancedSettingsInvalid}
+              onDeleteSuccess={() => {
+                handleBack().catch(() => null);
+              }}
+            />
+          ),
+        },
+      ]
+    : [];
+
+  const activeTabs = isMcpClient ? mcpTabs : standardTabs;
+  const activeTabIndex = Math.max(
+    0,
+    activeTabs.findIndex((tab) => tab.key === activeTabKey),
+  );
 
   return (
     <PageContent>
@@ -550,169 +661,27 @@ export default function ApplicationEditPage() {
         </PageTitle.SubHeader>
       </PageTitle>
 
-      {isMcpClient ? (
-        <>
-          {/* MCP Tabs */}
-          <Tabs value={safeActiveTab} onChange={handleTabChange} aria-label="application settings tabs">
-            {mcpTabs.map((tab, index) => (
-              <Tab
-                key={tab.key}
-                label={tab.label}
-                id={`edit-tab-${index}`}
-                aria-controls={`edit-tabpanel-${index}`}
-                sx={{textTransform: 'none'}}
-              />
-            ))}
-          </Tabs>
+      {/* Tabs */}
+      <Tabs value={activeTabIndex} onChange={createTabChangeHandler(activeTabs)} aria-label="application settings tabs">
+        {activeTabs.map((tab, index) => (
+          <Tab
+            key={tab.key}
+            label={tab.label}
+            id={`edit-tab-${index}`}
+            aria-controls={`edit-tabpanel-${index}`}
+            sx={{textTransform: 'none'}}
+          />
+        ))}
+      </Tabs>
 
-          {/* MCP Tab Panels */}
-          <>
-            {mcpTabs.map((tab, index) => (
-              <TabPanel key={tab.key} value={safeActiveTab} index={index}>
-                {tab.panel}
-              </TabPanel>
-            ))}
-          </>
-        </>
-      ) : (
-        <>
-          {/* Tabs */}
-          <Tabs value={activeTab} onChange={handleTabChange} aria-label="application settings tabs">
-            <Tab
-              label={t('applications:edit.page.tabs.overview')}
-              id="edit-tab-0"
-              aria-controls="edit-tabpanel-0"
-              sx={{textTransform: 'none'}}
-            />
-            <Tab
-              label={t('applications:edit.page.tabs.access', 'Access')}
-              id="edit-tab-1"
-              aria-controls="edit-tabpanel-1"
-              sx={{textTransform: 'none'}}
-            />
-            <Tab
-              label={t('applications:edit.page.tabs.credentials', 'Credentials')}
-              id="edit-tab-2"
-              aria-controls="edit-tabpanel-2"
-              sx={{textTransform: 'none'}}
-            />
-            <Tab
-              label={t('applications:edit.page.tabs.flows')}
-              id="edit-tab-3"
-              aria-controls="edit-tabpanel-3"
-              sx={{textTransform: 'none'}}
-            />
-            <Tab
-              label={t('applications:edit.page.tabs.customization')}
-              id="edit-tab-4"
-              aria-controls="edit-tabpanel-4"
-              sx={{textTransform: 'none'}}
-            />
-            <Tab
-              label={t('applications:edit.page.tabs.token')}
-              id="edit-tab-5"
-              aria-controls="edit-tabpanel-5"
-              sx={{textTransform: 'none'}}
-            />
-            <Tab
-              label={t('applications:edit.page.tabs.advanced')}
-              id="edit-tab-6"
-              aria-controls="edit-tabpanel-6"
-              sx={{textTransform: 'none'}}
-            />
-          </Tabs>
-
-          {/* Tab Panels */}
-          <>
-            {/* Overview Tab */}
-            <TabPanel value={activeTab} index={0}>
-              <IntegrationGuides
-                application={application}
-                oauth2Config={oauth2Config}
-                onGoToFlows={() => setActiveTab(3)}
-                onGoToCustomization={() => setActiveTab(4)}
-              />
-            </TabPanel>
-
-            {/* Access Tab */}
-            <TabPanel value={activeTab} index={1}>
-              <EditAccessSettings
-                application={application}
-                editedApp={editedApp}
-                onFieldChange={handleFieldChange}
-                onValidationChange={setAccessSettingsInvalid}
-                showUserAccessConfig={userAccessUnlocked}
-                sectionResetKey={sectionResetKey}
-              />
-            </TabPanel>
-
-            {/* Credentials Tab */}
-            <TabPanel value={activeTab} index={2}>
-              <EditCredentialsSettings
-                application={application}
-                editedApp={editedApp}
-                oauth2Config={oauth2Config}
-                onFieldChange={handleFieldChange}
-                showAttestation={supportsAttestation}
-                onValidationChange={setCredentialsSettingsInvalid}
-              />
-            </TabPanel>
-
-            {/* Flows Tab */}
-            <TabPanel value={activeTab} index={3}>
-              <SettingsLockNotice isUnlocked={userAccessUnlocked} message={userAccessLockMessage}>
-                <EditFlowsSettings
-                  application={userGatedApplication}
-                  editedApp={editedApp}
-                  onFieldChange={handleFieldChange}
-                />
-              </SettingsLockNotice>
-            </TabPanel>
-
-            {/* Customization Tab */}
-            <TabPanel value={activeTab} index={4}>
-              <SettingsLockNotice isUnlocked={userAccessUnlocked} message={userAccessLockMessage}>
-                <EditCustomizationSettings
-                  application={userGatedApplication}
-                  editedApp={editedApp}
-                  onFieldChange={handleFieldChange}
-                  onValidationChange={setCustomizationSettingsInvalid}
-                  sectionResetKey={sectionResetKey}
-                />
-              </SettingsLockNotice>
-            </TabPanel>
-
-            {/* Token Tab */}
-            <TabPanel value={activeTab} index={5}>
-              <EditTokenSettingsTabs
-                sectionResetKey={sectionResetKey}
-                application={application}
-                editedApp={editedApp}
-                oauth2Config={oauth2Config}
-                onFieldChange={handleFieldChange}
-                onValidationChange={setHasValidationErrors}
-              />
-            </TabPanel>
-
-            {/* Advanced Tab */}
-            <TabPanel value={activeTab} index={6}>
-              <EditAdvancedSettings
-                application={application}
-                editedApp={editedApp}
-                oauth2Config={oauth2Config}
-                oauth2Constraints={oauth2Constraints}
-                onFieldChange={handleFieldChange}
-                showRedirectUris={userAccessUnlocked}
-                sectionResetKey={sectionResetKey}
-                onValidationChange={setAdvancedSettingsInvalid}
-                onDeleteSuccess={() => {
-                  handleBack().catch(() => null);
-                }}
-              />
-            </TabPanel>
-          </>
-        </>
-      )}
+      {/* Tab Panels */}
+      <>
+        {activeTabs.map((tab, index) => (
+          <TabPanel key={tab.key} value={activeTabIndex} index={index}>
+            {tab.panel}
+          </TabPanel>
+        ))}
+      </>
 
       {/* Floating Action Bar */}
       {hasChanges && (

@@ -49,20 +49,13 @@ var (
 			DefaultValue: "The specified resolve type is not yet supported. Currently only 'APP' type is supported",
 		},
 	}
-	// ErrorApplicationNotFound is the error returned when an application is not found.
-	ErrorApplicationNotFound = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "DSR-1004",
-		Error: tidcommon.I18nMessage{
-			Key:          "design.resolve.error.app_not_found",
-			DefaultValue: "Application not found",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "design.resolve.error.app_not_found_description",
-			DefaultValue: "The application with the specified id does not exist",
-		},
-	}
-	// ErrorApplicationHasNoDesign is the error returned when an application has no associated design.
+	// DSR-1004 ("Application not found") is retired and must not be reused. It shipped in v1.0.x, so
+	// reassigning the code would change the meaning of a response clients may already match on.
+	//
+	// ErrorApplicationHasNoDesign is the error returned when no design can be resolved for the given
+	// application, whether because it has none configured or because it does not exist. The resolve
+	// endpoint is unauthenticated, so it deliberately does not distinguish the two: a caller able to
+	// tell them apart could confirm which application IDs exist.
 	ErrorApplicationHasNoDesign = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "DSR-1005",

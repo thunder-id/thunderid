@@ -62,7 +62,7 @@ func newI18nService(store i18nStoreInterface) I18nServiceInterface {
 // ListLanguages retrieves all locale codes that have translations in the system.
 // The default locale is always included in the response, even if it has no translations in the DB.
 func (s *i18nService) ListLanguages(ctx context.Context) ([]string, *tidcommon.ServiceError) {
-	localeCodes, err := s.store.GetDistinctLanguages()
+	localeCodes, err := s.store.GetDistinctLanguages(ctx)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to get locales from store", log.Error(err))
 		return nil, &tidcommon.InternalServerError
@@ -92,7 +92,7 @@ func (s *i18nService) ResolveTranslationsForKey(ctx context.Context,
 		return nil, err
 	}
 
-	trans, err := s.store.GetTranslationsByKey(key, namespace)
+	trans, err := s.store.GetTranslationsByKey(ctx, key, namespace)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to get translation from store", log.Error(err))
 		return nil, &tidcommon.InternalServerError
@@ -151,7 +151,7 @@ func (s *i18nService) SetTranslationOverrideForKey(ctx context.Context,
 	}
 
 	// Use upsert to create or update
-	if err := s.store.UpsertTranslation(trans); err != nil {
+	if err := s.store.UpsertTranslation(ctx, trans); err != nil {
 		s.logger.Error(ctx, "Failed to set translation override", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
@@ -218,7 +218,7 @@ func (s *i18nService) ClearTranslationOverrideForKey(ctx context.Context,
 		return err
 	}
 
-	if err := s.store.DeleteTranslation(language, key, namespace); err != nil {
+	if err := s.store.DeleteTranslation(ctx, language, key, namespace); err != nil {
 		s.logger.Error(ctx, "Failed to clear translation override", log.Error(err))
 		return &tidcommon.InternalServerError
 	}
@@ -249,13 +249,13 @@ func (s *i18nService) ResolveTranslations(ctx context.Context,
 
 	if namespace == "" {
 		// Get all namespaces
-		allTranslations, err = s.store.GetTranslations()
+		allTranslations, err = s.store.GetTranslations(ctx)
 		if err != nil {
 			s.logger.Error(ctx, "Failed to get translations from store", log.Error(err))
 			return nil, &tidcommon.InternalServerError
 		}
 	} else {
-		allTranslations, err = s.store.GetTranslationsByNamespace(namespace)
+		allTranslations, err = s.store.GetTranslationsByNamespace(ctx, namespace)
 		if err != nil {
 			s.logger.Error(ctx, "Failed to get translations from store", log.Error(err))
 			return nil, &tidcommon.InternalServerError
@@ -346,7 +346,7 @@ func (s *i18nService) SetTranslationOverrides(ctx context.Context,
 		}
 	}
 
-	if err := s.store.UpsertTranslationsByLanguage(language, flattenedTranslations); err != nil {
+	if err := s.store.UpsertTranslationsByLanguage(ctx, language, flattenedTranslations); err != nil {
 		s.logger.Error(ctx, "Failed to upsert translations", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
@@ -371,7 +371,7 @@ func (s *i18nService) ClearTranslationOverrides(ctx context.Context, language st
 		return &ErrorInvalidLanguage
 	}
 
-	if err := s.clearAllOverrides(language); err != nil {
+	if err := s.clearAllOverrides(ctx, language); err != nil {
 		s.logger.Error(ctx, "Failed to clear overrides", log.Error(err))
 		return &tidcommon.InternalServerError
 	}
@@ -417,7 +417,7 @@ func (s *i18nService) GetTranslationsByNamespace(ctx context.Context,
 	if !ValidateNamespace(namespace) {
 		return nil, &ErrorInvalidNamespace
 	}
-	byNs, err := s.store.GetTranslationsByNamespace(namespace)
+	byNs, err := s.store.GetTranslationsByNamespace(ctx, namespace)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to get translations by namespace", log.Error(err))
 		return nil, &tidcommon.InternalServerError
@@ -440,8 +440,8 @@ func (s *i18nService) GetTranslationsByNamespace(ctx context.Context,
 	return result, nil
 }
 
-func (s *i18nService) clearAllOverrides(language string) error {
-	err := s.store.DeleteTranslationsByLanguage(language)
+func (s *i18nService) clearAllOverrides(ctx context.Context, language string) error {
+	err := s.store.DeleteTranslationsByLanguage(ctx, language)
 	if err != nil {
 		return err
 	}

@@ -1,12 +1,12 @@
 ---
-title: <ThunderIDSignOutButton />
+title: <SignOutButton />
 docType: reference
 description: Sign out the current user, clear their session, and redirect to the configured post-logout URL.
 ---
 
-# `<ThunderIDSignOutButton />`
+# `<SignOutButton />`
 
-The `ThunderIDSignOutButton` component signs out the current user when clicked. It is auto-registered by the Nuxt module and requires no imports.
+The `SignOutButton` component signs out the current user when clicked. It is auto-registered by the Nuxt module and requires no imports.
 
 ## Usage
 
@@ -14,7 +14,7 @@ The `ThunderIDSignOutButton` component signs out the current user when clicked. 
 
 ```vue title="components/NavBar.vue" showLineNumbers
 <template>
-  <ThunderIDSignOutButton />
+  <SignOutButton />
 </template>
 ```
 
@@ -22,7 +22,7 @@ The `ThunderIDSignOutButton` component signs out the current user when clicked. 
 
 ```vue title="components/NavBar.vue" showLineNumbers
 <template>
-  <ThunderIDSignOutButton>Log out</ThunderIDSignOutButton>
+  <SignOutButton>Log out</SignOutButton>
 </template>
 ```
 
@@ -30,13 +30,13 @@ The `ThunderIDSignOutButton` component signs out the current user when clicked. 
 
 ```vue title="components/NavBar.vue" showLineNumbers
 <template>
-  <ThunderIDSignOutButton>
+  <SignOutButton>
     <template #default="{ signOut, isLoading }">
       <button :disabled="isLoading" @click="signOut">
         {{ isLoading ? 'Signing out...' : 'Sign Out' }}
       </button>
     </template>
-  </ThunderIDSignOutButton>
+  </SignOutButton>
 </template>
 ```
 

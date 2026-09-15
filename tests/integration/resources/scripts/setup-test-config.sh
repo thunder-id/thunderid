@@ -6,6 +6,13 @@ cat > tests/integration/resources/deployment.yaml <<EOF
 server:
   hostname: localhost
   port: 8095
+  security:
+    # Shortened from the 60s default so revocation-enforcement tests (which check a token
+    # immediately after revoking it) don't need a long sleep to observe the deny-list cache pick
+    # up the revocation. Introspection (RFC 7009 hot path) is unaffected — it reads the store
+    # directly rather than through this periodic cache.
+    token_revocation:
+      sync_interval_seconds: 2
 
 
 tls:

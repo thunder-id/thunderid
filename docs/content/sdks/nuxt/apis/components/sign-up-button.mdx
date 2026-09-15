@@ -1,12 +1,12 @@
 ---
-title: <ThunderIDSignUpButton />
+title: <SignUpButton />
 docType: reference
 description: Trigger the sign-up registration flow from a pre-styled button component in Nuxt applications.
 ---
 
-# `<ThunderIDSignUpButton />`
+# `<SignUpButton />`
 
-The `ThunderIDSignUpButton` component initiates the sign-up flow when clicked. It is auto-registered by the Nuxt module and requires no imports.
+The `SignUpButton` component initiates the sign-up flow when clicked. It is auto-registered by the Nuxt module and requires no imports.
 
 ## Usage
 
@@ -14,7 +14,7 @@ The `ThunderIDSignUpButton` component initiates the sign-up flow when clicked. I
 
 ```vue title="pages/index.vue" showLineNumbers
 <template>
-  <ThunderIDSignUpButton />
+  <SignUpButton />
 </template>
 ```
 
@@ -22,7 +22,7 @@ The `ThunderIDSignUpButton` component initiates the sign-up flow when clicked. I
 
 ```vue title="pages/index.vue" showLineNumbers
 <template>
-  <ThunderIDSignUpButton>Create an account</ThunderIDSignUpButton>
+  <SignUpButton>Create an account</SignUpButton>
 </template>
 ```
 
@@ -30,13 +30,13 @@ The `ThunderIDSignUpButton` component initiates the sign-up flow when clicked. I
 
 ```vue title="pages/index.vue" showLineNumbers
 <template>
-  <ThunderIDSignUpButton>
+  <SignUpButton>
     <template #default="{ signUp, isLoading }">
       <button :disabled="isLoading" @click="signUp">
         {{ isLoading ? 'Redirecting...' : 'Get Started' }}
       </button>
     </template>
-  </ThunderIDSignUpButton>
+  </SignUpButton>
 </template>
 ```
 

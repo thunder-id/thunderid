@@ -777,6 +777,206 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowRetryAfterInvalidOTP() {
 	ts.Require().Nil(successFlowStep.Error, "No error on success")
 }
 
+// buildOTPPropertiesFlow builds a mobile-number based OTP flow whose generate node carries the given
+// properties, so the OTP configuration options can be exercised one at a time.
+func buildOTPPropertiesFlow(name, handle string, otpProperties map[string]interface{}) testutils.Flow {
+	return testutils.Flow{
+		Name:     name,
+		FlowType: "AUTHENTICATION",
+		Handle:   handle,
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "prompt_mobile"},
+			{
+				"id":   "prompt_mobile",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": []map[string]interface{}{
+							{"ref": "input_001", "identifier": "mobile_number", "type": "PHONE_INPUT", "required": true},
+						},
+						"action": map[string]interface{}{"ref": "action_001", "nextNode": "generate_otp"},
+					},
+				},
+			},
+			{
+				"id":         "generate_otp",
+				"type":       "TASK_EXECUTION",
+				"properties": otpProperties,
+				"executor": map[string]interface{}{
+					"name": "OTPExecutor",
+					"mode": "generate",
+					"inputs": []map[string]interface{}{
+						{"ref": "input_mobile", "identifier": "mobile_number", "type": "PHONE_INPUT", "required": true},
+					},
+				},
+				"onSuccess": "sms_send",
+			},
+			{
+				"id":         "sms_send",
+				"type":       "TASK_EXECUTION",
+				"properties": map[string]interface{}{"senderId": smsAuthTestSenderID, "smsTemplate": "OTP"},
+				"executor":   map[string]interface{}{"name": "SMSExecutor"},
+				"onSuccess":  "prompt_otp",
+			},
+			{
+				"id":   "prompt_otp",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": []map[string]interface{}{
+							{"ref": "input_002", "identifier": "otp", "type": "OTP_INPUT", "required": true},
+						},
+						"action": map[string]interface{}{"ref": "action_002", "nextNode": "verify_otp"},
+					},
+				},
+			},
+			{
+				"id":        "verify_otp",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "OTPExecutor", "mode": "verify"},
+				"onSuccess": "auth_assert",
+			},
+			{
+				"id":        "auth_assert",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
+}
+
+// useOTPPropertiesFlow creates a flow with the given OTP properties, points the test application at
+// it, and restores the default mobile flow when the test ends. The restore matters because the suite
+// shares one application and testify runs its tests in alphabetical order.
+func (ts *SMSAuthFlowTestSuite) useOTPPropertiesFlow(
+	handle string, otpProperties map[string]interface{},
+) {
+	flowID, err := testutils.CreateFlow(buildOTPPropertiesFlow("OTP Properties "+handle, handle, otpProperties))
+	ts.Require().NoError(err, "Failed to create OTP properties flow %s", handle)
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, flowID)
+
+	ts.Require().NoError(common.UpdateAppConfig(smsAuthTestAppID, flowID, ""),
+		"Failed to point the application at flow %s", handle)
+
+	ts.T().Cleanup(func() {
+		if err := common.UpdateAppConfig(smsAuthTestAppID, smsAuthFlowMobileID, ""); err != nil {
+			ts.T().Errorf("Failed to restore the default mobile OTP flow, later tests would run against "+
+				"the wrong flow: %v", err)
+		}
+	})
+}
+
+// sendOTPAndCaptureMessage drives the flow to the OTP prompt and returns that step along with the
+// message the mock notification server received.
+func (ts *SMSAuthFlowTestSuite) sendOTPAndCaptureMessage() (*common.FlowStep, *testutils.SMSMessage) {
+	var userAttrs map[string]interface{}
+	ts.Require().NoError(json.Unmarshal(testUserWithMobile.Attributes, &userAttrs),
+		"Failed to unmarshal user attributes")
+
+	ts.mockServer.ClearMessages()
+
+	flowStep, err := common.InitiateAuthenticationFlow(smsAuthTestAppID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate authentication flow")
+
+	otpStep, err := common.CompleteFlow(flowStep.ExecutionID,
+		map[string]string{"mobile_number": userAttrs["mobile_number"].(string)},
+		"action_001", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the mobile number")
+	ts.Require().Equal("INCOMPLETE", otpStep.FlowStatus, "Expected flow status to be INCOMPLETE")
+
+	// GetLastMessage removes what it returns, so poll for the first arrival rather than sleeping a
+	// fixed amount and hoping the send has landed.
+	var message *testutils.SMSMessage
+	for i := 0; i < 20 && message == nil; i++ {
+		if received := ts.mockServer.GetLastMessage(); received != nil {
+			message = received
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	ts.Require().NotNil(message, "An SMS should have been sent")
+	ts.Require().NotEmpty(message.OTP, "An OTP should be present in the message")
+
+	return otpStep, message
+}
+
+// TestSMSAuthFlowMaxAttemptsExceeded confirms the configured attempt limit ends the flow rather than
+// re-prompting indefinitely.
+func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowMaxAttemptsExceeded() {
+	ts.useOTPPropertiesFlow("auth_flow_sms_max_attempts_test", map[string]interface{}{"maxAttempts": 2})
+
+	otpStep, _ := ts.sendOTPAndCaptureMessage()
+
+	// First wrong attempt, which should still be retryable.
+	step, err := common.CompleteFlow(otpStep.ExecutionID, map[string]string{"otp": "000000"},
+		"action_002", otpStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the first invalid OTP")
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "The first invalid OTP should be retryable")
+
+	// Second wrong attempt reaches the configured limit.
+	finalStep, err := common.CompleteFlow(otpStep.ExecutionID, map[string]string{"otp": "111111"},
+		"action_002", step.ChallengeToken)
+	ts.Require().NoError(err,
+		"Exhausting the attempts should be reported in band, not as a failed request")
+	ts.Require().NotEqual("COMPLETE", finalStep.FlowStatus,
+		"Exceeding the attempt limit must not authenticate")
+	ts.Require().NotNil(finalStep.Error, "Exceeding the attempt limit should report an error")
+}
+
+// TestSMSAuthFlowNumericOnlyOTP confirms the OTP character set and length options are applied to the
+// generated code.
+func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowNumericOnlyOTP() {
+	ts.useOTPPropertiesFlow("auth_flow_sms_numeric_otp_test", map[string]interface{}{
+		"otpLength":         6,
+		"otpUseNumericOnly": true,
+	})
+
+	_, message := ts.sendOTPAndCaptureMessage()
+
+	ts.Require().Len(message.OTP, 6, "The OTP should match the configured length")
+	ts.Require().Regexp("^[0-9]{6}$", message.OTP,
+		"A numeric-only OTP should contain digits alone, got %q", message.OTP)
+}
+
+// TestSMSAuthFlowOTPValidityBelowMinimumIgnored confirms a validity period outside the accepted
+// range is ignored rather than applied. The OTP service only honours an override between 30 and 600
+// seconds, so a 2 second setting leaves the default validity in place and the code stays usable.
+//
+// Expiry itself is not covered here: the shortest honoured validity is 30 seconds, and a test that
+// waits that long does not belong in this suite.
+func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowOTPValidityBelowMinimumIgnored() {
+	ts.useOTPPropertiesFlow("auth_flow_sms_otp_short_validity_test", map[string]interface{}{
+		"otpValidityPeriodSeconds": 2,
+	})
+
+	otpStep, message := ts.sendOTPAndCaptureMessage()
+
+	// Comfortably past the requested validity, but well inside the default.
+	time.Sleep(3 * time.Second)
+
+	finalStep, err := common.CompleteFlow(otpStep.ExecutionID, map[string]string{"otp": message.OTP},
+		"action_002", otpStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the OTP")
+	ts.Require().Equal("COMPLETE", finalStep.FlowStatus,
+		"A validity period below the accepted minimum should be ignored, leaving the OTP usable")
+	ts.Require().NotEmpty(finalStep.Assertion, "A JWT assertion should be returned")
+}
+
+// TestSMSAuthFlowNonIntegerOTPLength confirms a non-integer length is ignored rather than truncated,
+// so the generated OTP falls back to the default length.
+func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowNonIntegerOTPLength() {
+	ts.useOTPPropertiesFlow("auth_flow_sms_float_otp_length_test", map[string]interface{}{
+		"otpLength": 8.5,
+	})
+
+	_, message := ts.sendOTPAndCaptureMessage()
+
+	ts.Require().Len(message.OTP, 6,
+		"A non-integer OTP length should be ignored, leaving the server default length of 6")
+}
+
 func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowSingleRequestWithMobileNumber() {
 	// Clear any previous messages
 	ts.mockServer.ClearMessages()

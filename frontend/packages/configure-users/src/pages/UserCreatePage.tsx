@@ -7,7 +7,6 @@ import {useLogger} from '@thunderid/logger/react';
 import {
   EmbeddedFlowComponentType,
   InviteUser,
-  useThunderID,
   type EmbeddedFlowComponent,
   type InviteUserRenderProps,
 } from '@thunderid/react';
@@ -29,6 +28,7 @@ import type {JSX} from 'react';
 import {useState, useCallback, useEffect, useRef} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import useFlowTextResolver from '../hooks/useFlowTextResolver';
 import useUserRoutes from '../hooks/useUserRoutes';
 import getUserErrorMessage from '../utils/getUserErrorMessage';
 
@@ -68,8 +68,7 @@ function UserCreateStepContent({
   onFieldChange: () => void;
   onStepLabelChange: (label: string) => void;
 }): JSX.Element {
-  const {resolveFlowTemplateLiterals: rawResolve} = useThunderID();
-  const resolve = useCallback((text?: string) => (text ? rawResolve(text) : undefined), [rawResolve]);
+  const resolve = useFlowTextResolver();
   const {t} = useTranslation();
   const components = renderProps.components as EmbeddedFlowComponent[] | undefined;
 

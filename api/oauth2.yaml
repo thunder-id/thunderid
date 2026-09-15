@@ -206,9 +206,17 @@ paths:
       description: |
         Issues access tokens, refresh tokens, and ID tokens. Supports the following grant types:
         `authorization_code`, `client_credentials`, `refresh_token`, `password`,
+        `urn:openid:params:grant-type:ciba` (CIBA Core 1.0),
         `urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693), and
         `urn:ietf:params:oauth:grant-type:jwt-bearer` (draft-ietf-oauth-identity-assertion-authz-grant).
         Requires client authentication via HTTP Basic auth or `client_id`/`client_secret` form parameters.
+
+        An access token issued for a user through the `authorization_code` or
+        `urn:openid:params:grant-type:ciba` grant keeps that user in `sub` and adds an on-behalf-of
+        `act` claim naming the client that obtained it. Agent clients always receive the claim;
+        application clients receive it when `includeActClaim` is enabled on the client. The `act.sub`
+        value is the agent or application resource id rather than the client id, and the claim is
+        present on the access token only, never on the ID token.
 
         Token exchange additionally supports requesting an Identity Assertion Authorization Grant
         (ID-JAG) by setting `requested_token_type` to
@@ -880,6 +888,13 @@ components:
           format: int64
         sub:
           type: string
+        sub_type:
+          type: string
+          enum: [application, agent]
+          description: |
+            Identity class of the token subject. Present on tokens issued through the
+            `client_credentials` grant, where the OAuth client itself is the subject, so a resource
+            server can apply policy that differs by class. Absent for user-subject tokens.
         aud:
           description: Audience — may be a string or an array of strings.
           oneOf:
@@ -1057,6 +1072,8 @@ components:
           type: string
         userinfo_encrypted_response_enc:
           type: string
+        id_token_signed_response_alg:
+          type: string
         id_token_encrypted_response_alg:
           type: string
         id_token_encrypted_response_enc:
@@ -1122,6 +1139,8 @@ components:
         userinfo_encrypted_response_alg:
           type: string
         userinfo_encrypted_response_enc:
+          type: string
+        id_token_signed_response_alg:
           type: string
         id_token_encrypted_response_alg:
           type: string

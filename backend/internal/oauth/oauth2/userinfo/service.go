@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
@@ -183,16 +184,22 @@ func (s *userInfoService) buildResponseFromClaims(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	response, svcErr := s.buildUserInfoResponse(ctx, sub, scopes, userAttributes, oauthApp, tokenClaims)
-	if svcErr != nil {
-		return nil, svcErr
-	}
-
 	var userInfoCfg *providers.UserInfoConfig
 	var certificate *providers.Certificate
 	if oauthApp != nil {
 		userInfoCfg = oauthApp.UserInfo
 		certificate = oauthApp.Certificate
+	}
+
+	// The authn provider returned an opaque JWT/JWE instead of individual claims: pass it
+	// through as-is rather than running it through the claims/scope/allow-list pipeline.
+	if rawToken, ok := userAttributes[providers.RawJWTAttributeKey].(string); ok && rawToken != "" {
+		return s.buildRawJWTResponse(ctx, rawToken, userInfoCfg, certificate)
+	}
+
+	response, svcErr := s.buildUserInfoResponse(ctx, sub, scopes, userAttributes, oauthApp, tokenClaims)
+	if svcErr != nil {
+		return nil, svcErr
 	}
 
 	responseType := providers.UserInfoResponseTypeJSON
@@ -260,14 +267,30 @@ func (s *userInfoService) generateNestedJWTUserInfo(
 		return nil, svcErr
 	}
 
-	rpKey, rpKID, svcErr := s.jwksResolver.ResolveEncryptionKey(
-		ctx, certificate, cfg.EncryptionAlg, jwksresolver.KeyUseStrictEnc)
+	compact, svcErr := s.encryptSignedJWT(ctx, jwsResp.JWTBody, cfg, certificate)
 	if svcErr != nil {
 		return nil, svcErr
 	}
 
+	return &UserInfoResponse{Type: providers.UserInfoResponseTypeNESTEDJWT, JWTBody: compact}, nil
+}
+
+// encryptSignedJWT encrypts an already-signed JWT into a nested-JWT (JWE with cty=JWT) compact
+// serialization, using the client's encryption key.
+func (s *userInfoService) encryptSignedJWT(
+	ctx context.Context,
+	signedJWT string,
+	cfg *providers.UserInfoConfig,
+	certificate *providers.Certificate,
+) (string, *tidcommon.ServiceError) {
+	rpKey, rpKID, svcErr := s.jwksResolver.ResolveEncryptionKey(
+		ctx, certificate, cfg.EncryptionAlg, jwksresolver.KeyUseStrictEnc)
+	if svcErr != nil {
+		return "", svcErr
+	}
+
 	compact, svcErr := s.jweService.Encrypt(ctx,
-		[]byte(jwsResp.JWTBody),
+		[]byte(signedJWT),
 		&providers.KeyRef{PublicKeyJWK: rpKey},
 		cfg.EncryptionAlg,
 		jwe.ContentEncAlgorithm(cfg.EncryptionEnc),
@@ -276,10 +299,10 @@ func (s *userInfoService) generateNestedJWTUserInfo(
 	)
 	if svcErr != nil {
 		s.logger.Error(ctx, "Failed to encrypt nested JWT userinfo JWE")
-		return nil, svcErr
+		return "", svcErr
 	}
 
-	return &UserInfoResponse{Type: providers.UserInfoResponseTypeNESTEDJWT, JWTBody: compact}, nil
+	return compact, nil
 }
 
 // generateJWSUserInfo creates a signed JWT UserInfo response
@@ -318,10 +341,10 @@ func (s *userInfoService) generateJWSUserInfo(
 		if err.Code == jwt.ErrorUnsupportedJWSAlgorithm.Code {
 			s.logger.Error(ctx, "UserInfo signing algorithm is not supported by the server key",
 				log.String("alg", signingAlg), log.String("error", err.Error.DefaultValue))
-		} else {
-			s.logger.Error(ctx, "Failed to generate signed UserInfo JWT",
-				log.String("error", err.Error.DefaultValue))
+			return nil, &errorUnsupportedSigningAlg
 		}
+		s.logger.Error(ctx, "Failed to generate signed UserInfo JWT",
+			log.String("error", err.Error.DefaultValue))
 		return nil, &tidcommon.InternalServerError
 	}
 
@@ -329,6 +352,37 @@ func (s *userInfoService) generateJWSUserInfo(
 		Type:    providers.UserInfoResponseTypeJWS,
 		JWTBody: signedJWT,
 	}, nil
+}
+
+// buildRawJWTResponse passes through an opaque JWT/JWE returned by the authn provider in place
+// of individual claims. The token is never re-signed or decoded; it is only encrypted when the
+// client's UserInfo response type requires it and it isn't encrypted already.
+func (s *userInfoService) buildRawJWTResponse(
+	ctx context.Context,
+	rawToken string,
+	cfg *providers.UserInfoConfig,
+	certificate *providers.Certificate,
+) (*UserInfoResponse, *tidcommon.ServiceError) {
+	// JWE compact serialization has 5 dot-separated parts; a signed JWT (JWS) has 3, matching the
+	// part-count checks used elsewhere for these formats (e.g. jwe.DecodeJWE).
+	if len(strings.Split(rawToken, ".")) == 5 {
+		return &UserInfoResponse{Type: providers.UserInfoResponseTypeJWE, JWTBody: rawToken}, nil
+	}
+
+	responseType := providers.UserInfoResponseTypeJWS
+	if cfg != nil {
+		responseType = cfg.ResponseType
+	}
+	if responseType != providers.UserInfoResponseTypeJWE && responseType != providers.UserInfoResponseTypeNESTEDJWT {
+		return &UserInfoResponse{Type: providers.UserInfoResponseTypeJWS, JWTBody: rawToken}, nil
+	}
+
+	compact, svcErr := s.encryptSignedJWT(ctx, rawToken, cfg, certificate)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	return &UserInfoResponse{Type: providers.UserInfoResponseTypeNESTEDJWT, JWTBody: compact}, nil
 }
 
 // validateGrantType validates that the token was not issued using client_credentials grant.

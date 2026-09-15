@@ -8,9 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
 )
 
 // credentialStoreInterface persists managed credential configurations in configdb.
@@ -26,16 +26,20 @@ type credentialStoreInterface interface {
 }
 
 type credentialStore struct {
-	dbProvider   provider.DBProviderInterface
-	deploymentID string
+	dbProvider provider.DBProviderInterface
 }
 
 // newCredentialStore returns a configdb-backed credential-configuration store.
 func newCredentialStore() credentialStoreInterface {
 	return &credentialStore{
-		dbProvider:   provider.GetDBProvider(),
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
+		dbProvider: provider.GetDBProvider(),
 	}
+}
+
+// scope returns the deployment id this request acts for, falling back to the configured
+// identifier for a context that never passed through the edge.
+func (s *credentialStore) scope(ctx context.Context) string {
+	return deployment.Resolve(ctx)
 }
 
 // CreateCredentialConfiguration persists a new credential configuration in the database.
@@ -50,7 +54,7 @@ func (s *credentialStore) CreateCredentialConfiguration(ctx context.Context, dto
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryCreateConfiguration,
 		dto.ID, dto.Handle, dto.OUID, dto.Name, dto.Description, dto.Format, dto.VCT, claimsJSON, displayJSON,
-		nullableInt(dto.ValiditySeconds), s.deploymentID)
+		nullableInt(dto.ValiditySeconds), s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to create credential configuration: %w", err)
 	}
@@ -79,7 +83,7 @@ func (s *credentialStore) getOne(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
-	results, err := dbClient.QueryContext(ctx, query, identifier, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, query, identifier, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to query credential configuration: %w", err)
 	}
@@ -95,7 +99,7 @@ func (s *credentialStore) ListCredentialConfigurations(ctx context.Context) ([]C
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
-	results, err := dbClient.QueryContext(ctx, queryListConfigurations, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, queryListConfigurations, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list credential configurations: %w", err)
 	}
@@ -118,7 +122,7 @@ func (s *credentialStore) ListCredentialConfigurationSummaries(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
-	results, err := dbClient.QueryContext(ctx, queryListConfigurationSummaries, s.deploymentID)
+	results, err := dbClient.QueryContext(ctx, queryListConfigurationSummaries, s.scope(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list credential configuration summaries: %w", err)
 	}
@@ -149,7 +153,7 @@ func (s *credentialStore) UpdateCredentialConfiguration(ctx context.Context, dto
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryUpdateConfiguration,
 		dto.ID, dto.Handle, dto.OUID, dto.Name, dto.Description, dto.Format, dto.VCT, claimsJSON, displayJSON,
-		nullableInt(dto.ValiditySeconds), s.deploymentID)
+		nullableInt(dto.ValiditySeconds), s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to update credential configuration: %w", err)
 	}
@@ -162,7 +166,7 @@ func (s *credentialStore) DeleteCredentialConfiguration(ctx context.Context, id 
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
-	if _, err := dbClient.ExecuteContext(ctx, queryDeleteConfiguration, id, s.deploymentID); err != nil {
+	if _, err := dbClient.ExecuteContext(ctx, queryDeleteConfiguration, id, s.scope(ctx)); err != nil {
 		return fmt.Errorf("failed to delete credential configuration: %w", err)
 	}
 	return nil

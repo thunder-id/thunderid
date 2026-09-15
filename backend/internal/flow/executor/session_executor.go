@@ -169,6 +169,16 @@ func (e *sessionExecutor) saveCheckpoint(ctx *providers.NodeContext, execResp *p
 		return nil
 	}
 
+	// Publish the session's authentication time so the assertion reads auth_time from the session
+	// on this path too. Without it resolveAuthTime falls back to the clock, which drifts past the
+	// session's AuthenticatedAt whenever the two land either side of a second boundary, and a later
+	// authorization that correctly reuses the session then reports an earlier auth_time than the
+	// login that created it.
+	if !result.AuthenticatedAt.IsZero() {
+		execResp.RuntimeData[common.RuntimeKeyAuthTime] =
+			strconv.FormatInt(result.AuthenticatedAt.Unix(), 10)
+	}
+
 	execResp.RuntimeData[savedKey] = result.Handle
 	// Publish the session handle as the shared hint so later joins in this execution attach to the
 	// same session directly.
@@ -291,6 +301,13 @@ var requestScopedSnapshotDenyList = map[string]struct{}{
 	common.RuntimeKeyAuthorizationRequestID:      {},
 	// The token family id is minted fresh per flow execution, so it must not ride a reused snapshot.
 	common.RuntimeKeyTokenFamilyID: {},
+	// force_reauth and max_age state what the establishing app's authorization request demanded of
+	// this authentication. Replaying either onto a later join would impose that demand on an app that
+	// never asked: a stale force_reauth re-prompts every reuse, and a stale max_age fails the
+	// assurance check once auth_time is sourced from the session rather than the current time.
+	common.RuntimeKeyForceReauth:    {},
+	common.RuntimeKeyMaxAge:         {},
+	common.RuntimeKeySilentAuthOnly: {},
 	// applicationId has no shared constant (set as a raw literal in enrichRuntimeData).
 	"applicationId": {},
 }

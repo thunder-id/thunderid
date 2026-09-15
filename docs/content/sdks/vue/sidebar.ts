@@ -96,6 +96,11 @@ const sidebar: SidebarsConfig = {
                   id: 'sdks/vue/apis/components/user',
                   label: '<User />',
                 },
+                {
+                  type: 'doc',
+                  id: 'sdks/vue/apis/components/change-credential',
+                  label: '<ChangeCredential />',
+                },
               ],
             },
           ],

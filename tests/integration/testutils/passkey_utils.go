@@ -17,6 +17,7 @@ type passkeyRegisterStartRequest struct {
 	RelyingPartyID         string                         `json:"relyingPartyId"`
 	RelyingPartyName       string                         `json:"relyingPartyName,omitempty"`
 	AuthenticatorSelection *passkeyAuthenticatorSelection `json:"authenticatorSelection,omitempty"`
+	Assertion              string                         `json:"assertion,omitempty"`
 }
 
 type passkeyAuthenticatorSelection struct {
@@ -57,9 +58,12 @@ type passkeyAttestationCredential struct {
 // issued for that user. Flow based suites use this to obtain a credential without having to drive a
 // registration flow.
 //
+// The assertion must prove userID, since the direct API enrolls a credential only for the subject
+// it names; ObtainAuthAssertion produces one from a password login.
+//
 // The origin must be accepted by the server level passkey.allowed_origins, since the direct API
 // does not take allowed origins from the request or the application.
-func RegisterPasskeyCredential(userID, relyingPartyID, relyingPartyName, origin string) (
+func RegisterPasskeyCredential(userID, relyingPartyID, relyingPartyName, origin, assertion string) (
 	*VirtualAuthenticator, string, error) {
 	authenticator, err := NewVirtualAuthenticator(relyingPartyID, origin)
 	if err != nil {
@@ -74,6 +78,7 @@ func RegisterPasskeyCredential(userID, relyingPartyID, relyingPartyName, origin 
 			ResidentKey:      "required",
 			UserVerification: "required",
 		},
+		Assertion: assertion,
 	})
 	if err != nil {
 		return nil, "", fmt.Errorf("passkey registration start failed: %w", err)

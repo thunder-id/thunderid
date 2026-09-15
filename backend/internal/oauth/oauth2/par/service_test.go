@@ -43,7 +43,7 @@ func TestServiceTestSuite(t *testing.T) {
 
 func (s *ServiceTestSuite) SetupTest() {
 	testConfig := &config.Config{
-		OAuth: engineconfig.OAuthConfig{
+		OAuth: config.OAuthConfig{
 			PAR: engineconfig.PARConfig{
 				ExpiresIn: 60,
 			},
@@ -206,18 +206,21 @@ func (s *ServiceTestSuite) TestHandlePAR_StoreError() {
 	assert.Equal(s.T(), oauth2const.ErrorServerError, errCode)
 }
 
-func (s *ServiceTestSuite) TestHandlePAR_PromptNone_LoginRequired() {
+// TestHandlePAR_PromptNone_Stored covers PAR accepting prompt=none. PAR only stores the request;
+// whether "none" can be honored depends on an SSO session that only the later authorization
+// request, which resolves the request_uri, is able to consult.
+func (s *ServiceTestSuite) TestHandlePAR_PromptNone_Stored() {
 	store := newParStoreInterfaceMock(s.T())
+	store.EXPECT().Store(mock.Anything, mock.Anything, mock.Anything).Return("test-uri", nil)
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
 	params := s.newValidParams()
 	params[oauth2const.RequestParamPrompt] = "none"
 
-	resp, errCode, errDesc := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
 
-	assert.Nil(s.T(), resp)
-	assert.Equal(s.T(), oauth2const.ErrorLoginRequired, errCode)
-	assert.Equal(s.T(), "User authentication is required", errDesc)
+	assert.Empty(s.T(), errCode)
+	assert.NotNil(s.T(), resp)
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_PromptInvalid() {
@@ -644,4 +647,13 @@ func (s *ServiceTestSuite) TestHandlePAR_MultipleResources_InvalidTarget() {
 
 	assert.Nil(s.T(), resp)
 	assert.Equal(s.T(), oauth2const.ErrorInvalidTarget, errCode)
+}
+
+// IsPARRequestURI distinguishes a PAR handle from a client-supplied request object by
+// reference (RFC 9101), which is not supported.
+func (suite *ServiceTestSuite) TestIsPARRequestURI() {
+	assert.True(suite.T(), IsPARRequestURI("urn:ietf:params:oauth:request_uri:abc123"))
+	assert.False(suite.T(), IsPARRequestURI("https://client.example.org/request.jwt"))
+	assert.False(suite.T(), IsPARRequestURI(""))
+	assert.False(suite.T(), IsPARRequestURI("urn:ietf:params:oauth:request-uri:abc123"))
 }

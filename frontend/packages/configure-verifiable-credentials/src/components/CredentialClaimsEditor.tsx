@@ -17,18 +17,20 @@ import {
 import {Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {emptyClaimRow, type ClaimRow} from '../models/credential-claims';
+import {emptyClaimRow, type ClaimNameError, type ClaimRow} from '../models/credential-claims';
 
 export interface ClaimsEditorProps {
   claims: ClaimRow[];
   onChange: (claims: ClaimRow[]) => void;
+  /** Invalid claim names keyed by row id, as returned by findClaimNameErrors. */
+  nameErrors?: Record<string, ClaimNameError>;
 }
 
 /**
  * Per-claim editor for a credential configuration: one row per disclosed claim,
  * with the attribute name (the user-profile lookup key) and a wallet display name.
  */
-export default function ClaimsEditor({claims, onChange}: ClaimsEditorProps): JSX.Element {
+export default function ClaimsEditor({claims, onChange, nameErrors = {}}: ClaimsEditorProps): JSX.Element {
   const {t} = useTranslation('verifiable-credentials');
 
   const update = (id: string, patch: Partial<ClaimRow>): void =>
@@ -77,6 +79,8 @@ export default function ClaimsEditor({claims, onChange}: ClaimsEditorProps): JSX
                 size="small"
                 value={claim.name}
                 placeholder="given_name"
+                error={nameErrors[claim.id] !== undefined}
+                helperText={nameErrors[claim.id] ? t(`claims.errors.${nameErrors[claim.id]}`) : undefined}
                 onChange={(e): void => update(claim.id, {name: e.target.value})}
               />
             </FormControl>

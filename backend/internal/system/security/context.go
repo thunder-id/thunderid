@@ -26,6 +26,7 @@ type SecurityContext struct {
 	revocationID      string
 	tokenFamilyID     string
 	revocationSubject string
+	revocationAppKey  string
 	establishedAt     time.Time
 	permissions       []string
 	attributes        map[string]interface{}
@@ -117,6 +118,14 @@ func GetAttribute(ctx context.Context, key string) interface{} {
 		// Immutable types (string, int, bool, etc.) are safe to return directly
 		return value
 	}
+}
+
+// WithSecurityContext attaches sc to ctx, so GetSubject, GetOUID, GetPermissions, and GetAttribute
+// resolve for it. Exported for authenticated surfaces outside the REST gate (e.g. the MCP server)
+// that build their own request context after calling BearerAuthenticator.Authenticate directly,
+// rather than going through the securityService middleware that attaches it for REST requests.
+func WithSecurityContext(ctx context.Context, sc *SecurityContext) context.Context {
+	return withSecurityContext(ctx, sc)
 }
 
 // WithRuntimeContext marks the context as an internal runtime caller.

@@ -79,20 +79,20 @@ func TestToParameterizedYAML_WithOmitemptyFields(t *testing.T) {
 
 	// Verify that omitempty fields are included and parameterized
 	assert.Contains(t, result, "clientId:", "ClientID field should be present even though it's empty")
-	assert.Contains(t, result, "{{.TEST_APP_CLIENT_ID}}", "ClientID should be parameterized")
+	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_ID}}", "ClientID should be parameterized")
 
 	assert.Contains(t, result, "redirectUri:", "RedirectURI field should be present even though it's empty")
-	assert.Contains(t, result, "{{.TEST_APP_REDIRECT_URI}}", "RedirectURI should be parameterized")
+	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_REDIRECT_URI}}", "RedirectURI should be parameterized")
 
 	assert.Contains(t, result, "clientSecret:", "ClientSecret field should be present even though it's empty")
-	assert.Contains(t, result, "{{.TEST_APP_CLIENT_SECRET}}", "ClientSecret should be parameterized")
+	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_SECRET}}", "ClientSecret should be parameterized")
 
 	// Verify array parameterization
 	assert.Contains(t, result, "grantTypes:", "GrantTypes field should be present")
-	assert.Contains(t, result, "{{- range .TEST_APP_GRANT_TYPES}}", "GrantTypes should have range template")
+	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_GRANT_TYPES}}", "GrantTypes should have range template")
 
 	assert.Contains(t, result, "scopes:", "Scopes field should be present")
-	assert.Contains(t, result, "{{- range .TEST_APP_SCOPES}}", "Scopes should have range template")
+	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_SCOPES}}", "Scopes should have range template")
 }
 
 func TestToParameterizedYAML_WithPopulatedFields(t *testing.T) {
@@ -130,20 +130,20 @@ func TestToParameterizedYAML_WithPopulatedFields(t *testing.T) {
 	require.NotEmpty(t, result)
 
 	// Verify parameterization replaced actual values
-	assert.Contains(t, result, "{{.TEST_APP_CLIENT_ID}}", "ClientID should be parameterized")
+	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_ID}}", "ClientID should be parameterized")
 	assert.NotContains(t, result, "test-client-id", "Original ClientID value should be replaced")
 
-	assert.Contains(t, result, "{{.TEST_APP_REDIRECT_URI}}", "RedirectURI should be parameterized")
+	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_REDIRECT_URI}}", "RedirectURI should be parameterized")
 	assert.NotContains(t, result, "https://example.com/callback", "Original RedirectURI should be replaced")
 
-	assert.Contains(t, result, "{{.TEST_APP_CLIENT_SECRET}}", "ClientSecret should be parameterized")
+	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_SECRET}}", "ClientSecret should be parameterized")
 	assert.NotContains(t, result, "secret123", "Original ClientSecret should be replaced")
 
 	// Verify array parameterization
-	assert.Contains(t, result, "{{- range .TEST_APP_GRANT_TYPES}}", "GrantTypes should have range template")
+	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_GRANT_TYPES}}", "GrantTypes should have range template")
 	assert.NotContains(t, result, "authorization_code", "Original grant type should be replaced")
 
-	assert.Contains(t, result, "{{- range .TEST_APP_SCOPES}}", "Scopes should have range template")
+	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_SCOPES}}", "Scopes should have range template")
 	assert.NotContains(t, result, "openid", "Original scope should be replaced")
 }
 
@@ -183,19 +183,19 @@ func TestToParameterizedYAML_MixedEmptyAndPopulated(t *testing.T) {
 
 	// All fields should be parameterized regardless of whether they were empty
 	assert.Contains(t, result, "clientId:", "ClientID field should be present")
-	assert.Contains(t, result, "{{.TEST_APP_CLIENT_ID}}", "ClientID should be parameterized")
+	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_ID}}", "ClientID should be parameterized")
 
 	assert.Contains(t, result, "redirectUri:", "RedirectURI field should be present even though empty")
-	assert.Contains(t, result, "{{.TEST_APP_REDIRECT_URI}}", "RedirectURI should be parameterized")
+	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_REDIRECT_URI}}", "RedirectURI should be parameterized")
 
 	assert.Contains(t, result, "clientSecret:", "ClientSecret field should be present even though empty")
-	assert.Contains(t, result, "{{.TEST_APP_CLIENT_SECRET}}", "ClientSecret should be parameterized")
+	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_SECRET}}", "ClientSecret should be parameterized")
 
 	assert.Contains(t, result, "grantTypes:", "GrantTypes should be present")
-	assert.Contains(t, result, "{{- range .TEST_APP_GRANT_TYPES}}", "GrantTypes should have range template")
+	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_GRANT_TYPES}}", "GrantTypes should have range template")
 
 	assert.Contains(t, result, "scopes:", "Scopes should be present even though nil")
-	assert.Contains(t, result, "{{- range .TEST_APP_SCOPES}}", "Scopes should have range template")
+	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_SCOPES}}", "Scopes should have range template")
 }
 
 func TestStructToMapIgnoringOmitempty(t *testing.T) {
@@ -258,27 +258,22 @@ func TestConvertFieldToInterface_NestedStructs(t *testing.T) {
 }
 
 func TestPathToVariableName(t *testing.T) {
-	parameterizer := newParameterizer(templatingRules{})
+	parameterizer := newParameterizer(templatingRules{}).forResourceType("Application")
 
 	tests := []struct {
 		appName  string
 		path     string
 		expected string
 	}{
-		{"TestApp", "ClientID", "TEST_APP_CLIENT_ID"},
-		{"TestApp", "RedirectURI", "TEST_APP_REDIRECT_URI"},
-		{"TestApp", "OAuth.ClientSecret", "TEST_APP_CLIENT_SECRET"},
-		{"TestApp", "OAuth.GrantTypes", "TEST_APP_GRANT_TYPES"},
-		{"TestApp", "InboundAuthConfig.OAuth.ClientID", "TEST_APP_CLIENT_ID"},
-		{"TestApp", "simpleField", "TEST_APP_SIMPLE_FIELD"},
-		{"TestApp", "ALLCAPS", "TEST_APP_ALLCAPS"},
-		{"My App", "ClientID", "MY_APP_CLIENT_ID"},
-		{"My Test App", "RedirectURI", "MY_TEST_APP_REDIRECT_URI"},
-		{"Wayfinder-Concierge", "ClientID", "WAYFINDER_CONCIERGE_CLIENT_ID"},
-		{"My.App+1", "ClientID", "MY_APP_1_CLIENT_ID"},
-		{"2FA App", "ClientID", "_2FA_APP_CLIENT_ID"},
-		{"My App-", "ClientID", "MY_APP_CLIENT_ID"},
-		{"My App ", "ClientID", "MY_APP_CLIENT_ID"},
+		{"TestApp", "ClientID", "APPLICATION_TEST_APP_CLIENT_ID"},
+		{"TestApp", "RedirectURI", "APPLICATION_TEST_APP_REDIRECT_URI"},
+		{"TestApp", "OAuth.ClientSecret", "APPLICATION_TEST_APP_CLIENT_SECRET"},
+		{"TestApp", "OAuth.GrantTypes", "APPLICATION_TEST_APP_GRANT_TYPES"},
+		{"TestApp", "InboundAuthConfig.OAuth.ClientID", "APPLICATION_TEST_APP_CLIENT_ID"},
+		{"TestApp", "simpleField", "APPLICATION_TEST_APP_SIMPLE_FIELD"},
+		{"TestApp", "ALLCAPS", "APPLICATION_TEST_APP_ALLCAPS"},
+		{"My App", "ClientID", "APPLICATION_MY_APP_CLIENT_ID"},
+		{"My Test App", "RedirectURI", "APPLICATION_MY_TEST_APP_REDIRECT_URI"},
 	}
 
 	for _, tt := range tests {
@@ -449,10 +444,10 @@ func TestParameterization_OverridesOmitemptyForVariables(t *testing.T) {
 
 	// These fields should be present and parameterized despite being empty
 	assert.Contains(t, result, "clientId:", "ClientID should be present (in rules)")
-	assert.Contains(t, result, "{{.TEST_APP_CLIENT_ID}}", "ClientID should be parameterized")
+	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_ID}}", "ClientID should be parameterized")
 
 	assert.Contains(t, result, "redirectUri:", "RedirectURI should be present (in rules)")
-	assert.Contains(t, result, "{{.TEST_APP_REDIRECT_URI}}", "RedirectURI should be parameterized")
+	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_REDIRECT_URI}}", "RedirectURI should be parameterized")
 }
 
 // TestParameterization_OverridesOmitemptyForArrays verifies that empty array
@@ -479,7 +474,7 @@ func TestParameterization_OverridesOmitemptyForArrays(t *testing.T) {
 
 	// Scopes should be present and parameterized despite being nil
 	assert.Contains(t, result, "scopes:", "Scopes should be present (in rules)")
-	assert.Contains(t, result, "{{- range .TEST_APP_SCOPES}}", "Scopes should be parameterized")
+	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_SCOPES}}", "Scopes should be parameterized")
 }
 
 // TestParameterization_NestedFieldsWithOmitempty verifies nested empty fields
@@ -513,9 +508,9 @@ func TestParameterization_NestedFieldsWithOmitempty(t *testing.T) {
 	// Nested fields should be present and parameterized
 	assert.Contains(t, result, "oauth:", "OAuth should be present")
 	assert.Contains(t, result, "clientSecret:", "ClientSecret should be present (in rules)")
-	assert.Contains(t, result, "{{.TEST_APP_CLIENT_SECRET}}", "ClientSecret should be parameterized")
+	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_SECRET}}", "ClientSecret should be parameterized")
 	assert.Contains(t, result, "grantTypes:", "GrantTypes should be present (in rules)")
-	assert.Contains(t, result, "{{- range .TEST_APP_GRANT_TYPES}}", "GrantTypes should be parameterized")
+	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_GRANT_TYPES}}", "GrantTypes should be parameterized")
 }
 
 // TestParameterization_MixedRulesAndOmitempty verifies correct behavior when
@@ -549,9 +544,9 @@ func TestParameterization_MixedRulesAndOmitempty(t *testing.T) {
 
 	// Fields in rules should be present
 	assert.Contains(t, result, "clientId:", "ClientID should be present (in rules)")
-	assert.Contains(t, result, "{{.TEST_APP_CLIENT_ID}}", "ClientID should be parameterized")
+	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_ID}}", "ClientID should be parameterized")
 	assert.Contains(t, result, "clientSecret:", "ClientSecret should be present (in rules)")
-	assert.Contains(t, result, "{{.TEST_APP_CLIENT_SECRET}}", "ClientSecret should be parameterized")
+	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_SECRET}}", "ClientSecret should be parameterized")
 
 	// Fields NOT in rules should be omitted
 	assert.NotContains(t, result, "redirectUri:", "RedirectURI should be omitted (not in rules)")
@@ -1070,9 +1065,9 @@ func TestRenderNode_ComplexTemplateStructures(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check template replacements
-	assert.Contains(t, result, "{{.TEST_APP_TEMPLATE_FIELD}}")
-	assert.Contains(t, result, "{{.TEST_APP_VALUE}}")
-	assert.Contains(t, result, "{{- range .TEST_APP_TEMPLATE_ARR}}")
+	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_TEMPLATE_FIELD}}")
+	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_VALUE}}")
+	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_TEMPLATE_ARR}}")
 	assert.Contains(t, result, "{{- end}}")
 }
 
@@ -1870,7 +1865,7 @@ func TestRenderMappingValue_I18nRefsAreQuoted(t *testing.T) {
 	obj := &Resource{
 		Name:     "Test",
 		Message:  "{{ t(signup:forms.credentials.title) }}",
-		Callback: "{{.TEST_CALLBACK_URL}}",
+		Callback: "{{.APPLICATION_TEST_CALLBACK_URL}}",
 	}
 
 	p := newParameterizer(templatingRules{})
@@ -1882,7 +1877,7 @@ func TestRenderMappingValue_I18nRefsAreQuoted(t *testing.T) {
 	// i18n reference must be single-quoted.
 	assert.Contains(t, result, `message: '{{ t(signup:forms.credentials.title) }}'`)
 	// Real parameterization variable must remain unquoted (Go template syntax).
-	assert.Contains(t, result, `callbackUrl: {{.TEST_CALLBACK_URL}}`)
+	assert.Contains(t, result, `callbackUrl: {{.APPLICATION_TEST_CALLBACK_URL}}`)
 }
 
 func TestEntityTypeExportFormat(t *testing.T) {
@@ -1940,13 +1935,13 @@ func TestResourceServerExport_IdentifierAndOUIDNotParameterized(t *testing.T) {
 	// identifier must be the literal value, not a template variable
 	assert.Contains(t, result, "identifier: system",
 		"identifier should be emitted as a literal value")
-	assert.NotContains(t, result, "{{.SYSTEM_IDENTIFIER}}",
+	assert.NotContains(t, result, "{{.RESOURCE_SERVER_SYSTEM_IDENTIFIER}}",
 		"identifier must not be parameterized")
 
 	// ou_id must be the literal value, not a template variable
 	assert.Contains(t, result, "ouId: 019ddcf3-c5d8-7375-80e3-c5bf524257c8",
 		"ouId should be emitted as a literal value")
-	assert.NotContains(t, result, "{{.SYSTEM_OU_ID}}",
+	assert.NotContains(t, result, "{{.RESOURCE_SERVER_SYSTEM_OU_ID}}",
 		"ouId must not be parameterized")
 
 	// no variables should be extracted since rules are nil

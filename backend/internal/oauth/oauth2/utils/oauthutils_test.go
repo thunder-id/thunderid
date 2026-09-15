@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type OAuth2UtilsTestSuite struct {
@@ -1730,6 +1731,45 @@ func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_ValidWithAllCla
 	suite.Equal(int64(1700000002), claims.AuthTime.Unix())
 }
 
+// TestDecodeFlowAssertionClaims_AuthTimeWinsOverIat covers the SSO path, where the subject
+// authenticated before this assertion was issued. auth_time carries that earlier moment and must
+// win over iat, or the claim would advance on every authorization within one session.
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_AuthTimeWinsOverIat() {
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub":       "user-sso",
+		"iat":       float64(1700000000),
+		"auth_time": float64(1699990000),
+	})
+
+	claims, _, err := DecodeFlowAssertionClaims(assertion)
+	suite.NoError(err)
+	suite.Equal(int64(1699990000), claims.AuthTime.Unix())
+}
+
+// TestDecodeFlowAssertionClaims_NoAuthTimeFallsBackToIat covers an assertion minted without the
+// claim, where the fresh-authentication reading of iat remains correct.
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_NoAuthTimeFallsBackToIat() {
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub": "user-fresh",
+		"iat": float64(1700000000),
+	})
+
+	claims, _, err := DecodeFlowAssertionClaims(assertion)
+	suite.NoError(err)
+	suite.Equal(int64(1700000000), claims.AuthTime.Unix())
+}
+
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_AuthTimeUnexpectedType_ReturnsError() {
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub":       "user-bad",
+		"iat":       float64(1700000000),
+		"auth_time": "not-a-number",
+	})
+
+	_, _, err := DecodeFlowAssertionClaims(assertion)
+	suite.Error(err)
+}
+
 func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_IatUnexpectedType_ReturnsError() {
 	assertion := buildTestAssertion(map[string]interface{}{
 		"sub": "user-x",
@@ -1844,4 +1884,55 @@ func (suite *OAuth2UtilsTestSuite) TestSanitizeErrorDescriptionKeepsRedirectBuil
 
 	assert.NoError(suite.T(), err)
 	assert.Contains(suite.T(), uri, "error=access_denied")
+}
+
+// No token configuration is the common case, so the helper builds the nested config.
+func (suite *OAuth2UtilsTestSuite) TestEnsureClientSubTypeAttribute_BuildsMissingConfig() {
+	token := EnsureClientSubTypeAttribute(nil)
+
+	assert.NotNil(suite.T(), token)
+	assert.NotNil(suite.T(), token.AccessToken)
+	assert.NotNil(suite.T(), token.AccessToken.ClientConfig)
+	assert.Equal(suite.T(), []string{constants.ClaimSubType}, token.AccessToken.ClientConfig.Attributes)
+}
+
+// Seeding adds the claim without replacing a caller-supplied selection.
+func (suite *OAuth2UtilsTestSuite) TestEnsureClientSubTypeAttribute_KeepsExistingAttributes() {
+	token := EnsureClientSubTypeAttribute(&providers.OAuthTokenConfig{
+		AccessToken: &providers.AccessTokenConfig{
+			ClientConfig: &providers.AccessTokenSubConfig{
+				ValidityPeriod: 1800,
+				Attributes:     []string{constants.ClaimOUID},
+			},
+		},
+	})
+
+	clientConfig := token.AccessToken.ClientConfig
+	assert.Equal(suite.T(), []string{constants.ClaimOUID, constants.ClaimSubType}, clientConfig.Attributes)
+	assert.Equal(suite.T(), int64(1800), clientConfig.ValidityPeriod,
+		"seeding the claim must not disturb the rest of the client config")
+}
+
+// The caller may already have set the claim, so seeding must not duplicate it.
+func (suite *OAuth2UtilsTestSuite) TestEnsureClientSubTypeAttribute_IsIdempotent() {
+	token := EnsureClientSubTypeAttribute(&providers.OAuthTokenConfig{
+		AccessToken: &providers.AccessTokenConfig{
+			ClientConfig: &providers.AccessTokenSubConfig{Attributes: []string{constants.ClaimSubType}},
+		},
+	})
+	token = EnsureClientSubTypeAttribute(token)
+
+	assert.Equal(suite.T(), []string{constants.ClaimSubType}, token.AccessToken.ClientConfig.Attributes)
+}
+
+// sub_type never appears on a user-subject token, so the user sub-config is untouched.
+func (suite *OAuth2UtilsTestSuite) TestEnsureClientSubTypeAttribute_LeavesUserConfigAlone() {
+	token := EnsureClientSubTypeAttribute(&providers.OAuthTokenConfig{
+		AccessToken: &providers.AccessTokenConfig{
+			UserConfig: &providers.AccessTokenSubConfig{Attributes: []string{"email"}},
+		},
+	})
+
+	assert.Equal(suite.T(), []string{"email"}, token.AccessToken.UserConfig.Attributes)
+	assert.Equal(suite.T(), []string{constants.ClaimSubType}, token.AccessToken.ClientConfig.Attributes)
 }

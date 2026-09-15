@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 )
@@ -18,12 +19,19 @@ type MockNotificationServer struct {
 	messages []SMSMessage
 	mutex    sync.RWMutex
 	port     int
+	// failStatus, when 400 or above, is returned instead of a success response.
+	failStatus int
 }
 
-// SMSMessage represents a received SMS message
+// SMSMessage represents a received SMS message, along with the details of the request that carried
+// it, so tests can assert how a sender dispatched the message and not just what it sent.
 type SMSMessage struct {
-	Message string `json:"message"`
-	OTP     string `json:"otp,omitempty"`
+	Message     string            `json:"message"`
+	OTP         string            `json:"otp,omitempty"`
+	Method      string            `json:"method,omitempty"`
+	ContentType string            `json:"contentType,omitempty"`
+	Query       string            `json:"query,omitempty"`
+	Headers     map[string]string `json:"headers,omitempty"`
 }
 
 // SMSRequest represents the expected SMS request format
@@ -52,18 +60,23 @@ func (m *MockNotificationServer) Start() error {
 	// Handle clear messages endpoint for testing
 	mux.HandleFunc("/clear", m.handleClearMessages)
 
-	m.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", m.port),
-		Handler: mux,
+	m.server = &http.Server{Handler: mux}
+
+	// Bind before returning so the port is reachable as soon as Start succeeds, and so a port clash
+	// surfaces here rather than later as a dispatch that never arrives.
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", m.port))
+	if err != nil {
+		return fmt.Errorf("failed to start mock notification server on port %d: %w", m.port, err)
 	}
+	m.port = listener.Addr().(*net.TCPAddr).Port
 
 	go func() {
-		log.Printf("Starting mock notification server on port %d", m.port)
-		if err := m.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := m.server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Printf("Mock notification server error: %v", err)
 		}
 	}()
 
+	log.Printf("Mock notification server started on port %d", m.port)
 	return nil
 }
 
@@ -85,13 +98,17 @@ func (m *MockNotificationServer) GetSendSMSURL() string {
 	return fmt.Sprintf("%s/send-sms", m.GetURL())
 }
 
-// handleSendSMS handles SMS sending requests
-func (m *MockNotificationServer) handleSendSMS(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+// SetResponseStatus makes subsequent send requests return the given status, so tests can exercise
+// how a sender failure surfaces. A status below 400 restores the normal success response.
+func (m *MockNotificationServer) SetResponseStatus(status int) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	m.failStatus = status
+}
 
+// handleSendSMS handles SMS sending requests. Any method is accepted so that senders configured to
+// use GET can be exercised; the method actually used is recorded on the message.
+func (m *MockNotificationServer) handleSendSMS(w http.ResponseWriter, r *http.Request) {
 	// Read the raw body as the SMS message content
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -101,24 +118,44 @@ func (m *MockNotificationServer) handleSendSMS(w http.ResponseWriter, r *http.Re
 
 	messageBody := string(bodyBytes)
 
-	// Extract OTP from message (assuming it's a numeric sequence)
-	otp := extractOTPFromMessage(messageBody)
+	// A sender using GET carries the message in the query string rather than the body.
+	otpSource := messageBody
+	if messageBody == "" {
+		otpSource = r.URL.RawQuery
+	}
+	otp := extractOTPFromMessage(otpSource)
+
+	headers := make(map[string]string, len(r.Header))
+	for name := range r.Header {
+		headers[name] = r.Header.Get(name)
+	}
 
 	message := SMSMessage{
-		Message: messageBody,
-		OTP:     otp,
+		Message:     messageBody,
+		OTP:         otp,
+		Method:      r.Method,
+		ContentType: r.Header.Get("Content-Type"),
+		Query:       r.URL.RawQuery,
+		Headers:     headers,
 	}
 
 	m.mutex.Lock()
 	m.messages = append(m.messages, message)
+	failStatus := m.failStatus
+	messageCount := len(m.messages)
 	m.mutex.Unlock()
 
-	log.Printf("Mock SMS received: %s (OTP: %s)", messageBody, otp)
+	log.Printf("Mock SMS received via %s: %s (OTP: %s)", r.Method, messageBody, otp)
+
+	if failStatus >= 400 {
+		http.Error(w, "mock sender failure", failStatus)
+		return
+	}
 
 	// Return success response
 	response := map[string]interface{}{
 		"success":   true,
-		"messageId": fmt.Sprintf("mock-msg-%d", len(m.messages)),
+		"messageId": fmt.Sprintf("mock-msg-%d", messageCount),
 	}
 
 	w.Header().Set("Content-Type", "application/json")

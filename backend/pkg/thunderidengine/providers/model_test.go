@@ -302,3 +302,33 @@ func (suite *ModelTestSuite) TestAttestationConfig_WithoutCredentials_PassesDevM
 
 	assert.True(suite.T(), sanitized.DevMode)
 }
+
+// ----- Application -----
+
+func (suite *ModelTestSuite) TestApplication_OAuthClientID() {
+	app := &Application{
+		InboundAuthConfig: []InboundAuthConfigWithSecret{
+			{
+				Type:        OAuthInboundAuthType,
+				OAuthConfig: &OAuthConfigWithSecret{ClientID: "client-1"},
+			},
+		},
+	}
+
+	assert.Equal(suite.T(), "client-1", app.OAuthClientID())
+}
+
+func (suite *ModelTestSuite) TestApplication_OAuthClientID_NoOAuthConfig() {
+	assert.Empty(suite.T(), (&Application{}).OAuthClientID())
+	assert.Empty(suite.T(), (*Application)(nil).OAuthClientID())
+	assert.Empty(suite.T(), (&Application{
+		InboundAuthConfig: []InboundAuthConfigWithSecret{{Type: OAuthInboundAuthType}},
+	}).OAuthClientID())
+}
+
+func (suite *ModelTestSuite) TestApplication_EntityCategoryIsNotSerialized() {
+	out, err := yaml.Marshal(&Application{ID: "app-1", EntityCategory: EntityCategoryAgent})
+
+	suite.Require().NoError(err)
+	assert.NotContains(suite.T(), string(out), "agent")
+}

@@ -14,6 +14,7 @@ const DEFAULT_USER_FACING_FLOW: CreationFlow = {
     ApplicationCreateFlowStep.CONFIGURE,
     ApplicationCreateFlowStep.COMPLETE,
   ],
+  allowsUserLogins: true,
   previewSteps: [
     ApplicationCreateFlowStep.DETAILS,
     ApplicationCreateFlowStep.SECURITY,

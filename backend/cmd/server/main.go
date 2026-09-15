@@ -30,6 +30,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/mcp"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/revocationcache"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -83,7 +84,7 @@ func main() {
 	}
 
 	// Register the services.
-	jwtService, runtimeCryptoSvc, importService := registerServices(mux, cacheManager)
+	jwtService, runtimeCryptoSvc, importService, mcpServer := registerServices(mux, cacheManager)
 
 	// When invoked as the bootstrap one-shot (`thunderid bootstrap`), create the
 	// default resources in-process and exit without starting the HTTP server.
@@ -101,6 +102,11 @@ func main() {
 	// still starts and the syncer repopulates the cache on its next tick.
 	revocationEnforcer, revocationSyncer := initRevocationCache(ctx, logger, cfg)
 	revocationSyncer.Start(ctx)
+
+	// Mount the MCP server's routes now that the revocation enforcer exists — DefaultGuard uses it
+	// to authenticate MCP requests with the same verification and revocation logic as the REST gate.
+	mcpGuard, mcpResourceMeta := mcp.DefaultGuard(jwtService, revocationEnforcer)
+	mcp.Initialize(mux, mcpServer, mcpGuard, mcpResourceMeta)
 
 	// Register static file handlers for frontend applications.
 	registerStaticFileHandlers(ctx, logger, mux, serverHome)
@@ -234,12 +240,16 @@ func createHTTPServer(ctx context.Context, logger *log.Logger, cfg *config.Confi
 	securityMiddleware := createSecurityMiddleware(ctx, logger, mux, jwtService, revocationEnforcer)
 
 	// Build the middleware chain with proper execution order.
-	// Request flow: CorrelationID (outermost) -> SecurityHeaders -> AccessLog -> Security -> Route Handler (innermost)
+	// Request flow: CorrelationID (outermost) -> DeploymentID -> SecurityHeaders -> AccessLog ->
+	// Security -> Route Handler (innermost)
 	// Note: Middlewares are wrapped in reverse order - the last added will execute first.
 	// The Gate and Console frontend paths are always excluded from the access log to keep it
 	// focused on API traffic. Additional prefixes can be excluded via log.access.exclude_paths.
 	handler := log.AccessLogHandler(logger, accessLogExcludePaths(cfg.Log.Access.ExcludePaths), securityMiddleware)
 	handler = middleware.SecurityHeadersMiddleware()(handler)
+	// Outside the security layer, so that every request carries the deployment id it acts for by the
+	// time any store is reached.
+	handler = middleware.DeploymentIDMiddleware(handler)
 	handler = middleware.CorrelationIDMiddleware(handler)
 
 	// Build the server address using hostname and port from the configurations.

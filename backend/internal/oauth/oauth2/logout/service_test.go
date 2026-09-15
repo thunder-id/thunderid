@@ -300,6 +300,20 @@ func makeIDToken(iss, aud string) string {
 		enc(map[string]interface{}{"iss": iss, "aud": aud}) + ".sig"
 }
 
+// makeTypedToken builds a token with an arbitrary typ header and extra claims, for asserting that
+// only ID tokens are accepted as an id_token_hint.
+func makeTypedToken(typ, iss, aud string, extra map[string]interface{}) string {
+	enc := func(v interface{}) string {
+		b, _ := json.Marshal(v)
+		return base64.RawURLEncoding.EncodeToString(b)
+	}
+	claims := map[string]interface{}{"iss": iss, "aud": aud}
+	for k, v := range extra {
+		claims[k] = v
+	}
+	return enc(map[string]string{"alg": "RS256", "typ": typ}) + "." + enc(claims) + ".sig"
+}
+
 func makeIDTokenMultiAud(iss string, aud []string, azp string) string {
 	enc := func(v interface{}) string {
 		b, _ := json.Marshal(v)
@@ -432,6 +446,32 @@ func (suite *LogoutServiceTestSuite) TestResolve_IDTokenHintBadSignature() {
 	token := makeIDToken(testIssuer, "client-x")
 	jwtSvc.EXPECT().VerifyJWTSignature(mock.Anything, token).
 		Return(&tidcommon.ServiceError{Code: "bad", Type: tidcommon.ClientErrorType})
+
+	_, err := svc.Resolve(context.Background(), LogoutRequest{IDTokenHint: token})
+
+	suite.Require().ErrorIs(err, errInvalidIDTokenHint)
+}
+
+// An access token issued to an application with no configured default audience carries
+// aud=client_id, so it resolves to a valid client. It must still be rejected as an id_token_hint:
+// accepting it would let anyone holding such a token suppress the End-User sign-out confirmation.
+func (suite *LogoutServiceTestSuite) TestResolve_AccessTokenAsIDTokenHintRejected() {
+	svc, jwtSvc, _ := suite.newService()
+	token := makeTypedToken("at+jwt", testIssuer, "client-x", nil)
+	jwtSvc.EXPECT().VerifyJWTSignature(mock.Anything, token).Return(nil)
+
+	_, err := svc.Resolve(context.Background(), LogoutRequest{IDTokenHint: token})
+
+	suite.Require().ErrorIs(err, errInvalidIDTokenHint)
+}
+
+// A refresh token shares the generic JWT typ with ID tokens, so it is separated by its
+// access_token_sub claim, the same way the ID-JAG subject token check does it.
+func (suite *LogoutServiceTestSuite) TestResolve_RefreshTokenAsIDTokenHintRejected() {
+	svc, jwtSvc, _ := suite.newService()
+	token := makeTypedToken("JWT", testIssuer, "client-x",
+		map[string]interface{}{"access_token_sub": "user-1"})
+	jwtSvc.EXPECT().VerifyJWTSignature(mock.Anything, token).Return(nil)
 
 	_, err := svc.Resolve(context.Background(), LogoutRequest{IDTokenHint: token})
 

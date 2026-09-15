@@ -427,6 +427,28 @@ func (suite *UtilsTestSuite) TestFetchUserAttributes_EmptyAllowedClaims() {
 	mockAttrCacheService.AssertExpectations(suite.T())
 }
 
+func (suite *UtilsTestSuite) TestFetchUserAttributes_RawJWTIncludedRegardlessOfAllowedClaims() {
+	mockAttrCacheService := attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
+
+	// Mock GetAttributeCache to return a cache holding only the opaque JWT pseudo-claim
+	mockAttrCacheService.On("GetAttributeCache", mock.Anything, "cache-key-123").
+		Return(&attributecache.AttributeCache{
+			ID: "cache-key-123",
+			Attributes: map[string]interface{}{
+				providers.RawJWTAttributeKey: "header.payload.signature",
+			},
+		}, nil)
+
+	// Empty allowedClaims — _jwt is not a configured claim, so it must still come through
+	attrs, err := FetchUserAttributes(context.Background(), mockAttrCacheService,
+		[]string{}, "cache-key-123")
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "header.payload.signature", attrs[providers.RawJWTAttributeKey])
+
+	mockAttrCacheService.AssertExpectations(suite.T())
+}
+
 func (suite *UtilsTestSuite) TestFetchUserAttributes_NilAllowedClaims() {
 	mockAttrCacheService := attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 
@@ -943,6 +965,22 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_SkipsR
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
 	assert.NotContains(suite.T(), claims, "scope")
+}
+
+// sub_type is reserved, so an agent cannot surface a schema attribute of that name.
+func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_SkipsSubType() {
+	actors := actorprovidermock.NewActorProviderMock(suite.T())
+	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+		ID:         testBCCAppID,
+		Attributes: []byte(`{"sub_type":"app","modelProvider":"anthropic"}`),
+	}, (*tidcommon.ServiceError)(nil))
+
+	app := newOAuthAppForOwnAttributes([]string{"sub_type", "modelProvider"})
+	claims, err := BuildClientAttributes(context.Background(), app, nil, actors)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
+	assert.NotContains(suite.T(), claims, "sub_type")
 }
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentSystemAttributes_HappyPath() {

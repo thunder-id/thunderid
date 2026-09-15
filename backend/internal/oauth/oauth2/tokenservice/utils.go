@@ -4,6 +4,8 @@
 package tokenservice
 
 import (
+	"time"
+
 	"context"
 	"encoding/json"
 	"fmt"
@@ -64,6 +66,7 @@ func ResolveTokenConfig(
 			if oauthApp.Token.IDToken.ValidityPeriod > 0 {
 				tokenConfig.ValidityPeriod = oauthApp.Token.IDToken.ValidityPeriod
 			}
+			tokenConfig.SigningAlg = oauthApp.Token.IDToken.SigningAlg
 		}
 	case TokenTypeRefresh:
 		if cfg.OAuth.RefreshToken.ValidityPeriod > 0 {
@@ -247,6 +250,11 @@ func FetchUserAttributes(
 
 	// Helper to check if a claim should be included
 	shouldInclude := func(claimName string) bool {
+		// An opaque JWT/JWE from the identity system is not a configured claim, so it is never
+		// gated by the allow-list.
+		if claimName == providers.RawJWTAttributeKey {
+			return true
+		}
 		if len(allowedClaims) == 0 {
 			return false // Only add special claims if explicitly allowed
 		}
@@ -404,7 +412,21 @@ func ReservedAccessTokenClaimNames() map[string]bool {
 	reserved[constants.ClaimOUHandle] = true
 	reserved[constants.ClaimClaimsRequest] = true
 	reserved[constants.ClaimClaimsLocales] = true
+	reserved[constants.ClaimSubType] = true
+	reserved[constants.ClaimIDP] = true
+	reserved[constants.ClaimTokenFamilyID] = true
 	return reserved
+}
+
+// builderOwnedClaimNames returns the access-token claims the builder writes itself, so a configured
+// attribute can never supply one. The reserved set minus the OU claims, which a user-subject token
+// legitimately receives through the attribute channel.
+func builderOwnedClaimNames() map[string]bool {
+	owned := ReservedAccessTokenClaimNames()
+	delete(owned, constants.ClaimOUID)
+	delete(owned, constants.ClaimOUName)
+	delete(owned, constants.ClaimOUHandle)
+	return owned
 }
 
 // FilterAttributesByAllowList returns the subset of attrs whose keys are listed in the given
@@ -677,4 +699,31 @@ func resolveClientGroupRoleClaims(
 		}
 	}
 	return claims, nil
+}
+
+// ArtifactLifetime returns the longest an artifact issued to this client can remain valid: the longest
+// access-token validity across both token subjects, the refresh-token validity when the client may use
+// it, plus the authorization-code window.
+func ArtifactLifetime(cfg oauthconfig.Config, client *providers.OAuthClient) time.Duration {
+	if client == nil {
+		return 0
+	}
+	// User-subject tokens and client_credentials tokens read separate validity sub-configs, so only the
+	// longest of the two bounds how long an access token issued to this client can live.
+	maxValidity := ResolveTokenConfig(cfg, client, TokenTypeAccess,
+		client.UserAccessTokenConfig().ValidityPeriodOrZero()).ValidityPeriod
+	clientAccessValidity := ResolveTokenConfig(cfg, client, TokenTypeAccess,
+		client.ClientAccessTokenConfig().ValidityPeriodOrZero()).ValidityPeriod
+	if clientAccessValidity > maxValidity {
+		maxValidity = clientAccessValidity
+	}
+	if client.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
+		refreshValidity := ResolveTokenConfig(cfg, client, TokenTypeRefresh, 0).ValidityPeriod
+		if refreshValidity > maxValidity {
+			maxValidity = refreshValidity
+		}
+	}
+	maxValidity += cfg.OAuth.AuthorizationCode.ValidityPeriod
+
+	return time.Duration(maxValidity) * time.Second
 }

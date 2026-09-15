@@ -38,6 +38,9 @@ const (
 	// claimAccessTokenSubject carries the end user behind a token minted for a delegated call. When
 	// present it, not sub, is the subject the deny list is evaluated against.
 	claimAccessTokenSubject = "access_token_sub"
+
+	// claimClientID names the OAuth client an access token was issued to.
+	claimClientID = "client_id"
 )
 
 // jwtAuthenticator handles authentication and authorization using JWT Bearer tokens.
@@ -61,7 +64,6 @@ func (h *jwtAuthenticator) CanHandle(r *http.Request) bool {
 
 // Authenticate validates the JWT token and builds a SecurityContext.
 func (h *jwtAuthenticator) Authenticate(r *http.Request) (*SecurityContext, error) {
-	ctx := r.Context()
 	// Step 1: Extract Bearer token
 	authHeader := r.Header.Get(constants.AuthorizationHeaderName)
 	token, err := extractToken(authHeader)
@@ -69,6 +71,19 @@ func (h *jwtAuthenticator) Authenticate(r *http.Request) (*SecurityContext, erro
 		return nil, err
 	}
 
+	// The REST gate does not restrict self-issued tokens to a particular audience/resource — a
+	// token valid for one REST endpoint is valid for all of them, gated by scope, not audience.
+	return h.authenticateToken(r.Context(), token, "")
+}
+
+// authenticateToken verifies token and builds the resulting SecurityContext. expectedAud, if
+// non-empty, is required as the audience of a self-issued token (RFC 8707 resource indicator);
+// empty skips that check, same as VerifyJWT itself treats it. It has no effect on a trusted-issuer
+// token, which is always checked against the issuer's own configured audience. authenticateToken
+// performs no revocation check on its own — the REST gate applies that separately in
+// securityService.Process; BearerAuthenticator.Authenticate applies it here for other callers that
+// need identical behavior in one call.
+func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token, expectedAud string) (*SecurityContext, error) {
 	if token == "" {
 		return nil, errInvalidToken
 	}
@@ -76,7 +91,7 @@ func (h *jwtAuthenticator) Authenticate(r *http.Request) (*SecurityContext, erro
 	// Step 2: Verify the JWT, routing on its issuer. Tokens this server issued
 	// are verified with its own signing key; Additionally when a trusted issuer is
 	// configured, tokens from that issuer are verified against its JWKS.
-	if err := h.verifyToken(ctx, token); err != nil {
+	if err := h.verifyToken(ctx, token, expectedAud); err != nil {
 		return nil, err
 	}
 
@@ -106,8 +121,17 @@ func (h *jwtAuthenticator) Authenticate(r *http.Request) (*SecurityContext, erro
 	// federated token contributes no revocation subject and is enforced on jti and tfid alone.
 	if issuer, _ := attributes[claimIssuer].(string); issuer == config.GetServerRuntime().Config.JWT.Issuer {
 		securityCtx.revocationSubject = subject
-		if accessTokenSubject, _ := attributes[claimAccessTokenSubject].(string); accessTokenSubject != "" {
+		accessTokenSubject, _ := attributes[claimAccessTokenSubject].(string)
+		if accessTokenSubject != "" {
 			securityCtx.revocationSubject = accessTokenSubject
+		}
+		// The app.key dimension is revoked by the OAuth client the token was issued to. Access tokens
+		// carry it in client_id; refresh tokens carry no client_id and hold the owning client in sub,
+		// which is only safe to read when access_token_sub marks the token as a refresh token.
+		if clientID, _ := attributes[claimClientID].(string); clientID != "" {
+			securityCtx.revocationAppKey = clientID
+		} else if accessTokenSubject != "" {
+			securityCtx.revocationAppKey = subject
 		}
 		if issuedAt, ok := attributes[claimIssuedAt].(float64); ok {
 			securityCtx.establishedAt = time.Unix(int64(issuedAt), 0).UTC()
@@ -116,12 +140,25 @@ func (h *jwtAuthenticator) Authenticate(r *http.Request) (*SecurityContext, erro
 	return securityCtx, nil
 }
 
+// AuthenticateBearerToken verifies a bearer token exactly as the REST gate's JWT authenticator does
+// — routing on issuer (self-issued, or a configured trusted issuer verified via JWKS) — and returns
+// the resulting SecurityContext. expectedAud is required as a self-issued token's audience (RFC 8707
+// resource indicator); pass "" to skip that check, as the REST gate does. It performs no revocation
+// check; use BearerAuthenticator.Authenticate for the REST gate's full behavior (verification plus
+// revocation) in one call.
+func AuthenticateBearerToken(
+	ctx context.Context, jwtService jwt.JWTServiceInterface, token, expectedAud string,
+) (*SecurityContext, error) {
+	return (&jwtAuthenticator{jwtService: jwtService}).authenticateToken(ctx, token, expectedAud)
+}
+
 // verifyToken verifies the bearer token by routing on its iss claim against
 // an explicit allowlist of accepted issuers. Tokens from the configured
 // trusted issuer (when set) are verified against its JWKS. Tokens whose iss
-// matches this server's own JWT issuer are verified with the local signing
-// key. Any other iss is rejected. There is no cross-issuer fallback.
-func (h *jwtAuthenticator) verifyToken(ctx context.Context, token string) error {
+// matches this server's own JWT issuer must be access tokens, and are verified
+// with the local signing key and against expectedAud if it is non-empty. Any
+// other iss is rejected. There is no cross-issuer fallback.
+func (h *jwtAuthenticator) verifyToken(ctx context.Context, token, expectedAud string) error {
 	trustedIssuer := config.GetServerRuntime().Config.Server.SecurityConfig.TrustedIssuer
 	iss := extractIssuer(token)
 	switch {
@@ -130,7 +167,10 @@ func (h *jwtAuthenticator) verifyToken(ctx context.Context, token string) error 
 			return errInvalidToken
 		}
 	case iss == config.GetServerRuntime().Config.JWT.Issuer:
-		if err := h.jwtService.VerifyJWT(ctx, token, "", ""); err != nil {
+		if err := requireAccessTokenType(token); err != nil {
+			return err
+		}
+		if err := h.jwtService.VerifyJWT(ctx, token, expectedAud, ""); err != nil {
 			return errInvalidToken
 		}
 	default:
@@ -179,6 +219,24 @@ func (h *jwtAuthenticator) verifyFederatedToken(ctx context.Context, token strin
 	return true
 }
 
+// requireAccessTokenType enforces the RFC 9068 typ header on a self-issued token, so that only an
+// access token authenticates. Every other JWT this server mints — the flow's auth assertion, ID
+// tokens, magic link, OTP, consent and flow tokens — carries the same issuer and signing key and
+// would otherwise be indistinguishable from one here. RFC 9068 §4 requires both the compact and the
+// media-type spelling to be accepted, compared case-insensitively.
+func requireAccessTokenType(token string) error {
+	header, err := jwt.DecodeJWTHeader(token)
+	if err != nil {
+		return errInvalidToken
+	}
+	typ, _ := header["typ"].(string)
+	if !strings.EqualFold(typ, jwt.TokenTypeAccessToken) &&
+		!strings.EqualFold(typ, jwt.TokenTypeAccessTokenWithPrefix) {
+		return errInvalidToken
+	}
+	return nil
+}
+
 // extractToken extracts the Bearer token from the Authorization header.
 func extractToken(authHeader string) (string, error) {
 	if !utils.HasPrefixFold(authHeader, constants.AuthSchemeBearer) {
@@ -200,8 +258,10 @@ func extractIssuer(token string) string {
 }
 
 // extractScopes extracts permissions from JWT claims.
-// Permissions can be in "scope" (string with space-separated values), "scopes" (array) claim,
-// or "authorized_permissions" (server-specific) claim.
+// Permissions can be in "scope" (string with space-separated values) or in the "scopes" (array)
+// claim. The "authorized_permissions" claim of an auth assertion is deliberately not consulted: an
+// assertion is not an access token and no longer authenticates here, and the claim is not one the
+// access token builder owns, so a subject attribute of that name must not confer permissions.
 func extractScopes(attributes map[string]interface{}) []string {
 	// Try "scope" claim (OAuth2 standard - space-separated string)
 	if scopeStr, ok := attributes["scope"].(string); ok && scopeStr != "" {
@@ -222,11 +282,6 @@ func extractScopes(attributes map[string]interface{}) []string {
 		case []string:
 			return scopes
 		}
-	}
-
-	// Try "authorized_permissions" from the server assertion
-	if permsStr, ok := attributes["authorized_permissions"].(string); ok && permsStr != "" {
-		return strings.Fields(permsStr)
 	}
 
 	return []string{}

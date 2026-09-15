@@ -15,6 +15,18 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+interface MockAttribute {
+  attribute: string;
+  credential: boolean;
+  userTypes: string[];
+}
+
+const mockUseGetUserTypeAttributes = vi.fn<() => {attributes: MockAttribute[]; isLoading: boolean}>();
+
+vi.mock('@thunderid/configure-user-types', () => ({
+  useGetUserTypeAttributes: (): {attributes: MockAttribute[]; isLoading: boolean} => mockUseGetUserTypeAttributes(),
+}));
+
 const mockHasResourceFieldNotification = vi.fn().mockReturnValue(false);
 const mockGetResourceFieldNotification = vi.fn().mockReturnValue('');
 
@@ -41,6 +53,17 @@ describe('FieldExtendedProperties', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockHasResourceFieldNotification.mockReturnValue(false);
+    mockGetResourceFieldNotification.mockReturnValue('');
+    mockUseGetUserTypeAttributes.mockReturnValue({
+      attributes: [
+        {attribute: 'department', credential: false, userTypes: ['Employee']},
+        {attribute: 'email', credential: false, userTypes: ['Person', 'Employee']},
+        {attribute: 'password', credential: true, userTypes: ['Person']},
+        {attribute: 'username', credential: false, userTypes: ['Person']},
+      ],
+      isLoading: false,
+    });
   });
 
   describe('Rendering', () => {
@@ -70,7 +93,7 @@ describe('FieldExtendedProperties', () => {
   });
 
   describe('Password Input Handling', () => {
-    it('should render with credential attributes for PasswordInput type', async () => {
+    it('should list only credential attributes for PasswordInput type', async () => {
       const user = userEvent.setup();
       const resource = createMockResource(ElementTypes.PasswordInput);
 
@@ -81,24 +104,59 @@ describe('FieldExtendedProperties', () => {
 
       await user.click(input);
 
-      expect(await screen.findByRole('option', {name: 'password'})).toBeInTheDocument();
-      expect(screen.getByRole('option', {name: 'pin'})).toBeInTheDocument();
-      expect(screen.getByRole('option', {name: 'secret'})).toBeInTheDocument();
+      expect(await screen.findByRole('option', {name: /password/})).toBeInTheDocument();
+      expect(screen.queryByRole('option', {name: /email/})).not.toBeInTheDocument();
+    });
+
+    it('should accept a custom value for PasswordInput type', () => {
+      const resource = createMockResource(ElementTypes.PasswordInput);
+
+      render(<FieldExtendedProperties resource={resource} onChange={mockOnChange} />);
+
+      fireEvent.change(screen.getByRole('combobox'), {target: {value: 'customCredential'}});
+
+      expect(mockOnChange).toHaveBeenCalledWith('ref', 'customCredential', resource, true);
     });
   });
 
   describe('Attribute Selection', () => {
-    it('should have email, username, given_name as options', () => {
+    it('should list non credential attributes aggregated across user types', async () => {
+      const user = userEvent.setup();
       const resource = createMockResource(ElementTypes.TextInput);
 
       render(<FieldExtendedProperties resource={resource} onChange={mockOnChange} />);
 
-      const input = screen.getByPlaceholderText('flows:core.fieldExtendedProperties.selectAttribute');
-      fireEvent.focus(input);
-      fireEvent.click(input);
+      await user.click(screen.getByRole('combobox'));
 
-      // Check for dropdown options (may be in listbox)
-      expect(screen.getByRole('combobox')).toBeInTheDocument();
+      expect(await screen.findByRole('option', {name: /department/})).toBeInTheDocument();
+      expect(screen.getByRole('option', {name: /email/})).toBeInTheDocument();
+      expect(screen.getByRole('option', {name: /username/})).toBeInTheDocument();
+      expect(screen.queryByRole('option', {name: /password/})).not.toBeInTheDocument();
+    });
+
+    // Regression: feeding typed text back in as the Autocomplete value makes MUI treat the input as
+    // a pristine selection and stop filtering, leaving the whole list showing while typing.
+    it('should filter options by the typed text', () => {
+      const resource = createMockResource(ElementTypes.TextInput);
+
+      render(<FieldExtendedProperties resource={resource} onChange={mockOnChange} />);
+
+      fireEvent.change(screen.getByRole('combobox'), {target: {value: 'dep'}});
+
+      const options = screen.queryAllByRole('option');
+      expect(options).toHaveLength(1);
+      expect(options[0]).toHaveTextContent('department');
+    });
+
+    it('should annotate options with the user types declaring them', async () => {
+      const user = userEvent.setup();
+      const resource = createMockResource(ElementTypes.TextInput);
+
+      render(<FieldExtendedProperties resource={resource} onChange={mockOnChange} />);
+
+      await user.click(screen.getByRole('combobox'));
+
+      expect(await screen.findByRole('option', {name: /email/})).toHaveTextContent('Person, Employee');
     });
 
     it('should display current ref value', () => {
@@ -145,7 +203,7 @@ describe('FieldExtendedProperties', () => {
       rerender(<FieldExtendedProperties resource={resourceWithoutRef} onChange={mockOnChange} />);
 
       input = screen.getByRole('combobox');
-      expect(input).toHaveValue('email');
+      expect(input).toHaveValue('');
     });
   });
 
@@ -160,7 +218,7 @@ describe('FieldExtendedProperties', () => {
       await user.click(input);
 
       // Wait for dropdown to open and select an option
-      const option = await screen.findByRole('option', {name: 'email'});
+      const option = await screen.findByRole('option', {name: /email/});
       await user.click(option);
 
       expect(mockOnChange).toHaveBeenCalledWith('ref', 'email', resource);

@@ -5,13 +5,14 @@
  * Wayfinder Sample App Page Object
  *
  * Page Object Model for the standalone Wayfinder sample app's own home-page chrome (plain
- * hand-built sign-in button, not an SDK component). Login form and logout are shared gate
- * behavior, inherited from GateLoginPage.
+ * hand-built sign-in button, not an SDK component). Login form is shared gate behavior,
+ * inherited from GateLoginPage; login() is overridden below, and logout() is defined here
  */
 
 import { Page, Locator, expect } from "@playwright/test";
 import { GateLoginPage } from "../gate-login.page";
 import { Timeouts } from "../../constants/timeouts";
+import { serverUrl } from "../../utils/api-request";
 
 export class WayfinderAppPage extends GateLoginPage {
   readonly signInButton: Locator;
@@ -20,8 +21,6 @@ export class WayfinderAppPage extends GateLoginPage {
   readonly submitButton: Locator;
   readonly emailInput: Locator;
   readonly signupErrorAlert: Locator;
-  readonly registrationCompleteHeading: Locator;
-  readonly registrationCompleteLink: Locator;
 
   // Password Reset Locators
   readonly resetPasswordLink: Locator;
@@ -30,7 +29,7 @@ export class WayfinderAppPage extends GateLoginPage {
   readonly userNotFoundErrorAlert: Locator;
   readonly recoveryUsernameInput: Locator;
   readonly newPasswordInput: Locator;
-  readonly resetPasswordSubmitButton: Locator;
+  readonly updatePasswordSubmitButton: Locator;
   readonly passwordResetSuccessHeading: Locator;
 
   constructor(page: Page) {
@@ -46,23 +45,16 @@ export class WayfinderAppPage extends GateLoginPage {
     // Rendered above the "Create your account" form when the submitted username collides with
     // an existing account.
     this.signupErrorAlert = page.getByRole("alert");
-    // The registration_complete node's confirmation screen (heading "Account Created" + a link
-    // back to sign-in) - see the flow's registration_complete_heading/registration_complete_link
-    // components. Registration itself does not sign the new user in.
-    this.registrationCompleteHeading = page.getByRole("heading", { name: /account created/i });
-    this.registrationCompleteLink = page.getByRole("link", { name: /go to wayfinder/i });
 
     // Password Reset
     this.resetPasswordLink = page.getByRole("link", { name: /reset/i });
     this.sendRecoveryLinkButton = page.getByRole("button", { name: /send recovery link/i });
-    // await expect(page.getByRole('alert')).toBeVisible();
-    // await expect(page.getByText('User not found')).toBeVisible();
     this.userNotFoundErrorAlert = page.getByRole("alert");
     this.resetPasswordConfirmationHeading = page.getByRole("heading", { name: /check your email/i });
     this.recoveryUsernameInput = page.locator('input[name="username"], input[name="email"]').first();
     this.newPasswordInput = page.locator('input[type="password"], input[name="password"]').first();
-    this.resetPasswordSubmitButton = page.getByRole("button", { name: /reset password/i });
-    this.passwordResetSuccessHeading = page.getByRole("heading", { name: /password reset successful|success/i });
+    this.updatePasswordSubmitButton = page.getByRole("button", { name: /update password/i });
+    this.passwordResetSuccessHeading = page.getByRole("heading", { name: /password updated/i });
   }
 
   /**
@@ -123,21 +115,6 @@ export class WayfinderAppPage extends GateLoginPage {
     await expect(this.signupErrorAlert).toContainText(/user already exists/i);
   }
 
-  /**
-   * Verify the registration flow's terminal confirmation screen is loaded. Self-registration
-   * only creates the account - it does not sign the new user in - so this screen, not
-   * verifyLoggedIn(), is the correct end state for TC003.
-   */
-  async verifyRegistrationCompleteScreenLoaded() {
-    await expect(this.registrationCompleteHeading).toBeVisible({ timeout: Timeouts.ELEMENT_VISIBILITY });
-    await expect(this.registrationCompleteLink).toBeVisible({ timeout: Timeouts.ELEMENT_VISIBILITY });
-  }
-
-  /** Follow the confirmation screen's link back to sign-in. */
-  async clickRegistrationCompleteLink() {
-    await this.registrationCompleteLink.click();
-  }
-
   async clickSubmitButton() {
     await this.submitButton.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
     await this.submitButton.click();
@@ -157,10 +134,48 @@ export class WayfinderAppPage extends GateLoginPage {
   }
 
   /**
+   * Perform complete login flow. Overrides GateLoginPage.login(): waits for the submit to
+   * actually leave the gate so a rejected or slow-validating submit fails here, at the action,
+   * instead of surfacing later as a confusing "no logged-in indicator found" from
+   * verifyLoggedIn().
+   * @param username - Username to login with
+   * @param password - Password to login with
+   */
+  async login(username: string, password: string) {
+    await this.fillLoginForm(username, password);
+    const gateOrigin = new URL(serverUrl).origin;
+    await Promise.all([
+      this.page.waitForURL(url => url.origin !== gateOrigin, { timeout: Timeouts.REDIRECT }),
+      this.clickLogin(),
+    ]);
+  }
+
+  /**
+   * Click logout button, composed from GateLoginPage's shared primitives Wayfinder's 
+   * RP-initiated logout has the gate complete the whole round trip via a server-side 
+   * redirect with no confirmation screen ever rendered.
+   */
+  async logout() {
+    await this.triggerSignOutFromAvatarMenu();
+    await this.waitForRedirectAwayFromGate();
+  }
+
+  /**
    * Verify logout was successful. RP-initiated logout redirects back to the app's home page.
    */
   async verifyLoggedOut() {
     await this.verifyUnAuthenticatedHomePageLoaded();
+  }
+
+  /** Open the account menu and follow its "Profile" link to the self-service Profile page. */
+  async openProfile() {
+    const accountMenuButton = this.page.locator('button[aria-haspopup="menu"]').first();
+    await accountMenuButton.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
+    await accountMenuButton.click();
+
+    const profileMenuItem = this.page.getByRole("menuitem", { name: /^profile$/i });
+    await profileMenuItem.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
+    await profileMenuItem.click();
   }
 
   // Password Reset Methods
@@ -194,7 +209,7 @@ export class WayfinderAppPage extends GateLoginPage {
   }
 
   async verifyNewPasswordPageLoaded() {
-    await expect(this.resetPasswordSubmitButton).toBeVisible({ timeout: Timeouts.ELEMENT_VISIBILITY });
+    await expect(this.updatePasswordSubmitButton).toBeVisible({ timeout: Timeouts.ELEMENT_VISIBILITY });
   }
 
   async fillNewPasswordForm(password: string) {
@@ -203,11 +218,23 @@ export class WayfinderAppPage extends GateLoginPage {
   }
 
   async clickResetPasswordSubmitButton() {
-    await this.resetPasswordSubmitButton.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
-    await this.resetPasswordSubmitButton.click();
+    await this.updatePasswordSubmitButton.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
+    await this.updatePasswordSubmitButton.click();
   }
 
   async verifyPasswordResetSuccessful() {
     await expect(this.passwordResetSuccessHeading).toBeVisible({ timeout: Timeouts.ELEMENT_VISIBILITY });
+  }
+
+  /**
+   * Generates a random set of credentials for testing registration flows without hitting unique constraints.
+   */
+  generateRandomCredentials() {
+    const randomSuffix = Date.now().toString(36) + Math.random().toString(36).substring(2, 5);
+    const username = `testuser_${randomSuffix}`;
+    const password = `Pass${randomSuffix}!`;
+    const email = `${username}@example.com`;
+
+    return { username, password, email };
   }
 }

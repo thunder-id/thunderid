@@ -85,6 +85,8 @@ fileGroupNames:
   resource.yaml: ~               # all tags claimed by Access Control
   role.yaml: ~                   # Roles claimed by Access Control
   user.yaml: ~                   # all tags claimed by Identities
+  openid4vci.yaml: Verifiable Credentials
+  openid4vp.yaml: Verifiable Credentials
 
 # Explicit named sub-groups. Tags listed here are excluded from auto-grouping.
 # Sidebar position is determined by groupOrder below, not by definition order here.
@@ -166,6 +168,7 @@ groupOrder:
   - Authentication
   - Login Flows
   - OAuth2 / OIDC
+  - Verifiable Credentials
   - Branding & Localization
   - System
   - Other

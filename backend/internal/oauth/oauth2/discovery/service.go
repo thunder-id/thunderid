@@ -53,9 +53,10 @@ func (ds *discoveryService) GetOAuth2AuthorizationServerMetadata(
 		IntrospectionEndpoint:                      ds.getIntrospectionEndpoint(),
 		PushedAuthorizationRequestEndpoint:         ds.getPAREndpoint(),
 		RequirePushedAuthorizationRequests:         ds.isGlobalPARRequired(),
-		ResponseTypesSupported:                     ds.getSupportedResponseTypes(),
-		GrantTypesSupported:                        ds.getSupportedGrantTypes(),
-		TokenEndpointAuthMethodsSupported:          ds.getSupportedTokenEndpointAuthMethods(),
+		ResponseTypesSupported:                     ds.getAllowedResponseTypes(),
+		GrantTypesSupported:                        ds.getAllowedGrantTypes(),
+		TokenEndpointAuthMethodsSupported:          ds.getAllowedTokenEndpointAuthMethods(),
+		TokenEndpointAuthSigningAlgValuesSupported: ds.getSupportedTokenEndpointAuthSigningAlgs(),
 		CodeChallengeMethodsSupported:              ds.getSupportedCodeChallengeMethods(),
 		AuthorizationResponseIssParameterSupported: true,
 		DPoPSigningAlgValuesSupported:              ds.getSupportedDPoPSigningAlgs(),
@@ -90,17 +91,20 @@ func (ds *discoveryService) GetOIDCMetadata(ctx context.Context) (*OIDCProviderM
 	oidcProviderMetadata := &OIDCProviderMetadata{
 		OAuth2AuthorizationServerMetadata:    *oauth2Meta,
 		UserInfoEndpoint:                     ds.getUserInfoEndpoint(),
-		ScopesSupported:                      ds.getSupportedOIDCScopes(),
-		SubjectTypesSupported:                ds.getSupportedSubjectTypes(),
+		ScopesSupported:                      ds.getAllowedScopes(),
+		SubjectTypesSupported:                ds.getAllowedSubjectTypes(),
 		IDTokenSigningAlgValuesSupported:     signingAlgs,
 		UserInfoSigningAlgValuesSupported:    signingAlgs,
 		UserInfoEncryptionAlgValuesSupported: encryptionAlgs,
 		UserInfoEncryptionEncValuesSupported: encryptionEncs,
 		IDTokenEncryptionAlgValuesSupported:  encryptionAlgs,
 		IDTokenEncryptionEncValuesSupported:  encryptionEncs,
-		ClaimsSupported:                      ds.getSupportedClaims(),
+		ClaimsSupported:                      ds.getAllowedClaims(),
 		ClaimsParameterSupported:             true,
-		AcrValuesSupported:                   ds.getSupportedAcrValues(),
+		// JAR (RFC 9101) is not implemented.
+		RequestParameterSupported:    false,
+		RequestURIParameterSupported: false,
+		AcrValuesSupported:           ds.getSupportedAcrValues(),
 	}
 
 	if ds.cfg.OAuth.Logout.IsEnabled() {
@@ -146,24 +150,20 @@ func (ds *discoveryService) getRegistrationEndpoint() string {
 	return ds.cfg.BaseURL + constants.OAuth2DCREndpoint
 }
 
-func (ds *discoveryService) getSupportedOIDCScopes() []string {
-	scopes := make([]string, 0, len(constants.StandardOIDCScopes))
-	for scope := range constants.StandardOIDCScopes {
-		scopes = append(scopes, scope)
-	}
-	return scopes
+func (ds *discoveryService) getAllowedScopes() []string {
+	return ds.cfg.OAuth.AllowedScopes
 }
 
-func (ds *discoveryService) getSupportedResponseTypes() []string {
-	return constants.GetSupportedResponseTypes(ds.cfg)
+func (ds *discoveryService) getAllowedResponseTypes() []string {
+	return ds.cfg.OAuth.AllowedResponseTypes
 }
 
-func (ds *discoveryService) getSupportedGrantTypes() []string {
-	return constants.GetSupportedGrantTypes(ds.cfg)
+func (ds *discoveryService) getAllowedGrantTypes() []string {
+	return ds.cfg.OAuth.AllowedGrantTypes
 }
 
-func (ds *discoveryService) getSupportedTokenEndpointAuthMethods() []string {
-	return constants.GetSupportedTokenEndpointAuthMethods(ds.cfg)
+func (ds *discoveryService) getAllowedTokenEndpointAuthMethods() []string {
+	return ds.cfg.OAuth.AllowedAuthMethods
 }
 
 func (ds *discoveryService) getSupportedCodeChallengeMethods() []string {
@@ -186,8 +186,12 @@ func (ds *discoveryService) getSupportedDPoPSigningAlgs() []string {
 	return ds.cryptoProvider.GetSupportedSigningAlgorithms()
 }
 
-func (ds *discoveryService) getSupportedSubjectTypes() []string {
-	return constants.GetSupportedSubjectTypes()
+func (ds *discoveryService) getSupportedTokenEndpointAuthSigningAlgs() []string {
+	return ds.cryptoProvider.GetSupportedSigningAlgorithms()
+}
+
+func (ds *discoveryService) getAllowedSubjectTypes() []string {
+	return ds.cfg.OAuth.AllowedSubjectTypes
 }
 
 func (ds *discoveryService) getSupportedSigningAlgorithms(ctx context.Context) ([]string, error) {
@@ -224,32 +228,14 @@ func (ds *discoveryService) getSupportedAcrValues() []string {
 	return acrs
 }
 
-func (ds *discoveryService) getSupportedClaims() []string {
-	// Extract claims from OIDC scopes
-	var claims []string
-	claims = append(claims, constants.GetStandardClaims()...)
-
-	for _, scope := range constants.StandardOIDCScopes {
-		claims = append(claims, scope.Claims...)
-	}
-
-	// Remove duplicates
-	claimMap := make(map[string]bool)
-	var uniqueClaims []string
-	for _, claim := range claims {
-		if !claimMap[claim] {
-			claimMap[claim] = true
-			uniqueClaims = append(uniqueClaims, claim)
-		}
-	}
-
-	return uniqueClaims
+func (ds *discoveryService) getAllowedClaims() []string {
+	return ds.cfg.OAuth.AllowedClaims
 }
 
 func (ds *discoveryService) getSupportedAuthorizationGrantProfiles() []string {
 	supportedProfiles := make([]string, 0)
 	// support Identity Assertion JWT Authorization Grant profile if the JWT Bearer grant type is supported
-	if slices.Contains(ds.getSupportedGrantTypes(), string(providers.GrantTypeJWTBearer)) {
+	if slices.Contains(ds.getAllowedGrantTypes(), string(providers.GrantTypeJWTBearer)) {
 		supportedProfiles = append(supportedProfiles, string(constants.SupportedAuthorizationGrantProfileIDJAG))
 	}
 

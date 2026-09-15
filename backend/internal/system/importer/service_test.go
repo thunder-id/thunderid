@@ -33,7 +33,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
-	"github.com/thunder-id/thunderid/internal/user"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
 	"github.com/stretchr/testify/assert"
@@ -709,14 +708,14 @@ func (f *fakeGroupService) AddGroupMembers(
 }
 
 type fakeUserService struct {
-	created                     []*user.User
+	created                     []*providers.User
 	updateCredentialsShouldFail bool
 	deleted                     []string
 }
 
 func (f *fakeUserService) CreateUser(
-	_ context.Context, u *user.User,
-) (*user.User, *tidcommon.ServiceError) {
+	_ context.Context, u *providers.User,
+) (*providers.User, *tidcommon.ServiceError) {
 	id := u.ID
 	if id == "" {
 		id = "generated-user-id"
@@ -729,7 +728,7 @@ func (f *fakeUserService) CreateUser(
 
 func (f *fakeUserService) GetUser(
 	_ context.Context, _ string, _ bool,
-) (*user.User, *tidcommon.ServiceError) {
+) (*providers.User, *tidcommon.ServiceError) {
 	return nil, &tidcommon.ServiceError{
 		Type:  tidcommon.ClientErrorType,
 		Code:  "USR-1003",
@@ -738,8 +737,8 @@ func (f *fakeUserService) GetUser(
 }
 
 func (f *fakeUserService) UpdateUser(
-	_ context.Context, userID string, u *user.User,
-) (*user.User, *tidcommon.ServiceError) {
+	_ context.Context, userID string, u *providers.User,
+) (*providers.User, *tidcommon.ServiceError) {
 	updated := *u
 	updated.ID = userID
 	return &updated, nil
@@ -2352,6 +2351,36 @@ func TestImportResources_KeepsClientSecretForConfidentialClient(t *testing.T) {
 	assert.Equal(t, statusSuccess, resp.Results[0].Status)
 }
 
+func TestImportResources_CarriesOAuthTokenBindingFlags(t *testing.T) {
+	content := strings.Join([]string{
+		"resource_type: application",
+		"id: app-1",
+		"name: My App",
+		"authFlowId: flow-1",
+		"inboundAuthConfig:",
+		"  - type: oauth2",
+		"    config:",
+		"      clientId: app-client",
+		"      clientSecret: keep-me",
+		"      grantTypes:",
+		"        - authorization_code",
+		"      tokenEndpointAuthMethod: client_secret_basic",
+		"      dpopBoundAccessTokens: true",
+		"      includeActClaim: true",
+		"",
+	}, "\n")
+	appSvc, resp, err := runOAuthClientSecretImport(t, content)
+
+	require.Nil(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, appSvc.created, 1)
+	require.Len(t, appSvc.created[0].InboundAuthConfig, 1)
+	require.NotNil(t, appSvc.created[0].InboundAuthConfig[0].OAuthConfig)
+	assert.True(t, appSvc.created[0].InboundAuthConfig[0].OAuthConfig.DPoPBoundAccessTokens)
+	assert.True(t, appSvc.created[0].InboundAuthConfig[0].OAuthConfig.IncludeActClaim)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+}
+
 func TestOrderDocumentsByDependencies(t *testing.T) {
 	docs := []parsedDocument{
 		{ResourceType: resourceTypeApplication, Sequence: 2},
@@ -2566,13 +2595,13 @@ func TestImportResources_DryRunSkipsApplicationHandleResolution(t *testing.T) {
 // Agent import tests
 
 type fakeAgentService struct {
-	created  []*agentmodel.Agent
+	created  []*providers.Agent
 	updated  []*agentmodel.UpdateAgentRequest
 	existing map[string]*agentmodel.AgentGetResponse
 }
 
 func (f *fakeAgentService) CreateAgent(
-	_ context.Context, req *agentmodel.Agent,
+	_ context.Context, req *providers.Agent,
 ) (*agentmodel.AgentCompleteResponse, *tidcommon.ServiceError) {
 	id := req.Name + "-id"
 	f.created = append(f.created, req)
@@ -2740,7 +2769,7 @@ type errAgentService struct {
 }
 
 func (e *errAgentService) CreateAgent(
-	ctx context.Context, req *agentmodel.Agent,
+	ctx context.Context, req *providers.Agent,
 ) (*agentmodel.AgentCompleteResponse, *tidcommon.ServiceError) {
 	if e.createErr != nil {
 		return nil, e.createErr
@@ -2876,7 +2905,7 @@ func TestImportAgent_FlowAliasRemapsFlowIDs(t *testing.T) {
 		agentID      string
 		agentName    string
 		agentFlowKey string
-		getFlowID    func(*agentmodel.Agent) string
+		getFlowID    func(*providers.Agent) string
 	}{
 		{
 			name:         "auth_flow_id remapped",
@@ -2887,7 +2916,7 @@ func TestImportAgent_FlowAliasRemapsFlowIDs(t *testing.T) {
 			agentID:      "agent-2",
 			agentName:    "Flow Agent",
 			agentFlowKey: "authFlowId",
-			getFlowID:    func(r *agentmodel.Agent) string { return r.AuthFlowID },
+			getFlowID:    func(r *providers.Agent) string { return r.AuthFlowID },
 		},
 		{
 			name:         "registration_flow_id remapped",
@@ -2898,7 +2927,7 @@ func TestImportAgent_FlowAliasRemapsFlowIDs(t *testing.T) {
 			agentID:      "agent-3",
 			agentName:    "Reg Agent",
 			agentFlowKey: "registrationFlowId",
-			getFlowID:    func(r *agentmodel.Agent) string { return r.RegistrationFlowID },
+			getFlowID:    func(r *providers.Agent) string { return r.RegistrationFlowID },
 		},
 	}
 

@@ -20,11 +20,11 @@ collect input from the customer and the actions behind them, like verifying a cr
 <ProductName /> runs the matching flow the moment a customer starts one of these journeys.
 
 ```mermaid
-flowchart TB
+flowchart TD
   start(["Start"]) --> prompt["Collect credentials"]
-  prompt --> task[["Verify credential"]]
-  task -->|success| finish(["Token issued"])
-  task -->|failure| rejected(["Rejected"])
+  prompt --> task["Verify credential"]
+  task -->|success| finish(["Token issued"]):::success
+  task -->|failure| rejected(["Rejected"]):::danger
   task -->|incomplete| followUp["More information needed"]
   followUp --> task
 ```

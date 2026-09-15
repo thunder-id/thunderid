@@ -45,7 +45,7 @@ export class FlowsApi {
   async findByHandle(handle: string, flowType?: string): Promise<ApiFlow | undefined> {
     const typeQuery = flowType ? `&flowType=${encodeURIComponent(flowType)}` : "";
 
-    for (let offset = 0; ; ) {
+    for (let offset = 0; ; offset += maxPageSize) {
       const response = await sendOk(this.request, "GET", `/flows?limit=${maxPageSize}&offset=${offset}${typeQuery}`);
       const body = (await response.json()) as { flows?: ApiFlow[]; totalResults?: number };
       const match = body.flows?.find(f => f.handle === handle);
@@ -55,7 +55,6 @@ export class FlowsApi {
       if (!body.flows?.length || offset + body.flows.length >= (body.totalResults ?? 0)) {
         return undefined;
       }
-      offset += body.flows.length;
     }
   }
 
@@ -64,9 +63,19 @@ export class FlowsApi {
     await sendOk(this.request, "PUT", `/flows/${id}`, data);
   }
 
-  /** Delete by id. A 404 counts as success so retries and double-teardown stay idempotent. */
+  /**
+   * Delete by id. A 404 counts as success so retries and double-teardown stay idempotent.
+   *
+   * Never throws: this is only ever called from test teardown, and a flaky network error there
+   * must not mask the failure (or success) a test already reported.
+   */
   async deleteById(id: string): Promise<boolean> {
-    const response = await send(this.request, "DELETE", `/flows/${id}`);
-    return response.ok() || response.status() === 404;
+    try {
+      const response = await send(this.request, "DELETE", `/flows/${id}`);
+      return response.ok() || response.status() === 404;
+    } catch (error) {
+      console.warn(`Cleanup skipped for flow ${id}: ${String(error)}`);
+      return false;
+    }
   }
 }

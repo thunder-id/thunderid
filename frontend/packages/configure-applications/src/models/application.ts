@@ -240,6 +240,13 @@ export interface Application {
   allowedUserTypes?: string[];
 
   /**
+   * Agent types allowed to sign in to this application. An agent can authenticate only when its
+   * agent type is listed here; when the list is empty no agent can sign in.
+   * @example ['default']
+   */
+  allowedAgentTypes?: string[];
+
+  /**
    * Theme configuration ID
    * References a theme that customizes the visual styling
    * @example '96c62e6d-9297-4295-8195-d28dfe0c9ff7'

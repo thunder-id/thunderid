@@ -750,6 +750,60 @@ func TailFile(path string, n int) []string {
 	return lines
 }
 
+// TailFileFollow reads whatever complete lines were appended to the file at path
+// since offset, returning those lines and the offset to pass back in as the next
+// call's offset. Pass offset 0 to read the whole file. If the file is shorter than
+// offset (rotated or truncated since the last call), it reads from the start again.
+// A trailing partial line (no terminating newline yet) is left unread so it is
+// returned whole once the write that completes it lands. ok is false only on an
+// I/O error; a valid, merely-empty read reports ok true with no lines, since an
+// empty log is not a failure and should still enter follow mode.
+func TailFileFollow(path string, offset int64) (lines []string, newOffset int64, ok bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, offset, false
+	}
+	defer func() { _ = f.Close() }()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, offset, false
+	}
+	size := info.Size()
+	if size < offset {
+		offset = 0
+	}
+	if size == offset {
+		return nil, offset, true
+	}
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return nil, offset, false
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, offset, false
+	}
+
+	// Only consume through the last newline — a trailing partial record (one the
+	// writer hasn't finished yet) is left pending so it isn't split into two lines
+	// across successive reads.
+	lastNewline := strings.LastIndexByte(string(data), '\n')
+	if lastNewline == -1 {
+		return nil, offset, true
+	}
+	newOffset = offset + int64(lastNewline) + 1
+
+	text := strings.TrimRight(string(data[:lastNewline]), "\r\n")
+	if text == "" {
+		return nil, newOffset, true
+	}
+	lines = strings.Split(text, "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimRight(line, "\r")
+	}
+	return lines, newOffset, true
+}
+
 // LogTail returns the last n lines of the current background log as one block, or ""
 // when the log cannot be read. It is how the CLI surfaces the server's own reason for
 // a failed start (a rejected bind, a bad configuration) instead of guessing.

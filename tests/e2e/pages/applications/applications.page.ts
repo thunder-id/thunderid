@@ -141,6 +141,8 @@ export class ApplicationsPage extends BasePage {
     await this.searchInput.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
     await this.searchInput.first().fill(name);
     // Let the debounced filter fire before the caller reads the (now filtered) list.
+    // No DOM/network signal marks the debounce firing, so this is a deliberate exception.
+    // eslint-disable-next-line playwright/no-wait-for-timeout
     await this.page.waitForTimeout(Timeouts.SEARCH_DEBOUNCE);
   }
 
@@ -178,10 +180,21 @@ export class ApplicationsPage extends BasePage {
     await expect(this.allowAllUserTypesCheckbox).toBeChecked({ timeout: Timeouts.FORM_LOAD });
     // Unchecking the master clears the selection and auto-expands the per-type list.
     await this.allowAllUserTypesCheckbox.uncheck();
+
+    const typeCheckboxes = this.userAccessSection.getByRole("checkbox");
     const typeCheckbox = this.userAccessSection.getByRole("checkbox", { name, exact: true });
-    await typeCheckbox.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
-    await typeCheckbox.check();
-    await expect(typeCheckbox).toBeChecked();
+
+    await expect(async () => {
+      const checkedStates = await typeCheckboxes.evaluateAll(boxes =>
+        boxes.map(box => (box as HTMLInputElement).checked)
+      );
+      expect(checkedStates.every(checked => !checked)).toBe(true);
+    }).toPass({ timeout: Timeouts.ELEMENT_VISIBILITY });
+
+    await expect(async () => {
+      await typeCheckbox.check({ force: true });
+      await expect(typeCheckbox).toBeChecked({ timeout: 1000 });
+    }).toPass({ timeout: Timeouts.ELEMENT_VISIBILITY });
   }
 
   /** Click the Next / Continue button in the wizard */
@@ -271,16 +284,16 @@ export class ApplicationsPage extends BasePage {
    * Returns the final edit page URL.
    */
   async completeWizardCreation(): Promise<string> {
-    const editUrlPattern = /\/console\/applications\/(?!create)[^/]+$/;
+    const editUrlPattern = /\/console\/applications\/(?!create)[^/?#]+(?:[/?#]|$)/;
     await Promise.race([
       this.showClientSecretStep.waitFor({ state: "visible", timeout: 30000 }),
-      this.page.waitForURL(editUrlPattern, { timeout: 30000 }),
+      this.page.waitForURL(editUrlPattern, { timeout: 30000, waitUntil: "commit" }),
     ]);
     if (editUrlPattern.test(this.page.url())) {
       return this.page.url();
     }
     await this.clickDoneAfterCreate();
-    await this.page.waitForURL(editUrlPattern, { timeout: 15000 });
+    await this.page.waitForURL(editUrlPattern, { timeout: 15000, waitUntil: "commit" });
     return this.page.url();
   }
 
@@ -331,6 +344,6 @@ export class ApplicationsPage extends BasePage {
       .or(dialog.getByRole("button", { name: /confirm/i }));
     await confirmButton.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
     await confirmButton.first().click();
-    await this.page.waitForURL(new RegExp(`${ConsoleRoutes.applications}$`), { timeout: Timeouts.PAGE_LOAD });
+    await expect(this.page).toHaveURL(new RegExp(`${ConsoleRoutes.applications}(?:\\?.*)?$`), { timeout: Timeouts.PAGE_LOAD });
   }
 }

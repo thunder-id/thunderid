@@ -54,11 +54,11 @@ func (suite *StoreTestSuite) SetupSuite() {
 }
 
 func (suite *StoreTestSuite) SetupTest() {
+	loadRuntimeForScope()
 	suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
 	suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 	suite.store = &notificationStore{
-		dbProvider:   suite.mockDBProvider,
-		deploymentID: testDeploymentID,
+		dbProvider: suite.mockDBProvider,
 	}
 }
 
@@ -86,7 +86,7 @@ func (suite *StoreTestSuite) TestCreateSender() {
 		Name:        "Test Sender",
 		Description: "Test Description",
 		Type:        common.NotificationSenderTypeMessage,
-		Provider:    common.MessageProviderTypeTwilio,
+		Provider:    common.NotificationProviderTypeTwilio,
 		Properties:  []cmodels.Property{*p},
 	}
 
@@ -426,7 +426,7 @@ func (suite *StoreTestSuite) TestGetSender_WithProperties() {
 }
 
 func (suite *StoreTestSuite) TestUpdateSender() {
-	sender := common.NotificationSenderDTO{ID: "s1", Name: "n1", Provider: common.MessageProviderTypeTwilio}
+	sender := common.NotificationSenderDTO{ID: "s1", Name: "n1", Provider: common.NotificationProviderTypeTwilio}
 
 	suite.mockDBProvider.EXPECT().GetConfigDBClient().Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.EXPECT().ExecuteContext(context.Background(), queryUpdateNotificationSender,
@@ -441,7 +441,7 @@ func (suite *StoreTestSuite) TestUpdateSender_WithProperties() {
 	p, err := cmodels.NewProperty("k", "v", false)
 	suite.NoError(err)
 	sender := common.NotificationSenderDTO{ID: "s1", Name: "n1",
-		Provider: common.MessageProviderTypeTwilio, Properties: []cmodels.Property{*p}}
+		Provider: common.NotificationProviderTypeTwilio, Properties: []cmodels.Property{*p}}
 
 	suite.mockDBProvider.EXPECT().GetConfigDBClient().Return(suite.mockDBClient, nil).Once()
 	propsJSON, err := cmodels.SerializePropertiesToJSONArray([]cmodels.Property{*p})
@@ -476,7 +476,7 @@ func (suite *StoreTestSuite) TestUpdateSender_WithError() {
 		{
 			name: "execute error",
 			setup: func(t *testing.T) {
-				sender := common.NotificationSenderDTO{Name: "n1", Provider: common.MessageProviderTypeTwilio}
+				sender := common.NotificationSenderDTO{Name: "n1", Provider: common.NotificationProviderTypeTwilio}
 				suite.mockDBProvider.EXPECT().GetConfigDBClient().Return(suite.mockDBClient, nil).Once()
 				suite.mockDBClient.EXPECT().ExecuteContext(context.Background(), queryUpdateNotificationSender,
 					sender.Name,
@@ -492,7 +492,7 @@ func (suite *StoreTestSuite) TestUpdateSender_WithError() {
 			tc.setup(t)
 			// use a sender without properties for these failure-case checks
 			sender := common.NotificationSenderDTO{ID: "s1", Name: "n1",
-				Provider: common.MessageProviderTypeTwilio}
+				Provider: common.NotificationProviderTypeTwilio}
 			err := suite.store.updateSender(context.Background(), "s1", sender)
 			suite.Error(err)
 			suite.Contains(err.Error(), tc.wantErr)
@@ -501,7 +501,7 @@ func (suite *StoreTestSuite) TestUpdateSender_WithError() {
 }
 
 func (suite *StoreTestSuite) TestUpdateSender_ExecuteError() {
-	sender := common.NotificationSenderDTO{ID: "s1", Name: "n1", Provider: common.MessageProviderTypeTwilio}
+	sender := common.NotificationSenderDTO{ID: "s1", Name: "n1", Provider: common.NotificationProviderTypeTwilio}
 	suite.mockDBProvider.EXPECT().GetConfigDBClient().Return(suite.mockDBClient, nil).Once()
 	suite.mockDBClient.EXPECT().ExecuteContext(context.Background(), queryUpdateNotificationSender,
 		sender.Name, sender.Description,
@@ -523,7 +523,7 @@ func (suite *StoreTestSuite) TestUpdateSender_SerializeError() {
 	p, err := cmodels.NewProperty("k", "v", false)
 	suite.NoError(err)
 	sender := common.NotificationSenderDTO{ID: "s1", Name: "n1",
-		Provider: common.MessageProviderTypeTwilio, Properties: []cmodels.Property{*p}}
+		Provider: common.NotificationProviderTypeTwilio, Properties: []cmodels.Property{*p}}
 
 	suite.mockDBProvider.EXPECT().GetConfigDBClient().Return(suite.mockDBClient, nil).Once()
 
@@ -561,9 +561,7 @@ func (suite *StoreTestSuite) TestDeleteSender_ExecuteError() {
 }
 
 func (suite *StoreTestSuite) TestBuildSenderFromResultRow_WithError() {
-	s := &notificationStore{
-		deploymentID: testDeploymentID,
-	}
+	s := &notificationStore{}
 
 	// missing sender_id
 	row := map[string]interface{}{"name": "n1", "description": "d1", "type": "message", "provider": "p"}
@@ -578,9 +576,7 @@ func (suite *StoreTestSuite) TestBuildSenderFromResultRow_WithError() {
 }
 
 func (suite *StoreTestSuite) TestBuildSenderFromResultRow_MissingFields() {
-	s := &notificationStore{
-		deploymentID: testDeploymentID,
-	}
+	s := &notificationStore{}
 
 	// missing name
 	row := map[string]interface{}{"id": "s1", "description": "d1", "type": "message", "provider": "p"}
@@ -608,9 +604,7 @@ func (suite *StoreTestSuite) TestBuildSenderFromResultRow_MissingFields() {
 }
 
 func (suite *StoreTestSuite) TestBuildSenderFromResultRow() {
-	s := &notificationStore{
-		deploymentID: testSenderID,
-	}
+	s := &notificationStore{}
 	row := map[string]interface{}{
 		"id":          "sid",
 		"name":        "name",
@@ -623,4 +617,14 @@ func (suite *StoreTestSuite) TestBuildSenderFromResultRow() {
 	suite.NotNil(sender)
 	suite.Equal("sid", sender.ID)
 	suite.Equal("name", sender.Name)
+}
+
+// loadRuntimeForScope loads a server runtime naming the deployment these tests assert on. The store
+// resolves its deployment from the runtime rather than holding one, and other suites in this package
+// reset the runtime, so it is loaded per test rather than once for the package.
+func loadRuntimeForScope() {
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{
+		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
+	})
 }

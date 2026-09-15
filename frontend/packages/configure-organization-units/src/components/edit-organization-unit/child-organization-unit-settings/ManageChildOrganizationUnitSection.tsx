@@ -1,18 +1,15 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice, SettingsCard} from '@thunderid/components';
-import {useDataGridLocaleText} from '@thunderid/hooks';
+import {SettingsCard} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
-import {Box, DataGrid, Avatar} from '@wso2/oxygen-ui';
-import {Building} from '@wso2/oxygen-ui-icons-react';
-import {useMemo, type JSX} from 'react';
+import {Box} from '@wso2/oxygen-ui';
+import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
-import useGetChildOrganizationUnits from '../../../api/useGetChildOrganizationUnits';
 import useOrganizationUnitRoutes from '../../../hooks/useOrganizationUnitRoutes';
 import type {OUNavigationState} from '../../../models/navigation';
-import type {OrganizationUnit} from '../../../models/organization-unit';
+import OrganizationUnitTreePicker from '../../OrganizationUnitTreePicker';
 
 /**
  * Props for the {@link ManageChildOrganizationUnitSection} component.
@@ -31,13 +28,8 @@ interface ManageChildOrganizationUnitSectionProps {
 /**
  * Section component for managing child organization units.
  *
- * Displays a DataGrid of child organization units with:
- * - Avatar icon
- * - Name
- * - Handle
- * - Description
- *
- * Clicking a row navigates to that child OU's detail page.
+ * Displays a lazy-loaded hierarchy rooted below the current organization unit.
+ * Clicking a row navigates to that organization unit's detail page.
  *
  * @param props - Component props
  * @returns Manage child OUs section within a SettingsCard
@@ -50,85 +42,6 @@ export default function ManageChildOrganizationUnitSection({
   const routes = useOrganizationUnitRoutes();
   const {t} = useTranslation();
   const logger = useLogger('ManageChildOrganizationUnitSection');
-  const dataGridLocaleText = useDataGridLocaleText();
-
-  const {data: childOUsData, isLoading, error, refetch} = useGetChildOrganizationUnits(organizationUnitId);
-
-  const columns: DataGrid.GridColDef<OrganizationUnit>[] = useMemo(
-    () => [
-      {
-        field: 'avatar',
-        headerName: '',
-        width: 70,
-        sortable: false,
-        filterable: false,
-        renderCell: (): JSX.Element => (
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-            }}
-          >
-            <Avatar
-              sx={{
-                p: 0.5,
-                bgcolor: 'primary.main',
-                color: 'primary.contrastText',
-                width: 30,
-                height: 30,
-                fontSize: '0.875rem',
-              }}
-            >
-              <Building size={14} />
-            </Avatar>
-          </Box>
-        ),
-      },
-      {
-        field: 'name',
-        headerName: t('organizationUnits:listing.columns.name'),
-        flex: 1,
-        minWidth: 200,
-      },
-      {
-        field: 'handle',
-        headerName: t('organizationUnits:listing.columns.handle'),
-        flex: 1,
-        minWidth: 150,
-      },
-      {
-        field: 'description',
-        headerName: t('organizationUnits:listing.columns.description'),
-        flex: 2,
-        minWidth: 250,
-        valueGetter: (_value, row): string => row.description ?? '-',
-      },
-    ],
-    [t],
-  );
-
-  if (error) {
-    return (
-      <SettingsCard
-        title={t('organizationUnits:edit.childOUs.sections.manage.title', 'Child Organization Units')}
-        description={t(
-          'organizationUnits:edit.childOUs.sections.manage.description',
-          'View and manage child organization units under this OU',
-        )}
-      >
-        <QueryErrorNotice
-          error={error}
-          t={(key, options) => t(key.includes(':') ? key : `organizationUnits:${key}`, options)}
-          variant="inline"
-          onRetry={() => void refetch()}
-          fallbackKey="organizationUnits:edit.childOUs.sections.manage.error"
-          fallbackDefaultValue="Failed to load child organization units"
-        />
-      </SettingsCard>
-    );
-  }
 
   return (
     <SettingsCard
@@ -137,22 +50,16 @@ export default function ManageChildOrganizationUnitSection({
         'organizationUnits:edit.childOUs.sections.manage.description',
         'Organization units nested under this one.',
       )}
-      slotProps={{
-        content: {
-          sx: {
-            p: 0,
-          },
-        },
-      }}
+      slotProps={{content: {sx: {p: 0}}}}
     >
-      <Box sx={{maxHeight: 400, width: '100%'}}>
-        <DataGrid.DataGrid
-          rows={childOUsData?.organizationUnits ?? []}
-          columns={columns}
-          loading={isLoading}
-          getRowId={(row): string => row.id}
-          onRowClick={(params) => {
-            const ou = params.row as OrganizationUnit;
+      <Box sx={{width: '100%', p: 2}}>
+        <OrganizationUnitTreePicker
+          rootOuId={organizationUnitId}
+          hideRoot
+          value=""
+          onChange={() => undefined}
+          maxHeight={400}
+          onItemActivate={(organizationUnitIdToOpen) => {
             const navigationState: OUNavigationState = {
               fromOU: {
                 id: organizationUnitId,
@@ -160,23 +67,13 @@ export default function ManageChildOrganizationUnitSection({
               },
             };
             (async (): Promise<void> => {
-              await navigate(routes.detail(ou.id), {state: navigationState});
+              await navigate(routes.detail(organizationUnitIdToOpen), {state: navigationState});
             })().catch((_error: unknown) => {
-              logger.error('Failed to navigate to child organization unit', {error: _error, ouId: ou.id});
+              logger.error('Failed to navigate to child organization unit', {
+                error: _error,
+                ouId: organizationUnitIdToOpen,
+              });
             });
-          }}
-          initialState={{
-            pagination: {
-              paginationModel: {pageSize: 10},
-            },
-          }}
-          pageSizeOptions={[5, 10, 25]}
-          disableRowSelectionOnClick
-          localeText={dataGridLocaleText}
-          sx={{
-            '& .MuiDataGrid-row': {
-              cursor: 'pointer',
-            },
           }}
         />
       </Box>

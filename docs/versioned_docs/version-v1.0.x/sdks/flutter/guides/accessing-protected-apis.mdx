@@ -146,7 +146,7 @@ Check `thunder.isSignedIn` before making API calls in widgets to avoid unnecessa
 Widget build(BuildContext context) {
   final thunder = ThunderIDProvider.of(context);
 
-  return ThunderIDSignedIn(
+  return SignedIn(
     child: FutureBuilder(
       future: fetchUserData(context),
       builder: (context, snapshot) {

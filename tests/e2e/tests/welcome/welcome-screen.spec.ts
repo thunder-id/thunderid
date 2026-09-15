@@ -34,7 +34,7 @@ test.describe("Welcome Screen", { tag: [TestTags.WAYFINDER, TestTags.SMOKE] }, (
       await expect(welcomePage.tryoutSecuringApplicationRow).toBeVisible();
       await expect(welcomePage.tryoutAiAgentsRow).toBeVisible();
       await expect(welcomePage.tryoutMcpRow).toBeVisible();
-      await welcomePage.screenshot("tc001-welcome-first-start");
+      // await welcomePage.screenshot("tc001-welcome-first-start");
     });
 
     await test.step("Verify the dismissed flag is now set", async () => {
@@ -54,7 +54,7 @@ test.describe("Welcome Screen", { tag: [TestTags.WAYFINDER, TestTags.SMOKE] }, (
       await expect(welcomePage.userMenuTrigger).toBeVisible();
       expect(welcomePage.page.url()).not.toContain(routes.welcome);
       await expect(welcomePage.heroHeading).not.toBeVisible();
-      await welcomePage.screenshot("tc002-no-redirect-subsequent-start");
+      // await welcomePage.screenshot("tc002-no-redirect-subsequent-start");
     });
   });
 
@@ -70,7 +70,7 @@ test.describe("Welcome Screen", { tag: [TestTags.WAYFINDER, TestTags.SMOKE] }, (
 
     await test.step("Verify the welcome screen is shown", async () => {
       await welcomePage.verifyOnWelcomeScreen();
-      await welcomePage.screenshot("tc003-welcome-reopened-from-menu");
+      // await welcomePage.screenshot("tc003-welcome-reopened-from-menu");
     });
   });
 });

@@ -15,6 +15,7 @@ import (
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/varname"
 )
 
 type templatingRules struct {
@@ -39,6 +40,10 @@ const (
 // Parameterizer handles the templating logic
 type parameterizer struct {
 	rules templatingRules
+	// resourceType qualifies the variable names emitted for the resource being parameterized. It is
+	// set per call on a copy rather than on the shared instance, so concurrent exports of different
+	// resource types cannot read each other's value.
+	resourceType string
 }
 
 // newParameterizer creates a new Parameterizer instance with the given templating rules
@@ -46,11 +51,22 @@ func newParameterizer(rules templatingRules) *parameterizer {
 	return &parameterizer{rules: rules}
 }
 
+// forResourceType returns a copy bound to the given resource type, leaving the shared instance
+// untouched.
+func (p *parameterizer) forResourceType(resourceType string) *parameterizer {
+	clone := *p
+	clone.resourceType = resourceType
+	return &clone
+}
+
 // ToParameterizedYAML converts an object directly to parameterized YAML.
 // It returns the template string and a map of variable names to their original values.
 func (p *parameterizer) ToParameterizedYAML(ctx context.Context, obj interface{},
 	resourceType string, resourceName string,
 	rules *declarativeresource.ResourceRules) (string, map[string]string, error) {
+	// Every variable name this call emits is qualified by the resource type.
+	p = p.forResourceType(resourceType)
+
 	// Convert imported type to local type for compatibility
 	var localRules *resourceRules
 	if rules != nil {
@@ -640,11 +656,7 @@ func (p *parameterizer) propertyToYAMLNode(propValue reflect.Value, resourceName
 // generatePropertyVarName generates a context-aware variable name for a property
 // e.g., "Export Test IDP" + "client_id" -> "EXPORT_TEST_IDP_CLIENT_ID"
 func (p *parameterizer) generatePropertyVarName(resourceName, propertyName string) string {
-	// Convert property name to snake_case
-	propName := p.toSnakeCase(propertyName)
-
-	// Combine them
-	return p.sanitizeVarName(p.VarPrefix(resourceName) + "_" + propName)
+	return varname.DeriveVariableName(p.resourceType, resourceName, propertyName)
 }
 
 // VarPrefix returns the variable name prefix derived from a resource name, e.g. "My App" ->
@@ -1147,12 +1159,7 @@ func (p *parameterizer) parameterizeNode(node *yaml.Node, rules *resourceRules, 
 func (p *parameterizer) pathToVariableName(appName, path string) string {
 	parts := strings.Split(path, ".")
 	lastPart := parts[len(parts)-1]
-
-	// Convert field name from camelCase/PascalCase to snake_case
-	fieldName := p.toSnakeCase(lastPart)
-
-	// Prepend app prefix to field name
-	return p.sanitizeVarName(p.VarPrefix(appName) + "_" + fieldName)
+	return varname.DeriveVariableName(p.resourceType, appName, lastPart)
 }
 
 // sanitizeVarName replaces characters that are not valid in a Go template field name (for

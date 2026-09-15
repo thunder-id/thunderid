@@ -61,17 +61,17 @@ const sidebar: SidebarsConfig = {
                 {
                   type: 'doc',
                   id: 'sdks/nuxt/apis/components/signed-in',
-                  label: '<ThunderIDSignedIn />',
+                  label: '<SignedIn />',
                 },
                 {
                   type: 'doc',
                   id: 'sdks/nuxt/apis/components/signed-out',
-                  label: '<ThunderIDSignedOut />',
+                  label: '<SignedOut />',
                 },
                 {
                   type: 'doc',
                   id: 'sdks/nuxt/apis/components/loading',
-                  label: '<ThunderIDLoading />',
+                  label: '<Loading />',
                 },
               ],
             },
@@ -83,17 +83,17 @@ const sidebar: SidebarsConfig = {
                 {
                   type: 'doc',
                   id: 'sdks/nuxt/apis/components/sign-in-button',
-                  label: '<ThunderIDSignInButton />',
+                  label: '<SignInButton />',
                 },
                 {
                   type: 'doc',
                   id: 'sdks/nuxt/apis/components/sign-out-button',
-                  label: '<ThunderIDSignOutButton />',
+                  label: '<SignOutButton />',
                 },
                 {
                   type: 'doc',
                   id: 'sdks/nuxt/apis/components/sign-up-button',
-                  label: '<ThunderIDSignUpButton />',
+                  label: '<SignUpButton />',
                 },
               ],
             },
@@ -105,17 +105,17 @@ const sidebar: SidebarsConfig = {
                 {
                   type: 'doc',
                   id: 'sdks/nuxt/apis/components/user',
-                  label: '<ThunderIDUser />',
+                  label: '<User />',
                 },
                 {
                   type: 'doc',
                   id: 'sdks/nuxt/apis/components/user-profile',
-                  label: '<ThunderIDUserProfile />',
+                  label: '<UserProfile />',
                 },
                 {
                   type: 'doc',
                   id: 'sdks/nuxt/apis/components/user-dropdown',
-                  label: '<ThunderIDUserDropdown />',
+                  label: '<UserDropdown />',
                 },
               ],
             },

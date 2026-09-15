@@ -160,27 +160,6 @@ func (suite *ResolveHandlerTestSuite) TestHandleResolveRequest_UnsupportedType()
 	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
 }
 
-// Test HandleResolveRequest - Application not found
-func (suite *ResolveHandlerTestSuite) TestHandleResolveRequest_ApplicationNotFound() {
-	mockService := &mockDesignResolveService{
-		resolveDesignFn: func(
-			ctx context.Context,
-			resolveType providers.DesignResolveType,
-			id string,
-		) (*providers.DesignResponse, *tidcommon.ServiceError) {
-			return nil, &common.ErrorApplicationNotFound
-		},
-	}
-
-	handler := newDesignResolveHandler(mockService)
-	req := httptest.NewRequest(http.MethodGet, "/design/resolve?type=APP&id=non-existent", nil)
-	w := httptest.NewRecorder()
-
-	handler.HandleResolveRequest(w, req)
-
-	assert.Equal(suite.T(), http.StatusNotFound, w.Code)
-}
-
 // Test HandleResolveRequest - Application has no design
 func (suite *ResolveHandlerTestSuite) TestHandleResolveRequest_ApplicationHasNoDesign() {
 	mockService := &mockDesignResolveService{
@@ -250,11 +229,6 @@ func (suite *ResolveHandlerTestSuite) TestHandleError_StatusCodeMapping() {
 		{
 			name:           "ApplicationHasNoDesign",
 			svcErr:         &common.ErrorApplicationHasNoDesign,
-			expectedStatus: http.StatusNotFound,
-		},
-		{
-			name:           "ApplicationNotFound",
-			svcErr:         &common.ErrorApplicationNotFound,
 			expectedStatus: http.StatusNotFound,
 		},
 		{

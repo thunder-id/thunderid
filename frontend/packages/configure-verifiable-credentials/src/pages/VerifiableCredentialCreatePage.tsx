@@ -31,7 +31,12 @@ import useCreateVerifiableCredential from '../api/useCreateVerifiableCredential'
 import ConfigureName from '../components/create-verifiable-credential/ConfigureName';
 import ClaimsEditor from '../components/CredentialClaimsEditor';
 import useVerifiableCredentialRoutes from '../hooks/useVerifiableCredentialRoutes';
-import {claimRowsToRequest, credentialToClaimRows, type ClaimRow} from '../models/credential-claims';
+import {
+  claimRowsToRequest,
+  credentialToClaimRows,
+  findClaimNameErrors,
+  type ClaimRow,
+} from '../models/credential-claims';
 
 type Step = 'ORGANIZATION_UNIT' | 'NAME' | 'DETAILS' | 'CLAIMS';
 
@@ -109,11 +114,13 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
     CLAIMS: t('create.steps.claims', 'Claims'),
   };
 
+  const claimNameErrors = findClaimNameErrors(claims);
+
   const stepReady: Record<Step, boolean> = {
     ORGANIZATION_UNIT: effectiveOuId !== '',
     NAME: name.trim() !== '' && handle.trim() !== '',
     DETAILS: vct.trim() !== '' && effectiveOuId !== '',
-    CLAIMS: claims.some((c) => c.name.trim() !== ''),
+    CLAIMS: claims.some((c) => c.name.trim() !== '') && Object.keys(claimNameErrors).length === 0,
   };
 
   const stepIndex = stepOrder.indexOf(effectiveStep);
@@ -226,7 +233,7 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
         <Typography variant="body2" color="text.secondary">
           {t('create.claims.help')}
         </Typography>
-        <ClaimsEditor claims={claims} onChange={handleClaimsChange} />
+        <ClaimsEditor claims={claims} onChange={handleClaimsChange} nameErrors={claimNameErrors} />
       </Stack>
     );
   };

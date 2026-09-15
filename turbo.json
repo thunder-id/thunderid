@@ -10,6 +10,11 @@
       "outputs": ["build/**"],
       "env": ["DOCUSAURUS_URL", "DOCUSAURUS_BASE_URL"]
     },
+    "@thunderid/console#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"],
+      "inputs": ["$TURBO_DEFAULT$", "src/features/welcome/data/sample-bundles/**"]
+    },
     "typecheck": {
       "dependsOn": ["^build"]
     },

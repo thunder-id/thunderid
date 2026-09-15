@@ -79,8 +79,13 @@ func (drs *designResolveService) ResolveDesign(
 		if svcErr.Code == application.ErrorInvalidApplicationID.Code {
 			return nil, &common.ErrorMissingResolveID
 		}
+		// This endpoint is unauthenticated, so an unknown application reports the same result as a
+		// known one with nothing configured. Distinguishing them lets an anonymous caller confirm
+		// which application IDs exist.
 		if svcErr.Code == application.ErrorApplicationNotFound.Code {
-			return nil, &common.ErrorApplicationNotFound
+			drs.logger.Debug(ctx, "No design resolved; application does not exist",
+				log.String("applicationId", id))
+			return nil, &common.ErrorApplicationHasNoDesign
 		}
 		return nil, svcErr
 	}

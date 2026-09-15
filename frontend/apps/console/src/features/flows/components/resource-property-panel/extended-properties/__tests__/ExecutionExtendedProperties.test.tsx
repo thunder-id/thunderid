@@ -48,6 +48,9 @@ vi.mock('react-i18next', () => ({
         'flows:core.executions.consent.timeout.placeholder': '0',
         'flows:core.executions.consent.timeout.hint':
           'Time in seconds before the consent request expires. Use 0 for no timeout.',
+        'flows:core.executions.consent.failOnDeny.label': 'Fail flow when user denies consent',
+        'flows:core.executions.consent.failOnDeny.hint':
+          'When enabled, the flow fails if the user denies the consent prompt or lets it time out, even if all requested attributes and permissions are optional.',
         'flows:core.executions.federation.connection.description':
           'Select a connection from the following list to link it with the login flow.',
         'flows:core.executions.federation.connection.label': 'Connection',
@@ -726,6 +729,38 @@ describe('ExecutionExtendedProperties', () => {
       fireEvent.keyDown(timeoutInput, {key: 'Enter'});
 
       expect(mockOnChange).toHaveBeenLastCalledWith('data.properties.timeout', '15', consentResource);
+    });
+
+    it('should render the failOnDeny checkbox unchecked by default', () => {
+      render(<ExecutionExtendedProperties resource={consentResource} onChange={mockOnChange} />);
+
+      const failOnDenyCheckbox = screen.getByLabelText('Fail flow when user denies consent');
+      expect(failOnDenyCheckbox).toBeInTheDocument();
+      expect(failOnDenyCheckbox).not.toBeChecked();
+    });
+
+    it('should commit failOnDeny=true when the checkbox is checked', () => {
+      render(<ExecutionExtendedProperties resource={consentResource} onChange={mockOnChange} />);
+
+      const failOnDenyCheckbox = screen.getByLabelText('Fail flow when user denies consent');
+      fireEvent.click(failOnDenyCheckbox);
+
+      expect(mockOnChange).toHaveBeenLastCalledWith('data.properties.failOnDeny', true, consentResource);
+    });
+
+    it('should render failOnDeny checked when the property is set', () => {
+      const consentResourceWithFailOnDeny = {
+        ...consentResource,
+        data: {
+          ...(consentResource as unknown as {data: object}).data,
+          properties: {failOnDeny: true},
+        },
+      } as unknown as Resource;
+
+      render(<ExecutionExtendedProperties resource={consentResourceWithFailOnDeny} onChange={mockOnChange} />);
+
+      const failOnDenyCheckbox = screen.getByLabelText('Fail flow when user denies consent');
+      expect(failOnDenyCheckbox).toBeChecked();
     });
   });
 

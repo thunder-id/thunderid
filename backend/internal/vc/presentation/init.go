@@ -36,11 +36,16 @@ import (
 func Initialize(
 	mux *http.ServeMux, ouService ou.OrganizationUnitServiceInterface,
 ) (PresentationDefinitionServiceInterface, declarativeresource.ResourceExporter, error) {
-	store, err := initializeStore()
+	store, fileStore, dbStore, err := initializeStore()
 	if err != nil {
 		return nil, nil, err
 	}
 	svc := newPresentationDefinitionService(store, ouService)
+	if fileStore != nil {
+		if err := loadDeclarativeResources(fileStore, dbStore, svc); err != nil {
+			return nil, nil, err
+		}
+	}
 	registerRoutes(mux, newDefinitionHandler(svc))
 	return svc, newDefinitionExporter(svc), nil
 }
@@ -80,31 +85,31 @@ func registerRoutes(mux *http.ServeMux, h *definitionHandler) {
 }
 
 // initializeStore builds the presentation-definition store based on the configured store mode.
-func initializeStore() (definitionStoreInterface, error) {
+func initializeStore() (definitionStoreInterface, *definitionFileBasedStore, definitionStoreInterface, error) {
 	storeMode, err := getDefinitionStoreMode()
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	switch storeMode {
 	case serverconst.StoreModeComposite:
 		fileStore := newDefinitionFileBasedStore()
 		dbStore := newDefinitionStore()
-		if err := loadDeclarativeResources(&definitionStorer{store: fileStore}); err != nil {
-			return nil, err
-		}
-		return newCompositeDefinitionStore(fileStore, dbStore), nil
+		return newCompositeDefinitionStore(fileStore, dbStore), fileStore, dbStore, nil
 
 	case serverconst.StoreModeDeclarative:
 		fileStore := newDefinitionFileBasedStore()
-		if err := loadDeclarativeResources(&definitionStorer{store: fileStore}); err != nil {
-			return nil, err
-		}
-		return fileStore, nil
+		return fileStore, fileStore, nil, nil
 
 	default:
-		return newDefinitionStore(), nil
+		return newDefinitionStore(), nil, nil, nil
 	}
+}
+
+// isDeclarativeModeEnabled checks if immutable-only store mode is enabled for presentation definitions.
+func isDeclarativeModeEnabled() bool {
+	mode, err := getDefinitionStoreMode()
+	return err == nil && mode == serverconst.StoreModeDeclarative
 }
 
 // getDefinitionStoreMode determines the store mode for presentation definitions.

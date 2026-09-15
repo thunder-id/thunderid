@@ -2,6 +2,14 @@ resource_type: role
 id: decl-role-1
 name: Declarative Test Role
 description: A declarative test role for integration testing
-ouId: decl-ou-1
-permissions: []
-assignments: []
+# Addressed by handle rather than id, so the loader's ou_handle resolution is exercised.
+ouHandle: decl-ou-1
+permissions:
+  - resourceServerId: decl-rs-1
+    permissions:
+      - test-resource:read
+assignments:
+  - id: decl-user-1
+    type: user
+  - id: decl-group-1
+    type: group

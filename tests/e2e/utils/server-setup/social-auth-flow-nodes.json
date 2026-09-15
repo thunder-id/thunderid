@@ -1,0 +1,251 @@
+[
+  {
+    "id": "start",
+    "type": "START",
+    "layout": {
+      "size": {
+        "width": 101,
+        "height": 34
+      },
+      "position": {
+        "x": 62,
+        "y": 87
+      }
+    },
+    "onSuccess": "choose_auth"
+  },
+  {
+    "id": "choose_auth",
+    "type": "PROMPT",
+    "layout": {
+      "size": {
+        "width": 350,
+        "height": 620
+      },
+      "position": {
+        "x": 562,
+        "y": 62
+      }
+    },
+    "meta": {
+      "components": [
+        {
+          "category": "DISPLAY",
+          "id": "text_001",
+          "label": "{{ t(signin:heading) }}",
+          "resourceType": "ELEMENT",
+          "type": "TEXT",
+          "variant": "HEADING_1"
+        },
+        {
+          "category": "BLOCK",
+          "id": "block_001",
+          "resourceType": "ELEMENT",
+          "type": "BLOCK",
+          "components": [
+            {
+              "category": "FIELD",
+              "hint": "",
+              "id": "input_001",
+              "inputType": "text",
+              "label": "{{ t(elements:fields.username.label) }}",
+              "placeholder": "{{ t(elements:fields.username.placeholder) }}",
+              "ref": "username",
+              "required": true,
+              "resourceType": "ELEMENT",
+              "type": "TEXT_INPUT"
+            },
+            {
+              "category": "FIELD",
+              "hint": "",
+              "id": "input_002",
+              "inputType": "text",
+              "label": "{{ t(elements:fields.password.label) }}",
+              "placeholder": "{{ t(elements:fields.password.placeholder) }}",
+              "ref": "password",
+              "required": true,
+              "resourceType": "ELEMENT",
+              "type": "PASSWORD_INPUT"
+            },
+            {
+              "category": "ACTION",
+              "eventType": "SUBMIT",
+              "id": "action_001",
+              "label": "{{ t(elements:buttons.submit.text) }}",
+              "resourceType": "ELEMENT",
+              "type": "ACTION",
+              "variant": "PRIMARY"
+            }
+          ]
+        },
+        {
+          "category": "DISPLAY",
+          "id": "divider_001",
+          "label": "Or",
+          "resourceType": "ELEMENT",
+          "type": "DIVIDER",
+          "variant": "HORIZONTAL"
+        },
+        {
+          "category": "BLOCK",
+          "id": "block_002",
+          "resourceType": "ELEMENT",
+          "type": "BLOCK",
+          "components": [
+            {
+              "category": "ACTION",
+              "eventType": "TRIGGER",
+              "id": "social_auth_action",
+              "image": "{{PROVIDER_ICON}}",
+              "label": "Continue with {{PROVIDER_LABEL}}",
+              "resourceType": "ELEMENT",
+              "type": "ACTION",
+              "variant": "OUTLINED"
+            }
+          ]
+        }
+      ]
+    },
+    "prompts": [
+      {
+        "inputs": [
+          {
+            "ref": "input_001",
+            "type": "TEXT_INPUT",
+            "identifier": "username",
+            "required": true
+          },
+          {
+            "ref": "input_002",
+            "type": "PASSWORD_INPUT",
+            "identifier": "password",
+            "required": true
+          }
+        ],
+        "action": {
+          "ref": "action_001",
+          "nextNode": "credentials_auth"
+        }
+      },
+      {
+        "action": {
+          "ref": "social_auth_action",
+          "nextNode": "social_auth"
+        }
+      }
+    ]
+  },
+  {
+    "id": "credentials_auth",
+    "type": "TASK_EXECUTION",
+    "layout": {
+      "size": {
+        "width": 217,
+        "height": 113
+      },
+      "position": {
+        "x": 1062,
+        "y": 62
+      }
+    },
+    "executor": {
+      "name": "CredentialsAuthExecutor",
+      "inputs": [
+        {
+          "ref": "input_001",
+          "type": "TEXT_INPUT",
+          "identifier": "username",
+          "required": true
+        },
+        {
+          "ref": "input_002",
+          "type": "PASSWORD_INPUT",
+          "identifier": "password",
+          "required": true
+        }
+      ]
+    },
+    "onSuccess": "authorization_check"
+  },
+  {
+    "id": "social_auth",
+    "type": "TASK_EXECUTION",
+    "layout": {
+      "size": {
+        "width": 217,
+        "height": 113
+      },
+      "position": {
+        "x": 1062,
+        "y": 262
+      }
+    },
+    "properties": {
+      "idpId": "{{IDP_ID}}",
+      "allowAuthenticationWithoutLocalUser": false,
+      "allowRegistrationWithExistingUser": false
+    },
+    "executor": {
+      "name": "{{EXECUTOR_NAME}}",
+      "inputs": [
+        {
+          "ref": "input_003",
+          "type": "TEXT_INPUT",
+          "identifier": "code",
+          "required": true
+        }
+      ]
+    },
+    "onSuccess": "authorization_check"
+  },
+  {
+    "id": "authorization_check",
+    "type": "TASK_EXECUTION",
+    "layout": {
+      "size": {
+        "width": 200,
+        "height": 113
+      },
+      "position": {
+        "x": 1562,
+        "y": 62
+      }
+    },
+    "executor": {
+      "name": "AuthorizationExecutor"
+    },
+    "onSuccess": "auth_assert"
+  },
+  {
+    "id": "auth_assert",
+    "type": "TASK_EXECUTION",
+    "layout": {
+      "size": {
+        "width": 244,
+        "height": 113
+      },
+      "position": {
+        "x": 2062,
+        "y": 62
+      }
+    },
+    "executor": {
+      "name": "AuthAssertExecutor"
+    },
+    "onSuccess": "end"
+  },
+  {
+    "id": "end",
+    "type": "END",
+    "layout": {
+      "size": {
+        "width": 85,
+        "height": 34
+      },
+      "position": {
+        "x": 2562,
+        "y": 87
+      }
+    }
+  }
+]

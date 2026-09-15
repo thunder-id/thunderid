@@ -1,12 +1,12 @@
 ---
-title: <ThunderIDUser />
+title: <User />
 docType: reference
 description: Access authenticated user data and display user attributes in templates via scoped slot props.
 ---
 
-# `<ThunderIDUser />`
+# `<User />`
 
-The `ThunderIDUser` component provides access to the authenticated user object via a scoped slot. It is auto-registered by the Nuxt module.
+The `User` component provides access to the authenticated user object via a scoped slot. It is auto-registered by the Nuxt module.
 
 ## Usage
 
@@ -14,14 +14,14 @@ The `ThunderIDUser` component provides access to the authenticated user object v
 
 ```vue title="pages/profile.vue" showLineNumbers
 <template>
-  <ThunderIDUser>
+  <User>
     <template #default="{ user }">
       <div v-if="user">
         <h1>Welcome, {{ user.displayName }}!</h1>
         <p>{{ user.email }}</p>
       </div>
     </template>
-  </ThunderIDUser>
+  </User>
 </template>
 ```
 
@@ -31,14 +31,14 @@ Show alternative content when no user is signed in:
 
 ```vue title="pages/profile.vue" showLineNumbers
 <template>
-  <ThunderIDUser>
+  <User>
     <template #default="{ user }">
       <h1>{{ user.displayName }}</h1>
     </template>
     <template #fallback>
       <p>Please sign in to view your profile.</p>
     </template>
-  </ThunderIDUser>
+  </User>
 </template>
 ```
 

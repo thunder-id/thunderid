@@ -39,7 +39,7 @@ func TestDCRHandlerTestSuite(t *testing.T) {
 func (s *DCRHandlerTestSuite) SetupTest() {
 	s.mockService = NewDCRServiceInterfaceMock(s.T())
 	_ = config.InitializeServerRuntime("test", &config.Config{
-		OAuth: engineconfig.OAuthConfig{DCR: engineconfig.DCRConfig{Insecure: true}},
+		OAuth: config.OAuthConfig{DCR: engineconfig.DCRConfig{Insecure: true}},
 	})
 	cfg := testhelpers.OAuthConfig()
 	cfg.OAuth.DCR.Insecure = true

@@ -3,6 +3,9 @@ description: Sets up Go environment
 runs:
   using: "composite"
   steps:
-    - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: backend/go.mod
+        # There is no go.sum at the repository root, so the default lookup finds nothing and
+        # the built-in cache silently does nothing. Key it off every module in the repository.
+        cache-dependency-path: "**/go.sum"

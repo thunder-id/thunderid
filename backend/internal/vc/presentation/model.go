@@ -40,8 +40,7 @@ type PresentationDefinitionDTO struct {
 // presentationDefinitionRequest is the API request body for create/update.
 type presentationDefinitionRequest struct {
 	Handle               string              `json:"handle"`
-	OUID                 string              `json:"ouId"`
-	OUHandle             string              `json:"ouHandle"`
+	OUID                 string              `json:"ouId" native:"required"`
 	Name                 string              `json:"name"`
 	Description          string              `json:"description"`
 	VCT                  string              `json:"vct"`

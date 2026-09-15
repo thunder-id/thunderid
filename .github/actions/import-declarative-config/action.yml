@@ -36,6 +36,11 @@ runs:
       run: |
         LABEL="${LABEL_INPUT:-$CONFIG_PATH}"
 
+        if [ ! -f "$CONFIG_PATH" ] || [ ! -r "$CONFIG_PATH" ]; then
+          echo "❌ Config file not found or not readable: $CONFIG_PATH"
+          exit 1
+        fi
+
         echo "Importing $LABEL..."
         YAML_CONTENT=$(cat "$CONFIG_PATH")
         BODY=$(jq -n \

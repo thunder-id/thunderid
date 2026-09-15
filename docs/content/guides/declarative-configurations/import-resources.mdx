@@ -133,9 +133,13 @@ The following handle fields are supported:
 | Application | `authFlowHandle` | `authFlowId` |
 | Application | `registrationFlowHandle` | `registrationFlowId` |
 | Application | `recoveryFlowHandle` | `recoveryFlowId` |
+| Agent | `authFlowHandle` | `authFlowId` |
+| Agent | `registrationFlowHandle` | `registrationFlowId` |
 | User type | `ouHandle` | `ouId` |
 
 If you provide both a handle field and the corresponding ID field, the ID takes precedence and the handle is ignored.
+
+Updating an existing application or agent with a document that sets only a handle field re-resolves it and keeps the resolved ID.
 
 If a handle cannot be resolved (because the target resource does not exist or the required adapter is not configured), the import item fails with a descriptive error message. When `continueOnError` is `true`, the importer continues processing the remaining documents.
 

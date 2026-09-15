@@ -41,6 +41,7 @@ type OAuth2AuthorizationServerMetadata struct {
 	ResponseTypesSupported                     []string `json:"response_types_supported"`
 	GrantTypesSupported                        []string `json:"grant_types_supported"`
 	TokenEndpointAuthMethodsSupported          []string `json:"token_endpoint_auth_methods_supported"`
+	TokenEndpointAuthSigningAlgValuesSupported []string `json:"token_endpoint_auth_signing_alg_values_supported"`
 	CodeChallengeMethodsSupported              []string `json:"code_challenge_methods_supported,omitempty"`
 	AuthorizationResponseIssParameterSupported bool     `json:"authorization_response_iss_parameter_supported"`
 }
@@ -134,6 +135,13 @@ func (ts *DiscoveryTestSuite) TestOAuth2AuthorizationServerMetadata_GET_Success(
 	ts.Contains(metadata.TokenEndpointAuthMethodsSupported, "client_secret_post", "Should support client_secret_post")
 	ts.Contains(metadata.TokenEndpointAuthMethodsSupported, "none", "Should support none")
 
+	// Verify token endpoint auth signing algs are advertised with FAPI 2.0 permitted algorithms (RFC 8414)
+	ts.NotEmpty(metadata.TokenEndpointAuthSigningAlgValuesSupported,
+		"token_endpoint_auth_signing_alg_values_supported should be present (FAPI 2.0)")
+	ts.Contains(metadata.TokenEndpointAuthSigningAlgValuesSupported, "PS256", "Should advertise PS256")
+	ts.Contains(metadata.TokenEndpointAuthSigningAlgValuesSupported, "ES256", "Should advertise ES256")
+	ts.Contains(metadata.TokenEndpointAuthSigningAlgValuesSupported, "EdDSA", "Should advertise EdDSA")
+
 	// Verify only S256 code challenge method is supported (plain is prohibited per OAuth 2.0 Security BCP)
 	ts.Equal([]string{"S256"}, metadata.CodeChallengeMethodsSupported,
 		"CodeChallengeMethodsSupported should contain exactly S256")
@@ -211,6 +219,31 @@ func (ts *DiscoveryTestSuite) TestOIDCDiscovery_GET_Success() {
 	// Verify RFC 9207 issuer identification support
 	ts.True(metadata.AuthorizationResponseIssParameterSupported,
 		"authorization_response_iss_parameter_supported must be true (RFC 9207)")
+}
+
+func (ts *DiscoveryTestSuite) TestOIDCDiscovery_RequestObjectParametersNotSupported() {
+	req, err := http.NewRequest("GET", testServerURL+oidcDiscoveryEndpoint, nil)
+	ts.Require().NoError(err)
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	ts.Equal(http.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+
+	var doc map[string]any
+	ts.Require().NoError(json.Unmarshal(body, &doc))
+
+	value, present := doc["request_uri_parameter_supported"]
+	ts.True(present, "request_uri_parameter_supported must be present (its default when omitted is true)")
+	ts.Equal(false, value, "request_uri_parameter_supported must be false")
+
+	value, present = doc["request_parameter_supported"]
+	ts.True(present, "request_parameter_supported must be present")
+	ts.Equal(false, value, "request_parameter_supported must be false")
 }
 
 func (ts *DiscoveryTestSuite) TestOIDCDiscovery_AcrValuesSupported() {

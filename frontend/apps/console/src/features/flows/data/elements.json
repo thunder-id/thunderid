@@ -477,6 +477,18 @@
   },
   {
     "resourceType": "ELEMENT",
+    "category": "DISPLAY",
+    "type": "QR_CODE",
+    "display": {
+      "label": "QR Code",
+      "description": "Render a scannable code from flow data",
+      "image": "assets/images/icons/scan.svg",
+      "showOnResourcePanel": true
+    },
+    "source": ""
+  },
+  {
+    "resourceType": "ELEMENT",
     "category": "MISCELLANEOUS",
     "type": "CUSTOM",
     "display": {

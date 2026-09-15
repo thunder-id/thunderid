@@ -281,6 +281,46 @@ func (ts *IntrospectionTestSuite) createTestAuthenticationFlow() string {
 	return flowID
 }
 
+// setClientAttributes replaces an application's client-token attribute selection.
+func (ts *IntrospectionTestSuite) setClientAttributes(appID, name, clientID, clientSecret string,
+	attributes []string) {
+	app := map[string]interface{}{
+		"name":        name,
+		"description": "Application for token introspection integration tests",
+		"ouId":        ts.ouID,
+		// Matches the type createApp used: an application's type is immutable after creation.
+		"type":                      "fullstack",
+		"isRegistrationFlowEnabled": false,
+		"inboundAuthConfig": []map[string]interface{}{
+			{"type": "oauth2", "config": map[string]interface{}{
+				"clientId":                clientID,
+				"clientSecret":            clientSecret,
+				"grantTypes":              []string{"client_credentials"},
+				"tokenEndpointAuthMethod": "client_secret_basic",
+				"token": map[string]interface{}{
+					"accessToken": map[string]interface{}{
+						"clientConfig": map[string]interface{}{"attributes": attributes},
+					},
+				},
+			}},
+		},
+	}
+
+	jsonData, err := json.Marshal(app)
+	ts.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodPut, testutils.TestServerURL+"/applications/"+appID,
+		bytes.NewBuffer(jsonData))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	ts.Require().Equalf(http.StatusOK, resp.StatusCode, "failed to update application: %s", string(body))
+}
+
 // createApp registers an OAuth2 application. authFlowID and tokenConfig are optional.
 func (ts *IntrospectionTestSuite) createApp(name, clientID, clientSecret, authMethod string,
 	grantTypes []string, authFlowID string, tokenConfig map[string]interface{}) string {
@@ -507,6 +547,56 @@ func (ts *IntrospectionTestSuite) TestIntrospect_ActiveAccessToken_MatchesTokenC
 	ts.NotContains(res.Body, "cnf", "a bearer token must not carry a cnf member")
 	ts.NotContains(res.Body, "username",
 		"no self issued token carries a username claim, so the member must stay omitted")
+}
+
+// TestIntrospect_ClientToken_CarriesSubType asserts that introspection reports the subject's identity
+// class, matching the token's own claim, so an introspecting resource server sees the same signal.
+func (ts *IntrospectionTestSuite) TestIntrospect_ClientToken_CarriesSubType() {
+	token := ts.clientCredentialsToken(ccClientID, ccClientSecret)
+
+	claims, err := testutils.DecodeJWTPayloadMap(token)
+	ts.Require().NoError(err, "failed to decode the client_credentials token payload")
+	ts.Require().Equal("application", claims["sub_type"], "an application's client token must carry sub_type")
+
+	res := ts.introspectBasic(token, ccClientID, ccClientSecret)
+	ts.Require().Equalf(http.StatusOK, res.StatusCode, "introspection body: %s", string(res.Raw))
+	ts.Require().True(res.active())
+	ts.Equal(claims["sub_type"], res.Body["sub_type"], "introspection sub_type must match the token claim")
+}
+
+// TestIntrospect_ClientToken_OmitsUnselectedSubType asserts that a client whose selection omits
+// sub_type is reported without it by introspection too, so no class is recoverable that the token does
+// not assert. Removal is an update, since creation selects the claim.
+func (ts *IntrospectionTestSuite) TestIntrospect_ClientToken_OmitsUnselectedSubType() {
+	const clientID = "introspect_cc_no_subtype_client"
+	const clientSecret = "introspect_cc_no_subtype_secret"
+
+	appID := ts.createApp("IntrospectNoSubTypeApp", clientID, clientSecret, "client_secret_basic",
+		[]string{"client_credentials"}, "", nil)
+	defer ts.deleteApp(appID)
+	ts.setClientAttributes(appID, "IntrospectNoSubTypeApp", clientID, clientSecret, []string{})
+
+	token := ts.clientCredentialsToken(clientID, clientSecret)
+
+	claims, err := testutils.DecodeJWTPayloadMap(token)
+	ts.Require().NoError(err, "failed to decode the client_credentials token payload")
+	ts.Require().NotContains(claims, "sub_type",
+		"the token must not carry sub_type when the client's selection omits it")
+
+	res := ts.introspectBasic(token, clientID, clientSecret)
+	ts.Require().Equalf(http.StatusOK, res.StatusCode, "introspection body: %s", string(res.Raw))
+	ts.Require().True(res.active())
+	ts.NotContains(res.Body, "sub_type", "introspection must not report a class the token does not assert")
+}
+
+// TestIntrospect_UserToken_OmitsSubType asserts that a user-subject token reports no identity class:
+// its subject is a user, so the member must not report the client's class.
+func (ts *IntrospectionTestSuite) TestIntrospect_UserToken_OmitsSubType() {
+	res := ts.introspectPost(ts.userAccessToken, userClientID, userClientSecret)
+
+	ts.Require().Equalf(http.StatusOK, res.StatusCode, "introspection body: %s", string(res.Raw))
+	ts.Require().True(res.active())
+	ts.NotContains(res.Body, "sub_type", "a user-subject token must not report an identity class")
 }
 
 //

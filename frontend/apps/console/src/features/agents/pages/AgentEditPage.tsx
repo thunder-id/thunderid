@@ -233,6 +233,10 @@ export default function AgentEditPage(): JSX.Element {
   const hasAnyValidationError =
     hasAnyOtherValidationError || isMissingRedirectUri || isMissingAllowedUserType || isMissingCertificate;
 
+  // ResourceAvatar opens its picker on any avatar click while onSelect is set, so a read-only
+  // agent has to withhold the callback rather than rely on `editable` alone.
+  const isLogoEditable = !agent.isReadOnly;
+
   // List every failing check by name rather than a single generic message, so the user knows
   // exactly what to fix instead of guessing which tab has the problem.
   const validationIssues: string[] = [];
@@ -390,7 +394,35 @@ export default function AgentEditPage(): JSX.Element {
           {t('agents:edit.page.back', 'Back to agents')}
         </PageTitle.BackButton>
         <PageTitle.Avatar sx={{overflow: 'visible'}}>
-          <ResourceAvatar size={55} value={agent.logoUrl} fallback={AgentConstants.DEFAULT_AVATAR} />
+          <ResourceAvatar
+            size={55}
+            supportedShapes={['circle']}
+            editable={isLogoEditable}
+            value={editedAgent.logoUrl ?? agent.logoUrl}
+            fallback={AgentConstants.DEFAULT_AVATAR}
+            editAriaLabel={t('agents:edit.page.logoUpdate.label', 'Update Logo')}
+            onSelect={
+              isLogoEditable
+                ? (newLogoUrl: string) => {
+                    // Not handleFieldChange: reverting to the original logo drops the key rather than setting it.
+                    if (isUpdateAgentError) {
+                      resetUpdateAgent();
+                    }
+                    setEditedAgent((prev) => {
+                      if (newLogoUrl === agent.logoUrl) {
+                        const {logoUrl, ...rest} = prev;
+                        void logoUrl;
+                        return rest;
+                      }
+                      return {...prev, logoUrl: newLogoUrl};
+                    });
+                  }
+                : undefined
+            }
+            // Withheld while the staged agent is invalid: this saves the whole payload, not just
+            // the logo, so it has to respect the same gate as the unsaved-changes bar.
+            onSave={isLogoEditable && !hasAnyValidationError ? handleSave : undefined}
+          />
         </PageTitle.Avatar>
         <PageTitle.Header>
           <Stack direction="row" alignItems="center" spacing={1} mb={1}>

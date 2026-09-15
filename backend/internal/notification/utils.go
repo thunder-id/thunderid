@@ -38,9 +38,9 @@ func validateMessageNotificationSender(sender common.NotificationSenderDTO) *tid
 	if sender.Provider == "" {
 		return &ErrorInvalidProvider
 	}
-	if sender.Provider != common.MessageProviderTypeTwilio &&
-		sender.Provider != common.MessageProviderTypeVonage &&
-		sender.Provider != common.MessageProviderTypeCustom {
+	if sender.Provider != common.NotificationProviderTypeTwilio &&
+		sender.Provider != common.NotificationProviderTypeVonage &&
+		sender.Provider != common.NotificationProviderTypeCustom {
 		return &ErrorInvalidProvider
 	}
 
@@ -77,11 +77,11 @@ func validateMessageNotificationSenderProperties(sender common.NotificationSende
 	}
 
 	switch sender.Provider {
-	case common.MessageProviderTypeTwilio:
+	case common.NotificationProviderTypeTwilio:
 		return validateTwilioProperties(sender.Properties)
-	case common.MessageProviderTypeVonage:
+	case common.NotificationProviderTypeVonage:
 		return validateVonageProperties(sender.Properties)
-	case common.MessageProviderTypeCustom:
+	case common.NotificationProviderTypeCustom:
 		return validateCustomProperties(sender.Properties)
 	default:
 		return errors.New("unsupported message notification sender")

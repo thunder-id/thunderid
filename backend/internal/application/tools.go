@@ -14,7 +14,6 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/application/model"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
-	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
 )
 
@@ -332,11 +331,9 @@ func (t *applicationTools) getApplicationTemplates(
 func getCommonSchemaModifiers() []func(*jsonschema.Schema) {
 	oauthCfg := oauthconfig.FromServerRuntime()
 	return []func(*jsonschema.Schema){
-		tool.WithEnum("inbound_auth_config.config", "grant_types", oauth2const.GetSupportedGrantTypes(oauthCfg)),
-		tool.WithEnum("inbound_auth_config.config", "response_types",
-			oauth2const.GetSupportedResponseTypes(oauthCfg)),
-		tool.WithEnum("inbound_auth_config.config", "token_endpoint_auth_method",
-			oauth2const.GetSupportedTokenEndpointAuthMethods(oauthCfg)),
+		tool.WithEnum("inbound_auth_config.config", "grant_types", oauthCfg.OAuth.AllowedGrantTypes),
+		tool.WithEnum("inbound_auth_config.config", "response_types", oauthCfg.OAuth.AllowedResponseTypes),
+		tool.WithEnum("inbound_auth_config.config", "token_endpoint_auth_method", oauthCfg.OAuth.AllowedAuthMethods),
 		tool.WithEnum("inbound_auth_config", "type", []string{string(providers.OAuthInboundAuthType)}),
 	}
 }

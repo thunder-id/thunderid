@@ -127,6 +127,51 @@ var (
 			DefaultValue: "A valid organization unit (ouId or ouHandle) is required",
 		},
 	}
+
+	// ErrorDefinitionEmptyClaimName indicates a requested claim was declared without a name.
+	ErrorDefinitionEmptyClaimName = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2008",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_empty_claim_name",
+			DefaultValue: "Invalid claim",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_empty_claim_name_description",
+			DefaultValue: "Claim names must not be empty",
+		},
+	}
+
+	// ErrorDefinitionDuplicateClaim indicates the same claim name was requested more than once,
+	// either twice within a list or as both a mandatory and an optional claim.
+	ErrorDefinitionDuplicateClaim = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2009",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_duplicate_claim",
+			DefaultValue: "Duplicate claim",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_duplicate_claim_description",
+			DefaultValue: "Claim name '{{param(claim)}}' is requested more than once",
+		},
+	}
+
+	// ErrorDefinitionDeclarativeModeCreateNotAllowed indicates a create was attempted while
+	// the store is in declarative-only mode, where definitions come from files.
+	ErrorDefinitionDeclarativeModeCreateNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2010",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_declarative_mode_create_not_allowed",
+			DefaultValue: "Cannot create presentation definition in declarative-only mode",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.vp.definition_declarative_mode_create_not_allowed_description",
+			DefaultValue: "Presentation definition creation is not allowed when running in " +
+				"declarative-only mode. Definitions must be defined in declarative configuration files",
+		},
+	}
 )
 
 // definitionClientErrorStatus maps a client-facing definition error to its HTTP status.

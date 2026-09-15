@@ -7,18 +7,41 @@
  * The OAuth authorization_code redirect flow always lands on ThunderID's shared "gate" app, which
  * renders the login form and account-menu logout dynamically from the client application's auth
  * flow. That DOM is identical regardless of which client app (react-sdk-sample, Wayfinder, ...)
- * initiated the redirect, so the methods here are shared across every sample-app page object
+ * initiated the redirect, so the login methods here are shared across every sample-app page object
  * rather than duplicated per app. Only the client app's own home-page chrome (its sign-in button,
  * its post-login landing content) is app-specific and lives in the subclass.
+ *
+ * logout() itself is NOT shared: whether the gate shows a sign-out confirmation screen before
+ * redirecting back to the RP is a property of that RP's configured sign-out flow, not something
+ * that varies at runtime - so each subclass composes its own logout() from the primitives below
+ * (triggerSignOutFromAvatarMenu, waitForRedirectAwayFromGate) instead of one shared method
+ * guessing whether a confirmation screen will appear.
  */
 
 import { Page, expect } from "@playwright/test";
 import { BasePage } from "./base.page";
 import { Timeouts } from "../constants/timeouts";
+import { serverUrl } from "../utils/api-request";
 
 export class GateLoginPage extends BasePage {
   constructor(page: Page) {
     super(page);
+  }
+
+  /**
+   * If still on the gate (e.g. right after a click that triggers a flow-completion redirect),
+   * wait for the pending navigation back to the RP to land. The gate's flow endpoints (and its
+   * own "flowStatus: COMPLETE" responses) confirm a step completed server-side before the
+   * browser has actually redirected - so callers that assert RP-side state immediately
+   * afterward would otherwise share their own assertion timeout with this redirect instead of
+   * spending it entirely on the RP's client-side render. A no-op when the redirect already
+   * landed, and a silent no-op on timeout too: whether the redirect never happens is for the
+   * caller's own assertion (verifyLoggedIn, verifyLoggedOut) to detect and report.
+   */
+  protected async waitForRedirectAwayFromGate(timeout: number = Timeouts.REDIRECT): Promise<void> {
+    const gateOrigin = new URL(serverUrl).origin;
+    if (new URL(this.page.url()).origin !== gateOrigin) return;
+    await this.page.waitForURL(url => url.origin !== gateOrigin, { timeout }).catch(() => {});
   }
 
   async verifyLoginPageLoaded() {
@@ -76,6 +99,8 @@ export class GateLoginPage extends BasePage {
    * Checks for common indicators like avatar, profile information, or welcome message
    */
   async verifyLoggedIn() {
+    await this.waitForRedirectAwayFromGate();
+
     // Check for common logged-in indicators (adjust selectors based on your app)
     const loggedInIndicators = [
       this.page.locator('button[aria-haspopup="true"]'), // Avatar menu button
@@ -97,15 +122,16 @@ export class GateLoginPage extends BasePage {
     await expect(anyLoggedInIndicator.first()).toBeVisible({ timeout: Timeouts.DEFAULT_ACTION });
 
     // Take a screenshot for verification
-    await this.screenshot("logged-in-state");
+    // await this.screenshot("logged-in-state");
   }
 
   /**
-   * Click logout button
-   * The logout option is in a dropdown menu accessed via Avatar button.
-   * Callers verify the result with verifyLoggedOut(), so there's no wait here beyond the click.
+   * Open the account menu (or fall back to a direct logout button) and trigger sign-out.
+   * Shared by every subclass's logout() - what happens afterward (a gate confirmation screen, or
+   * none) is a property of the RP's own configured sign-out flow, so it's each subclass's job to
+   * handle, not this method's.
    */
-  async logout() {
+  protected async triggerSignOutFromAvatarMenu() {
     // First, look for the avatar/menu button to open the menu
     const avatarButton = this.page
       .locator(
@@ -137,20 +163,9 @@ export class GateLoginPage extends BasePage {
         .first();
 
       await signOutMenuItem.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
-      await signOutMenuItem.dispatchEvent("click");
+      await signOutMenuItem.click();
     } else {
       await logoutButton.click();
-    }
-
-    // RP-initiated logout redirects to the gate's sign-out confirmation flow before the
-    // post-logout redirect back to the app; confirm it if it appears.
-    const confirmSignOutButton = this.page.getByRole("button", { name: "Sign out", exact: true });
-    const confirmed = await confirmSignOutButton
-      .waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION })
-      .then(() => true)
-      .catch(() => false);
-    if (confirmed) {
-      await confirmSignOutButton.click();
     }
   }
 }

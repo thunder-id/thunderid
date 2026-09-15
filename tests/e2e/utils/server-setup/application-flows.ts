@@ -63,5 +63,6 @@ export async function restoreApplicationFlows(
     console.log(`✓ Application flows reverted: ${appId}`);
   } catch (error) {
     console.log(`⚠️  Error reverting application flows: ${error}`);
+    throw error;
   }
 }

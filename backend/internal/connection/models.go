@@ -31,21 +31,21 @@ var idpBackedVendors = []idpBackedVendor{
 }
 
 // smsGatewayVendorName is the connection vendor name for the generic HTTP SMS gateway. The
-// stored message provider stays MessageProviderTypeCustom; this name is presentation-only,
+// stored message provider stays NotificationProviderTypeCustom; this name is presentation-only,
 // surfaced in the /connections/{vendor} path and the flat-list type.
 const smsGatewayVendorName = "sms-gateway"
 
 // smsBackedVendor maps a connection path segment to an underlying message provider.
 type smsBackedVendor struct {
 	name     string
-	provider ncommon.MessageProviderType
+	provider ncommon.NotificationProviderType
 }
 
 // smsBackedVendors is the set of connection types backed by the notification-sender service.
 var smsBackedVendors = []smsBackedVendor{
-	{name: "twilio", provider: ncommon.MessageProviderTypeTwilio},
-	{name: "vonage", provider: ncommon.MessageProviderTypeVonage},
-	{name: smsGatewayVendorName, provider: ncommon.MessageProviderTypeCustom},
+	{name: "twilio", provider: ncommon.NotificationProviderTypeTwilio},
+	{name: "vonage", provider: ncommon.NotificationProviderTypeVonage},
+	{name: smsGatewayVendorName, provider: ncommon.NotificationProviderTypeCustom},
 }
 
 // connectionCategory is the functional category of a connection instance, used as the

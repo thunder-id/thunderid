@@ -11,8 +11,9 @@ import (
 )
 
 // TestAuthorize_PromptNone_LoginRequired verifies that prompt=none is redirected back to the client
-// with error=login_required, since the server does not support silent re-authentication via
-// server-side sessions (OIDC Core §3.1.2.1).
+// with error=login_required when no SSO session exists, which is the specification's answer for
+// "authentication is required but cannot be asked for" (OIDC Core §3.1.2.1). This request carries
+// no session cookie; the silent-success path is covered in tests/integration/oauth/sso.
 func (ts *AuthzTestSuite) TestAuthorize_PromptNone_LoginRequired() {
 	resp, err := testutils.InitiateAuthorizationFlowWithPrompt(
 		clientID, redirectURI, "code", "openid", "prompt-none-state", "none")

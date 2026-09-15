@@ -46,6 +46,10 @@ export class UsersPage extends BasePage {
   readonly getInviteLinkButton: Locator;
   readonly copyInviteLinkButton: Locator;
 
+  // Staff onboarding flow locators (email-based invite: "Which staff role?" -> "Invitee email")
+  readonly sendInvitationButton: Locator;
+  readonly invitationSentHeading: Locator;
+
   // The wizard's content column: holds both the current step's panel and that step's
   // action buttons. Scoping submitButton to this avoids the header
   // AppBreadcrumbs (which renders "Add User" / "Create User" crumbs before the content).
@@ -66,6 +70,21 @@ export class UsersPage extends BasePage {
   readonly deleteConfirmDialog: Locator;
   readonly deleteConfirmButton: Locator;
   readonly deleteCancelButton: Locator;
+
+  // Edit flow locators (User Details page: Attributes tab + page-level unsaved-changes bar)
+  // Only one tabpanel is ever un-hidden at a time (MUI toggles a `hidden` attribute per panel),
+  // so this always resolves to whichever tab is currently active.
+  readonly activeTabPanel: Locator;
+  readonly resetChangesButton: Locator;
+  readonly saveChangesButton: Locator;
+
+  // Credentials tab: "Reset Password" flow (User Details page: Credentials tab)
+  readonly resetPasswordButton: Locator;
+  readonly credentialResetDialog: Locator;
+  readonly newCredentialValueInput: Locator;
+  readonly confirmCredentialValueInput: Locator;
+  readonly confirmResetPasswordButton: Locator;
+  readonly cancelResetPasswordButton: Locator;
 
   constructor(page: Page, baseUrl: string) {
     super(page);
@@ -99,6 +118,12 @@ export class UsersPage extends BasePage {
     this.getInviteLinkButton = page.getByRole("button", { name: /get invite link/i });
     this.copyInviteLinkButton = page.getByRole("button", { name: /^copy$/i });
 
+    // Staff onboarding flow: the "Invitee email" step submits via a "Send invitation" button
+    // (rather than "Get Invite Link") and, once the invite email is sent, shows a confirmation
+    // heading instead of a copyable link.
+    this.sendInvitationButton = page.getByRole("button", { name: /send invitation/i });
+    this.invitationSentHeading = page.locator("h1, h2, h3, h4, h5, h6").filter({ hasText: /invitation sent/i });
+
     // The onboarding flow renders each interactive step as a <Box component="form">.
     this.wizardContent = page.locator("form");
 
@@ -131,8 +156,11 @@ export class UsersPage extends BasePage {
     // in the DOM than the step's own submit button, so an unscoped .first() would click it.
     this.submitButton = this.wizardContent
       .getByRole("button", { name: /create.*user|add.*user|submit|save|finish|next|continue|confirm/i })
-      .or(this.wizardContent.locator('button[size="large"]:not(:has-text("Cancel"))')
-        .or(this.wizardContent.locator('button:not(:has-text("Cancel")):not(:has-text("Close"))').nth(-1)));
+      .or(
+        this.wizardContent
+          .locator('button[size="large"]:not(:has-text("Cancel"))')
+          .or(this.wizardContent.locator('button:not(:has-text("Cancel")):not(:has-text("Close"))').nth(-1))
+      );
     this.closeButton = page.getByRole("button", { name: /cancel|close/i });
 
     // Form heading (Step 2: "Enter user details")
@@ -149,6 +177,22 @@ export class UsersPage extends BasePage {
     this.deleteConfirmDialog = page.getByRole("dialog");
     this.deleteConfirmButton = this.deleteConfirmDialog.getByRole("button", { name: /^delete$/i });
     this.deleteCancelButton = this.deleteConfirmDialog.getByRole("button", { name: /^cancel$/i });
+
+    this.activeTabPanel = page.locator('[role="tabpanel"]:not([hidden])');
+
+    // The page-level bar only exists in the DOM while a field is dirty, so exact text avoids
+    // matching the Credentials tab's per-field "Reset {label}" buttons (e.g. "Reset Password").
+    this.resetChangesButton = page.getByRole("button", { name: "Reset", exact: true });
+    this.saveChangesButton = page.getByRole("button", { name: "Save", exact: true });
+
+    // Scoped to the active tab panel so it only matches the Credentials tab's trigger button,
+    // not the reset dialog's own submit button underneath (both are named "Reset Password").
+    this.resetPasswordButton = this.activeTabPanel.getByRole("button", { name: /^reset password$/i });
+    this.credentialResetDialog = page.getByRole("dialog");
+    this.newCredentialValueInput = this.credentialResetDialog.locator("#credential-new-password");
+    this.confirmCredentialValueInput = this.credentialResetDialog.locator("#credential-confirm-password");
+    this.confirmResetPasswordButton = this.credentialResetDialog.getByRole("button", { name: /^reset password$/i });
+    this.cancelResetPasswordButton = this.credentialResetDialog.getByRole("button", { name: /^cancel$/i });
   }
 
   /**
@@ -206,7 +250,9 @@ export class UsersPage extends BasePage {
     } catch {
       await this.page.waitForLoadState("networkidle", { timeout: Timeouts.FORM_LOAD }).catch(() => {});
     }
-    await this.page.waitForTimeout(300);
+    // No DOM/network signal marks the transition animation finishing, so this is a deliberate exception.
+    // eslint-disable-next-line playwright/no-wait-for-timeout
+    await this.page.waitForTimeout(Timeouts.STEP_TRANSITION);
   }
 
   /** Click Next to advance the invite flow past the details step */
@@ -226,6 +272,25 @@ export class UsersPage extends BasePage {
     await this.copyInviteLinkButton.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
     const linkValue = await this.copyInviteLinkButton.first().locator("xpath=..").locator("p").first().textContent();
     return (linkValue ?? "").trim();
+  }
+
+  /** Click one of the staff-onboarding flow's "Which staff role?" action buttons (e.g. "Support"). */
+  async selectStaffRole(role: string) {
+    const roleButton = this.page.getByRole("button", { name: role, exact: true });
+    await roleButton.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await roleButton.click();
+  }
+
+  /** Fill the invitee's email on the staff-onboarding flow's "Invitee email" step. */
+  async fillInviteeEmail(email: string) {
+    await this.emailInput.first().waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
+    await this.emailInput.first().fill(email);
+  }
+
+  /** Click "Send invitation" on the staff-onboarding flow's "Invitee email" step. */
+  async clickSendInvitation() {
+    await this.sendInvitationButton.first().waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
+    await this.sendInvitationButton.first().click();
   }
 
   /**
@@ -266,20 +331,34 @@ export class UsersPage extends BasePage {
       ]);
       await expect(busySubmitButton).toHaveCount(0, { timeout: Timeouts.FORM_LOAD });
     }
+
+    const stillIncomplete = await this.page
+      .locator("input[required]")
+      .first()
+      .isVisible()
+      .catch(() => false);
+    if (stillIncomplete) {
+      throw new Error(`completeRegistrationFlow did not finish within ${maxSteps} steps`);
+    }
   }
 
-  /** Select the first available user type and advance past the (optional) org unit step */
-  private async selectUserTypeAndContinue() {
+  /**
+   * Select a user type and advance past the (optional) org unit step. Picks the first available
+   * option when `userTypeName` is omitted; matches by exact visible text otherwise (e.g. "Staff",
+   * for the Wayfinder staff-onboarding flow).
+   */
+  async selectUserTypeAndContinue(userTypeName?: string) {
     // Wait for user type select to be visible
     await this.userTypeSelect.first().waitFor({ state: "visible", timeout: Timeouts.FORM_LOAD });
 
     // Click the user type select dropdown
     await this.userTypeSelect.first().click();
 
-    // Select the first available option
-    const firstOption = this.page.locator('[role="option"]:not([aria-disabled="true"])').first();
-    await firstOption.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
-    await firstOption.click();
+    const option = userTypeName
+      ? this.page.getByRole("option", { name: userTypeName, exact: true })
+      : this.page.locator('[role="option"]:not([aria-disabled="true"])').first();
+    await option.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await option.click();
 
     // Click Continue button
     await this.continueButton.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
@@ -314,11 +393,15 @@ export class UsersPage extends BasePage {
 
     // Fill any remaining empty required text/password inputs with generated values
     // (dynamic schema fields that aren't covered by the known field locators, including
-    // an injected Confirm Password field)
-    const requiredInputs = this.page.locator('input[required]:not([type="checkbox"]):not([type="radio"])');
+    // an injected Confirm Password field). Scoped to wizardContent and to visible inputs only,
+    // same reasoning as submitButton above - a hidden native input backing a component like MUI
+    // Select can also carry `required`, and isn't something this loop should try to fill.
+    const requiredInputs = this.wizardContent.locator('input[required]:not([type="checkbox"]):not([type="radio"])');
     const count = await requiredInputs.count();
     for (let i = 0; i < count; i++) {
       const input = requiredInputs.nth(i);
+      if (!(await input.isVisible())) continue;
+
       const currentValue = await input.inputValue();
       if (currentValue) continue;
 
@@ -373,6 +456,86 @@ export class UsersPage extends BasePage {
     await this.page.goto(`${this.baseUrl}${ConsoleRoutes.userDetails(userId)}`, {
       timeout: Timeouts.PAGE_LOAD,
     });
+  }
+
+  /** Click a tab on the edit page by its visible label */
+  async clickTab(tabName: string): Promise<void> {
+    const tab = this.page.getByRole("tab", { name: new RegExp(tabName, "i") });
+    await tab.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await tab.click();
+  }
+
+  /** Every editable schema attribute input on the currently active tab panel (Attributes tab). */
+  private get attributeInputs(): Locator {
+    return this.activeTabPanel.locator('input[type="text"], input[type="number"]');
+  }
+
+  /** Read the current value of every attribute field on the Attributes tab, keyed by field id. */
+  async readAttributeFieldValues(): Promise<Record<string, string>> {
+    const pairs = await this.attributeInputs.evaluateAll(inputs =>
+      (inputs as HTMLInputElement[]).map(input => [input.id, input.value] as [string, string]).filter(([id]) => id)
+    );
+    return Object.fromEntries(pairs);
+  }
+
+  /**
+   * Fill every attribute field on the Attributes tab with a unique value derived from `prefix`,
+   * and return what was written (keyed by field id) for later comparison.
+   */
+  async fillAttributeFields(prefix: string): Promise<Record<string, string>> {
+    const ids = await this.attributeInputs.evaluateAll(inputs =>
+      (inputs as HTMLInputElement[]).map(input => input.id).filter(Boolean)
+    );
+
+    const values: Record<string, string> = {};
+    for (const [index, id] of ids.entries()) {
+      const input = this.activeTabPanel.locator(`#${id}`);
+
+      // `picture` isn't free text: the Console renders it as an avatar spec (emoji:/avatar:/URL)
+      // and falls back to displaying an unrecognized string as literal text on the user's avatar,
+      // which then leaks into shared UI (e.g. the dashboard's recent-users widget). Leave it
+      // untouched so this test can't pollute other pages with garbage-looking avatars.
+      if (id === "picture") {
+        values[id] = await input.inputValue();
+        continue;
+      }
+      // The email field is validated against a regex, so a generic unique string won't pass.
+      const value = id === "email" ? `${prefix}_${index}@example.com` : `${prefix}_${id}_${index}`;
+      await input.fill(value);
+      values[id] = value;
+    }
+    return values;
+  }
+
+  /** Click the page-level "Reset" button that discards unsaved attribute edits. */
+  async clickResetChanges() {
+    await this.resetChangesButton.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await this.resetChangesButton.click();
+  }
+
+  /** Click the page-level "Save" button that persists unsaved attribute edits. */
+  async clickSaveChanges() {
+    await this.saveChangesButton.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await this.saveChangesButton.click();
+  }
+
+  /** Click "Reset Password" (or another credential field's reset button) on the Credentials tab. */
+  async clickResetPassword(fieldLabel: string = "Password") {
+    const button = this.activeTabPanel.getByRole("button", { name: new RegExp(`^reset ${fieldLabel}$`, "i") });
+    await button.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await button.click();
+  }
+
+  /** Fill the New/Confirm fields in the credential reset dialog. Defaults confirm to match new. */
+  async fillCredentialResetForm(newValue: string, confirmValue: string = newValue) {
+    await this.newCredentialValueInput.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await this.newCredentialValueInput.fill(newValue);
+    await this.confirmCredentialValueInput.fill(confirmValue);
+  }
+
+  /** Confirm the credential reset dialog (e.g. "Reset Password"). */
+  async confirmResetPassword() {
+    await this.confirmResetPasswordButton.click();
   }
 
   /** Open the delete confirmation dialog from the user details page's Danger Zone. */

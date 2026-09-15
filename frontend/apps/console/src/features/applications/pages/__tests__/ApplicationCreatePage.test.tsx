@@ -17,6 +17,13 @@ import ApplicationCreatePage from '../ApplicationCreatePage';
 const mockCreateApplication = vi.fn();
 const mockNavigate = vi.fn();
 let mockPathname = '/';
+const mockUseGetApplications = vi.hoisted(() => vi.fn());
+const mockUserTypes = vi.hoisted(() => ({
+  types: [
+    {id: 'customer', name: 'customer', displayName: 'Customer'},
+    {id: 'employee', name: 'employee', displayName: 'Employee'},
+  ],
+}));
 
 // Mock logger
 vi.mock('@thunderid/logger/react', () => ({
@@ -27,6 +34,11 @@ vi.mock('@thunderid/logger/react', () => ({
     debug: vi.fn(),
     withComponent: vi.fn().mockReturnThis(),
   }),
+}));
+
+vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
+  useGetApplications: mockUseGetApplications,
 }));
 
 // Mock react-router
@@ -87,12 +99,7 @@ vi.mock('../../api/useCreateApplication', async () => {
 // Mock user types API
 vi.mock('@thunderid/configure-user-types', () => ({
   useGetUserTypes: () => ({
-    data: {
-      types: [
-        {id: 'customer', name: 'customer', displayName: 'Customer'},
-        {id: 'employee', name: 'employee', displayName: 'Employee'},
-      ],
-    },
+    data: mockUserTypes,
     isLoading: false,
     error: null,
   }),
@@ -491,7 +498,11 @@ function TemplateSeeder(): JSX.Element {
         onClick={() =>
           seed(null, 'BACKEND', {
             id: 'backend',
-            creationFlow: {steps: ['ORGANIZATION_UNIT', 'DETAILS', 'COMPLETE'], previewSteps: []},
+            creationFlow: {
+              steps: ['ORGANIZATION_UNIT', 'DETAILS', 'COMPLETE'],
+              previewSteps: [],
+              allowsUserLogins: false,
+            },
           })
         }
       >
@@ -688,6 +699,12 @@ describe('ApplicationCreatePage', () => {
       data: undefined,
       isLoading: false,
     });
+
+    mockUseGetApplications.mockReturnValue({data: {applications: []}});
+    mockUserTypes.types = [
+      {id: 'customer', name: 'customer', displayName: 'Customer'},
+      {id: 'employee', name: 'employee', displayName: 'Employee'},
+    ];
   });
 
   describe('Initial Rendering', () => {
@@ -1456,6 +1473,84 @@ describe('ApplicationCreatePage', () => {
   });
 
   describe('Error Handling', () => {
+    it('should exclude a newly created application from duplicate-name validation after the list refreshes', async () => {
+      let applicationsData = {applications: [] as Application[]};
+      mockUseGetApplications.mockImplementation(() => ({data: applicationsData}));
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        applicationsData = {applications: [{id: 'app-123', name: 'My App'} as Application]};
+        onSuccess({id: 'app-123', name: 'My App'} as Application);
+      });
+
+      renderWithProviders();
+
+      await goToDesignStep();
+      // DESIGN → CONFIGURE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
+      });
+      // CONFIGURE → Create
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+
+      // The mocked navigation keeps the wizard mounted. Return to Details after the application
+      // list has refreshed with the created name and verify the submitted name is not treated as a
+      // duplicate while the wizard is still open.
+      await user.click(screen.getByRole('button', {name: 'Details'}));
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-name')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('application-configure-name')).toHaveAttribute('data-existing-names', '');
+      expect(screen.queryByTestId('app-name-duplicate-error')).not.toBeInTheDocument();
+    });
+
+    it('should restore duplicate-name validation when creation fails after a successful submission', async () => {
+      const duplicateError = Object.assign(new Error('Bad Request'), {
+        response: {status: 400, data: {code: 'APP-1020', message: 'Application already exists'}},
+      });
+      let applicationsData = {applications: [] as Application[]};
+      mockUseGetApplications.mockImplementation(() => ({data: applicationsData}));
+      let createAttempt = 0;
+      mockCreateApplication.mockImplementation(
+        (_data, options: {onError: (error: Error) => void; onSuccess: (app: Application) => void}) => {
+          createAttempt += 1;
+          if (createAttempt === 1) {
+            applicationsData = {applications: [{id: 'app-123', name: 'My App'} as Application]};
+            options.onSuccess({id: 'app-123', name: 'My App'} as Application);
+            return;
+          }
+          options.onError(duplicateError);
+        },
+      );
+
+      renderWithProviders();
+
+      await goToDesignStep();
+      // DESIGN → CONFIGURE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
+      });
+      // CONFIGURE → Create successfully once.
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+      await waitFor(() => expect(mockCreateApplication).toHaveBeenCalledTimes(1));
+
+      // Submit the same still-mounted wizard again. The second failure clears isCreationSubmitted,
+      // so the refreshed application name is visible to duplicate validation again.
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-name')).toBeInTheDocument();
+        expect(screen.getByTestId('app-name-duplicate-error')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('application-configure-name')).toHaveAttribute(
+        'data-existing-names',
+        expect.stringContaining('My App'),
+      );
+    });
+
     it('should show error when application creation fails', async () => {
       mockCreateApplication.mockImplementation((_data, {onError}: {onError: (error: Error) => void}) => {
         onError(new Error('Failed to create application'));
@@ -1790,6 +1885,26 @@ describe('ApplicationCreatePage', () => {
       expect(createAppCall.isRegistrationFlowEnabled).toBeUndefined();
       expect(createAppCall.themeId).toBeUndefined();
       expect(createAppCall.logoUrl).toBeUndefined();
+    });
+
+    it('should create backend app without allowedUserTypes', async () => {
+      mockUserTypes.types = [{id: 'customer', name: 'customer', displayName: 'Customer'}];
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({id: 'backend-app-no-user-types', name: 'My Backend App'} as Application);
+      });
+
+      renderWithProviders();
+
+      await user.click(screen.getByTestId('select-backend-platform'));
+      await user.type(screen.getByTestId('app-name-input'), 'My Backend App');
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+
+      const createAppCall = mockCreateApplication.mock.calls[0][0] as Record<string, unknown>;
+      expect(createAppCall.allowedUserTypes).toBeUndefined();
     });
 
     it('should include the backend template id in the create request', async () => {
@@ -2709,6 +2824,7 @@ describe('ApplicationCreatePage', () => {
     });
 
     it('should submit the machine-to-machine oauth2 config with client_credentials overrides and no redirect URIs', async () => {
+      mockUserTypes.types = [{id: 'customer', name: 'customer', displayName: 'Customer'}];
       mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
         onSuccess({id: 'mcp-app-2', name: 'My MCP App'} as Application);
       });
@@ -2727,6 +2843,7 @@ describe('ApplicationCreatePage', () => {
       expect(requestBody.template).toBe('mcp-client');
       // The machine-to-machine MCP client override resolves to the m2m type.
       expect(requestBody.type).toBe('m2m');
+      expect(requestBody.allowedUserTypes).toBeUndefined();
 
       const oauth2Config = requestBody.inboundAuthConfig?.[0];
       expect(oauth2Config?.type).toBe('oauth2');

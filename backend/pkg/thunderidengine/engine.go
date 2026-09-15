@@ -6,7 +6,9 @@ package thunderidengine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -28,6 +30,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/runtimestore"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	systemconfig "github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/jose"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
@@ -35,6 +38,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/usermgtprovider"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -58,6 +63,23 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	err := validateEngineContext(&engineCtx)
 	if err != nil {
 		logger.Fatal(ctx, "Engine context is missing required fields", log.Error(err))
+	}
+
+	// Apply the logging configuration before any service is initialized, so the engine's
+	// own boot logging is emitted at the configured level and format.
+	if engineCtx.logConfig.Level != "" {
+		if err := logger.SetLevel(engineCtx.logConfig.Level); err != nil {
+			logger.Fatal(ctx, "invalid log level in LogConfig", log.Error(err))
+		}
+	}
+	if engineCtx.logConfig.Format != "" {
+		// SetFormat rather than Configure: the engine owns the format but not where the
+		// records go. A host application may have configured console and file output
+		// already, and Configure would replace it with a console-only sink and close the
+		// host's file writer.
+		if err := logger.SetFormat(engineCtx.logConfig.Format); err != nil {
+			logger.Fatal(ctx, "failed to configure logger", log.Error(err))
+		}
 	}
 
 	// Initialize the cache manager.
@@ -125,6 +147,9 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	}
 	flowFactory, graphCache := core.Initialize(engineCtx.cacheManager)
 	engineCtx.flowFactory = flowFactory
+	if engineCtx.userMgtProvider == nil {
+		engineCtx.userMgtProvider = usermgtprovider.NewDisabledUserMgtProvider()
+	}
 	execDeps := executor.ExecutorDependencies{
 		FlowFactory:       engineCtx.flowFactory,
 		AttributeCacheSvc: engineCtx.attributeCacheService,
@@ -134,6 +159,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		JWTService:        engineCtx.jwtService,
 		AuthAssertGen:     engineCtx.authAssertGen,
 		ResourceService:   engineCtx.resourceProvider,
+		UserMgtProvider:   engineCtx.userMgtProvider,
 	}
 	interceptorDeps := interceptor.InterceptorDependencies{
 		FlowFactory:    engineCtx.flowFactory,
@@ -181,6 +207,17 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.observabilitySvc, tokenFamilyRevocationTTL,
 		engineCtx.oauthConfig.Revocation.TokenFamily.OnExplicitRevokeEnabled())
 
+	// CORS origins come from the engine's static OriginConfig; unlike the full server there is no
+	// server-config store to back a dynamic matcher. An empty config leaves CORS disabled (matcher
+	// reset to nil, so every cross-origin request to the routes registered below is denied). The
+	// matcher is global, so it must be reset explicitly rather than left as whatever a previous
+	// engine installed.
+	originReader, err := buildOriginReader(engineCtx.originConfig)
+	if err != nil {
+		logger.Fatal(ctx, "Invalid origin configuration", log.Error(err))
+	}
+	cors.InitializeDynamicMatcher(originReader)
+
 	// The embedded engine has no server-config store, so no default resource server is available: the
 	// resource provider is passed undecorated. Implicit no-resource requests that carry permission
 	// scopes are rejected (the provider resolves no server for an empty identifier); OIDC-only or
@@ -189,23 +226,12 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.jweService, engineCtx.flowExecService, engineCtx.observabilitySvc, engineCtx.runtimeCryptoSvc,
 		engineCtx.ouProvider, engineCtx.attributeCacheService, engineCtx.authzProvider, engineCtx.resourceProvider,
 		engineCtx.i18nProvider, engineCtx.idpProvider, engineCtx.dpopVerifier, engineCtx.runtimeStoreProvider,
-		engineCtx.transactioner, revocationEnforcer, revocationService, oauthConfig)
+		engineCtx.transactioner, revocationEnforcer, revocationService,
+		// The embedded engine has no SSO session store, so prompt=none keeps answering
+		// login_required rather than consulting a session.
+		nil, engineCtx.flowProvider, oauthConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
-	}
-
-	if engineCtx.logConfig.Level != "" {
-		if err := logger.SetLevel(engineCtx.logConfig.Level); err != nil {
-			logger.Fatal(ctx, "invalid log level in LogConfig", log.Error(err))
-		}
-	}
-	if engineCtx.logConfig.Format != "" {
-		if err := logger.Configure(log.OutputOptions{
-			ConsoleEnabled: true,
-			Format:         engineCtx.logConfig.Format,
-		}); err != nil {
-			logger.Fatal(ctx, "failed to configure logger", log.Error(err))
-		}
 	}
 
 	return &Engine{
@@ -284,6 +310,45 @@ func (e *engineContext) applyCustomExecutors() error {
 	return nil
 }
 
+// buildOriginReader validates cfg and, if it carries any allowed origins, returns a
+// cors.ServerConfigReader that serves them as a static read-only layer with no writable layer.
+// An empty cfg returns a nil reader and no error: the caller then leaves the CORS dynamic matcher
+// uninstalled, which denies every cross-origin request.
+func buildOriginReader(cfg engineconfig.OriginConfig) (cors.ServerConfigReader, error) {
+	if len(cfg.AllowedOrigins) == 0 {
+		return nil, nil
+	}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("thunderidengine: failed to encode origin configuration: %w", err)
+	}
+	decoded, err := cors.OriginHandler{}.Decode(raw)
+	if err != nil {
+		return nil, fmt.Errorf("thunderidengine: invalid origin configuration: %w", err)
+	}
+	if err := (cors.OriginHandler{}).Validate(decoded, nil, nil); err != nil {
+		return nil, fmt.Errorf("thunderidengine: invalid origin configuration: %w", err)
+	}
+	return staticOriginReader{config: decoded.(cors.OriginConfig)}, nil
+}
+
+// staticOriginReader implements cors.ServerConfigReader over a fixed origin list supplied via
+// WithOriginConfig. It has no writable layer: origins can only change by restarting the engine
+// with a new OriginConfig.
+type staticOriginReader struct {
+	config cors.OriginConfig
+}
+
+// GetReadOnlyConfig returns the engine's static origin configuration.
+func (r staticOriginReader) GetReadOnlyConfig(_ context.Context, _ string) (any, *common.ServiceError) {
+	return r.config, nil
+}
+
+// GetWritableConfig returns an empty configuration: staticOriginReader has no writable layer.
+func (r staticOriginReader) GetWritableConfig(_ context.Context, _ string) (any, *common.ServiceError) {
+	return cors.OriginConfig{}, nil
+}
+
 type engineContext struct {
 	cacheManager          cache.CacheManagerInterface
 	jwtService            jwt.JWTServiceInterface
@@ -310,8 +375,10 @@ type engineContext struct {
 	encryptionConfig       engineconfig.EncryptionConfig
 	logConfig              engineconfig.LogConfig
 	attributeCacheConfig   engineconfig.AttributeCacheConfig
+	originConfig           engineconfig.OriginConfig
 
 	actorProvider             providers.ActorProvider
+	userMgtProvider           providers.UserMgtProvider
 	defaultAuthnProvider      providers.AuthnProviderInterface
 	customAuthnProviders      map[string]providers.CustomAuthnProvider
 	resourceProvider          providers.ResourceServerProvider
@@ -361,6 +428,14 @@ func WithAttributeCacheConfig(config engineconfig.AttributeCacheConfig) Option {
 	return func(c *engineContext) { c.attributeCacheConfig = config }
 }
 
+// WithOriginConfig supplies the allowed cross-origin origins for the engine's CORS-enabled
+// endpoints (well-known discovery, JWKS, token, userinfo, and the rest of the OAuth surface).
+// Omitting this option leaves CORS disabled: no cross-origin request is allowed to read a
+// response from those endpoints.
+func WithOriginConfig(config engineconfig.OriginConfig) Option {
+	return func(c *engineContext) { c.originConfig = config }
+}
+
 // WithServerConfig supplies the server configuration.
 func WithServerConfig(config engineconfig.ServerConfig) Option {
 	return func(c *engineContext) { c.serverConfig = config }
@@ -399,6 +474,13 @@ func WithObservabilityConfig(config engineconfig.ObservabilityConfig) Option {
 // WithActorProvider supplies the actor provider.
 func WithActorProvider(provider providers.ActorProvider) Option {
 	return func(c *engineContext) { c.actorProvider = provider }
+}
+
+// WithUserMgtProvider supplies the user management provider. Omitting it leaves user provisioning
+// disabled: runtime capabilities that provision users then fail with ErrorUserProvisioningDisabled
+// rather than the engine refusing to start.
+func WithUserMgtProvider(provider providers.UserMgtProvider) Option {
+	return func(c *engineContext) { c.userMgtProvider = provider }
 }
 
 // WithDefaultAuthnProvider supplies the default authentication provider.

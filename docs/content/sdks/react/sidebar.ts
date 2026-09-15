@@ -96,6 +96,11 @@ const sidebar: SidebarsConfig = {
                   id: 'sdks/react/apis/components/user',
                   label: '<User />',
                 },
+                {
+                  type: 'doc',
+                  id: 'sdks/react/apis/components/change-credential',
+                  label: '<ChangeCredential />',
+                },
               ],
             },
           ],

@@ -49,6 +49,9 @@ curl https://{{productSlug}}.example.com/.well-known/openid-configuration
     "private_key_jwt",
     "none"
   ],
+  "token_endpoint_auth_signing_alg_values_supported": [
+    "RS256", "RS512", "PS256", "ES256", "ES384", "ES512", "EdDSA"
+  ],
   "dpop_signing_alg_values_supported": [
     "RS256", "RS512", "PS256", "ES256", "ES384", "ES512", "EdDSA"
   ],
@@ -74,6 +77,8 @@ curl https://{{productSlug}}.example.com/.well-known/openid-configuration
     "address"
   ],
   "claims_parameter_supported": true,
+  "request_parameter_supported": false,
+  "request_uri_parameter_supported": false,
   "require_pushed_authorization_requests": false,
   "authorization_response_iss_parameter_supported": true,
   "acr_values_supported": ["urn:mace:incommon:iap:silver"]
@@ -93,6 +98,7 @@ The OAuth-only document at `/.well-known/oauth-authorization-server` omits the O
 | Subject types | `public` only. Pairwise subject identifiers are not supported |
 | `require_pushed_authorization_requests` | Reflects the global `oauth.par.require_par` setting |
 | `authorization_response_iss_parameter_supported` | Always `true` (see [Issuer Identification](../issuer-identification)) |
+| `request_parameter_supported`, `request_uri_parameter_supported` | Both always `false`. Request objects (JAR) are not supported, by value or by reference. An authorization request carrying a `request` parameter is rejected with `request_not_supported`, and a client-supplied `request_uri` that is not shaped like a pushed authorization request handle is rejected with `request_uri_not_supported`. A `request_uri` that is shaped like a PAR handle but whose stored request is unknown, expired, or already used is rejected with `invalid_request`. This does not affect the `request_uri` values that [PAR](../par) itself issues |
 
 </details>
 

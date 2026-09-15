@@ -60,6 +60,7 @@ export default function AgentAccessTokenSection({
       onValidationChange={onValidationChange}
       inputId="agent-access-token-validity"
       subjectValue={agent.id}
+      subjectType="agent"
       copy={{
         attributesTitle: t('agents:edit.tokens.agent.attributes.title', 'Access Token Attributes'),
         attributesDescription: t(

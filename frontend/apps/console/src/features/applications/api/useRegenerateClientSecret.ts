@@ -7,6 +7,7 @@ import type {Application, InboundAuthConfig} from '@thunderid/configure-applicat
 import {useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
+import {regenerateClientSecretViaFlow, type HttpLike} from '../utils/applicationAdministrationFlow';
 
 /**
  * Variables for the {@link useRegenerateClientSecret} mutation.
@@ -27,9 +28,12 @@ export interface RegenerateSecretVariables {
  */
 export interface RegenerateSecretResult {
   /**
-   * The updated application after client secret regeneration
+   * The updated application after client secret regeneration.
+   *
+   * Only present on the native fallback path, which rotates the secret by updating the application.
+   * The regeneration flow rotates the credential without returning the application.
    */
-  application: Application;
+  application?: Application;
   /**
    * The new client secret generated during regeneration
    * This is only available immediately after regeneration and should be saved by the user
@@ -66,7 +70,10 @@ function generateClientSecret(): string {
 /**
  * Custom React hook to regenerate an application's client secret.
  *
- * This hook handles the client secret regeneration process by:
+ * The regeneration runs through the configured administration flow, which revokes the artifacts
+ * issued under the old secret before rotating it and returns the new secret the server generated.
+ *
+ * When no such flow is configured it falls back to rotating the secret through the update API:
  * 1. Fetching the current application details
  * 2. Generating a new client secret
  * 3. Updating the application with the new client secret via the update API
@@ -75,10 +82,8 @@ function generateClientSecret(): string {
  * reflects the latest changes.
  *
  * @remarks
- * Currently, there is no dedicated API endpoint to regenerate a client secret.
- * This hook uses the update application endpoint to regenerate the client secret.
- * When a dedicated regenerate endpoint is implemented in the backend, this hook
- * can be updated to use that endpoint without changing the UI components.
+ * The fallback path generates the secret in the browser because the update endpoint has no way to
+ * ask the server for one. The flow path does not, so its secret carries the server's entropy.
  *
  * @returns TanStack Query mutation object for regenerating client secrets with mutate function, loading state, and error information
  *
@@ -129,6 +134,16 @@ export default function useRegenerateClientSecret(): UseMutationResult<
   return useMutation<RegenerateSecretResult, Error, RegenerateSecretVariables>({
     mutationFn: async ({applicationId}: RegenerateSecretVariables): Promise<RegenerateSecretResult> => {
       const serverUrl: string = getServerUrl();
+
+      const flowSecret: string | null = await regenerateClientSecretViaFlow(
+        http as unknown as HttpLike,
+        serverUrl,
+        applicationId,
+      );
+
+      if (flowSecret) {
+        return {clientSecret: flowSecret};
+      }
 
       // Step 1: Fetch the current application details
       const getResponse: {data: Application} = await http.request({

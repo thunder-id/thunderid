@@ -169,17 +169,17 @@ The `<ThunderIDRoot>` component mounts the full authentication provider tree. Wr
 ```
 
 :::info Auto-imports
-The `@thunderid/nuxt` module auto-registers all components (under the `ThunderID` prefix, e.g. `<ThunderIDSignedIn>`) and auto-imports all composables. You do **not** need to import them manually.
+The `@thunderid/nuxt` module auto-registers all components (under the `ThunderID` prefix, e.g. `<SignedIn>`) and auto-imports all composables. You do **not** need to import them manually.
 :::
 
 ## Add Sign-In and Sign-Up Pages
 
-The `<ThunderIDSignIn />` and `<ThunderIDSignUp />` components render the sign-in and sign-up forms natively, using the Flow Execution API. Create the routes configured above as `NUXT_PUBLIC_THUNDERID_SIGN_IN_URL` and `NUXT_PUBLIC_THUNDERID_SIGN_UP_URL`:
+The `<SignIn />` and `<SignUp />` components render the sign-in and sign-up forms natively, using the Flow Execution API. Create the routes configured above as `NUXT_PUBLIC_THUNDERID_SIGN_IN_URL` and `NUXT_PUBLIC_THUNDERID_SIGN_UP_URL`:
 
 ```vue title="app/pages/signin.vue" showLineNumbers
 <template>
   <main>
-    <ThunderIDSignIn />
+    <SignIn />
   </main>
 </template>
 ```
@@ -187,7 +187,7 @@ The `<ThunderIDSignIn />` and `<ThunderIDSignUp />` components render the sign-i
 ```vue title="app/pages/signup.vue" showLineNumbers
 <template>
   <main>
-    <ThunderIDSignUp after-sign-up-url="/" />
+    <SignUp after-sign-up-url="/" />
   </main>
 </template>
 ```
@@ -199,18 +199,18 @@ Update your home page with <ProductName /> authentication components:
 ```vue title="app/pages/index.vue" {3-8} showLineNumbers
 <template>
   <main>
-    <ThunderIDSignedIn>
-      <ThunderIDUserDropdown />
-    </ThunderIDSignedIn>
-    <ThunderIDSignedOut>
-      <ThunderIDSignInButton>Sign In</ThunderIDSignInButton>
-    </ThunderIDSignedOut>
+    <SignedIn>
+      <UserDropdown />
+    </SignedIn>
+    <SignedOut>
+      <SignInButton>Sign In</SignInButton>
+    </SignedOut>
   </main>
 </template>
 ```
 
 :::info
-`<ThunderIDSignInButton />` navigates to the local `NUXT_PUBLIC_THUNDERID_SIGN_IN_URL` route you created above, rather than redirecting to a <ProductName />-hosted page.
+`<SignInButton />` navigates to the local `NUXT_PUBLIC_THUNDERID_SIGN_IN_URL` route you created above, rather than redirecting to a <ProductName />-hosted page.
 :::
 
 ## Run Your App
@@ -238,7 +238,7 @@ You'll need a user to sign in with. If you haven't created one yet, open <Consol
 :::tip Success
 Visit your app at 🌐 [http://localhost:3000](http://localhost:3000)
 
-You should see the `<ThunderIDSignInButton />` button. Click it, you'll land on your application's own `/signin` page. Login with your test user, then return to your application with the user dropdown displayed.
+You should see the `<SignInButton />` button. Click it, you'll land on your application's own `/signin` page. Login with your test user, then return to your application with the user dropdown displayed.
 :::
 
 </Stepper>

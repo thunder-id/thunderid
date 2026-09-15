@@ -1,0 +1,173 @@
+---
+title: Notification Templates
+docType: guide
+sidebar_position: 1
+persona: iam
+description: Author the email and SMS content {{ProductName}} sends for OTPs, invitations, magic links, and password recovery, and learn which runtime values you can inject into each.
+---
+
+# Notification Templates
+
+A notification template defines the content <ProductName /> sends to a user: the subject and body of an email, or the message body of an SMS. Templates are YAML files loaded from disk at startup, and each one is selected by a **scenario** (what the message is for) and a **type** (the channel it goes out on).
+
+Templates support placeholders. At send time, <ProductName /> substitutes values gathered during the flow, such as a one-time password, an invitation link, or the application name, into the body before handing the result to the email or SMS provider.
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get <ProductName />](../../../getting-started/get-thunderid).
+- Filesystem access to the deployment's config directory, since templates are files rather than Console resources.
+- For delivery, a configured [SMTP server](../../smtp-server/smtp-server-configuration) or [SMS provider](../sms-providers).
+
+## Scenarios and Channels
+
+Each template declares one `scenario` and one `type`. <ProductName /> looks up templates by that pair, so a scenario can have at most one email template and one SMS template.
+
+| Scenario | Sent when |
+| :--- | :--- |
+| `USER_INVITE` | An administrator invites a user to create an account. |
+| `SELF_REGISTRATION` | A user starts self-registration and must confirm their address. |
+| `PASSWORD_RECOVERY` | A user requests a password reset link. |
+| `MAGIC_LINK` | A user signs in with a magic link instead of a password. |
+| `OTP` | A one-time password is issued for verification or sign-in. |
+| `CIBA_NOTIFICATION` | A backchannel authentication request needs the user's approval. |
+
+The two supported values for `type` are `email` and `sms`.
+
+Not every scenario ships with a template on both channels. Out of the box, <ProductName /> provides email and SMS templates for `USER_INVITE`, `SELF_REGISTRATION`, `OTP`, and `CIBA_NOTIFICATION`, and email only for `MAGIC_LINK` and `PASSWORD_RECOVERY`. You can add the missing channel by creating a file for it.
+
+If a flow asks for a scenario and type combination that has no template, the send fails. Adding a template file is what makes that combination available.
+
+## Where Templates Live
+
+Templates are loaded from the `templates` directory under the server's config resources directory:
+
+```text
+<THUNDERID_HOME>/config/resources/templates/
+```
+
+In a container image, that path is `/app/config/resources/templates`.
+
+Each `.yaml` file in the directory is one template. The filename does not matter; the `id`, `scenario`, and `type` fields inside the file do.
+
+:::important
+Templates are read once, at server startup. Editing a file has no effect on a running server. Restart <ProductName /> after any change.
+:::
+
+Validation also happens at load time, and a bad template stops the server from starting. A template fails validation when `id`, `scenario`, or `body` is missing, when `scenario` is not one of the values listed above, or when `subject` is missing on a template whose `type` is not `sms`.
+
+## Template Schema
+
+```yaml
+id: "sms-otp"
+displayName: "SMS OTP Verification"
+scenario: "OTP"
+type: "sms"
+contentType: "text/plain"
+body: "Your verification code is: {{ctx(otpCode)}}. It expires in {{ctx(expiryTime)}}."
+```
+
+| Field | Required | Description |
+| :--- | :---: | :--- |
+| `id` | Yes | Unique identifier for the template. Must be unique across every file in the directory. |
+| `scenario` | Yes | Which notification this template is used for. See [Scenarios and Channels](#scenarios-and-channels). |
+| `body` | Yes | The message body. May contain `{{ctx(key)}}` placeholders. |
+| `subject` | For email | Email subject line. May contain placeholders. Not used for SMS. |
+| `type` | No | `email` or `sms`. Determines the channel this template serves. |
+| `displayName` | No | Human-readable name, used in logs and tooling. |
+| `contentType` | No | `text/html` or `text/plain`. Controls escaping and how the body is sent. See [Content Type and Escaping](#content-type-and-escaping). |
+
+## Injecting Runtime Values
+
+Placeholders use the form `{{ctx(key)}}`. At render time, each placeholder is replaced with the matching value from the data collected during the flow.
+
+```yaml
+body: "Your verification code is: {{ctx(otpCode)}}. It expires in {{ctx(expiryTime)}}."
+```
+
+The syntax is deliberately narrow, and it is worth knowing its limits before you write a template:
+
+- **Keys are case sensitive.** `{{ctx(otpCode)}}` resolves; `{{ctx(otpcode)}}` does not.
+- **Only letters, digits, and underscores are recognized inside the parentheses.** A key containing a dot, dash, or space is not matched at all, so the text is left alone.
+- **There are no filters, defaults, conditionals, or loops.** This is string substitution, not a template language. Anything conditional has to be handled by using a different template.
+- **Unresolved placeholders are passed through literally.** If a key has no value at render time, the recipient sees the raw text `{{ctx(otpCode)}}` in their message. <ProductName /> does not fail the send or substitute an empty string, so a typo in a key name reaches the user.
+
+That last point is the reason the tables below matter: a placeholder only resolves if something earlier in the flow produced the value.
+
+### Values Available in Every Flow Notification
+
+These are attached by the notification step itself, so they resolve wherever a flow sends an email or SMS.
+
+| Key | Value |
+| :--- | :--- |
+| `appName` | Name of the application the flow is running for. |
+| `applicationId` | ID of that application. |
+| `userID` | ID of the user, once an earlier step has identified them. |
+| `senderId` | ID of the notification sender, when the step is configured with one. |
+| `idpId` | ID of the identity provider, when the step is configured with one. |
+
+### Values Contributed by an Earlier Step
+
+Everything else comes from a step that runs *before* the notification step. If that step is not in the flow, the value does not exist and its placeholder is emitted literally.
+
+| Value is produced by | Keys it makes available |
+| :--- | :--- |
+| The OTP executor, in generate mode | `otpCode`, `expiryTime` |
+| The invite executor | `inviteLink`, `appName` |
+| The magic link executor | `magicLink`, `expiryTime`, `appName` |
+| A CIBA authentication request | `bindingMessage` |
+| An attribute collection step | Whichever user attributes it resolved, such as `email`, `mobile_number`, or `username` |
+
+`expiryTime` is already formatted for display, as a string such as `5 minutes` or `1 hour`, so you can drop it into a sentence without further formatting.
+
+:::note
+Values a user types into a prompt are not automatically available to templates. Only attributes that an attribute collection step resolved onto the flow are.
+:::
+
+### What Each Scenario Can Use
+
+Combining the two tables above gives the practical answer per scenario. Every scenario also has access to the common values in [Values Available in Every Flow Notification](#values-available-in-every-flow-notification).
+
+| Scenario | Placeholders you can use | Because |
+| :--- | :--- | :--- |
+| `USER_INVITE` | `inviteLink`, `appName` | Driven by the invite executor. |
+| `SELF_REGISTRATION` | `inviteLink`, `appName` | Driven by the invite executor. |
+| `PASSWORD_RECOVERY` | `inviteLink`, `appName` | Driven by the invite executor. |
+| `CIBA_NOTIFICATION` | `inviteLink`, `appName`, `bindingMessage` | Invite executor, plus the binding message from the CIBA request. |
+| `MAGIC_LINK` | `magicLink`, `expiryTime`, `appName` | Driven by the magic link executor. |
+| `OTP` | `otpCode`, `expiryTime` | Driven by the OTP executor. |
+
+The recurring surprise here is `inviteLink`. Password recovery, self-registration, and CIBA approval all deliver their link through the same invite executor, so the key is `inviteLink` in all of them. There is no `resetLink` or `approvalLink`.
+
+### The Standalone SMS OTP Endpoint
+
+`POST /auth/otp/sms/send` renders the `OTP` SMS template outside of any flow. Because no flow is running, there is no application, no user, and no identity provider to draw from, and only two values are supplied:
+
+- `otpCode`
+- `expiryTime`
+
+Any other placeholder in the `OTP` SMS template, including `appName`, is emitted literally on this path. If you use this endpoint, keep that template to those two keys.
+
+## Content Type and Escaping
+
+`contentType` controls how substituted values are treated:
+
+- **`text/html`**: values substituted into the **body** are HTML-escaped before insertion. A user attribute containing `<` or `&` is rendered as text rather than markup, which prevents a stored value from injecting HTML into the message.
+- **`text/plain`**, or any other value: substituted values are inserted as-is, with no escaping.
+
+Email templates are also sent as HTML only when `contentType` is exactly `text/html`. Any other value, including an omitted `contentType`, is delivered as plain text.
+
+:::caution
+The `subject` field is never HTML-escaped, on any content type. Avoid interpolating user-controlled attributes into a subject line.
+:::
+
+## SMS Length
+
+An SMS segment holds 160 characters. When a rendered SMS body exceeds that, <ProductName /> logs a warning and still sends the message; the provider then splits it into multiple segments, which most providers bill separately.
+
+Write SMS bodies against the rendered length, not the template length. A body that looks short can grow well past 160 characters once a long `inviteLink` or a long `appName` is substituted in.
+
+## Next Steps
+
+- [Configure an SMS Provider](../sms-providers): Connect the gateway that delivers your SMS templates
+- [Configure SMTP Server](../../smtp-server/smtp-server-configuration): Connect the mail server that delivers your email templates
+- [Build a Flow](../../flows/build-a-flow): Add the notification step that renders a template

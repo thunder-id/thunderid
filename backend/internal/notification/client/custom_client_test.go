@@ -43,7 +43,7 @@ func (suite *CustomClientTestSuite) SetupSuite() {
 func (suite *CustomClientTestSuite) getValidCustomSenderJSON() common.NotificationSenderDTO {
 	return common.NotificationSenderDTO{
 		Name:     "Test Custom",
-		Provider: common.MessageProviderTypeCustom,
+		Provider: common.NotificationProviderTypeCustom,
 		Properties: []cmodels.Property{
 			createProperty("url", "https://api.example.com/sms", false),
 			createProperty("http_method", "POST", false),
@@ -56,7 +56,7 @@ func (suite *CustomClientTestSuite) getValidCustomSenderJSON() common.Notificati
 func (suite *CustomClientTestSuite) getValidCustomSenderFORM() common.NotificationSenderDTO {
 	return common.NotificationSenderDTO{
 		Name:     "Test Custom Form",
-		Provider: common.MessageProviderTypeCustom,
+		Provider: common.NotificationProviderTypeCustom,
 		Properties: []cmodels.Property{
 			createProperty("url", "https://api.example.com/sms", false),
 			createProperty("http_method", "POST", false),
@@ -195,7 +195,7 @@ func (suite *CustomClientTestSuite) TestSendSMS_NetworkError() {
 func (suite *CustomClientTestSuite) TestSendSMS_UnsupportedContentType() {
 	sender := common.NotificationSenderDTO{
 		Name:     "Test Custom",
-		Provider: common.MessageProviderTypeCustom,
+		Provider: common.NotificationProviderTypeCustom,
 		Properties: []cmodels.Property{
 			createProperty("url", "https://api.example.com/sms", false),
 			createProperty("http_method", "POST", false),
@@ -254,7 +254,7 @@ func (suite *CustomClientTestSuite) TestNewCustomClient_WithUnknownProperty() {
 func (suite *CustomClientTestSuite) TestNewCustomClient_InvalidHeaders() {
 	sender := common.NotificationSenderDTO{
 		Name:     "Test Custom",
-		Provider: common.MessageProviderTypeCustom,
+		Provider: common.NotificationProviderTypeCustom,
 		Properties: []cmodels.Property{
 			createProperty("url", "https://api.example.com/sms", false),
 			createProperty("http_method", "POST", false),

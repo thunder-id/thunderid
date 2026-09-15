@@ -1,17 +1,17 @@
 ---
-title: ThunderIDUserProfile
+title: UserProfile
 docType: reference
 description: Editable Flutter profile form widget that loads user data and saves changes to the user profile endpoint.
 ---
 
-# `ThunderIDUserProfile`
+# `UserProfile`
 
-`ThunderIDUserProfile` is a pre-built form widget for viewing and editing the authenticated user's profile. It loads the user's profile from `/scim2/Me` on mount, renders editable fields, and saves changes via `updateUserProfile`.
+`UserProfile` is a pre-built form widget for viewing and editing the authenticated user's profile. It loads the user's profile from `/scim2/Me` on mount, renders editable fields, and saves changes via `updateUserProfile`.
 
 ```dart
 import 'package:thunderid_flutter/thunderid_flutter.dart';
 
-ThunderIDUserProfile(
+UserProfile(
   onSaved: (updatedUser) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Profile updated')),
@@ -25,19 +25,19 @@ ThunderIDUserProfile(
 )
 ```
 
-## `ThunderIDUserProfile` Parameters
+## `UserProfile` Parameters
 
 | Parameter | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
 | `onSaved` | `void Function(User)` | ✅ | Called with the updated `User` after a successful profile save. |
 | `onError` | `void Function(dynamic)?` | | Called if loading or saving the profile fails. |
 
-## `BaseThunderIDUserProfile`
+## `BaseUserProfile`
 
-`BaseThunderIDUserProfile` exposes the profile state and save action to a `builder` function, giving full control over the form layout.
+`BaseUserProfile` exposes the profile state and save action to a `builder` function, giving full control over the form layout.
 
 ```dart
-BaseThunderIDUserProfile(
+BaseUserProfile(
   onSaved: (user) => print('Saved: ${user.displayName}'),
   builder: (context, state) {
     if (state.isLoading && state.firstName == null) {
@@ -74,7 +74,7 @@ BaseThunderIDUserProfile(
 )
 ```
 
-### `BaseThunderIDUserProfile` Parameters
+### `BaseUserProfile` Parameters
 
 | Parameter | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
@@ -84,7 +84,7 @@ BaseThunderIDUserProfile(
 
 ### `ProfileState`
 
-`ProfileState` is passed to the `BaseThunderIDUserProfile` builder on every update.
+`ProfileState` is passed to the `BaseUserProfile` builder on every update.
 
 | Property/Method | Type | Description |
 | :--- | :--- | :--- |

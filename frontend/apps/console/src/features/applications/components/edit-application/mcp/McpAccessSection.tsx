@@ -13,9 +13,11 @@ import {
   Chip,
   CircularProgress,
   FormControl,
+  FormControlLabel,
   FormLabel,
   IconButton,
   Stack,
+  Switch,
   TextField,
   Tooltip,
   Typography,
@@ -26,6 +28,7 @@ import {useEffect, useState} from 'react';
 import {Controller, useForm} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import {z} from 'zod';
+import ApplicationConstants from '../../../constants/application-constants';
 import validateMcpRedirectUri from '../../../utils/validateMcpRedirectUri';
 
 /**
@@ -64,8 +67,9 @@ export interface McpAccessSectionProps {
 
 /**
  * Section component for an MCP client's access settings, in order: the allowed user
- * types (which user types can sign up through this client), its optional client URI, and its
- * authorized redirect URIs — matching the React-template General tab's Access card layout.
+ * types (which user types can sign up through this client), whether agents may sign
+ * in to it, its optional client URI, and its authorized redirect URIs — matching the React-template
+ * General tab's Access card layout.
  *
  * Redirect URIs are validated against the MCP redirect URI rule (loopback or HTTPS) instead
  * of the generic AccessSection rule, and writes update back through
@@ -107,6 +111,21 @@ export default function McpAccessSection({
   const {data: userTypesData, isLoading: loadingUserTypes} = useGetUserTypes();
 
   const userTypeOptions = userTypesData?.types.map((schema) => schema.name) ?? [];
+
+  // Agent access is a single on/off choice in the console for now: on means the default agent type
+  // (which is the only one) is the only allowed one, off means no agent type is allowed.
+  // Held locally because `application` carries saved values only, so the switch would otherwise
+  // snap back until the edit is saved; the section is remounted on Save/Reset to reseed it.
+  const [isAgentSignInEnabled, setIsAgentSignInEnabled] = useState<boolean>(
+    () => (application.allowedAgentTypes ?? []).length > 0,
+  );
+
+  const handleAgentSignInToggle = (enabled: boolean): void => {
+    setIsAgentSignInEnabled(enabled);
+    onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.DEFAULT_AGENT_TYPE] : []);
+  };
+
+  const agentSignInLabel = t('applications:edit.access.agentSignIn.toggle.label', 'Enable Agent Sign-In');
 
   const clientUriSchema = z.object({
     url: z
@@ -265,6 +284,26 @@ export default function McpAccessSection({
             disableClearable={false}
           />
         </FormControl>
+
+        <Box>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={isAgentSignInEnabled}
+                onChange={(event) => handleAgentSignInToggle(event.target.checked)}
+                disabled={isReadOnly}
+                slotProps={{input: {'aria-label': agentSignInLabel}}}
+              />
+            }
+            label={<Typography variant="subtitle2">{agentSignInLabel}</Typography>}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{display: 'block', ml: '52px'}}>
+            {t(
+              'applications:edit.access.agentSignIn.toggle.hint',
+              'When enabled, agents can sign in to this client using the sign-in flow.',
+            )}
+          </Typography>
+        </Box>
 
         <FormControl fullWidth>
           <FormLabel htmlFor="mcp-client-uri-input">

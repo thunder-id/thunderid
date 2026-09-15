@@ -119,11 +119,34 @@ vi.mock('../../components/edit-application/token-settings/EditTokenSettingsTabs'
 }));
 
 vi.mock('../../components/edit-application/advanced-settings/EditAdvancedSettings', () => ({
-  default: vi.fn(() => <div data-testid="edit-advanced-settings">Advanced</div>),
+  default: vi.fn(({onDeleteSuccess}: {onDeleteSuccess?: () => void}) => (
+    <div data-testid="edit-advanced-settings">
+      Advanced
+      {onDeleteSuccess && (
+        <button type="button" data-testid="trigger-delete-success" onClick={onDeleteSuccess}>
+          Delete Success
+        </button>
+      )}
+    </div>
+  )),
 }));
 
 vi.mock('../../components/edit-application/integration-guides/IntegrationGuides', () => ({
-  default: vi.fn(() => <div data-testid="integration-guides">Integration Guides</div>),
+  default: vi.fn(({onGoToFlows, onGoToCustomization}: {onGoToFlows?: () => void; onGoToCustomization?: () => void}) => (
+    <div data-testid="integration-guides">
+      Integration Guides
+      {onGoToFlows && (
+        <button type="button" data-testid="go-to-flows" onClick={onGoToFlows}>
+          Go to Flows
+        </button>
+      )}
+      {onGoToCustomization && (
+        <button type="button" data-testid="go-to-customization" onClick={onGoToCustomization}>
+          Go to Customization
+        </button>
+      )}
+    </div>
+  )),
 }));
 
 vi.mock('../../components/edit-application/mcp/McpConnectTab', () => ({
@@ -548,6 +571,28 @@ describe('ApplicationEditPage', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('edit-advanced-settings')).toBeInTheDocument();
+      });
+    });
+
+    it('should switch to flows tab when onGoToFlows is triggered from IntegrationGuides', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      await user.click(screen.getByTestId('go-to-flows'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('edit-flows-settings')).toBeInTheDocument();
+      });
+    });
+
+    it('should switch to customization tab when onGoToCustomization is triggered from IntegrationGuides', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      await user.click(screen.getByTestId('go-to-customization'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('edit-customization-settings')).toBeInTheDocument();
       });
     });
 
@@ -1160,6 +1205,31 @@ describe('ApplicationEditPage', () => {
         const saveButton = screen.getByRole('button', {name: /saving/i});
         expect(saveButton).toBeDisabled();
       });
+    });
+
+    it('should navigate back when onDeleteSuccess is triggered from EditAdvancedSettings', async () => {
+      const mockNavigate = vi.fn();
+      const {useNavigate} = await import('react-router');
+      (useNavigate as ReturnType<typeof vi.fn>).mockReturnValue(mockNavigate);
+
+      const user = userEvent.setup();
+      renderComponent();
+
+      const advancedTab = screen.getByRole('tab', {name: /advanced/i});
+      await user.click(advancedTab);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('edit-advanced-settings')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId('trigger-delete-success'));
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalled();
+      });
+
+      // Restore the default mock
+      (useNavigate as ReturnType<typeof vi.fn>).mockReturnValue(vi.fn());
     });
 
     it('should hide action bar after successful save', async () => {
@@ -1923,6 +1993,42 @@ describe('ApplicationEditPage', () => {
       await user.click(screen.getByRole('tab', {name: 'General'}));
 
       expect(screen.getByTestId('mcp-connect-tab')).toBeInTheDocument();
+    });
+
+    it('should switch to flows tab when onGoToFlows is triggered from MCP overview', async () => {
+      mockUseGetApplication.mockReturnValue({
+        data: mockMcpApplication,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      const user = userEvent.setup();
+      renderComponent();
+
+      await user.click(screen.getByTestId('go-to-flows'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('edit-flows-settings')).toBeInTheDocument();
+      });
+    });
+
+    it('should switch to customization tab when onGoToCustomization is triggered from MCP overview', async () => {
+      mockUseGetApplication.mockReturnValue({
+        data: mockMcpApplication,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      const user = userEvent.setup();
+      renderComponent();
+
+      await user.click(screen.getByTestId('go-to-customization'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('edit-customization-settings')).toBeInTheDocument();
+      });
     });
 
     it('hides the Flows and Customization tabs for a machine-to-machine client', () => {

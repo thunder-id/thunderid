@@ -39,6 +39,9 @@ const (
 	ExecutorNameCriteriaRevocation           = "CriteriaRevocationExecutor"
 	ExecutorNameSessionRevocation            = "SessionRevocationExecutor"
 	ExecutorNameUserDelete                   = "UserDeleteExecutor"
+	ExecutorNameApplicationActionValidator   = "ApplicationActionValidator"
+	ExecutorNameApplicationDelete            = "ApplicationDeleteExecutor"
+	ExecutorNameClientSecret                 = "ClientSecretExecutor"
 )
 
 // Executor mode constants
@@ -63,15 +66,16 @@ const (
 	userInputCode  = "code"
 	userInputState = "state"
 
-	userInputOuName           = "ouName"
-	userInputOuHandle         = "ouHandle"
-	userInputOuDesc           = "ouDescription"
-	userInputInviteToken      = "inviteToken"
-	userInputOTP              = "otp"
-	userInputMagicLinkToken   = "token"
-	userInputConsentDecisions = "consent_decisions"
-	userInputLoginHint        = "login_hint"
-	revocationInputSubject    = "subject"
+	userInputOuName            = "ouName"
+	userInputOuHandle          = "ouHandle"
+	userInputOuDesc            = "ouDescription"
+	userInputInviteToken       = "inviteToken"
+	userInputOTP               = "otp"
+	userInputMagicLinkToken    = "token"
+	userInputConsentDecisions  = "consent_decisions"
+	userInputLoginHint         = "login_hint"
+	revocationInputSubject     = "subject"
+	revocationInputApplication = "targetApplicationId"
 
 	ouIDKey        = "ouId"
 	defaultOUIDKey = "defaultOUID"
@@ -112,6 +116,11 @@ const (
 	// confirm the logout with the End-User (via the node's onIncomplete prompt) whenever the RP-initiated
 	// logout was not accompanied by a valid id_token_hint (RuntimeKeyLogoutPromptRequired).
 	propertyKeyPromptOnSignOut = "promptOnSignOut"
+	// propertyKeyConsentFailOnDeny, when set to boolean true on a consent node, makes the executor
+	// fail the flow if the user did not approve the consent prompt, either by pressing
+	// the Deny button or by letting the prompt time out. This applies even when every prompted
+	// element is optional.
+	propertyKeyConsentFailOnDeny = "failOnDeny"
 )
 
 // nonSearchableInputs contains the list of user inputs/ attributes that are non-searchable.

@@ -17,12 +17,12 @@ Customers arrive on their own. They sign up, sign in, and recover access through
 use the booking API:
 
 ```mermaid
-flowchart LR
+flowchart TD
   app(["Wayfinder application"])
   reg["Registration flow"]
   cu(["Customer user<br/>(e.g. John Doe)"])
   tr["Traveler role"]
-  api[["Booking API<br/>booking:read, booking:create, booking:cancel"]]
+  api["Booking API<br/>booking:read, booking:create, booking:cancel"]
   rec["Account recovery flow<br/>(resets a forgotten password)"]
 
   app -->|starts| reg
@@ -35,7 +35,7 @@ flowchart LR
 Staff arrive by invitation. An admin brings each new member in, landing them with a role scoped to one job:
 
 ```mermaid
-flowchart LR
+flowchart TD
   admin(["Staff admin<br/>(OpsAdmin)"])
   onb["Staff onboarding flow"]
   su(["Staff user<br/>(e.g. Alex Carter)"])

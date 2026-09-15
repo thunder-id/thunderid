@@ -130,6 +130,67 @@ var (
 			DefaultValue: "A valid organization unit (ouId or ouHandle) is required",
 		},
 	}
+
+	// ErrorConfigurationEmptyClaimName indicates a claim was declared without a name.
+	ErrorConfigurationEmptyClaimName = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VCI-2008",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vci.configuration_empty_claim_name",
+			DefaultValue: "Invalid claim",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vci.configuration_empty_claim_name_description",
+			DefaultValue: "Claim names must not be empty",
+		},
+	}
+
+	// ErrorConfigurationDuplicateClaim indicates the same claim name was declared more than once.
+	ErrorConfigurationDuplicateClaim = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VCI-2009",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vci.configuration_duplicate_claim",
+			DefaultValue: "Duplicate claim",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vci.configuration_duplicate_claim_description",
+			DefaultValue: "Claim name '{{param(claim)}}' is declared more than once",
+		},
+	}
+
+	// ErrorConfigurationReservedClaim indicates a claim name collides with a registered SD-JWT
+	// claim. Issuing such a credential would place the name in both the payload and a disclosure,
+	// which a conformant wallet must reject.
+	ErrorConfigurationReservedClaim = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VCI-2010",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vci.configuration_reserved_claim",
+			DefaultValue: "Reserved claim",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.vci.configuration_reserved_claim_description",
+			DefaultValue: "Claim name '{{param(claim)}}' is reserved by the SD-JWT VC format and " +
+				"cannot be used as a credential claim",
+		},
+	}
+
+	// ErrorConfigurationDeclarativeModeCreateNotAllowed indicates a create was attempted
+	// while the store is in declarative-only mode, where configurations come from files.
+	ErrorConfigurationDeclarativeModeCreateNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VCI-2011",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vci.configuration_declarative_mode_create_not_allowed",
+			DefaultValue: "Cannot create credential configuration in declarative-only mode",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.vci.configuration_declarative_mode_create_not_allowed_description",
+			DefaultValue: "Credential configuration creation is not allowed when running in " +
+				"declarative-only mode. Configurations must be defined in declarative configuration files",
+		},
+	}
 )
 
 // configurationClientErrorStatus maps a client-facing error to its HTTP status.

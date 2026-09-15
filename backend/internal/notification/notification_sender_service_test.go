@@ -61,7 +61,7 @@ func (suite *NotificationSenderServiceTestSuite) getValidSender() *common.Notifi
 		ID:       "sender-001",
 		Name:     "Test SMS Sender",
 		Type:     common.NotificationSenderTypeMessage,
-		Provider: common.MessageProviderTypeTwilio,
+		Provider: common.NotificationProviderTypeTwilio,
 		Properties: []cmodels.Property{
 			createTestProperty("account_sid", "AC00112233445566778899aabbccddeeff", true),
 			createTestProperty("auth_token", "test-token", true),

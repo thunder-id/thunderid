@@ -146,6 +146,39 @@ func (suite *SessionExecutorTestSuite) TestFreshSave() {
 	suite.True(resp.AuthUser.IsAuthenticated())
 }
 
+// TestFreshSave_PublishesAuthTime covers the save path publishing the session's authentication
+// time. Without it resolveAuthTime falls back to the clock, so the id_token minted by the login
+// reports a different auth_time than a later authorization that reuses the same session.
+func (suite *SessionExecutorTestSuite) TestFreshSave_PublishesAuthTime() {
+	sso := sessionmock.NewServiceMock(suite.T())
+	var in session.SaveCheckpointInput
+	captureSave(sso, &in, session.SaveCheckpointResult{
+		Handle:          "handle-xyz",
+		Created:         true,
+		AuthenticatedAt: time.Unix(1700000000, 0).UTC(),
+	})
+	exec := suite.newExecutor(sso, suite.saveAuthnMock())
+
+	resp, err := exec.Execute(freshCtx())
+	suite.Require().NoError(err)
+
+	suite.Equal("1700000000", resp.RuntimeData[common.RuntimeKeyAuthTime])
+}
+
+// TestFreshSave_NoAuthTimeWhenUnset covers a result carrying no authentication time: the key is
+// left unset so resolveAuthTime keeps its own fallback rather than publishing a zero timestamp.
+func (suite *SessionExecutorTestSuite) TestFreshSave_NoAuthTimeWhenUnset() {
+	sso := sessionmock.NewServiceMock(suite.T())
+	var in session.SaveCheckpointInput
+	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "handle-xyz", Created: true})
+	exec := suite.newExecutor(sso, suite.saveAuthnMock())
+
+	resp, err := exec.Execute(freshCtx())
+	suite.Require().NoError(err)
+
+	suite.NotContains(resp.RuntimeData, common.RuntimeKeyAuthTime)
+}
+
 // TestFreshSave_AttachNoCookie covers attaching to an existing session (service reports
 // Created=false): the handle is recorded on RuntimeData but no cookie is emitted.
 func (suite *SessionExecutorTestSuite) TestFreshSave_AttachNoCookie() {
@@ -427,4 +460,26 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad_RehydrateErrorFailsFlow() {
 
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "failed to load SSO checkpoint")
+}
+
+// TestSanitizeSnapshotRuntimeData_DropsRequestScopedReauthKeys pins that the two keys stating what
+// the establishing app demanded of this authentication stay out of the durable snapshot. Replaying
+// either onto a later join imposes that demand on an app that never asked: the snapshot is merged
+// over the live request, so a stale force_reauth re-prompts every reuse and a stale max_age fails
+// the assurance check now that auth_time comes from the session rather than the current time.
+func (suite *SessionExecutorTestSuite) TestSanitizeSnapshotRuntimeData_DropsRequestScopedReauthKeys() {
+	sanitized := sanitizeSnapshotRuntimeData(map[string]string{
+		common.RuntimeKeyForceReauth:    "true",
+		common.RuntimeKeyMaxAge:         "60",
+		common.RuntimeKeySilentAuthOnly: "true",
+		"keep_me":                       "value",
+	})
+
+	_, hasForceReauth := sanitized[common.RuntimeKeyForceReauth]
+	suite.False(hasForceReauth, "force_reauth belongs to one request and must not be persisted")
+	_, hasMaxAge := sanitized[common.RuntimeKeyMaxAge]
+	suite.False(hasMaxAge, "max_age belongs to one request and must not be persisted")
+	_, hasSilent := sanitized[common.RuntimeKeySilentAuthOnly]
+	suite.False(hasSilent, "the silent marker belongs to one request and must not be persisted")
+	suite.Equal("value", sanitized["keep_me"], "unrelated runtime data must still be snapshotted")
 }

@@ -19,6 +19,37 @@ Before you begin, ensure you have:
 - Valid TLS certificates issued by a trusted Certificate Authority (CA).
 - The `openssl` command-line tool installed on your system.
 
+## Place <ProductName /> Behind a Front Door
+
+Do not expose the <ProductName /> server port directly to the internet. Route external traffic through a managed front door, load balancer, ingress controller, or API gateway.
+
+Use the front door to enforce:
+
+- Public TLS termination and certificate renewal.
+- HTTP-to-HTTPS redirects.
+- DDoS and web application firewall protection.
+- Request-size, connection, and timeout limits.
+- Route-specific rate limits.
+- Access logs that preserve the authoritative client IP address.
+
+Restrict the network so clients cannot bypass the front door and connect directly to the <ProductName /> workload.
+
+### Control Endpoint Exposure
+
+Expose only the routes required by the enabled deployment features:
+
+| Route group | Recommended exposure |
+|-------------|----------------------|
+| `/.well-known/**`, `/oauth2/**`, `/gate/**`, `/flow/execute/**`, and `/flow/meta` | Public when required by browser sign-in or OAuth and OIDC clients |
+| OpenID4VP, OpenID4VCI, and MCP protocol routes | Public only when the corresponding feature is enabled. Keep their management APIs restricted |
+| `/console/**` and management APIs | Restrict to administrative networks, a VPN, or an identity-aware proxy where possible |
+| `/auth/**`, `/register/passkey/**`, and `/access/**` | Place behind an API gateway or trusted service network |
+| `/health/liveness` and `/health/readiness` | Keep private to the orchestrator, load balancer, or monitoring network |
+
+The default Helm Ingress and HTTPRoute forward the `/` prefix to <ProductName />. Configure route restrictions in the ingress controller, Gateway API implementation, or upstream front door.
+
+Test sign-in and Console operations after applying path restrictions. The Console loads `/console/**` and calls management APIs, so both route groups must remain available through the administrative entry point.
+
 ## Configure a Production Database
 
 The default configuration uses SQLite, which stores data in local files. SQLite does not support concurrent writes from multiple processes and is not suitable for production use. Use PostgreSQL for production deployments.
@@ -95,6 +126,10 @@ database:
 - Adjust `max_open_conns`, `max_idle_conns`, and `conn_max_lifetime` based on your expected traffic and database capacity.
 - Never store database credentials in `deployment.yaml` directly. Use environment variables, Kubernetes secrets, or a secrets manager.
 
+For stronger server identity verification, prefer `verify-full` when the database certificate includes its hostname. Mount the trusted database CA and set `PGSSLROOTCERT` when the CA is not available from the container's system trust store. See the [PostgreSQL SSL documentation](https://www.postgresql.org/docs/current/libpq-ssl.html) for the verification modes.
+
+Each PostgreSQL-backed pool has its own `max_open_conns` limit. For the four pools shown above, calculate the per-process total by adding their limits. Multiply that total by the maximum replica count, then compare the result with the database connection limit.
+
 ## Replace TLS Certificates
 
 For quickstart and development, <ProductName /> generates a self-signed TLS certificate per deployment during setup. Self-signed certificates trigger browser warnings and are not trusted by clients in production. Replace the server certificate with one issued by a trusted CA, or terminate TLS at your ingress or load balancer with a CA-issued certificate.
@@ -129,24 +164,47 @@ tls:
 
 If you store certificates in a different location, update `cert_file` and `key_file` accordingly.
 
-When deploying with Docker, mount the certificates as volumes:
+For container deployments, include these files in the read-only security-directory mount described in [Mount Production Configuration](#mount-production-configuration).
 
-```bash
-docker run --rm \
-  -p 8090:8090 \
-  -v $(pwd)/deployment.yaml:/opt/thunderid/deployment.yaml \
-  -v thunderid-certs:/opt/thunderid/config/certs \
-  -v thunderid-secrets:/opt/thunderid/config/secrets \
-  -v $(pwd)/config/certs/server.cert:/opt/thunderid/config/certs/server.cert \
-  -v $(pwd)/config/certs/server.key:/opt/thunderid/config/certs/server.key \
-  ghcr.io/thunder-id/thunderid:latest
+### Harden TLS Termination
+
+Configure automated certificate renewal and alert before the certificate expires. Redirect HTTP traffic to HTTPS at the external TLS terminator.
+
+Configure HSTS only after every required subdomain is available over HTTPS. Review the [OWASP HSTS guidance](https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Strict_Transport_Security_Cheat_Sheet.html) before enabling `includeSubDomains` or preloading.
+
+Set `server.public_url` to the exact external URL used by browsers and protocol clients:
+
+```yaml
+server:
+  public_url: "https://id.example.com"
 ```
 
-The `thunderid-certs` and `thunderid-secrets` volumes are populated by `./setup.sh`. The file mounts override the TLS certificate and key.
+Prefer TLS between the ingress or gateway and <ProductName /> as well as on the public connection. If the platform sends HTTP to the pod after terminating TLS, use `server.http_only` only when the backend network is private and protected from untrusted workloads.
+
+Configure the front door to replace untrusted forwarding headers. The <ProductName /> application access log records the direct network peer, so retain the authoritative client IP address in trusted front-door logs.
+
+## Restrict Network Access
+
+Kubernetes permits pod traffic by default when no NetworkPolicy selects a pod. The <ProductName /> Helm chart does not create NetworkPolicy resources, so the cluster operator must provide them with a network plugin that enforces NetworkPolicy.
+
+Start with default-deny ingress and egress policies. Allow only:
+
+- Ingress from the selected ingress controller or Gateway API implementation to port `8090`.
+- Ingress from the orchestrator or monitoring network to port `8090` when required for health checks.
+- Egress to the configured PostgreSQL databases.
+- Egress to Redis when configured.
+- Egress to cluster DNS.
+- Egress to configured identity providers, SMTP servers, SMS gateways, webhooks, and OpenTelemetry collectors.
+
+NetworkPolicy filters traffic by network source and port, not by HTTP path. Allowing a monitoring source to port `8090` also permits that source to reach other routes served on the same port. When monitoring access must be limited to `/health/liveness` and `/health/readiness`, enforce path-level rules through an ingress controller, Gateway API implementation, or service mesh.
+
+Block access to cloud instance metadata and cluster control-plane endpoints unless the deployment explicitly requires it. Apply equivalent firewall and private-network controls to Docker and virtual-machine deployments.
+
+See the [Kubernetes NetworkPolicy documentation](https://kubernetes.io/docs/concepts/services-networking/network-policies/) for default-deny examples.
 
 ## Generate a Unique Encryption Key
 
-<ProductName /> uses a symmetric encryption key to protect sensitive data at rest, including credentials and tokens, along with separate keys to sign JWTs. During setup, each deployment generates its own unique key material. For production, either keep the generated per-deployment keys (ensuring they are persisted and backed up) or provide and manage your own through a secure process such as a secrets manager. The steps below show how to provide your own encryption key.
+<ProductName /> uses a symmetric encryption key to protect sensitive data at rest, including credentials and tokens. Provision a unique key for each production deployment, persist it outside the workload, and back it up through your secrets-management process.
 
 ### Step 1: Generate a New Key
 
@@ -192,9 +250,51 @@ Protect the encryption key with the same level of care as a database password. I
 
 :::
 
+## Provide Token Signing Keys
+
+<ProductName /> uses an RSA key pair for JWT signing and an ECDSA key pair for OpenID4VP and OpenID4VCI. The default `deployment.yaml` expects both pairs under `config/certs`.
+
+Generate the RSA signing pair:
+
+```bash
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout config/certs/signing.key \
+  -out config/certs/signing.cert \
+  -subj "/O={{ProductName}}/OU={{ProductName}}/CN=id.example.com" \
+  -addext "subjectAltName=DNS:id.example.com"
+```
+
+Generate the ECDSA signing pair:
+
+```bash
+openssl ecparam -name prime256v1 -genkey -noout -param_enc named_curve \
+  -out config/certs/ecdsa-signing.key
+
+openssl req -new -x509 -days 365 \
+  -key config/certs/ecdsa-signing.key \
+  -out config/certs/ecdsa-signing.cert \
+  -subj "/O={{ProductName}}/OU={{ProductName}}/CN=id.example.com" \
+  -addext "subjectAltName=DNS:id.example.com"
+```
+
+Replace `id.example.com` with the production hostname. Confirm `deployment.yaml` references the generated files:
+
+```yaml
+crypto:
+  keys:
+    - id: "default-key"
+      cert_file: "config/certs/signing.cert"
+      key_file: "config/certs/signing.key"
+    - id: "ecdsa-key"
+      cert_file: "config/certs/ecdsa-signing.cert"
+      key_file: "config/certs/ecdsa-signing.key"
+```
+
+Every replica must use the same signing pairs. Replacing a signing key changes the material used to validate tokens, so plan key rotation before replacing these files.
+
 ## Provide the Direct Auth Secret
 
-<ProductName /> gates the Direct API endpoints (`/auth/**`, `/register/passkey/**`) and the protected AuthZEN access endpoints (`/access/**`) with a server-level Direct Auth Secret. During setup, each deployment generates its own secret. The default `deployment.yaml` references it as a file, so the value stays out of the config file:
+<ProductName /> gates the Direct API endpoints (`/auth/**`, `/register/passkey/**`) and the protected AuthZEN access endpoints (`/access/**`) with a server-level Direct Auth Secret. Provision a unique production secret and store it outside the workload. The default `deployment.yaml` references it as a file, so the value stays out of the config file:
 
 ```yaml
 server:
@@ -213,6 +313,58 @@ printf '%s' "<generated-secret>" > config/secrets/direct_auth_secret
 ```
 
 Replace `<generated-secret>` with the output from the previous command. Do not include whitespace or newline characters. Callers must send this value in the `Direct-Auth-Secret` header. You can also supply the secret directly as an inline value, but prefer the `file://` path form or a secrets manager to keep it out of `deployment.yaml`.
+
+## Mount Production Configuration
+
+Keep production configuration and security material outside the container image. Mount the following host-managed files and directories into every <ProductName /> replica:
+
+- **Deployment configuration:** Mount `deployment.yaml` at `/opt/thunderid/deployment.yaml`. This file contains server, database, cache, and security configuration.
+- **Certificates and keys:** Mount `config/certs` at `/opt/thunderid/config/certs`. This directory contains the TLS pair, RSA and ECDSA signing pairs, and encryption key.
+- **File-backed secrets:** Mount `config/secrets` at `/opt/thunderid/config/secrets`. This directory contains the Direct Auth Secret and other file-backed secrets.
+- **CORS configuration:** Mount `config/resources/server_configs/cors.yaml` at `/opt/thunderid/config/resources/server_configs/cors.yaml`.
+- **CSP configuration:** Mount `config/resources/server_configs/csp.yaml` at `/opt/thunderid/config/resources/server_configs/csp.yaml`.
+
+Mount these paths read-only in the running container:
+
+```bash
+docker run -d \
+  --name thunderid \
+  --restart unless-stopped \
+  -p 8090:8090 \
+  --mount type=bind,src="$(pwd)/deployment.yaml",dst=/opt/thunderid/deployment.yaml,readonly \
+  --mount type=bind,src="$(pwd)/config/certs",dst=/opt/thunderid/config/certs,readonly \
+  --mount type=bind,src="$(pwd)/config/secrets",dst=/opt/thunderid/config/secrets,readonly \
+  --mount type=bind,src="$(pwd)/config/resources/server_configs/cors.yaml",dst=/opt/thunderid/config/resources/server_configs/cors.yaml,readonly \
+  --mount type=bind,src="$(pwd)/config/resources/server_configs/csp.yaml",dst=/opt/thunderid/config/resources/server_configs/csp.yaml,readonly \
+  ghcr.io/thunder-id/thunderid:<version>
+```
+
+The <ProductName /> image runs as a non-root user. Configure host ownership, access control lists, or secret-store permissions so the effective container user can read the mounted files. Do not grant the running container write access to production configuration, certificates, private keys, or secrets.
+
+When using the declarative CORS and CSP files in this guide, configure the server-config store to load the mounted files while retaining runtime overrides:
+
+```yaml
+server_config:
+  store: "composite"
+```
+
+If PostgreSQL uses a private CA with `verify-full`, mount the CA certificate read-only and set `PGSSLROOTCERT` to its container path.
+
+## Configure Rate Limiting
+
+<ProductName /> does not apply rate limiting, account lockout, or brute-force protection to Direct API endpoints. The Direct Auth Secret authenticates callers, but it does not limit repeated requests.
+
+Configure rate limits at the API gateway, ingress, or front door for:
+
+- Credential and passkey authentication under `/auth/**`.
+- OTP delivery and verification under `/auth/otp/**`.
+- Passkey registration under `/register/passkey/**`.
+- Authorization and token operations under `/oauth2/**`.
+- AuthZEN evaluations under `/access/**`.
+
+Use separate policies for operations with different costs and risks. Where supported, evaluate the client IP address, client identifier, account identifier, and tenant context. Avoid applying one global threshold to every route.
+
+Return `429 Too Many Requests` when a request exceeds a limit. Record rate-limit decisions in the front-door logs and tune the thresholds from load tests and observed traffic.
 
 ## Configure a CORS Allowlist
 
@@ -329,11 +481,106 @@ cache:
 - Secure Redis with authentication and network-level access controls. Do not expose Redis publicly.
 - Use a managed Redis service (such as Amazon ElastiCache or Google Memorystore) for high availability.
 
+### Protect Redis Traffic
+
+Place Redis on a private network and restrict access to <ProductName /> workloads. Require authentication and use a distinct `keyPrefix` when other services share the Redis instance.
+
+The current <ProductName /> Redis client configuration does not expose TLS settings. If encryption in transit is required, use a tested local sidecar or service-mesh TLS proxy. Keep the unencrypted connection inside the pod or an equivalent isolated boundary.
+
+A cache-only Redis deployment can rebuild its data. Redis can also serve as the runtime-transient database, in which case persistence and availability must account for in-flight authorization requests.
+
+## Harden the Workload
+
+For Kubernetes deployments, preserve the Helm chart security defaults:
+
+- Run the container as a non-root user.
+- Disable privilege escalation.
+- Drop all Linux capabilities.
+- Use a read-only root filesystem.
+- Mount writable temporary storage only where required.
+
+Enable the `RuntimeDefault` seccomp profile:
+
+```yaml
+deployment:
+  securityContext:
+    seccompProfile:
+      enabled: true
+      type: "RuntimeDefault"
+```
+
+Apply the [Kubernetes Restricted Pod Security Standard](https://kubernetes.io/docs/concepts/security/pod-security-standards/) where the cluster supports it. Review the chart service account and RBAC permissions before granting additional access.
+
+Pin the container image to a release tag or digest. Do not use `latest` in production. Scan the selected image for known vulnerabilities and define a security-update process.
+
+## Configure Availability and Scaling
+
+Run multiple replicas when the deployment must tolerate a pod or node failure. Multi-replica deployments require PostgreSQL, shared Redis caching, and shared cryptographic material.
+
+The Helm chart provides startup, readiness, and liveness probes. It also supports a HorizontalPodAutoscaler and creates a PodDisruptionBudget when multiple replicas are configured.
+
+Spread replicas across nodes and availability zones. The chart includes preferred zone anti-affinity, but the scheduler may place replicas together when capacity is constrained. Use stronger topology constraints when required by the availability target.
+
+Scale PostgreSQL, Redis, ingress capacity, and database connection limits together with the <ProductName /> replica count. Additional application replicas do not provide high availability when a database, Redis node, storage volume, or front door remains a single point of failure.
+
+## Back Up and Recover the Deployment
+
+Back up the state required to recover the same deployment:
+
+- The `config`, `entity`, and `runtime_persistent` databases.
+- Encryption and signing material.
+- The Direct Auth Secret and other secrets that cannot be recreated safely.
+- Declarative resources and reviewed deployment configuration.
+
+Define a separate recovery policy for `runtime_transient`. Restoring old authorization codes, requests, and nonces can reintroduce expired or consumed state. A recovery plan may instead discard this database and require in-flight sign-in operations to restart.
+
+Encrypt backups and restrict access to recovery operators. Keep cryptographic material associated with the database recovery point it protects.
+
+Define recovery point and recovery time objectives. Test restoration into an isolated environment regularly. Verify that the databases, cryptographic material, secrets, and configuration can be restored together.
+
+## Monitor the Deployment
+
+Collect <ProductName /> application logs, front-door access logs, ingress logs, and infrastructure metrics in a centralized system. Do not collect passwords, access tokens, private keys, or Direct Auth Secrets.
+
+Alert on:
+
+- Unavailable or repeatedly restarting replicas.
+- Readiness failures and elevated error rates.
+- Sustained latency or resource saturation.
+- PostgreSQL or Redis connection failures.
+- Front-door rate-limit and WAF activity.
+- TLS certificates approaching expiry.
+- Failed backups or restore tests.
+- Loss of log or trace delivery.
+
+Use `/health/liveness` for process health and `/health/readiness` for dependency-aware readiness. Keep both endpoints private.
+
+Synchronize cluster nodes, database servers, Redis servers, and monitoring systems with a reliable time source. Clock drift affects token expiry, certificate validation, one-time credentials, and incident timelines.
+
+See [Observability](../observability) for structured events and OpenTelemetry configuration.
+
+## Validate the Deployment
+
+Before directing production traffic to <ProductName />, verify:
+
+- The public hostname serves the expected CA-issued certificate.
+- HTTP requests redirect to HTTPS.
+- `server.public_url` matches discovery metadata and browser redirects.
+- Administrative, Direct API, and health routes use their intended networks.
+- Rate limits and request-size limits reject test traffic.
+- Network policies block unapproved ingress and egress.
+- Every replica uses the same signing and encryption material.
+- PostgreSQL connections use the configured SSL mode. When `verify-full` is enabled, certificate and hostname verification succeeds.
+- Redis is private and requires authentication.
+- Replicas remain available during a rolling update.
+- A backup can restore a working isolated deployment.
+- Infrastructure alerts reach the responsible operators.
+
 ## Next Steps
 
 After applying the production configuration:
 
-- Restrict access to `deployment.yaml` and the `config/certs/` directory. These files contain sensitive credentials and keys.
+- Restrict access to `deployment.yaml`, `config/certs`, `config/secrets`, and any declarative resource files that contain sensitive values.
 - Enable database backups on a regular schedule.
 - Set up monitoring and alerting for <ProductName /> and its dependent services.
 - Review the [Kubernetes deployment guide](../deployment-paths/kubernetes) for Helm-based configuration of the settings covered here.

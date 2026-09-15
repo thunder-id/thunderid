@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/runtimestore/inmemory"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
@@ -79,8 +80,9 @@ func (suite *InitTestSuite) TestInitialize() {
 		mux,
 		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil),
 		suite.mockResourceService,
-		suite.mockJWTService, suite.mockFlowExecService, nil, nil, testhelpers.OAuthConfig(),
+		suite.mockJWTService, suite.mockFlowExecService, nil, nil, nil, nil, testhelpers.OAuthConfig(),
 		inmemory.Initialize("test-deployment"), transaction.NewNoOpTransactioner(),
+		jti.Initialize(inmemory.Initialize("test-deployment")),
 	)
 
 	assert.NoError(suite.T(), err)
@@ -95,8 +97,9 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 		mux,
 		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil),
 		suite.mockResourceService,
-		suite.mockJWTService, suite.mockFlowExecService, nil, nil, testhelpers.OAuthConfig(),
+		suite.mockJWTService, suite.mockFlowExecService, nil, nil, nil, nil, testhelpers.OAuthConfig(),
 		inmemory.Initialize("test-deployment"), transaction.NewNoOpTransactioner(),
+		jti.Initialize(inmemory.Initialize("test-deployment")),
 	)
 	assert.NoError(suite.T(), err)
 
@@ -113,8 +116,9 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSConfiguration() {
 		mux,
 		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil),
 		suite.mockResourceService,
-		suite.mockJWTService, suite.mockFlowExecService, nil, nil, testhelpers.OAuthConfig(),
+		suite.mockJWTService, suite.mockFlowExecService, nil, nil, nil, nil, testhelpers.OAuthConfig(),
 		inmemory.Initialize("test-deployment"), transaction.NewNoOpTransactioner(),
+		jti.Initialize(inmemory.Initialize("test-deployment")),
 	)
 	assert.NoError(suite.T(), err)
 

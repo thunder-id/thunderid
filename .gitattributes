@@ -1,0 +1,4 @@
+# Force LF line endings for all text files regardless of local core.autocrlf.
+# Prevents CRLF corruption breaking Linux-container builds (Docker/Podman) on Windows checkouts.
+* text=auto eol=lf
+

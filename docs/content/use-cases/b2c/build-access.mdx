@@ -25,11 +25,11 @@ that a token can carry and the booking API can check.
 So the booking resource and its three actions generate three permissions:
 
 ```mermaid
-flowchart LR
-  rs[["Resource Server: wayfinder"]] --> res["Resource: booking"]
-  res --> p1[("read → booking:read")]
-  res --> p2[("create → booking:create")]
-  res --> p3[("cancel → booking:cancel")]
+flowchart TD
+  rs["Resource Server: wayfinder"] --> res["Resource: booking"]
+  res --> p1["read → booking:read"]
+  res --> p2["create → booking:create"]
+  res --> p3["cancel → booking:cancel"]
 ```
 
 A larger API can nest resources, extending the permission into a longer chain; a single flat resource is enough for
@@ -110,8 +110,8 @@ Staff get their own, narrower roles instead, such as `Support` for consumer supp
 staff, so running the product never grants a customer's booking access and vice versa.
 
 ```mermaid
-flowchart LR
-  role[["Role: Traveler<br/>booking:read, booking:create, booking:cancel"]] --> user[("Customer user")]
+flowchart TD
+  role["Role: Traveler<br/>booking:read, booking:create, booking:cancel"] --> user["Customer user"]
 ```
 
 See [Authorization](../../../key-concepts/authorization).
@@ -157,8 +157,8 @@ Wayfinder's user types, roles, and resource server all live in a container calle
 lets <ProductName /> keep separate businesses side by side without their configuration ever mixing.
 
 ```mermaid
-flowchart LR
-  ou[["Organization Unit: Default"]] --> contents["User Types<br/>Roles<br/>Resource Servers"]
+flowchart TD
+  ou["Organization Unit: Default"] --> contents["User Types<br/>Roles<br/>Resource Servers"]
 ```
 
 Wayfinder is a single business, so it uses the `Default` organization unit that every fresh instance provides

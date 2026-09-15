@@ -62,9 +62,19 @@ export class ConnectionsApi {
     return (await response.json()) as ApiConnectionDetail;
   }
 
-  /** Delete by id. A 404 counts as success so retries and double-teardown stay idempotent. */
+  /**
+   * Delete by id. A 404 counts as success so retries and double-teardown stay idempotent.
+   *
+   * Never throws: this is only ever called from test teardown, and a flaky network error there
+   * must not mask the failure (or success) a test already reported.
+   */
   async deleteById(vendor: string, id: string): Promise<boolean> {
-    const response = await send(this.request, "DELETE", `/connections/${vendor}/${id}`);
-    return response.ok() || response.status() === 404;
+    try {
+      const response = await send(this.request, "DELETE", `/connections/${vendor}/${id}`);
+      return response.ok() || response.status() === 404;
+    } catch (error) {
+      console.warn(`Cleanup skipped for ${vendor} connection ${id}: ${String(error)}`);
+      return false;
+    }
   }
 }

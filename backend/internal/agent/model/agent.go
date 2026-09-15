@@ -33,24 +33,6 @@ type AgentRequestWithID struct {
 	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
 }
 
-// Agent is the service-level model for agent create operations.
-type Agent struct {
-	ID          string          `json:"id,omitempty"`
-	OUID        string          `json:"ouId"`
-	OUHandle    string          `json:"ouHandle,omitempty"`
-	Type        string          `json:"type"`
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	LogoURL     string          `json:"logoUrl,omitempty"`
-	Owner       string          `json:"owner,omitempty"`
-	Attributes  json.RawMessage `json:"attributes,omitempty"`
-
-	// The service-level model carries the full internal profile, including SubjectAttribute, which
-	// the API-facing request and response types deliberately exclude.
-	providers.InboundAuthProfile
-	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
-}
-
 // CreateAgentRequest is the HTTP request body for creating an agent.
 type CreateAgentRequest struct {
 	OUID        string          `json:"ouId" native:"required"`

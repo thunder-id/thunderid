@@ -166,7 +166,7 @@ export default function SdkQuickstartDownload({
     <Callout>
       <IconBadge aria-hidden="true">{icon}</IconBadge>
       <CardBody>
-        <CardTitle>Skip the setup, run the quickstart app instead</CardTitle>
+        <CardTitle>Skip the setup, run the sample app instead</CardTitle>
         <CardMeta>
           <span>{asset.sizeLabel}</span>
           {packageName && (

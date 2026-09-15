@@ -30,6 +30,53 @@ const sidebar: SidebarsConfig = {
           id: 'sdks/browser/apis/hooks',
           label: 'Event Hooks',
         },
+        {
+          type: 'category',
+          label: 'Utilities',
+          collapsed: true,
+          items: [
+            {
+              type: 'doc',
+              id: 'sdks/browser/apis/utilities/update-me-credentials',
+              label: 'updateMeCredentials()',
+            },
+            {
+              type: 'doc',
+              id: 'sdks/browser/apis/utilities/evaluate-password-policy',
+              label: 'evaluatePasswordPolicy()',
+            },
+            {
+              type: 'doc',
+              id: 'sdks/browser/apis/utilities/evaluate-change-password-form',
+              label: 'evaluateChangePasswordForm()',
+            },
+            {
+              type: 'doc',
+              id: 'sdks/browser/apis/utilities/resolve-change-credential-policy',
+              label: 'resolveChangeCredentialPolicy()',
+            },
+            {
+              type: 'doc',
+              id: 'sdks/browser/apis/utilities/supports-credential',
+              label: 'supportsCredential()',
+            },
+            {
+              type: 'doc',
+              id: 'sdks/browser/apis/utilities/map-credential-update-error',
+              label: 'mapCredentialUpdateError()',
+            },
+            {
+              type: 'doc',
+              id: 'sdks/browser/apis/utilities/credential-constants',
+              label: 'CredentialConstants',
+            },
+            {
+              type: 'doc',
+              id: 'sdks/browser/apis/utilities/create-http-client-fetcher',
+              label: 'createHttpClientFetcher()',
+            },
+          ],
+        },
       ],
     },
     {

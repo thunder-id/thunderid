@@ -66,6 +66,11 @@ runs:
           -H "Content-Type: application/json" \
           -d "{\"executionId\": \"$EXEC_ID\"}")
         CHALLENGE_TOKEN=$(echo "$PROMPT_RESP" | jq -r '.challengeToken // empty')
+        if [ -z "$CHALLENGE_TOKEN" ]; then
+          echo "❌ Flow execution did not return a challenge token: $PROMPT_RESP"
+          exit 1
+        fi
+
         FLOW_PAYLOAD=$(jq -n \
           --arg executionId "$EXEC_ID" \
           --arg challengeToken "$CHALLENGE_TOKEN" \
@@ -84,7 +89,7 @@ runs:
         CALLBACK_RESP=$(curl -sk -X POST "$SERVER_URL/oauth2/auth/callback" \
           -H "Content-Type: application/json" \
           -d "{\"authId\": \"$AUTH_ID\", \"assertion\": \"$ASSERTION\"}")
-        AUTH_CODE=$(echo "$CALLBACK_RESP" | jq -r '.redirect_uri // empty' | sed 's/.*[?&]code=\([^&]*\).*/\1/')
+        AUTH_CODE=$(echo "$CALLBACK_RESP" | jq -r '.redirect_uri // empty' | sed -n 's/.*[?&]code=\([^&]*\).*/\1/p')
         if [ -z "$AUTH_CODE" ]; then
           echo "❌ Callback did not return an authorization code: $CALLBACK_RESP"
           exit 1

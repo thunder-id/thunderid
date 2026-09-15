@@ -1,33 +1,33 @@
 ---
-title: <ThunderIDLoading />
+title: <Loading />
 docType: reference
 description: Render slot content only while authentication state is loading, useful for skeleton screen patterns.
 ---
 
-# `<ThunderIDLoading />`
+# `<Loading />`
 
-The `ThunderIDLoading` component renders its default slot while the authentication state is being resolved. It is useful for showing skeleton screens or spinners during the initial hydration phase.
+The `Loading` component renders its default slot while the authentication state is being resolved. It is useful for showing skeleton screens or spinners during the initial hydration phase.
 
 ## Usage
 
 ```vue title="pages/index.vue" showLineNumbers
 <template>
-  <ThunderIDLoading>
+  <Loading>
     <p>Loading...</p>
-  </ThunderIDLoading>
+  </Loading>
 
-  <ThunderIDSignedIn>
+  <SignedIn>
     <p>Welcome back!</p>
-  </ThunderIDSignedIn>
+  </SignedIn>
 
-  <ThunderIDSignedOut>
-    <ThunderIDSignInButton />
-  </ThunderIDSignedOut>
+  <SignedOut>
+    <SignInButton />
+  </SignedOut>
 </template>
 ```
 
 :::note
-On SSR-rendered pages, the auth state is available on first render and `<ThunderIDLoading>` content will typically not be visible. It is most relevant for pages that are only rendered client-side.
+On SSR-rendered pages, the auth state is available on first render and `<Loading>` content will typically not be visible. It is most relevant for pages that are only rendered client-side.
 :::
 
 ## Slots

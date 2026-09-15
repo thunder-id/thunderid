@@ -489,6 +489,81 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_Success_NoAppConfig() {
 	s.mockAttributeCacheService.AssertExpectations(s.T())
 }
 
+// TestGetUserInfo_Success_RawJWTPassthrough tests that when the authn provider's attributes are
+// an opaque JWT (the `_jwt` pseudo-claim),
+// the userinfo endpoint passes the JWT through as-is instead of running it through the
+// claims/scope/allow-list pipeline.
+func (s *UserInfoServiceTestSuite) TestGetUserInfo_Success_RawJWTPassthrough() {
+	claims := map[string]interface{}{
+		"exp":       float64(time.Now().Add(time.Hour).Unix()),
+		"nbf":       float64(time.Now().Add(-time.Minute).Unix()),
+		"sub":       "user123",
+		"scope":     "openid profile email",
+		"client_id": "client123",
+		"aci":       "cache-rawjwt-123",
+	}
+	token := s.createToken(claims)
+
+	rawJWT := "kyc.header.payload.signature"
+	userAttrs := map[string]interface{}{
+		providers.RawJWTAttributeKey: rawJWT,
+	}
+
+	oauthApp := &providers.OAuthClient{
+		Token: &providers.OAuthTokenConfig{},
+		UserInfo: &providers.UserInfoConfig{
+			UserAttributes: []string{"name", "email"},
+		},
+	}
+
+	s.mockTokenValidator.On("ValidateAccessToken", mock.Anything, token).Return(
+		&tokenservice.AccessTokenClaims{Sub: "user123", Claims: claims}, nil)
+	s.mockAttributeCacheService.On("GetAttributeCache", mock.Anything, "cache-rawjwt-123").Return(
+		&attributecache.AttributeCache{ID: "cache-rawjwt-123", Attributes: userAttrs}, nil)
+	s.mockInboundClient.On("GetOAuthClientByClientID", mock.Anything, "client123").Return(oauthApp, nil)
+
+	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
+	assert.Nil(s.T(), svcErr)
+	assert.NotNil(s.T(), response)
+	assert.Equal(s.T(), providers.UserInfoResponseTypeJWS, response.Type)
+	assert.Equal(s.T(), rawJWT, response.JWTBody)
+	assert.Nil(s.T(), response.JSONBody)
+	s.mockTokenValidator.AssertExpectations(s.T())
+	s.mockAttributeCacheService.AssertExpectations(s.T())
+	s.mockInboundClient.AssertExpectations(s.T())
+}
+
+// TestGetUserInfo_MalformedClaimsRequest_ReturnsServerError tests that a token carrying a
+// malformed claims_req claim causes buildUserInfoResponse (and therefore buildResponseFromClaims)
+// to return a server error rather than a partial response.
+func (s *UserInfoServiceTestSuite) TestGetUserInfo_MalformedClaimsRequest_ReturnsServerError() {
+	claims := map[string]interface{}{
+		"exp":                        float64(time.Now().Add(time.Hour).Unix()),
+		"nbf":                        float64(time.Now().Add(-time.Minute).Unix()),
+		"sub":                        "user123",
+		"scope":                      "openid profile",
+		"aci":                        "cache-badclaims-123",
+		constants.ClaimClaimsRequest: "not-valid-json",
+	}
+	token := s.createToken(claims)
+
+	userAttrs := map[string]interface{}{
+		"name": "John Doe",
+	}
+
+	s.mockTokenValidator.On("ValidateAccessToken", mock.Anything, token).Return(
+		&tokenservice.AccessTokenClaims{Sub: "user123", Claims: claims}, nil)
+	s.mockAttributeCacheService.On("GetAttributeCache", mock.Anything, "cache-badclaims-123").Return(
+		&attributecache.AttributeCache{ID: "cache-badclaims-123", Attributes: userAttrs}, nil)
+
+	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
+	assert.Nil(s.T(), response)
+	assert.NotNil(s.T(), svcErr)
+	assert.Equal(s.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+	s.mockTokenValidator.AssertExpectations(s.T())
+	s.mockAttributeCacheService.AssertExpectations(s.T())
+}
+
 // TestGetUserInfo_AppNotFound_ReturnsInvalidToken tests that a stale/orphaned token returns an error
 // when the referenced client application no longer exists.
 func (s *UserInfoServiceTestSuite) TestGetUserInfo_AppNotFound_ReturnsInvalidToken() {

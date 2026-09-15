@@ -1,0 +1,73 @@
+---
+title: What the Agent Calls Decides How It Authenticates
+docType: use-case
+sidebar_position: 5
+description: Authenticate the agent directly to an API with the client credentials grant or a private key JWT, or give it a username, email, or password of its own when the only door is a login page.
+---
+
+# What the Agent Calls Decides How It Authenticates
+
+[The agent has an identity](../solve-identity) now, and acting on its own needs nothing else to approve first.
+What decides how it proves that identity is what the thing it calls accepts.
+
+Some systems were built for a machine caller and accept a credential presented directly to them, with no browser
+and nobody watching. Others were built only for a person, and a sign-in is the only thing they accept, no matter
+what is calling them.
+
+## Machine-Native Authentication
+
+### When the Agent Only Talks to an API
+
+The Concierge agent from [What the Agent May Do](../solve-access) calls the travel enterprise's own booking API
+many times a day, at whatever hour a traveler's request arrives. Nobody is around to approve any single call,
+and none needs to be. The booking API already expects a client presenting its own credential, so nothing stands
+between the Concierge and a token. It authenticates and gets one back in the same request, with no form and no
+session to keep open.
+
+### Get a Token as Itself
+
+To get that token, the agent uses the **client credentials grant**. It presents its credential to the token
+endpoint and receives one back, with no form and no browser involved.
+
+Every agent is a confidential client by default, holding a credential of its own rather than borrowing one, and
+there are two ways to present it. Most agents present a client secret, a shared string sent alongside the client
+ID. An agent that should not hold a shared secret instead authenticates with `private_key_jwt`, signing a JSON
+Web Token with a private key of its own. <ProductName /> verifies that signature against a public key registered
+ahead of time. Which method an agent uses is set once, on the agent itself, and applies to every token request
+after.
+
+See [Agent Token](../../../guides/agents/authentication/agent-own-token) for the token request itself,
+[Agent Authentication](../../../guides/agents/authentication) for configuring either credential, and
+[Nothing Limits What the Agent May Do](../solve-access) for what that token is then allowed to reach.
+
+## User-Alike Authentication
+
+That works when the thing the agent calls is an API of its own. It does not work when the thing the agent has to
+operate was never built with one, only a sign-in page for a person. 
+
+
+### When the Only Door Is the Login Page
+
+Consider a support team whose ticket-management system accepts sign-in only through its own front end: a
+username, a password, and a one-time code sent to an inbox as a second factor. There is no API behind it to hold
+a client credential against, because every action a signed-in person takes runs through that same interactive
+session.
+
+The enterprise now wants an agent to work that queue on its own, closing routine tickets outside office hours
+with nobody there to log it in. Two shortcuts are tempting, and both cost something. Give the agent an existing
+employee's login, and every action it takes is indistinguishable from that person's, with no way to tell them
+apart later. Have someone sign it in each time, and the agent has stopped acting on its own at all.
+
+### Sign In With the Agent's Own Credential
+
+<ProductName /> answers this by letting the agent hold the same kind of attributes a person's account does: a
+username, an email, and a password, added to its own schema rather than borrowed from anyone. The agent
+completes the sign-in the application already expects using values that belong to it alone, and where the flow
+emails a one-time code, it reads that code from an inbox under its own control.
+
+The agent is still acting on its own here; nothing about the posture changes. The token names the agent, not a
+person, exactly as it would coming out of the client credentials grant. The only difference is what convinces
+the application it is looking at a legitimate sign-in.
+
+See [Agent Sign-In](../../../guides/agents/authentication/agent-sign-in) for adding the attributes, allowing the
+agent's type to sign in to the application, and connecting the agent to its own inbox for the one-time code.

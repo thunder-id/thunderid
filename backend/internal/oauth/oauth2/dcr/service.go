@@ -303,13 +303,24 @@ func buildTokenConfig(request *DCRRegistrationRequest) *providers.OAuthTokenConf
 	return &providers.OAuthTokenConfig{IDToken: idToken}
 }
 
-// buildIDTokenConfig maps ID token encryption fields from a DCR request to an IDTokenConfig.
+// buildIDTokenConfig maps ID token alg fields from a DCR request to an IDTokenConfig.
+// ResponseType is derived from the algorithm fields per OIDC DCR conventions.
 func buildIDTokenConfig(request *DCRRegistrationRequest) *providers.IDTokenConfig {
-	if request.IDTokenEncryptedResponseAlg == "" && request.IDTokenEncryptedResponseEnc == "" {
+	if request.IDTokenSignedResponseAlg == "" && request.IDTokenEncryptedResponseAlg == "" &&
+		request.IDTokenEncryptedResponseEnc == "" {
 		return nil
 	}
+	hasEnc := request.IDTokenEncryptedResponseAlg != "" || request.IDTokenEncryptedResponseEnc != ""
+	responseType := providers.IDTokenResponseTypeJWT
+	switch {
+	case hasEnc && request.IDTokenSignedResponseAlg != "":
+		responseType = providers.IDTokenResponseTypeNESTEDJWT
+	case hasEnc:
+		responseType = providers.IDTokenResponseTypeJWE
+	}
 	return &providers.IDTokenConfig{
-		ResponseType:  providers.IDTokenResponseTypeJWE,
+		ResponseType:  responseType,
+		SigningAlg:    request.IDTokenSignedResponseAlg,
 		EncryptionAlg: request.IDTokenEncryptedResponseAlg,
 		EncryptionEnc: request.IDTokenEncryptedResponseEnc,
 	}
@@ -351,8 +362,9 @@ func (ds *dcrService) convertApplicationToDCRResponse(appDTO *model.ApplicationD
 		userInfoEncryptedEnc = oauthConfig.UserInfo.EncryptionEnc
 	}
 
-	var idTokenEncryptedAlg, idTokenEncryptedEnc string
+	var idTokenSignedAlg, idTokenEncryptedAlg, idTokenEncryptedEnc string
 	if oauthConfig.Token != nil && oauthConfig.Token.IDToken != nil {
+		idTokenSignedAlg = oauthConfig.Token.IDToken.SigningAlg
 		idTokenEncryptedAlg = oauthConfig.Token.IDToken.EncryptionAlg
 		idTokenEncryptedEnc = oauthConfig.Token.IDToken.EncryptionEnc
 	}
@@ -381,6 +393,7 @@ func (ds *dcrService) convertApplicationToDCRResponse(appDTO *model.ApplicationD
 		UserInfoSignedResponseAlg:          userInfoSignedAlg,
 		UserInfoEncryptedResponseAlg:       userInfoEncryptedAlg,
 		UserInfoEncryptedResponseEnc:       userInfoEncryptedEnc,
+		IDTokenSignedResponseAlg:           idTokenSignedAlg,
 		IDTokenEncryptedResponseAlg:        idTokenEncryptedAlg,
 		IDTokenEncryptedResponseEnc:        idTokenEncryptedEnc,
 	}

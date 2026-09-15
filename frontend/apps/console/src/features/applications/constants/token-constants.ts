@@ -24,13 +24,13 @@ const TokenConstants = {
    * Agent system, OU, group, and role attributes that can be added to the agent's own access token
    * (client_credentials)
    */
-  ADDITIONAL_AGENT_ATTRIBUTES: ['name', 'owner', 'ouHandle', 'ouId', 'ouName', 'groups', 'roles'],
+  ADDITIONAL_AGENT_ATTRIBUTES: ['name', 'owner', 'ouHandle', 'ouId', 'ouName', 'groups', 'roles', 'sub_type'],
 
   /**
    * Optional claims that can be added to the client access token (client_credentials grant),
    * where there is no end user to source attributes from.
    */
-  CLIENT_TOKEN_OPTIONAL_CLAIMS: ['groups', 'ouHandle', 'ouId', 'ouName', 'roles'],
+  CLIENT_TOKEN_OPTIONAL_CLAIMS: ['groups', 'ouHandle', 'ouId', 'ouName', 'roles', 'sub_type'],
 
   /**
    * Supported UserInfo response types

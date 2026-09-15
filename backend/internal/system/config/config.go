@@ -266,13 +266,18 @@ type AuthnProviderConfig struct {
 	Rest RestConfig `yaml:"rest" json:"rest"`
 }
 
-// UserProviderConfig holds the user provider configuration details.
-type UserProviderConfig struct {
+// UserMgtProviderConfig holds the user management provider configuration details.
+type UserMgtProviderConfig struct {
 	Type string `yaml:"type" json:"type"`
 }
 
 // EntityProviderConfig holds the entity provider configuration details.
 type EntityProviderConfig struct {
+	Type string `yaml:"type" json:"type"`
+}
+
+// AgentMgtProviderConfig holds the agent provider configuration details.
+type AgentMgtProviderConfig struct {
 	Type string `yaml:"type" json:"type"`
 }
 
@@ -571,6 +576,52 @@ type LogTimeRotationConfig struct {
 	IntervalDays *int  `yaml:"interval_days" json:"interval_days"`
 }
 
+// OAuthConfig is the yaml/json-loaded OAuth section for the server. It mirrors every field
+// of engineconfig.OAuthConfig except the configs which are settable only through thunderidengine.
+type OAuthConfig struct {
+	RefreshToken             engineconfig.RefreshTokenConfig         `yaml:"refresh_token" json:"refresh_token"`
+	AuthorizationCode        engineconfig.AuthorizationCodeConfig    `yaml:"authorization_code" json:"authorization_code"`       //nolint:lll
+	AuthorizationRequest     engineconfig.AuthorizationRequestConfig `yaml:"authorization_request" json:"authorization_request"` //nolint:lll
+	DCR                      engineconfig.DCRConfig                  `yaml:"dcr" json:"dcr"`
+	PAR                      engineconfig.PARConfig                  `yaml:"par" json:"par"`
+	DPoP                     engineconfig.DPoPConfig                 `yaml:"dpop" json:"dpop"`
+	AuthClass                engineconfig.AuthClassConfig            `yaml:"auth_class" json:"auth_class"`
+	CIBA                     engineconfig.CIBAConfig                 `yaml:"ciba" json:"ciba"`
+	Revocation               engineconfig.RevocationConfig           `yaml:"revocation" json:"revocation"`
+	TokenExchange            engineconfig.TokenExchangeConfig        `yaml:"token_exchange" json:"token_exchange"`
+	AllowWildcardRedirectURI bool                                    `yaml:"allow_wildcard_redirect_uri" json:"allow_wildcard_redirect_uri"`   //nolint:lll
+	AllowedGrantTypes        []string                                `yaml:"allowed_grant_types" json:"allowed_grant_types"`                   //nolint:lll
+	AllowedResponseTypes     []string                                `yaml:"allowed_response_types" json:"allowed_response_types"`             //nolint:lll
+	AllowedAuthMethods       []string                                `yaml:"allowed_auth_methods" json:"allowed_auth_methods"`                 //nolint:lll
+	SendServerErrorsToClient *bool                                   `yaml:"send_server_errors_to_client" json:"send_server_errors_to_client"` //nolint:lll
+	TokenRevocation          engineconfig.OAuthTokenRevocationConfig `yaml:"token_revocation" json:"token_revocation"`
+	Logout                   engineconfig.LogoutConfig               `yaml:"logout" json:"logout"`
+}
+
+// ToEngineConfig copies the yaml-loaded fields into an engineconfig.OAuthConfig value.
+// The engine-only fields on the output are left zero. Callers that need these fields seed them separately.
+func (c OAuthConfig) ToEngineConfig() engineconfig.OAuthConfig {
+	return engineconfig.OAuthConfig{
+		RefreshToken:             c.RefreshToken,
+		AuthorizationCode:        c.AuthorizationCode,
+		AuthorizationRequest:     c.AuthorizationRequest,
+		DCR:                      c.DCR,
+		PAR:                      c.PAR,
+		DPoP:                     c.DPoP,
+		AuthClass:                c.AuthClass,
+		CIBA:                     c.CIBA,
+		Revocation:               c.Revocation,
+		TokenExchange:            c.TokenExchange,
+		AllowWildcardRedirectURI: c.AllowWildcardRedirectURI,
+		AllowedGrantTypes:        c.AllowedGrantTypes,
+		AllowedResponseTypes:     c.AllowedResponseTypes,
+		AllowedAuthMethods:       c.AllowedAuthMethods,
+		SendServerErrorsToClient: c.SendServerErrorsToClient,
+		TokenRevocation:          c.TokenRevocation,
+		Logout:                   c.Logout,
+	}
+}
+
 // Config holds the complete configuration details of the server.
 type Config struct {
 	Server               engineconfig.ServerConfig         `yaml:"server"                json:"server"`
@@ -580,7 +631,7 @@ type Config struct {
 	Database             DatabaseConfig                    `yaml:"database"              json:"database"`
 	Cache                engineconfig.CacheConfig          `yaml:"cache"                 json:"cache"`
 	JWT                  engineconfig.JWTConfig            `yaml:"jwt"                   json:"jwt"`
-	OAuth                engineconfig.OAuthConfig          `yaml:"oauth"                 json:"oauth"`
+	OAuth                OAuthConfig                       `yaml:"oauth"                 json:"oauth"`
 	Flow                 engineconfig.FlowConfig           `yaml:"flow"                  json:"flow"`
 	Crypto               CryptoConfig                      `yaml:"crypto"                json:"crypto"`
 	User                 UserConfig                        `yaml:"user"                  json:"user"`
@@ -598,8 +649,9 @@ type Config struct {
 	OpenID4VP            OpenID4VPConfig                   `yaml:"openid4vp"             json:"openid4vp"`
 	OpenID4VCI           OpenID4VCIConfig                  `yaml:"openid4vci"            json:"openid4vci"`
 	AuthnProvider        AuthnProviderConfig               `yaml:"authn_provider"        json:"authn_provider"`
-	UserProvider         UserProviderConfig                `yaml:"user_provider"         json:"user_provider"`
+	UserMgtProvider      UserMgtProviderConfig             `yaml:"user_mgt_provider"     json:"user_mgt_provider"`
 	EntityProvider       EntityProviderConfig              `yaml:"entity_provider"       json:"entity_provider"`
+	AgentMgtProvider     AgentMgtProviderConfig            `yaml:"agent_mgt_provider"        json:"agent_mgt_provider"`
 	Group                GroupConfig                       `yaml:"group"                 json:"group"`
 	Role                 RoleConfig                        `yaml:"role"                  json:"role"`
 	Theme                ThemeConfig                       `yaml:"theme"                 json:"theme"`

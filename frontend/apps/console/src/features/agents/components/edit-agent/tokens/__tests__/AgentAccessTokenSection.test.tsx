@@ -216,6 +216,26 @@ describe('AgentAccessTokenSection', () => {
     expect(screen.getByTestId('jwt-preview')).toHaveTextContent('"name":"<name>"');
   });
 
+  // The agent tab must declare its own identity class, not the application value.
+  it('previews sub_type as agent when the claim is selected', () => {
+    render(
+      <AgentAccessTokenSection
+        agent={{...baseAgent, inboundAuthConfig: baseInboundAuthConfig}}
+        editedAgent={{}}
+        oauth2Config={
+          {
+            grantTypes: ['client_credentials'],
+            responseTypes: [],
+            token: {accessToken: {clientConfig: {attributes: ['sub_type']}}},
+          } as unknown as OAuthAgentConfig
+        }
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    expect(screen.getByTestId('jwt-preview')).toHaveTextContent('"sub_type":"agent"');
+  });
+
   it('does not show a scopes section', () => {
     render(
       <AgentAccessTokenSection

@@ -20,9 +20,14 @@
 # statements would change the denominator without making the result more
 # actionable.
 #
+# Thresholds are per package rather than global, resolved from THRESHOLD_CONFIG by
+# evaluate-thresholds.py. Any non-exempt package below its own threshold fails the
+# check.
+#
 # Environment:
 #   BASE_REF            - diff base, e.g. origin/main or a merge-group base sha
-#   FAIL_UNDER          - threshold percentage, exact, no tolerance
+#   THRESHOLD_CONFIG    - path to the per-package threshold config
+#   PR_LABELS           - JSON array or comma-separated list of the PR's labels
 #   GITHUB_STEP_SUMMARY - provided by the runner
 #
 # Expects the integration coverage artifacts under coverage-artifacts/.
@@ -35,11 +40,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AWK_CONVERTER="${SCRIPT_DIR}/../patch-coverage-gate/go-cover-to-lcov.awk"
 
 : "${BASE_REF:?BASE_REF is required}"
-: "${FAIL_UNDER:=70}"
+: "${THRESHOLD_CONFIG:=.github/backend-coverage-thresholds.yml}"
+: "${PR_LABELS:=}"
 SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 
 if [ ! -f "$AWK_CONVERTER" ]; then
   echo "❌ Coverage converter not found at ${AWK_CONVERTER}." | tee -a "$SUMMARY"
+  exit 1
+fi
+
+if [ ! -f "$THRESHOLD_CONFIG" ]; then
+  echo "❌ Threshold config not found at ${THRESHOLD_CONFIG}." | tee -a "$SUMMARY"
   exit 1
 fi
 
@@ -133,31 +144,37 @@ fi
 EXCLUDE_ARGS=(--exclude 'backend/tests/**' --exclude '**/*_test.go' --exclude 'tests/**'
   --exclude 'frontend/**' --exclude 'docs/**' --exclude 'samples/**' --exclude 'api/**')
 
-STATUS=0
+# No --fail-under: a single global threshold cannot express per-package bars. The
+# JSON report carries per-file covered and uncovered line numbers, so the verdict
+# is derived per package by evaluate-thresholds.py. The markdown report is still
+# produced, for the uncovered-line detail appended to the summary.
 "$DIFF_COVER_BIN" "${LCOV_FILES[@]}" \
   --compare-branch "$BASE_REF" \
-  --fail-under "$FAIL_UNDER" \
   "${EXCLUDE_ARGS[@]}" \
-  --format "markdown:integration-patch-coverage.md" || STATUS=$?
+  --format "json:integration-patch-coverage.json,markdown:integration-patch-coverage.md" >/dev/null
+
+STATUS=0
+python3 "${SCRIPT_DIR}/evaluate-thresholds.py" \
+  integration-patch-coverage.json \
+  "$THRESHOLD_CONFIG" \
+  "$PR_LABELS" \
+  package-verdicts.md || STATUS=$?
 
 # ---------------------------------------------------------------------------
 # 5. Report
 # ---------------------------------------------------------------------------
 
+# The per-package verdict, thresholds and provenance are already formatted by
+# evaluate-thresholds.py. Only the measurement provenance is added here.
 {
-  echo "### 🛡️ Backend Integration Patch Coverage"
-  echo
-  if [ "$STATUS" -eq 0 ]; then
-    echo "**Passed** — required: ≥ ${FAIL_UNDER}% of changed backend lines executed by the integration suite."
-  else
-    echo "**Failed** — required: ≥ ${FAIL_UNDER}% of changed backend lines executed by the integration suite."
-  fi
-  echo
+  cat package-verdicts.md
   echo "- Measured from integration runs only: ${PROFILE_LABELS[*]} (union)"
   echo "- Backend unit and frontend coverage are not loaded and cannot change this result."
   echo "- Changed backend production Go files: ${CHANGED_COUNT}"
   echo
-  cat integration-patch-coverage.md 2>/dev/null || true
+  if [ "$STATUS" -ne 0 ]; then
+    cat integration-patch-coverage.md 2>/dev/null || true
+  fi
 } | tee -a "$SUMMARY"
 
 exit "$STATUS"

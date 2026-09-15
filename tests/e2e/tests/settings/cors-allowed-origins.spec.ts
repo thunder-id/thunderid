@@ -25,6 +25,8 @@ const DISCOVERY_PATH = "/.well-known/openid-configuration";
 const TEST_ORIGIN = "https://e2e-cors-probe.invalid";
 // The same origin expressed as an anchored pattern, for the regex entry type.
 const TEST_ORIGIN_PATTERN = "^https://e2e-cors-probe\\.invalid$";
+// Deliberately outside TEST_ORIGIN_PATTERN, to confirm the pattern isn't matching more than intended.
+const UNMATCHED_ORIGIN = "https://e2e-cors-probe-unmatched.invalid";
 // The sample app's origin, configured by the imported deployment config. Editing allowed origins
 // through the console must never drop it, otherwise every later sample-app test loses its ability to
 // read cross-origin responses.
@@ -71,34 +73,67 @@ test.describe("Settings — CORS allowed origins", { tag: [TestTags.SMOKE] }, ()
     expect(acao, "an unconfigured origin must not be echoed in Access-Control-Allow-Origin").toBeUndefined();
   });
 
-  test("persists a new allowed origin added through the console", async ({ settingsPage }) => {
-    await settingsPage.addAllowedOrigin(TEST_ORIGIN);
-    expect(await settingsPage.hasCustomOrigin(TEST_ORIGIN)).toBe(true);
+  test("adding and removing an allowed origin through the console updates both the UI and runtime CORS enforcement", async ({
+    settingsPage,
+  }) => {
+    await test.step("Add the origin and verify it persists in the UI", async () => {
+      await settingsPage.addAllowedOrigin(TEST_ORIGIN);
+      expect(await settingsPage.hasCustomOrigin(TEST_ORIGIN)).toBe(true);
+    });
+
+    await test.step("Verify the server now allows a cross-origin request from it (no server restart)", async () => {
+      await expect
+        .poll(async () => await corsAllowOriginHeader(settingsPage.page), {
+          message: "a configured origin must be echoed in Access-Control-Allow-Origin",
+        })
+        .toBe(TEST_ORIGIN);
+    });
+
+    await test.step("Remove the origin and verify the UI and runtime CORS enforcement both revert", async () => {
+      await settingsPage.removeAllowedOrigin(TEST_ORIGIN);
+
+      expect(await settingsPage.hasCustomOrigin(TEST_ORIGIN)).toBe(false);
+      await expect
+        .poll(async () => await corsAllowOriginHeader(settingsPage.page), {
+          message: "a removed origin must no longer be echoed in Access-Control-Allow-Origin",
+        })
+        .toBeUndefined();
+    });
   });
 
-  test("allows a cross-origin request once the origin is configured (no server restart)", async ({ settingsPage }) => {
-    await settingsPage.addAllowedOrigin(TEST_ORIGIN);
+  test("adding and removing a regex-pattern allowed origin updates both the UI and runtime CORS enforcement, without over-matching", async ({
+    settingsPage,
+  }) => {
+    await test.step("Add the pattern and verify it persists in the UI", async () => {
+      await settingsPage.addAllowedOriginRegex(TEST_ORIGIN_PATTERN);
+      expect(await settingsPage.hasCustomOrigin(TEST_ORIGIN_PATTERN)).toBe(true);
+    });
 
-    const acao = await corsAllowOriginHeader(settingsPage.page);
-    expect(acao, "a configured origin must be echoed in Access-Control-Allow-Origin").toBe(TEST_ORIGIN);
-  });
+    await test.step("Verify the server allows a cross-origin request from an origin matched by the pattern", async () => {
+      await expect
+        .poll(async () => await corsAllowOriginHeader(settingsPage.page), {
+          message: "an origin matched by a configured pattern must be echoed in Access-Control-Allow-Origin",
+        })
+        .toBe(TEST_ORIGIN);
+    });
 
-  test("allows a cross-origin request matched by an entry saved as a regex", async ({ settingsPage }) => {
-    await settingsPage.addAllowedOriginRegex(TEST_ORIGIN_PATTERN);
+    await test.step("Verify the server still denies an origin the pattern does not match", async () => {
+      const acao = await corsAllowOriginHeader(settingsPage.page, UNMATCHED_ORIGIN);
+      expect(
+        acao,
+        "an origin outside the configured pattern must not be echoed in Access-Control-Allow-Origin"
+      ).toBeUndefined();
+    });
 
-    expect(await settingsPage.hasCustomOrigin(TEST_ORIGIN_PATTERN)).toBe(true);
-    const acao = await corsAllowOriginHeader(settingsPage.page);
-    expect(acao, "an origin matched by a configured pattern must be echoed in Access-Control-Allow-Origin").toBe(
-      TEST_ORIGIN
-    );
-  });
+    await test.step("Remove the pattern and verify the UI and runtime CORS enforcement both revert", async () => {
+      await settingsPage.removeAllowedOrigin(TEST_ORIGIN_PATTERN);
 
-  test("denies the origin again after it is removed through the console", async ({ settingsPage }) => {
-    await settingsPage.addAllowedOrigin(TEST_ORIGIN);
-    await settingsPage.removeAllowedOrigin(TEST_ORIGIN);
-
-    expect(await settingsPage.hasCustomOrigin(TEST_ORIGIN)).toBe(false);
-    const acao = await corsAllowOriginHeader(settingsPage.page);
-    expect(acao, "a removed origin must no longer be echoed in Access-Control-Allow-Origin").toBeUndefined();
+      expect(await settingsPage.hasCustomOrigin(TEST_ORIGIN_PATTERN)).toBe(false);
+      await expect
+        .poll(async () => await corsAllowOriginHeader(settingsPage.page), {
+          message: "a removed pattern must no longer be echoed in Access-Control-Allow-Origin",
+        })
+        .toBeUndefined();
+    });
   });
 });

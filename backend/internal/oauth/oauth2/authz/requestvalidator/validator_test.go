@@ -56,6 +56,38 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_Success() {
 	assert.Empty(suite.T(), errMsg)
 }
 
+func (suite *AuthzValidationTestSuite) TestValidateParams_RequestObjectRejected() {
+	params := suite.validParams()
+	params.Set(constants.RequestParamRequest, "eyJhbGciOiAibm9uZSJ9.eyJzdGF0ZSI6ICJhYmMifQ.")
+
+	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
+
+	assert.Equal(suite.T(), constants.ErrorRequestNotSupported, errCode)
+	assert.NotEmpty(suite.T(), errMsg)
+}
+
+// The request object is rejected before any other parameter is validated, so a request carrying
+// one is never processed on the query string alone.
+func (suite *AuthzValidationTestSuite) TestValidateParams_RequestObjectRejectedBeforeOtherParams() {
+	params := url.Values{
+		constants.RequestParamRequest: {"eyJhbGciOiAibm9uZSJ9.eyJzdGF0ZSI6ICJhYmMifQ."},
+	}
+
+	errCode, _ := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
+
+	assert.Equal(suite.T(), constants.ErrorRequestNotSupported, errCode)
+}
+
+func (suite *AuthzValidationTestSuite) TestValidateParams_EmptyRequestParamIgnored() {
+	params := suite.validParams()
+	params.Set(constants.RequestParamRequest, "")
+
+	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
+
+	assert.Empty(suite.T(), errCode)
+	assert.Empty(suite.T(), errMsg)
+}
+
 func (suite *AuthzValidationTestSuite) TestValidateParams_MissingResponseType() {
 	params := url.Values{}
 
@@ -197,13 +229,17 @@ func (suite *AuthzValidationTestSuite) TestValidateParams_PromptLogin_Success() 
 	assert.Empty(suite.T(), errMsg)
 }
 
-func (suite *AuthzValidationTestSuite) TestValidateParams_PromptNone_LoginRequired() {
+// TestValidateParams_PromptNone_Accepted covers prompt=none passing shared parameter validation.
+// Whether it can be honored depends on an existing SSO session, which this validation cannot see,
+// so the authorize endpoint decides it against the resolved session instead.
+func (suite *AuthzValidationTestSuite) TestValidateParams_PromptNone_Accepted() {
 	params := suite.validParams()
 	params.Set(constants.RequestParamPrompt, "none")
 
-	errCode, _ := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
+	errCode, errMsg := ValidateAuthorizationRequestParams(params, suite.oauthApp, "")
 
-	assert.Equal(suite.T(), constants.ErrorLoginRequired, errCode)
+	assert.Empty(suite.T(), errCode)
+	assert.Empty(suite.T(), errMsg)
 }
 
 func (suite *AuthzValidationTestSuite) TestValidateParams_PromptInvalid() {
@@ -330,9 +366,13 @@ func (suite *AuthzValidationTestSuite) TestValidatePromptParameter_Login() {
 	assert.Empty(suite.T(), errCode)
 }
 
-func (suite *AuthzValidationTestSuite) TestValidatePromptParameter_None_LoginRequired() {
-	errCode, _ := ValidatePromptParameter("none")
-	assert.Equal(suite.T(), constants.ErrorLoginRequired, errCode)
+// TestValidatePromptParameter_None_Accepted covers "none" being a valid parameter value on its
+// own. The login_required decision belongs to the authorize endpoint, which can consult the
+// session this function cannot see.
+func (suite *AuthzValidationTestSuite) TestValidatePromptParameter_None_Accepted() {
+	errCode, errMsg := ValidatePromptParameter("none")
+	assert.Empty(suite.T(), errCode)
+	assert.Empty(suite.T(), errMsg)
 }
 
 func (suite *AuthzValidationTestSuite) TestValidatePromptParameter_Consent() {

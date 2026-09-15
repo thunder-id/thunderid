@@ -55,6 +55,7 @@ const baseProps = {
   onLogoSelect: vi.fn(),
   hasSecurityStep: true,
   hasDesignStep: true,
+  allowsUserLogins: true,
   userTypes: [],
   selectedUserTypes: [],
   onUserTypesChange: vi.fn(),
@@ -254,6 +255,49 @@ describe('ConfigureApplicationDetails', () => {
       render(
         <ConfigureApplicationDetails
           {...baseProps}
+          resolvedOuId={undefined}
+          ouDefaults={NO_DEFAULTS}
+          onOuDefaultsChange={vi.fn()}
+          userTypes={userTypes}
+        />,
+      );
+
+      expect(screen.getByTestId('application-configure-user-access')).toBeInTheDocument();
+    });
+
+    it('does not render or require user access when the application disallows user logins', () => {
+      mockUseGetOrganizationUnit.mockReturnValue({data: undefined, isLoading: false});
+      const onReadyChange = vi.fn();
+      const onUserTypesChange = vi.fn();
+
+      render(
+        <ConfigureApplicationDetails
+          {...baseProps}
+          hasSecurityStep={false}
+          allowsUserLogins={false}
+          resolvedOuId={undefined}
+          ouDefaults={NO_DEFAULTS}
+          onOuDefaultsChange={vi.fn()}
+          userTypes={userTypes}
+          selectedUserTypes={[]}
+          onUserTypesChange={onUserTypesChange}
+          onReadyChange={onReadyChange}
+        />,
+      );
+
+      expect(screen.queryByTestId('application-configure-user-access')).not.toBeInTheDocument();
+      expect(onUserTypesChange).not.toHaveBeenCalled();
+      expect(onReadyChange).toHaveBeenCalledWith(true);
+    });
+
+    it('uses the explicit user-login setting independently of the Security step', () => {
+      mockUseGetOrganizationUnit.mockReturnValue({data: undefined, isLoading: false});
+
+      render(
+        <ConfigureApplicationDetails
+          {...baseProps}
+          hasSecurityStep={false}
+          allowsUserLogins={true}
           resolvedOuId={undefined}
           ouDefaults={NO_DEFAULTS}
           onOuDefaultsChange={vi.fn()}

@@ -1,0 +1,243 @@
+---
+title: Call the Claude API with a {{ProductName}} Agent Identity
+docType: guide
+sidebar_position: 2
+persona: iam
+description: Federate a {{ProductName}} agent identity to Anthropic using workload identity federation, so an agent trades its own token for Claude API access instead of holding a long-lived API key.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Call the Claude API with a <ProductName /> Agent Identity
+
+Anthropic [workload identity federation](https://platform.claude.com/docs/en/manage-claude/workload-identity-federation) accepts a signed OIDC token from an external issuer and returns a short-lived Anthropic access token in exchange. Point it at <ProductName /> and your agent reaches the Claude API with the identity it already has. No static API key sits in the agent's environment, no key is shared between agents, and disabling the agent in <ProductName /> ends its Claude access at the next exchange.
+
+This guide explains how to authenticate an agent to the Claude API using workload identity federation. The agent gets an [Agent Token](../../../agents/authentication/agent-own-token) from <ProductName />. Anthropic verifies that token and issues a short-lived access token of its own. The agent sends that access token on its API calls.
+
+See [Workload Identity Federation](../overview) for what federation replaces and how the exchange works, and [Agent Token](../../../agents/authentication/agent-own-token) for how <ProductName /> issues that token and what it carries.
+
+## Prerequisites
+
+- A running <ProductName /> instance. See [Get <ProductName />](../../../../getting-started/get-thunderid).
+- An Anthropic account with access to [Claude Console](https://platform.claude.com/).
+- `curl` and `jq` available in your terminal.
+
+## Create the Agent
+
+1. Sign in to the <ProductName /> Console at `https://localhost:8090/console`.
+2. Navigate to **Agents** → **New Agent**.
+3. Enter an **Agent Name** (for example `research-agent`).
+4. Select an owner for the agent.
+5. Click **Create Agent**.
+6. Note down the **Agent ID**, Anthropic matches on this value.
+7. Record the **Client ID** and **Client Secret**. The secret is shown once.
+8. Open the agent's **Advanced** tab. Under **OAuth 2 Configuration**, set **Default audience (aud)** to `https://api.anthropic.com`, then save.
+
+A new agent has the `client_credentials` grant enabled, so it can already request a token for itself. See [Agent Token](../../../agents/authentication/agent-own-token) on how to get a token.
+
+:::note[The audience is fixed]
+Anthropic verifies the token's `aud` claim against `https://api.anthropic.com`, and that value cannot be changed on the Anthropic side. The agent token has to carry it, so step 8 sets it as the agent's default audience.
+:::
+
+A `client_credentials` request that carries no `resource` parameter now produces a token whose `aud` claim is `https://api.anthropic.com`.
+
+## Configure Federation in the Claude Console
+
+In the [Claude Console](https://platform.claude.com/), navigate to **Organization settings** → **Workload identity**. You register <ProductName /> as an issuer there, then connect the agent to a service account through a federation rule.
+
+### Register <ProductName /> as a Federation Issuer
+
+Anthropic verifies the agent token against a key set it holds for your issuer. It can either fetch that key set from your discovery document or store a copy you paste in. Discovery needs an issuer served over public HTTPS on port 443 with a public DNS hostname, so a <ProductName /> instance on `https://localhost:8090` cannot be discovered and has to supply the key set directly.
+
+
+<Tabs groupId="thunderid-reachability">
+<TabItem value="public" label="Public instance" default>
+1. Click **Register issuer**.
+2. Enter a **Name**, for example `thunderid`.
+3. Set the **Issuer URL** to your <ProductName /> URL.
+4. Choose the **JWKS source**.
+5. Leave the JWKS source on **OIDC discovery**.
+6. Click **Register**.
+
+</TabItem>
+<TabItem value="local" label="Local instance">
+1. Click **Register issuer**.
+2. Enter a **Name**, for example `thunderid`.
+3. Set the **Issuer URL** to your <ProductName /> URL.
+4. Choose the **JWKS source**.
+5. Select **Inline keys**, then paste the <ProductName /> signing keys:
+
+```bash
+curl -sk https://localhost:8090/oauth2/jwks | jq -c .keys
+```
+
+:::warning[Paste the key set again after a key rotation]
+An inline key set is a snapshot. Anthropic performs no discovery against the issuer, so rotating the <ProductName /> signing key invalidates every new token until you paste the new key set.
+:::
+6. Click **Register**.
+
+</TabItem>
+</Tabs>
+
+5. Click **Register**.
+
+### Connect the Agent as a Workload
+
+The issuer establishes which issuer Anthropic trusts. A federation rule decides which Anthropic identity a given token may act as, and a service account is the identity it acts as. The **Connect workload** wizard creates both.
+
+1. Click **Connect workload**, then select the issuer you registered from the list.
+2. Give the federation rule a **Name**, for example `research-agent-rule`.
+3. Set the **subject claim** to the **Agent ID**.
+4. Select the **Workspace** the minted tokens act in.
+5. Add claim conditions if the rule should match on more than the subject.
+6. Click **Continue**.
+7. Connect a service account. Select an existing one, or create one by entering a **service account name**.
+8. Click **Apply and continue**.
+
+The wizard then shows a `curl` command that runs the exchange, and listens for it. Its body carries the four values the agent needs at runtime, so record them: the federation rule ID (`fdrl_...`), the service account ID (`svac_...`), your organization ID, and the workspace ID (`wrkspc_...`).
+
+## Run the Flow
+
+### Request the Agent Token
+
+Send a `client_credentials` request with the agent's credentials:
+
+```bash
+TOKEN_RESPONSE=$(curl -X POST https://localhost:8090/oauth2/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -u '<CLIENT_ID>:<CLIENT_SECRET>' \
+  -d 'grant_type=client_credentials')
+
+AGENT_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r .access_token)
+```
+
+You can inspect the claims before you exchange the token if needed. Following three claims decide whether the exchange succeeds:
+
+| Claim | Expected value |
+|---|---|
+| `iss` | The **Issuer URL** on the federation issuer, for example `https://localhost:8090`. |
+| `aud` | `https://api.anthropic.com`, the fixed value Anthropic verifies. Set as the agent's default audience. |
+| `sub` | The **subject claim** on the rule, which is the Agent ID. |
+
+See [Agent Token](../../../agents/authentication/agent-own-token) for a detailed explanation on getting an agent token.
+
+### Exchange the Token at Anthropic
+
+```bash
+ACCESS_TOKEN=$(curl -sS https://api.anthropic.com/v1/oauth/token \
+  -H 'content-type: application/json' \
+  --data '{
+    "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+    "assertion": "'"$AGENT_TOKEN"'",
+    "federation_rule_id": "<FEDERATION_RULE_ID>",
+    "organization_id": "<ORGANIZATION_ID>",
+    "service_account_id": "<SERVICE_ACCOUNT_ID>",
+    "workspace_id": "<WORKSPACE_ID>"
+  }' | jq -r .access_token)
+```
+
+Anthropic returns a standard OAuth 2.0 token response. The response can include additional fields.
+
+```json
+{
+  "access_token": "sk-ant-oat01-...",
+  "token_type": "Bearer",
+  "expires_in": 600,
+  "scope": "workspace:inference"
+}
+```
+
+Send `workspace_id` only when the rule is enabled for more than one workspace. When you omit it, Anthropic scopes the token to the rule's sole enabled workspace.
+
+:::note[Exchange each agent token once]
+Every <ProductName /> access token carries a `jti` claim, and Anthropic accepts an assertion with a `jti` only once per issuer. Request a fresh agent token for each exchange. A retry that re-sends a token it already presented is rejected, and the [authentication history](https://platform.claude.com/settings/workload-identity-federation?tab=history) records the reason as `jti_reused`.
+:::
+
+### Call the Claude API
+
+```bash
+curl -sS https://api.anthropic.com/v1/messages \
+  -H "authorization: Bearer $ACCESS_TOKEN" \
+  -H 'anthropic-version: 2023-06-01' \
+  -H 'content-type: application/json' \
+  --data '{
+    "model": "claude-opus-5",
+    "max_tokens": 1024,
+    "messages": [{"role": "user", "content": "write a 3 word sentence"}]
+  }'
+```
+
+## Use <ProductName /> with the Anthropic SDK
+
+The Anthropic SDKs can run the exchange for you. Supply an identity token provider that fetches the agent token from <ProductName />, and pass the rule, organization, and service account IDs alongside it.
+
+```python
+import os
+
+import requests
+from anthropic import Anthropic, WorkloadIdentityCredentials
+
+TOKEN_ENDPOINT = "https://localhost:8090/oauth2/token"
+
+
+def fetch_agent_token() -> str:
+    response = requests.post(
+        TOKEN_ENDPOINT,
+        data={"grant_type": "client_credentials"},
+        auth=(os.environ["AGENT_CLIENT_ID"], os.environ["AGENT_CLIENT_SECRET"]),
+        timeout=10,
+    )
+    response.raise_for_status()
+    return response.json()["access_token"]
+
+
+client = Anthropic(
+    credentials=WorkloadIdentityCredentials(
+        identity_token_provider=fetch_agent_token,
+        federation_rule_id=os.environ["ANTHROPIC_FEDERATION_RULE_ID"],
+        organization_id=os.environ["ANTHROPIC_ORGANIZATION_ID"],
+        service_account_id=os.environ["ANTHROPIC_SERVICE_ACCOUNT_ID"],
+        workspace_id=os.environ.get("ANTHROPIC_WORKSPACE_ID"),
+    ),
+)
+
+message = client.messages.create(
+    model="claude-opus-5",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "write a 3 word sentence"}],
+)
+
+print(next(block.text for block in message.content if block.type == "text"))
+```
+
+The SDK calls `fetch_agent_token` again whenever the Anthropic access token approaches expiry.
+
+:::note[Trusting the local certificate]
+In a local setup, <ProductName /> serves HTTPS with a self-signed certificate, so you need to trust the certificate in the shell where you run Python by setting `REQUESTS_CA_BUNDLE`. This prevents `requests` from raising an `SSLError` due to certificate verification.
+:::
+
+Store `AGENT_CLIENT_ID` and `AGENT_CLIENT_SECRET` in your secret manager, not in the image or the repository. An agent that must not hold a shared secret at all can authenticate with a signed assertion instead, which changes only how the identity token provider fetches the agent token. See [Agent Authentication](../../../agents/authentication).
+
+## Troubleshooting
+
+Every denied assertion returns the same opaque `401` `authentication_error` with the message `Authentication failed`, so the deny reason lives on the [authentication history page](https://platform.claude.com/settings/workload-identity-federation?tab=history) rather than in the response.
+
+| Symptom | Likely cause |
+|---|---|
+| `invalid_client` from <ProductName /> | Wrong client ID or secret, or the agent has no OAuth configuration. |
+| Deny reason `match_subject_prefix` | The token's `sub` differs from the rule's **subject claim**. Decode the token and compare it against the Agent ID. |
+| The history entry points at the audience | The token's `aud` is not `https://api.anthropic.com`. Check whether you have set the agent's default audience, and that the token request carries no `resource` parameter naming something else. |
+| The history entry points at the issuer or the signature | The token's `iss` does not equal the issuer's **Issuer URL** byte for byte, or the signing key rotated and the inline key set is stale. |
+| Deny reason `jti_reused` | The same agent token was exchanged twice. Request a new one for each exchange. |
+| Deny reason `workspace_id_required` | The rule is enabled for more than one workspace and the exchange named none. Send `workspace_id`. |
+| The exchange fails on the token lifetime | The agent token's `exp` minus `iat` exceeds the issuer's maximum, one hour by default. Lower **Token Validity** on the agent's **Tokens** tab, or raise the maximum on the issuer. |
+| A `401` with no history entry at all | The `federation_rule_id` was not recognized. Confirm it in the Claude Console and that the rule is not archived. |
+| `401` from `api.anthropic.com` | The Anthropic access token expired. Exchange again rather than caching it past `expires_in`. |
+| `403` from `api.anthropic.com` | The rule's OAuth scope is narrower than the call needs, or the service account is not a member of the rule's workspace. |
+
+## Next Steps
+
+- [Agent Token](../../../agents/authentication/agent-own-token)
+- [Agent Authentication](../../../agents/authentication)
+- [Create and Manage Agents](../../../agents/manage-agents)

@@ -20,6 +20,7 @@ type OAuth2AuthorizationServerMetadata struct {
 	ResponseTypesSupported                     []string `json:"response_types_supported"`
 	GrantTypesSupported                        []string `json:"grant_types_supported"`
 	TokenEndpointAuthMethodsSupported          []string `json:"token_endpoint_auth_methods_supported"`
+	TokenEndpointAuthSigningAlgValuesSupported []string `json:"token_endpoint_auth_signing_alg_values_supported,omitempty"` //nolint:lll
 	CodeChallengeMethodsSupported              []string `json:"code_challenge_methods_supported,omitempty"`
 	AuthorizationResponseIssParameterSupported bool     `json:"authorization_response_iss_parameter_supported"`
 	DPoPSigningAlgValuesSupported              []string `json:"dpop_signing_alg_values_supported,omitempty"`
@@ -40,6 +41,8 @@ type OIDCProviderMetadata struct {
 	IDTokenEncryptionEncValuesSupported  []string `json:"id_token_encryption_enc_values_supported,omitempty"`
 	ClaimsSupported                      []string `json:"claims_supported"`
 	ClaimsParameterSupported             bool     `json:"claims_parameter_supported"`
+	RequestParameterSupported            bool     `json:"request_parameter_supported"`
+	RequestURIParameterSupported         bool     `json:"request_uri_parameter_supported"`
 	EndSessionEndpoint                   string   `json:"end_session_endpoint,omitempty"`
 	AcrValuesSupported                   []string `json:"acr_values_supported,omitempty"`
 }

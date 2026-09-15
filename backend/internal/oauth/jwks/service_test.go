@@ -42,7 +42,8 @@ func (suite *JWKSServiceTestSuite) SetupTest() {
 func (suite *JWKSServiceTestSuite) TestGetJWKS_RSA_Success() {
 	key, _ := rsa.GenerateKey(rand.Reader, 2048)
 	info := providers.PublicKeyInfo{
-		KeyID:          "kid-1",
+		KeyID:          "key-1",
+		Kid:            "kid-1",
 		Algorithm:      string(cryptolib.AlgorithmRS256),
 		PublicKey:      &key.PublicKey,
 		Thumbprint:     "kid-1",
@@ -56,6 +57,7 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_RSA_Success() {
 	assert.NotNil(suite.T(), resp)
 	assert.Len(suite.T(), resp.Keys, 1)
 	k := resp.Keys[0]
+	assert.Equal(suite.T(), "kid-1", k.Kid)
 	assert.Equal(suite.T(), "RSA", k.Kty)
 	assert.Equal(suite.T(), "RS256", k.Alg)
 	assert.NotEmpty(suite.T(), k.N)
@@ -68,7 +70,8 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_RSA_Success() {
 func (suite *JWKSServiceTestSuite) TestGetJWKS_ECDSA_P256_Success() {
 	ecdsaKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	info := providers.PublicKeyInfo{
-		KeyID:          "kid-1",
+		KeyID:          "key-1",
+		Kid:            "kid-1",
 		Algorithm:      string(cryptolib.AlgorithmES256),
 		PublicKey:      &ecdsaKey.PublicKey,
 		Thumbprint:     "kid-1",
@@ -95,7 +98,8 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_ECDSA_P256_Success() {
 func (suite *JWKSServiceTestSuite) TestGetJWKS_EdDSA_Success() {
 	_, edPriv, _ := ed25519.GenerateKey(rand.Reader)
 	info := providers.PublicKeyInfo{
-		KeyID:          "kid-1",
+		KeyID:          "key-1",
+		Kid:            "kid-1",
 		Algorithm:      string(cryptolib.AlgorithmEdDSA),
 		PublicKey:      edPriv.Public(),
 		Thumbprint:     "kid-1",
@@ -122,7 +126,8 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_MLDSA_Success() {
 	signer, err := cryptolib.GenerateMLDSAKey(cryptolib.AlgorithmMLDSA65)
 	assert.NoError(suite.T(), err)
 	info := providers.PublicKeyInfo{
-		KeyID:          "kid-1",
+		KeyID:          "key-1",
+		Kid:            "kid-1",
 		Algorithm:      string(cryptolib.AlgorithmMLDSA65),
 		PublicKey:      signer.Public(),
 		Thumbprint:     "kid-1",
@@ -149,7 +154,7 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_MLDSA_Success() {
 
 func (suite *JWKSServiceTestSuite) TestGetMLDSAPublicKeyJWKS_NonMLDSAKey() {
 	ecdsaKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	_, ok := getMLDSAPublicKeyJWKS(&ecdsaKey.PublicKey, "kid-1", nil, "", "")
+	_, ok := getMLDSAPublicKeyJWKS(&ecdsaKey.PublicKey, "kid-1", "", nil, "", "")
 	assert.False(suite.T(), ok)
 }
 
@@ -177,12 +182,14 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_UnsupportedPublicKeyType() {
 	rsaKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	keys := []providers.PublicKeyInfo{
 		{
-			KeyID:      "kid-1",
+			KeyID:      "key-1",
+			Kid:        "kid-1",
 			PublicKey:  "unsupported-key-type",
 			Thumbprint: "kid-1",
 		},
 		{
-			KeyID:          "kid-2",
+			KeyID:          "key-2",
+			Kid:            "kid-2",
 			Algorithm:      string(cryptolib.AlgorithmRS256),
 			PublicKey:      &rsaKey.PublicKey,
 			Thumbprint:     "kid-2",
@@ -200,7 +207,7 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_UnsupportedPublicKeyType() {
 
 func (suite *JWKSServiceTestSuite) TestGetJWKS_OnlyUnsupportedKeys() {
 	keys := []providers.PublicKeyInfo{
-		{KeyID: "kid-1", PublicKey: "unsupported-key-type", Thumbprint: "kid-1"},
+		{KeyID: "key-1", Kid: "kid-1", PublicKey: "unsupported-key-type", Thumbprint: "kid-1"},
 	}
 	suite.cryptoMock.EXPECT().GetPublicKeys(mock.Anything, providers.PublicKeyFilter{}).
 		Return(keys, nil)
@@ -211,19 +218,42 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_OnlyUnsupportedKeys() {
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
+func (suite *JWKSServiceTestSuite) TestGetJWKS_EmptyKid_FallsBackToThumbprint() {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	keys := []providers.PublicKeyInfo{
+		{
+			KeyID:      "key-1",
+			Kid:        "",
+			Algorithm:  string(cryptolib.AlgorithmRS256),
+			PublicKey:  &key.PublicKey,
+			Thumbprint: "kid-1",
+		},
+	}
+	suite.cryptoMock.EXPECT().GetPublicKeys(mock.Anything, providers.PublicKeyFilter{}).
+		Return(keys, nil)
+
+	resp, svcErr := suite.jwksService.GetJWKS(context.Background())
+	assert.Nil(suite.T(), svcErr)
+	assert.NotNil(suite.T(), resp)
+	assert.Len(suite.T(), resp.Keys, 1)
+	assert.Equal(suite.T(), "kid-1", resp.Keys[0].Kid)
+}
+
 func (suite *JWKSServiceTestSuite) TestGetJWKS_MultipleCertificates() {
 	rsaKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	ecdsaKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	keys := []providers.PublicKeyInfo{
 		{
-			KeyID:          "rsa-kid",
+			KeyID:          "rsa-key",
+			Kid:            "rsa-kid",
 			Algorithm:      string(cryptolib.AlgorithmRS256),
 			PublicKey:      &rsaKey.PublicKey,
 			Thumbprint:     "rsa-kid",
 			CertificateDER: []byte("rsa-cert-raw"),
 		},
 		{
-			KeyID:          "ec-kid",
+			KeyID:          "ec-key",
+			Kid:            "ec-kid",
 			Algorithm:      string(cryptolib.AlgorithmES256),
 			PublicKey:      &ecdsaKey.PublicKey,
 			Thumbprint:     "ec-kid",
@@ -269,7 +299,8 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_ECDSA_AdditionalCurves() {
 		suite.Run(tt.name, func() {
 			ecdsaKey, _ := ecdsa.GenerateKey(tt.curve, rand.Reader)
 			info := providers.PublicKeyInfo{
-				KeyID:          "kid-" + tt.name,
+				KeyID:          "key-" + tt.name,
+				Kid:            "kid-" + tt.name,
 				Algorithm:      string(tt.alg),
 				PublicKey:      &ecdsaKey.PublicKey,
 				Thumbprint:     "kid-" + tt.name,
@@ -296,7 +327,8 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_RSA_ZeroExponent() {
 	key, _ := rsa.GenerateKey(rand.Reader, 2048)
 	key.PublicKey.E = 0
 	info := providers.PublicKeyInfo{
-		KeyID:          "kid-zero",
+		KeyID:          "key-zero",
+		Kid:            "kid-zero",
 		Algorithm:      string(cryptolib.AlgorithmRS256),
 		PublicKey:      &key.PublicKey,
 		Thumbprint:     "kid-zero",
@@ -317,7 +349,8 @@ func (suite *JWKSServiceTestSuite) TestGetJWKS_RSA_ZeroExponent() {
 func (suite *JWKSServiceTestSuite) TestGetJWKS_NoCertificateDER() {
 	rsaKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	info := providers.PublicKeyInfo{
-		KeyID:      "kid-1",
+		KeyID:      "key-1",
+		Kid:        "kid-1",
 		Algorithm:  string(cryptolib.AlgorithmRS256),
 		PublicKey:  &rsaKey.PublicKey,
 		Thumbprint: "kid-1",

@@ -22,6 +22,9 @@ import (
 // under a different flow is never reused.
 const testOtherFlowID = "other-flow"
 
+// testHandle is the session handle the suite's fixtures are keyed by.
+const testHandle = "handle-abc"
+
 type ServiceTestSuite struct {
 	suite.Suite
 }
@@ -209,10 +212,18 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_AttachesToExisting() {
 	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, c SessionContext) error { savedCtx = c; return nil })
 	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	// Saving a checkpoint into an existing session means the subject just authenticated again, so the
+	// session's authentication time moves forward with it.
+	var touchedAt, touchedIdle time.Time
+	m.store.EXPECT().TouchAuthenticatedAt(mock.Anything, "sess-1", mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, _ string, at, idle time.Time) error {
+			touchedAt, touchedIdle = at, idle
+			return nil
+		})
 
 	in := saveInput()
 	in.Checkpoint = "step_up"
-	in.HandleHint = "handle-abc"
+	in.HandleHint = testHandle
 
 	res, err := svc.SaveCheckpoint(context.Background(), in)
 	suite.Require().NoError(err)
@@ -221,6 +232,50 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_AttachesToExisting() {
 	suite.Equal("handle-abc", res.Handle)
 	suite.Equal("sess-1", savedCtx.SessionID)
 	suite.Equal("step_up", savedCtx.CheckpointID)
+	suite.False(touchedAt.IsZero(), "the re-authentication must refresh the session's auth time")
+	suite.True(touchedIdle.After(touchedAt), "the idle deadline must slide past the new auth time")
+}
+
+// TestSaveCheckpoint_ReauthRefreshFailureStillSaves pins the degradation: a failure to refresh the
+// authentication time must not cost the user their login, since the checkpoint itself is still valid.
+func (suite *ServiceTestSuite) TestSaveCheckpoint_ReauthRefreshFailureStillSaves() {
+	svc, m := suite.newService()
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
+	runTx(m)
+	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().TouchAuthenticatedAt(mock.Anything, "sess-1", mock.Anything, mock.Anything).
+		Return(errors.New("db down"))
+
+	in := saveInput()
+	in.HandleHint = testHandle
+
+	res, err := svc.SaveCheckpoint(context.Background(), in)
+	suite.Require().NoError(err, "a refresh failure must not fail the login")
+	suite.False(res.Skipped, "the checkpoint should still be saved")
+	suite.Equal("handle-abc", res.Handle)
+}
+
+// TestSaveCheckpoint_NewSessionDoesNotTouch verifies the refresh is scoped to re-authentication: a
+// freshly minted session already carries the right authentication time from establishSession.
+func (suite *ServiceTestSuite) TestSaveCheckpoint_NewSessionDoesNotTouch() {
+	svc, m := suite.newService()
+	// Same establish sequence as TestSaveCheckpoint_Establishes: no session exists, so this call
+	// mints one and re-reads its own row.
+	var created *Session
+	m.store.EXPECT().GetByExecutionID(mock.Anything, mock.Anything).RunAndReturn(
+		func(context.Context, string) (*Session, error) { return created, nil })
+	m.store.EXPECT().Create(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, s Session) error { created = &s; return nil })
+	runTx(m)
+	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+
+	res, err := svc.SaveCheckpoint(context.Background(), saveInput())
+	suite.Require().NoError(err)
+	suite.True(res.Created, "no existing session means this call minted one")
+	m.store.AssertNotCalled(suite.T(), "TouchAuthenticatedAt",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (suite *ServiceTestSuite) TestSaveCheckpoint_SubjectMismatchSkips() {
@@ -230,7 +285,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_SubjectMismatchSkips() {
 	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(existing, nil)
 
 	in := saveInput()
-	in.HandleHint = "handle-abc"
+	in.HandleHint = testHandle
 
 	res, err := svc.SaveCheckpoint(context.Background(), in)
 	suite.Require().NoError(err)
@@ -671,4 +726,111 @@ func (suite *ServiceTestSuite) TestTerminate_DeleteError() {
 
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "failed to terminate session")
+}
+
+// newServiceWithRevoker builds a service wired to a criteria revoker, for the paths that revoke token
+// families as part of a session write.
+func (suite *ServiceTestSuite) newServiceWithRevoker() (*service, *serviceMocks, *CriteriaRevokerMock) {
+	m := &serviceMocks{
+		store: newSessionStoreMock(suite.T()),
+		tx:    transactionmock.NewTransactionerMock(suite.T()),
+	}
+	revoker := NewCriteriaRevokerMock(suite.T())
+	svc := &service{
+		store:           m.store,
+		resolver:        newResolver(m.store),
+		transactioner:   m.tx,
+		criteriaRevoker: revoker,
+		timeouts:        DefaultTimeouts(),
+		logger:          log.GetLogger(),
+	}
+	return svc, m, revoker
+}
+
+func (suite *ServiceTestSuite) TestDetachApplication_DetachesWithoutEndingSharedSessions() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+
+	m.store.EXPECT().ListByAppID(mock.Anything, "app-doomed").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-doomed", TokenFamilyID: "tfid-a"},
+	}, nil)
+	runTx(m)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(nil)
+	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-doomed").Return(nil)
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-survivor", TokenFamilyID: "tfid-b"},
+	}, nil)
+
+	err := svc.DetachApplication(context.Background(), "app-doomed")
+
+	suite.Require().NoError(err)
+	m.store.AssertNotCalled(suite.T(), "DeleteSession", mock.Anything, mock.Anything)
+	revoker.AssertNotCalled(suite.T(), "RevokeTokenFamily", mock.Anything, "tfid-b")
+}
+
+func (suite *ServiceTestSuite) TestDetachApplication_DeletesSessionWhenLastParticipantGoes() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+
+	m.store.EXPECT().ListByAppID(mock.Anything, "app-only").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-only", TokenFamilyID: "tfid-a"},
+	}, nil)
+	runTx(m)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(nil)
+	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-only").Return(nil)
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return(nil, nil)
+	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(nil)
+	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
+
+	err := svc.DetachApplication(context.Background(), "app-only")
+
+	suite.Require().NoError(err)
+}
+
+func (suite *ServiceTestSuite) TestDetachApplication_DetachesParticipationWithNoTokenFamily() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+
+	m.store.EXPECT().ListByAppID(mock.Anything, "app-embedded").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-embedded"},
+	}, nil)
+	runTx(m)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "").Return(nil)
+	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-embedded").Return(nil)
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-other"},
+	}, nil)
+
+	err := svc.DetachApplication(context.Background(), "app-embedded")
+
+	suite.Require().NoError(err)
+}
+
+func (suite *ServiceTestSuite) TestDetachApplication_RevocationFailureAbortsTheDetachment() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+
+	m.store.EXPECT().ListByAppID(mock.Anything, "app-doomed").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-doomed", TokenFamilyID: "tfid-a"},
+	}, nil)
+	runTx(m)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(errors.New("deny list unavailable"))
+
+	err := svc.DetachApplication(context.Background(), "app-doomed")
+
+	suite.Require().Error(err)
+	m.store.AssertNotCalled(suite.T(), "DeleteParticipant", mock.Anything, mock.Anything, mock.Anything)
+	m.store.AssertNotCalled(suite.T(), "DeleteSession", mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestDetachApplication_NoParticipationIsANoOp() {
+	svc, m, _ := suite.newServiceWithRevoker()
+
+	m.store.EXPECT().ListByAppID(mock.Anything, "app-unused").Return(nil, nil)
+
+	suite.Require().NoError(svc.DetachApplication(context.Background(), "app-unused"))
+	m.tx.AssertNotCalled(suite.T(), "Transact", mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestDetachApplication_EmptyAppIDIsANoOp() {
+	svc, m, _ := suite.newServiceWithRevoker()
+
+	suite.Require().NoError(svc.DetachApplication(context.Background(), ""))
+	m.store.AssertNotCalled(suite.T(), "ListByAppID", mock.Anything, mock.Anything)
 }

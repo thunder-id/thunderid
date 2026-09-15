@@ -31,7 +31,7 @@ import useCreateVerifiablePresentation from '../api/useCreateVerifiablePresentat
 import ConfigureName from '../components/create-verifiable-presentation/ConfigureName';
 import ClaimsEditor from '../components/PresentationClaimsEditor';
 import useVerifiableCredentialRoutes from '../hooks/useVerifiableCredentialRoutes';
-import {claimRowsToRequest, emptyClaimRow, type ClaimRow} from '../models/presentation-claims';
+import {claimRowsToRequest, emptyClaimRow, findDuplicateClaimNames, type ClaimRow} from '../models/presentation-claims';
 
 type Step = 'ORGANIZATION_UNIT' | 'NAME' | 'DETAILS' | 'CLAIMS';
 
@@ -79,11 +79,13 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
     CLAIMS: t('create.steps.claims', 'Claims'),
   };
 
+  const duplicateClaimNames = findDuplicateClaimNames(claims);
+
   const stepReady: Record<Step, boolean> = {
     ORGANIZATION_UNIT: effectiveOuId !== '',
     NAME: name.trim() !== '' && handle.trim() !== '',
     DETAILS: vct.trim() !== '' && effectiveOuId !== '',
-    CLAIMS: claims.some((c) => c.name.trim() !== ''),
+    CLAIMS: claims.some((c) => c.name.trim() !== '') && Object.keys(duplicateClaimNames).length === 0,
   };
 
   const stepIndex = stepOrder.indexOf(effectiveStep);
@@ -216,6 +218,7 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
           {t('create.claims.help')}
         </Typography>
         <ClaimsEditor
+          duplicateNames={duplicateClaimNames}
           claims={claims}
           onChange={(rows: ClaimRow[]): void => {
             clearCreateError();

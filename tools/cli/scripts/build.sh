@@ -13,6 +13,10 @@ set -euo pipefail
 PRODUCT_NAME="ThunderID"
 PRODUCT_NAME_LOWERCASE="$(echo "$PRODUCT_NAME" | tr '[:upper:]' '[:lower:]')"
 
+# Version reported by `--version`. Supplied by the npx build wrapper from
+# package.json; falls back to the unreleased placeholder for direct local builds.
+VERSION="${VERSION:-0.0.0-semantically-released}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLI_DIR="$SCRIPT_DIR/.."
 DIST_DIR="$CLI_DIR/dist"
@@ -36,7 +40,8 @@ for entry in "${TARGETS[@]}"; do
   OUT_NAME=$(echo "$entry" | awk '{print $3}')
   OUT="$DIST_DIR/$OUT_NAME"
   echo "Building $GOOS/$GOARCH → $OUT_NAME"
-  GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 go build -ldflags="-s -w" -o "$OUT" ./cmd/"${PRODUCT_NAME_LOWERCASE}"/
+  GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 go build \
+    -ldflags="-s -w -X main.version=$VERSION" -o "$OUT" ./cmd/"${PRODUCT_NAME_LOWERCASE}"/
 done
 
 echo "Done. Binaries written to cli/dist/"

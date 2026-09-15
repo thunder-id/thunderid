@@ -26,11 +26,13 @@ type OAuthParameters struct {
 	Resources           []string
 	ClaimsRequest       *ClaimsRequest
 	ClaimsLocales       string
+	UILocales           string
 	Nonce               string
 	AcrValues           string
 	MaxAge              string
 	DPoPJkt             string
 	Prompt              string
+	IDTokenHint         string
 }
 
 // VerifiedClaimsMember is the OIDC Identity Assurance member name that may appear in the

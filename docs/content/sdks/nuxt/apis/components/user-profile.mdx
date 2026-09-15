@@ -1,12 +1,12 @@
 ---
-title: <ThunderIDUserProfile />
+title: <UserProfile />
 docType: reference
 description: Complete user profile management interface for viewing and editing account details in Nuxt apps.
 ---
 
-# `<ThunderIDUserProfile />`
+# `<UserProfile />`
 
-The `ThunderIDUserProfile` component renders a full profile management interface. Users can view and edit their personal information, change their password, and manage linked accounts. It is auto-registered by the Nuxt module.
+The `UserProfile` component renders a full profile management interface. Users can view and edit their personal information, change their password, and manage linked accounts. It is auto-registered by the Nuxt module.
 
 ## Usage
 
@@ -14,7 +14,7 @@ The `ThunderIDUserProfile` component renders a full profile management interface
 
 ```vue title="pages/profile.vue" showLineNumbers
 <template>
-  <ThunderIDUserProfile />
+  <UserProfile />
 </template>
 ```
 
@@ -27,7 +27,7 @@ definePageMeta({ middleware: 'auth' })
 
 <template>
   <div class="max-w-2xl mx-auto py-8">
-    <ThunderIDUserProfile />
+    <UserProfile />
   </div>
 </template>
 ```

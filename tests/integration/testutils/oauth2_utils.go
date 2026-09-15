@@ -1025,6 +1025,40 @@ func SubmitPARRequestWithoutAuth(params map[string]string) (*PARHTTPResult, erro
 	return result, nil
 }
 
+// InitiateAuthorizationFlowWithExtraParams starts the OAuth2 authorization flow with the standard
+// parameters plus the supplied extra query parameters. It is used to exercise parameters the
+// server rejects, such as a client-supplied request object.
+func InitiateAuthorizationFlowWithExtraParams(
+	clientID, redirectURI, responseType, scope, state string, extra map[string]string,
+) (*http.Response, error) {
+	authURL := TestServerURL + "/oauth2/authorize"
+	params := url.Values{}
+	params.Set("client_id", clientID)
+	params.Set("redirect_uri", redirectURI)
+	params.Set("response_type", responseType)
+	params.Set("scope", scope)
+	params.Set("state", state)
+	for key, value := range extra {
+		params.Set(key, value)
+	}
+
+	req, err := http.NewRequest("GET", authURL+"?"+params.Encode(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create authorization request: %w", err)
+	}
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	return client.Do(req)
+}
+
 // InitiateAuthorizationFlowWithRequestURI starts the OAuth2 authorization flow using a PAR request_uri.
 func InitiateAuthorizationFlowWithRequestURI(clientID, requestURI string) (*http.Response, error) {
 	authURL := TestServerURL + "/oauth2/authorize"

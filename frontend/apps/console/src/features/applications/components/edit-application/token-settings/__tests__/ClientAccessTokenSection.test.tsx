@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
-import type {InboundAuthConfig} from '@thunderid/configure-applications';
+import type {InboundAuthConfig, OAuth2Config} from '@thunderid/configure-applications';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ClientAccessTokenSection, {type ClientAccessTokenCopy} from '../ClientAccessTokenSection';
@@ -44,6 +44,7 @@ describe('ClientAccessTokenSection', () => {
         onFieldChange={onFieldChange}
         availableAttributes={['groups', 'roles']}
         copy={copy}
+        subjectType="application"
       />,
     );
 
@@ -60,6 +61,7 @@ describe('ClientAccessTokenSection', () => {
         onFieldChange={onFieldChange}
         availableAttributes={['groups', 'roles']}
         copy={copy}
+        subjectType="application"
       />,
     );
 
@@ -91,6 +93,7 @@ describe('ClientAccessTokenSection', () => {
         onFieldChange={onFieldChange}
         availableAttributes={['groups']}
         copy={copy}
+        subjectType="application"
         inputId="client-access-token-validity"
       />,
     );
@@ -127,6 +130,7 @@ describe('ClientAccessTokenSection', () => {
         onFieldChange={onFieldChange}
         availableAttributes={['groups']}
         copy={copy}
+        subjectType="application"
         inputId="client-access-token-validity"
         onValidationChange={onValidationChange}
       />,
@@ -148,12 +152,132 @@ describe('ClientAccessTokenSection', () => {
         onFieldChange={onFieldChange}
         availableAttributes={['groups']}
         copy={copy}
+        subjectType="application"
         subjectValue="my-agent-123"
       />,
     );
 
     const preview = JSON.parse(screen.getByTestId('jwt-preview').textContent ?? '{}') as {sub?: string};
     expect(preview.sub).toBe('my-agent-123');
+  });
+
+  // A selected sub_type shows its literal value, not a <placeholder>: the server fixes it.
+  it.each([
+    ['application', 'application'],
+    ['agent', 'agent'],
+  ] as const)('shows sub_type=%s in the preview for a %s client', (subjectType, expected) => {
+    render(
+      <ClientAccessTokenSection
+        oauth2Config={
+          {
+            grantTypes: ['client_credentials'],
+            responseTypes: [],
+            token: {accessToken: {clientConfig: {attributes: ['sub_type']}}},
+          } as unknown as OAuth2Config
+        }
+        inboundAuthConfig={inboundAuthConfig}
+        onFieldChange={onFieldChange}
+        availableAttributes={['groups', 'sub_type']}
+        copy={copy}
+        subjectType={subjectType}
+      />,
+    );
+
+    const preview = JSON.parse(screen.getByTestId('jwt-preview').textContent ?? '{}') as {sub_type?: string};
+    expect(preview.sub_type).toBe(expected);
+  });
+
+  // Creation seeds sub_type, so its chip starts filled and clicking it removes the claim.
+  it('removes sub_type from the selection when its chip is clicked', async () => {
+    const user = userEvent.setup();
+    render(
+      <ClientAccessTokenSection
+        oauth2Config={
+          {
+            grantTypes: ['client_credentials'],
+            responseTypes: [],
+            token: {accessToken: {clientConfig: {attributes: ['sub_type']}}},
+          } as unknown as OAuth2Config
+        }
+        inboundAuthConfig={inboundAuthConfig}
+        onFieldChange={onFieldChange}
+        availableAttributes={['groups', 'sub_type']}
+        copy={copy}
+        subjectType="agent"
+      />,
+    );
+
+    await user.click(screen.getByText('sub_type'));
+
+    expect(onFieldChange).toHaveBeenCalledWith(
+      'inboundAuthConfig',
+      expect.arrayContaining([
+        expect.objectContaining({
+          config: expect.objectContaining({
+            token: expect.objectContaining({
+              accessToken: expect.objectContaining({
+                clientConfig: expect.objectContaining({attributes: []}) as Record<string, unknown>,
+              }) as Record<string, unknown>,
+            }) as Record<string, unknown>,
+          }) as Record<string, unknown>,
+        }),
+      ]),
+    );
+  });
+
+  it('adds sub_type back to the selection when its chip is clicked while unselected', async () => {
+    const user = userEvent.setup();
+    render(
+      <ClientAccessTokenSection
+        oauth2Config={{grantTypes: ['client_credentials'], responseTypes: []}}
+        inboundAuthConfig={inboundAuthConfig}
+        onFieldChange={onFieldChange}
+        availableAttributes={['groups', 'sub_type']}
+        copy={copy}
+        subjectType="agent"
+      />,
+    );
+
+    await user.click(screen.getByText('sub_type'));
+
+    expect(onFieldChange).toHaveBeenCalledWith(
+      'inboundAuthConfig',
+      expect.arrayContaining([
+        expect.objectContaining({
+          config: expect.objectContaining({
+            token: expect.objectContaining({
+              accessToken: expect.objectContaining({
+                clientConfig: expect.objectContaining({attributes: ['sub_type']}) as Record<string, unknown>,
+              }) as Record<string, unknown>,
+            }) as Record<string, unknown>,
+          }) as Record<string, unknown>,
+        }),
+      ]),
+    );
+  });
+
+  // A client without the claim selected must not see it in the preview.
+  it('omits sub_type from the preview when it is not selected', () => {
+    render(
+      <ClientAccessTokenSection
+        oauth2Config={
+          {
+            grantTypes: ['client_credentials'],
+            responseTypes: [],
+            token: {accessToken: {clientConfig: {attributes: ['groups']}}},
+          } as unknown as OAuth2Config
+        }
+        inboundAuthConfig={inboundAuthConfig}
+        onFieldChange={onFieldChange}
+        availableAttributes={['groups', 'sub_type']}
+        copy={copy}
+        subjectType="agent"
+      />,
+    );
+
+    const preview = JSON.parse(screen.getByTestId('jwt-preview').textContent ?? '{}') as Record<string, unknown>;
+    expect(preview).not.toHaveProperty('sub_type');
+    expect(preview.groups).toBe('<groups>');
   });
 
   it('falls back to the <sub> placeholder when no subjectValue is supplied', () => {
@@ -164,6 +288,7 @@ describe('ClientAccessTokenSection', () => {
         onFieldChange={onFieldChange}
         availableAttributes={['groups']}
         copy={copy}
+        subjectType="application"
       />,
     );
 
@@ -179,6 +304,7 @@ describe('ClientAccessTokenSection', () => {
         onFieldChange={onFieldChange}
         availableAttributes={['groups']}
         copy={copy}
+        subjectType="application"
         inputId="client-access-token-validity"
         disabled
       />,

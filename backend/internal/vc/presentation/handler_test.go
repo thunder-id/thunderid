@@ -63,11 +63,21 @@ func (s *DefinitionHandlerTestSuite) TestHandleCreateInvalidBody() {
 	s.Contains(rec.Body.String(), ErrorDefinitionInvalidRequest.Code)
 }
 
+func (s *DefinitionHandlerTestSuite) TestHandleCreateRequiresOUID() {
+	req := httptest.NewRequest(http.MethodPost, definitionsPath,
+		strings.NewReader(`{"handle":"eudi-pid","vct":"urn:eudi:pid:1","ouHandle":"default"}`))
+	rec := httptest.NewRecorder()
+	s.handler.HandleCreate(rec, req)
+
+	s.Equal(http.StatusBadRequest, rec.Code)
+}
+
 func (s *DefinitionHandlerTestSuite) TestHandleCreateServiceError() {
 	s.service.EXPECT().CreatePresentationDefinition(mock.Anything, mock.Anything).
 		Return(nil, &ErrorDefinitionAlreadyExists)
 
-	req := httptest.NewRequest(http.MethodPost, definitionsPath, strings.NewReader(`{"handle":"h","vct":"v"}`))
+	req := httptest.NewRequest(http.MethodPost, definitionsPath,
+		strings.NewReader(`{"handle":"h","vct":"v","ouId":"ou-1"}`))
 	rec := httptest.NewRecorder()
 	s.handler.HandleCreate(rec, req)
 
@@ -141,7 +151,7 @@ func (s *DefinitionHandlerTestSuite) TestHandleUpdateSuccess() {
 		})
 
 	req := httptest.NewRequest(http.MethodPut, definitionsPath+"/def-1",
-		strings.NewReader(`{"handle":"h","vct":"v"}`))
+		strings.NewReader(`{"handle":"h","vct":"v","ouId":"ou-1"}`))
 	req.SetPathValue("id", "def-1")
 	rec := httptest.NewRecorder()
 	s.handler.HandleUpdate(rec, req)
@@ -173,7 +183,7 @@ func (s *DefinitionHandlerTestSuite) TestHandleUpdateServiceError() {
 		Return(nil, &ErrorDefinitionImmutable)
 
 	req := httptest.NewRequest(http.MethodPut, definitionsPath+"/def-1",
-		strings.NewReader(`{"handle":"h","vct":"v"}`))
+		strings.NewReader(`{"handle":"h","vct":"v","ouId":"ou-1"}`))
 	req.SetPathValue("id", "def-1")
 	rec := httptest.NewRecorder()
 	s.handler.HandleUpdate(rec, req)

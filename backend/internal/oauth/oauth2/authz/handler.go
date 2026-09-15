@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/thunder-id/thunderid/internal/flow/session"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
@@ -20,13 +21,15 @@ import (
 // AuthorizeHandlerInterface defines the interface for handling OAuth2 authorization requests.
 type AuthorizeHandlerInterface interface {
 	HandleAuthorizeGetRequest(w http.ResponseWriter, r *http.Request)
-	HandleAuthCallbackPostRequest(w http.ResponseWriter, r *http.Request)
 }
 
 // authorizeHandler implements the AuthorizeHandlerInterface for handling OAuth2 authorization requests.
 type authorizeHandler struct {
 	cfg          oauthconfig.Config
 	authZService AuthorizeServiceInterface
+	// ssoTransport reads the inbound SSO handle cookies; the authorize endpoint only reads them,
+	// the flow endpoint remains the sole writer.
+	ssoTransport session.HandleTransport
 	logger       *log.Logger
 }
 
@@ -35,17 +38,23 @@ func newAuthorizeHandler(authZService AuthorizeServiceInterface, cfg oauthconfig
 	return &authorizeHandler{
 		cfg:          cfg,
 		authZService: authZService,
+		ssoTransport: session.NewCookieTransport(true),
 		logger:       log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthorizeHandler")),
 	}
 }
 
 // HandleAuthorizeGetRequest handles the GET request for OAuth2 authorization.
 func (ah *authorizeHandler) HandleAuthorizeGetRequest(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	// Validate the request before touching it: getOAuthMessage handles a nil request or response
+	// writer, and both the context and the cookie read below dereference it.
 	oAuthMessage := ah.getOAuthMessage(r, w)
 	if oAuthMessage == nil {
 		return
 	}
+
+	// Carry the inbound SSO handle cookies so prompt=none can be answered from an existing
+	// session. The per-flow cookie is selected later, once the client's flow is known.
+	ctx := session.WithInbound(r.Context(), ah.ssoTransport.Read(r))
 
 	result, authErr := ah.authZService.HandleInitialAuthorizationRequest(ctx, oAuthMessage)
 	if authErr != nil {
@@ -74,41 +83,6 @@ func (ah *authorizeHandler) HandleAuthorizeGetRequest(w http.ResponseWriter, r *
 	ah.redirectToLoginPage(w, r, result.QueryParams)
 }
 
-// HandleAuthCallbackPostRequest handles the POST request for OAuth2 auth callback.
-// This endpoint receives the assertion from the flow engine after successful authentication.
-func (ah *authorizeHandler) HandleAuthCallbackPostRequest(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	oAuthMessage := ah.getOAuthMessage(r, w)
-	if oAuthMessage == nil {
-		return
-	}
-
-	switch oAuthMessage.RequestType {
-	case oauth2const.TypeAuthorizationResponseFromEngine:
-		authID := oAuthMessage.AuthID
-		assertion := oAuthMessage.RequestBodyParams[oauth2const.RequestParamAssertion]
-
-		redirectURI, authErr := ah.authZService.HandleAuthorizationCallback(ctx, authID, assertion)
-		if authErr != nil {
-			if authErr.SendErrorToClient {
-				ah.writeAuthZResponseToClientRedirect(ctx, w, authErr)
-				return
-			}
-			ah.writeAuthZResponseToErrorPage(ctx, w, authErr.Code, authErr.Message, authErr.State)
-			return
-		}
-		ah.writeAuthZResponse(ctx, w, redirectURI)
-
-	case oauth2const.TypeConsentResponseFromUser:
-		// TODO: Handle the consent response from the user.
-		//  Verify whether we need separate session data key for consent flow.
-		//  Alternatively could add consent info also to the same session object.
-	default:
-		sysutils.WriteJSONError(ctx, w, oauth2const.ErrorInvalidRequest, "Invalid authorization request",
-			http.StatusBadRequest, nil)
-	}
-}
-
 // getOAuthMessage extracts the OAuth message from the request and response writer.
 func (ah *authorizeHandler) getOAuthMessage(r *http.Request, w http.ResponseWriter) *OAuthMessage {
 	logger := ah.logger
@@ -125,8 +99,6 @@ func (ah *authorizeHandler) getOAuthMessage(r *http.Request, w http.ResponseWrit
 	switch r.Method {
 	case http.MethodGet:
 		msg, err = ah.getOAuthMessageForGetRequest(r)
-	case http.MethodPost:
-		msg, err = ah.getOAuthMessageForPostRequest(r)
 	default:
 		err = errors.New("unsupported request method: " + r.Method)
 	}
@@ -165,29 +137,6 @@ func (ah *authorizeHandler) getOAuthMessageForGetRequest(r *http.Request) (*OAut
 		Resources:          resources,
 		RequestHeaders:     sysutils.SanitizeRawMultiValueStringMap(r.Header),
 		RequestQueryParams: sysutils.SanitizeRawMultiValueStringMap(queryParams),
-	}, nil
-}
-
-// getOAuthMessageForPostRequest extracts the OAuth message from an authorization POST request.
-func (ah *authorizeHandler) getOAuthMessageForPostRequest(r *http.Request) (*OAuthMessage, error) {
-	authZReq, err := sysutils.DecodeJSONBody[AuthZPostRequest](r)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode JSON body: %w", err)
-	}
-
-	if authZReq.AuthID == "" || authZReq.Assertion == "" {
-		return nil, errors.New("authId or assertion is missing")
-	}
-
-	// TODO: Require to handle other types such as user consent, etc.
-	bodyParams := map[string]string{
-		oauth2const.RequestParamAssertion: authZReq.Assertion,
-	}
-
-	return &OAuthMessage{
-		RequestType:       oauth2const.TypeAuthorizationResponseFromEngine,
-		AuthID:            authZReq.AuthID,
-		RequestBodyParams: bodyParams,
 	}, nil
 }
 
@@ -263,64 +212,4 @@ func (ah *authorizeHandler) redirectToErrorPage(w http.ResponseWriter, r *http.R
 	logger.Debug(ctx, "Redirecting to error page")
 
 	http.Redirect(w, r, redirectURL, http.StatusFound)
-}
-
-// writeAuthZResponse writes the authorization response to the HTTP response writer.
-func (ah *authorizeHandler) writeAuthZResponse(ctx context.Context, w http.ResponseWriter, redirectURI string) {
-	authZResp := AuthZPostResponse{
-		RedirectURI: redirectURI,
-	}
-	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, authZResp)
-}
-
-// writeAuthZResponseToErrorPage writes the authorization response redirecting to the error page.
-// The state parameter is included in the redirect if non-empty.
-func (
-	ah *authorizeHandler) writeAuthZResponseToErrorPage(ctx context.Context,
-	w http.ResponseWriter,
-	code,
-	msg,
-	state string) {
-	redirectURI, err := getErrorPageRedirectURL(ah.cfg, code, msg)
-	if err != nil {
-		http.Error(w, "Failed to redirect to error page", http.StatusInternalServerError)
-		return
-	}
-
-	if state != "" {
-		queryParams := map[string]string{
-			oauth2const.RequestParamState: state,
-		}
-		redirectURI, err = oauth2utils.GetURIWithQueryParams(redirectURI, queryParams)
-		if err != nil {
-			http.Error(w, "Failed to redirect to error page", http.StatusInternalServerError)
-			return
-		}
-	}
-
-	ah.writeAuthZResponse(ctx, w, redirectURI)
-}
-
-// writeAuthZResponseToClientRedirect writes the authorization error response redirecting to the
-// client's registered redirect URI.
-func (ah *authorizeHandler) writeAuthZResponseToClientRedirect(
-	ctx context.Context, w http.ResponseWriter, authErr *AuthorizationError) {
-	queryParams := map[string]string{
-		oauth2const.RequestParamError:            authErr.Code,
-		oauth2const.RequestParamErrorDescription: authErr.Message,
-		oauth2const.RequestParamIss:              ah.cfg.JWT.Issuer,
-	}
-	if authErr.State != "" {
-		queryParams[oauth2const.RequestParamState] = authErr.State
-	}
-
-	redirectURI, err := oauth2utils.GetURIWithQueryParams(authErr.ClientRedirectURI, queryParams)
-	if err != nil {
-		ah.logger.Error(ctx, "Failed to construct client redirect URI", log.Error(err))
-		ah.writeAuthZResponseToErrorPage(ctx, w, oauth2const.ErrorServerError,
-			"Failed to process authorization request", authErr.State)
-		return
-	}
-
-	ah.writeAuthZResponse(ctx, w, redirectURI)
 }

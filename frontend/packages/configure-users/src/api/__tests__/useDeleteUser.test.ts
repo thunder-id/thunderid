@@ -289,7 +289,15 @@ describe('useDeleteUser', () => {
   // The flow reports a refusal in its own envelope rather than as a rejected request, so the hook has
   // to treat a non-COMPLETE terminal status as a failure.
   it('should fail when the flow reports an error status', async () => {
-    mockFlowDeletion({'/flow/execute': {failureReason: 'user has dependencies', flowStatus: 'ERROR'}});
+    mockFlowDeletion({
+      '/flow/execute': {
+        error: {
+          code: 'FET-1084',
+          message: {defaultValue: 'user has dependencies', key: 'flows.executor.errors.user_deletion_not_allowed'},
+        },
+        flowStatus: 'ERROR',
+      },
+    });
 
     const {result} = renderHook(() => useDeleteUser());
 

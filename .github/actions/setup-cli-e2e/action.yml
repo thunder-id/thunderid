@@ -1,0 +1,22 @@
+name: Setup CLI E2E Suite
+description: >-
+  Installs the tests/e2e-cli pnpm workspace and Chromium, the two setup steps every
+  job that runs the CLI e2e suite needs. Assumes Node.js and pnpm are already set up.
+
+runs:
+  using: composite
+  steps:
+    # tests/e2e-cli is its own pnpm workspace root, deliberately outside the repository's, so
+    # its node-pty dependency cannot force a native build on every other job. See the comment
+    # in tests/e2e-cli/pnpm-workspace.yaml.
+    - name: 📦 Install E2E Dependencies
+      shell: bash
+      working-directory: tests/e2e-cli
+      run: pnpm install --frozen-lockfile
+
+    # Only chromium, and only because the sample spec signs in through a browser. Every other
+    # project in this suite drives a terminal and needs no engine at all.
+    - name: 🌐 Install Chromium
+      shell: bash
+      working-directory: tests/e2e-cli
+      run: pnpm exec playwright install --with-deps chromium

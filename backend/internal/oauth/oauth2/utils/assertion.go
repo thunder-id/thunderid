@@ -4,12 +4,14 @@
 package utils
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
 
 	flowcm "github.com/thunder-id/thunderid/internal/flow/common"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -69,6 +71,16 @@ func DecodeFlowAssertionClaims(assertion string) (FlowAssertionClaims, map[strin
 		claims.AuthTime = time.Unix(iat, 0)
 	}
 
+	// auth_time, when the flow supplies it, is when the subject authenticated, which on the SSO
+	// path predates this assertion. It therefore wins over the iat fallback above.
+	if authTimeValue, ok := jwtPayload[oauth2const.ClaimAuthTime]; ok {
+		authTime, ok := sysutils.ToInt64(authTimeValue)
+		if !ok {
+			return claims, nil, errors.New("JWT 'auth_time' claim has unexpected type")
+		}
+		claims.AuthTime = time.Unix(authTime, 0)
+	}
+
 	if subValue, ok := jwtPayload[oauth2const.ClaimSub]; ok {
 		strValue, ok := subValue.(string)
 		if !ok {
@@ -94,4 +106,47 @@ func DecodeFlowAssertionClaims(assertion string) (FlowAssertionClaims, map[strin
 	}
 
 	return claims, jwtPayload, nil
+}
+
+// NamespaceAuthAssertion identifies a completed flow's authentication assertion in the shared JTI
+// replay store. Both redemption paths — the token endpoint and the authorization callback — record
+// under this one namespace, and that is what makes an assertion redeemable exactly once across both.
+const NamespaceAuthAssertion = "auth_assertion"
+
+var (
+	// ErrAssertionReplayed indicates the assertion has already been redeemed, by either path.
+	ErrAssertionReplayed = errors.New("assertion has already been used")
+
+	// ErrAssertionMissingJTI indicates the assertion carries no jti, so it cannot be tracked for
+	// replay and is not redeemable.
+	ErrAssertionMissingJTI = errors.New("assertion is missing the jti claim")
+)
+
+// ConsumeAuthAssertion records an authentication assertion's jti, making it redeemable exactly once
+// across every redemption path. It returns ErrAssertionReplayed when the assertion has already been
+// redeemed — by this caller's path or by any other, since they share NamespaceAuthAssertion.
+//
+// The record outlives the assertion by leeway seconds, matching the window in which the assertion is
+// still accepted. A store failure rejects the assertion rather than admitting it: an unavailable
+// replay store must not degrade into unlimited replay.
+//
+// Redemption paths call this rather than recording the jti themselves, so they cannot drift apart on
+// the namespace, the expiry rule or the fail-closed behavior — their agreement is the whole guarantee.
+func ConsumeAuthAssertion(
+	ctx context.Context, store jti.JTIStoreInterface, assertionJTI string, exp time.Time, leeway int64,
+) error {
+	if assertionJTI == "" {
+		return ErrAssertionMissingJTI
+	}
+
+	expiry := exp.Add(time.Duration(leeway) * time.Second)
+
+	inserted, err := store.RecordJTI(ctx, NamespaceAuthAssertion, assertionJTI, expiry)
+	if err != nil {
+		return fmt.Errorf("failed to record assertion jti: %w", err)
+	}
+	if !inserted {
+		return ErrAssertionReplayed
+	}
+	return nil
 }

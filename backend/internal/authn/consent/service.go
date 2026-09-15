@@ -355,16 +355,21 @@ func (s *consentEnforcerService) verifyAndDecodeConsentSession(
 	return &sessionData, nil
 }
 
-// fillMissingDecisions adds denied decision entries for any prompted purposes that are absent
-// from the user's decisions. This treats missing purposes as non-consented rather than rejecting the request.
+// fillMissingDecisions treats an incomplete submission as non-consented rather than rejecting the
+// request. A purpose entirely absent from the user's decisions is added as denied with every prompted
+// element denied. A purpose that is present but denied at the root or at its own level has any
+// omitted prompted elements added as denied too, so a minimal deny payload (e.g. root approved=false
+// with no elements listed) still persists the individual denials and lets the essential-denial check
+// see them.
 func fillMissingDecisions(session *consentSessionData, decisions *providers.ConsentDecisions) {
-	decisionMap := make(map[string]bool, len(decisions.Purposes))
-	for _, pd := range decisions.Purposes {
-		decisionMap[pd.PurposeName] = true
+	decisionIdx := make(map[string]int, len(decisions.Purposes))
+	for i, pd := range decisions.Purposes {
+		decisionIdx[pd.PurposeName] = i
 	}
 
 	for _, sp := range session.Purposes {
-		if !decisionMap[sp.PurposeName] {
+		idx, present := decisionIdx[sp.PurposeName]
+		if !present {
 			// Build element decisions marking all elements as denied
 			elements := make([]providers.ElementDecision, 0, len(sp.Essential)+len(sp.Optional))
 			for _, elem := range sp.Essential {
@@ -378,6 +383,33 @@ func fillMissingDecisions(session *consentSessionData, decisions *providers.Cons
 				Approved:    false,
 				Elements:    elements,
 			})
+			continue
+		}
+
+		// Purpose present and approved at both levels: leave the client's element list untouched.
+		// Approval is not propagated down (see applyDecisionHierarchy), so an omitted element under
+		// an approved parent stays omitted and is treated as not-consented on subsequent reads.
+		if decisions.Approved && decisions.Purposes[idx].Approved {
+			continue
+		}
+
+		// Purpose present but denied at the root or at its own level: fill in any prompted elements
+		// the client omitted so the deny is recorded explicitly against each element.
+		existing := make(map[string]bool, len(decisions.Purposes[idx].Elements))
+		for _, ed := range decisions.Purposes[idx].Elements {
+			existing[ed.Name] = true
+		}
+		for _, elem := range sp.Essential {
+			if !existing[elem] {
+				decisions.Purposes[idx].Elements = append(decisions.Purposes[idx].Elements,
+					providers.ElementDecision{Name: elem, Approved: false})
+			}
+		}
+		for _, elem := range sp.Optional {
+			if !existing[elem] {
+				decisions.Purposes[idx].Elements = append(decisions.Purposes[idx].Elements,
+					providers.ElementDecision{Name: elem, Approved: false})
+			}
 		}
 	}
 }

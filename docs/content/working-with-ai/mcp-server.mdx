@@ -20,7 +20,7 @@ The MCP server is available through the `/mcp` endpoint of your <ProductName /> 
 
 ### Authentication
 
-The endpoint follows the [MCP Authorization Specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization). The MCP server publishes protected resource metadata at `/.well-known/oauth-protected-resource`, advertising <ProductName /> as the OAuth authorization server. Spec-compliant MCP clients discover this automatically and run an OAuth authorization code + PKCE flow: you sign in through the browser, and the client obtains and refreshes tokens on its own. There is no manual token handling.
+The endpoint follows the [MCP Authorization Specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization). The MCP server publishes protected resource metadata at `/.well-known/oauth-protected-resource`, advertising <ProductName /> as the OAuth authorization server. If a [trusted issuer](../../guides/trusted-issuer) is configured, the metadata advertises that issuer instead. Spec-compliant MCP clients discover this automatically and run an OAuth authorization code + PKCE flow: you sign in through the browser, and the client obtains and refreshes tokens on its own. There is no manual token handling.
 
 Access requires the `system` scope, and permissions come from the signed-in user, so sign in with an administrator account.
 

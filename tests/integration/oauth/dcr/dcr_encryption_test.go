@@ -310,6 +310,28 @@ func (ts *DCREncryptionTestSuite) baseRequest(clientName string) DCRRegistration
 	}
 }
 
+// supportedSigningAlgs reads the algorithms this deployment advertises for ID token signing, so
+// the tests assert against the running server's keys rather than a hardcoded list.
+func (ts *DCREncryptionTestSuite) supportedSigningAlgs() []string {
+	req, err := http.NewRequest(http.MethodGet, testServerURL+"/.well-known/openid-configuration", nil)
+	ts.Require().NoError(err, "Failed to build discovery request")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to fetch discovery document")
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err, "Failed to read discovery document")
+
+	var metadata struct {
+		IDTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported"`
+	}
+	ts.Require().NoError(json.Unmarshal(body, &metadata), "Failed to decode discovery document")
+	ts.Require().NotEmpty(metadata.IDTokenSigningAlgValuesSupported,
+		"Server must advertise at least one ID token signing algorithm")
+	return metadata.IDTokenSigningAlgValuesSupported
+}
+
 // buildRSAJWKS generates an RSA key pair and returns a JWK set holding the public key, together
 // with the private key so that tests can decrypt JWE responses issued to it.
 func buildRSAJWKS() (map[string]interface{}, *rsa.PrivateKey, error) {
@@ -405,11 +427,101 @@ func (ts *DCREncryptionTestSuite) TestDCRIDTokenEncryptedResponseWithJWKS() {
 	ts.Empty(response.UserInfoEncryptedResponseEnc)
 }
 
+// TestDCRIDTokenSignedResponseAlgOnly verifies that id_token_signed_response_alg alone is accepted
+// and echoed back, with no encryption metadata added to the response.
+func (ts *DCREncryptionTestSuite) TestDCRIDTokenSignedResponseAlgOnly() {
+	request := ts.baseRequest("DCR ID Token Signed Only")
+	request.IDTokenSignedResponseAlg = "RS256"
+
+	response := ts.registerSuccessfully(request)
+
+	ts.Equal("RS256", response.IDTokenSignedResponseAlg)
+	ts.Empty(response.IDTokenEncryptedResponseAlg)
+	ts.Empty(response.IDTokenEncryptedResponseEnc)
+	ts.Empty(response.UserInfoSignedResponseAlg)
+}
+
+// TestDCRIDTokenSignedAndEncryptedResponse verifies that combining ID token signing and encryption
+// metadata is accepted and that all three values are echoed back.
+func (ts *DCREncryptionTestSuite) TestDCRIDTokenSignedAndEncryptedResponse() {
+	jwks, _, err := buildRSAJWKS()
+	ts.Require().NoError(err, "Failed to generate RSA JWKS")
+
+	request := ts.baseRequest("DCR ID Token Signed And Encrypted")
+	request.IDTokenSignedResponseAlg = "RS256"
+	request.IDTokenEncryptedResponseAlg = "RSA-OAEP-256"
+	request.IDTokenEncryptedResponseEnc = "A256GCM"
+	request.JWKS = jwks
+
+	response := ts.registerSuccessfully(request)
+
+	ts.Equal("RS256", response.IDTokenSignedResponseAlg)
+	ts.Equal("RSA-OAEP-256", response.IDTokenEncryptedResponseAlg)
+	ts.Equal("A256GCM", response.IDTokenEncryptedResponseEnc)
+}
+
+// TestDCRSignedResponseAlgAdvertisedInDiscovery verifies that every algorithm the server advertises
+// in id_token_signing_alg_values_supported is accepted for both ID token and userinfo signing.
+func (ts *DCREncryptionTestSuite) TestDCRSignedResponseAlgAdvertisedInDiscovery() {
+	for _, alg := range ts.supportedSigningAlgs() {
+		ts.Run(alg, func() {
+			request := ts.baseRequest("DCR Signed Alg " + alg)
+			request.IDTokenSignedResponseAlg = alg
+			request.UserInfoSignedResponseAlg = alg
+
+			response := ts.registerSuccessfully(request)
+
+			ts.Equal(alg, response.IDTokenSignedResponseAlg)
+			ts.Equal(alg, response.UserInfoSignedResponseAlg)
+		})
+	}
+}
+
+// TestDCRUnsupportedSignedResponseAlgRejected verifies that a signing algorithm the deployment has
+// no key for is rejected at registration, rather than being stored and failing at token issuance.
+func (ts *DCREncryptionTestSuite) TestDCRUnsupportedSignedResponseAlgRejected() {
+	testCases := []struct {
+		name   string
+		mutate func(*DCRRegistrationRequest)
+	}{
+		{
+			name:   "IDTokenUnsupportedAlg",
+			mutate: func(r *DCRRegistrationRequest) { r.IDTokenSignedResponseAlg = "PS512" },
+		},
+		{
+			name:   "IDTokenNotAnAlgorithm",
+			mutate: func(r *DCRRegistrationRequest) { r.IDTokenSignedResponseAlg = "bogus-alg" },
+		},
+		{
+			name:   "UserInfoUnsupportedAlg",
+			mutate: func(r *DCRRegistrationRequest) { r.UserInfoSignedResponseAlg = "PS512" },
+		},
+		{
+			name:   "UserInfoNotAnAlgorithm",
+			mutate: func(r *DCRRegistrationRequest) { r.UserInfoSignedResponseAlg = "bogus-alg" },
+		},
+	}
+
+	for _, tc := range testCases {
+		ts.Run(tc.name, func() {
+			request := ts.baseRequest("DCR Unsupported Alg " + tc.name)
+			tc.mutate(&request)
+
+			_, statusCode, errResp := ts.register(request)
+
+			ts.Require().NotNil(errResp)
+			ts.Equal(http.StatusBadRequest, statusCode)
+			ts.Equal("invalid_client_metadata", errResp.Error)
+		})
+	}
+}
+
 // TestDCRRegistrationWithoutResponseEncryptionFields verifies that a registration that omits all
-// five signing and encryption fields is accepted and that none of them appear in the response.
+// six signing and encryption fields is accepted and that none of them appear in the response.
 func (ts *DCREncryptionTestSuite) TestDCRRegistrationWithoutResponseEncryptionFields() {
 	response := ts.registerSuccessfully(ts.baseRequest("DCR No Response Encryption"))
 
+	ts.Empty(response.IDTokenSignedResponseAlg)
 	ts.Empty(response.UserInfoSignedResponseAlg)
 	ts.Empty(response.UserInfoEncryptedResponseAlg)
 	ts.Empty(response.UserInfoEncryptedResponseEnc)
@@ -465,8 +577,8 @@ func (ts *DCREncryptionTestSuite) TestDCRUserInfoEncryptionWithoutCertificateRej
 		errResp.ErrorDescription)
 }
 
-// TestDCRUserInfoUnsupportedSigningAlgRejected verifies that a signing algorithm outside the set
-// supported by the runtime crypto provider is rejected.
+// TestDCRUserInfoUnsupportedSigningAlgRejected verifies that a signing algorithm the deployment
+// cannot sign with is rejected.
 func (ts *DCREncryptionTestSuite) TestDCRUserInfoUnsupportedSigningAlgRejected() {
 	request := ts.baseRequest("DCR UserInfo Unsupported Signing Alg")
 	request.UserInfoSignedResponseAlg = "HS256"
