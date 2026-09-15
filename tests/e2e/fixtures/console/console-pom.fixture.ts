@@ -18,6 +18,7 @@ import { ApplicationsPage } from "../../pages/applications";
 import { SettingsPage } from "../../pages/settings";
 import { WelcomePage } from "../../pages/welcome";
 import { ConnectionsPage } from "../../pages/connections";
+import { AgentOnboardingPage } from "../../pages/agents";
 
 const baseUrl = process.env.BASE_URL || "";
 
@@ -29,6 +30,7 @@ type POMFixtures = {
   settingsPage: SettingsPage;
   welcomePage: WelcomePage;
   connectionsPage: ConnectionsPage;
+  agentOnboardingPage: AgentOnboardingPage;
 };
 
 export const test = base.extend<POMFixtures>({
@@ -65,6 +67,11 @@ export const test = base.extend<POMFixtures>({
   connectionsPage: async ({ authenticatedPage }, use) => {
     await use(new ConnectionsPage(authenticatedPage, baseUrl));
   },
+
+  // Agent onboarding page requires auth, uses authenticatedPage fixture
+  agentOnboardingPage: async ({ authenticatedPage }, use) => {
+    await use(new AgentOnboardingPage(authenticatedPage, baseUrl));
+  },
 });
 
 export { expect } from "@playwright/test";
@@ -75,3 +82,4 @@ export { ApplicationsPage, type ApplicationFormData } from "../../pages/applicat
 export { SettingsPage } from "../../pages/settings";
 export { WelcomePage } from "../../pages/welcome";
 export { ConnectionsPage, type BrandedConnectionFormData } from "../../pages/connections";
+export { AgentOnboardingPage } from "../../pages/agents";

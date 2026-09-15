@@ -487,6 +487,94 @@ describe('resolveStepMetadata', () => {
       expect(result[0].display.image).toBe('/images/otp-generate.svg');
     });
 
+    it('should resolve executor metadata by the mode node property, not just executor.mode', () => {
+      // ProvisioningExecutor ships as a user tile and an agent tile that share a name and differ
+      // only by their preset `mode` node property, so the property has to disambiguate them.
+      const provisioningTiles = [
+        createMockStep({
+          type: 'TASK_EXECUTION',
+          display: {label: 'Provision User', image: '/images/user.svg', showOnResourcePanel: true},
+          data: {
+            action: {executor: {name: 'ProvisioningExecutor'}},
+            properties: {mode: 'user', allowCrossOUProvisioning: false},
+          },
+        }),
+        createMockStep({
+          type: 'TASK_EXECUTION',
+          display: {label: 'Provision Agent', image: '/images/agent.svg', showOnResourcePanel: true},
+          data: {
+            action: {executor: {name: 'ProvisioningExecutor'}},
+            properties: {mode: 'agent'},
+          },
+        }),
+      ];
+
+      const agentStep = resolveStepMetadata(createMockResources({steps: [], executors: provisioningTiles}), [
+        createMockStep({
+          id: 'provision-agent',
+          type: 'TASK_EXECUTION',
+          data: {
+            action: {executor: {name: 'ProvisioningExecutor'}},
+            properties: {mode: 'agent'},
+          },
+        }),
+      ]);
+
+      expect(agentStep[0].display.label).toBe('Provision Agent');
+
+      const userStep = resolveStepMetadata(createMockResources({steps: [], executors: provisioningTiles}), [
+        createMockStep({
+          id: 'provision-user',
+          type: 'TASK_EXECUTION',
+          data: {
+            action: {executor: {name: 'ProvisioningExecutor'}},
+            properties: {mode: 'user'},
+          },
+        }),
+      ]);
+
+      expect(userStep[0].display.label).toBe('Provision User');
+    });
+
+    it('should resolve a provisioning node saved without a mode to the first tile', () => {
+      // Flows authored before the agent tile existed carry no mode and must keep their old tile.
+      const result = resolveStepMetadata(
+        createMockResources({
+          steps: [],
+          executors: [
+            createMockStep({
+              type: 'TASK_EXECUTION',
+              display: {label: 'Provision User', image: '/images/user.svg', showOnResourcePanel: true},
+              data: {
+                action: {executor: {name: 'ProvisioningExecutor'}},
+                properties: {mode: 'user'},
+              },
+            }),
+            createMockStep({
+              type: 'TASK_EXECUTION',
+              display: {label: 'Provision Agent', image: '/images/agent.svg', showOnResourcePanel: true},
+              data: {
+                action: {executor: {name: 'ProvisioningExecutor'}},
+                properties: {mode: 'agent'},
+              },
+            }),
+          ],
+        }),
+        [
+          createMockStep({
+            id: 'legacy-provisioning',
+            type: 'TASK_EXECUTION',
+            data: {
+              action: {executor: {name: 'ProvisioningExecutor'}},
+              properties: {includeOptional: true},
+            },
+          }),
+        ],
+      );
+
+      expect(result[0].display.label).toBe('Provision User');
+    });
+
     it('should fall back to first matching executor when step has no mode', () => {
       const steps: Step[] = [
         createMockStep({

@@ -24,20 +24,6 @@ var (
 		},
 	}
 
-	// ErrorOwnerRequired is returned when the agent to provision carries no owner.
-	ErrorOwnerRequired = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "AGP-1002",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.agentmgtprovider.owner_required",
-			DefaultValue: "Owner is required",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.agentmgtprovider.owner_required_description",
-			DefaultValue: "The owner must be provided when an agent is provisioned from the runtime",
-		},
-	}
-
 	// ErrorAgentProvisioningDisabled is returned when the agent provider is disabled by configuration.
 	ErrorAgentProvisioningDisabled = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

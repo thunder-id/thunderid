@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
@@ -21,8 +22,9 @@ import (
 )
 
 const (
-	testUniquenessUserType = "INTERNAL"
-	testExistingUserID     = "user-existing"
+	testUniquenessUserType  = "INTERNAL"
+	testUniquenessAgentType = "AGENT"
+	testExistingUserID      = "user-existing"
 )
 
 type AttributeUniquenessValidatorTestSuite struct {
@@ -141,10 +143,38 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_AttributeConflic
 			assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
 			assert.Equal(suite.T(), tt.attribute, resp.Error.ErrorDescription.Params["attribute"])
 			assert.Equal(suite.T(), tt.attribute, resp.Error.Error.Params["attribute"])
+			assert.Equal(suite.T(), string(entitytype.TypeCategoryUser), resp.Error.Error.Params["entity"])
+			assert.Equal(suite.T(), string(entitytype.TypeCategoryUser),
+				resp.Error.ErrorDescription.Params["entity"])
 			assert.Contains(suite.T(), resp.Error.ErrorDescription.String(), "already associated")
 			suite.mockEntityProvider.AssertExpectations(suite.T())
 		})
 	}
+}
+
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_AttributeConflictInAgentMode_NamesTheAgent() {
+	ctx := &providers.NodeContext{
+		ExecutionID:    "flow-1",
+		NodeProperties: map[string]interface{}{propertyKeyProvisioningMode: string(entitytype.TypeCategoryAgent)},
+		UserInputs:     map[string]string{"model": "gpt-5"},
+		RuntimeData:    map[string]string{agentTypeKey: testUniquenessAgentType},
+	}
+
+	suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, entitytype.TypeCategoryAgent,
+		testUniquenessAgentType).Return([]string{"model"}, nil).Once()
+
+	existingID := testExistingUserID
+	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{"model": "gpt-5"}).
+		Return(&existingID, nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
+	assert.Equal(suite.T(), string(entitytype.TypeCategoryAgent), resp.Error.Error.Params["entity"])
+	assert.NotContains(suite.T(), resp.Error.Error.String(), "user")
+	assert.NotContains(suite.T(), resp.Error.ErrorDescription.String(), "user")
+	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
 func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_UniqueAttrNotInInputs_Skipped() {
@@ -168,7 +198,7 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_UniqueAttrNotInI
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
-	// email was NOT in UserInputs so IdentifyUser must not be called for it
+	// email was NOT in UserInputs so IdentifyEntity must not be called for it
 	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity",
 		map[string]interface{}{"email": ""})
 }
@@ -195,7 +225,7 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_SchemaServiceErr
 	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity")
 }
 
-func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_IdentifyUserSystemError_ReturnsFailure() {
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_IdentifyEntitySystemError_ReturnsFailure() {
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-1",
 		UserInputs:  map[string]string{"email": "test@example.com"},

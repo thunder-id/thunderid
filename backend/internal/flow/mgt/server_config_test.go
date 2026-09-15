@@ -227,3 +227,50 @@ func (s *FlowConfigHandlerTestSuite) TestMerge_EmptyWritableKeepsDeclarativeUser
 
 	s.Equal("default-user-deletion-flow", merged.UserDeletionFlow.DefaultHandle)
 }
+
+// Agent onboarding is an administration flow like deletion, so its handle is checked against the
+// same flow type rather than against a registration or onboarding flow.
+func (s *FlowConfigHandlerTestSuite) TestValidate_AgentOnboardingHandleCheckedAgainstAdministration() {
+	var gotType providers.FlowType
+	s.handler.SetHandleValidator(func(_ context.Context, _ string, flowType providers.FlowType) bool {
+		gotType = flowType
+		return true
+	})
+	cfg := flowconfig.FlowSectionConfig{
+		AgentOnboardingFlow: flowconfig.FlowTypeConfig{DefaultHandle: "default-agent-onboarding-flow"},
+	}
+
+	s.Require().NoError(s.handler.Validate(cfg, nil, nil))
+	s.Equal(providers.FlowTypeAdministration, gotType)
+}
+
+func (s *FlowConfigHandlerTestSuite) TestValidate_AgentOnboardingHandleRejectedWhenNotAdministration() {
+	s.handler.SetHandleValidator(func(_ context.Context, _ string, _ providers.FlowType) bool {
+		return false
+	})
+	cfg := flowconfig.FlowSectionConfig{
+		AgentOnboardingFlow: flowconfig.FlowTypeConfig{DefaultHandle: "not-an-admin-flow"},
+	}
+
+	err := s.handler.Validate(cfg, nil, nil)
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "agentOnboardingFlow.defaultHandle")
+}
+
+// An operator can repoint agent onboarding at their own administration flow through the writable
+// layer, and an empty writable layer leaves the declarative default standing.
+func (s *FlowConfigHandlerTestSuite) TestMerge_AgentOnboardingHandleOverlays() {
+	ro := flowconfig.FlowSectionConfig{
+		AgentOnboardingFlow: flowconfig.FlowTypeConfig{DefaultHandle: "default-agent-onboarding-flow"},
+	}
+
+	overridden, ok := s.handler.Merge(ro, flowconfig.FlowSectionConfig{
+		AgentOnboardingFlow: flowconfig.FlowTypeConfig{DefaultHandle: "acme-agent-onboarding"},
+	}).(flowconfig.FlowSectionConfig)
+	s.Require().True(ok)
+	s.Equal("acme-agent-onboarding", overridden.AgentOnboardingFlow.DefaultHandle)
+
+	kept, _ := s.handler.Merge(ro, flowconfig.FlowSectionConfig{}).(flowconfig.FlowSectionConfig)
+	s.Equal("default-agent-onboarding-flow", kept.AgentOnboardingFlow.DefaultHandle)
+}

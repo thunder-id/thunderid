@@ -13,6 +13,7 @@ import (
 
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -105,7 +106,7 @@ func (b *credentialsAuthExecutor) Execute(ctx *providers.NodeContext) (*provider
 	err := b.authenticateUser(ctx, execResp)
 	if err != nil {
 		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrUserAuthFailed
+		execResp.Error = errForEntityCategory(ErrEntityAuthFailed, entitytype.TypeCategoryUser)
 		return execResp, nil
 	}
 	if execResp.Status == providers.ExecFailure || execResp.Status == providers.ExecUserInputRequired {
@@ -168,7 +169,7 @@ func (b *credentialsAuthExecutor) authenticateUser(ctx *providers.NodeContext,
 
 	// For registration flows, only check if user exists.
 	if ctx.FlowType == providers.FlowTypeRegistration {
-		_, err := b.IdentifyUser(ctx.Context, userIdentifiers, execResp)
+		_, err := b.IdentifyEntity(ctx.Context, userIdentifiers, execResp)
 		if err != nil {
 			return err
 		}
@@ -183,7 +184,7 @@ func (b *credentialsAuthExecutor) authenticateUser(ctx *providers.NodeContext,
 		}
 		// User found - fail registration.
 		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrUserAlreadyExists
+		execResp.Error = errForEntityCategory(ErrEntityAlreadyExists, entitytype.TypeCategoryUser)
 		return nil
 	}
 
@@ -203,7 +204,7 @@ func (b *credentialsAuthExecutor) authenticateUser(ctx *providers.NodeContext,
 			case authnprovidermgr.ErrorAuthenticationFailed.Code:
 				execResp.Error = &ErrInvalidCredentials
 			default:
-				execResp.Error = &ErrUserAuthFailed
+				execResp.Error = errForEntityCategory(ErrEntityAuthFailed, entitytype.TypeCategoryUser)
 			}
 
 			return nil

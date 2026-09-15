@@ -155,6 +155,10 @@ describe('steps models', () => {
       expect(ExecutionTypes.OUExecutor).toBe('OUExecutor');
     });
 
+    it('should have AgentTypeResolver type', () => {
+      expect(ExecutionTypes.AgentTypeResolver).toBe('AgentTypeResolver');
+    });
+
     it('should have UserTypeResolver type', () => {
       expect(ExecutionTypes.UserTypeResolver).toBe('UserTypeResolver');
     });
@@ -183,8 +187,12 @@ describe('steps models', () => {
       expect(ExecutionTypes.PreDelete).toBe('PreDeleteExecutor');
     });
 
-    it('should have exactly 30 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(30);
+    it('should have OwnerResolver type', () => {
+      expect(ExecutionTypes.OwnerResolver).toBe('OwnerResolver');
+    });
+
+    it('should have exactly 32 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(32);
     });
   });
 

@@ -28,7 +28,6 @@ import {Link, useLocation, useNavigate, useParams} from 'react-router';
 import RouteConfig from '../../../configs/RouteConfig';
 import useGetAgent from '../api/useGetAgent';
 import useUpdateAgent from '../api/useUpdateAgent';
-import ShowClientSecret from '../components/create-agent/ShowClientSecret';
 import EditAccessSettings from '../components/edit-agent/access/EditAccessSettings';
 import EditAdvancedSettings from '../components/edit-agent/advanced-settings/EditAdvancedSettings';
 import EditAgentAttributes from '../components/edit-agent/attributes/EditAgentAttributes';
@@ -36,6 +35,7 @@ import EditCredentialsSettings from '../components/edit-agent/credentials/EditCr
 import EditFlowsSettings from '../components/edit-agent/flows/EditFlowsSettings';
 import AgentOverview from '../components/edit-agent/overview/AgentOverview';
 import EditTokensSettings from '../components/edit-agent/tokens/EditTokensSettings';
+import ShowClientSecret from '../components/ShowClientSecret';
 import AgentConstants from '../constants/agent-constants';
 import type {Agent, OAuthAgentConfig} from '../models/agent';
 

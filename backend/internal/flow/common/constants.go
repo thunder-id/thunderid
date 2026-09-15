@@ -76,6 +76,12 @@ const (
 	DataEmailSent = "emailSent"
 	// DataSMSSent is the key used to indicate that an SMS was sent successfully in the flow response.
 	DataSMSSent = "smsSent"
+	// DataAgentID is the key used for a provisioned agent's identifier in the flow response.
+	DataAgentID = "agentId"
+	// DataAgentClientID is the key used for a provisioned agent's OAuth client ID.
+	DataAgentClientID = "clientId"
+	// DataAgentClientSecret is the key used for a provisioned agent's generated OAuth client secret.
+	DataAgentClientSecret = "clientSecret"
 	// DataRootOUID is the key used to pass the root OU ID to the frontend for the OU tree picker.
 	DataRootOUID = "rootOuId"
 	// DataPromptMessage is the key used to pass a message to be displayed in the prompt node.

@@ -16,7 +16,7 @@ import (
 )
 
 // attributeUniquenessValidator checks whether values supplied for unique schema attributes
-// are already held by an existing user.  It is intended to be placed in a flow immediately
+// are already held by an existing entity.  It is intended to be placed in a flow immediately
 // after a prompt node so that conflicts can be reported with the specific attribute name
 // before any creation executor runs.
 type attributeUniquenessValidator struct {
@@ -42,7 +42,11 @@ func newAttributeUniquenessValidator(
 		},
 	}
 	base := flowFactory.CreateExecutor(ExecutorNameAttributeUniquenessValidator, providers.ExecutorTypeUtility,
-		[]providers.Input{}, prerequisites, &providers.ExecutorMeta{})
+		[]providers.Input{}, prerequisites, &providers.ExecutorMeta{
+			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: propertyKeyProvisioningMode},
+			},
+		})
 	return &attributeUniquenessValidator{
 		Executor:          base,
 		entityTypeService: entityTypeService,
@@ -52,8 +56,8 @@ func newAttributeUniquenessValidator(
 	}
 }
 
-// Execute iterates over the unique attributes defined in the user type and checks whether
-// any value already present in UserInputs belongs to an existing user.
+// Execute iterates over the unique attributes defined in the entity type and checks whether
+// any value already present in UserInputs belongs to an existing entity.
 // Returns ExecUserInputRequired (triggering onIncomplete routing) with the specific attribute
 // named in the structured error when a conflict is detected, or ExecComplete when all values are free.
 func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
@@ -65,17 +69,31 @@ func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*pro
 		RuntimeData:    make(map[string]string),
 	}
 
-	if !e.ValidatePrerequisites(ctx, execResp, e.authnProvider) {
+	category, err := categoryFromMode(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// The declared prerequisite names the user type, so it only describes the user category. Other
+	// categories carry their type under their own runtime key and are checked directly.
+	if category == entitytype.TypeCategoryUser {
+		if !e.ValidatePrerequisites(ctx, execResp, e.authnProvider) {
+			return execResp, nil
+		}
+	}
+
+	entityType := ctx.RuntimeData[runtimeEntityTypeKey(category)]
+	if entityType == "" {
+		logger.Debug(ctx.Context, "No entity type in runtime data, nothing to check uniqueness against")
+		execResp.Status = providers.ExecComplete
 		return execResp, nil
 	}
 
-	userType := ctx.RuntimeData[userTypeKey]
-
 	svcCtx := security.WithRuntimeContext(context.Background())
-	uniqueAttrs, svcErr := e.entityTypeService.GetUniqueAttributes(svcCtx, entitytype.TypeCategoryUser, userType)
+	uniqueAttrs, svcErr := e.entityTypeService.GetUniqueAttributes(svcCtx, category, entityType)
 	if svcErr != nil {
-		return nil, fmt.Errorf("failed to retrieve unique attributes from schema for user type %s: %s",
-			userType, svcErr.Error.DefaultValue)
+		return nil, fmt.Errorf("failed to retrieve unique attributes from schema for %s type %s: %s",
+			category, entityType, svcErr.Error.DefaultValue)
 	}
 
 	for _, attr := range uniqueAttrs {
@@ -95,7 +113,7 @@ func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*pro
 		if userID != nil {
 			logger.Debug(ctx.Context, "Unique attribute conflict detected", log.String("attribute", attr))
 			execResp.Status = providers.ExecUserInputRequired
-			execResp.Error = errAttributeNotUniqueFor(attr)
+			execResp.Error = errAttributeNotUniqueFor(attr, category)
 			return execResp, nil
 		}
 	}

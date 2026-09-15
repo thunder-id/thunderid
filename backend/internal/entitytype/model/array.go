@@ -34,6 +34,11 @@ func (p *array) getDisplayName() string {
 	return p.displayName
 }
 
+// getEnum returns no values: array properties do not constrain their value to a fixed set.
+func (p *array) getEnum() []string {
+	return nil
+}
+
 func (p *array) isUnique() bool {
 	return false
 }

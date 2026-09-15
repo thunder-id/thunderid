@@ -382,9 +382,9 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
-      "header": "Provisioning Executor",
-      "label": "Provisioning",
-      "description": "Create or update the user account",
+      "header": "Provision User",
+      "label": "Provision User",
+      "description": "Create a user account",
       "image": "assets/images/icons/user.svg",
       "showOnResourcePanel": true
     },
@@ -399,12 +399,91 @@
         "onIncomplete": ""
       },
       "properties": {
+        "mode": "user",
         "allowCrossOUProvisioning": false,
         "includeOptional": false,
         "includeOptionalCredentials": false,
         "maxPerPrompt": 5,
         "assignGroup": "",
         "assignRole": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Provision Agent",
+      "label": "Provision Agent",
+      "description": "Create an agent identity",
+      "image": "assets/images/icons/robot.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "ProvisioningExecutor"
+        },
+        "onSuccess": "",
+        "onFailure": "",
+        "onIncomplete": ""
+      },
+      "properties": {
+        "mode": "agent",
+        "allowCrossOUProvisioning": false,
+        "includeOptional": false,
+        "includeOptionalCredentials": false,
+        "maxPerPrompt": 5,
+        "assignGroup": "",
+        "assignRole": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Agent Type Resolver",
+      "label": "Agent Type",
+      "description": "Resolve the agent type whose schema describes the agent being created",
+      "image": "assets/images/icons/user.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "AgentTypeResolver"
+        },
+        "onSuccess": "",
+        "onFailure": "",
+        "onIncomplete": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Owner Resolver",
+      "label": "Owner",
+      "description": "Choose the user who owns the entity being created",
+      "image": "assets/images/icons/user.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "OwnerResolver"
+        },
+        "onSuccess": "",
+        "onFailure": "",
+        "onIncomplete": ""
       }
     }
   },
@@ -974,7 +1053,10 @@
     "data": {
       "action": {
         "type": "EXECUTOR",
-        "executor": {"name": "PreDeleteExecutor", "mode": "revoke_all"},
+        "executor": {
+          "name": "PreDeleteExecutor",
+          "mode": "revoke_all"
+        },
         "onSuccess": "",
         "onFailure": "",
         "onIncomplete": ""
@@ -995,7 +1077,9 @@
     "data": {
       "action": {
         "type": "EXECUTOR",
-        "executor": {"name": "CriteriaRevocationExecutor"},
+        "executor": {
+          "name": "CriteriaRevocationExecutor"
+        },
         "onSuccess": ""
       }
     }
@@ -1014,7 +1098,9 @@
     "data": {
       "action": {
         "type": "EXECUTOR",
-        "executor": {"name": "SessionRevocationExecutor"},
+        "executor": {
+          "name": "SessionRevocationExecutor"
+        },
         "onSuccess": ""
       }
     }
@@ -1033,7 +1119,9 @@
     "data": {
       "action": {
         "type": "EXECUTOR",
-        "executor": {"name": "UserDeleteExecutor"},
+        "executor": {
+          "name": "UserDeleteExecutor"
+        },
         "onSuccess": "",
         "onFailure": ""
       }

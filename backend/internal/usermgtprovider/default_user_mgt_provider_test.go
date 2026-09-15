@@ -38,7 +38,7 @@ func TestDefaultUserMgtProviderTestSuite(t *testing.T) {
 	suite.Run(t, new(DefaultUserMgtProviderTestSuite))
 }
 
-func newTestUser() *providers.User {
+func newTestRequest() *providers.User {
 	return &providers.User{
 		OUID:       testUserOUID,
 		Type:       testUserType,
@@ -48,7 +48,7 @@ func newTestUser() *providers.User {
 
 // A valid request reaches the user service unmodified and its response is returned to the caller.
 func (suite *DefaultUserMgtProviderTestSuite) TestCreateUserDelegatesAndReturnsUser() {
-	requested := newTestUser()
+	requested := newTestRequest()
 	created := &providers.User{
 		ID:   testUserID,
 		OUID: testUserOUID,
@@ -112,7 +112,7 @@ func (suite *DefaultUserMgtProviderTestSuite) TestCreateUserPreservesServiceErro
 			mockService.On("CreateUser", mock.Anything, mock.Anything).
 				Return(nil, tt.svcErr).Once()
 
-			resp, svcErr := provider.CreateUser(context.Background(), newTestUser())
+			resp, svcErr := provider.CreateUser(context.Background(), newTestRequest())
 
 			suite.Nil(resp)
 			suite.NotNil(svcErr, tt.scenario)
@@ -128,7 +128,7 @@ func (suite *DefaultUserMgtProviderTestSuite) TestCreateUserPreservesServerError
 	suite.mockService.On("CreateUser", mock.Anything, mock.Anything).
 		Return(nil, &tidcommon.InternalServerError).Once()
 
-	resp, svcErr := suite.provider.CreateUser(context.Background(), newTestUser())
+	resp, svcErr := suite.provider.CreateUser(context.Background(), newTestRequest())
 
 	suite.Nil(resp)
 	suite.NotNil(svcErr)
@@ -151,7 +151,7 @@ func (suite *DefaultUserMgtProviderTestSuite) TestCreateUserElevatesCallerContex
 		}).
 		Return(&providers.User{ID: testUserID}, nil).Once()
 
-	_, svcErr := suite.provider.CreateUser(callerCtx, newTestUser())
+	_, svcErr := suite.provider.CreateUser(callerCtx, newTestRequest())
 
 	suite.Nil(svcErr)
 	suite.True(security.IsRuntimeContext(observed))
@@ -163,7 +163,7 @@ func (suite *DefaultUserMgtProviderTestSuite) TestCreateUserHandlesEmptyServiceR
 	suite.mockService.On("CreateUser", mock.Anything, mock.Anything).
 		Return(nil, nil).Once()
 
-	resp, svcErr := suite.provider.CreateUser(context.Background(), newTestUser())
+	resp, svcErr := suite.provider.CreateUser(context.Background(), newTestRequest())
 
 	suite.Nil(svcErr)
 	suite.Nil(resp)

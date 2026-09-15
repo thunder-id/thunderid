@@ -316,6 +316,27 @@ func (s *SchemaValidateTestSuite) TestGetAttributes_NonCredentialRequiredOnly_Re
 	s.False(hasAge, "age is not required and must be excluded")
 }
 
+// A caller offering an enum attribute as a choice presents the values the way the schema author
+// wrote them, so the declared order has to survive compilation. The enum is also held as a set for
+// validation, and a set does not preserve order on its own.
+func (s *SchemaValidateTestSuite) TestGetAttributes_EnumKeepsDeclaredOrder() {
+	schema, err := CompileSchema(json.RawMessage(`{
+		"modelProvider": {"type": "string", "enum": ["openai", "anthropic", "gemini", "mistral"]},
+		"model":         {"type": "string"},
+		"active":        {"type": "boolean"}
+	}`))
+	s.Require().NoError(err)
+
+	attrMap := make(map[string]AttributeInfo)
+	for _, a := range schema.GetAttributes(AttributeFilter{AllowNonCredential: true}) {
+		attrMap[a.Attribute] = a
+	}
+
+	s.Equal([]string{"openai", "anthropic", "gemini", "mistral"}, attrMap["modelProvider"].Enum)
+	s.Empty(attrMap["model"].Enum, "an unconstrained string carries no permitted values")
+	s.Empty(attrMap["active"].Enum, "a non-string property carries no permitted values")
+}
+
 func (s *SchemaValidateTestSuite) TestGetAttributes_NonCredentialRequiredOnly_EmptySchema() {
 	schema := &Schema{properties: map[string]property{}}
 

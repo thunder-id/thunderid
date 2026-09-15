@@ -147,8 +147,8 @@ var (
 
 type BasicRegistrationFlowTestSuite struct {
 	suite.Suite
-	config           *common.TestSuiteConfig
-	entityTypeID     string
+	config             *common.TestSuiteConfig
+	entityTypeID       string
 	testAppID          string
 	testOUID           string
 	testUserTypeName   string
@@ -385,7 +385,8 @@ func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlowDuplicateUser
 	ts.Require().Equal("ERROR", completeFlowStep.FlowStatus, "Expected flow status to be ERROR")
 	ts.Require().Empty(completeFlowStep.Assertion, "No JWT assertion should be returned for failed registration")
 	ts.Require().NotNil(completeFlowStep.Error, "Error should be provided for duplicate user")
-	ts.Equal("User already exists", completeFlowStep.Error.Message.DefaultValue,
+	// The message names the entity category, so a duplicate agent reads "The agent already exists".
+	ts.Equal("The user already exists", completeFlowStep.Error.Message.DefaultValue,
 		"Error message should indicate duplicate username")
 }
 

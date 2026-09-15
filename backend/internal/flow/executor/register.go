@@ -167,6 +167,7 @@ type ExecutorDependencies struct {
 	RoleAssignmentService role.RoleAssignmentServiceInterface
 	EntityProvider        entityprovider.EntityProviderInterface
 	UserMgtProvider       providers.UserMgtProvider
+	AgentMgtProvider      providers.AgentMgtProvider
 	AttributeCacheSvc     attributecache.AttributeCacheServiceInterface
 	EmailClient           email.EmailClientInterface
 	TemplateService       template.TemplateServiceInterface
@@ -219,7 +220,8 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameProvisioning: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameProvisioning, newProvisioningExecutor(
 				deps.FlowFactory, deps.GroupService, deps.RoleService, deps.RoleAssignmentService,
-				deps.EntityProvider, deps.UserMgtProvider, deps.EntityTypeService, deps.AuthnProvider))
+				deps.EntityProvider, deps.UserMgtProvider, deps.AgentMgtProvider, deps.EntityTypeService,
+				deps.AuthnProvider))
 		},
 		ExecutorNameOUCreation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOUCreation, newOUExecutor(deps.FlowFactory, deps.OUService,
@@ -317,6 +319,14 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameSessionRevocation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSessionRevocation,
 				newSessionRevocationExecutor(deps.FlowFactory, deps.SessionService))
+		},
+		ExecutorNameAgentTypeResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameAgentTypeResolver, newAgentTypeResolver(
+				deps.FlowFactory, deps.EntityTypeService, deps.OUService))
+		},
+		ExecutorNameOwnerResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameOwnerResolver, newOwnerResolver(
+				deps.FlowFactory, deps.EntityProvider))
 		},
 		ExecutorNameUserDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameUserDelete,
