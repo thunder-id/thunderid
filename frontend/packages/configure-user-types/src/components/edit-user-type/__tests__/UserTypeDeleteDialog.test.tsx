@@ -4,6 +4,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any */
 import {render, screen, waitFor, userEvent} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
+import type {UserTypeUsagesResponse} from '../../../types/user-types';
 import UserTypeDeleteDialog from '../UserTypeDeleteDialog';
 
 const mockMutate = vi.fn();
@@ -11,6 +12,13 @@ const mockUseDeleteUserType = vi.fn<() => any>();
 
 vi.mock('../../../api/useDeleteUserType', () => ({
   default: () => mockUseDeleteUserType(),
+}));
+
+const {getUsagesMock} = vi.hoisted(() => ({
+  getUsagesMock: vi.fn<() => {data: UserTypeUsagesResponse | undefined; isLoading: boolean}>(),
+}));
+vi.mock('../../../api/useGetUserTypeUsages', () => ({
+  default: () => getUsagesMock(),
 }));
 
 describe('UserTypeDeleteDialog', () => {
@@ -29,6 +37,7 @@ describe('UserTypeDeleteDialog', () => {
       error: null,
       reset: vi.fn(),
     });
+    getUsagesMock.mockReturnValue({data: undefined, isLoading: false});
   });
 
   it('renders dialog with warning content', () => {
@@ -134,5 +143,60 @@ describe('UserTypeDeleteDialog', () => {
 
     expect(screen.getByRole('button', {name: /deleting/i})).toBeDisabled();
     expect(screen.getByRole('button', {name: /cancel/i})).toBeDisabled();
+  });
+
+  describe('usages', () => {
+    it('shows a loading alert while usages are being fetched', () => {
+      getUsagesMock.mockReturnValue({data: undefined, isLoading: true});
+
+      render(<UserTypeDeleteDialog {...defaultProps} />);
+
+      expect(screen.getByText(/checking affected resources/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: /^delete$/i})).toBeDisabled();
+    });
+
+    it('disables delete and shows a blocking message when existing users reference the type', () => {
+      const usages: UserTypeUsagesResponse = {
+        totalResults: 3,
+        count: 3,
+        summary: {user: 3},
+        usages: [
+          {resourceType: 'user', id: '', displayName: '', behaviorOnDelete: 'restrict'},
+          {resourceType: 'user', id: '', displayName: '', behaviorOnDelete: 'restrict'},
+          {resourceType: 'user', id: '', displayName: '', behaviorOnDelete: 'restrict'},
+        ],
+      };
+      getUsagesMock.mockReturnValue({data: usages, isLoading: false});
+
+      render(<UserTypeDeleteDialog {...defaultProps} />);
+
+      expect(
+        screen.getByText(/cannot be deleted because 3 existing user\(s\) are still assigned to it/i),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: /^delete$/i})).toBeDisabled();
+    });
+
+    it('shows no usages alert and leaves delete enabled when there are none', () => {
+      getUsagesMock.mockReturnValue({
+        data: {totalResults: 0, count: 0, summary: {}, usages: []},
+        isLoading: false,
+      });
+
+      render(<UserTypeDeleteDialog {...defaultProps} />);
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: /^delete$/i})).not.toBeDisabled();
+    });
+
+    it('falls back to the disclaimer when usage data is unknown', () => {
+      getUsagesMock.mockReturnValue({
+        data: {totalResults: null, count: 0, summary: null, usages: []},
+        isLoading: false,
+      });
+
+      render(<UserTypeDeleteDialog {...defaultProps} />);
+
+      expect(screen.getByText(/all associated schema definitions will be permanently removed/i)).toBeInTheDocument();
+    });
   });
 });

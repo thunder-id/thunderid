@@ -158,6 +158,27 @@ func (s *CompositeStoreTestSuite) TestGetEntityGroups_Delegates() {
 	s.Len(got, 1)
 }
 
+func (s *CompositeStoreTestSuite) TestGetEntityCountByType_SumsBothStores() {
+	s.dbStore.On("GetEntityCountByType", mock.Anything, "user", "employee").Return(2, nil)
+	s.fileStore.On("GetEntityCountByType", mock.Anything, "user", "employee").Return(1, nil)
+	count, err := s.store.GetEntityCountByType(s.ctx, "user", "employee")
+	s.NoError(err)
+	s.Equal(3, count)
+}
+
+func (s *CompositeStoreTestSuite) TestGetEntityCountByType_DBError() {
+	s.dbStore.On("GetEntityCountByType", mock.Anything, "user", "employee").Return(0, s.testErr)
+	_, err := s.store.GetEntityCountByType(s.ctx, "user", "employee")
+	s.Error(err)
+}
+
+func (s *CompositeStoreTestSuite) TestGetEntityCountByType_FileStoreError() {
+	s.dbStore.On("GetEntityCountByType", mock.Anything, "user", "employee").Return(2, nil)
+	s.fileStore.On("GetEntityCountByType", mock.Anything, "user", "employee").Return(0, s.testErr)
+	_, err := s.store.GetEntityCountByType(s.ctx, "user", "employee")
+	s.Error(err)
+}
+
 func (s *CompositeStoreTestSuite) TestGetIndexedAttributes_Delegates() {
 	attrs := map[string]bool{"email": true}
 	s.dbStore.On("GetIndexedAttributes").Return(attrs)

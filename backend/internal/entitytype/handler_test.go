@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/stretchr/testify/assert"
@@ -24,7 +25,10 @@ type InlineStubEntityTypeService struct {
 	OnGetEntityType func(
 		ctx context.Context, cat TypeCategory, id string, inc bool,
 	) (*EntityType, *tidcommon.ServiceError)
-	OnDeleteEntityType func(ctx context.Context, cat TypeCategory, id string) *tidcommon.ServiceError
+	OnDeleteEntityType    func(ctx context.Context, cat TypeCategory, id string) *tidcommon.ServiceError
+	OnGetEntityTypeUsages func(
+		ctx context.Context, cat TypeCategory, id string,
+	) (*resourcedependency.DependenciesResponse, *tidcommon.ServiceError)
 }
 
 func (s *InlineStubEntityTypeService) CreateEntityType(
@@ -116,6 +120,20 @@ func (s *InlineStubEntityTypeService) GetEntityTypeSchema(
 	ctx context.Context, cat TypeCategory, name string,
 ) (*EntityType, *tidcommon.ServiceError) {
 	return &EntityType{Name: name, Category: cat}, nil
+}
+
+func (s *InlineStubEntityTypeService) SetDependencyRegistry(r resourcedependency.Registry) {}
+
+func (s *InlineStubEntityTypeService) GetEntityTypeUsages(
+	ctx context.Context, cat TypeCategory, id string,
+) (*resourcedependency.DependenciesResponse, *tidcommon.ServiceError) {
+	if s.OnGetEntityTypeUsages != nil {
+		return s.OnGetEntityTypeUsages(ctx, cat, id)
+	}
+	total := 0
+	return &resourcedependency.DependenciesResponse{
+		TotalResults: &total, Usages: []resourcedependency.ResourceDependency{},
+	}, nil
 }
 
 // --- POST ENDPOINT TESTS ---
@@ -325,6 +343,60 @@ func TestHandleEntityTypeDeleteRequest_Success(t *testing.T) {
 
 	handler.HandleEntityTypeDeleteRequest(w, req)
 	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestHandleEntityTypeUsagesGetRequest_Success(t *testing.T) {
+	total := 1
+	stub := &InlineStubEntityTypeService{
+		OnGetEntityTypeUsages: func(
+			ctx context.Context, cat TypeCategory, id string,
+		) (*resourcedependency.DependenciesResponse, *tidcommon.ServiceError) {
+			return &resourcedependency.DependenciesResponse{
+				TotalResults: &total,
+				Usages: []resourcedependency.ResourceDependency{
+					{
+						ResourceType:     resourcedependency.ResourceTypeUser,
+						BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+					},
+				},
+			}, nil
+		},
+	}
+	handler := newEntityTypeHandler(stub, TypeCategoryUser)
+	req := httptest.NewRequest(http.MethodGet, "/user-types/type-123/usages", nil)
+	req.SetPathValue("id", "type-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleEntityTypeUsagesGetRequest(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestHandleEntityTypeUsagesGetRequest_MissingID(t *testing.T) {
+	stub := &InlineStubEntityTypeService{}
+	handler := newEntityTypeHandler(stub, TypeCategoryUser)
+	req := httptest.NewRequest(http.MethodGet, "/user-types//usages", nil)
+	req.SetPathValue("id", "")
+	w := httptest.NewRecorder()
+
+	handler.HandleEntityTypeUsagesGetRequest(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleEntityTypeUsagesGetRequest_ServiceError(t *testing.T) {
+	stub := &InlineStubEntityTypeService{
+		OnGetEntityTypeUsages: func(
+			ctx context.Context, cat TypeCategory, id string,
+		) (*resourcedependency.DependenciesResponse, *tidcommon.ServiceError) {
+			return nil, &ErrorUserTypeNotFound
+		},
+	}
+	handler := newEntityTypeHandler(stub, TypeCategoryUser)
+	req := httptest.NewRequest(http.MethodGet, "/user-types/missing/usages", nil)
+	req.SetPathValue("id", "missing")
+	w := httptest.NewRecorder()
+
+	handler.HandleEntityTypeUsagesGetRequest(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestHandleEntityTypeDeleteRequest_MissingID(t *testing.T) {

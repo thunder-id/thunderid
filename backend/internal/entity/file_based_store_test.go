@@ -204,6 +204,20 @@ func (s *FileBasedStoreTestSuite) TestGetGroupCountForEntity() {
 	s.Equal(0, count)
 }
 
+func (s *FileBasedStoreTestSuite) TestGetEntityCountByType() {
+	s.seedEntity(makeTestEntity("u1", "user", "ou1"))
+	s.seedEntity(makeTestEntity("u2", "user", "ou1"))
+	s.seedEntity(makeTestEntity("a1", "app", "ou1"))
+
+	count, err := s.store.GetEntityCountByType(s.ctx, "user", "employee")
+	s.NoError(err)
+	s.Equal(2, count)
+
+	count, err = s.store.GetEntityCountByType(s.ctx, "user", "no-such-type")
+	s.NoError(err)
+	s.Equal(0, count)
+}
+
 func (s *FileBasedStoreTestSuite) TestGetEntityGroups() {
 	groups, err := s.store.GetEntityGroups(s.ctx, "any-id", 10, 0)
 	s.NoError(err)
