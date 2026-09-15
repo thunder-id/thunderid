@@ -34,6 +34,25 @@ const sidebar: SidebarsConfig = {
           id: 'sdks/nextjs/apis/configuration',
           label: 'Configuration',
         },
+        {
+              type: 'category',
+              label: 'Components',
+              collapsed: true,
+              items: [
+                {
+                  type: 'category',
+                  label: 'User Self-care Components',
+                  collapsed: false,
+                  items: [
+                    {
+                      type: 'doc',
+                      id: 'sdks/nextjs/apis/components/change-credential',
+                      label: '<ChangeCredential />',
+                    },
+                  ],
+                },
+              ],
+        },
       ],
     },
   ],

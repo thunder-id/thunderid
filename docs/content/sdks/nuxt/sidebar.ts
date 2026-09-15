@@ -117,6 +117,11 @@ const sidebar: SidebarsConfig = {
                   id: 'sdks/nuxt/apis/components/user-dropdown',
                   label: '<UserDropdown />',
                 },
+                {
+                  type: 'doc',
+                  id: 'sdks/nuxt/apis/components/change-credential',
+                  label: '<ChangeCredential />',
+                },
               ],
             },
           ],
