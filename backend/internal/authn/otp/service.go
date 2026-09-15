@@ -25,7 +25,8 @@ const (
 // OTPAuthnServiceInterface defines the interface for OTP authentication operations.
 // Authenticate returns an error only for actual failures; a missing local user is NOT an error.
 type OTPAuthnServiceInterface interface {
-	GenerateOTP(ctx context.Context, recipient, recipientAttr string, otpCfg *notifcommon.OTPConfig) (
+	GenerateOTP(ctx context.Context, recipient, recipientAttr string, otpCfg *notifcommon.OTPConfig,
+		previousSessionToken string) (
 		sessionToken string, otpValue string, expirySeconds int64, svcErr *tidcommon.ServiceError)
 	Authenticate(ctx context.Context, sessionToken, otp string) (*common.AuthnResult, *tidcommon.ServiceError)
 }
@@ -44,8 +45,8 @@ func newOTPAuthnService(notifOTPSvc notification.OTPServiceInterface) OTPAuthnSe
 
 // GenerateOTP validates the recipient and delegates OTP generation to the notification service.
 func (s *otpAuthnService) GenerateOTP(ctx context.Context,
-	recipient, recipientAttr string, otpCfg *notifcommon.OTPConfig) (
-	string, string, int64, *tidcommon.ServiceError) {
+	recipient, recipientAttr string, otpCfg *notifcommon.OTPConfig,
+	previousSessionToken string) (string, string, int64, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Generating OTP", log.MaskedString("recipient", recipient))
 
@@ -57,9 +58,12 @@ func (s *otpAuthnService) GenerateOTP(ctx context.Context,
 		recipientAttr = authnprovidercm.UserAttributeUserID
 	}
 
-	sessionToken, otpValue, expirySeconds, svcErr :=
-		s.notifOTPService.GenerateOTP(ctx, recipient, recipientAttr, otpCfg)
+	sessionToken, otpValue, expirySeconds, svcErr := s.notifOTPService.GenerateOTP(
+		ctx, recipient, recipientAttr, otpCfg, previousSessionToken)
 	if svcErr != nil {
+		if svcErr.Code == notification.ErrorMaxOTPAttemptsExceeded.Code {
+			return "", "", 0, &ErrorMaxOTPAttemptsExceeded
+		}
 		if svcErr.Type == tidcommon.ClientErrorType {
 			return "", "", 0, &ErrorClientErrorFromOTPService
 		}
