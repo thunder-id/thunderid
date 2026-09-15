@@ -157,6 +157,9 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 	// Resolve the inbound SSO handle for this flow from the request-scoped transport inputs.
 	applyInboundSSO(engineCtx, ctx)
 
+	// Attach the current step's HTTP request so {{request(flow.*)}} placeholders can resolve.
+	applyCurrentRequest(engineCtx, ctx)
+
 	flowStep, flowErr := s.flowEngine.Execute(engineCtx)
 
 	if flowErr != nil {
@@ -287,6 +290,36 @@ func validateAdministrationCaller(ctx context.Context, flowType providers.FlowTy
 }
 
 // applyInboundSSO selects the SSO handle carried for this flow from the request-scoped
+// currentRequestCtxKey is the context key under which the current flow step's HTTP request is
+// carried from the handler to the flow service.
+type currentRequestCtxKey struct{}
+
+// withCurrentRequest stashes the HTTP request driving the current flow step on the context so the
+// flow service can attach it to the engine context without widening the service interface.
+func withCurrentRequest(ctx context.Context, req *providers.InitiatorRequest) context.Context {
+	if req == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, currentRequestCtxKey{}, req)
+}
+
+// currentRequestFrom returns the current flow step's HTTP request carried on the context, if any.
+func currentRequestFrom(ctx context.Context) *providers.InitiatorRequest {
+	req, _ := ctx.Value(currentRequestCtxKey{}).(*providers.InitiatorRequest)
+	return req
+}
+
+// applyCurrentRequest attaches the current flow step's HTTP request to the engine context so
+// {{request(flow.*)}} placeholders can resolve. It is a no-op when no request is present.
+func applyCurrentRequest(engineCtx *EngineContext, ctx context.Context) {
+	if engineCtx == nil {
+		return
+	}
+	if req := currentRequestFrom(ctx); req != nil {
+		engineCtx.SetCurrentRequest(req)
+	}
+}
+
 // transport inputs and stashes it on the engine context for the SSO-Check node to consume.
 // It is a no-op when no inbound transport is present.
 func applyInboundSSO(engineCtx *EngineContext, ctx context.Context) {

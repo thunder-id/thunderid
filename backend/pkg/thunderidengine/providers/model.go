@@ -1130,6 +1130,7 @@ type InitiatorRequest struct {
 type NodeContext struct {
 	Context          context.Context
 	initiatorRequest *InitiatorRequest
+	currentRequest   *InitiatorRequest
 
 	ExecutionID   string
 	FlowType      FlowType
@@ -1190,6 +1191,16 @@ func (nc *NodeContext) GetInitiatorRequest() *InitiatorRequest {
 // SetInitiatorRequest sets the original HTTP request that triggered the flow.
 func (nc *NodeContext) SetInitiatorRequest(req *InitiatorRequest) {
 	nc.initiatorRequest = req
+}
+
+// GetCurrentRequest returns the HTTP request that drives the current flow step.
+func (nc *NodeContext) GetCurrentRequest() *InitiatorRequest {
+	return nc.currentRequest
+}
+
+// SetCurrentRequest sets the HTTP request that drives the current flow step.
+func (nc *NodeContext) SetCurrentRequest(req *InitiatorRequest) {
+	nc.currentRequest = req
 }
 
 // NodeExecutionRecord represents a record of a node execution in the flow.
