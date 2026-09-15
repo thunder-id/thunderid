@@ -14669,6 +14669,7 @@
                   "name": "CredentialsAuthExecutor"
                 },
                 "onSuccess": "{{AUTH_ASSERT_EXECUTOR_ID}}",
+                "onFailure": "",
                 "onIncomplete": ""
               }
             }
@@ -14691,6 +14692,7 @@
                   "name": "GoogleOIDCAuthExecutor"
                 },
                 "onSuccess": "{{PROVISIONING_EXECUTOR_STEP_ID}}",
+                "onFailure": "",
                 "onIncomplete": ""
               },
               "properties": {
