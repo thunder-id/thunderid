@@ -346,9 +346,10 @@ type PromptDefinition struct {
 
 // ExecutorDefinition represents the executor configuration for a node.
 type ExecutorDefinition struct {
-	Name   string            `json:"name"             yaml:"name"             jsonschema:"Name of the executor (e.g., 'UsernamePasswordAuthenticator')."`
-	Mode   string            `json:"mode,omitempty"   yaml:"mode,omitempty"   jsonschema:"Execution mode or configuration."`
-	Inputs []InputDefinition `json:"inputs,omitempty" yaml:"inputs,omitempty" jsonschema:"Static inputs or configuration parameters for the executor."`
+	Name             string            `json:"name"             yaml:"name"             jsonschema:"Name of the executor (e.g., 'UsernamePasswordAuthenticator')."`
+	Mode             string            `json:"mode,omitempty"   yaml:"mode,omitempty"   jsonschema:"Execution mode or configuration."`
+	Inputs           []InputDefinition `json:"inputs,omitempty" yaml:"inputs,omitempty" jsonschema:"Static inputs or configuration parameters for the executor."`
+	IdentifierInputs []InputDefinition `json:"identifierInputs,omitempty" yaml:"identifierInputs,omitempty" jsonschema:"Mutually exclusive identifier inputs. Exactly one must be supplied."`
 }
 
 // ConditionDefinition represents a condition for node execution.
@@ -1092,8 +1093,11 @@ type NodeContext struct {
 
 	NodeProperties map[string]interface{}
 	NodeInputs     []Input
-	UserInputs     map[string]string
-	RuntimeData    map[string]string
+	// NodeIdentifierInputs holds the node's mutually exclusive identifier inputs, exactly one of
+	// which is expected to be supplied. Empty when the node declares none.
+	NodeIdentifierInputs []Input
+	UserInputs           map[string]string
+	RuntimeData          map[string]string
 	// SharedRuntimeData contains trusted data shared by every frame in the execution.
 	SharedRuntimeData map[string]string
 	ForwardedData     map[string]interface{}

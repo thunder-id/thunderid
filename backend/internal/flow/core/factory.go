@@ -151,6 +151,8 @@ func (f *flowFactory) CloneNode(source NodeInterface) (NodeInterface, error) {
 		if executableCopy, ok := nodeCopy.(ExecutorBackedNodeInterface); ok {
 			executableCopy.SetExecutorName(executableSource.GetExecutorName())
 			executableCopy.SetInputs(append([]providers.Input{}, executableSource.GetInputs()...))
+			executableCopy.SetIdentifierInputs(
+				append([]providers.Input{}, executableSource.GetIdentifierInputs()...))
 			executableCopy.SetOnSuccess(executableSource.GetOnSuccess())
 			executableCopy.SetOnFailure(executableSource.GetOnFailure())
 			executableCopy.SetOnIncomplete(executableSource.GetOnIncomplete())
