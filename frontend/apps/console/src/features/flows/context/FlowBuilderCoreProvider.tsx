@@ -120,6 +120,8 @@ function FlowContextWrapper({
   const [flowEdgeTypes, setFlowEdgeTypes] = useState<EdgeTypes>({});
   const [isVerboseMode, setIsVerboseMode] = useState<boolean>(true);
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyleTypesType>(EdgeStyleTypes.SmoothStep);
+  const [isSnapToGridEnabled, setIsSnapToGridEnabled] = useState<boolean>(false);
+  const [isMiniMapVisible, setIsMiniMapVisible] = useState<boolean>(true);
   const [flowNodes, setFlowNodes] = useState<Node[]>([]);
   const [flowEdges, setFlowEdges] = useState<Edge[]>([]);
   const [graphValidationRules, setGraphValidationRules] = useState<GraphValidationRule[]>([]);
@@ -309,6 +311,10 @@ function FlowContextWrapper({
       setIsVerboseMode,
       edgeStyle,
       setEdgeStyle,
+      isSnapToGridEnabled,
+      setIsSnapToGridEnabled,
+      isMiniMapVisible,
+      setIsMiniMapVisible,
       flowNodeTypes,
       flowEdgeTypes,
       setFlowNodeTypes,
@@ -330,6 +336,8 @@ function FlowContextWrapper({
       isFlowMetadataLoading,
       isVerboseMode,
       edgeStyle,
+      isSnapToGridEnabled,
+      isMiniMapVisible,
       flowNodeTypes,
       flowEdgeTypes,
       flowNodes,
