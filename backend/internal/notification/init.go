@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/thunder-id/thunderid/internal/notification/client"
+	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -18,7 +19,7 @@ import (
 // (/connections/{vendor}), which is the sole owner of the "connection" declarative resource
 // type. This package no longer registers any HTTP routes; its services are consumed internally
 // by authn, flow executors, and the connection/importer packages.
-func Initialize(jwtService jwt.JWTServiceInterface) (
+func Initialize(cacheManager cache.CacheManagerInterface, jwtService jwt.JWTServiceInterface) (
 	NotificationSenderMgtSvcInterface, OTPServiceInterface, NotificationSenderServiceInterface, error) {
 	var notificationStore notificationStoreInterface
 	var tx providers.Transactioner
@@ -39,7 +40,7 @@ func Initialize(jwtService jwt.JWTServiceInterface) (
 	mgtService := newNotificationSenderMgtService(notificationStore, tx)
 
 	clientFactory := client.Initialize()
-	otpService := newOTPService(jwtService)
+	otpService := newOTPService(cacheManager, jwtService)
 	notificationSenderService := newNotificationSenderService(mgtService, clientFactory)
 
 	return mgtService, otpService, notificationSenderService, nil
