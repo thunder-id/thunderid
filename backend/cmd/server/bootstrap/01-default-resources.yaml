@@ -107,14 +107,14 @@ flowType: AUTHENTICATION
 nodes:
 - id: start
   type: START
-  onSuccess: prompt_credentials
+  onSuccess: sso_check
   layout:
     size:
       width: 101
       height: 34
     position:
-      x: 248
-      y: 711
+      x: 29
+      y: 434
 - id: prompt_credentials
   type: PROMPT
   meta:
@@ -188,23 +188,50 @@ nodes:
   layout:
     size:
       width: 350
-      height: 834
+      height: 683
     position:
-      x: 562
-      y: 312
+      x: 605
+      y: 666
+- id: sso_check
+  type: TASK_EXECUTION
+  executor:
+    name: SSOCheckExecutor
+  properties:
+    checkpointRef: session
+  onSuccess: session
+  onFailure: prompt_credentials
+  layout:
+    size:
+      width: 517
+      height: 132
+    position:
+      x: 230
+      y: 386
+- id: session
+  type: TASK_EXECUTION
+  executor:
+    name: SessionExecutor
+  onSuccess: authorization_check
+  layout:
+    size:
+      width: 210
+      height: 113
+    position:
+      x: 1470
+      y: 442
 - id: credentials_auth
   type: TASK_EXECUTION
   executor:
     name: CredentialsAuthExecutor
-  onSuccess: authorization_check
+  onSuccess: session
   onIncomplete: prompt_credentials
   layout:
     size:
       width: 217
       height: 113
     position:
-      x: 1283
-      y: 470
+      x: 1115
+      y: 658
 - id: authorization_check
   type: TASK_EXECUTION
   executor:
@@ -215,8 +242,8 @@ nodes:
       width: 200
       height: 113
     position:
-      x: 1774
-      y: 470
+      x: 1820
+      y: 442
 - id: auth_assert
   type: TASK_EXECUTION
   executor:
@@ -227,8 +254,8 @@ nodes:
       width: 244
       height: 113
     position:
-      x: 2168
-      y: 469
+      x: 2120
+      y: 442
 - id: call_recovery
   type: CALL
   flow:
@@ -239,8 +266,8 @@ nodes:
       width: 260
       height: 129
     position:
-      x: 1255
-      y: 773
+      x: 1115
+      y: 880
 - id: call_registration
   type: CALL
   flow:
@@ -251,8 +278,8 @@ nodes:
       width: 260
       height: 129
     position:
-      x: 1771
-      y: 934
+      x: 1115
+      y: 1080
 - id: end
   type: END
   layout:
@@ -260,8 +287,8 @@ nodes:
       width: 85
       height: 34
     position:
-      x: 2527
-      y: 509
+      x: 2500
+      y: 482
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000068
