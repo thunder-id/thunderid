@@ -146,10 +146,36 @@ describe('executeDeletionFlow', () => {
     await expect(executeDeletionFlow(http, SERVER, FLOW_ID, USER_ID)).rejects.toThrow('additional input');
   });
 
-  it('should surface the failure reason when the flow errors', async () => {
-    const http = makeHttp({'/flow/execute': {failureReason: 'user has dependencies', flowStatus: 'ERROR'}});
+  // A refused step reports its executor error in `error`, and the code is what lets the console show
+  // the specific reason instead of a generic failure, so it must survive on the thrown error.
+  it('should carry the code and message of a refused step', async () => {
+    const http = makeHttp({
+      '/flow/execute': {
+        error: {
+          code: 'FET-1084',
+          message: {defaultValue: 'user has dependencies', key: 'flows.executor.errors.user_deletion_not_allowed'},
+        },
+        flowStatus: 'ERROR',
+      },
+    });
 
     await expect(executeDeletionFlow(http, SERVER, FLOW_ID, USER_ID)).rejects.toThrow('user has dependencies');
+
+    const failure = await executeDeletionFlow(http, SERVER, FLOW_ID, USER_ID).catch(
+      (err: unknown) => err as {code?: string},
+    );
+
+    expect(failure.code).toBe('FET-1084');
+  });
+
+  // A step can fail without an error envelope, and the deletion must still report a failure rather
+  // than an empty message.
+  it('should fall back to a named message when a failed step carries no error', async () => {
+    const http = makeHttp({'/flow/execute': {flowStatus: 'ERROR'}});
+
+    await expect(executeDeletionFlow(http, SERVER, FLOW_ID, USER_ID)).rejects.toThrow(
+      'The user deletion flow did not complete',
+    );
   });
 });
 
@@ -206,7 +232,13 @@ describe('deleteUser', () => {
     const calls: RecordedRequest[] = [];
     const http = makeHttp(
       {
-        '/flow/execute': {failureReason: 'user has dependencies', flowStatus: 'ERROR'},
+        '/flow/execute': {
+          error: {
+            code: 'FET-1084',
+            message: {defaultValue: 'user has dependencies', key: 'flows.executor.errors.user_deletion_not_allowed'},
+          },
+          flowStatus: 'ERROR',
+        },
         '/flows': {flows: [{flowType: 'ADMINISTRATION', handle: HANDLE, id: FLOW_ID}]},
         '/server-config/flow': {merged: {userDeletionFlow: {defaultHandle: HANDLE}}},
         '/users/': {},

@@ -727,3 +727,110 @@ func (suite *ServiceTestSuite) TestTerminate_DeleteError() {
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "failed to terminate session")
 }
+
+// newServiceWithRevoker builds a service wired to a criteria revoker, for the paths that revoke token
+// families as part of a session write.
+func (suite *ServiceTestSuite) newServiceWithRevoker() (*service, *serviceMocks, *CriteriaRevokerMock) {
+	m := &serviceMocks{
+		store: newSessionStoreMock(suite.T()),
+		tx:    transactionmock.NewTransactionerMock(suite.T()),
+	}
+	revoker := NewCriteriaRevokerMock(suite.T())
+	svc := &service{
+		store:           m.store,
+		resolver:        newResolver(m.store),
+		transactioner:   m.tx,
+		criteriaRevoker: revoker,
+		timeouts:        DefaultTimeouts(),
+		logger:          log.GetLogger(),
+	}
+	return svc, m, revoker
+}
+
+func (suite *ServiceTestSuite) TestDetachApplication_DetachesWithoutEndingSharedSessions() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+
+	m.store.EXPECT().ListByAppID(mock.Anything, "app-doomed").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-doomed", TokenFamilyID: "tfid-a"},
+	}, nil)
+	runTx(m)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(nil)
+	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-doomed").Return(nil)
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-survivor", TokenFamilyID: "tfid-b"},
+	}, nil)
+
+	err := svc.DetachApplication(context.Background(), "app-doomed")
+
+	suite.Require().NoError(err)
+	m.store.AssertNotCalled(suite.T(), "DeleteSession", mock.Anything, mock.Anything)
+	revoker.AssertNotCalled(suite.T(), "RevokeTokenFamily", mock.Anything, "tfid-b")
+}
+
+func (suite *ServiceTestSuite) TestDetachApplication_DeletesSessionWhenLastParticipantGoes() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+
+	m.store.EXPECT().ListByAppID(mock.Anything, "app-only").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-only", TokenFamilyID: "tfid-a"},
+	}, nil)
+	runTx(m)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(nil)
+	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-only").Return(nil)
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return(nil, nil)
+	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(nil)
+	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
+
+	err := svc.DetachApplication(context.Background(), "app-only")
+
+	suite.Require().NoError(err)
+}
+
+func (suite *ServiceTestSuite) TestDetachApplication_DetachesParticipationWithNoTokenFamily() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+
+	m.store.EXPECT().ListByAppID(mock.Anything, "app-embedded").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-embedded"},
+	}, nil)
+	runTx(m)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "").Return(nil)
+	m.store.EXPECT().DeleteParticipant(mock.Anything, "sess-1", "app-embedded").Return(nil)
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-other"},
+	}, nil)
+
+	err := svc.DetachApplication(context.Background(), "app-embedded")
+
+	suite.Require().NoError(err)
+}
+
+func (suite *ServiceTestSuite) TestDetachApplication_RevocationFailureAbortsTheDetachment() {
+	svc, m, revoker := suite.newServiceWithRevoker()
+
+	m.store.EXPECT().ListByAppID(mock.Anything, "app-doomed").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-doomed", TokenFamilyID: "tfid-a"},
+	}, nil)
+	runTx(m)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(errors.New("deny list unavailable"))
+
+	err := svc.DetachApplication(context.Background(), "app-doomed")
+
+	suite.Require().Error(err)
+	m.store.AssertNotCalled(suite.T(), "DeleteParticipant", mock.Anything, mock.Anything, mock.Anything)
+	m.store.AssertNotCalled(suite.T(), "DeleteSession", mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestDetachApplication_NoParticipationIsANoOp() {
+	svc, m, _ := suite.newServiceWithRevoker()
+
+	m.store.EXPECT().ListByAppID(mock.Anything, "app-unused").Return(nil, nil)
+
+	suite.Require().NoError(svc.DetachApplication(context.Background(), "app-unused"))
+	m.tx.AssertNotCalled(suite.T(), "Transact", mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestDetachApplication_EmptyAppIDIsANoOp() {
+	svc, m, _ := suite.newServiceWithRevoker()
+
+	suite.Require().NoError(svc.DetachApplication(context.Background(), ""))
+	m.store.AssertNotCalled(suite.T(), "ListByAppID", mock.Anything, mock.Anything)
+}

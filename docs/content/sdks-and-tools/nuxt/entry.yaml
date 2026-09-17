@@ -1,0 +1,492 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: nuxt
+name: Nuxt
+icon: NuxtLogo
+category: fullstack
+type: sdk
+origin: official
+status: ga
+package:
+  name: "@thunderid/nuxt"
+  manager: npm
+description: Server-rendered authentication for Nuxt applications, out of the box.
+docs:
+  overview: /docs/next/sdks-and-tools/nuxt/overview
+  apiReference: /docs/next/sdks-and-tools/nuxt/apis
+  quickstart: /docs/next/getting-started/connect-your-application/nuxt
+links:
+  github: https://github.com/thunder-id/javascript-sdks
+  package: https://www.npmjs.com/package/@thunderid/nuxt
+apiReference:
+  source: typedoc
+
+sections:
+  - type: api
+    id: api
+    title: API reference
+    intro: Every export is fully typed. The signatures and props below come from the package's own reference documentation,
+      so what is listed here is what the installed version ships.
+    kindTones:
+      hook: accent
+      component: primary
+      middleware: primary
+      function: accent
+      export: neutral
+    exports:
+    - group: Composables
+      kind: hook
+      name: useThunderID()
+      description: The `use{{ProductName}}` composable provides access to the {{ProductName}} authentication context
+        in Nuxt applications. It exposes reactive auth state and SSR-safe methods for signing in, signing out, and signing
+        up. This composable is auto-imported and available in every component, page, and composable without an explicit
+        import.
+      rowsLabel: Returns
+      rows:
+      - name: isSignedIn
+        type: ComputedRef
+        description: Whether the user is currently authenticated
+      - name: isLoading
+        type: ComputedRef
+        description: Whether an auth operation is in progress
+      - name: isInitialized
+        type: ComputedRef
+        description: Whether the SDK has finished initializing
+      - name: user
+        type: ComputedRef<User \
+        description: The authenticated user object, or `null` if not signed in
+      - name: organization
+        type: ComputedRef<Organization \
+        description: The current organization context, or `null`
+      - name: signIn
+        type: (...args) => Promise
+        description: Initiate the sign-in flow
+      - name: signOut
+        type: () => Promise
+        description: Sign out the current user
+      - name: signUp
+        type: (...args) => Promise
+        description: Initiate the sign-up flow
+      - name: getAccessToken
+        type: () => Promise
+        description: Get a client-safe access token via `/api/auth/token`
+      example: |-
+        <script setup lang="ts">
+        const { isSignedIn, user, signIn, signOut } = useThunderID()
+        </script>
+
+        <template>
+          <div>
+            <p v-if="isSignedIn">Welcome, {{ user?.displayName }}!</p>
+            <button v-if="isSignedIn" @click="signOut()">Sign Out</button>
+            <button v-else @click="signIn()">Sign In</button>
+          </div>
+        </template>
+    - group: Composables
+      kind: hook
+      name: useUser()
+      description: The `useUser` composable returns the currently authenticated user object as a reactive computed ref.
+        It is auto-imported and available everywhere without an explicit import.
+      example: |-
+        <script setup lang="ts">
+        const user = useUser()
+        </script>
+
+        <template>
+          <div v-if="user">
+            <h1>{{ user.displayName }}</h1>
+            <p>{{ user.email }}</p>
+          </div>
+          <p v-else>Not signed in.</p>
+        </template>
+    - group: Components
+      kind: component
+      name: <ChangeCredential />
+      description: 'The `ChangeCredential` component renders a form that lets a signed-in user set a new value for one
+        of their own credentials. It collects only a new value and its confirmation, checks it against the applicable
+        rules as the user types, and posts the change through the Nuxt server route to {{ProductName}}. It is auto-registered
+        by the Nuxt module. It reads the rules it needs from the user type schema already resolved by `ThunderIDRoot`
+        (`GET /users/me/meta`), so it adds no network request beyond the write itself. Every default label, placeholder,
+        and message is built from the credential attribute''s own `displayName` in that schema, so it always matches
+        whatever an admin named it there. By default it manages the `password` credential. To manage a different one,
+        for example a PIN declared on the user type schema, set `attribute`; render the component once per credential
+        to let a user manage more than one. :::note `ChangeCredential` collects only a new value and its confirmation,
+        not the account''s existing value. The self-service credential write path does not verify the current value
+        today, so asking for one would only teach the user a false sense of security. Once server-side current-value
+        verification ships, that field returns without a breaking change to this component''s public props. :::'
+      rowsLabel: Props
+      rows:
+      - name: attribute
+        type: string
+        tag: optional
+        description: 'The credential attribute this instance manages, any attribute the user type schema declares `credential:
+          true` for. Defaults to `''password''`.'
+      - name: cardLayout
+        type: boolean
+        tag: optional
+        description: Whether to wrap the form in a bordered card. Defaults to `false`.
+      - name: className
+        type: string
+        tag: optional
+        description: Additional CSS class added to the root element. Defaults to `''`.
+      - name: policy
+        type: PasswordPolicy
+        tag: optional
+        description: The rules the new value must satisfy. Defaults to the applicable rules from the user type schema.
+      - name: preferences
+        type: Preferences
+        tag: optional
+        description: Component-level preference overrides, including i18n.
+      - name: showRequirements
+        type: boolean
+        tag: optional
+        description: Whether to render the live requirement checklist. Defaults to `true`.
+      - name: title
+        type: string
+        tag: optional
+        description: Overrides the default `"Change {credential}"` heading. Pass an empty string to omit the heading
+          entirely. Defaults to a translated, schema-derived heading.
+      example: |-
+        <template>
+          <div>
+            <h2>Security</h2>
+            <ChangeCredential />
+          </div>
+        </template>
+    - group: Components
+      kind: component
+      name: <Loading />
+      description: The `Loading` component renders its default slot while the authentication state is being resolved.
+        It is useful for showing skeleton screens or spinners during the initial hydration phase.
+      example: |-
+        <template>
+          <Loading>
+            <p>Loading...</p>
+          </Loading>
+
+          <SignedIn>
+            <p>Welcome back!</p>
+          </SignedIn>
+
+          <SignedOut>
+            <SignInButton />
+          </SignedOut>
+        </template>
+    - group: Components
+      kind: component
+      name: <SignInButton />
+      description: The `SignInButton` component initiates the sign-in flow when clicked. It is auto-registered by the
+        Nuxt module and requires no imports.
+      rowsLabel: Props
+      rows:
+      - name: preferences
+        type: Preferences
+        tag: optional
+        description: Customization options for i18n and theming
+      example: |-
+        <template>
+          <SignInButton />
+        </template>
+    - group: Components
+      kind: component
+      name: <SignOutButton />
+      description: The `SignOutButton` component signs out the current user when clicked. It is auto-registered by the
+        Nuxt module and requires no imports.
+      rowsLabel: Props
+      rows:
+      - name: preferences
+        type: Preferences
+        tag: optional
+        description: Customization options for i18n and theming
+      example: |-
+        <template>
+          <SignOutButton />
+        </template>
+    - group: Components
+      kind: component
+      name: <SignUpButton />
+      description: The `SignUpButton` component initiates the sign-up flow when clicked. It is auto-registered by the
+        Nuxt module and requires no imports.
+      rowsLabel: Props
+      rows:
+      - name: preferences
+        type: Preferences
+        tag: optional
+        description: Customization options for i18n and theming
+      example: |-
+        <template>
+          <SignUpButton />
+        </template>
+    - group: Components
+      kind: component
+      name: <SignedIn />
+      description: The `SignedIn` component renders its default slot only when the user is authenticated. It is the
+        Vue equivalent of the React `` component and is auto-registered by the Nuxt module.
+      example: |-
+        <template>
+          <SignedIn>
+            <p>Welcome! You are signed in.</p>
+          </SignedIn>
+        </template>
+    - group: Components
+      kind: component
+      name: <SignedOut />
+      description: The `SignedOut` component renders its default slot only when the user is **not** authenticated. It
+        is auto-registered by the Nuxt module.
+      example: |-
+        <template>
+          <SignedOut>
+            <SignInButton />
+          </SignedOut>
+        </template>
+    - group: Components
+      kind: component
+      name: <ThunderIDRoot />
+      description: The `{{ProductName}}Root` component is the root provider for the {{ProductName}} Nuxt SDK. It mounts
+        the full provider tree, including i18n, branding, theme, flow, user, and organization, and must wrap all content
+        that uses {{ProductName}} composables or components.
+      example: |-
+        <template>
+          <ThunderIDRoot>
+            <NuxtPage />
+          </ThunderIDRoot>
+        </template>
+    - group: Components
+      kind: component
+      name: <User />
+      description: The `User` component provides access to the authenticated user object via a scoped slot. It is auto-registered
+        by the Nuxt module.
+      example: |-
+        <template>
+          <User>
+            <template #default="{ user }">
+              <div v-if="user">
+                <h1>Welcome, {{ user.displayName }}!</h1>
+                <p>{{ user.email }}</p>
+              </div>
+            </template>
+          </User>
+        </template>
+    - group: Components
+      kind: component
+      name: <UserDropdown />
+      description: The `UserDropdown` component renders a button showing the user's avatar or name. When clicked, it
+        opens a dropdown menu with links to the user profile and a sign-out action. It is auto-registered by the Nuxt
+        module.
+      rowsLabel: Props
+      rows:
+      - name: appearance
+        type: Appearance
+        tag: optional
+        description: Customize the component's visual appearance
+      - name: preferences
+        type: Preferences
+        tag: optional
+        description: Customization options for i18n and theming
+      example: |-
+        <template>
+          <nav>
+            <SignedIn>
+              <UserDropdown />
+            </SignedIn>
+            <SignedOut>
+              <SignInButton />
+            </SignedOut>
+          </nav>
+        </template>
+    - group: Components
+      kind: component
+      name: <UserProfile />
+      description: The `UserProfile` component renders a full profile management interface. Users can view and edit
+        their personal information, change their password, and manage linked accounts. It is auto-registered by the
+        Nuxt module.
+      rowsLabel: Props
+      rows:
+      - name: appearance
+        type: Appearance
+        tag: optional
+        description: Customize the component's visual appearance
+      - name: sections
+        type: string[]
+        tag: optional
+        description: Restrict which profile sections are shown. Defaults to all sections
+      - name: preferences
+        type: Preferences
+        tag: optional
+        description: Customization options for i18n and theming
+      example: |-
+        <template>
+          <UserProfile />
+        </template>
+    - group: Middleware
+      kind: middleware
+      name: defineThunderIDMiddleware()
+      description: '`defineThunderIDMiddleware` is a factory function that returns a Nuxt route middleware. It handles
+        authentication guards and scope checks, and redirects unauthenticated users. The module also registers a named
+        `''auth''` middleware that you can apply to any page using `definePageMeta`. It uses `defineThunderIDMiddleware`
+        with its default options.'
+      rowsLabel: Options
+      rows:
+      - name: redirectTo
+        type: string
+        description: Where to redirect unauthenticated (or unauthorized) users
+      - name: requireScopes
+        type: string[]
+        description: One or more OIDC scopes that must be present in the user's session
+      example: |-
+        <script setup lang="ts">
+        definePageMeta({ middleware: 'auth' })
+        </script>
+
+        <template>
+          <h1>Dashboard</h1>
+        </template>
+    - group: Utilities
+      kind: function
+      name: createRouteMatcher()
+      description: '`createRouteMatcher` takes an array of route patterns and returns a predicate function. Call the
+        predicate with a path string to check whether it matches any of the patterns. It is primarily used in global
+        middleware to apply auth guards to a set of routes without adding `definePageMeta` to every page.'
+      example: |-
+        import { defineThunderIDMiddleware } from '@thunderid/nuxt'
+        import { createRouteMatcher } from '@thunderid/nuxt/utils'
+
+        const isProtected = createRouteMatcher([
+          '/dashboard',
+          '/dashboard/**',
+          '/account/**',
+          '/settings/**',
+        ])
+
+        export default defineNuxtRouteMiddleware((to) => {
+          if (isProtected(to.path)) {
+            return defineThunderIDMiddleware()
+          }
+        })
+    - group: Configuration
+      kind: export
+      name: Module Configuration
+      description: The `@thunderid/nuxt` module is configured via the `thunderid` key in `nuxt.config.ts`. The configuration
+        covers credentials, redirect URLs, session handling, and UI preferences.
+      example: |-
+        export default defineNuxtConfig({
+          modules: ['@thunderid/nuxt'],
+          thunderid: {
+            clientId: '<your-client-id>',
+            clientSecret: '<your-client-secret>',
+            baseUrl: 'https://localhost:8090',
+            afterSignInUrl: '/dashboard',
+            afterSignOutUrl: '/',
+            scopes: ['openid', 'profile', 'internal_login'],
+            preferences: {
+              theme: {
+                inheritFromBranding: true,
+                mode: 'system',
+              },
+            },
+          },
+        })
+    - group: Errors
+      kind: export
+      name: ThunderIDError
+      description: '`{{ProductName}}Error` is the structured error class thrown by the {{ProductName}} Nuxt SDK. It
+        extends `Error` and carries a typed `ErrorCode`, an optional HTTP status code, an optional cause, and optional
+        context metadata.'
+      example: |-
+        import { ThunderIDError, ErrorCode } from '@thunderid/nuxt/errors'
+        import { getValidAccessToken } from '@thunderid/nuxt/server'
+
+        export default defineEventHandler(async (event) => {
+          try {
+            const token = await getValidAccessToken(event)
+            return await $fetch('/api/resource', {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+          } catch (err) {
+            if (err instanceof ThunderIDError) {
+              if (err.code === ErrorCode.SessionExpired) {
+                throw createError({ statusCode: 401, statusMessage: 'Session expired' })
+              }
+              if (err.code === ErrorCode.TokenRefreshFailed) {
+                throw createError({ statusCode: 401, statusMessage: 'Could not refresh token' })
+              }
+            }
+            throw err
+          }
+        })
+    - group: Server
+      kind: export
+      name: getThunderIDContext()
+      description: '`get{{ProductName}}Context` returns the {{ProductName}} context object that the SDK''s server plugin
+        attaches to each H3 event during SSR. This gives synchronous access to the session and pre-fetched SSR data
+        without an additional async call.'
+      example: |-
+        import { getThunderIDContext } from '@thunderid/nuxt/server'
+
+        export default defineEventHandler((event) => {
+          const ctx = getThunderIDContext(event)
+
+          return {
+            isSignedIn: ctx?.isSignedIn ?? false,
+            sub: ctx?.session?.sub ?? null,
+          }
+        })
+    - group: Server
+      kind: export
+      name: getValidAccessToken()
+      description: '`getValidAccessToken` returns a valid access token for the current session. If the stored access
+        token is expired or about to expire, it automatically uses the refresh token to obtain a new one and updates
+        the session cookie.'
+      example: |-
+        import { getValidAccessToken } from '@thunderid/nuxt/server'
+
+        export default defineEventHandler(async (event) => {
+          const accessToken = await getValidAccessToken(event)
+
+          const result = await $fetch('https://api.example.com/data', {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          })
+
+          return result
+        })
+    - group: Server
+      kind: export
+      name: requireServerSession()
+      description: '`requireServerSession` reads the {{ProductName}} session from the current H3 event and returns the
+        decoded `{{ProductName}}SessionPayload`. If no valid session exists, it throws an H3 error with status code
+        `401`.'
+      example: |-
+        import { requireServerSession } from '@thunderid/nuxt/server'
+
+        export default defineEventHandler(async (event) => {
+          const session = await requireServerSession(event)
+          // session is guaranteed to be defined here
+          return { sub: session.sub }
+        })
+    - group: Server
+      kind: export
+      name: useServerSession()
+      description: '`useServerSession` reads the {{ProductName}} session from the current H3 event and returns the decoded
+        `{{ProductName}}SessionPayload`, or `null` if no valid session exists.'
+      example: |-
+        import { useServerSession } from '@thunderid/nuxt/server'
+
+        export default defineEventHandler(async (event) => {
+          const session = await useServerSession(event)
+
+          if (!session) {
+            throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+          }
+
+          return { sub: session.sub, scopes: session.scopes }
+        })
+
+  - type: quickstart
+    id: quickstart
+    title: Get started
+    intro: Provider, session, and a protected route, start to finish.
+    label: Connect your application
+    path: Getting started / Connect your application / Nuxt
+    outro: The quickstart is maintained alongside the rest of the getting-started guides so it stays in step with the
+      platform. This page covers the package itself.

@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -23,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/idp"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -42,6 +44,7 @@ type TokenValidatorTestSuite struct {
 	suite.Suite
 	mockJWTService         *jwtmock.JWTServiceInterfaceMock
 	mockEnforcementService *revocationmock.EnforcementServiceInterfaceMock
+	mockJTIStore           *jtimock.JTIStoreInterfaceMock
 	validator              *tokenValidator
 	oauthApp               *providers.OAuthClient
 }
@@ -67,6 +70,10 @@ func (suite *TokenValidatorTestSuite) SetupTest() {
 	suite.mockEnforcementService = revocationmock.NewEnforcementServiceInterfaceMock(suite.T())
 	// Default: tokens are not revoked. Individual tests override this to exercise revocation.
 	suite.mockEnforcementService.On("EnsureNotRevoked", mock.Anything, mock.Anything).Return(nil).Maybe()
+	suite.mockJTIStore = jtimock.NewJTIStoreInterfaceMock(suite.T())
+	// Default: every assertion is being redeemed for the first time. Replay tests override this.
+	suite.mockJTIStore.On("RecordJTI", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything).Return(true, nil).Maybe()
 	suite.validator = &tokenValidator{
 		cfg: oauthconfig.Config{
 			JWT: engineconfig.JWTConfig{
@@ -78,6 +85,7 @@ func (suite *TokenValidatorTestSuite) SetupTest() {
 		},
 		jwtService:         suite.mockJWTService,
 		enforcementService: suite.mockEnforcementService,
+		jtiStore:           suite.mockJTIStore,
 	}
 
 	suite.oauthApp = &providers.OAuthClient{
@@ -1325,6 +1333,152 @@ func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Success_WithoutDP
 }
 
 // ============================================================================
+// ValidateAuthAssertion Tests - Single Use
+// ============================================================================
+
+// authAssertionClaims returns the claims of a valid auth assertion audienced to the test app.
+func (suite *TokenValidatorTestSuite) authAssertionClaims() map[string]interface{} {
+	now := time.Now().Unix()
+	return map[string]interface{}{
+		"sub":                    "user123",
+		"iss":                    "https://example.com",
+		"aud":                    testAppID,
+		"exp":                    float64(now + 3600),
+		"nbf":                    float64(now - 60),
+		"jti":                    "assertion-jti-1",
+		"assurance":              map[string]interface{}{"aal": "AAL1", "ial": "IAL1"},
+		"authorized_permissions": "read:documents",
+	}
+}
+
+// expectJTIRecord installs a fresh replay-store mock carrying one explicit expectation. SetupTest
+// registers a permissive catch-all so the existing assertion tests need no replay setup, and testify
+// matches the first registered expectation — so a replacement mock, not an extra expectation, is what
+// lets these tests control the outcome.
+func (suite *TokenValidatorTestSuite) expectJTIRecord(jtiValue string, inserted bool, recordErr error) {
+	suite.mockJTIStore = jtimock.NewJTIStoreInterfaceMock(suite.T())
+	suite.validator.jtiStore = suite.mockJTIStore
+	suite.mockJTIStore.On("RecordJTI", mock.Anything, utils.NamespaceAuthAssertion, jtiValue,
+		mock.AnythingOfType("time.Time")).Return(inserted, recordErr).Once()
+}
+
+// An assertion is redeemable once: its jti is recorded in the shared replay store, under the
+// namespace both redemption paths use, so a second redemption anywhere is refused.
+func (suite *TokenValidatorTestSuite) TestValidateAuthAssertion_RecordsJTIForReplayDetection() {
+	token := suite.createTestJWT(suite.authAssertionClaims())
+	suite.oauthApp.ID = testAppID
+
+	suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+	suite.expectJTIRecord("assertion-jti-1", true, nil)
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJTIStore.AssertExpectations(suite.T())
+}
+
+// A replayed assertion is refused rather than exchanged a second time.
+func (suite *TokenValidatorTestSuite) TestValidateAuthAssertion_ReplayedAssertionIsRejected() {
+	token := suite.createTestJWT(suite.authAssertionClaims())
+	suite.oauthApp.ID = testAppID
+
+	suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+	suite.expectJTIRecord("assertion-jti-1", false, nil)
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.ErrorIs(suite.T(), err, ErrAssertionReplayed)
+	assert.Nil(suite.T(), result)
+}
+
+// A replay store failure fails closed: an assertion that cannot be recorded is not redeemable, so an
+// outage cannot be turned into unlimited replay.
+func (suite *TokenValidatorTestSuite) TestValidateAuthAssertion_ReplayStoreFailureIsRejected() {
+	token := suite.createTestJWT(suite.authAssertionClaims())
+	suite.oauthApp.ID = testAppID
+
+	suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+	suite.expectJTIRecord("assertion-jti-1", false, errors.New("store unavailable"))
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+}
+
+// The actor slot identifies the party doing the acting; it is not a slot for redeeming a credential.
+// An auth assertion is a credential awaiting redemption, so it has no business there and is rejected
+// outright rather than merely left unspent — which would have left it replayable in that slot.
+func (suite *TokenValidatorTestSuite) TestValidateActorToken_RejectsAuthAssertion() {
+	token := suite.createTestJWT(suite.authAssertionClaims())
+	suite.oauthApp.ID = testAppID
+
+	suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+	suite.mockJTIStore = jtimock.NewJTIStoreInterfaceMock(suite.T())
+	suite.validator.jtiStore = suite.mockJTIStore
+
+	result, err := suite.validator.ValidateActorToken(context.Background(), token, suite.oauthApp)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	// Rejected, not redeemed: the assertion must not be spent by being presented in the wrong slot.
+	suite.mockJTIStore.AssertNotCalled(suite.T(), "RecordJTI")
+}
+
+// A token that is not an auth assertion remains a valid actor token.
+func (suite *TokenValidatorTestSuite) TestValidateActorToken_AcceptsNonAssertion() {
+	claims := suite.authAssertionClaims()
+	delete(claims, "assurance")
+	delete(claims, "authorized_permissions")
+	token := suite.createTestJWT(claims)
+	suite.oauthApp.ID = testAppID
+
+	suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+
+	result, err := suite.validator.ValidateActorToken(context.Background(), token, suite.oauthApp)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+}
+
+// The actor slot is validated exactly as the subject slot is, so a rejection there is not weakened by
+// skipping consumption.
+func (suite *TokenValidatorTestSuite) TestValidateActorToken_RejectsInvalidSignature() {
+	token := suite.createTestJWT(suite.authAssertionClaims())
+	suite.oauthApp.ID = testAppID
+
+	suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(&tidcommon.ServiceError{
+		Type:  tidcommon.ServerErrorType,
+		Code:  "INVALID_SIGNATURE",
+		Error: tidcommon.I18nMessage{DefaultValue: "Invalid signature"},
+	})
+
+	result, err := suite.validator.ValidateActorToken(context.Background(), token, suite.oauthApp)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+}
+
+// A subject token that is not an auth assertion (no assurance claim) is not single-use: an ID token
+// remains exchangeable for its lifetime, so the replay store is never consulted for one.
+func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_NonAssertionDoesNotConsumeJTI() {
+	claims := suite.authAssertionClaims()
+	delete(claims, "assurance")
+	delete(claims, "authorized_permissions")
+	token := suite.createTestJWT(claims)
+	suite.oauthApp.ID = testAppID
+
+	suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJTIStore.AssertNotCalled(suite.T(), "RecordJTI")
+}
+
+// ============================================================================
 // ValidateAuthAssertion Tests - Success Cases
 // ============================================================================
 
@@ -1339,6 +1493,8 @@ func (suite *TokenValidatorTestSuite) TestValidateAuthAssertion_Success_WithAppI
 		"assurance":              map[string]interface{}{"aal": "AAL1", "ial": "IAL1"}, // Make it an auth assertion
 		"authorized_permissions": "read:documents write:documents",
 		"userType":               "person",
+		// Every assertion this server mints carries a jti; it is what makes the assertion single-use.
+		"jti": "auth-assertion-with-app-id",
 	}
 	token := suite.createTestJWT(claims)
 
@@ -2061,6 +2217,51 @@ func (suite *TokenValidatorTestSuite) TestRevocationIdentity_RefreshTokenUsesAcc
 	assert.NotContains(suite.T(), identity.Criteria, revocation.Criterion{
 		Type: revocation.CriterionTypeSubject, Value: "oauth-client",
 	})
+}
+
+// An access token carries the owning client in client_id, so app.key is taken from there and sub is left
+// to the subject dimension.
+func (suite *TokenValidatorTestSuite) TestRevocationIdentity_AccessTokenAppKeyFromClientID() {
+	identity := revocationIdentity(map[string]interface{}{
+		"sub":       "user-123",
+		"client_id": "oauth-client",
+		"iat":       float64(1_700_000_000),
+	}, "at-jti", "at-family")
+
+	assert.Contains(suite.T(), identity.Criteria, revocation.Criterion{
+		Type: revocation.CriterionTypeApplicationKey, Value: "oauth-client",
+	})
+	assert.Contains(suite.T(), identity.Criteria, revocation.Criterion{
+		Type: revocation.CriterionTypeSubject, Value: "user-123",
+	})
+}
+
+// A refresh token carries no client_id and is minted with the owning client as sub, so app.key falls back
+// to sub there. Without this, refresh tokens would escape application revocation entirely.
+func (suite *TokenValidatorTestSuite) TestRevocationIdentity_RefreshTokenAppKeyFallsBackToSub() {
+	identity := revocationIdentity(map[string]interface{}{
+		"sub":              "oauth-client",
+		"access_token_sub": "user-123",
+		"iat":              float64(1_700_000_000),
+	}, "refresh-jti", "refresh-family")
+
+	assert.Contains(suite.T(), identity.Criteria, revocation.Criterion{
+		Type: revocation.CriterionTypeApplicationKey, Value: "oauth-client",
+	})
+}
+
+// The sub fallback must not apply to an access token, where sub holds the end user rather than the client.
+// Treating it as a client id would put a user identifier into the app.key dimension.
+func (suite *TokenValidatorTestSuite) TestRevocationIdentity_AccessTokenWithoutClientIDHasNoAppKey() {
+	identity := revocationIdentity(map[string]interface{}{
+		"sub": "user-123",
+		"iat": float64(1_700_000_000),
+	}, "at-jti", "")
+
+	for _, criterion := range identity.Criteria {
+		assert.NotEqual(suite.T(), revocation.CriterionTypeApplicationKey, criterion.Type,
+			"an access token with no client_id must contribute no app.key criterion")
+	}
 }
 
 // When the deny list cannot be consulted, the validator surfaces revocation.ErrEnforcementUnavailable

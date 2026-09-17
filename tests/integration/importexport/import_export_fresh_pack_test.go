@@ -362,6 +362,141 @@ func (suite *ImportExportFreshPackSuite) TestExportImportAcrossFreshPack() {
 	suite.True(seenTypes["layout"])
 }
 
+// TestImportVCResourcesResolveOUHandle verifies runtime imports resolve a full
+// ouHandle path before calling the VC management services.
+func (suite *ImportExportFreshPackSuite) TestImportVCResourcesResolveOUHandle() {
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "import-vc-ou-" + suffix,
+		Name:   "Import VC OU " + suffix,
+	})
+	suite.Require().NoError(err)
+	defer func() {
+		if err := testutils.DeleteOrganizationUnit(ouID); err != nil {
+			suite.T().Logf("failed to delete VC import OU %s: %v", ouID, err)
+		}
+	}()
+
+	credentialID := "import-vci-" + suffix
+	presentationID := "import-vp-" + suffix
+	validContent := fmt.Sprintf(`resource_type: credential_configuration
+id: %s
+handle: import-vci-%s
+ouId: %s
+vct: https://credentials.thunderid.local/ImportCredential
+---
+resource_type: presentation_definition
+id: %s
+handle: import-vp-%s
+ouId: %s
+vct: https://credentials.thunderid.local/ImportPresentation
+`, credentialID, suffix, ouID, presentationID, suffix, ouID)
+
+	response, err := suite.importResources(importRequest{
+		Content: validContent,
+		Options: importOptions{Upsert: false, ContinueOnError: true, Target: "runtime"},
+	})
+	suite.Require().NoError(err)
+	defer func() {
+		if err := testutils.DeleteCredentialConfiguration(credentialID); err != nil {
+			suite.T().Logf("failed to delete imported credential configuration %s: %v", credentialID, err)
+		}
+		if err := testutils.DeletePresentationDefinition(presentationID); err != nil {
+			suite.T().Logf("failed to delete imported presentation definition %s: %v", presentationID, err)
+		}
+	}()
+	suite.Equal(2, response.Summary.Imported)
+	suite.Equal(0, response.Summary.Failed)
+	suite.Len(response.Results, 2)
+	for _, result := range response.Results {
+		suite.Equal("success", result.Status)
+		suite.Equal("create", result.Operation)
+	}
+	suite.assertFound("/openid4vci/credential-configurations/" + credentialID)
+	suite.assertFound("/openid4vp/presentation-definitions/" + presentationID)
+
+	updatedContent := fmt.Sprintf(`resource_type: credential_configuration
+id: %s
+handle: import-vci-%s
+ouId: %s
+name: Updated imported credential
+vct: https://credentials.thunderid.local/ImportCredential
+---
+resource_type: presentation_definition
+id: %s
+handle: import-vp-%s
+ouId: %s
+name: Updated imported presentation
+vct: https://credentials.thunderid.local/ImportPresentation
+`, credentialID, suffix, ouID, presentationID, suffix, ouID)
+	response, err = suite.importResources(importRequest{
+		Content: updatedContent,
+		Options: importOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+	})
+	suite.Require().NoError(err)
+	suite.Equal(2, response.Summary.Imported)
+	suite.Equal(0, response.Summary.Failed)
+	for _, result := range response.Results {
+		suite.Equal("success", result.Status)
+		suite.Equal("update", result.Operation)
+	}
+
+	handleContent := fmt.Sprintf(`resource_type: credential_configuration
+id: %s
+handle: import-vci-with-handle-%s
+ouHandle: import-vc-ou-%s
+vct: https://credentials.thunderid.local/ImportCredential
+---
+resource_type: presentation_definition
+id: %s
+handle: import-vp-with-handle-%s
+ouHandle: import-vc-ou-%s
+vct: https://credentials.thunderid.local/ImportPresentation
+`, credentialID, suffix, suffix, presentationID, suffix, suffix)
+
+	response, err = suite.importResources(importRequest{
+		Content: handleContent,
+		Options: importOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+	})
+	suite.Require().NoError(err)
+	suite.Equal(2, response.Summary.Imported)
+	suite.Equal(0, response.Summary.Failed)
+	suite.Len(response.Results, 2)
+	for _, result := range response.Results {
+		suite.Equal("success", result.Status)
+		suite.Equal("update", result.Operation)
+	}
+}
+
+func (suite *ImportExportFreshPackSuite) TestImportVCResourcesRejectInvalidOUHandle() {
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	content := fmt.Sprintf(`resource_type: credential_configuration
+id: vci-invalid-ou-%s
+handle: import_vci_invalid_ou_%s
+ouHandle: missing-import-ou-%s
+vct: urn:import:invalid-ou
+---
+resource_type: presentation_definition
+id: vp-invalid-ou-%s
+handle: import_vp_invalid_ou_%s
+ouHandle: missing-import-ou-%s
+vct: urn:import:invalid-ou
+`, suffix, suffix, suffix, suffix, suffix, suffix)
+
+	response, err := suite.importResources(importRequest{
+		Content: content,
+		Options: importOptions{ContinueOnError: true, Target: "runtime"},
+	})
+	suite.Require().NoError(err)
+	suite.Equal(0, response.Summary.Imported)
+	suite.Equal(2, response.Summary.Failed)
+	suite.Len(response.Results, 2)
+	for _, result := range response.Results {
+		suite.Equal("failed", result.Status)
+		suite.NotEmpty(result.Code)
+	}
+}
+
 func (suite *ImportExportFreshPackSuite) exportResources(reqBody exportRequest) (string, error) {
 	payload, err := json.Marshal(reqBody)
 	if err != nil {
@@ -581,6 +716,75 @@ func (suite *ImportExportFreshPackSuite) resetToFreshPack() error {
 	}
 
 	return nil
+}
+
+// TestImportVCResourcesPreferOUID verifies an explicit ouId wins when an
+// import document also contains an ouHandle.
+func (suite *ImportExportFreshPackSuite) TestImportVCResourcesPreferOUID() {
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	firstOU, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "import-vc-primary-ou-" + suffix,
+		Name:   "Import VC Primary OU " + suffix,
+	})
+	suite.Require().NoError(err)
+	defer func() {
+		if err := testutils.DeleteOrganizationUnit(firstOU); err != nil {
+			suite.T().Logf("failed to delete primary VC import OU %s: %v", firstOU, err)
+		}
+	}()
+
+	secondOU, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "import-vc-secondary-ou-" + suffix,
+		Name:   "Import VC Secondary OU " + suffix,
+	})
+	suite.Require().NoError(err)
+	defer func() {
+		if err := testutils.DeleteOrganizationUnit(secondOU); err != nil {
+			suite.T().Logf("failed to delete secondary VC import OU %s: %v", secondOU, err)
+		}
+	}()
+
+	credentialID := "vci-prefer-" + suffix
+	presentationID := "vp-prefer-" + suffix
+	content := fmt.Sprintf(`resource_type: credential_configuration
+id: %s
+handle: import_vci_prefer_id_%s
+ouId: %s
+ouHandle: import-vc-secondary-ou-%s
+format: dc+sd-jwt
+vct: urn:import:prefer-id
+claims:
+  - name: email
+---
+resource_type: presentation_definition
+id: %s
+handle: import_vp_prefer_id_%s
+ouId: %s
+ouHandle: import-vc-secondary-ou-%s
+format: dc+sd-jwt
+vct: urn:import:prefer-id
+requestedClaims:
+  - email
+`, credentialID, suffix, firstOU, suffix, presentationID, suffix, firstOU, suffix)
+
+	response, err := suite.importResources(importRequest{
+		Content: content,
+		Options: importOptions{ContinueOnError: true, Target: "runtime"},
+	})
+	suite.Require().NoError(err)
+	suite.Equal(2, response.Summary.Imported)
+	suite.Equal(0, response.Summary.Failed)
+
+	suite.assertFound("/openid4vci/credential-configurations/" + credentialID)
+	suite.assertFound("/openid4vp/presentation-definitions/" + presentationID)
+	defer func() {
+		if err := testutils.DeleteCredentialConfiguration(credentialID); err != nil {
+			suite.T().Logf("failed to delete imported credential configuration %s: %v", credentialID, err)
+		}
+		if err := testutils.DeletePresentationDefinition(presentationID); err != nil {
+			suite.T().Logf("failed to delete imported presentation definition %s: %v", presentationID, err)
+		}
+	}()
 }
 
 // groupRoleExportRequest is a superset export request that includes groups and roles.

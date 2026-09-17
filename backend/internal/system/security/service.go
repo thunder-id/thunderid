@@ -25,6 +25,7 @@ type RevocationIdentity struct {
 	JTI           string
 	TokenFamilyID string
 	Subject       string
+	AppKey        string
 	EstablishedAt time.Time
 }
 
@@ -119,6 +120,7 @@ func (s *securityService) Process(r *http.Request) (context.Context, error) {
 			JTI:           securityCtx.revocationID,
 			TokenFamilyID: securityCtx.tokenFamilyID,
 			Subject:       securityCtx.revocationSubject,
+			AppKey:        securityCtx.revocationAppKey,
 			EstablishedAt: securityCtx.establishedAt,
 		}); err != nil {
 			return s.handleAuthError(ctx, isPublic, errInvalidToken)

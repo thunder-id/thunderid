@@ -92,6 +92,8 @@ const (
 	// DataOTPNumericOnly reports whether the OTP minted by the OTP executor in generate mode contains
 	// digits only, surfaced so the client restricts input to the characters the user has to type.
 	DataOTPNumericOnly = "otpNumericOnly"
+	// DataClientSecret carries a regenerated client secret back to the caller.
+	DataClientSecret = "clientSecret" // #nosec G101 -- response field name, not a secret
 )
 
 // Error assertion claims.

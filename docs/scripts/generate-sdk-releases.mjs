@@ -24,6 +24,7 @@ const SDK_REPOS = [
     tagPattern: /^sdk\/([a-z0-9-]+)\/v(.+)$/,
     packageNamePrefix: '@thunderid/',
     knownPackages: [
+      'better-auth',
       'browser',
       'express',
       'javascript',

@@ -75,9 +75,17 @@ function CopyButton({text}: {text: string}): React.ReactElement {
 interface RunThunderIDProps {
   tabs?: TabId[];
   defaultTab?: TabId;
+  /**
+   * Hides the requirement hint and the link to the server install guide.
+   *
+   * That link is the right next step when this card starts a setup flow, and
+   * the wrong one where the card installs something else, such as the agent
+   * skills bundle.
+   */
+  hideFooter?: boolean;
 }
 
-export default function RunThunderID({tabs, defaultTab}: RunThunderIDProps = {}): React.ReactElement {
+export default function RunThunderID({tabs, defaultTab, hideFooter}: RunThunderIDProps = {}): React.ReactElement {
   const visibleTabs = tabs ? TABS.filter(({id}) => tabs.includes(id)) : TABS;
   const [activeTab, setActiveTab] = useState<TabId>(defaultTab ?? visibleTabs[0]?.id ?? 'cli');
   const theme = useTheme();
@@ -215,35 +223,37 @@ export default function RunThunderID({tabs, defaultTab}: RunThunderIDProps = {})
       </Box>
 
       {/* Footer */}
-      <Box
-        sx={{
-          alignItems: 'center',
-          borderTop: '1px solid',
-          borderColor: 'divider',
-          display: 'flex',
-          justifyContent: 'space-between',
-          px: 2.5,
-          py: 0.85,
-        }}
-      >
-        <Typography sx={{color: 'text.disabled', fontSize: '0.75rem'}}>{hint}</Typography>
+      {!hideFooter && (
         <Box
-          component="a"
-          href={docsUrl('/docs/next/getting-started/get-thunderid')}
           sx={{
-            color: 'text.disabled',
-            flexShrink: 0,
-            fontSize: '0.75rem',
-            ml: 2,
-            textDecoration: 'none',
-            whiteSpace: 'nowrap',
-            transition: 'color 0.15s',
-            '&:hover': {color: 'primary.main'},
+            alignItems: 'center',
+            borderTop: '1px solid',
+            borderColor: 'divider',
+            display: 'flex',
+            justifyContent: 'space-between',
+            px: 2.5,
+            py: 0.85,
           }}
         >
-          Full install guide →
+          <Typography sx={{color: 'text.disabled', fontSize: '0.75rem'}}>{hint}</Typography>
+          <Box
+            component="a"
+            href={docsUrl('/docs/next/getting-started/get-thunderid')}
+            sx={{
+              color: 'text.disabled',
+              flexShrink: 0,
+              fontSize: '0.75rem',
+              ml: 2,
+              textDecoration: 'none',
+              whiteSpace: 'nowrap',
+              transition: 'color 0.15s',
+              '&:hover': {color: 'primary.main'},
+            }}
+          >
+            Full install guide →
+          </Box>
         </Box>
-      </Box>
+      )}
     </Box>
   );
 }

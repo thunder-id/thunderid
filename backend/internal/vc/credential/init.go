@@ -25,11 +25,16 @@ import (
 func Initialize(
 	mux *http.ServeMux, ouService ou.OrganizationUnitServiceInterface,
 ) (CredentialConfigurationServiceInterface, declarativeresource.ResourceExporter, error) {
-	store, err := initializeStore(ouService)
+	store, fileStore, dbStore, err := initializeStore()
 	if err != nil {
 		return nil, nil, err
 	}
 	svc := newCredentialConfigurationService(store, ouService)
+	if fileStore != nil {
+		if err := loadDeclarativeResources(fileStore, dbStore, svc); err != nil {
+			return nil, nil, err
+		}
+	}
 	registerRoutes(mux, newConfigurationHandler(svc))
 	return svc, newConfigurationExporter(svc), nil
 }
@@ -68,28 +73,22 @@ func registerRoutes(mux *http.ServeMux, h *configurationHandler) {
 		func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }, resourceOpts))
 }
 
-// initializeStore creates the credential store for the configured store mode, loading declarative resources as needed.
-func initializeStore(ouService ou.OrganizationUnitServiceInterface) (credentialStoreInterface, error) {
+// initializeStore creates the credential stores for the configured store mode.
+func initializeStore() (credentialStoreInterface, *credentialFileBasedStore, credentialStoreInterface, error) {
 	mode, err := getCredentialStoreMode()
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	switch mode {
 	case serverconst.StoreModeComposite:
 		fileStore := newCredentialFileBasedStore()
 		dbStore := newCredentialStore()
-		if err := loadDeclarativeResources(fileStore, dbStore, ouService); err != nil {
-			return nil, err
-		}
-		return newCompositeCredentialStore(fileStore, dbStore), nil
+		return newCompositeCredentialStore(fileStore, dbStore), fileStore, dbStore, nil
 	case serverconst.StoreModeDeclarative:
 		fileStore := newCredentialFileBasedStore()
-		if err := loadDeclarativeResources(fileStore, nil, ouService); err != nil {
-			return nil, err
-		}
-		return fileStore, nil
+		return fileStore, fileStore, nil, nil
 	default:
-		return newCredentialStore(), nil
+		return newCredentialStore(), nil, nil, nil
 	}
 }
 

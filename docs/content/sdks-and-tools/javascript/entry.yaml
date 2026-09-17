@@ -1,0 +1,583 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: javascript
+name: JavaScript
+icon: JavaScriptLogo
+category: spa
+type: sdk
+origin: official
+status: ga
+package:
+  name: "@thunderid/javascript"
+  manager: npm
+description: Framework-agnostic core that powers the browser, Node, and platform SDKs.
+docs:
+  overview: /docs/next/sdks-and-tools/javascript/overview
+  apiReference: /docs/next/sdks-and-tools/javascript/apis
+links:
+  github: https://github.com/thunder-id/javascript-sdks
+  package: https://www.npmjs.com/package/@thunderid/javascript
+apiReference:
+  source: typedoc
+
+sections:
+  - type: api
+    id: api
+    title: API reference
+    intro: Every export is fully typed. The signatures and props below come from the package's own reference documentation,
+      so what is listed here is what the installed version ships.
+    kindTones:
+      export: neutral
+      function: accent
+    exports:
+    - group: Flows
+      kind: export
+      name: Embedded Recovery Flow (V2)
+      description: '`executeEmbeddedRecoveryFlowV2` drives a step-by-step account recovery flow (e.g., password reset)
+        without a browser redirect.'
+      rowsLabel: Parameters
+      rows:
+      - name: config.url
+        type: string
+        tag: required
+        description: Full endpoint URL. Mutually exclusive with `baseUrl`
+      - name: config.baseUrl
+        type: string
+        tag: required
+        description: '{{ProductName}} base URL'
+      - name: config.payload
+        type: EmbeddedRecoveryFlowRequestV2
+        tag: required
+        description: Flow request body
+      - name: config.payload.applicationId
+        type: string
+        tag: optional
+        description: Application ID. Required for the first step
+      - name: config.payload.flowType
+        type: string
+        tag: optional
+        description: Recovery flow type (e.g., `'PASSWORD_RECOVERY'`). Required for first step
+      - name: config.payload.executionId
+        type: string
+        tag: optional
+        description: Execution ID from a prior response
+      - name: config.payload.action
+        type: string
+        tag: optional
+        description: Action to take at the current step
+      - name: config.payload.inputs
+        type: Record
+        tag: optional
+        description: Step input fields
+      - name: config.payload.challengeToken
+        type: string
+        tag: optional
+        description: Challenge token from a prior step
+      example: |-
+        import { executeEmbeddedRecoveryFlowV2, EmbeddedRecoveryFlowStatusV2 } from '@thunderid/javascript'
+
+        // Step 1 — Initiate recovery
+        const step1 = await executeEmbeddedRecoveryFlowV2({
+          baseUrl: 'https://localhost:8090',
+          payload: {
+            applicationId: '<your-app-id>',
+            flowType: 'PASSWORD_RECOVERY',
+          },
+        })
+
+        // Step 2 — Provide the username/email to recover
+        const step2 = await executeEmbeddedRecoveryFlowV2({
+          baseUrl: 'https://localhost:8090',
+          payload: {
+            executionId: step1.executionId,
+            inputs: {
+              username: 'user@example.com',
+            },
+          },
+        })
+
+        // Step 3 — Submit the OTP/token received by email
+        const step3 = await executeEmbeddedRecoveryFlowV2({
+          baseUrl: 'https://localhost:8090',
+          payload: {
+            executionId: step2.executionId,
+            inputs: {
+              otp: '123456',
+            },
+            challengeToken: step2.challengeToken,
+          },
+        })
+
+        if (step3.flowStatus === EmbeddedRecoveryFlowStatusV2.Complete) {
+          // Recovery complete — prompt user for new password
+        }
+    - group: Flows
+      kind: export
+      name: Embedded Sign-In Flow (V1)
+      description: 'These functions implement app-native (embedded) sign-in for the V1 flow protocol. They allow you
+        to drive the authentication sequence step-by-step without a browser redirect to the identity provider. Used
+        internally by `ThunderIDJavaScriptClient.getAgentToken()`. :::note For new integrations, prefer the V2 flow
+        functions, which offer a richer response model and better error handling. :::'
+      example: |-
+        import { initializeEmbeddedSignInFlow } from '@thunderid/javascript'
+
+        const response = await initializeEmbeddedSignInFlow({
+          url: 'https://localhost:8090/oauth2/authorize',
+          payload: {
+            response_type: 'code',
+            client_id: '<your-client-id>',
+            redirect_uri: 'http://localhost:3000',
+            scope: 'openid profile',
+            state: '<random-state>',
+            code_challenge: '<pkce-code-challenge>',
+            code_challenge_method: 'S256',
+            response_mode: 'direct',
+          },
+        })
+    - group: Flows
+      kind: export
+      name: Embedded Sign-In Flow (V2)
+      description: '`executeEmbeddedSignInFlowV2` drives a step-by-step sign-in sequence using the V2 flow protocol.
+        It supports a richer response model with explicit error states, challenge tokens for multi-factor flows, and
+        assertion-based completion.'
+      rowsLabel: Parameters
+      rows:
+      - name: config.url
+        type: string
+        tag: required
+        description: Full endpoint URL. Mutually exclusive with `baseUrl`
+      - name: config.baseUrl
+        type: string
+        tag: required
+        description: '{{ProductName}} base URL'
+      - name: config.payload
+        type: EmbeddedSignInFlowRequestV2
+        tag: required
+        description: Flow request body
+      - name: config.payload.applicationId
+        type: string
+        tag: optional
+        description: Application ID. Required for the first step
+      - name: config.payload.flowType
+        type: string
+        tag: optional
+        description: Flow type. Required for the first step (e.g., `'SIGN_IN'`)
+      - name: config.payload.executionId
+        type: string
+        tag: optional
+        description: Execution ID from a prior response. Required for subsequent steps
+      - name: config.payload.action
+        type: string
+        tag: optional
+        description: Action to take at the current step
+      - name: config.payload.inputs
+        type: Record
+        tag: optional
+        description: Step-specific input fields (e.g., credentials)
+      - name: config.payload.challengeToken
+        type: string
+        tag: optional
+        description: Challenge token from a prior step (e.g., for MFA)
+      - name: config.authId
+        type: string
+        tag: optional
+        description: Optional authentication context ID
+      example: |-
+        import { executeEmbeddedSignInFlowV2, EmbeddedSignInFlowStatusV2 } from '@thunderid/javascript'
+
+        // Step 1 — Initiate the flow
+        const step1 = await executeEmbeddedSignInFlowV2({
+          baseUrl: 'https://localhost:8090',
+          payload: {
+            applicationId: '<your-app-id>',
+            flowType: 'SIGN_IN',
+          },
+        })
+
+        // Step 2 — Submit credentials
+        const step2 = await executeEmbeddedSignInFlowV2({
+          baseUrl: 'https://localhost:8090',
+          payload: {
+            executionId: step1.executionId,
+            inputs: {
+              username: 'user@example.com',
+              password: 'password123',
+            },
+          },
+        })
+
+        if (step2.flowStatus === EmbeddedSignInFlowStatusV2.Complete) {
+          const assertion = step2.assertion // Use to complete the OAuth code exchange
+        }
+    - group: Flows
+      kind: export
+      name: Embedded Sign-Up Flow (V1)
+      description: '`executeEmbeddedSignUpFlow` drives a step-by-step registration flow without a browser redirect.
+        :::note For new integrations, prefer `executeEmbeddedSignUpFlowV2`. :::'
+      rowsLabel: Parameters
+      rows:
+      - name: config.url
+        type: string
+        tag: required
+        description: Full endpoint URL. Mutually exclusive with `baseUrl`
+      - name: config.baseUrl
+        type: string
+        tag: required
+        description: '{{ProductName}} base URL'
+      - name: config.payload
+        type: EmbeddedFlowExecuteRequestPayload
+        tag: required
+        description: Flow step payload
+      - name: config.payload.flowType
+        type: EmbeddedFlowType
+        tag: required
+        description: Must be `EmbeddedFlowType.Registration`
+      - name: config.payload.flowId
+        type: string
+        tag: optional
+        description: Flow ID from a previous step response
+      - name: config.payload.selectedAuthenticator
+        type: object
+        tag: optional
+        description: Authenticator selection (for later steps)
+      example: |-
+        import { executeEmbeddedSignUpFlow, EmbeddedFlowType } from '@thunderid/javascript'
+
+        const response = await executeEmbeddedSignUpFlow({
+          baseUrl: 'https://localhost:8090',
+          payload: {
+            flowType: EmbeddedFlowType.Registration,
+            // step-specific fields
+          },
+        })
+    - group: Flows
+      kind: export
+      name: Embedded Sign-Up Flow (V2)
+      description: '`executeEmbeddedSignUpFlowV2` drives a step-by-step user registration flow using the V2 protocol.'
+      rowsLabel: Parameters
+      rows:
+      - name: config.url
+        type: string
+        tag: required
+        description: Full endpoint URL. Mutually exclusive with `baseUrl`
+      - name: config.baseUrl
+        type: string
+        tag: required
+        description: '{{ProductName}} base URL'
+      - name: config.payload
+        type: EmbeddedSignUpFlowRequestV2
+        tag: required
+        description: Flow request body
+      - name: config.payload.applicationId
+        type: string
+        tag: optional
+        description: Application ID. Required for the first step
+      - name: config.payload.flowType
+        type: string
+        tag: optional
+        description: Flow type. Required for the first step (e.g., `'REGISTRATION'`)
+      - name: config.payload.executionId
+        type: string
+        tag: optional
+        description: Execution ID from a prior response
+      - name: config.payload.action
+        type: string
+        tag: optional
+        description: Action to perform at the current step
+      - name: config.payload.inputs
+        type: Record
+        tag: optional
+        description: Registration field values
+      - name: config.payload.challengeToken
+        type: string
+        tag: optional
+        description: Challenge token for verification steps
+      - name: config.authId
+        type: string
+        tag: optional
+        description: Optional authentication context ID
+      example: |-
+        import { executeEmbeddedSignUpFlowV2, EmbeddedSignUpFlowStatusV2 } from '@thunderid/javascript'
+
+        // Step 1 — Initiate
+        const step1 = await executeEmbeddedSignUpFlowV2({
+          baseUrl: 'https://localhost:8090',
+          payload: {
+            applicationId: '<your-app-id>',
+            flowType: 'REGISTRATION',
+          },
+        })
+
+        // Step 2 — Provide registration details
+        const step2 = await executeEmbeddedSignUpFlowV2({
+          baseUrl: 'https://localhost:8090',
+          payload: {
+            executionId: step1.executionId,
+            inputs: {
+              username: 'newuser@example.com',
+              password: 'SecurePass123!',
+              'http://wso2.org/claims/givenname': 'New',
+              'http://wso2.org/claims/lastname': 'User',
+            },
+          },
+        })
+
+        if (step2.flowStatus === EmbeddedSignUpFlowStatusV2.Complete) {
+          // Registration complete — redirect or sign in
+        }
+    - group: Flows
+      kind: export
+      name: Flow Meta (V2)
+      description: '`getFlowMetaV2` fetches aggregated metadata for a V2 flow context, including application branding,
+        organization unit details, theme configuration, and available translations. Use it to pre-load everything needed
+        to render a custom sign-in or sign-up UI.'
+      rowsLabel: Parameters
+      rows:
+      - name: config.url
+        type: string
+        tag: required
+        description: Full endpoint URL. Mutually exclusive with `baseUrl`
+      - name: config.baseUrl
+        type: string
+        tag: required
+        description: '{{ProductName}} base URL'
+      - name: config.type
+        type: FlowMetaType
+        tag: optional
+        description: Scope the metadata to an application (`App`) or organization unit (`Ou`)
+      - name: config.id
+        type: string
+        tag: optional
+        description: Application ID or OU ID, depending on `type`
+      - name: config.language
+        type: string
+        tag: optional
+        description: BCP 47 language tag for the i18n metadata (e.g., `'en-US'`)
+      - name: config.namespace
+        type: string
+        tag: optional
+        description: Translation namespace filter
+      example: |-
+        import { getFlowMetaV2, FlowMetaType } from '@thunderid/javascript'
+
+        const meta = await getFlowMetaV2({
+          baseUrl: 'https://localhost:8090',
+          type: FlowMetaType.App,
+          id: '<your-app-id>',
+          language: 'en-US',
+        })
+
+        console.log(meta.application?.name)
+        console.log(meta.design.theme.colorSchemes)
+        console.log(meta.i18n.translations)
+    - group: Flows
+      kind: export
+      name: User Onboarding Flow (V2)
+      description: '`executeEmbeddedUserOnboardingFlowV2` drives a post-sign-in onboarding sequence (e.g., profile completion,
+        consent collection) without a browser redirect.'
+      rowsLabel: Parameters
+      rows:
+      - name: config.url
+        type: string
+        tag: required
+        description: Full endpoint URL. Mutually exclusive with `baseUrl`
+      - name: config.baseUrl
+        type: string
+        tag: required
+        description: '{{ProductName}} base URL'
+      - name: config.payload
+        type: EmbeddedFlowExecuteRequestConfigV2
+        tag: required
+        description: Flow request body
+      - name: config.payload.applicationId
+        type: string
+        tag: optional
+        description: Application ID. Required for the first step
+      - name: config.payload.flowType
+        type: string
+        tag: optional
+        description: Must be `'USER_ONBOARDING'` for the first step
+      - name: config.payload.executionId
+        type: string
+        tag: optional
+        description: Execution ID from a prior response
+      - name: config.payload.inputs
+        type: Record
+        tag: optional
+        description: Step input values
+      - name: config.payload.challengeToken
+        type: string
+        tag: optional
+        description: Challenge token from a prior step
+      example: |-
+        import { executeEmbeddedUserOnboardingFlowV2, EmbeddedSignUpFlowStatusV2 } from '@thunderid/javascript'
+
+        // Step 1 — Initiate onboarding
+        const step1 = await executeEmbeddedUserOnboardingFlowV2({
+          baseUrl: 'https://localhost:8090',
+          payload: {
+            applicationId: '<your-app-id>',
+            flowType: 'USER_ONBOARDING',
+          },
+        })
+
+        // Step 2 — Complete profile
+        const step2 = await executeEmbeddedUserOnboardingFlowV2({
+          baseUrl: 'https://localhost:8090',
+          payload: {
+            executionId: step1.executionId,
+            inputs: {
+              'http://wso2.org/claims/mobile': '+1-555-0100',
+            },
+          },
+        })
+    - group: Functions
+      kind: function
+      name: Branding
+      description: The branding functions fetch the visual configuration (colors, logos, typography) defined in the
+        {{ProductName}} Console and apply it to your UI.
+      example: |-
+        import { getBrandingPreference } from '@thunderid/javascript'
+
+        const branding = await getBrandingPreference({
+          baseUrl: 'https://localhost:8090',
+          locale: 'en-US',
+        })
+
+        console.log(branding.preference?.theme?.LIGHT?.colors?.primary?.main)
+    - group: Functions
+      kind: function
+      name: Configuration
+      description: The `initialize()` method accepts a configuration object (`AuthClientConfig`) that controls how the
+        SDK connects to your {{ProductName}} instance and manages authentication.
+      example: |-
+        import ThunderIDJavaScriptClient from '@thunderid/javascript'
+
+        const client = new ThunderIDJavaScriptClient()
+
+        await client.initialize({
+          clientId: '<your-client-id>',
+          baseUrl: 'https://localhost:8090',
+        })
+    - group: Functions
+      kind: function
+      name: Errors
+      description: The SDK uses a hierarchy of typed error classes. Catch specific classes to handle different failure
+        modes distinctly.
+      example: |-
+        Error
+        └── ThunderIDError
+            ├── ThunderIDAPIError
+            └── ThunderIDRuntimeError
+        ThunderIDAuthException  (separate — thrown by auth flow internals)
+    - group: Functions
+      kind: function
+      name: HttpClient
+      description: '`HttpClient` is an abstract base class that provides handler lifecycle management, request/response
+        callbacks, and parallel request utilities. Platform SDKs extend it to add token attachment, retry logic, or
+        custom transport implementations.'
+      example: |-
+        import { HttpClient } from '@thunderid/javascript'
+        import type { HttpRequestConfig, HttpResponse } from '@thunderid/javascript'
+
+        class FetchHttpClient extends HttpClient {
+          async transport<T>(config: HttpRequestConfig): Promise<HttpResponse<T>> {
+            const response = await fetch(config.url, {
+              method: config.method,
+              headers: config.headers as HeadersInit,
+              body: config.data ? JSON.stringify(config.data) : undefined,
+            })
+
+            return {
+              data: await response.json(),
+              status: response.status,
+              statusText: response.statusText,
+              headers: Object.fromEntries(response.headers.entries()),
+            }
+          }
+        }
+    - group: Functions
+      kind: function
+      name: Internationalization
+      description: The SDK ships with built-in translation bundles for {{ProductName}} UI components and provides utilities
+        for loading, extending, and normalizing translations.
+      example: |-
+        import { getDefaultI18nBundles } from '@thunderid/javascript'
+
+        const bundles = getDefaultI18nBundles()
+        console.log(bundles['en-US'])   // I18nBundle
+        console.log(bundles['fr-FR'])   // I18nBundle
+    - group: Functions
+      kind: function
+      name: StorageManager
+      description: '`StorageManager` is the typed storage layer used internally by `ThunderIDJavaScriptClient`. It namespaces
+        all stored data under a storage key derived from the client ID and instance ID. The storage layer provides typed
+        methods for each data category: configuration, OIDC provider metadata, session data, and temporary (PKCE/state)
+        data. Use it directly only when building platform adapters that need fine-grained control over stored auth state.'
+      example: |-
+        import StorageManager from '@thunderid/javascript'
+
+        const storage = new StorageManager<Config>('instance_0-my-client-id', store)
+    - group: Functions
+      kind: function
+      name: Theme
+      description: The theme system provides a structured way to define colors, typography, spacing, and other visual
+        properties used by {{ProductName}} UI components. Use `createTheme()` to build a theme from scratch or apply
+        partial overrides on top of the defaults.
+      example: |-
+        import { createTheme } from '@thunderid/javascript'
+
+        const theme = createTheme({
+          colors: {
+            primary: {
+              main: '#6200ea',
+              contrastText: '#ffffff',
+            },
+          },
+        })
+
+        // Apply CSS variables to the document root
+        Object.entries(theme.cssVariables).forEach(([key, value]) => {
+          document.documentElement.style.setProperty(key, value)
+        })
+    - group: Functions
+      kind: function
+      name: ThunderIDJavaScriptClient
+      description: '`ThunderIDJavaScriptClient` is the base class that all platform-specific {{ProductName}} clients
+        extend. It provides OIDC discovery, PKCE, token exchange, session management, JWT decoding, and agent/OBO authentication.
+        Instantiate it directly only when writing a custom platform adapter: for browser use, prefer `@thunderid/browser`;
+        for React, use `@thunderid/react`.'
+      example: const client = new ThunderIDJavaScriptClient(storage?, cryptoUtils?)
+    - group: Functions
+      kind: function
+      name: Utilities
+      description: The SDK exports a set of utility functions used internally by platform SDKs and available to custom
+        integrations.
+      example: |-
+        import { arrayBufferToBase64url } from '@thunderid/javascript'
+
+        const encoded = arrayBufferToBase64url(buffer)
+    - group: User
+      kind: export
+      name: User Profile
+      description: These functions read and update user profile data from the OIDC userinfo endpoint.
+      example: |-
+        import { getUserInfo } from '@thunderid/javascript'
+
+        const user = await getUserInfo({
+          url: 'https://localhost:8090/oauth2/userinfo',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        })
+
+        console.log(user.email, user.displayName)
+    - group: User
+      kind: export
+      name: User Schemas
+      description: The SDK provides helpers for working with user schema data.
+      example: |-
+        import { flattenUserSchema } from '@thunderid/javascript'
+
+        const flat = flattenUserSchema(schemas, userProfile)

@@ -62,6 +62,12 @@ type Service interface {
 	// grants first so no session is deleted while its tokens remain live. It is idempotent, returning
 	// nil when the subject holds no sessions.
 	TerminateBySubject(ctx context.Context, subjectID string) error
+
+	// DetachApplication detaches an application from every SSO session it participates in: it revokes
+	// the token family of that participation and drops the participant row, deleting the session itself
+	// only when the application was its last participant. It is idempotent, returning nil when the
+	// application participates in none.
+	DetachApplication(ctx context.Context, appID string) error
 }
 
 // LoadCheckpointInput carries what a Session join needs to restore a checkpoint. Session and Context
@@ -110,6 +116,10 @@ type SaveCheckpointResult struct {
 	Handle  string
 	Created bool
 	Skipped bool
+	// AuthenticatedAt is when the subject authenticated for this session, as the session records
+	// it. The caller publishes it so auth_time is read from the session on the fresh-login path
+	// too, rather than being re-derived from the clock when the assertion is built.
+	AuthenticatedAt time.Time
 }
 
 // CriteriaRevoker revokes a token family (one authorization grant) by its id. It is injected so session
@@ -214,7 +224,11 @@ func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 	}
 
 	s.logger.Debug(ctx, "Saved SSO checkpoint", log.String("checkpoint", in.Checkpoint))
-	return SaveCheckpointResult{Handle: target.HandleID, Created: created}, nil
+	return SaveCheckpointResult{
+		Handle:          target.HandleID,
+		Created:         created,
+		AuthenticatedAt: target.AuthenticatedAt,
+	}, nil
 }
 
 // LoadCheckpoint implements Service.
@@ -383,6 +397,55 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 	}
 
 	s.logger.Debug(ctx, "Terminated all SSO sessions for subject", log.Int("sessionCount", len(sessions)))
+	return nil
+}
+
+// DetachApplication detaches an application from every SSO session it participates in. Narrower than
+// Terminate: only this application's participation goes, and the session is deleted once nothing is left
+// to participate. Each token family is revoked before its row is dropped, in one transaction.
+func (s *service) DetachApplication(ctx context.Context, appID string) error {
+	if appID == "" {
+		return nil
+	}
+	participations, err := s.store.ListByAppID(ctx, appID)
+	if err != nil {
+		return fmt.Errorf("failed to list session participation by application: %w", err)
+	}
+	if len(participations) == 0 {
+		return nil
+	}
+
+	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		for _, participation := range participations {
+			if s.criteriaRevoker != nil {
+				if revErr := s.criteriaRevoker.RevokeTokenFamily(txCtx, participation.TokenFamilyID); revErr != nil {
+					return revErr
+				}
+			}
+			if delErr := s.store.DeleteParticipant(txCtx, participation.SessionID, appID); delErr != nil {
+				return delErr
+			}
+			remaining, listErr := s.store.ListBySessionID(txCtx, participation.SessionID)
+			if listErr != nil {
+				return listErr
+			}
+			if len(remaining) > 0 {
+				continue
+			}
+			if delErr := s.store.DeleteSession(txCtx, participation.SessionID); delErr != nil {
+				return delErr
+			}
+			if delErr := s.store.Delete(txCtx, participation.SessionID); delErr != nil {
+				return delErr
+			}
+		}
+		return nil
+	}); txErr != nil {
+		return fmt.Errorf("failed to remove session for the application: %w", txErr)
+	}
+
+	s.logger.Debug(ctx, "Detached application from SSO sessions",
+		log.Int("sessionCount", len(participations)))
 	return nil
 }
 

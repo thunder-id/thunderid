@@ -1,0 +1,1175 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: react
+name: React
+icon: ReactLogo
+category: spa
+type: sdk
+origin: official
+status: ga
+package:
+  name: "@thunderid/react"
+  manager: npm
+description: Hooks and components to drop {{ProductName}} into a React + Vite app in minutes.
+docs:
+  overview: /docs/next/sdks-and-tools/react/overview
+  apiReference: /docs/next/sdks-and-tools/react/apis
+  quickstart: /docs/next/getting-started/connect-your-application/react
+links:
+  github: https://github.com/thunder-id/javascript-sdks
+  package: https://www.npmjs.com/package/@thunderid/react
+apiReference:
+  source: typedoc
+
+hero:
+  description: >-
+    Hooks and components to drop {{ProductName}} into a React + Vite app in minutes. The provider restores an
+    existing session on mount, handles the redirect callback, and refreshes tokens in the background, so your
+    components only ever read state.
+  meta:
+    - icon: package
+      label: "@thunderid/react"
+      mono: true
+    - icon: licence
+      label: Apache 2.0 licence
+  ctas:
+    - label: API reference
+      href: "#api"
+      variant: primary
+    - label: Quickstart
+      href: /docs/next/getting-started/connect-your-application/react
+      variant: secondary
+    - label: Source
+      href: https://github.com/thunder-id/javascript-sdks
+      variant: secondary
+      external: true
+sections:
+  - type: api
+    id: api
+    title: API reference
+    intro: Every export is fully typed. The signatures and props below come from the package's own reference documentation,
+      so what is listed here is what the installed version ships.
+    kindTones:
+      hook: accent
+      context: purple
+      component: primary
+    exports:
+    - group: Hooks
+      kind: hook
+      name: useThunderID()
+      description: The `use{{ProductName}}` hook provides access to the {{ProductName}} authentication context in React
+        applications. It allows you to retrieve authentication state, user information, and other context values managed
+        by the `{{ProductName}}Provider`.
+      rowsLabel: Returns
+      rows:
+      - name: isSignedIn
+        type: boolean
+        description: Whether the user is currently signed in
+      - name: user
+        type: User \
+        description: The authenticated user object, or `null` if not signed in
+      - name: signIn
+        type: () => Promise
+        description: Initiates the sign-in flow
+      - name: signOut
+        type: () => Promise
+        description: Initiates the sign-out flow
+      - name: loading
+        type: boolean
+        description: Indicates if an authentication operation is in progress
+      - name: error
+        type: Error \
+        description: The last error encountered during authentication, if any
+      example: |-
+        import { useThunderID } from '@thunderid/react'
+
+        function MyComponent() {
+          const { isSignedIn, user, signIn, signOut } = useThunderID()
+
+          return (
+            <div>
+              {isSignedIn ? (
+                <>
+                  <p>Welcome, {user?.displayName}!</p>
+                  <button onClick={() => signOut()}>Sign Out</button>
+                </>
+              ) : (
+                <button onClick={() => signIn()}>Sign In</button>
+              )}
+            </div>
+          )
+        }
+
+        export default MyComponent
+    - group: Contexts
+      kind: context
+      name: <ThunderIDProvider />
+      description: The `ThunderIDProvider` is the root context provider component that configures `@thunderid/react`
+        and provides {{ProductName}} context to your entire React application. It must wrap your application to enable
+        authentication features.
+      rowsLabel: Props
+      rows:
+      - name: clientId
+        type: string
+        tag: required
+        description: Client ID of your application
+      - name: baseUrl
+        type: string
+        tag: required
+        description: The base URL of the {{ProductName}} instance (e.g., `https://localhost:8090`)
+      - name: clientSecret
+        type: string
+        tag: optional
+        description: Client secret of your application. Only required for confidential clients.
+      - name: scopes
+        type: string \
+        description: OpenID Connect Scopes to request during the sign-in. Defaults to `'openid profile internal_login'`
+          if not provided.
+      - name: storage
+        type: sessionStorage or localStorage \
+        description: Storage mechanism to use for session management. Defaults to `sessionStorage` if not provided.
+      - name: afterSignInUrl
+        type: string
+        tag: optional
+        description: URL to redirect to after sign-in process is completed.
+      - name: afterSignUpUrl
+        type: string
+        tag: optional
+        description: URL to redirect to after sign-up process is completed.
+      - name: afterSignOutUrl
+        type: string
+        tag: optional
+        description: URL to redirect to after sign-out process is completed.
+      - name: tokenValidation
+        type: TokenValidation
+        tag: optional
+        description: Configuration for token validation.
+      - name: preferences
+        type: Preferences
+        tag: optional
+        description: Customization options for UI behavior, internationalization (i18n) and styling.
+      - name: idToken
+        type: IdTokenValidation
+        description: Configuration for ID token validation
+      - name: validateIssuer
+        type: boolean
+        description: Whether to validate the issuer
+      - name: clockTolerance
+        type: number
+        description: Allowed clock skew in seconds
+      - name: inheritFromBranding
+        type: boolean
+        description: Whether to inherit theme from {{ProductName}} organization/application branding
+      - name: mode
+        type: light \
+        description: Theme mode. `'system'` follows user's OS preference
+      - name: overrides
+        type: ThemeConfig
+        description: Custom theme overrides for colors, typography, spacing, etc.
+      - name: language
+        type: string
+        description: Language code for UI text (e.g., `'en-US'`, `'es-ES'`)
+      - name: fallbackLanguage
+        type: string
+        description: Fallback language when translations aren't available
+      - name: bundles
+        type: object
+        description: Custom translation bundles to override default text
+      example: |-
+        import { StrictMode } from 'react'
+        import { createRoot } from 'react-dom/client'
+        import './index.css'
+        import App from './App.jsx'
+        import { ThunderIDProvider } from '@thunderid/react'
+
+        createRoot(document.getElementById('root')).render(
+          <StrictMode>
+            <ThunderIDProvider
+              clientId="<your-app-client-id>"
+              baseUrl="https://localhost:8090"
+            >
+              <App />
+            </ThunderIDProvider>
+          </StrictMode>
+        )
+    - group: Components
+      kind: component
+      name: <ChangeCredential />
+      description: 'The `ChangeCredential` component renders a form that lets a signed-in user set a new value for one
+        of their own credentials. It collects only a new value and its confirmation, checks it against the applicable
+        rules as the user types, and posts the change to {{ProductName}}. It reads the rules it needs from the user
+        type schema already resolved by `ThunderIDProvider` (`GET /users/me/meta`), so it adds no network request beyond
+        the write itself. Every default label, placeholder, and message is built from the credential attribute''s own
+        `displayName` in that schema, so it always matches whatever an admin named it there. By default it manages the
+        `password` credential. To manage a different one, for example a PIN declared on the user type schema, set `attribute`;
+        render the component once per credential to let a user manage more than one. :::note `ChangeCredential` collects
+        only a new value and its confirmation, not the account''s existing value. The self-service credential write
+        path does not verify the current value today, so asking for one would only teach the user a false sense of security.
+        Once server-side current-value verification ships, that field returns without a breaking change to this component''s
+        public props. :::'
+      rowsLabel: Props
+      rows:
+      - name: attribute
+        type: string
+        tag: optional
+        description: 'The credential attribute this instance manages, any attribute the user type schema declares `credential:
+          true` for. Defaults to `''password''`.'
+      - name: cardLayout
+        type: boolean
+        tag: optional
+        description: Whether to wrap the form in a bordered card. Defaults to `false`.
+      - name: className
+        type: string
+        tag: optional
+        description: Additional CSS class names.
+      - name: onSuccess
+        type: () => void
+        tag: optional
+        description: Called after the credential has been changed successfully.
+      - name: policy
+        type: PasswordPolicy
+        tag: optional
+        description: The rules the new value must satisfy. Defaults to the applicable rules from the user type schema.
+      - name: preferences
+        type: Preferences
+        tag: optional
+        description: Component-level preference overrides, including i18n.
+      - name: showRequirements
+        type: boolean
+        tag: optional
+        description: Whether to render the live requirement checklist. Defaults to `true`.
+      - name: title
+        type: string
+        tag: optional
+        description: Overrides the default `"Change {credential}"` heading. Pass an empty string to omit the heading
+          entirely. Defaults to a translated, schema-derived heading.
+      example: |-
+        import { ChangeCredential } from '@thunderid/react'
+
+        function AccountPage() {
+          return (
+            <div>
+              <h2>Security</h2>
+              <ChangeCredential />
+            </div>
+          )
+        }
+
+        export default AccountPage
+    - group: Components
+      kind: component
+      name: <Loading />
+      description: The `Loading` component renders its children while the authentication state is being determined.
+        It checks the current authentication state and displays a loading indicator or custom content during the initial
+        authentication check. Once authentication is complete, it renders optional `fallback` content or nothing by
+        default. This makes it ideal for providing user feedback during the initial app load or authentication verification.
+      rowsLabel: Props
+      rows:
+      - name: children
+        type: ReactNode
+        tag: required
+        description: Content to render during authentication loading
+      - name: fallback
+        type: ReactNode
+        tag: optional
+        description: Content to render once authentication is determined
+      example: |-
+        import { Loading } from '@thunderid/react'
+
+        function App() {
+          return (
+            <Loading>
+              <div>Checking authentication...</div>
+            </Loading>
+          )
+        }
+
+        export default App
+    - group: Components
+      kind: component
+      name: <SignInButton />
+      description: The `SignInButton` component initiates the sign-in flow when clicked. It automatically handles loading
+        state, error handling, and supports custom UI via render props or direct children. You can customize its behavior
+        and appearance using the `preferences` prop, including i18n overrides.
+      rowsLabel: Props
+      rows:
+      - name: children
+        type: ReactNode or function
+        tag: optional
+        description: Render prop function or ReactNode for button content
+      - name: preferences
+        type: Preferences
+        tag: optional
+        description: Customization options for i18n, theming, etc.
+      - name: onClick
+        type: function
+        tag: optional
+        description: Callback after sign-in is triggered
+      example: |-
+        import { SignInButton } from '@thunderid/react'
+
+        function App() {
+          return <SignInButton />
+        }
+
+        export default App
+    - group: Components
+      kind: component
+      name: <SignOutButton />
+      description: The `SignOutButton` component signs out the current user, clears their session, and revokes authentication
+        tokens when clicked. It automatically handles loading state, error handling, and supports custom UI via render
+        props or direct children. You can customize its behavior and appearance using the `preferences` prop, including
+        i18n overrides.
+      rowsLabel: Props
+      rows:
+      - name: children
+        type: ReactNode or function
+        tag: optional
+        description: Render prop function or ReactNode for button content
+      - name: preferences
+        type: Preferences
+        tag: optional
+        description: Customization options for i18n, theming, etc.
+      - name: onClick
+        type: function
+        tag: optional
+        description: Callback after sign-out is triggered
+      - name: redirectUrl
+        type: string
+        tag: optional
+        description: URL to redirect to after sign-out
+      example: |-
+        import { SignOutButton } from '@thunderid/react'
+
+        function App() {
+          return <SignOutButton />
+        }
+
+        export default App
+    - group: Components
+      kind: component
+      name: <SignUpButton />
+      description: The `SignUpButton` component triggers the sign-up (registration) flow when clicked. It automatically
+        handles loading state, error handling, and supports custom UI via render props or direct children. You can customize
+        its behavior and appearance using the `preferences` prop, including i18n overrides.
+      rowsLabel: Props
+      rows:
+      - name: children
+        type: ReactNode or function
+        tag: optional
+        description: Render prop function or ReactNode for button content
+      - name: preferences
+        type: Preferences
+        tag: optional
+        description: Customization options for i18n, theming, etc.
+      - name: onClick
+        type: function
+        tag: optional
+        description: Callback after sign-up is triggered
+      - name: redirectUrl
+        type: string
+        tag: optional
+        description: URL to redirect to after sign-up
+      - name: mode
+        type: '''redirect'' \'
+        description: Sign-up mode
+      - name: className
+        type: string
+        tag: optional
+        description: CSS class name
+      - name: style
+        type: CSSProperties
+        tag: optional
+        description: Inline styles
+      - name: disabled
+        type: boolean
+        tag: optional
+        description: Disable the button
+      example: |-
+        import { SignUpButton } from '@thunderid/react'
+
+        function LandingPage() {
+          return <SignUpButton />
+        }
+
+        export default LandingPage
+    - group: Components
+      kind: component
+      name: <SignedIn />
+      description: The `SignedIn` component conditionally renders its children only when the user is authenticated with
+        {{ProductName}}. It checks the current authentication state and displays protected UI content for signed-in
+        users, while rendering optional `fallback` content (or nothing by default) when the user is not authenticated.
+        This makes it ideal for guarding routes or UI sections that require authentication.
+      rowsLabel: Props
+      rows:
+      - name: children
+        type: ReactNode
+        tag: required
+        description: Content to render when the user is signed in
+      - name: fallback
+        type: ReactNode
+        tag: optional
+        description: Content to render when not signed in
+      example: |-
+        import { SignedIn } from '@thunderid/react'
+
+        function App() {
+          return (
+            <SignedIn>
+              <p>Welcome! You are signed in.</p>
+            </SignedIn>
+          )
+        }
+
+        export default App
+    - group: Components
+      kind: component
+      name: <SignedOut />
+      description: The `SignedOut` component conditionally renders its children only when the user is not authenticated
+        with {{ProductName}}. It checks the current authentication state and displays content for unauthenticated users,
+        while rendering optional `fallback` content (or nothing by default) when the user is authenticated. This makes
+        it ideal for showing sign-in prompts, public landing pages, or content that should only be visible to guests.
+      rowsLabel: Props
+      rows:
+      - name: children
+        type: ReactNode
+        tag: required
+        description: Content to render when the user is signed out
+      - name: fallback
+        type: ReactNode
+        tag: optional
+        description: Content to render when signed in
+      example: |-
+        import { SignedOut, SignInButton } from '@thunderid/react'
+
+        function App() {
+          return (
+            <SignedOut>
+              <div>
+                <h1>Welcome!</h1>
+                <SignInButton />
+              </div>
+            </SignedOut>
+          )
+        }
+
+        export default App
+    - group: Components
+      kind: component
+      name: <User />
+      description: The `User` component is a declarative way to access the authenticated user object from the {{ProductName}}
+        authentication context. It uses render props to expose the user data, making it easy to display user information
+        or conditionally render UI based on authentication state.
+      rowsLabel: Props
+      rows:
+      - name: children
+        type: '(user: User \'
+        description: Render prop function that receives the user object
+      - name: fallback
+        type: ReactNode
+        tag: optional
+        description: Content to render when no user is signed in
+      example: |-
+        import { User } from '@thunderid/react'
+
+        function App() {
+          return (
+            <User fallback={<p>Please sign in</p>}>
+              {(user) => (
+                <div>
+                  <h1>Welcome, {user?.displayName}!</h1>
+                  <p>Email: {user?.email}</p>
+                </div>
+              )}
+            </User>
+          )
+        }
+
+        export default App
+    - group: Components
+      kind: component
+      name: <UserDropdown />
+      description: The `UserDropdown` component renders a dropdown menu with user information and common actions like
+        viewing profile, settings, and signing out.
+      rowsLabel: Props
+      rows:
+      - name: children
+        type: ReactNode
+        tag: optional
+        description: Custom menu items (defaults to standard items)
+      - name: showAvatar
+        type: boolean
+        tag: optional
+        description: Show user avatar (defaults to `true`)
+      - name: showName
+        type: boolean
+        tag: optional
+        description: Show user name (defaults to `true`)
+      - name: showEmail
+        type: boolean
+        tag: optional
+        description: Show user email (defaults to `true`)
+      example: |-
+        import { UserDropdown } from '@thunderid/react'
+
+        function Header() {
+          return (
+            <header>
+              <UserDropdown />
+            </header>
+          )
+        }
+
+        export default Header
+    - group: Components
+      kind: component
+      name: <UserProfile />
+      description: The `UserProfile` component renders a complete user profile management interface where users can
+        view and edit their personal information, change passwords, manage sessions, and more.
+      rowsLabel: Props
+      rows:
+      - name: appearance
+        type: Appearance
+        tag: optional
+        description: Customize component appearance
+      - name: sections
+        type: string[]
+        tag: optional
+        description: Which sections to show (defaults to all sections)
+      example: |-
+        import { UserProfile } from '@thunderid/react'
+
+        function ProfilePage() {
+          return (
+            <div>
+              <h1>My Profile</h1>
+              <UserProfile />
+            </div>
+          )
+        }
+
+        export default ProfilePage
+
+  - type: quickstart
+    id: quickstart
+    title: Get started
+    intro: Provider, session, and a protected route, start to finish.
+    label: Connect your application
+    path: Getting started / Connect your application / React
+    minutes: 5
+    outro: >-
+      The quickstart is maintained alongside the rest of the getting-started guides so it stays in step with the
+      platform. This page covers the package itself: its API surface, guides, and compatibility.
+
+  - type: guides
+    id: guides
+    title: Guides
+    intro: Task-focused walkthroughs maintained alongside the SDK.
+
+guides:
+  - id: protecting-routes
+    title: Protecting routes
+    icon: shield
+    description: Guard a route tree so unauthenticated visitors are sent through sign-in, covering React Router, TanStack
+      Router, and a hand-rolled guard.
+    intro: Securing routes protects sensitive data and keeps parts of the application to signed-in users. Pick the router
+      your application uses, or build your own guard from the SDK primitives.
+    sections:
+    - type: steps
+      id: setup
+      title: Set up route protection
+      tabs:
+      - label: React Router
+        blurb: The official `@thunderid/react-router` package provides a `ProtectedRoute` component that guards a route
+          and sends unauthenticated visitors to sign-in.
+        steps:
+        - title: Installation
+          code:
+            lang: bash
+            content: npm install @thunderid/react-router
+        - title: Basic Setup with ProtectedRoute
+          code:
+            file: src/App.tsx
+            lang: tsx
+            content: |2-
+
+              function App() {
+                return (
+                  <ThunderIDProvider
+                    baseUrl="https://localhost:8090"
+                    clientId="your-client-id"
+                  >
+                    <BrowserRouter>
+                      <Routes>
+                        <Route path="/" element={<div>Public Home Page</div>} />
+                        <Route path="/signin" element={<SignIn />} />
+                        <Route
+                          path="/dashboard"
+                          element={
+                            <ProtectedRoute redirectTo="/signin">
+                              <Dashboard />
+                            </ProtectedRoute>
+                          }
+                        />
+                        <Route
+                          path="/profile"
+                          element={
+                            <ProtectedRoute redirectTo="/signin">
+                              <Profile />
+                            </ProtectedRoute>
+                          }
+                        />
+                      </Routes>
+                    </BrowserRouter>
+                  </ThunderIDProvider>
+                )
+              }
+
+              export default App
+        - title: Custom Fallback and Loading States
+          description: 'You can customize the behavior of `ProtectedRoute` with custom fallback components and loading
+            states:'
+          code:
+            file: src/App.tsx
+            lang: tsx
+            content: |2-
+
+              // Redirect to custom login page
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute redirectTo="/login">
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+
+              // Custom fallback component
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute
+                    fallback={
+                      <div className="auth-required">
+                        <h2>Please sign in</h2>
+                        <p>You need to be signed in to access this page.</p>
+                      </div>
+                    }
+                  >
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+
+              // Custom loading state
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute redirectTo="/signin" loader={<div className="spinner">Loading...</div>}>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+        - title: Integration with Layouts
+          description: 'Protect multiple routes using a shared layout:'
+          code:
+            file: src/App.tsx
+            lang: tsx
+            content: |2-
+
+              function App() {
+                return (
+                  <BrowserRouter>
+                    <Routes>
+                      {/* Public routes */}
+                      <Route path="/" element={<Home />} />
+                      <Route path="/about" element={<About />} />
+                      <Route path="/signin" element={<SignIn />} />
+
+                      {/* Protected routes with layout */}
+                      <Route path="/app" element={<AppLayout />}>
+                        <Route
+                          path="dashboard"
+                          element={
+                            <ProtectedRoute redirectTo="/signin">
+                              <Dashboard />
+                            </ProtectedRoute>
+                          }
+                        />
+                        <Route
+                          path="profile"
+                          element={
+                            <ProtectedRoute redirectTo="/signin">
+                              <Profile />
+                            </ProtectedRoute>
+                          }
+                        />
+                        <Route
+                          path="settings"
+                          element={
+                            <ProtectedRoute redirectTo="/signin">
+                              <Settings />
+                            </ProtectedRoute>
+                          }
+                        />
+                      </Route>
+                    </Routes>
+                  </BrowserRouter>
+                )
+              }
+      - label: TanStack Router
+        blurb: The official `@thunderid/tanstack-router` package provides the same `ProtectedRoute` component for TanStack
+          Router applications.
+        steps:
+        - title: Installation
+          code:
+            lang: bash
+            content: npm install @thunderid/tanstack-router
+        - title: Basic Setup with ProtectedRoute
+          code:
+            file: src/App.tsx
+            lang: tsx
+            content: |2-
+
+              const rootRoute = createRootRoute({
+                component: () => <div>Root Layout</div>,
+              })
+
+              const indexRoute = createRoute({
+                getParentRoute: () => rootRoute,
+                path: '/',
+                component: () => <div>Public Home Page</div>,
+              })
+
+              const signinRoute = createRoute({
+                getParentRoute: () => rootRoute,
+                path: '/signin',
+                component: SignIn,
+              })
+
+              const dashboardRoute = createRoute({
+                getParentRoute: () => rootRoute,
+                path: '/dashboard',
+                component: () => (
+                  <ProtectedRoute redirectTo="/signin">
+                    <Dashboard />
+                  </ProtectedRoute>
+                ),
+              })
+
+              const profileRoute = createRoute({
+                getParentRoute: () => rootRoute,
+                path: '/profile',
+                component: () => (
+                  <ProtectedRoute redirectTo="/signin">
+                    <Profile />
+                  </ProtectedRoute>
+                ),
+              })
+
+              const routeTree = rootRoute.addChildren([indexRoute, signinRoute, dashboardRoute, profileRoute])
+
+              const router = createRouter({ routeTree })
+
+              function App() {
+                return (
+                  <ThunderIDProvider
+                    baseUrl="https://localhost:8090"
+                    clientId="your-client-id"
+                  >
+                    <RouterProvider router={router} />
+                  </ThunderIDProvider>
+                )
+              }
+
+              export default App
+        - title: Custom Fallback and Loading States
+          code:
+            file: src/routes.tsx
+            lang: tsx
+            content: |2-
+
+              // Redirect to custom login page
+              const dashboardRoute = createRoute({
+                getParentRoute: () => rootRoute,
+                path: '/dashboard',
+                component: () => (
+                  <ProtectedRoute redirectTo="/login">
+                    <Dashboard />
+                  </ProtectedRoute>
+                ),
+              })
+
+              // Custom fallback component
+              const dashboardRoute = createRoute({
+                getParentRoute: () => rootRoute,
+                path: '/dashboard',
+                component: () => (
+                  <ProtectedRoute
+                    fallback={
+                      <div className="auth-required">
+                        <h2>Please sign in</h2>
+                        <p>You need to be signed in to access this page.</p>
+                      </div>
+                    }
+                  >
+                    <Dashboard />
+                  </ProtectedRoute>
+                ),
+              })
+
+              // Custom loading state
+              const dashboardRoute = createRoute({
+                getParentRoute: () => rootRoute,
+                path: '/dashboard',
+                component: () => (
+                  <ProtectedRoute redirectTo="/signin" loader={<div className="spinner">Loading...</div>}>
+                    <Dashboard />
+                  </ProtectedRoute>
+                ),
+              })
+        - title: Integration with Layouts
+          code:
+            file: src/App.tsx
+            lang: tsx
+            content: |2-
+
+              const rootRoute = createRootRoute({
+                component: () => <div>Root Layout</div>,
+              })
+
+              // Public routes
+              const indexRoute = createRoute({
+                getParentRoute: () => rootRoute,
+                path: '/',
+                component: Home,
+              })
+
+              const aboutRoute = createRoute({
+                getParentRoute: () => rootRoute,
+                path: '/about',
+                component: About,
+              })
+
+              const signinRoute = createRoute({
+                getParentRoute: () => rootRoute,
+                path: '/signin',
+                component: SignIn,
+              })
+
+              // Protected routes with layout
+              const appLayoutRoute = createRoute({
+                getParentRoute: () => rootRoute,
+                path: '/app',
+                component: AppLayout,
+              })
+
+              const appDashboardRoute = createRoute({
+                getParentRoute: () => appLayoutRoute,
+                path: '/dashboard',
+                component: () => (
+                  <ProtectedRoute redirectTo="/signin">
+                    <Dashboard />
+                  </ProtectedRoute>
+                ),
+              })
+
+              const appProfileRoute = createRoute({
+                getParentRoute: () => appLayoutRoute,
+                path: '/profile',
+                component: () => (
+                  <ProtectedRoute redirectTo="/signin">
+                    <Profile />
+                  </ProtectedRoute>
+                ),
+              })
+
+              const appSettingsRoute = createRoute({
+                getParentRoute: () => appLayoutRoute,
+                path: '/settings',
+                component: () => (
+                  <ProtectedRoute redirectTo="/signin">
+                    <Settings />
+                  </ProtectedRoute>
+                ),
+              })
+
+              const routeTree = rootRoute.addChildren([
+                indexRoute,
+                aboutRoute,
+                signinRoute,
+                appLayoutRoute.addChildren([appDashboardRoute, appProfileRoute, appSettingsRoute]),
+              ])
+
+              const router = createRouter({ routeTree })
+
+              function App() {
+                return (
+                  <ThunderIDProvider
+                    baseUrl="https://localhost:8090"
+                    clientId="your-client-id"
+                  >
+                    <RouterProvider router={router} />
+                  </ThunderIDProvider>
+                )
+              }
+
+              export default App
+      - label: Custom implementation
+        blurb: Prefer full control? Build a guard from the SDK primitives so you can run your own logic before a route
+          renders.
+        steps:
+        - title: Basic Custom Route Guard
+          code:
+            file: src/App.tsx
+            lang: tsx
+            content: |2-
+
+              const ProtectedRoute = ({ children }: { children: ReactNode }) => {
+                const { isSignedIn } = useThunderID()
+
+                if (!isSignedIn) {
+                  return <Unauthenticated />
+                }
+
+                return children
+              }
+
+              const App = () => {
+                return (
+                  <Routes>
+                    <Route
+                      path="/contact"
+                      element={
+                        <ProtectedRoute>
+                          <Contact />
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route path="/" element={<Home />} />
+                    <Route path="*" element={<PageNotFound />} />
+                  </Routes>
+                )
+              }
+
+              export default App
+        - title: Advanced Custom Implementation
+          description: 'You can extend the basic pattern to include loading states, redirects, and custom logic:'
+          code:
+            file: src/components/ProtectedRoute.tsx
+            lang: tsx
+            content: |2-
+
+              interface ProtectedRouteProps {
+                children: ReactNode
+                redirectTo?: string
+                fallback?: ReactNode
+                requireRole?: string
+              }
+
+              export const ProtectedRoute = ({
+                children,
+                redirectTo = '/signin',
+                fallback,
+                requireRole,
+              }: ProtectedRouteProps) => {
+                const { isSignedIn, user, loading } = useThunderID()
+
+                // Show loading state while authentication is being checked
+                if (loading) {
+                  return <div>Loading...</div>
+                }
+
+                // Redirect to sign-in if not authenticated
+                if (!isSignedIn) {
+                  if (fallback) {
+                    return <>{fallback}</>
+                  }
+                  return <Navigate to={redirectTo} replace />
+                }
+
+                // Check for required role if specified
+                if (requireRole && user?.roles && !user.roles.includes(requireRole)) {
+                  return <div>You don't have permission to access this page</div>
+                }
+
+                return <>{children}</>
+              }
+
+  - id: accessing-protected-apis
+    title: Accessing protected APIs
+    icon: key
+    description: Attach an access token to requests against your own resource server.
+    intro: Once a user is signed in, calls to your own APIs need the access token attached. Pick the client you use.
+    sections:
+    - type: steps
+      id: calling-apis
+      title: Call a protected API
+      tabs:
+      - label: Using SDK Built-in HTTP Client
+        blurb: 'When your application is wrapped with `ThunderIDProvider`, you can use the `useThunderID` hook to access
+          the authenticated `http` module. This module has the following features: - Includes the necessary authentication
+          headers (Bearer token) - Handles token refresh when tokens expire - Provides methods like `request()` and
+          `requestAll()` for making API calls :::tip Accessing the HTTP Client You can access the `http` client in two
+          ways: 1. **Inside a component**: Use the `useThunderID` hook to get the `http` instance 2. **Outside a component**
+          (e.g., in utility functions or services): Import `http` directly :::'
+        steps:
+        - title: Basic API Request
+          description: 'The following examples show how to use the {{ProductName}} SDK''s `http` module to call a protected
+            API endpoint. #### Using the Hook Inside a Component'
+          code:
+            file: src/UserProfile.jsx
+            lang: jsx
+            content: |-
+              import React, { useEffect, useState } from 'react'
+              import { useThunderID } from '@thunderid/react'
+
+              export default function UserProfile() {
+                const { http, isSignedIn } = useThunderID()
+                const [userData, setUserData] = useState(null)
+
+                useEffect(() => {
+                  if (!isSignedIn) {
+                    return
+                  }
+
+                  (async () => {
+                    try {
+                      const response = await http.request({
+                        url: 'https://localhost:8090/users/<user_id>',
+                        headers: {
+                          Accept: 'application/json',
+                          'Content-Type': 'application/json',
+                        },
+                        method: 'GET',
+                      })
+
+                      setUserData(response.data)
+                    } catch (error) {
+                      console.error('Error fetching user data:', error)
+                    }
+                  })()
+                }, [http, isSignedIn])
+
+                if (!isSignedIn) {
+                  return <div>Please sign in to view your profile.</div>
+                }
+
+                return (
+                  <div>
+                    <h2>User Profile</h2>
+                    {userData && <pre>{JSON.stringify(userData, null, 2)}</pre>}
+                  </div>
+                )
+              }
+        - title: Parallel API Requests
+          description: 'To send multiple API requests in parallel, use the `httpRequestAll` function. It triggers parallel
+            network requests and returns responses after all requests are completed. The following code snippet shows
+            how to send multiple network requests in parallel:'
+          code:
+            file: src/UserProfile.jsx
+            lang: jsx
+            content: |-
+              import React, { useEffect, useState } from 'react'
+              import { useThunderID } from '@thunderid/react'
+
+              export default function UserProfile() {
+                const { http, isSignedIn } = useThunderID()
+                const [ userData, setUserData ] = useState({
+                  profile: null,
+                  applications: [],
+                })
+
+                useEffect(() => {
+                  if (!isSignedIn) {
+                    return
+                  }
+
+                  const requests = []
+
+                  requests.push({
+                    headers: {
+                      Accept: 'application/json',
+                      'Content-Type': 'application/json',
+                    },
+                    method: 'GET',
+                    url: 'https://localhost:8090/users/<user_id>',
+                  })
+
+                  requests.push({
+                    headers: {
+                      Accept: 'application/json',
+                      'Content-Type': 'application/json',
+                    },
+                    method: 'GET',
+                    url: 'https://localhost:8090/applications',
+                  })
+
+                  (async () => {
+                    try {
+                      const response = await http.requestAll(requests)
+
+                      setUserData({
+                        profile: response[0].data,
+                        applications: response[1].data,
+                      })
+                    } catch (error) {
+                      console.error('Error fetching data:', error)
+                    }
+                  })()
+                }, [http, isSignedIn])
+
+                return <pre>{JSON.stringify(userData, null, 4)}</pre>
+              }
+      - label: Using a GraphQL Client
+        blurb: 'If you are not using `webWorker` as the storage type, use the `getAccessToken` function to fetch the
+          access token. Then manually attach the token to the GraphQL client''s authentication headers. :::note Storage
+          Type Limitation This approach is not available when the storage type is set to `webWorker`. The SDK automatically
+          manages the access token and does not expose it to the main thread. ::: The following example shows how to
+          configure a GraphQL client with authentication using the access token: :::tip Replace `` with the actual user
+          ID you want to fetch. This example uses Apollo Client, but you can apply the same pattern with other GraphQL
+          clients like urql or graphql-request. :::'
+        steps:
+        - title: Set it up
+          description: 'If you are not using `webWorker` as the storage type, use the `getAccessToken` function to fetch
+            the access token. Then manually attach the token to the GraphQL client''s authentication headers. :::note
+            Storage Type Limitation This approach is not available when the storage type is set to `webWorker`. The
+            SDK automatically manages the access token and does not expose it to the main thread. ::: The following
+            example shows how to configure a GraphQL client with authentication using the access token:'
+          code:
+            file: src/graphql/client.js
+            lang: jsx
+            content: |-
+              import { ApolloClient, InMemoryCache, createHttpLink } from '@apollo/client'
+              import { setContext } from '@apollo/client/link/context'
+
+              export function createAuthenticatedClient(accessToken) {
+                const httpLink = createHttpLink({
+                  uri: 'https://localhost:8090/graphql',
+                })
+
+                const authLink = setContext((_, { headers }) => {
+                  return {
+                    headers: {
+                      ...headers,
+                      authorization: accessToken ? `Bearer ${accessToken}` : '',
+                    },
+                  }
+                })
+
+                return new ApolloClient({
+                  link: authLink.concat(httpLink),
+                  cache: new InMemoryCache(),
+                })
+              }
+
+rail:
+  statsTitle: Package
+  stats:
+    - {label: Package, value: "@thunderid/react"}
+    - {label: Registry, value: npm}
+    - {label: Licence, value: Apache 2.0}
+    - {label: Types, value: Bundled}
+  relatedTitle: Related SDKs
+  related: [nextjs, react-router, tanstack-router]

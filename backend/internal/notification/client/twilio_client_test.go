@@ -70,7 +70,7 @@ func (suite *TwilioClientTestSuite) SetupSuite() {
 func (suite *TwilioClientTestSuite) getValidTwilioSender() common.NotificationSenderDTO {
 	return common.NotificationSenderDTO{
 		Name:     "Test Twilio",
-		Provider: common.MessageProviderTypeTwilio,
+		Provider: common.NotificationProviderTypeTwilio,
 		Properties: []cmodels.Property{
 			createProperty("account_sid", "AC00112233445566778899aabbccddeeff", true),
 			createProperty("auth_token", "test-auth-token", true),

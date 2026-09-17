@@ -21,6 +21,7 @@ import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz/requestvalidator"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
@@ -59,6 +60,9 @@ type authorizeService struct {
 	flowExecService flowexec.FlowExecServiceInterface
 	transactioner   providers.Transactioner
 	criteriaRevoker revocation.CriteriaRevokerInterface
+	// jtiStore makes a redeemed assertion single-use. It shares a namespace with the token endpoint,
+	// so an assertion spent here cannot afterwards be exchanged there, and vice versa.
+	jtiStore jti.JTIStoreInterface
 	// ssoSession resolves an existing SSO session so prompt=none can be answered from it, and
 	// flowProvider supplies the client's authentication flow, whose id names the session's cookie
 	// and whose active version the session must match. Both are nil in deployments without a
@@ -82,6 +86,7 @@ func newAuthorizeService(
 	ssoSession flowsession.Service,
 	flowProvider providers.FlowProvider,
 	cfg oauthconfig.Config,
+	jtiStore jti.JTIStoreInterface,
 ) AuthorizeServiceInterface {
 	return &authorizeService{
 		cfg:             cfg,
@@ -97,6 +102,7 @@ func newAuthorizeService(
 		criteriaRevoker: criteriaRevoker,
 		ssoSession:      ssoSession,
 		flowProvider:    flowProvider,
+		jtiStore:        jtiStore,
 		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthorizeService")),
 	}
 }
@@ -739,6 +745,21 @@ func (as *authorizeService) handleSuccessCallback(ctx context.Context, authID st
 			return errors.New("assertion not bound to authorization request")
 		}
 
+		// Spend the assertion. Recorded under the namespace the token endpoint also uses, so an
+		// assertion redeemed for a code here cannot afterwards be exchanged there. Done only once the
+		// assertion is known to belong to this request, so a misdirected one is not destroyed.
+		if consumeErr := as.consumeAssertion(ctx, claims); consumeErr != nil {
+			as.logger.Debug(ctx, "Assertion could not be consumed", log.Error(consumeErr))
+			authErr = &AuthorizationError{
+				Code:              oauth2const.ErrorAccessDenied,
+				Message:           "Assertion has already been used",
+				SendErrorToClient: true,
+				ClientRedirectURI: authRequestCtx.OAuthParameters.RedirectURI,
+				State:             authRequestCtx.OAuthParameters.State,
+			}
+			return consumeErr
+		}
+
 		if claims.userID == "" {
 			authErr = &AuthorizationError{
 				Code:              oauth2const.ErrorServerError,
@@ -908,6 +929,17 @@ func (as *authorizeService) loadAuthRequestContext(ctx context.Context, authID s
 	return &authRequestCtx, nil
 }
 
+// consumeAssertion records the assertion's jti so it can be redeemed only once. The namespace is
+// shared with the token endpoint, so an assertion spent for an authorization code here is no longer
+// exchangeable there.
+//
+// A store failure rejects the assertion rather than admitting it: an unavailable replay store must not
+// degrade into unlimited replay.
+func (as *authorizeService) consumeAssertion(ctx context.Context, claims assertionClaims) error {
+	return oauth2utils.ConsumeAuthAssertion(
+		ctx, as.jtiStore, claims.jti, claims.expiresAt, as.cfg.JWT.Leeway)
+}
+
 // verifyAssertion verifies the JWT assertion.
 func (as *authorizeService) verifyAssertion(ctx context.Context, assertion string) error {
 	if err := as.jwtService.VerifyJWT(ctx, assertion, "", ""); err != nil {
@@ -934,6 +966,14 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 
 	if v, ok := payload[oauth2const.ClaimAuthorizedPermissions].(string); ok {
 		claims.authorizedPermissions = v
+	}
+
+	if v, ok := payload[oauth2const.ClaimJTI].(string); ok {
+		claims.jti = v
+	}
+
+	if v, ok := payload[oauth2const.ClaimExp].(float64); ok {
+		claims.expiresAt = time.Unix(int64(v), 0)
 	}
 
 	if v, ok := payload[oauth2const.ClaimTokenFamilyID].(string); ok {

@@ -4,20 +4,20 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 
 import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
-import androidSdkSidebar from './content/sdks/android/sidebar';
-import browserSdkSidebar from './content/sdks/browser/sidebar';
-import expressSdkSidebar from './content/sdks/express/sidebar';
-import flutterSdkSidebar from './content/sdks/flutter/sidebar';
-import iosSdkSidebar from './content/sdks/ios/sidebar';
-import javascriptSdkSidebar from './content/sdks/javascript/sidebar';
-import nextjsSdkSidebar from './content/sdks/nextjs/sidebar';
-import nodeSdkSidebar from './content/sdks/node/sidebar';
-import nuxtSdkSidebar from './content/sdks/nuxt/sidebar';
-import reactSdkSidebar from './content/sdks/react/sidebar';
-import reactRouterSdkSidebar from './content/sdks/react-router/sidebar';
-import springSecurityIntegrationSidebar from './content/sdks/spring-security/sidebar';
-import tanstackRouterSdkSidebar from './content/sdks/tanstack-router/sidebar';
-import vueSdkSidebar from './content/sdks/vue/sidebar';
+import androidSdkSidebar from './content/sdks-and-tools/android/sidebar';
+import browserSdkSidebar from './content/sdks-and-tools/browser/sidebar';
+import expressSdkSidebar from './content/sdks-and-tools/express/sidebar';
+import flutterSdkSidebar from './content/sdks-and-tools/flutter/sidebar';
+import iosSdkSidebar from './content/sdks-and-tools/ios/sidebar';
+import javascriptSdkSidebar from './content/sdks-and-tools/javascript/sidebar';
+import nextjsSdkSidebar from './content/sdks-and-tools/nextjs/sidebar';
+import nodeSdkSidebar from './content/sdks-and-tools/node/sidebar';
+import nuxtSdkSidebar from './content/sdks-and-tools/nuxt/sidebar';
+import reactSdkSidebar from './content/sdks-and-tools/react/sidebar';
+import reactRouterSdkSidebar from './content/sdks-and-tools/react-router/sidebar';
+import springSecurityIntegrationSidebar from './content/sdks-and-tools/spring-security/sidebar';
+import tanstackRouterSdkSidebar from './content/sdks-and-tools/tanstack-router/sidebar';
+import vueSdkSidebar from './content/sdks-and-tools/vue/sidebar';
 import productConfig from './docusaurus.product.config';
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
@@ -247,6 +247,7 @@ const sidebars: SidebarsConfig = {
                   items: [
                     {type: 'doc', id: 'use-cases/ai-agents/solve-playground', label: 'Set Up the Playground'},
                     {type: 'doc', id: 'use-cases/ai-agents/solve-identity', label: 'Give the Agent an Identity'},
+                    {type: 'doc', id: 'use-cases/ai-agents/solve-sign-in', label: 'Authenticate the Agent'},
                     {type: 'doc', id: 'use-cases/ai-agents/solve-credentials', label: 'Protect Its Credential'},
                     {type: 'doc', id: 'use-cases/ai-agents/solve-access', label: 'What the Agent May Do'},
                     {type: 'doc', id: 'use-cases/ai-agents/solve-acts-for-user', label: 'Act for a User'},
@@ -495,6 +496,11 @@ const sidebars: SidebarsConfig = {
                 },
                 {
                   type: 'doc',
+                  id: 'guides/agents/authentication/agent-sign-in',
+                  label: 'Agent Sign-In',
+                },
+                {
+                  type: 'doc',
                   id: 'guides/agents/authentication/on-behalf-of-user',
                   label: 'On Behalf of a User',
                 },
@@ -656,6 +662,30 @@ const sidebars: SidebarsConfig = {
                 {type: 'doc', id: 'guides/integrations/apim-gateways/envoy', label: 'Envoy'},
                 {type: 'doc', id: 'guides/integrations/apim-gateways/kong', label: 'Kong Konnect'},
                 {type: 'doc', id: 'guides/integrations/apim-gateways/krakend', label: 'KrakenD'},
+              ],
+            },
+            {
+              type: 'category',
+              label: 'Workload Identity Federation',
+              collapsed: true,
+              collapsible: true,
+              items: [
+                {
+                  type: 'doc',
+                  id: 'guides/integrations/workload-identity-federation/overview',
+                  label: 'Overview',
+                  key: 'wif-overview',
+                },
+                {
+                  type: 'doc',
+                  id: 'guides/integrations/workload-identity-federation/openai',
+                  label: 'OpenAI',
+                },
+                {
+                  type: 'doc',
+                  id: 'guides/integrations/workload-identity-federation/claude',
+                  label: 'Claude',
+                },
               ],
             },
           ],

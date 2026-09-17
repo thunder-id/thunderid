@@ -1,0 +1,729 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: vue
+name: Vue
+icon: VueLogo
+category: spa
+type: sdk
+origin: official
+status: ga
+package:
+  name: "@thunderid/vue"
+  manager: npm
+description: Composables and plugins to add authentication to any Vue.js application.
+docs:
+  overview: /docs/next/sdks-and-tools/vue/overview
+  apiReference: /docs/next/sdks-and-tools/vue/apis
+  quickstart: /docs/next/getting-started/connect-your-application/vue
+links:
+  github: https://github.com/thunder-id/javascript-sdks
+  package: https://www.npmjs.com/package/@thunderid/vue
+apiReference:
+  source: typedoc
+
+sections:
+  - type: api
+    id: api
+    title: API reference
+    intro: Every export is fully typed. The signatures and props below come from the package's own reference documentation,
+      so what is listed here is what the installed version ships.
+    kindTones:
+      hook: accent
+      component: primary
+      export: neutral
+    exports:
+    - group: Composables
+      kind: hook
+      name: useThunderID()
+      description: The `useThunderID` composable provides access to the {{ProductName}} authentication context in Vue
+        applications. It allows you to retrieve authentication state, user information, and other context values managed
+        by the ``.
+      rowsLabel: Returns
+      rows:
+      - name: isSignedIn
+        type: boolean
+        description: Whether the user is currently signed in
+      - name: isLoading
+        type: boolean
+        description: Whether an authentication operation is in progress
+      - name: user
+        type: User \
+        description: The authenticated user object, or `null` if not signed in
+      - name: organization
+        type: Organization \
+        description: The current active organization
+      - name: signIn
+        type: (...args) => Promise<User \
+        description: Initiates the sign-in flow
+      - name: signOut
+        type: (...args) => Promise
+        description: Signs the current user out
+      - name: signUp
+        type: (...args) => Promise
+        description: Initiates the sign-up flow
+      - name: getAccessToken
+        type: () => Promise
+        description: Returns the current access token
+      - name: getDecodedIdToken
+        type: () => Promise
+        description: Returns the decoded ID token payload
+      - name: http
+        type: '{ request, requestAll }'
+        description: Authenticated HTTP client (see Accessing Protected APIs)
+      example: |-
+        <script setup>
+        import { useThunderID } from '@thunderid/vue'
+
+        const { isSignedIn, user, signIn, signOut } = useThunderID()
+        </script>
+
+        <template>
+          <div>
+            <template v-if="isSignedIn">
+              <p>Welcome, {{ user?.name }}!</p>
+              <button @click="signOut()">Sign Out</button>
+            </template>
+            <template v-else>
+              <button @click="signIn()">Sign In</button>
+            </template>
+          </div>
+        </template>
+    - group: Components
+      kind: component
+      name: <ChangeCredential />
+      description: 'The `ChangeCredential` component renders a form that lets a signed-in user set a new value for one
+        of their own credentials. It collects only a new value and its confirmation, checks it against the applicable
+        rules as the user types, and posts the change to {{ProductName}}. It reads the rules it needs from the user
+        type schema already resolved by `ThunderIDProvider` (`GET /users/me/meta`), so it adds no network request beyond
+        the write itself. Every default label, placeholder, and message is built from the credential attribute''s own
+        `displayName` in that schema, so it always matches whatever an admin named it there. By default it manages the
+        `password` credential. To manage a different one, for example a PIN declared on the user type schema, set `attribute`;
+        render the component once per credential to let a user manage more than one. :::note `ChangeCredential` collects
+        only a new value and its confirmation, not the account''s existing value. The self-service credential write
+        path does not verify the current value today, so asking for one would only teach the user a false sense of security.
+        Once server-side current-value verification ships, that field returns without a breaking change to this component''s
+        public props. :::'
+      rowsLabel: Props
+      rows:
+      - name: attribute
+        type: string
+        tag: optional
+        description: 'The credential attribute this instance manages, any attribute the user type schema declares `credential:
+          true` for. Defaults to `''password''`.'
+      - name: cardLayout
+        type: boolean
+        tag: optional
+        description: Whether to wrap the form in a bordered card. Defaults to `false`.
+      - name: className
+        type: string
+        tag: optional
+        description: Additional CSS class added to the root element. Defaults to `''`.
+      - name: policy
+        type: PasswordPolicy
+        tag: optional
+        description: The rules the new value must satisfy. Defaults to the applicable rules from the user type schema.
+      - name: preferences
+        type: Preferences
+        tag: optional
+        description: Component-level preference overrides, including i18n.
+      - name: showRequirements
+        type: boolean
+        tag: optional
+        description: Whether to render the live requirement checklist. Defaults to `true`.
+      - name: title
+        type: string
+        tag: optional
+        description: Overrides the default `"Change {credential}"` heading. Pass an empty string to omit the heading
+          entirely. Defaults to a translated, schema-derived heading.
+      example: |-
+        <script setup>
+        import { ChangeCredential } from '@thunderid/vue'
+        </script>
+
+        <template>
+          <div>
+            <h2>Security</h2>
+            <ChangeCredential />
+          </div>
+        </template>
+    - group: Components
+      kind: component
+      name: <Loading />
+      description: The `Loading` component renders its default slot while the authentication state is being determined.
+        It checks the current authentication state and displays a loading indicator or custom content during the initial
+        authentication check. Once authentication is complete, it renders an optional `#fallback` slot or nothing by
+        default. This makes it ideal for providing user feedback during the initial app load or authentication verification.
+      example: |-
+        <script setup>
+        import { Loading } from '@thunderid/vue'
+        </script>
+
+        <template>
+          <Loading>
+            <div>Checking authentication...</div>
+          </Loading>
+        </template>
+    - group: Components
+      kind: component
+      name: <SignInButton />
+      description: The `SignInButton` component initiates the sign-in flow when clicked. It automatically handles loading
+        state and error handling, and supports custom UI via a scoped default slot. If a `signInUrl` is configured on
+        the ``, the button navigates to that URL instead of triggering the embedded flow.
+      rowsLabel: Props
+      rows:
+      - name: signInOptions
+        type: Record
+        tag: optional
+        description: Sign-in options forwarded to the underlying client. Overrides any `signInOptions` set on ``.
+      - name: class
+        type: string
+        tag: optional
+        description: CSS class applied to the rendered button
+      - name: style
+        type: string \
+        description: Inline styles applied to the rendered button
+      example: |-
+        <script setup>
+        import { SignInButton } from '@thunderid/vue'
+        </script>
+
+        <template>
+          <SignInButton />
+        </template>
+    - group: Components
+      kind: component
+      name: <SignOutButton />
+      description: The `SignOutButton` component signs out the current user, clears their session, and revokes authentication
+        tokens when clicked. It automatically handles loading state and error handling, and supports custom UI via a
+        scoped default slot.
+      rowsLabel: Props
+      rows:
+      - name: class
+        type: string
+        tag: optional
+        description: CSS class applied to the rendered button
+      - name: style
+        type: string \
+        description: Inline styles applied to the rendered button
+      example: |-
+        <script setup>
+        import { SignOutButton } from '@thunderid/vue'
+        </script>
+
+        <template>
+          <SignOutButton />
+        </template>
+    - group: Components
+      kind: component
+      name: <SignUpButton />
+      description: The `SignUpButton` component triggers the sign-up (registration) flow when clicked. It automatically
+        handles loading state and error handling, and supports custom UI via a scoped default slot. If a `signUpUrl`
+        is configured on the ``, the button navigates to that URL instead of triggering the embedded flow.
+      rowsLabel: Props
+      rows:
+      - name: class
+        type: string
+        tag: optional
+        description: CSS class applied to the rendered button
+      - name: style
+        type: string \
+        description: Inline styles applied to the rendered button
+      example: |-
+        <script setup>
+        import { SignUpButton } from '@thunderid/vue'
+        </script>
+
+        <template>
+          <SignUpButton />
+        </template>
+    - group: Components
+      kind: component
+      name: <SignedIn />
+      description: The `SignedIn` component conditionally renders its default slot only when the user is authenticated
+        with {{ProductName}}. It checks the current authentication state and displays protected UI content for signed-in
+        users. When the user is not authenticated, it renders an optional `#fallback` slot or nothing by default. This
+        makes it ideal for guarding routes or UI sections that require authentication.
+      example: |-
+        <script setup>
+        import { SignedIn } from '@thunderid/vue'
+        </script>
+
+        <template>
+          <SignedIn>
+            <p>Welcome! You are signed in.</p>
+          </SignedIn>
+        </template>
+    - group: Components
+      kind: component
+      name: <SignedOut />
+      description: The `SignedOut` component conditionally renders its default slot only when the user is not authenticated
+        with {{ProductName}}. It checks the current authentication state and displays content for unauthenticated users,
+        while rendering an optional `#fallback` slot (or nothing by default) when the user is authenticated. This makes
+        it ideal for showing sign-in prompts, public landing pages, or content that should only be visible to guests.
+      example: |-
+        <script setup>
+        import { SignedOut, SignInButton } from '@thunderid/vue'
+        </script>
+
+        <template>
+          <SignedOut>
+            <div>
+              <h1>Welcome!</h1>
+              <SignInButton />
+            </div>
+          </SignedOut>
+        </template>
+    - group: Components
+      kind: component
+      name: <User />
+      description: The `User` component is a declarative way to access the authenticated user object from the {{ProductName}}
+        authentication context. It uses a scoped slot to expose the user data, making it easy to display user information
+        or conditionally render UI based on authentication state.
+      example: |-
+        <script setup>
+        import { User } from '@thunderid/vue'
+        </script>
+
+        <template>
+          <User>
+            <template #default="{ user }">
+              <div>
+                <h1>Welcome, {{ user.name }}!</h1>
+                <p>Email: {{ user.email }}</p>
+              </div>
+            </template>
+            <template #fallback>
+              <p>Please sign in</p>
+            </template>
+          </User>
+        </template>
+    - group: Components
+      kind: component
+      name: <UserDropdown />
+      description: The `UserDropdown` component renders an avatar button that opens a dropdown menu with user information
+        and common actions like viewing the profile and signing out. You can insert additional menu items between the
+        Profile link and Sign Out.
+      rowsLabel: Props
+      rows:
+      - name: menuItems
+        type: DropdownMenuItem[]
+        tag: optional
+        description: Extra items inserted between the Profile link and Sign Out
+      - name: menuAlign
+        type: '''auto'' \'
+        description: How the dropdown panel aligns relative to the trigger. Defaults to `'auto'`.
+      - name: showChevron
+        type: boolean
+        tag: optional
+        description: Whether to render the animated down-chevron beside the avatar. Defaults to `false`.
+      - name: size
+        type: '''sm'' \'
+        description: Dropdown density. Defaults to `'md'`.
+      - name: className
+        type: string
+        tag: optional
+        description: Extra CSS class added to the root element
+      example: |-
+        <script setup>
+        import { UserDropdown } from '@thunderid/vue'
+        </script>
+
+        <template>
+          <header>
+            <UserDropdown />
+          </header>
+        </template>
+    - group: Components
+      kind: component
+      name: <UserProfile />
+      description: The `UserProfile` component renders a complete user profile management interface where users can
+        view and edit their personal information.
+      rowsLabel: Props
+      rows:
+      - name: title
+        type: string
+        tag: optional
+        description: Card header title. Defaults to `'Profile'`.
+      - name: cardLayout
+        type: boolean
+        tag: optional
+        description: Whether to render inside a Card wrapper. Defaults to `true`.
+      - name: cardVariant
+        type: '''elevated'' \'
+        description: Shadow/border style of the card wrapper. Defaults to `'elevated'`.
+      - name: compact
+        type: boolean
+        tag: optional
+        description: Tighter spacing, useful inside modals or dropdowns. Defaults to `false`.
+      - name: editable
+        type: boolean
+        tag: optional
+        description: Whether fields can be edited inline. Defaults to `true`.
+      - name: showAvatar
+        type: boolean
+        tag: optional
+        description: Whether to render the avatar hero section. Defaults to `true`.
+      - name: avatarSize
+        type: '''sm'' \'
+        description: Avatar circle size. Defaults to `'lg'`.
+      - name: showFields
+        type: string[]
+        tag: optional
+        description: Fields to show. Empty means show all.
+      - name: hideFields
+        type: string[]
+        tag: optional
+        description: Fields to hide by name
+      - name: className
+        type: string
+        tag: optional
+        description: Extra CSS class added to the root element
+      example: |-
+        <script setup>
+        import { UserProfile } from '@thunderid/vue'
+        </script>
+
+        <template>
+          <div>
+            <h1>My Profile</h1>
+            <UserProfile />
+          </div>
+        </template>
+    - group: Providers
+      kind: export
+      name: <ThunderIDProvider />
+      description: The `ThunderIDProvider` is the root provider component that configures `@thunderid/vue` and provides
+        {{ProductName}} context to your entire Vue application. It must wrap your application to enable authentication
+        features.
+      rowsLabel: Props
+      rows:
+      - name: clientId
+        type: string
+        tag: required
+        description: Client ID of your application
+      - name: baseUrl
+        type: string
+        tag: required
+        description: The base URL of the {{ProductName}} instance (e.g., `https://localhost:8090`)
+      - name: applicationId
+        type: string
+        tag: optional
+        description: The {{ProductName}} application ID
+      - name: afterSignInUrl
+        type: string
+        tag: optional
+        description: URL to redirect to after sign-in completes. Defaults to `window.location.origin`.
+      - name: afterSignOutUrl
+        type: string
+        tag: optional
+        description: URL to redirect to after sign-out completes. Defaults to `window.location.origin`.
+      - name: scopes
+        type: string[]
+        tag: optional
+        description: OpenID Connect Scopes to request during sign-in. Defaults to `'openid profile internal_login'`
+          if not provided.
+      - name: signInUrl
+        type: string
+        tag: optional
+        description: Custom sign-in URL. When set, `` navigates to this URL instead of triggering the embedded flow.
+      - name: signUpUrl
+        type: string
+        tag: optional
+        description: Custom sign-up URL. When set, `` navigates to this URL instead of triggering the embedded flow.
+      - name: signInOptions
+        type: SignInOptions
+        tag: optional
+        description: Additional sign-in options forwarded to the underlying client.
+      - name: storage
+        type: '''sessionStorage'' \'
+        description: Storage mechanism for session management. Defaults to `sessionStorage`.
+      - name: instanceId
+        type: number
+        tag: optional
+        description: Instance ID for multi-instance support. Defaults to `0`.
+      - name: organizationHandle
+        type: string
+        tag: optional
+        description: The organization handle.
+      - name: organizationChain
+        type: object
+        tag: optional
+        description: Organization chain configuration.
+      - name: platform
+        type: string
+        tag: optional
+        description: Platform type. Use `'ThunderIDV2'` to enable V2 embedded flow features.
+      - name: syncSession
+        type: boolean
+        tag: optional
+        description: Whether to sync sessions across tabs.
+      example: |-
+        <template>
+          <ThunderIDProvider
+            client-id="<your-app-client-id>"
+            base-url="https://localhost:8090"
+          >
+            <router-view />
+          </ThunderIDProvider>
+        </template>
+
+  - type: quickstart
+    id: quickstart
+    title: Get started
+    intro: Provider, session, and a protected route, start to finish.
+    label: Connect your application
+    path: Getting started / Connect your application / Vue
+    outro: The quickstart is maintained alongside the rest of the getting-started guides so it stays in step with the
+      platform. This page covers the package itself.
+  - type: guides
+    id: guides
+    title: Guides
+    intro: Task-focused walkthroughs maintained alongside the SDK.
+
+guides:
+  - id: accessing-protected-apis
+    title: Accessing Protected APIs
+    icon: key
+    description: Make authenticated HTTP requests from a Vue application using the Browser SDK's built-in HTTP client.
+    intro: When building applications with {{ProductName}}, you'll often need to call protected APIs that require authentication.
+      This guide shows you how to make authenticated HTTP requests using the {{ProductName}} Vue SDK.
+    sections:
+    - type: steps
+      id: steps
+      title: Accessing Protected APIs
+      steps:
+      - title: Using SDK Built-in HTTP Client
+        description: 'When your application is wrapped with ``, you can use the `useThunderID` composable to access
+          the authenticated `http` module. This module has the following features: - Includes the necessary authentication
+          headers (Bearer token) - Handles token refresh when tokens expire - Provides methods like `request()` and
+          `requestAll()` for making API calls Accessing the HTTP Client You can access the `http` client in two ways:
+          1. **Inside a component**: Use the `useThunderID` composable to get the `http` instance'
+        code:
+          lang: ts
+          content: '   const { http } = useThunderID()'
+      - title: Using a GraphQL Client
+        description: 'If you are not using `webWorker` as the storage type, use the `getAccessToken` function to fetch
+          the access token. Then manually attach the token to the GraphQL client''s authentication headers. Storage
+          Type Limitation This approach is not available when the storage type is set to `webWorker`. The SDK automatically
+          manages the access token and does not expose it to the main thread. The following example shows how to configure
+          a GraphQL client with authentication using the access token:'
+        code:
+          file: src/graphql/client.ts
+          lang: ts
+          content: |2-
+
+            export function createAuthenticatedClient(accessToken: string) {
+              const httpLink = createHttpLink({
+                uri: 'https://localhost:8090/graphql',
+              })
+
+              const authLink = setContext((_, { headers }) => ({
+                headers: {
+                  ...headers,
+                  authorization: accessToken ? `Bearer ${accessToken}` : '',
+                },
+              }))
+
+              return new ApolloClient({
+                link: authLink.concat(httpLink),
+                cache: new InMemoryCache(),
+              })
+            }
+  - id: protecting-routes
+    title: Protecting Routes
+    icon: shield
+    description: Secure routes in a Vue application by requiring authentication before rendering protected views.
+    intro: In a Vue app, routes define the paths within the application that users can navigate to, linking URLs to
+      specific components. Securing routes is essential to protect sensitive data, prevent unauthorized access, and
+      ensure that only authenticated users can access certain parts of the application. The {{ProductName}} SDK provides
+      multiple approaches to secure routes in your application. This guide demonstrates how to secure routes in a Vue
+      3 single-page app using the navigation guard helper shipped with `@thunderid/vue`.
+    sections:
+    - type: steps
+      id: steps
+      title: Protecting Routes
+      tabs:
+      - label: Custom Implementation
+        steps:
+        - title: Basic Custom Route Guard With `<SignedIn />`
+          description: 'The simplest approach is to wrap the protected page content with the `` component and render
+            a fallback for unauthenticated users:'
+          code:
+            file: src/pages/Contact.vue
+            lang: vue
+            content: |-
+              <script setup>
+              </script>
+
+              <template>
+                <SignedIn>
+                  <ContactDetails />
+                </SignedIn>
+                <SignedOut>
+                  <p>You must sign in to view this page.</p>
+                </SignedOut>
+              </template>
+        - title: Custom Composable Using `useThunderID`
+          description: 'For more advanced control, such as role-based protection or a redirect, use `useThunderID()`
+            together with Vue Router''s `useRouter`:'
+          code:
+            file: src/composables/useRequireAuth.ts
+            lang: ts
+            content: |2-
+
+              export interface RequireAuthOptions {
+                redirectTo?: string
+                requireRole?: string
+              }
+
+              export function useRequireAuth(options: RequireAuthOptions = {}) {
+                const { redirectTo = '/signin', requireRole } = options
+                const { isInitialized, isSignedIn, user } = useThunderID()
+                const router = useRouter()
+
+                watchEffect(() => {
+                  if (!isInitialized.value) return
+
+                  if (!isSignedIn.value) {
+                    router.replace(redirectTo)
+                    return
+                  }
+
+                  if (requireRole && !user.value?.roles?.includes(requireRole)) {
+                    router.replace('/forbidden')
+                  }
+                })
+              }
+        - title: Custom Navigation Guard
+          description: You can also build a Vue Router navigation guard from scratch using the SDK's `inject` key directly.
+            This is essentially what `createThunderIDGuard` does internally, and you can fork it to add custom logic.
+          code:
+            file: src/router/guards.ts
+            lang: ts
+            content: |2-
+
+              export const requireAuth: NavigationGuard = async (to, from, next) => {
+                const ctx = inject<ThunderIDContext>(THUNDERID_KEY)
+
+                if (!ctx) {
+                  return next({ path: '/signin' })
+                }
+
+                // Wait for initialization
+                while (!ctx.isInitialized.value) {
+                  await new Promise((resolve) => requestAnimationFrame(resolve))
+                }
+
+                if (!ctx.isSignedIn.value) {
+                  return next({ path: '/signin', query: { redirect: to.fullPath } })
+                }
+
+                // Add any custom role / permission checks here
+
+                return next()
+              }
+        blurb: If you prefer full control over how app routes are secured, you can build a custom solution using the
+          primitives provided by the {{ProductName}} Vue SDK. This helps when you need to run custom application logic
+          before enabling or disabling a route.
+      - label: Vue Router
+        steps:
+        - title: '`beforeEnter` Route Guard'
+          description: Apply the guard to a single route using `beforeEnter`. This is the most common pattern when only
+            a few routes need protection.
+          code:
+            file: src/router/index.ts
+            lang: ts
+            content: |2-
+
+              const router = createRouter({
+                history: createWebHistory(),
+                routes: [
+                  { path: '/', component: Home },
+                  { path: '/signin', component: SignIn },
+                  {
+                    path: '/dashboard',
+                    component: Dashboard,
+                    beforeEnter: createThunderIDGuard({ redirectTo: '/signin' }),
+                  },
+                  createCallbackRoute({ path: '/callback' }),
+                ],
+              })
+
+              export default router
+        - title: Global Guard with `router.beforeEach`
+          description: Apply the guard to every route at once using `router.beforeEach`. Combine this with per-route
+            `meta` flags if you want to opt specific routes out of the check.
+          code:
+            file: src/router/index.ts
+            lang: ts
+            content: |2-
+
+              const router = createRouter({
+                history: createWebHistory(),
+                routes: [
+                  { path: '/', component: Home, meta: { public: true } },
+                  { path: '/signin', component: SignIn, meta: { public: true } },
+                  { path: '/dashboard', component: Dashboard },
+                ],
+              })
+
+              const requireAuth = createThunderIDGuard({ redirectTo: '/signin' })
+
+              router.beforeEach((to, from, next) => {
+                if (to.meta.public) {
+                  return next()
+                }
+                return requireAuth(to, from, next)
+              })
+
+              export default router
+        - title: Customizing the Guard
+          description: 'The guard accepts the following options: | Option | Type | Default | Description | | :--- |
+            :--- | :--- | :--- | | `redirectTo` | `string` | `''/''` | Path to redirect unauthenticated users to | |
+            `waitForInit` | `boolean` | `true` | Wait for the SDK to finish initializing before evaluating the auth
+            state | | `initTimeout` | `number` | `10000` | Maximum time (in ms) to wait for SDK initialization before
+            redirecting | For example, to reject immediately when the SDK is not yet initialized (without waiting):'
+          code:
+            file: src/router/index.ts
+            lang: ts
+            content: |-
+              const guard = createThunderIDGuard({
+                redirectTo: '/signin',
+                waitForInit: false,
+              })
+        - title: Using the Callback Route Helper
+          description: '`createCallbackRoute` returns a route record that renders the SDK''s built-in `` component,
+            which extracts OAuth parameters from the URL and finalises the sign-in.'
+          code:
+            file: src/router/index.ts
+            lang: ts
+            content: |2-
+
+              const router = createRouter({
+                history: createWebHistory(),
+                routes: [
+                  { path: '/', component: Home },
+                  createCallbackRoute({
+                    path: '/auth/callback',
+                    name: 'oauth-callback',
+                    onError: (error) => console.error('OAuth error:', error),
+                  }),
+                ],
+              })
+        blurb: '`@thunderid/vue` ships with `createThunderIDGuard`, a navigation-guard factory that integrates with
+          [Vue Router](https://router.vuejs.org/). The guard checks the user''s authentication state and redirects unauthenticated
+          users to a fallback route. It also waits for the SDK to finish initializing on first load so that protected
+          routes are not falsely treated as unauthenticated during the initial bootstrap. `createCallbackRoute` is a
+          companion helper that returns a route record for the OAuth2 callback, useful when you want a dedicated `/callback`
+          route instead of relying on the redirect landing on `/`. Requires Vue Router These helpers expect `vue-router`
+          to be installed as a peer dependency:'
+
+rail:
+  statsTitle: Package
+  stats:
+    - {label: Package, value: "@thunderid/vue"}
+    - {label: Registry, value: "npm"}
+    - {label: Licence, value: "Apache 2.0"}
+  relatedTitle: Related SDKs
+  related: [browser, javascript, react]

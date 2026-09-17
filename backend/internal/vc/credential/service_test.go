@@ -18,6 +18,8 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
+const testOUID = "ou-1"
+
 type ConfigurationServiceTestSuite struct {
 	suite.Suite
 }
@@ -196,13 +198,13 @@ func (s *ConfigurationServiceTestSuite) TestDeleteIsIdempotent() {
 
 func (s *ConfigurationServiceTestSuite) TestListAndListSummaries() {
 	resolver := newOUServiceMock(s.T(),
-		map[string]bool{"ou-1": true},
-		map[string]string{"default": "ou-1"},
-		map[string]string{"ou-1": "default"})
+		map[string]bool{testOUID: true},
+		map[string]string{"default": testOUID},
+		map[string]string{testOUID: "default"})
 	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver)
 
 	dto := s.validDTO()
-	dto.OUHandle = "default"
+	dto.OUID = testOUID
 	_, err := svc.CreateCredentialConfiguration(context.Background(), dto)
 	s.Require().Nil(err)
 
@@ -363,18 +365,17 @@ func (s *ConfigurationServiceTestSuite) TestCreateOUVerificationError() {
 		Return(false, &tidcommon.InternalServerError).Maybe()
 	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver)
 	dto := s.validDTO()
-	dto.OUID = "ou-1"
+	dto.OUID = testOUID
 	_, err := svc.CreateCredentialConfiguration(context.Background(), dto)
 	s.Require().NotNil(err)
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
-func (s *ConfigurationServiceTestSuite) TestCreateOUResolveByPathError() {
+func (s *ConfigurationServiceTestSuite) TestCreateRejectsMissingOUID() {
 	resolver := newOUServiceMock(s.T(),
 		map[string]bool{}, map[string]string{}, map[string]string{})
 	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver)
 	dto := s.validDTO()
-	dto.OUHandle = "unknown-path"
 	_, err := svc.CreateCredentialConfiguration(context.Background(), dto)
 	s.Require().NotNil(err)
 	s.Equal(ErrorConfigurationInvalidOU.Code, err.Code)
@@ -530,21 +531,21 @@ func (s *ConfigurationServiceTestSuite) TestPopulateOUHandleResolveError() {
 	resolver.EXPECT().IsOrganizationUnitExists(mock.Anything, mock.Anything).Return(true, nil).Maybe()
 	resolver.EXPECT().GetOrganizationUnitByPath(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, _ string) (providers.OrganizationUnit, *tidcommon.ServiceError) {
-			return providers.OrganizationUnit{ID: "ou-1"}, nil
+			return providers.OrganizationUnit{ID: testOUID}, nil
 		}).Maybe()
 	resolver.EXPECT().GetOrganizationUnitHandlesByIDs(mock.Anything, mock.Anything).
 		Return(nil, &tidcommon.InternalServerError).Maybe()
 	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver)
 
 	dto := s.validDTO()
-	dto.OUID = "ou-1"
+	dto.OUID = testOUID
 	created, err := svc.CreateCredentialConfiguration(context.Background(), dto)
 	s.Require().Nil(err)
 
 	// Resolution failure is logged and swallowed; the call still succeeds.
 	got, err := svc.GetCredentialConfiguration(context.Background(), created.ID)
 	s.Require().Nil(err)
-	s.Equal("ou-1", got.OUID)
+	s.Equal(testOUID, got.OUID)
 
 	summaries, err := svc.ListCredentialConfigurationSummaries(context.Background())
 	s.Require().Nil(err)
@@ -553,9 +554,9 @@ func (s *ConfigurationServiceTestSuite) TestPopulateOUHandleResolveError() {
 
 func (s *ConfigurationServiceTestSuite) TestCreateResolvesAndValidatesOU() {
 	resolver := newOUServiceMock(s.T(),
-		map[string]bool{"ou-1": true},
-		map[string]string{"default": "ou-1"},
-		map[string]string{"ou-1": "default"})
+		map[string]bool{testOUID: true},
+		map[string]string{"default": testOUID},
+		map[string]string{testOUID: "default"})
 	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver)
 
 	dto := s.validDTO()
@@ -564,14 +565,14 @@ func (s *ConfigurationServiceTestSuite) TestCreateResolvesAndValidatesOU() {
 	s.Equal(ErrorConfigurationInvalidOU.Code, err.Code)
 
 	dto = s.validDTO()
-	dto.OUHandle = "default"
+	dto.OUID = testOUID
 	created, err := svc.CreateCredentialConfiguration(context.Background(), dto)
 	s.Require().Nil(err)
-	s.Equal("ou-1", created.OUID)
+	s.Equal(testOUID, created.OUID)
 
 	got, err := svc.GetCredentialConfiguration(context.Background(), created.ID)
 	s.Require().Nil(err)
-	s.Equal("ou-1", got.OUID)
+	s.Equal(testOUID, got.OUID)
 	s.Equal("default", got.OUHandle)
 }
 

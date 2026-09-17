@@ -31,7 +31,10 @@ func newSessionRevocationExecutor(factory core.FlowFactoryInterface,
 	return &sessionRevocationExecutor{Executor: base, sessionSvc: sessionSvc}
 }
 
-// Execute terminates sessions for subject criteria in the trusted revocation plan.
+// Execute acts on every session dimension the trusted plan selects. A subject plan ends that subject's
+// sessions outright; an application plan detaches only that application's participation, since a session
+// routinely spans several applications. The application branch keys off the plan's target rather than its
+// criteria, so it runs even when there is nothing to revoke, and applies to a deletion only.
 func (e *sessionRevocationExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	if e.sessionSvc == nil {
 		return nil, fmt.Errorf("session service is not configured")
@@ -48,5 +51,16 @@ func (e *sessionRevocationExecutor) Execute(ctx *providers.NodeContext) (*provid
 			return nil, fmt.Errorf("failed to terminate sessions by subject: %w", err)
 		}
 	}
+	if isApplicationDeletionPlan(plan) {
+		if err := e.sessionSvc.DetachApplication(ctx.Context, plan.TargetID); err != nil {
+			return nil, fmt.Errorf("failed to detach application from sessions: %w", err)
+		}
+	}
 	return &providers.ExecutorResponse{Status: providers.ExecComplete}, nil
+}
+
+// isApplicationDeletionPlan reports whether the plan deletes an application, the only case that detaches
+// session participation. A secret regeneration does not: the session is still legitimately the user's.
+func isApplicationDeletionPlan(plan revocationPlan) bool {
+	return plan.TargetID != "" && plan.Reason == revocation.ReasonApplicationDeleted
 }

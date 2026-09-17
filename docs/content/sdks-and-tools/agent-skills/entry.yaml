@@ -1,0 +1,127 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: agent-skills
+name: Agent Skills
+icon: SkillsLogo
+category: agent
+type: plugin
+origin: official
+status: ga
+package:
+  name: thunder-id/skills
+  manager: plugin
+description: Reusable skills that let any agent issue, verify, and revoke {{ProductName}} credentials as part of a
+  workflow.
+docs:
+  overview: /docs/next/working-with-ai/skills
+  quickstart: /docs/next/working-with-ai/skills
+links:
+  github: https://github.com/thunder-id/skills
+hero:
+  description: The {{ProductName}} skills bundle, installable into any agent that reads Agent Skills. The same skills
+    back the Claude and Codex plugins.
+  meta:
+  - icon: package
+    label: thunder-id/skills
+    mono: true
+  - icon: licence
+    label: Apache 2.0 licence
+  ctas:
+  - label: Install
+    href: '#install'
+    variant: primary
+  - label: Source
+    href: https://github.com/thunder-id/skills
+    variant: secondary
+    external: true
+sections:
+- type: steps
+  id: install
+  title: Install
+  intro: The bundle is one marketplace entry. Adding it makes every skill available.
+  steps:
+  - title: Add the skills
+    description: Installs the bundle into an agent that reads the Agent Skills format.
+    code:
+      file: your shell
+      lang: bash
+      content: npx skills add thunder-id/skills
+- type: table
+  id: skills
+  title: Skills in the bundle
+  intro: The same 13 skills ship to every agent that installs the bundle.
+  showHeader: true
+  columns:
+  - label: Skill
+    style: code
+  - label: Purpose
+    style: text
+  - label: When to use
+    style: muted
+  rows:
+  - cells:
+    - thunderid-install
+    - Install and start the ThunderID server
+    - New projects, initial setup
+  - cells:
+    - thunderid-try-consumer
+    - Launch the Wayfinder B2C consumer login demo
+    - Try ThunderID, see a sample app
+  - cells:
+    - thunderid-try-agentid
+    - Launch the AgentID AI agent authentication demo
+    - Try AgentID, demo AI agent auth
+  - cells:
+    - thunderid-integrate-react
+    - '@thunderid/react'
+    - React apps
+  - cells:
+    - thunderid-integrate-nextjs
+    - '@thunderid/nextjs'
+    - Next.js apps
+  - cells:
+    - thunderid-integrate-vue
+    - '@thunderid/vue'
+    - Vue apps
+  - cells:
+    - thunderid-integrate-nuxt
+    - '@thunderid/nuxt'
+    - Nuxt apps
+  - cells:
+    - thunderid-integrate-express
+    - '@thunderid/express'
+    - Express apps
+  - cells:
+    - thunderid-integrate-nodejs
+    - '@thunderid/node'
+    - Node.js servers
+  - cells:
+    - thunderid-integrate-browser
+    - '@thunderid/browser'
+    - Vanilla JavaScript apps
+  - cells:
+    - thunderid-integrate-ios
+    - ThunderID iOS SDK
+    - iOS (SwiftUI) apps
+  - cells:
+    - thunderid-integrate-android
+    - ThunderID Android SDK
+    - Android (Compose) apps
+  - cells:
+    - thunderid-integrate-flutter
+    - thunderid_flutter
+    - Flutter apps
+rail:
+  statsTitle: Bundle
+  stats:
+  - label: Repository
+    value: thunder-id/skills
+  - label: Skills
+    value: '13'
+  - label: Licence
+    value: Apache 2.0
+  relatedTitle: Related agent tooling
+  related:
+  - claude-plugin
+  - codex-plugin

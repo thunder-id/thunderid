@@ -6,6 +6,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 import type {Config} from '@docusaurus/types';
 import {themes as prismThemes} from 'prism-react-renderer';
 import productConfig from './docusaurus.product.config';
+import ecosystemPlugin from './plugins/ecosystemPlugin';
 import personaPlugin from './plugins/personaPlugin';
 import rehypeProductName from './plugins/rehypeProductName';
 import webpackPlugin from './plugins/webpackPlugin';
@@ -183,21 +184,61 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     '@docsearch/docusaurus-adapter',
     webpackPlugin,
     personaPlugin,
+    ecosystemPlugin,
     './plugins/docusaurus-plugin-llms-txt',
     './plugins/docusaurus-plugin-markdown-export',
     [
       '@docusaurus/plugin-client-redirects',
       {
+        // The React "Protecting Routes" guide was four pages (a landing page
+        // plus one per router); it is now one page with an in-page selector.
+        // Each old URL lands on the panel it used to be, via the ?router= key
+        // the selector reads.
+        redirects: [
+          {
+            from: '/docs/next/sdks-and-tools/react/guides/protecting-routes/overview',
+            to: '/sdks/react/guides/protecting-routes',
+          },
+          {
+            from: '/docs/next/sdks-and-tools/react/guides/protecting-routes/react-router',
+            to: '/sdks/react/guides/protecting-routes',
+          },
+          {
+            from: '/docs/next/sdks-and-tools/react/guides/protecting-routes/tanstack-router',
+            to: '/sdks/react/guides/protecting-routes',
+          },
+          {
+            from: '/docs/next/sdks-and-tools/react/guides/protecting-routes/custom',
+            to: '/sdks/react/guides/protecting-routes',
+          },
+        ],
+
         // v1.0.x moved from /docs/v1.0.x/ to the bare /docs/ root (it is the
         // lastVersion). Redirect the old versioned URLs to their new root path so
         // existing links keep working. GitHub Pages can't do server 301s, so these
         // are generated as static client-side redirect stubs. The current/"Next"
         // docs are untouched (still at /docs/next/).
         createRedirects(existingPath: string): string[] | undefined {
-          if (existingPath.startsWith('/docs/') && !existingPath.startsWith('/docs/next/')) {
-            return [existingPath.replace('/docs/', '/docs/v1.0.x/')];
+          const from: string[] = [];
+
+          // The SDK docs moved from `sdks/` to `sdks-and-tools/` once agent
+          // plugins and integration guides joined them, since most of what the
+          // section covers is no longer an SDK. Both versions moved together so
+          // the URL shape stays the same across them.
+          if (existingPath.includes('/sdks-and-tools/')) {
+            from.push(existingPath.replace('/sdks-and-tools/', '/sdks/'));
           }
-          return undefined;
+
+          if (existingPath.startsWith('/docs/') && !existingPath.startsWith('/docs/next/')) {
+            from.push(existingPath.replace('/docs/', '/docs/v1.0.x/'));
+            // Chain both moves, so a link written against the old path *and*
+            // the old version prefix still lands.
+            if (existingPath.includes('/sdks-and-tools/')) {
+              from.push(existingPath.replace('/docs/', '/docs/v1.0.x/').replace('/sdks-and-tools/', '/sdks/'));
+            }
+          }
+
+          return from.length > 0 ? from : undefined;
         },
       },
     ],

@@ -2,92 +2,74 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Link from '@docusaurus/Link';
-import {Box, Typography, useTheme} from '@wso2/oxygen-ui';
-import {ArrowRight} from '@wso2/oxygen-ui-icons-react';
-import {JSX, useEffect, useState} from 'react';
-import {CATEGORY_LABELS, EcosystemItem} from './data';
+import {Box, Typography} from '@wso2/oxygen-ui';
+import {Check, Users} from '@wso2/oxygen-ui-icons-react';
+import {JSX} from 'react';
+import EntryIcon from './Detail/EntryIcon';
+import {
+  artifactOf,
+  CATEGORY_LABELS,
+  entryHref,
+  isAvailable,
+  originOf,
+  packageLabel,
+  showsCategory,
+  versionLabel,
+} from './presentation';
+import useEntryVersion from './useEntryVersion';
 import useIsDarkMode from '../../hooks/useIsDarkMode';
 import {useDocsUrl} from '@site/src/hooks/useDocsUrl';
+import type {EcosystemEntry} from '@site/src/types/ecosystem';
 
-interface VersionChipProps {
-  item: EcosystemItem;
-  isLight: boolean;
-}
-
-function VersionChip({item, isLight}: VersionChipProps): JSX.Element | null {
-  const [fetchedVersion, setFetchedVersion] = useState('');
-
-  useEffect(() => {
-    if (item.packageManager === 'npm' && !item.soon) {
-      fetch(`https://registry.npmjs.org/${item.packageName}/latest`)
-        .then((res) => res.json())
-        .then((data: {version?: string}) => {
-          if (data.version) setFetchedVersion(`v${data.version}`);
-        })
-        .catch(() => {
-          // Silently fail if version fetch fails.
-        });
-    }
-  }, [item.packageManager, item.packageName, item.soon]);
-
-  const baseSx = {
-    fontFamily: 'monospace',
-    fontSize: '9.5px',
-    fontWeight: 600,
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.04em',
-    borderRadius: '6px',
-    px: 1,
-    py: 0.4,
-    border: '1px solid',
-    flexShrink: 0,
-    whiteSpace: 'nowrap' as const,
-  };
-
-  if (item.category === 'integration') {
-    return (
-      <Box
-        component="span"
-        sx={{
-          ...baseSx,
-          color: isLight ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.55)',
-          bgcolor: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)',
-          borderColor: isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.12)',
-        }}
-      >
-        Built-in
-      </Box>
-    );
-  }
-
-  if (item.category === 'agent') {
-    return (
-      <Box
-        component="span"
-        sx={{...baseSx, color: '#3688ff', bgcolor: 'rgba(139,249,250,0.1)', borderColor: 'rgba(139,249,250,0.3)'}}
-      >
-        Beta
-      </Box>
-    );
-  }
-
-  if (!fetchedVersion) return null;
+function OriginBadge({entry, isLight}: {entry: EcosystemEntry; isLight: boolean}): JSX.Element {
+  const official = originOf(entry) === 'official';
 
   return (
     <Box
       component="span"
-      sx={{...baseSx, textTransform: 'none', color: '#4ade80', bgcolor: 'rgba(74,222,128,0.1)', borderColor: 'rgba(74,222,128,0.22)'}}
+      sx={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 0.625,
+        flexShrink: 0,
+        fontSize: '9px',
+        fontWeight: 700,
+        letterSpacing: '0.1em',
+        textTransform: 'uppercase',
+        borderRadius: '6px',
+        whiteSpace: 'nowrap',
+        ...(official
+          ? {
+              px: '9px',
+              py: '4px',
+              color: '#08121f',
+              background: 'linear-gradient(135deg, #8bf9fa 0%, #4b9bff 100%)',
+            }
+          : {
+              px: '8px',
+              py: '3px',
+              color: isLight ? '#b45309' : '#fbbf24',
+              bgcolor: 'rgba(249,115,22,0.1)',
+              border: '1px solid rgba(251,191,36,0.32)',
+            }),
+      }}
     >
-      {fetchedVersion}
+      {official ? <Check size={10} strokeWidth={3.2} /> : <Users size={10} strokeWidth={2.4} />}
+      {official ? 'Official' : 'Community'}
     </Box>
   );
 }
 
-export default function EcosystemCard({item}: {item: EcosystemItem}): JSX.Element {
-  const theme = useTheme();
+export default function EcosystemCard({entry}: {entry: EcosystemEntry}): JSX.Element {
   const isLight = !useIsDarkMode();
   const docsUrl = useDocsUrl();
-  const Icon = item.icon;
+  const version = useEntryVersion(entry);
+  const available = isAvailable(entry);
+  const versionText = versionLabel(entry, version);
+  const href = entryHref(entry);
+
+  const muted = (light: number, dark: number): string =>
+    isLight ? `rgba(0,0,0,${light})` : `rgba(255,255,255,${dark})`;
 
   const content = (
     <Box
@@ -95,139 +77,146 @@ export default function EcosystemCard({item}: {item: EcosystemItem}): JSX.Elemen
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        gap: 1.5,
+        gap: 1.75,
         borderRadius: '14px',
         border: '1px solid',
-        borderColor: item.soon
-          ? isLight
-            ? 'rgba(0,0,0,0.06)'
-            : 'rgba(255,255,255,0.05)'
-          : isLight
-            ? 'rgba(0,0,0,0.08)'
-            : 'rgba(255,255,255,0.07)',
-        bgcolor: item.soon ? (isLight ? 'rgba(0,0,0,0.012)' : 'rgba(255,255,255,0.012)') : isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)',
-        filter: item.soon ? 'saturate(0)' : 'none',
-        opacity: item.soon ? 0.55 : 1,
+        borderColor: available ? muted(0.08, 0.07) : muted(0.05, 0.05),
+        bgcolor: available ? muted(0.02, 0.02) : muted(0.012, 0.012),
+        filter: available ? 'none' : 'saturate(0)',
         p: '22px',
-        transition: 'all 0.2s ease',
-        cursor: item.soon ? 'default' : 'pointer',
-        '&:hover': item.soon
-          ? {opacity: 0.9}
-          : {
-              borderColor: theme.vars?.palette.primary.main,
-              bgcolor: 'rgba(54,136,255,0.04)',
-              transform: 'translateY(-2px)',
-            },
+        transition: 'border-color 0.18s, background-color 0.18s, transform 0.18s',
+        ...(available && href
+          ? {
+              cursor: 'pointer',
+              '&:hover': {
+                borderColor: 'rgba(54,136,255,0.4)',
+                bgcolor: 'rgba(54,136,255,0.04)',
+                transform: 'translateY(-2px)',
+              },
+            }
+          : {'&:hover': {borderColor: muted(0.12, 0.12)}}),
       }}
     >
-      <Box sx={{display: 'flex', alignItems: 'flex-start', gap: 1.5}}>
-        <Box
-          sx={{
-            width: 46,
-            height: 46,
-            flexShrink: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderRadius: '12px',
-            bgcolor: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
-            border: '1px solid',
-            borderColor: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.07)',
-          }}
-        >
-          <Icon size={24} />
-        </Box>
-        <Box sx={{flex: 1, minWidth: 0}}>
-          <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1}}>
-            <Typography sx={{fontSize: '14.5px', fontWeight: 600, color: 'text.primary'}}>{item.name}</Typography>
-            {item.soon ? (
-              <Box
-                component="span"
-                sx={{
-                  fontFamily: 'monospace',
-                  fontSize: '9px',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                  borderRadius: '6px',
-                  px: 1,
-                  py: 0.4,
-                  border: '1px solid',
-                  borderColor: isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)',
-                  color: isLight ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.45)',
-                  bgcolor: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)',
-                  flexShrink: 0,
-                }}
-              >
-                Soon
-              </Box>
-            ) : (
-              <VersionChip item={item} isLight={isLight} />
-            )}
-          </Box>
-          <Typography
+      <Box sx={{display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1.5}}>
+        <Box sx={{display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0}}>
+          <Box
             sx={{
-              fontFamily: 'monospace',
-              fontSize: '11px',
-              color: isLight ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)',
+              width: 46,
+              height: 46,
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '12px',
+              bgcolor: muted(0.03, 0.04),
+              border: '1px solid',
+              borderColor: muted(0.06, 0.07),
+              opacity: available ? 1 : 0.75,
             }}
           >
-            {item.packageName}
-          </Typography>
+            <EntryIcon name={entry.icon} size={24} />
+          </Box>
+          <Box sx={{minWidth: 0}}>
+            <Typography
+              sx={{
+                fontSize: '14.5px',
+                fontWeight: 600,
+                letterSpacing: '-0.01em',
+                color: available ? 'text.primary' : muted(0.6, 0.82),
+              }}
+            >
+              {entry.name}
+            </Typography>
+            <Typography
+              sx={{
+                fontFamily: 'monospace',
+                fontSize: '11px',
+                mt: '3px',
+                color: muted(0.4, 0.4),
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {packageLabel(entry)}
+            </Typography>
+          </Box>
+        </Box>
+
+        <Box sx={{display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.875, flexShrink: 0}}>
+          <OriginBadge entry={entry} isLight={isLight} />
+          {versionText && (
+            <Typography
+              component="span"
+              sx={{fontFamily: 'monospace', fontSize: '10px', color: muted(0.5, 0.55), whiteSpace: 'nowrap'}}
+            >
+              {versionText}
+            </Typography>
+          )}
         </Box>
       </Box>
 
-      <Typography sx={{fontSize: '13px', lineHeight: 1.62, color: isLight ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)', flex: 1}}>
-        {item.description}
+      <Typography sx={{fontSize: '13px', lineHeight: 1.62, color: muted(0.5, 0.55), flex: 1}}>
+        {entry.description}
       </Typography>
 
-      <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.5}}>
+      <Box sx={{display: 'flex', alignItems: 'center', gap: 1, minWidth: 0}}>
         <Typography
           component="span"
           sx={{
             fontFamily: 'monospace',
             fontSize: '9.5px',
-            textTransform: 'uppercase',
             letterSpacing: '0.1em',
-            color: isLight ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)',
+            textTransform: 'uppercase',
+            color: muted(0.5, 0.5),
+            whiteSpace: 'nowrap',
           }}
         >
-          {CATEGORY_LABELS[item.category]}
+          {artifactOf(entry)}
         </Typography>
-        {!item.soon && (
-          <Box
+        {showsCategory(entry) && (
+          <Typography
+            component="span"
+            sx={{
+              fontFamily: 'monospace',
+              fontSize: '9.5px',
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: muted(0.4, 0.4),
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {CATEGORY_LABELS[entry.category]}
+          </Typography>
+        )}
+        {entry.author && (
+          <Typography
             component="span"
             sx={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: 0.5,
-              fontSize: '12px',
-              fontWeight: 500,
-              color: theme.vars?.palette.primary.main,
+              fontSize: '10.5px',
+              color: muted(0.32, 0.32),
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
             }}
           >
-            {item.ctaLabel}
-            <ArrowRight size={12} strokeWidth={2.4} />
-          </Box>
+            <Users size={10} strokeWidth={2.2} />@{entry.author}
+          </Typography>
         )}
       </Box>
     </Box>
   );
 
-  if (item.soon || !item.href) {
-    return content;
-  }
-
-  const isExternal = item.href.startsWith('http');
+  // A `soon` entry has nowhere to go, and a released one without a docs page
+  // yet renders as a plain card rather than a dead link.
+  if (!available || !href) return content;
 
   return (
-    <Box
-      component={Link}
-      to={docsUrl(item.href)}
-      target={isExternal ? '_blank' : undefined}
-      rel={isExternal ? 'noopener noreferrer' : undefined}
-      sx={{textDecoration: 'none', display: 'block', height: '100%'}}
-    >
+    <Box component={Link} to={docsUrl(href)} sx={{textDecoration: 'none', display: 'block', height: '100%'}}>
       {content}
     </Box>
   );

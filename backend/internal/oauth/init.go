@@ -85,7 +85,7 @@ func Initialize(
 		resourceService, dpopVerifier, cfg, runtimeStore, jtiStore)
 	oauth2AuthzService, err := oauth2authz.Initialize(mux, actorProvider, resourceService,
 		jwtService, flowExecService, parService, revocationSvc, ssoSession, flowProvider, cfg,
-		runtimeStore, transactioner)
+		runtimeStore, transactioner, jtiStore)
 	if err != nil {
 		return nil, err
 	}

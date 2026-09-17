@@ -39,6 +39,63 @@ func (_m *ServiceMock) EXPECT() *ServiceMock_Expecter {
 	return &ServiceMock_Expecter{mock: &_m.Mock}
 }
 
+// DetachApplication provides a mock function for the type ServiceMock
+func (_mock *ServiceMock) DetachApplication(ctx context.Context, appID string) error {
+	ret := _mock.Called(ctx, appID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DetachApplication")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, appID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// ServiceMock_DetachApplication_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DetachApplication'
+type ServiceMock_DetachApplication_Call struct {
+	*mock.Call
+}
+
+// DetachApplication is a helper method to define mock.On call
+//   - ctx context.Context
+//   - appID string
+func (_e *ServiceMock_Expecter) DetachApplication(ctx interface{}, appID interface{}) *ServiceMock_DetachApplication_Call {
+	return &ServiceMock_DetachApplication_Call{Call: _e.mock.On("DetachApplication", ctx, appID)}
+}
+
+func (_c *ServiceMock_DetachApplication_Call) Run(run func(ctx context.Context, appID string)) *ServiceMock_DetachApplication_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ServiceMock_DetachApplication_Call) Return(err error) *ServiceMock_DetachApplication_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *ServiceMock_DetachApplication_Call) RunAndReturn(run func(ctx context.Context, appID string) error) *ServiceMock_DetachApplication_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // FindCheckpoint provides a mock function for the type ServiceMock
 func (_mock *ServiceMock) FindCheckpoint(ctx context.Context, sessionID string, checkpoint string) (*session.SessionContext, error) {
 	ret := _mock.Called(ctx, sessionID, checkpoint)

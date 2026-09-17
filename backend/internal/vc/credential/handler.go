@@ -104,7 +104,6 @@ func requestToDTO(req *credentialConfigurationRequest) *CredentialConfigurationD
 	return &CredentialConfigurationDTO{
 		Handle:          sysutils.SanitizeString(req.Handle),
 		OUID:            sysutils.SanitizeString(req.OUID),
-		OUHandle:        sysutils.SanitizeString(req.OUHandle),
 		Name:            sysutils.SanitizeString(req.Name),
 		Description:     sysutils.SanitizeString(req.Description),
 		Format:          sysutils.SanitizeString(req.Format),

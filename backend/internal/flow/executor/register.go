@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sync"
 
+	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/authn/assert"
 	"github.com/thunder-id/thunderid/internal/authn/github"
@@ -34,6 +35,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/template"
 	"github.com/thunder-id/thunderid/internal/user"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -55,6 +57,39 @@ type executorRegistry struct {
 func newExecutorRegistry() ExecutorRegistryInterface {
 	return &executorRegistry{
 		executors: make(map[string]providers.Executor),
+	}
+}
+
+// appProviderConsumerInterface is implemented by the executors that act on applications. They are
+// built before the application service exists, so it reaches them in a second phase.
+type appProviderConsumerInterface interface {
+	setApplicationProvider(provider applicationAdminProvider)
+}
+
+// SetApplicationProvider injects the application service into every registered executor that acts on
+// applications. The service is constructed after the executors and sits behind them in the import graph
+// (executor -> application -> inboundclient -> flowmgt -> executor), so it cannot be passed to their
+// constructors. Called once during startup, before the server serves.
+//
+// It is a package function rather than a method on ExecutorRegistryInterface so the provider contract
+// stays internal to this package. A registry that cannot accept the injection is reported rather than
+// skipped, so a wiring mistake cannot leave the executors without a provider.
+func SetApplicationProvider(reg ExecutorRegistryInterface, provider applicationAdminProvider) error {
+	registry, ok := reg.(*executorRegistry)
+	if !ok {
+		return fmt.Errorf("executor registry does not support application provider injection")
+	}
+	registry.setApplicationProvider(provider)
+	return nil
+}
+
+func (r *executorRegistry) setApplicationProvider(provider applicationAdminProvider) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, ex := range r.executors {
+		if consumer, ok := ex.(appProviderConsumerInterface); ok {
+			consumer.setApplicationProvider(provider)
+		}
 	}
 }
 
@@ -287,6 +322,18 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 			reg.RegisterExecutor(ExecutorNameUserDelete,
 				newUserDeleteExecutor(deps.FlowFactory, deps.UserService))
 		},
+		ExecutorNameApplicationActionValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameApplicationActionValidator,
+				newApplicationActionValidator(deps.FlowFactory))
+		},
+		ExecutorNameApplicationDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameApplicationDelete,
+				newApplicationDeleteExecutor(deps.FlowFactory))
+		},
+		ExecutorNameClientSecret: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameClientSecret,
+				newClientSecretExecutor(deps.FlowFactory))
+		},
 	}
 }
 
@@ -366,4 +413,16 @@ func registerBuiltInExecutor(
 		return fmt.Errorf("failed to register built-in executor: %q", name)
 	}
 	return nil
+}
+
+// applicationAdminProvider is the application seam the administration executors consume. It is declared
+// here rather than in pkg so it stays internal: the application service satisfies it structurally.
+type applicationAdminProvider interface {
+	ValidateDeleteApplication(ctx context.Context, appID string) (
+		*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError)
+	DeleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError
+	ValidateCredentialAction(ctx context.Context, appID string, action appmodel.CredentialAction) (
+		*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError)
+	ApplyCredentialAction(ctx context.Context, appID string, action appmodel.CredentialAction) (
+		string, *tidcommon.ServiceError)
 }

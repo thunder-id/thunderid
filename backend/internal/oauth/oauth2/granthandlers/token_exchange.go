@@ -149,6 +149,14 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		return h.handleIDJAGGrant(ctx, tokenRequest, oauthApp)
 	}
 
+	// Enforce RFC 9068 on the subject token: one declared as an access token must carry the at+jwt typ
+	// header. This runs before ValidateSubjectToken because validating a subject auth assertion spends
+	// it, and a token rejected on its typ should not have been spent first.
+	if errResp := h.validateAccessTokenType(tokenRequest.SubjectToken,
+		tokenRequest.SubjectTokenType, "subject_token"); errResp != nil {
+		return nil, errResp
+	}
+
 	// Validate and extract subject token claims. ValidateSubjectToken enforces the RFC 7009 deny list
 	// for self-issued tokens; a revoked token is rejected as invalid_request like any other invalid
 	// subject_token, while an unavailable deny list fails closed with server_error.
@@ -177,19 +185,17 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 				ErrorDescription: "The subject_token audience does not contain this server's issuer or the " +
 					"trusted token audience configured for its issuer",
 			}
+		case errors.Is(err, tokenservice.ErrAssertionReplayed):
+			return nil, &model.ErrorResponse{
+				Error:            constants.ErrorInvalidRequest,
+				ErrorDescription: "The subject_token has already been redeemed",
+			}
 		default:
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorInvalidRequest,
 				ErrorDescription: "Invalid subject_token",
 			}
 		}
-	}
-
-	// Enforce RFC 9068: a token presented as subject_token_type=access_token must carry the at+jwt typ
-	// header.
-	if errResp := h.validateAccessTokenType(tokenRequest.SubjectToken,
-		tokenRequest.SubjectTokenType, "subject_token"); errResp != nil {
-		return nil, errResp
 	}
 
 	// Enforce subject_token DPoP binding. The proof's jkt is verified earlier in the
@@ -201,7 +207,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 	// Validate and extract actor token claims if present
 	var actorClaims *tokenservice.SubjectTokenClaims
 	if tokenRequest.ActorToken != "" {
-		actorClaims, err = h.tokenValidator.ValidateSubjectToken(ctx, tokenRequest.ActorToken, oauthApp)
+		actorClaims, err = h.tokenValidator.ValidateActorToken(ctx, tokenRequest.ActorToken, oauthApp)
 		if err != nil {
 			logger.Debug(ctx, "Failed to validate actor token", log.Error(err))
 			// Attribute the actor_token rejection the same way as the subject_token above.

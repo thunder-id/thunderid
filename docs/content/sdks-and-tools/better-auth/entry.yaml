@@ -1,0 +1,17 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: better-auth
+name: Better Auth
+icon: BetterAuthLogo
+category: fullstack
+type: integration
+origin: official
+status: ga
+package:
+  name: "@thunderid/better-auth"
+  manager: npm
+description: Official {{ProductName}} adapter for Better Auth, a drop-in provider for its TypeScript-first auth layer.
+links:
+  github: https://github.com/thunder-id/javascript-sdks
+  package: https://www.npmjs.com/package/@thunderid/better-auth

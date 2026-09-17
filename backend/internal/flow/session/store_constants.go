@@ -128,4 +128,20 @@ var (
 			`AUTHENTICATED_AT, CREATED_AT, LAST_ACTIVE_AT, IDLE_EXPIRES_AT, ABSOLUTE_EXPIRES_AT, STATE, VERSION ` +
 			`FROM "SSO_SESSION" WHERE SUBJECT_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
+
+	// queryListParticipantsByAppID returns every session the application participates in, oldest first.
+	// Backed by idx_sso_session_participant_app, since the table's primary key leads with SESSION_ID.
+	queryListParticipantsByAppID = model.DBQuery{
+		ID: "SSO-SESS-14",
+		Query: `SELECT SESSION_ID, APP_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID FROM "SSO_SESSION_PARTICIPANT" ` +
+			`WHERE APP_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY FIRST_JOINED_AT`,
+	}
+
+	// queryDeleteParticipant removes one application's participation in one session, leaving the
+	// session's other participants intact.
+	queryDeleteParticipant = model.DBQuery{
+		ID: "SSO-SESS-15",
+		Query: `DELETE FROM "SSO_SESSION_PARTICIPANT" ` +
+			`WHERE SESSION_ID = $1 AND APP_ID = $2 AND DEPLOYMENT_ID = $3`,
+	}
 )

@@ -75,7 +75,7 @@ func (s *DeclarativeResourceTestSuite) TestConnectionModelFromIDPDTORejectsUnreg
 func (s *DeclarativeResourceTestSuite) TestConnectionModelFromSenderDTOUnmasksSecret() {
 	dto := ncommon.NotificationSenderDTO{
 		ID: "tw-1", Name: "My Twilio", Type: ncommon.NotificationSenderTypeMessage,
-		Provider: ncommon.MessageProviderTypeTwilio,
+		Provider: ncommon.NotificationProviderTypeTwilio,
 		Properties: []cmodels.Property{
 			mustProperty(s.T(), ncommon.TwilioPropKeyAccountSID, "AC00000000000000000000000000000000", false),
 			mustProperty(s.T(), ncommon.TwilioPropKeyAuthToken, "tok", true),
@@ -91,7 +91,7 @@ func (s *DeclarativeResourceTestSuite) TestConnectionModelFromSenderDTOUnmasksSe
 func (s *DeclarativeResourceTestSuite) TestConnectionModelFromSenderDTOSMSGateway() {
 	dto := ncommon.NotificationSenderDTO{
 		ID: "sg-1", Name: "Gateway", Type: ncommon.NotificationSenderTypeMessage,
-		Provider: ncommon.MessageProviderTypeCustom,
+		Provider: ncommon.NotificationProviderTypeCustom,
 		Properties: []cmodels.Property{
 			mustProperty(s.T(), ncommon.CustomPropKeyURL, "https://sms.example.com/send", false),
 		},
@@ -154,7 +154,7 @@ func (s *DeclarativeResourceTestSuite) TestConnectionModelToDTORoundTripsSMSVend
 	cases := []struct {
 		name         string
 		model        connectionExportModel
-		wantProvider ncommon.MessageProviderType
+		wantProvider ncommon.NotificationProviderType
 	}{
 		{
 			"twilio",
@@ -162,19 +162,19 @@ func (s *DeclarativeResourceTestSuite) TestConnectionModelToDTORoundTripsSMSVend
 				ID: "s1", Type: "twilio", Name: "n", AccountSID: "AC00000000000000000000000000000000",
 				AuthToken: "t", SenderID: "+1",
 			},
-			ncommon.MessageProviderTypeTwilio,
+			ncommon.NotificationProviderTypeTwilio,
 		},
 		{
 			"vonage",
 			connectionExportModel{
 				ID: "s2", Type: "vonage", Name: "n", APIKey: "k", APISecret: "s", SenderID: "ThunderID",
 			},
-			ncommon.MessageProviderTypeVonage,
+			ncommon.NotificationProviderTypeVonage,
 		},
 		{
 			"sms-gateway",
 			connectionExportModel{ID: "s3", Type: smsGatewayVendorName, Name: "n", URL: "https://x/send"},
-			ncommon.MessageProviderTypeCustom,
+			ncommon.NotificationProviderTypeCustom,
 		},
 	}
 	for _, tc := range cases {
@@ -252,7 +252,7 @@ httpMethod: POST
 	s.Nil(idpDTO)
 	s.Require().NotNil(senderDTO)
 	s.Equal("prod-sms", senderDTO.ID)
-	s.Equal(ncommon.MessageProviderTypeCustom, senderDTO.Provider)
+	s.Equal(ncommon.NotificationProviderTypeCustom, senderDTO.Provider)
 }
 
 func (s *DeclarativeResourceTestSuite) TestParseToConnectionDTOWrapperIDPVendor() {
@@ -362,7 +362,7 @@ func (s *DeclarativeResourceTestSuite) TestGetResourceByIDFallsBackToSender() {
 	s.mockNotif.On("GetSender", mock.Anything, "tw-1").
 		Return(&ncommon.NotificationSenderDTO{
 			ID: "tw-1", Name: "My Twilio", Type: ncommon.NotificationSenderTypeMessage,
-			Provider: ncommon.MessageProviderTypeTwilio,
+			Provider: ncommon.NotificationProviderTypeTwilio,
 			Properties: []cmodels.Property{
 				mustProperty(s.T(), ncommon.TwilioPropKeyAccountSID, "AC00000000000000000000000000000000", false),
 			},
@@ -382,8 +382,8 @@ func (s *DeclarativeResourceTestSuite) TestGetAllResourceIDsFiltersUnregisteredV
 		{ID: "2", Type: providers.IDPType("SAML")}, // unregistered -> excluded
 	}, (*tidcommon.ServiceError)(nil))
 	s.mockNotif.On("ListSenders", mock.Anything).Return([]ncommon.NotificationSenderDTO{
-		{ID: "s1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.MessageProviderTypeTwilio},
-		{ID: "s2", Type: ncommon.NotificationSenderTypeEmail, Provider: ncommon.MessageProviderType("mailer")},
+		{ID: "s1", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeTwilio},
+		{ID: "s2", Type: ncommon.NotificationSenderTypeEmail, Provider: ncommon.NotificationProviderType("mailer")},
 	}, (*tidcommon.ServiceError)(nil))
 
 	ids, svcErr := s.exporter.GetAllResourceIDs(context.Background())
@@ -418,7 +418,7 @@ func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreDispatchesB
 	s.Require().NoError(err)
 	s.Equal(idpDTO, got)
 
-	senderDTO := &ncommon.NotificationSenderDTO{ID: "sender-1", Provider: ncommon.MessageProviderTypeTwilio}
+	senderDTO := &ncommon.NotificationSenderDTO{ID: "sender-1", Provider: ncommon.NotificationProviderTypeTwilio}
 	s.Require().NoError(store.Create("sender-1", senderDTO))
 	got, err = store.senderStore.Get("sender-1")
 	s.Require().NoError(err)
@@ -448,7 +448,7 @@ func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreSkipsIDPWhe
 	_, err := store.idpStore.Get("idp-1")
 	s.Error(err, "IDP declarative resource should not be stored when idp store mode is mutable")
 
-	senderDTO := &ncommon.NotificationSenderDTO{ID: "sender-1", Provider: ncommon.MessageProviderTypeTwilio}
+	senderDTO := &ncommon.NotificationSenderDTO{ID: "sender-1", Provider: ncommon.NotificationProviderTypeTwilio}
 	s.Require().NoError(store.Create("sender-1", senderDTO))
 	got, err := store.senderStore.Get("sender-1")
 	s.Require().NoError(err)

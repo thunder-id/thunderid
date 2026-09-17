@@ -9,11 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/thunder-id/thunderid/internal/ou"
-
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"gopkg.in/yaml.v3"
@@ -116,17 +113,17 @@ type configurationRequestWithID struct {
 
 // loadDeclarativeResources loads declarative credential-configuration resources from YAML files
 // into the file store. The dbStore parameter is optional and is used only for duplicate checking
-// in composite mode. The ouService parameter is optional and is used to resolve ouHandle to ouId.
+// in composite mode. The service parameter resolves ouHandle to ouId.
 func loadDeclarativeResources(
 	fileStore *credentialFileBasedStore, dbStore credentialStoreInterface,
-	ouService ou.OrganizationUnitServiceInterface,
+	service credentialConfigurationDeclarativeService,
 ) error {
 	resourceConfig := declarativeresource.ResourceConfig{
 		ResourceType:  paramTypeCredentialConfiguration,
 		DirectoryName: "credential_configurations",
 		Parser:        parseToConfigurationDTOWrapper,
 		Validator: func(dto interface{}) error {
-			return validateConfigurationWrapper(dto, fileStore, dbStore, ouService)
+			return validateConfigurationWrapper(dto, fileStore, dbStore, service)
 		},
 		IDExtractor: func(dto interface{}) string {
 			return dto.(*CredentialConfigurationDTO).ID
@@ -165,7 +162,7 @@ func parseToConfigurationDTOWrapper(data []byte) (interface{}, error) {
 // organization unit, and not reuse an ID or handle already claimed by another file.
 func validateConfigurationWrapper(
 	dto interface{}, fileStore *credentialFileBasedStore, dbStore credentialStoreInterface,
-	ouService ou.OrganizationUnitServiceInterface,
+	service credentialConfigurationDeclarativeService,
 ) error {
 	cfg, ok := dto.(*CredentialConfigurationDTO)
 	if !ok {
@@ -177,41 +174,20 @@ func validateConfigurationWrapper(
 	if svcErr := validateConfiguration(cfg); svcErr != nil {
 		return fmt.Errorf("validation failed: %s", svcErr.Error.DefaultValue)
 	}
-	if err := resolveConfigurationOU(context.Background(), cfg, ouService); err != nil {
-		return err
-	}
-	return checkDuplicateConfiguration(context.Background(), cfg, fileStore, dbStore)
-}
-
-// resolveConfigurationOU resolves ouHandle to ouId and verifies the result exists, so a
-// declarative configuration carries the same owning organization unit the management API demands.
-func resolveConfigurationOU(
-	ctx context.Context, cfg *CredentialConfigurationDTO, ouService ou.OrganizationUnitServiceInterface,
-) error {
-	if ouService != nil && cfg.OUID == "" && strings.TrimSpace(cfg.OUHandle) != "" {
-		resolved, svcErr := ouService.GetOrganizationUnitByPath(security.WithRuntimeContext(ctx), cfg.OUHandle)
-		if svcErr != nil {
+	if service != nil {
+		if svcErr := service.ResolveCredentialConfigurationOUHandle(context.Background(), cfg); svcErr != nil {
+			if cfg.OUID != "" {
+				return fmt.Errorf("organization unit '%s' does not exist for credential configuration '%s'",
+					cfg.OUID, cfg.Handle)
+			}
 			return fmt.Errorf("organization unit with handle %q not found for credential configuration '%s'",
 				cfg.OUHandle, cfg.Handle)
 		}
-		cfg.OUID = resolved.ID
 	}
 	if strings.TrimSpace(cfg.OUID) == "" {
 		return fmt.Errorf("ouId or ouHandle is required for credential configuration '%s'", cfg.Handle)
 	}
-	if ouService == nil {
-		return nil
-	}
-	exists, svcErr := ouService.IsOrganizationUnitExists(ctx, cfg.OUID)
-	if svcErr != nil {
-		return fmt.Errorf("failed to verify organization unit '%s' for credential configuration '%s': %s",
-			cfg.OUID, cfg.Handle, svcErr.Error.DefaultValue)
-	}
-	if !exists {
-		return fmt.Errorf("organization unit '%s' does not exist for credential configuration '%s'",
-			cfg.OUID, cfg.Handle)
-	}
-	return nil
+	return checkDuplicateConfiguration(context.Background(), cfg, fileStore, dbStore)
 }
 
 // checkDuplicateConfiguration rejects a configuration whose ID or handle another declarative file

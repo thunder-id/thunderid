@@ -1,0 +1,239 @@
+openapi: 3.0.3
+info:
+  title: OpenID4VP Presentation Definition Management API
+  version: "1.0"
+  description: Manage presentation definitions used by the OpenID4VP verifier.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host: {default: localhost}
+      port: {default: "8090"}
+security:
+  - OAuth2: [system]
+tags:
+  - name: Presentation Definitions
+    description: Create and manage OpenID4VP presentation definitions.
+paths:
+  /openid4vp/presentation-definitions:
+    get:
+      tags: [Presentation Definitions]
+      summary: List presentation definitions
+      description: Returns presentation definition summaries with resolved organization-unit handles.
+      operationId: listPresentationDefinitions
+      responses:
+        "200":
+          description: Presentation definition summaries
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VPPresentationDefinitionList'}
+        "400": {$ref: '#/components/responses/VPInvalidRequest'}
+        "401": {$ref: '#/components/responses/VPUnauthorized'}
+        "403": {$ref: '#/components/responses/VPForbidden'}
+        "500": {$ref: '#/components/responses/VPInternalServerError'}
+    post:
+      tags: [Presentation Definitions]
+      summary: Create presentation definition
+      description: Creates a presentation definition for the supplied organization unit.
+      operationId: createPresentationDefinition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/VPPresentationDefinitionRequest'}
+            example:
+              handle: example-pid
+              ouId: 01900000-0000-7000-8000-000000000001
+              vct: urn:example:pid:1
+              mandatoryClaims: [given_name]
+      responses:
+        "201":
+          description: Presentation definition created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VPPresentationDefinition'}
+        "400": {$ref: '#/components/responses/VPInvalidRequest'}
+        "401": {$ref: '#/components/responses/VPUnauthorized'}
+        "403": {$ref: '#/components/responses/VPForbidden'}
+        "409": {$ref: '#/components/responses/VPAlreadyExists'}
+        "500": {$ref: '#/components/responses/VPInternalServerError'}
+  /openid4vp/presentation-definitions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/VPDefinitionID'
+    get:
+      tags: [Presentation Definitions]
+      summary: Get presentation definition
+      description: Returns a presentation definition by ID with its resolved organization-unit handle.
+      operationId: getPresentationDefinition
+      responses:
+        "200":
+          description: Presentation definition
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VPPresentationDefinition'}
+        "400": {$ref: '#/components/responses/VPInvalidRequest'}
+        "401": {$ref: '#/components/responses/VPUnauthorized'}
+        "403": {$ref: '#/components/responses/VPForbidden'}
+        "404": {$ref: '#/components/responses/VPNotFound'}
+        "500": {$ref: '#/components/responses/VPInternalServerError'}
+    put:
+      tags: [Presentation Definitions]
+      summary: Update presentation definition
+      description: Replaces a presentation definition by ID.
+      operationId: updatePresentationDefinition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/VPPresentationDefinitionRequest'}
+      responses:
+        "200":
+          description: Presentation definition updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VPPresentationDefinition'}
+        "400": {$ref: '#/components/responses/VPInvalidRequest'}
+        "401": {$ref: '#/components/responses/VPUnauthorized'}
+        "403": {$ref: '#/components/responses/VPForbidden'}
+        "404": {$ref: '#/components/responses/VPNotFound'}
+        "409": {$ref: '#/components/responses/VPUpdateConflict'}
+        "500": {$ref: '#/components/responses/VPInternalServerError'}
+    delete:
+      tags: [Presentation Definitions]
+      summary: Delete presentation definition
+      description: Deletes a presentation definition by ID. Deleting an absent definition succeeds.
+      operationId: deletePresentationDefinition
+      responses:
+        "204": {description: Presentation definition deleted}
+        "400": {$ref: '#/components/responses/VPInvalidRequest'}
+        "401": {$ref: '#/components/responses/VPUnauthorized'}
+        "403": {$ref: '#/components/responses/VPForbidden'}
+        "409": {$ref: '#/components/responses/VPImmutable'}
+        "500": {$ref: '#/components/responses/VPInternalServerError'}
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://localhost:8090/oauth2/authorize
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+        clientCredentials:
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+  parameters:
+    VPDefinitionID:
+      name: id
+      in: path
+      required: true
+      description: Presentation definition ID.
+      schema: {type: string}
+  responses:
+    VPUnauthorized:
+      description: Authentication is required.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/VPError'}
+    VPForbidden:
+      description: The authenticated principal lacks permission to access this management API.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/VPError'}
+    VPInvalidRequest:
+      description: The request is malformed, omits a required field, uses an unsupported format, references an invalid organization unit, or contains invalid claim definitions.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/VPError'}
+          example:
+            code: VP-2001
+            message: {key: error.vp.definition_invalid_request, defaultValue: Invalid request}
+            description: {key: error.vp.definition_invalid_request_description, defaultValue: The presentation definition request is missing required fields or is malformed}
+    VPNotFound:
+      description: No presentation definition exists for the supplied ID.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/VPError'}
+          example:
+            code: VP-2002
+            message: {key: error.vp.definition_not_found, defaultValue: Presentation definition not found}
+            description: {key: error.vp.definition_not_found_description, defaultValue: No presentation definition exists for the supplied identifier}
+    VPAlreadyExists:
+      description: A presentation definition with the supplied handle already exists.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/VPError'}
+    VPUpdateConflict:
+      description: The supplied handle already exists, or the definition is declarative and cannot be changed.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/VPError'}
+    VPImmutable:
+      description: The presentation definition is declarative and cannot be deleted through the management API.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/VPError'}
+    VPInternalServerError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/VPError'}
+  schemas:
+    VPPresentationDefinitionRequest:
+      type: object
+      required: [handle, ouId, vct]
+      properties:
+        handle: {type: string, description: Unique presentation definition handle.}
+        ouId: {type: string, description: ID of the organization unit that owns this definition.}
+        name: {type: string}
+        description: {type: string}
+        vct: {type: string, description: Verifiable credential type URI.}
+        format: {type: string, enum: [dc+sd-jwt], default: dc+sd-jwt, description: Credential format.}
+        requestedClaims: {type: array, items: {type: string}}
+        mandatoryClaims: {type: array, items: {type: string}}
+        optionalClaims: {type: array, items: {type: string}}
+        claimValues:
+          type: object
+          additionalProperties:
+            type: array
+            items: {type: string}
+        enforceTrustedIssuer: {type: boolean, nullable: true}
+        trustedAuthorities: {type: array, items: {type: string}}
+    VPPresentationDefinition:
+      allOf:
+        - $ref: '#/components/schemas/VPPresentationDefinitionRequest'
+        - type: object
+          required: [id, format]
+          properties:
+            id: {type: string, description: Presentation definition ID.}
+            ouHandle: {type: string, readOnly: true, description: Resolved organization-unit handle returned for display.}
+    VPPresentationDefinitionList:
+      type: array
+      items:
+        type: object
+        required: [id, handle, ouId, vct, format]
+        properties:
+          id: {type: string}
+          handle: {type: string}
+          ouId: {type: string}
+          ouHandle: {type: string, readOnly: true}
+          name: {type: string}
+          vct: {type: string}
+          format: {type: string}
+    VPError:
+      type: object
+      required: [code, message, description]
+      properties:
+        code: {type: string}
+        message: {$ref: '#/components/schemas/VPI18nMessage'}
+        description: {$ref: '#/components/schemas/VPI18nMessage'}
+    VPI18nMessage:
+      type: object
+      required: [key, defaultValue]
+      properties:
+        key: {type: string}
+        defaultValue: {type: string}

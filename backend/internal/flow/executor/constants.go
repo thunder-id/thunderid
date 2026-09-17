@@ -39,6 +39,9 @@ const (
 	ExecutorNameCriteriaRevocation           = "CriteriaRevocationExecutor"
 	ExecutorNameSessionRevocation            = "SessionRevocationExecutor"
 	ExecutorNameUserDelete                   = "UserDeleteExecutor"
+	ExecutorNameApplicationActionValidator   = "ApplicationActionValidator"
+	ExecutorNameApplicationDelete            = "ApplicationDeleteExecutor"
+	ExecutorNameClientSecret                 = "ClientSecretExecutor"
 )
 
 // Executor mode constants
@@ -63,15 +66,16 @@ const (
 	userInputCode  = "code"
 	userInputState = "state"
 
-	userInputOuName           = "ouName"
-	userInputOuHandle         = "ouHandle"
-	userInputOuDesc           = "ouDescription"
-	userInputInviteToken      = "inviteToken"
-	userInputOTP              = "otp"
-	userInputMagicLinkToken   = "token"
-	userInputConsentDecisions = "consent_decisions"
-	userInputLoginHint        = "login_hint"
-	revocationInputSubject    = "subject"
+	userInputOuName            = "ouName"
+	userInputOuHandle          = "ouHandle"
+	userInputOuDesc            = "ouDescription"
+	userInputInviteToken       = "inviteToken"
+	userInputOTP               = "otp"
+	userInputMagicLinkToken    = "token"
+	userInputConsentDecisions  = "consent_decisions"
+	userInputLoginHint         = "login_hint"
+	revocationInputSubject     = "subject"
+	revocationInputApplication = "targetApplicationId"
 
 	ouIDKey        = "ouId"
 	defaultOUIDKey = "defaultOUID"

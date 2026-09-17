@@ -404,13 +404,16 @@ packages:
       pkgname: flowmgtmock
       filename: "{{.InterfaceName}}_mock.go"
   
+  # Only the registry is mocked outside this package. The rest of the executor interfaces are internal
+  # seams, and one of them names an unexported type, which a mock in another package cannot reference.
   github.com/thunder-id/thunderid/internal/flow/executor:
     config:
-      all: true
       dir: tests/mocks/flow/executormock
       structname: '{{.InterfaceName}}Mock'
       pkgname: executormock
       filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      ExecutorRegistryInterface:
 
   github.com/thunder-id/thunderid/internal/flow/interceptor:
     config:

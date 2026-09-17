@@ -285,3 +285,62 @@ func TestRevokeTokenFamily_NonPositiveTTLFallsBack(t *testing.T) {
 	assert.NoError(t, err)
 	assert.WithinDuration(t, captured.RevokedAt.Add(defaultTokenFamilyRevocationTTL), captured.ExpiryTime, time.Second)
 }
+
+func (s *RevocationServiceTestSuite) TestRevokeByCriteria_RequestedTTLExtendsTheRow() {
+	store := newRevocationStoreInterfaceMock(s.T())
+	requested := 30 * 24 * time.Hour
+	before := time.Now().UTC()
+	store.On("insertCriterion", mock.Anything, mock.MatchedBy(func(criterion revocationCriterion) bool {
+		return criterion.ExpiryTime.After(before.Add(requested-time.Minute)) &&
+			criterion.ExpiryTime.Before(before.Add(requested+time.Minute))
+	})).Return(nil)
+
+	revoker := newRevocationService(nil, store, time.Hour, false, nil)
+	err := revoker.RevokeByCriteria(context.Background(), CriteriaRevocation{
+		Criterion: Criterion{Type: CriterionTypeApplicationKey, Value: "client-long-lived"},
+		Mode:      RevocationModeAll,
+		Reason:    RevocationReasonApplicationDeleted,
+		TTL:       requested,
+	})
+
+	s.Require().NoError(err)
+}
+
+func (s *RevocationServiceTestSuite) TestRevokeByCriteria_ShorterRequestedTTLKeepsTheConfiguredLifetime() {
+	store := newRevocationStoreInterfaceMock(s.T())
+	configured := 24 * time.Hour
+	before := time.Now().UTC()
+	store.On("insertCriterion", mock.Anything, mock.MatchedBy(func(criterion revocationCriterion) bool {
+		return criterion.ExpiryTime.After(before.Add(configured - time.Minute))
+	})).Return(nil)
+
+	revoker := newRevocationService(nil, store, configured, false, nil)
+	err := revoker.RevokeByCriteria(context.Background(), CriteriaRevocation{
+		Criterion: Criterion{Type: CriterionTypeApplicationKey, Value: "client-short-lived"},
+		Mode:      RevocationModeAll,
+		Reason:    RevocationReasonApplicationDeleted,
+		TTL:       time.Minute,
+	})
+
+	s.Require().NoError(err)
+}
+
+func (s *RevocationServiceTestSuite) TestRevokeByCriteria_ZeroTTLUsesTheConfiguredLifetime() {
+	store := newRevocationStoreInterfaceMock(s.T())
+	configured := 2 * time.Hour
+	before := time.Now().UTC()
+	store.On("insertCriterion", mock.Anything, mock.MatchedBy(func(criterion revocationCriterion) bool {
+		return criterion.ExpiryTime.After(before.Add(configured-time.Minute)) &&
+			criterion.ExpiryTime.Before(before.Add(configured+time.Minute))
+	})).Return(nil)
+
+	revoker := newRevocationService(nil, store, configured, false, nil)
+	err := revoker.RevokeByCriteria(context.Background(), CriteriaRevocation{
+		Criterion: Criterion{Type: CriterionTypeSubject, Value: "user-1"},
+		Mode:      RevocationModeAll,
+		Reason:    RevocationReasonUserDeleted,
+		TTL:       0,
+	})
+
+	s.Require().NoError(err)
+}

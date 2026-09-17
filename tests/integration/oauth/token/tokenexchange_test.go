@@ -27,6 +27,7 @@ const (
 	tokenExchangeTestPassword = "TePassword123!"
 	tokenExchangeTestEmail    = "te_test@example.com"
 	tokenExchangeMockOIDCPort = 8094
+	tokenExchangeRedirectURI  = "https://localhost:3000"
 )
 
 type TokenExchangeTestSuite struct {
@@ -81,9 +82,6 @@ func (ts *TokenExchangeTestSuite) SetupSuite() {
 	// Create OAuth application with token exchange grant type
 	ts.applicationID = ts.createTestApplication()
 
-	// Authenticate user to get assertion token for tests
-	ts.assertionToken = ts.getUserAssertion()
-
 	// Create resource server for resource parameter tests
 	rs := testutils.ResourceServer{
 		Name:       "Token Exchange Test RS",
@@ -94,6 +92,13 @@ func (ts *TokenExchangeTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create test resource server")
 	ts.resourceServerID = rsID
 	ts.T().Logf("Created test resource server with ID: %s", rsID)
+}
+
+// SetupTest mints a fresh assertion before every test. An assertion is redeemable exactly once, so a
+// suite-scoped one would be spent by the first test that exchanges it and every later exchange would
+// be refused as a replay.
+func (ts *TokenExchangeTestSuite) SetupTest() {
+	ts.assertionToken = ts.getUserAssertion()
 }
 
 func (ts *TokenExchangeTestSuite) TearDownSuite() {
@@ -451,6 +456,76 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_BasicSuccess() {
 	ts.Require().NoError(err, "Access token should be a valid JWT")
 	ts.Equal(ts.userID, claims.Sub, "Subject should match user ID")
 	ts.assertAudienceEquals(claims, "https://resource.example.com")
+}
+
+// An assertion is redeemable exactly once. The first exchange succeeds and spends it; presenting the
+// same assertion again is refused even though it is still signed, unexpired and otherwise valid.
+//
+// This is only observable end to end: the replay record lives in the runtime store, so nothing below
+// this level proves the second attempt is actually refused.
+func (ts *TokenExchangeTestSuite) TestTokenExchange_AssertionIsSingleUse() {
+	formData := url.Values{}
+	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+	formData.Set("subject_token", ts.assertionToken)
+	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt")
+
+	authHeader := "Basic " + basicAuth(tokenExchangeClientID, tokenExchangeClientSecret)
+
+	resp, statusCode, err := ts.exchangeToken(formData.Encode(), authHeader)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, statusCode, "First exchange should succeed")
+	ts.Require().NotEmpty(resp.AccessToken)
+
+	// Same assertion, same request: refused because it has already been redeemed.
+	replayResp, replayStatus, err := ts.exchangeToken(formData.Encode(), authHeader)
+	ts.Require().NoError(err)
+	ts.Equal(http.StatusBadRequest, replayStatus, "Replayed assertion should be rejected")
+	ts.Empty(replayResp.AccessToken, "No token should be issued for a replayed assertion")
+}
+
+// An assertion spent at the token endpoint can no longer be redeemed for an authorization code. Both
+// redemption paths record the jti under the same replay namespace, and that shared namespace is the
+// only thing making them protect each other — so this cross-path case is what actually proves it.
+//
+// The authorization request here is deliberately left untouched by the exchange: the callback is
+// reached with a live authID and an assertion correctly bound to it, so the rejection can only come
+// from the assertion having already been redeemed elsewhere.
+func (ts *TokenExchangeTestSuite) TestTokenExchange_SpentAssertionCannotCompleteAuthorization() {
+	resp, err := testutils.InitiateAuthorizationFlow(
+		tokenExchangeClientID, tokenExchangeRedirectURI, "code", "openid", "cross-path-state")
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusFound, resp.StatusCode)
+
+	authID, executionID, err := testutils.ExtractAuthData(resp.Header.Get("Location"))
+	ts.Require().NoError(err)
+
+	initialStep, err := testutils.ExecuteAuthenticationFlow(executionID, nil, "")
+	ts.Require().NoError(err)
+	flowStep, err := testutils.ExecuteAuthenticationFlow(executionID, map[string]string{
+		"username": tokenExchangeTestUser,
+		"password": tokenExchangeTestPassword,
+	}, "action_001", initialStep.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Require().Equal("COMPLETE", flowStep.FlowStatus)
+	ts.Require().NotEmpty(flowStep.Assertion)
+
+	// Redeem it at the token endpoint. The authorization request is not involved and stays live.
+	formData := url.Values{}
+	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+	formData.Set("subject_token", flowStep.Assertion)
+	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt")
+
+	authHeader := "Basic " + basicAuth(tokenExchangeClientID, tokenExchangeClientSecret)
+	_, statusCode, err := ts.exchangeToken(formData.Encode(), authHeader)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, statusCode, "First redemption should succeed")
+
+	// A rejected callback answers 200 with the error carried on the client redirect URI.
+	authzResp, err := testutils.CompleteAuthorization(authID, flowStep.Assertion)
+	ts.Require().NoError(err)
+	ts.Contains(authzResp.RedirectURI, "error=", "Callback should reject an already-redeemed assertion")
+	ts.NotContains(authzResp.RedirectURI, "code=", "No authorization code should be issued")
 }
 
 func (ts *TokenExchangeTestSuite) TestTokenExchange_ExternalIDP_WithTrustedTokenAudience() {

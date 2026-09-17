@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/cert"
@@ -45,10 +46,22 @@ type ApplicationServiceInterface interface {
 		ctx context.Context, appID string, app *model.ApplicationDTO) (
 		*model.ApplicationDTO, *tidcommon.ServiceError)
 	DeleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError
+	ValidateDeleteApplication(ctx context.Context, appID string) (
+		*model.ApplicationArtifactProfile, *tidcommon.ServiceError)
+	ValidateCredentialAction(ctx context.Context, appID string, action model.CredentialAction) (
+		*model.ApplicationArtifactProfile, *tidcommon.ServiceError)
+	ApplyCredentialAction(ctx context.Context, appID string, action model.CredentialAction) (
+		string, *tidcommon.ServiceError)
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	SetDependencyRegistry(r resourcedependency.Registry)
 }
+
+// artifactLifetimeResolver reports how long an artifact issued to the given OAuth client can remain
+// valid. A revocation against an application sizes its deny-list row from it. The composition root
+// supplies it, so this package depends on no OAuth configuration of its own; a nil resolver, or a zero
+// duration, leaves the revocation service on its configured default.
+type artifactLifetimeResolver func(client *providers.OAuthClient) time.Duration
 
 // ApplicationService is the default implementation of the ApplicationServiceInterface.
 type applicationService struct {
@@ -60,6 +73,7 @@ type applicationService struct {
 	cryptoSvc            providers.RuntimeCryptoProvider
 	dependencyRegistry   resourcedependency.Registry
 	serverConfigService  serverconfig.ServerConfigService
+	resolveLifetime      artifactLifetimeResolver
 }
 
 // newApplicationService creates a new instance of ApplicationService.
@@ -70,6 +84,7 @@ func newApplicationService(
 	i18nService i18nmgt.I18nServiceInterface,
 	cryptoSvc providers.RuntimeCryptoProvider,
 	serverConfigSvc serverconfig.ServerConfigService,
+	artifactLifetime artifactLifetimeResolver,
 ) ApplicationServiceInterface {
 	return &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
@@ -79,6 +94,7 @@ func newApplicationService(
 		i18nService:          i18nService,
 		cryptoSvc:            cryptoSvc,
 		serverConfigService:  serverConfigSvc,
+		resolveLifetime:      artifactLifetime,
 	}
 }
 
@@ -410,6 +426,7 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 	oauthSecretSupplied := inboundAuthConfig != nil &&
 		inboundAuthConfig.OAuthConfig != nil &&
 		inboundAuthConfig.OAuthConfig.ClientSecret != ""
+
 	// Update config first, while entity attributes still hold the previous client_id so the
 	// inbound client service can clean up the old OAuth-app cert.
 	if err := as.inboundClientService.UpdateInboundClient(
@@ -506,7 +523,8 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 	// - OAuth method requires a secret + new secret supplied → store the new secret.
 	// - OAuth method requires a secret + no new secret supplied → leave existing secret intact (no rotation).
 	if inboundAuthConfig == nil || inboundAuthConfig.OAuthConfig == nil ||
-		!appRequiresClientSecret(inboundAuthConfig.OAuthConfig) {
+		!authMethodRequiresClientSecret(inboundAuthConfig.OAuthConfig.PublicClient,
+			inboundAuthConfig.OAuthConfig.TokenEndpointAuthMethod) {
 		return nil
 	}
 	if inboundAuthConfig.OAuthConfig.ClientSecret == "" {
@@ -577,15 +595,12 @@ func seedClientSubTypeAttribute(processedDTO *model.ApplicationProcessedDTO) {
 	oauthProcessed.OAuthConfig.Token = oauthutils.EnsureClientSubTypeAttribute(oauthProcessed.OAuthConfig.Token)
 }
 
-// appRequiresClientSecret reports whether the OAuth config implies a confidential client requiring a secret.
-func appRequiresClientSecret(cfg *providers.OAuthConfigWithSecret) bool {
-	if cfg == nil {
+// authMethodRequiresClientSecret reports whether a client authenticating this way holds a client secret.
+func authMethodRequiresClientSecret(publicClient bool, method providers.TokenEndpointAuthMethod) bool {
+	if publicClient {
 		return false
 	}
-	if cfg.PublicClient {
-		return false
-	}
-	switch cfg.TokenEndpointAuthMethod {
+	switch method {
 	case providers.TokenEndpointAuthMethodClientSecretBasic,
 		providers.TokenEndpointAuthMethodClientSecretPost:
 		return true
@@ -593,7 +608,8 @@ func appRequiresClientSecret(cfg *providers.OAuthConfigWithSecret) bool {
 		providers.TokenEndpointAuthMethodPrivateKeyJWT:
 		return false
 	}
-	// Default to requiring a secret when method is unspecified.
+	// Default to requiring a secret when method is unspecified: the write path defaults an unset method
+	// to client_secret_basic, so such a client does have one.
 	return true
 }
 
@@ -658,6 +674,230 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 	}
 
 	return as.deleteLocalizedVariants(ctx, appID)
+}
+
+// ValidateDeleteApplication reports whether the application may be deleted and returns the profile of
+// the artifacts it has issued, without changing state. Refusals are decided here so the cascade in
+// DeleteApplication cannot fail after the deny-list row is written.
+func (as *applicationService) ValidateDeleteApplication(ctx context.Context, appID string) (
+	*model.ApplicationArtifactProfile, *tidcommon.ServiceError) {
+	existing, svcErr := as.loadApplicationEntity(ctx, appID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if as.inboundClientService.IsDeclarative(ctx, appID) {
+		return nil, &ErrorCannotModifyDeclarativeResource
+	}
+	if as.dependencyRegistry == nil {
+		as.logger.Error(ctx, "Dependency registry not set; refusing to delete application",
+			log.String("appID", appID))
+		return nil, &tidcommon.InternalServerError
+	}
+	clientID, err := clientIDFromEntity(existing)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to read the application's OAuth client id; refusing to delete",
+			log.String("appID", appID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if svcErr := as.ensureNoBlockingDependencies(ctx, appID); svcErr != nil {
+		return nil, svcErr
+	}
+	return as.artifactProfile(ctx, clientID), nil
+}
+
+// ensureNoBlockingDependencies refuses the deletion while a dependent forbids it, as userService does
+// before a user is deleted. Fails closed when a provider cannot report its usage.
+func (as *applicationService) ensureNoBlockingDependencies(
+	ctx context.Context, appID string) *tidcommon.ServiceError {
+	deps, err := as.dependencyRegistry.GetDependencies(
+		ctx, resourcedependency.ResourceTypeApplication, appID)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to evaluate application dependencies",
+			log.String("appID", appID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if deps == nil || deps.TotalResults == nil {
+		as.logger.Error(ctx, "Application dependency data unavailable; refusing to delete application",
+			log.String("appID", appID))
+		return &tidcommon.InternalServerError
+	}
+
+	blocking := resourcedependency.BlockingUsages(deps)
+	if len(blocking) == 0 {
+		return nil
+	}
+	dependencies := resourcedependency.SummarizeBlockingUsages(blocking)
+	return tidcommon.CustomServiceError(ErrorApplicationHasBlockingDependencies, tidcommon.I18nMessage{
+		Key: "error.applicationservice.application_has_blocking_dependencies_description",
+		DefaultValue: fmt.Sprintf(
+			"The application cannot be deleted because %s depend on it. Remove or reassign them first.",
+			dependencies),
+		Params: map[string]string{"dependencies": dependencies},
+	})
+}
+
+// ValidateCredentialAction reports whether the action may be performed on the application's credential
+// and returns the profile of the artifacts it has issued, without changing state. A client that
+// authenticates without a secret has nothing to rotate.
+func (as *applicationService) ValidateCredentialAction(
+	ctx context.Context, appID string, action model.CredentialAction) (
+	*model.ApplicationArtifactProfile, *tidcommon.ServiceError) {
+	if action != model.CredentialActionRegenerate {
+		return nil, &ErrorUnsupportedCredentialAction
+	}
+	existing, svcErr := as.loadApplicationEntity(ctx, appID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if as.inboundClientService.IsDeclarative(ctx, appID) {
+		return nil, &ErrorCannotModifyDeclarativeResource
+	}
+
+	clientID, err := clientIDFromEntity(existing)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to read the application's OAuth client id",
+			log.String("appID", appID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if clientID == "" {
+		return nil, &ErrorApplicationHasNoClientSecret
+	}
+	client, err := as.inboundClientService.GetOAuthClientByClientID(ctx, clientID)
+	if err != nil || client == nil {
+		as.logger.Error(ctx, "Failed to load OAuth client before secret regeneration",
+			log.String("appID", appID))
+		return nil, &tidcommon.InternalServerError
+	}
+	if !authMethodRequiresClientSecret(client.PublicClient, client.TokenEndpointAuthMethod) {
+		return nil, &ErrorApplicationHasNoClientSecret
+	}
+	return as.artifactProfileForClient(clientID, client), nil
+}
+
+// ApplyCredentialAction performs the action and returns the new credential value. The secret is
+// generated server-side, and this return is the only time it is readable: it is hashed on write and no
+// read path returns it.
+func (as *applicationService) ApplyCredentialAction(
+	ctx context.Context, appID string, action model.CredentialAction) (
+	string, *tidcommon.ServiceError) {
+	if _, svcErr := as.ValidateCredentialAction(ctx, appID, action); svcErr != nil {
+		return "", svcErr
+	}
+
+	secret, err := oauthutils.GenerateOAuth2ClientSecret()
+	if err != nil {
+		as.logger.Error(ctx, "Failed to generate OAuth client secret", log.Error(err),
+			log.String("appID", appID))
+		return "", &tidcommon.InternalServerError
+	}
+	credentials, marshalErr := buildSystemCredentials(secret, "")
+	if marshalErr != nil {
+		as.logger.Error(ctx, "Failed to build system credentials", log.Error(marshalErr),
+			log.String("appID", appID))
+		return "", &tidcommon.InternalServerError
+	}
+	if entErr := as.entityService.UpdateSystemCredentials(ctx, appID, credentials); entErr != nil {
+		as.logger.Error(ctx, "Failed to persist regenerated client secret", log.Error(entErr),
+			log.String("appID", appID))
+		return "", &tidcommon.InternalServerError
+	}
+	return secret, nil
+}
+
+// loadApplicationEntity returns the application's entity, mapping a missing or non-application record to
+// the not-found error the API surfaces.
+func (as *applicationService) loadApplicationEntity(ctx context.Context, appID string) (
+	*providers.Entity, *tidcommon.ServiceError) {
+	if appID == "" {
+		return nil, &ErrorInvalidApplicationID
+	}
+	existing, entErr := as.entityService.GetEntity(ctx, appID)
+	if entErr != nil {
+		if errors.Is(entErr, entity.ErrEntityNotFound) {
+			return nil, &ErrorApplicationNotFound
+		}
+		as.logger.Error(ctx, "Failed to load application entity",
+			log.String("appID", appID), log.Error(entErr))
+		return nil, &tidcommon.InternalServerError
+	}
+	if existing == nil || existing.Category != providers.EntityCategoryApp {
+		return nil, &ErrorApplicationNotFound
+	}
+	return existing, nil
+}
+
+// artifactProfile describes the artifacts issued to a client id, sizing their lifetime from that
+// client's own token validity. An application with no OAuth client yields an empty profile: it issues
+// no artifacts.
+func (as *applicationService) artifactProfile(
+	ctx context.Context, clientID string) *model.ApplicationArtifactProfile {
+	if clientID == "" {
+		return &model.ApplicationArtifactProfile{}
+	}
+	return &model.ApplicationArtifactProfile{
+		ClientKey:          clientID,
+		MaxLifetimeSeconds: int64(as.resolveArtifactLifetime(ctx, clientID) / time.Second),
+	}
+}
+
+// artifactProfileForClient builds the same profile from a client the caller has already resolved.
+func (as *applicationService) artifactProfileForClient(
+	clientID string, client *providers.OAuthClient) *model.ApplicationArtifactProfile {
+	return &model.ApplicationArtifactProfile{
+		ClientKey:          clientID,
+		MaxLifetimeSeconds: int64(as.artifactLifetime(client) / time.Second),
+	}
+}
+
+// resolveArtifactLifetime returns how long a deny-list row against this application's OAuth client
+// must survive: the longest validity any artifact issued to that client can carry, plus the
+// authorization-code window. Sizing from the deployment default alone would let an application whose
+// validity was raised outlive its own revocation.
+//
+// Zero means "no opinion", which leaves the revocation service on its configured default.
+func (as *applicationService) resolveArtifactLifetime(ctx context.Context, clientID string) time.Duration {
+	client, err := as.inboundClientService.GetOAuthClientByClientID(ctx, clientID)
+	if err != nil || client == nil {
+		as.logger.Warn(ctx, "Failed to resolve application token validity for revocation; "+
+			"falling back to the deployment default", log.MaskedString("clientID", clientID))
+		return 0
+	}
+	return as.artifactLifetime(client)
+}
+
+// artifactLifetime is resolveArtifactLifetime for a caller that already holds the client, so a path
+// that has resolved it does not resolve it a second time.
+func (as *applicationService) artifactLifetime(client *providers.OAuthClient) time.Duration {
+	if as.resolveLifetime == nil {
+		return 0
+	}
+	return as.resolveLifetime(client)
+}
+
+// clientIDFromEntity returns the OAuth client id recorded on the application entity, or an empty
+// string when the application genuinely has none. It reads the entity rather than the inbound client so
+// the value is still available while a delete is in progress.
+//
+// An unreadable attribute blob is an error rather than an empty id: callers size a revocation from this
+// value, and an empty one means "nothing to revoke". Returning it for a blob that merely failed to parse
+// would delete the application while its issued artifacts stay valid.
+func clientIDFromEntity(e *providers.Entity) (string, error) {
+	if e == nil || len(e.SystemAttributes) == 0 {
+		return "", nil
+	}
+	var sysAttrs map[string]interface{}
+	if err := json.Unmarshal(e.SystemAttributes, &sysAttrs); err != nil {
+		return "", fmt.Errorf("failed to parse application system attributes: %w", err)
+	}
+	raw, ok := sysAttrs[fieldClientID]
+	if !ok || raw == nil {
+		return "", nil
+	}
+	clientID, ok := raw.(string)
+	if !ok {
+		return "", fmt.Errorf("application client id is not a string")
+	}
+	return clientID, nil
 }
 
 // GetResourceDependencies returns the applications that reference the resource identified

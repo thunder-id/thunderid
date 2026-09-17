@@ -5,6 +5,7 @@ package executor
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/revocation"
@@ -29,7 +30,8 @@ func newCriteriaRevocationExecutor(factory core.FlowFactoryInterface,
 	return &criteriaRevocationExecutor{Executor: base, revoker: revoker}
 }
 
-// Execute records every criterion from the trusted revocation plan.
+// Execute records every criterion from the trusted revocation plan. A plan declaring NothingToRevoke
+// writes nothing and completes; an empty plan without that declaration is rejected when decoded.
 func (e *criteriaRevocationExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	if e.revoker == nil {
 		return nil, fmt.Errorf("criteria revoker is not configured")
@@ -44,6 +46,7 @@ func (e *criteriaRevocationExecutor) Execute(ctx *providers.NodeContext) (*provi
 			Mode:      plan.Mode,
 			Cutoff:    plan.Cutoff,
 			Reason:    plan.Reason,
+			TTL:       time.Duration(plan.TTLSeconds) * time.Second,
 		}); err != nil {
 			return nil, fmt.Errorf("failed to revoke tokens by criteria: %w", err)
 		}

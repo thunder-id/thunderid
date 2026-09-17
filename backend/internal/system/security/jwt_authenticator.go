@@ -38,6 +38,9 @@ const (
 	// claimAccessTokenSubject carries the end user behind a token minted for a delegated call. When
 	// present it, not sub, is the subject the deny list is evaluated against.
 	claimAccessTokenSubject = "access_token_sub"
+
+	// claimClientID names the OAuth client an access token was issued to.
+	claimClientID = "client_id"
 )
 
 // jwtAuthenticator handles authentication and authorization using JWT Bearer tokens.
@@ -118,8 +121,17 @@ func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token, expecte
 	// federated token contributes no revocation subject and is enforced on jti and tfid alone.
 	if issuer, _ := attributes[claimIssuer].(string); issuer == config.GetServerRuntime().Config.JWT.Issuer {
 		securityCtx.revocationSubject = subject
-		if accessTokenSubject, _ := attributes[claimAccessTokenSubject].(string); accessTokenSubject != "" {
+		accessTokenSubject, _ := attributes[claimAccessTokenSubject].(string)
+		if accessTokenSubject != "" {
 			securityCtx.revocationSubject = accessTokenSubject
+		}
+		// The app.key dimension is revoked by the OAuth client the token was issued to. Access tokens
+		// carry it in client_id; refresh tokens carry no client_id and hold the owning client in sub,
+		// which is only safe to read when access_token_sub marks the token as a refresh token.
+		if clientID, _ := attributes[claimClientID].(string); clientID != "" {
+			securityCtx.revocationAppKey = clientID
+		} else if accessTokenSubject != "" {
+			securityCtx.revocationAppKey = subject
 		}
 		if issuedAt, ok := attributes[claimIssuedAt].(float64); ok {
 			securityCtx.establishedAt = time.Unix(int64(issuedAt), 0).UTC()
@@ -143,9 +155,9 @@ func AuthenticateBearerToken(
 // verifyToken verifies the bearer token by routing on its iss claim against
 // an explicit allowlist of accepted issuers. Tokens from the configured
 // trusted issuer (when set) are verified against its JWKS. Tokens whose iss
-// matches this server's own JWT issuer are verified with the local signing
-// key, and against expectedAud if it is non-empty. Any other iss is rejected.
-// There is no cross-issuer fallback.
+// matches this server's own JWT issuer must be access tokens, and are verified
+// with the local signing key and against expectedAud if it is non-empty. Any
+// other iss is rejected. There is no cross-issuer fallback.
 func (h *jwtAuthenticator) verifyToken(ctx context.Context, token, expectedAud string) error {
 	trustedIssuer := config.GetServerRuntime().Config.Server.SecurityConfig.TrustedIssuer
 	iss := extractIssuer(token)
@@ -155,6 +167,9 @@ func (h *jwtAuthenticator) verifyToken(ctx context.Context, token, expectedAud s
 			return errInvalidToken
 		}
 	case iss == config.GetServerRuntime().Config.JWT.Issuer:
+		if err := requireAccessTokenType(token); err != nil {
+			return err
+		}
 		if err := h.jwtService.VerifyJWT(ctx, token, expectedAud, ""); err != nil {
 			return errInvalidToken
 		}
@@ -204,6 +219,24 @@ func (h *jwtAuthenticator) verifyFederatedToken(ctx context.Context, token strin
 	return true
 }
 
+// requireAccessTokenType enforces the RFC 9068 typ header on a self-issued token, so that only an
+// access token authenticates. Every other JWT this server mints — the flow's auth assertion, ID
+// tokens, magic link, OTP, consent and flow tokens — carries the same issuer and signing key and
+// would otherwise be indistinguishable from one here. RFC 9068 §4 requires both the compact and the
+// media-type spelling to be accepted, compared case-insensitively.
+func requireAccessTokenType(token string) error {
+	header, err := jwt.DecodeJWTHeader(token)
+	if err != nil {
+		return errInvalidToken
+	}
+	typ, _ := header["typ"].(string)
+	if !strings.EqualFold(typ, jwt.TokenTypeAccessToken) &&
+		!strings.EqualFold(typ, jwt.TokenTypeAccessTokenWithPrefix) {
+		return errInvalidToken
+	}
+	return nil
+}
+
 // extractToken extracts the Bearer token from the Authorization header.
 func extractToken(authHeader string) (string, error) {
 	if !utils.HasPrefixFold(authHeader, constants.AuthSchemeBearer) {
@@ -225,8 +258,10 @@ func extractIssuer(token string) string {
 }
 
 // extractScopes extracts permissions from JWT claims.
-// Permissions can be in "scope" (string with space-separated values), "scopes" (array) claim,
-// or "authorized_permissions" (server-specific) claim.
+// Permissions can be in "scope" (string with space-separated values) or in the "scopes" (array)
+// claim. The "authorized_permissions" claim of an auth assertion is deliberately not consulted: an
+// assertion is not an access token and no longer authenticates here, and the claim is not one the
+// access token builder owns, so a subject attribute of that name must not confer permissions.
 func extractScopes(attributes map[string]interface{}) []string {
 	// Try "scope" claim (OAuth2 standard - space-separated string)
 	if scopeStr, ok := attributes["scope"].(string); ok && scopeStr != "" {
@@ -247,11 +282,6 @@ func extractScopes(attributes map[string]interface{}) []string {
 		case []string:
 			return scopes
 		}
-	}
-
-	// Try "authorized_permissions" from the server assertion
-	if permsStr, ok := attributes["authorized_permissions"].(string); ok && permsStr != "" {
-		return strings.Fields(permsStr)
 	}
 
 	return []string{}

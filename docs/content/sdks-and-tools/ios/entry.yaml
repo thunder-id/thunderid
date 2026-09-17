@@ -1,0 +1,510 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: ios
+name: iOS
+icon: IOSLogo
+category: mobile
+type: sdk
+origin: official
+status: ga
+package:
+  name: ThunderID
+  manager: pod
+description: Native Swift SDK with hosted login and secure token storage.
+docs:
+  overview: /docs/next/sdks-and-tools/ios/overview
+  apiReference: /docs/next/sdks-and-tools/ios/apis
+  quickstart: /docs/next/getting-started/connect-your-application/ios
+links:
+  github: https://github.com/thunder-id/ios-sdks
+apiReference:
+  source: manual
+
+sections:
+  - type: api
+    id: api
+    title: API reference
+    intro: Every export is fully typed. The signatures and props below come from the package's own reference documentation,
+      so what is listed here is what the installed version ships.
+    kindTones:
+      component: primary
+      function: accent
+    exports:
+    - group: Components
+      kind: component
+      name: SignIn
+      description: 'The `SignIn` component renders a full app-native sign-in form. It drives the Flow Execution API
+        loop automatically: initiating the flow, presenting the server-defined inputs and actions on each step, and
+        completing when the user is authenticated. `SignIn` requires `.thunderIDProvider(config:)` in its ancestor view
+        hierarchy.'
+      rowsLabel: Parameters
+      rows:
+      - name: applicationId
+        type: String
+        tag: required
+        description: The Application ID from your {{ProductName}} application settings. Identifies which sign-in flow
+          to execute.
+      - name: onComplete
+        type: (() -> Void)?
+        tag: optional
+        description: Called when authentication completes successfully.
+      - name: onError
+        type: ((String) -> Void)?
+        tag: optional
+        description: Called with an error message when a flow step fails.
+      example: |-
+        import SwiftUI
+        import ThunderIDSwiftUI
+
+        struct AuthView: View {
+            var body: some View {
+                SignIn(applicationId: "<your-application-id>")
+                    .padding()
+            }
+        }
+    - group: Components
+      kind: component
+      name: SignInButton
+      description: The `SignInButton` component renders a pre-styled button that you can use to trigger your sign-in
+        flow. It reads loading state from `ThunderIDState` and disables itself automatically while an operation is in
+        progress. `SignInButton` requires `.thunderIDProvider(config:)` in its ancestor view hierarchy.
+      rowsLabel: Parameters
+      rows:
+      - name: onTap
+        type: (() -> Void)?
+        tag: optional
+        description: Called when the button is tapped. Use this to present a sign-in sheet or navigate to an auth view.
+      example: |-
+        import SwiftUI
+        import ThunderIDSwiftUI
+
+        struct LandingView: View {
+            var body: some View {
+                SignInButton()
+            }
+        }
+    - group: Components
+      kind: component
+      name: SignOutButton
+      description: The `SignOutButton` component renders a pre-styled button that calls `ThunderIDClient.signOut()`,
+        then calls `ThunderIDState.refresh()` to update the reactive auth state. It disables itself automatically while
+        the sign-out operation is in progress. `SignOutButton` requires `.thunderIDProvider(config:)` in its ancestor
+        view hierarchy.
+      rowsLabel: Parameters
+      rows:
+      - name: onSignOutComplete
+        type: (() -> Void)?
+        tag: optional
+        description: Called after sign-out completes and `ThunderIDState` has been refreshed.
+      example: |-
+        import SwiftUI
+        import ThunderIDSwiftUI
+
+        struct HomeView: View {
+            var body: some View {
+                VStack {
+                    Text("You are signed in.")
+                    SignOutButton()
+                }
+            }
+        }
+    - group: Components
+      kind: component
+      name: SignUp
+      description: 'The `SignUp` component renders a full app-native registration form. It drives the Flow Execution
+        API registration loop automatically: initiating the flow, presenting the server-defined inputs and actions on
+        each step, and completing when the user is registered and authenticated. `SignUp` requires `.thunderIDProvider(config:)`
+        in its ancestor view hierarchy.'
+      rowsLabel: Parameters
+      rows:
+      - name: applicationId
+        type: String
+        tag: required
+        description: The Application ID from your {{ProductName}} application settings. Identifies which registration
+          flow to execute.
+      - name: onComplete
+        type: (() -> Void)?
+        tag: optional
+        description: Called when registration completes successfully.
+      - name: onError
+        type: ((String) -> Void)?
+        tag: optional
+        description: Called with an error message when a flow step fails.
+      example: |-
+        import SwiftUI
+        import ThunderIDSwiftUI
+
+        struct AuthView: View {
+            @State private var showSignUp = false
+
+            var body: some View {
+                if showSignUp {
+                    SignUp(applicationId: "<your-application-id>")
+                        .padding()
+                } else {
+                    SignIn(applicationId: "<your-application-id>")
+                        .padding()
+                }
+            }
+        }
+    - group: Components
+      kind: component
+      name: SignedIn
+      description: The `SignedIn` component conditionally renders its content only when the user is authenticated. It
+        reads the current sign-in state from `ThunderIDState` and displays protected UI for signed-in users, while rendering
+        optional fallback content (or nothing) when the user is not authenticated. `SignedIn` requires `.thunderIDProvider(config:)`
+        in its ancestor view hierarchy.
+      rowsLabel: Parameters
+      rows:
+      - name: content
+        type: '@ViewBuilder () -> Content'
+        tag: required
+        description: The view to render when the user is authenticated.
+      - name: fallback
+        type: '@ViewBuilder () -> Fallback'
+        tag: optional
+        description: The view to render when the user is not authenticated. Defaults to `EmptyView`.
+      example: |-
+        import SwiftUI
+        import ThunderIDSwiftUI
+
+        struct ContentView: View {
+            var body: some View {
+                SignedIn {
+                    Text("You are signed in.")
+                }
+            }
+        }
+    - group: Components
+      kind: component
+      name: SignedOut
+      description: The `SignedOut` component conditionally renders its content only when the user is **not** authenticated.
+        It reads the current sign-in state from `ThunderIDState` and displays content for unauthenticated users, while
+        rendering optional fallback content (or nothing) when the user is signed in. `SignedOut` requires `.thunderIDProvider(config:)`
+        in its ancestor view hierarchy.
+      rowsLabel: Parameters
+      rows:
+      - name: content
+        type: '@ViewBuilder () -> Content'
+        tag: required
+        description: The view to render when the user is not authenticated.
+      - name: fallback
+        type: '@ViewBuilder () -> Fallback'
+        tag: optional
+        description: The view to render when the user is authenticated. Defaults to `EmptyView`.
+      example: |-
+        import SwiftUI
+        import ThunderIDSwiftUI
+
+        struct ContentView: View {
+            var body: some View {
+                SignedOut {
+                    Text("Please sign in to continue.")
+                }
+            }
+        }
+    - group: Components
+      kind: component
+      name: UserProfile
+      description: The `UserProfile` component renders an editable profile form. It loads the user's current profile
+        from `/scim2/Me` when it appears, presents editable fields for `displayName` and `phoneNumbers`, and saves changes
+        via `ThunderIDClient.updateUserProfile`. `UserProfile` requires `.thunderIDProvider(config:)` in its ancestor
+        view hierarchy.
+      rowsLabel: Parameters
+      rows:
+      - name: onSaved
+        type: (() -> Void)?
+        tag: optional
+        description: Called after a successful profile save.
+      - name: onError
+        type: (() -> Void)?
+        tag: optional
+        description: Called when a load or save operation fails.
+      example: |-
+        import SwiftUI
+        import ThunderIDSwiftUI
+
+        struct ProfileSheet: View {
+            @Environment(\.dismiss) var dismiss
+
+            var body: some View {
+                UserProfile {
+                    dismiss()
+                }
+                .padding()
+            }
+        }
+    - group: Functions
+      kind: function
+      name: Configuration
+      description: '`ThunderIDConfig` is the configuration struct passed to `ThunderIDClient.initialize(config:storage:)`
+        and to the `.thunderIDProvider(config:)` view modifier.'
+      rowsLabel: Parameters
+      rows:
+      - name: baseUrl
+        type: String
+        description: '**Required.** Your {{ProductName}} instance URL. Must use HTTPS (e.g., `https://localhost:8090`).'
+      - name: clientId
+        type: String?
+        description: The Client ID from your {{ProductName}} application. Required for redirect-based authentication
+          and token operations.
+      - name: scopes
+        type: '[String]'
+        description: OAuth 2.0 scopes to request. Include `"profile"` and `"email"` to receive user identity claims.
+      - name: afterSignInUrl
+        type: String?
+        description: The redirect URI to return to after sign-in. Must match an **Allowed Redirect URI** registered
+          in the console.
+      - name: afterSignOutUrl
+        type: String?
+        description: The redirect URI to return to after sign-out. Must match an **Allowed Post-Logout Redirect URI**
+          in the console.
+      - name: signInUrl
+        type: String?
+        description: Override the sign-in URL. Defaults to the {{ProductName}} hosted sign-in page.
+      - name: signUpUrl
+        type: String?
+        description: Override the sign-up URL.
+      - name: clientSecret
+        type: String?
+        description: Client secret for confidential clients. Do not include this in a shipped iOS app.
+      - name: signInOptions
+        type: '[String: Any]'
+        description: Additional query parameters appended to the authorization URL on sign-in.
+      - name: signOutOptions
+        type: '[String: Any]'
+        description: Additional parameters sent with the sign-out request.
+      - name: signUpOptions
+        type: '[String: Any]'
+        description: Additional parameters sent with the sign-up request.
+      - name: applicationId
+        type: String?
+        description: The Application ID used for app-native (embedded) sign-in flows via the Flow Execution API.
+      - name: organizationHandle
+        type: String?
+        description: The organization handle for multi-tenant deployments.
+      - name: tokenValidation
+        type: TokenValidationConfig
+        description: Controls ID token validation behavior.
+      - name: storage
+        type: StorageAdapter?
+        description: Custom token storage backend. Defaults to `KeychainStorageAdapter`.
+      - name: instanceId
+        type: Int?
+        description: Identifies the SDK instance when running multiple instances in one process.
+      example: |-
+        import ThunderID
+
+        let config = ThunderIDConfig(
+            baseUrl: "https://localhost:8090",
+            clientId: "<your-client-id>",
+            scopes: ["openid", "profile", "email"],
+            afterSignInUrl: "io.thunderid.b2c://callback",
+            afterSignOutUrl: "io.thunderid.b2c://logout",
+            applicationId: "<your-application-id>"
+        )
+    - group: Functions
+      kind: function
+      name: ThunderIDClient
+      description: '`ThunderIDClient` is the core authentication client in the `ThunderID` package. It manages the full
+        authentication lifecycle: initialization, sign-in (both app-native and redirect-based), session, token management,
+        and user profile operations. When you use the `ThunderIDSwiftUI` package, a `ThunderIDClient` instance is created
+        and managed automatically. You can access it via `ThunderIDState.client` from any view.'
+      example: |-
+        import ThunderID
+
+        let client = ThunderIDClient()
+
+        try await client.initialize(config: ThunderIDConfig(
+            baseUrl: "https://localhost:8090",
+            clientId: "<your-client-id>",
+            scopes: ["openid", "profile", "email"],
+            afterSignInUrl: "io.thunderid.b2c://callback",
+            afterSignOutUrl: "io.thunderid.b2c://logout"
+        ))
+    - group: Functions
+      kind: function
+      name: ThunderIDState
+      description: '`ThunderIDState` is the reactive authentication state object provided by the `ThunderIDSwiftUI`
+        package. It is an `ObservableObject` that holds the current user, loading state, and initialization status,
+        and exposes the underlying `ThunderIDClient` for direct API calls. `ThunderIDState` is injected into the SwiftUI
+        environment by the `.thunderIDProvider(config:)` modifier. Any view in the hierarchy can read it using `@EnvironmentObject`.'
+      example: |-
+        import SwiftUI
+        import ThunderIDSwiftUI
+
+        @main
+        struct MyApp: App {
+            var body: some Scene {
+                WindowGroup {
+                    ContentView()
+                        .thunderIDProvider(config: ThunderIDConfig(
+                            baseUrl: "https://localhost:8090",
+                            clientId: "<your-client-id>",
+                            afterSignInUrl: "io.thunderid.b2c://callback",
+                            afterSignOutUrl: "io.thunderid.b2c://logout"
+                        ))
+                }
+            }
+        }
+
+  - type: quickstart
+    id: quickstart
+    title: Get started
+    intro: Provider, session, and a protected route, start to finish.
+    label: Connect your application
+    path: Getting started / Connect your application / iOS
+    outro: The quickstart is maintained alongside the rest of the getting-started guides so it stays in step with the
+      platform. This page covers the package itself.
+  - type: guides
+    id: guides
+    title: Guides
+    intro: Task-focused walkthroughs maintained alongside the SDK.
+
+guides:
+  - id: accessing-protected-apis
+    title: Accessing Protected APIs
+    icon: key
+    description: Make authenticated API requests from an iOS application using bearer tokens from the ThunderID SDK.
+    intro: When your app needs to call a backend API that requires authentication, use `ThunderIDClient.getAccessToken()`
+      to retrieve a valid access token and attach it as a Bearer token to your requests. The SDK automatically refreshes
+      the token if it has expired.
+    sections:
+    - type: steps
+      id: steps
+      title: Accessing Protected APIs
+      steps:
+      - title: Using URLSession
+        description: 'The following example calls a protected API endpoint using the standard `URLSession`:'
+        code:
+          file: APIClient.swift
+          lang: swift
+          content: |2-
+
+            func fetchProtectedResource(state: ThunderIDState) async throws -> Data {
+                let token = try await state.client.getAccessToken()
+
+                var request = URLRequest(url: URL(string: "https://localhost:8090/api/resource")!)
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+                let (data, response) = try await URLSession.shared.data(for: request)
+
+                guard let httpResponse = response as? HTTPURLResponse,
+                      (200..<300).contains(httpResponse.statusCode) else {
+                    throw URLError(.badServerResponse)
+                }
+
+                return data
+            }
+      - title: Token Refresh
+        description: '`getAccessToken()` refreshes the access token automatically when it is expired, as long as a valid
+          refresh token is available. You do not need to handle refresh manually. If the refresh token is also expired,
+          `getAccessToken()` throws `IAMError` with code `.sessionExpired`. Handle this by signing the user out:'
+        code:
+          lang: swift
+          content: |-
+            do {
+                let token = try await state.client.getAccessToken()
+                // use token
+            } catch let error as IAMError where error.code == .sessionExpired {
+                _ = try? await state.client.signOut()
+                await state.refresh()
+            } catch {
+                print("Unexpected error: \(error)")
+            }
+      - title: Using Alamofire
+        description: 'If your project uses [Alamofire](https://github.com/Alamofire/Alamofire), create a request interceptor
+          that injects the access token:'
+        code:
+          file: ThunderIDRequestInterceptor.swift
+          lang: swift
+          content: |2-
+
+            final class ThunderIDRequestInterceptor: RequestInterceptor {
+                let state: ThunderIDState
+
+                init(state: ThunderIDState) {
+                    self.state = state
+                }
+
+                func adapt(
+                    _ urlRequest: URLRequest,
+                    for session: Session,
+                    completion: @escaping (Result<URLRequest, Error>) -> Void
+                ) {
+                    Task {
+                        do {
+                            let token = try await state.client.getAccessToken()
+                            var request = urlRequest
+                            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                            completion(.success(request))
+                        } catch {
+                            completion(.failure(error))
+                        }
+                    }
+                }
+            }
+  - id: try-the-sample-app
+    title: Try the iOS Sample App
+    icon: terminal
+    description: Run the {{ProductName}} iOS sample app to see the full authentication lifecycle end to end.
+    intro: 'The SDK repository ships a sample app in [`Samples/Quickstart`](https://github.com/thunder-id/ios-sdks/tree/main/Samples/Quickstart)
+      that exercises the full authentication lifecycle end to end: sign-in, sign-up, and sign-out via the SDK''s app-native
+      Flow Execution. } />'
+    sections:
+    - type: steps
+      id: steps
+      title: Try the iOS Sample App
+      steps:
+      - title: Prerequisites
+        description: '- Xcode 15+ - A running {{ProductName}} instance'
+      - title: Prepare the iOS Sample
+        code:
+          lang: bash
+          content: |-
+            cd Samples/Quickstart
+            cp Config.plist.example Sources/Config.plist
+            # Edit Sources/Config.plist with your {{ProductName}} base URL and application ID
+      - title: Attestation via Apple App Attest (optional)
+        description: 'If the application enforces platform attestation, set `THUNDERID_ATTESTATION_ENABLED` to `true`
+          in `Sources/Config.plist`, then rebuild. When enabled, the sample mints a token via `AppAttestTokenProvider`
+          (Apple App Attest) and sends it with every native flow-initiate request. Testing this end-to-end requires:
+          - A **physical device**, App Attest is unavailable in the simulator. - A signing team and the **App Attest
+          capability** enabled on the target, so Xcode adds the `com.apple.developer.devicecheck.appattest-environment`
+          entitlement. - The **Team ID** and **Bundle ID** registered on the {{ProductName}} application''s attestation
+          settings to match the ones the app is signed with. {{ProductName}} derives the expected App ID from `.` and
+          rejects a token whose attested App ID differs. The `Attestation-Token` header carries the base64-encoded App
+          Attest attestation object exactly as `DCAppAttestService.attestKey` returns it, do not wrap it in a JSON envelope.
+          The challenge should come from the server in production; this sample generates it locally to exercise the
+          SDK hook.'
+      - title: Passkeys (WebAuthn)
+        description: 'Passkey registration/authentication via `ASAuthorizationPlatformPublicKeyCredentialProvider` requires
+          the app''s relying party ID to be backed by a real **Associated Domain**, not `localhost`. Without this, `ASAuthorizationController`
+          fails immediately with `Error Domain=com.apple.AuthenticationServices.AuthorizationError Code=1004`. This
+          sample ships `Sources/Quickstart.entitlements` with a placeholder `webcredentials:your-thunderid-domain.example`
+          entry. To exercise passkeys end-to-end: 1. Replace the placeholder domain in `Sources/Quickstart.entitlements`
+          with the domain your {{ProductName}} server is actually reachable at (it must serve valid HTTPS, self-signed
+          certs and `localhost` will not work). 2. Host an `apple-app-site-association` file at `https:///.well-known/apple-app-site-association`
+          declaring this app''s Team ID and `PRODUCT_BUNDLE_IDENTIFIER` (`dev.thunderid.Quickstart`) under `webcredentials.apps`.
+          3. Make sure the server''s passkey `rp.id` matches that same domain, the SDK (`PasskeyAuthSession`) passes
+          whatever `rp.id` the server returns straight through to `ASAuthorizationPlatformPublicKeyCredentialProvider`.
+          4. Set a `DEVELOPMENT_TEAM` and enable the **Associated Domains** capability for the target in Xcode (Signing
+          & Capabilities) so the entitlement is actually applied to the build. Exposing a local {{ProductName}} instance
+          under a real, HTTPS-reachable domain (e.g. via a tunnel) is left to you, this sample only wires up the entitlement/documentation,
+          not the tunnel itself.'
+      - title: Run
+        description: Open in Xcode via `Package.swift` and run on an iOS 16+ simulator or device.
+      - title: Next Steps
+        description: '- [Accessing Protected APIs](../accessing-protected-apis): Make authenticated API requests from
+          an iOS application using bearer tokens from the {{ProductName}} SDK'
+
+rail:
+  statsTitle: Package
+  stats:
+    - {label: Package, value: "ThunderID"}
+    - {label: Registry, value: "CocoaPods"}
+    - {label: Licence, value: "Apache 2.0"}
+  relatedTitle: Related SDKs
+  related: [android, flutter]

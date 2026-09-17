@@ -104,7 +104,7 @@ func (s *InitTestSuite) TestDeclarativeModeRejectsCreate() {
 
 	ouSvc := newOUServiceMock(s.T(), map[string]bool{"ou-1": true},
 		map[string]string{"root": "ou-1"}, map[string]string{"ou-1": "root"})
-	fileStore, err := initializeStore(ouSvc)
+	fileStore, _, _, err := initializeStore()
 	s.Require().NoError(err)
 
 	svc := newCredentialConfigurationService(fileStore, ouSvc)

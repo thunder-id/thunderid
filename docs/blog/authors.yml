@@ -18,3 +18,24 @@ senthalan:
   url: https://github.com/senthalan
   image_url: https://github.com/senthalan.png
   page: true
+
+ayesha:
+  name: Ayesha Dissanayaka
+  title: ThunderID Team Member
+  url: https://github.com/ayshsandu
+  image_url: https://github.com/ayshsandu.png
+  page: true
+
+hasini:
+  name: Hasini Samarathunga
+  title: ThunderID Team Member
+  url: https://github.com/HasiniSama
+  image_url: https://github.com/HasiniSama.png
+  page: true
+
+sahan:
+  name: Sahan Dilshan
+  title: ThunderID Team Member
+  url: https://github.com/sahandilshan
+  image_url: https://github.com/sahandilshan.png
+  page: true

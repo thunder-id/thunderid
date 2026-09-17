@@ -29,17 +29,15 @@ type FlowTypeConfig struct {
 
 // FlowSectionConfig is the value of the server-config "flow" section. It carries per-type default
 // handles and context TTLs. A zero ExpirySeconds falls back to the built-in default for that type.
-//
-// UserDeletionFlow names the administration flow that carries out a user deletion. There is no
-// separate mode switch: a console deletes through the flow when one is configured and present, and
-// through DELETE /users/{id} otherwise, mirroring how user onboarding falls back to manual creation.
 type FlowSectionConfig struct {
-	AuthFlow           FlowTypeConfig `json:"authFlow"`
-	RegistrationFlow   FlowTypeConfig `json:"registrationFlow"`
-	UserOnboardingFlow FlowTypeConfig `json:"userOnboardingFlow"`
-	RecoveryFlow       FlowTypeConfig `json:"recoveryFlow"`
-	SignOutFlow        FlowTypeConfig `json:"signOutFlow"`
-	UserDeletionFlow   FlowTypeConfig `json:"userDeletionFlow"`
+	AuthFlow                FlowTypeConfig `json:"authFlow"`
+	RegistrationFlow        FlowTypeConfig `json:"registrationFlow"`
+	UserOnboardingFlow      FlowTypeConfig `json:"userOnboardingFlow"`
+	RecoveryFlow            FlowTypeConfig `json:"recoveryFlow"`
+	SignOutFlow             FlowTypeConfig `json:"signOutFlow"`
+	UserDeletionFlow        FlowTypeConfig `json:"userDeletionFlow"`
+	ApplicationDeletionFlow FlowTypeConfig `json:"applicationDeletionFlow"`
+	SecretRegenerationFlow  FlowTypeConfig `json:"secretRegenerationFlow"`
 }
 
 // FromServerRuntime builds flow configuration from the global server runtime.

@@ -51,12 +51,21 @@ func (s *ConfigurationHandlerTestSuite) TestHandleCreate_InvalidBody() {
 	s.Equal(http.StatusBadRequest, rec.Code)
 }
 
+func (s *ConfigurationHandlerTestSuite) TestHandleCreate_RequiresOUID() {
+	req := httptest.NewRequest(http.MethodPost, configurationsPath,
+		strings.NewReader(`{"handle":"eudi-pid","vct":"v","ouHandle":"default"}`))
+	rec := httptest.NewRecorder()
+	s.handler.HandleCreate(rec, req)
+
+	s.Equal(http.StatusBadRequest, rec.Code)
+}
+
 func (s *ConfigurationHandlerTestSuite) TestHandleCreate_ServiceError() {
 	s.service.EXPECT().CreateCredentialConfiguration(mock.Anything, mock.Anything).
 		Return(nil, &ErrorConfigurationAlreadyExists)
 
 	req := httptest.NewRequest(http.MethodPost, configurationsPath,
-		strings.NewReader(`{"handle":"eudi-pid","vct":"v"}`))
+		strings.NewReader(`{"handle":"eudi-pid","vct":"v","ouId":"ou-1"}`))
 	rec := httptest.NewRecorder()
 	s.handler.HandleCreate(rec, req)
 
@@ -122,7 +131,7 @@ func (s *ConfigurationHandlerTestSuite) TestHandleUpdate_Success() {
 	s.service.EXPECT().UpdateCredentialConfiguration(mock.Anything, "cfg-1", mock.Anything).Return(dto, nil)
 
 	req := httptest.NewRequest(http.MethodPut, configurationsPath+"/cfg-1",
-		strings.NewReader(`{"handle":"h","vct":"v"}`))
+		strings.NewReader(`{"handle":"h","vct":"v","ouId":"ou-1"}`))
 	req.SetPathValue("id", "cfg-1")
 	rec := httptest.NewRecorder()
 	s.handler.HandleUpdate(rec, req)
@@ -152,7 +161,7 @@ func (s *ConfigurationHandlerTestSuite) TestHandleUpdate_Immutable() {
 		Return(nil, &ErrorConfigurationImmutable)
 
 	req := httptest.NewRequest(http.MethodPut, configurationsPath+"/cfg-1",
-		strings.NewReader(`{"handle":"h","vct":"v"}`))
+		strings.NewReader(`{"handle":"h","vct":"v","ouId":"ou-1"}`))
 	req.SetPathValue("id", "cfg-1")
 	rec := httptest.NewRecorder()
 	s.handler.HandleUpdate(rec, req)
@@ -196,7 +205,6 @@ func (s *ConfigurationHandlerTestSuite) TestRequestToDTOSanitizes() {
 	req := &credentialConfigurationRequest{
 		Handle:      "  eudi-pid  ",
 		OUID:        " ou-1 ",
-		OUHandle:    " default ",
 		Name:        " EUDI PID ",
 		Description: " A PID credential ",
 		Format:      " dc+sd-jwt ",
@@ -212,7 +220,6 @@ func (s *ConfigurationHandlerTestSuite) TestRequestToDTOSanitizes() {
 	dto := requestToDTO(req)
 	s.Equal("eudi-pid", dto.Handle)
 	s.Equal("ou-1", dto.OUID)
-	s.Equal("default", dto.OUHandle)
 	s.Equal("EUDI PID", dto.Name)
 	s.Equal("A PID credential", dto.Description)
 	s.Equal("dc+sd-jwt", dto.Format)

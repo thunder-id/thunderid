@@ -37,6 +37,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowexecmock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/jtimock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
@@ -65,13 +66,19 @@ func (s *stubTransactioner) Transact(ctx context.Context, txFunc func(context.Co
 // the authorization_request_id claim so they pass the assertion<->authorization request binding check.
 const (
 	// Header: {"alg":"none","typ":"JWT"}
-	// Payload: {"sub":"test-user","iat":1701421200,"authorization_request_id":"test-auth-id"}
+	// Payload: {"sub":"test-user","iat":1701421200,"authorization_request_id":"test-auth-id",
+	//           "jti":"svc-assertion-jti"}
+	// The jti is what makes the assertion single-use; every assertion this server mints carries one.
 	svcJWTWithIat = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0." +
-		"eyJzdWIiOiJ0ZXN0LXVzZXIiLCJpYXQiOjE3MDE0MjEyMDAsImF1dGhvcml6YXRpb25fcmVxdWVzdF9pZCI6InRlc3QtYXV0aC1pZCJ9."
+		"eyJzdWIiOiJ0ZXN0LXVzZXIiLCJpYXQiOjE3MDE0MjEyMDAsImF1dGhvcml6YXRpb25fcmVxdWVzdF9pZCI6" +
+		"InRlc3QtYXV0aC1pZCIsImp0aSI6InN2Yy1hc3NlcnRpb24tanRpIn0."
+	// svcAssertionJTI is the jti claim carried by svcJWTWithIat.
+	svcAssertionJTI = "svc-assertion-jti"
 	// Header: {"alg":"none","typ":"JWT"}
-	// Payload: {"sub":"test-user","authorization_request_id":"test-auth-id"}
+	// Payload: {"sub":"test-user","authorization_request_id":"test-auth-id","jti":"svc-minimal-jti"}
 	svcJWTMinimal = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0." +
-		"eyJzdWIiOiJ0ZXN0LXVzZXIiLCJhdXRob3JpemF0aW9uX3JlcXVlc3RfaWQiOiJ0ZXN0LWF1dGgtaWQifQ."
+		"eyJzdWIiOiJ0ZXN0LXVzZXIiLCJhdXRob3JpemF0aW9uX3JlcXVlc3RfaWQiOiJ0ZXN0LWF1dGgtaWQi" +
+		"LCJqdGkiOiJzdmMtbWluaW1hbC1qdGkifQ."
 	// Header: {"alg":"none","typ":"JWT"}
 	// Payload: {"sub":"test-user","iat":1701421200} — no authorization_request_id claim (unbound).
 	svcJWTUnbound = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ0ZXN0LXVzZXIiLCJpYXQiOjE3MDE0MjEyMDB9."
@@ -97,6 +104,7 @@ type AuthorizeServiceTestSuite struct {
 	mockFlowExecService *flowexecmock.FlowExecServiceInterfaceMock
 	mockValidator       *AuthorizationValidatorInterfaceMock
 	mockResourceService *resourcemock.ResourceServiceInterfaceMock
+	mockJTIStore        *jtimock.JTIStoreInterfaceMock
 }
 
 func TestAuthorizeServiceTestSuite(t *testing.T) {
@@ -144,6 +152,12 @@ func (suite *AuthorizeServiceTestSuite) SetupTest() {
 		Return(&providers.ResourceServer{ID: "rs-default", Identifier: "https://rs-default.example.com"}, nil).Maybe()
 	suite.mockResourceService.EXPECT().ValidatePermissions(mock.Anything, "rs-default", mock.Anything).
 		Return([]string{}, nil).Maybe()
+
+	suite.mockJTIStore = jtimock.NewJTIStoreInterfaceMock(suite.T())
+	// Default: every assertion is being redeemed for the first time. Replay tests install their own
+	// mock rather than adding an expectation, since testify matches this catch-all first.
+	suite.mockJTIStore.On("RecordJTI", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything).Return(true, nil).Maybe()
 }
 
 // newService builds an authorizeService with all mocked dependencies.
@@ -159,6 +173,7 @@ func (suite *AuthorizeServiceTestSuite) newService() *authorizeService {
 		jwtService:      suite.mockJWTService,
 		flowExecService: suite.mockFlowExecService,
 		transactioner:   &stubTransactioner{},
+		jtiStore:        suite.mockJTIStore,
 		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthorizeServiceTest")),
 	}
 }
@@ -872,6 +887,59 @@ func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_Success(
 	assert.Contains(suite.T(), redirectURI, "code=")
 	assert.Contains(suite.T(), redirectURI, "iss=https%3A%2F%2Flocalhost%3A8090")
 	assert.NotContains(suite.T(), redirectURI, "state=")
+}
+
+// An assertion redeemed here is spent, under the same replay namespace the token endpoint uses, so it
+// cannot afterwards be exchanged at /oauth2/token for a second credential.
+func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_ConsumesAssertion() {
+	authCtx := authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{
+			ClientID:    "test-client",
+			RedirectURI: "https://client.example.com/callback",
+		},
+	}
+	suite.mockAuthReqStore.EXPECT().GetRequest(mock.Anything, testAuthID).Return(true, authCtx, nil)
+	suite.mockAuthReqStore.EXPECT().ClearRequest(mock.Anything, testAuthID).Return(nil)
+	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, svcJWTWithIat, "", "").Return(nil)
+	suite.mockAuthzCodeStore.EXPECT().InsertAuthorizationCode(mock.Anything, mock.Anything).Return(nil)
+
+	svc := suite.newService()
+	suite.mockJTIStore = jtimock.NewJTIStoreInterfaceMock(suite.T())
+	svc.jtiStore = suite.mockJTIStore
+	suite.mockJTIStore.On("RecordJTI", mock.Anything, oauth2utils.NamespaceAuthAssertion, svcAssertionJTI,
+		mock.AnythingOfType("time.Time")).Return(true, nil).Once()
+
+	redirectURI, authErr := svc.HandleAuthorizationCallback(context.Background(), testAuthID, svcJWTWithIat)
+
+	assert.Nil(suite.T(), authErr)
+	assert.Contains(suite.T(), redirectURI, "code=")
+	suite.mockJTIStore.AssertExpectations(suite.T())
+}
+
+// A replayed assertion mints no second authorization code.
+func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_ReplayedAssertionIsRejected() {
+	authCtx := authRequestContext{
+		OAuthParameters: oauth2model.OAuthParameters{
+			ClientID:    "test-client",
+			RedirectURI: "https://client.example.com/callback",
+		},
+	}
+	suite.mockAuthReqStore.EXPECT().GetRequest(mock.Anything, testAuthID).Return(true, authCtx, nil)
+	suite.mockAuthReqStore.EXPECT().ClearRequest(mock.Anything, testAuthID).Return(nil)
+	suite.mockJWTService.EXPECT().VerifyJWT(mock.Anything, svcJWTWithIat, "", "").Return(nil)
+
+	svc := suite.newService()
+	suite.mockJTIStore = jtimock.NewJTIStoreInterfaceMock(suite.T())
+	svc.jtiStore = suite.mockJTIStore
+	suite.mockJTIStore.On("RecordJTI", mock.Anything, oauth2utils.NamespaceAuthAssertion, svcAssertionJTI,
+		mock.AnythingOfType("time.Time")).Return(false, nil).Once()
+
+	redirectURI, authErr := svc.HandleAuthorizationCallback(context.Background(), testAuthID, svcJWTWithIat)
+
+	assert.NotNil(suite.T(), authErr)
+	assert.Empty(suite.T(), redirectURI)
+	// The whole point: no authorization code is issued for a spent assertion.
+	suite.mockAuthzCodeStore.AssertNotCalled(suite.T(), "InsertAuthorizationCode")
 }
 
 func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_WithState() {

@@ -13,16 +13,16 @@ const (
 	NotificationSenderTypeEmail NotificationSenderType = "EMAIL"
 )
 
-// MessageProviderType defines the type of messaging provider.
-type MessageProviderType string
+// NotificationProviderType defines the type of messaging provider.
+type NotificationProviderType string
 
 const (
-	// MessageProviderTypeVonage represents the Vonage messaging provider.
-	MessageProviderTypeVonage MessageProviderType = "vonage"
-	// MessageProviderTypeTwilio represents the Twilio messaging provider.
-	MessageProviderTypeTwilio MessageProviderType = "twilio"
-	// MessageProviderTypeCustom represents a custom messaging provider.
-	MessageProviderTypeCustom MessageProviderType = "custom"
+	// NotificationProviderTypeVonage represents the Vonage messaging provider.
+	NotificationProviderTypeVonage NotificationProviderType = "vonage"
+	// NotificationProviderTypeTwilio represents the Twilio messaging provider.
+	NotificationProviderTypeTwilio NotificationProviderType = "twilio"
+	// NotificationProviderTypeCustom represents a custom messaging provider.
+	NotificationProviderTypeCustom NotificationProviderType = "custom"
 )
 
 // ChannelType defines the type of communication channel.

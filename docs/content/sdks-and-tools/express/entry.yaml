@@ -1,0 +1,357 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: express
+name: Express
+icon: ExpressLogo
+category: backend
+type: sdk
+origin: official
+status: ga
+package:
+  name: "@thunderid/express"
+  manager: npm
+description: Middleware to protect Express routes and APIs with {{ProductName}}.
+docs:
+  overview: /docs/next/sdks-and-tools/express/overview
+  apiReference: /docs/next/sdks-and-tools/express/apis
+  quickstart: /docs/next/getting-started/connect-your-application/express
+links:
+  github: https://github.com/thunder-id/javascript-sdks
+  package: https://www.npmjs.com/package/@thunderid/express
+apiReference:
+  source: typedoc
+
+sections:
+  - type: api
+    id: api
+    title: API reference
+    intro: Every export is fully typed. The signatures and props below come from the package's own reference documentation,
+      so what is listed here is what the installed version ships.
+    kindTones:
+      middleware: primary
+      class: purple
+      export: neutral
+    exports:
+    - group: Middleware
+      kind: middleware
+      name: ThunderID Middleware
+      description: The `thunderID()` function returns Express middleware that initializes a `ThunderIDExpressClient`
+        and attaches it to both `req.thunderIDAuth` and `res.thunderIDAuth`.
+      example: |-
+        const express = require('express');
+        const cookieParser = require('cookie-parser');
+        const {thunderID, handleSignIn, handleSignOut} = require('@thunderid/express');
+
+        const app = express();
+
+        app.use(cookieParser());
+        app.use(express.json());
+        app.use(
+          thunderID({
+            baseUrl: 'https://localhost:8090',
+            clientId: '<your-client-id>',
+            clientSecret: '<your-client-secret>',
+          }),
+        );
+
+        app.get('/login', handleSignIn());
+        app.get('/logout', handleSignOut());
+    - group: Middleware
+      kind: middleware
+      name: handleFlow()
+      description: The `handleFlow()` function returns an Express route handler that advances the embedded sign-in flow
+        and responds with JSON.
+      example: |-
+        const express = require('express');
+        const cookieParser = require('cookie-parser');
+        const {thunderID, handleFlow, handleSignIn, handleSignOut} = require('@thunderid/express');
+
+        const app = express();
+
+        app.use(cookieParser());
+        app.use(express.json());
+        app.use(
+          thunderID({
+            baseUrl: 'https://localhost:8090',
+            clientId: '<your-client-id>',
+            clientSecret: '<your-client-secret>',
+            mode: 'embedded',
+          }),
+        );
+
+        app.post('/flow/sign-in', handleFlow());
+        app.get('/login', handleSignIn());
+        app.get('/logout', handleSignOut());
+    - group: Middleware
+      kind: middleware
+      name: handleSignIn()
+      description: The `handleSignIn()` function returns an Express route handler for the sign-in path.
+      example: |-
+        const express = require('express');
+        const cookieParser = require('cookie-parser');
+        const {thunderID, handleSignIn} = require('@thunderid/express');
+
+        const app = express();
+
+        app.use(cookieParser());
+        app.use(
+          thunderID({
+            baseUrl: 'https://localhost:8090',
+            clientId: '<your-client-id>',
+            clientSecret: '<your-client-secret>',
+            afterSignInUrl: 'http://localhost:3000/login',
+          }),
+        );
+
+        app.get('/login', handleSignIn());
+    - group: Middleware
+      kind: middleware
+      name: handleSignOut()
+      description: The `handleSignOut()` function returns an Express route handler for the sign-out path.
+      example: |-
+        const express = require('express');
+        const cookieParser = require('cookie-parser');
+        const {thunderID, handleSignOut} = require('@thunderid/express');
+
+        const app = express();
+
+        app.use(cookieParser());
+        app.use(
+          thunderID({
+            baseUrl: 'https://localhost:8090',
+            clientId: '<your-client-id>',
+            clientSecret: '<your-client-secret>',
+            afterSignOutUrl: 'http://localhost:3000/logout',
+          }),
+        );
+
+        app.get('/logout', handleSignOut());
+    - group: Middleware
+      kind: middleware
+      name: protect()
+      description: The `protect()` function returns Express middleware that blocks unauthenticated requests.
+      example: |-
+        const {protect} = require('@thunderid/express');
+
+        app.get('/protected', protect(), (_req, res) => {
+          res.send('Protected content');
+        });
+    - group: Client
+      kind: class
+      name: ThunderIDExpressClient
+      description: '`ThunderIDExpressClient` is the Express-aware client class exported by `@thunderid/express`. It
+        extends `ThunderIDNodeClient` and adds Express-specific request and configuration access.'
+      example: const {ThunderIDExpressClient} = require('@thunderid/express');
+    - group: Configuration
+      kind: export
+      name: ExpressClientConfig
+      description: '`ExpressClientConfig` is the main configuration type for `@thunderid/express`.'
+      example: |-
+        const {thunderID} = require('@thunderid/express');
+
+        app.use(
+          thunderID({
+            baseUrl: 'https://localhost:8090',
+            clientId: '<your-client-id>',
+            clientSecret: '<your-client-secret>',
+            afterSignInUrl: 'http://localhost:3000/login',
+            afterSignOutUrl: 'http://localhost:3000/logout',
+            sessionCookie: {
+              expiryTime: 28800,
+              httpOnly: true,
+              sameSite: 'lax',
+              secure: false,
+            },
+          }),
+        );
+    - group: Constants
+      kind: export
+      name: CookieConfig
+      description: The Express SDK exports `CookieConfig` and `SESSION_COOKIE_NAME` for the session cookie behavior
+        used by the SDK.
+      example: |-
+        const {SESSION_COOKIE_NAME} = require('@thunderid/express');
+
+        app.get('/session-id', (req, res) => {
+          res.json({sessionId: req.cookies?.[SESSION_COOKIE_NAME] ?? null});
+        });
+
+  - type: quickstart
+    id: quickstart
+    title: Get started
+    intro: Provider, session, and a protected route, start to finish.
+    label: Connect your application
+    path: Getting started / Connect your application / Express
+    outro: The quickstart is maintained alongside the rest of the getting-started guides so it stays in step with the
+      platform. This page covers the package itself.
+  - type: guides
+    id: guides
+    title: Guides
+    intro: Task-focused walkthroughs maintained alongside the SDK.
+
+guides:
+  - id: embedded-sign-in
+    title: Embedded Sign-In
+    icon: pen
+    description: Drive the Express embedded sign-in flow with handleFlow() for JSON-based multi-step authentication.
+    intro: Use embedded sign-in when your application needs to advance the sign-in flow through JSON requests. Use it
+      when you do not want to rely on a browser redirect for every interaction.
+    sections:
+    - type: steps
+      id: steps
+      title: Embedded Sign-In
+      steps:
+      - title: Prerequisites
+        description: '- `express` - `cookie-parser` - `express.json()` - `mode: ''embedded''` in your Express SDK configuration'
+      - title: Middleware and Route Setup
+        code:
+          file: index.js
+          lang: js
+          content: |-
+            const express = require('express');
+            const cookieParser = require('cookie-parser');
+            const {thunderID, handleFlow, handleSignIn, handleSignOut} = require('@thunderid/express');
+
+            const app = express();
+
+            app.use(cookieParser());
+            app.use(express.json());
+            app.use(
+              thunderID({
+                baseUrl: 'https://localhost:8090',
+                clientId: '<your-client-id>',
+                clientSecret: '<your-client-secret>',
+                mode: 'embedded',
+                afterSignInUrl: 'http://localhost:3000/login',
+                afterSignOutUrl: 'http://localhost:3000/logout',
+              }),
+            );
+
+            app.post('/flow/sign-in', handleFlow());
+            app.get('/login', handleSignIn());
+            app.get('/logout', handleSignOut());
+      - title: Request Lifecycle
+        description: '### Start the Flow Send the first request without an `executionId`:'
+        code:
+          lang: json
+          content: |-
+            {
+              "applicationId": "app-id",
+              "flowType": "SIGN_IN"
+            }
+      - title: Response Lifecycle
+        description: '### Continue rendering UI If the flow still needs more steps, `handleFlow()` returns:'
+        code:
+          lang: json
+          content: |-
+            {
+              "authId": "...",
+              "challengeToken": "...",
+              "components": [],
+              "executionId": "...",
+              "flowStatus": "..."
+            }
+      - title: How `GET /login` and `POST /flow/sign-in` Work Together
+        description: '- `POST /flow/sign-in` advances the embedded interaction and eventually returns a redirect URL
+          - `GET /login` completes the OAuth callback after the embedded flow returns the authorization code redirect
+          Both routes are required for the embedded sign-in flow shown in the current SDK source.'
+      - title: Failure Cases
+        description: '`handleFlow()` returns `500` JSON responses when: - the SDK is not initialized because `thunderID()`
+          was not mounted first - `baseUrl` is missing from the config - flow execution fails at runtime'
+      - title: Related APIs
+        description: '- [`handleFlow()`](../../apis/middleware/handle-flow) - [`handleSignIn()`](../../apis/middleware/handle-sign-in)
+          - [`ExpressClientConfig`](../../apis/configuration/express-client-config)'
+  - id: redirect-flow
+    title: Redirect Flow
+    icon: exchange
+    description: Build the standard Express sign-in and protected-route flow using redirect-based OAuth 2.0 PKCE.
+    intro: Use the redirect flow when you want the SDK to drive a standard OAuth 2.0 authorization-code redirect cycle
+      for your Express application.
+    sections:
+    - type: steps
+      id: steps
+      title: Redirect Flow
+      steps:
+      - title: Prerequisites
+        description: '- `express` - `cookie-parser` - an application configured in {{ProductName}} - a redirect route
+          such as `http://localhost:3000/login`'
+      - title: Middleware Order
+        description: 'Mount middleware in this order: 1. `cookie-parser()` 2. `express.json()` if you also need JSON
+          request parsing 3. `thunderID(config)` 4. Route handlers that use `handleSignIn()`, `handleSignOut()`, or
+          `protect()`'
+      - title: Example
+        code:
+          file: index.js
+          lang: js
+          content: |-
+            const express = require('express');
+            const cookieParser = require('cookie-parser');
+            const {thunderID, handleSignIn, handleSignOut, protect} = require('@thunderid/express');
+
+            const app = express();
+            const port = 3000;
+
+            app.use(cookieParser());
+            app.use(express.json());
+            app.use(
+              thunderID({
+                baseUrl: 'https://localhost:8090',
+                clientId: '<your-client-id>',
+                clientSecret: '<your-client-secret>',
+                afterSignInUrl: 'http://localhost:3000/login',
+                afterSignOutUrl: 'http://localhost:3000/logout',
+              }),
+            );
+
+            app.get('/', (_req, res) => {
+              res.send('<a href="/protected">Go to protected page</a>');
+            });
+
+            app.get('/login', handleSignIn());
+            app.get('/logout', handleSignOut());
+
+            app.get(
+              '/protected',
+              protect((res) => res.redirect('/login')),
+              (_req, res) => {
+                res.send('You are signed in and can access this protected route.');
+              },
+            );
+
+            app.get('/me', protect(), async (req, res) => {
+              const user = await req.thunderIDAuth.getUserFromRequest(req);
+              res.json(user);
+            });
+
+            app.listen(port, () => {
+              console.log(`Server running on http://localhost:${port}`);
+            });
+      - title: Flow Lifecycle
+        description: 1. The user opens a protected route. 2. `protect()` checks the session cookie and current sign-in
+          state. 3. If the request is unauthenticated, your `onUnauthenticated` callback can redirect to `/login`. 4.
+          `handleSignIn()` starts the redirect flow. 5. {{ProductName}} redirects back to the configured sign-in callback
+          route. 6. `handleSignIn()` exchanges the authorization code for tokens and sets the session cookie. 7. Protected
+          routes can now continue and route handlers can read the signed-in user.
+      - title: Access the Current User
+        description: After `thunderID()` runs, the initialized client is available on `req.thunderIDAuth`.
+        code:
+          file: index.js
+          lang: js
+          content: |-
+            app.get('/me', protect(), async (req, res) => {
+              const user = await req.thunderIDAuth.getUserFromRequest(req);
+              res.json(user);
+            });
+      - title: Related APIs
+        description: '- [`thunderID()`](../../apis/middleware/thunderid) - [`handleSignIn()`](../../apis/middleware/handle-sign-in)
+          - [`handleSignOut()`](../../apis/middleware/handle-sign-out) - [`protect()`](../../apis/middleware/protect)'
+
+rail:
+  statsTitle: Package
+  stats:
+    - {label: Package, value: "@thunderid/express"}
+    - {label: Registry, value: "npm"}
+    - {label: Licence, value: "Apache 2.0"}
+  relatedTitle: Related SDKs
+  related: [node, spring-security]

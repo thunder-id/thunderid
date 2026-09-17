@@ -11,6 +11,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -32,6 +33,14 @@ type PresentationDefinitionServiceInterface interface {
 	IsPresentationDefinitionDeclarative(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 }
 
+// presentationDefinitionDeclarativeService resolves organization-unit handles
+// while loading declarative presentation definitions.
+type presentationDefinitionDeclarativeService interface {
+	ResolvePresentationDefinitionOUHandle(
+		ctx context.Context, dto *PresentationDefinitionDTO,
+	) *tidcommon.ServiceError
+}
+
 type definitionService struct {
 	store     definitionStoreInterface
 	ouService ou.OrganizationUnitServiceInterface
@@ -42,7 +51,7 @@ type definitionService struct {
 // newPresentationDefinitionService builds a presentation-definition service over the given store.
 func newPresentationDefinitionService(
 	store definitionStoreInterface, ouService ou.OrganizationUnitServiceInterface,
-) PresentationDefinitionServiceInterface {
+) *definitionService {
 	return &definitionService{
 		store:     store,
 		ouService: ouService,
@@ -51,19 +60,33 @@ func newPresentationDefinitionService(
 	}
 }
 
-// resolveOU resolves ouHandle to ouId when needed and verifies the OU exists.
+// ResolvePresentationDefinitionOUHandle resolves a declarative OU handle to its ID.
+func (s *definitionService) ResolvePresentationDefinitionOUHandle(
+	ctx context.Context, dto *PresentationDefinitionDTO,
+) *tidcommon.ServiceError {
+	if dto.OUID != "" {
+		return s.resolveOU(ctx, dto)
+	}
+	if strings.TrimSpace(dto.OUHandle) == "" {
+		return nil
+	}
+	if s.ouService == nil {
+		return &ErrorDefinitionInvalidOU
+	}
+	resolved, svcErr := s.ouService.GetOrganizationUnitByPath(security.WithRuntimeContext(ctx), dto.OUHandle)
+	if svcErr != nil {
+		return &ErrorDefinitionInvalidOU
+	}
+	dto.OUID = resolved.ID
+	return s.resolveOU(ctx, dto)
+}
+
+// resolveOU verifies the requested organization unit exists.
 func (s *definitionService) resolveOU(
 	ctx context.Context, dto *PresentationDefinitionDTO,
 ) *tidcommon.ServiceError {
 	if s.ouService == nil {
 		return nil
-	}
-	if dto.OUID == "" && strings.TrimSpace(dto.OUHandle) != "" {
-		resolved, svcErr := s.ouService.GetOrganizationUnitByPath(ctx, dto.OUHandle)
-		if svcErr != nil {
-			return &ErrorDefinitionInvalidOU
-		}
-		dto.OUID = resolved.ID
 	}
 	if strings.TrimSpace(dto.OUID) == "" {
 		return &ErrorDefinitionInvalidOU

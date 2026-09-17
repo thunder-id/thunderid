@@ -1116,6 +1116,14 @@ func (s *importService) importPresentationDefinition(
 		}
 	}
 
+	resolvedOUID, svcErr := s.resolveImportOUHandle(
+		ctx, resourceTypePresentationDefinition, dto.ID, dto.Handle, dto.OUID, dto.OUHandle)
+	if svcErr != nil {
+		return serviceErrorOutcome(
+			resourceTypePresentationDefinition, dto.ID, dto.Handle, operationCreate, svcErr)
+	}
+	dto.OUID = resolvedOUID
+
 	if dryRun {
 		if options.IsUpsertEnabled() && dto.ID != "" {
 			_, svcErr := s.presentationDefinitionService.GetPresentationDefinition(ctx, dto.ID)
@@ -1170,6 +1178,13 @@ func (s *importService) importCredentialConfiguration(
 			Message:      fmt.Sprintf("failed to decode credential configuration document: %v", err),
 		}
 	}
+
+	resolvedOUID, svcErr := s.resolveImportOUHandle(
+		ctx, resourceTypeCredentialConfiguration, dto.ID, dto.Handle, dto.OUID, dto.OUHandle)
+	if svcErr != nil {
+		return serviceErrorOutcome(resourceTypeCredentialConfiguration, dto.ID, dto.Handle, operationCreate, svcErr)
+	}
+	dto.OUID = resolvedOUID
 
 	if dryRun {
 		if options.IsUpsertEnabled() && dto.ID != "" {

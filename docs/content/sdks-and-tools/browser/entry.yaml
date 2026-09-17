@@ -1,0 +1,180 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: browser
+name: Browser
+icon: BrowserLogo
+category: spa
+type: sdk
+origin: official
+status: ga
+package:
+  name: "@thunderid/browser"
+  manager: npm
+description: Vanilla JavaScript SDK for browser apps without a framework.
+docs:
+  overview: /docs/next/sdks-and-tools/browser/overview
+  apiReference: /docs/next/sdks-and-tools/browser/apis
+  quickstart: /docs/next/getting-started/connect-your-application/browser
+links:
+  github: https://github.com/thunder-id/javascript-sdks
+  package: https://www.npmjs.com/package/@thunderid/browser
+apiReference:
+  source: typedoc
+
+sections:
+  - type: api
+    id: api
+    title: API reference
+    intro: Every export is fully typed. The signatures and props below come from the package's own reference documentation,
+      so what is listed here is what the installed version ships.
+    kindTones:
+      function: accent
+    exports:
+    - group: Functions
+      kind: function
+      name: Configuration
+      description: The `initialize()` method accepts a configuration object that controls how the SDK connects to your
+        {{ProductName}} instance and manages authentication.
+      example: |-
+        import { ThunderIDBrowserClient } from '@thunderid/browser'
+
+        const auth = new ThunderIDBrowserClient()
+
+        await auth.initialize({
+          clientId: '<your-client-id>',
+          baseUrl: 'https://localhost:8090',
+        })
+    - group: Functions
+      kind: function
+      name: Event Hooks
+      description: The Browser SDK provides an event-driven system for reacting to authentication lifecycle events.
+        Register callbacks using the `on()` method to respond to sign-in, sign-out, HTTP request events, and more.
+      example: |-
+        import { Hooks } from '@thunderid/browser'
+
+        auth.on(Hooks.SignIn, (user) => {
+          console.log('User signed in:', user.displayName)
+        })
+
+        auth.on(Hooks.SignOut, () => {
+          console.log('User signed out')
+          window.location.href = '/'
+        })
+    - group: Functions
+      kind: function
+      name: ThunderIDBrowserClient
+      description: The `ThunderIDBrowserClient` is the core class of the `@thunderid/browser` SDK. It manages the full
+        authentication lifecycle for browser-based applications, including sign-in, sign-out, token management, and
+        authenticated HTTP requests.
+      example: |-
+        import { ThunderIDBrowserClient } from '@thunderid/browser'
+
+        const auth = new ThunderIDBrowserClient()
+
+        await auth.initialize({
+          clientId: '<your-client-id>',
+          baseUrl: 'https://localhost:8090',
+          afterSignInUrl: window.location.origin,
+          afterSignOutUrl: window.location.origin,
+        })
+
+        export default auth
+
+  - type: quickstart
+    id: quickstart
+    title: Get started
+    intro: Provider, session, and a protected route, start to finish.
+    label: Connect your application
+    path: Getting started / Connect your application / Browser
+    outro: The quickstart is maintained alongside the rest of the getting-started guides so it stays in step with the
+      platform. This page covers the package itself.
+  - type: guides
+    id: guides
+    title: Guides
+    intro: Task-focused walkthroughs maintained alongside the SDK.
+
+guides:
+  - id: accessing-protected-apis
+    title: Accessing Protected APIs
+    icon: key
+    description: Make authenticated HTTP requests from a browser application using the Browser SDK's built-in HTTP client.
+    intro: When building applications with {{ProductName}}, you often need to call protected APIs that require authentication.
+      The Browser SDK provides built-in methods for making authenticated HTTP requests with automatic token management.
+    sections:
+    - type: steps
+      id: steps
+      title: Accessing Protected APIs
+      steps:
+      - title: Using the Built-In HTTP Client
+        description: 'The `ThunderIDBrowserClient` provides `httpRequest()` and `httpRequestAll()` methods that automatically
+          attach the access token as a Bearer token to outgoing requests. ### Basic API Request'
+        code:
+          file: src/api.js
+          lang: js
+          content: |2-
+
+            async function fetchUserData(userId) {
+              const response = await auth.httpRequest({
+                url: `https://localhost:8090/users/${userId}`,
+                method: 'GET',
+                headers: {
+                  Accept: 'application/json',
+                },
+              })
+
+              return response.data
+            }
+      - title: Using the Access Token Directly
+        description: 'If you prefer to use your own HTTP client (e.g., `fetch` or `axios`), retrieve the access token
+          and attach it manually:'
+        code:
+          file: src/api.js
+          lang: js
+          content: |2-
+
+            async function fetchWithToken(url) {
+              const token = await auth.getAccessToken()
+
+              const response = await fetch(url, {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  Accept: 'application/json',
+                },
+              })
+
+              return response.json()
+            }
+      - title: Error Handling
+        description: 'Handle API errors by catching exceptions from `httpRequest()`:'
+        code:
+          file: src/api.js
+          lang: js
+          content: |2-
+
+            async function fetchData() {
+              try {
+                const response = await auth.httpRequest({
+                  url: 'https://localhost:8090/users',
+                  method: 'GET',
+                })
+
+                return response.data
+              } catch (error) {
+                if (error.response?.status === 401) {
+                  // Token expired or invalid — trigger re-authentication
+                  await auth.signIn()
+                } else {
+                  console.error('API error:', error.message)
+                }
+              }
+            }
+
+rail:
+  statsTitle: Package
+  stats:
+    - {label: Package, value: "@thunderid/browser"}
+    - {label: Registry, value: "npm"}
+    - {label: Licence, value: "Apache 2.0"}
+  relatedTitle: Related SDKs
+  related: [javascript, react, vue]

@@ -146,6 +146,39 @@ func (suite *SessionExecutorTestSuite) TestFreshSave() {
 	suite.True(resp.AuthUser.IsAuthenticated())
 }
 
+// TestFreshSave_PublishesAuthTime covers the save path publishing the session's authentication
+// time. Without it resolveAuthTime falls back to the clock, so the id_token minted by the login
+// reports a different auth_time than a later authorization that reuses the same session.
+func (suite *SessionExecutorTestSuite) TestFreshSave_PublishesAuthTime() {
+	sso := sessionmock.NewServiceMock(suite.T())
+	var in session.SaveCheckpointInput
+	captureSave(sso, &in, session.SaveCheckpointResult{
+		Handle:          "handle-xyz",
+		Created:         true,
+		AuthenticatedAt: time.Unix(1700000000, 0).UTC(),
+	})
+	exec := suite.newExecutor(sso, suite.saveAuthnMock())
+
+	resp, err := exec.Execute(freshCtx())
+	suite.Require().NoError(err)
+
+	suite.Equal("1700000000", resp.RuntimeData[common.RuntimeKeyAuthTime])
+}
+
+// TestFreshSave_NoAuthTimeWhenUnset covers a result carrying no authentication time: the key is
+// left unset so resolveAuthTime keeps its own fallback rather than publishing a zero timestamp.
+func (suite *SessionExecutorTestSuite) TestFreshSave_NoAuthTimeWhenUnset() {
+	sso := sessionmock.NewServiceMock(suite.T())
+	var in session.SaveCheckpointInput
+	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "handle-xyz", Created: true})
+	exec := suite.newExecutor(sso, suite.saveAuthnMock())
+
+	resp, err := exec.Execute(freshCtx())
+	suite.Require().NoError(err)
+
+	suite.NotContains(resp.RuntimeData, common.RuntimeKeyAuthTime)
+}
+
 // TestFreshSave_AttachNoCookie covers attaching to an existing session (service reports
 // Created=false): the handle is recorded on RuntimeData but no cookie is emitted.
 func (suite *SessionExecutorTestSuite) TestFreshSave_AttachNoCookie() {

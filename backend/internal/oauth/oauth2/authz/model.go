@@ -92,4 +92,6 @@ type assertionClaims struct {
 	subjectID              string
 	subjectCategory        string
 	flowErrorType          string
+	jti                    string
+	expiresAt              time.Time
 }

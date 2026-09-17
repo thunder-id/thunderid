@@ -4,6 +4,8 @@
 package tokenservice
 
 import (
+	"time"
+
 	"context"
 	"encoding/json"
 	"fmt"
@@ -697,4 +699,31 @@ func resolveClientGroupRoleClaims(
 		}
 	}
 	return claims, nil
+}
+
+// ArtifactLifetime returns the longest an artifact issued to this client can remain valid: the longest
+// access-token validity across both token subjects, the refresh-token validity when the client may use
+// it, plus the authorization-code window.
+func ArtifactLifetime(cfg oauthconfig.Config, client *providers.OAuthClient) time.Duration {
+	if client == nil {
+		return 0
+	}
+	// User-subject tokens and client_credentials tokens read separate validity sub-configs, so only the
+	// longest of the two bounds how long an access token issued to this client can live.
+	maxValidity := ResolveTokenConfig(cfg, client, TokenTypeAccess,
+		client.UserAccessTokenConfig().ValidityPeriodOrZero()).ValidityPeriod
+	clientAccessValidity := ResolveTokenConfig(cfg, client, TokenTypeAccess,
+		client.ClientAccessTokenConfig().ValidityPeriodOrZero()).ValidityPeriod
+	if clientAccessValidity > maxValidity {
+		maxValidity = clientAccessValidity
+	}
+	if client.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
+		refreshValidity := ResolveTokenConfig(cfg, client, TokenTypeRefresh, 0).ValidityPeriod
+		if refreshValidity > maxValidity {
+			maxValidity = refreshValidity
+		}
+	}
+	maxValidity += cfg.OAuth.AuthorizationCode.ValidityPeriod
+
+	return time.Duration(maxValidity) * time.Second
 }

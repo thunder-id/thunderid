@@ -1,0 +1,14 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: passport-strategy
+name: Passport Strategy
+icon: PassportLogo
+category: backend
+type: integration
+origin: community
+status: soon
+package:
+  name: passport (built-in)
+description: Community {{ProductName}} strategy shipped directly in Passport.js for Node and Express back ends.
+author: jaredhanson

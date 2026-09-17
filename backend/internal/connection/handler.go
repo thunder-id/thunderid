@@ -275,7 +275,7 @@ func createSMSConnection[Req any, Resp any](h *handler, w http.ResponseWriter, r
 
 // getSMSConnection fetches a message sender of the given provider and writes the encoded response.
 func getSMSConnection[Resp any](h *handler, w http.ResponseWriter, r *http.Request,
-	provider ncommon.MessageProviderType, fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) {
+	provider ncommon.NotificationProviderType, fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) {
 	ctx := r.Context()
 	id := r.PathValue("id")
 	if strings.TrimSpace(id) == "" {
@@ -298,7 +298,7 @@ func getSMSConnection[Resp any](h *handler, w http.ResponseWriter, r *http.Reque
 // updateSMSConnection decodes a typed request, maps it, delegates the update (which preserves
 // any secret the request omits), and writes the encoded response.
 func updateSMSConnection[Req any, Resp any](h *handler, w http.ResponseWriter, r *http.Request,
-	provider ncommon.MessageProviderType, toDTO func(Req) (*ncommon.NotificationSenderDTO, error),
+	provider ncommon.NotificationProviderType, toDTO func(Req) (*ncommon.NotificationSenderDTO, error),
 	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) {
 	ctx := r.Context()
 	id := r.PathValue("id")
@@ -339,7 +339,7 @@ func createSMSHandler[Req any, Resp any](h *handler,
 }
 
 // getSMSHandler binds a vendor's provider and mapper to getSMSConnection, yielding a handler.
-func getSMSHandler[Resp any](h *handler, provider ncommon.MessageProviderType,
+func getSMSHandler[Resp any](h *handler, provider ncommon.NotificationProviderType,
 	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		getSMSConnection(h, w, r, provider, fromDTO)
@@ -347,7 +347,7 @@ func getSMSHandler[Resp any](h *handler, provider ncommon.MessageProviderType,
 }
 
 // updateSMSHandler binds a vendor's provider and mappers to updateSMSConnection.
-func updateSMSHandler[Req any, Resp any](h *handler, provider ncommon.MessageProviderType,
+func updateSMSHandler[Req any, Resp any](h *handler, provider ncommon.NotificationProviderType,
 	toDTO func(Req) (*ncommon.NotificationSenderDTO, error),
 	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -356,7 +356,7 @@ func updateSMSHandler[Req any, Resp any](h *handler, provider ncommon.MessagePro
 }
 
 // listSMSInstances returns a handler that lists the configured senders of a message provider.
-func (h *handler) listSMSInstances(provider ncommon.MessageProviderType) http.HandlerFunc {
+func (h *handler) listSMSInstances(provider ncommon.NotificationProviderType) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		instances, svcErr := h.svc.listSMSByProvider(ctx, provider)
@@ -377,7 +377,7 @@ func (h *handler) listSMSInstances(provider ncommon.MessageProviderType) http.Ha
 }
 
 // deleteSMSInstance returns a handler that deletes a sender of a message provider.
-func (h *handler) deleteSMSInstance(provider ncommon.MessageProviderType) http.HandlerFunc {
+func (h *handler) deleteSMSInstance(provider ncommon.NotificationProviderType) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		id := r.PathValue("id")
@@ -395,7 +395,7 @@ func (h *handler) deleteSMSInstance(provider ncommon.MessageProviderType) http.H
 
 // usagesSMSInstance returns a handler that lists the resources referencing a sender of a message
 // provider. Drives the pre-delete confirmation dialog.
-func (h *handler) usagesSMSInstance(provider ncommon.MessageProviderType) http.HandlerFunc {
+func (h *handler) usagesSMSInstance(provider ncommon.NotificationProviderType) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		id := r.PathValue("id")

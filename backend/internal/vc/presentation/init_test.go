@@ -96,7 +96,7 @@ func TestDeclarativeModeRejectsCreate(t *testing.T) {
 
 	ouSvc := newOUServiceMock(t, map[string]bool{"ou-1": true},
 		map[string]string{"root": "ou-1"}, map[string]string{"ou-1": "root"})
-	store, err := initializeStore(ouSvc)
+	store, _, _, err := initializeStore()
 	require.NoError(t, err)
 
 	svc := newPresentationDefinitionService(store, ouSvc)

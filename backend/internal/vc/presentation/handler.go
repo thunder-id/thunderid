@@ -104,7 +104,6 @@ func requestToDTO(req *presentationDefinitionRequest) *PresentationDefinitionDTO
 	return &PresentationDefinitionDTO{
 		Handle:               sysutils.SanitizeString(req.Handle),
 		OUID:                 sysutils.SanitizeString(req.OUID),
-		OUHandle:             sysutils.SanitizeString(req.OUHandle),
 		Name:                 sysutils.SanitizeString(req.Name),
 		Description:          sysutils.SanitizeString(req.Description),
 		VCT:                  sysutils.SanitizeString(req.VCT),

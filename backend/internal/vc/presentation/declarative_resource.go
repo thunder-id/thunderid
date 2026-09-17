@@ -9,11 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/thunder-id/thunderid/internal/ou"
-
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"gopkg.in/yaml.v3"
@@ -128,17 +125,17 @@ type definitionRequestWithID struct {
 
 // loadDeclarativeResources loads declarative presentation-definition resources from YAML files
 // into the file store. The dbStore parameter is optional and is used only for duplicate checking
-// in composite mode. The ouService parameter is optional and is used to resolve ouHandle to ouId.
+// in composite mode. The service parameter resolves ouHandle to ouId.
 func loadDeclarativeResources(
 	fileStore *definitionFileBasedStore, dbStore definitionStoreInterface,
-	ouService ou.OrganizationUnitServiceInterface,
+	service presentationDefinitionDeclarativeService,
 ) error {
 	resourceConfig := declarativeresource.ResourceConfig{
 		ResourceType:  paramTypePresentationDefinition,
 		DirectoryName: "presentation_definitions",
 		Parser:        parseToDefinitionDTOWrapper,
 		Validator: func(dto interface{}) error {
-			return validateDefinitionWrapper(dto, fileStore, dbStore, ouService)
+			return validateDefinitionWrapper(dto, fileStore, dbStore, service)
 		},
 		IDExtractor: func(dto interface{}) string {
 			return dto.(*PresentationDefinitionDTO).ID
@@ -193,7 +190,7 @@ func buildDefinitionDTOFromRequest(req definitionRequestWithID) *PresentationDef
 // unit, and not reuse an ID or handle already claimed by another file.
 func validateDefinitionWrapper(
 	dto interface{}, fileStore *definitionFileBasedStore, dbStore definitionStoreInterface,
-	ouService ou.OrganizationUnitServiceInterface,
+	service presentationDefinitionDeclarativeService,
 ) error {
 	def, ok := dto.(*PresentationDefinitionDTO)
 	if !ok {
@@ -205,41 +202,20 @@ func validateDefinitionWrapper(
 	if svcErr := validateDefinition(def); svcErr != nil {
 		return fmt.Errorf("validation failed: %s", svcErr.Error.DefaultValue)
 	}
-	if err := resolveDefinitionOU(context.Background(), def, ouService); err != nil {
-		return err
-	}
-	return checkDuplicateDefinition(context.Background(), def, fileStore, dbStore)
-}
-
-// resolveDefinitionOU resolves ouHandle to ouId and verifies the result exists, so a
-// declarative definition carries the same owning organization unit the management API demands.
-func resolveDefinitionOU(
-	ctx context.Context, def *PresentationDefinitionDTO, ouService ou.OrganizationUnitServiceInterface,
-) error {
-	if ouService != nil && def.OUID == "" && strings.TrimSpace(def.OUHandle) != "" {
-		resolved, svcErr := ouService.GetOrganizationUnitByPath(security.WithRuntimeContext(ctx), def.OUHandle)
-		if svcErr != nil {
+	if service != nil {
+		if svcErr := service.ResolvePresentationDefinitionOUHandle(context.Background(), def); svcErr != nil {
+			if def.OUID != "" {
+				return fmt.Errorf("organization unit '%s' does not exist for presentation definition '%s'",
+					def.OUID, def.Handle)
+			}
 			return fmt.Errorf("organization unit with handle %q not found for presentation definition '%s'",
 				def.OUHandle, def.Handle)
 		}
-		def.OUID = resolved.ID
 	}
 	if strings.TrimSpace(def.OUID) == "" {
 		return fmt.Errorf("ouId or ouHandle is required for presentation definition '%s'", def.Handle)
 	}
-	if ouService == nil {
-		return nil
-	}
-	exists, svcErr := ouService.IsOrganizationUnitExists(ctx, def.OUID)
-	if svcErr != nil {
-		return fmt.Errorf("failed to verify organization unit '%s' for presentation definition '%s': %s",
-			def.OUID, def.Handle, svcErr.Error.DefaultValue)
-	}
-	if !exists {
-		return fmt.Errorf("organization unit '%s' does not exist for presentation definition '%s'",
-			def.OUID, def.Handle)
-	}
-	return nil
+	return checkDuplicateDefinition(context.Background(), def, fileStore, dbStore)
 }
 
 // checkDuplicateDefinition rejects a definition whose ID or handle another declarative file already

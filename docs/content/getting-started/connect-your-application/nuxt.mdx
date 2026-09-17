@@ -31,7 +31,7 @@ Use this guide to add <ProductName /> authentication to a Nuxt 3 application usi
 <TutorialHeroItem icon={<Boxes />}>Create a new Nuxt 3 app</TutorialHeroItem>
 <TutorialHeroItem icon={<Package />}>Register the <code>@thunderid/nuxt</code> module</TutorialHeroItem>
 <TutorialHeroItem icon={<LogIn />}>Add working sign-in and sign-out</TutorialHeroItem>
-<TutorialHeroItem icon={<BookOpen />}>Wrap your app with <ProductName />Root</TutorialHeroItem>
+<TutorialHeroItem icon={<BookOpen />}>Wrap your app with ThunderIDRoot</TutorialHeroItem>
 
 ## Prerequisites
 
@@ -156,7 +156,7 @@ THUNDERID_SESSION_SECRET=<a-random-secret-for-session-signing>
 NODE_TLS_REJECT_UNAUTHORIZED=0
 ```
 
-## Wrap Your App with <ProductName />Root
+## Wrap Your App with ThunderIDRoot
 
 The `<ThunderIDRoot>` component mounts the full authentication provider tree. Wrap your application content with it in `app.vue`:
 
@@ -247,5 +247,5 @@ You should see the `<SignInButton />` button. Click it, you'll land on your appl
 
 <NextSteps>
   <NextStepsCard title="Upgrade the Sign-In Flow" href="../../../guides/flows/what-are-flows" description="Add MFA, passkeys, or social login to your flow: no app code changes required." cta="Flow Designer" />
-  <NextStepsCard title="Nuxt SDK Reference" href="../../../sdks/nuxt/overview" description="Explore the full API reference for the Nuxt SDK." cta="API Reference" />
+  <NextStepsCard title="Nuxt SDK Reference" href="../../../sdks-and-tools/nuxt/overview" description="Explore the full API reference for the Nuxt SDK." cta="API Reference" />
 </NextSteps>

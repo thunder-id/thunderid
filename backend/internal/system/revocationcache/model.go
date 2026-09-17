@@ -26,4 +26,7 @@ type revokedSnapshot struct {
 	Families []revokedEntry
 	// Subjects holds revoked user-subject entries.
 	Subjects []revokedEntry
+	// AppKeys holds revoked OAuth client entries, written when an application is deleted or its
+	// client secret regenerated.
+	AppKeys []revokedEntry
 }

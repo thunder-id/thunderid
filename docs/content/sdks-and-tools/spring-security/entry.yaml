@@ -1,0 +1,266 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: spring-security
+name: Spring Security
+icon: SpringSecurityLogo
+category: backend
+type: guide
+origin: community
+status: ga
+accent: "#6db33f"
+package:
+  name: org.springframework.boot
+  manager: maven
+description: >-
+  Spring Security already speaks OIDC, so this guide shows the configuration for Java and Kotlin back ends.
+  Maintained by the Spring team.
+docs:
+  overview: /docs/next/sdks-and-tools/spring-security/overview
+links:
+  external: https://docs.spring.io/spring-security/reference/
+
+hero:
+  description: >-
+    Spring Security is maintained by the Spring team, not by {{ProductName}}. Because it already speaks OIDC, it
+    works with {{ProductName}} out of the box, and this guide shows the configuration. Token validation, session
+    management, and access control are handled by Spring Security itself.
+  badges:
+    - {label: Integration guide, tone: neutral}
+  meta:
+    - icon: package
+      label: org.springframework.boot
+      mono: true
+    - icon: people
+      label: SDK by the Spring team
+  ctas:
+    - label: Set up in 8 minutes
+      href: "#setup"
+      variant: primary
+    - label: Spring Security docs
+      href: https://docs.spring.io/spring-security/reference/
+      variant: secondary
+      external: true
+  aside:
+    type: install
+    footnote: Spring's own starters · Boot 3.2+ · Java 17+
+    tabs:
+      - label: gradle
+        code:
+          file: build.gradle.kts
+          lang: kotlin
+          content: |-
+            implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
+            implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
+      - label: groovy
+        code:
+          file: build.gradle
+          lang: groovy
+          content: |-
+            implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+            implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+      - label: maven
+        code:
+          file: pom.xml
+          lang: xml
+          content: |-
+            <dependency>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-starter-oauth2-client</artifactId>
+            </dependency>
+            <dependency>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+            </dependency>
+
+sections:
+  - type: steps
+    id: setup
+    title: Handling authentication
+    meta: "~8 min"
+    intro: >-
+      Four files, all standard Spring Security: login flow, token validation, and scope-based access control.
+      Spring Security is maintained by the Spring team; {{ProductName}} maintains this guide and the
+      configuration below.
+    steps:
+      - title: Add Spring's OAuth2 starters
+        description: >-
+          Both are Spring Boot artifacts: client for browser login, resource-server for bearer-token APIs.
+          Versions come from the Spring Boot BOM. Drop whichever you do not need.
+        code:
+          file: build.gradle.kts
+          lang: kotlin
+          content: |-
+            implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
+            implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
+      - title: Point the app at your {{ProductName}} issuer
+        description: >-
+          These are Spring's standard OIDC properties. There are no {{ProductName}}-specific configuration keys
+          to learn.
+        code:
+          file: application.yml
+          lang: yaml
+          content: |-
+            spring:
+              security:
+                oauth2:
+                  client:
+                    registration:
+                      thunderid:
+                        client-id: ${THUNDERID_CLIENT_ID}
+                        client-secret: ${THUNDERID_CLIENT_SECRET}
+                        scope: openid, profile, email
+                    provider:
+                      thunderid:
+                        issuer-uri: https://acme.thunderid.dev
+                  resourceserver:
+                    jwt:
+                      issuer-uri: https://acme.thunderid.dev
+        note: >-
+          Declaring both client and resourceserver lets one application serve browser sessions and bearer-token
+          API calls. Omit either block if you only need one.
+      - title: Secure your endpoints
+        description: >-
+          An ordinary SecurityFilterChain bean. Scopes from the {{ProductName}} token arrive prefixed with
+          SCOPE_.
+        code:
+          file: SecurityConfig.java
+          lang: java
+          content: |-
+            @Configuration
+            @EnableWebSecurity
+            public class SecurityConfig {
+
+              @Bean
+              SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+                return http
+                  .authorizeHttpRequests(auth -> auth
+                    .requestMatchers("/actuator/health").permitAll()
+                    .requestMatchers("/api/billing/**").hasAuthority("SCOPE_billing:read")
+                    .anyRequest().authenticated())
+                  .oauth2Login(Customizer.withDefaults())
+                  .oauth2ResourceServer(rs -> rs.jwt(Customizer.withDefaults()))
+                  .build();
+              }
+            }
+      - title: Read the authenticated principal
+        description: >-
+          Inject Spring's own OidcUser for session-based flows, or Jwt for bearer-token requests. Claims map
+          straight through.
+        code:
+          file: ProfileController.java
+          lang: java
+          content: |-
+            @RestController
+            public class ProfileController {
+
+              @GetMapping("/me")
+              public Map<String, Object> me(@AuthenticationPrincipal OidcUser user) {
+                return Map.of(
+                  "sub", user.getSubject(),
+                  "email", user.getEmail(),
+                  "org", user.getClaimAsString("org_id")
+                );
+              }
+
+              @PreAuthorize("hasAuthority('SCOPE_billing:read')")
+              @GetMapping("/api/billing")
+              public Invoice billing(@AuthenticationPrincipal Jwt jwt) {
+                return service.forTenant(jwt.getClaimAsString("org_id"));
+              }
+            }
+        note: Enable @PreAuthorize with @EnableMethodSecurity on any configuration class.
+
+  - type: table
+    id: mapping
+    title: Claim mapping
+    intro: >-
+      How {{ProductName}} token claims arrive on the Spring side. This is the reference you will actually reach
+      for, since there is no separate {{ProductName}} API surface to learn.
+    showHeader: true
+    columns:
+      - {label: "{{ProductName}} claim", style: accent}
+      - {label: Spring accessor, style: code}
+      - {label: Notes, style: text}
+    rows:
+      - cells: ["sub", "user.getSubject()", "Stable {{ProductName}} user identifier."]
+      - cells: ["email", "user.getEmail()", "Present when the email scope is granted."]
+      - cells: ["scope", "getAuthorities()", "Each scope becomes a SCOPE_ authority."]
+      - cells: ["org_id", 'getClaimAsString("org_id")', "Tenant context for multi-org applications."]
+      - cells: ["act", 'getClaimAsMap("act")', "Present on agent tokens; identifies the acting agent."]
+
+  - type: table
+    id: requirements
+    title: Requirements
+    columns:
+      - style: text
+      - style: code
+    rows:
+      - cells: [Spring Boot, 3.2 to 3.4]
+        badge: {label: supported, tone: success}
+      - cells: [Spring Security, ">= 6.2"]
+        badge: {label: supported, tone: success}
+      - cells: [Java, "17, 21"]
+        badge: {label: supported, tone: success}
+      - cells: [Kotlin, ">= 1.9"]
+        badge: {label: supported, tone: success}
+      - cells: [Spring Boot 2.7 / Security 5, legacy]
+        badge: {label: unsupported, tone: danger}
+
+  - type: linkGrid
+    id: beyond
+    title: Beyond this guide
+    intro: >-
+      Everything past this configuration is ordinary Spring Security, documented by the Spring team. These are
+      the pages worth bookmarking.
+    items:
+      - label: OAuth2 Login
+        href: https://docs.spring.io/spring-security/reference/servlet/oauth2/login/index.html
+        external: true
+      - label: OAuth2 Resource Server
+        href: https://docs.spring.io/spring-security/reference/servlet/oauth2/resource-server/index.html
+        external: true
+      - label: Method security
+        href: https://docs.spring.io/spring-security/reference/servlet/authorization/method-security.html
+        external: true
+
+  - type: support
+    id: support
+    title: Where to get help
+    variant: split
+    eyebrow: Where to get help
+    body: Two projects, two places to ask.
+    panels:
+      - title: Something wrong in this guide?
+        body: >-
+          The guide and the {{ProductName}} configuration it documents are ours. We keep it current with each
+          Spring Boot release.
+        ctas:
+          - label: "{{ProductName}} issues"
+            href: https://github.com/thunder-id/thunderid/issues
+            variant: primary
+            external: true
+          - label: Ask the community
+            href: https://github.com/thunder-id/thunderid/discussions
+            variant: secondary
+            external: true
+      - title: Something wrong in Spring Security?
+        body: >-
+          The library itself is maintained by the Spring team. Bugs and feature requests belong on their
+          tracker, not ours.
+        ctas:
+          - label: Spring Security issues
+            href: https://github.com/spring-projects/spring-security/issues
+            variant: secondary
+            external: true
+
+rail:
+  statsTitle: Ownership
+  stats:
+    - {label: SDK, value: Spring Security}
+    - {label: SDK maintainer, value: Spring team}
+    - {label: Guide maintainer, value: "{{ProductName}}"}
+    - {label: Spring Boot, value: 3.2 to 3.4}
+    - {label: Java, value: "17, 21"}
+  relatedTitle: Related
+  related: [node, express, passport-strategy]

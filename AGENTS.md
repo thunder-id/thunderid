@@ -15,6 +15,7 @@ Load only the guidance the task needs:
 | Backend Go code | [backend/AGENTS.md](backend/AGENTS.md) |
 | Frontend React code | [frontend/AGENTS.md](frontend/AGENTS.md) |
 | Documentation | [docs/AGENTS.md](docs/AGENTS.md) |
+| A ThunderID client SDK or integration package | [.agent/skills/sdk-development/SKILL.md](.agent/skills/sdk-development/SKILL.md) |
 | Database schema, queries, or stores | [.agent/skills/db/SKILL.md](.agent/skills/db/SKILL.md) |
 | Browser automation / Console UI verification | [.agent/skills/console/SKILL.md](.agent/skills/console/SKILL.md) |
 | Resolving a pnpm/npm security advisory | [.agent/skills/fix-npm-vulnerability/SKILL.md](.agent/skills/fix-npm-vulnerability/SKILL.md) |

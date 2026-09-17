@@ -1,7 +1,7 @@
 ---
 title: Design Decisions & Alternatives
 docType: use-case
-sidebar_position: 11
+sidebar_position: 12
 description: The reasoning behind the agent identity defaults, and what to choose instead when your constraints differ.
 ---
 
@@ -40,6 +40,12 @@ See [The Token Cannot Say the Agent Acted for a User](../solve-acts-for-user) an
 [The Person Is Not There to Approve](../solve-ambient) for the two delegated postures.
 
 ## Choose the Credential
+
+Start with what the agent has to authenticate to. An application that exposes its own API takes a
+**machine-native** credential through the client credentials grant, the one below. One that only exposes a
+sign-in page built for a person takes a **user-alike** credential instead,
+[the same kind of attributes that person's account holds](../solve-sign-in). That choice belongs to the
+application, not to how much you trust the agent.
 
 The right credential depends on how the agent is deployed rather than on how sensitive its work is.
 

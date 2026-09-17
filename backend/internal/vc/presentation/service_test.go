@@ -99,7 +99,7 @@ func newStatefulDefinitionStore(t *testing.T) *definitionStoreInterfaceMock {
 
 func newTestDefinitionService(t *testing.T) (*definitionService, *definitionStoreInterfaceMock) {
 	store := newStatefulDefinitionStore(t)
-	svc := newPresentationDefinitionService(store, nil).(*definitionService)
+	svc := newPresentationDefinitionService(store, nil)
 	return svc, store
 }
 
@@ -165,7 +165,7 @@ func newFailingOUServiceMock(t *testing.T) *oumock.OrganizationUnitServiceInterf
 	return m
 }
 
-func (suite *DefinitionServiceTestSuite) TestDefinitionServiceResolvesAndValidatesOU() {
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRequiresAndValidatesOUID() {
 	resolver := newOUServiceMock(suite.T(),
 		map[string]bool{"ou-1": true},
 		map[string]string{"default": "ou-1"},
@@ -180,7 +180,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceResolvesAndValidat
 	suite.Equal(ErrorDefinitionInvalidOU.Code, err.Code)
 
 	created, err := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
-		Handle: "eudi-pid", VCT: "urn:eudi:pid:de:1", OUHandle: "default",
+		Handle: "eudi-pid", VCT: "urn:eudi:pid:de:1", OUID: "ou-1",
 	})
 	suite.Require().Nil(err)
 	suite.Equal("ou-1", created.OUID)
@@ -341,13 +341,13 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceGetUpdateDeleteNot
 	suite.ErrorIs(err, ErrNotFound)
 }
 
-func (suite *DefinitionServiceTestSuite) TestDefinitionServiceResolveOUByPathFails() {
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsMissingOUID() {
 	resolver := newFailingOUServiceMock(suite.T())
 	svc := newPresentationDefinitionService(newStatefulDefinitionStore(suite.T()), resolver)
 	ctx := context.Background()
 
 	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
-		Handle: "h", VCT: "v", OUHandle: "unknown",
+		Handle: "h", VCT: "v",
 	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionInvalidOU.Code, svcErr.Code)
@@ -404,7 +404,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreatePersistError
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateUUIDError() {
 	store := newDefinitionStoreInterfaceMock(suite.T())
 	store.EXPECT().GetPresentationDefinitionByHandle(mock.Anything, mock.Anything).Return(nil, ErrNotFound)
-	svc := newPresentationDefinitionService(store, nil).(*definitionService)
+	svc := newPresentationDefinitionService(store, nil)
 	svc.uuid = func() (string, error) { return "", errors.New("uuid failed") }
 	ctx := context.Background()
 

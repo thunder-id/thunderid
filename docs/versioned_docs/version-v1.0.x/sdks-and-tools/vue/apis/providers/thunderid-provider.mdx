@@ -1,0 +1,95 @@
+---
+title: <ThunderIDProvider />
+docType: reference
+description: Root provider for Vue authentication that injects session state and the auth client into the component tree.
+---
+
+# `<ThunderIDProvider />`
+
+The `ThunderIDProvider` is the root provider component that configures `@thunderid/vue` and provides <ProductName /> context to your entire Vue application. It must wrap your application to enable authentication features.
+
+## Overview
+
+The `ThunderIDProvider` initializes the <ProductName /> authentication client, manages authentication state, and provides context to descendant components through Vue's `provide`/`inject` API. It handles token management, user sessions, organization switching, and branding preferences automatically.
+
+## Usage
+
+The `ThunderIDProvider` must be used at the root of your Vue application to ensure that all components have access to authentication features. After installing the `ThunderIDPlugin`, the component is registered globally and can be used without explicit imports.
+
+### Basic Usage
+
+A minimal setup involves wrapping your root component with `<ThunderIDProvider />` and providing the required `client-id` and `base-url` props.
+
+```vue title="src/App.vue" showLineNumbers
+<template>
+  <ThunderIDProvider
+    client-id="<your-app-client-id>"
+    base-url="https://localhost:8090"
+  >
+    <router-view />
+  </ThunderIDProvider>
+</template>
+```
+
+### Advanced Usage
+
+For more advanced configurations, you can provide additional props such as:
+
+- `scopes`: Specifies the OpenID Connect scopes to request during sign-in.
+- `afterSignInUrl`: URL to redirect to after successful sign-in.
+- `afterSignOutUrl`: URL to redirect to after sign-out.
+- `signInOptions`: Additional sign-in options forwarded to the client.
+
+For a complete list of props, refer to the [Props section](#props) below.
+
+```vue title="src/App.vue" showLineNumbers
+<script setup>
+const scopes = [
+  'openid',
+  'profile',
+  'internal_login',
+  'internal_organization_create',
+  'internal_organization_view',
+  'internal_organization_update',
+  'internal_organization_delete',
+]
+</script>
+
+<template>
+  <ThunderIDProvider
+    client-id="<your-app-client-id>"
+    base-url="https://localhost:8090"
+    :scopes="scopes"
+    after-sign-in-url="/dashboard"
+    after-sign-out-url="/home"
+  >
+    <router-view />
+  </ThunderIDProvider>
+</template>
+```
+
+:::tip
+Vue prop names are kebab-cased in templates and camelCased in JavaScript. For example, the `afterSignInUrl` prop is written as `after-sign-in-url` when used in a template.
+:::
+
+## Props
+
+The `ThunderIDProvider` component accepts the following props:
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `clientId` | `string` | ✅ | Client ID of your application |
+| `baseUrl` | `string` | ✅ | The base URL of the <ProductName /> instance (e.g., `https://localhost:8090`) |
+| `applicationId` | `string` | ❌ | The <ProductName /> application ID |
+| `afterSignInUrl` | `string` | ❌ | URL to redirect to after sign-in completes. Defaults to `window.location.origin`. |
+| `afterSignOutUrl` | `string` | ❌ | URL to redirect to after sign-out completes. Defaults to `window.location.origin`. |
+| `scopes` | `string[]` | ❌ | OpenID Connect Scopes to request during sign-in. Defaults to `'openid profile internal_login'` if not provided. |
+| `signInUrl` | `string` | ❌ | Custom sign-in URL. When set, `<SignInButton />` navigates to this URL instead of triggering the embedded flow. |
+| `signUpUrl` | `string` | ❌ | Custom sign-up URL. When set, `<SignUpButton />` navigates to this URL instead of triggering the embedded flow. |
+| `signInOptions` | `SignInOptions` | ❌ | Additional sign-in options forwarded to the underlying client. |
+| `storage` | `'sessionStorage' \| 'localStorage' \| 'webWorker'` | ❌ | Storage mechanism for session management. Defaults to `sessionStorage`. |
+| `instanceId` | `number` | ❌ | Instance ID for multi-instance support. Defaults to `0`. |
+| `organizationHandle` | `string` | ❌ | The organization handle. |
+| `organizationChain` | `object` | ❌ | Organization chain configuration. |
+| `platform` | `string` | ❌ | Platform type. Use `'ThunderIDV2'` to enable V2 embedded flow features. |
+| `syncSession` | `boolean` | ❌ | Whether to sync sessions across tabs. |

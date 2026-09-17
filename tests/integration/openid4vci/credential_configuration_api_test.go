@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -202,6 +204,88 @@ func (ts *CredentialConfigurationAPITestSuite) TestCreateAndGet() {
 	ts.Equal("https://example.com/logo.png", display["logoUri"])
 }
 
+// TestDeclarativeExplicitOUIDLoads verifies startup accepts a declarative
+// configuration whose owning organization unit is specified directly by ID.
+func (ts *CredentialConfigurationAPITestSuite) TestDeclarativeExplicitOUIDLoads() {
+	resourcesPath := filepath.Join(ts.T().TempDir(), "resources.yaml")
+	resources := `resource_type: organization_unit
+id: declarative-ou-id-test
+handle: declarative-ou-id-test
+name: Declarative Explicit OU ID Test
+---
+resource_type: credential_configuration
+id: declarative-credential-ou-id-test
+handle: declarative_credential_ou_id_test
+ouId: declarative-ou-id-test
+vct: https://credentials.thunderid.local/DeclarativeExplicitOUIDCredential
+`
+	ts.Require().NoError(os.WriteFile(resourcesPath, []byte(resources), 0o600))
+	defer func() {
+		ts.Assert().NoError(testutils.RestartServer())
+		ts.Assert().NoError(testutils.ObtainAdminAccessToken())
+	}()
+
+	ts.Require().NoError(testutils.RestartServerWithResourcesFile(resourcesPath))
+	ts.Require().NoError(testutils.ObtainAdminAccessToken())
+
+	res := ts.configRequest(http.MethodGet,
+		configAPIBasePath+"/declarative-credential-ou-id-test", nil)
+	ts.Require().Equalf(http.StatusOK, res.StatusCode, "get declarative configuration: %s", string(res.Body))
+	fetched := ts.decode(res.Body)
+	ts.Equal("declarative-ou-id-test", fetched["ouId"])
+	ts.Equal("declarative-ou-id-test", fetched["ouHandle"])
+}
+
+func (ts *CredentialConfigurationAPITestSuite) TestDeclarativeInvalidOUHandleFailsStartup() {
+	resourcesPath := filepath.Join(ts.T().TempDir(), "resources.yaml")
+	resources := `resource_type: credential_configuration
+id: declarative-credential-invalid-ou
+handle: declarative_credential_invalid_ou
+ouHandle: missing/declarative/ou
+vct: https://credentials.thunderid.local/DeclarativeInvalidOUCredential
+`
+	ts.Require().NoError(os.WriteFile(resourcesPath, []byte(resources), 0o600))
+	defer func() {
+		ts.Assert().NoError(testutils.RestartServer())
+		ts.Assert().NoError(testutils.ObtainAdminAccessToken())
+	}()
+
+	err := testutils.RestartServerWithResourcesFile(resourcesPath)
+	ts.Require().Error(err)
+}
+
+// TestStoreModesLoadDeclarativeConfigurations verifies each supported startup
+// mode initializes the configuration store and that declarative resources remain
+// available when the file-backed store is selected.
+func (ts *CredentialConfigurationAPITestSuite) TestStoreModesLoadDeclarativeConfigurations() {
+	restore := func() {
+		ts.Assert().NoError(testutils.PatchDeploymentConfig(map[string]interface{}{
+			"openid4vci": map[string]interface{}{"store": "composite"},
+		}))
+		ts.Assert().NoError(testutils.RestartServer())
+		ts.Assert().NoError(testutils.ObtainAdminAccessToken())
+	}
+	defer restore()
+
+	ts.Require().NoError(testutils.PatchDeploymentConfig(map[string]interface{}{
+		"openid4vci": map[string]interface{}{"store": "declarative"},
+	}))
+	ts.Require().NoError(testutils.RestartServer())
+	ts.Require().NoError(testutils.ObtainAdminAccessToken())
+
+	declarativeConfig := ts.configRequest(http.MethodGet, configAPIBasePath+"/"+declConfigID, nil)
+	ts.Require().Equalf(http.StatusOK, declarativeConfig.StatusCode, "get declarative configuration: %s", string(declarativeConfig.Body))
+
+	ts.Require().NoError(testutils.PatchDeploymentConfig(map[string]interface{}{
+		"openid4vci": map[string]interface{}{"store": "mutable"},
+	}))
+	ts.Require().NoError(testutils.RestartServer())
+	ts.Require().NoError(testutils.ObtainAdminAccessToken())
+
+	mutableConfig := ts.configRequest(http.MethodGet, configAPIBasePath+"/"+declConfigID, nil)
+	ts.Equalf(http.StatusNotFound, mutableConfig.StatusCode, "get declarative configuration: %s", string(mutableConfig.Body))
+}
+
 // TestList verifies the list endpoint returns the summary projection including
 // the created configuration.
 func (ts *CredentialConfigurationAPITestSuite) TestList() {
@@ -262,6 +346,36 @@ func (ts *CredentialConfigurationAPITestSuite) TestUpdate() {
 	}, claims, "update must replace the claim set, not merge into it")
 }
 
+// TestUpdateCanChangeOUID verifies updates continue to validate and persist a
+// new organization-unit ID, while the response exposes its resolved handle.
+func (ts *CredentialConfigurationAPITestSuite) TestUpdateCanChangeOUID() {
+	secondOU := testutils.OrganizationUnit{
+		Handle: "vci-config-update-ou",
+		Name:   "OpenID4VCI Update OU",
+	}
+	secondOUID, err := testutils.CreateOrganizationUnit(secondOU)
+	ts.Require().NoError(err, "create second test OU")
+	defer func() {
+		ts.Require().NoError(testutils.DeleteOrganizationUnit(secondOUID))
+	}()
+
+	res, created := ts.createConfig(ts.baseConfig("cfg_crud_change_ou"))
+	ts.Require().Equalf(http.StatusCreated, res.StatusCode, "create: %s", string(res.Body))
+	id, _ := created["id"].(string)
+
+	updated := ts.baseConfig("cfg_crud_change_ou")
+	updated.OUID = secondOUID
+	updateRes := ts.configRequest(http.MethodPut, configAPIBasePath+"/"+id, updated)
+	ts.Require().Equalf(http.StatusOK, updateRes.StatusCode, "update: %s", string(updateRes.Body))
+	ts.Equal(secondOUID, ts.decode(updateRes.Body)["ouId"])
+
+	getRes := ts.configRequest(http.MethodGet, configAPIBasePath+"/"+id, nil)
+	ts.Require().Equalf(http.StatusOK, getRes.StatusCode, "get: %s", string(getRes.Body))
+	fetched := ts.decode(getRes.Body)
+	ts.Equal(secondOUID, fetched["ouId"])
+	ts.Equal(secondOU.Handle, fetched["ouHandle"])
+}
+
 // TestUpdate_SameHandleAllowed verifies updating a configuration while keeping
 // its own handle is not treated as a handle conflict.
 func (ts *CredentialConfigurationAPITestSuite) TestUpdate_SameHandleAllowed() {
@@ -287,16 +401,34 @@ func (ts *CredentialConfigurationAPITestSuite) TestCreate_DefaultsFormat() {
 	ts.Equal("dc+sd-jwt", created["format"])
 }
 
-// TestCreate_ResolvesOUByHandle verifies the owning OU can be supplied as a
-// handle path instead of an id.
-func (ts *CredentialConfigurationAPITestSuite) TestCreate_ResolvesOUByHandle() {
-	cfg := ts.baseConfig("cfg_crud_ou_by_handle")
-	cfg.OUID = ""
-	cfg.OUHandle = crudConfigOU.Handle
+// TestCreate_RequiresOUID verifies that an output-only OU handle cannot select
+// the owning OU for a REST create request.
+func (ts *CredentialConfigurationAPITestSuite) TestCreate_RequiresOUID() {
+	res := ts.configRequest(http.MethodPost, configAPIBasePath, map[string]string{
+		"handle":   "cfg_crud_without_ou_id",
+		"vct":      crudConfigVCT,
+		"ouHandle": crudConfigOU.Handle,
+	})
 
-	res, created := ts.createConfig(cfg)
+	ts.Equalf(http.StatusBadRequest, res.StatusCode, "create: %s", string(res.Body))
+	ts.Equal(codeConfigInvalidRequest, ts.errorCodeOf(res.Body))
+}
+
+// TestUpdate_RequiresOUID verifies that an output-only OU handle cannot select
+// the owning OU for a REST update request.
+func (ts *CredentialConfigurationAPITestSuite) TestUpdate_RequiresOUID() {
+	res, created := ts.createConfig(ts.baseConfig("cfg_crud_update_without_ou_id"))
 	ts.Require().Equalf(http.StatusCreated, res.StatusCode, "create: %s", string(res.Body))
-	ts.Equal(ts.ouID, created["ouId"], "OU handle must resolve to the OU id")
+	id, _ := created["id"].(string)
+
+	updateRes := ts.configRequest(http.MethodPut, configAPIBasePath+"/"+id, map[string]string{
+		"handle":   "cfg_crud_update_without_ou_id",
+		"vct":      crudConfigVCT,
+		"ouHandle": crudConfigOU.Handle,
+	})
+
+	ts.Equalf(http.StatusBadRequest, updateRes.StatusCode, "update: %s", string(updateRes.Body))
+	ts.Equal(codeConfigInvalidRequest, ts.errorCodeOf(updateRes.Body))
 }
 
 // TestDelete verifies a deleted configuration is no longer readable, and that
@@ -393,17 +525,8 @@ func (ts *CredentialConfigurationAPITestSuite) TestCreate_ValidationErrors() {
 			name: "missing organization unit",
 			mutate: func(c *testutils.CredentialConfiguration) {
 				c.OUID = ""
-				c.OUHandle = ""
 			},
-			wantCode: codeConfigInvalidOU,
-		},
-		{
-			name: "unresolvable organization unit handle",
-			mutate: func(c *testutils.CredentialConfiguration) {
-				c.OUID = ""
-				c.OUHandle = "no-such-ou-handle"
-			},
-			wantCode: codeConfigInvalidOU,
+			wantCode: codeConfigInvalidRequest,
 		},
 		{
 			name: "empty claim name",
@@ -497,6 +620,17 @@ func (ts *CredentialConfigurationAPITestSuite) TestDeclarativeVisibility() {
 	ts.Equal("en-US", display["locale"])
 	ts.Equal("https://example.com/declarative-credential.png", display["logoUri"])
 	ts.Equal(float64(3600), fetched["validitySeconds"])
+}
+
+// TestDeclarativeOUHandleResolvesToOUID verifies startup resolves the declarative
+// fixture's ouHandle path and persists the resulting organization-unit ID.
+func (ts *CredentialConfigurationAPITestSuite) TestDeclarativeOUHandleResolvesToOUID() {
+	res := ts.configRequest(http.MethodGet, configAPIBasePath+"/"+declConfigID, nil)
+	ts.Require().Equalf(http.StatusOK, res.StatusCode, "get declarative: %s", string(res.Body))
+
+	fetched := ts.decode(res.Body)
+	ts.Equal(declConfigOUID, fetched["ouId"])
+	ts.Equal("decl-ou-1", fetched["ouHandle"])
 }
 
 // TestDeclarativeAppearsInList verifies declarative and runtime configurations

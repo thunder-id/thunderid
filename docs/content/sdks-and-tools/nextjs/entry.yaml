@@ -1,0 +1,121 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: nextjs
+name: Next.js
+icon: NextLogo
+category: fullstack
+type: sdk
+origin: official
+status: ga
+package:
+  name: "@thunderid/nextjs"
+  manager: npm
+description: Authentication for Next.js with full App Router and server-component support.
+docs:
+  overview: /docs/next/sdks-and-tools/nextjs/overview
+  apiReference: /docs/next/sdks-and-tools/nextjs/apis
+  quickstart: /docs/next/getting-started/connect-your-application/nextjs
+links:
+  github: https://github.com/thunder-id/javascript-sdks
+  package: https://www.npmjs.com/package/@thunderid/nextjs
+apiReference:
+  source: typedoc
+
+sections:
+  - type: api
+    id: api
+    title: API reference
+    intro: Every export is fully typed. The signatures and props below come from the package's own reference documentation,
+      so what is listed here is what the installed version ships.
+    kindTones:
+      function: accent
+    exports:
+    - group: Functions
+      kind: function
+      name: <ThunderIDProvider />
+      description: The `ThunderIDProvider` is a React Server Component that initializes {{ProductName}} authentication
+        and wraps your application layout. It manages server-side session state and provides authentication context
+        to all child components.
+      rowsLabel: Props
+      rows:
+      - name: children
+        type: ReactNode
+        description: '**Required.** Your application tree'
+      - name: sessionCookieExpiryTime
+        type: number
+        description: Session cookie lifetime in seconds. Also configurable via the `THUNDERID_SESSION_COOKIE_EXPIRY_TIME`
+          environment variable
+      example: |-
+        import { ThunderIDProvider } from '@thunderid/nextjs/server'
+
+        export default function RootLayout({
+          children,
+        }: {
+          children: React.ReactNode
+        }) {
+          return (
+            <html lang="en">
+              <body>
+                <ThunderIDProvider>
+                  {children}
+                </ThunderIDProvider>
+              </body>
+            </html>
+          )
+        }
+    - group: Functions
+      kind: function
+      name: Configuration
+      description: The {{ProductName}} Next.js SDK reads configuration primarily from environment variables. This keeps
+        secrets out of your source code and follows Next.js conventions.
+      example: |-
+        NEXT_PUBLIC_THUNDERID_BASE_URL=https://localhost:8090
+        NEXT_PUBLIC_THUNDERID_CLIENT_ID=<your-client-id>
+        THUNDERID_CLIENT_SECRET=<your-client-secret>
+        THUNDERID_SECRET=<a-random-secret-for-session-signing>
+    - group: Functions
+      kind: function
+      name: Middleware
+      description: The {{ProductName}} Next.js SDK provides Edge Runtime-compatible middleware for automatic token refresh
+        and route protection.
+      example: |-
+        import {
+          thunderIDProxy,
+          createRouteMatcher,
+        } from '@thunderid/nextjs/server'
+
+        const isProtectedRoute = createRouteMatcher(['/dashboard(.*)'])
+
+        export default thunderIDProxy(async (thunderid, request) => {
+          if (isProtectedRoute(request)) {
+            await thunderid.protectRoute()
+          }
+        })
+
+        export const config = {
+          matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+        }
+    - group: Functions
+      kind: function
+      name: Server Actions
+      description: The {{ProductName}} Next.js SDK provides server actions for authentication, session management, and
+        user operations. These run only on the server and never expose tokens to the client. Import all server actions
+        from `@thunderid/nextjs/server`.
+      example: |-
+        import { signInAction } from '@thunderid/nextjs/server'
+
+        // Redirect-based sign-in (default)
+        await signInAction()
+
+        // With embedded flow payload (advanced)
+        await signInAction(payload, requestConfig)
+
+  - type: quickstart
+    id: quickstart
+    title: Get started
+    intro: Provider, session, and a protected route, start to finish.
+    label: Connect your application
+    path: Getting started / Connect your application / Next.js
+    outro: The quickstart is maintained alongside the rest of the getting-started guides so it stays in step with the
+      platform. This page covers the package itself.

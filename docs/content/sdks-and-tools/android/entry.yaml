@@ -1,0 +1,533 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: android
+name: Android
+icon: AndroidLogo
+category: mobile
+type: sdk
+origin: official
+status: ga
+package:
+  name: io.thunderid:android
+  manager: gradle
+description: Native Kotlin SDK with hosted login and secure token storage.
+docs:
+  overview: /docs/next/sdks-and-tools/android/overview
+  apiReference: /docs/next/sdks-and-tools/android/apis
+  quickstart: /docs/next/getting-started/connect-your-application/android
+links:
+  github: https://github.com/thunder-id/android-sdks
+apiReference:
+  source: manual
+
+sections:
+  - type: api
+    id: api
+    title: API reference
+    intro: Every export is fully typed. The signatures and props below come from the package's own reference documentation,
+      so what is listed here is what the installed version ships.
+    kindTones:
+      component: primary
+      function: accent
+    exports:
+    - group: Components
+      kind: component
+      name: SignIn
+      description: 'The `SignIn` composable renders a full app-native sign-in form. It drives the Flow Execution API
+        loop automatically: initiating the flow, presenting the server-defined inputs and actions on each step, and
+        completing when the user is authenticated. `SignIn` requires `ThunderIDProvider` in its ancestor composable
+        hierarchy.'
+      rowsLabel: Parameters
+      rows:
+      - name: applicationId
+        type: String
+        tag: required
+        description: The Application ID from your {{ProductName}} application settings. Identifies which sign-in flow
+          to execute.
+      - name: modifier
+        type: Modifier
+        tag: optional
+        description: Compose modifier applied to the form container.
+      - name: onComplete
+        type: (() -> Unit)?
+        tag: optional
+        description: Called when authentication completes successfully.
+      - name: onError
+        type: ((String) -> Unit)?
+        tag: optional
+        description: Called with an error message when a flow step fails.
+      example: |-
+        import dev.thunderid.compose.components.presentation.auth.SignIn
+
+        @Composable
+        fun AuthView(applicationId: String) {
+            SignIn(
+                applicationId = applicationId,
+                modifier = Modifier.fillMaxWidth().padding(16.dp)
+            )
+        }
+    - group: Components
+      kind: component
+      name: SignInButton
+      description: The `SignInButton` composable renders a pre-styled button that calls an `onClick` lambda when tapped.
+        It does not initiate the sign-in flow itself. Your `onClick` handler opens the sign-in UI (e.g., showing a `SignIn`
+        form or launching the redirect URL). `SignInButton` requires `ThunderIDProvider` in its ancestor composable
+        hierarchy.
+      rowsLabel: Parameters
+      rows:
+      - name: onClick
+        type: () -> Unit
+        tag: required
+        description: Called when the button is tapped.
+      - name: modifier
+        type: Modifier
+        tag: optional
+        description: Compose modifier.
+      example: |-
+        import dev.thunderid.compose.components.actions.SignInButton
+
+        @Composable
+        fun LandingView() {
+            var showSignIn by remember { mutableStateOf(false) }
+
+            SignInButton(onClick = { showSignIn = true })
+
+            if (showSignIn) {
+                SignIn(applicationId = "<your-application-id>")
+            }
+        }
+    - group: Components
+      kind: component
+      name: SignOutButton
+      description: The `SignOutButton` composable renders a pre-styled button that calls `ThunderIDClient.signOut()`,
+        then calls `ThunderIDState.refresh()` to update the reactive auth state. It disables itself automatically while
+        the sign-out operation is in progress. `SignOutButton` requires `ThunderIDProvider` in its ancestor composable
+        hierarchy.
+      rowsLabel: Parameters
+      rows:
+      - name: modifier
+        type: Modifier
+        tag: optional
+        description: Compose modifier applied to the button.
+      - name: onSignOutComplete
+        type: (() -> Unit)?
+        tag: optional
+        description: Called after sign-out completes and `ThunderIDState` has been refreshed.
+      example: |-
+        import dev.thunderid.compose.components.actions.SignOutButton
+
+        @Composable
+        fun HomeView() {
+            Column {
+                Text("You are signed in.")
+                SignOutButton()
+            }
+        }
+    - group: Components
+      kind: component
+      name: SignUp
+      description: 'The `SignUp` composable renders a full app-native registration form. It drives the Flow Execution
+        API loop automatically: initiating the registration flow, presenting the server-defined inputs and actions on
+        each step, and completing when the user is registered and authenticated. `SignUp` requires `ThunderIDProvider`
+        in its ancestor composable hierarchy.'
+      rowsLabel: Parameters
+      rows:
+      - name: modifier
+        type: Modifier
+        tag: optional
+        description: Compose modifier applied to the form container.
+      - name: onComplete
+        type: (() -> Unit)?
+        tag: optional
+        description: Called when registration completes successfully.
+      - name: onError
+        type: ((String) -> Unit)?
+        tag: optional
+        description: Called with an error message when a flow step fails.
+      example: |-
+        import dev.thunderid.compose.components.presentation.auth.SignUp
+
+        @Composable
+        fun RegisterView() {
+            SignUp(modifier = Modifier.fillMaxWidth().padding(16.dp))
+        }
+    - group: Components
+      kind: component
+      name: SignedIn
+      description: The `SignedIn` composable conditionally renders its content only when the user is authenticated.
+        It reads the current sign-in state from `LocalThunderID` and displays protected UI for signed-in users, while
+        rendering optional fallback content (or nothing) when the user is not authenticated. `SignedIn` requires `ThunderIDProvider`
+        in its ancestor composable hierarchy.
+      rowsLabel: Parameters
+      rows:
+      - name: fallback
+        type: (@Composable () -> Unit)?
+        tag: optional
+        description: The composable to render when the user is not authenticated. Defaults to nothing.
+      - name: content
+        type: '@Composable () -> Unit'
+        tag: required
+        description: The composable to render when the user is authenticated.
+      example: |-
+        import dev.thunderid.compose.components.guards.SignedIn
+
+        @Composable
+        fun ContentView() {
+            SignedIn {
+                Text("You are signed in.")
+            }
+        }
+    - group: Components
+      kind: component
+      name: SignedOut
+      description: The `SignedOut` composable conditionally renders its content only when the user is **not** authenticated.
+        It is the counterpart to `SignedIn`. `SignedOut` requires `ThunderIDProvider` in its ancestor composable hierarchy.
+      rowsLabel: Parameters
+      rows:
+      - name: fallback
+        type: (@Composable () -> Unit)?
+        tag: optional
+        description: The composable to render when the user is authenticated. Defaults to nothing.
+      - name: content
+        type: '@Composable () -> Unit'
+        tag: required
+        description: The composable to render when the user is not authenticated.
+      example: |-
+        import dev.thunderid.compose.components.guards.SignedOut
+
+        @Composable
+        fun ContentView() {
+            SignedOut {
+                Text("Please sign in to continue.")
+            }
+        }
+    - group: Components
+      kind: component
+      name: UserProfile
+      description: The `UserProfile` composable renders an editable profile form. It loads the user's current profile
+        from `/scim2/Me` when it first composes, presents editable fields for `displayName` and `phoneNumbers`, and
+        saves changes via `ThunderIDClient.updateUserProfile`. `UserProfile` requires `ThunderIDProvider` in its ancestor
+        composable hierarchy.
+      rowsLabel: Parameters
+      rows:
+      - name: modifier
+        type: Modifier
+        tag: optional
+        description: Compose modifier applied to the form container.
+      - name: onSaved
+        type: (() -> Unit)?
+        tag: optional
+        description: Called after a successful profile save.
+      - name: onError
+        type: (() -> Unit)?
+        tag: optional
+        description: Called when a load or save operation fails.
+      example: |-
+        import dev.thunderid.compose.components.presentation.user.UserProfile
+
+        @OptIn(ExperimentalMaterial3Api::class)
+        @Composable
+        fun ProfileSheet(onDismiss: () -> Unit) {
+            ModalBottomSheet(onDismissRequest = onDismiss) {
+                UserProfile(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    onSaved = onDismiss
+                )
+            }
+        }
+    - group: Functions
+      kind: function
+      name: Configuration
+      description: '`ThunderIDConfig` is the configuration data class passed to `ThunderIDClient.initialize(config,
+        storage)` and to the `ThunderIDProvider` composable.'
+      rowsLabel: Parameters
+      rows:
+      - name: baseUrl
+        type: String
+        description: '**Required.** Your {{ProductName}} instance URL. Must use HTTPS (e.g., `https://localhost:8090`).'
+      - name: clientId
+        type: String?
+        description: The Client ID from your {{ProductName}} application. Required for redirect-based authentication
+          and token operations.
+      - name: scopes
+        type: List
+        description: OAuth 2.0 scopes to request. Include `"profile"` and `"email"` to receive user identity claims.
+      - name: afterSignInUrl
+        type: String?
+        description: The redirect URI to return to after sign-in. Must match an **Allowed Redirect URI** registered
+          in the console.
+      - name: afterSignOutUrl
+        type: String?
+        description: The redirect URI to return to after sign-out. Must match an **Allowed Post-Logout Redirect URI**
+          in the console.
+      - name: signInUrl
+        type: String?
+        description: Override the sign-in URL. Defaults to the {{ProductName}} hosted sign-in page.
+      - name: signUpUrl
+        type: String?
+        description: Override the sign-up URL.
+      - name: clientSecret
+        type: String?
+        description: Client secret for confidential clients. Do not include this in a shipped Android app.
+      - name: signInOptions
+        type: Map
+        description: Additional query parameters appended to the authorization URL on sign-in.
+      - name: signOutOptions
+        type: Map
+        description: Additional parameters sent with the sign-out request.
+      - name: signUpOptions
+        type: Map
+        description: Additional parameters sent with the sign-up request.
+      - name: applicationId
+        type: String?
+        description: The Application ID used for app-native (embedded) sign-in flows via the Flow Execution API.
+      - name: organizationHandle
+        type: String?
+        description: The organization handle for multi-tenant deployments.
+      - name: tokenValidation
+        type: TokenValidationConfig
+        description: Controls ID token validation behavior.
+      - name: storage
+        type: StorageAdapter?
+        description: Custom token storage backend. Defaults to `EncryptedStorageAdapter`.
+      - name: instanceId
+        type: Int?
+        description: Identifies the SDK instance when running multiple instances in one process.
+      example: |-
+        import dev.thunderid.android.ThunderIDConfig
+
+        val config = ThunderIDConfig(
+            baseUrl = "https://localhost:8090",
+            clientId = "<your-client-id>",
+            scopes = listOf("openid", "profile", "email"),
+            afterSignInUrl = "dev.thunderid.app://callback",
+            afterSignOutUrl = "dev.thunderid.app://logout",
+            applicationId = "<your-application-id>"
+        )
+    - group: Functions
+      kind: function
+      name: ThunderIDClient
+      description: '`ThunderIDClient` is the core authentication client in the `dev.thunderid:android` library. It manages
+        the full authentication lifecycle: initialization, sign-in (both app-native and redirect-based), session, token
+        management, and user profile operations. When you use the `dev.thunderid:compose` library, a `ThunderIDClient`
+        instance is created and managed automatically. You can access it via `LocalThunderID.current.client` from any
+        composable.'
+      example: |-
+        import dev.thunderid.android.ThunderIDClient
+        import dev.thunderid.android.ThunderIDConfig
+
+        val client = ThunderIDClient()
+
+        client.initialize(
+            config = ThunderIDConfig(
+                baseUrl = "https://localhost:8090",
+                clientId = "<your-client-id>",
+                scopes = listOf("openid", "profile", "email"),
+                afterSignInUrl = "dev.thunderid.app://callback",
+                afterSignOutUrl = "dev.thunderid.app://logout"
+            )
+        )
+    - group: Functions
+      kind: function
+      name: ThunderIDState
+      description: '`ThunderIDState` is the reactive authentication state class provided by the `dev.thunderid:compose`
+        library. It holds the current user, loading state, and initialization status, and exposes the underlying `ThunderIDClient`
+        for direct API calls. `ThunderIDState` is provided via `LocalThunderID`, a `CompositionLocal` injected by `ThunderIDProvider`.
+        Any composable in the hierarchy can read it using `LocalThunderID.current`.'
+      example: |-
+        import androidx.activity.ComponentActivity
+        import androidx.activity.compose.setContent
+        import dev.thunderid.android.ThunderIDConfig
+        import dev.thunderid.compose.ThunderIDProvider
+
+        class MainActivity : ComponentActivity() {
+            override fun onCreate(savedInstanceState: Bundle?) {
+                super.onCreate(savedInstanceState)
+                setContent {
+                    ThunderIDProvider(
+                        config = ThunderIDConfig(
+                            baseUrl = "https://localhost:8090",
+                            clientId = "<your-client-id>",
+                            afterSignInUrl = "dev.thunderid.app://callback",
+                            afterSignOutUrl = "dev.thunderid.app://logout"
+                        )
+                    ) {
+                        AppContent()
+                    }
+                }
+            }
+        }
+
+  - type: quickstart
+    id: quickstart
+    title: Get started
+    intro: Provider, session, and a protected route, start to finish.
+    label: Connect your application
+    path: Getting started / Connect your application / Android
+    outro: The quickstart is maintained alongside the rest of the getting-started guides so it stays in step with the
+      platform. This page covers the package itself.
+  - type: guides
+    id: guides
+    title: Guides
+    intro: Task-focused walkthroughs maintained alongside the SDK.
+
+guides:
+  - id: accessing-protected-apis
+    title: Accessing Protected APIs
+    icon: key
+    description: Make authenticated API requests from an Android application using OkHttp with automatic bearer token
+      injection.
+    intro: When your app needs to call a backend API that requires authentication, use `ThunderIDClient.getAccessToken()`
+      to retrieve a valid access token and attach it as a Bearer token to your requests. The SDK automatically refreshes
+      the token if it has expired.
+    sections:
+    - type: steps
+      id: steps
+      title: Accessing Protected APIs
+      steps:
+      - title: Using HttpURLConnection
+        description: 'The following example calls a protected API endpoint using the standard Android `HttpURLConnection`:'
+        code:
+          file: ApiClient.kt
+          lang: kotlin
+          content: |2-
+
+            suspend fun fetchProtectedResource(thunder: ThunderIDState): String {
+                val token = thunder.client.getAccessToken()
+
+                return withContext(Dispatchers.IO) {
+                    val connection = URL("https://localhost:8090/api/resource").openConnection() as HttpURLConnection
+                    connection.setRequestProperty("Authorization", "Bearer $token")
+                    connection.setRequestProperty("Accept", "application/json")
+
+                    check(connection.responseCode in 200..299) {
+                        "Request failed: ${connection.responseCode}"
+                    }
+
+                    connection.inputStream.bufferedReader().readText()
+                }
+            }
+      - title: Token Refresh
+        description: '`getAccessToken()` refreshes the access token automatically when it is expired, as long as a valid
+          refresh token is available. You do not need to handle refresh manually. If the refresh token is also expired,
+          `getAccessToken()` throws `IAMException` with code `SESSION_EXPIRED`. Handle this by signing the user out:'
+        code:
+          lang: kotlin
+          content: |-
+            try {
+                val token = thunder.client.getAccessToken()
+                // use token
+            } catch (e: IAMException) {
+                if (e.code == IAMErrorCode.SESSION_EXPIRED) {
+                    runCatching { thunder.client.signOut() }
+                    thunder.refresh()
+                } else {
+                    println("Unexpected error: $e")
+                }
+            }
+      - title: Using OkHttp
+        description: 'If your project uses [OkHttp](https://square.github.io/okhttp/), create an `Interceptor` that
+          injects the access token:'
+        code:
+          file: ThunderIDInterceptor.kt
+          lang: kotlin
+          content: |2-
+
+            class ThunderIDInterceptor(private val thunder: ThunderIDState) : Interceptor {
+                override fun intercept(chain: Interceptor.Chain): Response {
+                    val token = runBlocking { thunder.client.getAccessToken() }
+                    val request = chain.request().newBuilder()
+                        .addHeader("Authorization", "Bearer $token")
+                        .build()
+                    return chain.proceed(request)
+                }
+            }
+      - title: Using Retrofit
+        description: 'If your project uses [Retrofit](https://square.github.io/retrofit/), combine it with the OkHttp
+          interceptor above:'
+        code:
+          lang: kotlin
+          content: |-
+            val retrofit = Retrofit.Builder()
+                .baseUrl("https://localhost:8090/")
+                .client(
+                    OkHttpClient.Builder()
+                        .addInterceptor(ThunderIDInterceptor(thunder))
+                        .build()
+                )
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+
+            val api = retrofit.create(MyApiService::class.java)
+  - id: try-the-sample-app
+    title: Try the Android Sample App
+    icon: terminal
+    description: Run the {{ProductName}} Android sample app to see the full authentication lifecycle end to end.
+    intro: 'The SDK repository ships a sample app in [`samples/quickstart`](https://github.com/thunder-id/android-sdks/tree/main/samples/quickstart)
+      that exercises the full authentication lifecycle end to end: sign-in, sign-up, and sign-out via the SDK''s app-native
+      Flow Execution. } />'
+    sections:
+    - type: steps
+      id: steps
+      title: Try the Android Sample App
+      steps:
+      - title: Prerequisites
+        description: '- Android Studio 2022.3+ - A running {{ProductName}} instance'
+      - title: Prepare the Android Sample
+        code:
+          lang: bash
+          content: |-
+            cd samples/quickstart
+            cp config.properties.example config.properties
+      - title: Configure the Android Sample
+        description: 'This sample uses app-native authentication (Flow Execution API), so only the base URL and application
+          ID are required, no OAuth2 client ID or redirect URIs. | Variable | Description | |----------|-------------|
+          | `THUNDERID_BASE_URL` | Base URL of your {{ProductName}} server (HTTPS) | | `THUNDERID_APPLICATION_ID` |
+          Application UUID from {{ProductName}} console | `config.properties` is gitignored. Never commit real credentials.
+          If your {{ProductName}} server is running on `localhost`, don''t use `localhost` in `THUNDERID_BASE_URL` directly:
+          - **Emulator**: use `https://10.0.2.2:8090`, the emulator''s alias for your host machine''s loopback. - **Physical
+          device**: run `adb reverse tcp:8090 tcp:8090` to forward the port over USB and keep using `https://localhost:8090`,
+          or point the URL at your host machine''s LAN IP.'
+      - title: Attestation via Google Play Integrity (optional)
+        description: 'If the application enforces Google Play Integrity attestation, set `THUNDERID_ATTESTATION_ENABLED=true`
+          and `THUNDERID_CLOUD_PROJECT_NUMBER` to the number (not the ID) of the Google Cloud project linked to your
+          Play Console app, then rebuild. When enabled, the sample mints a token via `PlayIntegrityTokenProvider` (Play
+          Integrity Standard API) and sends it with every native flow-initiate request. Testing this end-to-end requires:
+          - The app uploaded to a Play Console listing (an internal testing track is enough) with your test device''s
+          Google account added as a tester, so Play recognizes the package name and signing certificate. - The Play
+          Integrity API enabled on the linked Google Cloud project. - A release build signed with the certificate registered
+          on the {{ProductName}} application''s attestation config (`certificateSha256Digests`), a debug-signed APK
+          will fail the signing-identity check.'
+      - title: Passkeys (WebAuthn)
+        description: 'Passkey registration/authentication via Jetpack Credential Manager (`CreatePublicKeyCredentialRequest`/`GetPublicKeyCredentialOption`
+          in `PasskeyClient`) requires the server''s passkey relying party (`rp.id`) to be a real HTTPS domain, not
+          `localhost` or `10.0.2.2`. Android verifies the caller is allowed to use that `rp.id` via **Digital Asset
+          Links**: the domain must serve `https:///.well-known/assetlinks.json` declaring this app''s package name and
+          signing certificate SHA-256 fingerprint(s) under `delegate_permission/common.get_login_creds`. Without this,
+          Credential Manager rejects the ceremony. This sample ships `assetlinks.json.example` with a placeholder `sha256_cert_fingerprints`
+          entry for the sample''s `applicationId` (`dev.thunderid.Quickstart`). To exercise passkeys end-to-end: 1.
+          Rename/copy `assetlinks.json.example` to `assetlinks.json` and replace `` with the SHA-256 fingerprint of
+          the signing certificate for the build you''ll test with (get it via `keytool -list -v -keystore -alias ` or
+          `./gradlew signingReport` for a debug build). 2. Host that file at `https:///.well-known/assetlinks.json`,
+          the domain must serve valid HTTPS (self-signed certs will not work). 3. Make sure the server''s passkey `rp.id`
+          matches that same domain, the SDK''s `PasskeyClient` passes whatever `rp.id`/relying-party options the server
+          returns straight through to Credential Manager. 4. No `AndroidManifest.xml` change is required for this, unlike
+          iOS''s Associated Domains entitlement, Digital Asset Links verification is purely a server-hosted file requirement
+          and does not need an App Links intent filter (this sample doesn''t declare one). Exposing a local {{ProductName}}
+          instance under a real, HTTPS-reachable domain (e.g. via a tunnel) is left to you, this sample only wires up
+          the template file/documentation, not the tunnel itself.'
+      - title: Run
+        description: Open in Android Studio, sync Gradle, and run on an API 24+ emulator or device.
+      - title: Next Steps
+        description: '- [Accessing Protected APIs](../accessing-protected-apis): Make authenticated API requests from
+          an Android application using OkHttp with automatic bearer token injection'
+
+rail:
+  statsTitle: Package
+  stats:
+    - {label: Package, value: "io.thunderid:android"}
+    - {label: Registry, value: "Gradle"}
+    - {label: Licence, value: "Apache 2.0"}
+  relatedTitle: Related SDKs
+  related: [flutter, ios]

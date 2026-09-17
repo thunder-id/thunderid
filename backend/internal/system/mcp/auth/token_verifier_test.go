@@ -19,7 +19,9 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 )
 
@@ -60,10 +62,14 @@ func TestTokenVerifierTestSuite(t *testing.T) {
 	suite.Run(t, new(TokenVerifierTestSuite))
 }
 
+// encodeTestToken builds a self-issued access token. The RFC 9068 typ header is required: a
+// self-issued token that is not an access token is rejected before verification.
 func encodeTestToken(payload map[string]interface{}) string {
+	headerJSON, _ := json.Marshal(map[string]interface{}{"alg": "RS256", "typ": jwt.TokenTypeAccessToken})
 	payloadJSON, _ := json.Marshal(payload)
+	headerB64 := base64.RawURLEncoding.EncodeToString(headerJSON)
 	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadJSON)
-	return "header." + payloadB64 + ".signature"
+	return headerB64 + "." + payloadB64 + ".signature"
 }
 
 func (suite *TokenVerifierTestSuite) newVerifier() auth.TokenVerifier {
@@ -103,9 +109,13 @@ func (suite *TokenVerifierTestSuite) TestNewTokenVerifier_Success() {
 }
 
 func (suite *TokenVerifierTestSuite) TestNewTokenVerifier_JWTVerificationFailed() {
-	testToken := "invalid.token.here"
+	testToken := encodeTestToken(map[string]interface{}{"sub": "user123"})
 
-	suite.mockJWT.On("VerifyJWT", mock.Anything, testToken, testMCPURL, "").Return(nil)
+	suite.mockJWT.On("VerifyJWT", mock.Anything, testToken, testMCPURL, "").Return(&tidcommon.ServiceError{
+		Type:  tidcommon.ServerErrorType,
+		Code:  "INVALID_SIGNATURE",
+		Error: tidcommon.I18nMessage{DefaultValue: "Invalid signature"},
+	})
 
 	verifier := suite.newVerifier()
 	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
@@ -137,7 +147,8 @@ func (suite *TokenVerifierTestSuite) TestNewTokenVerifier_RevokedTokenRejected()
 }
 
 func (suite *TokenVerifierTestSuite) TestNewTokenVerifier_InvalidPayload() {
-	testToken := "header.invalid-payload.signature"
+	headerJSON, _ := json.Marshal(map[string]interface{}{"alg": "RS256", "typ": jwt.TokenTypeAccessToken})
+	testToken := base64.RawURLEncoding.EncodeToString(headerJSON) + ".invalid-payload.signature"
 
 	suite.mockJWT.On("VerifyJWT", mock.Anything, testToken, testMCPURL, "").Return(nil)
 

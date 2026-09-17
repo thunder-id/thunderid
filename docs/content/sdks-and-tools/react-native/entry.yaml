@@ -1,0 +1,14 @@
+# SDKs & tools registry entry. Schema: docs/src/types/ecosystem.ts
+# Metadata for one entry. Its pages, when it has any, sit beside this file or
+# under another content tree; `docs:` below says where.
+id: react-native
+name: React Native
+icon: ReactLogo
+category: mobile
+type: sdk
+origin: official
+status: soon
+package:
+  name: "@thunderid/react-native"
+  manager: npm
+description: Cross-platform mobile authentication for React Native apps.
