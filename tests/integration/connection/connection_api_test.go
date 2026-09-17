@@ -8,7 +8,11 @@ package connection
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
@@ -129,6 +133,22 @@ type oauthConnectionRequest struct {
 	AttributeConfiguration *testutils.AttributeConfiguration `json:"attributeConfiguration,omitempty"`
 }
 
+type esignetConnectionRequest struct {
+	Name                   string                            `json:"name"`
+	ClientID               string                            `json:"clientId"`
+	RedirectURI            string                            `json:"redirectUri"`
+	AuthorizationEndpoint  string                            `json:"authorizationEndpoint"`
+	TokenEndpoint          string                            `json:"tokenEndpoint"`
+	UserInfoEndpoint       string                            `json:"userInfoEndpoint"`
+	JwksEndpoint           string                            `json:"jwksEndpoint"`
+	SigningKey             string                            `json:"signingKey,omitempty"`
+	SigningKeyID           string                            `json:"signingKeyId"`
+	Scopes                 []string                          `json:"scopes,omitempty"`
+	ACRValues              string                            `json:"acrValues,omitempty"`
+	UsernamePrefix         string                            `json:"usernamePrefix,omitempty"`
+	AttributeConfiguration *testutils.AttributeConfiguration `json:"attributeConfiguration,omitempty"`
+}
+
 type twilioConnectionRequest struct {
 	Name       string `json:"name"`
 	AccountSID string `json:"accountSid"`
@@ -163,6 +183,11 @@ type connectionResponse struct {
 	APISecret    string `json:"apiSecret,omitempty"`
 	SenderID     string `json:"senderId,omitempty"`
 	URL          string `json:"url,omitempty"`
+
+	SigningKey     string `json:"signingKey,omitempty"`
+	SigningKeyID   string `json:"signingKeyId,omitempty"`
+	ACRValues      string `json:"acrValues,omitempty"`
+	UsernamePrefix string `json:"usernamePrefix,omitempty"`
 
 	Scopes                 []string                          `json:"scopes,omitempty"`
 	AttributeConfiguration *testutils.AttributeConfiguration `json:"attributeConfiguration,omitempty"`
@@ -314,6 +339,86 @@ func (s *ConnectionAPITestSuite) TestOAuthCreateAndGet() {
 	defer s.deleteConnection("oauth", created.ID)
 
 	s.Equal("oauth", created.Type)
+}
+
+// esignetSigningKeyPEM is a throwaway RSA key for the connection CRUD cases. Nothing in this
+// suite signs with it; it only has to be accepted, stored encrypted, and masked on read.
+// Generating it rather than embedding one keeps a private key, even a worthless one, out of the
+// repository.
+var esignetSigningKeyPEM = func() string {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		panic(err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	}))
+}()
+
+// newESignetRequest returns a complete eSignet create payload. eSignet uses private_key_jwt,
+// so it carries a signing key rather than a client secret.
+func newESignetRequest(name string) esignetConnectionRequest {
+	return esignetConnectionRequest{
+		Name:                  name,
+		ClientID:              "esignet-client",
+		RedirectURI:           "https://localhost:8095/flow/authn",
+		AuthorizationEndpoint: "https://esignet.example.com/authorize",
+		TokenEndpoint:         "https://esignet.example.com/v1/esignet/oauth/v2/token",
+		UserInfoEndpoint:      "https://esignet.example.com/v1/esignet/oidc/userinfo",
+		JwksEndpoint:          "https://esignet.example.com/v1/esignet/oauth/.well-known/jwks.json",
+		SigningKey:            esignetSigningKeyPEM,
+		SigningKeyID:          "esignet-kid-1",
+		Scopes:                []string{"openid", "profile"},
+		ACRValues:             "mosip:idp:acr:generated-code",
+		UsernamePrefix:        "esignet-",
+	}
+}
+
+func (s *ConnectionAPITestSuite) TestESignetCRUDRoundTrip() {
+	created := s.createConnection("esignet", newESignetRequest("Test eSignet"))
+	defer s.deleteConnection("esignet", created.ID)
+
+	s.Equal("esignet", created.Type)
+	s.Equal("esignet-client", created.ClientID)
+	// The signing key is a secret, so it is never returned in plain text.
+	s.Equal(maskedSecretValue, created.SigningKey)
+	s.Equal("esignet-kid-1", created.SigningKeyID)
+	s.Equal("mosip:idp:acr:generated-code", created.ACRValues)
+	s.Equal("esignet-", created.UsernamePrefix)
+	s.ElementsMatch([]string{"openid", "profile"}, created.Scopes)
+
+	res, err := doRequest(http.MethodGet, "/connections/esignet/"+created.ID, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, res.status, string(res.body))
+	var fetched connectionResponse
+	s.Require().NoError(res.decode(&fetched))
+	s.Equal(maskedSecretValue, fetched.SigningKey)
+	s.Equal("esignet-kid-1", fetched.SigningKeyID)
+
+	// Omitting the signing key on update must preserve the stored one, as for a client secret.
+	updateBody := newESignetRequest("Test eSignet Renamed")
+	updateBody.SigningKey = ""
+	updateBody.SigningKeyID = "esignet-kid-2"
+	updateRes, err := doRequest(http.MethodPut, "/connections/esignet/"+created.ID, updateBody)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, updateRes.status, string(updateRes.body))
+	var updated connectionResponse
+	s.Require().NoError(updateRes.decode(&updated))
+	s.Equal("Test eSignet Renamed", updated.Name)
+	s.Equal("esignet-kid-2", updated.SigningKeyID)
+	s.Equal(maskedSecretValue, updated.SigningKey)
+}
+
+// Every eSignet endpoint is deployment specific, so a create that omits one must be rejected
+// rather than silently defaulted.
+func (s *ConnectionAPITestSuite) TestESignetCreateRejectsMissingRequiredProperty() {
+	body := newESignetRequest("Test eSignet Invalid")
+	body.SigningKey = ""
+
+	res, err := doRequest(http.MethodPost, "/connections/esignet", body)
+	s.Require().NoError(err)
+	s.Equal(http.StatusBadRequest, res.status, string(res.body))
 }
 
 func (s *ConnectionAPITestSuite) TestTwilioCRUDRoundTripWithSecretMasking() {

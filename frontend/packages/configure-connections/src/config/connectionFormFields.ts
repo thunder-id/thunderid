@@ -50,6 +50,8 @@ export interface ConnectionFieldDef {
   requiredWhen?: string;
   /** Which form mode renders this field (default 'both'). Optional fields are edit-only to keep create simple. */
   visibility?: ConnectionFieldVisibility;
+  /** Secret fields only: render a textarea, for values that carry newlines such as a PEM key. */
+  multiline?: boolean;
 }
 
 const NAME_FIELD = (placeholder: string): ConnectionFieldDef => ({
@@ -216,6 +218,95 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
     PROMPT_FIELD,
     TOKEN_EXCHANGE_ENABLED_FIELD,
     TRUSTED_TOKEN_AUDIENCE_FIELD,
+  ],
+  [ConnectionTypes.ESIGNET]: [
+    NAME_FIELD('MOSIP eSignet'),
+    {
+      name: 'clientId',
+      labelKey: 'connections:form.fields.clientId.label',
+      hintKey: 'connections:form.fields.clientId.hint',
+      kind: 'text',
+      required: true,
+      placeholder: 'thunderid-esignet',
+    },
+    {
+      name: 'authorizationEndpoint',
+      labelKey: 'connections:form.fields.authorizationEndpoint.label',
+      hintKey: 'connections:form.fields.authorizationEndpoint.hint',
+      kind: 'url',
+      required: true,
+      placeholder: 'https://esignet.example.com/authorize',
+    },
+    {
+      name: 'tokenEndpoint',
+      labelKey: 'connections:form.fields.tokenEndpoint.label',
+      hintKey: 'connections:form.fields.tokenEndpoint.hint',
+      kind: 'url',
+      required: true,
+      placeholder: 'https://esignet.example.com/v1/esignet/oauth/v2/token',
+    },
+    {
+      name: 'userInfoEndpoint',
+      labelKey: 'connections:form.fields.userInfoEndpoint.label',
+      hintKey: 'connections:form.fields.userInfoEndpoint.hint',
+      kind: 'url',
+      required: true,
+      placeholder: 'https://esignet.example.com/v1/esignet/oidc/userinfo',
+    },
+    {
+      name: 'jwksEndpoint',
+      labelKey: 'connections:form.fields.jwksEndpoint.label',
+      hintKey: 'connections:form.fields.jwksEndpoint.hint',
+      kind: 'url',
+      required: true,
+      placeholder: 'https://esignet.example.com/v1/esignet/oauth/.well-known/jwks.json',
+    },
+    {
+      name: 'signingKey',
+      labelKey: 'connections:form.fields.signingKey.label',
+      hintKey: 'connections:form.fields.signingKey.hint',
+      kind: 'secret',
+      required: true,
+      multiline: true,
+    },
+    {
+      name: 'signingKeyId',
+      labelKey: 'connections:form.fields.signingKeyId.label',
+      hintKey: 'connections:form.fields.signingKeyId.hint',
+      kind: 'text',
+      required: true,
+      placeholder: 'W7PUmiG1rrSmsjDVcRQWA3mZPyPHVXqHELzgnMjrGrg',
+    },
+    {
+      name: 'redirectUri',
+      labelKey: 'connections:form.fields.redirectUri.label',
+      kind: 'readonly-copy',
+      visibility: 'edit',
+    },
+    {
+      name: 'scopes',
+      labelKey: 'connections:form.fields.scopes.label',
+      hintKey: 'connections:form.fields.scopes.hint',
+      kind: 'scopes',
+      placeholder: 'openid profile',
+      visibility: 'edit',
+    },
+    {
+      name: 'acrValues',
+      labelKey: 'connections:form.fields.acrValues.label',
+      hintKey: 'connections:form.fields.acrValues.hint',
+      kind: 'text',
+      placeholder: 'mosip:idp:acr:generated-code',
+      visibility: 'edit',
+    },
+    {
+      name: 'usernamePrefix',
+      labelKey: 'connections:form.fields.usernamePrefix.label',
+      hintKey: 'connections:form.fields.usernamePrefix.hint',
+      kind: 'text',
+      placeholder: 'esignet-',
+      visibility: 'edit',
+    },
   ],
   [ConnectionTypes.OAUTH]: [
     NAME_FIELD('Acme OAuth2'),

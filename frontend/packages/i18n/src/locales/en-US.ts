@@ -1809,6 +1809,7 @@ const translations = {
     // Filters / categories
     'categories.all': 'All',
     'categories.social-login': 'Social Login',
+    'categories.login-provider': 'Login Provider',
     'categories.enterprise': 'Enterprise',
     'categories.sms': 'SMS',
     'categories.email': 'Email',
@@ -1828,6 +1829,7 @@ const translations = {
     // Vendor descriptions
     'vendor.google.description': 'Let users sign in with their Google account.',
     'vendor.github.description': 'Let users sign in with their GitHub account.',
+    'vendor.esignet.description': 'Let users sign in with their MOSIP eSignet digital identity.',
     'vendor.oidc.description': 'Connect any OpenID Connect identity provider.',
     'vendor.oauth.description': 'Connect any OAuth 2 identity provider.',
     'vendor.twilio.description': 'Send SMS one-time passcodes via Twilio.',
@@ -1872,6 +1874,8 @@ const translations = {
       'Create an OAuth client for your app in the Google Cloud Console under APIs and Services, Credentials. Register the redirect URI below as an authorized redirect URI, then enter the client ID and client secret Google gives you.',
     'configure.hint.github':
       'Create an OAuth app in GitHub under Settings, Developer settings, OAuth Apps. Set the authorization callback URL to the redirect URI below, then enter the client ID and client secret GitHub gives you.',
+    'configure.hint.esignet':
+      'Register ThunderID as an OIDC client with your eSignet deployment, using the public JWK of an RSA key pair you generate. Set the redirect URI below as an allowed redirect URI, then enter the client ID, the eSignet endpoints, the private key of that pair, and the key ID eSignet registered for it.',
 
     // Connection detail / edit page
     'detail.backToConnections': 'Back to Connections',
@@ -1928,6 +1932,18 @@ const translations = {
       "The provider's own profile API, called with the access token, for example https://api.github.com/user. Leave it empty only if the provider issues a JWT access token carrying a sub claim, which then supplies the subject and no other attributes. For an OpenID Connect provider, create an OIDC connection instead.",
     'form.fields.jwksEndpoint.label': 'JWKS endpoint',
     'form.fields.jwksEndpoint.hint': 'Endpoint that exposes signing keys for verifying identity tokens.',
+    'form.fields.signingKey.label': 'Signing key',
+    'form.fields.signingKey.hint':
+      'PEM encoded RSA private key used to sign client assertions. Paste the whole key, including the BEGIN and END lines. It is encrypted before it is stored and is never shown again.',
+    'form.fields.signingKeyId.label': 'Signing key ID',
+    'form.fields.signingKeyId.hint':
+      'Identifier (kid) of the public key registered with the provider, matching the signing key above.',
+    'form.fields.acrValues.label': 'ACR values',
+    'form.fields.acrValues.hint':
+      'Authentication context class references to request, separated by spaces. Leave empty to let the provider choose.',
+    'form.fields.usernamePrefix.label': 'Username prefix',
+    'form.fields.usernamePrefix.hint':
+      'Prefix added to usernames generated for users provisioned through this connection.',
     'form.fields.prompt.label': 'Prompt',
     'form.fields.prompt.hint':
       "Optional prompt value forwarded to the provider's authorization request, e.g. select_account or consent.",

@@ -1,0 +1,139 @@
+---
+title: Add an eSignet Identity Provider
+docType: guide
+sidebar_position: 4
+persona: iam
+description: Configure a MOSIP eSignet identity provider so users can sign in with their national digital identity.
+---
+
+# Add an eSignet Identity Provider
+
+This guide walks you through registering a MOSIP eSignet identity provider (IdP) in
+<ProductName />. Once configured, you can add **Continue with eSignet** to any application by
+including the eSignet executor in its authentication flow.
+
+eSignet is an OpenID Connect provider with its own connection type. For any other
+OIDC-compliant provider, use an [OIDC connection](../add-oidc-provider) instead.
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get Started](../../../getting-started/get-thunderid).
+- You can sign in to the <ProductName /> Console.
+- An eSignet deployment where you can register a relying party client.
+- `openssl` available locally.
+
+:::note Signing key instead of a client secret
+eSignet authenticates its clients with `private_key_jwt`. In place of a client secret, the
+connection holds a PEM-encoded RSA private key and the key ID of the matching public key
+registered with eSignet. <ProductName /> signs a client assertion with that key on every token
+exchange.
+:::
+
+<Stepper stepNode="h2" as="h2">
+
+## Step 1: Generate an RSA Key Pair
+
+Generate the key pair that authenticates <ProductName /> to eSignet:
+
+```bash
+openssl genrsa -out esignet-private.pem 2048
+openssl rsa -in esignet-private.pem -pubout -out esignet-public.pem
+```
+
+Keep `esignet-private.pem`. You paste it into the Console in step 4, after which it is
+encrypted and never displayed again.
+
+Convert `esignet-public.pem` to a JWK. eSignet registers public keys as JWKs, not as PEM.
+Follow your deployment's onboarding process for the format it accepts, and note the `kid` you
+assign to the key.
+
+## Step 2: Register <ProductName /> as a Client in eSignet
+
+Register a relying party client with your eSignet deployment, using:
+
+| Value | Description |
+|-------|-------------|
+| **Client ID** | The client identifier for this integration. Enter the same value in step 4. |
+| **Public JWK** | The public key from step 1, carrying the `kid` you assigned. |
+| **Redirect URI** | The URI the Console shows in step 4. Copy it from there rather than typing it. |
+| **Authentication method** | `private_key_jwt`. |
+
+eSignet rejects the token exchange when the redirect URI does not match character for
+character.
+
+## Step 3: Create the Connection
+
+1. Sign in to the <ProductName /> Console.
+2. Navigate to **Connections**.
+3. Click the **eSignet Login** card, under **Login Provider**.
+
+## Step 4: Configure the Connection
+
+The form shows a setup hint with the **Redirect URI**. Copy it and register it with eSignet if
+you have not already done so.
+
+Enter the following fields, then click **Create connection**:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| **Client ID** | Yes | The client identifier registered with eSignet. |
+| **Authorization endpoint** | Yes | The endpoint that starts the sign-in flow, for example `https://esignet.example.com/authorize`. |
+| **Token endpoint** | Yes | The endpoint used to exchange the authorization code for tokens. |
+| **UserInfo endpoint** | Yes | The endpoint used to fetch profile claims for the signed-in user. |
+| **JWKS endpoint** | Yes | The endpoint that exposes eSignet's signing keys, used to verify the ID token and the userinfo response. |
+| **Signing key** | Yes | The contents of `esignet-private.pem`, including the BEGIN and END lines. |
+| **Signing key ID** | Yes | The `kid` of the public JWK registered with eSignet. |
+
+</Stepper>
+
+:::note
+Paste the signing key rather than retyping it. The field is multiline because the PEM line
+breaks are significant.
+
+The key is encrypted before it is stored and is masked when the connection is read back. To
+replace it, paste a new key over the masked value. Leaving the masked value in place keeps the
+stored key.
+:::
+
+Optional settings are not part of the creation wizard. After creation, open the connection and
+configure them on its edit page:
+
+| Field | Description |
+|-------|-------------|
+| **Scopes** | Space-separated scopes to request during sign-in. Defaults to `openid profile` if left blank. |
+| **ACR values** | Space-separated authentication context class references to request. Leave blank to let eSignet choose. |
+| **Username prefix** | Prefix for usernames generated for users provisioned through this connection. Defaults to `esignet-`. |
+
+## ACR Values
+
+An ACR value selects how eSignet verifies the user, for example a one-time code or a biometric
+capture. The value is passed to eSignet unchanged, so use the identifiers your deployment
+publishes, for example `mosip:idp:acr:generated-code`.
+
+Set this only when your application requires a specific verification method. Left blank,
+eSignet applies its own default.
+
+## User Attributes
+
+On a successful sign-in, the executor writes four attributes for the rest of the flow to use:
+
+| Attribute | Description |
+|-----------|-------------|
+| `esignet_sub` | The eSignet subject identifier. |
+| `name` | The user's name, when eSignet returns it. |
+| `birthdate` | The user's date of birth, when eSignet returns it. |
+| `username` | The username prefix followed by the first 12 characters of the subject. |
+
+A returning user is matched to their local account on `esignet_sub`, so the user type you
+provision into must define that attribute. Add `name` and `birthdate` to the same user type to
+store those values.
+
+eSignet returns `name` and `birthdate` only when the requested scopes cover them and the user
+has consented, so treat both as optional.
+
+## Next Steps
+
+- [Connect an IdP to an Application](../connect-idp-to-application): Add this eSignet IdP to an
+  application's authentication flow.
+- [Manage Identity Providers](../manage-identity-providers): Update or delete identity
+  providers.

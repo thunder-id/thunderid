@@ -30,6 +30,7 @@ export const WidgetTypes = {
   EmailOTP: 'EMAIL_OTP',
   GoogleFederation: 'GOOGLE_FEDERATION',
   GithubFederation: 'GITHUB_FEDERATION',
+  ESignetFederation: 'ESIGNET_FEDERATION',
   EUDIWallet: 'EUDI_WALLET',
   PasskeyAuthentication: 'PASSKEY_AUTHENTICATION',
   Provisioning: 'PROVISIONING',

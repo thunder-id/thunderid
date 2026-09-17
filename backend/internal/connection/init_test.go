@@ -99,8 +99,9 @@ func (s *InitTestSuite) TestRouteTable() {
 	s.mockIDP.On("GetIdentityProviderList", mock.Anything).
 		Return([]idp.BasicIDPDTO{{ID: "gh-1", Name: "GH", Type: providers.IDPTypeGitHub}},
 			(*tidcommon.ServiceError)(nil))
-	s.mockIDP.On("CreateIdentityProvider", mock.Anything, mock.Anything).
-		Return(githubDTO, (*tidcommon.ServiceError)(nil))
+	s.mockIDP.On("CreateIdentityProvider", mock.Anything, mock.MatchedBy(func(dto *providers.IDPDTO) bool {
+		return dto.Type == providers.IDPTypeGitHub
+	})).Return(githubDTO, (*tidcommon.ServiceError)(nil))
 	s.mockIDP.On("GetIdentityProvider", mock.Anything, "gh-1").
 		Return(githubDTO, (*tidcommon.ServiceError)(nil))
 	s.mockIDP.On("UpdateIdentityProvider", mock.Anything, "gh-1", mock.Anything).
@@ -138,10 +139,23 @@ func (s *InitTestSuite) TestRouteTable() {
 	s.mockNotif.On("DeleteSender", mock.Anything, "sg-1").
 		Return((*tidcommon.ServiceError)(nil))
 
+	esignetDTO := &providers.IDPDTO{ID: "es-1", Name: "ES", Type: providers.IDPTypeESignet}
+	s.mockIDP.On("CreateIdentityProvider", mock.Anything, mock.MatchedBy(func(dto *providers.IDPDTO) bool {
+		return dto.Type == providers.IDPTypeESignet
+	})).Return(esignetDTO, (*tidcommon.ServiceError)(nil))
+	s.mockIDP.On("GetIdentityProvider", mock.Anything, "es-1").
+		Return(esignetDTO, (*tidcommon.ServiceError)(nil))
+	s.mockIDP.On("UpdateIdentityProvider", mock.Anything, "es-1", mock.Anything).
+		Return(esignetDTO, (*tidcommon.ServiceError)(nil))
+	s.mockIDP.On("DeleteIdentityProvider", mock.Anything, "es-1").
+		Return((*tidcommon.ServiceError)(nil))
+
 	emptyUsages := &resourcedependency.DependenciesResponse{
 		Usages: []resourcedependency.ResourceDependency{},
 	}
 	s.mockIDP.On("GetIDPUsages", mock.Anything, "gh-1").
+		Return(emptyUsages, (*tidcommon.ServiceError)(nil))
+	s.mockIDP.On("GetIDPUsages", mock.Anything, "es-1").
 		Return(emptyUsages, (*tidcommon.ServiceError)(nil))
 	s.mockNotif.On("GetSenderUsages", mock.Anything, "tw-1").
 		Return(emptyUsages, (*tidcommon.ServiceError)(nil))
@@ -150,6 +164,12 @@ func (s *InitTestSuite) TestRouteTable() {
 
 	body, _ := json.Marshal(githubConnectionRequest{
 		Name: "GH", ClientID: "c", ClientSecret: "s", RedirectURI: "https://app/cb",
+	})
+	esignetBody, _ := json.Marshal(esignetConnectionRequest{
+		Name: "ES", ClientID: "c", RedirectURI: "https://app/cb",
+		AuthorizationEndpoint: "https://esignet/authorize", TokenEndpoint: "https://esignet/token",
+		UserInfoEndpoint: "https://esignet/userinfo", JwksEndpoint: "https://esignet/jwks",
+		SigningKey: "pem-key-material", SigningKeyID: "kid-1",
 	})
 	twilioBody, _ := json.Marshal(twilioConnectionRequest{
 		Name: "TW", AccountSID: "AC00000000000000000000000000000000", AuthToken: "tok", SenderID: "+15005550006",
@@ -174,6 +194,15 @@ func (s *InitTestSuite) TestRouteTable() {
 		{http.MethodOptions, "/connections/github/gh-1", nil, http.StatusNoContent},
 		{http.MethodGet, "/connections/github/gh-1/usages", nil, http.StatusOK},
 		{http.MethodOptions, "/connections/github/gh-1/usages", nil, http.StatusNoContent},
+		{http.MethodPost, "/connections/esignet", esignetBody, http.StatusCreated},
+		{http.MethodGet, "/connections/esignet", nil, http.StatusOK},
+		{http.MethodOptions, "/connections/esignet", nil, http.StatusNoContent},
+		{http.MethodGet, "/connections/esignet/es-1", nil, http.StatusOK},
+		{http.MethodPut, "/connections/esignet/es-1", esignetBody, http.StatusOK},
+		{http.MethodDelete, "/connections/esignet/es-1", nil, http.StatusNoContent},
+		{http.MethodOptions, "/connections/esignet/es-1", nil, http.StatusNoContent},
+		{http.MethodGet, "/connections/esignet/es-1/usages", nil, http.StatusOK},
+		{http.MethodOptions, "/connections/esignet/es-1/usages", nil, http.StatusNoContent},
 		{http.MethodPost, "/connections/twilio", twilioBody, http.StatusCreated},
 		{http.MethodGet, "/connections/twilio", nil, http.StatusOK},
 		{http.MethodOptions, "/connections/twilio", nil, http.StatusNoContent},

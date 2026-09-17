@@ -61,14 +61,14 @@ describe('ConnectionsList', () => {
   it('hides the category chips that no connection card belongs to', () => {
     render(<ConnectionsList />);
 
-    expect(chipLabels()).toEqual(['Social Login', 'SMS']);
+    expect(chipLabels()).toEqual(['Social Login', 'Login Provider', 'SMS']);
   });
 
   it('shows the enterprise and custom chips once an OIDC connection exists', () => {
     mockConnections([OIDC_FEDERATION]);
     render(<ConnectionsList />);
 
-    expect(chipLabels()).toEqual(['Social Login', 'Enterprise', 'SMS', 'Custom']);
+    expect(chipLabels()).toEqual(['Social Login', 'Login Provider', 'Enterprise', 'SMS', 'Custom']);
 
     selectCategory('Enterprise');
 
@@ -80,7 +80,7 @@ describe('ConnectionsList', () => {
     mockConnections([TRUSTED_ISSUER]);
     render(<ConnectionsList />);
 
-    expect(chipLabels()).toEqual(['Social Login', 'SMS', 'Trusted Token Issuer', 'Custom']);
+    expect(chipLabels()).toEqual(['Social Login', 'Login Provider', 'SMS', 'Trusted Token Issuer', 'Custom']);
 
     selectCategory('Trusted Token Issuer');
 
@@ -106,7 +106,7 @@ describe('ConnectionsList', () => {
     mockConnections([]);
     rerender(<ConnectionsList />);
 
-    expect(chipLabels()).toEqual(['Social Login', 'SMS']);
+    expect(chipLabels()).toEqual(['Social Login', 'Login Provider', 'SMS']);
     expect(screen.getByTestId('connection-card-google')).toBeInTheDocument();
     expect(screen.queryByText(EMPTY_STATE_TITLE)).not.toBeInTheDocument();
   });

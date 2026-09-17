@@ -10,12 +10,13 @@ description: Connect external identity providers to ThunderID to enable social l
 
 An identity provider (IdP) in <ProductName /> represents an external system that authenticates users on your behalf. When you integrate an IdP, users can sign in to your applications using their existing accounts with that provider, for example, their Google or GitHub account.
 
-<ProductName /> supports four IdP types.
+<ProductName /> supports five IdP types.
 
 | Type | Use Case |
 |------|----------|
 | **Google** | Sign in with Google accounts. Endpoints are pre-configured. Requires only your Google OAuth client credentials. |
 | **GitHub** | Sign in with GitHub accounts. Endpoints are pre-configured. Requires only your GitHub OAuth app credentials. |
+| **eSignet** | Sign in with a MOSIP eSignet digital identity. Authenticates with a signing key rather than a client secret. |
 | **OIDC** | Connect any standard OpenID Connect-compliant provider. You supply the endpoints. |
 | **OAuth** | Connect any OAuth 2.0 provider that does not support OIDC discovery. You supply all endpoint URLs. |
 
@@ -37,6 +38,7 @@ Choose the guide for your provider type:
 
 - [Add a Google Identity Provider](../add-google)
 - [Add a GitHub Identity Provider](../add-github)
+- [Add an eSignet Identity Provider](../add-esignet-provider)
 - [Add an OIDC Identity Provider](../add-oidc-provider)
 - [Add an OAuth 2.0 Identity Provider](../add-oauth-provider)
 

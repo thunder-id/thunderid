@@ -881,6 +881,28 @@ describe('reactFlowTransformer', () => {
         expect(execNode?.executor?.inputs?.[0].identifier).toBe('code');
       });
 
+      it('should use code input for the eSignet OIDC executor', () => {
+        const canvasData: ReactFlowCanvasData = {
+          nodes: [
+            createNode(
+              'exec-1',
+              StepTypes.Execution,
+              {x: 0, y: 0},
+              {
+                action: {executor: {name: 'ESignetOIDCExecutor'}},
+              },
+            ),
+          ],
+          edges: [],
+        };
+
+        const result = transformReactFlow(canvasData);
+
+        const execNode = result.nodes.find((n) => n.type === 'TASK_EXECUTION');
+        expect(execNode?.executor?.inputs).toHaveLength(1);
+        expect(execNode?.executor?.inputs?.[0].identifier).toBe('code');
+      });
+
       it('should use consent_decisions input for ConsentExecutor', () => {
         const canvasData: ReactFlowCanvasData = {
           nodes: [

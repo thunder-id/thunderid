@@ -23,12 +23,13 @@ Applications in <ProductName /> do not reference IdPs directly. The connection r
 - You have configured an identity provider connection. See:
   - [Add a Google Identity Provider](../add-google)
   - [Add a GitHub Identity Provider](../add-github)
+  - [Add an eSignet Identity Provider](../add-esignet-provider)
   - [Add an OIDC Identity Provider](../add-oidc-provider)
   - [Add an OAuth 2.0 Identity Provider](../add-oauth-provider)
 - You have created an application. See [Manage Applications](../../applications/manage-applications).
 
 :::note Just-in-time provisioning for first-time users
-The **Continue with Google Login** and **Continue with GitHub Login** widgets enable **Allow Authentication Without Local User** and add the Provisioning steps required to create a local account.
+The **Continue with Google Login**, **Continue with GitHub Login**, and **Continue with eSignet** widgets enable **Allow Authentication Without Local User** and add the Provisioning steps required to create a local account.
 
 For a generic OAuth 2.0 or OIDC connection, enable **Allow Authentication Without Local User** on the executor and add the **Provisioning** widget manually. Without this configuration, the external identity must map to an existing local user. See [Federated Authentication](../../flows/advanced-configurations#federated-authentication).
 :::
@@ -53,10 +54,10 @@ A **User Type Resolver** step selects the user type when several are eligible, b
 
 Follow the instructions for your connection type.
 
-### Google or GitHub
+### Google, GitHub, or eSignet
 
 1. In the left panel, expand **Widgets**.
-2. Click **+** on **Continue with Google Login** or **Continue with GitHub Login**.
+2. Click **+** on **Continue with Google Login**, **Continue with GitHub Login**, or **Continue with eSignet**.
 
 The widget adds a button to an existing View or creates a View when the flow has none. It also adds the provider executor, Provisioning steps for first-time users, and an Auth Assertion Generator, then connects the generated steps.
 
@@ -74,7 +75,7 @@ If you have exactly one matching connection, <ProductName /> assigns it automati
 
 ## Step 3: Complete a Generic OAuth 2.0 or OIDC Flow
 
-Skip this step if you added the Google or GitHub widget.
+Skip this step if you added the Google, GitHub, or eSignet widget.
 
 1. Add a **Button** component to the sign-in View and connect its output to the OAuth or OIDC executor.
 2. If you enabled **Allow Authentication Without Local User**, add the **Provisioning** widget.

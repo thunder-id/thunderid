@@ -18,6 +18,8 @@ export const IdentityProviderTypes = {
   GOOGLE: 'GOOGLE',
   /** GitHub OAuth provider */
   GITHUB: 'GITHUB',
+  /** MOSIP eSignet provider */
+  ESIGNET: 'ESIGNET',
 } as const;
 
 /**

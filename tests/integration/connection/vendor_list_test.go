@@ -26,6 +26,7 @@ type VendorListTestSuite struct {
 	suite.Suite
 	googleID     string
 	oidcID       string
+	esignetID    string
 	twilioID     string
 	smsGatewayID string
 }
@@ -49,6 +50,7 @@ func (ts *VendorListTestSuite) SetupSuite() {
 		AuthorizationEndpoint: "https://vendor-list.example.com/authorize",
 		TokenEndpoint:         "https://vendor-list.example.com/token",
 	})
+	ts.esignetID = ts.create("esignet", newESignetRequest("Vendor List eSignet"))
 	ts.twilioID = ts.create("twilio", twilioConnectionRequest{
 		Name:       "Vendor List Twilio",
 		AccountSID: "AC00000000000000000000000000000001",
@@ -66,6 +68,7 @@ func (ts *VendorListTestSuite) TearDownSuite() {
 	for vendor, id := range map[string]string{
 		"google":      ts.googleID,
 		"oidc":        ts.oidcID,
+		"esignet":     ts.esignetID,
 		"twilio":      ts.twilioID,
 		"sms-gateway": ts.smsGatewayID,
 	} {
@@ -124,6 +127,12 @@ func (ts *VendorListTestSuite) TestIdentityProviderVendorListIsScopedToItsType()
 	oidcInstances := ts.listVendor("oidc")
 	ts.True(containsSummaryID(oidcInstances, ts.oidcID), "The OIDC list must contain the OIDC connection")
 	ts.False(containsSummaryID(oidcInstances, ts.googleID), "The OIDC list must not contain the google connection")
+
+	esignetInstances := ts.listVendor("esignet")
+	ts.True(containsSummaryID(esignetInstances, ts.esignetID),
+		"The eSignet list must contain the eSignet connection")
+	ts.False(containsSummaryID(esignetInstances, ts.oidcID),
+		"The eSignet list must not contain the OIDC connection")
 
 	// A vendor with no configured instance still answers with an empty collection rather than 404.
 	githubInstances := ts.listVendor("github")

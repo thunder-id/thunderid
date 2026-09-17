@@ -11,6 +11,7 @@ export const ConnectionTypes = {
   GITHUB: 'github',
   OIDC: 'oidc',
   OAUTH: 'oauth',
+  ESIGNET: 'esignet',
   TWILIO: 'twilio',
   VONAGE: 'vonage',
   SMS_GATEWAY: 'sms-gateway',
@@ -25,6 +26,7 @@ export type ConnectionType = (typeof ConnectionTypes)[keyof typeof ConnectionTyp
  */
 export type ConnectionCategory =
   | 'social-login'
+  | 'login-provider'
   | 'enterprise'
   | 'sms'
   | 'email'
@@ -191,6 +193,30 @@ export interface OIDCConnectionRequest extends OAuthConnectionRequest {
 }
 
 /**
+ * Request payload for a MOSIP eSignet connection. eSignet authenticates with `private_key_jwt`,
+ * so there is no client secret: `signingKey` is the PEM-encoded RSA private key that signs the
+ * client assertion and `signingKeyId` identifies the matching JWK registered with eSignet.
+ */
+export interface ESignetConnectionRequest {
+  name: string;
+  description?: string;
+  clientId: string;
+  redirectUri: string;
+  authorizationEndpoint: string;
+  tokenEndpoint: string;
+  userInfoEndpoint: string;
+  jwksEndpoint: string;
+  /** Write-only. Omit to keep the stored value on update; required when creating. */
+  signingKey?: string;
+  signingKeyId: string;
+  scopes?: string[];
+  acrValues?: string;
+  usernamePrefix?: string;
+  /** External-to-local attribute mapping (authentication providers only). */
+  attributeConfiguration?: AttributeConfiguration;
+}
+
+/**
  * Request payload for a Twilio SMS connection.
  */
 export interface TwilioConnectionRequest {
@@ -244,6 +270,7 @@ export type ConnectionRequest =
   | OAuthConnectionRequest
   | OIDCConnectionRequest
   | OAuth2ConnectionRequest
+  | ESignetConnectionRequest
   | TwilioConnectionRequest
   | VonageConnectionRequest
   | SMSGatewayConnectionRequest;
@@ -255,6 +282,11 @@ export type ConnectionRequest =
 export interface ConnectionResponse extends OIDCConnectionRequest {
   id: string;
   type: ConnectionType;
+  /** eSignet fields. */
+  signingKey?: string;
+  signingKeyId?: string;
+  acrValues?: string;
+  usernamePrefix?: string;
   /** SMS (Twilio) fields. */
   accountSid?: string;
   authToken?: string;

@@ -151,6 +151,7 @@ export default function ConnectionForm({
               required={mode === 'create' && field.required}
               error={fieldError(field.name)}
               hint={field.hintKey ? t(field.hintKey) : undefined}
+              multiline={field.multiline}
             />
           );
         } else if (field.kind === 'key-value') {

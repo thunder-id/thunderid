@@ -81,6 +81,15 @@ type OpenID4VPCredential struct {
 	Claims  map[string]interface{}
 }
 
+// FederatedClaimsCredential carries claims a federated executor has already verified out-of-band
+// (its own code exchange, signature and audience checks) to the authn provider, along with the
+// local entity attribute those claims should be matched against for a returning user.
+type FederatedClaimsCredential struct {
+	Subject        string
+	Claims         map[string]interface{}
+	MatchAttribute string
+}
+
 // FederatedAuthResult is the result of a federated authentication attempt.
 // InternalEntity is nil when no local user was found or when the user is ambiguous.
 type FederatedAuthResult struct {

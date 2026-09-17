@@ -12,6 +12,7 @@ export const EXECUTOR_TO_IDP_TYPE_MAP: Record<string, IdentityProviderType> = {
   [ExecutionTypes.GithubFederation]: IdentityProviderTypes.GITHUB,
   [ExecutionTypes.OAuthExecutor]: IdentityProviderTypes.OAUTH,
   [ExecutionTypes.OIDCAuthExecutor]: IdentityProviderTypes.OIDC,
+  [ExecutionTypes.ESignetFederation]: IdentityProviderTypes.ESIGNET,
 };
 
 /**
@@ -22,6 +23,7 @@ export const FEDERATED_EXECUTORS = new Set<string>([
   ExecutionTypes.GithubFederation,
   ExecutionTypes.OAuthExecutor,
   ExecutionTypes.OIDCAuthExecutor,
+  ExecutionTypes.ESignetFederation,
 ]);
 
 /**
@@ -177,6 +179,7 @@ export const EXECUTORS_WITH_FIXED_INPUTS = new Set<string>([
   ExecutionTypes.GithubFederation,
   ExecutionTypes.OAuthExecutor,
   ExecutionTypes.OIDCAuthExecutor,
+  ExecutionTypes.ESignetFederation,
   ExecutionTypes.ConsentExecutor,
   ExecutionTypes.OpenID4VPVerify,
   ExecutionTypes.SSOCheck,

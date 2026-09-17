@@ -75,6 +75,10 @@ describe('steps models', () => {
   });
 
   describe('ExecutionTypes', () => {
+    it('should have ESignetFederation type', () => {
+      expect(ExecutionTypes.ESignetFederation).toBe('ESignetOIDCExecutor');
+    });
+
     it('should have GoogleFederation type', () => {
       expect(ExecutionTypes.GoogleFederation).toBe('GoogleOIDCAuthExecutor');
     });
@@ -183,8 +187,8 @@ describe('steps models', () => {
       expect(ExecutionTypes.PreDelete).toBe('PreDeleteExecutor');
     });
 
-    it('should have exactly 30 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(30);
+    it('should have exactly 31 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(31);
     });
   });
 
