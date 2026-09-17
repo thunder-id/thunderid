@@ -889,7 +889,9 @@ describe('UserAddPage', () => {
       });
     });
 
-    it('should fall back to manual user creation when the onboarding flow is missing on error', async () => {
+    // An unresolvable flow is reported where the user is. Redirecting instead would land them on a
+    // page that re-requests the same missing flow.
+    it('should report an unavailable onboarding flow when it is missing on error', async () => {
       simulateInviteUserError = true;
       Object.assign(mockInviteUserError, {
         message: 'Flow not found',
@@ -899,18 +901,19 @@ describe('UserAddPage', () => {
       render(<UserAddPage />);
 
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/users/add/create');
+        expect(screen.getByText('User onboarding is unavailable')).toBeInTheDocument();
       });
-
-      expect(mockLoggerInfo).toHaveBeenCalledWith(
-        'Falling back to manual user creation because the onboarding flow is unavailable',
+      expect(screen.getByText('The user onboarding flow could not be resolved. Check that a user onboarding flow is configured for this deployment and that the flow it names exists.')).toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalled();
+      expect(mockLoggerError).toHaveBeenCalledWith(
+        'The user onboarding flow could not be resolved, so onboarding cannot start',
       );
 
       simulateInviteUserError = false;
       Object.assign(mockInviteUserError, {message: 'Invite user failed', response: undefined});
     });
 
-    it('should fall back to manual user creation when flow change reports a missing onboarding flow', async () => {
+    it('should report an unavailable onboarding flow when flow change reports it missing', async () => {
       render(<UserAddPage />);
 
       if (capturedOnFlowChange) {
@@ -925,8 +928,38 @@ describe('UserAddPage', () => {
       }
 
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/users/add/create');
+        expect(screen.getByText('User onboarding is unavailable')).toBeInTheDocument();
       });
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    // The wizard itself must be gone, not merely overlaid, so no step can be interacted with.
+    it('should replace the wizard rather than render it alongside the message', async () => {
+      mockInviteUserRenderProps.components = [heading('Select User Type'), block([textInput('type', 'Type')])];
+      render(<UserAddPage />);
+
+      if (capturedOnFlowChange) {
+        capturedOnFlowChange({error: {code: 'FLM-1003'}, response: {status: 404, data: {code: 'FLM-1003'}}});
+      }
+
+      await waitFor(() => {
+        expect(screen.getByText('User onboarding is unavailable')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('Select User Type')).not.toBeInTheDocument();
+    });
+
+    // A failure that is not a missing flow keeps the wizard, so a recoverable error stays recoverable.
+    it('should keep the wizard for an error that is not a missing flow', async () => {
+      render(<UserAddPage />);
+
+      if (capturedOnFlowChange) {
+        capturedOnFlowChange({error: {code: 'USR-1014', message: {defaultValue: 'Attribute already taken'}}});
+      }
+
+      await waitFor(() => {
+        expect(screen.queryByText('User onboarding is unavailable')).not.toBeInTheDocument();
+      });
+      expect(mockNavigate).not.toHaveBeenCalled();
     });
   });
 

@@ -17,7 +17,6 @@ export interface UserRoutePaths {
     list: () => string;
     detail: (userId: string) => string;
     add: () => string;
-    addCreate: () => string;
   };
 }
 
@@ -31,7 +30,6 @@ export const defaultUserRoutePaths: UserRoutePaths = {
     list: () => '/users',
     detail: (userId) => `/users/${userId}`,
     add: () => '/users/add',
-    addCreate: () => '/users/add/create',
   },
 };
 
