@@ -2759,3 +2759,148 @@ func TestResolveActorIdentity_NoProviderOrNoActor(t *testing.T) {
 	id = tb.resolveActorIdentity(&AccessTokenBuildContext{}, "")
 	assert.Empty(t, id)
 }
+
+// testSessionID is the SSO session id the ID and refresh token tests carry through the sid path.
+const testSessionID = "sess-1"
+
+func (suite *TokenBuilderTestSuite) TestBuildIDToken_CarriesSessionIDAsSid() {
+	ctx := &IDTokenBuildContext{
+		Subject:   "user123",
+		Audience:  "app123",
+		Scopes:    []string{"openid"},
+		OAuthApp:  suite.oauthApp,
+		SessionID: testSessionID,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything,
+		"user123",
+		"https://example.com",
+		int64(3600),
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			return claims[constants.ClaimSessionID] == testSessionID
+		}), mock.Anything, mock.Anything,
+	).Return(testIDToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildIDToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), testIDToken, result.Token)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildIDToken_OmitsSidWithoutSession() {
+	ctx := &IDTokenBuildContext{
+		Subject:  "user123",
+		Audience: "app123",
+		Scopes:   []string{"openid"},
+		OAuthApp: suite.oauthApp,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything,
+		"user123",
+		"https://example.com",
+		int64(3600),
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			_, has := claims[constants.ClaimSessionID]
+			return !has
+		}), mock.Anything, mock.Anything,
+	).Return(testIDToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildIDToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), testIDToken, result.Token)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_CarriesSessionID() {
+	ctx := &RefreshTokenBuildContext{
+		ClientID:             "test-client",
+		Scopes:               []string{"openid"},
+		GrantType:            string(providers.GrantTypeAuthorizationCode),
+		AccessTokenSubject:   "user123",
+		AccessTokenAudiences: []string{"app123"},
+		OAuthApp:             suite.oauthApp,
+		SessionID:            testSessionID,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything,
+		"test-client",
+		"https://example.com",
+		mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			return claims[constants.ClaimSessionID] == testSessionID
+		}), mock.Anything, mock.Anything,
+	).Return(testRefreshToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildRefreshToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), testRefreshToken, result.Token)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// sidAllowListedApp is an application that allow-lists a user attribute named sid for the ID token,
+// the configuration under which the attribute merge would otherwise emit a user-supplied sid.
+func sidAllowListedApp() *providers.OAuthClient {
+	return &providers.OAuthClient{
+		ClientID:    "test-client",
+		ScopeClaims: map[string][]string{"profile": {constants.ClaimSessionID}},
+		Token: &providers.OAuthTokenConfig{
+			IDToken: &providers.IDTokenConfig{UserAttributes: []string{constants.ClaimSessionID}},
+		},
+	}
+}
+
+// An allow-listed user attribute named sid must not displace the session id.
+func (suite *TokenBuilderTestSuite) TestBuildIDToken_UserAttributeCannotOverwriteSid() {
+	ctx := &IDTokenBuildContext{
+		Subject:        "user123",
+		Audience:       "app123",
+		Scopes:         []string{"openid", "profile"},
+		UserAttributes: map[string]interface{}{constants.ClaimSessionID: "attacker-supplied"},
+		OAuthApp:       sidAllowListedApp(),
+		SessionID:      testSessionID,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, "user123", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			return claims[constants.ClaimSessionID] == testSessionID
+		}), mock.Anything, mock.Anything,
+	).Return(testIDToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildIDToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), testIDToken, result.Token)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// With no session, an allow-listed user attribute named sid must not be emitted in its place.
+func (suite *TokenBuilderTestSuite) TestBuildIDToken_UserAttributeCannotSynthesizeSidWithoutSession() {
+	ctx := &IDTokenBuildContext{
+		Subject:        "user123",
+		Audience:       "app123",
+		Scopes:         []string{"openid", "profile"},
+		UserAttributes: map[string]interface{}{constants.ClaimSessionID: "attacker-supplied"},
+		OAuthApp:       sidAllowListedApp(),
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, "user123", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			_, has := claims[constants.ClaimSessionID]
+			return !has
+		}), mock.Anything, mock.Anything,
+	).Return(testIDToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildIDToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), testIDToken, result.Token)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}

@@ -87,6 +87,9 @@ type RefreshTokenBuildContext struct {
 	// TokenFamilyID, when set, is stamped as the `tfid` claim on the refresh token. It is copied
 	// unchanged across rotation so every token of the grant shares one family id.
 	TokenFamilyID string
+	// SessionID, when set, is stamped as the `sid` claim on the refresh token and copied unchanged
+	// across rotation.
+	SessionID string
 	// ExpiresAt, when set, is the Unix expiry the rotated token inherits from the token it replaces,
 	// so a grant cannot outlive its original issuance window. Zero starts a fresh validity period,
 	// which is what first issuance does.
@@ -117,6 +120,9 @@ type IDTokenBuildContext struct {
 	ClaimsRequest  *oauth2model.ClaimsRequest
 	Nonce          string
 	CompletedACR   string
+	// SessionID, when set, is emitted as the `sid` claim naming the SSO session this authentication
+	// belongs to. Empty when no session backs the grant, in which case the claim is omitted.
+	SessionID string
 }
 
 // RefreshTokenClaims represents the validated claims from a refresh token.
@@ -141,7 +147,10 @@ type RefreshTokenClaims struct {
 	// tokens minted during rotation so the family stays intact, and used to revoke the whole family on
 	// reuse. Empty for pre-rollout tokens.
 	TokenFamilyID string
-	Claims        map[string]interface{}
+	// SessionID is the sid carried on the refresh token, copied onto the tokens minted during rotation.
+	// Empty when the grant had no session or the token predates sid issuance.
+	SessionID string
+	Claims    map[string]interface{}
 }
 
 // SubjectTokenClaims represents the validated claims from a subject token (for token exchange).

@@ -471,6 +471,10 @@ func (tb *tokenBuilder) buildRefreshTokenClaims(ctx *RefreshTokenBuildContext) (
 		claims[constants.ClaimTokenFamilyID] = ctx.TokenFamilyID
 	}
 
+	if ctx.SessionID != "" {
+		claims[constants.ClaimSessionID] = ctx.SessionID
+	}
+
 	return claims, nil
 }
 
@@ -594,6 +598,13 @@ func (tb *tokenBuilder) buildIDTokenClaims(ctx *IDTokenBuildContext) map[string]
 
 	for key, value := range claimData {
 		claims[key] = value
+	}
+
+	// sid comes only from the session: drop any allow-listed user attribute of that name, then write
+	// the session id only when a session exists.
+	delete(claims, constants.ClaimSessionID)
+	if ctx.SessionID != "" {
+		claims[constants.ClaimSessionID] = ctx.SessionID
 	}
 
 	return claims

@@ -45,6 +45,7 @@ The ID Token is a signed JWT delivered to the client at the token endpoint. It i
 | `auth_time` | When the user actually authenticated, included when available |
 | `nonce` | Echoed from the authorization request, clients **must** verify this |
 | `acr` | Authentication Context Class Reference, which authentication flow ran |
+| `sid` | Identifier of the SSO session the authentication belongs to. Applications that share one session receive the same value, and it stays the same across refresh. Omitted when the login flow established no session. Never present in access tokens |
 
 Additional user claims (e.g. `name`, `email`) are added based on the requested scopes, see [Claims & Scopes](../claims-and-scopes).
 

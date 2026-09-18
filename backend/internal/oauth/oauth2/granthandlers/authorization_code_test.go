@@ -1690,3 +1690,35 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestResolveAuthTime_Prefers
 	suite.Equal(authenticated.Unix(), got,
 		"auth_time must report the authentication, not when the code was minted")
 }
+
+// testSessionID is the SSO session id the grant tests carry through the sid path.
+const testSessionID = "sess-1"
+
+// The code's session id reaches both the ID token and the grant response.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_CarriesCodeSessionID() {
+	authCode := suite.testAuthzCode
+	authCode.Scopes = oidcReadWriteScopes
+	authCode.SessionID = testSessionID
+
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authCode, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token:     "test-jwt-token",
+		TokenType: constants.TokenTypeBearer,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresIn: 3600,
+		Scopes:    []string{"openid", "read", "write"},
+		ClientID:  testClientID,
+	}, nil)
+	suite.mockTokenBuilder.On("BuildIDToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.IDTokenBuildContext) bool {
+			return ctx.SessionID == testSessionID
+		})).Return(&model.TokenDTO{Token: "test-id-token"}, nil)
+
+	result, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), testSessionID, result.SessionID)
+	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}

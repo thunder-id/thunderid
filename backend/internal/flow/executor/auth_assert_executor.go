@@ -186,6 +186,7 @@ var reservedAssertionClaims = map[string]bool{
 	oauth2const.ClaimSubjectID:     true,
 	oauth2const.ClaimSubjectType:   true,
 	oauth2const.ClaimCorrelationID: true,
+	oauth2const.ClaimSessionID:     true,
 }
 
 // addSubjectIdentityClaims carries the authenticated entity's resource ID and category onto the
@@ -311,6 +312,11 @@ func (a *authAssertExecutor) generateAuthAssertion(
 	// the grant's access and refresh tokens, are stamped with it for family-scoped revocation.
 	if tokenFamilyID, exists := ctx.RuntimeData[common.RuntimeKeyTokenFamilyID]; exists && tokenFamilyID != "" {
 		jwtClaims[oauth2const.ClaimTokenFamilyID] = tokenFamilyID
+	}
+
+	// Carry the SSO session id published by the Session node. Absent when the flow has no Session node.
+	if sessionID, exists := ctx.RuntimeData[common.RuntimeKeySSOSessionID]; exists && sessionID != "" {
+		jwtClaims[oauth2const.ClaimSessionID] = sessionID
 	}
 
 	requiredAttributes := a.getRequiredUserAttributes(ctx)
