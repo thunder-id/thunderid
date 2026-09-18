@@ -37,11 +37,24 @@ const (
 	ExecutorNameOTPExecutor                  = "OTPExecutor"
 	ExecutorNamePreDelete                    = "PreDeleteExecutor"
 	ExecutorNameCriteriaRevocation           = "CriteriaRevocationExecutor"
+	ExecutorNameCriteriaRevocationRestamp    = "CriteriaRevocationRestampExecutor"
 	ExecutorNameSessionRevocation            = "SessionRevocationExecutor"
 	ExecutorNameUserDelete                   = "UserDeleteExecutor"
 	ExecutorNameApplicationActionValidator   = "ApplicationActionValidator"
 	ExecutorNameApplicationDelete            = "ApplicationDeleteExecutor"
 	ExecutorNameClientSecret                 = "ClientSecretExecutor"
+	ExecutorNamePreRoleAssignmentRemoval     = "PreRoleAssignmentRemovalExecutor"
+	ExecutorNameRoleAssignmentRemoval        = "RoleAssignmentRemovalExecutor"
+	ExecutorNamePreRoleDeletion              = "PreRoleDeletionExecutor"
+	ExecutorNameRoleDeletion                 = "RoleDeletionExecutor"
+	ExecutorNamePreRolePermissionRemoval     = "PreRolePermissionRemovalExecutor"
+	ExecutorNameRolePermissionRemoval        = "RolePermissionRemovalExecutor"
+	ExecutorNamePreGroupDeletion             = "PreGroupDeletionExecutor"
+	ExecutorNameGroupDeletion                = "GroupDeletionExecutor"
+	ExecutorNamePreGroupMembershipRemoval    = "PreGroupMembershipRemovalExecutor"
+	ExecutorNameGroupMembershipRemoval       = "GroupMembershipRemovalExecutor"
+	ExecutorNamePreScopeDeletion             = "PreScopeDeletionExecutor"
+	ExecutorNameScopeDeletion                = "ScopeDeletionExecutor"
 )
 
 // Executor mode constants
@@ -76,6 +89,26 @@ const (
 	userInputLoginHint         = "login_hint"
 	revocationInputSubject     = "subject"
 	revocationInputApplication = "targetApplicationId"
+	// revocationInputRole and revocationInputAssignee name the role and the principal a role
+	// administration flow acts on. They follow revocationInputApplication in not reusing a name the
+	// flow execution request already carries at the top level.
+	revocationInputRole     = "targetRoleId"
+	revocationInputAssignee = "targetAssigneeId"
+	// revocationInputGroup and revocationInputMember name the group and the departing principal a group
+	// administration flow acts on, following the same rule.
+	revocationInputGroup  = "targetGroupId"
+	revocationInputMember = "targetMemberId"
+	// revocationInputPermissions carries a role's new permission set, as the JSON array of
+	// {resourceServerId, permissions} objects the roles API itself accepts. It is an input rather than a
+	// value the plan derives, because only the acting node needs it: the revocation covers every scope
+	// the role grants today, not the delta this set implies.
+	revocationInputPermissions = "targetPermissions"
+	// revocationInputResourceServer, revocationInputResource and revocationInputAction locate the action
+	// whose scope a scope deletion flow retires. The resource is optional: an action may be defined
+	// directly on the resource server rather than under one of its resources.
+	revocationInputResourceServer = "targetResourceServerId"
+	revocationInputResource       = "targetResourceId"
+	revocationInputAction         = "targetActionId"
 
 	ouIDKey        = "ouId"
 	defaultOUIDKey = "defaultOUID"

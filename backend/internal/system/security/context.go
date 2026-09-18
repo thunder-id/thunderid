@@ -20,16 +20,17 @@ const (
 
 // SecurityContext holds immutable authenticated subject information.
 type SecurityContext struct {
-	subject           string
-	ouID              string
-	token             string
-	revocationID      string
-	tokenFamilyID     string
-	revocationSubject string
-	revocationAppKey  string
-	establishedAt     time.Time
-	permissions       []string
-	attributes        map[string]interface{}
+	subject            string
+	ouID               string
+	token              string
+	revocationID       string
+	tokenFamilyID      string
+	revocationSubject  string
+	revocationAppKey   string
+	revocationAudience string
+	establishedAt      time.Time
+	permissions        []string
+	attributes         map[string]interface{}
 }
 
 // newSecurityContext creates a new immutable SecurityContext.

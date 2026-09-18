@@ -166,6 +166,9 @@
         "on_refresh_replay": true,
         "on_explicit_revoke": true,
         "on_code_replay": true
+      },
+      "criteria": {
+        "max_criteria": 10000
       }
     },
     "token_exchange": {

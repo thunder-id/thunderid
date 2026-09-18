@@ -306,6 +306,17 @@ func (c LogoutConfig) IsEnabled() bool {
 // RevocationConfig holds grant-scoped (token family) revocation settings.
 type RevocationConfig struct {
 	TokenFamily TokenFamilyRevocationConfig `yaml:"token_family" json:"token_family"`
+	Criteria    CriteriaRevocationConfig    `yaml:"criteria"     json:"criteria"`
+}
+
+// CriteriaRevocationConfig bounds what one criteria-based revocation may write.
+type CriteriaRevocationConfig struct {
+	// MaxCriteria caps how many deny-list rows one administrative revocation may produce: principals
+	// affected times scopes each loses. A change exceeding it is refused before anything is written,
+	// which also bounds what a mid-write failure can leave behind, since a batch spanning several
+	// statements is not atomic across them. A non-positive value keeps the built-in default rather
+	// than lifting the ceiling.
+	MaxCriteria int `yaml:"max_criteria" json:"max_criteria"`
 }
 
 // TokenFamilyRevocationConfig toggles the triggers that revoke a whole token family (one authorization

@@ -79,6 +79,15 @@ describe('useUpdateRole', () => {
     vi.clearAllMocks();
   });
 
+  /**
+   * Answers the read the hook performs before updating, reporting the permissions the update is about
+   * to send. Nothing is removed, so no revocation flow runs and the update proceeds natively, which is
+   * the path these tests cover.
+   */
+  const queueUnchangedPermissionsRead = (permissions: Role['permissions'] = mockUpdatedRole.permissions): void => {
+    mockHttpRequest.mockResolvedValueOnce({data: {...mockUpdatedRole, permissions}});
+  };
+
   it('should initialize with idle state', () => {
     const {result} = renderHook(() => useUpdateRole());
 
@@ -93,6 +102,7 @@ describe('useUpdateRole', () => {
   });
 
   it('should successfully update a role', async () => {
+    queueUnchangedPermissionsRead();
     mockHttpRequest.mockResolvedValueOnce({
       data: mockUpdatedRole,
     });
@@ -111,6 +121,7 @@ describe('useUpdateRole', () => {
   });
 
   it('should make correct API call with role ID in URL', async () => {
+    queueUnchangedPermissionsRead();
     mockHttpRequest.mockResolvedValueOnce({
       data: mockUpdatedRole,
     });
@@ -179,6 +190,7 @@ describe('useUpdateRole', () => {
   });
 
   it('should invalidate ROLE cache for specific roleId on success', async () => {
+    queueUnchangedPermissionsRead();
     mockHttpRequest.mockResolvedValueOnce({
       data: mockUpdatedRole,
     });
@@ -201,6 +213,7 @@ describe('useUpdateRole', () => {
   });
 
   it('should invalidate ROLES list cache on success', async () => {
+    queueUnchangedPermissionsRead();
     mockHttpRequest.mockResolvedValueOnce({
       data: mockUpdatedRole,
     });
@@ -223,6 +236,7 @@ describe('useUpdateRole', () => {
   });
 
   it('should show success toast on success', async () => {
+    queueUnchangedPermissionsRead();
     mockHttpRequest.mockResolvedValueOnce({
       data: mockUpdatedRole,
     });
@@ -253,6 +267,7 @@ describe('useUpdateRole', () => {
   });
 
   it('should send JSON-stringified data in request body', async () => {
+    queueUnchangedPermissionsRead();
     mockHttpRequest.mockResolvedValueOnce({
       data: mockUpdatedRole,
     });
@@ -265,15 +280,20 @@ describe('useUpdateRole', () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
+    // The update is the second request: the first reads the role to decide whether the edit removes a
+    // permission.
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const callArgs = mockHttpRequest.mock.calls[0][0];
+    const callArgs = mockHttpRequest.mock.calls[1][0];
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     expect(callArgs.data).toEqual(mockUpdateRequest);
   });
 
   it('should clear error state on successful retry', async () => {
     const apiError = new Error('Temporary error');
-    mockHttpRequest.mockRejectedValueOnce(apiError).mockResolvedValueOnce({data: mockUpdatedRole});
+    queueUnchangedPermissionsRead();
+    mockHttpRequest.mockRejectedValueOnce(apiError);
+    queueUnchangedPermissionsRead();
+    mockHttpRequest.mockResolvedValueOnce({data: mockUpdatedRole});
 
     const {result} = renderHook(() => useUpdateRole());
 
@@ -300,6 +320,7 @@ describe('useUpdateRole', () => {
       ouId: 'ou-1',
       permissions: [{resourceServerId: 'rs-1', permissions: ['read']}],
     };
+    queueUnchangedPermissionsRead(responseRole.permissions);
     mockHttpRequest.mockResolvedValueOnce({data: responseRole});
 
     const {result, queryClient} = renderHook(() => useUpdateRole());

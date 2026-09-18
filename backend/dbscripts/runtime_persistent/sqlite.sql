@@ -20,8 +20,9 @@ CREATE UNIQUE INDEX idx_revoked_token_jti_deployment ON "REVOKED_TOKEN" (DEPLOYM
 CREATE INDEX idx_revoked_token_expiry_time ON "REVOKED_TOKEN" (EXPIRY_TIME);
 
 -- Table to store criteria-based (many-token) revocations: a generalized attribute deny list.
--- CRITERION_TYPE names the dimension ('token_family' today; subject/client/consent are future types)
--- and CRITERION_VALUE holds the revoked value (the tfid for 'token_family'). Part of the
+-- CRITERION_TYPE names the dimension ('token_family', 'subject', 'app.key', 'entity.scope',
+-- 'scope') and CRITERION_VALUE holds the revoked value for it. Scope dimensions hold a digest,
+-- because the audience and permission they combine exceed this column. Part of the
 -- database.runtime_persistent classification: authoritative enforcement state that must survive a
 -- runtime database flush.
 CREATE TABLE "REVOCATION_CRITERIA" (

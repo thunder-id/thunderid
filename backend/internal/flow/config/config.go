@@ -38,6 +38,17 @@ type FlowSectionConfig struct {
 	UserDeletionFlow        FlowTypeConfig `json:"userDeletionFlow"`
 	ApplicationDeletionFlow FlowTypeConfig `json:"applicationDeletionFlow"`
 	SecretRegenerationFlow  FlowTypeConfig `json:"secretRegenerationFlow"`
+	// The administration flows for the authorization changes that must revoke before they act. Each
+	// follows the configured-and-present rule the other administration handles do: a console runs the
+	// change through the flow when one is configured and present and through the native endpoint
+	// otherwise, so a deployment that leaves a handle unset keeps that change on its endpoint and
+	// revokes nothing for it.
+	RoleAssignmentRemovalFlow  FlowTypeConfig `json:"roleAssignmentRemovalFlow"`
+	RoleDeletionFlow           FlowTypeConfig `json:"roleDeletionFlow"`
+	RolePermissionRemovalFlow  FlowTypeConfig `json:"rolePermissionRemovalFlow"`
+	GroupDeletionFlow          FlowTypeConfig `json:"groupDeletionFlow"`
+	GroupMembershipRemovalFlow FlowTypeConfig `json:"groupMembershipRemovalFlow"`
+	ScopeDeletionFlow          FlowTypeConfig `json:"scopeDeletionFlow"`
 }
 
 // FromServerRuntime builds flow configuration from the global server runtime.

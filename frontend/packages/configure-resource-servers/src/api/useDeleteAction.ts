@@ -4,7 +4,9 @@
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
+import type {HttpLike} from '@thunderid/utils';
 import ResourceServerQueryKeys from '../constants/resource-server-query-keys';
+import {deleteActionViaFlow} from '../utils/scopeAdministrationFlow';
 
 export default function useDeleteAction(
   resourceServerId: string,
@@ -17,6 +19,12 @@ export default function useDeleteAction(
   return useMutation<void, Error, string>({
     mutationFn: async (actionId: string): Promise<void> => {
       const serverUrl = getServerUrl();
+
+      // Deleting an action retires the scope it defines. The flow denies that scope deployment-wide
+      // before the action goes; the native endpoint below revokes nothing.
+      if (await deleteActionViaFlow(http as unknown as HttpLike, serverUrl, resourceServerId, actionId, resourceId)) {
+        return;
+      }
       const url = resourceId
         ? `${serverUrl}/resource-servers/${resourceServerId}/resources/${resourceId}/actions/${actionId}`
         : `${serverUrl}/resource-servers/${resourceServerId}/actions/${actionId}`;

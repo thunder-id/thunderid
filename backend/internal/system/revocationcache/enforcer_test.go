@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
@@ -112,4 +113,87 @@ func TestNoopEnforcer_AlwaysAllows(t *testing.T) {
 	var e EnforcerInterface = noopEnforcer{}
 	assert.NoError(t, e.EnsureNotRevoked(context.Background(), security.RevocationIdentity{JTI: "anything"}))
 	assert.NoError(t, e.EnsureNotRevoked(context.Background(), security.RevocationIdentity{}))
+}
+
+// The scope dimensions must key off the audience as well as the scope name, because a permission
+// string is unique only within its resource server. Revoking "license" for a user on the Ohio DMV API
+// must leave their California token alone, which is the case this whole dimension exists for.
+func TestEnforcer_ScopeRevocationIsScopedToItsAudience(t *testing.T) {
+	const (
+		user       = "user-1"
+		california = "https://api.dmv.ca.gov"
+		ohio       = "https://api.dmv.oh.gov"
+	)
+	revokedAt := time.Now().Add(-time.Hour)
+	cache := newRevokedCache()
+	cache.replace(revokedSnapshot{
+		EntityScopes: []revokedEntry{{
+			Value:      revocation.EntityScopeCriterionValue(user, ohio, "license"),
+			ExpiryTime: time.Now().Add(time.Hour),
+			RevokedAt:  revokedAt,
+			Boundary:   true,
+		}},
+	})
+	e := newEnforcer(cache)
+
+	ohioToken := security.RevocationIdentity{
+		Subject: user, Audience: ohio, Scopes: []string{"openid", "license"},
+		EstablishedAt: revokedAt.Add(-time.Minute),
+	}
+	assert.ErrorIs(t, e.EnsureNotRevoked(context.Background(), ohioToken), errTokenRevoked,
+		"the token bound to the audience the scope was revoked on is rejected")
+
+	californiaToken := ohioToken
+	californiaToken.Audience = california
+	assert.NoError(t, e.EnsureNotRevoked(context.Background(), californiaToken),
+		"the same scope on a different resource server is a different scope and must survive")
+
+	otherUser := ohioToken
+	otherUser.Subject = "user-2"
+	assert.NoError(t, e.EnsureNotRevoked(context.Background(), otherUser),
+		"another principal holding the same scope is unaffected")
+
+	// The grant can be restored, so a token minted after the revocation is legitimately entitled.
+	later := ohioToken
+	later.EstablishedAt = revokedAt.Add(time.Minute)
+	assert.NoError(t, e.EnsureNotRevoked(context.Background(), later),
+		"a token established after a boundary revocation may proceed")
+}
+
+// A scope deleted outright is revoked for every principal on that resource server, but still only on
+// that one.
+func TestEnforcer_ScopeDimensionAppliesToEveryPrincipal(t *testing.T) {
+	const california = "https://api.dmv.ca.gov"
+	cache := newRevokedCache()
+	cache.replace(revokedSnapshot{
+		Scopes: []revokedEntry{{
+			Value:      revocation.ScopeCriterionValue(california, "vehicle-registration"),
+			ExpiryTime: time.Now().Add(time.Hour),
+		}},
+	})
+	e := newEnforcer(cache)
+
+	assert.ErrorIs(t, e.EnsureNotRevoked(context.Background(), security.RevocationIdentity{
+		Subject: "anyone", Audience: california, Scopes: []string{"vehicle-registration"},
+	}), errTokenRevoked)
+	assert.NoError(t, e.EnsureNotRevoked(context.Background(), security.RevocationIdentity{
+		Subject: "anyone", Audience: california, Scopes: []string{"license"},
+	}), "an unrelated scope on the same server is unaffected")
+}
+
+// A token that requested no permission scopes is not bound to a resource server: its audience is the
+// client. It carries no scope dimensions and must never be matched against one.
+func TestEnforcer_TokenWithoutAudienceCarriesNoScopeDimensions(t *testing.T) {
+	cache := newRevokedCache()
+	cache.replace(revokedSnapshot{
+		Scopes: []revokedEntry{{
+			Value:      revocation.ScopeCriterionValue("", "openid"),
+			ExpiryTime: time.Now().Add(time.Hour),
+		}},
+	})
+	e := newEnforcer(cache)
+
+	assert.NoError(t, e.EnsureNotRevoked(context.Background(), security.RevocationIdentity{
+		Subject: "user-1", Scopes: []string{"openid"},
+	}))
 }

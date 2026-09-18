@@ -4,8 +4,10 @@
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
+import type {HttpLike} from '@thunderid/utils';
 import {useTranslation} from 'react-i18next';
 import RoleQueryKeys from '../constants/role-query-keys';
+import {deleteRoleViaFlow} from '../utils/roleAdministrationFlow';
 
 /**
  * Custom React hook to delete a role.
@@ -22,6 +24,13 @@ export default function useDeleteRole(): UseMutationResult<void, Error, string> 
   return useMutation<void, Error, string>({
     mutationFn: async (roleId: string): Promise<void> => {
       const serverUrl: string = getServerUrl();
+
+      // Deleting a role takes its scopes from everyone holding it. The flow revokes those tokens
+      // before the role goes; the native endpoint below revokes nothing, which is why it is only
+      // reached when no flow is configured.
+      if (await deleteRoleViaFlow(http as unknown as HttpLike, serverUrl, roleId)) {
+        return;
+      }
       await http.request({
         url: `${serverUrl}/roles/${roleId}`,
         method: 'DELETE',
