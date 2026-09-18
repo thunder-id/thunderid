@@ -10,6 +10,7 @@ import (
 
 // DCRRegistrationRequest represents the RFC 7591 Dynamic Client Registration request.
 type DCRRegistrationRequest struct {
+	ClientID                           string                 `json:"client_id,omitempty"`
 	OUID                               string                 `json:"ou_id,omitempty"`
 	RedirectURIs                       []string               `json:"redirect_uris"`
 	GrantTypes                         []string               `json:"grant_types,omitempty"`
@@ -62,6 +63,9 @@ type DCRRegistrationResponse struct {
 	ClientID                           string                 `json:"client_id"`
 	ClientSecret                       string                 `json:"client_secret,omitempty"`
 	ClientSecretExpiresAt              int64                  `json:"client_secret_expires_at"`
+	ClientIDIssuedAt                   int64                  `json:"client_id_issued_at,omitempty"`
+	RegistrationAccessToken            string                 `json:"registration_access_token,omitempty"`
+	RegistrationClientURI              string                 `json:"registration_client_uri,omitempty"`
 	RedirectURIs                       []string               `json:"redirect_uris,omitempty"`
 	GrantTypes                         []string               `json:"grant_types,omitempty"`
 	ResponseTypes                      []string               `json:"response_types,omitempty"`

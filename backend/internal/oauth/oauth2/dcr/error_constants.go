@@ -109,7 +109,37 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.dcr.unauthorized_description",
-			DefaultValue: "Authentication with sufficient permissions is required to register a client",
+			DefaultValue: "Authentication with sufficient permissions is required to manage a client registration",
+		},
+	}
+
+	// ErrorClientNotFound is returned when the client referenced by the client configuration
+	// endpoint does not exist.
+	ErrorClientNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "invalid_client_id",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.dcr.client_not_found",
+			DefaultValue: "Client not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.dcr.client_not_found_description",
+			DefaultValue: "The requested client registration could not be found",
+		},
+	}
+
+	// ErrorClientIDMismatch is returned when a client configuration update request carries a
+	// client_id that contradicts the one in the request path.
+	ErrorClientIDMismatch = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "invalid_client_metadata",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.dcr.client_id_mismatch",
+			DefaultValue: "Client ID mismatch",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.dcr.client_id_mismatch_description",
+			DefaultValue: "The client_id in the request body does not match the client being updated",
 		},
 	}
 )

@@ -15,10 +15,17 @@ import (
 const (
 	ClientSecretExpiresAtNever   = 0 // Never expires
 	maxLocalizedVariantsPerField = 20
+
+	wwwAuthenticateHeaderName = "WWW-Authenticate"
+	//nolint:gosec // WWW-Authenticate challenge value, not a credential
+	wwwAuthenticateInvalidToken = `Bearer error="invalid_token"`
 )
 
-// DCRRegistrationRequest represents the RFC 7591 Dynamic Client Registration request.
+// DCRRegistrationRequest represents the RFC 7591 Dynamic Client Registration request. It is also
+// the request body of an RFC 7592 client configuration update, where ClientID identifies the client
+// being updated.
 type DCRRegistrationRequest struct {
+	ClientID                string                            `json:"client_id,omitempty"`
 	OUID                    string                            `json:"ou_id,omitempty"`
 	RedirectURIs            []string                          `json:"redirect_uris"`
 	PostLogoutRedirectURIs  []string                          `json:"post_logout_redirect_uris,omitempty"`
@@ -113,11 +120,13 @@ func setLocalizedVariant(m *map[string]string, field, tag, val string) error {
 	return nil
 }
 
-// DCRRegistrationResponse represents the RFC 7591 Dynamic Client Registration response.
+// DCRRegistrationResponse represents the RFC 7591 Dynamic Client Registration response. The same
+// shape is returned by the RFC 7592 client configuration endpoint.
 type DCRRegistrationResponse struct {
 	ClientID                string                            `json:"client_id"`
 	ClientSecret            string                            `json:"client_secret,omitempty"`
 	ClientSecretExpiresAt   int64                             `json:"client_secret_expires_at"`
+	ClientIDIssuedAt        int64                             `json:"client_id_issued_at,omitempty"`
 	RedirectURIs            []string                          `json:"redirect_uris,omitempty"`
 	PostLogoutRedirectURIs  []string                          `json:"post_logout_redirect_uris,omitempty"`
 	GrantTypes              []providers.GrantType             `json:"grant_types,omitempty"`

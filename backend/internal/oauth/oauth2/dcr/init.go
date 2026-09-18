@@ -35,7 +35,7 @@ func Initialize(
 			"Failed to initialize DCR service", log.Error(wrappedErr))
 		return wrappedErr
 	}
-	dcrService := newDCRService(appService, ouService, i18nService, transactioner)
+	dcrService := newDCRService(appService, ouService, i18nService, transactioner, cfg)
 	dcrHandler := newDCRHandler(dcrService, cfg)
 	registerRoutes(mux, dcrHandler)
 	return nil
@@ -44,15 +44,25 @@ func Initialize(
 // registerRoutes registers the routes for DCR operations.
 func registerRoutes(mux *http.ServeMux, dcrHandler *dcrHandler) {
 	opts := middleware.CORSOptions{
-		AllowedMethods:   []string{"POST", "OPTIONS"},
+		AllowedMethods:   []string{"POST", "GET", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
 		AllowCredentials: true,
 		MaxAge:           600,
 	}
+	noContent := func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}
+
 	mux.HandleFunc(middleware.WithCORS("POST /oauth2/dcr/register",
 		dcrHandler.HandleDCRRegistration, opts))
-	mux.HandleFunc(middleware.WithCORS("OPTIONS /oauth2/dcr/register",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}, opts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /oauth2/dcr/register", noContent, opts))
+
+	// RFC 7592 client configuration endpoint.
+	mux.HandleFunc(middleware.WithCORS("GET /oauth2/dcr/register/{client_id}",
+		dcrHandler.HandleGetClientConfiguration, opts))
+	mux.HandleFunc(middleware.WithCORS("PUT /oauth2/dcr/register/{client_id}",
+		dcrHandler.HandleUpdateClientConfiguration, opts))
+	mux.HandleFunc(middleware.WithCORS("DELETE /oauth2/dcr/register/{client_id}",
+		dcrHandler.HandleDeleteClientConfiguration, opts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /oauth2/dcr/register/{client_id}", noContent, opts))
 }
