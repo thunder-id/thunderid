@@ -943,9 +943,10 @@ func prepareIdentifierQuery(
 		value  string
 		source string
 	}
-	var toInsert []indexedAttr
+	var attrEntries, sysEntries []indexedAttr
 
 	// Extract indexed attributes from schema attributes (source = "attribute").
+	// A value may be a scalar (one identifier value) or an array of scalars (multiple values).
 	if len(attributes) > 0 {
 		var attrMap map[string]interface{}
 		if err := json.Unmarshal(attributes, &attrMap); err != nil {
@@ -955,13 +956,14 @@ func prepareIdentifierQuery(
 			if !indexedAttrs[attrName] {
 				continue
 			}
-			if valueStr := attrValueToString(attrValue); valueStr != "" {
-				toInsert = append(toInsert, indexedAttr{name: attrName, value: valueStr, source: "attribute"})
+			for _, valueStr := range attrValueToStrings(attrValue) {
+				attrEntries = append(attrEntries, indexedAttr{name: attrName, value: valueStr, source: "attribute"})
 			}
 		}
 	}
 
 	// Extract indexed attributes from system attributes (source = "system").
+	sysNames := make(map[string]bool)
 	if len(systemAttributes) > 0 {
 		var sysAttrMap map[string]interface{}
 		if err := json.Unmarshal(systemAttributes, &sysAttrMap); err != nil {
@@ -971,29 +973,37 @@ func prepareIdentifierQuery(
 			if !indexedAttrs[attrName] {
 				continue
 			}
-			if valueStr := attrValueToString(attrValue); valueStr != "" {
-				toInsert = append(toInsert, indexedAttr{name: attrName, value: valueStr, source: "system"})
+			sysNames[attrName] = true
+			for _, valueStr := range attrValueToStrings(attrValue) {
+				sysEntries = append(sysEntries, indexedAttr{name: attrName, value: valueStr, source: "system"})
 			}
 		}
 	}
+
+	// If the same name appears in both schema and system attributes, the system attribute
+	// values win entirely (schema values for that name are dropped, not merged).
+	toInsert := make([]indexedAttr, 0, len(attrEntries)+len(sysEntries))
+	for _, attr := range attrEntries {
+		if !sysNames[attr.name] {
+			toInsert = append(toInsert, attr)
+		}
+	}
+	toInsert = append(toInsert, sysEntries...)
 
 	if len(toInsert) == 0 {
 		return nil, nil, nil
 	}
 
-	// Deduplicate by attribute name; if the same key appears in both schema and system attributes,
-	// the system attribute entry wins (it was appended last and overwrites the schema one).
-	dedupMap := make(map[string]indexedAttr, len(toInsert))
-	dedupOrder := make([]string, 0, len(toInsert))
+	// Deduplicate exact (name, value) repeats, preserving first-seen order.
+	seen := make(map[string]bool, len(toInsert))
+	deduped := make([]indexedAttr, 0, len(toInsert))
 	for _, attr := range toInsert {
-		if _, exists := dedupMap[attr.name]; !exists {
-			dedupOrder = append(dedupOrder, attr.name)
+		key := attr.name + "\x00" + attr.value
+		if seen[key] {
+			continue
 		}
-		dedupMap[attr.name] = attr
-	}
-	deduped := make([]indexedAttr, 0, len(dedupMap))
-	for _, name := range dedupOrder {
-		deduped = append(deduped, dedupMap[name])
+		seen[key] = true
+		deduped = append(deduped, attr)
 	}
 	toInsert = deduped
 
@@ -1030,6 +1040,27 @@ func attrValueToString(value interface{}) string {
 	default:
 		return ""
 	}
+}
+
+// attrValueToStrings converts an attribute value into the identifier values to index.
+// A scalar produces at most one value; an array produces one value per indexable element.
+// Non-indexable elements (e.g. nested objects) are skipped.
+func attrValueToStrings(value interface{}) []string {
+	elements, ok := value.([]interface{})
+	if !ok {
+		if s := attrValueToString(value); s != "" {
+			return []string{s}
+		}
+		return nil
+	}
+
+	values := make([]string, 0, len(elements))
+	for _, elem := range elements {
+		if s := attrValueToString(elem); s != "" {
+			values = append(values, s)
+		}
+	}
+	return values
 }
 
 func validateIndexedAttributesConfig(configuredAttrs []string) error {

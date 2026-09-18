@@ -908,6 +908,57 @@ func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_NumericAndBoolValues(
 	_ = args
 }
 
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_MultipleValuesForSameName() {
+	attrs := json.RawMessage(`{"email":["a@b.com","c@d.com"]}`)
+	indexed := map[string]bool{"email": true}
+	query, args, err := prepareIdentifierQuery("e1", attrs, nil, indexed, "dep1")
+	s.NoError(err)
+	s.NotNil(query)
+
+	var values []string
+	for _, arg := range args {
+		if str, ok := arg.(string); ok && (str == "a@b.com" || str == "c@d.com") {
+			values = append(values, str)
+		}
+	}
+	s.ElementsMatch([]string{"a@b.com", "c@d.com"}, values)
+}
+
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_DuplicateValuesDeduped() {
+	attrs := json.RawMessage(`{"email":["a@b.com","a@b.com"]}`)
+	indexed := map[string]bool{"email": true}
+	query, args, err := prepareIdentifierQuery("e1", attrs, nil, indexed, "dep1")
+	s.NoError(err)
+	s.NotNil(query)
+
+	count := 0
+	for _, arg := range args {
+		if str, ok := arg.(string); ok && str == "a@b.com" {
+			count++
+		}
+	}
+	s.Equal(1, count, "duplicate values for the same name should be inserted once")
+}
+
+func (s *StoreHelpersTestSuite) TestPrepareIdentifierQuery_SystemArrayOverridesSchemaArray() {
+	attrs := json.RawMessage(`{"email":["schema@b.com"]}`)
+	sysAttrs := json.RawMessage(`{"email":["sys1@b.com","sys2@b.com"]}`)
+	indexed := map[string]bool{"email": true}
+	query, args, err := prepareIdentifierQuery("e1", attrs, sysAttrs, indexed, "dep1")
+	s.NoError(err)
+	s.NotNil(query)
+
+	var values []string
+	for _, arg := range args {
+		if str, ok := arg.(string); ok {
+			values = append(values, str)
+		}
+	}
+	s.Contains(values, "sys1@b.com")
+	s.Contains(values, "sys2@b.com")
+	s.NotContains(values, "schema@b.com")
+}
+
 func (s *StoreHelpersTestSuite) TestAttrValueToString() {
 	s.Equal("hello", attrValueToString("hello"))
 	s.Equal("3.14", attrValueToString(float64(3.14)))
@@ -915,6 +966,16 @@ func (s *StoreHelpersTestSuite) TestAttrValueToString() {
 	s.Equal("100", attrValueToString(int64(100)))
 	s.Equal("true", attrValueToString(true))
 	s.Equal("", attrValueToString([]string{"unsupported"}))
+}
+
+func (s *StoreHelpersTestSuite) TestAttrValueToStrings() {
+	s.Equal([]string{"hello"}, attrValueToStrings("hello"))
+	s.Equal([]string{"42"}, attrValueToStrings(int(42)))
+	s.Nil(attrValueToStrings(map[string]interface{}{"k": "v"}))
+	s.Equal([]string{"a@b.com", "c@d.com"},
+		attrValueToStrings([]interface{}{"a@b.com", "c@d.com"}))
+	s.Equal([]string{"a@b.com"},
+		attrValueToStrings([]interface{}{"a@b.com", map[string]interface{}{"k": "v"}}))
 }
 
 func (s *StoreHelpersTestSuite) TestValidateIndexedAttributesConfig_WithinLimit() {
