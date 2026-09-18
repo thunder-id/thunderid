@@ -12,7 +12,6 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"math/big"
-	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -226,7 +225,7 @@ func (suite *OpenID4VPInitTestSuite) TestInitializeRequiresClientID() {
 	suite.Require().NoError(config.InitializeServerRuntime("", cfg))
 	defer config.ResetServerRuntime()
 
-	svc, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil)
+	svc, err := Initialize(nil, nil, nil, nil, nil)
 	suite.Require().Error(err)
 	suite.ErrorIs(err, ErrPolicy)
 	suite.Nil(svc)

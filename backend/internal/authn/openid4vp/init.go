@@ -25,12 +25,15 @@ import (
 )
 
 // Initialize wires the OpenID4VP verifier engine.
+// Initialize builds the OpenID4VP verifier service. It mounts nothing: the routes are a runtime
+// surface, and a plane that serves none of them still needs the service, because the management
+// APIs read presentation definitions through it. Call RegisterRoutes to serve the endpoints.
 func Initialize(
-	mux *http.ServeMux, cryptoProvider providers.RuntimeCryptoProvider,
+	cryptoProvider providers.RuntimeCryptoProvider,
 	configCrypto kmprovider.ConfigCryptoProvider, jwtService jwt.JWTServiceInterface,
 	defSvc presentation.PresentationDefinitionServiceInterface,
 	store providers.RuntimeStoreProvider,
-) (OpenID4VPServiceInterface, error) {
+) (Service, error) {
 	runtime := config.GetServerRuntime()
 	cfg := runtime.Config.OpenID4VP
 	serverHome := runtime.ServerHome
@@ -105,9 +108,25 @@ func Initialize(
 		return nil, err
 	}
 
-	registerRoutes(mux, newOpenID4VPHandler(svc, svc))
-
 	return svc, nil
+}
+
+// Service is the OpenID4VP verifier.
+//
+// It names both halves in one type: what the management surface reads through, and what the
+// wallet-facing handler needs. Naming it means a plane can mount the routes without asserting its
+// way there, and the compiler checks that the service it was handed is the right one.
+type Service interface {
+	OpenID4VPServiceInterface
+	walletInterface
+}
+
+// RegisterRoutes mounts the OpenID4VP wallet and verifier endpoints.
+//
+// Separate from Initialize because only a plane that serves runtime traffic mounts them. A control
+// plane builds the service and never calls this, so the endpoints are not reachable there.
+func RegisterRoutes(mux *http.ServeMux, svc Service) {
+	registerRoutes(mux, newOpenID4VPHandler(svc, svc))
 }
 
 // registerRoutes registers the OpenID4VP HTTP routes on mux with CORS middleware.

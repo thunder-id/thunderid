@@ -236,8 +236,10 @@ function build_backend() {
 
     # Set binary name with .exe extension for Windows
     local output_binary="$BINARY_NAME"
+    local cp_output_binary="${BINARY_NAME}-cp"
     if [ "$GO_OS" = "windows" ]; then
         output_binary="${BINARY_NAME}.exe"
+        cp_output_binary="${BINARY_NAME}-cp.exe"
     fi
 
     # Check if coverage build is requested via ENABLE_COVERAGE environment variable
@@ -262,6 +264,13 @@ function build_backend() {
     $build_flags -ldflags "-X \"main.version=$VERSION\" \
     -X \"main.buildDate=$$(date -u '+%Y-%m-%d %H:%M:%S UTC')\"" \
     -o "../$BUILD_DIR/$output_binary" ./cmd/server
+
+    # The control plane is the same product with the runtime surfaces left out, so it is built from
+    # the same source at the same version rather than released on its own cycle.
+    GOOS=$GO_OS GOARCH=$GO_ARCH CGO_ENABLED=0 go build -C "$BACKEND_BASE_DIR" \
+    $build_flags -ldflags "-X \"main.version=$VERSION\" \
+    -X \"main.buildDate=$$(date -u '+%Y-%m-%d %H:%M:%S UTC')\"" \
+    -o "../$BUILD_DIR/$cp_output_binary" ./cmd/cp
 
     echo "Initializing databases..."
     initialize_databases true
@@ -442,11 +451,16 @@ function prepare_backend_for_packaging() {
 
     # Use appropriate binary name based on OS
     local binary_name="$BINARY_NAME"
+    local cp_binary_name="${BINARY_NAME}-cp"
     if [ "$GO_OS" = "windows" ]; then
         binary_name="${BINARY_NAME}.exe"
+        cp_binary_name="${BINARY_NAME}-cp.exe"
     fi
 
     cp "$BUILD_DIR/$binary_name" "$DIST_DIR/$PRODUCT_FOLDER/"
+    # The control plane ships alongside the data plane: same distribution, same configuration, and
+    # the operator chooses which binary to run.
+    cp "$BUILD_DIR/$cp_binary_name" "$DIST_DIR/$PRODUCT_FOLDER/"
     cp "$BACKEND_DIR/deployment.yaml" "$DIST_DIR/$PRODUCT_FOLDER/"
     cp -r "$BACKEND_DIR/config" "$DIST_DIR/$PRODUCT_FOLDER/"
     if [ -d "$REPOSITORY_DB_DIR" ]; then

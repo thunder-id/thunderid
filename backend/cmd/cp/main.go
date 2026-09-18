@@ -1,12 +1,17 @@
-// Copyright 2025-2026 The ThunderID Authors
+// Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package main is the entry point for starting the server.
+// Command cp runs ThunderID as a control plane.
+//
+// A control plane serves the management APIs and nothing else. It holds no runtime traffic: no
+// logins, no token issuance, no flow execution, no credential issuance. Those belong to a data
+// plane, and this binary does not contain them, which is the point of there being two binaries
+// rather than one with a setting. What decides it is which wiring this main calls, so a runtime
+// surface cannot be reached here by configuration, only by editing this file.
 package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"mime"
 	"net"
@@ -18,23 +23,22 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/thunder-id/thunderid/internal/dataplane"
-	appserver "github.com/thunder-id/thunderid/internal/server"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/mcp"
 	"github.com/thunder-id/thunderid/internal/system/security"
+
+	appserver "github.com/thunder-id/thunderid/internal/server"
 )
 
 func main() {
-	// Server bootstrap/shutdown logging has no request scope, so context.Background() is used.
-	ctx := context.Background()
 	startupStartedAt := time.Now()
+
+	ctx := context.Background()
 	logger := log.GetLogger()
 
-	flag.String("resources", "", "Path to declarative resources YAML file")
 	serverHome := appserver.ServerHome(ctx, logger)
 
 	cfg := appserver.LoadConfiguration(ctx, logger, serverHome)
@@ -67,50 +71,34 @@ func main() {
 		logger.Fatal(ctx, "Failed to initialize multiplexer")
 	}
 
-	// Register the services. This plane serves runtime traffic as well as the management APIs, so it
-	// wires both halves: the shared build, then the surfaces that serve requests on top of it.
+	// The shared build, and only the shared build. There is no call to WireRuntime here, so this
+	// binary mounts no runtime route and links no runtime package.
 	svcs := appserver.BuildManagement(mux, cacheManager)
-	dataplane.WireRuntime(svcs)
-	jwtService, runtimeCryptoSvc, importService, mcpServer :=
-		svcs.JWTService, svcs.RuntimeCryptoSvc, svcs.ImportService, svcs.MCPServer
 
-	// When invoked as the bootstrap one-shot (`thunderid bootstrap`), create the
-	// default resources in-process and exit without starting the HTTP server.
-	if isBootstrapInvocation() {
-		if err := runBootstrap(ctx, logger, serverHome, importService, cacheManager); err != nil {
-			logger.Error(ctx, "In-process bootstrap failed; exiting", log.Error(err))
-			os.Exit(1)
-		}
-		logger.Info(ctx, "In-process bootstrap finished successfully")
-		return
-	}
-
-	// Initialize the Resource Server token-revocation cache. The initial deny-list snapshot is loaded
-	// synchronously so enforcement is live before the first request; if that load fails the server
-	// still starts and the syncer repopulates the cache on its next tick.
+	// The management APIs accept tokens rather than issuing them, so the revocation cache is still
+	// needed: a token this plane accepts can have been revoked by the plane that issued it.
 	revocationEnforcer, revocationSyncer := appserver.InitRevocationCache(ctx, logger, cfg)
 	revocationSyncer.Start(ctx)
 
 	// Mount the MCP server's routes now that the revocation enforcer exists — DefaultGuard uses it
 	// to authenticate MCP requests with the same verification and revocation logic as the REST gate.
-	mcpGuard, mcpResourceMeta := mcp.DefaultGuard(jwtService, revocationEnforcer)
-	mcp.Initialize(mux, mcpServer, mcpGuard, mcpResourceMeta)
+	mcpGuard, mcpResourceMeta := mcp.DefaultGuard(svcs.JWTService, revocationEnforcer)
+	mcp.Initialize(mux, svcs.MCPServer, mcpGuard, mcpResourceMeta)
 
-	// Register static file handlers for frontend applications.
-	registerStaticFileHandlers(ctx, logger, mux, serverHome)
+	registerConsole(ctx, logger, mux, serverHome)
 
 	// Setup signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	// Create the HTTP server.
-	server := appserver.NewHTTPServer(ctx, logger, cfg, mux, jwtService, revocationEnforcer)
+	server := appserver.NewHTTPServer(ctx, logger, cfg, mux, svcs.JWTService, revocationEnforcer)
 	var ln net.Listener
 	if cfg.Server.HTTPOnly {
 		logger.Info(ctx, "TLS is not enabled, starting server without TLS")
 		ln = appserver.NewListener(ctx, logger, server)
 	} else {
-		tlsConfigProvider, ok := runtimeCryptoSvc.(common.TLSConfigProvider)
+		tlsConfigProvider, ok := svcs.RuntimeCryptoSvc.(common.TLSConfigProvider)
 		if !ok {
 			logger.Fatal(ctx, "Runtime crypto provider does not support TLS material retrieval")
 		}
@@ -120,26 +108,27 @@ func main() {
 
 	serverURL := config.GetServerURL(&cfg.Server)
 	consoleURL := fmt.Sprintf("%s/console", strings.TrimSuffix(serverURL, "/"))
-	logger.Info(ctx, "ThunderID Server URL", log.String("url", serverURL))
+	logger.Info(ctx, "ThunderID Control Plane URL", log.String("url", serverURL))
 	logger.Info(ctx, "ThunderID Console URL", log.String("url", consoleURL))
 
-	// Start server in a goroutine
 	go func() {
 		startupDuration := time.Since(startupStartedAt)
-		logger.Info(ctx, "ThunderID Server started", log.String("startup_time", startupDuration.String()))
+		logger.Info(ctx, "ThunderID Control Plane started",
+			log.String("startup_time", startupDuration.String()))
 		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			logger.Fatal(ctx, "Failed to serve requests", log.Error(err))
 		}
 	}()
 
-	// Wait for shutdown signal
 	<-sigChan
-	logger.Info(ctx, "Shutting down server...")
 	appserver.GracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer)
 }
 
-// registerStaticFileHandlers registers static file handlers for frontend applications.
-func registerStaticFileHandlers(ctx context.Context, logger *log.Logger, mux *http.ServeMux, serverHome string) {
+// registerConsole serves the Console application.
+//
+// Only the Console. Gate is the login UI, and a control plane runs no login, so shipping it here
+// would offer an interface for something this binary cannot do.
+func registerConsole(ctx context.Context, logger *log.Logger, mux *http.ServeMux, serverHome string) {
 	// Override the OS-level MIME mapping so .js/.mjs files are served as
 	// application/javascript. Most proxies (Envoy, NGINX, Cloudflare) only
 	// compress application/javascript in their default allowlists, not
@@ -147,23 +136,14 @@ func registerStaticFileHandlers(ctx context.Context, logger *log.Logger, mux *ht
 	_ = mime.AddExtensionType(".js", "application/javascript; charset=utf-8")
 	_ = mime.AddExtensionType(".mjs", "application/javascript; charset=utf-8")
 
-	// Serve gate application from /gate
-	gateDir := path.Join(serverHome, "apps", "gate")
-	if handler, err := appserver.StaticFileHandler("/gate/", gateDir, logger); err != nil {
-		logger.Warn(ctx, "Gate application not registered", log.String("directory", gateDir), log.Error(err))
-	} else {
-		logger.Debug(ctx, "Registering static file handler for Gate application",
-			log.String("path", "/gate/"), log.String("directory", gateDir))
-		mux.Handle("/gate/", handler)
-	}
-
-	// Serve console application from /console
 	consoleDir := path.Join(serverHome, "apps", "console")
-	if handler, err := appserver.StaticFileHandler("/console/", consoleDir, logger); err != nil {
-		logger.Warn(ctx, "Console application not registered", log.String("directory", consoleDir), log.Error(err))
-	} else {
-		logger.Debug(ctx, "Registering static file handler for Console application",
-			log.String("path", "/console/"), log.String("directory", consoleDir))
-		mux.Handle("/console/", handler)
+	handler, err := appserver.StaticFileHandler("/console/", consoleDir, logger)
+	if err != nil {
+		logger.Warn(ctx, "Console application not registered",
+			log.String("directory", consoleDir), log.Error(err))
+		return
 	}
+	logger.Debug(ctx, "Registering static file handler for Console application",
+		log.String("path", "/console/"), log.String("directory", consoleDir))
+	mux.Handle("/console/", handler)
 }

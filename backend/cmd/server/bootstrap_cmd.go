@@ -11,6 +11,7 @@ import (
 	"path"
 	"strings"
 
+	appserver "github.com/thunder-id/thunderid/internal/server"
 	"github.com/thunder-id/thunderid/internal/system/bootstrap"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -113,7 +114,7 @@ func setEnv(key, value string) {
 
 // shutdownBootstrap releases the shared resources used by the bootstrap one-shot.
 func shutdownBootstrap(ctx context.Context, logger *log.Logger, cacheManager cache.CacheManagerInterface) {
-	unregisterServices()
+	appserver.Unregister()
 
 	if err := dbprovider.GetDBProviderCloser().Close(); err != nil {
 		logger.Error(ctx, "Error closing database connections", log.Error(err))

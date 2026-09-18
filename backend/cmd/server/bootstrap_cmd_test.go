@@ -14,7 +14,6 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/observability"
 )
 
 type BootstrapCmdTestSuite struct {
@@ -87,17 +86,15 @@ func (suite *BootstrapCmdTestSuite) TestRunBootstrap_TearsDownAndReturnsErrorWhe
 	// parseBootstrapOptions fails and runBootstrap must tear down and return the error
 	// instead of proceeding to seed resources.
 	origCmdLine := flag.CommandLine
-	origObservability := observabilitySvc
 	suite.T().Cleanup(func() {
 		flag.CommandLine = origCmdLine
-		observabilitySvc = origObservability
 	})
 
 	flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
 	_ = flag.CommandLine.Parse([]string{bootstrapSubcommand})
 
-	// shutdownBootstrap tears observability down; a disabled service handles it as a no-op.
-	observabilitySvc = observability.Initialize(config.GetServerRuntime().Config.Observability)
+	// shutdownBootstrap tears observability down. Nothing built it here, and tearing down what was
+	// never built is a no-op.
 
 	err := runBootstrap(context.Background(), log.GetLogger(), suite.T().TempDir(), nil, nil)
 
