@@ -19,6 +19,10 @@ $header = @"
 server:
   hostname: localhost
   port: 8095
+  security:
+    # Exercised by tests/integration/managementtoken: a deployment pipeline authenticating to the
+    # import API without first obtaining OAuth client credentials.
+    management_token: "integration-management-token"
 
 
 tls:

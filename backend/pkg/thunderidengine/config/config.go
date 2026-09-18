@@ -46,6 +46,21 @@ type SecurityConfig struct {
 	TrustedIssuer          TrustedIssuerConfig   `yaml:"trusted_issuer"           json:"trusted_issuer"`
 	SystemPermissionPrefix string                `yaml:"system_permission_prefix" json:"system_permission_prefix"`
 	TokenRevocation        TokenRevocationConfig `yaml:"token_revocation"         json:"token_revocation"`
+	// ManagementToken is a pre-shared token that authenticates calls to this deployment's import and
+	// variable store APIs, so a deployment pipeline can push configuration without first obtaining
+	// OAuth client credentials. It is presented as an ordinary bearer token:
+	//
+	//     Authorization: Bearer <token>
+	//
+	// It authenticates as a principal holding the root system permission, and is trusted only on
+	// those paths; every other API stays behind OAuth. Empty disables it, which is the default: a
+	// deployment gets this mechanism only by configuring one.
+	//
+	// It is one long-lived string, so it cannot be scoped per caller or revoked without a restart.
+	// Treat it as a deployment credential, give it to as few callers as possible, and prefer an
+	// OAuth client wherever one can be obtained.
+	ManagementToken string `yaml:"management_token" json:"management_token"`
+
 	// DirectAuthSecret gates the Direct API endpoints (/auth/**, /register/passkey/**, /access/**).
 	// When set, callers must present this value in the Direct-Auth-Secret header; when empty, those
 	// endpoints are blocked (secure by default).

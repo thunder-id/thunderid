@@ -7,6 +7,9 @@ server:
   hostname: localhost
   port: 8095
   security:
+    # Exercised by tests/integration/managementtoken: a deployment pipeline authenticating to the
+    # import API without first obtaining OAuth client credentials.
+    management_token: "integration-management-token"
     # Shortened from the 60s default so revocation-enforcement tests (which check a token
     # immediately after revoking it) don't need a long sleep to observe the deny-list cache pick
     # up the revocation. Introspection (RFC 7009 hot path) is unaffected — it reads the store

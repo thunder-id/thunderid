@@ -58,9 +58,9 @@ func (suite *CreateSecurityMiddlewareTestSuite) SetupTest() {
 // TestCreateSecurityMiddleware_MultipleInvocations tests that multiple calls work correctly
 func (suite *CreateSecurityMiddlewareTestSuite) TestCreateSecurityMiddleware_MultipleInvocations() {
 	// Execute multiple times
-	handler1 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService, nil)
-	handler2 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService, nil)
-	handler3 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService, nil)
+	handler1 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService, nil, "")
+	handler2 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService, nil, "")
+	handler3 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService, nil, "")
 
 	// Assert - each call should return a new handler instance
 	assert.NotNil(suite.T(), handler1)

@@ -237,7 +237,8 @@ func accessLogExcludePaths(configured []string) []string {
 // createHTTPServer creates and configures an HTTP server with common settings.
 func createHTTPServer(ctx context.Context, logger *log.Logger, cfg *config.Config, mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface, revocationEnforcer revocationcache.EnforcerInterface) *http.Server {
-	securityMiddleware := createSecurityMiddleware(ctx, logger, mux, jwtService, revocationEnforcer)
+	securityMiddleware := createSecurityMiddleware(ctx, logger, mux, jwtService, revocationEnforcer,
+		cfg.Server.SecurityConfig.ManagementToken)
 
 	// Build the middleware chain with proper execution order.
 	// Request flow: CorrelationID (outermost) -> DeploymentID -> SecurityHeaders -> AccessLog ->
@@ -287,8 +288,9 @@ func createTLSListener(ctx context.Context, logger *log.Logger, server *http.Ser
 }
 
 func createSecurityMiddleware(ctx context.Context, logger *log.Logger, mux *http.ServeMux,
-	jwtService jwt.JWTServiceInterface, revocationEnforcer revocationcache.EnforcerInterface) http.Handler {
-	middlewareFunc, err := security.Initialize(jwtService, revocationEnforcer)
+	jwtService jwt.JWTServiceInterface, revocationEnforcer revocationcache.EnforcerInterface,
+	managementToken string) http.Handler {
+	middlewareFunc, err := security.Initialize(jwtService, revocationEnforcer, managementToken)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize security middleware", log.Error(err))
 	}
