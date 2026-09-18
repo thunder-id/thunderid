@@ -13,6 +13,10 @@ import (
 
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 const testDeploymentID = "test-server-id"
@@ -29,11 +33,16 @@ func TestConsentStoreTestSuite(t *testing.T) {
 }
 
 func (s *ConsentStoreTestSuite) SetupTest() {
+	// The store resolves its deployment from the loaded runtime rather than holding one, and
+	// other suites in this package reset the runtime, so load it per test.
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{
+		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
+	})
 	s.mockDBProvider = providermock.NewDBProviderInterfaceMock(s.T())
 	s.mockDBClient = providermock.NewDBClientInterfaceMock(s.T())
 	s.store = &consentStore{
-		dbProvider:   s.mockDBProvider,
-		deploymentID: testDeploymentID,
+		dbProvider: s.mockDBProvider,
 	}
 }
 
@@ -348,4 +357,21 @@ func (s *ConsentStoreTestSuite) TestBuildAuthorizationFromResultRow() {
 	s.Equal("user1", auth.UserID)
 	s.Equal(AuthorizationTypeAuthorization, auth.Type)
 	s.Equal(AuthorizationStatusApproved, auth.Status)
+}
+
+// A request names the deployment it acts for, and the store must scope by that rather than by the
+// identifier this server was configured with. Getting this wrong reads another deployment's rows,
+// which no other assertion here would catch: every other test runs on an unscoped context, where
+// the two values coincide.
+func (s *ConsentStoreTestSuite) TestGetConsent_ScopesByTheRequestDeployment() {
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", mock.Anything, QueryGetConsentByID, "c1", "acme").
+		Return([]map[string]interface{}{}, nil).Once()
+
+	_, err := s.store.GetConsent(deployment.WithID(context.Background(), "acme"), "c1")
+
+	// The row set is empty, so not-found is the expected outcome. What this asserts is the query
+	// argument: the mock only matches when the store scoped by "acme".
+	s.ErrorIs(err, errConsentNotFound)
+	s.mockDBClient.AssertExpectations(s.T())
 }

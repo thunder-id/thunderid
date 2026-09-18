@@ -14,6 +14,10 @@ import (
 
 	"github.com/thunder-id/thunderid/tests/mocks/database/modelmock"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 const testDeploymentID = "test-deployment-id"
@@ -47,12 +51,17 @@ func TestI18nStoreTestSuite(t *testing.T) {
 }
 
 func (suite *I18nStoreTestSuite) SetupTest() {
+	// The store resolves its deployment from the loaded runtime rather than holding one, and
+	// other suites in this package reset the runtime, so load it per test.
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{
+		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
+	})
 	suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
 	suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 	suite.mockTx = modelmock.NewTxInterfaceMock(suite.T())
 	suite.store = &i18nStore{
-		dbProvider:   suite.mockDBProvider,
-		deploymentID: testDeploymentID,
+		dbProvider: suite.mockDBProvider,
 	}
 }
 
@@ -502,4 +511,20 @@ func (suite *I18nStoreTestSuite) TestDeleteTranslationsByKey_Error() {
 
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to delete translations by namespace and key")
+}
+
+// A request names the deployment it acts for, and the store must scope by that rather than by the
+// identifier this server was configured with. Getting this wrong reads another deployment's rows,
+// which no other assertion here would catch: every other test runs on an unscoped context, where
+// the two values coincide.
+func (suite *I18nStoreTestSuite) TestGetDistinctLanguages_ScopesByTheRequestDeployment() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("Query", queryGetDistinctLanguages, "acme").Return([]map[string]interface{}{
+		{"language_code": "en-US"},
+	}, nil)
+
+	langs, err := suite.store.GetDistinctLanguages(deployment.WithID(context.Background(), "acme"))
+
+	suite.NoError(err)
+	suite.Len(langs, 1)
 }
