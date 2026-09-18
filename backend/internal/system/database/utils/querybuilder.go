@@ -36,7 +36,7 @@ func BuildFilterQuery(
 	sqliteQuery := baseQuery
 	for i, key := range keys {
 		postgresQuery += BuildPostgresJSONCondition(columnName, key, i+1)
-		sqliteQuery += BuildSQLiteJSONCondition(columnName, key)
+		sqliteQuery += BuildSQLiteJSONCondition(columnName, key, i+1)
 		args = append(args, filters[key])
 	}
 
@@ -55,7 +55,7 @@ func AppendDeploymentIDToFilterQuery(
 	query model.DBQuery, args []interface{}, deploymentID string,
 ) (model.DBQuery, []interface{}) {
 	postgresQuery := fmt.Sprintf("%s AND DEPLOYMENT_ID = $%d", query.PostgresQuery, len(args)+1)
-	sqliteQuery := fmt.Sprintf("%s AND DEPLOYMENT_ID = ?", query.SQLiteQuery)
+	sqliteQuery := fmt.Sprintf("%s AND DEPLOYMENT_ID = $%d", query.SQLiteQuery, len(args)+1)
 
 	argsWithDeploymentID := make([]interface{}, 0, len(args)+1)
 	argsWithDeploymentID = append(argsWithDeploymentID, args...)
@@ -87,8 +87,8 @@ func BuildPostgresJSONCondition(columnName, key string, paramIndex int) string {
 
 // BuildSQLiteJSONCondition builds a SQLite JSON filter condition.
 // For both nested and simple paths, it uses json_extract with dot notation.
-func BuildSQLiteJSONCondition(columnName, key string) string {
-	return fmt.Sprintf(" AND json_extract(%s, '$.%s') = ?", columnName, key)
+func BuildSQLiteJSONCondition(columnName, key string, paramIndex int) string {
+	return fmt.Sprintf(" AND json_extract(%s, '$.%s') = $%d", columnName, key, paramIndex)
 }
 
 // ValidateKey ensures that the provided key contains only safe characters (alphanumeric, underscores, and dots).
