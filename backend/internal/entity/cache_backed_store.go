@@ -52,7 +52,9 @@ func (s *cacheBackedEntityStore) CreateEntity(ctx context.Context, entity provid
 	if err := s.store.CreateEntity(ctx, entity, credentials, systemCredentials); err != nil {
 		return err
 	}
-	s.cacheEntityByID(ctx, &entity)
+	// The caller's struct lacks the store-generated timestamps, so drop any cached entry
+	// and let the next read populate the cache from the database.
+	s.invalidateEntityByID(ctx, entity.ID)
 	s.cacheEntityIDByIdentifiers(ctx, &entity)
 	return nil
 }
@@ -96,7 +98,7 @@ func (s *cacheBackedEntityStore) UpdateEntity(ctx context.Context, entity *provi
 		return err
 	}
 
-	s.cacheEntityByID(ctx, entity)
+	s.invalidateEntityByID(ctx, entity.ID)
 	s.cacheEntityIDByIdentifiers(ctx, entity)
 	return nil
 }
