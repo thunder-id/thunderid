@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -24,17 +25,23 @@ import (
 	"github.com/thunder-id/thunderid/internal/user"
 )
 
+// entityRef locates where an entity is provisioned: its entity type within the category, and the
+// organization unit that owns it.
 type entityRef struct {
 	entityType string
 	ouID       string
 }
 
-// provisioningExecutor implements the ExecutorInterface for user provisioning in a flow.
+// provisioningExecutor implements the ExecutorInterface for entity provisioning in a flow.
+//
+// The node's mode property names the entity category to provision. Only the create step is bound
+// to that category; the steps around it take it as an argument.
 type provisioningExecutor struct {
 	providers.Executor
 	identifyingExecutorInterface
 	entityProvider        entityprovider.EntityProviderInterface
 	userMgtProvider       providers.UserMgtProvider
+	agentMgtProvider      providers.AgentMgtProvider
 	groupService          group.GroupServiceInterface
 	roleService           role.RoleServiceInterface
 	roleAssignmentService role.RoleAssignmentServiceInterface
@@ -54,6 +61,7 @@ func newProvisioningExecutor(
 	roleAssignmentService role.RoleAssignmentServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	userMgtProvider providers.UserMgtProvider,
+	agentMgtProvider providers.AgentMgtProvider,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 ) *provisioningExecutor {
@@ -66,8 +74,10 @@ func newProvisioningExecutor(
 				providers.FlowTypeAuthentication,
 				providers.FlowTypeRegistration,
 				providers.FlowTypeUserOnboarding,
+				providers.FlowTypeAdministration,
 			},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
+				{Property: propertyKeyProvisioningMode},
 				{Property: propertyKeyDynamicInputsIncludeOptional},
 				{Property: propertyKeyDynamicInputsIncludeOptionalCredentials},
 				{Property: propertyKeyMaxDynamicInputsPerPrompt},
@@ -85,6 +95,7 @@ func newProvisioningExecutor(
 		identifyingExecutorInterface: identifyingExec,
 		entityProvider:               entityProvider,
 		userMgtProvider:              userMgtProvider,
+		agentMgtProvider:             agentMgtProvider,
 		groupService:                 groupService,
 		roleService:                  roleService,
 		roleAssignmentService:        roleAssignmentService,
@@ -94,10 +105,12 @@ func newProvisioningExecutor(
 	}
 }
 
-// Execute executes the user provisioning logic based on the inputs provided.
+// Execute provisions an entity of the node's category. It runs the category-independent
+// preparation, hands the collected attributes to the category's create step, and finishes with the
+// category-independent work that follows a create.
 func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.Debug(ctx.Context, "Executing user provisioning executor")
+	logger.Debug(ctx.Context, "Executing provisioning executor")
 
 	execResp := &providers.ExecutorResponse{
 		AdditionalData: make(map[string]string),
@@ -105,107 +118,204 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		AuthUser:       ctx.AuthUser,
 	}
 
-	// If it's an authentication flow, skip execution if the user is not eligible for provisioning
+	category, err := categoryFromMode(ctx)
+	if err != nil {
+		return execResp, err
+	}
+
+	// If it's an authentication flow, skip execution if the entity is not eligible for provisioning.
+	// The eligibility flag is written only by federated authentication, which authenticates users,
+	// so it gates the user category alone.
 	if ctx.FlowType == providers.FlowTypeAuthentication {
 		eligible, ok := ctx.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning]
-		if !ok || eligible != dataValueTrue {
-			logger.Debug(ctx.Context, "User is not eligible for provisioning, skipping execution")
+		if category == entitytype.TypeCategoryUser && (!ok || eligible != dataValueTrue) {
+			logger.Debug(ctx.Context, "User is not eligible for auto provisioning, skipping execution")
 			execResp.Status = providers.ExecComplete
 			return execResp, nil
 		}
 	}
 
-	if !p.HasRequiredInputs(ctx, execResp) {
+	attributes, proceed, err := p.prepareProvisioning(ctx, category, execResp, logger)
+	if err != nil {
+		return nil, err
+	}
+	if !proceed {
+		return execResp, nil
+	}
+
+	entityID, svcErr := p.createEntity(ctx, category, attributes, execResp, logger)
+	if svcErr != nil {
+		execResp.Status = providers.ExecFailure
+		execResp.Error = svcErr
+		return execResp, nil
+	}
+
+	return p.completeProvisioning(ctx, category, entityID, execResp, logger)
+}
+
+// categoryFromMode maps the node's mode property onto the entity category it works on. A mode is
+// the category name, and a node that sets none works on the default category.
+func categoryFromMode(ctx *providers.NodeContext) (entitytype.TypeCategory, error) {
+	mode, ok := ctx.NodeProperties[propertyKeyProvisioningMode].(string)
+	if !ok || mode == "" {
+		return defaultProvisioningCategory, nil
+	}
+	category := entitytype.TypeCategory(mode)
+	if !category.IsValid() {
+		return "", fmt.Errorf("invalid provisioning mode: %s", mode)
+	}
+	return category, nil
+}
+
+// prepareProvisioning runs everything that happens before an entity exists: input collection,
+// attribute resolution against the entity type schema, and identification of an entity that
+// already matches. It returns the attributes to create the entity with. A false proceed means
+// execResp already carries the outcome of the node.
+func (p *provisioningExecutor) prepareProvisioning(ctx *providers.NodeContext,
+	category entitytype.TypeCategory, execResp *providers.ExecutorResponse, logger *log.Logger,
+) (map[string]interface{}, bool, error) {
+	if !p.hasRequiredInputs(ctx, category, execResp) {
 		if execResp.Status == providers.ExecFailure {
-			return execResp, nil
+			return nil, false, nil
 		}
 
 		logger.Debug(ctx.Context, "Required inputs for provisioning executor is not provided")
 		execResp.Status = providers.ExecUserInputRequired
-		return execResp, nil
+		return nil, false, nil
 	}
 
-	identifyingAttrs, credentialAttrs, err := p.getAttributesForProvisioning(ctx)
+	identifyingAttrs, credentialAttrs, err := p.getAttributesForProvisioning(ctx, category)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	if len(identifyingAttrs) == 0 && len(credentialAttrs) == 0 {
-		logger.Debug(ctx.Context, "No user attributes provided for provisioning")
+	if len(identifyingAttrs) == 0 && len(credentialAttrs) == 0 &&
+		!hasRecordValues(ctx, category) {
+		logger.Debug(ctx.Context, "No entity attributes provided for provisioning")
 		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrProvisioningUserAttrsMissing
-		return execResp, nil
+		execResp.Error = errForEntityCategory(ErrProvisioningAttrsMissing, category)
+		return nil, false, nil
 	}
 
-	userID, err := p.IdentifyUser(ctx.Context, identifyingAttrs, execResp)
+	proceed, err := p.resolveExistingEntity(ctx, category, identifyingAttrs, execResp, logger)
+	if err != nil || !proceed {
+		return nil, false, err
+	}
+
+	// Merge identifying and credential attributes for entity creation
+	attributes := make(map[string]interface{}, len(identifyingAttrs)+len(credentialAttrs))
+	for k, v := range identifyingAttrs {
+		attributes[k] = v
+	}
+	for k, v := range credentialAttrs {
+		attributes[k] = v
+	}
+	return attributes, true, nil
+}
+
+// resolveExistingEntity identifies an entity that already matches the provisioning attributes and
+// decides whether provisioning can still go ahead. A false return means execResp already carries
+// the outcome of the node.
+//
+// With no attributes to match on there is nothing to identify by, which is reachable whenever a
+// schema declares every attribute optional and none is supplied. Identification is skipped rather
+// than attempted, since an empty filter matches on nothing rather than on everything.
+func (p *provisioningExecutor) resolveExistingEntity(ctx *providers.NodeContext,
+	category entitytype.TypeCategory, identifyingAttrs map[string]interface{},
+	execResp *providers.ExecutorResponse, logger *log.Logger,
+) (bool, error) {
+	if len(identifyingAttrs) == 0 {
+		logger.Debug(ctx.Context, "No identifying attributes provided, skipping identification")
+		return true, nil
+	}
+
+	entityID, err := p.IdentifyEntity(ctx.Context, identifyingAttrs, execResp)
 	if err != nil {
-		logger.Error(ctx.Context, "Failed to identify user", log.Error(err))
+		logger.Error(ctx.Context, "Failed to identify the entity", log.Error(err))
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrFailedToIdentifyUser
-		return execResp, nil
+		return false, nil
 	}
 	if execResp.Status == providers.ExecFailure &&
 		execResp.Error != nil && execResp.Error.Code == ErrAmbiguousUserIdentity.Code &&
 		isCrossOUProvisioningAllowed(ctx) {
-		resolved, err := p.resolveAmbiguousUserForProvisioning(ctx, identifyingAttrs)
-		if err != nil {
-			return nil, err
+		resolved, resolveErr := p.resolveAmbiguousEntityForProvisioning(ctx, category, identifyingAttrs)
+		if resolveErr != nil {
+			return false, resolveErr
 		}
-		userID = resolved
+		entityID = resolved
 		execResp.Status = ""
 		execResp.Error = nil
 	}
 	if execResp.Status == providers.ExecFailure &&
 		(execResp.Error == nil || execResp.Error.Code != ErrUserNotFound.Code) {
-		return execResp, nil
+		return false, nil
 	}
-	// clear execResp set by IdentifyUser
+	// clear execResp set by IdentifyEntity
 	execResp.Status = ""
 	execResp.Error = nil
-	if userID != nil && *userID != "" {
-		shouldContinue, err := p.handleExistingUser(ctx, *userID, execResp, logger)
-		if err != nil {
-			return nil, err
+	if entityID != nil && *entityID != "" {
+		return p.handleExistingEntity(ctx, category, *entityID, execResp, logger)
+	}
+
+	return true, nil
+}
+
+// createEntity provisions the entity through the management service its category owns, and returns
+// the identifier the store assigned.
+func (p *provisioningExecutor) createEntity(ctx *providers.NodeContext, category entitytype.TypeCategory,
+	attributes map[string]interface{}, execResp *providers.ExecutorResponse,
+	logger *log.Logger) (string, *tidcommon.ServiceError) {
+	var entityID string
+
+	switch category {
+	case entitytype.TypeCategoryUser:
+		createdUser, svcErr := p.createUserInStore(ctx, attributes)
+		if svcErr != nil {
+			return "", p.handleCreateEntityError(ctx, category, svcErr, logger)
 		}
-		if !shouldContinue {
-			return execResp, nil
+		if createdUser != nil {
+			entityID = createdUser.ID
 		}
+	case entitytype.TypeCategoryAgent:
+		createdAgent, svcErr := p.createAgentInStore(ctx, attributes)
+		if svcErr != nil {
+			return "", p.handleCreateEntityError(ctx, category, svcErr, logger)
+		}
+		if createdAgent != nil {
+			entityID = createdAgent.ID
+			addAgentDataToResponse(execResp, createdAgent)
+		}
+	default:
+		logger.Error(ctx.Context, "Provisioning is not supported for the entity category",
+			log.String("category", string(category)))
+		return "", errForEntityCategory(ErrProvisioningFailed, category)
 	}
 
-	// Merge identifying and credential attributes for user creation
-	userAttributes := make(map[string]interface{}, len(identifyingAttrs)+len(credentialAttrs))
-	for k, v := range identifyingAttrs {
-		userAttributes[k] = v
-	}
-	for k, v := range credentialAttrs {
-		userAttributes[k] = v
-	}
-	createdEntity, createErr := p.createUserInStore(ctx, userAttributes)
-	if createErr != nil {
-		execResp.Status = providers.ExecFailure
-		execResp.Error = p.handleCreateUserError(ctx, createErr, logger)
-		return execResp, nil
-	}
-	if createdEntity == nil || createdEntity.ID == "" {
-		logger.Error(ctx.Context, "Created user is nil or has no ID")
-		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrProvisioningFailed
-		return execResp, nil
+	if entityID == "" {
+		logger.Error(ctx.Context, "Provisioned entity has no identifier")
+		return "", errForEntityCategory(ErrProvisioningFailed, category)
 	}
 
-	logger.Debug(ctx.Context, "User created successfully",
-		log.MaskedString(log.LoggerKeyUserID, createdEntity.ID))
+	logger.Debug(ctx.Context, "Entity created successfully",
+		log.MaskedString(log.LoggerKeyEntityID, entityID))
+	return entityID, nil
+}
 
-	// Assign user to groups and roles
-	if err := p.assignGroupsAndRoles(ctx, createdEntity.ID); err != nil {
-		logger.Error(ctx.Context, "Failed to assign groups and roles to provisioned user",
-			log.MaskedString(log.LoggerKeyUserID, createdEntity.ID),
+// completeProvisioning runs the steps that follow a create: group and role assignment,
+// authentication as the provisioned entity, and the runtime flags the rest of the flow reads.
+func (p *provisioningExecutor) completeProvisioning(ctx *providers.NodeContext,
+	category entitytype.TypeCategory, entityID string, execResp *providers.ExecutorResponse,
+	logger *log.Logger) (*providers.ExecutorResponse, error) {
+	if err := p.assignGroupsAndRoles(ctx, category, entityID); err != nil {
+		logger.Error(ctx.Context, "Failed to assign groups and roles to the provisioned entity",
+			log.MaskedString(log.LoggerKeyEntityID, entityID),
 			log.Error(err))
 		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrProvisioningAssignmentFailed
+		execResp.Error = errForEntityCategory(ErrProvisioningAssignmentFailed, category)
 		return execResp, nil
 	}
 
-	p.authenticateProvisionedUser(ctx, createdEntity.ID, execResp)
+	p.authenticateProvisionedEntity(ctx, category, entityID, execResp)
 	if execResp.Status == providers.ExecFailure {
 		return execResp, nil
 	}
@@ -213,24 +323,25 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 	execResp.Status = providers.ExecComplete
 
 	// Set the auto-provisioned flag if it's a user auto provisioning scenario
-	if ctx.FlowType == providers.FlowTypeAuthentication {
+	if ctx.FlowType == providers.FlowTypeAuthentication && category == entitytype.TypeCategoryUser {
 		execResp.RuntimeData[common.RuntimeKeyUserAutoProvisioned] = dataValueTrue
 	}
 
 	return execResp, nil
 }
 
-// authenticateProvisionedUser authenticates the newly provisioned user and updates the executor response.
-func (p *provisioningExecutor) authenticateProvisionedUser(ctx *providers.NodeContext, userID string,
-	execResp *providers.ExecutorResponse) {
+// authenticateProvisionedEntity authenticates the newly provisioned entity and updates the
+// executor response.
+func (p *provisioningExecutor) authenticateProvisionedEntity(ctx *providers.NodeContext,
+	category entitytype.TypeCategory, entityID string, execResp *providers.ExecutorResponse) {
 	credential := map[string]interface{}{
-		authnprovidercm.CredentialTypeProvisionedEntityID: userID,
+		authnprovidercm.CredentialTypeProvisionedEntityID: entityID,
 	}
 	authUser, authenticatedClaims, err := p.authnProvider.AuthenticateUser(ctx.Context, nil, credential,
 		nil, nil, execResp.AuthUser)
 	if !authUser.IsAuthenticated() || err != nil {
 		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrUserAuthFailed
+		execResp.Error = errForEntityCategory(ErrEntityAuthFailed, category)
 		return
 	}
 	execResp.AuthUser = authUser
@@ -239,19 +350,19 @@ func (p *provisioningExecutor) authenticateProvisionedUser(ctx *providers.NodeCo
 	}
 }
 
-// handleNonProvisionableUserInAuthentication sets the exec response when an existing user is found
-// during an authentication flow and provisioning cannot proceed.
-// Provisioning is simply skipped and the flow continues with the existing user.
-func (p *provisioningExecutor) handleNonProvisionableUserInAuthentication(ctx *providers.NodeContext,
+// handleNonProvisionableEntityInAuthentication sets the exec response when an existing entity is
+// found during an authentication flow and provisioning cannot proceed.
+// Provisioning is simply skipped and the flow continues with the existing entity.
+func (p *provisioningExecutor) handleNonProvisionableEntityInAuthentication(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse) {
-	p.logger.Debug(ctx.Context, "Skipping provisioning and continuing with existing user")
+	p.logger.Debug(ctx.Context, "Skipping provisioning and continuing with the existing entity")
 	execResp.Status = providers.ExecComplete
 }
 
-// handleNonProvisionableUserInRegistration sets the exec response when an existing user is found
-// during a registration or onboarding flow and provisioning cannot proceed.
+// handleNonProvisionableEntityInRegistration sets the exec response when an existing entity is
+// found during a registration or onboarding flow and provisioning cannot proceed.
 // It either allows the flow to skip provisioning, prompts for different input, or fails immediately.
-func (p *provisioningExecutor) handleNonProvisionableUserInRegistration(ctx *providers.NodeContext,
+func (p *provisioningExecutor) handleNonProvisionableEntityInRegistration(ctx *providers.NodeContext,
 	execResp *providers.ExecutorResponse, existsErr *tidcommon.ServiceError) {
 	if isAllowRegistrationWithExistingUserRuntimeFlagSet(ctx) {
 		execResp.Status = providers.ExecComplete
@@ -259,37 +370,39 @@ func (p *provisioningExecutor) handleNonProvisionableUserInRegistration(ctx *pro
 	}
 	requiredInputs := p.GetRequiredInputs(ctx)
 	if len(requiredInputs) > 0 {
-		// Existing user identified based on user input attributes.
+		// Existing entity identified based on user input attributes.
 		// Allow the user to input different attributes for registration.
 		execResp.Status = providers.ExecUserInputRequired
 		execResp.Inputs = requiredInputs
 		execResp.Error = existsErr
 		return
 	}
-	// Existing user identified without user input attributes.
-	// User cannot recover from error by changing input, so fail immediately.
+	// Existing entity identified without user input attributes.
+	// The user cannot recover from the error by changing input, so fail immediately.
 	execResp.Status = providers.ExecFailure
 	execResp.Error = existsErr
 }
 
-// handleExistingUser handles the case where a user with the given ID already exists.
+// handleExistingEntity handles the case where an entity with the given ID already exists.
 // Returns true if provisioning should proceed (cross-OU case), false if execution should stop.
-func (p *provisioningExecutor) handleExistingUser(ctx *providers.NodeContext, userID string,
-	execResp *providers.ExecutorResponse, logger *log.Logger) (bool, error) {
-	logger.Debug(ctx.Context, "User already exists", log.MaskedString(log.LoggerKeyUserID, userID))
+func (p *provisioningExecutor) handleExistingEntity(ctx *providers.NodeContext,
+	category entitytype.TypeCategory, entityID string, execResp *providers.ExecutorResponse,
+	logger *log.Logger) (bool, error) {
+	logger.Debug(ctx.Context, "Entity already exists", log.MaskedString(log.LoggerKeyEntityID, entityID))
 
 	if !isCrossOUProvisioningAllowed(ctx) {
 		logger.Debug(ctx.Context, "Cross OU provisioning is not allowed")
 		if ctx.FlowType == providers.FlowTypeAuthentication {
-			p.handleNonProvisionableUserInAuthentication(ctx, execResp)
+			p.handleNonProvisionableEntityInAuthentication(ctx, execResp)
 			return false, nil
 		}
-		p.handleNonProvisionableUserInRegistration(ctx, execResp, &ErrUserAlreadyExists)
+		p.handleNonProvisionableEntityInRegistration(ctx, execResp,
+			errForEntityCategory(ErrEntityAlreadyExists, category))
 		return false, nil
 	}
 
 	// Cross-OU provisioning is allowed.
-	ref, err := p.getTargetEntityRef(ctx)
+	ref, err := p.getTargetEntityRef(ctx, category)
 	if err != nil {
 		return false, err
 	}
@@ -298,70 +411,86 @@ func (p *provisioningExecutor) handleExistingUser(ctx *providers.NodeContext, us
 		logger.Debug(ctx.Context, "Target OU for cross-OU provisioning is not set")
 		// Cross-OU provisioning is not intended.
 		if ctx.FlowType == providers.FlowTypeAuthentication {
-			p.handleNonProvisionableUserInAuthentication(ctx, execResp)
+			p.handleNonProvisionableEntityInAuthentication(ctx, execResp)
 			return false, nil
 		}
-		p.handleNonProvisionableUserInRegistration(ctx, execResp, &ErrCrossOUProvisioningTargetMissing)
+		p.handleNonProvisionableEntityInRegistration(ctx, execResp,
+			errForEntityCategory(ErrCrossOUProvisioningTargetMissing, category))
 		return false, nil
 	}
 
-	existingUser, getUserErr := p.entityProvider.GetEntity(userID)
-	if getUserErr != nil {
-		return false, errors.New("failed to retrieve existing user")
+	existingEntity, getEntityErr := p.entityProvider.GetEntity(entityID)
+	if getEntityErr != nil {
+		return false, errors.New("failed to retrieve the existing entity")
 	}
 
-	if existingUser.OUID == targetOUID {
-		logger.Debug(ctx.Context, "Existing user is in the target OU")
+	if existingEntity.OUID == targetOUID {
+		logger.Debug(ctx.Context, "Existing entity is in the target OU")
 		// Cross-OU provisioning is not intended.
 		if ctx.FlowType == providers.FlowTypeAuthentication {
-			p.handleNonProvisionableUserInAuthentication(ctx, execResp)
+			p.handleNonProvisionableEntityInAuthentication(ctx, execResp)
 			return false, nil
 		}
-		p.handleNonProvisionableUserInRegistration(ctx, execResp, &ErrUserAlreadyExistsInTargetOU)
+		p.handleNonProvisionableEntityInRegistration(ctx, execResp,
+			errForEntityCategory(ErrEntityAlreadyExistsInTargetOU, category))
 		return false, nil
 	}
 
-	logger.Debug(ctx.Context, "Existing user is in a different OU, proceeding with cross-OU provisioning",
-		log.String("existingOUID", existingUser.OUID),
+	logger.Debug(ctx.Context, "Existing entity is in a different OU, proceeding with cross-OU provisioning",
+		log.String("existingOUID", existingEntity.OUID),
 		log.String("targetOUID", targetOUID))
 	return true, nil
 }
 
-// resolveAmbiguousUserForProvisioning is called when IdentifyUser reports ambiguity and cross-OU
-// provisioning is allowed. It searches for all matching users and returns the ID of the one in the
-// target OU, or nil if none exists there.
-func (p *provisioningExecutor) resolveAmbiguousUserForProvisioning(ctx *providers.NodeContext,
-	identifyingAttrs map[string]interface{}) (*string, error) {
+// resolveAmbiguousEntityForProvisioning is called when IdentifyEntity reports ambiguity and cross-OU
+// provisioning is allowed. It searches for all matching entities and returns the ID of the one in
+// the target OU, or nil if none exists there.
+func (p *provisioningExecutor) resolveAmbiguousEntityForProvisioning(ctx *providers.NodeContext,
+	category entitytype.TypeCategory, identifyingAttrs map[string]interface{}) (*string, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	matches, searchErr := p.entityProvider.SearchEntities(identifyingAttrs)
 	if searchErr != nil {
-		return nil, fmt.Errorf("failed to search for matching users: code=%s, description=%s",
+		return nil, fmt.Errorf("failed to search for matching entities: code=%s, description=%s",
 			searchErr.Code, searchErr.Description)
 	}
 
-	entityRef, err := p.getTargetEntityRef(ctx)
+	targetRef, err := p.getTargetEntityRef(ctx, category)
 	if err != nil {
 		return nil, err
 	}
-	targetOUID := entityRef.ouID
+	targetOUID := targetRef.ouID
 	for _, m := range matches {
 		if m == nil || m.OUID == "" {
-			return nil, fmt.Errorf("ambiguous user search returned an entity with missing OUID")
+			return nil, fmt.Errorf("ambiguous entity search returned an entity with missing OUID")
 		}
 		if m.OUID == targetOUID {
-			logger.Debug(ctx.Context, "Ambiguous user has a match in the target OU",
-				log.MaskedString(log.LoggerKeyUserID, m.ID))
+			logger.Debug(ctx.Context, "Ambiguous entity has a match in the target OU",
+				log.MaskedString(log.LoggerKeyEntityID, m.ID))
 			return &m.ID, nil
 		}
 	}
 
-	logger.Debug(ctx.Context, "Ambiguous user has no match in target OU",
+	logger.Debug(ctx.Context, "Ambiguous entity has no match in target OU",
 		log.Int("matchCount", len(matches)))
 	return nil, nil
 }
 
-// HasRequiredInputs checks whether all schema-driven provisioning inputs are satisfied and appends
+// HasRequiredInputs satisfies the executor interface, which carries no category. Execute resolves
+// the category once and calls hasRequiredInputs with it directly.
+func (p *provisioningExecutor) HasRequiredInputs(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse) bool {
+	category, err := categoryFromMode(ctx)
+	if err != nil {
+		p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID)).
+			Warn(ctx.Context, "Failed to resolve the provisioning category", log.Any("error", err))
+		execResp.Status = providers.ExecFailure
+		return false
+	}
+	return p.hasRequiredInputs(ctx, category, execResp)
+}
+
+// hasRequiredInputs checks whether all schema-driven provisioning inputs are satisfied and appends
 // any missing promptable schema attrs to the executor response. Node inputs influence requiredness
 // and prompt metadata for schema attrs, but schema-absent node inputs are ignored.
 //
@@ -369,8 +498,8 @@ func (p *provisioningExecutor) resolveAmbiguousUserForProvisioning(ctx *provider
 // required credentials -> optional credentials. maxPerPrompt caps the forwarded
 // prompt batch after this list is built. includeOptional only affects optional
 // non-credential attrs.
-func (p *provisioningExecutor) HasRequiredInputs(ctx *providers.NodeContext,
-	execResp *providers.ExecutorResponse) bool {
+func (p *provisioningExecutor) hasRequiredInputs(ctx *providers.NodeContext,
+	category entitytype.TypeCategory, execResp *providers.ExecutorResponse) bool {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Checking inputs for the provisioning executor")
 
@@ -386,7 +515,7 @@ func (p *provisioningExecutor) HasRequiredInputs(ctx *providers.NodeContext,
 	}
 
 	// Fetch all schema attributes (credential and non-credential) in a single call.
-	allSchemaAttrs, err := p.fetchSchemaAttributes(ctx, true, true)
+	allSchemaAttrs, err := p.fetchSchemaAttributes(ctx, category, true, true)
 	if err != nil {
 		logger.Warn(ctx.Context, "Failed to fetch schema attributes for provisioning", log.Any("error", err))
 		execResp.Status = providers.ExecFailure
@@ -491,6 +620,13 @@ func (p *provisioningExecutor) buildMissingInputs(
 					input.DisplayName = attr.DisplayName
 				}
 			}
+			// An attribute restricted to a fixed set is offered as a choice rather than as free
+			// text. A prompt node declaring the field itself is enriched with these options by
+			// identifier, so the permitted values need not be repeated in the flow.
+			if len(attr.Enum) > 0 {
+				input.Type = providers.InputTypeSelect
+				input.Options = attr.Enum
+			}
 			input.Required = effectiveRequired
 			if effectiveRequired {
 				ncRequired = append(ncRequired, input)
@@ -502,29 +638,29 @@ func (p *provisioningExecutor) buildMissingInputs(
 	return credRequired, credOptional, ncRequired, ncOptional
 }
 
-// fetchSchemaAttributes retrieves schema attributes from the entity type service for the
-// current user type. allowCredential and allowNonCredential control which attribute classes
-// are returned.
+// fetchSchemaAttributes retrieves schema attributes from the entity type service for the target
+// entity type of the given category. allowCredential and allowNonCredential control which
+// attribute classes are returned.
 func (p *provisioningExecutor) fetchSchemaAttributes(
-	ctx *providers.NodeContext, allowCredential, allowNonCredential bool,
+	ctx *providers.NodeContext, category entitytype.TypeCategory, allowCredential, allowNonCredential bool,
 ) ([]entitytype.AttributeInfo, error) {
 	if p.entityTypeService == nil {
 		return nil, nil
 	}
-	entityRef, err := p.getTargetEntityRef(ctx)
+	targetRef, err := p.getTargetEntityRef(ctx, category)
 	if err != nil {
 		return nil, err
 	}
-	userType := entityRef.entityType
-	if userType == "" {
-		return nil, fmt.Errorf("user type not found")
+	entityType := targetRef.entityType
+	if entityType == "" {
+		return nil, fmt.Errorf("entity type not found")
 	}
 	attrs, svcErr := p.entityTypeService.GetAttributes(ctx.Context,
-		entitytype.TypeCategoryUser, userType,
+		category, entityType,
 		entitytype.AttributeFilter{AllowCredential: allowCredential, AllowNonCredential: allowNonCredential})
 	if svcErr != nil {
-		return nil, fmt.Errorf("failed to fetch schema attributes for user type %q: %s",
-			userType, svcErr.Error.DefaultValue)
+		return nil, fmt.Errorf("failed to fetch schema attributes for entity type %q: %s",
+			entityType, svcErr.Error.DefaultValue)
 	}
 	return attrs, nil
 }
@@ -565,9 +701,8 @@ func (p *provisioningExecutor) getMaxDynamicInputs(ctx *providers.NodeContext) i
 	return 0
 }
 
-// isAttrSatisfied returns true if the attribute has a non-empty usable value.
-// Credential attrs are satisfied only by UserInputs or RuntimeData.
-// Non-credential attrs also fall back to AuthenticatedUser.Attributes.
+// isAttrSatisfied returns true if the attribute has a non-empty usable value in the user inputs or
+// the runtime data.
 func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, attr string) bool {
 	if val, ok := ctx.UserInputs[attr]; ok && val != "" {
 		return true
@@ -578,16 +713,16 @@ func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, attr 
 	return false
 }
 
-// getAttributesForProvisioning collects user attributes from context in a single schema pass,
+// getAttributesForProvisioning collects entity attributes from context in a single schema pass,
 // returning identifying (non-credential) and credential attributes as separate maps.
 // Schema is the whitelist for both maps.
-// Credential values are resolved from non-empty UserInputs then non-empty RuntimeData only.
-// Non-credential values additionally fall back to AuthenticatedUser.Attributes, and are converted
-// from the engine's string representation to the type declared by the schema attribute.
+// Values are resolved from non-empty UserInputs then non-empty RuntimeData. Non-credential values
+// are converted from the engine's string representation to the type declared by the schema
+// attribute.
 func (p *provisioningExecutor) getAttributesForProvisioning(
-	ctx *providers.NodeContext,
+	ctx *providers.NodeContext, category entitytype.TypeCategory,
 ) (identifyingAttrs map[string]interface{}, credentialAttrs map[string]interface{}, err error) {
-	schemaAttrs, fetchErr := p.fetchSchemaAttributes(ctx, true, true)
+	schemaAttrs, fetchErr := p.fetchSchemaAttributes(ctx, category, true, true)
 	if fetchErr != nil {
 		return nil, nil, fetchErr
 	}
@@ -627,24 +762,24 @@ func (p *provisioningExecutor) createUserInStore(nodeCtx *providers.NodeContext,
 
 	if p.userMgtProvider == nil {
 		logger.Error(nodeCtx.Context, "User management provider is not configured")
-		return nil, &ErrProvisioningFailed
+		return nil, errForEntityCategory(ErrProvisioningFailed, entitytype.TypeCategoryUser)
 	}
 
-	entityRef, err := p.getTargetEntityRef(nodeCtx)
+	targetRef, err := p.getTargetEntityRef(nodeCtx, entitytype.TypeCategoryUser)
 	if err != nil {
 		logger.Error(nodeCtx.Context, "Failed to resolve the provisioning target", log.Error(err))
-		return nil, &ErrProvisioningFailed
+		return nil, errForEntityCategory(ErrProvisioningFailed, entitytype.TypeCategoryUser)
 	}
 
 	attributesJSON, err := json.Marshal(userAttributes)
 	if err != nil {
 		logger.Error(nodeCtx.Context, "Failed to marshal user attributes", log.Error(err))
-		return nil, &ErrProvisioningFailed
+		return nil, errForEntityCategory(ErrProvisioningFailed, entitytype.TypeCategoryUser)
 	}
 
 	createdUser, svcErr := p.userMgtProvider.CreateUser(nodeCtx.Context, &providers.User{
-		OUID:       entityRef.ouID,
-		Type:       entityRef.entityType,
+		OUID:       targetRef.ouID,
+		Type:       targetRef.entityType,
 		Attributes: attributesJSON,
 	})
 	if svcErr != nil {
@@ -658,33 +793,149 @@ func (p *provisioningExecutor) createUserInStore(nodeCtx *providers.NodeContext,
 	return createdUser, nil
 }
 
-// handleCreateUserError surfaces a user creation failure to the flow. Errors raised by the user
+// createAgentInStore provisions an agent through the agent management provider. Name, description,
+// logo and owner are columns on the agent record rather than schema attributes, and are forwarded
+// as collected: the agent service owns their validation.
+func (p *provisioningExecutor) createAgentInStore(nodeCtx *providers.NodeContext,
+	agentAttributes map[string]interface{}) (*providers.Agent, *tidcommon.ServiceError) {
+	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, nodeCtx.ExecutionID))
+	logger.Debug(nodeCtx.Context, "Creating the agent")
+
+	if p.agentMgtProvider == nil {
+		logger.Error(nodeCtx.Context, "Agent management provider is not configured")
+		return nil, errForEntityCategory(ErrProvisioningFailed, entitytype.TypeCategoryAgent)
+	}
+
+	targetRef, err := p.getTargetEntityRef(nodeCtx, entitytype.TypeCategoryAgent)
+	if err != nil {
+		logger.Error(nodeCtx.Context, "Failed to resolve the provisioning target", log.Error(err))
+		return nil, errForEntityCategory(ErrProvisioningFailed, entitytype.TypeCategoryAgent)
+	}
+
+	attributesJSON, err := json.Marshal(agentAttributes)
+	if err != nil {
+		logger.Error(nodeCtx.Context, "Failed to marshal agent attributes", log.Error(err))
+		return nil, errForEntityCategory(ErrProvisioningFailed, entitytype.TypeCategoryAgent)
+	}
+
+	agent := &providers.Agent{
+		OUID:        targetRef.ouID,
+		Type:        targetRef.entityType,
+		Name:        collectedValue(nodeCtx, nameKey),
+		Description: collectedValue(nodeCtx, descriptionKey),
+		LogoURL:     collectedValue(nodeCtx, logoURLKey),
+		Owner:       collectedValue(nodeCtx, ownerKey),
+		Attributes:  attributesJSON,
+	}
+	// Redirect URIs are the only OAuth value a caller may supply, and are attached only when
+	// collected so the provider applies its default otherwise.
+	if uris := splitTrimmed(collectedValue(nodeCtx, redirectURIsKey)); len(uris) > 0 {
+		agent.InboundAuthConfig = []providers.InboundAuthConfigWithSecret{
+			{
+				Type:        providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{RedirectURIs: uris},
+			},
+		}
+	}
+
+	createdAgent, svcErr := p.agentMgtProvider.CreateAgent(nodeCtx.Context, agent,
+		collectedFlag(nodeCtx, delegatedKey))
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if createdAgent != nil && createdAgent.ID != "" {
+		logger.Debug(nodeCtx.Context, "Agent created successfully",
+			log.MaskedString(log.LoggerKeyEntityID, createdAgent.ID))
+	}
+
+	return createdAgent, nil
+}
+
+// hasRecordValues reports whether the flow collected any field the category carries on its record
+// rather than in its schema. A user has none, every user value being a schema attribute; an agent
+// has its name, description and logo.
+func hasRecordValues(ctx *providers.NodeContext, category entitytype.TypeCategory) bool {
+	if category != entitytype.TypeCategoryAgent {
+		return false
+	}
+	for _, key := range []string{nameKey, descriptionKey, logoURLKey} {
+		if collectedValue(ctx, key) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// collectedFlag reads a boolean the flow collected. Values arrive as strings and are parsed the
+// way a boolean schema attribute is, accepting the casings and 1/0 forms a hand-authored flow may
+// carry. An absent or unparseable value is false.
+func collectedFlag(ctx *providers.NodeContext, key string) bool {
+	parsed, err := strconv.ParseBool(collectedValue(ctx, key))
+	return err == nil && parsed
+}
+
+// collectedValue reads a value the flow collected for key, preferring what the user just submitted
+// over what an earlier node left in runtime data.
+func collectedValue(ctx *providers.NodeContext, key string) string {
+	if val, ok := ctx.UserInputs[key]; ok && val != "" {
+		return val
+	}
+	if val, ok := ctx.RuntimeData[key]; ok && val != "" {
+		return val
+	}
+	return ""
+}
+
+// addAgentDataToResponse publishes the provisioned agent's identifier and the client credentials the
+// agent service generated. The secret is returned only on create, so the flow response is the one
+// chance the caller has to read it.
+func addAgentDataToResponse(execResp *providers.ExecutorResponse, agent *providers.Agent) {
+	if execResp.AdditionalData == nil {
+		execResp.AdditionalData = make(map[string]string)
+	}
+	execResp.AdditionalData[common.DataAgentID] = agent.ID
+	for _, inboundAuth := range agent.InboundAuthConfig {
+		if inboundAuth.OAuthConfig == nil {
+			continue
+		}
+		if inboundAuth.OAuthConfig.ClientID != "" {
+			execResp.AdditionalData[common.DataAgentClientID] = inboundAuth.OAuthConfig.ClientID
+		}
+		if inboundAuth.OAuthConfig.ClientSecret != "" {
+			execResp.AdditionalData[common.DataAgentClientSecret] = inboundAuth.OAuthConfig.ClientSecret
+		}
+	}
+}
+
+// handleCreateEntityError surfaces a create failure to the flow. Errors raised by the management
 // service are returned unchanged so the caller can tell an attribute clash it can retry from a
 // configuration problem it cannot. Only the attribute conflict is rewritten, to keep the
 // flow-facing wording it already had.
-func (p *provisioningExecutor) handleCreateUserError(
+func (p *provisioningExecutor) handleCreateEntityError(
 	ctx *providers.NodeContext,
+	category entitytype.TypeCategory,
 	svcErr *tidcommon.ServiceError,
 	logger *log.Logger,
 ) *tidcommon.ServiceError {
 	if svcErr == nil {
-		return &ErrProvisioningFailed
+		return errForEntityCategory(ErrProvisioningFailed, category)
 	}
-	if svcErr.Code == user.ErrorAttributeConflict.Code {
-		return &ErrProvisioningAttributeConflict
+	if svcErr.Code == attributeConflictCodeFor(category) {
+		return errForEntityCategory(ErrProvisioningAttributeConflict, category)
 	}
-	logger.Error(ctx.Context, "Failed to create user in the store",
+	logger.Error(ctx.Context, "Failed to create the entity in the store",
 		log.String("errorCode", svcErr.Code), log.String("message", svcErr.Error.DefaultValue))
 	return svcErr
 }
 
-// getTargetEntityRef retrieves the target entity reference (user type and OU ID) for provisioning.
-func (p *provisioningExecutor) getTargetEntityRef(ctx *providers.NodeContext) (*entityRef, error) {
+// getTargetEntityRef retrieves the target entity reference (entity type and OU ID) for provisioning.
+func (p *provisioningExecutor) getTargetEntityRef(ctx *providers.NodeContext,
+	category entitytype.TypeCategory) (*entityRef, error) {
 	ouID := p.getOUID(ctx)
-	userType := p.getUserType(ctx)
+	entityType := p.getEntityType(ctx)
 
-	if ouID == "" || userType == "" {
-		defaultEntityRef, err := p.getDefaultEntityRef(ctx)
+	if ouID == "" || entityType == "" {
+		defaultEntityRef, err := p.getDefaultEntityRef(ctx, category)
 		if err != nil {
 			return nil, err
 		}
@@ -692,14 +943,14 @@ func (p *provisioningExecutor) getTargetEntityRef(ctx *providers.NodeContext) (*
 			if ouID == "" {
 				ouID = defaultEntityRef.ouID
 			}
-			if userType == "" {
-				userType = defaultEntityRef.entityType
+			if entityType == "" {
+				entityType = defaultEntityRef.entityType
 			}
 		}
 	}
 
 	return &entityRef{
-		entityType: userType,
+		entityType: entityType,
 		ouID:       ouID,
 	}, nil
 }
@@ -719,21 +970,23 @@ func (p *provisioningExecutor) getOUID(ctx *providers.NodeContext) string {
 	return ""
 }
 
-// getUserType retrieves the user type from runtime data.
-func (p *provisioningExecutor) getUserType(ctx *providers.NodeContext) string {
-	userType := ""
-	if val, ok := ctx.RuntimeData[userTypeKey]; ok && val != "" {
-		userType = val
+// getEntityType retrieves the entity type to provision into from runtime data, which a type
+// resolver populates. An empty result leaves the target to be resolved from the application's
+// configuration.
+func (p *provisioningExecutor) getEntityType(ctx *providers.NodeContext) string {
+	if val, ok := ctx.RuntimeData[categoryTypeKey]; ok && val != "" {
+		return val
 	}
 
-	return userType
+	return ""
 }
 
-// assignGroupsAndRoles assigns the newly created user to configured groups and roles.
+// assignGroupsAndRoles assigns the newly created entity to configured groups and roles.
 // If no group or role is configured, the assignments are skipped.
 func (p *provisioningExecutor) assignGroupsAndRoles(
 	ctx *providers.NodeContext,
-	userID string,
+	category entitytype.TypeCategory,
+	entityID string,
 ) error {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
@@ -745,27 +998,27 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 		return nil
 	}
 
-	logger.Debug(ctx.Context, "Assigning groups and roles to provisioned user",
-		log.MaskedString(log.LoggerKeyUserID, userID),
+	logger.Debug(ctx.Context, "Assigning groups and roles to the provisioned entity",
+		log.MaskedString(log.LoggerKeyEntityID, entityID),
 		log.String("groupIDs", strings.Join(groupIDs, ",")),
 		log.String("roleIDs", strings.Join(roleIDs, ",")))
 
 	if len(groupIDs) > 0 {
-		if svcErr := p.groupService.AddMembersToGroups(
-			ctx.Context, []group.Member{{ID: userID, Type: group.MemberTypeUser}}, groupIDs); svcErr != nil {
+		if svcErr := p.groupService.AddMembersToGroups(ctx.Context,
+			[]group.Member{{ID: entityID, Type: groupMemberTypeFor(category)}}, groupIDs); svcErr != nil {
 			return fmt.Errorf("group assignment failed: %s", svcErr.Error.DefaultValue)
 		}
 	}
 
 	if len(roleIDs) > 0 {
-		if svcErr := p.roleAssignmentService.AddAssigneesToRoles(
-			ctx.Context, []role.RoleAssignment{{ID: userID, Type: role.AssigneeTypeUser}}, roleIDs); svcErr != nil {
+		if svcErr := p.roleAssignmentService.AddAssigneesToRoles(ctx.Context,
+			[]role.RoleAssignment{{ID: entityID, Type: roleAssigneeTypeFor(category)}}, roleIDs); svcErr != nil {
 			return fmt.Errorf("role assignment failed: %s", svcErr.Error.DefaultValue)
 		}
 	}
 
 	logger.Debug(ctx.Context, "Successfully assigned groups and roles",
-		log.MaskedString(log.LoggerKeyUserID, userID))
+		log.MaskedString(log.LoggerKeyEntityID, entityID))
 	return nil
 }
 
@@ -815,45 +1068,128 @@ func splitTrimmed(s string) []string {
 	return result
 }
 
-// getDefaultEntityRef resolves the user type for auto provisioning in authentication flows.
-func (p *provisioningExecutor) getDefaultEntityRef(ctx *providers.NodeContext) (*entityRef, error) {
+// getDefaultEntityRef resolves the provisioning target when the flow put none in runtime data.
+// A nil ref means the target could not be resolved automatically, which is not an error.
+func (p *provisioningExecutor) getDefaultEntityRef(ctx *providers.NodeContext,
+	category entitytype.TypeCategory) (*entityRef, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.Debug(ctx.Context, "Resolving user type for automatic provisioning")
+	logger.Debug(ctx.Context, "Resolving the entity type for automatic provisioning")
+
+	if category == entitytype.TypeCategoryAgent {
+		return p.agentEntityRef(ctx, logger)
+	}
+
+	candidates, err := p.selfRegistrableEntityTypes(ctx, category)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(candidates) == 0 {
+		logger.Debug(ctx.Context,
+			"No entity type with self-registration enabled, cannot provision automatically")
+		return nil, nil
+	}
+
+	if len(candidates) > 1 {
+		logger.Debug(ctx.Context,
+			"Multiple entity types with self-registration enabled, cannot resolve the target automatically")
+		return nil, nil
+	}
+
+	return &entityRef{
+		entityType: candidates[0].Name,
+		ouID:       candidates[0].OUID,
+	}, nil
+}
+
+// agentEntityRef resolves the target for an agent from the agent types the application accepts,
+// falling back to the default type when it declares none. These are not narrowed by
+// self-registration the way the user candidates are: an agent is provisioned on an administrator's
+// behalf, not by the entity itself.
+func (p *provisioningExecutor) agentEntityRef(ctx *providers.NodeContext,
+	logger *log.Logger) (*entityRef, error) {
+	if p.entityTypeService == nil {
+		return nil, nil
+	}
+
+	allowed := ctx.Application.AllowedAgentTypes
+	switch {
+	case len(allowed) == 0:
+		return p.agentTypeRef(ctx, entitytype.DefaultAgentTypeName)
+	case len(allowed) == 1:
+		return p.agentTypeRef(ctx, allowed[0])
+	default:
+		logger.Debug(ctx.Context,
+			"Multiple agent types allowed for the application, cannot resolve the target automatically")
+		return nil, nil
+	}
+}
+
+// agentTypeRef reads the named agent type and takes the organization unit from it. A nil ref means
+// the type is not deployed, which the caller reports as an unresolved target.
+func (p *provisioningExecutor) agentTypeRef(ctx *providers.NodeContext, name string) (*entityRef, error) {
+	entityType, svcErr := p.entityTypeService.GetEntityTypeByName(
+		ctx.Context, entitytype.TypeCategoryAgent, name)
+	if svcErr != nil {
+		return nil, fmt.Errorf("failed to retrieve the %q agent type: %s", name, svcErr.Error.DefaultValue)
+	}
+
+	return &entityRef{entityType: entityType.Name, ouID: entityType.OUID}, nil
+}
+
+// selfRegistrableEntityTypes returns the user types the node may provision into when none was named
+// in runtime data: those the application accepts that also permit self-registration. Agents resolve
+// their target through agentEntityRef instead.
+func (p *provisioningExecutor) selfRegistrableEntityTypes(ctx *providers.NodeContext,
+	category entitytype.TypeCategory) ([]entitytype.EntityType, error) {
+	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
+
+	if category != entitytype.TypeCategoryUser {
+		logger.Debug(ctx.Context, "No self-registration source for the entity category",
+			log.String("category", string(category)))
+		return nil, nil
+	}
 
 	if len(ctx.Application.AllowedUserTypes) == 0 {
 		logger.Debug(ctx.Context, "No allowed user types configured for the application")
 		return nil, nil
 	}
 
-	// Filter allowed user types to only those with self-registration enabled
-	selfRegEnabledSchemas := make([]entitytype.EntityType, 0)
+	types := make([]entitytype.EntityType, 0, len(ctx.Application.AllowedUserTypes))
 	for _, userType := range ctx.Application.AllowedUserTypes {
-		entityType, svcErr := p.entityTypeService.GetEntityTypeByName(ctx.Context,
-			entitytype.TypeCategoryUser, userType)
+		entityType, svcErr := p.entityTypeService.GetEntityTypeByName(ctx.Context, category, userType)
 		if svcErr != nil {
-			return nil, fmt.Errorf("failed to retrieve entity type for user type %q: %s",
-				userType, svcErr.Error.DefaultValue)
+			return nil, fmt.Errorf("failed to retrieve entity type %q in category %q: %s",
+				userType, category, svcErr.Error.DefaultValue)
 		}
 		if entityType.AllowSelfRegistration {
-			selfRegEnabledSchemas = append(selfRegEnabledSchemas, *entityType)
+			types = append(types, *entityType)
 		}
 	}
+	return types, nil
+}
 
-	// Fail if no user types have self-registration enabled
-	if len(selfRegEnabledSchemas) == 0 {
-		logger.Debug(ctx.Context, "No user types with self-registration enabled, cannot provision automatically")
-		return nil, nil
+// groupMemberTypeFor returns the group member type that represents an entity of the category.
+func groupMemberTypeFor(category entitytype.TypeCategory) group.MemberType {
+	if category == entitytype.TypeCategoryAgent {
+		return group.MemberTypeAgent
 	}
+	return group.MemberTypeUser
+}
 
-	// Fail if multiple user types have self-registration enabled
-	if len(selfRegEnabledSchemas) > 1 {
-		logger.Debug(ctx.Context,
-			"Multiple user types with self-registration enabled, cannot resolve user type automatically")
-		return nil, nil
+// roleAssigneeTypeFor returns the role assignee type that represents an entity of the category.
+func roleAssigneeTypeFor(category entitytype.TypeCategory) role.AssigneeType {
+	if category == entitytype.TypeCategoryAgent {
+		return role.AssigneeTypeAgent
 	}
+	return role.AssigneeTypeUser
+}
 
-	return &entityRef{
-		entityType: selfRegEnabledSchemas[0].Name,
-		ouID:       selfRegEnabledSchemas[0].OUID,
-	}, nil
+// attributeConflictCodeFor returns the error code the category's management service raises when a
+// unique attribute already belongs to another entity.
+func attributeConflictCodeFor(category entitytype.TypeCategory) string {
+	if category == entitytype.TypeCategoryAgent {
+		return agentAttributeConflictCode
+	}
+	return user.ErrorAttributeConflict.Code
 }

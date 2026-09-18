@@ -3,6 +3,8 @@
 
 import {Stack} from '@wso2/oxygen-ui';
 import {useCallback, useMemo, type ReactNode} from 'react';
+import AgentTypeResolverProperties from './execution-properties/AgentTypeResolverProperties';
+import AttributeUniquenessValidatorProperties from './execution-properties/AttributeUniquenessValidatorProperties';
 import ConsentProperties from './execution-properties/ConsentProperties';
 import {EXECUTOR_TO_IDP_TYPE_MAP, EXECUTORS_WITH_FIXED_INPUTS} from './execution-properties/constants';
 import EmailProperties from './execution-properties/EmailProperties';
@@ -108,6 +110,9 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     case ExecutionTypes.UserTypeResolver:
       executorSpecificProperties = <UserTypeResolverProperties resource={resource} onChange={onChange} />;
       break;
+    case ExecutionTypes.AgentTypeResolver:
+      executorSpecificProperties = <AgentTypeResolverProperties resource={resource} onChange={onChange} />;
+      break;
     case ExecutionTypes.HTTPRequestExecutor:
       executorSpecificProperties = <HttpRequestProperties resource={resource} onChange={onChange} />;
       break;
@@ -123,9 +128,12 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     case ExecutionTypes.SessionSignOut:
       executorSpecificProperties = <SessionSignOutProperties resource={resource} onChange={onChange} />;
       break;
-    case ExecutionTypes.CredentialSetter:
     case ExecutionTypes.AttributeUniquenessValidator:
+      executorSpecificProperties = <AttributeUniquenessValidatorProperties resource={resource} onChange={onChange} />;
+      break;
+    case ExecutionTypes.CredentialSetter:
     case ExecutionTypes.Session:
+    case ExecutionTypes.OwnerResolver:
       executorSpecificProperties = <NoConfigProperties />;
       break;
     default:

@@ -780,8 +780,8 @@ describe('UserAddPage', () => {
             code: 'FET-1061',
             message: {
               key: 'flows.executor.errors.attribute_not_unique',
-              defaultValue: 'User already exists with the provided email',
-              params: {attribute: 'email'},
+              defaultValue: 'Another user already exists with the provided email',
+              params: {attribute: 'email', entity: 'user'},
             },
           },
         });

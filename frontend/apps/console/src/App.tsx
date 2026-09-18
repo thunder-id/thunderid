@@ -13,7 +13,6 @@ import {ProtectedRoute} from '@thunderid/react-router';
 import {lazy, Suspense, type JSX} from 'react';
 import {BrowserRouter, Navigate, Outlet, Route, Routes} from 'react-router';
 import RouteConfig, {ROUTE_SEGMENTS} from './configs/RouteConfig';
-import AgentCreateProvider from './features/agents/contexts/AgentCreate/AgentCreateProvider';
 import ApplicationCreateProvider from './features/applications/contexts/ApplicationCreate/ApplicationCreateProvider';
 import OrganizationUnitDefaultFlowsSettings from './features/organization-units/OrganizationUnitDefaultFlowsSettings';
 import WelcomeRedirect from './features/welcome/components/WelcomeRedirect';
@@ -61,7 +60,7 @@ const CreateResourceServerPage = lazy(() =>
   import('@thunderid/configure-resource-servers').then((m) => ({default: m.CreateResourceServerPage})),
 );
 
-const AgentCreatePage = lazy(() => import('./features/agents/pages/AgentCreatePage'));
+const AgentOnboardPage = lazy(() => import('./features/agents/pages/AgentOnboardPage'));
 const AgentEditPage = lazy(() =>
   import('./lib/monaco-setup').then(() => import('./features/agents/pages/AgentEditPage')),
 );
@@ -332,13 +331,11 @@ export default function App(): JSX.Element {
                 path={RouteConfig.agents.create()}
                 element={
                   <ProtectedRoute>
-                    <AgentCreateProvider>
-                      <FullScreenLayout />
-                    </AgentCreateProvider>
+                    <FullScreenLayout />
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<AgentCreatePage />} />
+                <Route index element={<AgentOnboardPage />} />
               </Route>
               <Route
                 path={RouteConfig.resourceServers.create()}
@@ -446,15 +443,7 @@ export default function App(): JSX.Element {
                   <Route path="get-started/applications/types" element={<ApplicationTemplateSelectPage />} />
                   <Route path="get-started/applications/create" element={<ApplicationCreatePage />} />
                 </Route>
-                <Route
-                  element={
-                    <AgentCreateProvider>
-                      <Outlet />
-                    </AgentCreateProvider>
-                  }
-                >
-                  <Route path="get-started/agents/create" element={<AgentCreatePage />} />
-                </Route>
+                <Route path="get-started/agents/create" element={<AgentOnboardPage />} />
                 <Route path="tryout/securing-application" element={<TryoutSecuringApplicationPage />} />
                 <Route path="tryout/ai-agents" element={<TryoutSecuringAIAgentsPage />} />
                 <Route path="tryout/mcp" element={<TryoutSecuringMCPPage />} />

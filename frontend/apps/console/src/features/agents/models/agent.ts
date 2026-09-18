@@ -3,8 +3,8 @@
 
 import type {AssertionConfig, OAuth2Config} from '@thunderid/configure-applications';
 /**
- * Agent types are restricted to a single bootstrap-provisioned `default` schema. The constant
- * is shared by the create wizard (auto-pick the singleton) and the agent listing's Schema button.
+ * Names the bootstrap-provisioned `default` agent type, which the agent listing's Schema button
+ * looks up to show the schema behind the listed agents.
  */
 export const DEFAULT_AGENT_TYPE_NAME = 'default';
 

@@ -20,3 +20,5 @@ value:
     defaultHandle: default-application-deletion-flow
   secretRegenerationFlow:
     defaultHandle: default-secret-regeneration-flow
+  agentOnboardingFlow:
+    defaultHandle: default-agent-onboarding-flow

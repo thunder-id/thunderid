@@ -298,6 +298,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Initialize authentication services.
 	authAssertGen := authnAssert.Initialize()
 	consentEnforcer := authnConsent.Initialize(jwtService)
+	agentMgtProvider := agentmgtprovider.Initialize(entityTypeService)
 
 	_, directAuthGuard := authn.Initialize(mux, mcpServer, idpService, jwtService, authnProvider, authAssertGen,
 		otpCoreService, notifSenderSvc, templateService, magicLinkService, oauthAuthnService,
@@ -368,6 +369,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			RoleAssignmentService: roleAssignmentService,
 			EntityProvider:        entityProvider,
 			UserMgtProvider:       userMgtProvider,
+			AgentMgtProvider:      agentMgtProvider,
 			AttributeCacheSvc:     attributeCacheService,
 			EmailClient:           emailClient,
 			TemplateService:       templateService,
@@ -433,12 +435,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
 
-	// Initialize agent management provider. It has no runtime consumer yet: the provisioning
-	// executor gains its agent branch in a follow-up change, at which point this is handed to the
-	// executor registry. It is constructed here so the package is linked into the server binary and
-	// its integration coverage is reported as uncovered rather than silently dropped.
-	// TODO: pass to the provisioning executor once agent provisioning lands.
-	_ = agentmgtprovider.Initialize(agentService)
+	// Two-phase initialization: the provider is constructed before the executor registry, which
+	// needs it, while the agent service it delegates to only exists after the inbound client and
+	// flow management services.
+	agentMgtProvider.SetAgentService(agentService)
 
 	// Wire the dependency registry into the consuming services (two-phase init to avoid cyclic
 	// imports). flowMgtService is both a consumer and a provider: it reports which flows reference an

@@ -2153,6 +2153,399 @@ nodes:
       x: 1520
       y: 200
 ---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000007b
+name: Default Agent Onboarding Flow
+handle: default-agent-onboarding-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  executor:
+    name: PermissionValidator
+  onSuccess: agent_type_resolution
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: agent_type_resolution
+  type: TASK_EXECUTION
+  properties:
+    allowedAgentTypes:
+    - default
+  executor:
+    name: AgentTypeResolver
+  onSuccess: ou_selection
+  onIncomplete: prompt_agent_type
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 440
+      y: 175
+- id: prompt_agent_type
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: text_header_agent_type
+      label: '{{ t(agentOnboarding:forms.agent_type.title) }}'
+      variant: HEADING_1
+    - align: left
+      type: TEXT
+      id: text_subtitle_agent_type
+      label: '{{ t(agentOnboarding:forms.agent_type.subtitle) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_agent_type
+      components:
+      - id: agenttype_input
+        ref: agentType
+        type: SELECT
+        label: '{{ t(agentOnboarding:forms.agent_type.fields.type.label) }}'
+        placeholder: '{{ t(agentOnboarding:forms.agent_type.fields.type.placeholder) }}'
+        required: true
+        options: []
+      - type: ACTION
+        id: action_agent_type
+        label: '{{ t(agentOnboarding:forms.agent_type.actions.next.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: agenttype_input
+      identifier: agentType
+      type: SELECT
+      required: true
+    action:
+      ref: action_agent_type
+      nextNode: agent_type_resolution
+  layout:
+    size:
+      width: 350
+      height: 480
+    position:
+      x: 440
+      y: -320
+- id: ou_selection
+  type: TASK_EXECUTION
+  properties:
+    resolveFrom: prompt
+  executor:
+    name: OUResolverExecutor
+  onSuccess: owner_resolution
+  onIncomplete: prompt_ou_selection
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 580
+      y: 175
+- id: prompt_ou_selection
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: text_header_ou_selection
+      label: '{{ t(agentOnboarding:forms.ou_selection.title) }}'
+      variant: HEADING_1
+    - align: left
+      type: TEXT
+      id: text_subtitle_ou_selection
+      label: '{{ t(agentOnboarding:forms.ou_selection.subtitle) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_ou_selection
+      components:
+      - type: OU_SELECT
+        id: ou_selection_input
+        ref: ouId
+        label: '{{ t(agentOnboarding:forms.ou_selection.fields.ou.label) }}'
+        required: true
+      - type: ACTION
+        id: action_ou_selection
+        label: '{{ t(agentOnboarding:forms.ou_selection.actions.next.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: ou_selection_input
+      identifier: ouId
+      type: OU_SELECT
+      required: true
+    action:
+      ref: action_ou_selection
+      nextNode: ou_selection
+  layout:
+    size:
+      width: 350
+      height: 525
+    position:
+      x: 580
+      y: -320
+- id: owner_resolution
+  type: TASK_EXECUTION
+  executor:
+    name: OwnerResolver
+  onSuccess: prompt_agent_name
+  onIncomplete: prompt_owner
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 580
+      y: 175
+- id: prompt_owner
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: text_header_agent_owner
+      label: '{{ t(agentOnboarding:forms.owner.title) }}'
+      variant: HEADING_1
+    - align: left
+      type: TEXT
+      id: text_subtitle_agent_owner
+      label: '{{ t(agentOnboarding:forms.owner.subtitle) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_agent_owner
+      components:
+      - id: owner_input
+        ref: owner
+        type: USER_SELECT
+        label: '{{ t(agentOnboarding:forms.owner.fields.owner.label) }}'
+        placeholder: '{{ t(agentOnboarding:forms.owner.fields.owner.placeholder) }}'
+        required: false
+      - type: ACTION
+        id: action_agent_owner
+        label: '{{ t(agentOnboarding:forms.owner.actions.next.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: owner_input
+      identifier: owner
+      type: USER_SELECT
+      required: false
+    action:
+      ref: action_agent_owner
+      nextNode: owner_resolution
+  layout:
+    size:
+      width: 350
+      height: 480
+    position:
+      x: 580
+      y: -320
+- id: prompt_agent_name
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: text_header_agent_name
+      label: '{{ t(agentOnboarding:forms.agent_name.title) }}'
+      variant: HEADING_1
+    - align: left
+      type: TEXT
+      id: text_subtitle_agent_name
+      label: '{{ t(agentOnboarding:forms.agent_name.subtitle) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_agent_name
+      components:
+      - id: input_agent_name
+        ref: name
+        type: TEXT_INPUT
+        label: '{{ t(agentOnboarding:forms.agent_name.fields.name.label) }}'
+        required: true
+        placeholder: '{{ t(agentOnboarding:forms.agent_name.fields.name.placeholder) }}'
+      - type: ACTION
+        id: action_agent_name
+        label: '{{ t(agentOnboarding:forms.agent_name.actions.next.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_agent_name
+      identifier: name
+      type: TEXT_INPUT
+      required: true
+    action:
+      ref: action_agent_name
+      nextNode: provisioning
+  layout:
+    size:
+      width: 350
+      height: 410
+    position:
+      x: 900
+      y: 100
+- id: prompt_agent_details
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: text_header_agent_details
+      label: '{{ t(agentOnboarding:forms.agent_details.title) }}'
+      variant: HEADING_1
+    - align: left
+      type: TEXT
+      id: text_subtitle_agent_details
+      label: '{{ t(agentOnboarding:forms.agent_details.subtitle) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_agent_details
+      components:
+      - id: input_agent_model_provider
+        ref: modelProvider
+        type: SELECT
+        label: '{{ t(agentOnboarding:forms.agent_details.fields.model_provider.label) }}'
+        placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.model_provider.placeholder) }}'
+        required: false
+        options: []
+      - id: input_agent_model
+        ref: model
+        type: TEXT_INPUT
+        label: '{{ t(agentOnboarding:forms.agent_details.fields.model.label) }}'
+        required: false
+        placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.model.placeholder) }}'
+      - id: input_agent_function
+        ref: function
+        type: SELECT
+        label: '{{ t(agentOnboarding:forms.agent_details.fields.function.label) }}'
+        placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.function.placeholder) }}'
+        required: false
+        options: []
+      - type: ACTION
+        id: action_agent_details
+        label: '{{ t(agentOnboarding:forms.agent_details.actions.submit.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_agent_model_provider
+      identifier: modelProvider
+      type: SELECT
+      required: false
+    - ref: input_agent_model
+      identifier: model
+      type: TEXT_INPUT
+      required: false
+    - ref: input_agent_function
+      identifier: function
+      type: SELECT
+      required: false
+    action:
+      ref: action_agent_details
+      nextNode: agent_attribute_uniqueness
+  layout:
+    size:
+      width: 350
+      height: 566
+    position:
+      x: 1250
+      y: 60
+- id: agent_attribute_uniqueness
+  type: TASK_EXECUTION
+  properties:
+    mode: agent
+  executor:
+    name: AttributeUniquenessValidator
+  onSuccess: provisioning
+  onIncomplete: prompt_agent_details
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1480
+      y: 175
+- id: provisioning
+  type: TASK_EXECUTION
+  properties:
+    mode: agent
+    includeOptional: true
+  executor:
+    name: ProvisioningExecutor
+  onSuccess: agent_credentials
+  onIncomplete: prompt_agent_details
+  onFailure: prompt_agent_name
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1620
+      y: 175
+- id: agent_credentials
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: agent_credentials_heading
+      label: '{{ t(agentOnboarding:forms.credentials.title) }}'
+      variant: HEADING_1
+      color: SUCCESS
+    - align: left
+      type: TEXT
+      id: agent_credentials_message
+      label: '{{ t(agentOnboarding:forms.credentials.message) }}'
+      variant: HEADING_6
+    - type: COPYABLE_TEXT
+      id: agent_credentials_agent_id
+      label: '{{ t(agentOnboarding:forms.credentials.agent_id_label) }}'
+      source: agentId
+    - type: COPYABLE_TEXT
+      id: agent_credentials_client_id
+      label: '{{ t(agentOnboarding:forms.credentials.client_id_label) }}'
+      source: clientId
+    - type: COPYABLE_TEXT
+      id: agent_credentials_client_secret
+      label: '{{ t(agentOnboarding:forms.credentials.client_secret_label) }}'
+      source: clientSecret
+      masked: true
+  message: Agent created successfully
+  next: end
+  layout:
+    size:
+      width: 350
+      height: 520
+    position:
+      x: 1900
+      y: 60
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2250
+      y: 200
+---
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000071
 handle: acrylic-orange
@@ -5344,6 +5737,40 @@ translations:
     forms.complete_registration.actions.submit.label: Complete Setup
     forms.add_user_complete.title: User Added Successfully
     forms.add_user_complete.description: The new account has been created successfully.
+  agentOnboarding:
+    forms.agent_type.title: Choose an agent type
+    forms.agent_type.subtitle: Pick the type whose schema describes this agent.
+    forms.agent_type.fields.type.label: Agent Type
+    forms.agent_type.fields.type.placeholder: Select an agent type
+    forms.agent_type.actions.next.label: Continue
+    forms.ou_selection.title: Choose an organization unit
+    forms.ou_selection.subtitle: Pick the organization unit this agent belongs to. It cannot be changed later.
+    forms.ou_selection.fields.ou.label: Organization Unit
+    forms.ou_selection.actions.next.label: Continue
+    forms.owner.title: Select an owner
+    forms.owner.subtitle: Choose the user who owns this agent. Leave it unset to own it yourself.
+    forms.owner.fields.owner.label: Owner
+    forms.owner.fields.owner.placeholder: Select a user
+    forms.owner.actions.next.label: Continue
+    forms.agent_name.title: Name Your Agent
+    forms.agent_name.subtitle: Give the agent a name you will recognize later.
+    forms.agent_name.fields.name.label: Name
+    forms.agent_name.fields.name.placeholder: Enter a name for the agent
+    forms.agent_name.actions.next.label: Continue
+    forms.agent_details.title: Agent Details
+    forms.agent_details.subtitle: Describe the model this agent runs on and what it does.
+    forms.agent_details.fields.model_provider.label: Model Provider
+    forms.agent_details.fields.model_provider.placeholder: Select a model provider
+    forms.agent_details.fields.model.label: Model
+    forms.agent_details.fields.model.placeholder: Enter the model name
+    forms.agent_details.fields.function.label: Function
+    forms.agent_details.fields.function.placeholder: Select a function
+    forms.agent_details.actions.submit.label: Create Agent
+    forms.credentials.title: Agent Created Successfully
+    forms.credentials.message: Copy the client secret now. It is shown only once and cannot be retrieved later.
+    forms.credentials.agent_id_label: Agent ID
+    forms.credentials.client_id_label: Client ID
+    forms.credentials.client_secret_label: Client Secret
   invite:
     validating: Validating your invite link...
     complete.title: Welcome Aboard!

@@ -9,16 +9,10 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/tests/mocks/agentmock"
 )
 
 type InitAgentMgtProviderTestSuite struct {
 	suite.Suite
-	mockAgentService *agentmock.AgentServiceInterfaceMock
-}
-
-func (suite *InitAgentMgtProviderTestSuite) SetupTest() {
-	suite.mockAgentService = agentmock.NewAgentServiceInterfaceMock(suite.T())
 }
 
 func (suite *InitAgentMgtProviderTestSuite) TearDownTest() {
@@ -49,7 +43,7 @@ func (suite *InitAgentMgtProviderTestSuite) initRuntimeWithProviderType(provider
 func (suite *InitAgentMgtProviderTestSuite) TestDisabledTypeYieldsDisabledProvider() {
 	suite.initRuntimeWithProviderType("disabled")
 
-	provider := Initialize(suite.mockAgentService)
+	provider := Initialize(nil)
 
 	suite.IsType(&disabledAgentMgtProvider{}, provider)
 }
@@ -58,7 +52,7 @@ func (suite *InitAgentMgtProviderTestSuite) TestDisabledTypeYieldsDisabledProvid
 func (suite *InitAgentMgtProviderTestSuite) TestEmptyTypeYieldsDefaultProvider() {
 	suite.initRuntimeWithProviderType("")
 
-	provider := Initialize(suite.mockAgentService)
+	provider := Initialize(nil)
 
 	suite.IsType(&defaultAgentMgtProvider{}, provider)
 }
@@ -68,7 +62,7 @@ func (suite *InitAgentMgtProviderTestSuite) TestEmptyTypeYieldsDefaultProvider()
 func (suite *InitAgentMgtProviderTestSuite) TestUnknownTypeYieldsDefaultProvider() {
 	suite.initRuntimeWithProviderType("not-a-provider-type")
 
-	provider := Initialize(suite.mockAgentService)
+	provider := Initialize(nil)
 
 	suite.IsType(&defaultAgentMgtProvider{}, provider)
 }

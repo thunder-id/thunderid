@@ -303,7 +303,7 @@ func (suite *CredentialsAuthExecutorTestSuite) TestExecute_AuthenticationFailed(
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
-	assert.Equal(suite.T(), ErrUserAuthFailed.Code, resp.Error.Code)
+	assert.Equal(suite.T(), ErrEntityAuthFailed.Code, resp.Error.Code)
 	assert.NotEmpty(suite.T(), resp.Inputs, "Inputs should be re-populated for retry")
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
@@ -319,7 +319,7 @@ func (suite *CredentialsAuthExecutorTestSuite) TestExecute_UserNotFound_Authenti
 		RuntimeData: make(map[string]string),
 	}
 
-	// Authenticate internally calls IdentifyUser and returns user not found error
+	// Authenticate internally calls IdentifyEntity and returns user not found error
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, map[string]interface{}{
 		userAttributeUsername: "nonexistent",
 	}, map[string]interface{}{
@@ -335,7 +335,7 @@ func (suite *CredentialsAuthExecutorTestSuite) TestExecute_UserNotFound_Authenti
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
-	assert.Equal(suite.T(), ErrUserAuthFailed.Code, resp.Error.Code,
+	assert.Equal(suite.T(), ErrEntityAuthFailed.Code, resp.Error.Code,
 		"Failure reason should contain authentication failure message")
 	assert.NotEmpty(suite.T(), resp.Inputs, "Inputs should be re-populated for retry")
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
@@ -362,7 +362,7 @@ func (suite *CredentialsAuthExecutorTestSuite) TestExecute_UserAlreadyExists_Reg
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), ErrUserAlreadyExists.Code, resp.Error.Code)
+	assert.Equal(suite.T(), ErrEntityAlreadyExists.Code, resp.Error.Code)
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
@@ -421,7 +421,7 @@ func (suite *CredentialsAuthExecutorTestSuite) TestExecute_AuthenticationService
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), ErrUserAuthFailed.Code, resp.Error.Code)
+	assert.Equal(suite.T(), ErrEntityAuthFailed.Code, resp.Error.Code)
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
@@ -489,7 +489,7 @@ func (suite *CredentialsAuthExecutorTestSuite) TestAuthenticateUser_Success_With
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
-func (suite *CredentialsAuthExecutorTestSuite) TestAuthenticateUser_AuthenticationFlow_NoRedundantIdentifyUser() {
+func (suite *CredentialsAuthExecutorTestSuite) TestAuthenticateUser_AuthenticationFlow_NoRedundantIdentifyEntity() {
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -518,7 +518,7 @@ func (suite *CredentialsAuthExecutorTestSuite) TestAuthenticateUser_Authenticati
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
-func (suite *CredentialsAuthExecutorTestSuite) TestAuthenticateUser_RegistrationFlow_CallsIdentifyUser() {
+func (suite *CredentialsAuthExecutorTestSuite) TestAuthenticateUser_RegistrationFlow_CallsIdentifyEntity() {
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeRegistration,

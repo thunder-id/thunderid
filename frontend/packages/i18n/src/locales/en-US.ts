@@ -1060,31 +1060,19 @@ const translations = {
     'listing.columns.organizationUnit': 'Organization Unit',
     'listing.columns.actions': 'Actions',
 
-    // Create wizard
-    'createWizard.createAgent': 'Create agent',
-    'createWizard.errors.createFailed': 'Failed to create agent. Please try again.',
-    'createWizard.errors.ouRequired': 'Organization unit is required',
-    'createWizard.errors.schemaRequired': 'Schema is required',
-    'createWizard.steps.name': 'Details',
-    'createWizard.steps.organizationUnit': 'Organization unit',
-    'createWizard.steps.profile': 'Profile',
-    'createWizard.steps.owner': 'Owner',
-    'createWizard.organizationUnit.title': 'Where should this agent belong?',
-    'createWizard.organizationUnit.subtitle':
-      "Choose the organization unit that will own this agent. You can't change this once created.",
-    'createWizard.organizationUnit.fieldLabel': 'Organization Unit',
-    'createWizard.name.title': "Let's collect some details about your agent",
-    'createWizard.name.fieldLabel': 'Agent name',
-    'createWizard.name.placeholder': 'e.g. Billing Service',
-    'createWizard.name.maxLength': 'Agent name cannot exceed {{max}} characters',
-    'createWizard.agentDetails.title': 'Agent attributes',
-    'createWizard.agentDetails.subtitle': 'Provide values for the attributes defined by the agent schema.',
-    'createWizard.owner.title': 'Owner',
-    'createWizard.owner.subtitle': 'Choose the user that owns this agent.',
-    'createWizard.owner.userLabel': 'Owner',
-    'createWizard.owner.userPlaceholder': 'Select a user',
-    'createWizard.owner.helperText':
-      'Defaults to you if left unchanged. You can assign ownership to another user instead.',
+    // Onboarding (flow driven)
+    'onboarding.errors.notConfigured.title': 'Agent onboarding is not configured',
+    'onboarding.errors.notConfigured.description':
+      'No agent onboarding flow is configured for this deployment. Set flow.agentOnboardingFlow.defaultHandle in the server configuration to the handle of an administration flow that creates agents.',
+    'onboarding.errors.flowMissing.title': 'Agent onboarding flow not found',
+    'onboarding.errors.flowMissing.description':
+      'The configured agent onboarding flow "{{handle}}" does not exist. Create an administration flow with that handle, or point flow.agentOnboardingFlow.defaultHandle at one that exists.',
+    'onboarding.errors.unavailable.title': 'Could not start agent onboarding',
+    'onboarding.errors.unavailable.description':
+      'The agent onboarding flow could not be loaded. Check that the server is reachable and try again.',
+    'onboarding.errors.stepFailed': 'This step could not be completed. Review the values and try again.',
+    'onboarding.selectPlaceholder': 'Select an option',
+    'onboarding.addAnother': 'Add Another Agent',
 
     // Client secret (creation)
     'clientSecret.saveTitle': 'Save your client secret',
@@ -3579,6 +3567,7 @@ const translations = {
     'core.executions.names.httpRequest': 'HTTP Request',
     'core.executions.names.ouCreation': 'OU Creation',
     'core.executions.names.userTypeResolver': 'User Type Resolver',
+    'core.executions.names.agentTypeResolver': 'Agent Type Resolver',
 
     // OTP executor
     'core.executions.otp.description': 'Configure the OTP executor settings.',
@@ -3758,6 +3747,24 @@ const translations = {
     'core.executions.userTypeResolver.allowedUserTypes.placeholder': 'e.g., employee, customer',
     'core.executions.userTypeResolver.allowedUserTypes.hint':
       'Comma-separated list of allowed user type names to filter available types.',
+
+    // Entity category shared by mode-driven executors
+    'core.executions.entityMode.user': 'User',
+    'core.executions.entityMode.agent': 'Agent',
+
+    // Attribute uniqueness validator executor
+    'core.executions.attributeUniquenessValidator.description':
+      'Check the unique attributes of the entity being created against existing records.',
+    'core.executions.attributeUniquenessValidator.mode.label': 'Entity Category',
+    'core.executions.attributeUniquenessValidator.mode.hint':
+      'Which kind of entity the uniqueness check runs against. Must match the provisioning node in the same flow.',
+
+    // Agent type resolver executor
+    'core.executions.agentTypeResolver.description': 'Configure the agent type resolver settings.',
+    'core.executions.agentTypeResolver.allowedAgentTypes.label': 'Allowed Agent Types',
+    'core.executions.agentTypeResolver.allowedAgentTypes.placeholder': 'e.g., default',
+    'core.executions.agentTypeResolver.allowedAgentTypes.hint':
+      'Comma-separated list of allowed agent type names to filter available types.',
 
     // HTTP Request executor
     'core.executions.httpRequest.description': 'Configure the HTTP request executor settings.',

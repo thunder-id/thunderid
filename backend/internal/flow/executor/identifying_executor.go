@@ -25,7 +25,7 @@ const (
 
 // identifyingExecutorInterface defines the interface for identifying executors.
 type identifyingExecutorInterface interface {
-	IdentifyUser(ctx context.Context, filters map[string]interface{},
+	IdentifyEntity(ctx context.Context, filters map[string]interface{},
 		execResp *providers.ExecutorResponse) (*string, error)
 }
 
@@ -67,11 +67,12 @@ func newIdentifyingExecutor(
 	}
 }
 
-// IdentifyUser identifies a user based on the provided attributes.
-func (i *identifyingExecutor) IdentifyUser(ctx context.Context, filters map[string]interface{},
+// IdentifyEntity identifies an entity based on the provided attributes. The lookup goes through the
+// entity provider, so it is not scoped to a single entity category.
+func (i *identifyingExecutor) IdentifyEntity(ctx context.Context, filters map[string]interface{},
 	execResp *providers.ExecutorResponse) (*string, error) {
 	logger := i.logger
-	logger.Debug(ctx, "Identifying user with filters")
+	logger.Debug(ctx, "Identifying entity with filters")
 
 	if entityID, ok := filters[userAttributeUserID].(string); ok && entityID != "" {
 		entity, epErr := i.entityProvider.GetEntity(entityID)
@@ -95,31 +96,31 @@ func (i *identifyingExecutor) IdentifyUser(ctx context.Context, filters map[stri
 		}
 	}
 
-	userID, err := i.entityProvider.IdentifyEntity(searchableFilter)
+	entityID, err := i.entityProvider.IdentifyEntity(searchableFilter)
 	if err != nil {
 		switch err.Code {
 		case entityprovider.ErrorCodeEntityNotFound:
-			logger.Debug(ctx, "User not found for the provided filters")
+			logger.Debug(ctx, "Entity not found for the provided filters")
 			execResp.Error = &ErrUserNotFound
 		case entityprovider.ErrorCodeAmbiguousEntity:
-			logger.Debug(ctx, "Multiple users found for the provided filters")
+			logger.Debug(ctx, "Multiple entities found for the provided filters")
 			execResp.Error = &ErrAmbiguousUserIdentity
 		default:
-			logger.Debug(ctx, "Failed to identify user due to error: "+err.Error())
+			logger.Debug(ctx, "Failed to identify the entity due to error: "+err.Error())
 			execResp.Error = &ErrFailedToIdentifyUser
 		}
 		execResp.Status = providers.ExecFailure
 		return nil, nil
 	}
 
-	if userID == nil || *userID == "" {
-		logger.Debug(ctx, "User not found for the provided filter")
+	if entityID == nil || *entityID == "" {
+		logger.Debug(ctx, "Entity not found for the provided filter")
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrUserNotFound
 		return nil, nil
 	}
 
-	return userID, nil
+	return entityID, nil
 }
 
 // Execute executes the identifying executor logic.
@@ -167,7 +168,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 
 	userSearchAttributes := i.buildSearchAttributes(ctx)
 
-	userID, err := i.IdentifyUser(ctx.Context, userSearchAttributes, execResp)
+	userID, err := i.IdentifyEntity(ctx.Context, userSearchAttributes, execResp)
 	if err != nil {
 		logger.Debug(ctx.Context, "Failed to identify user due to error: "+err.Error())
 		execResp.Status = providers.ExecFailure
@@ -176,7 +177,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 	}
 
 	// Only promote ExecFailure to ExecUserInputRequired for recoverable user-input
-	// errors (i.e. user not found). Other failures reported by IdentifyUser — such
+	// errors (i.e. user not found). Other failures reported by IdentifyEntity — such
 	// as ambiguous matches or system errors — are not recoverable in identify mode
 	// and must be returned as-is so the caller can handle them appropriately.
 	// When loginHintAttribute is set the identifier was supplied externally — there is no

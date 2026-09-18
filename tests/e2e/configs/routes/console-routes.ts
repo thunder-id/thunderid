@@ -85,6 +85,9 @@ export const ConsoleRoutes = {
   /** Agents list page */
   agents: "/console/agents",
 
+  /** Agent onboarding page, which runs the configured agent onboarding flow */
+  agentCreate: "/console/agents/create",
+
   /**
    * Agent details page
    * @param agentId - The agent identifier

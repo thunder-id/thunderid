@@ -2112,6 +2112,232 @@
   {
     "resourceType": "WIDGET",
     "category": "FLOW",
+    "type": "AGENT_OWNER_RESOLUTION",
+    "display": {
+      "label": "Owner Resolution",
+      "description": "Ask who owns the entity being created, defaulting to the signed-in administrator",
+      "image": "assets/images/icons/user.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "data": {
+        "__generationMeta__": {
+          "defaultPropertySelectorId": "{{OWNER_RESOLVER_STEP_ID}}",
+          "replacers": [
+            {
+              "key": "OWNER_RESOLVER_STEP_ID",
+              "type": "ID"
+            },
+            {
+              "key": "OWNER_PROMPT_STEP_ID",
+              "type": "ID"
+            }
+          ],
+          "autoWire": {
+            "entry": {
+              "stepRef": "OWNER_RESOLVER_STEP_ID"
+            },
+            "exit": {
+              "stepRef": "OWNER_RESOLVER_STEP_ID",
+              "handle": "success"
+            }
+          }
+        },
+        "steps": [
+          {
+            "id": "{{OWNER_RESOLVER_STEP_ID}}",
+            "type": "TASK_EXECUTION",
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 760,
+              "y": 360
+            },
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "OwnerResolver"
+                },
+                "onSuccess": "",
+                "onFailure": "",
+                "onIncomplete": "{{OWNER_PROMPT_STEP_ID}}"
+              }
+            }
+          },
+          {
+            "id": "{{OWNER_PROMPT_STEP_ID}}",
+            "type": "VIEW",
+            "size": {
+              "width": 360,
+              "height": 260
+            },
+            "position": {
+              "x": 1120,
+              "y": 260
+            },
+            "data": {
+              "components": [
+                {
+                  "id": "{{ID}}",
+                  "category": "DISPLAY",
+                  "type": "TEXT",
+                  "align": "left",
+                  "variant": "HEADING_1",
+                  "label": "Select an owner"
+                },
+                {
+                  "id": "{{ID}}",
+                  "category": "DISPLAY",
+                  "type": "TEXT",
+                  "align": "left",
+                  "variant": "HEADING_6",
+                  "label": "Choose the user who owns this entity. Leave it unset to own it yourself."
+                },
+                {
+                  "id": "{{ID}}",
+                  "category": "BLOCK",
+                  "type": "BLOCK",
+                  "components": [
+                    {
+                      "id": "owner_input",
+                      "category": "FIELD",
+                      "type": "USER_SELECT",
+                      "ref": "owner",
+                      "label": "Owner",
+                      "placeholder": "Select a user",
+                      "required": false
+                    },
+                    {
+                      "id": "{{ID}}",
+                      "category": "ACTION",
+                      "type": "ACTION",
+                      "variant": "PRIMARY",
+                      "eventType": "SUBMIT",
+                      "label": "Continue",
+                      "action": {
+                        "type": "NEXT",
+                        "onSuccess": "{{OWNER_RESOLVER_STEP_ID}}"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "resourceType": "WIDGET",
+    "category": "FLOW",
+    "type": "AGENT_DELEGATION",
+    "display": {
+      "label": "Agent Delegation",
+      "description": "Ask whether the agent may act for a signed-in user, and where to send them back",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "data": {
+        "__generationMeta__": {
+          "defaultPropertySelectorId": "{{AGENT_DELEGATION_STEP_ID}}",
+          "replacers": [
+            {
+              "key": "AGENT_DELEGATION_STEP_ID",
+              "type": "ID"
+            }
+          ],
+          "autoWire": {
+            "entry": {
+              "stepRef": "AGENT_DELEGATION_STEP_ID"
+            },
+            "exit": {
+              "stepRef": "AGENT_DELEGATION_STEP_ID",
+              "handle": "success"
+            }
+          }
+        },
+        "steps": [
+          {
+            "id": "{{AGENT_DELEGATION_STEP_ID}}",
+            "type": "VIEW",
+            "size": {
+              "width": 360,
+              "height": 320
+            },
+            "position": {
+              "x": 760,
+              "y": 260
+            },
+            "data": {
+              "components": [
+                {
+                  "id": "{{ID}}",
+                  "category": "DISPLAY",
+                  "type": "TEXT",
+                  "align": "left",
+                  "variant": "HEADING_1",
+                  "label": "Delegation"
+                },
+                {
+                  "id": "{{ID}}",
+                  "category": "DISPLAY",
+                  "type": "TEXT",
+                  "align": "left",
+                  "variant": "HEADING_6",
+                  "label": "A delegated agent can act for a signed-in user. Leave this off for an agent that acts only on its own behalf."
+                },
+                {
+                  "id": "{{ID}}",
+                  "category": "BLOCK",
+                  "type": "BLOCK",
+                  "components": [
+                    {
+                      "id": "{{ID}}",
+                      "category": "FIELD",
+                      "type": "BOOLEAN_INPUT",
+                      "ref": "delegated",
+                      "label": "Allow the agent to act on behalf of a user",
+                      "required": false
+                    },
+                    {
+                      "id": "{{ID}}",
+                      "category": "FIELD",
+                      "type": "TEXT_INPUT",
+                      "ref": "redirectUris",
+                      "label": "Redirect URI",
+                      "placeholder": "https://example.com/callback",
+                      "hint": "Used only when delegation is enabled. A default is applied when left blank.",
+                      "required": false
+                    },
+                    {
+                      "id": "{{ID}}",
+                      "category": "ACTION",
+                      "type": "ACTION",
+                      "variant": "PRIMARY",
+                      "eventType": "SUBMIT",
+                      "label": "Continue",
+                      "action": {
+                        "type": "NEXT",
+                        "onSuccess": ""
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "resourceType": "WIDGET",
+    "category": "FLOW",
     "type": "CONSENT",
     "display": {
       "label": "User Consent",

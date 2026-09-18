@@ -107,6 +107,15 @@ export const OU_RESOLVE_FROM_OPTIONS = [
 ] as const;
 
 /**
+ * Entity categories a mode-driven executor can work on. The value is the category name the backend
+ * reads from the node's `mode` property.
+ */
+export const ENTITY_MODE_OPTIONS = [
+  {value: 'user', translationKey: 'flows:core.executions.entityMode.user'},
+  {value: 'agent', translationKey: 'flows:core.executions.entityMode.agent'},
+] as const;
+
+/**
  * Available HTTP methods for HTTP Request executor.
  */
 export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] as const;

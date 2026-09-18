@@ -18,6 +18,7 @@ type str struct {
 	credential  bool
 	displayName string
 	enum        map[string]struct{}
+	enumOrder   []string
 	pattern     *regexp.Regexp
 }
 
@@ -43,6 +44,11 @@ func (p *str) isDisplayable() bool {
 
 func (p *str) getDisplayName() string {
 	return p.displayName
+}
+
+// getEnum returns the permitted values in the order the schema declared them.
+func (p *str) getEnum() []string {
+	return p.enumOrder
 }
 
 func (p *str) validateValue(ctx context.Context, value interface{}, path string, logger *log.Logger) (bool, error) {
@@ -142,12 +148,17 @@ func compileStringProperty(propMap map[string]json.RawMessage) (property, error)
 		}
 
 		prop.enum = make(map[string]struct{}, len(enumRaw))
+		prop.enumOrder = make([]string, 0, len(enumRaw))
 		for i, itemRaw := range enumRaw {
 			var value string
 			if err := json.Unmarshal(itemRaw, &value); err != nil {
 				return nil, fmt.Errorf("'enum' array item at index %d must be a string to match property type", i)
 			}
+			if _, seen := prop.enum[value]; seen {
+				continue
+			}
 			prop.enum[value] = struct{}{}
+			prop.enumOrder = append(prop.enumOrder, value)
 		}
 	}
 

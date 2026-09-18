@@ -33,6 +33,11 @@ func (p *boolean) getDisplayName() string {
 	return p.displayName
 }
 
+// getEnum returns no values: boolean properties do not constrain their value to a fixed set.
+func (p *boolean) getEnum() []string {
+	return nil
+}
+
 func (p *boolean) isUnique() bool {
 	return false
 }

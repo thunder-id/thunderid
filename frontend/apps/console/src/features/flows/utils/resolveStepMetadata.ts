@@ -27,6 +27,7 @@ const resolveStepMetadata = (resources: Resources, steps: Step[]): Step[] => {
     const stepData = step.data as StepData | undefined;
     const executorName = stepData?.action?.executor?.name;
     const executorMode = (stepData?.action?.executor as {mode?: string} | undefined)?.mode;
+    const stepProperties = (stepData as (StepData & {properties?: Record<string, unknown>}) | undefined)?.properties;
 
     if (executorName && resources?.executors) {
       // For executors with modes (like OTPExecutor), match on both name and mode
@@ -43,6 +44,19 @@ const resolveStepMetadata = (resources: Resources, steps: Step[]): Step[] => {
         // If the step has a mode, try to match it; otherwise, use the first matching executor
         if (executorMode && metaExecutorMode) {
           return metaExecutorMode === executorMode;
+        }
+
+        // Some executors are offered as several catalog entries sharing a name and differing only
+        // by a preset `mode` node property. That is the node property, not the `executor.mode`
+        // compared above; without comparing it the first entry would claim every such node.
+        const metaProperties = (executorData as (StepData & {properties?: Record<string, unknown>}) | undefined)
+          ?.properties;
+        const stepMode = stepProperties?.mode;
+        const metaMode = metaProperties?.mode;
+
+        // A node carrying no mode falls through to the first entry.
+        if (stepMode !== undefined && stepMode !== '' && metaMode !== undefined) {
+          return metaMode === stepMode;
         }
 
         return true;
