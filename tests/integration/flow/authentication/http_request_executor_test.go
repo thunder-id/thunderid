@@ -168,6 +168,74 @@ var (
 		},
 	}
 
+	// httpRequestExecutorRequestPlaceholderFlow exercises the {{request(...)}} placeholder syntax in
+	// the HTTP Request Executor body. It covers the resolvable happy path (flow-source header lookups),
+	// the sourceless and init-source variants, and every unresolvable shape (absent header, absent
+	// query, missing name, invalid type, malformed selector) which must be kept verbatim.
+	httpRequestExecutorRequestPlaceholderFlow = testutils.Flow{
+		Name:     "HTTP Request Executor Auth Flow - Request Placeholders",
+		FlowType: "AUTHENTICATION",
+		Handle:   "auth_flow_http_request_placeholders",
+		Nodes: []map[string]interface{}{
+			{
+				"id":        "start",
+				"type":      "START",
+				"onSuccess": "credentials_auth",
+			},
+			{
+				"id":   "credentials_auth",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "CredentialsAuthExecutor",
+				},
+				"onSuccess": "http_request_notification",
+			},
+			{
+				"id":   "http_request_notification",
+				"type": "TASK_EXECUTION",
+				"properties": map[string]interface{}{
+					"url":     "http://localhost:9091/api/notifications",
+					"method":  "POST",
+					"headers": "{\"Content-Type\": \"application/json\"}",
+					// The flow-initiation request always carries Accept and Content-Type headers, so
+					// the flow-source lookups resolve; the remaining selectors are unresolvable and
+					// must be left as-is.
+					"body": "{" +
+						"\"flowAccept\": \"{{request(flow.header.Accept)}}\", " +
+						"\"flowContentType\": \"{{request(flow.header.Content-Type)}}\", " +
+						"\"flowAbsentHeader\": \"{{request(flow.header.X-Absent-Header)}}\", " +
+						"\"flowMissingQuery\": \"{{request(flow.query.missingparam)}}\", " +
+						"\"flowNoName\": \"{{request(flow.header)}}\", " +
+						"\"flowEmptyName\": \"{{request(flow.header.)}}\", " +
+						"\"initContentType\": \"{{request(init.header.Content-Type)}}\", " +
+						"\"noSourceAccept\": \"{{request(header.Accept)}}\", " +
+						"\"invalidType\": \"{{request(flow.wrongtype.x)}}\", " +
+						"\"malformed\": \"{{request(malformedselector)}}\", " +
+						"\"userId\": \"{{ctx(userId)}}\"" +
+						"}",
+					"responseMapping": "{\"notificationId\": \"id\", \"status\": \"status\"}",
+					"timeout":         "5",
+				},
+				"executor": map[string]interface{}{
+					"name": "HTTPRequestExecutor",
+				},
+				"onSuccess": "auth_assert",
+			},
+			{
+				"id":   "auth_assert",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "AuthAssertExecutor",
+				},
+				"onSuccess": "end",
+			},
+			{
+				"id":   "end",
+				"type": "END",
+			},
+		},
+	}
+
 	httpRequestExecutorTestApp = testutils.Application{
 		Name:                      "HTTP Request Executor Test Application",
 		Description:               "Application for testing HTTP request executor in authentication flows",
@@ -426,4 +494,68 @@ func (ts *HTTPRequestExecutorTestSuite) TestHTTPRequestAuthFlow_WithFailOnErrorT
 	})
 
 	ts.Require().Error(err, "HTTP request failure should cause authentication flow to fail")
+}
+
+func (ts *HTTPRequestExecutorTestSuite) TestHTTPRequestAuthFlow_RequestPlaceholders() {
+	// Create the flow that uses {{request(...)}} placeholders and point the app at it.
+	flowID, err := testutils.CreateFlow(httpRequestExecutorRequestPlaceholderFlow)
+	ts.Require().NoError(err, "Failed to create request-placeholder flow")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, flowID)
+
+	err = common.UpdateAppConfig(ts.testAppID, flowID, "")
+	ts.NoError(err, "App config update should succeed")
+
+	defer func() {
+		common.UpdateAppConfig(ts.testAppID, ts.testFlowID, "")
+	}()
+
+	step1, err := common.InitiateAuthenticationFlow(ts.testAppID, false, map[string]string{
+		"username": "httprequestuser",
+		"password": "SecurePass123!",
+	}, "")
+
+	ts.NoError(err, "Authentication flow should complete without error")
+	ts.Require().NotNil(step1, "Flow response should not be nil")
+	ts.Equal("COMPLETE", step1.FlowStatus, "Flow status should be COMPLETE")
+	ts.Require().Nil(step1.Error, "Error should be nil")
+
+	time.Sleep(200 * time.Millisecond)
+
+	requests := ts.mockNotificationServer.GetCapturedRequests()
+	ts.Require().NotEmpty(requests, "At least one HTTP request should be captured")
+
+	var notificationRequest *testutils.HTTPRequest
+	for i := range requests {
+		if requests[i].Path == "/api/notifications" {
+			notificationRequest = &requests[i]
+			break
+		}
+	}
+	ts.Require().NotNil(notificationRequest, "Notification request should be sent")
+	ts.Require().NotNil(notificationRequest.Body, "Request body should not be nil")
+
+	// Flow-source header selectors resolve from the flow-initiation request, which always carries
+	// Accept and Content-Type headers.
+	ts.Equal("application/json", notificationRequest.Body["flowAccept"],
+		"{{request(flow.header.Accept)}} should resolve from the current request headers")
+	ts.Equal("application/json", notificationRequest.Body["flowContentType"],
+		"{{request(flow.header.Content-Type)}} should resolve from the current request headers")
+
+	// Unresolvable selectors are kept verbatim so downstream systems can detect them.
+	ts.Equal("{{request(flow.header.X-Absent-Header)}}", notificationRequest.Body["flowAbsentHeader"],
+		"an absent header keeps the placeholder")
+	ts.Equal("{{request(flow.query.missingparam)}}", notificationRequest.Body["flowMissingQuery"],
+		"an absent query parameter keeps the placeholder")
+	ts.Equal("{{request(flow.header)}}", notificationRequest.Body["flowNoName"],
+		"a selector with no name keeps the placeholder")
+	ts.Equal("{{request(flow.header.)}}", notificationRequest.Body["flowEmptyName"],
+		"a selector with an empty name keeps the placeholder")
+	ts.Equal("{{request(flow.wrongtype.x)}}", notificationRequest.Body["invalidType"],
+		"a selector with an invalid type keeps the placeholder")
+	ts.Equal("{{request(malformedselector)}}", notificationRequest.Body["malformed"],
+		"a malformed selector keeps the placeholder")
+
+	// {{ctx(...)}} placeholders still resolve alongside {{request(...)}} placeholders.
+	ts.Equal(ts.config.CreatedUserIDs[0], notificationRequest.Body["userId"],
+		"ctx placeholders should still resolve")
 }

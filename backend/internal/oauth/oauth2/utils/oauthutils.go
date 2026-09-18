@@ -19,6 +19,35 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// SensitiveQueryParams is the deny-list of OAuth request query parameters that must not be exposed
+// through a captured InitiatorRequest.QueryParams. They carry client credentials, so — like the
+// sensitive request headers stripped by system utils.FilterSensitiveHeaders — they are removed at
+// capture. That keeps them out of the plaintext flow-context store and out of any {{request(query.*)}}
+// placeholder a flow executor might publish. This is the authorize/CIBA counterpart of the PAR body
+// deny-list, and both strip the same parameters for the same reason.
+var SensitiveQueryParams = map[string]bool{
+	constants.RequestParamClientSecret:        true,
+	constants.RequestParamClientAssertion:     true,
+	constants.RequestParamClientAssertionType: true,
+}
+
+// FilterSensitiveQueryParams returns a copy of params with SensitiveQueryParams removed. It is the
+// query-parameter analogue of system utils.FilterSensitiveHeaders. A nil or empty map is returned
+// unchanged.
+func FilterSensitiveQueryParams(params map[string][]string) map[string][]string {
+	if len(params) == 0 {
+		return params
+	}
+	filtered := make(map[string][]string, len(params))
+	for name, values := range params {
+		if SensitiveQueryParams[name] {
+			continue
+		}
+		filtered[name] = values
+	}
+	return filtered
+}
+
 // GetURIWithQueryParams constructs a URI with the given query parameters.
 // It validates the error code and error description according to the spec.
 func GetURIWithQueryParams(uri string, queryParams map[string]string) (string, error) {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/flow/session"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
@@ -59,6 +60,13 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 	// Read the inbound SSO transport inputs (per-flow handle cookies) and make
 	// them available to the flow service, which selects the handle once the flow is known.
 	ctx := session.WithInbound(r.Context(), h.ssoTransport.Read(r))
+
+	// Carry the current step's request headers and query params so flow executors can publish them
+	// via {{request(flow.*)}} placeholders. Credential-bearing headers are stripped at this boundary.
+	ctx = withCurrentRequest(ctx, &providers.InitiatorRequest{
+		Headers:     sysutils.FilterSensitiveHeaders(r.Header),
+		QueryParams: r.URL.Query(),
+	})
 
 	var flowStep *FlowStep
 	var flowErr *tidcommon.ServiceError

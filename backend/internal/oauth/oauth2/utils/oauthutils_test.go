@@ -1936,3 +1936,33 @@ func (suite *OAuth2UtilsTestSuite) TestEnsureClientSubTypeAttribute_LeavesUserCo
 	assert.Equal(suite.T(), []string{"email"}, token.AccessToken.UserConfig.Attributes)
 	assert.Equal(suite.T(), []string{constants.ClaimSubType}, token.AccessToken.ClientConfig.Attributes)
 }
+
+// Client-credential query parameters are stripped while everything else is preserved verbatim.
+func (suite *OAuth2UtilsTestSuite) TestFilterSensitiveQueryParams_StripsCredentials() {
+	filtered := FilterSensitiveQueryParams(map[string][]string{
+		constants.RequestParamClientSecret:        {"s3cret"},
+		constants.RequestParamClientAssertion:     {"eyJ..."},
+		constants.RequestParamClientAssertionType: {"urn:ietf:params:oauth:client-assertion-type:jwt-bearer"},
+		constants.RequestParamIDTokenHint:         {"eyJhbGc..."},
+		constants.RequestParamLoginHint:           {"alice@example.com"},
+		"scope":                                   {"openid", "profile"},
+	})
+
+	_, hasSecret := filtered[constants.RequestParamClientSecret]
+	_, hasAssertion := filtered[constants.RequestParamClientAssertion]
+	_, hasAssertionType := filtered[constants.RequestParamClientAssertionType]
+	assert.False(suite.T(), hasSecret, "client_secret must be stripped")
+	assert.False(suite.T(), hasAssertion, "client_assertion must be stripped")
+	assert.False(suite.T(), hasAssertionType, "client_assertion_type must be stripped")
+
+	// User hints and ordinary parameters are not client credentials and must survive.
+	assert.Equal(suite.T(), []string{"eyJhbGc..."}, filtered[constants.RequestParamIDTokenHint])
+	assert.Equal(suite.T(), []string{"alice@example.com"}, filtered[constants.RequestParamLoginHint])
+	assert.Equal(suite.T(), []string{"openid", "profile"}, filtered["scope"])
+}
+
+// A nil or empty map is returned unchanged rather than allocated.
+func (suite *OAuth2UtilsTestSuite) TestFilterSensitiveQueryParams_EmptyInput() {
+	assert.Nil(suite.T(), FilterSensitiveQueryParams(nil))
+	assert.Empty(suite.T(), FilterSensitiveQueryParams(map[string][]string{}))
+}
