@@ -6,18 +6,36 @@ import {render, screen, waitFor, userEvent} from '@thunderid/test-utils';
 import type * as OxygenUI from '@wso2/oxygen-ui';
 import {type ReactElement, type ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import type useDeleteUserTypeHook from '../../api/useDeleteUserType';
 import type useGetUserTypesHook from '../../api/useGetUserTypes';
 import type {UserTypeListResponse, UserTypeListItem} from '../../types/user-types';
 import UserTypesList from '../UserTypesList';
 
-const {mockLoggerError} = vi.hoisted(() => ({
+const {mockLoggerError, mockUserTypeDeleteDialog} = vi.hoisted(() => ({
   mockLoggerError: vi.fn(),
+  mockUserTypeDeleteDialog: vi.fn(),
 }));
 
 const mockNavigate = vi.fn();
-const mockMutateAsync = vi.fn();
 const mockRefetchUserTypes = vi.fn();
+
+// Mock the shared delete dialog: its own behavior (usages check, mutation, errors) is
+// covered by UserTypeDeleteDialog.test.tsx. Here we only verify UserTypesList wires the
+// right props to it and reacts correctly to onClose.
+vi.mock('../edit-user-type/UserTypeDeleteDialog', () => ({
+  default: (props: {open: boolean; userTypeId: string | null; onClose: () => void}) => {
+    mockUserTypeDeleteDialog(props);
+    if (!props.open) return null;
+    return (
+      <div role="dialog" data-testid="user-type-delete-dialog">
+        <span>Delete User Type</span>
+        <span>{props.userTypeId}</span>
+        <button type="button" onClick={props.onClose}>
+          Close
+        </button>
+      </div>
+    );
+  },
+}));
 
 type MockDataGridRow = UserTypeListItem & Record<string, unknown>;
 
@@ -152,10 +170,8 @@ vi.mock('@thunderid/logger/react', () => ({
 }));
 // Mock hooks
 type UseGetUserTypesReturn = ReturnType<typeof useGetUserTypesHook>;
-type UseDeleteUserTypeReturn = ReturnType<typeof useDeleteUserTypeHook>;
 
 const mockUseGetUserTypes = vi.fn<() => UseGetUserTypesReturn>();
-const mockUseDeleteUserType = vi.fn<() => UseDeleteUserTypeReturn>();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockUseGetOrganizationUnits = vi.fn<() => any>();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -163,10 +179,6 @@ const mockRefetchOrganizationUnits = vi.fn() as any;
 
 vi.mock('../../api/useGetUserTypes', () => ({
   default: () => mockUseGetUserTypes(),
-}));
-
-vi.mock('../../api/useDeleteUserType', () => ({
-  default: () => mockUseDeleteUserType(),
 }));
 
 vi.mock('../../../organization-units/api/useGetOrganizationUnits', () => ({
@@ -202,12 +214,6 @@ describe('UserTypesList', () => {
       error: null,
       refetch: mockRefetchUserTypes,
     } as unknown as ReturnType<typeof useGetUserTypesHook>);
-    mockUseDeleteUserType.mockReturnValue({
-      mutateAsync: mockMutateAsync,
-      isPending: false,
-      error: null,
-      reset: vi.fn(),
-    } as unknown as ReturnType<typeof useDeleteUserTypeHook>);
     mockUseGetOrganizationUnits.mockReturnValue({
       data: mockOrganizationUnitsResponse,
       isLoading: false,
@@ -330,7 +336,7 @@ describe('UserTypesList', () => {
     });
   });
 
-  it('opens delete dialog when Delete is clicked', async () => {
+  it('opens delete dialog with the clicked row id when Delete is clicked', async () => {
     const user = userEvent.setup();
     render(<UserTypesList />);
 
@@ -338,12 +344,14 @@ describe('UserTypesList', () => {
     await user.click(deleteButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('Delete User Type')).toBeInTheDocument();
-      expect(screen.getByText('Are you sure you want to delete this user type?')).toBeInTheDocument();
+      expect(screen.getByTestId('user-type-delete-dialog')).toBeInTheDocument();
     });
+    expect(mockUserTypeDeleteDialog).toHaveBeenLastCalledWith(
+      expect.objectContaining({open: true, userTypeId: 'schema1'}),
+    );
   });
 
-  it('cancels delete when Cancel button is clicked', async () => {
+  it('closes the delete dialog and clears the selection when onClose fires', async () => {
     const user = userEvent.setup();
     render(<UserTypesList />);
 
@@ -351,57 +359,15 @@ describe('UserTypesList', () => {
     await user.click(deleteButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('Delete User Type')).toBeInTheDocument();
+      expect(screen.getByTestId('user-type-delete-dialog')).toBeInTheDocument();
     });
 
-    const cancelButton = screen.getByRole('button', {name: /Cancel/i});
-    await user.click(cancelButton);
+    await user.click(screen.getByRole('button', {name: /close/i}));
 
     await waitFor(() => {
-      expect(screen.queryByText('Delete User Type')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('user-type-delete-dialog')).not.toBeInTheDocument();
     });
-  });
-
-  it('deletes user type when confirmed', async () => {
-    const user = userEvent.setup();
-    mockMutateAsync.mockResolvedValue(undefined);
-
-    render(<UserTypesList />);
-
-    const deleteButtons = screen.getAllByRole('button', {name: /delete/i});
-    await user.click(deleteButtons[0]);
-
-    await waitFor(() => {
-      expect(screen.getByText('Delete User Type')).toBeInTheDocument();
-    });
-
-    const confirmButton = screen.getByRole('button', {name: /delete/i});
-    await user.click(confirmButton);
-
-    await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalledWith('schema1');
-    });
-  });
-
-  it('displays delete error in dialog', async () => {
-    const user = userEvent.setup();
-    const deleteError = new Error('Failed to delete');
-
-    mockUseDeleteUserType.mockReturnValue({
-      mutateAsync: mockMutateAsync,
-      isPending: false,
-      error: deleteError,
-      reset: vi.fn(),
-    } as unknown as ReturnType<typeof useDeleteUserTypeHook>);
-
-    render(<UserTypesList />);
-
-    const deleteButtons = screen.getAllByRole('button', {name: /delete/i});
-    await user.click(deleteButtons[0]);
-
-    await waitFor(() => {
-      expect(screen.getByText('Failed to delete user type. Please try again.')).toBeInTheDocument();
-    });
+    expect(mockUserTypeDeleteDialog).toHaveBeenLastCalledWith(expect.objectContaining({open: false, userTypeId: null}));
   });
 
   it('navigates when row is clicked', async () => {
@@ -413,25 +379,6 @@ describe('UserTypesList', () => {
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/user-types/schema1');
-    });
-  });
-
-  it('displays deleting state on confirm button', async () => {
-    const user = userEvent.setup();
-    mockUseDeleteUserType.mockReturnValue({
-      mutateAsync: mockMutateAsync,
-      isPending: true,
-      error: null,
-      reset: vi.fn(),
-    } as unknown as ReturnType<typeof useDeleteUserTypeHook>);
-
-    render(<UserTypesList />);
-
-    const deleteButtons = screen.getAllByRole('button', {name: /delete/i});
-    await user.click(deleteButtons[0]);
-
-    await waitFor(() => {
-      expect(screen.getByText('Loading...')).toBeInTheDocument();
     });
   });
 
@@ -452,29 +399,6 @@ describe('UserTypesList', () => {
     const grid = screen.getByTestId('data-grid');
     expect(grid).toBeInTheDocument();
     expect(grid).toHaveAttribute('data-loading', 'false');
-  });
-
-  it('keeps delete dialog open on delete error', async () => {
-    const user = userEvent.setup();
-    mockMutateAsync.mockRejectedValue(new Error('Delete failed'));
-
-    render(<UserTypesList />);
-
-    const deleteButtons = screen.getAllByRole('button', {name: /delete/i});
-    await user.click(deleteButtons[0]);
-
-    await waitFor(() => {
-      expect(screen.getByText('Delete User Type')).toBeInTheDocument();
-    });
-
-    const confirmButton = screen.getByRole('button', {name: /delete/i});
-    await user.click(confirmButton);
-
-    await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalledWith('schema1');
-      // Dialog stays open so user can see error and retry
-      expect(screen.getByText('Delete User Type')).toBeInTheDocument();
-    });
   });
 
   it('handles navigation error when row is clicked', async () => {

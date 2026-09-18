@@ -146,6 +146,24 @@ func registerSchemaRoutes(mux *http.ServeMux, basePath string, h *entityTypeHand
 
 func registerUserTypeRoutes(mux *http.ServeMux, h *entityTypeHandler) {
 	registerSchemaRoutes(mux, "/user-types", h)
+	registerUserTypeUsagesRoute(mux, "/user-types", h)
+}
+
+// registerUserTypeUsagesRoute registers the informational usages endpoint that drives the
+// pre-delete confirmation dialog. Only wired for user types: agent type deletion is always
+// rejected outright (see DeleteEntityType), so there is nothing for the dialog to check there.
+func registerUserTypeUsagesRoute(mux *http.ServeMux, basePath string, h *entityTypeHandler) {
+	opts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("GET "+basePath+"/{id}/usages", h.HandleEntityTypeUsagesGetRequest, opts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS "+basePath+"/{id}/usages",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, opts))
 }
 
 func registerAgentTypeRoutes(mux *http.ServeMux, h *entityTypeHandler) {

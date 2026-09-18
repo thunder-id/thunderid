@@ -45,6 +45,14 @@ packages:
   # TODO: remove this entry once the provisioning executor consumes the provider.
   backend/internal/agentmgtprovider: 0
   # backend/internal/system/i18n: 0
+  # entity/entitytype's GetEntityCountByType and resourcedependency-registry consumers (#5107)
+  # carry defensive error branches that only fire on genuine DB/infra failure, on a registry
+  # interface error path the one concrete Registry implementation never populates, or on an
+  # empty-ID case that net/http's own "//" -> "/" redirect prevents from ever reaching the
+  # handler. None of these are reachable through black-box HTTP integration tests; all are
+  # covered by unit tests. Verified against the PR #5362 coverage report before adding this.
+  backend/internal/entity: 65
+  backend/internal/entitytype: 65
 
 # Thresholds grouped by pull request label. A group applies only when the pull
 # request carries that label. A group may set values below `default`, which lowers

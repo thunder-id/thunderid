@@ -271,6 +271,23 @@ func (f *entityFileBasedStore) GetGroupCountForEntity(ctx context.Context, entit
 	return 0, nil
 }
 
+// GetEntityCountByType returns the count of declarative entities of a given category and type.
+func (f *entityFileBasedStore) GetEntityCountByType(ctx context.Context,
+	category, entityType string) (int, error) {
+	resources, err := f.listEntityResources()
+	if err != nil {
+		return 0, err
+	}
+
+	count := 0
+	for _, resource := range resources {
+		if string(resource.Entity.Category) == category && resource.Entity.Type == entityType {
+			count++
+		}
+	}
+	return count, nil
+}
+
 // GetEntityGroups returns empty for file-based store (groups are for mutable entities only).
 func (f *entityFileBasedStore) GetEntityGroups(ctx context.Context, entityID string,
 	limit, offset int) ([]providers.EntityGroup, error) {

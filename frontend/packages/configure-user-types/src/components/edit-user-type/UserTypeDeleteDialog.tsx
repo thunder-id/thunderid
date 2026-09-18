@@ -1,11 +1,22 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {QueryErrorNotice} from '@thunderid/components';
 import {getErrorMessage} from '@thunderid/utils';
-import {Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button, Alert} from '@wso2/oxygen-ui';
+import {
+  Alert,
+  Button,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+} from '@wso2/oxygen-ui';
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import useDeleteUserType from '../../api/useDeleteUserType';
+import useGetUserTypeUsages from '../../api/useGetUserTypeUsages';
 
 export interface UserTypeDeleteDialogProps {
   open: boolean;
@@ -26,6 +37,20 @@ export default function UserTypeDeleteDialog({
   const {t} = useTranslation();
   const deleteUserType = useDeleteUserType();
   const [error, setError] = useState<string | null>(null);
+
+  const {
+    data: usagesData,
+    isLoading: isLoadingUsages,
+    error: usagesError,
+    refetch: refetchUsages,
+  } = useGetUserTypeUsages(userTypeId, open);
+
+  // A failed lookup is distinct from a confirmed-unknown response (totalResults: null): the
+  // latter is a legitimate backend state that still falls through to the disclaimer below,
+  // while the former gets its own retry affordance instead of silently looking like "unknown".
+  const usagesKnown = usagesData !== undefined && usagesData.totalResults !== null;
+  const blockingUsageCount = usagesData?.usages.filter((usage) => usage.behaviorOnDelete === 'restrict').length ?? 0;
+  const hasBlockingUsages = usagesKnown && blockingUsageCount > 0;
 
   const handleCancel = (): void => {
     if (deleteUserType.isPending) return;
@@ -63,12 +88,37 @@ export default function UserTypeDeleteDialog({
         <DialogContentText sx={{mb: 2}}>
           {t(
             'userTypes:delete.message',
-            'Are you sure you want to delete this user type? This action cannot be undone and may affect existing users of this type.',
+            'Are you sure you want to delete this user type? This action cannot be undone.',
           )}
         </DialogContentText>
-        <Alert severity="warning" sx={{mb: 2}}>
-          {t('userTypes:delete.disclaimer', 'All associated schema definitions will be permanently removed.')}
-        </Alert>
+
+        {isLoadingUsages ? (
+          <Alert severity="info" icon={<CircularProgress size={16} />} sx={{mb: 2}}>
+            {t('userTypes:delete.usages.loading', 'Checking affected resources…')}
+          </Alert>
+        ) : usagesError ? (
+          <QueryErrorNotice
+            error={usagesError}
+            t={(key, options) => t(key.includes(':') ? key : `userTypes:${key}`, options)}
+            variant="inline"
+            fallbackKey="delete.usages.error"
+            fallbackDefaultValue="Could not check for existing users of this type."
+            onRetry={() => void refetchUsages()}
+          />
+        ) : !usagesKnown ? (
+          <Alert severity="warning" sx={{mb: 2}}>
+            {t('userTypes:delete.disclaimer', 'All associated schema definitions will be permanently removed.')}
+          </Alert>
+        ) : hasBlockingUsages ? (
+          <Alert severity="error" sx={{mb: 2}}>
+            {t(
+              'userTypes:delete.blocking.title',
+              'This user type cannot be deleted because {{count}} existing user(s) are still assigned to it. Reassign or delete those users first.',
+              {count: blockingUsageCount},
+            )}
+          </Alert>
+        ) : null}
+
         {error && (
           <Alert severity="error" sx={{mt: 2}}>
             {error}
@@ -83,7 +133,7 @@ export default function UserTypeDeleteDialog({
           onClick={handleConfirm}
           color="error"
           variant="contained"
-          disabled={deleteUserType.isPending || !userTypeId}
+          disabled={deleteUserType.isPending || !userTypeId || isLoadingUsages || hasBlockingUsages}
         >
           {deleteUserType.isPending ? t('common:status.deleting', 'Deleting...') : t('common:actions.delete')}
         </Button>

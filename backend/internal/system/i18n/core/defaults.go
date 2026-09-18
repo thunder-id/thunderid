@@ -519,6 +519,8 @@ var defaultMessages = map[string]string{
 	"error.entitytypeservice.non_displayable_attribute_type": "Non-displayable attribute type",
 	"error.entitytypeservice.non_displayable_attribute_type_description": "Display attribute must reference a string or number type",
 	"error.entitytypeservice.update_schema_request_parse_failed_description": "Failed to parse request body",
+	"error.entitytypeservice.user_type_has_existing_users": "User type cannot be deleted",
+	"error.entitytypeservice.user_type_has_existing_users_description": "This user type cannot be deleted because existing users are still assigned to it. Reassign or delete those users first",
 	"error.entitytypeservice.user_type_name_conflict": "User type name conflict",
 	"error.entitytypeservice.user_type_name_conflict_description": "A user type with the same name already exists",
 	"error.entitytypeservice.user_type_not_found": "User type not found",

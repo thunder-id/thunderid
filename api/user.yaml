@@ -1887,7 +1887,83 @@ paths:
                   defaultValue: "Invalid user type request"
                 description:
                   key: "error.entitytypeservice.invalid_user_type_request_description"
-                  defaultValue: "Cannot delete schema because users of this type exist"
+                  defaultValue: "The user type request contains invalid or missing required fields"
+        "409":
+          description: User type cannot be deleted because existing users are still assigned to it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "USRS-1016"
+                message:
+                  key: "error.entitytypeservice.user_type_has_existing_users"
+                  defaultValue: "User type cannot be deleted"
+                description:
+                  key: "error.entitytypeservice.user_type_has_existing_users_description"
+                  defaultValue: "This user type cannot be deleted because existing users are still assigned to it. Reassign or delete those users first"
+        "500":
+          description: Internal server error
+
+  /user-types/{id}/usages:
+    get:
+      tags:
+        - User Types
+      summary: Get user type usages
+      description: |
+        Returns the resources that reference this user type, aggregated across all resource
+        types. For example, users created with this type. This endpoint is informational
+        only — it drives the pre-delete confirmation dialog in the UI and does not gate
+        deletion on the server.
+
+        Each usage entry includes a `behaviorOnDelete` field describing what happens to the
+        referencing resource if the user type is deleted. Users always report `restrict`:
+        the user type cannot be deleted while users of that type still exist.
+
+        When usage data is unavailable (e.g. the server has not fully initialised),
+        `totalResults` and `summary` are `null` rather than `0`/empty. Consumers must treat
+        `null` as "unknown" and `0` as "confirmed empty".
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        "200":
+          description: Resources that reference this user type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceUsagesResponse'
+              example:
+                totalResults: 2
+                count: 2
+                summary:
+                  user: 2
+                usages:
+                  # id and displayName are omitted here: this endpoint reports an aggregate
+                  # count of matching users rather than enumerating each one.
+                  - resourceType: user
+                    behaviorOnDelete: restrict
+                  - resourceType: user
+                    behaviorOnDelete: restrict
+        "404":
+          description: User type not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "USRS-1002"
+                message:
+                  key: "error.entitytypeservice.user_type_not_found"
+                  defaultValue: "User type not found"
+                description:
+                  key: "error.entitytypeservice.user_type_not_found_description"
+                  defaultValue: "The user type with the specified id does not exist"
         "500":
           description: Internal server error
 
@@ -1968,23 +2044,26 @@ components:
       description: A single resource that references the target resource.
       required:
         - resourceType
-        - id
-        - displayName
         - behaviorOnDelete
       properties:
         resourceType:
           type: string
           description: Type of the referencing resource.
-          enum: [application, agent]
+          enum: [application, agent, user]
           example: agent
         id:
           type: string
           format: uuid
-          description: Identifier of the referencing resource.
+          description: |
+            Identifier of the referencing resource. Omitted when the provider only reports an
+            aggregate count rather than enumerating individual resources, as `user` entries do
+            under a user type's usages.
           example: "a1b2c3d4-0000-0000-0000-000000000001"
         displayName:
           type: string
-          description: Human-readable name of the referencing resource.
+          description: |
+            Human-readable name of the referencing resource. Omitted under the same condition
+            as `id`.
           example: "Support Agent"
         behaviorOnDelete:
           type: string
@@ -1992,7 +2071,8 @@ components:
             What happens to this resource when the target resource is deleted.
             - `fallback`: the reference is kept as-is.
             - `cascade`: the resource is permanently deleted.
-          enum: [fallback, cascade]
+            - `restrict`: deletion of the target resource is forbidden while this reference exists.
+          enum: [fallback, cascade, restrict]
           example: fallback
 
     ResourceUsagesSummary:
