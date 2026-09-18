@@ -25,19 +25,19 @@ func BuildFilterQuery(
 
 	keys := make([]string, 0, len(filters))
 	for key := range filters {
-		if err := ValidateKey(key); err != nil {
-			return model.DBQuery{}, nil, fmt.Errorf("invalid filter key: %w", err)
-		}
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 
 	postgresQuery := baseQuery
 	sqliteQuery := baseQuery
-	for i, key := range keys {
-		postgresQuery += BuildPostgresJSONCondition(columnName, key, i+1)
+	paramIndex := 1
+	for _, key := range keys {
+		postgresQuery += BuildPostgresJSONCondition(columnName, key, paramIndex)
 		sqliteQuery += BuildSQLiteJSONCondition(columnName, key)
-		args = append(args, filters[key])
+		keyArgs := JSONConditionArgs(key, filters[key])
+		args = append(args, keyArgs...)
+		paramIndex += len(keyArgs)
 	}
 
 	resultQuery := model.DBQuery{
@@ -71,28 +71,63 @@ func AppendDeploymentIDToFilterQuery(
 	return *updatedQuery, argsWithDeploymentID
 }
 
-// BuildPostgresJSONCondition builds a PostgreSQL JSON filter condition.
-// For nested paths (e.g., "address.city"), it uses the #>> operator with an array path.
-// For simple paths (e.g., "email"), it uses the ->> operator.
-func BuildPostgresJSONCondition(columnName, key string, paramIndex int) string {
-	if strings.Contains(key, ".") {
-		// Handle nested JSON path
-		keys := strings.Split(key, ".")
-		pathArray := "{" + strings.Join(keys, ",") + "}"
-		return fmt.Sprintf(" AND %s#>>'%s' = $%d", columnName, pathArray, paramIndex)
+// SplitJSONKey splits a filter key into its JSON path segments. A dot separates nested
+// levels, so "address.city" addresses the "city" member of the "address" object.
+func SplitJSONKey(key string) []string {
+	return strings.Split(key, ".")
+}
+
+// BuildPostgresJSONPathExpr builds a PostgreSQL expression that extracts, as text, the value at a
+// JSON path of segmentCount segments within columnName. Each segment is a bind parameter, numbered
+// consecutively from paramIndex, so a segment may contain any character. The ::text casts keep the
+// -> and ->> operator overloads unambiguous when the right operand is a bind parameter.
+func BuildPostgresJSONPathExpr(columnName string, segmentCount, paramIndex int) string {
+	expr := columnName
+	for i := 0; i < segmentCount-1; i++ {
+		expr += fmt.Sprintf("->($%d)::text", paramIndex+i)
 	}
-	// Handle simple JSON path
-	return fmt.Sprintf(" AND %s->>'%s' = $%d", columnName, key, paramIndex)
+	return expr + fmt.Sprintf("->>($%d)::text", paramIndex+segmentCount-1)
 }
 
-// BuildSQLiteJSONCondition builds a SQLite JSON filter condition.
-// For both nested and simple paths, it uses json_extract with dot notation.
+// BuildSQLiteJSONPathExpr builds the SQLite counterpart of BuildPostgresJSONPathExpr. The JSON path
+// is assembled from bind parameters with json_quote, which quotes and escapes each segment so that
+// every character is taken as part of an object label instead of as path syntax.
+func BuildSQLiteJSONPathExpr(columnName string, segmentCount int) string {
+	path := "'$'"
+	for i := 0; i < segmentCount; i++ {
+		path += " || '.' || json_quote(?)"
+	}
+	return fmt.Sprintf("json_extract(%s, %s)", columnName, path)
+}
+
+// BuildPostgresJSONCondition builds a PostgreSQL JSON filter condition. The key's path segments and
+// the compared value are bind parameters starting at paramIndex; use JSONConditionArgs to supply them.
+func BuildPostgresJSONCondition(columnName, key string, paramIndex int) string {
+	segments := SplitJSONKey(key)
+	return fmt.Sprintf(" AND %s = $%d",
+		BuildPostgresJSONPathExpr(columnName, len(segments), paramIndex), paramIndex+len(segments))
+}
+
+// BuildSQLiteJSONCondition builds the SQLite counterpart of BuildPostgresJSONCondition. It binds the
+// same arguments in the same order, so both dialects can share a single argument list.
 func BuildSQLiteJSONCondition(columnName, key string) string {
-	return fmt.Sprintf(" AND json_extract(%s, '$.%s') = ?", columnName, key)
+	return fmt.Sprintf(" AND %s = ?", BuildSQLiteJSONPathExpr(columnName, len(SplitJSONKey(key))))
 }
 
-// ValidateKey ensures that the provided key contains only safe characters (alphanumeric, underscores, and dots).
-// This validation prevents SQL injection by ensuring keys can be safely used in queries.
+// JSONConditionArgs returns the bind arguments for a condition built by BuildPostgresJSONCondition
+// or BuildSQLiteJSONCondition: the key's path segments in order, followed by the compared value.
+func JSONConditionArgs(key string, value interface{}) []interface{} {
+	segments := SplitJSONKey(key)
+	args := make([]interface{}, 0, len(segments)+1)
+	for _, segment := range segments {
+		args = append(args, segment)
+	}
+	return append(args, value)
+}
+
+// ValidateKey ensures that the provided key contains only safe characters (alphanumeric, underscores,
+// and dots). It guards identifiers such as column names, which form part of the query text and cannot
+// be bound as parameters. Filter keys are bound as parameters and are deliberately not restricted.
 func ValidateKey(key string) error {
 	for _, char := range key {
 		if !(char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' ||
