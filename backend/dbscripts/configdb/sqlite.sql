@@ -362,3 +362,20 @@ CREATE TABLE "SERVER_CONFIG" (
     UPDATED_AT    TEXT         DEFAULT (datetime('now')),
     PRIMARY KEY (DEPLOYMENT_ID, NAME)
 );
+
+-- Table to store the data planes this control plane administers. A deployment holds at most
+-- server.max_gateways of them, one by default.
+CREATE TABLE "GATEWAY" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    ID VARCHAR(36) PRIMARY KEY,
+    NAME VARCHAR(255) NOT NULL,
+    DATA_PLANE_ID VARCHAR(255) NOT NULL,
+    BASE_URL TEXT NOT NULL,
+    MANAGEMENT_KEY TEXT NOT NULL,
+    CA_CERTIFICATE TEXT,
+    CREATED_AT TEXT DEFAULT (datetime('now')),
+    UPDATED_AT TEXT DEFAULT (datetime('now')),
+    UNIQUE (NAME, DEPLOYMENT_ID),
+    -- One data plane registers once. Identity is the id it knows itself by, not its address.
+    UNIQUE (DATA_PLANE_ID, DEPLOYMENT_ID)
+);

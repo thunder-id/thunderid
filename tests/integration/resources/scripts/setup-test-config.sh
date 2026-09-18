@@ -6,6 +6,9 @@ cat > tests/integration/resources/deployment.yaml <<EOF
 server:
   hostname: localhost
   port: 8095
+  # The default of one gateway would refuse the second registration in every uniqueness test before
+  # the rule under test was reached.
+  max_gateways: 5
   security:
     # Shortened from the 60s default so revocation-enforcement tests (which check a token
     # immediately after revoking it) don't need a long sleep to observe the deny-list cache pick

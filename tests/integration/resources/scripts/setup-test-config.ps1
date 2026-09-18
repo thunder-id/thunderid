@@ -19,6 +19,9 @@ $header = @"
 server:
   hostname: localhost
   port: 8095
+  # The default of one gateway would refuse the second registration in every uniqueness test before
+  # the rule under test was reached.
+  max_gateways: 5
 
 
 tls:
