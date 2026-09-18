@@ -362,3 +362,109 @@ CREATE TABLE "SERVER_CONFIG" (
     UPDATED_AT    TIMESTAMPTZ  DEFAULT NOW(),
     PRIMARY KEY (DEPLOYMENT_ID, NAME)
 );
+
+-- Table capturing the resource-sharing graph. Generic across resource types: a policy is one
+-- organization unit's standing decision about one resource, and there is exactly one per
+-- (resource, initiating OU) so that an edit has a single well-defined subject.
+CREATE TABLE "RESOURCE_SHARING_POLICY" (
+    DEPLOYMENT_ID    VARCHAR(255) NOT NULL,
+    ID               VARCHAR(36) PRIMARY KEY,
+    RESOURCE_TYPE    VARCHAR(64) NOT NULL,
+    RESOURCE_ID      VARCHAR(36) NOT NULL,
+    OWNING_OU_ID     VARCHAR(36) NOT NULL,
+    INITIATING_OU_ID VARCHAR(36) NOT NULL,
+    POLICY_STAGE     VARCHAR(16) NOT NULL CHECK (POLICY_STAGE IN ('share', 'reshare')),
+    PARENT_POLICY_ID VARCHAR(36) REFERENCES "RESOURCE_SHARING_POLICY" (ID) ON DELETE CASCADE,
+    DECLARED         BOOLEAN NOT NULL DEFAULT FALSE,
+    VERSION          INTEGER NOT NULL DEFAULT 1,
+    CREATED_AT       TIMESTAMPTZ DEFAULT NOW(),
+    UPDATED_AT       TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (DEPLOYMENT_ID, RESOURCE_TYPE, RESOURCE_ID, INITIATING_OU_ID)
+);
+
+CREATE INDEX idx_rsp_resource ON "RESOURCE_SHARING_POLICY" (DEPLOYMENT_ID, RESOURCE_TYPE, RESOURCE_ID);
+CREATE INDEX idx_rsp_initiator ON "RESOURCE_SHARING_POLICY" (DEPLOYMENT_ID, INITIATING_OU_ID);
+
+-- One policy names several targets, which is what splitting the target off the policy row buys.
+-- The blanket scopes carry no target organization unit; the rest name exactly one.
+CREATE TABLE "RESOURCE_SHARING_POLICY_TARGET" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    ID            VARCHAR(36) PRIMARY KEY,
+    POLICY_ID     VARCHAR(36) NOT NULL
+                  REFERENCES "RESOURCE_SHARING_POLICY" (ID) ON DELETE CASCADE,
+    TARGET_SCOPE  VARCHAR(16) NOT NULL
+                  CHECK (TARGET_SCOPE IN ('all_ous', 'all_roots', 'root', 'all_children', 'ou', 'ou_subtree')),
+    TARGET_OU_ID  VARCHAR(36),
+    UNIQUE (POLICY_ID, TARGET_SCOPE, TARGET_OU_ID)
+);
+
+CREATE INDEX idx_rspt_policy ON "RESOURCE_SHARING_POLICY_TARGET" (POLICY_ID);
+CREATE INDEX idx_rspt_target_ou ON "RESOURCE_SHARING_POLICY_TARGET" (DEPLOYMENT_ID, TARGET_OU_ID);
+
+-- Organization units carved out of every target of a policy, each taking its subtree with it.
+CREATE TABLE "RESOURCE_SHARING_POLICY_EXCLUSION" (
+    DEPLOYMENT_ID  VARCHAR(255) NOT NULL,
+    POLICY_ID      VARCHAR(36) NOT NULL
+                   REFERENCES "RESOURCE_SHARING_POLICY" (ID) ON DELETE CASCADE,
+    EXCLUDED_OU_ID VARCHAR(36) NOT NULL,
+    PRIMARY KEY (POLICY_ID, EXCLUDED_OU_ID)
+);
+
+-- What a policy says a target may do with one field. TARGET_ID null means the rule applies to
+-- every target; set means it overrides the policy-level rule for that target alone.
+--
+-- VALUE_SET and ALLOWED_SET carry the absent-versus-empty distinction into storage: zero member
+-- rows is otherwise ambiguous, and omitted means unconstrained while explicitly empty permits
+-- nothing. REQUESTED_EDITABLE keeps what the initiator asked for alongside what it was clamped to,
+-- so re-materializing against a changed ancestor does not ratchet permanently downward.
+CREATE TABLE "RESOURCE_SHARING_POLICY_OVERLAY_RULE" (
+    DEPLOYMENT_ID       VARCHAR(255) NOT NULL,
+    ID                  VARCHAR(36) PRIMARY KEY,
+    POLICY_ID           VARCHAR(36) NOT NULL
+                        REFERENCES "RESOURCE_SHARING_POLICY" (ID) ON DELETE CASCADE,
+    TARGET_ID           VARCHAR(36)
+                        REFERENCES "RESOURCE_SHARING_POLICY_TARGET" (ID) ON DELETE CASCADE,
+    FIELD_KEY           VARCHAR(255) NOT NULL,
+    EDITABLE            BOOLEAN NOT NULL,
+    VALUE_SET           BOOLEAN NOT NULL DEFAULT FALSE,
+    ALLOWED_SET         BOOLEAN NOT NULL DEFAULT FALSE,
+    EXCLUDED_SET        BOOLEAN NOT NULL DEFAULT FALSE,
+    REQUESTED_EDITABLE  BOOLEAN NOT NULL,
+    REQ_VALUE_SET       BOOLEAN NOT NULL DEFAULT FALSE,
+    REQ_ALLOWED_SET     BOOLEAN NOT NULL DEFAULT FALSE,
+    REQ_EXCLUDED_SET    BOOLEAN NOT NULL DEFAULT FALSE,
+    UNIQUE (POLICY_ID, TARGET_ID, FIELD_KEY)
+);
+
+CREATE INDEX idx_rspor_policy ON "RESOURCE_SHARING_POLICY_OVERLAY_RULE" (POLICY_ID);
+
+-- One row per member, mirroring the exclusion table, so membership stays an indexed lookup rather
+-- than a JSON scan. Scalars use the same table as a single value row, so the resolver has one code
+-- path instead of two that can drift.
+CREATE TABLE "RESOURCE_SHARING_POLICY_OVERLAY_RULE_MEMBER" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    RULE_ID       VARCHAR(36) NOT NULL
+                  REFERENCES "RESOURCE_SHARING_POLICY_OVERLAY_RULE" (ID) ON DELETE CASCADE,
+    MEMBER_ROLE   VARCHAR(24) NOT NULL
+                  CHECK (MEMBER_ROLE IN ('value', 'allowed', 'excluded',
+                                         'requestedValue', 'requestedAllowed', 'requestedExcluded')),
+    MEMBER_KEY    VARCHAR(512) NOT NULL,
+    PRIMARY KEY (RULE_ID, MEMBER_ROLE, MEMBER_KEY)
+);
+
+CREATE INDEX idx_rsporm_role ON "RESOURCE_SHARING_POLICY_OVERLAY_RULE_MEMBER" (RULE_ID, MEMBER_ROLE);
+-- Pattern ops make hierarchical prefix matching index-assisted rather than a full scan.
+CREATE INDEX idx_rsporm_prefix ON "RESOURCE_SHARING_POLICY_OVERLAY_RULE_MEMBER" (MEMBER_KEY varchar_pattern_ops);
+
+-- A target organization unit's own value for one templated field of a shared resource.
+CREATE TABLE "RESOURCE_OVERLAY_VALUE" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    RESOURCE_TYPE VARCHAR(64) NOT NULL,
+    RESOURCE_ID   VARCHAR(36) NOT NULL,
+    OU_ID         VARCHAR(36) NOT NULL,
+    FIELD_KEY     VARCHAR(255) NOT NULL,
+    VALUE         JSONB NOT NULL,
+    CREATED_AT    TIMESTAMPTZ DEFAULT NOW(),
+    UPDATED_AT    TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (DEPLOYMENT_ID, RESOURCE_TYPE, RESOURCE_ID, OU_ID, FIELD_KEY)
+);
