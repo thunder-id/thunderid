@@ -162,7 +162,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	ouAuthzService, err := sysauthz.Initialize()
 	fatalOnError(ctx, logger, err, "Failed to initialize system authorization service")
 
-	ouService, ouHierarchyResolver, ouExporter, err := ou.Initialize(mux, mcpServer, cacheManager, ouAuthzService)
+	// The hierarchy enumerator is consumed by the sharing module, which is not wired in yet.
+	ouService, ouHierarchyResolver, _, ouExporter, err := ou.Initialize(mux, mcpServer, cacheManager, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize OrganizationUnitService")
 	exporters = append(exporters, ouExporter)
 
