@@ -11,7 +11,7 @@
 #   Go: from backend/go.mod
 #   Conformance suite: https://gitlab.com/openid/conformance-suite
 
-name: 🔐 OIDC Conformance Test
+name: 🔐 OIDC Conformance
 
 on:
   schedule:
@@ -229,6 +229,7 @@ jobs:
             exit 1
           fi
           echo ">>> Running profile: ${PROFILE}"
+          echo "PROFILE=${PROFILE}" >> "${GITHUB_ENV}"
 
           python3 tests/oidc-conformance/run_tests.py \
             --base-url "${THUNDERID_BASE_URL}" \
@@ -237,7 +238,8 @@ jobs:
             --static-clients "${{ github.workspace }}/static-clients.json" \
             --username "${CONFORMANCE_USERNAME}" \
             --password "${CONFORMANCE_PASSWORD}" \
-            --results-file "${{ github.workspace }}/conformance-results.json"
+            --results-file "${{ github.workspace }}/conformance-results.json" \
+            --failure-log "${{ github.workspace }}/conformance-failures.log"
 
       - name: 📜 Collect logs
         if: always()
@@ -270,6 +272,92 @@ jobs:
           name: oidc-conformance-results
           path: |
             conformance-results.json
+            conformance-failures.log
             thunderid-server-log.txt
             conformance-suite-log.txt
           if-no-files-found: warn
+
+      # Failure only, matching every other workflow here. A nightly conformance run that goes
+      # red means the server stopped satisfying the specification, which is worth waking
+      # someone for; a green one every night is not.
+      - name: 🔔 Send Google Chat Notification on Failure
+        if: failure()
+        shell: bash
+        env:
+          GOOGLE_CHAT_WEBHOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK }}
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT: ${{ github.sha }}
+          RESULTS_FILE: ${{ github.workspace }}/conformance-results.json
+        run: |
+          if [ -z "$GOOGLE_CHAT_WEBHOOK" ]; then
+            echo "GOOGLE_CHAT_WEBHOOK secret is not set. Skipping Google Chat notification."
+            exit 0
+          fi
+
+          FAILURE_DATE=$(date -u +"%d-%m-%Y")
+
+          # The run may have died before writing results, for instance if the server never came
+          # up, so every field below has to survive the file being absent or half written.
+          FAILED="unavailable"
+          if [ -f "$RESULTS_FILE" ] && jq -e . "$RESULTS_FILE" >/dev/null 2>&1; then
+            FAILED=$(jq -r '
+              if (.failed | length) > 0
+              then (.failed | join(", "))
+              else "none reported, see the run"
+              end' "$RESULTS_FILE")
+            NOT_RUN=$(jq -r '.notRun | length' "$RESULTS_FILE")
+            if [ "$NOT_RUN" != "0" ]; then
+              FAILED="${FAILED} (+${NOT_RUN} did not run)"
+            fi
+          fi
+
+          # Chat rejects an oversized card, and a plan can fail many modules at once.
+          if [ "${#FAILED}" -gt 300 ]; then
+            FAILED="${FAILED:0:297}..."
+          fi
+
+          jq -n \
+            --arg profile "${PROFILE:-unknown}" \
+            --arg failed "$FAILED" \
+            --arg commit "${COMMIT:0:8}" \
+            --arg workflow_url "$WORKFLOW_URL" \
+            --arg failure_date "$FAILURE_DATE" \
+            '{
+              "cards": [{
+                "header": {
+                  "title": "🔴 OIDC Conformance Failed",
+                  "subtitle": ("Nightly - " + $failure_date),
+                  "imageUrl": "https://raw.githubusercontent.com/github/explore/main/topics/oauth/oauth.png",
+                  "imageStyle": "AVATAR"
+                },
+                "sections": [
+                  {
+                    "widgets": [
+                      {"keyValue": {"topLabel": "Profile", "content": $profile}},
+                      {"keyValue": {"topLabel": "Failed Modules", "content": $failed}},
+                      {"keyValue": {"topLabel": "Commit", "content": $commit}}
+                    ]
+                  },
+                  {
+                    "widgets": [
+                      {
+                        "buttons": [
+                          {
+                            "textButton": {
+                              "text": "VIEW WORKFLOW RUN",
+                              "onClick": {"openLink": {"url": $workflow_url}}
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }]
+            }' > payload.json
+
+          if curl -f -X POST -H "Content-Type: application/json" -d @payload.json "$GOOGLE_CHAT_WEBHOOK"; then
+            echo "✅ Google Chat notification sent successfully"
+          else
+            echo "⚠️ Failed to send Google Chat notification"
+          fi

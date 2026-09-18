@@ -11,6 +11,7 @@ import argparse
 import functools
 import json
 import os
+import re
 import sys
 import time
 
@@ -57,6 +58,8 @@ class ConformanceClient:
     def __init__(self, base_url):
         self.base_url = base_url.rstrip("/")
         self.http = httpx.Client(verify=verify_for(self.base_url), timeout=30)
+        # Set by run_module so a failure can have its log fetched afterwards.
+        self.last_module_id = None
 
     def get_image_placeholders(self, module_id):
         """Return the upload tokens of any screenshot placeholders the module is waiting on."""
@@ -276,11 +279,16 @@ def run_module(client, test_name, plan_id, variant=None, driver=None):
     browser between polls. See browser_driver.py for why the suite's own browser cannot do it.
     """
     print(f"\n>>> Running module: {test_name}")
+    client.last_module_id = None
     try:
         module_id = client.create_test_module(test_name, plan_id, variant)
     except httpx.HTTPError as error:
         print(f"    ERROR: could not start module: {error}")
         return "FAILED", "NOT_STARTED"
+
+    # The caller needs this to fetch the log of a module that failed. It is kept here rather
+    # than returned so the (result, status) shape the outcomes dict is built from stays put.
+    client.last_module_id = module_id
 
     deadline = time.time() + MODULE_TIMEOUT_SECONDS
     status = "CREATED"
@@ -342,6 +350,118 @@ def run_module(client, test_name, plan_id, variant=None, driver=None):
         # this a run of 38 modules would hold 38 contexts open at once.
         if driver is not None:
             driver.release(module_id)
+
+
+# Keys whose values are credentials rather than evidence. The suite logs whole HTTP
+# exchanges, including Authorization headers and token responses, and the file this writes is
+# kept as a build artifact that anyone with read access can download. Matched case
+# insensitively as substrings, so client_secret, Authorization and id_token are all covered.
+SENSITIVE_KEY_PARTS = (
+    "authorization",
+    "secret",
+    "password",
+    "token",
+    "cookie",
+    "assertion",
+    "code_verifier",
+)
+
+# Values in a form-encoded or header string that have to be masked in place, since they do not
+# arrive as their own JSON key.
+SENSITIVE_PATTERN = re.compile(
+    r"((?:client_secret|code|access_token|refresh_token|id_token|password|assertion|"
+    r"code_verifier)=)[^&\s]+",
+    re.IGNORECASE,
+)
+
+# The same fields written as JSON rather than form encoding, for a body that did not parse,
+# such as one the suite captured truncated.
+SENSITIVE_JSON_PATTERN = re.compile(
+    r'("(?:[A-Za-z0-9_]*(?:secret|password|token|assertion|code_verifier)|code)"\s*:\s*)'
+    r'"[^"]*"',
+    re.IGNORECASE,
+)
+
+# An Authorization header value, whatever the scheme.
+AUTH_HEADER_PATTERN = re.compile(
+    r"\b(basic|bearer|dpop)\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE
+)
+
+
+def redact(value, key=""):
+    """Return ``value`` with anything credential bearing replaced by a placeholder.
+
+    Applied to every field before it is written, because the suite's log carries the full
+    request and response of each HTTP call the test made, and those include client secrets,
+    the admin bearer token and issued tokens. What is left is the diagnostic content, which
+    is the point of keeping the log at all.
+    """
+    if any(part in key.lower() for part in SENSITIVE_KEY_PARTS):
+        return "<redacted>"
+    if isinstance(value, dict):
+        return {k: redact(v, k) for k, v in value.items()}
+    if isinstance(value, list):
+        return [redact(item, key) for item in value]
+    if isinstance(value, str):
+        # Bodies arrive as strings holding a whole JSON document, so a token response reaches
+        # here as text and none of its keys have been seen as keys. Parse it back when it
+        # parses, redact it structurally, and re-serialise.
+        stripped = value.strip()
+        if stripped.startswith(("{", "[")):
+            try:
+                return redact(json.loads(stripped))
+            except ValueError:
+                pass
+        masked = SENSITIVE_PATTERN.sub(r"\1<redacted>", value)
+        masked = SENSITIVE_JSON_PATTERN.sub(r'\1"<redacted>"', masked)
+        return AUTH_HEADER_PATTERN.sub(lambda m: f"{m.group(1)} <redacted>", masked)
+    return value
+
+
+def dump_failure_log(client, test_name, module_id, path):
+    """Append the suite's event log for a failed module to ``path``.
+
+    GET /api/log/{id} returns the entries the suite shows on its own results page: one
+    document per condition, carrying `result` (FAILURE, WARNING, INFO, SUCCESS or REVIEW),
+    `src` (the condition class) and `msg`. Only FAILURE and WARNING are kept, since a passing
+    module's INFO entries run to thousands of lines and the interesting ones are already in
+    the suite's UI.
+
+    The suite is torn down when the job ends, so the plan URL in the results file points at
+    nothing by the time anyone reads the notification. This is the copy that survives.
+    """
+    try:
+        entries = client.get_log(module_id)
+    except httpx.HTTPError as error:
+        print(f"    warning: could not fetch the log for {test_name}: {error}")
+        return
+
+    interesting = [
+        entry
+        for entry in entries
+        if isinstance(entry, dict) and entry.get("result") in ("FAILURE", "WARNING")
+    ]
+    if not interesting:
+        return
+
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(f"\n{'=' * 78}\n{test_name} ({module_id})\n{'=' * 78}\n")
+        for entry in interesting:
+            handle.write(
+                f"[{entry.get('result')}] {entry.get('src') or 'unknown'}: "
+                f"{redact(entry.get('msg') or '')}\n"
+            )
+            # Conditions attach whatever they were judging. It is the evidence for the
+            # failure, so keep it, but a full HTTP exchange can be enormous.
+            for key, value in sorted(entry.items()):
+                if key in ("result", "src", "msg", "time", "testId", "_id", "testOwner"):
+                    continue
+                rendered = json.dumps(redact(value, key), default=str)
+                if len(rendered) > 2000:
+                    rendered = rendered[:2000] + " ...truncated"
+                handle.write(f"    {key}: {rendered}\n")
+
+    print(f"    wrote {len(interesting)} log entr(ies) for {test_name} to {path}")
 
 
 def asserting_modules(outcomes):
@@ -452,6 +572,14 @@ def main():
         help="Conformance suite response_type variant, used by the dynamic profile.",
     )
     parser.add_argument("--results-file", default="conformance-results.json")
+    parser.add_argument(
+        "--failure-log",
+        default="conformance-failures.log",
+        help=(
+            "Where to append the suite's own log entries for modules that fail. "
+            "Pass an empty value to skip fetching them."
+        ),
+    )
     parser.add_argument(
         "--no-browser",
         action="store_true",
@@ -597,9 +725,17 @@ def run_all(client, modules, plan_id, args, outcomes):
     The caller owns the dict so that an interrupted run still reports everything that
     finished before the interruption.
     """
+    def record(test_name, module_variant, driver=None):
+        result, status = run_module(client, test_name, plan_id, module_variant, driver)
+        outcomes[test_name] = (result, status)
+        # Capture the evidence now: the suite is torn down at the end of the job, so its
+        # own log for this module is gone by the time anyone reads the results.
+        if result not in PASSING_RESULTS and client.last_module_id and args.failure_log:
+            dump_failure_log(client, test_name, client.last_module_id, args.failure_log)
+
     if args.no_browser:
         for test_name, module_variant in modules:
-            outcomes[test_name] = run_module(client, test_name, plan_id, module_variant)
+            record(test_name, module_variant)
         return
 
     # One browser for the whole plan; each visit gets a fresh context so no session
@@ -612,7 +748,7 @@ def run_all(client, modules, plan_id, args, outcomes):
         headless=not args.headed,
     ) as driver:
         for test_name, module_variant in modules:
-            outcomes[test_name] = run_module(client, test_name, plan_id, module_variant, driver)
+            record(test_name, module_variant, driver)
 
 
 if __name__ == "__main__":
