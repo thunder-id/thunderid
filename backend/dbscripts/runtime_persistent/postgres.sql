@@ -73,6 +73,10 @@ CREATE UNIQUE INDEX idx_sso_session_flow_execution ON "SSO_SESSION" (FLOW_EXECUT
 -- Index for absolute expiry on SSO_SESSION (supports cleanup)
 CREATE INDEX idx_sso_session_absolute_expires_at ON "SSO_SESSION" (ABSOLUTE_EXPIRES_AT);
 
+-- Index for listing a subject's sessions (per deployment), used when every session of a subject is
+-- terminated administratively.
+CREATE INDEX idx_sso_session_subject ON "SSO_SESSION" (DEPLOYMENT_ID, SUBJECT_ID);
+
 -- Table to store the durable session context for an SSO session, one row per checkpoint.
 CREATE TABLE "SSO_SESSION_CONTEXT" (
     SESSION_ID VARCHAR(36) NOT NULL,

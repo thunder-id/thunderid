@@ -398,6 +398,46 @@ func (_c *ServiceMock_SaveCheckpoint_Call) RunAndReturn(run func(ctx context.Con
 	return _c
 }
 
+// SetTerminationListener provides a mock function for the type ServiceMock
+func (_mock *ServiceMock) SetTerminationListener(listener session.TerminationListener) {
+	_mock.Called(listener)
+	return
+}
+
+// ServiceMock_SetTerminationListener_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetTerminationListener'
+type ServiceMock_SetTerminationListener_Call struct {
+	*mock.Call
+}
+
+// SetTerminationListener is a helper method to define mock.On call
+//   - listener session.TerminationListener
+func (_e *ServiceMock_Expecter) SetTerminationListener(listener interface{}) *ServiceMock_SetTerminationListener_Call {
+	return &ServiceMock_SetTerminationListener_Call{Call: _e.mock.On("SetTerminationListener", listener)}
+}
+
+func (_c *ServiceMock_SetTerminationListener_Call) Run(run func(listener session.TerminationListener)) *ServiceMock_SetTerminationListener_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 session.TerminationListener
+		if args[0] != nil {
+			arg0 = args[0].(session.TerminationListener)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ServiceMock_SetTerminationListener_Call) Return() *ServiceMock_SetTerminationListener_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *ServiceMock_SetTerminationListener_Call) RunAndReturn(run func(listener session.TerminationListener)) *ServiceMock_SetTerminationListener_Call {
+	_c.Run(run)
+	return _c
+}
+
 // Terminate provides a mock function for the type ServiceMock
 func (_mock *ServiceMock) Terminate(ctx context.Context, handle string, flowID string) (*session.Session, error) {
 	ret := _mock.Called(ctx, handle, flowID)
