@@ -9,6 +9,11 @@ server:
     # directly rather than through this periodic cache.
     token_revocation:
       sync_interval_seconds: 2
+    mcp:
+      # Set explicitly to the identifier this harness already derives (hostname/port above), so the
+      # configured-audience path is exercised without changing what MCP enforces. Keep in step with
+      # mcpResourceIdentifier in tests/integration/mcp/mcp_test.go.
+      audience: "https://localhost:8095/mcp"
 
 tls:
   cert_file: "config/certs/server.cert"

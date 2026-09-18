@@ -10,10 +10,11 @@ import (
 )
 
 // Initialize creates and returns the security middleware with necessary authenticators. The
-// revocationEnforcer is consulted after authentication to reject revoked tokens.
+// revocationEnforcer rejects revoked tokens; expectedAud, if non-empty, is the required audience.
 func Initialize(jwtService jwt.JWTServiceInterface, revocationEnforcer RevocationEnforcerInterface,
+	expectedAud string,
 ) (func(http.Handler) http.Handler, error) {
-	jwtAuthenticator := newJWTAuthenticator(jwtService)
+	jwtAuthenticator := newJWTAuthenticator(jwtService, expectedAud)
 	securityService, err := newSecurityService(
 		[]AuthenticatorInterface{jwtAuthenticator}, revocationEnforcer, publicPaths, apiPermissionEntries)
 	if err != nil {

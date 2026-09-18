@@ -46,12 +46,15 @@ const (
 // jwtAuthenticator handles authentication and authorization using JWT Bearer tokens.
 type jwtAuthenticator struct {
 	jwtService jwt.JWTServiceInterface
+	// expectedAud is from server.security.rest.audience; empty leaves the audience unchecked.
+	expectedAud string
 }
 
-// newJWTAuthenticator creates a new JWT authenticator.
-func newJWTAuthenticator(jwtService jwt.JWTServiceInterface) *jwtAuthenticator {
+// newJWTAuthenticator creates a new JWT authenticator requiring expectedAud, if non-empty.
+func newJWTAuthenticator(jwtService jwt.JWTServiceInterface, expectedAud string) *jwtAuthenticator {
 	return &jwtAuthenticator{
-		jwtService: jwtService,
+		jwtService:  jwtService,
+		expectedAud: expectedAud,
 	}
 }
 
@@ -71,9 +74,9 @@ func (h *jwtAuthenticator) Authenticate(r *http.Request) (*SecurityContext, erro
 		return nil, err
 	}
 
-	// The REST gate does not restrict self-issued tokens to a particular audience/resource — a
-	// token valid for one REST endpoint is valid for all of them, gated by scope, not audience.
-	return h.authenticateToken(r.Context(), token, "")
+	// Unconfigured, a token valid for one REST endpoint is valid for all of them: REST is gated by
+	// scope, not audience.
+	return h.authenticateToken(r.Context(), token, h.expectedAud)
 }
 
 // authenticateToken verifies token and builds the resulting SecurityContext. expectedAud, if

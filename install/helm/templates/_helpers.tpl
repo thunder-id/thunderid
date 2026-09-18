@@ -301,6 +301,14 @@ Each item may optionally specify a mountPath to override the global base path.
 {{- end }}
 
 {{/*
+The deployment's resource server identifier — the audience its tokens are bound to.
+Defaults to <server.publicUrl>/mcp, matching the System resource server the bootstrap defaults seed.
+*/}}
+{{- define "thunderid.resourceIdentifier" -}}
+{{- .Values.configuration.consoleClient.resourceIdentifier | default (printf "%s/mcp" .Values.configuration.server.publicUrl) -}}
+{{- end }}
+
+{{/*
 Render volumeMount entries for singleFile.keys mode.
 Each key is mounted as <key>.yaml directly under the given mountPath.
 */}}

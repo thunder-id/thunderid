@@ -25,6 +25,10 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 )
 
+// testResourceIdentifier stands in for a resource server identifier an operator would configure as
+// server.security.rest.audience.
+const testResourceIdentifier = "https://localhost:8090/mcp"
+
 // JWTAuthenticatorTestSuite defines the test suite for JWTAuthenticator
 type JWTAuthenticatorTestSuite struct {
 	suite.Suite
@@ -34,7 +38,7 @@ type JWTAuthenticatorTestSuite struct {
 
 func (suite *JWTAuthenticatorTestSuite) SetupTest() {
 	suite.mockJWT = jwtmock.NewJWTServiceInterfaceMock(suite.T())
-	suite.authenticator = newJWTAuthenticator(suite.mockJWT)
+	suite.authenticator = newJWTAuthenticator(suite.mockJWT, "")
 	// Initialize an empty runtime so verifyFederatedToken sees an unconfigured trusted issuer
 	// and returns false cleanly. Tests that need a specific trusted issuer config override this.
 	config.ResetServerRuntime()
@@ -208,7 +212,7 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate() {
 			if tt.setupMock != nil {
 				tt.setupMock(suite.mockJWT)
 			}
-			suite.authenticator = newJWTAuthenticator(suite.mockJWT)
+			suite.authenticator = newJWTAuthenticator(suite.mockJWT, "")
 
 			req := httptest.NewRequest(http.MethodGet, "/users", nil)
 			if tt.authHeader != "" {
@@ -233,26 +237,48 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate() {
 	}
 }
 
-// TestAuthenticate_DoesNotValidateAudience locks in that the REST gate does not restrict a
-// self-issued token to a particular audience/resource, regardless of what "aud" claim it carries.
-// Authorization for REST is by scope (apiPermissionEntries), not audience. Only MCP (via
-// BearerAuthenticator, constructed with expectedAud = its own resource URL) enforces an RFC 8707
-// resource-indicator audience check; the REST gate's own jwtAuthenticator always passes "" here.
-func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_DoesNotValidateAudience() {
+// TestAuthenticate_UnconfiguredAudienceIsNotValidated locks in that a REST gate with no configured
+// audience accepts a self-issued token whatever "aud" claim it carries — authorization is by scope
+// (apiPermissionEntries), not audience. This is the REST default;
+// TestAuthenticate_EnforcesConfiguredAudience covers the configured case.
+func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_UnconfiguredAudienceIsNotValidated() {
 	token := buildFakeJWT(
 		accessTokenHeader(),
 		map[string]interface{}{"sub": "user123", "aud": "https://some-other-resource/mcp"},
 	)
 
 	// Registering the expectation with expectedAud "" only (not the token's own "aud" claim, and
-	// not any other value) means the mock call itself fails this test if Authenticate ever starts
-	// passing a real expected audience for the REST gate.
+	// not any other value) means the mock call itself fails this test if an unconfigured gate ever
+	// starts passing a real expected audience.
 	suite.mockJWT.On("VerifyJWT", mock.Anything, token, "", "").Return(nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/users", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	authCtx, err := suite.authenticator.Authenticate(req)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), authCtx)
+	suite.mockJWT.AssertExpectations(suite.T())
+}
+
+// TestAuthenticate_EnforcesConfiguredAudience locks in that a REST gate configured with an
+// audience binds self-issued tokens to it (RFC 8707 resource indicator). Registering the mock
+// expectation with that exact audience fails the test if the configured value is not the one
+// reaching verification.
+func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_EnforcesConfiguredAudience() {
+	authenticator := newJWTAuthenticator(suite.mockJWT, testResourceIdentifier)
+
+	token := buildFakeJWT(
+		accessTokenHeader(),
+		map[string]interface{}{"sub": "user123", "aud": testResourceIdentifier},
+	)
+	suite.mockJWT.On("VerifyJWT", mock.Anything, token, testResourceIdentifier, "").Return(nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/users", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	authCtx, err := authenticator.Authenticate(req)
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), authCtx)
@@ -420,7 +446,7 @@ func (suite *JWTAuthenticatorTestSuite) TestExtractPermissionsFromJWTClaims_Edge
 func (suite *JWTAuthenticatorTestSuite) TestNewJWTAuthenticator() {
 	mockJWTService := jwtmock.NewJWTServiceInterfaceMock(suite.T())
 
-	authenticator := newJWTAuthenticator(mockJWTService)
+	authenticator := newJWTAuthenticator(mockJWTService, "")
 
 	assert.NotNil(suite.T(), authenticator)
 	assert.Equal(suite.T(), mockJWTService, authenticator.jwtService)
@@ -580,7 +606,7 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_JWKSVerificatio
 
 	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, jwksURL, audience, issuer).Return(nil)
-	auth := newJWTAuthenticator(mockJWT)
+	auth := newJWTAuthenticator(mockJWT, "")
 
 	result := auth.verifyFederatedToken(context.Background(), token)
 	assert.True(suite.T(), result)
@@ -619,7 +645,7 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_JWKSVerificatio
 		Code:  "JWKS_ERROR",
 		Error: tidcommon.I18nMessage{DefaultValue: "JWKS verification failed"},
 	})
-	auth := newJWTAuthenticator(mockJWT)
+	auth := newJWTAuthenticator(mockJWT, "")
 
 	result := auth.verifyFederatedToken(context.Background(), token)
 	assert.False(suite.T(), result)
@@ -711,7 +737,7 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_RequiredClaims(
 
 			mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
 			mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, jwksURL, audience, issuer).Return(nil)
-			auth := newJWTAuthenticator(mockJWT)
+			auth := newJWTAuthenticator(mockJWT, "")
 
 			result := auth.verifyFederatedToken(context.Background(), token)
 			assert.Equal(suite.T(), tc.expectedResult, result)
@@ -776,7 +802,7 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_InvalidPayload(
 			_ = config.InitializeServerRuntime("", cfg)
 
 			mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
-			auth := newJWTAuthenticator(mockJWT)
+			auth := newJWTAuthenticator(mockJWT, "")
 
 			result := auth.verifyFederatedToken(context.Background(), tc.token)
 			assert.False(suite.T(), result, "malformed token must not verify")
@@ -825,7 +851,7 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_FederatedTokenFailure()
 		Code:  "JWKS_ERROR",
 		Error: tidcommon.I18nMessage{DefaultValue: "JWKS verification failed"},
 	})
-	auth := newJWTAuthenticator(mockJWT)
+	auth := newJWTAuthenticator(mockJWT, "")
 
 	req := httptest.NewRequest(http.MethodGet, "/users", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -871,7 +897,7 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_FederatedTokenSuccess()
 	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	// When trusted issuer is configured, the local-key path is skipped entirely.
 	mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, jwksURL, audience, issuer).Return(nil)
-	auth := newJWTAuthenticator(mockJWT)
+	auth := newJWTAuthenticator(mockJWT, "")
 
 	req := httptest.NewRequest(http.MethodGet, "/users", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -926,7 +952,7 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_SelfIssuedTokenUnderFed
 
 	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	mockJWT.On("VerifyJWT", mock.Anything, token, "", "").Return(nil)
-	auth := newJWTAuthenticator(mockJWT)
+	auth := newJWTAuthenticator(mockJWT, "")
 
 	req := httptest.NewRequest(http.MethodGet, "/users", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -961,7 +987,7 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_SelfIssuedTokenInvalidU
 		Code:  "INVALID_SIGNATURE",
 		Error: tidcommon.I18nMessage{DefaultValue: "Invalid signature"},
 	})
-	auth := newJWTAuthenticator(mockJWT)
+	auth := newJWTAuthenticator(mockJWT, "")
 
 	req := httptest.NewRequest(http.MethodGet, "/users", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -987,7 +1013,7 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_UnknownIssuerUnderFeder
 	)
 
 	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
-	auth := newJWTAuthenticator(mockJWT)
+	auth := newJWTAuthenticator(mockJWT, "")
 
 	req := httptest.NewRequest(http.MethodGet, "/users", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -1028,7 +1054,7 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_RequiresAccessTokenType
 			if tt.accepted {
 				mockJWT.On("VerifyJWT", mock.Anything, token, "", "").Return(nil)
 			}
-			auth := newJWTAuthenticator(mockJWT)
+			auth := newJWTAuthenticator(mockJWT, "")
 
 			req := httptest.NewRequest(http.MethodGet, "/users", nil)
 			req.Header.Set("Authorization", "Bearer "+token)
@@ -1064,7 +1090,7 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_RejectsFlowAuthAssertio
 	)
 
 	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
-	auth := newJWTAuthenticator(mockJWT)
+	auth := newJWTAuthenticator(mockJWT, "")
 
 	req := httptest.NewRequest(http.MethodGet, "/users", nil)
 	req.Header.Set("Authorization", "Bearer "+assertion)
@@ -1091,7 +1117,7 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_FederatedTokenTypeNotRe
 	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token,
 		testFederatedJWKSURL, testFederatedAudience, testFederatedIssuer).Return(nil)
-	auth := newJWTAuthenticator(mockJWT)
+	auth := newJWTAuthenticator(mockJWT, "")
 
 	req := httptest.NewRequest(http.MethodGet, "/users", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
