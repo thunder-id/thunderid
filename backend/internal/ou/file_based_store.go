@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -31,7 +32,30 @@ func newFileBasedStore() (organizationUnitStoreInterface, providers.Transactione
 // Create implements declarativeresource.Storer interface for resource loader
 func (f *fileBasedStore) Create(id string, data interface{}) error {
 	ou := data.(*providers.OrganizationUnit)
+	applyDeclarativeTimestamps(ou)
+
 	return f.CreateOrganizationUnit(context.Background(), *ou)
+}
+
+// applyDeclarativeTimestamps fills in the timestamps of a declaratively defined organization
+// unit. Declarative files are not required to carry them, and a zero time would surface as
+// year 0001 over the REST API and be dropped from exports, so the load time stands in.
+// Values already present in the file are kept, which lets a previously exported document be
+// used as a declarative resource without losing its original dates.
+func applyDeclarativeTimestamps(ou *providers.OrganizationUnit) {
+	loadedAt := time.Now().UTC()
+
+	if ou.CreatedAt.IsZero() {
+		ou.CreatedAt = loadedAt
+	} else {
+		ou.CreatedAt = ou.CreatedAt.UTC()
+	}
+
+	if ou.UpdatedAt.IsZero() {
+		ou.UpdatedAt = loadedAt
+	} else {
+		ou.UpdatedAt = ou.UpdatedAt.UTC()
+	}
 }
 
 // CreateOrganizationUnit implements organizationUnitStoreInterface.
@@ -127,6 +151,8 @@ func (f *fileBasedStore) GetOrganizationUnitList(
 					Name:        ou.Name,
 					Description: ou.Description,
 					LogoURL:     ou.LogoURL,
+					CreatedAt:   ou.CreatedAt,
+					UpdatedAt:   ou.UpdatedAt,
 				})
 			}
 		}
@@ -192,6 +218,8 @@ func (f *fileBasedStore) GetOrganizationUnitsByIDs(
 					Name:        ou.Name,
 					Description: ou.Description,
 					LogoURL:     ou.LogoURL,
+					CreatedAt:   ou.CreatedAt,
+					UpdatedAt:   ou.UpdatedAt,
 				})
 			}
 		}
@@ -310,6 +338,8 @@ func (f *fileBasedStore) GetOrganizationUnitChildrenList(
 					Name:        ou.Name,
 					Description: ou.Description,
 					LogoURL:     ou.LogoURL,
+					CreatedAt:   ou.CreatedAt,
+					UpdatedAt:   ou.UpdatedAt,
 				})
 			}
 		}
