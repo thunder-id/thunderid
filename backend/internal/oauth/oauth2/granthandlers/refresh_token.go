@@ -659,7 +659,8 @@ func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjec
 	}
 
 	authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx,
-		buildAccessEvaluationsRequest(subject, groupIDs, scopes, resourceServerID))
+		buildAccessEvaluationsRequest(subject, subjectEntity.Category, groupIDs, scopes,
+			resourceServerID))
 	if svcErr != nil {
 		logger.Error(ctx, "Failed to evaluate authorized permissions for refresh token subject",
 			log.MaskedString(log.LoggerKeyUserID, subject),

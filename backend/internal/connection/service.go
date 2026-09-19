@@ -8,10 +8,13 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/resource"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -24,13 +27,22 @@ import (
 type service struct {
 	idpService          idp.IDPServiceInterface
 	notificationService notification.NotificationSenderMgtSvcInterface
+	resourceService     resource.ResourceServiceInterface
+	authZENPDPService   authzenpdp.AuthZENPDPServiceInterface
 }
 
 // newService creates a connection service over the given identity-provider and
 // notification-sender services.
 func newService(idpService idp.IDPServiceInterface,
-	notificationService notification.NotificationSenderMgtSvcInterface) *service {
-	return &service{idpService: idpService, notificationService: notificationService}
+	notificationService notification.NotificationSenderMgtSvcInterface,
+	resourceService resource.ResourceServiceInterface,
+	authZENPDPService authzenpdp.AuthZENPDPServiceInterface) *service {
+	return &service{
+		idpService:          idpService,
+		notificationService: notificationService,
+		resourceService:     resourceService,
+		authZENPDPService:   authZENPDPService,
+	}
 }
 
 // listByType returns the configured instances of the given identity-provider type.
@@ -136,6 +148,22 @@ func (s *service) listInstances(ctx context.Context, category connectionCategory
 				Description: sender.Description,
 				Type:        vendor,
 				Categories:  []connectionCategory{categorySMSProvider},
+			})
+		}
+	}
+
+	if category == "" || category == categoryAuthorizationPDP {
+		connections, svcErr := s.listAuthZENPDP(ctx)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		for _, connection := range connections {
+			instances = append(instances, connectionInstance{
+				ID:          connection.ID,
+				Name:        connection.Name,
+				Description: connection.Description,
+				Type:        authzenpdp.VendorName,
+				Categories:  []connectionCategory{categoryAuthorizationPDP},
 			})
 		}
 	}
@@ -270,6 +298,78 @@ func (s *service) deleteSMSByProvider(ctx context.Context, provider ncommon.Noti
 	return s.notificationService.DeleteSender(ctx, id)
 }
 
+// createAuthZENPDP validates and stores an AuthZEN PDP connection.
+func (s *service) createAuthZENPDP(
+	ctx context.Context,
+	connection authzenpdp.AuthZENPDPConnection,
+) (*authzenpdp.AuthZENPDPConnection, *tidcommon.ServiceError) {
+	if s.authZENPDPService == nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	return s.authZENPDPService.CreateAuthZENPDPConnection(ctx, connection)
+}
+
+// listAuthZENPDP returns all AuthZEN PDP connections.
+func (s *service) listAuthZENPDP(ctx context.Context) ([]authzenpdp.AuthZENPDPConnection, *tidcommon.ServiceError) {
+	if s.authZENPDPService == nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	connections, err := s.authZENPDPService.ListAuthZENPDPs(ctx)
+	if err != nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	return connections, nil
+}
+
+// getAuthZENPDP returns an AuthZEN PDP connection by ID.
+func (s *service) getAuthZENPDP(ctx context.Context, id string) (*authzenpdp.AuthZENPDPConnection,
+	*tidcommon.ServiceError) {
+	if s.authZENPDPService == nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	connection, err := s.authZENPDPService.GetAuthZENPDP(ctx, id)
+	if err != nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	if connection == nil {
+		return nil, &authzenpdp.ErrorNotFound
+	}
+	return connection, nil
+}
+
+// updateAuthZENPDP validates and updates an AuthZEN PDP connection by ID.
+func (s *service) updateAuthZENPDP(
+	ctx context.Context,
+	id string,
+	connection authzenpdp.AuthZENPDPConnection,
+) (*authzenpdp.AuthZENPDPConnection, *tidcommon.ServiceError) {
+	if s.authZENPDPService == nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	return s.authZENPDPService.UpdateAuthZENPDPConnection(ctx, id, connection)
+}
+
+// deleteAuthZENPDP deletes an AuthZEN PDP connection when it has no blocking usages.
+func (s *service) deleteAuthZENPDP(ctx context.Context, id string) *tidcommon.ServiceError {
+	if svcErr := declarativeresource.CheckDeclarativeDelete(); svcErr != nil {
+		return svcErr
+	}
+	if _, svcErr := s.getAuthZENPDP(ctx, id); svcErr != nil {
+		return svcErr
+	}
+	usages, svcErr := s.usagesAuthZENPDP(ctx, id)
+	if svcErr != nil {
+		return svcErr
+	}
+	if len(resourcedependency.BlockingUsages(usages)) > 0 {
+		return &authzenpdp.ErrorHasBlockingDependencies
+	}
+	if err := s.authZENPDPService.DeleteAuthZENPDP(ctx, id); err != nil {
+		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
 // usagesByType verifies the instance is of the expected type, then returns the resources that
 // reference it. Drives the pre-delete confirmation dialog.
 func (s *service) usagesByType(ctx context.Context, idpType providers.IDPType, id string) (
@@ -288,4 +388,50 @@ func (s *service) usagesSMSByProvider(ctx context.Context, provider ncommon.Noti
 		return nil, svcErr
 	}
 	return s.notificationService.GetSenderUsages(ctx, id)
+}
+
+// usagesAuthZENPDP returns resources that reference an AuthZEN PDP connection.
+func (s *service) usagesAuthZENPDP(ctx context.Context, id string) (
+	*resourcedependency.DependenciesResponse, *tidcommon.ServiceError) {
+	if _, svcErr := s.getAuthZENPDP(ctx, id); svcErr != nil {
+		return nil, svcErr
+	}
+	if s.resourceService == nil {
+		return nil, &tidcommon.InternalServerError
+	}
+
+	usages := make([]resourcedependency.ResourceDependency, 0)
+	offset := 0
+	for {
+		list, svcErr := s.resourceService.GetResourceServerList(ctx, serverconst.MaxPageSize, offset)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		if list == nil || list.Count == 0 {
+			break
+		}
+		for _, resourceServer := range list.ResourceServers {
+			if resourceServer.AuthorizationEngine.Properties.PDPConnectionID != id {
+				continue
+			}
+			usages = append(usages, resourcedependency.ResourceDependency{
+				ResourceType:     resourcedependency.ResourceTypeResourceServer,
+				ID:               resourceServer.ID,
+				DisplayName:      resourceServer.Name,
+				BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+			})
+		}
+		offset += list.Count
+		if offset >= list.TotalResults {
+			break
+		}
+	}
+
+	total := len(usages)
+	return &resourcedependency.DependenciesResponse{
+		TotalResults: &total,
+		Count:        total,
+		Summary:      map[string]int{resourcedependency.ResourceTypeResourceServer: total},
+		Usages:       usages,
+	}, nil
 }

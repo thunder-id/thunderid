@@ -89,7 +89,7 @@ func (suite *ExportServiceTestSuite) SetupTest() {
 	// Create exporters
 	exporters := []declarativeresource.ResourceExporter{
 		application.NewApplicationExporterForTest(suite.appServiceMock),
-		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService),
+		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil),
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService, entitytype.TypeCategoryUser),
 		flowmgt.NewFlowGraphExporterForTest(suite.mockFlowService),
 	}
@@ -1272,7 +1272,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_TemplateGenerationError
 	// Create exporters with the test services
 	exporters := []declarativeresource.ResourceExporter{
 		application.NewApplicationExporterForTest(suite.appServiceMock),
-		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService),
+		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil),
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService, entitytype.TypeCategoryUser),
 	}
 

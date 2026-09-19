@@ -39,6 +39,7 @@ type AuthZENAPITestSuite struct {
 	readPermission    string
 	writePermission   string
 	approvePermission string
+	approveActionName string
 	otherPermission   string
 }
 
@@ -138,6 +139,7 @@ func (ts *AuthZENAPITestSuite) SetupSuite() {
 	)
 	ts.Require().NoError(err, "create approve action")
 	ts.approvePermission = approveAction.Permission
+	ts.approveActionName = approveAction.Handle
 
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name:        "AuthZEN Booking Reader",
@@ -900,7 +902,7 @@ func (ts *AuthZENAPITestSuite) TestSearchActionReturnsAllowedActionsOnly() {
 	ts.Require().NoError(json.Unmarshal(body, &result))
 	ts.ElementsMatch([]action{
 		{Name: ts.readPermission},
-		{Name: ts.approvePermission},
+		{Name: ts.approveActionName},
 	}, result.Results)
 }
 
@@ -943,7 +945,7 @@ func (ts *AuthZENAPITestSuite) TestSearchActionResourceIDDoesNotScopeCurrentResu
 			ts.Require().NoError(json.Unmarshal(body, &result))
 			ts.ElementsMatch([]action{
 				{Name: ts.readPermission},
-				{Name: ts.approvePermission},
+				{Name: ts.approveActionName},
 			}, result.Results)
 		})
 	}

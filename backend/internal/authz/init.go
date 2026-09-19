@@ -5,12 +5,25 @@ package authz
 
 import (
 	"github.com/thunder-id/thunderid/internal/authz/engine"
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// Initialize creates and initializes the authorization service with the RBAC engine.
-func Initialize(roleService role.RoleServiceInterface) providers.AuthorizationProvider {
-	rbacEngine := engine.NewRBACEngine(roleService)
-	return newAuthorizationService(rbacEngine)
+// Initialize creates and initializes the authorization service.
+func Initialize(
+	roleService role.RoleServiceInterface,
+	resourceService resource.ResourceServiceInterface,
+	entityService entity.EntityServiceInterface,
+	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
+) providers.AuthorizationProvider {
+	return newAuthorizationService(
+		engine.NewRBACEngine(roleService),
+		resourceService,
+		entityService,
+		engine.NewAuthZENPDP(authZENPDPService, httpservice.NewHTTPClientWithTimeout(0)),
+	)
 }

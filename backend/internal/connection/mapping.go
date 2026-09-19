@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
@@ -106,12 +107,14 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 	status := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
-		case idp.ErrorIDPNotFound.Code, notification.ErrorSenderNotFound.Code:
+		case idp.ErrorIDPNotFound.Code, notification.ErrorSenderNotFound.Code, authzenpdp.ErrorNotFound.Code:
 			status = http.StatusNotFound
 		case idp.ErrorIDPAlreadyExists.Code,
 			idp.ErrorIDPHasBlockingDependencies.Code,
 			notification.ErrorDuplicateSenderName.Code,
-			notification.ErrorSenderHasBlockingDependencies.Code:
+			notification.ErrorSenderHasBlockingDependencies.Code,
+			authzenpdp.ErrorHasBlockingDependencies.Code,
+			authzenpdp.ErrorAlreadyExists.Code:
 			status = http.StatusConflict
 		default:
 			status = http.StatusBadRequest

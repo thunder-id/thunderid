@@ -6,6 +6,15 @@ template: testify
 template-data:
   unroll-variadic: true
 packages:
+  github.com/thunder-id/thunderid/internal/connection/authzenpdp:
+    interfaces:
+      AuthZENPDPServiceInterface:
+        config:
+          dir: internal/connection/authzenpdp
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: authzenpdp
+          filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/system/cache:
     config:
       all: true

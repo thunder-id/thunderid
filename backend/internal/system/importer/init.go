@@ -8,6 +8,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/agent"
 	"github.com/thunder-id/thunderid/internal/application"
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
@@ -47,6 +48,7 @@ func Initialize(
 	presentationDefinitionService presentation.PresentationDefinitionServiceInterface,
 	credentialConfigurationService credential.CredentialConfigurationServiceInterface,
 	serverConfigService serverconfig.ServerConfigService,
+	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
 ) ImportServiceInterface {
 	importService := newImportService(
 		applicationService,
@@ -67,6 +69,7 @@ func Initialize(
 		presentationDefinitionService,
 		credentialConfigurationService,
 		serverConfigService,
+		authZENPDPService,
 	)
 	importHandler := newImportHandler(importService)
 

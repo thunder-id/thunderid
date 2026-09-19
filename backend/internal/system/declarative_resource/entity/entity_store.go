@@ -19,6 +19,7 @@ const (
 	KeyTypeNotification            KeyType = "notification"
 	KeyTypeIDP                     KeyType = "idp"
 	KeyTypeNotificationSender      KeyType = "notification-sender"
+	KeyTypeAuthZENPDP              KeyType = "authzen-pdp"
 	KeyTypeEntityType              KeyType = "user-type"
 	KeyTypeOU                      KeyType = "ou"
 	KeyTypeFlow                    KeyType = "flow"
@@ -47,7 +48,7 @@ func (kt KeyType) String() string {
 // IsValid checks if the KeyType is one of the predefined types
 func (kt KeyType) IsValid() bool {
 	switch kt {
-	case KeyTypeApplication, KeyTypeNotification, KeyTypeIDP, KeyTypeNotificationSender,
+	case KeyTypeApplication, KeyTypeNotification, KeyTypeIDP, KeyTypeNotificationSender, KeyTypeAuthZENPDP,
 		KeyTypeEntityType, KeyTypeOU, KeyTypeFlow, KeyTypeTranslation, KeyTypeTheme, KeyTypeLayout,
 		KeyTypeResourceServer, KeyTypeResource, KeyTypeAction, KeyTypeRole, KeyTypeUser, KeyTypeTemplate,
 		KeyTypeInboundAuth, KeyTypeGroup, KeyTypePresentationDefinition, KeyTypeCredentialConfiguration,

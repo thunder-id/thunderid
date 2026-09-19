@@ -119,6 +119,10 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 
 	// Extract user ID and group IDs
 	userID := entityRef.EntityID
+	entityCategory := entityRef.EntityCategory
+	if entityCategory == "" {
+		entityCategory = providers.EntityCategoryUser.String()
+	}
 	groupIDs, err := a.extractGroupIDs(ctx, userID)
 	if err != nil {
 		return nil, errors.Join(errors.New("Failed to extract group IDs"), err)
@@ -130,7 +134,8 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 		log.Int("permissionCount", len(requestedPerms)))
 
 	authzResp, svcErr := a.authzService.EvaluateAccessBatch(ctx.Context,
-		a.buildAccessEvaluationsRequest(userID, groupIDs, requestedPerms, resourceServerID))
+		a.buildAccessEvaluationsRequest(
+			userID, entityCategory, groupIDs, requestedPerms, resourceServerID))
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Authorization service call failed",
 			log.String("error", svcErr.Error.DefaultValue))
@@ -151,10 +156,7 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 // resolveResourceServerID determines the internal ID of the single resource server that permission
 // scopes are evaluated against. The binding is communicated as a resource server identifier: the OAuth
 // layer seeds it in runtime data, and a direct /flow/execute request (which does not go through the
-// authorization endpoint) may supply it as an input. The identifier is resolved to its internal ID
-// through the provider; an empty identifier asks a default-aware provider to resolve the deployment's
-// configured default resource server. Returns "" when none can be resolved (unknown identifier, no
-// default configured, or no resource provider available, for example the embedded engine).
+// authorization endpoint) may supply it as an input.
 func (a *authorizationExecutor) resolveResourceServerID(ctx *providers.NodeContext) string {
 	identifier := ctx.RuntimeData[common.RuntimeKeyResourceServerIdentifier]
 	if identifier == "" {
@@ -193,6 +195,7 @@ func setAuthorizedPermissions(execResp *providers.ExecutorResponse, authorizedPe
 // buildAccessEvaluationsRequest builds the authorization service request for the requested permissions.
 func (a *authorizationExecutor) buildAccessEvaluationsRequest(
 	entityID string,
+	entityCategory string,
 	groupIDs []string,
 	requestedPermissions []string,
 	resourceServerID string,
@@ -201,6 +204,7 @@ func (a *authorizationExecutor) buildAccessEvaluationsRequest(
 	for _, permission := range requestedPermissions {
 		evaluations = append(evaluations, providers.AccessEvaluationRequest{
 			Subject: providers.Subject{
+				Type:     entityCategory,
 				ID:       entityID,
 				GroupIDs: groupIDs,
 			},

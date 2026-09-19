@@ -148,6 +148,24 @@ func mockEvaluateAccessBatch(
 		Return(&providers.AccessEvaluationsResponse{Evaluations: evaluations}, nil)
 }
 
+func TestBuildAccessEvaluationsRequestUsesEntityCategory(t *testing.T) {
+	for _, test := range []struct {
+		category providers.EntityCategory
+		typeName string
+	}{
+		{category: providers.EntityCategoryApp, typeName: providers.EntityCategoryApp.String()},
+		{category: providers.EntityCategoryAgent, typeName: providers.EntityCategoryAgent.String()},
+		{category: providers.EntityCategoryUser, typeName: providers.EntityCategoryUser.String()},
+	} {
+		request := buildAccessEvaluationsRequest(
+			"entity-1", test.category, nil, []string{"bookings:view"}, "rs-1",
+		)
+
+		assert.Len(t, request.Evaluations, 1)
+		assert.Equal(t, test.typeName, request.Evaluations[0].Subject.Type)
+	}
+}
+
 func (suite *ClientCredentialsGrantHandlerTestSuite) TestNewClientCredentialsGrantHandler() {
 	handler := newClientCredentialsGrantHandler(
 		suite.mockTokenBuilder, suite.mockOUService, suite.mockAuthzService,

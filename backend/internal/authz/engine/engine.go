@@ -24,7 +24,9 @@ type AuthorizationEngine interface {
 
 // Subject identifies the principal for an access evaluation.
 type Subject struct {
-	Type       string
+	Type string
+	// EntityType is the concrete ThunderID entity type used for attribute mappings.
+	EntityType string
 	ID         string
 	GroupIDs   []string
 	Properties map[string]interface{}
@@ -33,7 +35,20 @@ type Subject struct {
 // ResourceServer identifies the resource server for an access evaluation.
 type ResourceServer struct {
 	ID         string
+	Identifier string
+	Engine     EngineConfig
 	Properties map[string]interface{}
+}
+
+// EngineConfig identifies the configured authorization engine for a resource server.
+type EngineConfig struct {
+	Type       string
+	Properties EngineProperties
+}
+
+// EngineProperties contains engine-specific resource-server settings.
+type EngineProperties struct {
+	PDPConnectionID string
 }
 
 // Permission identifies the permission string being evaluated.

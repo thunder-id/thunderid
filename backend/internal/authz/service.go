@@ -6,11 +6,17 @@ package authz
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/authz/engine"
+	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -18,13 +24,24 @@ const loggerComponentName = "AuthorizationService"
 
 // authorizationService is the default implementation of providers.AuthorizationProvider.
 type authorizationService struct {
-	engine engine.AuthorizationEngine
+	engine          engine.AuthorizationEngine
+	entityService   entity.EntityServiceInterface
+	resourceService resource.ResourceServiceInterface
+	pdpEngine       engine.AuthorizationEngine
 }
 
 // newAuthorizationService creates a new instance of authorizationService.
-func newAuthorizationService(engine engine.AuthorizationEngine) providers.AuthorizationProvider {
+func newAuthorizationService(
+	defaultEngine engine.AuthorizationEngine,
+	resourceService resource.ResourceServiceInterface,
+	entityService entity.EntityServiceInterface,
+	pdpEngine engine.AuthorizationEngine,
+) providers.AuthorizationProvider {
 	return &authorizationService{
-		engine: engine,
+		engine:          defaultEngine,
+		entityService:   entityService,
+		resourceService: resourceService,
+		pdpEngine:       pdpEngine,
 	}
 }
 
@@ -59,9 +76,12 @@ func (s *authorizationService) EvaluateAccessBatch(
 			Evaluations: []providers.AccessEvaluationResponse{},
 		}, nil
 	}
+	enrichedRequest, svcErr := s.enrichRequest(ctx, request)
+	if svcErr != nil {
+		return nil, svcErr
+	}
 
-	// Delegate to engine (engine/underlying service handles validation)
-	evaluationResp, err := s.engine.EvaluateAccessBatch(ctx, toEngineAccessEvaluationsRequest(request))
+	evaluationResp, err := s.evaluateWithResolvedEngines(ctx, toEngineAccessEvaluationsRequest(enrichedRequest))
 	if err != nil {
 		logger.Error(ctx, "Authorization evaluation failed",
 			log.Int("evaluationCount", len(request.Evaluations)),
@@ -75,20 +95,234 @@ func (s *authorizationService) EvaluateAccessBatch(
 	return fromEngineAccessEvaluationsResponse(evaluationResp), nil
 }
 
+// evaluateWithResolvedEngines routes evaluations to connection-backed or default engines and preserves order.
+func (s *authorizationService) evaluateWithResolvedEngines(
+	ctx context.Context,
+	request engine.AccessEvaluationsRequest,
+) (*engine.AccessEvaluationsResponse, error) {
+	if s.resourceService == nil {
+		return s.engine.EvaluateAccessBatch(ctx, request)
+	}
+	type evaluationBatch struct {
+		request engine.AccessEvaluationsRequest
+		indexes []int
+	}
+
+	responses := make([]engine.AccessEvaluationResponse, len(request.Evaluations))
+	defaultBatch := evaluationBatch{
+		indexes: make([]int, 0, len(request.Evaluations)),
+	}
+	engineBatches := map[engine.AuthorizationEngine]*evaluationBatch{}
+	routedResourceServers := map[string]engine.ResourceServer{}
+
+	for index, evaluation := range request.Evaluations {
+		resourceServerKey := resourceServerRouteKey(evaluation.ResourceServer)
+		if routed, ok := routedResourceServers[resourceServerKey]; ok {
+			evaluation.ResourceServer.Identifier = routed.Identifier
+			evaluation.ResourceServer.Engine = routed.Engine
+		} else {
+			if _, err := s.resolveEngine(ctx, &evaluation.ResourceServer); err != nil {
+				return nil, err
+			}
+			routedResourceServers[resourceServerKey] = evaluation.ResourceServer
+		}
+
+		var selectedEngine engine.AuthorizationEngine
+		switch evaluation.ResourceServer.Engine.Type {
+		case "", providers.AuthorizationEngineTypeRBAC:
+			selectedEngine = s.engine
+		case providers.AuthorizationEngineTypeExternalAuthZENPDP:
+			selectedEngine = s.pdpEngine
+		default:
+			return nil, fmt.Errorf("unsupported authorization engine type %q", evaluation.ResourceServer.Engine.Type)
+		}
+		if selectedEngine == nil || selectedEngine == s.engine {
+			defaultBatch.request.Evaluations = append(defaultBatch.request.Evaluations, evaluation)
+			defaultBatch.indexes = append(defaultBatch.indexes, index)
+			continue
+		}
+		batch := engineBatches[selectedEngine]
+		if batch == nil {
+			batch = &evaluationBatch{}
+			engineBatches[selectedEngine] = batch
+		}
+		batch.request.Evaluations = append(batch.request.Evaluations, evaluation)
+		batch.indexes = append(batch.indexes, index)
+	}
+
+	for selectedEngine, batch := range engineBatches {
+		if err := evaluateResolvedBatch(
+			ctx, selectedEngine.EvaluateAccessBatch, batch.request, batch.indexes, responses); err != nil {
+			return nil, err
+		}
+	}
+	if err := evaluateResolvedBatch(
+		ctx, s.engine.EvaluateAccessBatch, defaultBatch.request, defaultBatch.indexes, responses); err != nil {
+		return nil, err
+	}
+
+	return &engine.AccessEvaluationsResponse{Evaluations: responses}, nil
+}
+
+// evaluateResolvedBatch evaluates a group of requests and places responses at their original indexes.
+func evaluateResolvedBatch(
+	ctx context.Context,
+	evaluate func(context.Context, engine.AccessEvaluationsRequest) (*engine.AccessEvaluationsResponse, error),
+	request engine.AccessEvaluationsRequest,
+	indexes []int,
+	responses []engine.AccessEvaluationResponse,
+) error {
+	if len(request.Evaluations) == 0 || evaluate == nil {
+		return nil
+	}
+	engineResponse, err := evaluate(ctx, request)
+	if err != nil {
+		return err
+	}
+	for index, evaluation := range engineResponse.Evaluations {
+		if index < len(indexes) {
+			responses[indexes[index]] = evaluation
+		}
+	}
+	return nil
+}
+
+// resolveEngine selects the configured engine and attaches external-PDP routing metadata.
+func (s *authorizationService) resolveEngine(
+	ctx context.Context,
+	requestResourceServer *engine.ResourceServer,
+) (engine.AuthorizationEngine, error) {
+	if strings.TrimSpace(requestResourceServer.ID) == "" || s.resourceService == nil {
+		return s.engine, nil
+	}
+	resourceServer, svcErr := s.getResourceServer(ctx, *requestResourceServer)
+	if svcErr != nil {
+		if svcErr.Code == resource.ErrorResourceServerNotFound.Code {
+			return s.engine, nil
+		}
+		return nil, fmt.Errorf("failed to resolve resource server: %s", svcErr.Error.DefaultValue)
+	}
+	if resourceServer == nil {
+		return s.engine, nil
+	}
+	requestResourceServer.Identifier = resourceServer.Identifier
+	requestResourceServer.Engine = engine.EngineConfig{
+		Type: resourceServer.AuthorizationEngine.Type,
+		Properties: engine.EngineProperties{
+			PDPConnectionID: strings.TrimSpace(resourceServer.AuthorizationEngine.Properties.PDPConnectionID),
+		},
+	}
+	switch requestResourceServer.Engine.Type {
+	case "", providers.AuthorizationEngineTypeRBAC:
+		return s.engine, nil
+	case providers.AuthorizationEngineTypeExternalAuthZENPDP:
+		return s.pdpEngine, nil
+	default:
+		return nil, fmt.Errorf("unsupported authorization engine type %q", requestResourceServer.Engine.Type)
+	}
+}
+
+// resourceServerRouteKey returns the engine-routing key for a resource server.
+func resourceServerRouteKey(resourceServer engine.ResourceServer) string {
+	return strings.TrimSpace(resourceServer.ID)
+}
+
+// getResourceServer retrieves the persisted resource server used for engine resolution.
+func (s *authorizationService) getResourceServer(
+	ctx context.Context,
+	resourceServer engine.ResourceServer,
+) (*providers.ResourceServer, *tidcommon.ServiceError) {
+	return s.resourceService.GetResourceServer(ctx, strings.TrimSpace(resourceServer.ID))
+}
+
+// enrichRequest adds persisted entity attributes to supported subject evaluations.
+func (s *authorizationService) enrichRequest(
+	ctx context.Context,
+	request providers.AccessEvaluationsRequest,
+) (providers.AccessEvaluationsRequest, *tidcommon.ServiceError) {
+	if s.entityService == nil {
+		return request, nil
+	}
+	enriched := providers.AccessEvaluationsRequest{
+		Evaluations: make([]providers.AccessEvaluationRequest, 0, len(request.Evaluations)),
+	}
+	entities := make(map[string]*providers.Entity)
+	for _, evaluation := range request.Evaluations {
+		if !supportsSubjectEnrichment(evaluation.Subject.Type) {
+			enriched.Evaluations = append(enriched.Evaluations, evaluation)
+			continue
+		}
+		entityKey := evaluation.Subject.Type + ":" + evaluation.Subject.ID
+		subjectEntity, ok := entities[entityKey]
+		if !ok {
+			resolvedEntity, err := s.entityService.GetEntity(ctx, evaluation.Subject.ID)
+			if err != nil {
+				if !errors.Is(err, entity.ErrEntityNotFound) {
+					return providers.AccessEvaluationsRequest{}, &tidcommon.InternalServerError
+				}
+				resolvedEntity = nil
+			}
+			if resolvedEntity != nil && resolvedEntity.Category.String() != evaluation.Subject.Type {
+				resolvedEntity = nil
+			}
+			subjectEntity = resolvedEntity
+			entities[entityKey] = subjectEntity
+		}
+		if subjectEntity != nil {
+			properties := map[string]interface{}{}
+			if len(subjectEntity.Attributes) > 0 {
+				if err := json.Unmarshal(subjectEntity.Attributes, &properties); err != nil {
+					return providers.AccessEvaluationsRequest{}, &tidcommon.InternalServerError
+				}
+			}
+			if subjectEntity.OUID != "" {
+				properties["ouId"] = subjectEntity.OUID
+			}
+			for key, value := range evaluation.Subject.Properties {
+				properties[key] = value
+			}
+			evaluation.Subject.Properties = properties
+			// Keep the public subject category for routing while retaining the concrete
+			// entity type for external PDP attribute mapping.
+			evaluation.Subject.EntityType = subjectEntity.Type
+		}
+		enriched.Evaluations = append(enriched.Evaluations, evaluation)
+	}
+	return enriched, nil
+}
+
+func supportsSubjectEnrichment(subjectType string) bool {
+	return subjectType == providers.EntityCategoryUser.String() ||
+		subjectType == providers.EntityCategoryAgent.String()
+}
+
+func toEngineResourceServer(resourceServer providers.AccessEvaluationResourceServer) engine.ResourceServer {
+	if resourceServer.ResourceID == "" && len(resourceServer.Properties) == 0 {
+		return engine.ResourceServer{ID: resourceServer.ID}
+	}
+	properties := make(map[string]interface{}, len(resourceServer.Properties)+1)
+	for key, value := range resourceServer.Properties {
+		properties[key] = value
+	}
+	if resourceServer.ResourceID != "" {
+		properties[engine.DelegatedResourceIDProperty] = resourceServer.ResourceID
+	}
+	return engine.ResourceServer{ID: resourceServer.ID, Properties: properties}
+}
+
+// toEngineAccessEvaluationsRequest converts provider evaluations to engine evaluations.
 func toEngineAccessEvaluationsRequest(request providers.AccessEvaluationsRequest) engine.AccessEvaluationsRequest {
 	evaluations := make([]engine.AccessEvaluationRequest, 0, len(request.Evaluations))
 	for _, evaluation := range request.Evaluations {
 		evaluations = append(evaluations, engine.AccessEvaluationRequest{
 			Subject: engine.Subject{
 				Type:       evaluation.Subject.Type,
+				EntityType: evaluation.Subject.EntityType,
 				ID:         evaluation.Subject.ID,
 				GroupIDs:   evaluation.Subject.GroupIDs,
 				Properties: evaluation.Subject.Properties,
 			},
-			ResourceServer: engine.ResourceServer{
-				ID:         evaluation.ResourceServer.ID,
-				Properties: evaluation.ResourceServer.Properties,
-			},
+			ResourceServer: toEngineResourceServer(evaluation.ResourceServer),
 			Permission: engine.Permission{
 				Name:       evaluation.Permission.Name,
 				Properties: evaluation.Permission.Properties,
@@ -99,6 +333,7 @@ func toEngineAccessEvaluationsRequest(request providers.AccessEvaluationsRequest
 	return engine.AccessEvaluationsRequest{Evaluations: evaluations}
 }
 
+// fromEngineAccessEvaluationsResponse converts engine responses to provider responses.
 func fromEngineAccessEvaluationsResponse(
 	response *engine.AccessEvaluationsResponse) *providers.AccessEvaluationsResponse {
 	if response == nil {
