@@ -394,6 +394,21 @@ const sidebars: SidebarsConfig = {
             },
           ],
         },
+        {
+          type: 'category',
+          label: 'Restrict Account Access',
+          collapsible: true,
+          collapsed: true,
+          key: 'use-cases-account-lifecycle',
+          items: [
+            {
+              type: 'doc',
+              id: 'use-cases/account-lifecycle/overview',
+              label: 'Understand It',
+              key: 'account-lifecycle-overview',
+            },
+          ],
+        },
       ],
     },
 
