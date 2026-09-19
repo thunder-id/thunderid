@@ -14,7 +14,6 @@ package:
 description: Vanilla JavaScript SDK for browser apps without a framework.
 docs:
   overview: /docs/next/sdks-and-tools/browser/overview
-  apiReference: /docs/next/sdks-and-tools/browser/apis
   quickstart: /docs/next/getting-started/connect-your-application/browser
 links:
   github: https://github.com/thunder-id/javascript-sdks

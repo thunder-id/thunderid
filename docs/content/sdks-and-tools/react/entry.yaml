@@ -14,7 +14,6 @@ package:
 description: Hooks and components to drop {{ProductName}} into a React + Vite app in minutes.
 docs:
   overview: /docs/next/sdks-and-tools/react/overview
-  apiReference: /docs/next/sdks-and-tools/react/apis
   quickstart: /docs/next/getting-started/connect-your-application/react
 links:
   github: https://github.com/thunder-id/javascript-sdks

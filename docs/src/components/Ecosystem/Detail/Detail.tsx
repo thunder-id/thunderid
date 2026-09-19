@@ -6,6 +6,7 @@ import {Box, Chip, Typography} from '@wso2/oxygen-ui';
 import {Check, Clock, Download, Package, Scale, Users} from '@wso2/oxygen-ui-icons-react';
 import {ComponentType, JSX, useState} from 'react';
 import EntryIcon from './EntryIcon';
+import SdkQuickstartDownload from '../../SdkQuickstartDownload';
 import {CodeCard, Cta, Pill, RailHeading, TabStrip} from './primitives';
 import Section from './sections';
 import {DEFAULT_ACCENT, toneColour, useInk} from './theme';
@@ -453,11 +454,17 @@ export function Shell({
   sections,
   trail = [],
   lead = undefined,
+  banner = undefined,
+  apiHref = '',
 }: {
   entry: EcosystemEntry;
   sections: EcosystemSection[];
   trail?: {label: string}[];
   lead?: {title: string; intro?: string; minutes?: number};
+  /** Callout above everything else in the main column. */
+  banner?: JSX.Element;
+  /** Where an `api` section links for the full reference, when one exists. */
+  apiHref?: string;
 }): JSX.Element {
   const ink = useInk();
   const version = useEntryVersion(entry);
@@ -494,6 +501,7 @@ export function Shell({
         }}
       >
         <Box component="main" sx={{minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6.5}}>
+          {banner}
           {lead && (
             <Box>
               <Box sx={{display: 'flex', alignItems: 'baseline', gap: 1.5, mb: lead.intro ? 0.75 : 0}}>
@@ -533,6 +541,7 @@ export function Shell({
               docs={entry.docs ?? {}}
               entryId={entry.id}
               guides={entry.guides ?? []}
+              apiHref={apiHref}
             />
           ))}
         </Box>
@@ -542,7 +551,27 @@ export function Shell({
   );
 }
 
-/** An entry's own page: the shell over the entry's sections. */
+/**
+ * An entry's own page: the shell over the entry's sections.
+ *
+ * The sample callout is the same one the quickstarts carry, keyed on the entry
+ * id because that is what the release feed calls the package. It renders
+ * nothing for an entry with no published sample archive, so entries opt in by
+ * publishing one rather than by being listed here.
+ */
 export default function Detail({entry}: {entry: EcosystemEntry}): JSX.Element {
-  return <Shell entry={entry} sections={entry.sections ?? []} />;
+  return (
+    <Shell
+      entry={entry}
+      sections={entry.sections ?? []}
+      apiHref={`/sdks/${entry.id}/apis`}
+      banner={
+        // The callout carries its own bottom margin for prose pages; here the
+        // column's own gap does that work.
+        <Box sx={{'& > *': {mb: 0}}}>
+          <SdkQuickstartDownload packageId={entry.id} icon={<EntryIcon name={entry.icon} size={22} />} />
+        </Box>
+      }
+    />
+  );
 }

@@ -14,7 +14,6 @@ package:
 description: Authentication for Next.js with full App Router and server-component support.
 docs:
   overview: /docs/next/sdks-and-tools/nextjs/overview
-  apiReference: /docs/next/sdks-and-tools/nextjs/apis
   quickstart: /docs/next/getting-started/connect-your-application/nextjs
 links:
   github: https://github.com/thunder-id/javascript-sdks

@@ -9,9 +9,219 @@ type: integration
 origin: official
 status: ga
 package:
-  name: "@thunderid/better-auth"
+  name: '@thunderid/better-auth'
   manager: npm
-description: Official {{ProductName}} adapter for Better Auth, a drop-in provider for its TypeScript-first auth layer.
+description: '{{ProductName}} provider helper for the Better Auth Generic OAuth plugin. It supplies the configuration;
+  Better Auth performs the OAuth 2.0 and OIDC handling.'
 links:
   github: https://github.com/thunder-id/javascript-sdks
   package: https://www.npmjs.com/package/@thunderid/better-auth
+  external: https://better-auth.com/docs/plugins/generic-oauth
+  samples: https://github.com/thunder-id/javascript-sdks/tree/main/samples/integrations/better-auth/nextjs
+hero:
+  description: '{{ProductName}} provider helper for the Better Auth Generic OAuth plugin. It returns a typed GenericOAuthConfig
+    for a {{ProductName}} issuer, so there is no {{ProductName}} SDK dependency and no protocol logic to keep in sync.'
+  meta:
+  - icon: package
+    label: '@thunderid/better-auth'
+    mono: true
+  - icon: licence
+    label: Apache 2.0 licence
+  ctas:
+  - label: Try the sample
+    href: '#sample'
+    variant: primary
+  - label: Set up the provider
+    href: '#setup'
+    variant: secondary
+  - label: Better Auth docs
+    href: https://better-auth.com/docs/plugins/generic-oauth
+    variant: secondary
+    external: true
+sections:
+- type: steps
+  id: sample
+  title: Try the sample
+  intro: The archive above unpacks a Next.js 15 App Router app that signs in, shows the session, and signs out. To
+    run it from the repository instead, clone [`samples/integrations/better-auth/nextjs`](https://github.com/thunder-id/javascript-sdks/tree/main/samples/integrations/better-auth/nextjs),
+    or [open it in StackBlitz](https://stackblitz.com/fork/github/thunder-id/javascript-sdks/tree/main/samples/integrations/better-auth/nextjs?file=.env)
+    with nothing installed locally. Requires Node.js 18 or later, pnpm, and a running {{ProductName}} instance.
+  steps:
+  - title: Clone the repository
+    description: The sample is a pnpm workspace package, so install from the repository root. Requires Node.js 18
+      or later and pnpm.
+    code:
+      lang: bash
+      content: |-
+        git clone https://github.com/thunder-id/javascript-sdks.git
+        cd javascript-sdks
+        pnpm install
+  - title: Configure the environment
+    description: Copy the example file and fill in the credentials from your {{ProductName}} application's Credentials
+      tab.
+    code:
+      lang: bash
+      content: |-
+        cd samples/integrations/better-auth/nextjs
+        cp .env.example .env
+  - title: Fill in the values
+    code:
+      file: .env
+      lang: dotenv
+      content: |-
+        BETTER_AUTH_SECRET=<run: openssl rand -base64 32>
+        BETTER_AUTH_URL=http://localhost:3000
+        THUNDERID_ISSUER=https://localhost:8090
+        THUNDERID_CLIENT_ID=<your-client-id>
+        THUNDERID_CLIENT_SECRET=<your-client-secret>
+  - title: Register the redirect URI
+    description: Add this callback URL to the same {{ProductName}} application.
+    code:
+      lang: text
+      content: http://localhost:3000/api/auth/callback/thunderid
+  - title: Start the sample
+    description: The app runs at http://localhost:3000. Click **Sign in with {{ProductName}}** to try the flow.
+    code:
+      lang: bash
+      content: pnpm dev
+    note: The sample keeps users and sessions in an in-memory store that resets on every server restart. Swap it for
+      a real Better Auth database adapter in a production app.
+- type: steps
+  id: setup
+  title: Set up the provider
+  intro: Requires `better-auth` 1.7.0 or later as a peer dependency, and a running {{ProductName}} instance with an
+    OAuth 2.0 or OIDC application registered.
+  steps:
+  - title: Install the package
+    code:
+      lang: bash
+      content: npm install @thunderid/better-auth
+  - title: Add the provider to Better Auth
+    description: Pass the helper into the Generic OAuth plugin. It returns the configuration; Better Auth does the
+      rest.
+    code:
+      file: auth.ts
+      lang: ts
+      content: |-
+        import {thunderid} from '@thunderid/better-auth';
+        import {betterAuth} from 'better-auth';
+        import {genericOAuth} from 'better-auth/plugins';
+
+        export const auth = betterAuth({
+          plugins: [
+            genericOAuth({
+              config: [
+                thunderid({
+                  clientId: process.env.THUNDERID_CLIENT_ID!,
+                  clientSecret: process.env.THUNDERID_CLIENT_SECRET!,
+                  issuer: process.env.THUNDERID_ISSUER!,
+                }),
+              ],
+            }),
+          ],
+        });
+  - title: Register the callback URL
+    description: Add this redirect URI to your {{ProductName}} application, for example http://localhost:3000/api/auth/callback/thunderid
+      in development.
+    code:
+      lang: text
+      content: '{baseURL}/api/auth/callback/thunderid'
+  - title: Sign in from the client
+    description: Use your existing Better Auth client, or create one. No client plugin is required, since the Generic
+      OAuth plugin exposes sign-in through the standard social-provider API.
+    code:
+      file: auth-client.ts
+      lang: ts
+      content: |-
+        import {createAuthClient} from 'better-auth/react';
+
+        export const authClient = createAuthClient();
+
+        await authClient.signIn.social({
+          provider: 'thunderid',
+          callbackURL: '/dashboard',
+        });
+- type: api
+  id: api
+  title: Options
+  intro: Every option other than `issuer` is passed through from Better Auth's `BaseOAuthProviderOptions` and behaves
+    exactly as it does for the built-in provider helpers.
+  kindTones:
+    function: accent
+  exports:
+  - group: Functions
+    kind: function
+    name: thunderid()
+    description: Returns a typed GenericOAuthConfig for a {{ProductName}} issuer.
+    rowsLabel: Options
+    rows:
+    - name: issuer
+      type: string
+      tag: required
+      description: '{{ProductName}} issuer URL, for example https://thunderid.example.com. A trailing slash is trimmed.
+        The OIDC discovery URL is derived as {issuer}/.well-known/openid-configuration, so all endpoints come from
+        the discovery document.'
+    - name: clientId
+      type: string
+      tag: required
+      description: OAuth client ID.
+    - name: clientSecret
+      type: string
+      tag: optional
+      description: 'OAuth client secret. Omit for public clients using tokenEndpointAuth: {method: ''none''}.'
+    - name: scopes
+      type: string[]
+      tag: optional
+      description: Requested scopes. Defaults to ['openid', 'profile', 'email'].
+    - name: tokenEndpointAuth
+      type: object
+      tag: optional
+      description: 'Token endpoint authentication method, for example {method: ''client_secret_post''}.'
+    - name: pkce
+      type: boolean
+      tag: optional
+      description: Force PKCE on or off. Better Auth enables PKCE by default.
+    - name: redirectURI
+      type: string
+      tag: optional
+      description: Override the callback URL. It must still resolve to Better Auth's callback route for this provider, which ends in `/callback/thunderid`.
+    - name: endSessionEndpoint
+      type: string
+      tag: optional
+      description: RP-initiated logout endpoint. Defaults to the discovery document.
+    - name: postLogoutRedirectURI
+      type: string
+      tag: optional
+      description: Where {{ProductName}} returns the user after logout.
+    - name: disableProviderLogout
+      type: boolean
+      tag: optional
+      description: Skip provider logout on sign-out. Defaults to false.
+    - name: disableImplicitSignUp
+      type: boolean
+      tag: optional
+      description: Require an explicit sign-up request before creating a user. Defaults to false.
+    - name: disableSignUp
+      type: boolean
+      tag: optional
+      description: Reject sign-in for users who do not already exist. Defaults to false.
+    - name: overrideUserInfo
+      type: boolean
+      tag: optional
+      description: Refresh the stored user profile from {{ProductName}} on every sign-in. Defaults to false.
+rail:
+  statsTitle: Package
+  stats:
+  - label: Package
+    value: '@thunderid/better-auth'
+  - label: Registry
+    value: npm
+  - label: Peer
+    value: better-auth >= 1.7.0
+  - label: Licence
+    value: Apache 2.0
+  relatedTitle: Related SDKs
+  related:
+  - nextjs
+  - nuxt
+  - react

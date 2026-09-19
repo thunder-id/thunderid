@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useDocsVersion} from '@docusaurus/plugin-content-docs/client';
+import {useActiveVersion, useDocsPreferredVersion, useLatestVersion} from '@docusaurus/plugin-content-docs/client';
 import {useBaseUrlUtils} from '@docusaurus/useBaseUrl';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import {Button, styled} from '@wso2/oxygen-ui';
@@ -112,7 +112,12 @@ export default function SdkQuickstartDownload({
   promptFlow = undefined,
 }: SdkQuickstartDownloadProps): React.ReactElement | null {
   const {withBaseUrl} = useBaseUrlUtils();
-  const {version} = useDocsVersion();
+  // Resolved the way a version-less page resolves it, rather than read from the
+  // docs context, so the callout also works on the standalone `/sdks` routes.
+  const active = useActiveVersion(undefined);
+  const {preferredVersion} = useDocsPreferredVersion(undefined);
+  const latest = useLatestVersion(undefined);
+  const {name: version} = active ?? preferredVersion ?? latest;
   const {siteConfig} = useDocusaurusContext();
   const [asset, setAsset] = useState<SdkReleaseAsset | null>(null);
   const [packageName, setPackageName] = useState('');

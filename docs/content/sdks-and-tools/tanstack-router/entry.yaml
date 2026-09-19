@@ -14,7 +14,6 @@ package:
 description: Type-safe authentication for TanStack Router applications.
 docs:
   overview: /docs/next/sdks-and-tools/tanstack-router/overview
-  apiReference: /docs/next/sdks-and-tools/tanstack-router/apis
 links:
   github: https://github.com/thunder-id/javascript-sdks
   package: https://www.npmjs.com/package/@thunderid/tanstack-router

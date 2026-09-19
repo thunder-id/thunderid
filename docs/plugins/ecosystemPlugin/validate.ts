@@ -526,12 +526,16 @@ export function validateEntry(
 
   // An unreleased entry has nowhere to send a reader, so claiming a page is an
   // error. The reverse is only a warning: a package can ship before its docs
-  // page lands, and the card simply renders without a link until it does.
+  // page lands, and the card simply renders without a link until it does. An
+  // entry carrying `sections` or `guides` needs neither, since the plugin
+  // builds its page from the registry, which is also the order `entryHref()`
+  // resolves a card link in.
+  const hasBuiltPage = ['sections', 'guides'].some((key) => Array.isArray(raw[key]) && raw[key].length > 0);
   if (raw.status === 'soon') {
     if (docs?.overview !== undefined) {
       p.add('docs.overview', 'must be omitted while status is "soon"');
     }
-  } else if (docs?.overview === undefined) {
+  } else if (docs?.overview === undefined && !hasBuiltPage) {
     w.add('docs.overview', 'is not set, so this entry has no detail page to link to');
   }
 

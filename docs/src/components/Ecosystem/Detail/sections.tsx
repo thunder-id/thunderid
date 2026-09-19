@@ -871,9 +871,13 @@ function SupportSection({section, accent}: SectionProps<EcosystemSupportSection>
 /**
  * Dispatches a registry section to its renderer.
  *
- * `quickstart` and `api` read their link target from the entry's `docs:` block.
- * The build rejects either section on an entry that does not set the matching
- * key, so by the time this runs the target is present.
+ * `quickstart` reads its link target from the entry's `docs:` block. The build
+ * rejects the section on an entry that does not set the key, so by the time
+ * this runs the target is present.
+ *
+ * `api` gets its target from `apiHref`, which the caller leaves empty when the
+ * section is not the entry's own: the plugin builds a reference page from
+ * `entry.sections`, so an `api` section inside a guide has none to link to.
  */
 export default function Section({
   section,
@@ -881,7 +885,13 @@ export default function Section({
   docs,
   entryId,
   guides,
-}: SectionProps<EcosystemSection> & {docs: EcosystemDocs; entryId: string; guides: EcosystemGuide[]}): JSX.Element | null {
+  apiHref = '',
+}: SectionProps<EcosystemSection> & {
+  docs: EcosystemDocs;
+  entryId: string;
+  guides: EcosystemGuide[];
+  apiHref?: string;
+}): JSX.Element | null {
   switch (section.type) {
     case 'steps':
       return <StepsSection section={section} accent={accent} />;
@@ -896,7 +906,7 @@ export default function Section({
     case 'quickstart':
       return <QuickstartSection section={section} accent={accent} href={docs.quickstart ?? ''} />;
     case 'api':
-      return <ApiSection section={section} accent={accent} href={docs.apiReference ?? ''} />;
+      return <ApiSection section={section} accent={accent} href={apiHref} />;
     case 'support':
       return <SupportSection section={section} accent={accent} />;
     default:

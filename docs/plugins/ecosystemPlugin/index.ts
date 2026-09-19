@@ -319,6 +319,17 @@ export default function ecosystemPlugin(context: LoadContext): Plugin {
           exact: true,
         });
 
+        // The full API reference gets its own page. The entry's own page shows
+        // a handful of exports; this lists every one the registry carries.
+        if (entry.sections?.some((section) => section.type === 'api')) {
+          actions.addRoute({
+            path: `/sdks/${entry.id}/apis`,
+            component: '@site/src/components/Ecosystem/Detail/ApiReferencePage',
+            modules: {entry: data},
+            exact: true,
+          });
+        }
+
         // Each guide is its own page in the same shell, so a reader moving from
         // the entry into a guide stays in one layout.
         for (const guide of entry.guides ?? []) {

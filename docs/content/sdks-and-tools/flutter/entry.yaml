@@ -14,7 +14,6 @@ package:
 description: Cross-platform authentication for Flutter apps.
 docs:
   overview: /docs/next/sdks-and-tools/flutter/overview
-  apiReference: /docs/next/sdks-and-tools/flutter/apis
   quickstart: /docs/next/getting-started/connect-your-application/flutter
 links:
   github: https://github.com/thunder-id/flutter-sdks

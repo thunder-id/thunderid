@@ -14,7 +14,6 @@ package:
 description: Native Swift SDK with hosted login and secure token storage.
 docs:
   overview: /docs/next/sdks-and-tools/ios/overview
-  apiReference: /docs/next/sdks-and-tools/ios/apis
   quickstart: /docs/next/getting-started/connect-your-application/ios
 links:
   github: https://github.com/thunder-id/ios-sdks

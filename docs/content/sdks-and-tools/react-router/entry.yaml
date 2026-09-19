@@ -14,7 +14,6 @@ package:
 description: Official {{ProductName}} integration for React Router (formerly Remix) applications.
 docs:
   overview: /docs/next/sdks-and-tools/react-router/overview
-  apiReference: /docs/next/sdks-and-tools/react-router/apis
 links:
   github: https://github.com/thunder-id/javascript-sdks
   package: https://www.npmjs.com/package/@thunderid/react-router
