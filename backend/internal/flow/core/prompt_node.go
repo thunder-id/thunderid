@@ -759,7 +759,8 @@ func (n *promptNode) buildSyntheticComponentList(
 		if inMeta {
 			needsRequired := input.Required && comp["required"] != true
 			needsPassword := input.Type == providers.InputTypePassword && comp["type"] != providers.InputTypePassword
-			if needsRequired || needsPassword {
+			needsOptions := len(input.Options) > 0
+			if needsRequired || needsPassword || needsOptions {
 				cloned := make(map[string]interface{}, len(comp))
 				for k, v := range comp {
 					cloned[k] = v
@@ -769,6 +770,9 @@ func (n *promptNode) buildSyntheticComponentList(
 				}
 				if needsPassword {
 					cloned["type"] = providers.InputTypePassword
+				}
+				if needsOptions {
+					cloned["options"] = input.Options
 				}
 				promotions[ref] = cloned
 			}

@@ -78,6 +78,7 @@ const (
 	revocationInputApplication = "targetApplicationId"
 
 	ouIDKey        = "ouId"
+	ouHandleKey    = "ouHandle"
 	defaultOUIDKey = "defaultOUID"
 	userTypeKey    = "userType"
 
