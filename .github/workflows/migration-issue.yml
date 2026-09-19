@@ -1,0 +1,131 @@
+name: 🔁 Migration Issue Tracker
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  MIGRATION_LABEL: "Migration"
+
+jobs:
+  create-migration-issue:
+    # Only the migration trigger label starts this workflow. Every other label event is a no-op.
+    if: github.event.label.name == 'Migration/Required'
+    runs-on: ubuntu-latest
+    # Two label events on the same issue would otherwise both clear the guard below and
+    # each create a migration issue.
+    concurrency:
+      group: migration-issue-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    steps:
+      - name: Create the paired migration issue
+        env:
+          # Falls back to the job token when the bot secret is unavailable.
+          GH_TOKEN: ${{ secrets.THUNDER_AUTOMATION_BOT || github.token }}
+          REPO: ${{ github.repository }}
+          PARENT_NUMBER: ${{ github.event.issue.number }}
+          PARENT_ID: ${{ github.event.issue.id }}
+          PARENT_TITLE: ${{ github.event.issue.title }}
+          PARENT_URL: ${{ github.event.issue.html_url }}
+          PARENT_MILESTONE: ${{ toJSON(github.event.issue.milestone.number) }}
+          PARENT_LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
+          PARENT_ASSIGNEES: ${{ toJSON(github.event.issue.assignees.*.login) }}
+        run: |
+          set -euo pipefail
+
+          # 1. Idempotency guard. A label can be removed and re-added, and the migration issue
+          #    must not be duplicated when that happens.
+          SUB_ISSUES=$(gh api "repos/$REPO/issues/$PARENT_NUMBER/sub_issues" --paginate)
+          EXISTING=$(echo "$SUB_ISSUES" | jq -s -r --arg l "$MIGRATION_LABEL" \
+            'add | first(.[] | select(any(.labels[]?.name; . == $l)) | .number) // empty')
+
+          if [ -n "$EXISTING" ]; then
+            echo "Migration issue #$EXISTING already exists for #$PARENT_NUMBER. Nothing to do."
+            exit 0
+          fi
+
+          # 2. Carry the parent's theme labels through so the migration issue stays filterable
+          #    by the same product area.
+          THEME_LABELS=$(echo "$PARENT_LABELS" | jq -c '[.[] | select(startswith("Theme/"))]')
+          LABELS=$(jq -cn --argjson theme "$THEME_LABELS" --arg m "$MIGRATION_LABEL" \
+            '(["Type/Task", $m] + $theme) | unique')
+
+          # 3. Land the migration work in the same release as the change that caused it.
+          MILESTONE_NUMBER="${PARENT_MILESTONE:-null}"
+          case "$MILESTONE_NUMBER" in
+            ''|*[!0-9]*) MILESTONE_NUMBER=null ;;
+          esac
+
+          BODY=$(cat <<EOF
+          ### Source Issue
+
+          Migration required by #$PARENT_NUMBER ($PARENT_URL).
+
+          ### What changed
+
+          _Describe the behaviour, schema, config or API surface that changed in the source issue._
+
+          ### Who is affected
+
+          - Affected versions:
+          - Deployment modes (standalone, Docker, Helm, OpenChoreo):
+          - Database backends (SQLite, PostgreSQL):
+
+          ### Migration type
+
+          - [ ] Database / Schema
+          - [ ] Database / Data
+          - [ ] Config
+          - [ ] API
+          - [ ] SDK
+          - [ ] Deployment
+          - [ ] Declarative resource
+
+          ### Migration steps
+
+          _Ordered steps an existing deployment must follow when upgrading._
+
+          1.
+
+          ### Backward compatibility
+
+          - Is the old behaviour still supported?
+          - Is a rollback possible after migrating?
+
+          ### Documentation to update
+
+          - [ ]
+
+          ### Verification
+
+          _How a maintainer confirms the migration works on an existing installation._
+
+          - [ ]
+
+          <!-- Created automatically by .github/workflows/migration-issue.yml -->
+          EOF
+          )
+
+          PAYLOAD=$(jq -n \
+            --arg title "[Migration] $PARENT_TITLE" \
+            --arg body "$BODY" \
+            --argjson labels "$LABELS" \
+            --argjson assignees "$PARENT_ASSIGNEES" \
+            --argjson milestone "$MILESTONE_NUMBER" \
+            --argjson parent "$PARENT_ID" \
+            '{title: $title, body: $body, labels: $labels, assignees: $assignees,
+              type: "Task", parent_issue_id: $parent}
+             + (if $milestone == null then {} else {milestone: $milestone} end)')
+
+          NEW_ISSUE=$(echo "$PAYLOAD" | gh api "repos/$REPO/issues" --input -)
+          NEW_NUMBER=$(echo "$NEW_ISSUE" | jq -r '.number')
+
+          echo "Created migration issue #$NEW_NUMBER"
+
+          # 4. Point the source issue at its migration issue.
+          gh issue comment "$PARENT_NUMBER" --repo "$REPO" \
+            --body "Migration tracked in #$NEW_NUMBER."
