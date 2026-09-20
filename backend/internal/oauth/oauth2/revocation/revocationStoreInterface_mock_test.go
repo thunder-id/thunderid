@@ -233,6 +233,63 @@ func (_c *revocationStoreInterfaceMock_areCriteriaRevoked_Call) RunAndReturn(run
 	return _c
 }
 
+// insertCriteria provides a mock function for the type revocationStoreInterfaceMock
+func (_mock *revocationStoreInterfaceMock) insertCriteria(ctx context.Context, criteria []revocationCriterion) error {
+	ret := _mock.Called(ctx, criteria)
+
+	if len(ret) == 0 {
+		panic("no return value specified for insertCriteria")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []revocationCriterion) error); ok {
+		r0 = returnFunc(ctx, criteria)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// revocationStoreInterfaceMock_insertCriteria_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'insertCriteria'
+type revocationStoreInterfaceMock_insertCriteria_Call struct {
+	*mock.Call
+}
+
+// insertCriteria is a helper method to define mock.On call
+//   - ctx context.Context
+//   - criteria []revocationCriterion
+func (_e *revocationStoreInterfaceMock_Expecter) insertCriteria(ctx interface{}, criteria interface{}) *revocationStoreInterfaceMock_insertCriteria_Call {
+	return &revocationStoreInterfaceMock_insertCriteria_Call{Call: _e.mock.On("insertCriteria", ctx, criteria)}
+}
+
+func (_c *revocationStoreInterfaceMock_insertCriteria_Call) Run(run func(ctx context.Context, criteria []revocationCriterion)) *revocationStoreInterfaceMock_insertCriteria_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []revocationCriterion
+		if args[1] != nil {
+			arg1 = args[1].([]revocationCriterion)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *revocationStoreInterfaceMock_insertCriteria_Call) Return(err error) *revocationStoreInterfaceMock_insertCriteria_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *revocationStoreInterfaceMock_insertCriteria_Call) RunAndReturn(run func(ctx context.Context, criteria []revocationCriterion) error) *revocationStoreInterfaceMock_insertCriteria_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // insertCriterion provides a mock function for the type revocationStoreInterfaceMock
 func (_mock *revocationStoreInterfaceMock) insertCriterion(ctx context.Context, criterion revocationCriterion) error {
 	ret := _mock.Called(ctx, criterion)

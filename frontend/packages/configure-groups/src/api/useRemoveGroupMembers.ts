@@ -4,9 +4,11 @@
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
+import type {HttpLike} from '@thunderid/utils';
 import {useTranslation} from 'react-i18next';
 import GroupQueryKeys from '../constants/group-query-keys';
 import type {Member} from '../models/group';
+import {removeGroupMemberViaFlow} from '../utils/groupAdministrationFlow';
 
 /**
  * Variables for the remove group members mutation.
@@ -31,6 +33,25 @@ export default function useRemoveGroupMembers(): UseMutationResult<void, Error, 
   return useMutation<void, Error, RemoveGroupMembersVariables>({
     mutationFn: async ({groupId, members}: RemoveGroupMembersVariables): Promise<void> => {
       const serverUrl: string = getServerUrl();
+
+      // One member per execution, because a criterion names one principal and the flow revokes for the
+      // principal that actually lost the grant.
+      //
+      // This is not atomic, and the native endpoint it replaces was: a refusal partway through leaves
+      // the earlier members removed and revoked while the mutation reports failure. Continuing past a
+      // refusal would be worse, since the caller would be told everything succeeded. Whoever surfaces
+      // the error should re-read the list rather than assume nothing changed.
+      let ranViaFlow = false;
+
+      for (const member of members) {
+        ranViaFlow = await removeGroupMemberViaFlow(http as unknown as HttpLike, serverUrl, groupId, member.id);
+        if (!ranViaFlow) {
+          break;
+        }
+      }
+      if (ranViaFlow) {
+        return;
+      }
       await http.request({
         url: `${serverUrl}/groups/${groupId}/members/remove`,
         method: 'POST',

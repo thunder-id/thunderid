@@ -26,6 +26,11 @@ type RevocationIdentity struct {
 	TokenFamilyID string
 	Subject       string
 	AppKey        string
+	// Audience is the resource server the token is bound to. Scopes are only identified together with
+	// it, because a permission string is unique only within its resource server.
+	Audience string
+	// Scopes are the token's scope claim, split.
+	Scopes        []string
 	EstablishedAt time.Time
 }
 
@@ -121,6 +126,8 @@ func (s *securityService) Process(r *http.Request) (context.Context, error) {
 			TokenFamilyID: securityCtx.tokenFamilyID,
 			Subject:       securityCtx.revocationSubject,
 			AppKey:        securityCtx.revocationAppKey,
+			Audience:      securityCtx.revocationAudience,
+			Scopes:        securityCtx.permissions,
 			EstablishedAt: securityCtx.establishedAt,
 		}); err != nil {
 			return s.handleAuthError(ctx, isPublic, errInvalidToken)

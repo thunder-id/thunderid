@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package resource
@@ -15,27 +15,29 @@ import (
 )
 
 // Initialize initializes the resource service and registers its routes.
-// Returns the service interface and resource server exporter for declarative resource export functionality.
+// Returns the service interface, the resource server exporter for declarative resource export
+// functionality, and the administration provider the scope deletion flow acts through.
 func Initialize(
 	mux *http.ServeMux,
 	ouService oupkg.OrganizationUnitServiceInterface,
-) (ResourceServiceInterface, declarativeresource.ResourceExporter, error) {
+) (ResourceServiceInterface, declarativeresource.ResourceExporter,
+	AdminProviderInterface, error) {
 	// Initialize store and transactioner based on store mode
 	resourceStore, transactioner, err := initializeStore()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize resource store: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to initialize resource store: %w", err)
 	}
 
 	resourceService, err := newResourceService(ouService, resourceStore, transactioner)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Load declarative resources if applicable (declarative or composite mode)
 	storeMode := getResourceStoreMode()
 	if storeMode == serverconst.StoreModeDeclarative || storeMode == serverconst.StoreModeComposite {
 		if err := loadDeclarativeResources(resourceStore, resourceService); err != nil {
-			return nil, nil, fmt.Errorf("failed to load declarative resources: %w", err)
+			return nil, nil, nil, fmt.Errorf("failed to load declarative resources: %w", err)
 		}
 	}
 
@@ -45,7 +47,7 @@ func Initialize(
 	resourceHandler := newResourceHandler(resourceService)
 	registerRoutes(mux, resourceHandler)
 
-	return resourceService, exporter, nil
+	return resourceService, exporter, newAdminProvider(resourceService), nil
 }
 
 // initializeStore creates and initializes the appropriate store based on configuration.

@@ -20,11 +20,14 @@ const (
 	columnNameExpiryTime     = "expiry_time"
 	columnNameRevokedAt      = "revoked_at"
 	columnNameReason         = "reason"
-	// criterionTypeTokenFamily mirrors the revocation package's token_family criterion type. It is
-	// duplicated here (not imported) so this read-only RS package stays decoupled from the write path.
-	criterionTypeTokenFamily = "token_family"
-	criterionTypeSubject     = "subject"
-	criterionTypeAppKey      = "app.key"
+	// The criterion types this source reads. They are taken from the revocation package rather than
+	// restated, because a dimension whose name drifts between the write path and this read path stops
+	// being enforced with no error to show for it.
+	criterionTypeTokenFamily = string(revocation.CriterionTypeTokenFamily)
+	criterionTypeSubject     = string(revocation.CriterionTypeSubject)
+	criterionTypeAppKey      = string(revocation.CriterionTypeApplicationKey)
+	criterionTypeEntityScope = string(revocation.CriterionTypeEntityScope)
+	criterionTypeScope       = string(revocation.CriterionTypeScope)
 )
 
 // dbSource reads the deny-list snapshot from the runtime persistent database. It is the only source today; it
@@ -90,7 +93,30 @@ func (s *dbSource) Snapshot(ctx context.Context) (revokedSnapshot, error) {
 		return revokedSnapshot{}, err
 	}
 
-	return revokedSnapshot{Tokens: tokens, Families: families, Subjects: subjects, AppKeys: appKeys}, nil
+	entityScopeRows, err := dbClient.QueryContext(ctx, querySnapshotBoundedCriteria,
+		criterionTypeEntityScope, now, s.deploymentID)
+	if err != nil {
+		return revokedSnapshot{}, fmt.Errorf("error reading revoked entity scope snapshot: %w", err)
+	}
+	entityScopes, err := parseBoundedEntries(entityScopeRows)
+	if err != nil {
+		return revokedSnapshot{}, err
+	}
+
+	scopeRows, err := dbClient.QueryContext(ctx, querySnapshotBoundedCriteria,
+		criterionTypeScope, now, s.deploymentID)
+	if err != nil {
+		return revokedSnapshot{}, fmt.Errorf("error reading revoked scope snapshot: %w", err)
+	}
+	scopes, err := parseBoundedEntries(scopeRows)
+	if err != nil {
+		return revokedSnapshot{}, err
+	}
+
+	return revokedSnapshot{
+		Tokens: tokens, Families: families, Subjects: subjects, AppKeys: appKeys,
+		EntityScopes: entityScopes, Scopes: scopes,
+	}, nil
 }
 
 // parseBoundedEntries maps criteria of one dimension and retains their establishment cutoff, so a

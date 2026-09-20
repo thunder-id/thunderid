@@ -204,11 +204,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize GroupService")
 	exporters = append(exporters, groupExporter)
 
-	resourceService, resourceExporter, err := resource.Initialize(mux, ouService)
+	resourceService, resourceExporter, resourceAdminProvider, err := resource.Initialize(mux, ouService)
 	fatalOnError(ctx, logger, err, "Failed to initialize Resource Service")
 	exporters = append(exporters, resourceExporter)
 
-	roleService, roleAssignmentService, ouRoleResolver, roleExporter, err := role.Initialize(
+	roleService, roleAssignmentService, ouRoleResolver, roleExporter, roleAdminProvider, err := role.Initialize(
 		mux, entityService, groupService, ouService, resourceService, entityTypeService, ouAuthzService,
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize RoleService")
@@ -352,34 +352,36 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	flowConfig.Session = sessionCfg
 	flowFactory, execRegistry, interceptorRegistry, graphBuilder := initializeFlowCoreAndExecutor(ctx, logger,
 		cacheManager, executor.ExecutorDependencies{
-			OUService:             ouService,
-			IDPService:            idpService,
-			NotifSenderSvc:        notifSenderSvc,
-			JWTService:            jwtService,
-			AuthAssertGen:         authAssertGen,
-			ConsentEnforcer:       consentEnforcer,
-			AuthnProvider:         authnProvider,
-			OTPService:            otpCoreService,
-			MagicLinkService:      magicLinkService,
-			AuthZService:          authZService,
-			EntityTypeService:     entityTypeService,
-			GroupService:          groupService,
-			RoleService:           roleService,
-			RoleAssignmentService: roleAssignmentService,
-			EntityProvider:        entityProvider,
-			UserMgtProvider:       userMgtProvider,
-			AttributeCacheSvc:     attributeCacheService,
-			EmailClient:           emailClient,
-			TemplateService:       templateService,
-			OAuthSvc:              oauthAuthnService,
-			OIDCSvc:               oidcAuthnService,
-			GithubSvc:             githubAuthnService,
-			GoogleSvc:             googleAuthnService,
-			OpenID4VPVerifierSvc:  openid4vpSvc,
-			SessionService:        sessionService,
-			ResourceService:       resourceServerProvider,
-			UserService:           userService,
-			CriteriaRevoker:       revocationSvc,
+			OUService:              ouService,
+			IDPService:             idpService,
+			NotifSenderSvc:         notifSenderSvc,
+			JWTService:             jwtService,
+			AuthAssertGen:          authAssertGen,
+			ConsentEnforcer:        consentEnforcer,
+			AuthnProvider:          authnProvider,
+			OTPService:             otpCoreService,
+			MagicLinkService:       magicLinkService,
+			AuthZService:           authZService,
+			EntityTypeService:      entityTypeService,
+			GroupService:           groupService,
+			RoleService:            roleService,
+			RoleAssignmentService:  roleAssignmentService,
+			EntityProvider:         entityProvider,
+			UserMgtProvider:        userMgtProvider,
+			AttributeCacheSvc:      attributeCacheService,
+			EmailClient:            emailClient,
+			TemplateService:        templateService,
+			OAuthSvc:               oauthAuthnService,
+			OIDCSvc:                oidcAuthnService,
+			GithubSvc:              githubAuthnService,
+			GoogleSvc:              googleAuthnService,
+			OpenID4VPVerifierSvc:   openid4vpSvc,
+			SessionService:         sessionService,
+			ResourceService:        resourceServerProvider,
+			UserService:            userService,
+			CriteriaRevoker:        revocationSvc,
+			RoleGroupAdminProvider: roleAdminProvider,
+			ResourceAdminProvider:  resourceAdminProvider,
 		},
 		interceptor.InterceptorDependencies{},
 		flowConfig,

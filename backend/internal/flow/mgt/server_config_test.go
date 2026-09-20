@@ -227,3 +227,57 @@ func (s *FlowConfigHandlerTestSuite) TestMerge_EmptyWritableKeepsDeclarativeUser
 
 	s.Equal("default-user-deletion-flow", merged.UserDeletionFlow.DefaultHandle)
 }
+
+// Merge rebuilds the section field by field, so a flow it forgets reads as unconfigured no matter
+// what either layer declared. Every administration flow is checked here, because Validate refusing a
+// bad handle for a flow Merge then drops is the failure that looks like a working configuration.
+func (s *FlowConfigHandlerTestSuite) TestMerge_CarriesEveryAdministrationFlow() {
+	ro := flowconfig.FlowSectionConfig{
+		UserDeletionFlow:           flowconfig.FlowTypeConfig{DefaultHandle: "ro-user-deletion"},
+		ApplicationDeletionFlow:    flowconfig.FlowTypeConfig{DefaultHandle: "ro-application-deletion"},
+		SecretRegenerationFlow:     flowconfig.FlowTypeConfig{DefaultHandle: "ro-secret-regeneration"},
+		RoleAssignmentRemovalFlow:  flowconfig.FlowTypeConfig{DefaultHandle: "ro-role-assignment-removal"},
+		RoleDeletionFlow:           flowconfig.FlowTypeConfig{DefaultHandle: "ro-role-deletion"},
+		RolePermissionRemovalFlow:  flowconfig.FlowTypeConfig{DefaultHandle: "ro-role-permission-removal"},
+		GroupDeletionFlow:          flowconfig.FlowTypeConfig{DefaultHandle: "ro-group-deletion"},
+		GroupMembershipRemovalFlow: flowconfig.FlowTypeConfig{DefaultHandle: "ro-group-membership-removal"},
+		ScopeDeletionFlow:          flowconfig.FlowTypeConfig{DefaultHandle: "ro-scope-deletion"},
+	}
+
+	merged, ok := s.handler.Merge(ro, flowconfig.FlowSectionConfig{}).(flowconfig.FlowSectionConfig)
+
+	s.Require().True(ok)
+	s.Equal(ro, merged)
+}
+
+// The writable layer repoints each administration flow independently, so an operator can replace one
+// shipped flow with their own without restating the rest.
+func (s *FlowConfigHandlerTestSuite) TestMerge_WritableWinsForEveryAdministrationFlow() {
+	wr := flowconfig.FlowSectionConfig{
+		UserDeletionFlow:           flowconfig.FlowTypeConfig{DefaultHandle: "wr-user-deletion"},
+		ApplicationDeletionFlow:    flowconfig.FlowTypeConfig{DefaultHandle: "wr-application-deletion"},
+		SecretRegenerationFlow:     flowconfig.FlowTypeConfig{DefaultHandle: "wr-secret-regeneration"},
+		RoleAssignmentRemovalFlow:  flowconfig.FlowTypeConfig{DefaultHandle: "wr-role-assignment-removal"},
+		RoleDeletionFlow:           flowconfig.FlowTypeConfig{DefaultHandle: "wr-role-deletion"},
+		RolePermissionRemovalFlow:  flowconfig.FlowTypeConfig{DefaultHandle: "wr-role-permission-removal"},
+		GroupDeletionFlow:          flowconfig.FlowTypeConfig{DefaultHandle: "wr-group-deletion"},
+		GroupMembershipRemovalFlow: flowconfig.FlowTypeConfig{DefaultHandle: "wr-group-membership-removal"},
+		ScopeDeletionFlow:          flowconfig.FlowTypeConfig{DefaultHandle: "wr-scope-deletion"},
+	}
+	ro := flowconfig.FlowSectionConfig{
+		UserDeletionFlow:           flowconfig.FlowTypeConfig{DefaultHandle: "ro-user-deletion"},
+		ApplicationDeletionFlow:    flowconfig.FlowTypeConfig{DefaultHandle: "ro-application-deletion"},
+		SecretRegenerationFlow:     flowconfig.FlowTypeConfig{DefaultHandle: "ro-secret-regeneration"},
+		RoleAssignmentRemovalFlow:  flowconfig.FlowTypeConfig{DefaultHandle: "ro-role-assignment-removal"},
+		RoleDeletionFlow:           flowconfig.FlowTypeConfig{DefaultHandle: "ro-role-deletion"},
+		RolePermissionRemovalFlow:  flowconfig.FlowTypeConfig{DefaultHandle: "ro-role-permission-removal"},
+		GroupDeletionFlow:          flowconfig.FlowTypeConfig{DefaultHandle: "ro-group-deletion"},
+		GroupMembershipRemovalFlow: flowconfig.FlowTypeConfig{DefaultHandle: "ro-group-membership-removal"},
+		ScopeDeletionFlow:          flowconfig.FlowTypeConfig{DefaultHandle: "ro-scope-deletion"},
+	}
+
+	merged, ok := s.handler.Merge(ro, wr).(flowconfig.FlowSectionConfig)
+
+	s.Require().True(ok)
+	s.Equal(wr, merged)
+}

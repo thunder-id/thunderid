@@ -44,8 +44,12 @@ const (
 	RevocationReasonApplicationSecretRegenerated = sharedrevocation.ReasonApplicationSecretRegenerated
 	// RevocationReasonRoleAssignmentRemoved revokes artifacts established before a role assignment was removed.
 	RevocationReasonRoleAssignmentRemoved = sharedrevocation.ReasonRoleAssignmentRemoved
-	// RevocationReasonRoleDeleted permanently revokes artifacts that depend on a deleted role.
+	// RevocationReasonRolePermissionRemoved revokes artifacts established before a role's scopes shrank.
+	RevocationReasonRolePermissionRemoved = sharedrevocation.ReasonRolePermissionRemoved
+	// RevocationReasonRoleDeleted revokes artifacts established before a role was deleted.
 	RevocationReasonRoleDeleted = sharedrevocation.ReasonRoleDeleted
+	// RevocationReasonScopeDeleted revokes artifacts established before a scope was deleted.
+	RevocationReasonScopeDeleted = sharedrevocation.ReasonScopeDeleted
 	// RevocationReasonGroupMembershipRemoved revokes artifacts established before group membership was removed.
 	RevocationReasonGroupMembershipRemoved = sharedrevocation.ReasonGroupMembershipRemoved
 	// RevocationReasonOrganizationUnitChanged revokes artifacts established before an organization-unit change.
@@ -71,6 +75,8 @@ const (
 	CriterionTypeGroup             = sharedrevocation.CriterionTypeGroup
 	CriterionTypeConsent           = sharedrevocation.CriterionTypeConsent
 	CriterionTypeCredentialVersion = sharedrevocation.CriterionTypeCredentialVersion
+	CriterionTypeEntityScope       = sharedrevocation.CriterionTypeEntityScope
+	CriterionTypeScope             = sharedrevocation.CriterionTypeScope
 )
 
 // RevocationMode controls whether a criterion applies permanently or only to artifacts established
@@ -91,6 +97,17 @@ type RevocationIdentity = sharedrevocation.Identity
 
 // CriteriaRevocation describes a criteria-based revocation write.
 type CriteriaRevocation = sharedrevocation.CriteriaRevocation
+
+// EntityScopeCriterionValue derives the CriterionTypeEntityScope value for one principal, audience
+// and scope. Re-exported so OAuth callers derive it through the same implementation the writers use.
+func EntityScopeCriterionValue(entityID, audience, scope string) string {
+	return sharedrevocation.EntityScopeCriterionValue(entityID, audience, scope)
+}
+
+// ScopeCriterionValue derives the CriterionTypeScope value for one audience and scope.
+func ScopeCriterionValue(audience, scope string) string {
+	return sharedrevocation.ScopeCriterionValue(audience, scope)
+}
 
 // RevokedToken represents a single revoked token entry in the deny list.
 type RevokedToken struct {

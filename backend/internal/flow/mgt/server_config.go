@@ -76,6 +76,12 @@ func (h *FlowConfigHandler) Validate(incoming, _, _ any) error {
 		{cfg.UserDeletionFlow, providers.FlowTypeAdministration, "userDeletionFlow"},
 		{cfg.ApplicationDeletionFlow, providers.FlowTypeAdministration, "applicationDeletionFlow"},
 		{cfg.SecretRegenerationFlow, providers.FlowTypeAdministration, "secretRegenerationFlow"},
+		{cfg.RoleAssignmentRemovalFlow, providers.FlowTypeAdministration, "roleAssignmentRemovalFlow"},
+		{cfg.RoleDeletionFlow, providers.FlowTypeAdministration, "roleDeletionFlow"},
+		{cfg.RolePermissionRemovalFlow, providers.FlowTypeAdministration, "rolePermissionRemovalFlow"},
+		{cfg.GroupDeletionFlow, providers.FlowTypeAdministration, "groupDeletionFlow"},
+		{cfg.GroupMembershipRemovalFlow, providers.FlowTypeAdministration, "groupMembershipRemovalFlow"},
+		{cfg.ScopeDeletionFlow, providers.FlowTypeAdministration, "scopeDeletionFlow"},
 	}
 	ctx := context.Background()
 
@@ -111,6 +117,18 @@ func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 			ro.ApplicationDeletionFlow, wr.ApplicationDeletionFlow),
 		SecretRegenerationFlow: mergeFlowTypeConfig(
 			ro.SecretRegenerationFlow, wr.SecretRegenerationFlow),
+		RoleAssignmentRemovalFlow: mergeFlowTypeConfig(
+			ro.RoleAssignmentRemovalFlow, wr.RoleAssignmentRemovalFlow),
+		RoleDeletionFlow: mergeFlowTypeConfig(
+			ro.RoleDeletionFlow, wr.RoleDeletionFlow),
+		RolePermissionRemovalFlow: mergeFlowTypeConfig(
+			ro.RolePermissionRemovalFlow, wr.RolePermissionRemovalFlow),
+		GroupDeletionFlow: mergeFlowTypeConfig(
+			ro.GroupDeletionFlow, wr.GroupDeletionFlow),
+		GroupMembershipRemovalFlow: mergeFlowTypeConfig(
+			ro.GroupMembershipRemovalFlow, wr.GroupMembershipRemovalFlow),
+		ScopeDeletionFlow: mergeFlowTypeConfig(
+			ro.ScopeDeletionFlow, wr.ScopeDeletionFlow),
 	}
 }
 

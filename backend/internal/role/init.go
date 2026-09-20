@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package role
@@ -30,12 +30,12 @@ func Initialize(
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 ) (
 	RoleServiceInterface, RoleAssignmentServiceInterface, oupkg.OURoleResolver,
-	declarativeresource.ResourceExporter, error,
+	declarativeresource.ResourceExporter, AdminProviderInterface, error,
 ) {
 	// Step 1: Initialize store and transactioner based on store mode (no declarative loading yet)
 	roleStore, transactioner, fileStore, dbStore, err := initializeStore()
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 
 	// Step 2: Create service with store
@@ -47,7 +47,7 @@ func Initialize(
 	// Step 3: Load declarative resources into store (if applicable)
 	if fileStore != nil {
 		if err := loadDeclarativeResources(fileStore, dbStore, roleService); err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 	}
 
@@ -58,7 +58,8 @@ func Initialize(
 	registerRoutes(mux, roleHandler)
 	exporter := newRoleExporter(roleService, assignmentService)
 	ouRoleResolver := newOURoleResolver(roleStore)
-	return roleService, assignmentService, ouRoleResolver, exporter, nil
+	adminProvider := newAdminProvider(roleService, assignmentService, groupService, entityService, resourceService)
+	return roleService, assignmentService, ouRoleResolver, exporter, adminProvider, nil
 }
 
 // Store Selection (based on role.store configuration):

@@ -41,6 +41,14 @@ const (
 
 	// claimClientID names the OAuth client an access token was issued to.
 	claimClientID = "client_id"
+
+	// claimAudience names the resource server an access token is bound to. A permission string is
+	// unique only within its resource server, so the scope dimensions are only meaningful paired
+	// with it.
+	claimAudience = "aud"
+
+	// claimAccessTokenAudience carries that audience on a refresh token, whose own aud is the issuer.
+	claimAccessTokenAudience = "access_token_aud"
 )
 
 // jwtAuthenticator handles authentication and authorization using JWT Bearer tokens.
@@ -133,6 +141,7 @@ func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token, expecte
 		} else if accessTokenSubject != "" {
 			securityCtx.revocationAppKey = subject
 		}
+		securityCtx.revocationAudience = revocationAudience(attributes, accessTokenSubject != "")
 		if issuedAt, ok := attributes[claimIssuedAt].(float64); ok {
 			securityCtx.establishedAt = time.Unix(int64(issuedAt), 0).UTC()
 		}
@@ -150,6 +159,34 @@ func AuthenticateBearerToken(
 	ctx context.Context, jwtService jwt.JWTServiceInterface, token, expectedAud string,
 ) (*SecurityContext, error) {
 	return (&jwtAuthenticator{jwtService: jwtService}).authenticateToken(ctx, token, expectedAud)
+}
+
+// revocationAudience returns the resource server the token binds to, which the scope dimensions are
+// keyed by. An access token names it in aud; a refresh token's aud is the issuer, so access_token_aud
+// is read instead. Issuance binds to a single resource server, so only the first entry is meaningful.
+func revocationAudience(attributes map[string]interface{}, isRefreshToken bool) string {
+	if isRefreshToken {
+		return firstAudience(attributes[claimAccessTokenAudience])
+	}
+	return firstAudience(attributes[claimAudience])
+}
+
+// firstAudience returns the first audience from either RFC 7519 §4.1.3 encoding of an audience claim.
+// The array form is what token issuance emits for more than one audience, so reading only the string
+// form would yield no audience there, and an empty audience disables the scope dimensions silently
+// rather than failing closed.
+func firstAudience(claim interface{}) string {
+	switch value := claim.(type) {
+	case string:
+		return value
+	case []interface{}:
+		for _, entry := range value {
+			if audience, ok := entry.(string); ok && audience != "" {
+				return audience
+			}
+		}
+	}
+	return ""
 }
 
 // verifyToken verifies the bearer token by routing on its iss claim against

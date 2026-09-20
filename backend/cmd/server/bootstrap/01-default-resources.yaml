@@ -2135,13 +2135,25 @@ nodes:
   type: TASK_EXECUTION
   executor:
     name: ClientSecretExecutor
-  onSuccess: end
+  onSuccess: restamp_revocation
   layout:
     size:
       width: 250
       height: 113
     position:
       x: 1200
+      y: 175
+- id: restamp_revocation
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationRestampExecutor
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1490
       y: 175
 - id: end
   type: END
@@ -2150,7 +2162,557 @@ nodes:
       width: 85
       height: 34
     position:
-      x: 1520
+      x: 1810
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000007b
+name: Default Role Assignment Removal Flow
+handle: default-role-assignment-removal-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    # The roles API is not mapped in apiPermissionEntries, so DELETE /roles/{id} and PUT /roles/{id}
+    # require the root system permission. Gating this flow on anything narrower would grant through the
+    # flow what the native endpoint refuses.
+    - system
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_role_assignment_removal
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_role_assignment_removal
+  type: TASK_EXECUTION
+  executor:
+    name: PreRoleAssignmentRemovalExecutor
+    mode: revoke_before_action
+  onSuccess: revoke_scopes
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 580
+      y: 175
+- id: revoke_scopes
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: remove_assignment
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 900
+      y: 175
+- id: remove_assignment
+  type: TASK_EXECUTION
+  executor:
+    name: RoleAssignmentRemovalExecutor
+  onSuccess: restamp_revocation
+  layout:
+    size:
+      width: 230
+      height: 113
+    position:
+      x: 1180
+      y: 175
+- id: restamp_revocation
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationRestampExecutor
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1470
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1790
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000007c
+name: Default Scope Deletion Flow
+handle: default-scope-deletion-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    # The resource-servers API is likewise unmapped, so its endpoints require the root permission.
+    - system
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_scope_deletion
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_scope_deletion
+  type: TASK_EXECUTION
+  executor:
+    name: PreScopeDeletionExecutor
+    mode: revoke_before_action
+  onSuccess: revoke_scopes
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 580
+      y: 175
+- id: revoke_scopes
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: delete_scope
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 900
+      y: 175
+- id: delete_scope
+  type: TASK_EXECUTION
+  executor:
+    name: ScopeDeletionExecutor
+  onSuccess: restamp_revocation
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1180
+      y: 175
+- id: restamp_revocation
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationRestampExecutor
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1470
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1790
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000007d
+name: Default Role Deletion Flow
+handle: default-role-deletion-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    # The roles API is not mapped in apiPermissionEntries, so DELETE /roles/{id} and PUT /roles/{id}
+    # require the root system permission. Gating this flow on anything narrower would grant through the
+    # flow what the native endpoint refuses.
+    - system
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_role_deletion
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_role_deletion
+  type: TASK_EXECUTION
+  executor:
+    name: PreRoleDeletionExecutor
+    mode: revoke_before_action
+  onSuccess: revoke_scopes
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 580
+      y: 175
+- id: revoke_scopes
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: delete_role
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 900
+      y: 175
+- id: delete_role
+  type: TASK_EXECUTION
+  executor:
+    name: RoleDeletionExecutor
+  onSuccess: restamp_revocation
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1180
+      y: 175
+- id: restamp_revocation
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationRestampExecutor
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1470
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1790
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000007e
+name: Default Group Deletion Flow
+handle: default-group-deletion-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:group
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_group_deletion
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_group_deletion
+  type: TASK_EXECUTION
+  executor:
+    name: PreGroupDeletionExecutor
+    mode: revoke_before_action
+  onSuccess: revoke_scopes
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 580
+      y: 175
+- id: revoke_scopes
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: delete_group
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 900
+      y: 175
+- id: delete_group
+  type: TASK_EXECUTION
+  executor:
+    name: GroupDeletionExecutor
+  onSuccess: restamp_revocation
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1180
+      y: 175
+- id: restamp_revocation
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationRestampExecutor
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1470
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1790
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000007f
+name: Default Group Membership Removal Flow
+handle: default-group-membership-removal-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:group
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_group_membership_removal
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_group_membership_removal
+  type: TASK_EXECUTION
+  executor:
+    name: PreGroupMembershipRemovalExecutor
+    mode: revoke_before_action
+  onSuccess: revoke_scopes
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 580
+      y: 175
+- id: revoke_scopes
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: remove_member
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 900
+      y: 175
+- id: remove_member
+  type: TASK_EXECUTION
+  executor:
+    name: GroupMembershipRemovalExecutor
+  onSuccess: restamp_revocation
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1180
+      y: 175
+- id: restamp_revocation
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationRestampExecutor
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1470
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1790
+      y: 200
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000080
+name: Default Role Permission Removal Flow
+handle: default-role-permission-removal-flow
+flowType: ADMINISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 100
+      y: 200
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    # The roles API is not mapped in apiPermissionEntries, so DELETE /roles/{id} and PUT /roles/{id}
+    # require the root system permission. Gating this flow on anything narrower would grant through the
+    # flow what the native endpoint refuses.
+    - system
+  executor:
+    name: PermissionValidator
+  onSuccess: pre_role_permission_removal
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 300
+      y: 175
+- id: pre_role_permission_removal
+  type: TASK_EXECUTION
+  executor:
+    name: PreRolePermissionRemovalExecutor
+    mode: revoke_before_action
+  onSuccess: revoke_scopes
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 580
+      y: 175
+- id: revoke_scopes
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationExecutor
+  onSuccess: update_permissions
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 900
+      y: 175
+- id: update_permissions
+  type: TASK_EXECUTION
+  executor:
+    name: RolePermissionRemovalExecutor
+  onSuccess: restamp_revocation
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1180
+      y: 175
+- id: restamp_revocation
+  type: TASK_EXECUTION
+  executor:
+    name: CriteriaRevocationRestampExecutor
+  onSuccess: end
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 1470
+      y: 175
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 1790
       y: 200
 ---
 resource_type: theme
