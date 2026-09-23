@@ -139,6 +139,15 @@ func (s *DeclarativeResourceTestSuite) TestConnectionModelToDTORoundTripsEachVen
 			},
 			true, "OAUTH",
 		},
+		{
+			"esignet",
+			connectionExportModel{
+				ID: "5", Type: "esignet", Name: "n", ClientID: "c", RedirectURI: "r",
+				AuthorizationEndpoint: "a", TokenEndpoint: "t", UserInfoEndpoint: "u", JwksEndpoint: "j",
+				SigningKey: "pem-key-material", SigningKeyID: "kid-1",
+			},
+			true, "ESIGNET",
+		},
 	}
 	for _, tc := range cases {
 		idpDTO, senderDTO, err := connectionModelToDTO(tc.model)
@@ -185,6 +194,40 @@ func (s *DeclarativeResourceTestSuite) TestConnectionModelToDTORoundTripsSMSVend
 		s.Equal(tc.model.ID, senderDTO.ID, tc.name)
 		s.Equal(tc.wantProvider, senderDTO.Provider, tc.name)
 	}
+}
+
+// The eSignet-only fields must survive a full export/import cycle, since a declarative
+// deployment has no other way to carry the signing key reference.
+func (s *DeclarativeResourceTestSuite) TestConnectionModelRoundTripsESignetFields() {
+	dto, err := esignetToIDPDTO(esignetConnectionRequest{
+		Name: "eSignet", ClientID: "c", RedirectURI: "r",
+		AuthorizationEndpoint: "a", TokenEndpoint: "t", UserInfoEndpoint: "u", JwksEndpoint: "j",
+		SigningKey:   "-----BEGIN RSA PRIVATE KEY-----\nbase64\n-----END RSA PRIVATE KEY-----",
+		SigningKeyID: "kid-1",
+		Scopes:       []string{"openid", "profile"}, ACRValues: "acr", UsernamePrefix: "esignet-",
+	})
+	s.Require().NoError(err)
+	dto.ID = "es-1"
+
+	model, err := connectionModelFromIDPDTO(*dto)
+	s.Require().NoError(err)
+	s.Equal("esignet", model.Type)
+	// The exported model carries the key on a single line so the export can hand it to the .env.
+	s.Equal(`-----BEGIN RSA PRIVATE KEY-----\nbase64\n-----END RSA PRIVATE KEY-----`, model.SigningKey)
+	s.NotContains(model.SigningKey, "\n")
+	s.Equal("kid-1", model.SigningKeyID)
+	s.Equal("acr", model.ACRValues)
+	s.Equal("esignet-", model.UsernamePrefix)
+	s.Equal([]string{"openid", "profile"}, model.Scopes)
+
+	reparsed, senderDTO, err := connectionModelToDTO(model)
+	s.Require().NoError(err)
+	s.Nil(senderDTO)
+	s.Equal(providers.IDPTypeESignet, reparsed.Type)
+	s.Equal(`-----BEGIN RSA PRIVATE KEY-----\nbase64\n-----END RSA PRIVATE KEY-----`,
+		idp.GetPropertyValue(reparsed.Properties, idp.PropSigningKey))
+	s.Equal("kid-1", idp.GetPropertyValue(reparsed.Properties, idp.PropSigningKeyID))
+	s.Equal("openid,profile", idp.GetPropertyValue(reparsed.Properties, idp.PropScopes))
 }
 
 func (s *DeclarativeResourceTestSuite) TestConnectionModelToDTOUnsupportedVendor() {
@@ -345,6 +388,10 @@ func (s *DeclarativeResourceTestSuite) TestGetResourceRulesForResourceSecretSele
 	}{
 		{connectionExportModel{Type: "google", ClientSecret: "s"}, []string{"ClientSecret"}},
 		{connectionExportModel{Type: "google"}, nil}, // no secret set -> nothing to externalize
+		// eSignet has no client secret: the PEM signing key is the secret that gets externalized.
+		{connectionExportModel{Type: "esignet", SigningKey: "pem"}, []string{"SigningKey"}},
+		{connectionExportModel{Type: "esignet"}, nil},
+		{connectionExportModel{Type: "esignet", ClientSecret: "s"}, nil},
 		{connectionExportModel{Type: "twilio"}, []string{"AuthToken"}},
 		{connectionExportModel{Type: "vonage"}, []string{"APISecret"}},
 		{connectionExportModel{Type: smsGatewayVendorName}, nil},

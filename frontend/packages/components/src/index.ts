@@ -32,6 +32,7 @@ export type {ToggleCardProps} from './ToggleCard/ToggleCard';
 
 /* -------------------------- ICONS -------------------------- */
 
+export {default as ESignetIcon} from './icons/logos/vendor/ESignetIcon';
 export {default as GithubIcon} from './icons/logos/vendor/GithubIcon';
 export {default as GoogleIcon} from './icons/logos/vendor/GoogleIcon';
 export {default as HeidiIcon} from './icons/logos/vendor/HeidiIcon';

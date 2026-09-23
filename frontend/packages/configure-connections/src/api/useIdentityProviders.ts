@@ -19,6 +19,7 @@ const VENDOR_TO_IDP_TYPE: Record<string, IdentityProviderType> = {
   github: IdentityProviderTypes.GITHUB,
   oidc: IdentityProviderTypes.OIDC,
   oauth: IdentityProviderTypes.OAUTH,
+  esignet: IdentityProviderTypes.ESIGNET,
 };
 
 /**

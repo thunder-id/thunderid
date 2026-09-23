@@ -291,6 +291,10 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 			reg.RegisterExecutor(ExecutorNameOpenID4VPVerify, newOpenID4VPVerifier(
 				deps.FlowFactory, deps.OpenID4VPVerifierSvc, deps.AuthnProvider))
 		},
+		ExecutorNameESignetOIDC: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameESignetOIDC, newESignetOIDCExecutor(
+				deps.FlowFactory, deps.IDPService, deps.AuthnProvider))
+		},
 		ExecutorNameSSOCheck: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSSOCheck, newSSOCheckExecutor(deps.FlowFactory, deps.SessionService))
 		},

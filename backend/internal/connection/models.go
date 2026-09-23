@@ -28,6 +28,7 @@ var idpBackedVendors = []idpBackedVendor{
 	{name: "github", idpType: providers.IDPTypeGitHub},
 	{name: "oidc", idpType: providers.IDPTypeOIDC},
 	{name: "oauth", idpType: providers.IDPTypeOAuth},
+	{name: "esignet", idpType: providers.IDPTypeESignet},
 }
 
 // smsGatewayVendorName is the connection vendor name for the generic HTTP SMS gateway. The

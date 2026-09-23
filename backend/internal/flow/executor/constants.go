@@ -14,6 +14,7 @@ const (
 	ExecutorNameGitHubAuth                   = "GithubOAuthExecutor"
 	ExecutorNameGoogleAuth                   = "GoogleOIDCAuthExecutor"
 	ExecutorNameOpenID4VPVerify              = "OpenID4VPVerifyExecutor"
+	ExecutorNameESignetOIDC                  = "ESignetOIDCExecutor"
 	ExecutorNameIdentifying                  = "IdentifyingExecutor"
 	ExecutorNameAuthAssert                   = "AuthAssertExecutor"
 	ExecutorNameProvisioning                 = "ProvisioningExecutor"

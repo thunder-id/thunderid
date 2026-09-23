@@ -21,6 +21,8 @@ const (
 	IDPTypeGoogle IDPType = "GOOGLE"
 	// IDPTypeGitHub represents a GitHub identity provider.
 	IDPTypeGitHub IDPType = "GITHUB"
+	// IDPTypeESignet represents a MOSIP eSignet identity provider.
+	IDPTypeESignet IDPType = "ESIGNET"
 )
 
 // SupportedIDPTypes lists all the supported identity provider types.
@@ -29,6 +31,7 @@ var SupportedIDPTypes = []IDPType{
 	IDPTypeOIDC,
 	IDPTypeGoogle,
 	IDPTypeGitHub,
+	IDPTypeESignet,
 }
 
 // FlowType defines the type of flow execution.

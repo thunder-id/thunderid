@@ -29,6 +29,10 @@ const (
 	CredentialTypeMagicLink = "magiclink"
 	// CredentialTypeOpenID4VP identifies a verifiable presentation.
 	CredentialTypeOpenID4VP = "openid4vp"
+	// CredentialTypeFederatedClaims identifies claims already verified by a federated executor
+	// (e.g. after an out-of-band code exchange and signature verification), carried with the
+	// entity attribute to match a returning user against.
+	CredentialTypeFederatedClaims = "federatedClaims"
 	// CredentialTypeClientSecret is the client secret of an application or agent.
 	CredentialTypeClientSecret = "clientSecret"
 	// CredentialTypeFlowSecret is the flow secret authenticating flow initiation.
@@ -45,6 +49,7 @@ var InternalCredentialTypes = []string{
 	CredentialTypeFederated,
 	CredentialTypeMagicLink,
 	CredentialTypeOpenID4VP,
+	CredentialTypeFederatedClaims,
 	// The provider manager dispatches on sub to disambiguate after a federated step.
 	UserAttributeSub,
 }

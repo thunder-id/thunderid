@@ -32,6 +32,14 @@ type connectionExportModel struct {
 	TokenExchangeEnabled  *bool    `yaml:"tokenExchangeEnabled,omitempty"  json:"tokenExchangeEnabled,omitempty"`
 	TrustedTokenAudience  string   `yaml:"trustedTokenAudience,omitempty"  json:"trustedTokenAudience,omitempty"`
 
+	// eSignet-only fields. SigningKey is the PEM private key that signs client assertions. Like
+	// ClientSecret it is a secret, so the export parameterizer externalizes it to the generated
+	// .env file rather than writing it into the YAML.
+	SigningKey     string `yaml:"signingKey,omitempty"     json:"signingKey,omitempty"`
+	SigningKeyID   string `yaml:"signingKeyId,omitempty"   json:"signingKeyId,omitempty"`
+	ACRValues      string `yaml:"acrValues,omitempty"      json:"acrValues,omitempty"`
+	UsernamePrefix string `yaml:"usernamePrefix,omitempty" json:"usernamePrefix,omitempty"`
+
 	//nolint:lll // long struct tag: both yaml and json keys needed for declarative load/export and import
 	AttributeConfiguration *providers.AttributeConfiguration `yaml:"attributeConfiguration,omitempty" json:"attributeConfiguration,omitempty"`
 

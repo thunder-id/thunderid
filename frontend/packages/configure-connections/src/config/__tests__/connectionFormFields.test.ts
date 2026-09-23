@@ -69,6 +69,49 @@ describe('fieldsForMode', () => {
     ]);
   });
 
+  it('asks for every eSignet endpoint and the signing key on create, the rest on edit', () => {
+    // eSignet endpoints are deployment specific with no defaults to fall back on, so all four
+    // are required up front. There is no client secret: it authenticates with private_key_jwt.
+    expect(fieldNames(ConnectionTypes.ESIGNET, 'create')).toEqual([
+      'name',
+      'clientId',
+      'authorizationEndpoint',
+      'tokenEndpoint',
+      'userInfoEndpoint',
+      'jwksEndpoint',
+      'signingKey',
+      'signingKeyId',
+    ]);
+    expect(fieldNames(ConnectionTypes.ESIGNET, 'edit')).toEqual([
+      'name',
+      'clientId',
+      'authorizationEndpoint',
+      'tokenEndpoint',
+      'userInfoEndpoint',
+      'jwksEndpoint',
+      'signingKey',
+      'signingKeyId',
+      'redirectUri',
+      'scopes',
+      'acrValues',
+      'usernamePrefix',
+    ]);
+  });
+
+  it('treats the eSignet signing key as a multiline secret', () => {
+    // It is a PEM private key, so it must be stored write-only and entered in a textarea: a
+    // single-line input strips the newlines on paste and corrupts the key.
+    const signingKey = fieldsForMode(ConnectionTypes.ESIGNET, 'create').find((field) => field.name === 'signingKey');
+
+    expect(signingKey?.kind).toBe('secret');
+    expect(signingKey?.multiline).toBe(true);
+    expect(signingKey?.required).toBe(true);
+  });
+
+  it('declares no client secret for eSignet, which authenticates with private_key_jwt', () => {
+    expect(fieldsForMode(ConnectionTypes.ESIGNET, 'edit').some((field) => field.name === 'clientSecret')).toBe(false);
+  });
+
   it('does not hide any SMS vendor fields on create', () => {
     expect(fieldNames(ConnectionTypes.TWILIO, 'create')).toEqual(fieldNames(ConnectionTypes.TWILIO, 'edit'));
     expect(fieldNames(ConnectionTypes.VONAGE, 'create')).toEqual(fieldNames(ConnectionTypes.VONAGE, 'edit'));

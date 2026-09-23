@@ -161,10 +161,15 @@ func (e *connectionExporter) GetResourceRulesForResource(
 	}
 
 	if isIDPBackedVendorName(model.Type) {
-		if model.ClientSecret == "" {
+		// eSignet issues no client secret: private_key_jwt makes the PEM signing key the secret.
+		field, value := "ClientSecret", model.ClientSecret
+		if model.Type == "esignet" {
+			field, value = "SigningKey", model.SigningKey
+		}
+		if value == "" {
 			return &declarativeresource.ResourceRules{}
 		}
-		return &declarativeresource.ResourceRules{Variables: []string{"ClientSecret"}}
+		return &declarativeresource.ResourceRules{Variables: []string{field}}
 	}
 
 	switch model.Type {
@@ -233,6 +238,10 @@ func connectionModelFromIDPDTO(dto providers.IDPDTO) (connectionExportModel, err
 		JwksEndpoint:           values[idp.PropJwksEndpoint],
 		Issuer:                 values[idp.PropIssuer],
 		TrustedTokenAudience:   values[idp.PropTrustedTokenAudience],
+		SigningKey:             singleLineSigningKey(values[idp.PropSigningKey]),
+		SigningKeyID:           values[idp.PropSigningKeyID],
+		ACRValues:              values[idp.PropACRValues],
+		UsernamePrefix:         values[idp.PropUsernamePrefix],
 		AttributeConfiguration: dto.AttributeConfiguration,
 	}
 	if raw, ok := values[idp.PropTokenExchangeEnabled]; ok {
@@ -316,6 +325,20 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 			Issuer: model.Issuer, Scopes: model.Scopes,
 			Prompt: model.Prompt, TokenExchangeEnabled: model.TokenExchangeEnabled,
 			TrustedTokenAudience: model.TrustedTokenAudience, AttributeConfiguration: model.AttributeConfiguration,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		dto.ID = model.ID
+		return dto, nil, nil
+	case "esignet":
+		dto, err := esignetToIDPDTO(esignetConnectionRequest{
+			Name: model.Name, Description: model.Description, ClientID: model.ClientID,
+			RedirectURI: model.RedirectURI, AuthorizationEndpoint: model.AuthorizationEndpoint,
+			TokenEndpoint: model.TokenEndpoint, UserInfoEndpoint: model.UserInfoEndpoint,
+			JwksEndpoint: model.JwksEndpoint, SigningKey: model.SigningKey,
+			SigningKeyID: model.SigningKeyID, Scopes: model.Scopes, ACRValues: model.ACRValues,
+			UsernamePrefix: model.UsernamePrefix, AttributeConfiguration: model.AttributeConfiguration,
 		})
 		if err != nil {
 			return nil, nil, err

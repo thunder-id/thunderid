@@ -45,6 +45,16 @@ describe('computeExecutorConnections', () => {
       expect(result[0].connections).toEqual(['github-1']);
     });
 
+    it('should map eSignet IDP to ESignetOIDCExecutor', () => {
+      const idps = [createIdp('esignet-1', IdentityProviderTypes.ESIGNET)];
+
+      const result = computeExecutorConnections({identityProviders: idps});
+
+      expect(result).toHaveLength(1);
+      expect(result[0].executorName).toBe(ExecutionTypes.ESignetFederation);
+      expect(result[0].connections).toEqual(['esignet-1']);
+    });
+
     it('should group multiple IDPs of the same type', () => {
       const idps = [
         createIdp('google-1', IdentityProviderTypes.GOOGLE, 'Google 1'),

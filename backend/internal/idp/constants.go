@@ -21,6 +21,10 @@ const (
 	PropTokenExchangeEnabled  = "token_exchange_enabled"
 	PropTrustedTokenAudience  = "trusted_token_audience"
 	PropIDJagEnabled          = "id_jag_enabled"
+	PropSigningKey            = "signing_key"
+	PropSigningKeyID          = "signing_key_id"
+	PropACRValues             = "acr_values"
+	PropUsernamePrefix        = "username_prefix"
 )
 
 // Claims and scopes shared by the OIDC-style providers. A claim is what the provider emits; a scope
@@ -59,6 +63,10 @@ const (
 	gitHubUserEmailScope = "user:email"
 	defaultGitHubScopes  = gitHubUserEmailScope
 )
+
+// Defaults for MOSIP eSignet. Every endpoint is deployment specific, so only the scopes carry a
+// default: eSignet issues no email claim, which is why the OIDC default set is not reused here.
+const defaultESignetScopes = "openid,profile"
 
 // idpPropertyConfig defines the required and optional properties for an IDP type,
 // along with any default values.
@@ -126,6 +134,28 @@ var idpPropertyConfigs = map[providers.IDPType]idpPropertyConfig{
 			PropTokenEndpoint:         googleTokenEndpoint,
 			PropUserInfoEndpoint:      googleUserInfoEndpoint,
 			PropJwksEndpoint:          googleJwksEndpoint,
+		},
+	},
+	providers.IDPTypeESignet: {
+		Required: []string{
+			PropClientID,
+			PropRedirectURI,
+			PropAuthorizationEndpoint,
+			PropTokenEndpoint,
+			PropUserInfoEndpoint,
+			PropJwksEndpoint,
+			PropSigningKey,
+			PropSigningKeyID,
+		},
+		Optional: []string{
+			PropScopes,
+			PropACRValues,
+			PropUsernamePrefix,
+		},
+		// eSignet authenticates with private_key_jwt, so there is no client secret. PropSigningKey
+		// holds the PEM private key that signs the client assertion and is stored encrypted.
+		Defaults: map[string]string{
+			PropScopes: defaultESignetScopes,
 		},
 	},
 	providers.IDPTypeGitHub: {

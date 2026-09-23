@@ -616,6 +616,11 @@ const sidebars: SidebarsConfig = {
                 },
                 {
                   type: 'doc',
+                  id: 'guides/identity-providers/add-esignet-provider',
+                  label: 'Add eSignet',
+                },
+                {
+                  type: 'doc',
                   id: 'guides/identity-providers/add-oidc-provider',
                   label: 'Add OIDC Provider',
                 },
