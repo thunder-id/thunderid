@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
@@ -23,6 +24,8 @@ import (
 const (
 	testUniquenessUserType = "INTERNAL"
 	testExistingUserID     = "user-existing"
+	testTargetOUID         = "ou-sales"
+	testCrossOUEmail       = "bob@example.com"
 )
 
 type AttributeUniquenessValidatorTestSuite struct {
@@ -234,6 +237,116 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_NoUniqueAttribut
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity")
+}
+
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_CrossOU_EmailInTargetOU() {
+	tests := []struct {
+		name           string
+		runtimeData    map[string]string
+		matchOUID      string
+		matchNotFound  bool
+		expectedStatus providers.ExecutorStatus
+	}{
+		{
+			name:           "email in target OU is rejected",
+			runtimeData:    map[string]string{ouIDKey: testTargetOUID},
+			matchOUID:      testTargetOUID,
+			expectedStatus: providers.ExecUserInputRequired,
+		},
+		{
+			name:           "email in default OU is rejected when no OU is selected",
+			runtimeData:    map[string]string{defaultOUIDKey: "ou-default"},
+			matchOUID:      "ou-default",
+			expectedStatus: providers.ExecUserInputRequired,
+		},
+		{
+			name:           "email only in another OU is allowed",
+			runtimeData:    map[string]string{ouIDKey: testTargetOUID},
+			matchOUID:      "ou-marketing",
+			expectedStatus: providers.ExecComplete,
+		},
+		{
+			name:           "email not found is allowed",
+			runtimeData:    map[string]string{ouIDKey: testTargetOUID},
+			matchNotFound:  true,
+			expectedStatus: providers.ExecComplete,
+		},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			tt.runtimeData[userTypeKey] = testUniquenessUserType
+			ctx := &providers.NodeContext{
+				ExecutionID:    "flow-1",
+				UserInputs:     map[string]string{"email": testCrossOUEmail},
+				RuntimeData:    tt.runtimeData,
+				NodeProperties: map[string]interface{}{common.NodePropertyAllowCrossOUProvisioning: true},
+			}
+
+			suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, mock.Anything, testUniquenessUserType).
+				Return([]string{"username"}, nil).Once()
+
+			if tt.matchNotFound {
+				suite.mockEntityProvider.On("SearchEntities", map[string]interface{}{"email": testCrossOUEmail}).
+					Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound,
+						"not found", "")).Once()
+			} else {
+				suite.mockEntityProvider.On("SearchEntities", map[string]interface{}{"email": testCrossOUEmail}).
+					Return([]*providers.Entity{{ID: testExistingUserID, OUID: tt.matchOUID}}, nil).Once()
+			}
+
+			resp, err := suite.executor.Execute(ctx)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), tt.expectedStatus, resp.Status)
+			if tt.expectedStatus == providers.ExecUserInputRequired {
+				assert.Equal(suite.T(), ErrUserAlreadyExistsInTargetOU.Code, resp.Error.Code)
+			}
+			suite.mockEntityProvider.AssertExpectations(suite.T())
+		})
+	}
+}
+
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_CrossOU_SearchSystemError_ReturnsFailure() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		UserInputs:  map[string]string{"email": testCrossOUEmail},
+		RuntimeData: map[string]string{
+			userTypeKey: testUniquenessUserType,
+			ouIDKey:     testTargetOUID,
+		},
+		NodeProperties: map[string]interface{}{common.NodePropertyAllowCrossOUProvisioning: true},
+	}
+
+	suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, mock.Anything, testUniquenessUserType).
+		Return([]string{}, nil)
+	suite.mockEntityProvider.On("SearchEntities", map[string]interface{}{"email": testCrossOUEmail}).
+		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "db error", ""))
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), resp)
+}
+
+func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_CrossOUDisabled_SkipsTargetOUCheck() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-1",
+		UserInputs:  map[string]string{"email": testCrossOUEmail},
+		RuntimeData: map[string]string{
+			userTypeKey: testUniquenessUserType,
+			ouIDKey:     testTargetOUID,
+		},
+	}
+
+	suite.mockEntityTypeService.On("GetUniqueAttributes", mock.Anything, mock.Anything, testUniquenessUserType).
+		Return([]string{}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything)
 }
 
 func TestAttributeUniquenessValidatorSuite(t *testing.T) {

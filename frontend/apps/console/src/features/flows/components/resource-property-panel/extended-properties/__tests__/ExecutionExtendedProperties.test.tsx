@@ -1638,10 +1638,23 @@ describe('ExecutionExtendedProperties', () => {
       },
     } as unknown as Resource;
 
-    it('should render NoConfigProperties message', () => {
+    it('should render the allowCrossOUProvisioning checkbox', () => {
       render(<ExecutionExtendedProperties resource={attributeUniquenessResource} onChange={mockOnChange} />);
 
-      expect(screen.getByText('flows:core.executions.noConfig.description')).toBeInTheDocument();
+      expect(screen.getByText('flows:core.executions.federation.allowCrossOUProvisioning.label')).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.noConfig.description')).not.toBeInTheDocument();
+    });
+
+    it('should call onChange when allowCrossOUProvisioning checkbox is toggled', () => {
+      render(<ExecutionExtendedProperties resource={attributeUniquenessResource} onChange={mockOnChange} />);
+
+      fireEvent.click(screen.getByRole('checkbox'));
+
+      expect(mockOnChange).toHaveBeenCalledWith(
+        'data.properties.allowCrossOUProvisioning',
+        true,
+        attributeUniquenessResource,
+      );
     });
   });
 

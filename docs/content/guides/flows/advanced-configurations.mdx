@@ -2132,6 +2132,9 @@ Checks that unique schema attributes supplied in user inputs are not already hel
 
 **Input Configuration:** None. This executor validates the unique-attribute values that are already present in user inputs; it has no registered node input defaults.
 
+**Properties:**
+- `allowCrossOUProvisioning` (optional, default `false`): set this when the flow provisions users with cross-OU provisioning enabled. The executor then also checks whether a user with the provided email already exists in the target organization unit (`ouId`, or `defaultOUID` when no organization unit is selected) and prompts for a different email if one does. Users with the same email in other organization units are allowed.
+
 **Example:**
 
 ```json
