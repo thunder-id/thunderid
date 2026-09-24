@@ -3579,6 +3579,7 @@ const translations = {
     'core.executions.names.httpRequest': 'HTTP Request',
     'core.executions.names.ouCreation': 'OU Creation',
     'core.executions.names.userTypeResolver': 'User Type Resolver',
+    'core.executions.names.agentTypeResolver': 'Agent Type Resolver',
 
     // OTP executor
     'core.executions.otp.description': 'Configure the OTP executor settings.',
@@ -3758,6 +3759,24 @@ const translations = {
     'core.executions.userTypeResolver.allowedUserTypes.placeholder': 'e.g., employee, customer',
     'core.executions.userTypeResolver.allowedUserTypes.hint':
       'Comma-separated list of allowed user type names to filter available types.',
+
+    // Entity category shared by mode-driven executors
+    'core.executions.entityMode.user': 'User',
+    'core.executions.entityMode.agent': 'Agent',
+
+    // Attribute uniqueness validator executor
+    'core.executions.attributeUniquenessValidator.description':
+      'Check the unique attributes of the entity being created against existing records.',
+    'core.executions.attributeUniquenessValidator.mode.label': 'Entity Category',
+    'core.executions.attributeUniquenessValidator.mode.hint':
+      'Which kind of entity the uniqueness check runs against. Must match the provisioning node in the same flow.',
+
+    // Agent type resolver executor
+    'core.executions.agentTypeResolver.description': 'Configure the agent type resolver settings.',
+    'core.executions.agentTypeResolver.allowedAgentTypes.label': 'Allowed Agent Types',
+    'core.executions.agentTypeResolver.allowedAgentTypes.placeholder': 'e.g., default',
+    'core.executions.agentTypeResolver.allowedAgentTypes.hint':
+      'Comma-separated list of allowed agent type names to filter available types.',
 
     // HTTP Request executor
     'core.executions.httpRequest.description': 'Configure the HTTP request executor settings.',

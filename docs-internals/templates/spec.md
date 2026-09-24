@@ -5,8 +5,7 @@
 - **Related documents:** <ISSUES, PROTOCOLS, THREAT MODEL, OR OTHER REFERENCES>
 
 <Summary, Architecture, Detailed design, Requirements and acceptance criteria, and Change log are
-required. Open questions and the subsections under Detailed design are conditional. Omit conditional
-sections that do not apply. Remove all template instructions before the specification is accepted.>
+required. Open questions and the subsections under Detailed design are conditional. Omit conditional sections that do not apply. Remove all template instructions before the specification is accepted.>
 
 ## Summary
 
@@ -20,8 +19,7 @@ section concise and do not repeat the detailed requirements.>
 ## Detailed design
 
 <Use one subsection for each independent mechanism or responsibility. Describe its behavior, ownership,
-validation, failure behavior, lifecycle, and rationale where relevant. Keep cross-cutting security analysis
-in the separate threat model, but state security constraints that directly affect the mechanism.>
+validation, failure behavior, lifecycle, and rationale where relevant. Keep cross-cutting security analysis in the separate threat model, but state security constraints that directly affect the mechanism.>
 
 ### <SUBSECTION TITLE>
 
@@ -51,8 +49,7 @@ or organization-level. Omit this subsection when the feature has no configuratio
 ## Requirements
 
 <Every requirement and acceptance criterion below must be covered by the preceding design. Do not keep a
-requirement that is deferred or partially covered. Move unsupported requirements to a future
-specification.>
+requirement that is deferred or partially covered. Move unsupported requirements to a future specification.>
 
 ### R1. <REQUIREMENT TITLE>
 

@@ -18,6 +18,10 @@ import TabItem from '@theme/TabItem';
 
 The MCP server is available through the `/mcp` endpoint of your <ProductName /> instance (default: `https://localhost:8090/mcp`). MCP clients discover the available tools automatically through the protocol.
 
+### Protocol Version Support
+
+<ProductName /> supports MCP protocol versions `2024-11-05` through `2026-07-28`, including the stateless core introduced in `2026-07-28`. Existing MCP clients continue to work without changes; <ProductName /> negotiates the protocol version per request. See the [MCP specification](https://modelcontextprotocol.io/specification/2026-07-28) for what changes between versions.
+
 ### Authentication
 
 The endpoint follows the [MCP Authorization Specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization). The MCP server publishes protected resource metadata at `/.well-known/oauth-protected-resource`, advertising <ProductName /> as the OAuth authorization server. If a [trusted issuer](../../guides/trusted-issuer) is configured, the metadata advertises that issuer instead. Spec-compliant MCP clients discover this automatically and run an OAuth authorization code + PKCE flow: you sign in through the browser, and the client obtains and refreshes tokens on its own. There is no manual token handling.

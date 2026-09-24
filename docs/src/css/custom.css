@@ -202,6 +202,19 @@ h5 {
   --ifm-paragraph-margin-bottom: 1.1rem;
 }
 
+/* Infima's own default.css re-declares --ifm-h2/h3-font-size on `.markdown > h2`/`.markdown > h3`
+   (see .markdown > h2 / .markdown > h3 in infima/dist/css/default/default.css), which is more
+   specific than the plain `:root` override above, so the 1.4rem/1.15rem sizes set there never
+   actually applied to real prose headings — they rendered at Infima's stock 2rem/1.5rem instead.
+   Matching that same selector here is what makes the override win. */
+.markdown > h2 {
+  --ifm-h2-font-size: 1.4rem;
+}
+
+.markdown > h3 {
+  --ifm-h3-font-size: 1.15rem;
+}
+
 /* Extra top margin on h2 and h3 inside doc content to create section separation */
 .markdown h2 {
   margin-top: 2.5rem;
@@ -216,6 +229,14 @@ h5 {
 /* Override Docusaurus default 0.875rem prose size */
 .markdown {
   font-size: 1rem;
+}
+
+/* Body text color aligned with the blog's prose (BlogPostProse.tsx), which colors its
+   paragraphs and list items with the Oxygen UI theme's text.secondary rather than the
+   solid, full-opacity text Infima uses by default. */
+.theme-doc-markdown.markdown p,
+.theme-doc-markdown.markdown li {
+  color: var(--oxygen-palette-text-secondary);
 }
 
 /* Constrain prose width for readability, except on landing page and SDK overview */
@@ -244,25 +265,148 @@ h5 {
   max-width: 100%;
 }
 
+/* ── Markdown tables: rounded card with a quiet header, no grid lines ──── */
+/* Matches the Ecosystem detail page's TableSection (src/components/Ecosystem/Detail/sections.tsx). */
+.theme-doc-markdown.markdown table {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 12px;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  font-size: 0.85rem;
+  background: rgba(0, 0, 0, 0.015);
+}
 
-/* ── Code block title (filename tab) ──────────────────────────────────── */
-[class*='codeBlockTitle'] {
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-  background: color-mix(in srgb, var(--ifm-color-primary) 5%, var(--ifm-color-emphasis-100));
+[data-theme='dark'] .theme-doc-markdown.markdown table {
+  border-color: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.theme-doc-markdown.markdown table thead tr {
+  background: transparent;
+}
+
+.theme-doc-markdown.markdown table th,
+.theme-doc-markdown.markdown table td {
+  border: none;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  padding: 0.7rem 1.1rem;
+  text-align: left;
+}
+
+[data-theme='dark'] .theme-doc-markdown.markdown table th,
+[data-theme='dark'] .theme-doc-markdown.markdown table td {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.theme-doc-markdown.markdown table th {
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ifm-color-emphasis-600);
+}
+
+[data-theme='dark'] .theme-doc-markdown.markdown table th {
+  color: var(--ifm-color-emphasis-500);
+}
+
+.theme-doc-markdown.markdown table tr:last-child td {
+  border-bottom: none;
+}
+
+.theme-doc-markdown.markdown table tr:nth-child(2n) {
+  background: none;
+}
+
+.theme-doc-markdown.markdown table td,
+.theme-doc-markdown.markdown table th {
+  overflow-wrap: break-word;
+}
+
+/* Inline code inside a table cell reads as plain monospace text, not a pill. */
+.theme-doc-markdown.markdown table td code:not([class*='language-']) {
+  background-color: transparent;
+  border: none;
+  padding: 0;
+  font-size: 0.9em;
+  color: var(--ifm-color-emphasis-700);
+}
+
+[data-theme='dark'] .theme-doc-markdown.markdown table td code:not([class*='language-']) {
+  color: var(--ifm-color-emphasis-600);
+}
+
+
+/* ── Code block bar (title + language badge + buttons) ──────────────────
+   Rendered by the swizzled src/theme/CodeBlock/Layout, always present (not
+   conditional on a `title="..."` metastring) so every .mdx code block carries
+   the same chrome as the SDKs & Tools registry's CodeCard component
+   (Ecosystem/Detail/primitives.tsx): a bar with the file/title on the left,
+   the language badge and copy button on the right. */
+.tid-codeblock__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* A package-manager tab strip (.tid-codeblock__tabs) can outgrow the bar at realistic
+     content widths (4 tabs + language badge + buttons) — wrap it to its own row below the
+     badge/buttons instead of silently clipping tabs into an undiscoverable scroll area. */
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  padding: 0.5rem 0.875rem;
   border-bottom: 1px solid color-mix(in srgb, var(--ifm-color-primary) 15%, var(--ifm-color-emphasis-200));
-  color: var(--ifm-color-content-secondary);
+  background: color-mix(in srgb, var(--ifm-color-primary) 5%, var(--ifm-color-emphasis-100));
+}
+
+[data-theme='dark'] .tid-codeblock__bar {
+  border-bottom-color: color-mix(in srgb, var(--ifm-color-primary) 20%, rgba(255, 255, 255, 0.06));
+  background: color-mix(in srgb, var(--ifm-color-primary) 8%, rgba(255, 255, 255, 0.04));
+}
+
+.tid-codeblock__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--ifm-font-family-monospace);
   font-size: 0.78rem;
   font-weight: 500;
   letter-spacing: 0.01em;
-  padding: 0.45rem var(--ifm-pre-padding);
+  color: color-mix(in srgb, var(--ifm-color-primary) 40%, var(--ifm-color-emphasis-600));
 }
 
-[data-theme='dark'] [class*='codeBlockTitle'] {
-  background: color-mix(in srgb, var(--ifm-color-primary) 8%, rgba(255, 255, 255, 0.04));
-  border-bottom-color: color-mix(in srgb, var(--ifm-color-primary) 20%, rgba(255, 255, 255, 0.06));
-  color: color-mix(in srgb, var(--ifm-color-primary) 40%, var(--ifm-color-emphasis-600));
+.tid-codeblock__meta {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.tid-codeblock__lang {
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ifm-color-emphasis-500);
+}
+
+/* Buttons sit in-flow inside the bar now, not absolutely positioned over the
+   code, so they no longer need theme-classic's hover-to-reveal treatment. */
+.tid-codeblock__meta [class*='buttonGroup'] {
+  position: static;
+}
+
+.tid-codeblock__meta [class*='buttonGroup'] button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 7px;
+  opacity: 1 !important;
 }
 
 /* ------------------------------ Inline code ---------------------------- */
@@ -290,15 +434,21 @@ h5 {
 [class*='codeBlockContainer_'] {
   background: transparent;
   box-shadow: none;
-  border-radius: 8px;
+  border-radius: 11px;
+  border: 1px solid color-mix(in srgb, var(--ifm-color-primary) 8%, var(--ifm-color-emphasis-200));
   overflow: hidden;
   margin-bottom: 1rem;
+}
+
+[data-theme='dark'] .theme-code-block [class*='codeBlockContainer'],
+[data-theme='dark'] [class*='codeBlockContainer_'] {
+  border-color: color-mix(in srgb, var(--ifm-color-primary) 7%, rgba(255, 255, 255, 0.07));
 }
 
 /* Make the pre fill the container — sole visual layer */
 .theme-code-block [class*='codeBlockContainer'] pre.prism-code,
 [class*='codeBlockContainer_'] pre.prism-code {
-  border-radius: 8px;
+  border-radius: 0;
   margin: 0;
   padding: 1rem 1.25rem;
   font-size: 0.875rem;
@@ -311,16 +461,70 @@ h5 {
   background: transparent;
 }
 
-/* Keep the copy button inside */
-[class*='codeBlockContainer'] [class*='buttonGroup'] {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-}
-
 /* Universal gap between tab bar and tab content */
 .tabs-container > .margin-top--md {
   margin-top: 1.5rem;
+}
+
+/* Compact tab strip (@theme/Tabs usage outside CodeGroup — protocol/OS pickers etc.) —
+   Infima's defaults render these at 16px/bold/16px padding, reading as oversized. Package
+   manager tabs (CodeGroup.tsx) no longer go through this: they render inside the code
+   block's own .tid-codeblock__bar instead (see .tid-codeblock__tabs below). */
+.tabs-container .tabs__item {
+  padding: 0.4rem 0;
+  margin-right: 1.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.tabs-container .tabs__item:last-child {
+  margin-right: 0;
+}
+
+/* Package-manager icon (CodeGroup.tsx, KNOWN_ICONS) — greyscale except on the active tab,
+   so the selected package manager stands out instead of every icon competing for attention. */
+.codegroup-tab-icon {
+  filter: grayscale(1) opacity(0.55);
+  transition: filter 0.15s ease;
+  height: 1em;
+  width: 1em;
+}
+
+.tabs__item--active .codegroup-tab-icon,
+.tid-codeblock__tab--active .codegroup-tab-icon {
+  filter: none;
+}
+
+/* Package-manager tab switcher rendered inside a code block's own .tid-codeblock__bar
+   (CodeGroup.tsx + the groupTabs branch in src/theme/CodeBlock/Layout) — takes the title's
+   usual slot on the left, since these blocks never carry a title of their own. */
+.tid-codeblock__tabs {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+  min-width: 0;
+}
+
+.tid-codeblock__tab {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ifm-color-emphasis-500);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tid-codeblock__tab--active {
+  color: var(--ifm-color-content);
 }
 
 /* ------------------------------ Admonitions ----------------------------- */
@@ -1492,16 +1696,57 @@ li:has(> .table-of-contents__link[href="#prerequisites"]) {
 }
 
 
+/* Docusaurus's own TOC/styles.module.css puts `position: sticky` + a viewport-height
+   `max-height` + `overflow-y: auto` directly on this element, capping it to its own
+   internally-scrolling box — independent of, and in addition to, the sticky wrapper
+   `DocItem/TOC/Desktop` adds around it (that wrapper's stickiness is what actually
+   matters; this one is redundant and its cap is what kept truncating a long TOC).
+   Neutralized here so the TOC renders at its natural full height and the wrapper's
+   own `position: sticky` is the only one doing anything. */
 .theme-doc-toc-desktop {
   padding-left: 0.75rem;
   margin-top: 2.7rem;
-  font-size: 1.5em;
+  font-size: 13px;
   line-height: 1.5;
+  /* `relative`, not `static`: the snake/stepper SVG overlay in TOC/index.tsx is
+     portaled into this element as `position: absolute` children, positioned using
+     Y-offsets measured relative to this element's own bounding rect. It needs this
+     element to establish a CSS containing block (any non-static position works) or
+     the circles/lines render relative to the wrong ancestor and drift out of
+     alignment with their corresponding TOC text. */
+  position: relative;
+  /* Infima's own default.css bundles `position: sticky` with
+     `top: calc(var(--ifm-navbar-height) + 1rem)` on this exact selector. That `top`
+     was harmless under `sticky` (it only matters once scrolling triggers the stuck
+     state), but under `relative` it becomes a permanent ~76px downward *paint* offset
+     that siblings don't see (a `position: relative` element's layout slot ignores its
+     own `top`/`left`, only its painted position moves) — so this box visually
+     overlapped its "Explore with AI" sibling by the topbar's height. Reset here since
+     this element no longer needs the sticky anchor point at all (the wrapper handles
+     that now). */
+  top: auto;
+  max-height: none;
+  overflow-y: visible;
+  /* This element is a direct flex child of DocItem/TOC/Desktop's sticky column
+     wrapper; without this it can shrink and overlap its "Explore with AI" sibling
+     (see that file's comment for why `flexShrink: 0` has to land here specifically,
+     not on a wrapping element). */
+  flex-shrink: 0;
 }
 
 .theme-doc-toc-desktop .table-of-contents__link {
   padding-top: 0.08em;
   padding-bottom: 0.08em;
+  color: rgba(0, 0, 0, 0.5);
+  transition: color 0.15s;
+}
+
+[data-theme='dark'] .theme-doc-toc-desktop .table-of-contents__link {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.theme-doc-toc-desktop .table-of-contents__link:hover {
+  color: var(--ifm-color-content);
 }
 /* ─── GettingStartedJourney component ──────────────────────────────────── */
 
@@ -1865,21 +2110,29 @@ a.connect-card {
   text-decoration: none;
 }
 
+/* Same card chrome as the Previous/Next footer nav (PrevNextNav.tsx): a subtle
+   rgba border/tint at rest, and a blue-accent border + tint on hover, rather than
+   the flat --ifm-color-emphasis-300 border this card used before. */
 .next-steps-card {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
   padding: 1.25rem 1.4rem;
-  border-radius: 10px;
-  border: 1px solid var(--ifm-color-emphasis-300);
-  background: transparent;
-  transition: border-color 0.15s, background 0.15s;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  background: rgba(0, 0, 0, 0.02);
+  transition: all 0.2s ease;
   cursor: pointer;
 }
 
+[data-theme='dark'] .next-steps-card {
+  border-color: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.02);
+}
+
 .next-steps-card:hover {
-  border-color: var(--ifm-color-primary);
-  background: color-mix(in srgb, var(--ifm-color-primary) 5%, transparent);
+  border-color: rgba(54, 136, 255, 0.35);
+  background: rgba(54, 136, 255, 0.04);
 }
 
 .next-steps-card__title {

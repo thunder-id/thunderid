@@ -59,6 +59,9 @@ build: build_frontend build_backend package_samples
 build_backend:
 	./build.sh build_backend $(OS) $(ARCH)
 
+build_cp_backend:
+	./build.sh build_cp_backend $(OS) $(ARCH)
+
 build_frontend:
 	./build.sh build_frontend
 
@@ -268,7 +271,7 @@ help:
 	@echo "  generate_i18n                 - Extract i18n messages and generate defaults.go."
 	@echo "  help                          - Show this help message."
 
-.PHONY: all prepare clean build build_backend build_frontend build_docs package_samples run
+.PHONY: all prepare clean build build_backend build_cp_backend build_frontend build_docs package_samples run
 .PHONY: docker-build docker-build-latest docker-build-multiarch
 .PHONY: docker-build-multiarch-latest docker-build-multiarch-push
 .PHONY: test_unit test_integration build_with_coverage build_with_coverage_only test

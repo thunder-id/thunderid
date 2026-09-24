@@ -434,6 +434,70 @@ func (_c *EntityProviderInterfaceMock_GetTransitiveEntityGroups_Call) RunAndRetu
 	return _c
 }
 
+// GetTransitiveGroupAncestors provides a mock function for the type EntityProviderInterfaceMock
+func (_mock *EntityProviderInterfaceMock) GetTransitiveGroupAncestors(groupID string) ([]string, *entityprovider.EntityProviderError) {
+	ret := _mock.Called(groupID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetTransitiveGroupAncestors")
+	}
+
+	var r0 []string
+	var r1 *entityprovider.EntityProviderError
+	if returnFunc, ok := ret.Get(0).(func(string) ([]string, *entityprovider.EntityProviderError)); ok {
+		return returnFunc(groupID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string) []string); ok {
+		r0 = returnFunc(groupID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(string) *entityprovider.EntityProviderError); ok {
+		r1 = returnFunc(groupID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*entityprovider.EntityProviderError)
+		}
+	}
+	return r0, r1
+}
+
+// EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTransitiveGroupAncestors'
+type EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call struct {
+	*mock.Call
+}
+
+// GetTransitiveGroupAncestors is a helper method to define mock.On call
+//   - groupID string
+func (_e *EntityProviderInterfaceMock_Expecter) GetTransitiveGroupAncestors(groupID interface{}) *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call {
+	return &EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call{Call: _e.mock.On("GetTransitiveGroupAncestors", groupID)}
+}
+
+func (_c *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call) Run(run func(groupID string)) *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call) Return(strings []string, entityProviderError *entityprovider.EntityProviderError) *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call {
+	_c.Call.Return(strings, entityProviderError)
+	return _c
+}
+
+func (_c *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call) RunAndReturn(run func(groupID string) ([]string, *entityprovider.EntityProviderError)) *EntityProviderInterfaceMock_GetTransitiveGroupAncestors_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IdentifyEntity provides a mock function for the type EntityProviderInterfaceMock
 func (_mock *EntityProviderInterfaceMock) IdentifyEntity(filters map[string]interface{}) (*string, *entityprovider.EntityProviderError) {
 	ret := _mock.Called(filters)

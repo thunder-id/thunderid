@@ -33,6 +33,10 @@ const CorrelationIDHeaderName = "X-Correlation-ID"
 // a flow directly over HTTP.
 const FlowSecretHeaderName = "Flow-Secret"
 
+// APIKeyHeaderName is the header a management API key is presented in, rather than Authorization,
+// so it never competes with an OAuth bearer token a request may legitimately carry as well.
+const APIKeyHeaderName = "API-Key"
+
 // AttestationTokenHeaderName is the name of the header used to present a platform attestation token
 // (e.g. a Google Play Integrity token) when a mobile application initiates a flow directly over HTTP.
 const AttestationTokenHeaderName = "Attestation-Token"

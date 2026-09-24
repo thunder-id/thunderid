@@ -33,6 +33,11 @@ func (p *object) getDisplayName() string {
 	return p.displayName
 }
 
+// getEnum returns no values: object properties do not constrain their value to a fixed set.
+func (p *object) getEnum() []string {
+	return nil
+}
+
 func (p *object) isUnique() bool {
 	return false
 }

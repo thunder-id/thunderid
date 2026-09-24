@@ -62,6 +62,8 @@ type EntityServiceInterface interface {
 	GetGroupCountForEntity(ctx context.Context, entityID string) (int, error)
 	GetEntityGroups(ctx context.Context, entityID string, limit, offset int) ([]providers.EntityGroup, error)
 	GetTransitiveEntityGroups(ctx context.Context, entityID string) ([]providers.EntityGroup, error)
+	// GetTransitiveGroupAncestors resolves the ancestor chain of a single group.
+	GetTransitiveGroupAncestors(ctx context.Context, groupID string) ([]string, error)
 
 	// Authentication
 	AuthenticateEntity(ctx context.Context, identifiers map[string]interface{},
@@ -85,6 +87,7 @@ type EntityServiceInterface interface {
 // Covers both DB-backed and declarative (YAML) group memberships.
 type GroupMembershipProvider interface {
 	GetTransitiveGroupsForEntity(ctx context.Context, entityID string) ([]providers.EntityGroup, error)
+	GetTransitiveAncestorGroups(ctx context.Context, groupID string) ([]string, error)
 }
 
 // entityService is the default implementation of EntityServiceInterface.
@@ -450,6 +453,16 @@ func (s *entityService) GetTransitiveEntityGroups(
 		return []providers.EntityGroup{}, nil
 	}
 	return s.groupMembershipProvider.GetTransitiveGroupsForEntity(ctx, entityID)
+}
+
+// GetTransitiveGroupAncestors resolves the ancestor chain of a single group.
+func (s *entityService) GetTransitiveGroupAncestors(
+	ctx context.Context, groupID string,
+) ([]string, error) {
+	if s.groupMembershipProvider == nil {
+		return []string{}, nil
+	}
+	return s.groupMembershipProvider.GetTransitiveAncestorGroups(ctx, groupID)
 }
 
 // AuthenticateEntity authenticates an entity by combining identify and verify operations.

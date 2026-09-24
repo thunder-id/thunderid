@@ -14,7 +14,6 @@ package:
 description: Server-side SDK for verifying tokens and securing Node.js services.
 docs:
   overview: /docs/next/sdks-and-tools/node/overview
-  apiReference: /docs/next/sdks-and-tools/node/apis
   quickstart: /docs/next/getting-started/connect-your-application/node
 links:
   github: https://github.com/thunder-id/javascript-sdks

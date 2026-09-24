@@ -70,6 +70,13 @@ function optionalString(p: Problems, obj: Record<string, unknown>, path: string,
   }
 }
 
+function optionalBoolean(p: Problems, obj: Record<string, unknown>, path: string, key: string): void {
+  const value = obj[key];
+  if (value !== undefined && typeof value !== 'boolean') {
+    p.add(`${path}${key}`, 'must be a boolean when present');
+  }
+}
+
 function requireEnum<T extends string>(
   p: Problems,
   obj: Record<string, unknown>,
@@ -108,6 +115,23 @@ function validateCode(p: Problems, value: unknown, path: string): void {
   optionalString(p, value, `${path}.`, 'lang');
 }
 
+/** Shared by `hero.aside.tabs` (install type) and `step.tabs` — both are `EcosystemHeroTab[]`. */
+function validateCodeTabs(p: Problems, value: unknown, path: string): void {
+  if (!Array.isArray(value) || value.length === 0) {
+    p.add(path, 'must be a non-empty array');
+    return;
+  }
+  value.forEach((tab, i) => {
+    const at = `${path}[${i}]`;
+    if (!isPlainObject(tab)) {
+      p.add(at, 'must be an object');
+      return;
+    }
+    requireString(p, tab, `${at}.`, 'label');
+    validateCode(p, tab.code, `${at}.code`);
+  });
+}
+
 function validateCtas(p: Problems, value: unknown, path: string): void {
   if (value === undefined) return;
   if (!Array.isArray(value)) {
@@ -139,7 +163,13 @@ function validateSteps(p: Problems, value: unknown, path: string): void {
     requireString(p, step, `${at}.`, 'title');
     optionalString(p, step, `${at}.`, 'description');
     optionalString(p, step, `${at}.`, 'note');
-    if (step.code !== undefined) validateCode(p, step.code, `${at}.code`);
+    if (step.code !== undefined && step.tabs !== undefined) {
+      p.add(at, 'must set `code` or `tabs`, not both');
+    } else if (step.code !== undefined) {
+      validateCode(p, step.code, `${at}.code`);
+    } else if (step.tabs !== undefined) {
+      validateCodeTabs(p, step.tabs, `${at}.tabs`);
+    }
     if (step.uiPath !== undefined) {
       if (!Array.isArray(step.uiPath) || step.uiPath.some((s) => typeof s !== 'string')) {
         p.add(`${at}.uiPath`, 'must be an array of strings');
@@ -423,18 +453,7 @@ function validateHero(p: Problems, hero: unknown): void {
     optionalString(p, aside, 'hero.aside.', 'title');
     optionalString(p, aside, 'hero.aside.', 'footnote');
     if (asideType === 'install') {
-      if (!Array.isArray(aside.tabs) || aside.tabs.length === 0) {
-        p.add('hero.aside.tabs', 'must be a non-empty array for the `install` type');
-      } else {
-        aside.tabs.forEach((tab, i) => {
-          if (!isPlainObject(tab)) {
-            p.add(`hero.aside.tabs[${i}]`, 'must be an object');
-            return;
-          }
-          requireString(p, tab, `hero.aside.tabs[${i}].`, 'label');
-          validateCode(p, tab.code, `hero.aside.tabs[${i}].code`);
-        });
-      }
+      validateCodeTabs(p, aside.tabs, 'hero.aside.tabs');
     } else if (asideType === 'snippet') {
       validateCode(p, aside.code, 'hero.aside.code');
     }
@@ -507,6 +526,7 @@ export function validateEntry(
     requireString(p, raw.package, 'package.', 'name');
     optionalEnum(p, raw.package, 'package.', 'manager', MANAGERS);
     optionalString(p, raw.package, 'package.', 'url');
+    optionalBoolean(p, raw.package, 'package.', 'showDownloadCount');
   }
 
   const docs = isPlainObject(raw.docs) ? raw.docs : undefined;
@@ -526,12 +546,16 @@ export function validateEntry(
 
   // An unreleased entry has nowhere to send a reader, so claiming a page is an
   // error. The reverse is only a warning: a package can ship before its docs
-  // page lands, and the card simply renders without a link until it does.
+  // page lands, and the card simply renders without a link until it does. An
+  // entry carrying `sections` or `guides` needs neither, since the plugin
+  // builds its page from the registry, which is also the order `entryHref()`
+  // resolves a card link in.
+  const hasBuiltPage = ['sections', 'guides'].some((key) => Array.isArray(raw[key]) && raw[key].length > 0);
   if (raw.status === 'soon') {
     if (docs?.overview !== undefined) {
       p.add('docs.overview', 'must be omitted while status is "soon"');
     }
-  } else if (docs?.overview === undefined) {
+  } else if (docs?.overview === undefined && !hasBuiltPage) {
     w.add('docs.overview', 'is not set, so this entry has no detail page to link to');
   }
 

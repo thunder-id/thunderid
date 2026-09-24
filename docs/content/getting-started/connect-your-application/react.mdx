@@ -94,6 +94,18 @@ Create your new React app using Vite:
     cd my-react-app
     pnpm install
   </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun create vite my-react-app --template react
+    cd my-react-app
+    bun install
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno run -A npm:create-vite@latest my-react-app --template react
+    cd my-react-app
+    deno install
+  </CodeBlock>
 </CodeGroup>
 
 ## Install @thunderid/react
@@ -115,6 +127,10 @@ Install the <ProductName /> React SDK in your project:
 
   <CodeBlock lang="bash" label="Bun">
     bun add @thunderid/react
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno add npm:@thunderid/react
   </CodeBlock>
 </CodeGroup>
 
@@ -207,6 +223,14 @@ Start the development server:
 
   <CodeBlock lang="bash" label="pnpm">
     pnpm run dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun run dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno task dev
   </CodeBlock>
 </CodeGroup>
 

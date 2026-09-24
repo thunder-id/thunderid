@@ -87,6 +87,377 @@
   },
   {
     "resourceType": "TEMPLATE",
+    "category": "ADMINISTRATION",
+    "type": "AGENT_ONBOARDING",
+    "flowType": "ADMINISTRATION",
+    "display": {
+      "label": "Agent Onboarding Flow",
+      "description": "Choose an owner, name the agent, collect its details, then create it and show its credentials",
+      "image": "assets/images/icons/robot.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Agent Onboarding Flow",
+      "handle": "agent-onboarding-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "layout": {
+            "position": {"x": 100, "y": 200},
+            "size": {
+              "height": 34,
+              "width": 101
+            }
+          },
+          "onSuccess": "permission_validator",
+          "type": "START"
+        },
+        {
+          "executor": {
+            "name": "PermissionValidator"
+          },
+          "id": "permission_validator",
+          "layout": {
+            "position": {"x": 300, "y": 175},
+            "size": {
+              "height": 113,
+              "width": 206
+            }
+          },
+          "onSuccess": "owner_resolution",
+          "type": "TASK_EXECUTION"
+        },
+        {
+          "executor": {
+            "name": "OwnerResolver"
+          },
+          "id": "owner_resolution",
+          "layout": {
+            "position": {"x": 580, "y": 175},
+            "size": {
+              "height": 113,
+              "width": 206
+            }
+          },
+          "onIncomplete": "prompt_owner",
+          "onSuccess": "prompt_agent_name",
+          "type": "TASK_EXECUTION"
+        },
+        {
+          "id": "prompt_owner",
+          "layout": {
+            "position": {"x": 580, "y": -320},
+            "size": {
+              "height": 480,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_agent_owner",
+                "label": "{{ t(agentOnboarding:forms.owner.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_agent_owner",
+                "label": "{{ t(agentOnboarding:forms.owner.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "id": "owner_input",
+                    "label": "{{ t(agentOnboarding:forms.owner.fields.owner.label) }}",
+                    "placeholder": "{{ t(agentOnboarding:forms.owner.fields.owner.placeholder) }}",
+                    "ref": "owner",
+                    "required": false,
+                    "type": "USER_SELECT"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_agent_owner",
+                    "label": "{{ t(agentOnboarding:forms.owner.actions.next.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_agent_owner",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "owner_resolution",
+                "ref": "action_agent_owner"
+              },
+              "inputs": [
+                {
+                  "identifier": "owner",
+                  "ref": "owner_input",
+                  "required": false,
+                  "type": "USER_SELECT"
+                }
+              ]
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "id": "prompt_agent_name",
+          "layout": {
+            "position": {"x": 900, "y": 100},
+            "size": {
+              "height": 410,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_agent_name",
+                "label": "{{ t(agentOnboarding:forms.agent_name.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_agent_name",
+                "label": "{{ t(agentOnboarding:forms.agent_name.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "id": "input_agent_name",
+                    "label": "{{ t(agentOnboarding:forms.agent_name.fields.name.label) }}",
+                    "placeholder": "{{ t(agentOnboarding:forms.agent_name.fields.name.placeholder) }}",
+                    "ref": "name",
+                    "required": true,
+                    "type": "TEXT_INPUT"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_agent_name",
+                    "label": "{{ t(agentOnboarding:forms.agent_name.actions.next.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_agent_name",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "provisioning",
+                "ref": "action_agent_name"
+              },
+              "inputs": [
+                {
+                  "identifier": "name",
+                  "ref": "input_agent_name",
+                  "required": true,
+                  "type": "TEXT_INPUT"
+                }
+              ]
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "id": "prompt_agent_details",
+          "layout": {
+            "position": {"x": 1250, "y": 60},
+            "size": {
+              "height": 566,
+              "width": 350
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "id": "text_header_agent_details",
+                "label": "{{ t(agentOnboarding:forms.agent_details.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "text_subtitle_agent_details",
+                "label": "{{ t(agentOnboarding:forms.agent_details.subtitle) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "components": [
+                  {
+                    "id": "input_agent_model_provider",
+                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.model_provider.label) }}",
+                    "options": [],
+                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.model_provider.placeholder) }}",
+                    "ref": "modelProvider",
+                    "required": false,
+                    "type": "SELECT"
+                  },
+                  {
+                    "id": "input_agent_model",
+                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.model.label) }}",
+                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.model.placeholder) }}",
+                    "ref": "model",
+                    "required": false,
+                    "type": "TEXT_INPUT"
+                  },
+                  {
+                    "id": "input_agent_function",
+                    "label": "{{ t(agentOnboarding:forms.agent_details.fields.function.label) }}",
+                    "options": [],
+                    "placeholder": "{{ t(agentOnboarding:forms.agent_details.fields.function.placeholder) }}",
+                    "ref": "function",
+                    "required": false,
+                    "type": "SELECT"
+                  },
+                  {
+                    "eventType": "SUBMIT",
+                    "id": "action_agent_details",
+                    "label": "{{ t(agentOnboarding:forms.agent_details.actions.submit.label) }}",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_agent_details",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "nextNode": "provisioning",
+                "ref": "action_agent_details"
+              },
+              "inputs": [
+                {
+                  "identifier": "modelProvider",
+                  "ref": "input_agent_model_provider",
+                  "required": false,
+                  "type": "SELECT"
+                },
+                {
+                  "identifier": "model",
+                  "ref": "input_agent_model",
+                  "required": false,
+                  "type": "TEXT_INPUT"
+                },
+                {
+                  "identifier": "function",
+                  "ref": "input_agent_function",
+                  "required": false,
+                  "type": "SELECT"
+                }
+              ]
+            }
+          ],
+          "type": "PROMPT"
+        },
+        {
+          "executor": {
+            "name": "ProvisioningExecutor"
+          },
+          "id": "provisioning",
+          "layout": {
+            "position": {"x": 1620, "y": 175},
+            "size": {
+              "height": 113,
+              "width": 206
+            }
+          },
+          "onIncomplete": "prompt_agent_details",
+          "onSuccess": "agent_credentials",
+          "properties": {
+            "includeOptional": true,
+            "mode": "agent"
+          },
+          "type": "TASK_EXECUTION"
+        },
+        {
+          "id": "agent_credentials",
+          "layout": {
+            "position": {"x": 1900, "y": 60},
+            "size": {
+              "height": 520,
+              "width": 350
+            }
+          },
+          "message": "Agent created successfully",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "color": "SUCCESS",
+                "id": "agent_credentials_heading",
+                "label": "{{ t(agentOnboarding:forms.credentials.title) }}",
+                "type": "TEXT",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "id": "agent_credentials_message",
+                "label": "{{ t(agentOnboarding:forms.credentials.message) }}",
+                "type": "TEXT",
+                "variant": "HEADING_6"
+              },
+              {
+                "id": "agent_credentials_agent_id",
+                "label": "{{ t(agentOnboarding:forms.credentials.agent_id_label) }}",
+                "source": "agentId",
+                "type": "COPYABLE_TEXT"
+              },
+              {
+                "id": "agent_credentials_client_id",
+                "label": "{{ t(agentOnboarding:forms.credentials.client_id_label) }}",
+                "source": "clientId",
+                "type": "COPYABLE_TEXT"
+              },
+              {
+                "id": "agent_credentials_client_secret",
+                "label": "{{ t(agentOnboarding:forms.credentials.client_secret_label) }}",
+                "masked": true,
+                "source": "clientSecret",
+                "type": "COPYABLE_TEXT"
+              }
+            ]
+          },
+          "next": "end",
+          "type": "PROMPT"
+        },
+        {
+          "id": "end",
+          "layout": {
+            "position": {"x": 2250, "y": 200},
+            "size": {
+              "height": 34,
+              "width": 85
+            }
+          },
+          "type": "END"
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "TEMPLATE",
     "category": "STARTER",
     "type": "BLANK",
     "flowType": "AUTHENTICATION",

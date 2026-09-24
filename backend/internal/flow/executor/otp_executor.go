@@ -221,14 +221,14 @@ func (e *otpExecutor) resolveUserID(ctx *providers.NodeContext,
 	if providerErr != nil {
 		if providerErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			execResp.Status = providers.ExecFailure
-			execResp.Error = &ErrUserNotFound
+			execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
 			return "", nil
 		}
 		return "", fmt.Errorf("failed to identify user: %s", providerErr.Error())
 	}
 	if identifiedUserID == nil || *identifiedUserID == "" {
 		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrUserNotFound
+		execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
 		return "", nil
 	}
 

@@ -1,13 +1,13 @@
 ---
-title: Build the Sign-In Flows
+title: Build the Flows
 docType: use-case
 sidebar_position: 4
-description: Build Wayfinder's registration and account-recovery journeys as flows.
+description: Build Wayfinder's registration, account-recovery, and sign-out journeys as flows.
 ---
 
-# Build the Sign-In Flows
+# Build the Flows
 
-The data is in place, but nothing yet carries a person from "not signed in" to holding a token. That is what flows do, and an application is what starts them. This page builds Wayfinder's two self-service journeys. The next page registers the app that runs them.
+The data is in place, but nothing yet carries a person from "not signed in" to holding a token. That is what flows do, and an application is what starts them. This page builds Wayfinder's self-service journeys. The next page registers the app that runs them.
 
 ## Flows
 
@@ -37,6 +37,8 @@ The bundled `default-flow` already handles sign-in. Wayfinder builds a flow for 
   set a new password.
 - To onboard internal staff, a staff onboarding flow lets an existing member invite a new one by email, and assigns
   the right staff role once the invitation is accepted.
+- To end a sign-in, a sign-out flow terminates the session <ProductName /> holds and clears the cookie that points to
+  it.
 
 
 Because a flow is built from steps, you can compose in more than a basic sign-in:
@@ -361,3 +363,86 @@ curl -k -X POST https://localhost:8090/flows \
 See [Build a Flow](../../../guides/flows/build-a-flow).
 
 </Stepper>
+
+## Build the Sign-Out Flow
+
+Two systems remember the sign-in, and only one of them is yours. Your application keeps its own record so it can
+render a signed-in page. <ProductName /> keeps a separate record of the sign-in itself. Clearing the first leaves the
+second, so <ProductName /> still counts the customer as signed in.
+
+A **sign-out flow** ends that second record and clears the cookie that points to it. Your application does not run it.
+It sends the customer to <ProductName />, which runs the flow and returns the browser to a page you registered
+beforehand. OIDC calls this **RP-initiated logout**.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor C as Customer
+  participant App as Wayfinder
+  participant TID as ThunderID
+  C->>App: Clicks Sign out
+  App->>App: Clears its own record of the customer
+  App->>TID: Sends the browser to the sign-out endpoint
+  TID->>TID: Runs the sign-out flow, ends the session, clears the cookie
+  TID-->>C: Returns the browser to the registered page
+```
+
+Whether to ask "are you sure?" first is your call, and a flow can answer it three ways:
+
+- Never ask, and end the session as soon as the request arrives.
+- Always ask, with a confirmation prompt on every request.
+- Ask only when the request arrives without the ID token from the original sign-in, which may mean it did not come from
+  your code.
+
+Wayfinder takes the first: the customer already clicked **Sign out**, so there is nothing to confirm.
+
+<Stepper stepNode="h3" as="h3">
+
+### Create the sign-out flow
+
+Three nodes, and the middle one does the work. Save the JSON below as `wayfinder-signout-flow.json` and POST it to the
+flows API:
+
+```bash
+curl -k -X POST https://localhost:8090/flows \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @wayfinder-signout-flow.json
+```
+
+<details>
+<summary>wayfinder-signout-flow.json</summary>
+
+```json
+{
+  "handle": "wayfinder-signout-flow",
+  "name": "Wayfinder Sign Out Flow",
+  "flowType": "SIGNOUT",
+  "nodes": [
+    { "id": "start", "type": "START", "onSuccess": "session_signout" },
+    {
+      "id": "session_signout",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "SessionSignOutExecutor" },
+      "onSuccess": "end"
+    },
+    { "id": "end", "type": "END" }
+  ]
+}
+```
+
+</details>
+
+`SessionSignOutExecutor` is the node that ends the session and clears the cookie. To ask for confirmation instead, set
+`"properties": { "promptOnSignOut": true }` on that node and point its `onIncomplete` at a prompt node.
+
+See [Build a Sign-Out Flow](../../../guides/flows/build-a-flow#go-further).
+
+</Stepper>
+
+An application takes its sign-out flow from the first of three places that names one: the application, its organization
+unit, then the server-wide default. <ProductName /> ships a server-wide default, so an application that sets nothing
+still signs customers out. The next page pins this one to Wayfinder. Calling the sign-out endpoint from your own code
+is the SDK's job: the **Sign out** button clears what the application remembers, then hands the browser
+to <ProductName />, naming the ID token from the original sign-in and the page to come back to. See
+[RP-Initiated Logout](../../../guides/protocols/oauth-oidc/rp-initiated-logout).

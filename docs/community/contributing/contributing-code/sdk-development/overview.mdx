@@ -32,9 +32,17 @@ Both are consumed as published npm packages in a normal build. Clone an SDK repo
 
 ## Contributing to an SDK
 
-Each SDK has its own development and testing guide:
+Every change goes through the same contract before it is fixed here, an idea, a capability, an error, or a component. See [Development Process](process.mdx) for the specification and threat model it is checked against, the workflow that gets a change through them, and the `sdk-development` skill that automates both for an AI coding agent.
 
-- [JavaScript SDK Development](../javascript/overview)
-- [iOS SDK Development](../ios/overview)
-- [Android SDK Development](../android/overview)
-- [Flutter SDK Development](../flutter/overview)
+Each SDK also has its own development and testing guide:
+
+- [JavaScript SDKs](../javascript/overview)
+- [iOS SDKs](../ios/overview)
+- [Android SDKs](../android/overview)
+- [Flutter SDKs](../flutter/overview)
+
+## Feature Parity Across the SDKs
+
+A capability is rarely a single SDK change. The same thing usually has to exist in every SDK where it applies before a developer can rely on it, so each pull request in an SDK repository answers whether the change needs to ship in the others too. A required check holds the pull request until it does.
+
+See [Cross-SDK Feature Parity](feature-parity.mdx) for the labels, what accounts for a sibling SDK, and how to record a deferral.

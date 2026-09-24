@@ -24,6 +24,11 @@
           "label": "Get ThunderID"
         },
         {
+          "type": "html",
+          "value": "What are you building?",
+          "className": "sidebar-connect-label"
+        },
+        {
           "type": "category",
           "label": "Application",
           "className": "connect-section connect-section--app",
@@ -2555,6 +2560,11 @@
               "type": "doc",
               "id": "sdks-and-tools/ios/apis/components/user-profile",
               "label": "UserProfile"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/ios/apis/components/change-credential",
+              "label": "ChangeCredential"
             }
           ]
         }
@@ -2644,6 +2654,11 @@
               "type": "doc",
               "id": "sdks-and-tools/android/apis/components/user-profile",
               "label": "UserProfile"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/android/apis/components/change-credential",
+              "label": "ChangeCredential"
             }
           ]
         }
@@ -2733,6 +2748,11 @@
               "type": "doc",
               "id": "sdks-and-tools/flutter/apis/components/user-profile",
               "label": "UserProfile"
+            },
+            {
+              "type": "doc",
+              "id": "sdks-and-tools/flutter/apis/components/change-credential",
+              "label": "ChangeCredential"
             }
           ]
         }

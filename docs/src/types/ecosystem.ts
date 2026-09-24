@@ -80,6 +80,8 @@ export interface EcosystemPackage {
   manager?: EcosystemPackageManager;
   /** Registry page. Omit to derive from `manager` + `name` where possible. */
   url?: string;
+  /** Show the live npm weekly-download count on the detail hero. Defaults to `false` (hidden). */
+  showDownloadCount?: boolean;
 }
 
 /**
@@ -160,6 +162,13 @@ export interface EcosystemStep {
   title: string;
   description?: string;
   code?: EcosystemCode;
+  /**
+   * Package-manager (or similarly interchangeable) variants of this step's command,
+   * shown as tabs inside the code block's own bar — same shape as
+   * `EcosystemHeroAside`'s `install` tabs. Mutually exclusive with `code`; set one
+   * or the other, not both.
+   */
+  tabs?: EcosystemHeroTab[];
   /** Click path through a GUI, rendered as a numbered list. */
   uiPath?: string[];
   note?: string;

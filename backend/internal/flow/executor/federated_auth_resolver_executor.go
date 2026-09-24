@@ -103,7 +103,7 @@ func (f *federatedAuthResolverExecutor) Execute(ctx *providers.NodeContext) (*pr
 		logger.Debug(ctx.Context, "No user matched the provided selection")
 		execResp.Status = providers.ExecUserInputRequired
 		execResp.Inputs = f.GetRequiredInputs(ctx)
-		execResp.Error = &ErrUserNotFound
+		execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
 		return execResp, nil
 	}
 
@@ -113,7 +113,7 @@ func (f *federatedAuthResolverExecutor) Execute(ctx *providers.NodeContext) (*pr
 		if len(options) == 0 {
 			logger.Debug(ctx.Context, "Candidates are indistinguishable, no further disambiguation possible")
 			execResp.Status = providers.ExecFailure
-			execResp.Error = &ErrFailedToIdentifyUser
+			execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
 			return execResp, nil
 		}
 

@@ -511,3 +511,67 @@ func (_c *ActorProviderMock_GetOAuthProfileByID_Call) RunAndReturn(run func(ctx 
 	_c.Call.Return(run)
 	return _c
 }
+
+// GetTransitiveGroupAncestors provides a mock function for the type ActorProviderMock
+func (_mock *ActorProviderMock) GetTransitiveGroupAncestors(groupID string) ([]string, *common.ServiceError) {
+	ret := _mock.Called(groupID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetTransitiveGroupAncestors")
+	}
+
+	var r0 []string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(string) ([]string, *common.ServiceError)); ok {
+		return returnFunc(groupID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string) []string); ok {
+		r0 = returnFunc(groupID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(string) *common.ServiceError); ok {
+		r1 = returnFunc(groupID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ActorProviderMock_GetTransitiveGroupAncestors_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTransitiveGroupAncestors'
+type ActorProviderMock_GetTransitiveGroupAncestors_Call struct {
+	*mock.Call
+}
+
+// GetTransitiveGroupAncestors is a helper method to define mock.On call
+//   - groupID string
+func (_e *ActorProviderMock_Expecter) GetTransitiveGroupAncestors(groupID interface{}) *ActorProviderMock_GetTransitiveGroupAncestors_Call {
+	return &ActorProviderMock_GetTransitiveGroupAncestors_Call{Call: _e.mock.On("GetTransitiveGroupAncestors", groupID)}
+}
+
+func (_c *ActorProviderMock_GetTransitiveGroupAncestors_Call) Run(run func(groupID string)) *ActorProviderMock_GetTransitiveGroupAncestors_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ActorProviderMock_GetTransitiveGroupAncestors_Call) Return(strings []string, serviceError *common.ServiceError) *ActorProviderMock_GetTransitiveGroupAncestors_Call {
+	_c.Call.Return(strings, serviceError)
+	return _c
+}
+
+func (_c *ActorProviderMock_GetTransitiveGroupAncestors_Call) RunAndReturn(run func(groupID string) ([]string, *common.ServiceError)) *ActorProviderMock_GetTransitiveGroupAncestors_Call {
+	_c.Call.Return(run)
+	return _c
+}

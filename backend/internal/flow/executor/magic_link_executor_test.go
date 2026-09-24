@@ -1056,7 +1056,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_EmptyToken() {
 	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
 }
 
-func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_RegistrationFlow_IdentifyUserSystemError() {
+func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_RegistrationFlow_IdentifyEntitySystemError() {
 	ctx := &providers.NodeContext{
 		Context:      context.Background(),
 		ExecutionID:  magicLinkTestExecutionID,

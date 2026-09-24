@@ -171,7 +171,7 @@ func (suite *SecurityServiceTestSuite) TestProcess_SuccessfulAuthentication_Seco
 
 // TestInitialize verifies the security middleware is constructed successfully.
 func (suite *SecurityServiceTestSuite) TestInitialize() {
-	mw, err := Initialize(nil, nil)
+	mw, err := Initialize(nil, nil, "", "")
 	suite.Require().NoError(err)
 	suite.Require().NotNil(mw)
 }

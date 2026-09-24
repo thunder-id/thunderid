@@ -13,10 +13,13 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
+	"github.com/thunder-id/thunderid/internal/idp"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -415,7 +418,19 @@ func ReservedAccessTokenClaimNames() map[string]bool {
 	reserved[constants.ClaimSubType] = true
 	reserved[constants.ClaimIDP] = true
 	reserved[constants.ClaimTokenFamilyID] = true
+	reserved[constants.ClaimSessionID] = true
 	return reserved
+}
+
+// builderOwnedIDTokenClaimNames returns the ID-token claims the builder writes itself, so a configured
+// attribute of the same name can never supply or replace one.
+func builderOwnedIDTokenClaimNames() map[string]bool {
+	return map[string]bool{
+		constants.ClaimAuthTime:     true,
+		constants.RequestParamNonce: true,
+		constants.ClaimACR:          true,
+		constants.ClaimSessionID:    true,
+	}
 }
 
 // builderOwnedClaimNames returns the access-token claims the builder writes itself, so a configured
@@ -726,4 +741,122 @@ func ArtifactLifetime(cfg oauthconfig.Config, client *providers.OAuthClient) tim
 	maxValidity += cfg.OAuth.AuthorizationCode.ValidityPeriod
 
 	return time.Duration(maxValidity) * time.Second
+}
+
+// BuildAccessEvaluationsRequest builds a batch access evaluation request, one evaluation per
+// permission, for the given subject. Shared by every grant handler that evaluates against the RBAC engine.
+func BuildAccessEvaluationsRequest(
+	entityID string,
+	groupIDs []string,
+	roleIDs []string,
+	permissions []string,
+	resourceServerID string,
+) providers.AccessEvaluationsRequest {
+	evaluations := make([]providers.AccessEvaluationRequest, 0, len(permissions))
+	for _, permission := range permissions {
+		evaluations = append(evaluations, providers.AccessEvaluationRequest{
+			Subject: providers.Subject{
+				ID:       entityID,
+				GroupIDs: groupIDs,
+				RoleIDs:  roleIDs,
+			},
+			ResourceServer: providers.AccessEvaluationResourceServer{ID: resourceServerID},
+			Permission:     providers.Permission{Name: permission},
+		})
+	}
+	return providers.AccessEvaluationsRequest{Evaluations: evaluations}
+}
+
+// FilterAuthorizedScopes returns the scopes whose corresponding evaluation (by index) was granted.
+func FilterAuthorizedScopes(scopes []string, evaluations []providers.AccessEvaluationResponse) []string {
+	authorizedScopes := make([]string, 0, len(evaluations))
+	for i, evaluation := range evaluations {
+		if evaluation.Decision && i < len(scopes) {
+			authorizedScopes = append(authorizedScopes, scopes[i])
+		}
+	}
+	return authorizedScopes
+}
+
+// ApplyMappedAuthorization grants permission scopes from mapped permissions and mapped roles/groups
+// (via the RBAC engine, no local entity id) when the mapping is the sole authority. A no-op otherwise.
+func ApplyMappedAuthorization(
+	ctx context.Context,
+	authzService providers.AuthorizationProvider,
+	actorProvider providers.ActorProvider,
+	authorizationTargets []providers.AuthorizationTarget,
+	resourceServerID string,
+	permissionScopes []string,
+	authorityIsMapping bool,
+	logger *log.Logger,
+) ([]string, *model.ErrorResponse) {
+	if !authorityIsMapping || len(permissionScopes) == 0 {
+		return permissionScopes, nil
+	}
+	if authzService == nil {
+		logger.Error(ctx, "Authorization provider unavailable while mapping is the sole authority for scopes")
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to generate token",
+		}
+	}
+
+	roleIDs, groupIDs, mappedPermissions := idp.SplitAuthorizationTargets(authorizationTargets)
+	groupIDs, err := expandMappedGroupAncestors(actorProvider, groupIDs)
+	if err != nil {
+		logger.Error(ctx, "Failed to resolve ancestors of a mapped group", log.Error(err))
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to generate token",
+		}
+	}
+
+	granted := idp.UnionMappedPermissionTargets(nil, permissionScopes, mappedPermissions, resourceServerID)
+
+	if len(roleIDs) == 0 && len(groupIDs) == 0 {
+		return granted, nil
+	}
+	pending := make([]string, 0, len(permissionScopes))
+	for _, scope := range permissionScopes {
+		if !slices.Contains(granted, scope) {
+			pending = append(pending, scope)
+		}
+	}
+	if len(pending) == 0 {
+		return granted, nil
+	}
+
+	authzResp, svcErr := authzService.EvaluateAccessBatch(ctx,
+		BuildAccessEvaluationsRequest("", groupIDs, roleIDs, pending, resourceServerID))
+	if svcErr != nil {
+		logger.Error(ctx, "Failed to evaluate mapped authorization",
+			log.String("error", svcErr.Error.DefaultValue))
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorServerError,
+			ErrorDescription: "Failed to generate token",
+		}
+	}
+
+	return append(granted, FilterAuthorizedScopes(pending, authzResp.Evaluations)...), nil
+}
+
+// expandMappedGroupAncestors adds each mapped group's ancestor groups. Fails closed, like
+// resolveMappedAuthorization above.
+func expandMappedGroupAncestors(
+	actorProvider providers.ActorProvider, groupIDs []string,
+) ([]string, error) {
+	if actorProvider == nil || len(groupIDs) == 0 {
+		return groupIDs, nil
+	}
+	expanded := groupIDs
+	for _, groupID := range groupIDs {
+		ancestors, svcErr := actorProvider.GetTransitiveGroupAncestors(groupID)
+		if svcErr != nil {
+			return nil, fmt.Errorf(
+				"%w: failed to resolve ancestors of group %q: %s",
+				ErrAuthorizationMappingUnavailable, groupID, svcErr.Error.DefaultValue)
+		}
+		expanded = systemutils.MergeUniqueStrings(expanded, ancestors)
+	}
+	return expanded, nil
 }

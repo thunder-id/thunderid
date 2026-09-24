@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -25,8 +26,8 @@ const (
 
 // identifyingExecutorInterface defines the interface for identifying executors.
 type identifyingExecutorInterface interface {
-	IdentifyUser(ctx context.Context, filters map[string]interface{},
-		execResp *providers.ExecutorResponse) (*string, error)
+	IdentifyEntity(ctx context.Context, filters map[string]interface{},
+		execResp *providers.ExecutorResponse, category entitytype.TypeCategory) (*string, error)
 }
 
 // identifyingExecutor implements the ExecutorInterface for identifying users based on provided attributes.
@@ -67,19 +68,21 @@ func newIdentifyingExecutor(
 	}
 }
 
-// IdentifyUser identifies a user based on the provided attributes.
-func (i *identifyingExecutor) IdentifyUser(ctx context.Context, filters map[string]interface{},
-	execResp *providers.ExecutorResponse) (*string, error) {
+// IdentifyEntity identifies an entity based on the provided attributes. The lookup goes through the
+// entity provider, so it is not scoped to a single entity category. The category names the kind of
+// entity the caller is looking for, and the errors raised here are worded for it.
+func (i *identifyingExecutor) IdentifyEntity(ctx context.Context, filters map[string]interface{},
+	execResp *providers.ExecutorResponse, category entitytype.TypeCategory) (*string, error) {
 	logger := i.logger
-	logger.Debug(ctx, "Identifying user with filters")
+	logger.Debug(ctx, "Identifying entity with filters")
 
 	if entityID, ok := filters[userAttributeUserID].(string); ok && entityID != "" {
 		entity, epErr := i.entityProvider.GetEntity(entityID)
 		if epErr != nil {
 			if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
-				execResp.Error = &ErrUserNotFound
+				execResp.Error = errForEntityCategory(ErrEntityNotFound, category)
 			} else {
-				execResp.Error = &ErrFailedToIdentifyUser
+				execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, category)
 			}
 			execResp.Status = providers.ExecFailure
 			return nil, nil
@@ -95,31 +98,31 @@ func (i *identifyingExecutor) IdentifyUser(ctx context.Context, filters map[stri
 		}
 	}
 
-	userID, err := i.entityProvider.IdentifyEntity(searchableFilter)
+	entityID, err := i.entityProvider.IdentifyEntity(searchableFilter)
 	if err != nil {
 		switch err.Code {
 		case entityprovider.ErrorCodeEntityNotFound:
-			logger.Debug(ctx, "User not found for the provided filters")
-			execResp.Error = &ErrUserNotFound
+			logger.Debug(ctx, "Entity not found for the provided filters")
+			execResp.Error = errForEntityCategory(ErrEntityNotFound, category)
 		case entityprovider.ErrorCodeAmbiguousEntity:
-			logger.Debug(ctx, "Multiple users found for the provided filters")
-			execResp.Error = &ErrAmbiguousUserIdentity
+			logger.Debug(ctx, "Multiple entities found for the provided filters")
+			execResp.Error = errForEntityCategory(ErrAmbiguousEntityIdentity, category)
 		default:
-			logger.Debug(ctx, "Failed to identify user due to error: "+err.Error())
-			execResp.Error = &ErrFailedToIdentifyUser
+			logger.Debug(ctx, "Failed to identify the entity due to error: "+err.Error())
+			execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, category)
 		}
 		execResp.Status = providers.ExecFailure
 		return nil, nil
 	}
 
-	if userID == nil || *userID == "" {
-		logger.Debug(ctx, "User not found for the provided filter")
+	if entityID == nil || *entityID == "" {
+		logger.Debug(ctx, "Entity not found for the provided filter")
 		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrUserNotFound
+		execResp.Error = errForEntityCategory(ErrEntityNotFound, category)
 		return nil, nil
 	}
 
-	return userID, nil
+	return entityID, nil
 }
 
 // Execute executes the identifying executor logic.
@@ -167,23 +170,23 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 
 	userSearchAttributes := i.buildSearchAttributes(ctx)
 
-	userID, err := i.IdentifyUser(ctx.Context, userSearchAttributes, execResp)
+	userID, err := i.IdentifyEntity(ctx.Context, userSearchAttributes, execResp, categoryUnscoped)
 	if err != nil {
 		logger.Debug(ctx.Context, "Failed to identify user due to error: "+err.Error())
 		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrFailedToIdentifyUser
+		execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
 		return execResp, nil
 	}
 
 	// Only promote ExecFailure to ExecUserInputRequired for recoverable user-input
-	// errors (i.e. user not found). Other failures reported by IdentifyUser — such
+	// errors (i.e. user not found). Other failures reported by IdentifyEntity — such
 	// as ambiguous matches or system errors — are not recoverable in identify mode
 	// and must be returned as-is so the caller can handle them appropriately.
 	// When loginHintAttribute is set the identifier was supplied externally — there is no
 	// interactive user to re-enter it, so keep ExecFailure.
 	loginHintAttr, _ := ctx.NodeProperties[propertyKeyLoginHintAttribute].(string)
 	if execResp.Status == providers.ExecFailure &&
-		execResp.Error != nil && execResp.Error.Code == ErrUserNotFound.Code && loginHintAttr == "" {
+		execResp.Error != nil && execResp.Error.Code == ErrEntityNotFound.Code && loginHintAttr == "" {
 		logger.Debug(ctx.Context, "User not found — promoting to user input required",
 			log.Int("searchAttributeCount", len(userSearchAttributes)))
 		execResp.Status = providers.ExecUserInputRequired
@@ -202,7 +205,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 		} else {
 			execResp.Status = providers.ExecFailure
 		}
-		execResp.Error = &ErrUserNotFound
+		execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
 		return execResp, nil
 	}
 
@@ -237,8 +240,8 @@ func (i *identifyingExecutor) executeResolve(ctx *providers.NodeContext,
 	candidates, err := i.getCandidates(ctx, userSearchAttributes, logger)
 	if err != nil {
 		execResp.Status = providers.ExecFailure
-		execResp.Error = tidcommon.CustomServiceError(ErrFailedToIdentifyUser, tidcommon.I18nMessage{
-			Key:          ErrFailedToIdentifyUser.ErrorDescription.Key,
+		execResp.Error = tidcommon.CustomServiceError(ErrFailedToIdentifyEntity, tidcommon.I18nMessage{
+			Key:          ErrFailedToIdentifyEntity.ErrorDescription.Key,
 			DefaultValue: err.Error(),
 		})
 		return execResp, nil
@@ -249,7 +252,7 @@ func (i *identifyingExecutor) executeResolve(ctx *providers.NodeContext,
 		logger.Debug(ctx.Context, "No matching users after filtering")
 		execResp.Status = providers.ExecUserInputRequired
 		execResp.Inputs = i.GetRequiredInputs(ctx)
-		execResp.Error = &ErrUserNotFound
+		execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
 		return execResp, nil
 	case 1:
 		execResp.RuntimeData[userAttributeUserID] = candidates[0].ID
@@ -274,8 +277,8 @@ func (i *identifyingExecutor) executeCheckState(ctx *providers.NodeContext,
 	candidates, err := i.getCandidates(ctx, userSearchAttributes, logger)
 	if err != nil {
 		execResp.Status = providers.ExecFailure
-		execResp.Error = tidcommon.CustomServiceError(ErrFailedToIdentifyUser, tidcommon.I18nMessage{
-			Key:          ErrFailedToIdentifyUser.ErrorDescription.Key,
+		execResp.Error = tidcommon.CustomServiceError(ErrFailedToIdentifyEntity, tidcommon.I18nMessage{
+			Key:          ErrFailedToIdentifyEntity.ErrorDescription.Key,
 			DefaultValue: err.Error(),
 		})
 		return execResp, nil
@@ -349,7 +352,7 @@ func (i *identifyingExecutor) searchCandidates(ctx context.Context,
 			return []*providers.Entity{}, nil
 		}
 		logger.Debug(ctx, "Failed to search users: "+err.Error())
-		return nil, errors.New(ErrFailedToIdentifyUser.Error.DefaultValue)
+		return nil, errors.New(ErrFailedToIdentifyEntity.Error.DefaultValue)
 	}
 
 	return users, nil
@@ -362,7 +365,7 @@ func (i *identifyingExecutor) getFilteredCandidates(ctx context.Context,
 	var candidates []*providers.Entity
 	if err := json.Unmarshal([]byte(storedCandidates), &candidates); err != nil {
 		logger.Debug(ctx, "Failed to deserialize candidate users")
-		return nil, errors.New(ErrFailedToIdentifyUser.Error.DefaultValue)
+		return nil, errors.New(ErrFailedToIdentifyEntity.Error.DefaultValue)
 	}
 
 	return filterUsersByAttributes(candidates, searchAttrs), nil
@@ -379,7 +382,7 @@ func (i *identifyingExecutor) handleAmbiguousCandidates(ctx context.Context,
 		logger.Debug(ctx, "Candidates are indistinguishable, no disambiguation options available",
 			log.Int("candidateCount", len(candidates)))
 		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrFailedToIdentifyUser
+		execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
 		return execResp, nil
 	}
 
@@ -387,7 +390,7 @@ func (i *identifyingExecutor) handleAmbiguousCandidates(ctx context.Context,
 	if err != nil {
 		logger.Debug(ctx, "Failed to serialize candidate users")
 		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrFailedToIdentifyUser
+		execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
 		return execResp, nil
 	}
 

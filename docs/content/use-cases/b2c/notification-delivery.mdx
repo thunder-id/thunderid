@@ -1,0 +1,38 @@
+---
+title: Notification Delivery
+docType: use-case
+description: How notification channel, provider, and transport decisions shape the journeys a B2C deployment can complete.
+sidebar_position: 12
+---
+
+
+# Notification Delivery
+
+Account recovery, invitations, and passwordless sign-in all finish with a message arriving, which makes the delivery path part of the identity system rather than an operational detail beside it. The channel decides how the message reaches the customer. The provider decides which server or gateway carries it. Credentials and transport security decide how much you can trust the hop in between.
+
+## Choose the Channel
+
+Two channels carry identity messages, and most journeys are designed around one of them:
+
+- **Email** carries recovery links, invitations, magic links, and one-time codes. It reaches anyone with an address, and it is the default for anything that needs a link rather than a short code.
+- **SMS** carries one-time codes to a verified phone number. It costs money per message and depends on carrier reach, so it suits step-up and second-factor journeys more than bulk notification.
+
+A journey can use both, and a deployment that offers passwordless sign-in over either channel configures a provider for each.
+
+## Decide How Many Sending Identities You Need
+
+A provider records where <ProductName /> hands a rendered message off: which server or gateway receives it, the identity recipients see it come from, and how <ProductName /> authenticates to it.
+
+One sending identity per channel is enough for most products, usually a transactional relay or gateway on a domain the team already controls, so check whether your channel can hold a second provider and let each journey name the one it sends through before you design around separate customer and staff identities: see [Configure an SMS Provider](../../../guides/notifications/sms-providers) and [Configure SMTP Server](../../../guides/smtp-server/smtp-server-configuration).
+
+## Credentials and Transport Security
+
+The credential a provider authenticates with belongs to that provider's configuration, so how you rotate it, and who can, follows wherever that configuration lives. A relay that accepts messages from your own network needs no credential at all.
+
+Transport security is a separate decision. Any connection that carries a credential has to be encrypted, and <ProductName /> validates the server's certificate rather than trusting the hostname alone. For SMTP that means STARTTLS on the submission port, and a server that fails to offer it ends the send rather than continuing in plaintext. An unencrypted connection cannot carry a credential, which leaves it useful only for a relay on a network you already trust.
+
+## Continue Designing Your Architecture
+
+Review the other architecture decisions that shape your B2C application.
+
+<B2CArchitectureDecisions currentDecision="notification-delivery" />

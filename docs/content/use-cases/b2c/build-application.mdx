@@ -22,7 +22,8 @@ Registering the booking frontend gives it credentials and the rules <ProductName
 - Which URLs a customer may be sent back to after signing in.
 - Which user types can sign up through it, so the customer-facing app onboards `Customer` users
   and not `Staff`.
-- Which flow runs for each journey it offers, from the bundled `default-flow` to the ones you build.
+- Which flow runs for each journey it offers, from the bundled `default-flow` to the ones you build, including the
+  one that signs a customer out.
 
 ```mermaid
 flowchart TD
@@ -47,18 +48,22 @@ Register Wayfinder's frontend and point it at the flows you built:
 
 Navigate to **Applications** → **Add Application** and choose **Browser App** as the type. Configure:
 
-| Setting             | Value                     |
-| ------------------- | ------------------------- |
-| Redirect URI        | `{{WayFinderSampleUrl}}`        |
-| Allowed grants      | `authorization_code`      |
-| PKCE                | Required                  |
-| Allowed user types  | `Customer`                |
+| Setting                   | Value                     |
+| ------------------------- | ------------------------- |
+| Redirect URI              | `{{WayFinderSampleUrl}}`  |
+| Post-Logout Redirect URIs | `{{WayFinderSampleUrl}}`  |
+| Allowed grants            | `authorization_code`      |
+| PKCE                      | Required                  |
+| Allowed user types        | `Customer`                |
+
+The page a customer returns to after signing out must be on the post-logout list, or <ProductName /> rejects the
+request.
 
 See [Manage Applications](../../../guides/applications/manage-applications).
 
 ## Point it at your flows
 
-In **Applications** → **WAYFINDER** → **Flows**, select the registration flow you built from the **Registration Flow** dropdown and the recovery flow from the **Recovery Flow** dropdown, then save the application.
+In **Applications** → **WAYFINDER** → **Flows**, select the registration flow you built from the **Registration Flow** dropdown, the recovery flow from the **Recovery Flow** dropdown, and the sign-out flow from the **Sign Out Flow** dropdown, then save the application.
 
 See [Manage Applications](../../../guides/applications/manage-applications).
 

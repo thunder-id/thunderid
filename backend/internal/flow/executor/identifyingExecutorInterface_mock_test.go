@@ -8,6 +8,7 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -38,48 +39,49 @@ func (_m *identifyingExecutorInterfaceMock) EXPECT() *identifyingExecutorInterfa
 	return &identifyingExecutorInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
-// IdentifyUser provides a mock function for the type identifyingExecutorInterfaceMock
-func (_mock *identifyingExecutorInterfaceMock) IdentifyUser(ctx context.Context, filters map[string]interface{}, execResp *providers.ExecutorResponse) (*string, error) {
-	ret := _mock.Called(ctx, filters, execResp)
+// IdentifyEntity provides a mock function for the type identifyingExecutorInterfaceMock
+func (_mock *identifyingExecutorInterfaceMock) IdentifyEntity(ctx context.Context, filters map[string]interface{}, execResp *providers.ExecutorResponse, category entitytype.TypeCategory) (*string, error) {
+	ret := _mock.Called(ctx, filters, execResp, category)
 
 	if len(ret) == 0 {
-		panic("no return value specified for IdentifyUser")
+		panic("no return value specified for IdentifyEntity")
 	}
 
 	var r0 *string
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}, *providers.ExecutorResponse) (*string, error)); ok {
-		return returnFunc(ctx, filters, execResp)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}, *providers.ExecutorResponse, entitytype.TypeCategory) (*string, error)); ok {
+		return returnFunc(ctx, filters, execResp, category)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}, *providers.ExecutorResponse) *string); ok {
-		r0 = returnFunc(ctx, filters, execResp)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}, *providers.ExecutorResponse, entitytype.TypeCategory) *string); ok {
+		r0 = returnFunc(ctx, filters, execResp, category)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*string)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, map[string]interface{}, *providers.ExecutorResponse) error); ok {
-		r1 = returnFunc(ctx, filters, execResp)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, map[string]interface{}, *providers.ExecutorResponse, entitytype.TypeCategory) error); ok {
+		r1 = returnFunc(ctx, filters, execResp, category)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// identifyingExecutorInterfaceMock_IdentifyUser_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IdentifyUser'
-type identifyingExecutorInterfaceMock_IdentifyUser_Call struct {
+// identifyingExecutorInterfaceMock_IdentifyEntity_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IdentifyEntity'
+type identifyingExecutorInterfaceMock_IdentifyEntity_Call struct {
 	*mock.Call
 }
 
-// IdentifyUser is a helper method to define mock.On call
+// IdentifyEntity is a helper method to define mock.On call
 //   - ctx context.Context
 //   - filters map[string]interface{}
 //   - execResp *providers.ExecutorResponse
-func (_e *identifyingExecutorInterfaceMock_Expecter) IdentifyUser(ctx interface{}, filters interface{}, execResp interface{}) *identifyingExecutorInterfaceMock_IdentifyUser_Call {
-	return &identifyingExecutorInterfaceMock_IdentifyUser_Call{Call: _e.mock.On("IdentifyUser", ctx, filters, execResp)}
+//   - category entitytype.TypeCategory
+func (_e *identifyingExecutorInterfaceMock_Expecter) IdentifyEntity(ctx interface{}, filters interface{}, execResp interface{}, category interface{}) *identifyingExecutorInterfaceMock_IdentifyEntity_Call {
+	return &identifyingExecutorInterfaceMock_IdentifyEntity_Call{Call: _e.mock.On("IdentifyEntity", ctx, filters, execResp, category)}
 }
 
-func (_c *identifyingExecutorInterfaceMock_IdentifyUser_Call) Run(run func(ctx context.Context, filters map[string]interface{}, execResp *providers.ExecutorResponse)) *identifyingExecutorInterfaceMock_IdentifyUser_Call {
+func (_c *identifyingExecutorInterfaceMock_IdentifyEntity_Call) Run(run func(ctx context.Context, filters map[string]interface{}, execResp *providers.ExecutorResponse, category entitytype.TypeCategory)) *identifyingExecutorInterfaceMock_IdentifyEntity_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -93,21 +95,26 @@ func (_c *identifyingExecutorInterfaceMock_IdentifyUser_Call) Run(run func(ctx c
 		if args[2] != nil {
 			arg2 = args[2].(*providers.ExecutorResponse)
 		}
+		var arg3 entitytype.TypeCategory
+		if args[3] != nil {
+			arg3 = args[3].(entitytype.TypeCategory)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
 }
 
-func (_c *identifyingExecutorInterfaceMock_IdentifyUser_Call) Return(s *string, err error) *identifyingExecutorInterfaceMock_IdentifyUser_Call {
+func (_c *identifyingExecutorInterfaceMock_IdentifyEntity_Call) Return(s *string, err error) *identifyingExecutorInterfaceMock_IdentifyEntity_Call {
 	_c.Call.Return(s, err)
 	return _c
 }
 
-func (_c *identifyingExecutorInterfaceMock_IdentifyUser_Call) RunAndReturn(run func(ctx context.Context, filters map[string]interface{}, execResp *providers.ExecutorResponse) (*string, error)) *identifyingExecutorInterfaceMock_IdentifyUser_Call {
+func (_c *identifyingExecutorInterfaceMock_IdentifyEntity_Call) RunAndReturn(run func(ctx context.Context, filters map[string]interface{}, execResp *providers.ExecutorResponse, category entitytype.TypeCategory) (*string, error)) *identifyingExecutorInterfaceMock_IdentifyEntity_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -315,7 +315,7 @@ func (suite *OTPExecutorTestSuite) TestExecuteGenerate_UserNotFound_ReturnsFailu
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
 	assert.NotNil(suite.T(), resp.Error)
-	assert.Equal(suite.T(), ErrUserNotFound.Code, resp.Error.Code)
+	assert.Equal(suite.T(), ErrEntityNotFound.Code, resp.Error.Code)
 	assert.NotContains(suite.T(), resp.AdditionalData, common.DataOTPLength)
 }
 
@@ -743,7 +743,7 @@ func (suite *OTPExecutorTestSuite) TestResolveUserID_AuthenticatedUser_EntityRef
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), ErrUserNotFound.Code, resp.Error.Code)
+	assert.Equal(suite.T(), ErrEntityNotFound.Code, resp.Error.Code)
 }
 
 // resolveUserID: IdentifyEntity returns non-nil pointer to empty string
@@ -768,7 +768,7 @@ func (suite *OTPExecutorTestSuite) TestResolveUserID_IdentifyEntityReturnsEmptyS
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), ErrUserNotFound.Code, resp.Error.Code)
+	assert.Equal(suite.T(), ErrEntityNotFound.Code, resp.Error.Code)
 }
 
 // buildSearchAttributes: ForwardedData fallback path

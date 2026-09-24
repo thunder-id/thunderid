@@ -14,7 +14,6 @@ package:
 description: Native Kotlin SDK with hosted login and secure token storage.
 docs:
   overview: /docs/next/sdks-and-tools/android/overview
-  apiReference: /docs/next/sdks-and-tools/android/apis
   quickstart: /docs/next/getting-started/connect-your-application/android
 links:
   github: https://github.com/thunder-id/android-sdks
@@ -234,6 +233,46 @@ sections:
                     modifier = Modifier.fillMaxWidth().padding(24.dp),
                     onSaved = onDismiss
                 )
+            }
+        }
+    - group: Components
+      kind: component
+      name: ChangeCredential
+      description: 'The `ChangeCredential` composable renders a form that lets a signed-in user set a new value for
+        one of their own credentials. It collects only a new value and its confirmation, checks it against the applicable
+        rules, and posts the change via `ThunderIDClient.updateUserCredentials`. It reads the rules it needs from the
+        user type schema (`GET /users/me/meta`), fetched once and shared with any other mounted component that needs
+        it (for example `UserProfile`), so multiple components cost one request rather than one each. The default
+        label and messages are built from the credential attribute''s own `displayName` in that schema, so they always
+        match whatever an admin named it there. By default it manages the `password` credential. To manage a different
+        one, for example a PIN declared on the user type schema, set `attribute = ''pin''`; render the composable once per credential
+        to let a user manage more than one. `ChangeCredential` requires `ThunderIDProvider` in its ancestor composable
+        hierarchy. `ChangeCredential` collects only a new value and its confirmation, not the account''s existing
+        value. The self-service credential write path does not verify the current value today, so asking for one would
+        only teach the user a false sense of security.'
+      rowsLabel: Parameters
+      rows:
+      - name: modifier
+        type: Modifier
+        tag: optional
+        description: Compose modifier applied to the form container.
+      - name: attribute
+        type: String
+        tag: optional
+        description: 'The credential attribute this instance manages, any attribute the user type schema declares `credential:
+          true` for. Defaults to `"password"`.'
+      - name: onSuccess
+        type: (() -> Unit)?
+        tag: optional
+        description: Called after the credential has been changed successfully.
+      example: |-
+        import dev.thunderid.compose.components.presentation.user.ChangeCredential
+
+        @Composable
+        fun SecuritySection() {
+            Column {
+                Text("Security")
+                ChangeCredential()
             }
         }
     - group: Functions

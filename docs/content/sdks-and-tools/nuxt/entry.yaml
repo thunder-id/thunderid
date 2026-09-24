@@ -14,7 +14,6 @@ package:
 description: Server-rendered authentication for Nuxt applications, out of the box.
 docs:
   overview: /docs/next/sdks-and-tools/nuxt/overview
-  apiReference: /docs/next/sdks-and-tools/nuxt/apis
   quickstart: /docs/next/getting-started/connect-your-application/nuxt
 links:
   github: https://github.com/thunder-id/javascript-sdks

@@ -205,7 +205,7 @@ export class WayfinderAppPage extends GateLoginPage {
 
   async verifyRecoverUserNotFoundError() {
     await expect(this.userNotFoundErrorAlert).toBeVisible({ timeout: Timeouts.ELEMENT_VISIBILITY });
-    await expect(this.userNotFoundErrorAlert).toContainText(/user not found/i);
+    await expect(this.userNotFoundErrorAlert).toContainText(/user could not be found/i);
   }
 
   async verifyNewPasswordPageLoaded() {

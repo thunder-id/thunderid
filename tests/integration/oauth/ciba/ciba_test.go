@@ -452,8 +452,8 @@ func (ts *CIBATestSuite) TestCIBAExpiredRequestRejectsPolling() {
 
 // TestCIBAUnknownLoginHintReturnsUnknownUserID verifies that a login_hint matching no user maps to
 // unknown_user_id (CIBA Core 1.0 ​§7.3), not server_error. mapFlowErrorToCIBAError switches on the
-// literal flow-engine failure string "User not found"; the unit tests mock the flow entirely, so this
-// coupling between the flow engine's wording and the CIBA error mapping is otherwise unverified.
+// flow executor's error code, FET-1001; the unit tests mock the flow entirely, so this coupling
+// between the flow engine's codes and the CIBA error mapping is otherwise unverified.
 func (ts *CIBATestSuite) TestCIBAUnknownLoginHintReturnsUnknownUserID() {
 	status, bcResp := ts.cibaBackchannelAuthorize("no_such_ciba_user_xyz", "openid")
 	ts.Require().Equal(http.StatusBadRequest, status)

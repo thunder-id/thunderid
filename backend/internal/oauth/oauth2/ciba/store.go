@@ -22,7 +22,7 @@ type CIBARequestStoreInterface interface {
 	Add(ctx context.Context, request *CIBAAuthRequest) error
 	GetByID(ctx context.Context, authReqID string) (*CIBAAuthRequest, error)
 	MarkAuthenticated(ctx context.Context, authReqID, userID, authorizedScopes, attributeCacheID,
-		completedACR string, authTime time.Time) error
+		completedACR, sessionID string, authTime time.Time) error
 	MarkConsumed(ctx context.Context, authReqID string) (bool, error)
 	UpdateLastPolled(ctx context.Context, authReqID string, polledAt time.Time) error
 	UpdateState(ctx context.Context, authReqID string, state CIBARequestState) error
@@ -78,10 +78,10 @@ func (s *cibaStore) GetByID(ctx context.Context, authReqID string) (*CIBAAuthReq
 }
 
 // MarkAuthenticated transitions a pending request to authenticated and records the user ID (from
-// the assertion sub claim), authorized scopes, attribute cache ID, completed ACR, and authentication
-// time. The compare-and-swap on the State field prevents a double-callback race condition.
+// the assertion sub claim), authorized scopes, attribute cache ID, completed ACR, SSO session id, and
+// authentication time. The compare-and-swap on the State field prevents a double-callback race condition.
 func (s *cibaStore) MarkAuthenticated(ctx context.Context, authReqID, userID,
-	authorizedScopes, attributeCacheID, completedACR string, authTime time.Time) error {
+	authorizedScopes, attributeCacheID, completedACR, sessionID string, authTime time.Time) error {
 	record, err := s.GetByID(ctx, authReqID)
 	if err != nil {
 		return err
@@ -95,6 +95,7 @@ func (s *cibaStore) MarkAuthenticated(ctx context.Context, authReqID, userID,
 	record.AuthorizedScopes = authorizedScopes
 	record.AttributeCacheID = attributeCacheID
 	record.CompletedACR = completedACR
+	record.SessionID = sessionID
 	record.AuthTime = authTime
 
 	data, err := json.Marshal(record)

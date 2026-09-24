@@ -626,3 +626,25 @@ func (suite *CIBAGrantHandlerTestSuite) TestValidateGrant_InvalidPollingResource
 	suite.NotNil(errResp)
 	suite.Equal(constants.ErrorInvalidTarget, errResp.Error)
 }
+
+// The session id recorded at callback reaches the ID token and the grant response, so a CIBA client's
+// ID token names the session like an authorization-code client's does.
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_CarriesSessionID() {
+	record := suite.pendingRecord()
+	record.State = ciba.CIBAStateAuthenticated
+	record.AuthTime = time.Now()
+	record.SessionID = "sess-1"
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "access-token", TokenType: "Bearer", ExpiresIn: 3600}, nil)
+	suite.mockTokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.IDTokenBuildContext) bool { return ctx.SessionID == "sess-1" })).
+		Return(&model.TokenDTO{Token: "id-token"}, nil)
+	suite.mockCIBAService.EXPECT().MarkConsumed(mock.Anything, "auth-req-1").Return(true, nil)
+
+	resp, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenReq, suite.oauthApp)
+
+	suite.Nil(errResp)
+	suite.Require().NotNil(resp)
+	suite.Equal("sess-1", resp.SessionID)
+}

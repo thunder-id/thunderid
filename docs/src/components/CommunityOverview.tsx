@@ -3,7 +3,7 @@
 
 import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
-import {Box, Card, CardContent, Chip, Divider, Typography} from '@wso2/oxygen-ui';
+import {Box, Card, CardContent, Chip, Typography} from '@wso2/oxygen-ui';
 import {AlertCircle, ArrowRight, Code2, MessageSquare} from '@wso2/oxygen-ui-icons-react';
 import React, {type ReactNode} from 'react';
 import ContributorCloud from './ContributorCloud';
@@ -242,8 +242,6 @@ export default function CommunityOverview(): React.ReactElement {
         </Box>
         <ContributorCloud />
       </Box>
-
-      <Divider sx={{mb: 4.5}} />
 
       {/* License */}
       <Box>

@@ -33,6 +33,7 @@ type property interface {
 	isUnique() bool
 	getType() string
 	getDisplayName() string
+	getEnum() []string
 	validateValue(ctx context.Context, value interface{}, path string, logger *log.Logger) (bool, error)
 	validateUniqueness(ctx context.Context, value interface{}, path string,
 		exists func(map[string]interface{}) (bool, error), logger *log.Logger) (bool, error)
@@ -110,6 +111,9 @@ type AttributeInfo struct {
 	Required    bool
 	Credential  bool
 	Unique      bool
+	// Enum holds the permitted values in schema order when the property constrains them, and is
+	// empty otherwise.
+	Enum []string
 }
 
 // AttributeFilter selects top-level schema properties by their characteristics. Credential and
@@ -151,6 +155,7 @@ func (cs *Schema) GetAttributes(filter AttributeFilter) []AttributeInfo {
 			Required:    prop.isRequired(),
 			Credential:  isCredential,
 			Unique:      prop.isUnique(),
+			Enum:        prop.getEnum(),
 		})
 	}
 	return result

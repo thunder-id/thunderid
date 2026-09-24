@@ -95,6 +95,18 @@ Create your new Vue 3 app using Vite:
     cd my-vue-app
     pnpm install
   </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun create vite my-vue-app --template vue
+    cd my-vue-app
+    bun install
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno run -A npm:create-vite@latest my-vue-app --template vue
+    cd my-vue-app
+    deno install
+  </CodeBlock>
 </CodeGroup>
 
 ## Install @thunderid/vue
@@ -116,6 +128,10 @@ Install the <ProductName /> Vue SDK in your project:
 
   <CodeBlock lang="bash" label="Bun">
     bun add @thunderid/vue
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno add npm:@thunderid/vue
   </CodeBlock>
 </CodeGroup>
 
@@ -185,6 +201,14 @@ Start the development server:
 
   <CodeBlock lang="bash" label="pnpm">
     pnpm run dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun run dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno task dev
   </CodeBlock>
 </CodeGroup>
 

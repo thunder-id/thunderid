@@ -38,6 +38,13 @@ INSTRUMENTED_LIST="${2:?instrumented-file list is required}"
 
 NOT_IN_SERVER_BINARY=(
   "backend/pkg/thunderidengine/engine.go"
+  # The Control Plane entry point. The integration suite drives the all-in-one server built from
+  # cmd/server, so nothing in this second main package is linked into the binary it exercises and
+  # none of it can emit coverage records. Its testable helpers are covered by cmd/cpserver's own
+  # unit tests, and TestControlPlaneLinksNoRuntime guards the property the binary exists for.
+  "backend/cmd/cpserver/bootstrap_cmd.go"
+  "backend/cmd/cpserver/main.go"
+  "backend/cmd/cpserver/servicemanager.go"
 )
 
 missing=()

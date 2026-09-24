@@ -11,11 +11,13 @@ You have now seen the [consumer access pattern](../overview), how [you build it,
 and [run it in Wayfinder](../try-it-out). This page is the reasoning behind that shape: the boundaries it assumes, and
 what to pick instead when your product does not fit those assumptions.
 
-The decisions fall into four groups:
+The decisions fall into six groups:
 
 - Which system renders identity screens.
 - Which system owns customer records.
 - Which tokens and permissions backend APIs trust.
+- How long a sign-in lasts, how many applications it opens, and what ends it.
+- Which channel and provider carry the messages those journeys send.
 - Which operational controls your team needs before production.
 
 ## Decision Map
@@ -57,6 +59,28 @@ Decide how backend services will know what the signed-in customer can do.
 - Use scopes and audiences so APIs can validate whether an access token is meant for them.
 
 See [Tokens and APIs](../tokens-and-apis) for session, token, and API protection choices.
+
+## Choose the Session and Logout Model
+
+Decide how long a sign-in lasts, how many applications it opens, and what happens when it ends.
+
+- Group applications by how much trust one sign-in should buy, and keep the sensitive ones out of that group.
+- Cap how long a customer stays signed in, both when idle and in total.
+- Decide which part of the sign-in a returning customer skips, and keep sensitive steps outside it.
+- Decide how a sign-out reaches the applications the customer did not click in, and do not leave it to the browser.
+
+See [Sessions & Logout](../sessions-and-logout) for the full decision.
+
+## Choose the Notification Delivery Path
+
+Decide which channel and which provider carry the recovery links, invitations, magic links, and one-time codes your journeys send.
+
+- Use email for anything that needs a link, and SMS where a short code to a verified phone number suits the journey better.
+- Use a transactional relay on a verified sending domain for mail that reaches customers, where deliverability decides whether the journey completes.
+- Plan how many sending identities each channel needs, and confirm the channel can hold a second provider before a journey depends on one.
+- Use STARTTLS on any connection that carries SMTP credentials.
+
+See [Notification Delivery](../notification-delivery) for the full decision.
 
 ## Choose the Operating Model
 

@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -174,6 +175,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 	actorSub, _ := extractStringClaim(claims, "act_sub")
 	jti, _ := extractStringClaim(claims, "jti")
 	tokenFamilyID, _ := extractStringClaim(claims, constants.ClaimTokenFamilyID)
+	sessionID, _ := extractStringClaim(claims, constants.ClaimSessionID)
 
 	// Extract claims request if present
 	var claimsRequest *oauth2model.ClaimsRequest
@@ -219,6 +221,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 		JTI:              jti,
 		Exp:              exp,
 		TokenFamilyID:    tokenFamilyID,
+		SessionID:        sessionID,
 	}, nil
 }
 
@@ -302,7 +305,7 @@ func (tv *tokenValidator) validateExchangeToken(
 		if err := tv.verifyTokenSignatureByIssuer(ctx, token, iss); err != nil {
 			return nil, nil, fmt.Errorf("invalid subject token signature: %w", err)
 		}
-		selfClaims, err := tv.extractSubjectTokenClaims(token, iss, claims, oauthApp, nil)
+		selfClaims, err := tv.extractSubjectTokenClaims(token, iss, claims, oauthApp, nil, MappedAuthorization{})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -333,7 +336,13 @@ func (tv *tokenValidator) validateExchangeToken(
 		return nil, nil, err
 	}
 
-	externalClaims, err := tv.extractSubjectTokenClaims(token, iss, claims, oauthApp, issuerInfo.AttributeMappings)
+	authorization, err := tv.resolveMappedAuthorization(ctx, &issuerInfo.IDPDTO, claims)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to resolve authorization mapping for issuer %q: %w", iss, err)
+	}
+
+	externalClaims, err := tv.extractSubjectTokenClaims(
+		token, iss, claims, oauthApp, issuerInfo.AttributeMappings, authorization)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -418,6 +427,11 @@ func (tv *tokenValidator) ValidateIDJAGAssertion(
 		return nil, fmt.Errorf("invalid assertion signature: %v", svcErr.Error)
 	}
 
+	authorization, err := tv.resolveMappedAuthorization(ctx, &issuerInfo.IDPDTO, claims)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve authorization mapping for issuer %q: %w", iss, err)
+	}
+
 	if err := tv.validateTimeClaims(claims); err != nil {
 		return nil, err
 	}
@@ -467,19 +481,19 @@ func (tv *tokenValidator) ValidateIDJAGAssertion(
 	}
 
 	return &IDJAGAssertionClaims{
-		Sub:       sub,
-		Iss:       iss,
-		Scopes:    extractScopesFromClaims(claims, false),
-		Resources: extractStringSliceClaim(claims, "resource"),
-		JTI:       jti,
+		Sub:           sub,
+		Iss:           iss,
+		Scopes:        extractScopesFromClaims(claims, false),
+		Resources:     extractStringSliceClaim(claims, "resource"),
+		JTI:           jti,
+		Authorization: authorization,
 	}, nil
 }
 
-// resolveIDJAGIssuer looks up an external IDP whose issuer property matches the given issuer and
-// requires ID-JAG to be enabled. It mirrors resolveExternalIssuer but is a separate path so token
-// exchange trust resolution is unaffected.
-func (tv *tokenValidator) resolveIDJAGIssuer(ctx context.Context, issuer string) (
-	*tokenExchangeIssuerInfo, error) {
+// resolveIDJAGIssuer looks up a trusted ID-JAG issuer and resolves its authorization mapping (rule-based
+// or direct) against the assertion's claims. A separate path from resolveExternalIssuer so token
+// exchange is unaffected.
+func (tv *tokenValidator) resolveIDJAGIssuer(ctx context.Context, issuer string) (*tokenExchangeIssuerInfo, error) {
 	if tv.idpService == nil {
 		return nil, fmt.Errorf("no external issuers configured")
 	}
@@ -502,7 +516,34 @@ func (tv *tokenValidator) resolveIDJAGIssuer(ctx context.Context, issuer string)
 	return &tokenExchangeIssuerInfo{
 		Issuer:  issuer,
 		JWKSURL: jwksURL,
+		IDPDTO:  idpDTO,
 	}, nil
+}
+
+// resolveMappedAuthorization resolves both AuthorizationRuleMapping (explicit value rules) and
+// AuthorizationDirectMapping (direct name-based lookup) for idpDTO against claims, unioning their
+// targets. The connection's authorization mapping is configured, and therefore the sole authority
+// for scopes, when either list is non-empty.
+func (tv *tokenValidator) resolveMappedAuthorization(
+	ctx context.Context, idpDTO *providers.IDPDTO, claims map[string]interface{},
+) (MappedAuthorization, error) {
+	targets := idp.GetRuleAuthorizationTargets(idpDTO, claims)
+
+	directTargets, svcErr := tv.idpService.GetDirectAuthorizationTargets(ctx, idpDTO, claims)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return MappedAuthorization{}, fmt.Errorf(
+				"%w: %s", ErrAuthorizationMappingUnavailable, svcErr.Error.DefaultValue)
+		}
+		return MappedAuthorization{}, fmt.Errorf("%s", svcErr.Error.DefaultValue)
+	}
+	targets = append(targets, directTargets...)
+
+	am := idpDTO.AttributeConfiguration
+	configured := am != nil && am.AuthorizationMapping != nil &&
+		(len(am.AuthorizationMapping.Rules) > 0 || len(am.AuthorizationMapping.Direct) > 0)
+
+	return MappedAuthorization{Targets: targets, Configured: configured}, nil
 }
 
 // tokenExchangeIssuerInfo holds the resolved properties needed to validate an external token.
@@ -511,6 +552,7 @@ type tokenExchangeIssuerInfo struct {
 	JWKSURL              string
 	TrustedTokenAudience string
 	AttributeMappings    []providers.AttributeMapping
+	IDPDTO               providers.IDPDTO
 }
 
 // resolveExternalIssuer looks up an external IDP whose issuer property matches the given issuer.
@@ -544,6 +586,7 @@ func (tv *tokenValidator) resolveExternalIssuer(
 		JWKSURL:              jwksURL,
 		TrustedTokenAudience: idp.GetPropertyValue(idpDTO.Properties, idp.PropTrustedTokenAudience),
 		AttributeMappings:    idp.GetAttributeMappings(&idpDTO, claims),
+		IDPDTO:               idpDTO,
 	}, nil
 }
 
@@ -573,6 +616,7 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 	claims map[string]interface{},
 	oauthApp *providers.OAuthClient,
 	attributeMappings []providers.AttributeMapping,
+	authorization MappedAuthorization,
 ) (*SubjectTokenClaims, error) {
 	sub, err := extractStringClaim(claims, "sub")
 	if err != nil {
@@ -584,7 +628,12 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 		return nil, err
 	}
 
-	isAuthAssertion := tv.isAuthAssertion(claims)
+	// Assertion handling is scoped to self-issued tokens, matching the isSelfIssuer guard applied at
+	// both other isAuthAssertion call sites and at the revocation check below. An external issuer's
+	// claim vocabulary is not ours to interpret: a trusted IdP that happens to emit "assurance" must
+	// not have its token held to this server's auth assertion audience rules, which it has no reason
+	// to satisfy and which it has already been checked against by validateExternalTokenAudience.
+	isAuthAssertion := tv.isSelfIssuer(iss) && tv.isAuthAssertion(claims)
 
 	// Extract and validate audience claim
 	var auds []string
@@ -648,6 +697,7 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 		CnfJkt:         cnfJkt,
 		JTI:            jti,
 		TokenFamilyID:  tokenFamilyID,
+		Authorization:  authorization,
 	}, nil
 }
 

@@ -9,7 +9,8 @@ import (
 	"strconv"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -27,7 +28,7 @@ type FlowValidatorInterface interface {
 // flowValidator is responsible for validating flow definitions,
 // including metadata, structure, node configurations, and registry-dependent checks.
 type flowValidator struct {
-	executorRegistry    executor.ExecutorRegistryInterface
+	executorRegistry    core.ExecutorMetadataProvider
 	interceptorRegistry interceptor.InterceptorRegistryInterface
 	graphBuilder        graphbuilder.GraphBuilderInterface
 	logger              *log.Logger
@@ -35,7 +36,7 @@ type flowValidator struct {
 
 // newFlowValidator creates a new instance of flowValidator with the provided dependencies.
 func newFlowValidator(
-	executorRegistry executor.ExecutorRegistryInterface,
+	executorRegistry core.ExecutorMetadataProvider,
 	interceptorRegistry interceptor.InterceptorRegistryInterface,
 	graphBuilder graphbuilder.GraphBuilderInterface,
 ) *flowValidator {
@@ -139,9 +140,13 @@ func (v *flowValidator) validateMetadata(flowDef *FlowDefinition) *tidcommon.Ser
 
 // requiredExecutorsByFlowType maps flow type → executor names that must appear at least once.
 var requiredExecutorsByFlowType = map[providers.FlowType][]string{
-	providers.FlowTypeAuthentication: {executor.ExecutorNameAuthAssert},
-	providers.FlowTypeRegistration:   {executor.ExecutorNameProvisioning, executor.ExecutorNameUserTypeResolver},
-	providers.FlowTypeUserOnboarding: {executor.ExecutorNameProvisioning, executor.ExecutorNameUserTypeResolver},
+	providers.FlowTypeAuthentication: {executormeta.ExecutorNameAuthAssert},
+	providers.FlowTypeRegistration: {
+		executormeta.ExecutorNameProvisioning, executormeta.ExecutorNameUserTypeResolver,
+	},
+	providers.FlowTypeUserOnboarding: {
+		executormeta.ExecutorNameProvisioning, executormeta.ExecutorNameUserTypeResolver,
+	},
 }
 
 // companionExecutors maps an executor to executors that must appear alongside it in the same flow,
@@ -153,7 +158,7 @@ var requiredExecutorsByFlowType = map[providers.FlowType][]string{
 // flow that terminates without it would therefore delete sessions while their tokens stay live, so
 // the pairing is required rather than conventional.
 var companionExecutors = map[string][]string{
-	executor.ExecutorNameSessionRevocation: {executor.ExecutorNameCriteriaRevocation},
+	executormeta.ExecutorNameSessionRevocation: {executormeta.ExecutorNameCriteriaRevocation},
 }
 
 // validateFlowTypeBasedConstraints checks forbidden and required executor rules for the flow type.
@@ -878,9 +883,9 @@ func (v *flowValidator) validateExecutorSpecificConstraints(
 	nodeIndex map[string]*providers.NodeDefinition, nodes []providers.NodeDefinition,
 ) *tidcommon.ServiceError {
 	switch node.Executor.Name {
-	case executor.ExecutorNameSSOCheck:
+	case executormeta.ExecutorNameSSOCheck:
 		return v.validateSSOCheckExecutor(node, nodeIndex)
-	case executor.ExecutorNameSession:
+	case executormeta.ExecutorNameSession:
 		return v.validateSessionExecutor(node, nodes)
 	}
 	return nil
@@ -1042,7 +1047,7 @@ func (v *flowValidator) validateSSOCheckExecutor(
 		})
 	}
 	if target.Type != string(common.NodeTypeTaskExecution) ||
-		target.Executor == nil || target.Executor.Name != executor.ExecutorNameSession {
+		target.Executor == nil || target.Executor.Name != executormeta.ExecutorNameSession {
 		return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
 			Key: "error.flowmgtservice.checkpoint_ref_not_session_description",
 			DefaultValue: "Node '{{param(nodeID)}}': checkpointRef must reference " +
@@ -1060,7 +1065,7 @@ func (v *flowValidator) validateSessionExecutor(
 ) *tidcommon.ServiceError {
 	for _, n := range nodes {
 		if n.Type == string(common.NodeTypeTaskExecution) &&
-			n.Executor != nil && n.Executor.Name == executor.ExecutorNameSSOCheck {
+			n.Executor != nil && n.Executor.Name == executormeta.ExecutorNameSSOCheck {
 			if ref, ok := n.Properties[common.NodePropertyCheckpointRef].(string); ok && ref == node.ID {
 				return nil
 			}

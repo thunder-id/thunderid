@@ -137,7 +137,7 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_NoMatchingCandidate() {
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
-	assert.Equal(suite.T(), ErrUserNotFound.Error.DefaultValue, resp.Error.Error.DefaultValue)
+	assert.Equal(suite.T(), ErrEntityNotFound.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestExecute_MultipleCandidatesStillAmbiguous() {
@@ -164,7 +164,7 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_IndistinguishableCandid
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), ErrFailedToIdentifyUser.Error.DefaultValue, resp.Error.Error.DefaultValue)
+	assert.Equal(suite.T(), ErrFailedToIdentifyEntity.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestExecute_RequiredInputsMissing() {

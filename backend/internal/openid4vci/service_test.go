@@ -208,13 +208,22 @@ func (s *MetadataTestSuite) TestBuildMetadataMinimal() {
 func (s *MetadataTestSuite) TestCredentialClaims() {
 	out := credentialClaims([]credential.ClaimMapping{
 		{Name: "given_name", DisplayName: "Given Name"},
-		{Name: "skip"},
+		{Name: "no_display"},
 	})
-	s.Require().NotNil(out)
-	s.Contains(out, "given_name")
-	s.NotContains(out, "skip")
+	s.Require().Len(out, 2)
 
-	s.Nil(credentialClaims([]credential.ClaimMapping{{Name: "skip"}}))
+	// Each entry identifies its claim with a Claims Path Pointer, not by being keyed on the
+	// name, and carries display only when one is configured.
+	first := out[0].(map[string]interface{})
+	s.Equal([]interface{}{"given_name"}, first["path"])
+	s.Equal([]interface{}{map[string]interface{}{"name": "Given Name"}}, first["display"])
+
+	second := out[1].(map[string]interface{})
+	s.Equal([]interface{}{"no_display"}, second["path"])
+	s.NotContains(second, "display")
+
+	// A claim with no name cannot be pointed at, so it is dropped.
+	s.Nil(credentialClaims([]credential.ClaimMapping{{DisplayName: "orphan"}}))
 	s.Nil(credentialClaims(nil))
 }
 

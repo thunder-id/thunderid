@@ -40,7 +40,7 @@ flowchart LR
 <Short description of the components in this area and how they relate.>
 
 | Component | Task |
-| --- | --- | 
+| --- | --- |
 |<component> | <what it does, and any security-relevant behaviour> |
 
 ### Actors
@@ -152,7 +152,7 @@ Categorize the threat based on its primary impact or attack characteristic. Avoi
 
 When writing the threat statement, provide a detailed explanation of the potential negative impact on the system, component, feature, or interaction if the threat were to materialize.
 
-In the Mitigation/Comment statement, explain how the identified threat and its potential impact can be reduced through the proposed control measures. Additionally, specify any relevant thresholds. 
+In the Mitigation/Comment statement, explain how the identified threat and its potential impact can be reduced through the proposed control measures. Additionally, specify any relevant thresholds.
   
 -->
 
@@ -162,9 +162,7 @@ In the Mitigation/Comment statement, explain how the identified threat and its p
 
 
 <!-- Set Materializable to Yes only for a real, currently unmitigated threat.
-     A Yes that is exploitable and unfixed does NOT belong in this public file.
-     Route it to a private GitHub Security Advisory and record only a bounded
-     residual here once there is a mitigation or a documented compensating control. -->
+     A Yes that is exploitable and unfixed does NOT belong in this public file. Route it to a private GitHub Security Advisory and record only a bounded residual here once there is a mitigation or a documented compensating control. -->
 
 ## Security Review Checklist
 

@@ -14,6 +14,10 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/deployment"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 // LayoutStoreTestSuite contains tests for the layout store.
@@ -29,11 +33,16 @@ func TestLayoutStoreTestSuite(t *testing.T) {
 }
 
 func (suite *LayoutStoreTestSuite) SetupTest() {
+	// The store resolves its deployment from the loaded runtime rather than holding one, and
+	// other suites in this package reset the runtime, so load it per test.
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{
+		Server: engineconfig.ServerConfig{Identifier: "test-deployment"},
+	})
 	suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
 	suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 	suite.store = &layoutMgtStore{
-		dbProvider:   suite.mockDBProvider,
-		deploymentID: "test-deployment",
+		dbProvider: suite.mockDBProvider,
 	}
 }
 
@@ -432,4 +441,19 @@ func (suite *LayoutStoreTestSuite) TestDeleteLayout_DBClientError() {
 	err := suite.store.DeleteLayout(context.Background(), "layout-1")
 
 	assert.Error(suite.T(), err)
+}
+
+// A request names the deployment it acts for, and the store must scope by that rather than by the
+// identifier this server was configured with. Getting this wrong reads another deployment's rows,
+// which no other assertion here would catch: every other test runs on an unscoped context, where
+// the two values coincide.
+func (suite *LayoutStoreTestSuite) TestGetLayoutListCount_ScopesByTheRequestDeployment() {
+	results := []map[string]interface{}{{"total": int64(5)}}
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("Query", mock.Anything, "acme").Return(results, nil)
+
+	count, err := suite.store.GetLayoutListCount(deployment.WithID(context.Background(), "acme"))
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), 5, count)
 }

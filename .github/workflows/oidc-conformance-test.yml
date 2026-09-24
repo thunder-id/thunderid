@@ -1,0 +1,363 @@
+# This workflow validates ThunderID against the OpenID Foundation conformance suite.
+#
+# The suite runs in Docker and drives a real browser through the authorization code flow, so
+# the server has to be reachable from inside the container on a hostname that matches both its
+# TLS certificate and its OIDC issuer. ThunderID derives the issuer from server.hostname/port
+# in deployment.yaml and reads its listen address from the same place, so the harness patches
+# that file rather than passing a flag or an environment variable.
+#
+# Uses:
+#   OS: ubuntu-latest
+#   Go: from backend/go.mod
+#   Conformance suite: https://gitlab.com/openid/conformance-suite
+
+name: 🔐 OIDC Conformance
+
+on:
+  schedule:
+    # Everyday at 19:30 UTC (01:00 IST), after the nightly build validation.
+    - cron: '30 19 * * *'
+  workflow_dispatch:
+    inputs:
+      conformance-suite-version:
+        description: 'Conformance suite branch (Ex: release-v5.1.28). Defaults to the latest release.'
+        required: false
+      profile:
+        description: 'Certification profile to run. Defined in tests/oidc-conformance/plan-config.json.'
+        required: false
+        type: choice
+        default: 'basic'
+        options:
+          - basic
+          - config
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOFLAGS: "-mod=readonly"
+  PRODUCT_NAME: "ThunderID"
+  PRODUCT_NAME_LOWER: "thunderid"
+  # The suite resolves this host to the runner via /etc/hosts and an extra_hosts entry in the
+  # container. A dedicated name (rather than localhost) keeps the certificate SAN, the issuer
+  # and the URL the container dials all in agreement.
+  THUNDERID_HOST: "thunderid.conformance.test"
+  THUNDERID_PORT: "8090"
+  CONFORMANCE_USERNAME: "conformance-user"
+  CONFORMANCE_PASSWORD: "Conformance@123"
+
+jobs:
+  conformance:
+    name: 🔐 OIDC Conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: ⬇️ Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: 🐹 Setup Go
+        uses: ./.github/actions/setup-go
+
+      - name: 📦 Setup pnpm
+        uses: ./.github/actions/setup-pnpm
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5
+        with:
+          python-version: '3.12'
+
+      - name: ☕ Setup Java
+        # The conformance suite's pom sets java.version to 21 and passes it to the compiler
+        # plugin's release flag, so an older JDK fails the build with "release version 21 not
+        # supported". The runner image's default JDK is not guaranteed to be 21, so pin it
+        # here rather than relying on whatever the image ships.
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: 🐍 Install Python dependencies
+        run: python3 -m pip install --upgrade pip httpx pyyaml playwright
+
+      - name: 🎭 Install the Playwright browser
+        # The suite's own front-channel automation runs on HtmlUnit, which does not execute ES
+        # modules, so the gate login page never renders for it. run_tests.py drives those steps
+        # in Chromium instead. See tests/oidc-conformance/browser_driver.py.
+        run: python3 -m playwright install --with-deps chromium
+
+      - name: 🧭 Map the conformance hostname to the runner
+        run: |
+          echo "127.0.0.1 ${THUNDERID_HOST}" | sudo tee -a /etc/hosts
+          echo ">>> /etc/hosts entry added for ${THUNDERID_HOST}"
+
+      - name: 🏗️ Build ThunderID distribution
+        run: |
+          make clean
+          make build OS=$(go env GOOS) ARCH=$(go env GOARCH)
+
+          DIST_PATH=$(find target/dist -name "${PRODUCT_NAME_LOWER}-*.zip" | head -1)
+          if [ -z "$DIST_PATH" ]; then
+            echo "ERROR: no distribution zip produced under target/dist"
+            ls -la target/dist || true
+            exit 1
+          fi
+          echo "DIST_PATH=${DIST_PATH}" >> $GITHUB_ENV
+          echo ">>> Distribution: ${DIST_PATH}"
+
+      - name: 🚀 Configure and start ThunderID
+        run: |
+          python3 tests/oidc-conformance/configure_server.py \
+            "${DIST_PATH}" \
+            "${{ runner.temp }}/thunderid-dist" \
+            --hostname "${THUNDERID_HOST}" \
+            --port "${THUNDERID_PORT}" \
+            --log-file "${{ github.workspace }}/thunderid-server-log.txt" \
+            --cert-out "${{ github.workspace }}/thunderid-server.cert"
+
+      - name: 👤 Create the conformance test user
+        run: |
+          python3 tests/oidc-conformance/setup_test_user.py \
+            --base-url "${THUNDERID_BASE_URL}" \
+            --username "${CONFORMANCE_USERNAME}" \
+            --password "${CONFORMANCE_PASSWORD}"
+
+      - name: 🔑 Register the static conformance clients
+        # The plan runs with client_registration=static_client, so its clients have to exist
+        # before it starts; the suite reads their credentials from the config rather than
+        # registering its own. Three are needed: two distinct relying parties, plus one using
+        # client_secret_post, because a client may advertise only one token endpoint auth method.
+        run: |
+          python3 tests/oidc-conformance/register_static_clients.py \
+            --base-url "${THUNDERID_BASE_URL}" \
+            --output "${{ github.workspace }}/static-clients.json"
+
+      - name: ⬇️ Clone the conformance suite
+        env:
+          # Passed through the environment rather than interpolated into the script: `${{ }}`
+          # substitution happens before the shell parses the line, so a crafted input value
+          # would otherwise run as shell code.
+          PROVIDED_VERSION: ${{ github.event.inputs.conformance-suite-version }}
+        run: |
+          if [ -z "${PROVIDED_VERSION}" ]; then
+            SUITE_BRANCH=$(curl -s https://gitlab.com/api/v4/projects/4175605/releases/ | jq -r '.[0].name')
+            echo ">>> Using latest conformance suite release: ${SUITE_BRANCH}"
+          else
+            SUITE_BRANCH="${PROVIDED_VERSION}"
+            echo ">>> Using requested conformance suite branch: ${SUITE_BRANCH}"
+          fi
+
+          if [ -z "${SUITE_BRANCH}" ] || [ "${SUITE_BRANCH}" = "null" ]; then
+            echo "ERROR: could not determine a conformance suite branch"
+            exit 1
+          fi
+
+          # Constrain the ref to git's ordinary branch/tag characters before handing it to
+          # clone, so an unexpected value fails loudly here instead of reaching git as options.
+          if ! printf '%s' "${SUITE_BRANCH}" | grep -qE '^[A-Za-z0-9._/-]+$'; then
+            echo "ERROR: refusing suspicious branch name: ${SUITE_BRANCH}"
+            exit 1
+          fi
+
+          git clone --depth 1 --branch "${SUITE_BRANCH}" \
+            https://gitlab.com/openid/conformance-suite.git
+          echo "SUITE_BRANCH=${SUITE_BRANCH}" >> $GITHUB_ENV
+
+      - name: 🔧 Let the suite containers reach and trust the server
+        run: |
+          # The suite's browser and HTTP client run inside Docker, where the conformance
+          # hostname is otherwise unresolvable, so point it at the runner.
+          IP=$(ip -o -4 addr list eth0 | awk '{print $4}' | cut -d/ -f1)
+          echo ">>> Runner IP: ${IP}"
+
+          # The suite's backend HTTP client trusts any certificate, but the browser
+          # automation runs on HtmlUnit, which does not: it never calls setUseInsecureSSL,
+          # so a self-signed login page fails the handshake and every authorization step
+          # with it. Build a truststore holding the server certificate and hand it to the
+          # JVM, which keeps verification on instead of disabling it.
+          keytool -importcert -noprompt -alias thunderid \
+            -file thunderid-server.cert \
+            -keystore thunderid-truststore.jks \
+            -storepass changeit
+
+          python3 tests/oidc-conformance/patch_compose.py \
+            conformance-suite/docker-compose-dev.yml \
+            --host "${THUNDERID_HOST}" \
+            --ip "${IP}" \
+            --truststore "$(pwd)/thunderid-truststore.jks"
+
+          echo ">>> docker-compose-dev.yml after patching:"
+          cat conformance-suite/docker-compose-dev.yml
+
+      - name: ☕ Build and start the conformance suite
+        run: |
+          cd conformance-suite
+          mvn -B clean package -DskipTests
+          python3 ../tests/oidc-conformance/start_conformance_suite.py ./docker-compose-dev.yml
+
+      - name: 🔌 Verify the suite can reach the server
+        run: |
+          # Every module fails at the same first step if the container cannot dial the
+          # server, which reads as 38 unrelated conformance failures. Check it once here so
+          # a networking problem is reported as a networking problem.
+          cd conformance-suite
+          if ! docker compose -f docker-compose-dev.yml exec -T server \
+              curl -sk --max-time 15 -o /dev/null -w '%{http_code}' \
+              "${THUNDERID_BASE_URL}/.well-known/openid-configuration" | grep -q '^200$'; then
+            echo "ERROR: the conformance suite container cannot reach ${THUNDERID_BASE_URL}"
+            echo "       Check the extra_hosts mapping and that the server is bound to 0.0.0.0."
+            exit 1
+          fi
+          echo ">>> Suite container reached the discovery endpoint."
+
+      - name: 🧪 Run conformance tests
+        id: run_tests
+        env:
+          # See the note on the clone step: dispatch inputs go through the environment so they
+          # are never spliced into the script before the shell parses it.
+          INPUT_PROFILE: ${{ github.event.inputs.profile }}
+        run: |
+          PROFILE="${INPUT_PROFILE:-basic}"
+          # type: choice constrains the UI, but the API accepts any value for a dispatch input,
+          # so the name is still checked before it reaches the command line.
+          if ! printf '%s' "${PROFILE}" | grep -qE '^[a-z0-9-]+$'; then
+            echo "ERROR: refusing suspicious profile name: ${PROFILE}"
+            exit 1
+          fi
+          echo ">>> Running profile: ${PROFILE}"
+          echo "PROFILE=${PROFILE}" >> "${GITHUB_ENV}"
+
+          python3 tests/oidc-conformance/run_tests.py \
+            --base-url "${THUNDERID_BASE_URL}" \
+            --config tests/oidc-conformance/plan-config.json \
+            --profile "${PROFILE}" \
+            --static-clients "${{ github.workspace }}/static-clients.json" \
+            --username "${CONFORMANCE_USERNAME}" \
+            --password "${CONFORMANCE_PASSWORD}" \
+            --results-file "${{ github.workspace }}/conformance-results.json" \
+            --failure-log "${{ github.workspace }}/conformance-failures.log"
+
+      - name: 📜 Collect logs
+        if: always()
+        run: |
+          if [ -d conformance-suite ]; then
+            docker compose -f conformance-suite/docker-compose-dev.yml logs --tail 500 \
+              > conformance-suite-log.txt 2>&1 || true
+          fi
+
+          echo "===== ThunderID server log (tail) ====="
+          tail -n 200 thunderid-server-log.txt || true
+
+      - name: 🛑 Stop ThunderID
+        if: always()
+        run: |
+          pkill -f thunderid || true
+          echo ">>> ThunderID stopped"
+
+      - name: 🛑 Stop the conformance suite
+        if: always()
+        run: |
+          if [ -d conformance-suite ]; then
+            docker compose -f conformance-suite/docker-compose-dev.yml down -v || true
+          fi
+
+      - name: 📦 Archive results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: oidc-conformance-results
+          path: |
+            conformance-results.json
+            conformance-failures.log
+            thunderid-server-log.txt
+            conformance-suite-log.txt
+          if-no-files-found: warn
+
+      # Failure only, matching every other workflow here. A nightly conformance run that goes
+      # red means the server stopped satisfying the specification, which is worth waking
+      # someone for; a green one every night is not.
+      - name: 🔔 Send Google Chat Notification on Failure
+        if: failure()
+        shell: bash
+        env:
+          GOOGLE_CHAT_WEBHOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK }}
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT: ${{ github.sha }}
+          RESULTS_FILE: ${{ github.workspace }}/conformance-results.json
+        run: |
+          if [ -z "$GOOGLE_CHAT_WEBHOOK" ]; then
+            echo "GOOGLE_CHAT_WEBHOOK secret is not set. Skipping Google Chat notification."
+            exit 0
+          fi
+
+          FAILURE_DATE=$(date -u +"%d-%m-%Y")
+
+          # The run may have died before writing results, for instance if the server never came
+          # up, so every field below has to survive the file being absent or half written.
+          FAILED="unavailable"
+          if [ -f "$RESULTS_FILE" ] && jq -e . "$RESULTS_FILE" >/dev/null 2>&1; then
+            FAILED=$(jq -r '
+              if (.failed | length) > 0
+              then (.failed | join(", "))
+              else "none reported, see the run"
+              end' "$RESULTS_FILE")
+            NOT_RUN=$(jq -r '.notRun | length' "$RESULTS_FILE")
+            if [ "$NOT_RUN" != "0" ]; then
+              FAILED="${FAILED} (+${NOT_RUN} did not run)"
+            fi
+          fi
+
+          # Chat rejects an oversized card, and a plan can fail many modules at once.
+          if [ "${#FAILED}" -gt 300 ]; then
+            FAILED="${FAILED:0:297}..."
+          fi
+
+          jq -n \
+            --arg profile "${PROFILE:-unknown}" \
+            --arg failed "$FAILED" \
+            --arg commit "${COMMIT:0:8}" \
+            --arg workflow_url "$WORKFLOW_URL" \
+            --arg failure_date "$FAILURE_DATE" \
+            '{
+              "cards": [{
+                "header": {
+                  "title": "🔴 OIDC Conformance Failed",
+                  "subtitle": ("Nightly - " + $failure_date),
+                  "imageUrl": "https://raw.githubusercontent.com/github/explore/main/topics/oauth/oauth.png",
+                  "imageStyle": "AVATAR"
+                },
+                "sections": [
+                  {
+                    "widgets": [
+                      {"keyValue": {"topLabel": "Profile", "content": $profile}},
+                      {"keyValue": {"topLabel": "Failed Modules", "content": $failed}},
+                      {"keyValue": {"topLabel": "Commit", "content": $commit}}
+                    ]
+                  },
+                  {
+                    "widgets": [
+                      {
+                        "buttons": [
+                          {
+                            "textButton": {
+                              "text": "VIEW WORKFLOW RUN",
+                              "onClick": {"openLink": {"url": $workflow_url}}
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }]
+            }' > payload.json
+
+          if curl -f -X POST -H "Content-Type: application/json" -d @payload.json "$GOOGLE_CHAT_WEBHOOK"; then
+            echo "✅ Google Chat notification sent successfully"
+          else
+            echo "⚠️ Failed to send Google Chat notification"
+          fi

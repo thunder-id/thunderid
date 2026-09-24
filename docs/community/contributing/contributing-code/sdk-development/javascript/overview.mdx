@@ -1,12 +1,12 @@
 ---
-title: JavaScript SDK Development
+title: JavaScript SDKs
 docType: community
 description: "Repository layout, package hierarchy, and build commands for contributing to the {{ProductName}} JavaScript SDKs."
 sidebar_position: 1
 hide_table_of_contents: false
 ---
 
-# JavaScript SDK Development
+# JavaScript SDKs
 
 The JavaScript SDKs live in [javascript-sdks](https://github.com/thunder-id/javascript-sdks), a pnpm workspace managed with Turborepo. Every package publishes under the `@thunderid` scope.
 
@@ -24,8 +24,9 @@ The JavaScript SDKs live in [javascript-sdks](https://github.com/thunder-id/java
 | `@thunderid/express` | Express SDK |
 | `@thunderid/react-router` | React Router integration |
 | `@thunderid/tanstack-router` | TanStack Router integration |
+| `@thunderid/better-auth` | Better Auth provider helper |
 
-They build on each other rather than standing alone. Each arrow points from a package to the ones built on top of it:
+`@thunderid/better-auth` stands apart from the rest: it has no dependency on `@thunderid/javascript` and no protocol logic of its own, it only returns a typed OAuth config for [Better Auth](https://better-auth.com)'s Generic OAuth plugin. The other packages build on each other rather than standing alone. Each arrow points from a package to the ones built on top of it:
 
 ```mermaid
 flowchart TD
@@ -71,7 +72,3 @@ Two other commands are worth knowing: `pnpm symlink` links packages for local de
 - **Every source file carries a copyright header**, enforced by the `@thunderid/copyright-header` ESLint rule. Files under `samples/` are exempt.
 - **Do not hardcode the vendor name** in runtime keys such as storage keys or log tags. Resolve it with `getVendorPrefix(vendor)` so a consumer's `vendor` override applies.
 - Formatting comes from `@thunderid/prettier-config`. Run `pnpm format:fix` rather than hand-formatting.
-
-## Next Steps
-
-- [Testing](../testing)

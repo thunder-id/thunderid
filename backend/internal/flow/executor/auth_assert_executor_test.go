@@ -1860,3 +1860,92 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_ResolvesMappedSubjectFromU
 	assert.Equal(suite.T(), "jwt-token", resp.Assertion)
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
+
+// The Session node publishes the SSO session id on RuntimeData; the assertion carries it as the sid
+// claim so the authorization code, and in turn the ID token, name the session for logout.
+func (suite *AuthAssertExecutorTestSuite) TestExecute_CarriesSSOSessionIDAsSidClaim() {
+	ctx := &providers.NodeContext{
+		ExecutionID:      "flow-123",
+		EntityID:         "app-123",
+		FlowType:         providers.FlowTypeAuthentication,
+		AuthUser:         newTestAuthenticatedAuthUser(),
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+		Application:      providers.Application{},
+		RuntimeData:      map[string]string{common.RuntimeKeySSOSessionID: "sess-1"},
+	}
+
+	suite.setupGetEntityReference("", "")
+	suite.setupGetUserAttributesEmpty()
+
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			return claims[oauth2const.ClaimSessionID] == "sess-1"
+		}), mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// A flow with no Session node has no session to name, so the assertion carries no sid at all rather
+// than a synthesized one that no termination could ever reference.
+func (suite *AuthAssertExecutorTestSuite) TestExecute_OmitsSidClaimWithoutSession() {
+	ctx := &providers.NodeContext{
+		ExecutionID:      "flow-123",
+		EntityID:         "app-123",
+		FlowType:         providers.FlowTypeAuthentication,
+		AuthUser:         newTestAuthenticatedAuthUser(),
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+		Application:      providers.Application{},
+	}
+
+	suite.setupGetEntityReference("", "")
+	suite.setupGetUserAttributesEmpty()
+
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			_, has := claims[oauth2const.ClaimSessionID]
+			return !has
+		}), mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// A schema attribute named sid must not displace the session id: it would point the ID token, and any
+// logout notification derived from it, at a session the grant does not belong to.
+func (suite *AuthAssertExecutorTestSuite) TestExecute_AttributeCannotOverwriteSidClaim() {
+	ctx := &providers.NodeContext{
+		ExecutionID:      "flow-123",
+		EntityID:         "app-123",
+		FlowType:         providers.FlowTypeAuthentication,
+		AuthUser:         newTestAuthenticatedAuthUser(),
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+		Application:      providers.Application{},
+		RuntimeData: map[string]string{
+			common.RuntimeKeySSOSessionID:                "sess-1",
+			common.RuntimeKeyRequiredEssentialAttributes: oauth2const.ClaimSessionID,
+		},
+	}
+
+	suite.setupGetEntityReference("", "")
+	suite.setupGetUserAttributesWith(map[string]*providers.AttributeResponse{
+		oauth2const.ClaimSessionID: {Value: "attacker-supplied"},
+	})
+
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			return claims[oauth2const.ClaimSessionID] == "sess-1"
+		}), mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}

@@ -14,7 +14,6 @@ package:
 description: Native Swift SDK with hosted login and secure token storage.
 docs:
   overview: /docs/next/sdks-and-tools/ios/overview
-  apiReference: /docs/next/sdks-and-tools/ios/apis
   quickstart: /docs/next/getting-started/connect-your-application/ios
 links:
   github: https://github.com/thunder-id/ios-sdks
@@ -233,6 +232,37 @@ sections:
                     dismiss()
                 }
                 .padding()
+            }
+        }
+    - group: Components
+      kind: component
+      name: ChangeCredential
+      description: 'The `ChangeCredential` view lets a signed-in user set a new value for one of their own credentials.
+        It validates against the user type schema (`GET /users/me/meta`) and posts the change via `ThunderIDClient.updateUserCredentials`.
+        Defaults to `password`; set `attribute` for another credential, such as a PIN. Requires `.thunderIDProvider(config:)`
+        in the view hierarchy. Collects only a new value and its confirmation, not the current one, since the
+        write path doesn''t verify it today.'
+      rowsLabel: Parameters
+      rows:
+      - name: attribute
+        type: String
+        tag: optional
+        description: 'The credential attribute this instance manages, any attribute the user type schema declares `credential:
+          true` for. Defaults to `"password"`.'
+      - name: onSuccess
+        type: (() -> Void)?
+        tag: optional
+        description: Called after the credential has been changed successfully.
+      example: |-
+        import SwiftUI
+        import ThunderIDSwiftUI
+
+        struct SecuritySection: View {
+            var body: some View {
+                VStack(alignment: .leading) {
+                    Text("Security")
+                    ChangeCredential()
+                }
             }
         }
     - group: Functions

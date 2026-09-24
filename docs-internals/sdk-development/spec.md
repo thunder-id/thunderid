@@ -1,7 +1,7 @@
 # SDK Development Specification
 
 - **Status:** Draft
-- **Version:** 0.1
+- **Version:** 0.2
 - **Related documents:**
   [threat-model.md](threat-model.md),
   [#5305](https://github.com/thunder-id/thunderid/issues/5305),
@@ -606,20 +606,20 @@ public surface at all. "No time" is a deferral, not a reason: it is recorded as 
 issue in the repository that lacks the capability, and the issue is linked.
 
 **What is exempt.** Changes that do not touch the public surface: dependency updates,
-continuous integration and tooling, documentation, tests, and internal refactors.
+continuous integration and tooling, documentation, tests, and internal refactors. Exempt means
+exempt from porting, not from the decision. The decision is still recorded on the pull request,
+because whether a change reaches the other SDKs is a judgement a person makes, not one a file
+path can be trusted to make for them.
 
-**Enforcement.** A required check on each SDK repository reads the parity section of the pull
-request body. It expects one disposition per sibling repository, and each disposition is one of
-three things: a linked pull request, a written reason the capability does not apply there, or a
-linked tracked issue where the port is deferred. The check passes and applies the
-`sdk-parity-reviewed` label only when every sibling has one. A body that answers for one
-sibling and stays silent about the others fails, because a partial answer is how a gap gets
-missed: the check comments naming the repositories still unaccounted for, and links to this
-section.
+**Enforcement.** Every SDK repository carries a required check that blocks a pull request until
+the parity decision has been made on it. The decision is recorded on the pull request itself, in
+a form that survives the merge and can be queried across merged pull requests afterwards, since
+an unanswered decision on a merged pull request is what an audit looks for. A maintainer can
+record the decision by hand, which is the escape hatch when the check misjudges a change.
 
-The label means only that the parity question was answered for every sibling on that pull
-request, and its absence on a merged pull request is what an audit looks for. A maintainer
-applying the label by hand is the escape hatch when the check misjudges a change.
+How the check reads the decision, and what it records it as, is implementation detail and is not
+fixed here. The current implementation is a reusable workflow in this repository,
+`.github/workflows/sdk-parity-check.yml`, called by each SDK repository.
 
 **Existing divergences.** The rule applies from the point it is adopted. Capabilities that
 already differ between SDKs are reconciled through the normal issue backlog rather than
@@ -863,20 +863,19 @@ and go missing in the others unnoticed.
 
 **Acceptance criteria:**
 
-- **AC5.1:** Given a pull request changes the public surface of an SDK, when the parity check
-  runs and the body links no sibling pull request and gives no reason, then the check fails and
-  a comment names the sibling repositories.
-- **AC5.2:** Given the same pull request is edited so that every sibling repository has a
-  disposition, being a linked pull request, a written reason, or a linked tracked issue, when
-  the check re-runs, then it passes and applies `sdk-parity-reviewed`, without requiring a push.
-- **AC5.3:** Given a pull request that accounts for one sibling repository and says nothing
-  about the others, when the check runs, then it fails and the comment names the repositories
-  still unaccounted for.
-- **AC5.4:** Given a pull request touches only dependencies, CI, documentation, or tests, when
-  the check runs, then it is skipped.
-- **AC5.5:** Given a merged pull request that changed the public surface, when merged pull
-  requests are queried by label, then one lacking `sdk-parity-reviewed` is identifiable as an
-  unanswered parity decision.
+- **AC5.1:** Given a pull request in an SDK repository, when no parity decision has been
+  recorded on it, then the check fails and the pull request cannot merge.
+- **AC5.2:** Given the parity decision is then recorded, when the check runs again, then it
+  passes, without requiring a push.
+- **AC5.3:** Given a pull request whose decision is that the change reaches other SDKs, when any
+  sibling repository has no disposition on it, being a linked pull request, a linked tracked
+  issue where the port is deferred, or a stated reason the capability does not apply there, then
+  the check fails and identifies the repositories still unaccounted for. A partial answer is how
+  a gap gets missed, so it fails as no answer does.
+- **AC5.4:** Given a change that does not reach the public surface, when the parity decision is
+  recorded as not applicable, then the check passes on that basis alone.
+- **AC5.5:** Given a set of merged pull requests, when they are queried for their parity
+  decision, then one that merged without a decision recorded is identifiable.
 - **AC5.6:** Given a capability is deferred rather than ported, when the pull request is read,
   then it links a tracked issue in each repository that lacks the capability.
 
@@ -956,3 +955,4 @@ I need.
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | 2026-09-10 | Initial specification. |
+| 0.2 | 2026-09-15 | Cross-SDK parity enforcement stated as an outcome. How a check reads and records the decision is left to the implementation. |

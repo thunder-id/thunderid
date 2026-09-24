@@ -471,6 +471,10 @@ func (tb *tokenBuilder) buildRefreshTokenClaims(ctx *RefreshTokenBuildContext) (
 		claims[constants.ClaimTokenFamilyID] = ctx.TokenFamilyID
 	}
 
+	if ctx.SessionID != "" {
+		claims[constants.ClaimSessionID] = ctx.SessionID
+	}
+
 	return claims, nil
 }
 
@@ -553,7 +557,7 @@ func (tb *tokenBuilder) buildIDTokenClaims(ctx *IDTokenBuildContext) map[string]
 	claims := make(map[string]interface{})
 
 	if ctx.AuthTime > 0 {
-		claims["auth_time"] = ctx.AuthTime
+		claims[constants.ClaimAuthTime] = ctx.AuthTime
 	}
 
 	if ctx.Nonce != "" {
@@ -561,7 +565,11 @@ func (tb *tokenBuilder) buildIDTokenClaims(ctx *IDTokenBuildContext) map[string]
 	}
 
 	if ctx.CompletedACR != "" {
-		claims["acr"] = ctx.CompletedACR
+		claims[constants.ClaimACR] = ctx.CompletedACR
+	}
+
+	if ctx.SessionID != "" {
+		claims[constants.ClaimSessionID] = ctx.SessionID
 	}
 
 	userAttributes := ctx.UserAttributes
@@ -592,7 +600,13 @@ func (tb *tokenBuilder) buildIDTokenClaims(ctx *IDTokenBuildContext) map[string]
 		allowedUserAttributes,
 	)
 
+	// Merge the attribute claims, skipping the ones the builder writes itself so a configured
+	// attribute can neither replace them nor supply one that was not set.
+	ownedClaims := builderOwnedIDTokenClaimNames()
 	for key, value := range claimData {
+		if ownedClaims[key] {
+			continue
+		}
 		claims[key] = value
 	}
 

@@ -7,48 +7,53 @@ import (
 	"fmt"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
+	"github.com/thunder-id/thunderid/internal/entitytype"
 )
 
 var (
-	// ErrUserNotFound is returned when the user is not found in the system.
-	ErrUserNotFound = tidcommon.ServiceError{
+	// ErrEntityNotFound is returned when the entity is not found in the system.
+	// Raise through errForEntityCategory.
+	ErrEntityNotFound = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1001",
 		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_not_found",
-			DefaultValue: "User not found",
+			Key:          "flows.executor.errors.entity_not_found",
+			DefaultValue: "The {{param(entity)}} could not be found",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_not_found_desc",
-			DefaultValue: "The user could not be found in the system",
+			Key:          "flows.executor.errors.entity_not_found_desc",
+			DefaultValue: "The {{param(entity)}} could not be found in the system",
 		},
 	}
 
-	// ErrFailedToIdentifyUser is returned when the user cannot be identified.
-	ErrFailedToIdentifyUser = tidcommon.ServiceError{
+	// ErrFailedToIdentifyEntity is returned when the entity cannot be identified.
+	// Raise through errForEntityCategory.
+	ErrFailedToIdentifyEntity = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1002",
 		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.failed_to_identify_user",
-			DefaultValue: "Failed to identify user",
+			Key:          "flows.executor.errors.failed_to_identify_entity",
+			DefaultValue: "Failed to identify {{param(entity)}}",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.failed_to_identify_user_desc",
-			DefaultValue: "Unable to identify the user with the provided information",
+			Key:          "flows.executor.errors.failed_to_identify_entity_desc",
+			DefaultValue: "Unable to identify the {{param(entity)}} with the provided information",
 		},
 	}
 
-	// ErrAmbiguousUserIdentity is returned when the user identity is ambiguous.
-	ErrAmbiguousUserIdentity = tidcommon.ServiceError{
+	// ErrAmbiguousEntityIdentity is returned when the entity identity is ambiguous.
+	// Raise through errForEntityCategory.
+	ErrAmbiguousEntityIdentity = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1003",
 		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.ambiguous_user_identity",
-			DefaultValue: "Ambiguous user identity",
+			Key:          "flows.executor.errors.ambiguous_entity_identity",
+			DefaultValue: "Ambiguous {{param(entity)}} identity",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.ambiguous_user_identity_desc",
-			DefaultValue: "User identity is ambiguous and cannot be determined",
+			Key:          "flows.executor.errors.ambiguous_entity_identity_desc",
+			DefaultValue: "The {{param(entity)}} identity is ambiguous and cannot be determined",
 		},
 	}
 
@@ -80,31 +85,33 @@ var (
 		},
 	}
 
-	// ErrUserAuthFailed is returned when user authentication fails.
-	ErrUserAuthFailed = tidcommon.ServiceError{
+	// ErrEntityAuthFailed is returned when authenticating the entity fails.
+	// Raise through errForEntityCategory.
+	ErrEntityAuthFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1006",
 		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_auth_failed",
-			DefaultValue: "User authentication failed",
+			Key:          "flows.executor.errors.entity_auth_failed",
+			DefaultValue: "Failed to authenticate the {{param(entity)}}",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_auth_failed_desc",
-			DefaultValue: "An error occurred while authenticating the user",
+			Key:          "flows.executor.errors.entity_auth_failed_desc",
+			DefaultValue: "An error occurred while authenticating the {{param(entity)}}",
 		},
 	}
 
-	// ErrUserAlreadyExists is returned when the user already exists in the system.
-	ErrUserAlreadyExists = tidcommon.ServiceError{
+	// ErrEntityAlreadyExists is returned when an entity already exists in the system.
+	// Raise through errForEntityCategory.
+	ErrEntityAlreadyExists = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1007",
 		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_already_exists",
-			DefaultValue: "User already exists",
+			Key:          "flows.executor.errors.entity_already_exists",
+			DefaultValue: "The {{param(entity)}} already exists",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_already_exists_desc",
-			DefaultValue: "A user already exists with the provided attributes",
+			Key:          "flows.executor.errors.entity_already_exists_desc",
+			DefaultValue: "The provided attributes already belong to an existing {{param(entity)}}",
 		},
 	}
 
@@ -276,31 +283,33 @@ var (
 		},
 	}
 
-	// ErrProvisioningUserAttrsMissing is returned when no user attributes are provided for provisioning.
-	ErrProvisioningUserAttrsMissing = tidcommon.ServiceError{
+	// ErrProvisioningAttrsMissing is returned when no attributes are provided for provisioning.
+	// Raise through errForEntityCategory.
+	ErrProvisioningAttrsMissing = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1020",
 		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.provisioning_user_attrs_missing",
-			DefaultValue: "No user attributes provided for provisioning",
+			Key:          "flows.executor.errors.provisioning_attrs_missing",
+			DefaultValue: "No {{param(entity)}} attributes provided for provisioning",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.provisioning_user_attrs_missing_desc",
-			DefaultValue: "User attributes are required to provision a new user",
+			Key:          "flows.executor.errors.provisioning_attrs_missing_desc",
+			DefaultValue: "Attributes are required to provision a new {{param(entity)}}",
 		},
 	}
 
-	// ErrProvisioningFailed is returned when user provisioning fails.
+	// ErrProvisioningFailed is returned when provisioning the entity fails.
+	// Raise through errForEntityCategory.
 	ErrProvisioningFailed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1021",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.provisioning_failed",
-			DefaultValue: "User provisioning failed",
+			DefaultValue: "Failed to provision the {{param(entity)}}",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.provisioning_failed_desc",
-			DefaultValue: "An error occurred while provisioning the user",
+			DefaultValue: "An error occurred while provisioning the {{param(entity)}}",
 		},
 	}
 
@@ -313,12 +322,14 @@ var (
 			DefaultValue: "Failed to assign groups and roles",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.provisioning_assignment_failed_desc",
-			DefaultValue: "An error occurred while assigning groups and roles to the provisioned user",
+			Key: "flows.executor.errors.provisioning_assignment_failed_desc",
+			DefaultValue: "An error occurred while assigning groups and roles to the provisioned " +
+				"{{param(entity)}}",
 		},
 	}
 
 	// ErrCrossOUProvisioningTargetMissing is returned when target OU is missing for cross-OU provisioning.
+	// Raise through errForEntityCategory.
 	ErrCrossOUProvisioningTargetMissing = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1023",
@@ -328,21 +339,23 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.cross_ou_provisioning_target_missing_desc",
-			DefaultValue: "A target organization unit must be specified for cross-OU user provisioning",
+			DefaultValue: "A target organization unit must be specified for cross-OU {{param(entity)}} provisioning",
 		},
 	}
 
-	// ErrUserAlreadyExistsInTargetOU is returned when the user already exists in the target organization.
-	ErrUserAlreadyExistsInTargetOU = tidcommon.ServiceError{
+	// ErrEntityAlreadyExistsInTargetOU is returned when the entity already exists in the target
+	// organization. Raise through errForEntityCategory.
+	ErrEntityAlreadyExistsInTargetOU = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1024",
 		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_already_exists_in_target_ou",
-			DefaultValue: "User already exists in the target organization",
+			Key:          "flows.executor.errors.entity_already_exists_in_target_ou",
+			DefaultValue: "The {{param(entity)}} already exists in the target organization",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_already_exists_in_target_ou_desc",
-			DefaultValue: "A user with the same identity already exists in the target organization unit",
+			Key: "flows.executor.errors.entity_already_exists_in_target_ou_desc",
+			DefaultValue: "An existing {{param(entity)}} with the same identity is already in the " +
+				"target organization unit",
 		},
 	}
 
@@ -744,11 +757,11 @@ var (
 		Code: "FET-1053",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.no_valid_user_types",
-			DefaultValue: "No valid user types available",
+			DefaultValue: "No valid {{param(entity)}} types available",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.no_valid_user_types_desc",
-			DefaultValue: "There are no valid user types configured for this flow",
+			DefaultValue: "There are no valid {{param(entity)}} types configured for this flow",
 		},
 	}
 
@@ -758,11 +771,11 @@ var (
 		Code: "FET-1054",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_type_not_allowed",
-			DefaultValue: "User type not allowed for this flow",
+			DefaultValue: "The {{param(entity)}} type is not allowed for this flow",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_type_not_allowed_desc",
-			DefaultValue: "The selected user type is not allowed for this flow",
+			DefaultValue: "The selected {{param(entity)}} type is not allowed for this flow",
 		},
 	}
 
@@ -772,11 +785,11 @@ var (
 		Code: "FET-1055",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.invalid_user_type",
-			DefaultValue: "Invalid user type",
+			DefaultValue: "Invalid {{param(entity)}} type",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.invalid_user_type_desc",
-			DefaultValue: "The provided user type is not valid",
+			DefaultValue: "The provided {{param(entity)}} type is not valid",
 		},
 	}
 
@@ -786,11 +799,11 @@ var (
 		Code: "FET-1056",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.no_user_types_available",
-			DefaultValue: "No user types available",
+			DefaultValue: "No {{param(entity)}} types available",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.no_user_types_available_desc",
-			DefaultValue: "No user types are currently available",
+			DefaultValue: "No {{param(entity)}} types are currently available",
 		},
 	}
 
@@ -800,11 +813,11 @@ var (
 		Code: "FET-1057",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_type_retrieval_failed",
-			DefaultValue: "Failed to retrieve user types",
+			DefaultValue: "Failed to retrieve {{param(entity)}} types",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_type_retrieval_failed_desc",
-			DefaultValue: "An error occurred while retrieving available user types",
+			DefaultValue: "An error occurred while retrieving available {{param(entity)}} types",
 		},
 	}
 
@@ -814,11 +827,11 @@ var (
 		Code: "FET-1058",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_type_not_valid_for_ou",
-			DefaultValue: "User type is not valid",
+			DefaultValue: "The {{param(entity)}} type is not valid",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.user_type_not_valid_for_ou_desc",
-			DefaultValue: "The selected user type is not valid for the chosen organization unit",
+			DefaultValue: "The selected {{param(entity)}} type is not valid for the chosen organization unit",
 		},
 	}
 
@@ -851,17 +864,18 @@ var (
 	}
 
 	// ErrAttributeNotUnique is returned when an attribute value already exists.
+	// Raise through errAttributeNotUniqueFor.
 	ErrAttributeNotUnique = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "FET-1061",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.attribute_not_unique",
-			DefaultValue: "User already exists with the provided {{param(attribute)}}",
+			DefaultValue: "Another {{param(entity)}} already exists with the provided {{param(attribute)}}",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "flows.executor.errors.attribute_not_unique_desc",
-			DefaultValue: "The provided {{param(attribute)}} is already associated with another user" +
-				" and expects a unique value",
+			DefaultValue: "The provided {{param(attribute)}} is already associated with another" +
+				" {{param(entity)}} and expects a unique value",
 		},
 	}
 
@@ -1123,11 +1137,12 @@ var (
 		Code: "FET-1080",
 		Error: tidcommon.I18nMessage{
 			Key:          "flows.executor.errors.provisioning_attribute_conflict",
-			DefaultValue: "A user with the provided attributes already exists",
+			DefaultValue: "An existing {{param(entity)}} already uses the provided attributes",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.provisioning_attribute_conflict_desc",
-			DefaultValue: "User provisioning failed because one or more unique attribute values are already taken",
+			Key: "flows.executor.errors.provisioning_attribute_conflict_desc",
+			DefaultValue: "Provisioning the {{param(entity)}} failed because one or more unique " +
+				"attribute values are already taken",
 		},
 	}
 
@@ -1263,12 +1278,79 @@ var (
 			DefaultValue: "The client secret could not be regenerated",
 		},
 	}
+
+	// ErrOwnerNotFound is returned when the selected owner does not resolve to a known user.
+	ErrOwnerNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1090",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.owner_not_found",
+			DefaultValue: "Owner not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.owner_not_found_desc",
+			DefaultValue: "The selected owner does not exist",
+		},
+	}
+
+	// ErrInvalidFlagValue is returned when a collected boolean carries a value that cannot be
+	// read as one.
+	ErrInvalidFlagValue = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1092",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.invalid_flag_value",
+			DefaultValue: "Invalid value for {{param(attribute)}}",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.invalid_flag_value_desc",
+			DefaultValue: "{{param(attribute)}} accepts only true or false",
+		},
+	}
+
+	// ErrSelfRegNotSupportedForAgents is returned when a registration flow reaches the agent type
+	// resolver. An agent is provisioned on an administrator's behalf, never by itself.
+	ErrSelfRegNotSupportedForAgents = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1091",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.self_reg_not_supported_for_agents",
+			DefaultValue: "Self-registration is not supported for agents",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.self_reg_not_supported_for_agents_desc",
+			DefaultValue: "An agent is created by an administrator and cannot register itself",
+		},
+	}
 )
 
-// errAttributeNotUniqueFor returns a ServiceError for a specific attribute that is not unique.
-func errAttributeNotUniqueFor(attrName string) *tidcommon.ServiceError {
-	params := map[string]string{"attribute": attrName}
+// errForEntityCategory returns a copy of err whose messages name the entity category they are
+// raised for. Errors whose DefaultValue carries an "{{param(entity)}}" placeholder must be raised
+// through this, otherwise the placeholder reaches the caller unsubstituted.
+func errForEntityCategory(err tidcommon.ServiceError,
+	category entitytype.TypeCategory) *tidcommon.ServiceError {
+	params := map[string]string{"entity": string(category)}
+	e := err
+	e.Error.Params = params
+	e.ErrorDescription.Params = params
+	return &e
+}
+
+// errAttributeNotUniqueFor returns a ServiceError naming the attribute that is not unique and the
+// entity category it is raised for.
+func errAttributeNotUniqueFor(attrName string,
+	category entitytype.TypeCategory) *tidcommon.ServiceError {
+	params := map[string]string{"attribute": attrName, "entity": string(category)}
 	e := ErrAttributeNotUnique
+	e.Error.Params = params
+	e.ErrorDescription.Params = params
+	return &e
+}
+
+// errInvalidFlagValueFor returns a ServiceError naming the flag whose value could not be read.
+func errInvalidFlagValueFor(attrName string) *tidcommon.ServiceError {
+	params := map[string]string{"attribute": attrName}
+	e := ErrInvalidFlagValue
 	e.Error.Params = params
 	e.ErrorDescription.Params = params
 	return &e

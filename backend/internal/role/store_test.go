@@ -1493,8 +1493,8 @@ func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_Success() {
 				{"permission": "perm1"},
 			}, nil)
 
-	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(context.Background(), userID, groupIDs, "",
-		requestedPermissions)
+	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), userID, groupIDs, nil, "", requestedPermissions)
 
 	suite.NoError(err)
 	suite.Len(permissions, 1)
@@ -1510,7 +1510,7 @@ func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_NilGroupsHandled()
 		Return([]map[string]interface{}{{"permission": "perm1"}}, nil)
 
 	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), userID, nil, "", requestedPermissions)
+		context.Background(), userID, nil, nil, "", requestedPermissions)
 
 	suite.NoError(err)
 	suite.Len(permissions, 1)
@@ -1526,8 +1526,8 @@ func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_QueryError() {
 	suite.mockDBClient.On("QueryContext", mock.Anything, mock.Anything, testDeploymentID, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).Return(nil, queryError)
 
-	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(context.Background(), userID, groupIDs, "",
-		requestedPermissions)
+	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), userID, groupIDs, nil, "", requestedPermissions)
 
 	suite.Error(err)
 	suite.Nil(permissions)
@@ -1542,8 +1542,8 @@ func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_DBClientError() {
 	dbError := errors.New("db client error")
 	suite.mockDBProvider.On("GetConfigDBClient").Return(nil, dbError)
 
-	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(context.Background(), userID, groupIDs, "",
-		requestedPermissions)
+	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), userID, groupIDs, nil, "", requestedPermissions)
 
 	suite.Error(err)
 	suite.Nil(permissions)
@@ -1832,7 +1832,7 @@ func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_EmptyGroupIDs() {
 		Return([]map[string]interface{}{{"permission": "perm1"}}, nil)
 
 	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), userID, []string{}, "", requestedPermissions)
+		context.Background(), userID, []string{}, nil, "", requestedPermissions)
 
 	suite.NoError(err)
 	suite.Len(permissions, 1)
@@ -1847,7 +1847,7 @@ func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_EmptyUserID() {
 		Return([]map[string]interface{}{{"permission": "perm1"}}, nil)
 
 	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), "", groupIDs, "", requestedPermissions)
+		context.Background(), "", groupIDs, nil, "", requestedPermissions)
 
 	suite.NoError(err)
 	suite.Len(permissions, 1)
@@ -1866,8 +1866,8 @@ func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_MultipleGroups() {
 			{"permission": "perm2"},
 		}, nil)
 
-	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(context.Background(), userID, groupIDs, "",
-		requestedPermissions)
+	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), userID, groupIDs, nil, "", requestedPermissions)
 
 	suite.NoError(err)
 	suite.Len(permissions, 2)
@@ -1882,7 +1882,7 @@ func (suite *RoleStoreTestSuite) TestGetAuthorizedPermissions_InvalidPermissionT
 		}, nil)
 
 	permissions, err := suite.store.GetAuthorizedPermissionsByResourceServer(
-		context.Background(), "user1", []string{"group1"}, "", []string{"perm1"})
+		context.Background(), "user1", []string{"group1"}, nil, "", []string{"perm1"})
 
 	suite.NoError(err)
 	suite.Len(permissions, 0) // Non-string permissions are skipped

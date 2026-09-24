@@ -1,0 +1,96 @@
+---
+title: Centralized Configuration Management
+docType: use-case
+description: Author identity configuration once and apply it to every deployment that serves your users.
+sidebar_position: 1
+---
+
+# Centralized Configuration Management
+
+Author identity configuration in one place and apply it to every <ProductName /> deployment you run, instead of repeating the same setup in each one. This is the pattern for platform and identity teams who operate more than one deployment and are answerable for keeping them consistent.
+
+<div className="uc-b2b-intro-panel">
+  <div className="uc-b2b-intro-kicker">When to use this pattern</div>
+  <div className="uc-b2b-intro-text">
+    Use this pattern when you run more than one <ProductName /> deployment, or when a configuration change needs to be prepared and reviewed before it reaches the users who are signing in right now.
+  </div>
+</div>
+
+## How the Model Works
+
+A <ProductName /> instance takes one of two roles, and each is a separate build containing only what that role needs.
+
+- **Control plane**: where identity configuration is authored. Applications, connections, login and registration flows, roles, resource definitions and branding are all decided here. It serves no live authentication traffic.
+- **Data plane**: where your users authenticate. Tokens are issued, users sign in and register, login journeys run, and live user and role assignment operations happen here.
+
+One control plane can manage many data planes. Configuration authored on the control plane is applied to a data plane, so every deployment you run can be brought up from the same authoritative configuration and kept consistent with the rest.
+
+## What You Can Do With It
+
+### Run Many Deployments From One Configuration
+
+A team rarely runs a single identity deployment for long. A second one appears for another product line, a third for a different region, a fourth for a business unit with its own operations team. Each needs broadly the same applications, the same login journeys, the same roles and the same branding.
+
+Configured individually, they start the same and do not stay that way. A flow is adjusted in one and not the others, a role is added where it was needed first, and over months nobody can say which deployment is correct. Reproducing an issue means first discovering how the two differ.
+
+#### How <ProductName /> Helps
+
+- Authors applications, connections, login and registration flows, roles, resource definitions and branding once, on the control plane.
+- Applies that same configuration to as many data planes as you run, so they are consistent by construction rather than by discipline.
+- Gives you one place to answer what the configuration is meant to be, separate from the deployments that are running it.
+- Applies the same configuration repeatedly without changing the outcome, so re-applying it to a deployment that has drifted brings it back.
+
+### Change Configuration Without Touching Live Sign-In
+
+Identity configuration mistakes are cheap to make and expensive to discover. A redirect URI typed wrong, a login journey reordered, a connection pointed at the wrong provider: each is a small edit, and each can stop every user signing in.
+
+The risk is not that the change is wrong. It is that the place it is made is the place people are authenticating.
+
+#### How <ProductName /> Helps
+
+- Separates where configuration is authored from where users authenticate, so an edit can be made, reviewed and corrected without a live deployment observing it.
+- Applies a change to a deployment as a deliberate step, rather than the moment someone saves a form.
+- Lets you apply a change to one data plane before the others, so it is proven somewhere narrow first.
+- Reports the outcome of every resource in the configuration separately, so a failure names the resource and what was wrong with it rather than leaving you to find it.
+- Carries on past a resource it cannot apply, so one bad reference does not hold back the rest, and tells you how many were applied and how many were not.
+
+### Bring Up a Deployment That Is Already Configured
+
+Standing up identity for a new product or a new region usually starts from an empty instance, and someone spends the first day recreating what already exists elsewhere: the same connections, the same login journeys, the same roles. It is work that produces nothing new, and it is where inconsistency is introduced.
+
+#### How <ProductName /> Helps
+
+- Brings a new data plane up carrying configuration that has already been authored and reviewed, rather than starting from nothing.
+- Makes standing up a deployment an act of applying a known configuration, so the result is predictable rather than dependent on who set it up.
+- Keeps the values that genuinely belong to that deployment, such as its own client credentials, local to it, so the shared configuration stays shared.
+
+### Keep User Data Where It Has To Stay
+
+Data residency rules constrain where your users' identity data lives, not how your login journeys are shaped. A customer serving users in several regions typically needs a deployment in each, but wants the same applications, journeys and roles across all of them.
+
+Meeting that with independent deployments means maintaining the same configuration several times over, in exactly the situation where an inconsistency is hardest to justify to an auditor.
+
+#### How <ProductName /> Helps
+
+- Runs a data plane wherever the data has to stay, each holding its own users, sessions and credentials.
+- Authors the configuration governing all of them in one place, so a journey or a role is defined once rather than per region.
+- Keeps deployment owned values, including client credentials, on the deployment that uses them rather than gathered centrally.
+
+### Operate a Runtime With No Administrative Surface
+
+The deployment serving your users is the one exposed to them, and every administrative capability it carries is a capability someone might reach. Turning administration off by configuration protects you only as far as the configuration is correct.
+
+#### How <ProductName /> Helps
+
+- Ships the data plane as its own build, so the code for configuration authoring is absent rather than disabled.
+- Keeps the control plane off the path your users take, so the place configuration is authored need not be publicly reachable at all.
+- Shows each plane a console carrying only the operations that plane offers, so an operator is not presented with actions the deployment cannot perform.
+- Accepts configuration from a control plane the deployment has been told to trust, and from nothing else.
+
+## What Stays the Same
+
+Adopting this pattern does not require adopting all of it.
+
+- The all-in-one instance is unchanged and remains supported. A single deployment that authors and serves configuration in one place is a complete setup.
+- Creating a resource directly against a data plane behaves as it always has.
+- The management APIs are the same APIs. Configuration authored on a control plane is authored through the interface you already know.

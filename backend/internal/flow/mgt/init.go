@@ -14,7 +14,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 
@@ -36,7 +35,7 @@ func Initialize(
 	mcpServer *mcp.Server,
 	cacheManager cache.CacheManagerInterface,
 	flowFactory core.FlowFactoryInterface,
-	executorRegistry executor.ExecutorRegistryInterface,
+	executorRegistry core.ExecutorMetadataProvider,
 	interceptorRegistry interceptor.InterceptorRegistryInterface,
 	graphBuilder graphbuilder.GraphBuilderInterface,
 	serverConfigSvc serverConfigProvider,

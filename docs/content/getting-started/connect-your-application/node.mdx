@@ -96,6 +96,18 @@ Initialize a new Node.js project:
     cd my-node-service
     pnpm init
   </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    mkdir my-node-service
+    cd my-node-service
+    bun init -y
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    mkdir my-node-service
+    cd my-node-service
+    deno init
+  </CodeBlock>
 </CodeGroup>
 
 ## Install @thunderid/node
@@ -113,6 +125,14 @@ Install the <ProductName /> Node.js SDK:
 
   <CodeBlock lang="bash" label="pnpm">
     pnpm add @thunderid/node
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun add @thunderid/node
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno add npm:@thunderid/node
   </CodeBlock>
 </CodeGroup>
 
@@ -197,6 +217,14 @@ Start the script:
 
   <CodeBlock lang="bash" label="pnpm">
     pnpm node index.mjs
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun index.mjs
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno run -A index.mjs
   </CodeBlock>
 </CodeGroup>
 

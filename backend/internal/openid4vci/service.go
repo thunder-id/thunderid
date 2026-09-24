@@ -307,19 +307,32 @@ func buildMetadata(cfg serviceConfig, creds []credential.CredentialConfiguration
 	return metadata
 }
 
-// credentialClaims builds the per-claim display map for the metadata document.
-// Only claims with a DisplayName set are included; returns nil when none qualify.
-func credentialClaims(claims []credential.ClaimMapping) map[string]interface{} {
-	out := make(map[string]interface{}, len(claims))
+// credentialClaims builds the claims description array for the metadata document.
+//
+// OID4VCI 1.0 Final section 12.2.4 defines claims as an array of claims description objects
+// (Appendix B.1), each identifying its claim with a Claims Path Pointer rather than by being
+// keyed on the claim name. Earlier drafts used a name-keyed object, which the final
+// specification replaced.
+//
+// Returns nil when there are no claims, since the field is optional and the specification
+// requires a non-empty array when it is present.
+func credentialClaims(claims []credential.ClaimMapping) []interface{} {
+	out := make([]interface{}, 0, len(claims))
 	for _, c := range claims {
-		if c.DisplayName == "" {
+		if c.Name == "" {
 			continue
 		}
-		out[c.Name] = map[string]interface{}{
-			"display": []interface{}{
-				map[string]interface{}{"name": c.DisplayName},
-			},
+		// The pointer selects a top-level member of the credential subject. Claims are flat
+		// here, so it is always a single path segment.
+		entry := map[string]interface{}{
+			"path": []interface{}{c.Name},
 		}
+		if c.DisplayName != "" {
+			entry["display"] = []interface{}{
+				map[string]interface{}{"name": c.DisplayName},
+			}
+		}
+		out = append(out, entry)
 	}
 	if len(out) == 0 {
 		return nil

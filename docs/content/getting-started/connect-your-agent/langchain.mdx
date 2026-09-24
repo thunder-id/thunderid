@@ -145,6 +145,24 @@ Initialize a project and install the dependencies:
     pnpm add langchain @langchain/core @langchain/google-genai dotenv open zod
     pnpm add -D @types/node tsx typescript
   </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn init -y
+    yarn add langchain @langchain/core @langchain/google-genai dotenv open zod
+    yarn add -D @types/node tsx typescript
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun init -y
+    bun add langchain @langchain/core @langchain/google-genai dotenv open zod
+    bun add -d @types/node tsx typescript
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno init
+    deno add npm:langchain npm:@langchain/core npm:@langchain/google-genai npm:dotenv npm:open npm:zod
+    deno add -D npm:@types/node npm:tsx npm:typescript
+  </CodeBlock>
 </CodeGroup>
 
 Using a different provider? Install its LangChain package instead, e.g. `@langchain/anthropic` or `@langchain/openai`.
@@ -157,6 +175,11 @@ Set the project to use ES modules by adding `"type": "module"` to your `package.
   "type": "module"
 }
 ```
+
+:::note Using Deno
+Skip this step. Deno treats a `.ts` file as an ES module by default and does not need a
+`package.json` at all.
+:::
 
 </Lang>
 </LangTabs>
@@ -534,6 +557,8 @@ Run it:
 ```bash
 npx tsx agent_own_token.ts
 ```
+
+Using Deno? Run `deno run -A agent_own_token.ts` instead, since Deno runs TypeScript natively and does not need `tsx`.
 
 The agent fetches its own token and runs one turn. You should see output like:
 
@@ -1073,6 +1098,8 @@ Run it:
 ```bash
 npx tsx agent_obo.ts
 ```
+
+Using Deno? Run `deno run -A agent_obo.ts` instead, since Deno runs TypeScript natively and does not need `tsx`.
 
 A browser window opens for you to sign in as a <ProductName /> user and approve the delegated access. After you approve, the agent completes the turn:
 

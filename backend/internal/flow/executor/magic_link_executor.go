@@ -151,7 +151,7 @@ func (m *magicLinkExecutor) InitiateMagicLink(ctx *providers.NodeContext,
 		if destValue == "" {
 			return execResp, fmt.Errorf("%s is required for magic link registration", destAttr)
 		}
-		userID, identifyErr := m.IdentifyUser(ctx.Context, searchAttrs, execResp)
+		userID, identifyErr := m.IdentifyEntity(ctx.Context, searchAttrs, execResp, categoryUnscoped)
 		if identifyErr != nil {
 			return execResp, fmt.Errorf("failed to identify user: %w", identifyErr)
 		}

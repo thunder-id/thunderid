@@ -73,6 +73,11 @@ func (p *disabledEntityProvider) GetTransitiveEntityGroups(
 	return nil, errNotImplemented
 }
 
+func (p *disabledEntityProvider) GetTransitiveGroupAncestors(
+	_ string) ([]string, *EntityProviderError) {
+	return nil, errNotImplemented
+}
+
 func (p *disabledEntityProvider) ValidateEntityIDs(
 	_ []string) ([]string, *EntityProviderError) {
 	return nil, errNotImplemented

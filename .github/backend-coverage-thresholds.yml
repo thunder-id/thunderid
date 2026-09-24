@@ -44,6 +44,13 @@ packages:
   # entry stops that expected 0% from failing the check.
   # TODO: remove this entry once the provisioning executor consumes the provider.
   backend/internal/agentmgtprovider: 0
+  # The static executor catalog is linked into the server binary but has no runtime consumer yet:
+  # flow validation in cmd/server is still handed the live executor registry, and the catalog is
+  # read only by the Control Plane build, which the integration suite does not boot. Its constants
+  # are used at runtime; its accessors are covered by unit tests, including a parity test that
+  # fails if the catalog drifts from the real executors.
+  # TODO: remove this entry once a build the integration suite exercises reads the catalog.
+  backend/internal/flow/executormeta: 0
   # backend/internal/system/i18n: 0
 
 # Thresholds grouped by pull request label. A group applies only when the pull

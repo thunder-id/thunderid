@@ -11,7 +11,6 @@ import (
 
 	flowcm "github.com/thunder-id/thunderid/internal/flow/common"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -122,6 +121,14 @@ var (
 	ErrAssertionMissingJTI = errors.New("assertion is missing the jti claim")
 )
 
+// jtiRecorder is the one-method view of the JTI replay store that ConsumeAuthAssertion uses.
+// Declaring it here rather than importing the store keeps this package free of the runtime
+// replay cache, so a management build that only needs the credential helpers below does not
+// link it. The real jti.JTIStoreInterface satisfies this.
+type jtiRecorder interface {
+	RecordJTI(ctx context.Context, namespace, jti string, expiry time.Time) (bool, error)
+}
+
 // ConsumeAuthAssertion records an authentication assertion's jti, making it redeemable exactly once
 // across every redemption path. It returns ErrAssertionReplayed when the assertion has already been
 // redeemed — by this caller's path or by any other, since they share NamespaceAuthAssertion.
@@ -133,7 +140,7 @@ var (
 // Redemption paths call this rather than recording the jti themselves, so they cannot drift apart on
 // the namespace, the expiry rule or the fail-closed behavior — their agreement is the whole guarantee.
 func ConsumeAuthAssertion(
-	ctx context.Context, store jti.JTIStoreInterface, assertionJTI string, exp time.Time, leeway int64,
+	ctx context.Context, store jtiRecorder, assertionJTI string, exp time.Time, leeway int64,
 ) error {
 	if assertionJTI == "" {
 		return ErrAssertionMissingJTI

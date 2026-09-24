@@ -183,6 +183,23 @@ func (c *compositeRoleStore) GetRole(ctx context.Context, id string) (RoleWithPe
 	return RoleWithPermissions{}, err
 }
 
+// GetRolesByNames returns roles matching the given names from both stores. Unlike an ID lookup, a
+// name is not unique across organization units, so both stores are always queried in full rather than
+// stopping once a name is found in one of them.
+func (c *compositeRoleStore) GetRolesByNames(ctx context.Context, names []string) ([]Role, error) {
+	dbRoles, err := c.dbStore.GetRolesByNames(ctx, names)
+	if err != nil {
+		return nil, err
+	}
+
+	fileRoles, err := c.fileStore.GetRolesByNames(ctx, names)
+	if err != nil {
+		return nil, err
+	}
+
+	return mergeRoles(dbRoles, fileRoles), nil
+}
+
 // IsRoleExist checks if a role exists in either store.
 func (c *compositeRoleStore) IsRoleExist(ctx context.Context, id string) (bool, error) {
 	return declarativeresource.CompositeBooleanCheckHelper(
@@ -419,7 +436,7 @@ func (c *compositeRoleStore) CheckRoleNameExistsExcludingID(
 func (c *compositeRoleStore) GetAuthorizedPermissionsByResourceServer(
 	ctx context.Context,
 	entityID string,
-	groupIDs []string,
+	groupIDs, roleIDs []string,
 	resourceServerID string,
 	requestPermissions []string,
 ) ([]string, error) {
@@ -428,17 +445,19 @@ func (c *compositeRoleStore) GetAuthorizedPermissionsByResourceServer(
 	}
 
 	dbPerms, err := c.dbStore.GetAuthorizedPermissionsByResourceServer(
-		ctx, entityID, groupIDs, resourceServerID, requestPermissions)
+		ctx, entityID, groupIDs, roleIDs, resourceServerID, requestPermissions)
 	if err != nil {
 		return nil, err
 	}
 
 	filePerms, err := c.fileStore.GetAuthorizedPermissionsByResourceServer(
-		ctx, entityID, groupIDs, resourceServerID, requestPermissions)
+		ctx, entityID, groupIDs, roleIDs, resourceServerID, requestPermissions)
 	if err != nil {
 		return nil, err
 	}
 
+	// roleIDs are resolved directly, not through an entity/group assignment, so the cross-store
+	// (DB assignment + file-defined role) case does not apply to them.
 	crossStorePerms, err := c.crossStoreAuthorizedPermissions(
 		ctx, entityID, groupIDs, resourceServerID, requestPermissions)
 	if err != nil {

@@ -26,4 +26,10 @@ var (
 	// Aliased to the shared sentinel so that every redemption path — this one and the authorization
 	// callback — reports replay as the same error value.
 	ErrAssertionReplayed = utils.ErrAssertionReplayed
+
+	// ErrAuthorizationMappingUnavailable indicates authorization mapping resolution failed because a
+	// dependency (the role, group, or resource service) was unavailable, rather than because the
+	// token's issuer is untrusted. Callers must map this to server_error, not to an issuer-trust or
+	// request-validation failure.
+	ErrAuthorizationMappingUnavailable = errors.New("authorization mapping resolution unavailable")
 )

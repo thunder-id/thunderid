@@ -33,6 +33,10 @@ const (
 
 	mcpProtocolVersion = "2025-06-18"
 
+	// mcpProtocolVersion20260728 is the MCP stateless core (SEP-2567/2575) protocol version: no
+	// initialize handshake or Mcp-Session-Id, per-request _meta instead.
+	mcpProtocolVersion20260728 = "2026-07-28"
+
 	// adminGroupID is the bootstrapped "Administrator" role's group assignment
 	// (backend/cmd/server/bootstrap/01-default-resources.yaml, resource_type: role, id
 	// 01900000-0000-7000-8000-000000000050, assignments[0].id) — the same well-known, fixed
@@ -203,8 +207,84 @@ func (ts *MCPTestSuite) TestInitialize_ValidMCPScopedToken_Succeeds() {
 
 	body, _ := io.ReadAll(resp.Body)
 	ts.Assert().Equalf(http.StatusOK, resp.StatusCode, "initialize failed: %s", string(body))
-	ts.Assert().NotEmpty(resp.Header.Get("Mcp-Session-Id"),
-		"a successful initialize should establish an MCP session")
+	// mcp.Initialize mounts the MCP server in stateless mode (StreamableHTTPOptions.Stateless), so
+	// per the MCP 2026-07-28 stateless core (SEP-2567/2575) no Mcp-Session-Id is minted, even for a
+	// legacy "initialize" request such as this one.
+	ts.Assert().Empty(resp.Header.Get("Mcp-Session-Id"),
+		"a stateless server must not establish a session")
+}
+
+// discoverMCP sends a JSON-RPC "server/discover" request using the MCP 2026-07-28 stateless core's
+// per-request shape: protocol version, client info, and capabilities travel in the request body's
+// _meta instead of a prior "initialize" handshake, and the Streamable HTTP transport mirrors the
+// method into the required Mcp-Method header (see mcp.Initialize's Stateless: true wiring).
+func (ts *MCPTestSuite) discoverMCP(token string) *http.Response {
+	body := `{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{` +
+		`"_meta":{` +
+		`"io.modelcontextprotocol/protocolVersion":"` + mcpProtocolVersion20260728 + `",` +
+		`"io.modelcontextprotocol/clientCapabilities":{},` +
+		`"io.modelcontextprotocol/clientInfo":{"name":"thunderid-integration-test","version":"1.0.0"}` +
+		`}}}`
+
+	req, err := http.NewRequest(http.MethodPost, mcpEndpoint, bytes.NewBufferString(body))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("MCP-Protocol-Version", mcpProtocolVersion20260728)
+	req.Header.Set("Mcp-Method", "server/discover")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err)
+	return resp
+}
+
+// A valid, MCP-scoped, non-revoked token authenticates a stateless 2026-07-28 request the same way
+// it authenticates a legacy "initialize" request: mcp.DefaultGuard's bearer-token guard wraps the
+// Streamable HTTP handler regardless of protocol era, so per-request auth must not regress when the
+// server negotiates the new stateless core instead of a session-based one.
+func (ts *MCPTestSuite) TestDiscover_ValidMCPScopedToken_StatelessSucceeds() {
+	token := ts.mcpScopedAdminToken()
+
+	resp := ts.discoverMCP(token)
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	ts.Assert().Equalf(http.StatusOK, resp.StatusCode, "server/discover failed: %s", string(body))
+	ts.Assert().Contains(string(body), mcpProtocolVersion20260728,
+		"server/discover should advertise support for the requested protocol version")
+	ts.Assert().Empty(resp.Header.Get("Mcp-Session-Id"),
+		"a stateless server must not establish a session")
+}
+
+// A required standard header (Mcp-Method) missing from an otherwise well-formed 2026-07-28 request
+// is rejected with HeaderMismatch (-32020), proving the header/body mirroring this transport
+// requires at the new protocol version is actually enforced, not silently ignored.
+func (ts *MCPTestSuite) TestDiscover_MissingMcpMethodHeader_Rejected() {
+	token := ts.mcpScopedAdminToken()
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{` +
+		`"_meta":{` +
+		`"io.modelcontextprotocol/protocolVersion":"` + mcpProtocolVersion20260728 + `",` +
+		`"io.modelcontextprotocol/clientCapabilities":{}` +
+		`}}}`
+
+	req, err := http.NewRequest(http.MethodPost, mcpEndpoint, bytes.NewBufferString(body))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("MCP-Protocol-Version", mcpProtocolVersion20260728)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	ts.Assert().Equalf(http.StatusBadRequest, resp.StatusCode, "response: %s", string(respBody))
+	ts.Assert().Contains(string(respBody), "-32020")
 }
 
 // A token that is otherwise valid but has been revoked is rejected — proving revocation is enforced

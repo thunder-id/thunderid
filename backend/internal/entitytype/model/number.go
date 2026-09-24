@@ -43,6 +43,11 @@ func (p *number) getDisplayName() string {
 	return p.displayName
 }
 
+// getEnum returns no values: number properties do not constrain their value to a fixed set.
+func (p *number) getEnum() []string {
+	return nil
+}
+
 func (p *number) validateValue(ctx context.Context, value interface{}, path string, logger *log.Logger) (bool, error) {
 	numberValue, ok := convertToFloat64(value)
 	if !ok {

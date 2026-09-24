@@ -73,6 +73,10 @@ Visit [Get ThunderID](https://thunderid.dev/docs/next/getting-started/get-thunde
     * YAML resource definitions for every entity
     * Immutable runtime
 
+## Conformance
+
+[![OIDC Conformance](https://img.shields.io/github/actions/workflow/status/thunder-id/thunderid/oidc-conformance-test.yml?branch=main&label=OIDC%20Conformance)](https://github.com/thunder-id/thunderid/actions/workflows/oidc-conformance-test.yml)
+
 
 ## Contributing
 

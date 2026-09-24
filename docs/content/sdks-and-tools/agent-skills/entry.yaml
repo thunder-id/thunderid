@@ -11,6 +11,7 @@ status: ga
 package:
   name: thunder-id/skills
   manager: plugin
+  showDownloadCount: false
 description: Reusable skills that let any agent issue, verify, and revoke {{ProductName}} credentials as part of a
   workflow.
 docs:
@@ -43,10 +44,27 @@ sections:
   steps:
   - title: Add the skills
     description: Installs the bundle into an agent that reads the Agent Skills format.
-    code:
-      file: your shell
-      lang: bash
-      content: npx skills add thunder-id/skills
+    tabs:
+    - label: npm
+      code:
+        lang: bash
+        content: npx skills add thunder-id/skills
+    - label: Yarn
+      code:
+        lang: bash
+        content: yarn dlx skills add thunder-id/skills
+    - label: pnpm
+      code:
+        lang: bash
+        content: pnpm dlx skills add thunder-id/skills
+    - label: Bun
+      code:
+        lang: bash
+        content: bunx skills add thunder-id/skills
+    - label: Deno
+      code:
+        lang: bash
+        content: deno run -A npm:skills add thunder-id/skills
 - type: table
   id: skills
   title: Skills in the bundle

@@ -1638,10 +1638,36 @@ describe('ExecutionExtendedProperties', () => {
       },
     } as unknown as Resource;
 
-    it('should render NoConfigProperties message', () => {
+    // The executor reads the entity category from the node's mode property, and it ships as a single
+    // catalog entry, so the property has to be settable here or no flow can target agents.
+    it('should offer the entity category', () => {
       render(<ExecutionExtendedProperties resource={attributeUniquenessResource} onChange={mockOnChange} />);
 
-      expect(screen.getByText('flows:core.executions.noConfig.description')).toBeInTheDocument();
+      expect(screen.getByText('flows:core.executions.attributeUniquenessValidator.mode.label')).toBeInTheDocument();
+    });
+
+    // A free text field would let an author save a mode the backend rejects.
+    it('should restrict the category to the values the backend accepts', async () => {
+      const user = userEvent.setup();
+
+      render(<ExecutionExtendedProperties resource={attributeUniquenessResource} onChange={mockOnChange} />);
+
+      await user.click(screen.getByRole('combobox'));
+
+      expect(screen.getAllByText('flows:core.executions.entityMode.user')).toHaveLength(2);
+      expect(screen.getByText('flows:core.executions.entityMode.agent')).toBeInTheDocument();
+      expect(screen.getAllByRole('option')).toHaveLength(2);
+    });
+
+    it('should call onChange when the category is changed', async () => {
+      const user = userEvent.setup();
+
+      render(<ExecutionExtendedProperties resource={attributeUniquenessResource} onChange={mockOnChange} />);
+
+      await user.click(screen.getByRole('combobox'));
+      await user.click(screen.getByText('flows:core.executions.entityMode.agent'));
+
+      expect(mockOnChange).toHaveBeenCalledWith('data.properties.mode', 'agent', attributeUniquenessResource);
     });
   });
 

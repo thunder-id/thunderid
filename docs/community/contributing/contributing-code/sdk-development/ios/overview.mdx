@@ -1,12 +1,12 @@
 ---
-title: iOS SDK Development
+title: iOS SDKs
 docType: community
 description: "Repository layout, build commands, and code style for contributing to the {{ProductName}} iOS SDK."
 sidebar_position: 1
 hide_table_of_contents: false
 ---
 
-# iOS SDK Development
+# iOS SDKs
 
 The iOS SDK lives in [ios-sdks](https://github.com/thunder-id/ios-sdks), a Swift package publishing two products.
 
@@ -47,7 +47,3 @@ Open `Samples/Quickstart/Package.swift` in Xcode to run the sample on a simulato
 The SDK is white-labelable: a consuming app overrides the brand namespace through `ThunderIDConfig.vendor`. Do not hardcode `thunderid` in a runtime name that override should control, such as a Keychain service name or a log tag. Resolve it from `config.vendor` instead.
 
 An entry point whose purpose is to represent the SDK itself, such as `ThunderIDClient`, is a fixed identity and keeps the name.
-
-## Next Steps
-
-- [Testing](../testing)

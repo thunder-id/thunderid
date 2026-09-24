@@ -193,7 +193,7 @@ func (s *cibaService) InitiateBackchannelAuth(
 	}
 
 	if flowStep.Status == providers.FlowStatusError {
-		return nil, mapFlowErrorToCIBAError(flowStep.Error.Error.DefaultValue)
+		return nil, mapFlowErrorToCIBAError(flowStep.Error.Code)
 	}
 
 	now := time.Now()
@@ -348,7 +348,7 @@ func (s *cibaService) handleSuccessCallback(ctx context.Context, record *CIBAAut
 		" ")
 
 	if markErr := s.store.MarkAuthenticated(ctx, authReqID, claims.userID, authorizedScopes,
-		claims.attributeCacheID, claims.completedACR, authTime); markErr != nil {
+		claims.attributeCacheID, claims.completedACR, claims.sessionID, authTime); markErr != nil {
 		s.logger.Error(ctx, "Failed to mark CIBA authentication request as authenticated",
 			log.Error(markErr))
 		return &CIBAError{
@@ -419,11 +419,18 @@ func (s *cibaService) resolveExpectedAudience(ctx context.Context, clientID stri
 	return app.ID
 }
 
-// mapFlowErrorToCIBAError maps a flow failure reason to the appropriate CIBA error.
-// User-not-found and ambiguous-user failures map to unknown_user_id per CIBA Core 1.0 §7.3.
-func mapFlowErrorToCIBAError(failureReason string) *CIBAError {
-	switch failureReason {
-	case "User not found", "User identity is ambiguous":
+// Flow executor error codes that mean the login_hint resolved to no single entity. Matched by
+// code rather than by message, because the messages are translatable and name the entity category.
+const (
+	flowErrCodeEntityNotFound          = "FET-1001"
+	flowErrCodeAmbiguousEntityIdentity = "FET-1003"
+)
+
+// mapFlowErrorToCIBAError maps a flow failure to the appropriate CIBA error.
+// Not-found and ambiguous-identity failures map to unknown_user_id per CIBA Core 1.0 §7.3.
+func mapFlowErrorToCIBAError(failureCode string) *CIBAError {
+	switch failureCode {
+	case flowErrCodeEntityNotFound, flowErrCodeAmbiguousEntityIdentity:
 		return &CIBAError{
 			Code:    oauth2const.ErrorUnknownUserID,
 			Message: "Unable to resolve the user for the provided login_hint",
@@ -627,6 +634,10 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 
 	if v, ok := payload["authorized_permissions"].(string); ok {
 		claims.authorizedPermissions = v
+	}
+
+	if v, ok := payload[oauth2const.ClaimSessionID].(string); ok {
+		claims.sessionID = v
 	}
 
 	if v, ok := payload[flowcm.ClaimFlowErrorType].(string); ok {

@@ -14,7 +14,6 @@ package:
 description: Cross-platform authentication for Flutter apps.
 docs:
   overview: /docs/next/sdks-and-tools/flutter/overview
-  apiReference: /docs/next/sdks-and-tools/flutter/apis
   quickstart: /docs/next/getting-started/connect-your-application/flutter
 links:
   github: https://github.com/thunder-id/flutter-sdks
@@ -189,6 +188,39 @@ sections:
               SnackBar(content: Text('Failed to update: $error')),
             );
           },
+        )
+    - group: Components
+      kind: component
+      name: ChangeCredential
+      description: 'The `ChangeCredential` widget lets a signed-in user set a new value for one of their own credentials.
+        It validates against the user type schema (`GET /users/me/meta`) and posts the change via `ThunderIDClient.updateUserCredentials`.
+        Defaults to `password`; set `attribute` for another credential, such as a PIN. Requires a `ThunderIDProvider`
+        ancestor. Collects only a new value and its confirmation, not the current one, since the write path
+        does not verify it today.'
+      rowsLabel: Parameters
+      rows:
+      - name: attribute
+        type: String
+        tag: optional
+        description: 'The credential attribute this instance manages, any attribute the user type schema declares `credential:
+          true` for. Defaults to `''password''`.'
+      - name: onSuccess
+        type: VoidCallback?
+        tag: optional
+        description: Called after the credential has been changed successfully.
+      - name: showDivider
+        type: bool
+        tag: optional
+        description: Whether to draw the row's bottom divider, matching `UserProfile`'s field rows. Defaults to `true`.
+      example: |-
+        import 'package:thunderid_flutter/thunderid_flutter.dart';
+
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text('Security'),
+            ChangeCredential(),
+          ],
         )
     - group: Functions
       kind: function

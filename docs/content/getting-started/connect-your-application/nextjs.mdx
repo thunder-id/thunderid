@@ -92,6 +92,16 @@ Create your new Next.js app:
     pnpm create next-app my-nextjs-app
     cd my-nextjs-app
   </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bunx create-next-app@latest my-nextjs-app
+    cd my-nextjs-app
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno run -A npm:create-next-app@latest my-nextjs-app
+    cd my-nextjs-app
+  </CodeBlock>
 </CodeGroup>
 
 When prompted, select the **App Router** option (the default).
@@ -111,6 +121,14 @@ Install the <ProductName /> Next.js SDK in your project:
 
   <CodeBlock lang="bash" label="pnpm">
     pnpm add @thunderid/nextjs
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun add @thunderid/nextjs
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno add npm:@thunderid/nextjs
   </CodeBlock>
 </CodeGroup>
 
@@ -280,6 +298,14 @@ Start the development server:
 
   <CodeBlock lang="bash" label="pnpm">
     pnpm dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno task dev
   </CodeBlock>
 </CodeGroup>
 

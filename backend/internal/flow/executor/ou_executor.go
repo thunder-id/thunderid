@@ -97,7 +97,7 @@ func (o *ouExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRes
 			if svcErr.Code != authnprovidermgr.ErrorUserNotFound.Code &&
 				svcErr.Code != authnprovidermgr.ErrorAmbiguousUser.Code {
 				execResp.Status = providers.ExecFailure
-				execResp.Error = &ErrFailedToIdentifyUser
+				execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
 				return execResp, nil
 			}
 			logger.Debug(ctx.Context, "User not found or ambiguous, proceeding with OU creation")

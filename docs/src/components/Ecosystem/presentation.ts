@@ -111,7 +111,9 @@ export function showsCategory(entry: EcosystemEntry): boolean {
  */
 export function entryHref(entry: EcosystemEntry): string | undefined {
   if (!isAvailable(entry)) return undefined;
-  if (entry.sections?.length) return `/sdks/${entry.id}`;
+  // Matches what the plugin registers a route for: an entry with guides but no
+  // sections still gets a page, so its card still has somewhere to point.
+  if (entry.sections?.length || entry.guides?.length) return `/sdks/${entry.id}`;
   return entry.docs?.overview;
 }
 

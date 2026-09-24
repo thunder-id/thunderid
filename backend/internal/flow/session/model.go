@@ -27,7 +27,9 @@ const (
 // The write-once auth-event facts (completed steps + sanitized claim snapshot) live in the
 // sibling SessionContext (SESSION_AUTH_CONTEXT, 1:1 by session id), loaded only on the SSO path.
 type Session struct {
-	// SessionID is the internal primary key, never exposed to clients.
+	// SessionID is the primary key and the session's public identifier: every application in the
+	// session receives the same value. Unlike HandleID it is not a credential. It is a UUIDv7, so it
+	// carries the session's creation time, and changing what is published would need a migration.
 	SessionID string
 	// SubjectID is the authenticated subject (user) the session belongs to.
 	SubjectID string

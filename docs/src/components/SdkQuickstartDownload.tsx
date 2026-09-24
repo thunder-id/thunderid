@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useDocsVersion} from '@docusaurus/plugin-content-docs/client';
+import {useActiveVersion, useDocsPreferredVersion, useLatestVersion} from '@docusaurus/plugin-content-docs/client';
 import {useBaseUrlUtils} from '@docusaurus/useBaseUrl';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import {Button, styled} from '@wso2/oxygen-ui';
@@ -46,6 +46,13 @@ interface SdkQuickstartDownloadProps {
   promptFlow?: 'redirect-based' | 'embedded';
 }
 
+const Callouts = styled('div')({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.75rem',
+  marginBottom: '1.75rem',
+});
+
 const Callout = styled('div')({
   alignItems: 'center',
   background:
@@ -55,7 +62,6 @@ const Callout = styled('div')({
   display: 'flex',
   flexWrap: 'wrap',
   gap: '1.1rem',
-  marginBottom: '1.75rem',
   padding: '1.1rem 1.25rem',
 });
 
@@ -103,8 +109,9 @@ const Actions = styled('div')({
 });
 
 /**
- * Renders a callout linking to the latest quickstart sample archive for the given SDK package, sourced
- * from `/data/sdk-releases.json`. Renders nothing if no sample has been published yet for this package.
+ * Renders up to two callouts above a quickstart: one offering the prewritten LLM prompt for the package,
+ * and one linking to the latest quickstart sample archive, sourced from `/data/sdk-releases.json`. Each
+ * callout is omitted when its source is missing, and nothing renders when neither is available.
  */
 export default function SdkQuickstartDownload({
   packageId,
@@ -112,7 +119,12 @@ export default function SdkQuickstartDownload({
   promptFlow = undefined,
 }: SdkQuickstartDownloadProps): React.ReactElement | null {
   const {withBaseUrl} = useBaseUrlUtils();
-  const {version} = useDocsVersion();
+  // Resolved the way a version-less page resolves it, rather than read from the
+  // docs context, so the callout also works on the standalone `/sdks` routes.
+  const active = useActiveVersion(undefined);
+  const {preferredVersion} = useDocsPreferredVersion(undefined);
+  const latest = useLatestVersion(undefined);
+  const {name: version} = active ?? preferredVersion ?? latest;
   const {siteConfig} = useDocusaurusContext();
   const [asset, setAsset] = useState<SdkReleaseAsset | null>(null);
   const [packageName, setPackageName] = useState('');
@@ -160,53 +172,70 @@ export default function SdkQuickstartDownload({
     }
   };
 
-  if (!asset) return null;
+  if (!asset && !promptFlow) return null;
 
   return (
-    <Callout>
-      <IconBadge aria-hidden="true">{icon}</IconBadge>
-      <CardBody>
-        <CardTitle>Skip the setup, run the sample app instead</CardTitle>
-        <CardMeta>
-          <span>{asset.sizeLabel}</span>
-          {packageName && (
-            <>
-              <span aria-hidden="true">&middot;</span>
-              <span>
-                prewired with <code>{packageName}</code>
-              </span>
-            </>
-          )}
-        </CardMeta>
-      </CardBody>
-      <Actions>
-        <Button
-          variant="outlined"
-          href={asset.downloadUrl}
-          target="_blank"
-          rel="noreferrer"
-          endIcon={<DownloadIcon size={16} />}
-          sx={{
-            borderRadius: '999px',
-            flexShrink: 0,
-            fontWeight: 600,
-            px: 2.5,
-            py: 1,
-            textTransform: 'none',
-          }}
-        >
-          Download app
-        </Button>
-        {promptFlow && (
-          <GradientBorderButton
-            onClick={() => void handleCopyPrompt()}
-            disabled={copyState === 'copying'}
-            startIcon={<Sparkles size={14} />}
-          >
-            {copyState === 'copied' ? 'Copied!' : 'Copy prompt'}
-          </GradientBorderButton>
-        )}
-      </Actions>
-    </Callout>
+    <Callouts>
+      {promptFlow && (
+        <Callout>
+          <IconBadge aria-hidden="true">
+            <Sparkles size={20} />
+          </IconBadge>
+          <CardBody>
+            <CardTitle>Let your AI editor wire this up for you</CardTitle>
+            <CardMeta>
+              <span>paste into Claude Code, Cursor, Copilot, etc.</span>
+            </CardMeta>
+          </CardBody>
+          <Actions>
+            <GradientBorderButton
+              onClick={() => void handleCopyPrompt()}
+              disabled={copyState === 'copying'}
+              startIcon={<Sparkles size={14} />}
+            >
+              {copyState === 'copied' ? 'Copied!' : 'Copy prompt'}
+            </GradientBorderButton>
+          </Actions>
+        </Callout>
+      )}
+      {asset && (
+        <Callout>
+          <IconBadge aria-hidden="true">{icon}</IconBadge>
+          <CardBody>
+            <CardTitle>Skip the setup, run the sample app instead</CardTitle>
+            <CardMeta>
+              <span>{asset.sizeLabel}</span>
+              {packageName && (
+                <>
+                  <span aria-hidden="true">&middot;</span>
+                  <span>
+                    prewired with <code>{packageName}</code>
+                  </span>
+                </>
+              )}
+            </CardMeta>
+          </CardBody>
+          <Actions>
+            <Button
+              variant="outlined"
+              href={asset.downloadUrl}
+              target="_blank"
+              rel="noreferrer"
+              endIcon={<DownloadIcon size={16} />}
+              sx={{
+                borderRadius: '999px',
+                flexShrink: 0,
+                fontWeight: 600,
+                px: 2.5,
+                py: 1,
+                textTransform: 'none',
+              }}
+            >
+              Download sample
+            </Button>
+          </Actions>
+        </Callout>
+      )}
+    </Callouts>
   );
 }

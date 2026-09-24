@@ -70,6 +70,11 @@ const sidebar: SidebarsConfig = {
               id: 'sdks-and-tools/android/apis/components/user-profile',
               label: 'UserProfile',
             },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/android/apis/components/change-credential',
+              label: 'ChangeCredential',
+            },
           ],
         },
       ],

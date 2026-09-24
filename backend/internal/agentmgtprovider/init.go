@@ -9,23 +9,32 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// AgentMgtProviderService is the agent management provider. It exposes SetAgentService so the agent
+// service can be injected after construction, since that service depends on components initialized
+// after the flow executor registry.
+type AgentMgtProviderService interface {
+	providers.AgentMgtProvider
+	// SetAgentService injects the agent service.
+	SetAgentService(agentSvc agent.AgentServiceInterface)
+}
+
 // Initialize initializes the agent provider.
-func Initialize(agentSvc agent.AgentServiceInterface) providers.AgentMgtProvider {
+func Initialize() AgentMgtProviderService {
 	agentMgtProviderConfig := config.GetServerRuntime().Config.AgentMgtProvider
 	switch agentMgtProviderConfig.Type {
 	case "disabled":
 		return initializeDisabledAgentMgtProvider()
 	default:
-		return initializeDefaultAgentMgtProvider(agentSvc)
+		return initializeDefaultAgentMgtProvider()
 	}
 }
 
 // initializeDefaultAgentMgtProvider initializes the default agent provider.
-func initializeDefaultAgentMgtProvider(agentSvc agent.AgentServiceInterface) providers.AgentMgtProvider {
-	return newDefaultAgentMgtProvider(agentSvc)
+func initializeDefaultAgentMgtProvider() AgentMgtProviderService {
+	return newDefaultAgentMgtProvider()
 }
 
 // initializeDisabledAgentMgtProvider initializes the disabled agent provider.
-func initializeDisabledAgentMgtProvider() providers.AgentMgtProvider {
+func initializeDisabledAgentMgtProvider() AgentMgtProviderService {
 	return NewDisabledAgentMgtProvider()
 }

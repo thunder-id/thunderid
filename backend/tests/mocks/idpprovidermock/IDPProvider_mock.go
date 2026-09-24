@@ -39,6 +39,82 @@ func (_m *IDPProviderMock) EXPECT() *IDPProviderMock_Expecter {
 	return &IDPProviderMock_Expecter{mock: &_m.Mock}
 }
 
+// GetDirectAuthorizationTargets provides a mock function for the type IDPProviderMock
+func (_mock *IDPProviderMock) GetDirectAuthorizationTargets(ctx context.Context, idp *providers.IDPDTO, claims map[string]interface{}) ([]providers.AuthorizationTarget, *common.ServiceError) {
+	ret := _mock.Called(ctx, idp, claims)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetDirectAuthorizationTargets")
+	}
+
+	var r0 []providers.AuthorizationTarget
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.IDPDTO, map[string]interface{}) ([]providers.AuthorizationTarget, *common.ServiceError)); ok {
+		return returnFunc(ctx, idp, claims)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.IDPDTO, map[string]interface{}) []providers.AuthorizationTarget); ok {
+		r0 = returnFunc(ctx, idp, claims)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.AuthorizationTarget)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *providers.IDPDTO, map[string]interface{}) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, idp, claims)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// IDPProviderMock_GetDirectAuthorizationTargets_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetDirectAuthorizationTargets'
+type IDPProviderMock_GetDirectAuthorizationTargets_Call struct {
+	*mock.Call
+}
+
+// GetDirectAuthorizationTargets is a helper method to define mock.On call
+//   - ctx context.Context
+//   - idp *providers.IDPDTO
+//   - claims map[string]interface{}
+func (_e *IDPProviderMock_Expecter) GetDirectAuthorizationTargets(ctx interface{}, idp interface{}, claims interface{}) *IDPProviderMock_GetDirectAuthorizationTargets_Call {
+	return &IDPProviderMock_GetDirectAuthorizationTargets_Call{Call: _e.mock.On("GetDirectAuthorizationTargets", ctx, idp, claims)}
+}
+
+func (_c *IDPProviderMock_GetDirectAuthorizationTargets_Call) Run(run func(ctx context.Context, idp *providers.IDPDTO, claims map[string]interface{})) *IDPProviderMock_GetDirectAuthorizationTargets_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *providers.IDPDTO
+		if args[1] != nil {
+			arg1 = args[1].(*providers.IDPDTO)
+		}
+		var arg2 map[string]interface{}
+		if args[2] != nil {
+			arg2 = args[2].(map[string]interface{})
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *IDPProviderMock_GetDirectAuthorizationTargets_Call) Return(authorizationTargets []providers.AuthorizationTarget, serviceError *common.ServiceError) *IDPProviderMock_GetDirectAuthorizationTargets_Call {
+	_c.Call.Return(authorizationTargets, serviceError)
+	return _c
+}
+
+func (_c *IDPProviderMock_GetDirectAuthorizationTargets_Call) RunAndReturn(run func(ctx context.Context, idp *providers.IDPDTO, claims map[string]interface{}) ([]providers.AuthorizationTarget, *common.ServiceError)) *IDPProviderMock_GetDirectAuthorizationTargets_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetIdentityProvider provides a mock function for the type IDPProviderMock
 func (_mock *IDPProviderMock) GetIdentityProvider(ctx context.Context, idpID string) (*providers.IDPDTO, *common.ServiceError) {
 	ret := _mock.Called(ctx, idpID)

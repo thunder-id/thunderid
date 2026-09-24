@@ -40,6 +40,7 @@ type CIBAAuthRequest struct {
 	AttributeCacheID string
 	CompletedACR     string
 	AuthTime         time.Time
+	SessionID        string
 	LastPolledAt     time.Time
 	ExpiryTime       time.Time
 }
@@ -75,6 +76,7 @@ type assertionClaims struct {
 	userID                string
 	attributeCacheID      string
 	completedACR          string
+	sessionID             string
 	authReqID             string
 	authorizedPermissions string
 	flowErrorType         string

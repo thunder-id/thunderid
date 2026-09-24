@@ -1,12 +1,12 @@
 ---
-title: Android SDK Development
+title: Android SDKs
 docType: community
 description: "Repository layout, build commands, and code style for contributing to the {{ProductName}} Android SDK."
 sidebar_position: 1
 hide_table_of_contents: false
 ---
 
-# Android SDK Development
+# Android SDKs
 
 The Android SDK lives in [android-sdks](https://github.com/thunder-id/android-sdks), a Kotlin library split into a platform layer and a Compose component library.
 
@@ -58,7 +58,3 @@ Build and install the sample onto a running emulator with `./gradlew installDebu
 The SDK is white-labelable through `ThunderIDConfig.vendor`. Do not hardcode `thunderid` in a runtime name that override should control, such as an `EncryptedSharedPreferences` key or a log tag. Resolve it from `config.vendor` instead.
 
 An entry point whose purpose is to represent the SDK itself, such as `ThunderIDClient`, is a fixed identity and keeps the name.
-
-## Next Steps
-
-- [Testing](../testing)

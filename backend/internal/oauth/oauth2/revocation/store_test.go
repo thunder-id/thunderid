@@ -19,6 +19,9 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+
+	"github.com/thunder-id/thunderid/internal/system/deployment"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 const testDeploymentID = "test-deployment-id"
@@ -37,6 +40,12 @@ func TestRevocationStoreTestSuite(t *testing.T) {
 }
 
 func (suite *RevocationStoreTestSuite) SetupTest() {
+	// The store resolves its deployment from the loaded runtime rather than holding one, and
+	// other suites in this package reset the runtime, so load it per test.
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{
+		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
+	})
 	testConfig := &config.Config{
 		Database: config.DatabaseConfig{
 			RuntimePersistent: config.DataSource{
@@ -51,8 +60,7 @@ func (suite *RevocationStoreTestSuite) SetupTest() {
 	suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
 
 	suite.store = &revocationStore{
-		dbProvider:   suite.mockdbProvider,
-		deploymentID: testDeploymentID,
+		dbProvider: suite.mockdbProvider,
 	}
 
 	suite.testToken = RevokedToken{
@@ -392,4 +400,22 @@ func (suite *RevocationStoreTestSuite) createCriteriaTable(db *sql.DB) {
 		DEPLOYMENT_ID TEXT NOT NULL,
 		UNIQUE (DEPLOYMENT_ID, CRITERION_TYPE, CRITERION_VALUE))`)
 	suite.Require().NoError(err)
+}
+
+// A request names the deployment it acts for, and the store must scope by that rather than by the
+// identifier this server was configured with. Getting this wrong reads another deployment's rows,
+// which no other assertion here would catch: every other test runs on an unscoped context, where
+// the two values coincide.
+func (suite *RevocationStoreTestSuite) TestInsertRevokedToken_ScopesByTheRequestDeployment() {
+	suite.mockdbProvider.On("GetRuntimePersistentDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertRevokedToken,
+		suite.testToken.ID, suite.testToken.JTI,
+		string(suite.testToken.RevocationReason), suite.testToken.RevokedAt, suite.testToken.ExpiryTime,
+		"acme").
+		Return(int64(1), nil)
+
+	err := suite.store.InsertRevokedToken(deployment.WithID(context.Background(), "acme"), suite.testToken)
+
+	assert.NoError(suite.T(), err)
+	suite.mockDBClient.AssertExpectations(suite.T())
 }

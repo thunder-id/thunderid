@@ -92,6 +92,16 @@ Create a new Nuxt 3 app:
     yarn create nuxt my-nuxt-app
     cd my-nuxt-app
   </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun create nuxt@latest my-nuxt-app
+    cd my-nuxt-app
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno run -A npm:nuxi@latest init my-nuxt-app
+    cd my-nuxt-app
+  </CodeBlock>
 </CodeGroup>
 
 ## Install @thunderid/nuxt
@@ -113,6 +123,10 @@ Install the <ProductName /> Nuxt module:
 
   <CodeBlock lang="bash" label="Bun">
     bun add @thunderid/nuxt
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno add npm:@thunderid/nuxt
   </CodeBlock>
 </CodeGroup>
 
@@ -228,6 +242,14 @@ Start the development server:
 
   <CodeBlock lang="bash" label="Yarn">
     yarn dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun run dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno task dev
   </CodeBlock>
 </CodeGroup>
 

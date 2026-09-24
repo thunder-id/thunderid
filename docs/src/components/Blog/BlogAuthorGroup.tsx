@@ -28,6 +28,10 @@ function formatNameList(names: string[]): string {
   return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
 }
 
+function pluralizeTitle(title: string): string {
+  return title.endsWith('s') ? title : `${title}s`;
+}
+
 export default function BlogAuthorGroup({
   authors,
   avatarSize,
@@ -42,7 +46,8 @@ export default function BlogAuthorGroup({
   const names = formatNameList(authors.map((author) => author.name ?? ''));
   const titles = authors.map((author) => author.description ?? author.title).filter(Boolean);
   const commonTitle = titles.length === authors.length && new Set(titles).size === 1 ? titles[0] : undefined;
-  const subtitle = subtitleOverride ?? commonTitle;
+  const sharedTitle = commonTitle && authors.length > 1 ? pluralizeTitle(commonTitle) : commonTitle;
+  const subtitle = subtitleOverride ?? sharedTitle;
 
   return (
     <Box sx={{display: 'flex', alignItems: 'center', gap: 1.5}}>

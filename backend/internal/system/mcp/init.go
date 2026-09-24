@@ -37,7 +37,7 @@ func Initialize(
 ) {
 	httpHandler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server {
 		return mcpServer
-	}, nil)
+	}, &mcpsdk.StreamableHTTPOptions{Stateless: true})
 
 	securedHandler := guard(httpHandler)
 
@@ -62,7 +62,15 @@ func DefaultGuard(jwtService jwt.JWTServiceInterface, revocationEnforcer securit
 	cfg := config.GetServerRuntime().Config
 	baseURL := config.GetServerURL(&cfg.Server)
 
-	mcpURL := baseURL + MCPEndpointPath
+	// The MCP resource identifier: the required token audience and the "resource" advertised below.
+	// Both read this one variable so they cannot drift — advertising one identifier while enforcing
+	// another rejects clients that followed the metadata correctly.
+	mcpResourceIdentifier := baseURL + MCPEndpointPath
+	if configured := cfg.Server.SecurityConfig.MCP.Audience; configured != nil {
+		mcpResourceIdentifier = *configured
+	}
+
+	// Where the metadata document is served, not the resource's identity — always this server.
 	resourceMetadataURL := baseURL + OAuthProtectedResourceMetadataPath
 	rootPerm := security.GetSystemRootPermission()
 
@@ -79,7 +87,7 @@ func DefaultGuard(jwtService jwt.JWTServiceInterface, revocationEnforcer securit
 	// Self-issued tokens must be scoped to this MCP resource specifically (RFC 8707 resource
 	// indicator) — a token minted for some other purpose does not authenticate here just because
 	// it happens to carry the required scope.
-	bearerAuthenticator := security.NewBearerAuthenticator(jwtService, revocationEnforcer, mcpURL)
+	bearerAuthenticator := security.NewBearerAuthenticator(jwtService, revocationEnforcer, mcpResourceIdentifier)
 	tokenVerifier := mcpauth.NewTokenVerifier(bearerAuthenticator)
 	sdkGuard := auth.RequireBearerToken(tokenVerifier, &auth.RequireBearerTokenOptions{
 		ResourceMetadataURL: resourceMetadataURL,
@@ -104,7 +112,7 @@ func DefaultGuard(jwtService jwt.JWTServiceInterface, revocationEnforcer securit
 	}
 
 	metadata := &oauthex.ProtectedResourceMetadata{
-		Resource:             mcpURL,
+		Resource:             mcpResourceIdentifier,
 		AuthorizationServers: []string{authServer},
 		ScopesSupported:      []string{rootPerm},
 	}

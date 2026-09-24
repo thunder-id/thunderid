@@ -258,7 +258,7 @@ func (suite *TokenValidatorTestSuite) TestExtractSubjectTokenClaims_MapsReserved
 	}
 
 	result, err := suite.validator.extractSubjectTokenClaims(
-		"", "https://example.com", claims, suite.oauthApp, mappings)
+		"", "https://example.com", claims, suite.oauthApp, mappings, MappedAuthorization{})
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -2591,6 +2591,8 @@ func (suite *ExternalIDPValidatorTestSuite) SetupTest() {
 
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
+	suite.mockIDPService.On("GetDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, (*tidcommon.ServiceError)(nil)).Maybe()
 	suite.mockEnforcementService = revocationmock.NewEnforcementServiceInterfaceMock(suite.T())
 	suite.mockEnforcementService.On("EnsureNotRevoked", mock.Anything, mock.Anything).Return(nil).Maybe()
 	suite.validator = &tokenValidator{
@@ -2846,6 +2848,9 @@ func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), result)
 	assert.Contains(suite.T(), err.Error(), "invalid subject token signature")
+	// Direct mapping must not resolve (real DB lookups) before the signature verification fails.
+	suite.mockIDPService.AssertNotCalled(suite.T(), "GetDirectAuthorizationTargets",
+		mock.Anything, mock.Anything, mock.Anything)
 	suite.mockIDPService.AssertExpectations(suite.T())
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
@@ -3136,6 +3141,8 @@ func (suite *IDJAGValidatorTestSuite) SetupTest() {
 
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
+	suite.mockIDPService.On("GetDirectAuthorizationTargets", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, (*tidcommon.ServiceError)(nil)).Maybe()
 	suite.mockEnforcementService = revocationmock.NewEnforcementServiceInterfaceMock(suite.T())
 	suite.mockEnforcementService.On("EnsureNotRevoked", mock.Anything, mock.Anything).Return(nil).Maybe()
 	suite.mockJTIStore = jtimock.NewJTIStoreInterfaceMock(suite.T())
@@ -3315,6 +3322,9 @@ func (suite *IDJAGValidatorTestSuite) TestValidateIDJAGAssertion_InvalidSignatur
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), result)
 	assert.Contains(suite.T(), err.Error(), "invalid assertion signature")
+	// Direct mapping must not resolve (real DB lookups) before the signature verification fails.
+	suite.mockIDPService.AssertNotCalled(suite.T(), "GetDirectAuthorizationTargets",
+		mock.Anything, mock.Anything, mock.Anything)
 	suite.mockIDPService.AssertExpectations(suite.T())
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
@@ -3450,4 +3460,121 @@ func (suite *IDJAGValidatorTestSuite) TestValidateIDJAGAssertion_JTIExceedsMaxLe
 	claims := suite.idjagClaims()
 	claims["jti"] = strings.Repeat("a", 257)
 	suite.assertRejectsSignedAssertion(claims, "assertion 'jti' exceeds maximum length")
+}
+
+// An external IdP's "assurance" claim must not mark its token as one of this server's auth
+// assertions. The claim name is not reserved — an IdP may legitimately use it to convey a NIST
+// 800-63 assurance level — and misreading it subjects the token to the auth assertion audience
+// rules, which require a single aud equal to cfg.JWT.Audience ("application") or the client's app
+// ID. An external token has no reason to satisfy that, and has already been checked against
+// validateExternalTokenAudience, which accepts the server issuer instead.
+func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP_AssuranceNotAssertion() {
+	now := time.Now().Unix()
+	claims := map[string]interface{}{
+		"sub":       "ext-user-123",
+		"iss":       testExternalIssuer,
+		"aud":       "https://example.com",
+		"exp":       float64(now + 3600),
+		"nbf":       float64(now - 60),
+		"assurance": map[string]interface{}{"aal": "AAL2", "ial": "IAL2"},
+	}
+	token := suite.createExternalJWT(claims)
+	idpDTOs := buildExternalIDPDTOs()
+
+	suite.mockIDPService.On("GetIdentityProvidersByProperty", context.Background(),
+		idp.PropIssuer, testExternalIssuer).Return(idpDTOs, nil)
+	suite.mockJWTService.On("VerifyJWTSignatureWithJWKS", mock.Anything, token, testExternalJWKS).Return(nil)
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), "ext-user-123", result.Sub)
+	assert.Equal(suite.T(), testExternalIssuer, result.Iss)
+	suite.mockIDPService.AssertExpectations(suite.T())
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// The multi-audience form of the same case. validateExternalTokenAudience accepts an aud list
+// containing the server issuer, but the auth assertion branch rejects len(aud) > 1 outright, so a
+// misclassified external token fails on a rule that was never meant to apply to it.
+func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP_AssuranceAudList() {
+	now := time.Now().Unix()
+	claims := map[string]interface{}{
+		"sub":       "ext-user-123",
+		"iss":       testExternalIssuer,
+		"aud":       []interface{}{"https://example.com", "other-audience"},
+		"exp":       float64(now + 3600),
+		"nbf":       float64(now - 60),
+		"assurance": map[string]interface{}{"aal": "AAL2", "ial": "IAL2"},
+	}
+	token := suite.createExternalJWT(claims)
+	idpDTOs := buildExternalIDPDTOs()
+
+	suite.mockIDPService.On("GetIdentityProvidersByProperty", context.Background(),
+		idp.PropIssuer, testExternalIssuer).Return(idpDTOs, nil)
+	suite.mockJWTService.On("VerifyJWTSignatureWithJWKS", mock.Anything, token, testExternalJWKS).Return(nil)
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), "ext-user-123", result.Sub)
+	suite.mockIDPService.AssertExpectations(suite.T())
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// An external token carrying "assurance" must not have authorized_permissions read as its scopes.
+// That claim is a source of scopes only for this server's own auth assertions; for an external
+// issuer it is an unrelated claim whose meaning is that issuer's, not ours.
+func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP_AssuranceIgnoresAuthzPerms() {
+	now := time.Now().Unix()
+	claims := map[string]interface{}{
+		"sub":                    "ext-user-123",
+		"iss":                    testExternalIssuer,
+		"aud":                    "https://example.com",
+		"exp":                    float64(now + 3600),
+		"nbf":                    float64(now - 60),
+		"assurance":              map[string]interface{}{"aal": "AAL2", "ial": "IAL2"},
+		"authorized_permissions": "admin:write admin:delete",
+	}
+	token := suite.createExternalJWT(claims)
+	idpDTOs := buildExternalIDPDTOs()
+
+	suite.mockIDPService.On("GetIdentityProvidersByProperty", context.Background(),
+		idp.PropIssuer, testExternalIssuer).Return(idpDTOs, nil)
+	suite.mockJWTService.On("VerifyJWTSignatureWithJWKS", mock.Anything, token, testExternalJWKS).Return(nil)
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Empty(suite.T(), result.Scopes, "authorized_permissions must not become scopes for an external token")
+	suite.mockIDPService.AssertExpectations(suite.T())
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Success_RestoresSessionID() {
+	now := time.Now().Unix()
+	claims := map[string]interface{}{
+		"sub":              "test-client",
+		"iss":              "https://example.com",
+		"aud":              "test-client",
+		"exp":              float64(now + 3600),
+		"iat":              float64(now),
+		"scope":            "openid",
+		"access_token_sub": "user123",
+		"access_token_aud": testAppID,
+		"grant_type":       "authorization_code",
+		"sid":              "sess-1",
+	}
+	token := suite.createTestJWT(claims)
+
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "https://example.com").Return(nil)
+
+	result, err := suite.validator.ValidateRefreshToken(context.Background(), token)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "sess-1", result.SessionID)
+	suite.mockJWTService.AssertExpectations(suite.T())
 }

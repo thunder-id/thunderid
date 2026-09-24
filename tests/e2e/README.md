@@ -155,7 +155,7 @@ npx playwright test --grep-invert @slow
 When running tests in parallel or CI, reports are generated as blobs. To merge them into a single HTML report:
 
 ```bash
-npm run posttest
+npm run merge-reports
 ```
 
 ---

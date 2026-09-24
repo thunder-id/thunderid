@@ -28,6 +28,16 @@ server:
         {{- end }}
       {{- end }}
     {{- end }}
+    {{- /* hasKey, not truthiness: an empty `rest:`/`mcp:` block is falsy, and skipping it would
+           silently leave the audience unenforced for an operator who asked for it. */}}
+    {{- if hasKey . "rest" }}
+    rest:
+      audience: {{ (default dict .rest).audience | default (include "thunderid.resourceIdentifier" $) | quote }}
+    {{- end }}
+    {{- if hasKey . "mcp" }}
+    mcp:
+      audience: {{ (default dict .mcp).audience | default (include "thunderid.resourceIdentifier" $) | quote }}
+    {{- end }}
     {{- end }}
     {{- if and .Values.configuration.server.security .Values.configuration.server.security.directAuthSecret }}
     direct_auth_secret: {{ .Values.configuration.server.security.directAuthSecret | quote }}

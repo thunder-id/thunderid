@@ -1,0 +1,42 @@
+{
+  "defaultProfile": "basic",
+  "profiles": {
+    "basic": {
+      "plan": "oidcc-basic-certification-test-plan",
+      "description": "Basic OP. 35 browser-driven modules under static_client.",
+      "browser": true
+    },
+    "config": {
+      "plan": "oidcc-config-certification-test-plan",
+      "description": "Config OP. One discovery module, no login.",
+      "browser": false
+    }
+  },
+  "alias": "thunderid-oidc-conformance",
+  "description": "ThunderID OIDC Basic Certification",
+  "server": {
+    "discoveryUrl": "https://THUNDERID_HOST:8090/.well-known/openid-configuration",
+    "allow_unexpected_metadata_fields": [
+      "authorization_grant_profiles_supported"
+    ]
+  },
+  "client": {
+    "client_id": "STATIC_CLIENT_ID",
+    "client_secret": "STATIC_CLIENT_SECRET",
+    "client_name": "Conformance Suite RP 1",
+    "scope": "openid profile email"
+  },
+  "client2": {
+    "client_id": "STATIC_CLIENT2_ID",
+    "client_secret": "STATIC_CLIENT2_SECRET",
+    "client_name": "Conformance Suite RP 2",
+    "scope": "openid profile email"
+  },
+  "consent": {},
+  "client_secret_post": {
+    "client_id": "STATIC_CLIENT_POST_ID",
+    "client_secret": "STATIC_CLIENT_POST_SECRET",
+    "client_name": "Conformance Suite RP Secret Post",
+    "scope": "openid profile email"
+  }
+}

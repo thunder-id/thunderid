@@ -99,6 +99,20 @@ Create your new Node.js application:
     pnpm init
     pnpm add express cookie-parser
   </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    mkdir my-express-app
+    cd my-express-app
+    bun init -y
+    bun add express cookie-parser
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    mkdir my-express-app
+    cd my-express-app
+    deno init
+    deno add npm:express npm:cookie-parser
+  </CodeBlock>
 </CodeGroup>
 
 ## Install the SDK and Dependencies
@@ -116,6 +130,14 @@ Install the <ProductName /> Express SDK:
 
   <CodeBlock lang="bash" label="pnpm">
     pnpm add @thunderid/express
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun add @thunderid/express
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno add npm:@thunderid/express
   </CodeBlock>
 </CodeGroup>
 
@@ -173,6 +195,58 @@ app.listen(port, () => {
 Replace `<your-client-id>` and `<your-client-secret>` with values from your <ProductName /> application. Make sure the authorized redirect URL in your application settings is set to `http://localhost:3000/login`.
 :::
 
+:::note Using Deno
+The `deno init` scaffold above does not create a `package.json` with `"type": "commonjs"`, so Deno treats a `.js` file as an ES module and the `require()` calls above fail with `require is not defined`. Save the file as `index.mjs` instead, using `import` in place of `require`:
+
+```js title="index.mjs" showLineNumbers
+import express from 'express';
+import cookieParser from 'cookie-parser';
+import {thunderID, handleSignIn, handleSignOut, protect} from '@thunderid/express';
+
+const app = express();
+const port = 3000;
+
+app.use(cookieParser());
+app.use(express.json());
+
+app.use(
+  thunderID({
+    baseUrl: 'https://localhost:8090',
+    clientId: '<your-client-id>',
+    clientSecret: '<your-client-secret>',
+    afterSignInUrl: 'http://localhost:3000/login',
+    afterSignOutUrl: 'http://localhost:3000/logout',
+  }),
+);
+
+app.get('/', (_req, res) => {
+  res.send('<a href="/protected">Go to protected page</a>');
+});
+
+app.get('/login', handleSignIn());
+app.get('/logout', handleSignOut());
+
+app.get(
+  '/protected',
+  protect((res) => res.redirect('/login')),
+  (_req, res) => {
+    res.send('You are signed in and can access this protected route.');
+  },
+);
+
+app.get('/me', protect(), async (req, res) => {
+  const user = await req.thunderIDAuth.getUserFromRequest(req);
+  res.json(user);
+});
+
+app.listen(port, () => {
+  console.log(`Server running on http://localhost:${port}`);
+});
+```
+
+Run it with `deno run -A index.mjs` in the next step, instead of `index.js`.
+:::
+
 ## Run Your App
 
 Start the server:
@@ -188,6 +262,14 @@ Start the server:
 
   <CodeBlock lang="bash" label="pnpm">
     pnpm node index.js
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun index.js
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Deno">
+    deno run -A index.mjs
   </CodeBlock>
 </CodeGroup>
 

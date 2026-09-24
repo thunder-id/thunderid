@@ -14,7 +14,6 @@ package:
 description: Framework-agnostic core that powers the browser, Node, and platform SDKs.
 docs:
   overview: /docs/next/sdks-and-tools/javascript/overview
-  apiReference: /docs/next/sdks-and-tools/javascript/apis
 links:
   github: https://github.com/thunder-id/javascript-sdks
   package: https://www.npmjs.com/package/@thunderid/javascript

@@ -35,7 +35,7 @@ Credential configurations are managed resources you create through the <ProductN
 | **Proof type** | Holder proofs must use `proof_type: "jwt"` with `typ: openid4vci-proof+jwt`. The `aud` must equal the credential issuer URL; the `nonce` must match a valid, unexpired `c_nonce`. |
 | **Batch issuance** | Multiple proofs may be submitted via `proofs.jwt`. One SD-JWT VC is issued per proof, up to the configured `batch_size`. When `batch_size > 1`, `batch_credential_issuance` is advertised in the metadata. |
 | **DPoP** | When the access token carries `cnf.jkt`, the credential request must include a matching DPoP proof header (RFC 9449). |
-| **Claim sourcing** | Claims are resolved from the user's profile attributes. Missing attributes are silently omitted from the issued credential. Only claims with a `displayName` are advertised in the metadata `claims` object; all configured claims are issued. |
+| **Claim sourcing** | Claims are resolved from the user's profile attributes. Missing attributes are silently omitted from the issued credential. Every configured claim is advertised in the metadata `claims` array, each with its own `path`; a claim carries a `display` entry only when it has a `displayName`. |
 | **Signing** | Signed with the key set as `signing_key_id`. The certificate chain is included in the SD-JWT VC `x5c` header. Omitting `signing_key_id` disables the issuer engine at startup. |
 | **Scope enforcement** | When `enforce_scope` is enabled, the access token must carry a scope matching the `credential_configuration_id`. |
 
@@ -51,7 +51,7 @@ Manage configurations in **Verifiable Credentials → Templates** in the <Produc
 |---|---|
 | **Handle** | Unique identifier for this credential type. Becomes the OAuth scope and `credential_configuration_id` in issuer metadata. Required. |
 | **Credential Type (VCT)** | The `vct` URI that identifies this credential type to wallets and verifiers. Required. |
-| **Claims** | Each entry maps a user profile attribute name to an optional wallet display name. The attribute value is sourced from the user's profile at issuance. Claims with a display name are advertised in the metadata `claims` object; all configured claims are included in the issued credential regardless. |
+| **Claims** | Each entry maps a user profile attribute name to an optional wallet display name. The attribute value is sourced from the user's profile at issuance. Every entry is advertised in the metadata `claims` array, and one with a display name also carries a `display` entry. |
 | **Display** | Wallet presentation display settings: locale (BCP 47 tag, e.g. `en-US`) and `logoUri` (a hosted image URL shown as the credential logo in the wallet). |
 | **Validity** | Lifetime of issued credentials in seconds. Overrides the server-level `credential_validity_seconds` when set. |
 
@@ -92,9 +92,10 @@ Configure the issuer engine under the `openid4vci:` key in `deployment.yaml`. Al
         "jwt": { "proof_signing_alg_values_supported": ["ES256"] }
       },
       "display": [{ "name": "Example PID" }],
-      "claims": {
-        "given_name": { "display": [{ "name": "First Name" }] }
-      }
+      "claims": [
+        { "path": ["given_name"], "display": [{ "name": "First Name" }] },
+        { "path": ["birthdate"] }
+      ]
     }
   }
 }

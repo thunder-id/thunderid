@@ -120,6 +120,13 @@ bundle_analysis:
   warning_threshold: "5%"
 
 ignore:
+  # The Control Plane entry point. Startup wiring that only a booted binary executes, and the
+  # integration suite boots the all-in-one server from cmd/server, never this one. It is excluded
+  # from coverage instrumentation in backend/.excludecoverage for the same reason; naming it here
+  # keeps it out of the patch denominator explicitly rather than by absence of data. Its testable
+  # helpers are covered by cmd/cpserver's own tests.
+  # TODO: remove if the integration suite ever boots the Control Plane.
+  - "backend/cmd/cpserver/**"
   - "backend/tests/**"
   - "**/*_test.go"
   - "tests/**"

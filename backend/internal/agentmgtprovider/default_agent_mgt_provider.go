@@ -14,32 +14,98 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// defaultAgentLogoURL stands in when an agent is provisioned without one, so a listing has
+// something to draw. The avatar scheme is resolved by the client rather than fetched.
+const defaultAgentLogoURL = "avatar:shape=circle,variant=anonymous_entity,content=bot_head,colors=0"
+
 type defaultAgentMgtProvider struct {
 	agentSvc agent.AgentServiceInterface
 }
 
 // newDefaultAgentMgtProvider creates a new default agent provider.
-func newDefaultAgentMgtProvider(agentSvc agent.AgentServiceInterface) providers.AgentMgtProvider {
-	return &defaultAgentMgtProvider{
-		agentSvc: agentSvc,
-	}
+func newDefaultAgentMgtProvider() AgentMgtProviderService {
+	return &defaultAgentMgtProvider{}
+}
+
+// SetAgentService injects the agent service. See AgentMgtProviderService.
+func (p *defaultAgentMgtProvider) SetAgentService(agentSvc agent.AgentServiceInterface) {
+	p.agentSvc = agentSvc
 }
 
 // CreateAgent provisions an agent through the agent service.
 func (p *defaultAgentMgtProvider) CreateAgent(
-	ctx context.Context, agent *providers.Agent,
+	ctx context.Context, agent *providers.Agent, delegated bool,
 ) (*providers.Agent, *tidcommon.ServiceError) {
 	if agent == nil {
 		return nil, &ErrorInvalidRequestFormat
 	}
-	if agent.Owner == "" {
-		return nil, &ErrorOwnerRequired
+	if p.agentSvc == nil {
+		return nil, &ErrorAgentProvisioningDisabled
 	}
-	created, svcErr := p.agentSvc.CreateAgent(security.WithRuntimeContext(ctx), agent)
+
+	created, svcErr := p.agentSvc.CreateAgent(security.WithRuntimeContext(ctx),
+		applyCreateDefaults(agent, delegated, agent.AllowedUserTypes))
 	if svcErr != nil {
 		return nil, svcErr
 	}
 	return toProviderAgent(created), nil
+}
+
+// applyCreateDefaults fills in the fields the caller left unset: a logo to represent the agent,
+// and the inbound authentication shape.
+//
+// The inbound client service accepts only two combinations, one for an agent acting on its own
+// behalf and one for an agent acting for a signed-in user, so the shape is derived here rather
+// than accepted from the caller. The agent is copied rather than mutated. The owner is forwarded
+// as given: the agent service resolves an absent one to the authenticated subject.
+func applyCreateDefaults(
+	agent *providers.Agent, delegated bool, allowedUserTypes []string,
+) *providers.Agent {
+	created := *agent
+	if created.LogoURL == "" {
+		created.LogoURL = defaultAgentLogoURL
+	}
+	created.InboundAuthConfig = []providers.InboundAuthConfigWithSecret{
+		{
+			Type:        providers.OAuthInboundAuthType,
+			OAuthConfig: buildOAuthConfig(callerRedirectURIs(agent), delegated),
+		},
+	}
+	// Allowed user types are meaningless without delegation, so clearing them keeps a caller from
+	// attaching a restriction that would never be enforced.
+	created.AllowedUserTypes = nil
+	if delegated {
+		created.AllowedUserTypes = allowedUserTypes
+	}
+	return &created
+}
+
+// callerRedirectURIs reads the one OAuth value a caller may supply. Anything else left on the
+// inbound auth config is discarded.
+func callerRedirectURIs(agent *providers.Agent) []string {
+	for _, inbound := range agent.InboundAuthConfig {
+		if inbound.Type == providers.OAuthInboundAuthType && inbound.OAuthConfig != nil {
+			return inbound.OAuthConfig.RedirectURIs
+		}
+	}
+	return nil
+}
+
+// buildOAuthConfig derives the OAuth client configuration. Flow identifiers and token settings are
+// left unset so the inbound client service applies the organization unit and server defaults.
+func buildOAuthConfig(redirectURIs []string, delegated bool) *providers.OAuthConfigWithSecret {
+	config := &providers.OAuthConfigWithSecret{
+		GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
+		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
+	}
+	if delegated {
+		config.GrantTypes = append(config.GrantTypes,
+			providers.GrantTypeAuthorizationCode, providers.GrantTypeRefreshToken)
+		config.ResponseTypes = []providers.ResponseType{providers.ResponseTypeCode}
+		config.RedirectURIs = redirectURIs
+		config.PKCERequired = true
+	}
+	return config
 }
 
 // toProviderAgent converts the agent service's create response into the provider contract shape.

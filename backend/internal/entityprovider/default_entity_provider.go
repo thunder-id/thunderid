@@ -165,6 +165,18 @@ func (p *defaultEntityProvider) GetTransitiveEntityGroups(
 	return result, nil
 }
 
+// GetTransitiveGroupAncestors resolves the ancestor chain of a single group.
+func (p *defaultEntityProvider) GetTransitiveGroupAncestors(
+	groupID string,
+) ([]string, *EntityProviderError) {
+	ctx := security.WithRuntimeContext(context.Background())
+	ancestors, err := p.entitySvc.GetTransitiveGroupAncestors(ctx, groupID)
+	if err != nil {
+		return nil, mapEntityError(err)
+	}
+	return ancestors, nil
+}
+
 // ValidateEntityIDs validates that the given entity IDs exist.
 func (p *defaultEntityProvider) ValidateEntityIDs(
 	entityIDs []string,

@@ -4,9 +4,16 @@
 import Link from '@docusaurus/Link';
 import {Box, Typography} from '@wso2/oxygen-ui';
 import {ArrowUpRight, Check, Copy} from '@wso2/oxygen-ui-icons-react';
-import {JSX, ReactNode, useEffect, useRef, useState} from 'react';
+import {Highlight, themes} from 'prism-react-renderer';
+import {JSX, KeyboardEvent, MutableRefObject, ReactNode, useEffect, useId, useRef, useState} from 'react';
 import {useInk} from './theme';
+import useIsDarkMode from '@site/src/hooks/useIsDarkMode';
 import type {EcosystemCode, EcosystemCta} from '@site/src/types/ecosystem';
+
+// Same Prism themes docusaurus.config.ts configures for the docs site's own `@theme/CodeBlock`
+// (`prism.theme` / `prism.darkTheme`), so a code block here and one in an .mdx doc are
+// highlighted identically rather than looking like two different systems.
+const CODE_THEME = {light: themes.nightOwlLight, dark: themes.nightOwl};
 
 /** Small uppercase pill used for statuses, tags, and table badges. */
 export function Pill({label, colour, filled = false}: {label: string; colour: string; filled?: boolean}): JSX.Element {
@@ -157,25 +164,136 @@ export function CopyButton({value, accent}: {value: string; accent: string}): JS
   );
 }
 
+/** One tab in a `CodeCard`'s package-manager (or similar) switcher. */
+export interface CodeCardTab {
+  value: string;
+  label: string;
+  icon?: string;
+  active: boolean;
+  onSelect: () => void;
+}
+
+/**
+ * Tab switcher rendered inside a `CodeCard`'s bar, in the slot `code.file` would
+ * otherwise take — same greyscale-except-active-icon treatment as the .mdx docs'
+ * package-manager tabs (CodeGroup.tsx / `.tid-codeblock__tab` in custom.css), so the
+ * two systems' tab strips read as the same component.
+ */
+function CodeCardTabStrip({
+  tabs,
+  baseId,
+  panelId,
+  tabRefs,
+  onKeyDown,
+}: {
+  tabs: CodeCardTab[];
+  baseId: string;
+  panelId: string;
+  tabRefs: MutableRefObject<(HTMLButtonElement | null)[]>;
+  onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+}): JSX.Element {
+  const ink = useInk();
+  return (
+    <Box
+      sx={{display: 'flex', flex: '1 1 auto', flexWrap: 'wrap', alignItems: 'center', rowGap: 0.5, columnGap: 1.25, minWidth: 0}}
+      role="tablist"
+      tabIndex={-1}
+      onKeyDown={onKeyDown}
+    >
+      {tabs.map((tab, index) => (
+        <Box
+          key={tab.value}
+          ref={(el: HTMLButtonElement | null) => {
+            tabRefs.current[index] = el;
+          }}
+          id={`${baseId}-tab-${tab.value}`}
+          component="button"
+          type="button"
+          role="tab"
+          aria-selected={tab.active}
+          aria-controls={panelId}
+          tabIndex={tab.active ? 0 : -1}
+          onClick={tab.onSelect}
+          sx={{
+            display: 'flex',
+            flexShrink: 0,
+            alignItems: 'center',
+            gap: 0.5,
+            p: 0,
+            border: 'none',
+            bgcolor: 'transparent',
+            font: 'inherit',
+            fontFamily: 'monospace',
+            fontSize: '10.5px',
+            fontWeight: 600,
+            color: tab.active ? 'text.primary' : ink(0.4, 0.35),
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {tab.icon && (
+            <Box
+              component="img"
+              src={tab.icon}
+              alt=""
+              sx={{
+                height: '1em',
+                width: '1em',
+                filter: tab.active ? 'none' : 'grayscale(1) opacity(0.55)',
+                transition: 'filter 0.15s ease',
+              }}
+            />
+          )}
+          {tab.label}
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
 /** Code block with an optional title bar and copy button. */
 export function CodeCard({
   code,
   accent,
   copyable = true,
+  tabs = undefined,
 }: {
   code: EcosystemCode;
   accent: string;
   copyable?: boolean;
+  /** Package-manager switcher rendered in place of `code.file` on the bar's left. */
+  tabs?: CodeCardTab[];
 }): JSX.Element {
   const ink = useInk();
-  const hasBar = Boolean(code.file ?? code.lang);
+  const isLight = !useIsDarkMode();
+  const hasBar = Boolean(code.file ?? code.lang) || Boolean(tabs?.length);
+  // The theme's own background/foreground, not the `ink()` navy tint used elsewhere on this
+  // page — this is what makes a code block here render the exact same colour as one in an
+  // .mdx doc (both draw from the same nightOwlLight/nightOwl theme), rather than looking like
+  // a differently-tinted card that merely uses the same token colours.
+  const {plain} = isLight ? CODE_THEME.light : CODE_THEME.dark;
+  const baseId = useId();
+  const panelId = `${baseId}-panel`;
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  // Arrow keys both move focus and activate the tab (WAI-ARIA's "automatic activation" tabs
+  // pattern), matching the .mdx docs' package-manager tabs (CodeBlock/Layout).
+  const handleTabsKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
+    if (!tabs || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+    event.preventDefault();
+    const current = tabs.findIndex((tab) => tab.active);
+    const delta = event.key === 'ArrowRight' ? 1 : -1;
+    const nextIndex = (current + delta + tabs.length) % tabs.length;
+    tabs[nextIndex]?.onSelect();
+    tabRefs.current[nextIndex]?.focus();
+  };
 
   return (
     <Box
       sx={{
         border: '1px solid',
         borderColor: ink(0.08, 0.07),
-        bgcolor: ink(0.02, 0.12),
+        bgcolor: plain.backgroundColor,
         borderRadius: '11px',
         overflow: 'hidden',
       }}
@@ -184,20 +302,36 @@ export function CodeCard({
         <Box
           sx={{
             display: 'flex',
+            flexWrap: 'wrap',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: 1.25,
+            rowGap: 0.5,
+            columnGap: 1.25,
             px: 1.75,
             py: 1,
             borderBottom: '1px solid',
-            borderColor: ink(0.05, 0.05),
-            bgcolor: ink(0.015, 0.02),
+            // Same `color-mix(accent, ink)` formula as the .mdx bar's CSS (`.tid-codeblock__bar`
+            // in custom.css, mixing `var(--ifm-color-primary)` there) — a flat ink()-only overlay
+            // read as barely-there next to the real nightOwl background above, where the .mdx
+            // bar's colour tint gave it visible weight against the same background.
+            borderColor: `color-mix(in srgb, ${accent} ${isLight ? 15 : 20}%, ${ink(0.05, 0.06)})`,
+            bgcolor: `color-mix(in srgb, ${accent} ${isLight ? 5 : 8}%, ${ink(0.02, 0.04)})`,
           }}
         >
-          <Typography component="span" sx={{fontFamily: 'monospace', fontSize: '10.5px', color: ink(0.45, 0.35)}}>
-            {code.file}
-          </Typography>
-          <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+          {tabs?.length ? (
+            <CodeCardTabStrip
+              tabs={tabs}
+              baseId={baseId}
+              panelId={panelId}
+              tabRefs={tabRefs}
+              onKeyDown={handleTabsKeyDown}
+            />
+          ) : (
+            <Typography component="span" sx={{fontFamily: 'monospace', fontSize: '10.5px', color: ink(0.45, 0.35)}}>
+              {code.file}
+            </Typography>
+          )}
+          <Box sx={{display: 'flex', flexShrink: 0, alignItems: 'center', gap: 1}}>
             <Typography
               component="span"
               sx={{
@@ -214,22 +348,54 @@ export function CodeCard({
           </Box>
         </Box>
       )}
-      <Box sx={{display: 'flex', alignItems: 'flex-start', gap: 1.25, px: 2, py: 1.875}}>
-        <Box
-          component="pre"
-          sx={{
-            m: 0,
-            flex: 1,
-            minWidth: 0,
-            overflowX: 'auto',
-            fontFamily: 'monospace',
-            fontSize: '12.5px',
-            lineHeight: 1.75,
-            color: ink(0.75, 0.72),
-          }}
+      <Box
+        sx={{display: 'flex', alignItems: 'flex-start', gap: 1.25, px: 2, py: 1.875}}
+        {...(tabs?.length
+          ? {
+              role: 'tabpanel',
+              id: panelId,
+              'aria-labelledby': `${baseId}-tab-${tabs.find((tab) => tab.active)?.value}`,
+              // The highlighted code itself isn't focusable, so the panel needs to be, per the
+              // WAI-ARIA tabs pattern, for keyboard users to reach its content after Tab-ing to
+              // the active tab.
+              tabIndex: 0,
+            }
+          : {})}
+      >
+        <Highlight
+          theme={isLight ? CODE_THEME.light : CODE_THEME.dark}
+          code={code.content}
+          language={code.lang ?? 'text'}
         >
-          {code.content}
-        </Box>
+          {({className, tokens, getLineProps, getTokenProps}) => (
+            <Box
+              component="pre"
+              className={className}
+              sx={{
+                m: 0,
+                flex: 1,
+                minWidth: 0,
+                overflowX: 'auto',
+                background: 'none',
+                fontFamily: 'monospace',
+                fontSize: '12.5px',
+                lineHeight: 1.75,
+              }}
+            >
+              {tokens.map((line, i) => (
+                // Lines/tokens have no stable identity of their own and this is
+                // prism-react-renderer's own documented usage pattern.
+                // eslint-disable-next-line react/no-array-index-key
+                <div key={i} {...getLineProps({line})}>
+                  {line.map((token, key) => (
+                    // eslint-disable-next-line react/no-array-index-key
+                    <span key={key} {...getTokenProps({token})} />
+                  ))}
+                </div>
+              ))}
+            </Box>
+          )}
+        </Highlight>
         {!hasBar && copyable && <CopyButton value={code.content} accent={accent} />}
       </Box>
     </Box>

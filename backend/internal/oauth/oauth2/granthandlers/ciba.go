@@ -249,6 +249,7 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 
 	tokenResponse := &model.TokenResponseDTO{
 		AccessToken: *accessToken,
+		SessionID:   record.SessionID,
 	}
 
 	if slices.Contains(accessTokenScopes, constants.ScopeOpenID) {
@@ -260,6 +261,7 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 			AuthTime:       record.AuthTime.Unix(),
 			OAuthApp:       oauthApp,
 			CompletedACR:   record.CompletedACR,
+			SessionID:      record.SessionID,
 		})
 		if idErr != nil {
 			h.logger.Error(ctx, "Failed to generate ID token", log.Error(idErr))

@@ -68,18 +68,21 @@ type ActorProvider interface {
 	GetActor(actorID string) (*Entity, *common.ServiceError)
 	GetActorGroups(actorID string) ([]EntityGroup, *common.ServiceError)
 	GetActorRoles(actorID string, groupIDs []string) ([]string, *common.ServiceError)
+	GetTransitiveGroupAncestors(groupID string) ([]string, *common.ServiceError)
 }
 
 // AgentMgtProvider provisions agents on behalf of runtime capabilities. The rules and semantics of an
 // agent remain owned by the agent management service; this exposes only what the runtime needs.
 type AgentMgtProvider interface {
-	// CreateAgent provisions an agent. The returned agent carries the generated identifier and, on
-	// InboundAuthConfig, the generated client credentials, alongside the request fields the agent
-	// service echoes on a create response. Fields it does not echo come back zero, so the result is
-	// not a full round-trip of the request. Owner is required: unlike the Agent API, the runtime
-	// carries no dependable caller identity to fall back on. Errors from the agent service are
-	// returned unchanged so callers can distinguish the actual failure.
-	CreateAgent(ctx context.Context, agent *Agent) (*Agent, *common.ServiceError)
+	// CreateAgent provisions the supplied agent, deriving its inbound auth profile and OAuth client
+	// configuration. Redirect URIs are the one OAuth value a caller may supply; any other
+	// authentication field left unset is the provider's to fill. Delegated is separate because it
+	// selects the authentication shape rather than describing the agent.
+	//
+	// The returned agent carries the generated identifier and, on InboundAuthConfig, the generated
+	// client credentials. Fields the agent service does not echo come back zero, so the result is
+	// not a full round-trip. Owner falls back to the authenticated caller when unset.
+	CreateAgent(ctx context.Context, agent *Agent, delegated bool) (*Agent, *common.ServiceError)
 }
 
 // UserMgtProvider provisions users on behalf of runtime capabilities. The rules and semantics of a
@@ -148,6 +151,9 @@ type IDPProvider interface {
 	GetIdentityProvidersByProperty(ctx context.Context, propertyKey,
 		propertyValue string) ([]IDPDTO, *common.ServiceError)
 	GetIdentityProvider(ctx context.Context, idpID string) (*IDPDTO, *common.ServiceError)
+	GetDirectAuthorizationTargets(
+		ctx context.Context, idp *IDPDTO, claims map[string]interface{},
+	) ([]AuthorizationTarget, *common.ServiceError)
 }
 
 // ConsentProvider provides functionality to resolve consent requirements and

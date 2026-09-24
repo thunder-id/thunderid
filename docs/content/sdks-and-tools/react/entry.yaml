@@ -11,10 +11,10 @@ status: ga
 package:
   name: "@thunderid/react"
   manager: npm
+  showDownloadCount: false
 description: Hooks and components to drop {{ProductName}} into a React + Vite app in minutes.
 docs:
   overview: /docs/next/sdks-and-tools/react/overview
-  apiReference: /docs/next/sdks-and-tools/react/apis
   quickstart: /docs/next/getting-started/connect-your-application/react
 links:
   github: https://github.com/thunder-id/javascript-sdks
@@ -585,9 +585,27 @@ guides:
           and sends unauthenticated visitors to sign-in.
         steps:
         - title: Installation
-          code:
-            lang: bash
-            content: npm install @thunderid/react-router
+          tabs:
+          - label: npm
+            code:
+              lang: bash
+              content: npm install @thunderid/react-router
+          - label: Yarn
+            code:
+              lang: bash
+              content: yarn add @thunderid/react-router
+          - label: pnpm
+            code:
+              lang: bash
+              content: pnpm add @thunderid/react-router
+          - label: Bun
+            code:
+              lang: bash
+              content: bun add @thunderid/react-router
+          - label: Deno
+            code:
+              lang: bash
+              content: deno add npm:@thunderid/react-router
         - title: Basic Setup with ProtectedRoute
           code:
             file: src/App.tsx
@@ -723,9 +741,27 @@ guides:
           Router applications.
         steps:
         - title: Installation
-          code:
-            lang: bash
-            content: npm install @thunderid/tanstack-router
+          tabs:
+          - label: npm
+            code:
+              lang: bash
+              content: npm install @thunderid/tanstack-router
+          - label: Yarn
+            code:
+              lang: bash
+              content: yarn add @thunderid/tanstack-router
+          - label: pnpm
+            code:
+              lang: bash
+              content: pnpm add @thunderid/tanstack-router
+          - label: Bun
+            code:
+              lang: bash
+              content: bun add @thunderid/tanstack-router
+          - label: Deno
+            code:
+              lang: bash
+              content: deno add npm:@thunderid/tanstack-router
         - title: Basic Setup with ProtectedRoute
           code:
             file: src/App.tsx
