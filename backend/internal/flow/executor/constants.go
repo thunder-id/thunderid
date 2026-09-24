@@ -114,7 +114,6 @@ const (
 	propertyKeyPresentationDefinitionID                = "presentation_definition_id"
 	propertyKeyCallbackType                            = "callbackType"
 	propertyKeyLoginHintAttribute                      = "loginHintAttribute"
-	propertyKeyMaxOTPAttempts                          = "maxAttempts"
 	propertyKeyOTPLength                               = "otpLength"
 	propertyKeyOTPUseNumericOnly                       = "otpUseNumericOnly"
 	propertyKeyOTPValidityPeriodSeconds                = "otpValidityPeriodSeconds"

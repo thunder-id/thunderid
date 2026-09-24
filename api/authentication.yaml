@@ -629,6 +629,10 @@ components:
           type: string
           description: Recipient's mobile number
           example: "+1234567890"
+        priorSessionToken:
+          type: string
+          description: "Optional JWT session token from a previous OTP attempt. Used to enforce generation limits across multiple resend requests."
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
       required:
         - senderId
         - recipient
