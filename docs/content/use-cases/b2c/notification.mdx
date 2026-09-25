@@ -1,0 +1,58 @@
+---
+title: Notification
+docType: use-case
+description: How the notifications a B2C deployment sends are delivered, and how their content, design, and language are authored.
+sidebar_position: 12
+---
+
+
+# Notification
+
+Account recovery, invitations, and passwordless sign-in all finish with a message arriving, which makes notifications part of the identity system rather than an operational detail beside it. Two kinds of decision shape every message: how it is **delivered**, the channel that carries it and the provider that sends it, and what it **says**, the content and language a customer reads and, where the channel supports it, the design it arrives in. <ProductName /> composes these at send time.
+
+## Choose the Channel
+
+Two channels carry identity messages, and most journeys are designed around one of them:
+
+- **Email** carries recovery links, invitations, magic links, and one-time codes. It reaches anyone with an address, and it is the default for anything that needs a link rather than a short code.
+- **SMS** carries one-time codes to a verified phone number. It costs money per message and depends on carrier reach, so it suits step-up and second-factor journeys more than bulk notification.
+
+A journey can use both, and a deployment that offers passwordless sign-in over either channel configures a provider for each.
+
+## Decide How Many Sending Identities You Need
+
+A provider records where <ProductName /> hands a rendered message off: which server or gateway receives it, the identity recipients see it come from, and how <ProductName /> authenticates to it.
+
+One sending identity per channel is enough for most products, usually a transactional relay or gateway on a domain the team already controls, so check whether your channel can hold a second provider and let each journey name the one it sends through before you design around separate customer and staff identities: see [Configure an SMS Provider](../../../guides/notifications/sms-providers) and [Configure SMTP Server](../../../guides/smtp-server/smtp-server-configuration).
+
+## Credentials and Transport Security
+
+The credential a provider authenticates with belongs to that provider's configuration, so how you rotate it, and who can, follows wherever that configuration lives. A relay that accepts messages from your own network needs no credential at all.
+
+Transport security is a separate decision. Any connection that carries a credential has to be encrypted, and <ProductName /> validates the server's certificate rather than trusting the hostname alone. For SMTP that means STARTTLS on the submission port, and a server that fails to offer it ends the send rather than continuing in plaintext. An unencrypted connection cannot carry a credential, which leaves it useful only for a relay on a network you already trust.
+
+## Separate Content, Design, and Language
+
+What a message says is authored separately from how it is delivered. A recovery notification, an invitation, or a one-time code is rendered from a **notification template** that belongs to one channel, email or SMS today with room for more, and three concerns stay apart:
+
+- **Content** defines what a notification says, such as an email’s subject and body or an SMS message. Flows use the same template content across the deployment. When sending a notification `{{ctx(...)}}` context placeholders that a flow fills with per-send values, such as a recovery link or a one-time code.
+- **Design** is resolved from design tokens at render: the [Design feature](../../../guides/design/themes) supplies the application's colors, logo, and theme, so appearance stays consistent without the template pinning a value. It applies only on channels that render design; a plain-text channel such as SMS carries none.
+- **Language** is resolved from translation keys by the [Translation feature](../../../guides/i18n/manage-translations) for the recipient's language, so one template serves every language you translate, whatever channel it is sent on.
+
+Because the three are independent, you can reach a new language on any channel by adding translations, or restyle an email by changing the application's design, without editing the template's content.
+
+## Choose What to Customize
+
+<ProductName /> creates the templates its built-in flows need, and every template is managed the same way, whether it was created at startup or by an administrator. Decide which templates your journeys use and edit those; create additional ones from a sample or a custom template when a flow needs them. A template that a flow references cannot be deleted until the flow stops using it.
+
+## Preview Before Sending
+
+Check how a notification will look before it goes out. A preview resolves the same content, translations, and design that delivery would, for a chosen language and application, and leaves `{{ctx(...)}}` context placeholders visible because a preview has no flow to fill them. Generating a preview never sends anything.
+
+Previews appear in two places: the **template editor**, which updates as you edit the content or switch the preview language and design theme, and the **flow preview**, which shows the template a notification step will send in the selected language and application context.
+
+## Continue Designing Your Architecture
+
+Review the other architecture decisions that shape your B2C application.
+
+<B2CArchitectureDecisions currentDecision="notification" />

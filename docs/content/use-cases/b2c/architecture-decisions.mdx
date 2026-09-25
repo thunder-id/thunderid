@@ -17,7 +17,7 @@ The decisions fall into six groups:
 - Which system owns customer records.
 - Which tokens and permissions backend APIs trust.
 - How long a sign-in lasts, how many applications it opens, and what ends it.
-- Which channel and provider carry the messages those journeys send.
+- How the messages those journeys send are delivered, and what they say, look like, and are translated into.
 - Which operational controls your team needs before production.
 
 ## Decision Map
@@ -71,16 +71,16 @@ Decide how long a sign-in lasts, how many applications it opens, and what happen
 
 See [Sessions & Logout](../sessions-and-logout) for the full decision.
 
-## Choose the Notification Delivery Path
+## Choose the Notification Model
 
-Decide which channel and which provider carry the recovery links, invitations, magic links, and one-time codes your journeys send.
+Decide how the recovery links, invitations, magic links, and one-time codes your journeys send are delivered, and what they say, how they look, and which language they arrive in.
 
 - Use email for anything that needs a link, and SMS where a short code to a verified phone number suits the journey better.
-- Use a transactional relay on a verified sending domain for mail that reaches customers, where deliverability decides whether the journey completes.
-- Plan how many sending identities each channel needs, and confirm the channel can hold a second provider before a journey depends on one.
-- Use STARTTLS on any connection that carries SMTP credentials.
+- Plan how many sending identities each channel needs, and use STARTTLS on any connection that carries SMTP credentials.
+- Customize the templates your journeys use; content is global and references translation keys, not per-application text.
+- Reach each language by adding translations, and let the Design feature supply an email's logo and colors.
 
-See [Notification Delivery](../notification-delivery) for the full decision.
+See [Notification](../notification) for the full decision.
 
 ## Choose the Operating Model
 

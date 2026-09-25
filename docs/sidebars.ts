@@ -214,7 +214,7 @@ const sidebars: SidebarsConfig = {
                 {type: 'doc', id: 'use-cases/b2c/identity-sources', label: 'Identity Sources'},
                 {type: 'doc', id: 'use-cases/b2c/tokens-and-apis', label: 'Protect APIs'},
                 {type: 'doc', id: 'use-cases/b2c/sessions-and-logout', label: 'Sessions & Logout'},
-                {type: 'doc', id: 'use-cases/b2c/notification-delivery', label: 'Notification Delivery'},
+                {type: 'doc', id: 'use-cases/b2c/notification', label: 'Notification'},
                 {type: 'doc', id: 'use-cases/b2c/operations', label: 'Run & Observe'},
               ],
             },

@@ -2593,7 +2593,7 @@ export function B2CSolutionPatternsRoadmap() {
 }
 
 interface ArchDecisionCard {
-  id: 'integration' | 'identity-sources' | 'tokens-and-apis' | 'sessions-and-logout' | 'notification-delivery' | 'operations';
+  id: 'integration' | 'identity-sources' | 'tokens-and-apis' | 'sessions-and-logout' | 'notification' | 'operations';
   title: string;
   question: string;
   href: string;
@@ -2657,10 +2657,10 @@ const b2cArchDecisions: ArchDecisionCard[] = [
     ),
   },
   {
-    id: 'notification-delivery',
-    title: 'Notification Delivery',
-    question: 'Which channel and provider carry recovery links, invitations, and one-time codes?',
-    href: '../notification-delivery',
+    id: 'notification',
+    title: 'Notification',
+    question: 'How are recovery links, invitations, and codes delivered, and what do they say, look like, and translate into?',
+    href: '../notification',
     hiddenInVersions: ['v1.0.x'],
     icon: (
       <svg viewBox="0 0 24 24">
