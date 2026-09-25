@@ -61,6 +61,8 @@ Most apps use different methods to link accounts:
 Unlinking deserves the same attention. Decide whether a person can detach a provider themselves, and what happens if
 they detach the last sign-in method they have.
 
+Federation can also drive authorization, not just sign-in. An administrator can map attribute values a provider asserts, such as group membership, to local roles, groups, or permissions, so a user's access follows their standing at the provider without being administered a second time inside <ProductName />. See [Federated Identity Provider](../ai-agents/federated-identity) for the full pattern, including how it extends to agents acting on a federated user's behalf, onboarding-time access, and delegating the decision to an external policy engine.
+
 ## User Stores
 
 Where consumer identities live affects sign-in performance, recovery options, federation behavior, and migration paths. Most consumer apps run a directly-managed user directory inside the identity product. The other option is no local record at all, relying entirely on federation for identity.
