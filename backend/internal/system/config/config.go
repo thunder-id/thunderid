@@ -587,6 +587,7 @@ type OAuthConfig struct {
 	DPoP                     engineconfig.DPoPConfig                 `yaml:"dpop" json:"dpop"`
 	AuthClass                engineconfig.AuthClassConfig            `yaml:"auth_class" json:"auth_class"`
 	CIBA                     engineconfig.CIBAConfig                 `yaml:"ciba" json:"ciba"`
+	ClientAssertion          engineconfig.ClientAssertionConfig      `yaml:"client_assertion" json:"client_assertion"`
 	Revocation               engineconfig.RevocationConfig           `yaml:"revocation" json:"revocation"`
 	TokenExchange            engineconfig.TokenExchangeConfig        `yaml:"token_exchange" json:"token_exchange"`
 	AllowWildcardRedirectURI bool                                    `yaml:"allow_wildcard_redirect_uri" json:"allow_wildcard_redirect_uri"`   //nolint:lll
@@ -610,6 +611,7 @@ func (c OAuthConfig) ToEngineConfig() engineconfig.OAuthConfig {
 		DPoP:                     c.DPoP,
 		AuthClass:                c.AuthClass,
 		CIBA:                     c.CIBA,
+		ClientAssertion:          c.ClientAssertion,
 		Revocation:               c.Revocation,
 		TokenExchange:            c.TokenExchange,
 		AllowWildcardRedirectURI: c.AllowWildcardRedirectURI,
@@ -751,6 +753,9 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 		return nil, err
 	}
 	if err := cfg.OAuth.DPoP.Validate(); err != nil {
+		return nil, err
+	}
+	if err := cfg.OAuth.ClientAssertion.Validate(); err != nil {
 		return nil, err
 	}
 	if err := cfg.OAuth.TokenExchange.Validate(); err != nil {

@@ -37,7 +37,7 @@ func Initialize(
 		context.Background()).PushedAuthorizationRequestEndpoint
 	handler := newPARHandler(parSvc, dpopVerifier, parEndpoint)
 	registerRoutes(mux, handler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, cfg.JWT.Leeway)
+		jtiStore, clientauth.AssertionValidationConfig(cfg.OAuth.ClientAssertion))
 	return parSvc
 }
 
@@ -50,7 +50,7 @@ func registerRoutes(
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	jtiStore jti.JTIStoreInterface,
-	leeway int64,
+	assertionCfg clientauth.AssertionValidationConfig,
 ) {
 	corsOpts := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST"},
@@ -61,7 +61,7 @@ func registerRoutes(
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
 	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService,
-		jtiStore, issuer, leeway)
+		jtiStore, issuer, assertionCfg)
 	wrappedHandler := clientAuthMiddleware(http.HandlerFunc(handler.HandlePARRequest))
 
 	pattern, corsHandler := middleware.WithCORS(

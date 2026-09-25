@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/discoverymock"
@@ -43,7 +44,7 @@ func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
 	service := Initialize(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService,
-		suite.mockTokenValidator, nil, 0)
+		suite.mockTokenValidator, nil, clientauth.AssertionValidationConfig{})
 
 	assert.NotNil(suite.T(), service)
 	assert.Implements(suite.T(), (*TokenIntrospectionServiceInterface)(nil), service)
@@ -53,7 +54,7 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 	mux := http.NewServeMux()
 
 	Initialize(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService,
-		suite.mockTokenValidator, nil, 0)
+		suite.mockTokenValidator, nil, clientauth.AssertionValidationConfig{})
 
 	// Verify that the routes are registered by attempting to get a handler for them.
 	// The pattern includes the method because of CORS middleware wrapping.

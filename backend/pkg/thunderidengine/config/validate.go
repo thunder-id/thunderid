@@ -119,6 +119,32 @@ func (c *DPoPConfig) Validate() error {
 	return nil
 }
 
+// IsConfigured reports whether any ClientAssertion field has been set. When false, callers
+// should skip validation, matching the convention used by DPoPConfig and TrustedIssuerConfig.
+func (c *ClientAssertionConfig) IsConfigured() bool {
+	return c.Leeway != 0 || c.MaxFutureIat != 0 || c.MaxLifetime != 0 || c.MaxIatAge != 0
+}
+
+// Validate ensures the client assertion validation policy values are within accepted bounds.
+func (c *ClientAssertionConfig) Validate() error {
+	if !c.IsConfigured() {
+		return nil
+	}
+	if c.Leeway < 0 {
+		return fmt.Errorf("oauth.client_assertion.leeway must be greater than or equal to 0")
+	}
+	if c.MaxFutureIat <= 0 {
+		return fmt.Errorf("oauth.client_assertion.max_future_iat must be greater than 0")
+	}
+	if c.MaxLifetime <= 0 {
+		return fmt.Errorf("oauth.client_assertion.max_lifetime must be greater than 0")
+	}
+	if c.MaxIatAge <= 0 {
+		return fmt.Errorf("oauth.client_assertion.max_iat_age must be greater than 0")
+	}
+	return nil
+}
+
 // IsConfigured reports whether the trusted issuer feature is configured and active.
 // Setting issuer is the activation signal; jwks_url and audience are then required.
 func (c *TrustedIssuerConfig) IsConfigured() bool {

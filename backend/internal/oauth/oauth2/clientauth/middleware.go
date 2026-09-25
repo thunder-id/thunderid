@@ -21,13 +21,13 @@ func ClientAuthMiddleware(actorProvider providers.ActorProvider,
 	jwtService jwt.JWTServiceInterface,
 	jtiStore jti.JTIStoreInterface,
 	issuer string,
-	leeway int64) func(http.Handler) http.Handler {
+	assertionCfg AssertionValidationConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 			// Authenticate client
 			clientInfo, authErr := authenticate(ctx, r, actorProvider, authnProvider, jwtService,
-				jtiStore, issuer, leeway)
+				jtiStore, issuer, assertionCfg)
 			if authErr != nil {
 				// If the client attempted to authenticate via the Authorization
 				// header, include WWW-Authenticate in 401 responses.

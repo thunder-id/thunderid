@@ -297,6 +297,47 @@ func (suite *ValidateTestSuite) TestDPoPConfig_Validate() {
 	})
 }
 
+// ----- ClientAssertionConfig -----
+
+func (suite *ValidateTestSuite) TestClientAssertionConfig_IsConfigured() {
+	assert.False(suite.T(), (&ClientAssertionConfig{}).IsConfigured())
+	assert.True(suite.T(), (&ClientAssertionConfig{Leeway: 10}).IsConfigured())
+	assert.True(suite.T(), (&ClientAssertionConfig{MaxFutureIat: 60}).IsConfigured())
+	assert.True(suite.T(), (&ClientAssertionConfig{MaxLifetime: 300}).IsConfigured())
+	assert.True(suite.T(), (&ClientAssertionConfig{MaxIatAge: 300}).IsConfigured())
+}
+
+func (suite *ValidateTestSuite) TestClientAssertionConfig_Validate() {
+	suite.T().Run("unconfigured passes", func(t *testing.T) {
+		assert.NoError(t, (&ClientAssertionConfig{}).Validate())
+	})
+
+	suite.T().Run("negative Leeway fails", func(t *testing.T) {
+		c := &ClientAssertionConfig{Leeway: -1, MaxFutureIat: 60, MaxLifetime: 300, MaxIatAge: 300}
+		assert.ErrorContains(t, c.Validate(), "leeway")
+	})
+
+	suite.T().Run("zero MaxFutureIat fails", func(t *testing.T) {
+		c := &ClientAssertionConfig{Leeway: 10, MaxLifetime: 300, MaxIatAge: 300}
+		assert.ErrorContains(t, c.Validate(), "max_future_iat")
+	})
+
+	suite.T().Run("zero MaxLifetime fails", func(t *testing.T) {
+		c := &ClientAssertionConfig{Leeway: 10, MaxFutureIat: 60, MaxIatAge: 300}
+		assert.ErrorContains(t, c.Validate(), "max_lifetime")
+	})
+
+	suite.T().Run("zero MaxIatAge fails", func(t *testing.T) {
+		c := &ClientAssertionConfig{Leeway: 10, MaxFutureIat: 60, MaxLifetime: 300}
+		assert.ErrorContains(t, c.Validate(), "max_iat_age")
+	})
+
+	suite.T().Run("valid config passes", func(t *testing.T) {
+		c := &ClientAssertionConfig{Leeway: 10, MaxFutureIat: 60, MaxLifetime: 300, MaxIatAge: 300}
+		assert.NoError(t, c.Validate())
+	})
+}
+
 // ----- AuthClassConfig -----
 
 func (suite *ValidateTestSuite) TestAuthClassConfig_Validate() {

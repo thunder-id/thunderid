@@ -39,7 +39,7 @@ func Initialize(
 		dpopVerifier, tokenEndpoint, dpopRequired)
 	tokenHandler := newTokenHandler(tokenSvc, observabilitySvc)
 	registerRoutes(mux, tokenHandler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, cfg.JWT.Leeway)
+		jtiStore, clientauth.AssertionValidationConfig(cfg.OAuth.ClientAssertion))
 	return tokenHandler
 }
 
@@ -52,7 +52,7 @@ func registerRoutes(
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	jtiStore jti.JTIStoreInterface,
-	leeway int64,
+	assertionCfg clientauth.AssertionValidationConfig,
 ) {
 	corsOpts := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST"},
@@ -63,7 +63,7 @@ func registerRoutes(
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
 	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService,
-		jtiStore, issuer, leeway)
+		jtiStore, issuer, assertionCfg)
 	handler := clientAuthMiddleware(http.HandlerFunc(tokenHandler.HandleTokenRequest))
 
 	pattern, wrappedHandler := middleware.WithCORS(

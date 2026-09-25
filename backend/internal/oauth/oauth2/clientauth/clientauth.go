@@ -28,6 +28,26 @@ import (
 // jtiNamespace identifies private_key_jwt client assertions in the shared JTI replay store.
 const jtiNamespace = "client_assertion"
 
+// AssertionValidationConfig holds the private_key_jwt client assertion validation policy: clock-skew
+// leeway, FAPI 2.0's mandatory iat future-window bound, and RFC 7523's optional lifetime/age caps.
+// Its fields mirror engineconfig.ClientAssertionConfig field-for-field so callers can convert
+// directly (clientauth.AssertionValidationConfig(cfg.OAuth.ClientAssertion)) without this package
+// importing the engine config package; keep the two in sync.
+type AssertionValidationConfig struct {
+	// Leeway is the clock-skew buffer (seconds) added to the JTI replay-store record's expiry
+	// past the assertion's 'exp'.
+	Leeway int64
+	// MaxFutureIat bounds how far (seconds) the 'iat' claim may be in the future, per FAPI 2.0
+	// Security Profile Section 5.3.2.1-2.13.
+	MaxFutureIat int64
+	// MaxLifetime bounds how far (seconds) 'exp' may exceed 'iat', when 'iat' is present, per
+	// RFC 7523 Section 3 item 4.
+	MaxLifetime int64
+	// MaxIatAge bounds how far (seconds) 'iat' may be in the past, when present, per RFC 7523
+	// Section 3 item 6.
+	MaxIatAge int64
+}
+
 // authenticate authenticates the OAuth2 client from the request.
 // It extracts credentials, validates them, and returns OAuthClientInfo on success.
 // The issuer is the audience value accepted when validating client assertion JWTs.
@@ -40,7 +60,7 @@ func authenticate(
 	jwtService jwt.JWTServiceInterface,
 	jtiStore jti.JTIStoreInterface,
 	issuer string,
-	leeway int64,
+	assertionCfg AssertionValidationConfig,
 ) (*OAuthClientInfo, *authError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ClientAuthMiddleware"))
 
@@ -143,7 +163,7 @@ func authenticate(
 	// TODO: Move this to authnProvider.Authenticate
 	case providers.TokenEndpointAuthMethodPrivateKeyJWT:
 		if err := validateClientAssertion(ctx, oauthApp, jwtService, jtiStore, issuer, clientID,
-			clientAssertion, leeway); err != nil {
+			clientAssertion, assertionCfg); err != nil {
 			logger.Debug(ctx, "Invalid client assertion: "+err.Error())
 			return nil, errInvalidClientAssertion
 		}
@@ -234,7 +254,7 @@ func validateClientAssertion(ctx context.Context,
 	jtiStore jti.JTIStoreInterface,
 	issuer string,
 	clientID, clientAssertion string,
-	leeway int64) error {
+	assertionCfg AssertionValidationConfig) error {
 	if oauthApp.Certificate == nil {
 		return fmt.Errorf("no certificate configured for client assertion validation")
 	}
@@ -253,12 +273,52 @@ func validateClientAssertion(ctx context.Context,
 		return fmt.Errorf("client assertion 'aud' claim %q does not match the issuer", aud)
 	}
 
+	if err := validateAssertionTimestamps(payload, assertionCfg); err != nil {
+		return err
+	}
+
 	if err := verifyAssertionSignature(ctx, oauthApp, jwtService, issuer, clientID, clientAssertion); err != nil {
 		return err
 	}
 
 	// Replay protection: record the assertion's jti so it cannot be reused within its validity window.
-	return recordAssertionJTI(ctx, jtiStore, payload, leeway)
+	return recordAssertionJTI(ctx, jtiStore, payload, assertionCfg.Leeway)
+}
+
+// validateAssertionTimestamps validates a client assertion's 'iat' claim against the configured
+// policy. Per FAPI 2.0 Security Profile Section 5.3.2.1-2.13, an 'iat' more than MaxFutureIat
+// seconds in the future is rejected. When 'iat' is present, RFC 7523 Section 3's optional
+// hardening also bounds how far in the past it may be (MaxIatAge) and how far 'exp' may reach
+// beyond it (MaxLifetime). Assertions without an 'iat' claim, which RFC 7523 permits, are not
+// subject to any of these bounds.
+func validateAssertionTimestamps(payload map[string]any, cfg AssertionValidationConfig) error {
+	iatRaw, ok := payload[constants.ClaimIat]
+	if !ok {
+		return nil
+	}
+	iat, isNumber := iatRaw.(float64)
+	if !isNumber {
+		return fmt.Errorf("client assertion 'iat' claim is not a number")
+	}
+	iatTime := time.Unix(int64(iat), 0)
+	now := time.Now()
+
+	if iatTime.After(now.Add(time.Duration(cfg.MaxFutureIat) * time.Second)) {
+		return fmt.Errorf("client assertion 'iat' claim is too far in the future")
+	}
+	if iatTime.Before(now.Add(-time.Duration(cfg.MaxIatAge) * time.Second)) {
+		return fmt.Errorf("client assertion 'iat' claim is unreasonably far in the past")
+	}
+
+	exp, ok := payload[constants.ClaimExp].(float64)
+	if !ok {
+		return fmt.Errorf("client assertion missing 'exp' claim or 'exp' is not a number")
+	}
+	if time.Unix(int64(exp), 0).After(iatTime.Add(time.Duration(cfg.MaxLifetime) * time.Second)) {
+		return fmt.Errorf("client assertion lifetime exceeds the maximum allowed duration")
+	}
+
+	return nil
 }
 
 // verifyAssertionSignature verifies the client assertion's signature against the client's configured

@@ -41,11 +41,11 @@ func RegisterRoutes(
 	discoveryService discovery.DiscoveryServiceInterface,
 	revocationService RevocationServiceInterface,
 	jtiStore jti.JTIStoreInterface,
-	leeway int64,
+	assertionCfg clientauth.AssertionValidationConfig,
 ) {
 	revocationHandler := newRevocationHandler(revocationService)
 	registerRoutes(mux, revocationHandler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, leeway)
+		jtiStore, assertionCfg)
 }
 
 // registerRoutes registers the routes for the token revocation endpoint.
@@ -57,7 +57,7 @@ func registerRoutes(
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	jtiStore jti.JTIStoreInterface,
-	leeway int64,
+	assertionCfg clientauth.AssertionValidationConfig,
 ) {
 	opts := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST", "OPTIONS"},
@@ -68,7 +68,7 @@ func registerRoutes(
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
 	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService,
-		jtiStore, issuer, leeway)
+		jtiStore, issuer, assertionCfg)
 	handler := clientAuthMiddleware(http.HandlerFunc(revocationHandler.HandleRevoke))
 
 	pattern, wrappedHandler := middleware.WithCORS(

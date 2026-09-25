@@ -25,12 +25,12 @@ func Initialize(
 	discoveryService discovery.DiscoveryServiceInterface,
 	tokenValidator tokenservice.TokenValidatorInterface,
 	jtiStore jti.JTIStoreInterface,
-	leeway int64,
+	assertionCfg clientauth.AssertionValidationConfig,
 ) TokenIntrospectionServiceInterface {
 	introspectionService := newTokenIntrospectionService(tokenValidator)
 	introspectHandler := newTokenIntrospectionHandler(introspectionService)
 	registerRoutes(mux, introspectHandler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, leeway)
+		jtiStore, assertionCfg)
 	return introspectionService
 }
 
@@ -43,7 +43,7 @@ func registerRoutes(
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	jtiStore jti.JTIStoreInterface,
-	leeway int64,
+	assertionCfg clientauth.AssertionValidationConfig,
 ) {
 	opts := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST", "OPTIONS"},
@@ -54,7 +54,7 @@ func registerRoutes(
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
 	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService,
-		jtiStore, issuer, leeway)
+		jtiStore, issuer, assertionCfg)
 	handler := clientAuthMiddleware(http.HandlerFunc(introspectHandler.HandleIntrospect))
 
 	pattern, wrappedHandler := middleware.WithCORS(

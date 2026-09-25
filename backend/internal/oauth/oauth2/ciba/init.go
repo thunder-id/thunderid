@@ -37,7 +37,7 @@ func Initialize(
 	cibaSvc := newCIBAService(store, flowExecService, jwtService, actorProvider, resourceService, cfg)
 	cibaHandler := newCIBAHandler(cibaSvc)
 	registerRoutes(mux, cibaHandler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, cfg.JWT.Leeway)
+		jtiStore, clientauth.AssertionValidationConfig(cfg.OAuth.ClientAssertion))
 	return cibaSvc
 }
 
@@ -51,7 +51,7 @@ func registerRoutes(
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	jtiStore jti.JTIStoreInterface,
-	leeway int64,
+	assertionCfg clientauth.AssertionValidationConfig,
 ) {
 	corsOpts := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST"},
@@ -62,7 +62,7 @@ func registerRoutes(
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
 	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService,
-		jtiStore, issuer, leeway)
+		jtiStore, issuer, assertionCfg)
 	authHandler := clientAuthMiddleware(http.HandlerFunc(cibaHandler.HandleBackchannelAuthRequest))
 
 	authPattern, wrappedAuthHandler := middleware.WithCORS(

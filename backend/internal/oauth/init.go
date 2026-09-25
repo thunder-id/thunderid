@@ -16,6 +16,7 @@ import (
 	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/callback"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
@@ -73,7 +74,7 @@ func Initialize(
 	// RFC 7009 routes against the already-built service.
 	if cfg.OAuth.TokenRevocation.IsEnabled() {
 		revocation.RegisterRoutes(mux, jwtService, actorProvider, authnProvider, discoveryService,
-			revocationSvc, jtiStore, cfg.JWT.Leeway)
+			revocationSvc, jtiStore, clientauth.AssertionValidationConfig(cfg.OAuth.ClientAssertion))
 	} else {
 		enforcementService = nil
 		revocationSvc = nil
@@ -105,7 +106,7 @@ func Initialize(
 	token.Initialize(mux, jwtService, actorProvider, authnProvider, grantHandlerProvider,
 		scopeValidator, observabilitySvc, discoveryService, dpopVerifier, jtiStore, cfg)
 	introspect.Initialize(mux, jwtService, actorProvider, authnProvider, discoveryService, tokenValidator,
-		jtiStore, cfg.JWT.Leeway)
+		jtiStore, clientauth.AssertionValidationConfig(cfg.OAuth.ClientAssertion))
 	userinfo.Initialize(mux, jwtService, jweService, resolver,
 		tokenValidator, actorProvider, attributeCacheSvc,
 		discoveryService, dpopVerifier, cfg)
