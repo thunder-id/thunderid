@@ -14,6 +14,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -37,7 +38,7 @@ func Initialize(
 		context.Background()).PushedAuthorizationRequestEndpoint
 	handler := newPARHandler(parSvc, dpopVerifier, parEndpoint)
 	registerRoutes(mux, handler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, cfg.JWT.Leeway)
+		jtiStore, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway)
 	return parSvc
 }
 
@@ -50,7 +51,8 @@ func registerRoutes(
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	jtiStore jti.JTIStoreInterface,
-	leeway int64,
+	assertionCfg engineconfig.ClientAssertionConfig,
+	jwtLeeway int64,
 ) {
 	corsOpts := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST"},
@@ -61,7 +63,7 @@ func registerRoutes(
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
 	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService,
-		jtiStore, issuer, leeway)
+		jtiStore, issuer, assertionCfg, jwtLeeway)
 	wrappedHandler := clientAuthMiddleware(http.HandlerFunc(handler.HandlePARRequest))
 
 	pattern, corsHandler := middleware.WithCORS(
