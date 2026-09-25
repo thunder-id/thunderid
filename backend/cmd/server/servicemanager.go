@@ -354,7 +354,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	revocationEnforcer, revocationSvc := revocation.Initialize(jwtService, observabilitySvc,
 		tokenFamilyRevocationTTL, runtime.Config.OAuth.Revocation.TokenFamily.OnExplicitRevokeEnabled())
 	sessionRevoker := sessionCriteriaRevoker{revoker: revocationSvc}
-	sessionService, sessionCfg := initSessionService(ctx, serverConfigService,
+	// The termination hook is kept for the back-channel logout dispatcher, which is built after the
+	// actor provider and installed through it.
+	sessionService, _, sessionCfg := initSessionService(ctx, serverConfigService,
 		runtime.Config.Server.Identifier, sessionRevoker, logger)
 	flowConfig.Session = sessionCfg
 	flowFactory, execRegistry, interceptorRegistry, graphBuilder := initializeFlowCoreAndExecutor(ctx, logger,
@@ -582,15 +584,17 @@ func unregisterServices() {
 }
 
 // initSessionService reads the effective SSO session configuration from the server-config section and
-// builds the session service, returning both so the caller can thread the config into flowexec too.
+// builds the session service, returning the service, its termination hook, and the config so the caller
+// can thread the config into flowexec too.
 func initSessionService(ctx context.Context, svc serverconfig.ServerConfigService, deploymentID string,
-	criteriaRevoker flowsession.CriteriaRevoker, logger *log.Logger) (flowsession.Service, flowsession.Config) {
+	criteriaRevoker flowsession.CriteriaRevoker, logger *log.Logger,
+) (flowsession.Service, flowsession.TerminationHook, flowsession.Config) {
 	cfg := readSessionConfig(ctx, svc, logger)
-	sessionService, err := flowsession.Initialize(dbprovider.GetDBProvider(), deploymentID,
+	sessionService, terminationHook, err := flowsession.Initialize(dbprovider.GetDBProvider(), deploymentID,
 		flowsession.NewTimeouts(cfg.IdleTimeoutSeconds, cfg.AbsoluteTimeoutSeconds,
 			cfg.ActivityRefreshIntervalSeconds), criteriaRevoker)
 	fatalOnError(ctx, logger, err, "Failed to initialize SSO session service")
-	return sessionService, cfg
+	return sessionService, terminationHook, cfg
 }
 
 // sessionCriteriaRevoker fixes the reason used when the session service revokes a token family.

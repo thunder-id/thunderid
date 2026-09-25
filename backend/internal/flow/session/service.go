@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -136,6 +137,7 @@ type service struct {
 	resolver        Resolver
 	transactioner   providers.Transactioner
 	criteriaRevoker CriteriaRevoker
+	terminated      *eventlistener.Topic[TerminatedSession]
 	timeouts        Timeouts
 	logger          *log.Logger
 }
@@ -336,8 +338,27 @@ func (s *service) Terminate(ctx context.Context, handle, flowID string) (*Sessio
 	// (SSO_SESSION_PARTICIPANT). Repeated calls are idempotent: once the row is gone, GetByHandle
 	// returns nil above. Token families are revoked first, in the same transaction, so a crash can
 	// never orphan live tokens for a deleted session.
+	//
+	// Participants are read once, inside the transaction, for both the revoker and the listener; the
+	// rows are gone after commit. The read is skipped when neither is wired. A failed read is fatal
+	// only when the revoker needs it; for the listener alone it just drops the notification.
+	var participants []Participant
+	notify := s.terminated.HasListeners()
 	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		if revErr := s.revokeSessionFamilies(txCtx, sess.SessionID); revErr != nil {
+		if s.criteriaRevoker != nil || notify {
+			list, listErr := s.store.ListBySessionID(txCtx, sess.SessionID)
+			switch {
+			case listErr == nil:
+				participants = list
+			case s.criteriaRevoker != nil:
+				return listErr
+			default:
+				s.logger.Error(txCtx, "Failed to read session participants before termination; "+
+					"participants will not be notified", log.Error(listErr))
+				notify = false
+			}
+		}
+		if revErr := s.revokeFamilies(txCtx, participants); revErr != nil {
 			return revErr
 		}
 		if delErr := s.store.DeleteSession(txCtx, sess.SessionID); delErr != nil {
@@ -352,6 +373,14 @@ func (s *service) Terminate(ctx context.Context, handle, flowID string) (*Sessio
 	}
 
 	s.logger.Debug(ctx, "Terminated SSO session", log.String("flowId", sess.FlowID))
+	if notify {
+		s.terminated.Notify(ctx, TerminatedSession{
+			SessionID:    sess.SessionID,
+			SubjectID:    sess.SubjectID,
+			Participants: participants,
+			Reason:       TerminationReasonSignOut,
+		})
+	}
 	return sess, nil
 }
 
@@ -381,6 +410,10 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 		return nil
 	}
 
+	// Capture every session's participants in one read before the deletes remove them. A failed read
+	// only drops the notification; it never blocks the revocation.
+	participantsBySession := s.participantsForTermination(ctx, sessions)
+
 	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		for _, sess := range sessions {
 			if delErr := s.store.DeleteSession(txCtx, sess.SessionID); delErr != nil {
@@ -399,6 +432,16 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 	}
 
 	s.logger.Debug(ctx, "Terminated all SSO sessions for subject", log.Int("sessionCount", len(sessions)))
+	if participantsBySession != nil {
+		for _, sess := range sessions {
+			s.terminated.Notify(ctx, TerminatedSession{
+				SessionID:    sess.SessionID,
+				SubjectID:    sess.SubjectID,
+				Participants: participantsBySession[sess.SessionID],
+				Reason:       TerminationReasonSubjectRevocation,
+			})
+		}
+	}
 	return nil
 }
 
@@ -451,16 +494,11 @@ func (s *service) DetachApplication(ctx context.Context, appID string) error {
 	return nil
 }
 
-// revokeSessionFamilies revokes the token family of every application participating in the session,
-// so signing out of a login drops all of that login's grants. It is a no-op when no family revoker is
-// wired. A participant recorded before tfid was introduced (empty tfid) is skipped by the revoker.
-func (s *service) revokeSessionFamilies(ctx context.Context, sessionID string) error {
+// revokeFamilies revokes each participant's token family, so signing out drops all of the login's
+// grants. It is a no-op when no revoker is wired; the revoker skips an empty tfid.
+func (s *service) revokeFamilies(ctx context.Context, participants []Participant) error {
 	if s.criteriaRevoker == nil {
 		return nil
-	}
-	participants, err := s.store.ListBySessionID(ctx, sessionID)
-	if err != nil {
-		return err
 	}
 	for _, p := range participants {
 		if err := s.criteriaRevoker.RevokeTokenFamily(ctx, p.TokenFamilyID); err != nil {
@@ -468,6 +506,29 @@ func (s *service) revokeSessionFamilies(ctx context.Context, sessionID string) e
 		}
 	}
 	return nil
+}
+
+// participantsForTermination returns the participants of the given sessions grouped by session id.
+// It returns nil, meaning nothing to notify, when no listener is wired or the read fails.
+func (s *service) participantsForTermination(ctx context.Context, sessions []Session) map[string][]Participant {
+	if !s.terminated.HasListeners() {
+		return nil
+	}
+	sessionIDs := make([]string, 0, len(sessions))
+	for _, sess := range sessions {
+		sessionIDs = append(sessionIDs, sess.SessionID)
+	}
+	participants, err := s.store.ListBySessionIDs(ctx, sessionIDs)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read session participants before subject termination; "+
+			"participants will not be notified", log.Error(err))
+		return nil
+	}
+	grouped := make(map[string][]Participant, len(sessions))
+	for _, p := range participants {
+		grouped[p.SessionID] = append(grouped[p.SessionID], p)
+	}
+	return grouped
 }
 
 // targetSession returns the session this execution's checkpoints attach to, establishing one when

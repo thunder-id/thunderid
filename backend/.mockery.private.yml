@@ -138,7 +138,9 @@ packages:
 
   github.com/thunder-id/thunderid/internal/flow/session:
     config:
-      all: true
+      # Every interface except TerminationHook, which is only ever the real eventlistener hook.
+      include-interface-regex: '.*'
+      exclude-interface-regex: '^TerminationHook$'
       dir: internal/flow/session
       structname: '{{.InterfaceName}}Mock'
       pkgname: session
