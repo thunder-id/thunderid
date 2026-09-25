@@ -96,6 +96,7 @@ const (
 	revocationInputApplication = "targetApplicationId"
 
 	ouIDKey        = "ouId"
+	ouHandleKey    = "ouHandle"
 	defaultOUIDKey = "defaultOUID"
 
 	// Input identifiers a flow definition declares for the entity type, one per category. A prompt
