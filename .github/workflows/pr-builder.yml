@@ -66,6 +66,7 @@ jobs:
           filters: |
             docs:
               - 'docs/**'
+              - '!docs/adrs/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
