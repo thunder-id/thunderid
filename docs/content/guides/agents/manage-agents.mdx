@@ -53,6 +53,14 @@ An agent needs an OAuth profile before it can request tokens. The Console create
 That profile is configured on the **Credentials**, **Flows**, **Tokens**, and **Advanced** tabs, which appear only for an agent that has one, and are summarized under [Manage an agent](#manage-an-agent) below.
 :::
 
+### Customize the onboarding sequence
+
+The Console steps above are the default **agent onboarding flow**, a system-wide flow that runs whenever an agent is created, from the Console or the API. It checks the caller's permission, resolves the agent type, organization unit, and owner, collects the schema attributes, creates the agent, and presents its credential once.
+
+Edit that flow to change what onboarding asks for: collect an extra attribute, require an approval before the credential is issued, or branch on the agent type. Validation, credential generation, and the OAuth profile stay with the agent service, so a customized flow cannot register an agent the API would reject. If a step after creation fails, the agent is removed rather than left behind with a live credential.
+
+See [Build a Flow](../../flows/build-a-flow) to build an agent onboarding flow and make it active.
+
 ## Manage an agent
 
 In the Console, open the agent from the list. The name and description are editable inline in the header, and changes across tabs are saved together from the unsaved-changes bar.
