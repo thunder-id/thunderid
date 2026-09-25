@@ -398,6 +398,21 @@ type GroupConfig struct {
 	Store string `yaml:"store" json:"store"`
 }
 
+// SCIMConfig holds the SCIM service configuration.
+type SCIMConfig struct {
+	// CoreUserTypeID designates the ThunderID user type whose schema backs the SCIM
+	// core User schema (RFC 7643 §4.1): its attribute characteristics are reflected in
+	// /scim/v2/Schemas, and it is the default target for payloads carrying only the core
+	// schema URN. If empty, falls back to the sole configured user type when exactly
+	// one exists; with zero or 2+ user types, the core schema is unavailable.
+	CoreUserTypeID string `yaml:"core_user_type_id" json:"core_user_type_id"`
+
+	// SchemaURNPrefix is the URN prefix of the custom per-user-type SCIM schemas, for example
+	// "urn:example:params:scim:schemas:". A trailing colon is added if missing. If empty, the
+	// built-in default prefix is used.
+	SchemaURNPrefix string `yaml:"urn_prefix" json:"urn_prefix"`
+}
+
 // RoleConfig holds the role service configuration.
 type RoleConfig struct {
 	// Store defines the storage mode for roles.
@@ -669,6 +684,7 @@ type Config struct {
 	EntityProvider       EntityProviderConfig              `yaml:"entity_provider"       json:"entity_provider"`
 	AgentMgtProvider     AgentMgtProviderConfig            `yaml:"agent_mgt_provider"        json:"agent_mgt_provider"`
 	Group                GroupConfig                       `yaml:"group"                 json:"group"`
+	SCIM                 SCIMConfig                        `yaml:"scim"                  json:"scim"`
 	Role                 RoleConfig                        `yaml:"role"                  json:"role"`
 	Theme                ThemeConfig                       `yaml:"theme"                 json:"theme"`
 	Layout               LayoutConfig                      `yaml:"layout"                json:"layout"`
@@ -801,6 +817,7 @@ func loadDefaultConfig(path string, serverHome string) (*Config, error) {
 	return &cfg, nil
 }
 
+// loadUserConfig loads and parses the user-provided configuration file with environment and path substitution.
 func loadUserConfig(path string, serverHome string) (Config, error) {
 	var cfg Config
 	configPath := filepath.Clean(path)
