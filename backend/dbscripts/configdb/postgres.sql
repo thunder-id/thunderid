@@ -378,3 +378,32 @@ CREATE TABLE "SERVER_CONFIG" (
     UPDATED_AT    TIMESTAMPTZ  DEFAULT NOW(),
     PRIMARY KEY (DEPLOYMENT_ID, NAME)
 );
+
+-- Table to store notification templates. Content is a single JSON document so a new channel can
+-- introduce its own content fields without a schema migration; the per-channel shape is validated at
+-- the service layer. NAME is unique per channel within a deployment.
+CREATE TABLE "NOTIFICATION_TEMPLATE" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    ID            VARCHAR(36)  PRIMARY KEY,
+    CHANNEL       VARCHAR(16)  NOT NULL CHECK (CHANNEL IN ('email','sms')),
+    NAME          VARCHAR(255) NOT NULL,
+    DESCRIPTION   VARCHAR(512),
+    CONTENT       JSONB        NOT NULL,
+    CREATED_AT    TIMESTAMPTZ  DEFAULT NOW(),
+    UPDATED_AT    TIMESTAMPTZ  DEFAULT NOW(),
+    UNIQUE (DEPLOYMENT_ID, CHANNEL, NAME)
+);
+
+CREATE INDEX idx_notification_template_channel_deployment
+    ON "NOTIFICATION_TEMPLATE" (DEPLOYMENT_ID, CHANNEL);
+
+-- Companion table holding a template's design references (email only). A template with no design has
+-- no row here; the row is removed automatically when its template is deleted.
+CREATE TABLE "NOTIFICATION_TEMPLATE_DESIGN" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    TEMPLATE_ID   VARCHAR(36)  PRIMARY KEY
+                  REFERENCES "NOTIFICATION_TEMPLATE"(ID) ON DELETE CASCADE,
+    COLOR_SCHEME  VARCHAR(16)  CHECK (COLOR_SCHEME IN ('light','dark')),
+    CREATED_AT    TIMESTAMPTZ  DEFAULT NOW(),
+    UPDATED_AT    TIMESTAMPTZ  DEFAULT NOW()
+);
