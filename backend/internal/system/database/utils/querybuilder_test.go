@@ -55,8 +55,8 @@ func (suite *QueryBuilderTestSuite) TestBuildFilterQuery() {
 	// Test SQLite query
 	sqliteQuery := query.GetQuery("sqlite")
 	assert.Contains(suite.T(), sqliteQuery, baseQuery)
-	assert.Contains(suite.T(), sqliteQuery, "json_extract(attributes, '$.age') = ?")
-	assert.Contains(suite.T(), sqliteQuery, "json_extract(attributes, '$.role') = ?")
+	assert.Contains(suite.T(), sqliteQuery, "json_extract(attributes, '$.age') = $1")
+	assert.Contains(suite.T(), sqliteQuery, "json_extract(attributes, '$.role') = $2")
 
 	// Test default query (should return PostgreSQL query)
 	defaultQuery := query.GetQuery("unknown")
@@ -180,8 +180,8 @@ func (suite *QueryBuilderTestSuite) TestBuildFilterQueryDatabaseSpecificQueries(
 	// Test SQLite-specific query
 	sqliteQuery := query.GetQuery("sqlite")
 	expectedSQLite := testUserBaseQuery +
-		" AND json_extract(ATTRIBUTES, '$.email') = ?" +
-		" AND json_extract(ATTRIBUTES, '$.name') = ?"
+		" AND json_extract(ATTRIBUTES, '$.email') = $1" +
+		" AND json_extract(ATTRIBUTES, '$.name') = $2"
 	assert.Equal(suite.T(), expectedSQLite, sqliteQuery)
 
 	// Test that both queries are stored in the struct
@@ -213,7 +213,7 @@ func (suite *QueryBuilderTestSuite) TestBuildFilterQuerySingleFilter() {
 	// SQLite query
 	sqliteQuery := query.GetQuery("sqlite")
 	expectedSQLite := "SELECT * FROM users WHERE active = true" +
-		" AND json_extract(metadata, '$.department') = ?"
+		" AND json_extract(metadata, '$.department') = $1"
 	assert.Equal(suite.T(), expectedSQLite, sqliteQuery)
 }
 
@@ -245,8 +245,8 @@ func (suite *QueryBuilderTestSuite) TestBuildFilterQueryNestedPath() {
 	// SQLite query - should use json_extract with dot notation
 	sqliteQuery := query.GetQuery("sqlite")
 	expectedSQLite := testUserBaseQuery +
-		" AND json_extract(ATTRIBUTES, '$.address.city') = ?" +
-		" AND json_extract(ATTRIBUTES, '$.address.zip') = ?"
+		" AND json_extract(ATTRIBUTES, '$.address.city') = $1" +
+		" AND json_extract(ATTRIBUTES, '$.address.zip') = $2"
 	assert.Equal(suite.T(), expectedSQLite, sqliteQuery)
 }
 
@@ -281,9 +281,9 @@ func (suite *QueryBuilderTestSuite) TestBuildFilterQueryMixedSimpleAndNestedPath
 	// SQLite query
 	sqliteQuery := query.GetQuery("sqlite")
 	expectedSQLite := testUserBaseQuery +
-		" AND json_extract(ATTRIBUTES, '$.address.city') = ?" +
-		" AND json_extract(ATTRIBUTES, '$.age') = ?" +
-		" AND json_extract(ATTRIBUTES, '$.username') = ?"
+		" AND json_extract(ATTRIBUTES, '$.address.city') = $1" +
+		" AND json_extract(ATTRIBUTES, '$.age') = $2" +
+		" AND json_extract(ATTRIBUTES, '$.username') = $3"
 	assert.Equal(suite.T(), expectedSQLite, sqliteQuery)
 }
 
@@ -310,7 +310,7 @@ func (suite *QueryBuilderTestSuite) TestBuildFilterQueryDeeplyNestedPath() {
 	// SQLite query
 	sqliteQuery := query.GetQuery("sqlite")
 	expectedSQLite := "SELECT * FROM users WHERE 1=1" +
-		" AND json_extract(data, '$.company.location.address.city') = ?"
+		" AND json_extract(data, '$.company.location.address.city') = $1"
 	assert.Equal(suite.T(), expectedSQLite, sqliteQuery)
 }
 
@@ -344,7 +344,7 @@ func (suite *QueryBuilderTestSuite) TestAppendDeploymentIDToFilterQueryWithNoExi
 	assert.Equal(suite.T(), expectedPostgres, updatedQuery.Query)
 
 	// Verify SQLite query
-	expectedSQLite := baseQuery + " AND DEPLOYMENT_ID = ?"
+	expectedSQLite := baseQuery + " AND DEPLOYMENT_ID = $1"
 	assert.Equal(suite.T(), expectedSQLite, updatedQuery.SQLiteQuery)
 }
 
@@ -385,9 +385,9 @@ func (suite *QueryBuilderTestSuite) TestAppendDeploymentIDToFilterQueryWithExist
 
 	// Verify SQLite query
 	expectedSQLite := testUserBaseQuery +
-		" AND json_extract(ATTRIBUTES, '$.email') = ?" +
-		" AND json_extract(ATTRIBUTES, '$.role') = ?" +
-		" AND DEPLOYMENT_ID = ?"
+		" AND json_extract(ATTRIBUTES, '$.email') = $1" +
+		" AND json_extract(ATTRIBUTES, '$.role') = $2" +
+		" AND DEPLOYMENT_ID = $3"
 	assert.Equal(suite.T(), expectedSQLite, updatedQuery.SQLiteQuery)
 }
 
@@ -420,8 +420,8 @@ func (suite *QueryBuilderTestSuite) TestAppendDeploymentIDToFilterQueryWithSingl
 
 	// Verify SQLite query
 	expectedSQLite := "SELECT USER_ID FROM \"USER\" WHERE active = true" +
-		" AND json_extract(metadata, '$.department') = ?" +
-		" AND DEPLOYMENT_ID = ?"
+		" AND json_extract(metadata, '$.department') = $1" +
+		" AND DEPLOYMENT_ID = $2"
 	assert.Equal(suite.T(), expectedSQLite, updatedQuery.SQLiteQuery)
 }
 
@@ -457,8 +457,8 @@ func (suite *QueryBuilderTestSuite) TestAppendDeploymentIDToFilterQueryWithNeste
 
 	// Verify SQLite query
 	expectedSQLite := testUserBaseQuery +
-		" AND json_extract(ATTRIBUTES, '$.address.city') = ?" +
-		" AND json_extract(ATTRIBUTES, '$.name') = ?" +
-		" AND DEPLOYMENT_ID = ?"
+		" AND json_extract(ATTRIBUTES, '$.address.city') = $1" +
+		" AND json_extract(ATTRIBUTES, '$.name') = $2" +
+		" AND DEPLOYMENT_ID = $3"
 	assert.Equal(suite.T(), expectedSQLite, updatedQuery.SQLiteQuery)
 }
