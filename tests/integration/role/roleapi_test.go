@@ -487,6 +487,57 @@ func (suite *RoleAPITestSuite) TestListRoles_Pagination() {
 	suite.NotNil(response2)
 }
 
+// TestListRoles_PaginationIsStableAcrossPages walks the role list one page at a time and checks that
+// every role is returned exactly once. The list is ordered by CREATED_AT, and on SQLite the column
+// defaults to datetime('now'), which only has second precision, so roles created in the same second
+// share a timestamp. Without a unique tiebreaker in the ORDER BY the order of those rows is not
+// stable between the separate queries that serve each page, so a row can come back on two pages
+// while another is never returned at all.
+func (suite *RoleAPITestSuite) TestListRoles_PaginationIsStableAcrossPages() {
+	const roleCount = 6
+
+	createdIDs := make(map[string]bool, roleCount)
+	for i := 0; i < roleCount; i++ {
+		role, err := suite.createRole(CreateRoleRequest{
+			Name: fmt.Sprintf("Stable Pagination Role %d", i),
+			OUID: testOUID,
+			Permissions: []ResourcePermissions{
+				{
+					ResourceServerID: testResourceServer1ID,
+					Permissions:      []string{testPermission1},
+				},
+			},
+		})
+		suite.Require().NoError(err, "failed to create role %d", i)
+		defer suite.deleteRole(role.ID)
+		createdIDs[role.ID] = true
+	}
+
+	first, err := suite.listRoles(0, 1)
+	suite.Require().NoError(err)
+	total := first.TotalResults
+	suite.Require().GreaterOrEqual(total, roleCount, "the roles just created should be counted")
+
+	// Page through the whole list one row at a time, which is the case that exposes the instability:
+	// each page is its own query, so any reordering between them duplicates or drops a row.
+	seen := make(map[string]int, total)
+	for offset := 0; offset < total; offset++ {
+		page, listErr := suite.listRoles(offset, 1)
+		suite.Require().NoError(listErr, "failed to read page at offset %d", offset)
+		suite.Require().Len(page.Roles, 1, "offset %d within totalResults should return a role", offset)
+		seen[page.Roles[0].ID]++
+	}
+
+	for id, count := range seen {
+		suite.Equalf(1, count, "role %s was returned on %d pages, so paging is not stable", id, count)
+	}
+	suite.Lenf(seen, total, "paging returned %d distinct roles but totalResults is %d", len(seen), total)
+
+	for id := range createdIDs {
+		suite.Containsf(seen, id, "role %s was never returned while paging the full list", id)
+	}
+}
+
 // Test 9: Update Role
 func (suite *RoleAPITestSuite) TestUpdateRole_Success() {
 	suite.Require().NotEmpty(sharedRoleID, "Shared role must be created in SetupSuite")
