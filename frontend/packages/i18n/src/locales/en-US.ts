@@ -721,6 +721,9 @@ const translations = {
     userDeletedSuccess: 'User deleted successfully',
     'errors.failed.title': 'Error',
     'errors.failed.description': 'An error occurred. Please try again.',
+    'errors.onboardingFlowUnavailable.title': 'User onboarding is unavailable',
+    'errors.onboardingFlowUnavailable.description':
+      'The user onboarding flow could not be resolved. Check that a user onboarding flow is configured for this deployment and that the flow it names exists.',
 
     // Edit page
     'manageUser.title': 'Manage User',
