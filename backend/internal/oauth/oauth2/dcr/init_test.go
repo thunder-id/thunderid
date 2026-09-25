@@ -48,7 +48,7 @@ func (suite *InitTestSuite) TearDownTest() {
 func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
-	err := Initialize(mux, suite.mockAppService, suite.mockOUService, nil, testhelpers.OAuthConfig())
+	err := Initialize(mux, suite.mockAppService, suite.mockOUService, nil, nil, testhelpers.OAuthConfig())
 
 	assert.NoError(suite.T(), err)
 }
@@ -56,7 +56,7 @@ func (suite *InitTestSuite) TestInitialize() {
 func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 	mux := http.NewServeMux()
 
-	err := Initialize(mux, suite.mockAppService, suite.mockOUService, nil, testhelpers.OAuthConfig())
+	err := Initialize(mux, suite.mockAppService, suite.mockOUService, nil, nil, testhelpers.OAuthConfig())
 	assert.NoError(suite.T(), err)
 
 	// Verify that the routes are registered by attempting to get a handler for them.
@@ -66,6 +66,15 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 
 	_, pattern = mux.Handler(&http.Request{Method: "OPTIONS", URL: &url.URL{Path: "/oauth2/dcr/register"}})
 	assert.Contains(suite.T(), pattern, "/oauth2/dcr/register")
+
+	// RFC 7592 client configuration endpoint routes.
+	for _, method := range []string{"GET", "PUT", "DELETE", "OPTIONS"} {
+		_, pattern = mux.Handler(&http.Request{
+			Method: method, URL: &url.URL{Path: "/oauth2/dcr/register/client-123"},
+		})
+		assert.Contains(suite.T(), pattern, "/oauth2/dcr/register/{client_id}",
+			"expected %s route for the client configuration endpoint", method)
+	}
 }
 
 func (suite *InitTestSuite) TestInitialize_ReturnsError_WhenRuntimeTransactionerUnavailable() {
@@ -80,7 +89,7 @@ func (suite *InitTestSuite) TestInitialize_ReturnsError_WhenRuntimeTransactioner
 	_ = config.InitializeServerRuntime("", testConfig)
 
 	mux := http.NewServeMux()
-	err := Initialize(mux, suite.mockAppService, suite.mockOUService, nil, testhelpers.OAuthConfig())
+	err := Initialize(mux, suite.mockAppService, suite.mockOUService, nil, nil, testhelpers.OAuthConfig())
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "failed to get runtime transient DB transactioner for DCR")

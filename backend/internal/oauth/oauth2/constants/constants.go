@@ -122,6 +122,7 @@ const (
 	OAuth2JWKSEndpoint                    string = "/oauth2/jwks"
 	OAuth2LogoutEndpoint                  string = "/oauth2/logout"
 	OAuth2DCREndpoint                     string = "/oauth2/dcr/register"
+	OAuth2DCRClientConfigEndpoint         string = "/oauth2/dcr/register/"
 	OAuth2PAREndpoint                     string = "/oauth2/par"
 	OAuth2BackchannelAuthEndpoint         string = "/oauth2/bc-authorize"
 	OAuth2BackchannelAuthCallbackEndpoint string = "/oauth2/bc-authorize/callback"

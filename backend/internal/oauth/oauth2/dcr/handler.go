@@ -72,6 +72,117 @@ func (dh *dcrHandler) checkDCRAuthorization(r *http.Request, w http.ResponseWrit
 	return false
 }
 
+// HandleGetClientConfiguration handles an RFC 7592 read of a client's registration.
+func (dh *dcrHandler) HandleGetClientConfiguration(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	clientID, ok := dh.authorizeClientConfigurationRequest(r, w)
+	if !ok {
+		return
+	}
+
+	response, svcErr := dh.dcrService.GetClient(ctx, clientID)
+	if svcErr != nil {
+		dh.writeClientConfigurationError(ctx, w, svcErr, "read")
+		return
+	}
+
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, response)
+}
+
+// HandleUpdateClientConfiguration handles an RFC 7592 update of a client's registration.
+func (dh *dcrHandler) HandleUpdateClientConfiguration(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	clientID, ok := dh.authorizeClientConfigurationRequest(r, w)
+	if !ok {
+		return
+	}
+
+	dcrRequest, err := sysutils.DecodeJSONBody[DCRRegistrationRequest](r)
+	if err != nil {
+		sysutils.WriteJSONError(ctx, w, ErrorInvalidRequestFormat.Code,
+			ErrorInvalidRequestFormat.ErrorDescription.DefaultValue, http.StatusBadRequest, nil)
+		return
+	}
+	// RFC 7592 section 2.2 requires the request to include its client_id, and it must identify the
+	// client being updated, so an omitted one is rejected alongside a mismatched one. Server-managed
+	// registration fields are ignored rather than applied.
+	if dcrRequest.ClientID != clientID {
+		sysutils.WriteJSONError(ctx, w, ErrorClientIDMismatch.Code,
+			ErrorClientIDMismatch.ErrorDescription.DefaultValue, http.StatusBadRequest, nil)
+		return
+	}
+
+	response, svcErr := dh.dcrService.UpdateClient(ctx, clientID, dcrRequest)
+	if svcErr != nil {
+		dh.writeClientConfigurationError(ctx, w, svcErr, "update")
+		return
+	}
+
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, response)
+}
+
+// HandleDeleteClientConfiguration handles an RFC 7592 deletion of a client's registration.
+func (dh *dcrHandler) HandleDeleteClientConfiguration(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	clientID, ok := dh.authorizeClientConfigurationRequest(r, w)
+	if !ok {
+		return
+	}
+
+	if svcErr := dh.dcrService.DeleteClient(ctx, clientID); svcErr != nil {
+		dh.writeClientConfigurationError(ctx, w, svcErr, "delete")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// authorizeClientConfigurationRequest resolves the client ID from the request path and authorizes
+// the caller by the system permission. Management is administrative: a caller holding that
+// permission may manage any registration, which is what lets one operator credential govern every
+// dynamically registered client. It returns the client ID and true when the request may proceed;
+// otherwise it writes the error response and returns false.
+func (dh *dcrHandler) authorizeClientConfigurationRequest(
+	r *http.Request, w http.ResponseWriter) (string, bool) {
+	ctx := r.Context()
+
+	clientID := r.PathValue("client_id")
+	if clientID == "" {
+		sysutils.WriteJSONError(ctx, w, ErrorClientNotFound.Code,
+			ErrorClientNotFound.ErrorDescription.DefaultValue, http.StatusNotFound, nil)
+		return "", false
+	}
+
+	if security.HasSystemPermission(security.GetPermissions(ctx)) {
+		return clientID, true
+	}
+
+	w.Header().Set(wwwAuthenticateHeaderName, wwwAuthenticateInvalidToken)
+	sysutils.WriteJSONError(ctx, w, ErrorUnauthorized.Code,
+		ErrorUnauthorized.ErrorDescription.DefaultValue, http.StatusUnauthorized, nil)
+	return "", false
+}
+
+// writeClientConfigurationError writes an RFC 7592 error response for a client configuration
+// operation, logging server errors.
+func (dh *dcrHandler) writeClientConfigurationError(ctx context.Context, w http.ResponseWriter,
+	svcErr *tidcommon.ServiceError, operation string) {
+	if svcErr.Type == tidcommon.ServerErrorType {
+		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "DCRHandler"))
+		logger.Error(ctx, "Internal server error processing client configuration request",
+			log.String("operation", operation),
+			log.String("error_code", svcErr.Code),
+			log.String("error", svcErr.Error.DefaultValue),
+		)
+	}
+	if svcErr.Code == ErrorClientNotFound.Code {
+		sysutils.WriteJSONError(ctx, w, svcErr.Code,
+			svcErr.ErrorDescription.DefaultValue, http.StatusNotFound, nil)
+		return
+	}
+	dh.writeServiceErrorResponse(ctx, w, svcErr)
+}
+
 // writeServiceErrorResponse writes a service error response.
 func (
 	dh *dcrHandler) writeServiceErrorResponse(ctx context.Context,

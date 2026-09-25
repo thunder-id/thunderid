@@ -15,10 +15,21 @@ import (
 const (
 	ClientSecretExpiresAtNever   = 0 // Never expires
 	maxLocalizedVariantsPerField = 20
+
+	wwwAuthenticateHeaderName = "WWW-Authenticate"
+	//nolint:gosec // WWW-Authenticate challenge value, not a credential
+	wwwAuthenticateInvalidToken = `Bearer error="invalid_token"`
 )
 
-// DCRRegistrationRequest represents the RFC 7591 Dynamic Client Registration request.
+// DCRRegistrationRequest represents the RFC 7591 Dynamic Client Registration request. It is also
+// the request body of an RFC 7592 client configuration update, where ClientID identifies the client
+// being updated.
 type DCRRegistrationRequest struct {
+	ClientID string `json:"client_id,omitempty"`
+	// ClientSecret is only meaningful on an update, where RFC 7592 section 2.2 requires a submitted
+	// secret to match the one currently issued. It is verified and never written: registration
+	// generates the secret, and a client may not choose its own.
+	ClientSecret            string                            `json:"client_secret,omitempty"`
 	OUID                    string                            `json:"ou_id,omitempty"`
 	RedirectURIs            []string                          `json:"redirect_uris"`
 	PostLogoutRedirectURIs  []string                          `json:"post_logout_redirect_uris,omitempty"`
@@ -113,7 +124,8 @@ func setLocalizedVariant(m *map[string]string, field, tag, val string) error {
 	return nil
 }
 
-// DCRRegistrationResponse represents the RFC 7591 Dynamic Client Registration response.
+// DCRRegistrationResponse represents the RFC 7591 Dynamic Client Registration response. The same
+// shape is returned by the RFC 7592 client configuration endpoint.
 type DCRRegistrationResponse struct {
 	ClientID                string                            `json:"client_id"`
 	ClientSecret            string                            `json:"client_secret,omitempty"`

@@ -11,7 +11,7 @@ import { DCRDiagram } from '@site/src/components/OAuthFlowDiagrams';
 
 **Dynamic Client Registration** ([RFC 7591](https://www.rfc-editor.org/rfc/rfc7591)) lets you create an OAuth 2.1 client at <ProductName /> with an HTTP request instead of going through the Console. It is used by automated provisioning pipelines, SDK installers that bootstrap their own clients, and federation flows where a relying party registers itself on first contact.
 
-The endpoint accepts the standard RFC 7591 metadata fields plus localized variants of human-readable strings (OIDC language tags). The full RFC 7592 client management protocol (PUT/DELETE on a registration access token) is **not** supported: registration is one-shot.
+The endpoint accepts the standard RFC 7591 metadata fields plus localized variants of human-readable strings (OIDC language tags). A registration can then be read, updated, and deleted through the client configuration endpoint, as defined by [RFC 7592](https://www.rfc-editor.org/rfc/rfc7592). Those operations are administrative: one caller holding system-level permissions manages every registration. See [Manage a Registration](#manage-a-registration).
 
 :::note
 DCR registers **applications** only. Agents are provisioned through the <ProductName /> Console or the agent management API, not through `/oauth2/dcr/register`. Applications that use the embedded sign-in approach are also registered through the Console rather than via DCR.
@@ -28,7 +28,7 @@ DCR registers **applications** only. Agents are provisioned through the <Product
 |---|---|
 | Endpoint | `POST /oauth2/dcr/register` |
 | Authentication | Optional, configurable. When enabled, the caller must authenticate as a privileged client. |
-| RFC 7592 management | Not supported, no PUT/DELETE on registered clients |
+| RFC 7592 management | Supported. `GET`, `PUT`, and `DELETE` on `/oauth2/dcr/register/{client_id}`, authorized by a caller holding system-level permissions |
 | Localized metadata | Supported via `<field>#<bcp47-tag>` syntax (see below) |
 | Returned credentials | `client_id`, `client_secret` (for confidential clients), and the full echoed metadata |
 | Discovery field | `registration_endpoint` in [Server Metadata](../server-metadata) |
@@ -58,6 +58,7 @@ A successful registration returns `201 Created` with the assigned `client_id`, `
 {
   "client_id": "abc123",
   "client_secret": "s3cr3t",
+  "client_secret_expires_at": 0,
   "client_name": "My App",
   "redirect_uris": ["https://app.example.com/callback"],
   "grant_types": ["authorization_code"],
@@ -102,6 +103,94 @@ A successful registration returns `201 Created`. The response echoes all registe
 | `client_secret` | The client secret. Present only for confidential clients. Store this value securely. <ProductName /> does not return it again. |
 | `client_secret_expires_at` | Expiry time of the client secret as a Unix timestamp. `0` means the secret does not expire. |
 | `app_id` | The internal <ProductName /> application identifier linked to this registered client. |
+
+## Manage a Registration
+
+A registration is managed at the client configuration endpoint, as defined by [RFC 7592](https://www.rfc-editor.org/rfc/rfc7592).
+
+```text
+/oauth2/dcr/register/{client_id}
+```
+
+Every request to this endpoint must be made by a caller holding system-level permissions, presenting its access token as a Bearer token. A caller holding that permission can manage any registration, so a single administrative credential governs every dynamically registered client. This suits a portal that provisions and maintains many clients on their behalf.
+
+:::note
+Registration does not hand the registered client a credential for managing itself. A client cannot read, update, or delete its own registration; those operations belong to an administrative caller.
+:::
+
+### Read a Registration
+
+```http
+GET /oauth2/dcr/register/abc123
+Authorization: Bearer <admin_access_token>
+```
+
+Returns `200 OK` with the currently registered metadata, including any localized variants the client has.
+
+```json
+{
+  "client_id": "abc123",
+  "client_name": "My App",
+  "client_name#fr": "Mon Application",
+  "redirect_uris": ["https://app.example.com/callback"],
+  "grant_types": ["authorization_code"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "client_secret_basic"
+}
+```
+
+Read a registration before updating it. An update replaces the localized variants of every field it supplies, so the response above is what you modify and send back to keep the variants you are not changing.
+
+:::note
+<ProductName /> stores the client secret write-only, so it cannot be read back after registration. The `client_secret` is therefore absent from this response, unlike the example in RFC 7592. Store the secret when you register the client. If you lose it, register a new client.
+:::
+
+### Update a Registration
+
+```http
+PUT /oauth2/dcr/register/abc123
+Authorization: Bearer <admin_access_token>
+Content-Type: application/json
+
+{
+  "client_id": "abc123",
+  "client_name": "My Renamed App",
+  "redirect_uris": ["https://app.example.com/callback2"],
+  "grant_types": ["authorization_code"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "client_secret_basic"
+}
+```
+
+Returns `200 OK` with the updated registration.
+
+An update replaces the registered metadata in full. Any field you omit is not carried over from the previous registration, so send the complete set of metadata you want the client to keep. The `client_id`, `client_secret`, and `ou_id` are preserved across the update, and the request must not attempt to change them: an `ou_id` in the body is ignored rather than applied, so a registration cannot be moved between organization units this way.
+
+The client name is the one exception to the replacement. A registration must always have a name, so if you omit both `client_name` and every localized variant of it, <ProductName /> keeps the name the client already has rather than clearing it. Every other mutable field must be resubmitted to survive the update.
+
+Localized variants are replaced too. When an update supplies a value for a localizable field, whether the base field or a language variant, <ProductName /> discards the variants that field already had and stores only the ones in the request, so a translation you omit is removed. A field your update does not mention at all keeps its existing variants. The unlocalized value of a field is not one of those variants: if you send only language variants, the existing base value is kept, and it changes only when you send the field itself.
+
+The body must include `client_id`, and it must match the client in the request path. A request that omits it, or that names a different client, is rejected with `400`.
+
+You may also include `client_secret`. It is optional, but when present it must match the client's currently issued secret, and a request carrying the wrong value is rejected with `400` without changing the registration. The value is only checked, never stored, so an update cannot be used to choose a new secret.
+<ProductName /> ignores the server-managed field `client_secret_expires_at` if you send it.
+
+### Delete a Registration
+
+```http
+DELETE /oauth2/dcr/register/abc123
+Authorization: Bearer <admin_access_token>
+```
+
+Returns `204 No Content`. The client is removed, and the endpoint no longer resolves a registration for its `client_id`.
+
+### Management Error Responses
+
+| HTTP Status | Cause |
+|-------------|-------|
+| `401 Unauthorized` | The caller does not hold the required system-level permission. The response carries a `WWW-Authenticate: Bearer error="invalid_token"` header. |
+| `404 Not Found` | No registration exists for the given `client_id`, including one already deleted. |
+| `400 Bad Request` | The update contains invalid client metadata, or omits `client_id`, or carries a `client_id` that does not match the request path, or carries a `client_secret` that does not match the issued secret. |
 
 ## Localized Metadata
 

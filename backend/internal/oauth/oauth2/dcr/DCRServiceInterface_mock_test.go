@@ -38,6 +38,135 @@ func (_m *DCRServiceInterfaceMock) EXPECT() *DCRServiceInterfaceMock_Expecter {
 	return &DCRServiceInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// DeleteClient provides a mock function for the type DCRServiceInterfaceMock
+func (_mock *DCRServiceInterfaceMock) DeleteClient(ctx context.Context, clientID string) *common.ServiceError {
+	ret := _mock.Called(ctx, clientID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteClient")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, clientID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// DCRServiceInterfaceMock_DeleteClient_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteClient'
+type DCRServiceInterfaceMock_DeleteClient_Call struct {
+	*mock.Call
+}
+
+// DeleteClient is a helper method to define mock.On call
+//   - ctx context.Context
+//   - clientID string
+func (_e *DCRServiceInterfaceMock_Expecter) DeleteClient(ctx interface{}, clientID interface{}) *DCRServiceInterfaceMock_DeleteClient_Call {
+	return &DCRServiceInterfaceMock_DeleteClient_Call{Call: _e.mock.On("DeleteClient", ctx, clientID)}
+}
+
+func (_c *DCRServiceInterfaceMock_DeleteClient_Call) Run(run func(ctx context.Context, clientID string)) *DCRServiceInterfaceMock_DeleteClient_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *DCRServiceInterfaceMock_DeleteClient_Call) Return(serviceError *common.ServiceError) *DCRServiceInterfaceMock_DeleteClient_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *DCRServiceInterfaceMock_DeleteClient_Call) RunAndReturn(run func(ctx context.Context, clientID string) *common.ServiceError) *DCRServiceInterfaceMock_DeleteClient_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetClient provides a mock function for the type DCRServiceInterfaceMock
+func (_mock *DCRServiceInterfaceMock) GetClient(ctx context.Context, clientID string) (*DCRRegistrationResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, clientID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetClient")
+	}
+
+	var r0 *DCRRegistrationResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*DCRRegistrationResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, clientID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *DCRRegistrationResponse); ok {
+		r0 = returnFunc(ctx, clientID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*DCRRegistrationResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, clientID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// DCRServiceInterfaceMock_GetClient_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetClient'
+type DCRServiceInterfaceMock_GetClient_Call struct {
+	*mock.Call
+}
+
+// GetClient is a helper method to define mock.On call
+//   - ctx context.Context
+//   - clientID string
+func (_e *DCRServiceInterfaceMock_Expecter) GetClient(ctx interface{}, clientID interface{}) *DCRServiceInterfaceMock_GetClient_Call {
+	return &DCRServiceInterfaceMock_GetClient_Call{Call: _e.mock.On("GetClient", ctx, clientID)}
+}
+
+func (_c *DCRServiceInterfaceMock_GetClient_Call) Run(run func(ctx context.Context, clientID string)) *DCRServiceInterfaceMock_GetClient_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *DCRServiceInterfaceMock_GetClient_Call) Return(dCRRegistrationResponse *DCRRegistrationResponse, serviceError *common.ServiceError) *DCRServiceInterfaceMock_GetClient_Call {
+	_c.Call.Return(dCRRegistrationResponse, serviceError)
+	return _c
+}
+
+func (_c *DCRServiceInterfaceMock_GetClient_Call) RunAndReturn(run func(ctx context.Context, clientID string) (*DCRRegistrationResponse, *common.ServiceError)) *DCRServiceInterfaceMock_GetClient_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RegisterClient provides a mock function for the type DCRServiceInterfaceMock
 func (_mock *DCRServiceInterfaceMock) RegisterClient(ctx context.Context, request *DCRRegistrationRequest) (*DCRRegistrationResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, request)
@@ -104,6 +233,82 @@ func (_c *DCRServiceInterfaceMock_RegisterClient_Call) Return(dCRRegistrationRes
 }
 
 func (_c *DCRServiceInterfaceMock_RegisterClient_Call) RunAndReturn(run func(ctx context.Context, request *DCRRegistrationRequest) (*DCRRegistrationResponse, *common.ServiceError)) *DCRServiceInterfaceMock_RegisterClient_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateClient provides a mock function for the type DCRServiceInterfaceMock
+func (_mock *DCRServiceInterfaceMock) UpdateClient(ctx context.Context, clientID string, request *DCRRegistrationRequest) (*DCRRegistrationResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, clientID, request)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateClient")
+	}
+
+	var r0 *DCRRegistrationResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *DCRRegistrationRequest) (*DCRRegistrationResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, clientID, request)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *DCRRegistrationRequest) *DCRRegistrationResponse); ok {
+		r0 = returnFunc(ctx, clientID, request)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*DCRRegistrationResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *DCRRegistrationRequest) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, clientID, request)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// DCRServiceInterfaceMock_UpdateClient_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateClient'
+type DCRServiceInterfaceMock_UpdateClient_Call struct {
+	*mock.Call
+}
+
+// UpdateClient is a helper method to define mock.On call
+//   - ctx context.Context
+//   - clientID string
+//   - request *DCRRegistrationRequest
+func (_e *DCRServiceInterfaceMock_Expecter) UpdateClient(ctx interface{}, clientID interface{}, request interface{}) *DCRServiceInterfaceMock_UpdateClient_Call {
+	return &DCRServiceInterfaceMock_UpdateClient_Call{Call: _e.mock.On("UpdateClient", ctx, clientID, request)}
+}
+
+func (_c *DCRServiceInterfaceMock_UpdateClient_Call) Run(run func(ctx context.Context, clientID string, request *DCRRegistrationRequest)) *DCRServiceInterfaceMock_UpdateClient_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 *DCRRegistrationRequest
+		if args[2] != nil {
+			arg2 = args[2].(*DCRRegistrationRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *DCRServiceInterfaceMock_UpdateClient_Call) Return(dCRRegistrationResponse *DCRRegistrationResponse, serviceError *common.ServiceError) *DCRServiceInterfaceMock_UpdateClient_Call {
+	_c.Call.Return(dCRRegistrationResponse, serviceError)
+	return _c
+}
+
+func (_c *DCRServiceInterfaceMock_UpdateClient_Call) RunAndReturn(run func(ctx context.Context, clientID string, request *DCRRegistrationRequest) (*DCRRegistrationResponse, *common.ServiceError)) *DCRServiceInterfaceMock_UpdateClient_Call {
 	_c.Call.Return(run)
 	return _c
 }
