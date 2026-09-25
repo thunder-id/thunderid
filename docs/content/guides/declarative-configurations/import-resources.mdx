@@ -48,6 +48,12 @@ Authorization: Bearer <access_token>
     "CLIENT_ID": "my-client-id"
   },
   "dryRun": false,
+  "deletions": [
+    {
+      "resourceType": "application",
+      "id": "550e8400-e29b-41d4-a716-446655440000"
+    }
+  ],
   "options": {
     "upsert": true,
     "continueOnError": true,
@@ -55,6 +61,9 @@ Authorization: Bearer <access_token>
   }
 }
 ```
+
+A request has to carry work to do: `content` to upsert, `deletions` to remove, or both. A request
+carrying neither is rejected.
 
 ### Options Behavior
 
@@ -70,6 +79,45 @@ Authorization: Bearer <access_token>
   - Omitted: defaults to `runtime`.
   - `runtime` is currently supported.
 
+## Removing Resources
+
+`content` can create and update but never remove, so a resource dropped from a configuration would
+otherwise linger on every deployment that configuration was applied to. `deletions` names the
+resources to remove, so one request can reconcile a deployment with the configuration as it now
+stands.
+
+Each entry names a `resourceType` and an `id`. A `user_type` deletion also takes an optional
+`category`, which defaults to the user category.
+
+```json
+{
+  "deletions": [
+    { "resourceType": "application", "id": "550e8400-e29b-41d4-a716-446655440000" },
+    { "resourceType": "user_type", "id": "660e8400-e29b-41d4-a716-446655440001", "category": "user" }
+  ]
+}
+```
+
+### Deletion Behavior
+
+- **Removals run after the upserts.** A resource this same request moved or replaced is in place
+  before its predecessor is pruned.
+- **Removals are ordered as the reverse of the import dependency order**, so a dependent goes before
+  what it depends on rather than failing on a reference that is still live.
+- **Removing something already absent is a success.** Re-applying the same configuration has to be a
+  no-op, and a request that failed because the removal already happened would make retrying
+  impossible. Where the service reports not found, the outcome carries the message
+  `resource already absent` and does not add to `summary.deleted`.
+- **A type with no runtime delete is reported, not skipped.** `translation` and `server_config` are
+  reported as an unsupported outcome, because a configuration that dropped one would otherwise look
+  reconciled when it is not.
+- **A dry run reports what it would remove and removes nothing.**
+- **`deletions` alone is a valid request.** Removing what a configuration dropped does not require
+  also restating what it kept.
+
+Deletions follow `options.continueOnError` as documents do: by default one refused removal does not
+hold back the rest.
+
 ## Response Model
 
 A successful import returns summary metrics and per-document outcomes.
@@ -79,6 +127,7 @@ A successful import returns summary metrics and per-document outcomes.
   "summary": {
     "totalDocuments": 2,
     "imported": 2,
+    "deleted": 1,
     "failed": 0,
     "importedAt": "2026-04-23T12:10:52Z"
   },
@@ -96,10 +145,23 @@ A successful import returns summary metrics and per-document outcomes.
       "resourceName": "Default Login Flow",
       "operation": "update",
       "status": "success"
+    },
+    {
+      "resourceType": "application",
+      "resourceId": "550e8400-e29b-41d4-a716-446655440000",
+      "operation": "delete",
+      "status": "success"
     }
   ]
 }
 ```
+
+`summary.deleted` counts the deletions this request **completed**, separately from `imported`. A dry
+run completes none, and a resource a service reports as not found is not counted, though both are
+still reported as a success in `results`. Not every service distinguishes an absent id from a
+removed one, so treat this as the number of deletions that completed rather than a guarantee that
+each one had something to remove. Every deletion appears in `results` with `operation` set to
+`delete`, and that list is where the per-resource outcome is.
 
 ## Example: Import with Variables
 

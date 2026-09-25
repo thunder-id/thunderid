@@ -302,7 +302,7 @@ func newImportService(
 func (s *importService) ImportResources(
 	ctx context.Context, request *ImportRequest,
 ) (*ImportResponse, *tidcommon.ServiceError) {
-	if request == nil || request.Content == "" {
+	if request == nil || (request.Content == "" && len(request.Deletions) == 0) {
 		return nil, tidcommon.CustomServiceError(ErrorInvalidImportRequest,
 			tidcommon.I18nMessage{Key: "error.import.emptyContent", DefaultValue: "import content cannot be empty"})
 	}
@@ -333,18 +333,22 @@ func (s *importService) ImportResources(
 		)
 	}
 
-	resolvedContent, err := resolveTemplate(request.Content, request.Variables)
-	if err != nil {
-		log.GetLogger().Warn(ctx, "Import template resolution failed", log.String("error", err.Error()))
-		return nil, tidcommon.CustomServiceError(ErrorTemplateResolutionFailed,
-			tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
-	}
+	// A request may carry only deletions, in which case there is no payload to resolve or parse.
+	var docs []parsedDocument
+	if request.Content != "" {
+		resolvedContent, err := resolveTemplate(request.Content, request.Variables)
+		if err != nil {
+			log.GetLogger().Warn(ctx, "Import template resolution failed", log.String("error", err.Error()))
+			return nil, tidcommon.CustomServiceError(ErrorTemplateResolutionFailed,
+				tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
+		}
 
-	docs, err := parseDocuments(resolvedContent)
-	if err != nil {
-		log.GetLogger().Warn(ctx, "Import YAML parsing failed", log.String("error", err.Error()))
-		return nil, tidcommon.CustomServiceError(ErrorInvalidYAMLContent,
-			tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
+		docs, err = parseDocuments(resolvedContent)
+		if err != nil {
+			log.GetLogger().Warn(ctx, "Import YAML parsing failed", log.String("error", err.Error()))
+			return nil, tidcommon.CustomServiceError(ErrorInvalidYAMLContent,
+				tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
+		}
 	}
 
 	results := make([]ImportItemOutcome, 0, len(docs))
@@ -381,10 +385,22 @@ func (s *importService) ImportResources(
 		}
 	}
 
+	// Deletions run after the upserts so that resources moved or replaced by this same request are in
+	// place before their predecessors are pruned.
+	deleted := 0
+	if len(request.Deletions) > 0 && (failed == 0 || options.IsContinueOnErrorEnabled()) {
+		deleteOutcomes, deleteCount, deleteFailures := s.deleteResources(ctx, request.Deletions, options,
+			request.DryRun)
+		results = append(results, deleteOutcomes...)
+		deleted = deleteCount
+		failed += deleteFailures
+	}
+
 	return &ImportResponse{
 		Summary: &ImportSummary{
 			TotalDocuments: len(docs),
 			Imported:       imported,
+			Deleted:        deleted,
 			Failed:         failed,
 			ImportedAt:     time.Now().UTC(),
 		},

@@ -27,10 +27,18 @@ type exportRequest struct {
 }
 
 type importRequest struct {
-	Content string                 `json:"content"`
-	DryRun  bool                   `json:"dryRun,omitempty"`
-	Options importOptions          `json:"options"`
-	Vars    map[string]interface{} `json:"variables,omitempty"`
+	Content   string                 `json:"content"`
+	DryRun    bool                   `json:"dryRun,omitempty"`
+	Options   importOptions          `json:"options"`
+	Vars      map[string]interface{} `json:"variables,omitempty"`
+	Deletions []resourceDeletion     `json:"deletions,omitempty"`
+}
+
+// resourceDeletion names a resource an import should remove.
+type resourceDeletion struct {
+	ResourceType string `json:"resourceType"`
+	ID           string `json:"id"`
+	Category     string `json:"category,omitempty"`
 }
 
 type importOptions struct {
@@ -47,6 +55,7 @@ type importResponse struct {
 type importSummary struct {
 	TotalDocuments int `json:"totalDocuments"`
 	Imported       int `json:"imported"`
+	Deleted        int `json:"deleted,omitempty"`
 	Failed         int `json:"failed"`
 }
 

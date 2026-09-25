@@ -841,6 +841,8 @@ var defaultMessages = map[string]string{
 	"error.import.adapterNotConfigured.description": "The required resource adapter is not configured",
 	"error.import.delete.dirNotFound": "resource directory not found",
 	"error.import.delete.fileNotFound": "resource file not found",
+	"error.import.deleteNotSupported": "Deletion not supported",
+	"error.import.deleteNotSupported.description": "The requested resource type does not support runtime deletion",
 	"error.import.emptyContent": "import content cannot be empty",
 	"error.import.fileTargetNotSupported": "file target is not supported; use runtime target",
 	"error.import.invalidRequest": "Invalid import request",

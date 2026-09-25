@@ -100,6 +100,10 @@ type fakeApplicationService struct {
 	created  []*model.ApplicationDTO
 	updated  []*model.ApplicationDTO
 	existing map[string]*providers.Application
+	// sequence records each mutation in the order it arrived. Resources are stored by id, so a
+	// create and a delete of two different ids both succeed whichever way round they run; the
+	// sequence is what shows which actually went first.
+	sequence []string
 }
 
 func (f *fakeApplicationService) CreateApplication(
@@ -113,6 +117,7 @@ func (f *fakeApplicationService) CreateApplication(
 		f.existing = map[string]*providers.Application{}
 	}
 	f.existing[app.ID] = &providers.Application{ID: app.ID, Name: app.Name}
+	f.sequence = append(f.sequence, "create:"+app.ID)
 	return app, nil
 }
 
@@ -160,10 +165,16 @@ func (f *fakeApplicationService) UpdateApplication(
 	app.ID = appID
 	f.updated = append(f.updated, app)
 	f.existing[appID] = &providers.Application{ID: app.ID, Name: app.Name}
+	f.sequence = append(f.sequence, "update:"+appID)
 	return app, nil
 }
 
-func (f *fakeApplicationService) DeleteApplication(_ context.Context, _ string) *tidcommon.ServiceError {
+func (f *fakeApplicationService) DeleteApplication(_ context.Context, appID string) *tidcommon.ServiceError {
+	if _, ok := f.existing[appID]; !ok {
+		return &application.ErrorApplicationNotFound
+	}
+	delete(f.existing, appID)
+	f.sequence = append(f.sequence, "delete:"+appID)
 	return nil
 }
 
