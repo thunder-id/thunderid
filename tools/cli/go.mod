@@ -1,6 +1,6 @@
 module github.com/thunder-id/thunderid/tools/cli
 
-go 1.26.1
+go 1.27
 
 require (
 	charm.land/bubbles/v2 v2.1.1

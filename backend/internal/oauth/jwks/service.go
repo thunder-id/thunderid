@@ -6,9 +6,9 @@ package jwks
 
 import (
 	"context"
-	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/mldsa"
 	"crypto/rsa"
 	"encoding/base64"
 	"strings"
@@ -18,10 +18,6 @@ import (
 
 	// Use crypto/sha1 only for JWKS x5t as required by spec for thumbprint.
 	"crypto/sha1" //nolint:gosec
-
-	"github.com/cloudflare/circl/sign/mldsa/mldsa44"
-	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
-	"github.com/cloudflare/circl/sign/mldsa/mldsa87"
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -84,14 +80,9 @@ func (s *jwksService) GetJWKS(ctx context.Context) (*JWKSResponse, *tidcommon.Se
 			jwksKeys = append(jwksKeys, getECDSAPublicKeyJWKS(pub, kid, alg, x5c, x5t, x5tS256))
 		case ed25519.PublicKey:
 			jwksKeys = append(jwksKeys, getEdDSAPublicKeyJWKS(pub, kid, alg, x5c, x5t, x5tS256))
-		case *mldsa44.PublicKey, *mldsa65.PublicKey, *mldsa87.PublicKey:
+		case *mldsa.PublicKey:
 			// ML-DSA (RFC 9964 AKP).
-			mldsaJWK, ok := getMLDSAPublicKeyJWKS(pub, kid, alg, x5c, x5t, x5tS256)
-			if !ok {
-				s.logger.Debug(ctx, "Unsupported public key type for JWKS", log.String("keyID", keyInfo.KeyID))
-				continue
-			}
-			jwksKeys = append(jwksKeys, mldsaJWK)
+			jwksKeys = append(jwksKeys, getMLDSAPublicKeyJWKS(pub, kid, alg, x5c, x5t, x5tS256))
 		default:
 			s.logger.Debug(ctx, "Unsupported public key type for JWKS", log.String("keyID", keyInfo.KeyID))
 			continue
@@ -174,23 +165,17 @@ func getEdDSAPublicKeyJWKS(pub ed25519.PublicKey, kid, alg string, x5c []string,
 }
 
 // getMLDSAPublicKeyJWKS converts an ML-DSA public key to an AKP JWK (RFC 9964).
-// It reports false when pub is not an ML-DSA public key.
-func getMLDSAPublicKeyJWKS(pub crypto.PublicKey, kid, alg string, x5c []string, x5t, x5tS256 string) (JWKS, bool) {
-	pubBytes, ok := cryptolib.MLDSAPublicKeyBytes(pub)
-	if !ok {
-		return JWKS{}, false
-	}
-
+func getMLDSAPublicKeyJWKS(pub *mldsa.PublicKey, kid, alg string, x5c []string, x5t, x5tS256 string) JWKS {
 	return JWKS{
 		Kid:     kid,
 		Kty:     "AKP",
 		Use:     "sig",
 		Alg:     alg,
-		Pub:     encodeBase64URL(pubBytes),
+		Pub:     encodeBase64URL(pub.Bytes()),
 		X5c:     x5c,
 		X5t:     x5t,
 		X5tS256: x5tS256,
-	}, true
+	}
 }
 
 func encodeBase64URL(b []byte) string {

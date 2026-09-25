@@ -285,7 +285,7 @@ func (s *ServiceTestSuite) TestUpdateSystemCredentials_Delegates() {
 	existingEntity := testEntity("e1")
 	s.store.On("GetEntityWithCredentials", mock.Anything, "e1").
 		Return(&entityWithCredentials{Entity: existingEntity, SchemaCredentials: nil, SystemCredentials: nil}, nil)
-	s.store.On("UpdateSystemCredentials", mock.Anything, "e1", mock.AnythingOfType("json.RawMessage")).Return(nil)
+	s.store.On("UpdateSystemCredentials", mock.Anything, "e1", mock.IsType(json.RawMessage(nil))).Return(nil)
 	s.NoError(s.svc.UpdateSystemCredentials(s.ctx, "e1", creds))
 }
 
@@ -298,10 +298,10 @@ func (s *ServiceTestSuite) TestUpdateCredentials_StampsCredentialMarkerPreservin
 	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
 	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
 		Return(&entityWithCredentials{Entity: e}, nil)
-	s.store.On("UpdateCredentials", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).Return(nil)
+	s.store.On("UpdateCredentials", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).Return(nil)
 
 	var written json.RawMessage
-	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
 		Run(func(args mock.Arguments) {
 			written, _ = args.Get(2).(json.RawMessage)
 		}).Return(nil)
@@ -319,15 +319,15 @@ func (s *ServiceTestSuite) TestUpdateSystemCredentials_StampsOnClientSecretRotat
 	e := testEntity("e-cs")
 	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
 		Return(&entityWithCredentials{Entity: e}, nil)
-	s.store.On("UpdateSystemCredentials", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).
+	s.store.On("UpdateSystemCredentials", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
 		Return(nil)
-	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
 		Return(nil)
 
 	s.NoError(s.svc.UpdateSystemCredentials(s.ctx, e.ID, json.RawMessage(`{"clientSecret":"rotated"}`)))
 
 	s.store.AssertCalled(s.T(), "UpdateSystemAttributes", mock.Anything, e.ID,
-		mock.AnythingOfType("json.RawMessage"))
+		mock.IsType(json.RawMessage(nil)))
 }
 
 // Enrolling a passkey adds an authentication option rather than replacing one, so it must not
@@ -338,13 +338,13 @@ func (s *ServiceTestSuite) TestUpdateSystemCredentials_NoStampForOtherCredential
 		e := testEntity("e-other")
 		s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
 			Return(&entityWithCredentials{Entity: e}, nil).Once()
-		s.store.On("UpdateSystemCredentials", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).
+		s.store.On("UpdateSystemCredentials", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
 			Return(nil).Once()
 
 		s.NoError(s.svc.UpdateSystemCredentials(s.ctx, e.ID, json.RawMessage(creds)))
 
 		s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, e.ID,
-			mock.AnythingOfType("json.RawMessage"))
+			mock.IsType(json.RawMessage(nil)))
 	}
 }
 
@@ -716,7 +716,7 @@ func (s *ServiceTestSuite) TestUpdateSystemAttributes_PreservesCredentialMarker(
 	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
 
 	var written json.RawMessage
-	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
 		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
 
 	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID, json.RawMessage(`{"name":"New"}`)))
@@ -752,7 +752,7 @@ func (s *ServiceTestSuite) TestUpdateSystemAttributes_NoMarkerPassesThrough() {
 	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
 
 	var written json.RawMessage
-	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.AnythingOfType("json.RawMessage")).
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
 		Run(func(args mock.Arguments) { written, _ = args.Get(2).(json.RawMessage) }).Return(nil)
 
 	s.NoError(s.svc.UpdateSystemAttributes(s.ctx, e.ID, json.RawMessage(`{"name":"New"}`)))
