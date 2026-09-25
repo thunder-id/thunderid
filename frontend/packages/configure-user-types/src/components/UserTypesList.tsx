@@ -4,27 +4,12 @@
 import {QueryErrorNotice} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
-import {getErrorMessage} from '@thunderid/utils';
-import {
-  Chip,
-  IconButton,
-  Tooltip,
-  Typography,
-  Alert,
-  ListingTable,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogContentText,
-  DialogActions,
-  Button,
-  DataGrid,
-} from '@wso2/oxygen-ui';
+import {Chip, IconButton, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
 import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
-import useDeleteUserType from '../api/useDeleteUserType';
+import UserTypeDeleteDialog from './edit-user-type/UserTypeDeleteDialog';
 import useGetUserTypes from '../api/useGetUserTypes';
 import useUserTypeRoutes from '../hooks/useUserTypeRoutes';
 import type {UserTypeListItem} from '../types/user-types';
@@ -41,7 +26,6 @@ export default function UserTypesList() {
   const dataGridLocaleText = useDataGridLocaleText();
 
   const {data: userTypesData, isLoading, error: userTypesRequestError, refetch} = useGetUserTypes();
-  const deleteUserTypeMutation = useDeleteUserType();
 
   const [selectedUserTypeId, setSelectedUserTypeId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -62,22 +46,9 @@ export default function UserTypesList() {
     [logger, navigate, routes],
   );
 
-  const handleDeleteCancel = () => {
+  const handleDeleteDialogClose = (): void => {
     setDeleteDialogOpen(false);
     setSelectedUserTypeId(null);
-    deleteUserTypeMutation.reset();
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!selectedUserTypeId) return;
-
-    try {
-      await deleteUserTypeMutation.mutateAsync(selectedUserTypeId);
-      setDeleteDialogOpen(false);
-      setSelectedUserTypeId(null);
-    } catch {
-      // Keep dialog open so inline error is visible and user can retry
-    }
   };
 
   const columns: GridColDef<UserTypeListItem>[] = useMemo(
@@ -219,41 +190,7 @@ export default function UserTypesList() {
       </ListingTable.Provider>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={handleDeleteCancel}>
-        <DialogTitle>{t('userTypes:deleteUserType')}</DialogTitle>
-        <DialogContent>
-          <DialogContentText>{t('userTypes:confirmDeleteUserType')}</DialogContentText>
-          {deleteUserTypeMutation.error && (
-            <Alert severity="error" sx={{mt: 2}}>
-              <Typography variant="body2" sx={{fontWeight: 'bold'}}>
-                {getErrorMessage(
-                  deleteUserTypeMutation.error,
-                  (key, options) => t(key.includes(':') ? key : `userTypes:${key}`, options),
-                  'delete.error',
-                  'Failed to delete user type. Please try again.',
-                )}
-              </Typography>
-            </Alert>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleDeleteCancel} disabled={deleteUserTypeMutation.isPending}>
-            {t('common:actions.cancel')}
-          </Button>
-          <Button
-            onClick={() => {
-              handleDeleteConfirm().catch(() => {
-                // Handle error
-              });
-            }}
-            color="error"
-            variant="contained"
-            disabled={deleteUserTypeMutation.isPending}
-          >
-            {deleteUserTypeMutation.isPending ? t('common:status.loading') : t('common:actions.delete')}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <UserTypeDeleteDialog open={deleteDialogOpen} userTypeId={selectedUserTypeId} onClose={handleDeleteDialogClose} />
     </>
   );
 }

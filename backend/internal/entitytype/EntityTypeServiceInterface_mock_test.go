@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -660,6 +661,82 @@ func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeSchema_Call) RunAndReturn(
 	return _c
 }
 
+// GetEntityTypeUsages provides a mock function for the type EntityTypeServiceInterfaceMock
+func (_mock *EntityTypeServiceInterfaceMock) GetEntityTypeUsages(ctx context.Context, category TypeCategory, schemaID string) (*resourcedependency.DependenciesResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, category, schemaID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEntityTypeUsages")
+	}
+
+	var r0 *resourcedependency.DependenciesResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, TypeCategory, string) (*resourcedependency.DependenciesResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, category, schemaID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, TypeCategory, string) *resourcedependency.DependenciesResponse); ok {
+		r0 = returnFunc(ctx, category, schemaID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*resourcedependency.DependenciesResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, TypeCategory, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, category, schemaID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// EntityTypeServiceInterfaceMock_GetEntityTypeUsages_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEntityTypeUsages'
+type EntityTypeServiceInterfaceMock_GetEntityTypeUsages_Call struct {
+	*mock.Call
+}
+
+// GetEntityTypeUsages is a helper method to define mock.On call
+//   - ctx context.Context
+//   - category TypeCategory
+//   - schemaID string
+func (_e *EntityTypeServiceInterfaceMock_Expecter) GetEntityTypeUsages(ctx interface{}, category interface{}, schemaID interface{}) *EntityTypeServiceInterfaceMock_GetEntityTypeUsages_Call {
+	return &EntityTypeServiceInterfaceMock_GetEntityTypeUsages_Call{Call: _e.mock.On("GetEntityTypeUsages", ctx, category, schemaID)}
+}
+
+func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeUsages_Call) Run(run func(ctx context.Context, category TypeCategory, schemaID string)) *EntityTypeServiceInterfaceMock_GetEntityTypeUsages_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 TypeCategory
+		if args[1] != nil {
+			arg1 = args[1].(TypeCategory)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeUsages_Call) Return(dependenciesResponse *resourcedependency.DependenciesResponse, serviceError *common.ServiceError) *EntityTypeServiceInterfaceMock_GetEntityTypeUsages_Call {
+	_c.Call.Return(dependenciesResponse, serviceError)
+	return _c
+}
+
+func (_c *EntityTypeServiceInterfaceMock_GetEntityTypeUsages_Call) RunAndReturn(run func(ctx context.Context, category TypeCategory, schemaID string) (*resourcedependency.DependenciesResponse, *common.ServiceError)) *EntityTypeServiceInterfaceMock_GetEntityTypeUsages_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetUniqueAttributes provides a mock function for the type EntityTypeServiceInterfaceMock
 func (_mock *EntityTypeServiceInterfaceMock) GetUniqueAttributes(ctx context.Context, category TypeCategory, entityType string) ([]string, *common.ServiceError) {
 	ret := _mock.Called(ctx, category, entityType)
@@ -792,6 +869,46 @@ func (_c *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call) Return(s
 
 func (_c *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call) RunAndReturn(run func(ctx context.Context, entityType *EntityType) *common.ServiceError) *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call {
 	_c.Call.Return(run)
+	return _c
+}
+
+// SetDependencyRegistry provides a mock function for the type EntityTypeServiceInterfaceMock
+func (_mock *EntityTypeServiceInterfaceMock) SetDependencyRegistry(r resourcedependency.Registry) {
+	_mock.Called(r)
+	return
+}
+
+// EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetDependencyRegistry'
+type EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call struct {
+	*mock.Call
+}
+
+// SetDependencyRegistry is a helper method to define mock.On call
+//   - r resourcedependency.Registry
+func (_e *EntityTypeServiceInterfaceMock_Expecter) SetDependencyRegistry(r interface{}) *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call {
+	return &EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
+}
+
+func (_c *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call) Run(run func(r resourcedependency.Registry)) *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 resourcedependency.Registry
+		if args[0] != nil {
+			arg0 = args[0].(resourcedependency.Registry)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call) Return() *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run func(r resourcedependency.Registry)) *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Run(run)
 	return _c
 }
 

@@ -594,6 +594,35 @@ func (s *DBStoreTestSuite) TestGetGroupCountForEntity_Success() {
 	s.Equal(3, count)
 }
 
+func (s *DBStoreTestSuite) TestGetEntityCountByType_ProviderError() {
+	s.expectClientError()
+	_, err := s.store.GetEntityCountByType(s.ctx, "user", "employee")
+	s.Error(err)
+}
+
+func (s *DBStoreTestSuite) TestGetEntityCountByType_EmptyResults() {
+	s.expectClient()
+	s.onQueryAny([]map[string]interface{}{}, nil)
+	count, err := s.store.GetEntityCountByType(s.ctx, "user", "employee")
+	s.NoError(err)
+	s.Equal(0, count)
+}
+
+func (s *DBStoreTestSuite) TestGetEntityCountByType_BadType() {
+	s.expectClient()
+	s.onQueryAny([]map[string]interface{}{{"total": "wrong"}}, nil)
+	_, err := s.store.GetEntityCountByType(s.ctx, "user", "employee")
+	s.Error(err)
+}
+
+func (s *DBStoreTestSuite) TestGetEntityCountByType_Success() {
+	s.expectClient()
+	s.onQueryAny([]map[string]interface{}{{"total": int64(2)}}, nil)
+	count, err := s.store.GetEntityCountByType(s.ctx, "user", "employee")
+	s.NoError(err)
+	s.Equal(2, count)
+}
+
 func (s *DBStoreTestSuite) TestGetEntityGroups_ProviderError() {
 	s.expectClientError()
 	_, err := s.store.GetEntityGroups(s.ctx, "e1", 10, 0)

@@ -8,6 +8,7 @@ export {default as useGetUserType} from './api/useGetUserType';
 export {default as useGetUserTypeAttributes} from './api/useGetUserTypeAttributes';
 export type {AggregatedUserTypeAttribute, UseGetUserTypeAttributesResult} from './api/useGetUserTypeAttributes';
 export {default as useGetUserTypes} from './api/useGetUserTypes';
+export {default as useGetUserTypeUsages} from './api/useGetUserTypeUsages';
 export {default as useUpdateUserType} from './api/useUpdateUserType';
 export type {UpdateUserTypeVariables} from './api/useUpdateUserType';
 
@@ -61,6 +62,8 @@ export type {
   UserTypeListItem,
   UserTypeListParams,
   UserTypeListResponse,
+  UserTypeUsage,
+  UserTypeUsagesResponse,
 } from './types/user-types';
 
 // Pages
