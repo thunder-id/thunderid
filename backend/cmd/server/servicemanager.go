@@ -199,7 +199,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	userMgtProvider := usermgtprovider.Initialize(userService)
 
 	groupService, ouGroupResolver, groupExporter, err := group.Initialize(
-		mux, dbprovider.GetDBProvider(), ouService, entityService, entityTypeService, ouAuthzService,
+		mux, mcpServer, dbprovider.GetDBProvider(), ouService, entityService, entityTypeService, ouAuthzService,
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize GroupService")
 	exporters = append(exporters, groupExporter)
