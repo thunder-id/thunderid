@@ -184,6 +184,24 @@ Example response:
 
 When import runs with `dryRun=false`, <ProductName /> persists resource changes in runtime stores.
 
+The `server_config` resource type supports an optional `importBehavior` field alongside `name` and `value`:
+
+- `importBehavior`:
+  - Omitted: defaults to `replace`.
+  - `replace`: replaces the writable layer entirely, the same way `PUT /server-config/{name}` does. Use this to remove an entry through import.
+  - `merge`: adds the incoming entries to the writable layer instead of replacing it. Applies only to collection-valued sections, such as the `cors` section's allowed origins.
+
+`importBehavior: merge` has no effect on a section whose value is not a collection. <ProductName /> always replaces that value.
+
+```yaml
+resource_type: server_config
+name: cors
+importBehavior: merge
+value:
+  allowedOrigins:
+    - "https://app.example.com"
+```
+
 When `POST /import/delete` succeeds, <ProductName /> removes the matching declarative YAML file from `config/resources`.
 
 ## Error Handling

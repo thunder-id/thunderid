@@ -51,6 +51,7 @@ schema: {
 ---
 resource_type: server_config
 name: cors
+importBehavior: merge
 value:
   allowedOrigins:
     - "https://localhost:3000"
