@@ -1950,6 +1950,20 @@ The following fields are always available when the corresponding data exists in 
 
 In addition to these fields, any value present in runtime data (set by prior executors) or user inputs (collected from prior Views) can be referenced using the same `{{ctx(fieldName)}}` syntax (e.g., `{{ctx(email)}}`, `{{ctx(username)}}`).
 
+**Request parameter syntax:** Use `{{request(...)}}` to reference headers and query parameters from the HTTP request associated with the flow. This is useful for publishing request metadata (host, user agent, tracking parameters) to external endpoints. The selector is `[source.]type.name`:
+
+- `source` is `init` (the request that initiated the flow, e.g. the OAuth2 `/authorize` call for redirect-based flows) or `flow` (the current flow step request). When omitted, `init` is used.
+- `type` is `header` or `query`.
+- `name` is the header or query parameter name. Header lookups are case-insensitive; query parameter lookups are case-sensitive. When a header or query parameter has multiple values, the first is used.
+
+| Placeholder | Description |
+|---|---|
+| `{{request(header.User-Agent)}}` | The `User-Agent` header from the flow-initiation request. |
+| `{{request(init.query.utm_source)}}` | The `utm_source` query parameter from the flow-initiation request. |
+| `{{request(flow.header.User-Agent)}}` | The `User-Agent` header from the current flow step request. |
+
+Credential-bearing data is stripped at capture and is never available through this syntax: the headers `Authorization`, `Cookie`, `Set-Cookie`, and `Proxy-Authorization`, and the client-credential query parameters `client_secret`, `client_assertion`, and `client_assertion_type`. If a request, header, or query parameter is not present — or the selector is malformed (for example `{{request(header)}}` with no name, or `{{request(notaselector)}}`) — the placeholder is kept as-is.
+
 **Failure conditions:**
 - URL not configured or invalid
 - HTTP request timeout

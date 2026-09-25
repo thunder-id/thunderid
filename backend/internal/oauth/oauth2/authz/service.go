@@ -333,7 +333,7 @@ func (as *authorizeService) HandleInitialAuthorizationRequest(ctx context.Contex
 
 	initiatorReq := &providers.InitiatorRequest{
 		Headers:     utils.FilterSensitiveHeaders(msg.RequestHeaders),
-		QueryParams: msg.RequestQueryParams,
+		QueryParams: oauth2utils.FilterSensitiveQueryParams(msg.RequestQueryParams),
 	}
 
 	return as.handleStandardAuthorizationRequest(ctx, msg, app, initiatorReq)
