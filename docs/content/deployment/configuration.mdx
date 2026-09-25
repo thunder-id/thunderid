@@ -673,6 +673,21 @@ Authorization resource settings.
 |---------|---------|-------------|
 | `resource.default_delimiter` | `:` | Default delimiter for resource hierarchies |
 
+## Resource Sharing Configuration
+
+Controls whether a resource can reach an organization unit outside the tree that owns it.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `resource_sharing.allow_child_ou_cross_tree_sharing` | `false` | If `true`, an organization unit that has a parent can share a resource with a root organization unit in another tree. If `false`, only a root organization unit can share outside its own tree. |
+
+Organization units form separate trees. Sharing within a tree is always permitted and is not affected by this setting. 
+A root organization unit can always share with another root OU. This setting governs the other case, where an organization unit that sits inside a tree shares outward. Keeping it `false` means a resource leaves a tree only by decision of that tree's root.
+
+```yaml
+resource_sharing:
+  allow_child_ou_cross_tree_sharing: false
+```
 
 ## Observability Configuration
 
