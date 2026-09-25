@@ -216,6 +216,8 @@ The recovery flow drives [Account Recovery](../try-it-out/account-recovery). It:
 
 SMTP must be configured for the recovery email to reach the user. The SMTP step is covered in the [Set Up Account Recovery](../try-it-out/account-recovery/#set-up-account-recovery) and is required regardless of which path you took.
 
+The `send_recovery_email` step sends the `PASSWORD_RECOVERY` template. To tailor that email's subject, content, design, and languages, see [Customize the Recovery Email](../build-recovery-email).
+
 <Stepper stepNode="h3" as="h3">
 
 ### Create the recovery flow
