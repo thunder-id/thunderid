@@ -1,0 +1,572 @@
+openapi: 3.0.3
+info:
+  title: Notification Templates API
+  version: "1.0"
+  description: Manage the notifications ThunderID sends. Templates are defined per channel and can reference existing designs, use translations for the recipient’s language, and include context placeholders for values filled in when the notification is sent.
+
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host:
+        default: "localhost"
+      port:
+        default: "8090"
+
+tags:
+  - name: Templates
+    description: List, create, update, and delete notification templates.
+
+security:
+  - OAuth2: [system]
+
+paths:
+  /notification-templates/{channel}/templates:
+    get:
+      tags:
+        - Templates
+      summary: List templates
+      parameters:
+        - $ref: '#/components/parameters/channelPathParam'
+      responses:
+        "200":
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateListResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+        - Templates
+      summary: Create a template
+      description: Create a template with the provided content. The content must match the shape for the given channel. The name must be unique within the channel; a duplicate name is rejected with 409.
+      parameters:
+        - $ref: '#/components/parameters/channelPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateRequest'
+            examples:
+              email:
+                summary: Email template
+                value:
+                  name: OTP Verification
+                  description: One-time passcode sent to verify a user's email address.
+                  design:
+                    colorScheme: light
+                  content:
+                    subject: "{{t(notification.otp.email.subject)}}"
+                    body: "<p>{{t(notification.otp.email.message)}}</p><p>{{ctx(otp)}}</p>"
+              sms:
+                summary: SMS template
+                value:
+                  name: OTP Verification
+                  description: One-time passcode sent to verify a user's phone number.
+                  content:
+                    body: "{{t(notification.otp.sms.message)}} {{ctx(otp)}}"
+      responses:
+        "201":
+          description: Template created
+          headers:
+            Location:
+              description: Location of the created template.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Template'
+              examples:
+                email:
+                  $ref: '#/components/examples/EmailTemplateResponse'
+                sms:
+                  $ref: '#/components/examples/SmsTemplateResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /notification-templates/{channel}/templates/{id}:
+    get:
+      tags:
+        - Templates
+      summary: Get a template
+      parameters:
+        - $ref: '#/components/parameters/channelPathParam'
+        - $ref: '#/components/parameters/templatePathParam'
+      responses:
+        "200":
+          description: Template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Template'
+              examples:
+                email:
+                  $ref: '#/components/examples/EmailTemplateResponse'
+                sms:
+                  $ref: '#/components/examples/SmsTemplateResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags:
+        - Templates
+      summary: Update a template
+      description: Updates the template's name, description, content, and design configuration. The content must match the shape for the given channel. The name must be unique within the channel; renaming to an existing name is rejected with 409.
+      parameters:
+        - $ref: '#/components/parameters/channelPathParam'
+        - $ref: '#/components/parameters/templatePathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateRequest'
+            examples:
+              email:
+                summary: Email template
+                value:
+                  name: OTP Verification
+                  description: One-time passcode sent to verify a user's email address.
+                  design:
+                    colorScheme: light
+                  content:
+                    subject: "{{t(notification.otp.email.subject)}}"
+                    body: "<p>{{t(notification.otp.email.message)}}</p><p>{{ctx(otp)}}</p>"
+              sms:
+                summary: SMS template
+                value:
+                  name: OTP Verification
+                  description: One-time passcode sent to verify a user's phone number.
+                  content:
+                    body: "{{t(notification.otp.sms.message)}} {{ctx(otp)}}"
+      responses:
+        "200":
+          description: Template updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Template'
+              examples:
+                email:
+                  $ref: '#/components/examples/EmailTemplateResponse'
+                sms:
+                  $ref: '#/components/examples/SmsTemplateResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - Templates
+      summary: Delete a template
+      description: Deletes the template. Rejected with 409 if it is referenced by a flow.
+      parameters:
+        - $ref: '#/components/parameters/channelPathParam'
+        - $ref: '#/components/parameters/templatePathParam'
+      responses:
+        "204":
+          description: Template deleted
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  examples:
+    EmailTemplateResponse:
+      summary: Email template
+      value:
+        id: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        channel: email
+        name: OTP Verification
+        description: One-time passcode sent to verify a user's email address.
+        design:
+          colorScheme: light
+        content:
+          subject: "{{t(notification.otp.email.subject)}}"
+          body: "<p>{{t(notification.otp.email.message)}}</p><p>{{ctx(otp)}}</p>"
+    SmsTemplateResponse:
+      summary: SMS template
+      value:
+        id: 0db4e64e-57aa-49cb-9b8e-1f3044ed5e17
+        channel: sms
+        name: OTP Verification
+        description: One-time passcode sent to verify a user's phone number.
+        content:
+          body: "{{t(notification.otp.sms.message)}} {{ctx(otp)}}"
+
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth2/token
+          scopes:
+            system: Access to system management APIs
+
+  parameters:
+    channelPathParam:
+      name: channel
+      in: path
+      description: Notification channel supported by this API version.
+      required: true
+      schema:
+        type: string
+        enum: [email, sms]
+    templatePathParam:
+      name: id
+      in: path
+      description: Unique identifier of the template.
+      required: true
+      schema:
+        type: string
+        format: uuid
+        example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+
+  schemas:
+    TemplateListResponse:
+      type: object
+      description: Summaries of templates in the requested channel.
+      required: [templates]
+      properties:
+        templates:
+          type: array
+          description: Templates available in the requested channel.
+          items:
+            $ref: '#/components/schemas/TemplateSummary'
+
+    TemplateSummary:
+      type: object
+      description: Basic template details and a link to the full template.
+      required: [id, name, self]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the template. Used as the {id} path parameter.
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        name:
+          type: string
+          description: Display name of the template.
+          example: OTP Verification
+        description:
+          type: string
+          description: Optional human-readable description of what this template is for.
+          example: One-time passcode sent to verify a user's email address.
+        self:
+          type: string
+          description: Relative URL of this template.
+          example: /notification-templates/email/templates/3fa85f64-5717-4562-b3fc-2c963f66afa6
+
+    Template:
+      description: A notification template. Exactly one of the two shapes below, matching the template's channel.
+      oneOf:
+        - $ref: '#/components/schemas/EmailTemplate'
+        - $ref: '#/components/schemas/SmsTemplate'
+      discriminator:
+        propertyName: channel
+        mapping:
+          email: '#/components/schemas/EmailTemplate'
+          sms: '#/components/schemas/SmsTemplate'
+
+    EmailTemplate:
+      description: Email template with content and optional design references.
+      type: object
+      required: [id, name, channel, content]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the template. Used as the {id} path parameter.
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        channel:
+          type: string
+          description: Notification channel of the template.
+          enum: [email]
+          example: email
+        name:
+          type: string
+          description: Display name of the template.
+          example: OTP Verification
+        description:
+          type: string
+          description: Optional human-readable description of what this template is for.
+          example: One-time passcode sent to verify a user's email address.
+        design:
+          allOf:
+            - $ref: '#/components/schemas/TemplateDesign'
+          description: Design references for this template.
+        content:
+          allOf:
+            - $ref: '#/components/schemas/EmailTemplateContent'
+          description: Email content that may include translations and context placeholders.
+
+    SmsTemplate:
+      description: SMS template.
+      type: object
+      required: [id, name, channel, content]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the template. Used as the {id} path parameter.
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        channel:
+          type: string
+          description: Notification channel of the template.
+          enum: [sms]
+          example: sms
+        name:
+          type: string
+          description: Display name of the template.
+          example: OTP Verification
+        description:
+          type: string
+          description: Optional human-readable description of what this template is for.
+          example: One-time passcode sent to verify a user's email address.
+        content:
+          allOf:
+            - $ref: '#/components/schemas/SmsTemplateContent'
+          description: SMS content that may include translations and context placeholders.
+
+    TemplateRequest:
+      description: Create or update payload. Exactly one of the shapes below, matching the channel in the path.
+      oneOf:
+        - $ref: '#/components/schemas/EmailTemplateRequest'
+        - $ref: '#/components/schemas/SmsTemplateRequest'
+
+    EmailTemplateRequest:
+      type: object
+      description: Create or update payload for an email template.
+      required: [name, content]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: Display name of the template. Must be unique within the channel.
+          example: OTP Verification
+        description:
+          type: string
+          description: Optional human-readable description of what this template is for.
+          example: One-time passcode sent to verify a user's email address.
+        design:
+          allOf:
+            - $ref: '#/components/schemas/TemplateDesign'
+          description: Optional design references applied when the email is rendered.
+        content:
+          allOf:
+            - $ref: '#/components/schemas/EmailTemplateContent'
+          description: Email content, which may include translations and context placeholders.
+
+    SmsTemplateRequest:
+      type: object
+      description: Create or update payload for an SMS template.
+      required: [name, content]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: Display name of the template. Must be unique within the channel.
+          example: OTP Verification
+        description:
+          type: string
+          description: Optional human-readable description of what this template is for.
+          example: One-time passcode sent to verify a user's phone number.
+        content:
+          allOf:
+            - $ref: '#/components/schemas/SmsTemplateContent'
+          description: SMS content, which may include translations and context placeholders.
+
+    EmailTemplateContent:
+      type: object
+      required: [subject, body]
+      additionalProperties: false
+      description: Email content.
+      properties:
+        subject:
+          type: string
+          description: Subject line, optionally containing translation and context placeholders.
+          example: "{{t(notification.otp.email.subject)}}"
+        body:
+          type: string
+          description: Body, optionally containing translation and context placeholders.
+          example: "<p>{{t(notification.otp.email.message)}}</p><p>{{ctx(otp)}}</p>"
+
+    SmsTemplateContent:
+      type: object
+      required: [body]
+      additionalProperties: false
+      description: SMS content.
+      properties:
+        body:
+          type: string
+          description: Body, optionally containing translation and context placeholders.
+          example: "{{t(notification.otp.sms.message)}} {{ctx(otp)}}"
+
+    TemplateDesign:
+      type: object
+      description: Per-template design references composed on top of the content at render time. Email only.
+      properties:
+        colorScheme:
+          type: string
+          enum: [light, dark]
+          description: Color theme variant of the application's branding to apply at render.
+          example: light
+
+    Error:
+      type: object
+      description: Error code and localized details for a failed request.
+      required: [code, message, description]
+      properties:
+        code:
+          type: string
+          description: "Error code. NTM-XXXX for template-specific errors; shared errors keep their own prefix (AUTH-, SSE-)."
+          example: "NTM-1003"
+        message:
+          $ref: '#/components/schemas/I18nMessage'
+        description:
+          $ref: '#/components/schemas/I18nMessage'
+
+    I18nMessage:
+      type: object
+      description: Internationalized message with translation key and default value.
+      required:
+        - key
+        - defaultValue
+      properties:
+        key:
+          type: string
+          description: Translation key for fetching localized message.
+        defaultValue:
+          type: string
+          description: Default message in English (fallback).
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "NTM-1001"
+            message:
+              key: "error.notificationtemplateservice.invalid_request"
+              defaultValue: "Invalid request format"
+            description:
+              key: "error.notificationtemplateservice.invalid_request_description"
+              defaultValue: "The request contains invalid parameters"
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "AUTH-4010"
+            message:
+              key: "error.unauthorized"
+              defaultValue: "Unauthorized"
+            description:
+              key: "error.unauthorized_description"
+              defaultValue: "Authentication is required to access this resource"
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "AUTH-4030"
+            message:
+              key: "error.forbidden"
+              defaultValue: "Forbidden"
+            description:
+              key: "error.forbidden_description"
+              defaultValue: "You do not have permission to perform this operation"
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "NTM-1004"
+            message:
+              key: "error.notificationtemplateservice.not_found"
+              defaultValue: "Template not found"
+            description:
+              key: "error.notificationtemplateservice.not_found_description"
+              defaultValue: "The requested notification template does not exist"
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "NTM-1009"
+            message:
+              key: "error.notificationtemplateservice.conflict"
+              defaultValue: "Template conflict"
+            description:
+              key: "error.notificationtemplateservice.conflict_description"
+              defaultValue: "The template already exists or is referenced by a flow"
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "SSE-5000"
+            message:
+              key: "error.internal_server_error"
+              defaultValue: "Internal server error"
+            description:
+              key: "error.internal_server_error_description"
+              defaultValue: "An unexpected error occurred while processing the request"
