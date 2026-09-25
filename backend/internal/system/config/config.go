@@ -660,6 +660,12 @@ type Config struct {
 	Email                EmailConfig                       `yaml:"email"                 json:"email"`
 	Notification         NotificationConfig                `yaml:"notification"          json:"notification"`
 	AttributeCache       engineconfig.AttributeCacheConfig `yaml:"attribute_cache" json:"attribute_cache"`
+	ResourceSharing      ResourceSharingConfig             `yaml:"resource_sharing"      json:"resource_sharing"`
+}
+
+// ResourceSharingConfig configures how resources may be shared across organization units.
+type ResourceSharingConfig struct {
+	AllowChildOUCrossTreeSharing bool `yaml:"allow_child_ou_cross_tree_sharing" json:"allow_child_ou_cross_tree_sharing"` //nolint:lll // one config key, split reads worse
 }
 
 // LoadConfig loads the configurations from the specified YAML file and applies defaults.

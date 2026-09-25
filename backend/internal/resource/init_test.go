@@ -76,7 +76,7 @@ func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, exporter, err := Initialize(mux, suite.mockOUService)
+	service, exporter, err := Initialize(mux, suite.mockOUService, nil, nil)
 
 	// Assert
 	suite.NoError(err)
@@ -291,7 +291,7 @@ func (suite *InitTestSuite) TestNewResourceHandler() {
 	mockService := NewResourceServiceInterfaceMock(suite.T())
 
 	// Execute
-	handler := newResourceHandler(mockService)
+	handler := newResourceHandler(mockService, nil)
 
 	// Assert
 	suite.NotNil(handler)
@@ -305,7 +305,7 @@ func (suite *InitTestSuite) TestNewResourceService() {
 	// Execute
 	mockTransactioner := &fakeTransactioner{}
 	service, err := newResourceService(
-		suite.mockOUService, mockStore, mockTransactioner,
+		suite.mockOUService, nil, nil, mockStore, mockTransactioner,
 	)
 
 	// Assert
@@ -375,7 +375,7 @@ func (suite *InitTestSuite) TestInitialize_IntegrationFlow() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, _, err := Initialize(mux, suite.mockOUService)
+	service, _, err := Initialize(mux, suite.mockOUService, nil, nil)
 
 	// Assert service is created
 	suite.NoError(err)

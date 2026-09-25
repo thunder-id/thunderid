@@ -140,6 +140,9 @@ type resourceServerAdapter interface {
 		*resource.ResourceList, *tidcommon.ServiceError)
 	CreateAction(ctx context.Context, resourceServerID string, resourceID *string, action providers.Action) (
 		*providers.Action, *tidcommon.ServiceError)
+	// ApplySharingPolicies records the sharing policies the imported document carries.
+	ApplySharingPolicies(ctx context.Context, resourceServerID string,
+		policies []providers.SharingPolicy) *tidcommon.ServiceError
 }
 
 type themeAdapter interface {

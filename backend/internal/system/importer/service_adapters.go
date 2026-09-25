@@ -488,6 +488,9 @@ func (s *importService) importResourceServer(
 			if err := s.importResourceServerChildren(ctx, updated.ID, req); err != nil {
 				return serviceErrorOutcome(resourceTypeResourceServer, updated.ID, updated.Name, operationUpdate, err)
 			}
+			if err := s.resourceService.ApplySharingPolicies(ctx, updated.ID, req.SharingPolicies); err != nil {
+				return serviceErrorOutcome(resourceTypeResourceServer, updated.ID, updated.Name, operationUpdate, err)
+			}
 			return successOutcome(resourceTypeResourceServer, updated.ID, updated.Name, operationUpdate)
 		}
 
@@ -502,6 +505,12 @@ func (s *importService) importResourceServer(
 	}
 
 	if err := s.importResourceServerChildren(ctx, created.ID, req); err != nil {
+		return serviceErrorOutcome(resourceTypeResourceServer, created.ID, created.Name, operationCreate, err)
+	}
+
+	// Sharing policies are applied after the tree exists, because a rule may name a permission the
+	// children define.
+	if err := s.resourceService.ApplySharingPolicies(ctx, created.ID, req.SharingPolicies); err != nil {
 		return serviceErrorOutcome(resourceTypeResourceServer, created.ID, created.Name, operationCreate, err)
 	}
 

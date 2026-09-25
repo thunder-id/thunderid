@@ -29,6 +29,8 @@ tags:
     description: Define actions on resources; actions map directly to OAuth2 scopes used in permission grants.
   - name: Permissions
     description: Preview and retrieve derived permissions based on the resource handle hierarchy.
+  - name: Sharing Policies
+    description: Share a resource server with other organization units, and resolve what each of them may do with it.
 
 security:
   - OAuth2: [system]
@@ -42,6 +44,24 @@ paths:
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
+        - in: query
+          name: ouId
+          required: false
+          description: |
+            Answer as the given organization unit sees this resource server: its own resources and
+            actions if it owns the server, or the subset a sharing policy left it if it was shared
+            one. A deployment-wide caller may name any organization unit; any other caller may only
+            name one it already has standing over, and naming another returns not found.
+
+            Omitted, the answer follows the caller's own standing: a deployment-wide token sees
+            every resource server, and a narrower token sees the ones its own organization unit
+            owns or was shared.
+
+            This is the only resource-server endpoint taking the parameter. The nested resource
+            and action reads are always answered from the caller's own standing.
+          schema:
+            type: string
+            format: uuid
       responses:
         "200":
           description: List of resource servers
@@ -238,11 +258,24 @@ paths:
       tags:
         - Resource Servers
       summary: Get resource server details
-      description: Returns resource server metadata
+      description: |
+        Returns resource server metadata.
+
+        `ouId` answers the question on one organization unit's behalf rather than the caller's. It
+        narrows and never widens: a caller with no standing over that unit, and a unit that neither
+        owns the resource server nor was reached by a sharing policy, both get 404. Omitting it
+        answers as the caller.
       parameters:
         - in: path
           name: id
           required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: ouId
+          required: false
+          description: Answer as this organization unit sees the resource server.
           schema:
             type: string
             format: uuid
@@ -2225,6 +2258,445 @@ paths:
                   key: "error.internal_server_error_description"
                   defaultValue: "An unexpected error occurred while processing the request"
 
+  /resource-servers/{id}/sharing-policies:
+    post:
+      tags:
+        - Sharing Policies
+      summary: Record a sharing policy
+      description: |
+        Records one organization unit's decision about this resource server: which organization
+        units it reaches, and on what terms. Exactly one policy exists per resource server per
+        initiating organization unit; a second create is refused with RES-1026 naming the policy to
+        edit instead.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SharingPolicyRequest'
+            examples:
+              wholeTree:
+                summary: Share everything with one root organization unit
+                description: No overlay rule, so the sharee receives the server's whole permission tree.
+                value:
+                  targetOuScope:
+                    rootOuIds: ["a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"]
+              withholdOneBranch:
+                summary: Everything except refunds
+                description: |
+                  editable false with no value means the owner's own value, minus the excluded
+                  paths and everything beneath them. No wildcard is needed.
+                value:
+                  targetOuScope:
+                    rootOuIds: ["a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"]
+                  overlayRules:
+                    resources:
+                      editable: false
+                      excludedValues: ["bookings:refund", "billing:approve"]
+              explicitIncludeList:
+                summary: An explicit include list
+                value:
+                  targetOuScope:
+                    rootOuIds: ["a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"]
+                  overlayRules:
+                    resources:
+                      editable: false
+                      value: ["bookings", "billing:invoice"]
+              reshare:
+                summary: A sharee passing the server on to its own child
+                description: |
+                  Bounded by what the initiating organization unit itself holds. Named targets must
+                  be direct children of the initiator; depth comes from allChildren, never from
+                  naming a grandchild.
+                value:
+                  initiatingOuId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
+                  targetOuScope:
+                    ouIds:
+                      - ouId: "c1e4b0a2-7d3f-4a91-9f22-5b8e6d0c3a41"
+                        allChildren: true
+                  overlayRules:
+                    resources:
+                      editable: false
+                      value: ["bookings"]
+      responses:
+        "201":
+          description: Sharing policy recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicy'
+        "400":
+          description: |
+            The request is malformed, names a field the resource server does not expose, names a
+            permission it does not define, breaks the one-hop rule, or asks for more than the
+            initiating organization unit itself holds.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "RES-1030"
+                message:
+                  key: "error.resourceservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.resourceservice.invalid_sharing_policy_description"
+                  defaultValue: "The sharing policy is not valid for this resource server: an overlay rule may only narrow what the initiating organization unit itself holds"
+        "403":
+          description: |
+            The initiating organization unit cannot see this resource server, or the target leaves
+            its tree while cross-tree sharing is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "404":
+          description: Resource server not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "409":
+          description: |
+            A policy already exists for this initiating organization unit. The refusal names it, so
+            the caller can edit that policy instead of creating a second one.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "RES-1026"
+                message:
+                  key: "error.resourceservice.sharing_policy_exists"
+                  defaultValue: "A sharing policy already exists for this organization unit"
+                description:
+                  key: "error.resourceservice.sharing_policy_exists_description"
+                  defaultValue: "Exactly one sharing policy exists per organization unit; edit the existing one"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    get:
+      tags:
+        - Sharing Policies
+      summary: List sharing policies
+      description: Returns every sharing policy recorded for this resource server, declared ones included.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Sharing policies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicyList'
+        "404":
+          description: Resource server not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /resource-servers/{id}/sharing-policies/{policyId}:
+    get:
+      tags:
+        - Sharing Policies
+      summary: Get a sharing policy
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: policyId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Sharing policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicy'
+        "404":
+          description: |
+            Resource server or policy not found. A policy recorded against a different resource is
+            reported as not found here, so an id cannot be read through another server's path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Sharing Policies
+      summary: Replace a sharing policy
+      description: |
+        Replaces the policy's contents. A policy is edited rather than re-issued, so changing who a
+        resource server is shared with is a PUT on the existing policy.
+
+        A blanket policy (allOus, allRoots, allChildren) may only be narrowed, and only by adding
+        exclusions; a selective policy may grow within the one-hop rule. Converting between the two
+        families is never an edit. A policy defined in a resource file cannot be edited at all.
+
+        Editing cascades: every reshare beneath this policy is recomputed in the same transaction,
+        so a descendant can never be left holding rules wider than its ancestor allows.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: policyId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: header
+          name: If-Match
+          required: false
+          description: |
+            The version the caller believes it is editing, as returned in the policy's version
+            field. An edit built on a stale version is refused, so two administrators cannot
+            silently overwrite one another's carve-outs. Clients that cannot set headers may send
+            the same value in the body's version field instead.
+          schema:
+            type: string
+            example: '"3"'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SharingPolicyRequest'
+            examples:
+              addATarget:
+                summary: Reach a second organization unit
+                value:
+                  targetOuScope:
+                    rootOuIds:
+                      - "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
+                      - "c1e4b0a2-7d3f-4a91-9f22-5b8e6d0c3a41"
+              narrowByExclusion:
+                summary: Withhold a branch
+                value:
+                  targetOuScope:
+                    rootOuIds: ["a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"]
+                  overlayRules:
+                    resources:
+                      editable: false
+                      excludedValues: ["bookings:refund"]
+      responses:
+        "200":
+          description: Sharing policy replaced
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingPolicy'
+        "400":
+          description: |
+            The request is malformed, changes a blanket policy by more than adding exclusions,
+            converts between scope families, or asks for more than the initiator holds.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "403":
+          description: The policy is defined in a resource file and cannot be edited through the API.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "RES-1028"
+                message:
+                  key: "error.resourceservice.sharing_policy_immutable"
+                  defaultValue: "This sharing policy is defined in a resource file"
+                description:
+                  key: "error.resourceservice.sharing_policy_immutable_description"
+                  defaultValue: "A sharing policy a resource file declares can only be removed in that file"
+        "404":
+          description: Resource server or policy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "412":
+          description: |
+            The edit was built on a stale version. Re-read the policy and reapply the change.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "RES-1027"
+                message:
+                  key: "error.resourceservice.sharing_policy_version_mismatch"
+                  defaultValue: "Sharing policy version mismatch"
+                description:
+                  key: "error.resourceservice.sharing_policy_version_mismatch_description"
+                  defaultValue: "The sharing policy changed since it was read; re-read it and retry"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Sharing Policies
+      summary: Delete a sharing policy
+      description: |
+        Removes the policy and cleans up the per-organization-unit state of every unit that loses
+        visibility as a result. Visibility chains, so removing a policy also takes the resource
+        server away from anything reachable only through it.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: policyId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Sharing policy deleted
+        "403":
+          description: The policy is defined in a resource file and cannot be deleted through the API.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "404":
+          description: Resource server or policy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /resource-servers/{id}/overlay-rules:
+    get:
+      tags:
+        - Sharing Policies
+      summary: Resolve what an organization unit may do
+      description: |
+        Returns the effective rule per field for one organization unit.
+
+        An organization unit can be reached by more than one policy at once. The rules of all of
+        them are intersected rather than the nearest one winning, which is what keeps resolution
+        monotone: adding a policy can never widen the result, and removing one can never widen it
+        either.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: ouId
+          required: true
+          description: The organization unit to resolve for.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Resolved rules
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharingOverlay'
+              examples:
+                shared:
+                  summary: An organization unit the server was shared to
+                  value:
+                    ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
+                    origin: "shared"
+                    policyIds: ["7c9e6679-7425-40de-944b-e07fc1f90ae7"]
+                    rules:
+                      resources:
+                        editable: false
+                        excludedValues: ["bookings:refund"]
+                        source: "policy"
+                owned:
+                  summary: The organization unit that owns the resource server
+                  value:
+                    ouId: "c1e4b0a2-7d3f-4a91-9f22-5b8e6d0c3a41"
+                    origin: "owned"
+                    policyIds: []
+                    rules:
+                      resources:
+                        editable: false
+                        source: "default"
+        "400":
+          description: ouId is missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "404":
+          description: |
+            The resource server does not exist, or no policy reaches the named organization unit.
+            Both are the same answer on purpose: a withheld resource server must not be described to
+            the organization unit it was withheld from, and an empty rule set would still describe
+            it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   securitySchemes:
     OAuth2:
@@ -2287,6 +2759,14 @@ components:
           type: string
           format: uuid
           description: ID of the organization unit this resource server belongs to
+        origin:
+          type: string
+          enum: [owned, shared]
+          description: |
+            How the answering organization unit holds this server: owned when it is the server's own
+            organization unit, shared when a sharing policy reaches it. Absent when the request was
+            not bounded to an organization unit, because there is then nobody for it to be relative
+            to.
         delimiter:
           type: string
           description: Character used to separate permission hierarchy levels (immutable after creation)
@@ -2544,7 +3024,9 @@ components:
       properties:
         code:
           type: string
-          description: "Error code. Codes follow the RES-XXXX convention."
+          description: |
+            Error code, following the RES-XXXX convention. Sharing failures are reported in the
+            resource server's own codes; the sharing framework's internal codes are never returned.
           example: "RES-1001"
         message:
           $ref: '#/components/schemas/I18nMessage'
@@ -2564,3 +3046,234 @@ components:
         defaultValue:
           type: string
           description: Default message in English (fallback).
+
+    SharingPolicyRequest:
+      type: object
+      required: [targetOuScope]
+      description: The body of a sharing-policy create or replace.
+      properties:
+        initiatingOuId:
+          type: string
+          format: uuid
+          description: |
+            The organization unit making the decision. Omit for the resource server's owner. A
+            non-owner must already be able to see the server, and may only reach organization units
+            directly beneath itself.
+        targetOuScope:
+          $ref: '#/components/schemas/TargetOuScope'
+        overlayRules:
+          type: object
+          description: |
+            The terms, keyed by field. A resource server exposes one field, resources. Naming any
+            other key is refused rather than stored and ignored.
+          additionalProperties:
+            $ref: '#/components/schemas/OverlayRule'
+        version:
+          type: integer
+          description: |
+            The version the caller believes it is editing, for clients that cannot set If-Match.
+            Ignored on create.
+
+    TargetOuScope:
+      type: object
+      description: |
+        Which organization units a policy reaches. Exactly one of the three modes may be populated:
+        the blanket mode (allOus), the root mode (allRoots or rootOuIds), or the children mode
+        (allChildren or ouIds).
+
+        A target names an anchor, not a membership list. ouId with allChildren reaches everything
+        beneath that unit, and allChildren on its own reaches everything beneath the initiator but
+        not the initiator itself.
+      properties:
+        allOus:
+          type: boolean
+          description: Reaches every organization unit in the deployment. Owner only, first hop only.
+        allRoots:
+          type: boolean
+          description: Reaches every tree's root organization unit. Owner only.
+        rootOuIds:
+          type: array
+          description: Reaches the named root organization units. Owner only.
+          items:
+            type: string
+            format: uuid
+        excludedRootOuIds:
+          type: array
+          description: Carves roots out of an allRoots selection.
+          items:
+            type: string
+            format: uuid
+        allChildren:
+          type: boolean
+          description: Reaches everything beneath the initiating organization unit, at any depth.
+        ouIds:
+          type: array
+          description: Names organization units directly beneath the initiator.
+          items:
+            $ref: '#/components/schemas/TargetEntry'
+        excludedOuIds:
+          type: array
+          description: Carves organization units, and their subtrees, out of the selection.
+          items:
+            type: string
+            format: uuid
+
+    TargetEntry:
+      type: object
+      required: [ouId]
+      description: One organization unit a policy reaches.
+      properties:
+        ouId:
+          type: string
+          format: uuid
+          description: Must be a direct child of the initiating organization unit.
+        allChildren:
+          type: boolean
+          description: Additionally reaches everything beneath ouId, at any depth.
+        overlayRules:
+          type: object
+          description: Overrides the policy-level rules for this target alone.
+          additionalProperties:
+            $ref: '#/components/schemas/OverlayRule'
+
+    OverlayRule:
+      type: object
+      description: |
+        What a policy says a target organization unit may do with one field.
+
+        For a resource server's resources field the members are permission strings in the server's
+        own delimiter, and a path denotes itself and everything beneath it: naming "bookings" also
+        names "bookings:create" and anything added under it later.
+
+        Omitted and empty are opposites. An omitted allowedValues leaves the field unconstrained;
+        an explicitly empty one permits nothing.
+      properties:
+        editable:
+          type: boolean
+          description: |
+            Whether the target organization unit may write the field. A resource server's permission
+            tree is not editable by a sharee, so this is false for resources.
+        value:
+          type: array
+          description: |
+            What the target holds, or is pinned to when the field is not editable. Omitted with
+            editable false means the owner's own value, which is how "everything except these" is
+            expressed with no wildcard.
+          items:
+            type: string
+        allowedValues:
+          type: array
+          description: |
+            Bounds what the target may choose from. Combining this with editable false is an error
+            (RES-1030), because a menu nobody may choose from means the author misunderstood the shape.
+          items:
+            type: string
+        excludedValues:
+          type: array
+          description: Subtracted from both value and allowedValues, last.
+          items:
+            type: string
+
+    SharingPolicy:
+      type: object
+      description: One organization unit's standing decision about a resource server.
+      properties:
+        id:
+          type: string
+          format: uuid
+        resourceType:
+          type: string
+          description: Always resource_server here; reported so a client handling several shareable types can treat the bodies uniformly.
+          example: "resource_server"
+        resourceId:
+          type: string
+          format: uuid
+        owningOuId:
+          type: string
+          format: uuid
+          description: The organization unit that owns the resource server.
+        initiatingOuId:
+          type: string
+          format: uuid
+          description: The organization unit whose decision this policy is.
+        stage:
+          type: string
+          enum: [share, reshare]
+          description: share when the owner issued the policy, reshare when a sharee did.
+        targetOuScope:
+          $ref: '#/components/schemas/TargetOuScope'
+        overlayRules:
+          type: object
+          description: The resolved rules, after narrowing against what the initiator itself holds.
+          additionalProperties:
+            $ref: '#/components/schemas/OverlayRule'
+        declared:
+          type: boolean
+          description: A policy defined in a resource file, which cannot be edited or deleted through the API.
+        version:
+          type: integer
+          description: Send this back in If-Match when editing.
+
+    SharingPolicyList:
+      type: object
+      properties:
+        totalResults:
+          type: integer
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/SharingPolicy'
+
+    SharingOverlay:
+      type: object
+      description: What one organization unit may do with a resource server.
+      properties:
+        ouId:
+          type: string
+          format: uuid
+          description: The organization unit the rules were resolved for.
+        origin:
+          type: string
+          enum: [owned, shared]
+          description: |
+            owned when the organization unit owns the resource server, shared when a policy reaches
+            it. An organization unit no policy reaches gets no overlay at all: the endpoint reports
+            the resource server as not found.
+        policyIds:
+          type: array
+          description: |
+            Every policy that contributed, so an intersection is traceable to its inputs. Empty for
+            the owner, which holds the resource server without any policy saying so.
+          items:
+            type: string
+            format: uuid
+        rules:
+          type: object
+          description: The effective rule per field.
+          additionalProperties:
+            $ref: '#/components/schemas/SharingOverlayRule'
+
+    SharingOverlayRule:
+      type: object
+      description: One resolved rule, carrying where it came from.
+      properties:
+        editable:
+          type: boolean
+        value:
+          type: array
+          items:
+            type: string
+        allowedValues:
+          type: array
+          items:
+            type: string
+        excludedValues:
+          type: array
+          items:
+            type: string
+        source:
+          type: string
+          enum: [policy, default]
+          description: |
+            policy when some policy named the field, default when none did and the resource type's
+            declared default applied. This separates "the owner decided this" from "nobody said anything".

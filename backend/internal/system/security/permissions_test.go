@@ -656,3 +656,45 @@ func TestCoversHonoursConfiguredPermissionPrefix(t *testing.T) {
 		PermissionSet{rsSystem: {p.User}},
 	))
 }
+
+// The resource-server entries have to cover the nested resource, action and sharing-policy paths
+// too, because anything they miss falls through to the root system permission and becomes
+// unreachable for a caller holding only the resource-server permission.
+func TestResourceServerAPIPermissions(t *testing.T) {
+	InitSystemPermissions("")
+	compiled, err := compileAPIPermissions(apiPermissionEntries)
+	require.NoError(t, err)
+
+	svc := &securityService{compiledAPIPermissions: compiled}
+	p := GetSystemPermissions()
+
+	tests := []struct {
+		method string
+		path   string
+		want   string
+	}{
+		{"GET", "/resource-servers", p.ResourceServerView},
+		{"POST", "/resource-servers", p.ResourceServer},
+		{"GET", "/resource-servers/rs-1", p.ResourceServerView},
+		{"PUT", "/resource-servers/rs-1", p.ResourceServer},
+		{"DELETE", "/resource-servers/rs-1", p.ResourceServer},
+
+		// Nested resources and actions.
+		{"POST", "/resource-servers/rs-1/resources", p.ResourceServer},
+		{"GET", "/resource-servers/rs-1/resources/r-1/actions", p.ResourceServerView},
+
+		// Sharing policies: changing who a server is shared with is a change to the server.
+		{"POST", "/resource-servers/rs-1/sharing-policies", p.ResourceServer},
+		{"GET", "/resource-servers/rs-1/sharing-policies", p.ResourceServerView},
+		{"GET", "/resource-servers/rs-1/sharing-policies/p-1", p.ResourceServerView},
+		{"PUT", "/resource-servers/rs-1/sharing-policies/p-1", p.ResourceServer},
+		{"DELETE", "/resource-servers/rs-1/sharing-policies/p-1", p.ResourceServer},
+		{"GET", "/resource-servers/rs-1/overlay-rules", p.ResourceServerView},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			assert.Equal(t, tt.want, svc.getRequiredPermissionForAPI(tt.method, tt.path))
+		})
+	}
+}

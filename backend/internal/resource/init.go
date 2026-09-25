@@ -8,9 +8,11 @@ import (
 	"net/http"
 
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -19,6 +21,8 @@ import (
 func Initialize(
 	mux *http.ServeMux,
 	ouService oupkg.OrganizationUnitServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
+	sharingService sharing.ServiceInterface,
 ) (ResourceServiceInterface, declarativeresource.ResourceExporter, error) {
 	// Initialize store and transactioner based on store mode
 	resourceStore, transactioner, err := initializeStore()
@@ -26,15 +30,22 @@ func Initialize(
 		return nil, nil, fmt.Errorf("failed to initialize resource store: %w", err)
 	}
 
-	resourceService, err := newResourceService(ouService, resourceStore, transactioner)
+	resourceService, err := newResourceService(
+		ouService, authzService, sharingService, resourceStore, transactioner)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// The declaration is registered before declarative resources load, because loading seeds the
+	// sharing policies those files declare and the framework refuses a type it does not know.
+	if sharingService != nil {
+		sharingService.RegisterResourceType(newResourceServerSharing(resourceService))
 	}
 
 	// Load declarative resources if applicable (declarative or composite mode)
 	storeMode := getResourceStoreMode()
 	if storeMode == serverconst.StoreModeDeclarative || storeMode == serverconst.StoreModeComposite {
-		if err := loadDeclarativeResources(resourceStore, resourceService); err != nil {
+		if err := loadDeclarativeResources(resourceStore, resourceService, sharingService); err != nil {
 			return nil, nil, fmt.Errorf("failed to load declarative resources: %w", err)
 		}
 	}
@@ -42,8 +53,14 @@ func Initialize(
 	// Create exporter for declarative resource export functionality
 	exporter := newResourceServerExporter(resourceService)
 
-	resourceHandler := newResourceHandler(resourceService)
+	resourceHandler := newResourceHandler(resourceService, sharingService)
 	registerRoutes(mux, resourceHandler)
+
+	// Sharing is optional so the resource service still starts when the framework is not wired,
+	// which keeps the two initialization orders independent.
+	if sharingService != nil {
+		registerSharingRoutes(mux, newSharingHandler(resourceService, sharingService))
+	}
 
 	return resourceService, exporter, nil
 }
@@ -213,4 +230,56 @@ func registerRoutes(mux *http.ServeMux, handler *resourceHandler) {
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}, actionResourceDetailOpts))
+}
+
+// registerSharingRoutes registers the sharing-policy endpoints of the resource-server API.
+//
+// The paths sit under the resource server they govern, so they inherit the same permission entries
+// as every other write to it rather than needing a tier of their own.
+func registerSharingRoutes(mux *http.ServeMux, handler *sharingHandler) {
+	policiesOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET", "POST"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	policyOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET", "PUT", "DELETE"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	overlayOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+
+	mux.HandleFunc(middleware.WithCORS("POST /resource-servers/{id}/sharing-policies",
+		handler.HandleSharingPolicyPostRequest, policiesOpts))
+	mux.HandleFunc(middleware.WithCORS("GET /resource-servers/{id}/sharing-policies",
+		handler.HandleSharingPolicyListRequest, policiesOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /resource-servers/{id}/sharing-policies",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, policiesOpts))
+
+	mux.HandleFunc(middleware.WithCORS("GET /resource-servers/{id}/sharing-policies/{policyId}",
+		handler.HandleSharingPolicyGetRequest, policyOpts))
+	mux.HandleFunc(middleware.WithCORS("PUT /resource-servers/{id}/sharing-policies/{policyId}",
+		handler.HandleSharingPolicyPutRequest, policyOpts))
+	mux.HandleFunc(middleware.WithCORS("DELETE /resource-servers/{id}/sharing-policies/{policyId}",
+		handler.HandleSharingPolicyDeleteRequest, policyOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /resource-servers/{id}/sharing-policies/{policyId}",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, policyOpts))
+
+	mux.HandleFunc(middleware.WithCORS("GET /resource-servers/{id}/overlay-rules",
+		handler.HandleSharingOverlayGetRequest, overlayOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /resource-servers/{id}/overlay-rules",
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, overlayOpts))
 }

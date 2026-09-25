@@ -4,6 +4,9 @@
 package resource
 
 import (
+	"fmt"
+	"strings"
+
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 )
 
@@ -418,3 +421,65 @@ var (
 		        )`,
 	}
 )
+
+// buildResourceServerListForOUsQuery returns the resource servers an organization unit may see:
+// those it owns, plus those named by sharedIDs because a policy reaches them.
+//
+// Built rather than declared because both sets are variable-length, and pushing the union into one
+// statement is what keeps the page and the count consistent with each other.
+// The builder owns the whole argument list, including the deployment and the page bounds. Letting
+// the caller append them separately puts them after the placeholders the predicate already
+// reserved, so every trailing parameter binds to the wrong slot.
+func buildResourceServerListForOUsQuery(
+	ouIDs, sharedIDs []string, deploymentID string, limit, offset int, withPagination bool,
+) (dbmodel.DBQuery, []interface{}) {
+	args := []interface{}{}
+	next := func() string {
+		args = append(args, nil)
+		return fmt.Sprintf("$%d", len(args))
+	}
+
+	set := func(values []string) string {
+		placeholders := make([]string, 0, len(values))
+		for _, v := range values {
+			p := next()
+			args[len(args)-1] = v
+			placeholders = append(placeholders, p)
+		}
+		return strings.Join(placeholders, ",")
+	}
+
+	var reach []string
+	if len(ouIDs) > 0 {
+		reach = append(reach, fmt.Sprintf("OU_ID IN (%s)", set(ouIDs)))
+	}
+	if len(sharedIDs) > 0 {
+		reach = append(reach, fmt.Sprintf("ID IN (%s)", set(sharedIDs)))
+	}
+	// No organization unit and nothing shared reaches nothing. An always-false predicate keeps the
+	// statement valid rather than returning the whole table.
+	if len(reach) == 0 {
+		reach = append(reach, "1 = 0")
+	}
+
+	deployment := next()
+	args[len(args)-1] = deploymentID
+	columns := "ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES"
+	id := "RSQ-RES_MGT-30"
+	if !withPagination {
+		columns = "COUNT(*) as total"
+		id = "RSQ-RES_MGT-31"
+	}
+
+	query := fmt.Sprintf(`SELECT %s FROM "RESOURCE_SERVER" WHERE (%s) AND DEPLOYMENT_ID = %s`,
+		columns, strings.Join(reach, " OR "), deployment)
+	if withPagination {
+		limitArg := next()
+		args[len(args)-1] = limit
+		offsetArg := next()
+		args[len(args)-1] = offset
+		query += fmt.Sprintf(" ORDER BY CREATED_AT DESC LIMIT %s OFFSET %s", limitArg, offsetArg)
+	}
+
+	return dbmodel.DBQuery{ID: id, Query: query}, args
+}

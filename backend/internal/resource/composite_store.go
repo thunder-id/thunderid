@@ -672,3 +672,68 @@ func mergeAndDeduplicateActions(dbActions, fileActions []providers.Action) []pro
 
 	return result
 }
+
+// GetResourceServerListForOUs returns the deduplicated servers reachable from a set of
+// organization units across both stores.
+func (c *compositeResourceStore) GetResourceServerListForOUs(
+	ctx context.Context, ouIDs, sharedIDs []string, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	reachable, err := c.reachableForOUs(ctx, ouIDs, sharedIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	start := offset
+	if start > len(reachable) {
+		return []providers.ResourceServer{}, nil
+	}
+	end := start + limit
+	if limit <= 0 || end > len(reachable) {
+		end = len(reachable)
+	}
+	return reachable[start:end], nil
+}
+
+// GetResourceServerListCountForOUs counts what GetResourceServerListForOUs would return.
+func (c *compositeResourceStore) GetResourceServerListCountForOUs(
+	ctx context.Context, ouIDs, sharedIDs []string,
+) (int, error) {
+	reachable, err := c.reachableForOUs(ctx, ouIDs, sharedIDs)
+	if err != nil {
+		return 0, err
+	}
+	return len(reachable), nil
+}
+
+// reachableForOUs merges both stores' reachable servers, deduplicated the same way the unbounded
+// listing does, so an id present in both is one row rather than two.
+func (c *compositeResourceStore) reachableForOUs(
+	ctx context.Context, ouIDs, sharedIDs []string,
+) ([]providers.ResourceServer, error) {
+	dbCount, err := c.dbStore.GetResourceServerListCountForOUs(ctx, ouIDs, sharedIDs)
+	if err != nil {
+		return nil, err
+	}
+	fileCount, err := c.fileStore.GetResourceServerListCountForOUs(ctx, ouIDs, sharedIDs)
+	if err != nil {
+		return nil, err
+	}
+	if dbCount == 0 && fileCount == 0 {
+		return []providers.ResourceServer{}, nil
+	}
+
+	dbServers, err := c.dbStore.GetResourceServerListForOUs(ctx, ouIDs, sharedIDs, dbCount, 0)
+	if err != nil {
+		return nil, err
+	}
+	fileServers, err := c.fileStore.GetResourceServerListForOUs(ctx, ouIDs, sharedIDs, fileCount, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	merged := mergeAndDeduplicateResourceServers(dbServers, fileServers)
+	if len(merged) > serverconst.MaxCompositeStoreRecords {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return merged, nil
+}
