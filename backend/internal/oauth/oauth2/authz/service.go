@@ -545,7 +545,7 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	resourceServerIdentifier := ""
 	if targetRS != nil {
 		downscoped, dErr := resourceindicators.DownscopeToResourceServer(
-			ctx, as.resourceService, targetRS.ID, oauthParams.PermissionScopes)
+			ctx, as.resourceService, targetRS.ID, oauthParams.PermissionScopes, "")
 		if dErr != nil {
 			return nil, &AuthorizationError{
 				Code:              dErr.Error,

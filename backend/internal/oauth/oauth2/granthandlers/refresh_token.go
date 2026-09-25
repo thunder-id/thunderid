@@ -207,7 +207,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 			}
 		}
 		downscopedNonOidc, scopeErr := resourceindicators.DownscopeToResourceServer(
-			ctx, h.resourceService, targetRS.ID, nonOidcScopes)
+			ctx, h.resourceService, targetRS.ID, nonOidcScopes, "")
 		if scopeErr != nil {
 			return nil, scopeErr
 		}

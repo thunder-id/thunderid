@@ -13,6 +13,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -21,12 +22,16 @@ import (
 // resourceHandler handles HTTP requests for resource management.
 type resourceHandler struct {
 	resourceService ResourceServiceInterface
+	sharingService  sharing.ServiceInterface
 }
 
 // newResourceHandler creates a new resource handler.
-func newResourceHandler(resourceService ResourceServiceInterface) *resourceHandler {
+func newResourceHandler(
+	resourceService ResourceServiceInterface, sharingService sharing.ServiceInterface,
+) *resourceHandler {
 	return &resourceHandler{
 		resourceService: resourceService,
+		sharingService:  sharingService,
 	}
 }
 
@@ -41,7 +46,7 @@ func (h *resourceHandler) HandleResourceServerListRequest(w http.ResponseWriter,
 		return
 	}
 
-	result, svcErr := h.resourceService.GetResourceServerList(ctx, limit, offset)
+	result, svcErr := h.resourceService.GetResourceServerList(ctx, limit, offset, viewingOU(r))
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -89,7 +94,7 @@ func (h *resourceHandler) HandleResourceServerPostRequest(w http.ResponseWriter,
 func (h *resourceHandler) HandleResourceServerGetRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := r.PathValue("id")
-	result, svcErr := h.resourceService.GetResourceServer(ctx, id)
+	result, svcErr := h.resourceService.GetResourceServerForOU(ctx, id, viewingOU(r))
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -572,10 +577,17 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 	statusCode := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
-		case ErrorResourceServerNotFound.Code, ErrorResourceNotFound.Code, ErrorActionNotFound.Code:
+		case ErrorResourceServerNotFound.Code, ErrorResourceNotFound.Code, ErrorActionNotFound.Code,
+			ErrorSharingPolicyNotFound.Code:
 			statusCode = http.StatusNotFound
-		case ErrorNameConflict.Code, ErrorHandleConflict.Code, ErrorIdentifierConflict.Code:
+		case ErrorNameConflict.Code, ErrorHandleConflict.Code, ErrorIdentifierConflict.Code,
+			ErrorSharingPolicyExists.Code:
 			statusCode = http.StatusConflict
+		case ErrorResourceServerModificationRestrictedToOwner.Code,
+			ErrorSharingPolicyImmutable.Code, ErrorSharingNotPermitted.Code:
+			statusCode = http.StatusForbidden
+		case ErrorSharingPolicyVersionMismatch.Code:
+			statusCode = http.StatusPreconditionFailed
 		default:
 			statusCode = http.StatusBadRequest
 		}
@@ -682,6 +694,8 @@ func toResourceServerListResponse(list *ResourceServerList) *ResourceServerListR
 	resourceServers := make([]ResourceServerResponse, len(list.ResourceServers))
 	for i, rs := range list.ResourceServers {
 		resourceServers[i] = *toResourceServerResponse(&rs)
+		// Only a bounded listing has an organization unit for the answer to be relative to.
+		resourceServers[i].Origin = list.Origins[rs.ID]
 	}
 
 	links := make([]LinkResponse, len(list.Links))

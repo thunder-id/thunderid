@@ -124,7 +124,7 @@ func (s *cibaService) InitiateBackchannelAuth(
 	resourceServerIdentifier := ""
 	if targetRS != nil {
 		downscoped, dErr := resourceindicators.DownscopeToResourceServer(
-			ctx, s.resourceService, targetRS.ID, permissionScopes)
+			ctx, s.resourceService, targetRS.ID, permissionScopes, "")
 		if dErr != nil {
 			return nil, &CIBAError{Code: dErr.Error, Message: dErr.ErrorDescription}
 		}

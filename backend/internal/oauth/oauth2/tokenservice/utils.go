@@ -464,15 +464,18 @@ func FilterAttributesByAllowList(
 
 // BuildClientAttributes gathers all OAuth client/application-scoped attributes that should be added
 // to an access token for the given OAuth application.
+// accessingOUID names the organization unit the token is for when the request named one; pass "" to
+// answer as the application's own.
 func BuildClientAttributes(
 	ctx context.Context,
 	oauthApp *providers.OAuthClient,
 	ouService providers.OrganizationUnitProvider,
 	actorProvider providers.ActorProvider,
+	accessingOUID string,
 ) (map[string]interface{}, error) {
 	claims := make(map[string]interface{})
 
-	ouClaims, err := resolveClientOUAttributes(ctx, oauthApp, ouService)
+	ouClaims, err := resolveClientOUAttributes(ctx, oauthApp, ouService, accessingOUID)
 	if err != nil {
 		return nil, err
 	}
@@ -573,8 +576,21 @@ func resolveClientOUAttributes(
 	ctx context.Context,
 	oauthApp *providers.OAuthClient,
 	ouService providers.OrganizationUnitProvider,
+	accessingOUID string,
 ) (map[string]interface{}, error) {
-	if oauthApp == nil || oauthApp.OUID == "" || ouService == nil {
+	if oauthApp == nil || ouService == nil {
+		return nil, nil
+	}
+
+	// The organization claims name the organization the token is for. That is the accessing one when
+	// the request named it through /ou/{ouId}, and the application's own otherwise. The guard is split
+	// rather than checking both at once, so an application with no organization unit of its own still
+	// emits claims when a request names one.
+	ouID := oauthApp.OUID
+	if accessingOUID != "" {
+		ouID = accessingOUID
+	}
+	if ouID == "" {
 		return nil, nil
 	}
 
@@ -586,10 +602,10 @@ func resolveClientOUAttributes(
 		return nil, nil
 	}
 
-	orgUnit, svcErr := ouService.GetOrganizationUnit(ctx, oauthApp.OUID)
+	orgUnit, svcErr := ouService.GetOrganizationUnit(ctx, ouID)
 	if svcErr != nil {
 		return nil, fmt.Errorf("failed to fetch organization unit %s for app %s: %s",
-			oauthApp.OUID, oauthApp.ID, svcErr.Error)
+			ouID, oauthApp.ID, svcErr.Error)
 	}
 
 	claims := make(map[string]interface{})

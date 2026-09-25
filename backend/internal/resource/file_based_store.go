@@ -619,3 +619,72 @@ func (f *fileBasedResourceStore) ValidatePermissions(
 	}
 	return invalidList, nil
 }
+
+// GetResourceServerListForOUs returns the declared resource servers reachable from a set of
+// organization units. The file-based store holds every server in memory, so reach is decided here
+// rather than pushed into a query.
+func (f *fileBasedResourceStore) GetResourceServerListForOUs(
+	_ context.Context, ouIDs, sharedIDs []string, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	reachable, err := f.reachableResourceServers(ouIDs, sharedIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	start := offset
+	if start < 0 {
+		start = 0
+	}
+	if start > len(reachable) {
+		return []providers.ResourceServer{}, nil
+	}
+	end := start + limit
+	if limit <= 0 || end > len(reachable) {
+		end = len(reachable)
+	}
+	return reachable[start:end], nil
+}
+
+// GetResourceServerListCountForOUs counts what GetResourceServerListForOUs would return.
+func (f *fileBasedResourceStore) GetResourceServerListCountForOUs(
+	_ context.Context, ouIDs, sharedIDs []string,
+) (int, error) {
+	reachable, err := f.reachableResourceServers(ouIDs, sharedIDs)
+	if err != nil {
+		return 0, err
+	}
+	return len(reachable), nil
+}
+
+// reachableResourceServers returns the declared servers owned by any of ouIDs or named in sharedIDs.
+func (f *fileBasedResourceStore) reachableResourceServers(
+	ouIDs, sharedIDs []string,
+) ([]providers.ResourceServer, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	owning := make(map[string]struct{}, len(ouIDs))
+	for _, id := range ouIDs {
+		owning[id] = struct{}{}
+	}
+	shared := make(map[string]struct{}, len(sharedIDs))
+	for _, id := range sharedIDs {
+		shared[id] = struct{}{}
+	}
+
+	out := make([]providers.ResourceServer, 0, len(list))
+	for _, item := range list {
+		rs, ok := item.Data.(*providers.ResourceServer)
+		if !ok {
+			continue
+		}
+		_, owned := owning[rs.OUID]
+		_, isShared := shared[rs.ID]
+		if owned || isShared {
+			out = append(out, *rs)
+		}
+	}
+	return out, nil
+}

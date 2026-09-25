@@ -144,7 +144,7 @@ func (suite *ResourceServiceTestSuite) SetupTest() {
 	suite.mockOU = new(oumock.OrganizationUnitServiceInterfaceMock)
 	suite.mockTransactioner = &fakeTransactioner{}
 	suite.service, err = newResourceService(
-		suite.mockOU, suite.mockStore, suite.mockTransactioner,
+		suite.mockOU, nil, nil, suite.mockStore, suite.mockTransactioner,
 	)
 	suite.NoError(err)
 	// The resource service is its own dependency provider: deletion consults the registry, which
@@ -186,7 +186,7 @@ func (suite *ResourceServiceTestSuite) TestNewResourceService_InvalidDelimiter()
 	mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
 
 	mockTransactioner := &fakeTransactioner{}
-	service, err := newResourceService(mockOU, mockStore, mockTransactioner)
+	service, err := newResourceService(mockOU, nil, nil, mockStore, mockTransactioner)
 
 	suite.Error(err)
 	suite.Nil(service)
@@ -538,7 +538,7 @@ func (suite *ResourceServiceTestSuite) TestGetResourceServerList_Success() {
 	suite.mockStore.On("GetResourceServerList", mock.Anything,
 		30, 0).Return(resourceServers, nil)
 
-	result, err := suite.service.GetResourceServerList(context.Background(), 30, 0)
+	result, err := suite.service.GetResourceServerList(context.Background(), 30, 0, "")
 
 	suite.Nil(err)
 	suite.NotNil(result)
@@ -3169,7 +3169,7 @@ func (suite *ResourceServiceTestSuite) TestGetActionListAtResourceServer() {
 func (suite *ResourceServiceTestSuite) TestGetResourceServerList_CountError() {
 	suite.mockStore.On("GetResourceServerListCount", mock.Anything).Return(0, errors.New("database error"))
 
-	result, err := suite.service.GetResourceServerList(context.Background(), 30, 0)
+	result, err := suite.service.GetResourceServerList(context.Background(), 30, 0, "")
 
 	suite.Nil(result)
 	suite.NotNil(err)
@@ -3181,7 +3181,7 @@ func (suite *ResourceServiceTestSuite) TestGetResourceServerList_ListError() {
 	suite.mockStore.On("GetResourceServerList", mock.Anything,
 		30, 0).Return(nil, errors.New("database error"))
 
-	result, err := suite.service.GetResourceServerList(context.Background(), 30, 0)
+	result, err := suite.service.GetResourceServerList(context.Background(), 30, 0, "")
 
 	suite.Nil(result)
 	suite.NotNil(err)
@@ -4380,7 +4380,7 @@ func (suite *ResourceServiceTestSuite) TestListMethods_PaginationValidationError
 		suite.Run("GetResourceServerList_"+tc.name, func() {
 			suite.SetupTest()
 
-			result, err := suite.service.GetResourceServerList(context.Background(), tc.limit, tc.offset)
+			result, err := suite.service.GetResourceServerList(context.Background(), tc.limit, tc.offset, "")
 
 			suite.Nil(result)
 			suite.NotNil(err)
@@ -4814,7 +4814,7 @@ func (suite *ResourceServiceTestSuite) TestValidatePermissions() {
 			// Create a fresh service instance with the fresh mocks
 			mockTransactioner := &fakeTransactioner{}
 			svc, err := newResourceService(
-				mockOU, mockStore, mockTransactioner,
+				mockOU, nil, nil, mockStore, mockTransactioner,
 			)
 			suite.Require().NoError(err)
 
@@ -4822,7 +4822,8 @@ func (suite *ResourceServiceTestSuite) TestValidatePermissions() {
 			tc.setupMocks(mockStore)
 
 			// Execute the test
-			invalidPerms, svcErr := svc.ValidatePermissions(context.Background(), tc.resourceServerID, tc.permissions)
+			invalidPerms, svcErr := svc.ValidatePermissions(
+				context.Background(), tc.resourceServerID, tc.permissions, "")
 
 			// Assert results
 			if tc.expectedError != nil {

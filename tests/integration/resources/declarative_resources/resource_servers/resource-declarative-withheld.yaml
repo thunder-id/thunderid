@@ -1,0 +1,32 @@
+resource_type: resource_server
+id: decl-rs-withheld
+name: Declarative Resource Server With Withheld Branch
+description: A declarative resource server shared with every organization unit except one branch
+identifier: https://localhost:8090/decl-rs-withheld
+ouId: decl-ou-1
+delimiter: ":"
+# A declared policy carrying an overlay rule. Sharing the whole tree except one path needs no
+# wildcard: naming a path withholds it and everything beneath it, now and in future.
+sharingPolicies:
+  - targetOuScope:
+      allOus: true
+    overlayRules:
+      resources:
+        editable: false
+        excludedValues:
+          - orders:cancel
+resources:
+  - name: Orders
+    handle: orders
+    description: Order operations
+    actions:
+      - name: View
+        handle: view
+      - name: Cancel
+        handle: cancel
+  - name: Catalog
+    handle: catalog
+    description: Catalog operations
+    actions:
+      - name: View
+        handle: view

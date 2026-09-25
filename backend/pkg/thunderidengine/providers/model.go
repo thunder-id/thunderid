@@ -191,16 +191,76 @@ type Resource struct {
 
 // ResourceServer represents a resource server in both declarative resources and service layer.
 type ResourceServer struct {
-	ID          string             `yaml:"id"                    json:"-"`
-	Name        string             `yaml:"name"                  json:"name"`
-	Description string             `yaml:"description,omitempty" json:"description,omitempty"`
-	Identifier  string             `yaml:"identifier"            json:"identifier"`
-	Type        ResourceServerType `yaml:"type,omitempty"        json:"type,omitempty"`
-	OUID        string             `yaml:"ouId,omitempty"        json:"ouId"`
-	OUHandle    string             `yaml:"ouHandle,omitempty"    json:"-"`
-	Delimiter   string             `yaml:"delimiter,omitempty"   json:"delimiter,omitempty"   yamlfmt:"quoted"`
-	IsReadOnly  bool               `yaml:"-"                     json:"-"`
-	Resources   []Resource         `yaml:"resources,omitempty"   json:"resources,omitempty"`
+	ID              string             `yaml:"id"                    json:"-"`
+	Name            string             `yaml:"name"                  json:"name"`
+	Description     string             `yaml:"description,omitempty" json:"description,omitempty"`
+	Identifier      string             `yaml:"identifier"            json:"identifier"`
+	Type            ResourceServerType `yaml:"type,omitempty"        json:"type,omitempty"`
+	OUID            string             `yaml:"ouId,omitempty"        json:"ouId"`
+	OUHandle        string             `yaml:"ouHandle,omitempty"    json:"-"`
+	Delimiter       string             `yaml:"delimiter,omitempty"   json:"delimiter,omitempty"   yamlfmt:"quoted"`
+	IsReadOnly      bool               `yaml:"-"                     json:"-"`
+	Resources       []Resource         `yaml:"resources,omitempty"   json:"resources,omitempty"`
+	SharingPolicies []SharingPolicy    `yaml:"sharingPolicies,omitempty" json:"sharingPolicies,omitempty"`
+}
+
+// SharingPolicy is one sharing decision a resource file declares: which organization units it
+// reaches, and on what terms. The shape is the same for every shareable resource type, so a role
+// or an application declares its policies with these types too.
+type SharingPolicy struct {
+	// InitiatingOuID is the organization unit making the decision. Omit for the resource's owner.
+	InitiatingOuID string `yaml:"initiatingOuId,omitempty" json:"initiatingOuId,omitempty"`
+	// TargetOuScope selects which organization units the policy reaches.
+	TargetOuScope SharingTargetOUScope `yaml:"targetOuScope" json:"targetOuScope"`
+	// OverlayRules are the terms, keyed by the field they govern. Which keys are valid is the
+	// resource type's own declaration; naming another is refused rather than stored and ignored.
+	OverlayRules map[string]OverlayRule `yaml:"overlayRules,omitempty" json:"overlayRules,omitempty"`
+}
+
+// SharingTargetOUScope selects which organization units a declared policy reaches. Exactly one of
+// the three modes may be populated: blanket, root, or children.
+type SharingTargetOUScope struct {
+	// AllOUs reaches every organization unit in the deployment. Owner only, first hop only.
+	AllOUs bool `yaml:"allOus,omitempty" json:"allOus,omitempty"`
+	// AllRoots reaches every tree's root organization unit. Owner only.
+	AllRoots bool `yaml:"allRoots,omitempty" json:"allRoots,omitempty"`
+	// RootOUIDs names specific root organization units. Owner only.
+	RootOUIDs []string `yaml:"rootOuIds,omitempty" json:"rootOuIds,omitempty"`
+	// ExcludedRootOUIDs carves roots out of an AllRoots selection.
+	ExcludedRootOUIDs []string `yaml:"excludedRootOuIds,omitempty" json:"excludedRootOuIds,omitempty"`
+	// AllChildren reaches everything beneath the initiator, at any depth, but not the initiator.
+	AllChildren bool `yaml:"allChildren,omitempty" json:"allChildren,omitempty"`
+	// OUIDs names organization units directly beneath the initiator.
+	OUIDs []SharingTargetOUEntry `yaml:"ouIds,omitempty" json:"ouIds,omitempty"`
+	// ExcludedOUIDs carves organization units, and their subtrees, out of the selection.
+	ExcludedOUIDs []string `yaml:"excludedOuIds,omitempty" json:"excludedOuIds,omitempty"`
+}
+
+// SharingTargetOUEntry names one organization unit a declared policy reaches. It must be a direct
+// child of the initiating organization unit; depth comes from AllChildren, not from naming deeper.
+type SharingTargetOUEntry struct {
+	// OUID is the organization unit being shared to.
+	OUID string `yaml:"ouId" json:"ouId"`
+	// AllChildren additionally reaches everything beneath OUID, at any depth.
+	AllChildren bool `yaml:"allChildren,omitempty" json:"allChildren,omitempty"`
+}
+
+// OverlayRule is what a declared policy says a target organization unit may do with one field.
+//
+// The list fields are pointers because omitted and empty are opposites: omitted leaves the field
+// unconstrained, an explicitly empty list permits nothing. Collapsing the two turns the most
+// restrictive rule into the least restrictive one.
+type OverlayRule struct {
+	// Editable reports whether the target organization unit may write the field.
+	Editable bool `yaml:"editable" json:"editable"`
+	// Value is what the target starts with, or is pinned to when the field is not editable.
+	// Omitted with Editable false means the owner's own value.
+	Value *[]string `yaml:"value,omitempty" json:"value,omitempty"`
+	// AllowedValues bounds what the target may choose from. Combining it with Editable false is an
+	// error, because a menu nobody may choose from means the author misunderstood the shape.
+	AllowedValues *[]string `yaml:"allowedValues,omitempty" json:"allowedValues,omitempty"`
+	// ExcludedValues is subtracted from both Value and AllowedValues, last.
+	ExcludedValues *[]string `yaml:"excludedValues,omitempty" json:"excludedValues,omitempty"`
 }
 
 // CompleteFlowDefinition represents a complete flow definition with all details.
@@ -1206,6 +1266,7 @@ type Application struct {
 	InboundAuthProfile `yaml:",inline"`
 	InboundAuthConfig  []InboundAuthConfigWithSecret `yaml:"inboundAuthConfig,omitempty" json:"inboundAuthConfig,omitempty" jsonschema:"Inbound authentication configuration (OAuth2/OIDC settings)."`
 	Metadata           map[string]interface{}        `yaml:"metadata,omitempty" json:"metadata,omitempty" jsonschema:"Generic metadata key-value pairs."`
+	SharingPolicies    []SharingPolicy               `yaml:"sharingPolicies,omitempty" json:"sharingPolicies,omitempty" jsonschema:"Organization units this application may issue tokens for."`
 
 	// EntityCategory is the category of the entity backing this runtime application view (app or
 	// agent). Runtime-only: never serialized on the application API or in declarative resources.

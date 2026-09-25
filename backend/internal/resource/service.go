@@ -8,17 +8,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -50,7 +53,14 @@ type ResourceServiceInterface interface {
 		rs providers.ResourceServer,
 	) (*providers.ResourceServer, *tidcommon.ServiceError)
 	GetResourceServer(ctx context.Context, id string) (*providers.ResourceServer, *tidcommon.ServiceError)
-	GetResourceServerList(ctx context.Context, limit, offset int) (*ResourceServerList, *tidcommon.ServiceError)
+	// GetResourceServerForOU retrieves a resource server as one organization unit sees it. An empty
+	// ouID answers as the caller; naming a unit that does not hold the server reports not found.
+	GetResourceServerForOU(
+		ctx context.Context, id, ouID string,
+	) (*providers.ResourceServer, *tidcommon.ServiceError)
+	GetResourceServerList(
+		ctx context.Context, limit, offset int, ouID string,
+	) (*ResourceServerList, *tidcommon.ServiceError)
 	UpdateResourceServer(
 		ctx context.Context, id string, rs providers.ResourceServer,
 	) (*providers.ResourceServer, *tidcommon.ServiceError)
@@ -90,8 +100,10 @@ type ResourceServiceInterface interface {
 	) (*providers.Action, *tidcommon.ServiceError)
 	DeleteAction(ctx context.Context, resourceServerID string, resourceID *string,
 		id string) *tidcommon.ServiceError
+	// ValidatePermissions returns the permissions of the resource server that are not valid. When
+	// ouID is set, one the organization unit cannot see is invalid for it just as a missing one is.
 	ValidatePermissions(
-		ctx context.Context, resourceServerID string, permissions []string,
+		ctx context.Context, resourceServerID string, permissions []string, ouID string,
 	) ([]string, *tidcommon.ServiceError)
 
 	// ResolveResourceServerOUHandle resolves ou_handle to an OU ID on the given resource server
@@ -99,6 +111,12 @@ type ResourceServiceInterface interface {
 	// support ou_handle.
 	ResolveResourceServerOUHandle(
 		ctx context.Context, rs *providers.ResourceServer,
+	) *tidcommon.ServiceError
+
+	// ApplySharingPolicies records the sharing policies an imported resource server carries.
+	// Existing policies are left alone, so a re-import does not undo an operator's narrowing.
+	ApplySharingPolicies(
+		ctx context.Context, serverID string, policies []providers.SharingPolicy,
 	) *tidcommon.ServiceError
 
 	SetDependencyRegistry(r resourcedependency.Registry)
@@ -111,6 +129,8 @@ type resourceService struct {
 	logger             log.Logger
 	resourceStore      resourceStoreInterface
 	ouService          oupkg.OrganizationUnitServiceInterface
+	authzService       sysauthz.SystemAuthorizationServiceInterface
+	sharingService     sharing.ServiceInterface
 	defaultDelimiter   string
 	transactioner      providers.Transactioner
 	dependencyRegistry resourcedependency.Registry
@@ -208,6 +228,8 @@ func (rs *resourceService) GetResourceDependencies(
 // newResourceService creates a new instance of ResourceService.
 func newResourceService(
 	ouService oupkg.OrganizationUnitServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
+	sharingService sharing.ServiceInterface,
 	resourceStore resourceStoreInterface,
 	transactionerInstance providers.Transactioner,
 ) (ResourceServiceInterface, error) {
@@ -218,6 +240,8 @@ func newResourceService(
 	}
 
 	return &resourceService{
+		authzService:     authzService,
+		sharingService:   sharingService,
 		logger:           *log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 		resourceStore:    resourceStore,
 		ouService:        ouService,
@@ -347,6 +371,46 @@ func (rs *resourceService) GetResourceServer(
 		return nil, &tidcommon.InternalServerError
 	}
 
+	if _, svcErr := rs.resourceServerView(ctx, &resourceServer); svcErr != nil {
+		return nil, svcErr
+	}
+
+	return &resourceServer, nil
+}
+
+// GetResourceServerForOU retrieves a resource server as one organization unit sees it.
+//
+// An empty ouID answers as the caller, which is the ordinary read. Naming a unit narrows the
+// answer to what that unit holds: the server it owns, or one a policy shared to it. Anything else
+// is reported as not found, because a unit the server never reached has no way to learn it exists,
+// and an administrator asking on its behalf must be told the same thing it would be.
+func (rs *resourceService) GetResourceServerForOU(
+	ctx context.Context, id, ouID string,
+) (*providers.ResourceServer, *tidcommon.ServiceError) {
+	if ouID == "" {
+		return rs.GetResourceServer(ctx, id)
+	}
+	if id == "" {
+		return nil, &ErrorMissingID
+	}
+
+	if _, svcErr := rs.resolveViewingOU(ctx, ouID); svcErr != nil {
+		return nil, svcErr
+	}
+
+	resourceServer, err := rs.resourceStore.GetResourceServer(ctx, id)
+	if err != nil {
+		if errors.Is(err, errResourceServerNotFound) {
+			rs.logger.Debug(ctx, "Resource server not found", log.String("id", id))
+			return nil, &ErrorResourceServerNotFound
+		}
+		rs.logger.Error(ctx, "Failed to get resource server", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	if svcErr := rs.requireVisibleToOU(ctx, &resourceServer, ouID); svcErr != nil {
+		return nil, svcErr
+	}
 	return &resourceServer, nil
 }
 
@@ -373,11 +437,24 @@ func (rs *resourceService) GetResourceServerByIdentifier(
 }
 
 // GetResourceServerList retrieves a paginated list of resource servers.
+//
+// The result is bounded to what the caller may see: a deployment-wide caller sees everything, and
+// any other caller sees the servers its own organization units hold. An explicit ouID narrows the
+// result to that one unit, which is how an administrator asks what a tenant can see rather than
+// what the administrator can.
 func (rs *resourceService) GetResourceServerList(
-	ctx context.Context, limit, offset int,
+	ctx context.Context, limit, offset int, ouID string,
 ) (*ResourceServerList, *tidcommon.ServiceError) {
 	if err := validatePaginationParams(limit, offset); err != nil {
 		return nil, err
+	}
+
+	ouIDs, unbounded, svcErr := rs.listableOUIDs(ctx, ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !unbounded {
+		return rs.listResourceServersForOUs(ctx, ouIDs, limit, offset)
 	}
 
 	totalCount, err := rs.resourceStore.GetResourceServerListCount(ctx)
@@ -420,6 +497,10 @@ func (rs *resourceService) UpdateResourceServer(
 
 	if err := rs.validateResourceServerUpdate(resourceServer); err != nil {
 		return nil, err
+	}
+
+	if _, svcErr := rs.ownedResourceServer(ctx, security.ActionUpdateResourceServer, id); svcErr != nil {
+		return nil, svcErr
 	}
 
 	existingResServer, err := rs.resourceStore.GetResourceServer(ctx, id)
@@ -517,13 +598,12 @@ func (rs *resourceService) DeleteResourceServer(ctx context.Context, id string) 
 		return ErrorImmutableResourceServer.WithParams(map[string]string{"id": id})
 	}
 
-	_, err := rs.resourceStore.GetResourceServer(ctx, id)
-	if err != nil {
-		if errors.Is(err, errResourceServerNotFound) {
+	// A missing server is still an idempotent delete, so only an ownership refusal stops here.
+	if svcErr := rs.ownResourceServerForDelete(ctx, id); svcErr != nil {
+		if svcErr.Code == ErrorResourceServerNotFound.Code {
 			return nil // Idempotent delete
 		}
-		rs.logger.Error(ctx, "Failed to check resource server existence", log.Error(err))
-		return &tidcommon.InternalServerError
+		return svcErr
 	}
 
 	// Refuse deletion when resources or actions still depend on this resource server. Dependencies
@@ -560,7 +640,7 @@ func (rs *resourceService) CreateResource(
 	resourceServerID string, resource providers.Resource,
 ) (*providers.Resource, *tidcommon.ServiceError) {
 	// Validate resource server exists
-	resourceServer, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	resourceServer, svcErr := rs.ownedResourceServer(ctx, security.ActionUpdateResourceServer, resourceServerID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -654,7 +734,7 @@ func (rs *resourceService) GetResource(
 	}
 
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	server, svcErr := rs.validateAndViewResourceServer(ctx, resourceServerID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -666,6 +746,14 @@ func (rs *resourceService) GetResource(
 		}
 		rs.logger.Error(ctx, "Failed to get resource", log.Error(err))
 		return nil, &tidcommon.InternalServerError
+	}
+
+	filter, svcErr := rs.treeFilterFor(ctx, server)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !filter.permits(resource.Permission) {
+		return nil, &ErrorResourceNotFound
 	}
 
 	return &resource, nil
@@ -683,7 +771,7 @@ func (rs *resourceService) GetResourceList(
 		return nil, &ErrorMissingID
 	}
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	server, svcErr := rs.validateAndViewResourceServer(ctx, resourceServerID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -726,6 +814,12 @@ func (rs *resourceService) GetResourceList(
 		Count:        len(resources),
 		Links:        buildPaginationLinks(baseURL, limit, offset, totalCount),
 	}
+
+	filter, svcErr := rs.treeFilterFor(ctx, server)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	filterResourceList(response, filter)
 
 	return response, nil
 }
@@ -780,7 +874,7 @@ func (rs *resourceService) UpdateResource(
 	}
 
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.ownedResourceServer(ctx, security.ActionUpdateResourceServer, resourceServerID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -843,14 +937,13 @@ func (rs *resourceService) DeleteResource(
 		return ErrorImmutableResource.WithParams(map[string]string{"id": id})
 	}
 
-	// Validate resource server exists
-	_, err := rs.resourceStore.GetResourceServer(ctx, resourceServerID)
-	if err != nil {
-		if errors.Is(err, errResourceServerNotFound) {
+	// Validate the resource server exists and the caller owns it. A missing server is still an
+	// idempotent delete, so only an ownership refusal stops here.
+	if svcErr := rs.ownResourceServerForDelete(ctx, resourceServerID); svcErr != nil {
+		if svcErr.Code == ErrorResourceServerNotFound.Code {
 			return nil // Idempotent delete
 		}
-		rs.logger.Error(ctx, "Failed to check resource server", log.Error(err))
-		return &tidcommon.InternalServerError
+		return svcErr
 	}
 
 	// Check resource exists
@@ -892,7 +985,7 @@ func (rs *resourceService) CreateAction(
 	resourceServerID string, resourceID *string, action providers.Action,
 ) (*providers.Action, *tidcommon.ServiceError) {
 	// Validate resource server exists
-	resourceServer, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	resourceServer, svcErr := rs.ownedResourceServer(ctx, security.ActionUpdateResourceServer, resourceServerID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -994,7 +1087,7 @@ func (rs *resourceService) GetAction(
 	}
 
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	server, svcErr := rs.validateAndViewResourceServer(ctx, resourceServerID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1017,6 +1110,14 @@ func (rs *resourceService) GetAction(
 		rs.logger.Error(ctx, "Failed to get action", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	filter, svcErr := rs.treeFilterFor(ctx, server)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !filter.permits(action.Permission) {
+		return nil, &ErrorActionNotFound
+	}
+
 	return &action, nil
 }
 
@@ -1041,7 +1142,7 @@ func (rs *resourceService) GetActionList(
 	}
 
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	server, svcErr := rs.validateAndViewResourceServer(ctx, resourceServerID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1090,6 +1191,12 @@ func (rs *resourceService) GetActionList(
 		Links:        buildPaginationLinks(baseURL, limit, offset, totalCount),
 	}
 
+	filter, svcErr := rs.treeFilterFor(ctx, server)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	filterActionList(response, filter)
+
 	return response, nil
 }
 
@@ -1113,7 +1220,7 @@ func (rs *resourceService) UpdateAction(
 		return nil, ErrorImmutableAction.WithParams(map[string]string{"id": id})
 	}
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.ownedResourceServer(ctx, security.ActionUpdateResourceServer, resourceServerID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1201,7 +1308,7 @@ func (rs *resourceService) DeleteAction(
 	}
 
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.ownedResourceServer(ctx, security.ActionDeleteResourceServer, resourceServerID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorResourceServerNotFound.Code {
 			return nil // Idempotent delete
@@ -1248,10 +1355,15 @@ func (rs *resourceService) DeleteAction(
 
 // ValidatePermissions checks if permissions exist for a given resource server.
 // Returns array of invalid permissions (empty if all valid).
+//
+// ouID answers the question on one organization unit's behalf: a permission the resource server
+// defines but that organization unit cannot see is invalid for it, exactly as one that does not
+// exist is. Pass "" to ask only whether the resource server defines them.
 func (rs *resourceService) ValidatePermissions(
 	ctx context.Context,
 	resourceServerID string,
 	permissions []string,
+	ouID string,
 ) ([]string, *tidcommon.ServiceError) {
 	rs.logger.Debug(ctx, "Validating permissions",
 		log.String("resourceServerId", resourceServerID),
@@ -1262,7 +1374,7 @@ func (rs *resourceService) ValidatePermissions(
 	}
 
 	// Validate resource server exists
-	_, err := rs.resourceStore.GetResourceServer(ctx, resourceServerID)
+	resourceServer, err := rs.resourceStore.GetResourceServer(ctx, resourceServerID)
 	if err != nil {
 		if !errors.Is(err, errResourceServerNotFound) {
 			rs.logger.Error(ctx, "Failed to validate resource server existence",
@@ -1285,7 +1397,7 @@ func (rs *resourceService) ValidatePermissions(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	return invalidPermissions, nil
+	return rs.appendPermissionsHiddenFromOU(ctx, resourceServer, permissions, invalidPermissions, ouID)
 }
 
 // ResolveResourceServerOUHandle resolves ou_handle to an OU ID on the given resource server
@@ -1320,15 +1432,51 @@ func (rs *resourceService) validateAndGetResourceServer(
 	ctx context.Context,
 	resourceServerID string,
 ) (providers.ResourceServer, *tidcommon.ServiceError) {
-	resourceServer, err := rs.resourceStore.GetResourceServer(ctx, resourceServerID)
-	if err != nil {
-		if errors.Is(err, errResourceServerNotFound) {
-			return providers.ResourceServer{}, &ErrorResourceServerNotFound
-		}
-		rs.logger.Error(ctx, "Failed to check resource server", log.Error(err))
-		return providers.ResourceServer{}, &tidcommon.InternalServerError
+	// No explicit organization unit: the caller's own standing decides.
+	server, svcErr := rs.validateAndViewResourceServer(ctx, resourceServerID)
+	if svcErr != nil {
+		return providers.ResourceServer{}, svcErr
 	}
-	return resourceServer, nil
+	return *server, nil
+}
+
+// validateAndViewResourceServer is the chokepoint every nested resource and action read passes
+// through: it loads the server, decides whether the caller may see it, and reports the part of its
+// tree the caller sees.
+func (rs *resourceService) validateAndViewResourceServer(
+	ctx context.Context, resourceServerID string,
+) (*providers.ResourceServer, *tidcommon.ServiceError) {
+	server, svcErr := rs.serverForAccess(ctx, resourceServerID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if _, svcErr := rs.resourceServerView(ctx, server); svcErr != nil {
+		return nil, svcErr
+	}
+	return server, nil
+}
+
+// validateAndOwnResourceServer is the same chokepoint for writes, which require ownership rather
+// than visibility.
+func (rs *resourceService) validateAndOwnResourceServer(
+	ctx context.Context, action security.Action, resourceServerID string,
+) (*providers.ResourceServer, *tidcommon.ServiceError) {
+	server, svcErr := rs.serverForAccess(ctx, resourceServerID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.requireResourceServerOwnership(ctx, action, server); svcErr != nil {
+		return nil, svcErr
+	}
+	return server, nil
+}
+
+// treeFilterFor returns the part of a server's tree the caller may see, for the listings that have
+// to drop what a sharing policy withheld.
+func (rs *resourceService) treeFilterFor(
+	ctx context.Context, server *providers.ResourceServer,
+) (permissionFilter, *tidcommon.ServiceError) {
+	return rs.resourceServerView(ctx, server)
 }
 
 // validateAndGetResourceByID validates resource exists and returns it.
@@ -1530,4 +1678,126 @@ func derivePermission(
 		return parentResource.Permission + resourceServer.Delimiter + handle
 	}
 	return handle
+}
+
+// listableOUIDs resolves which organization units a listing may draw from.
+//
+// Deployment-wide standing reports unbounded rather than an enumerated set, because enumerating
+// every organization unit to then match all of them is both slower and a different question.
+func (rs *resourceService) listableOUIDs(
+	ctx context.Context, requestedOUID string,
+) (ouIDs []string, unbounded bool, svcErr *tidcommon.ServiceError) {
+	if rs.authzService == nil {
+		return nil, requestedOUID == "", nil
+	}
+
+	accessible, svcErr := rs.authzService.GetAccessibleResources(
+		ctx, security.ActionListResourceServers, security.ResourceTypeOU)
+	if svcErr != nil {
+		rs.logger.Error(ctx, "Failed to resolve accessible organization units for listing "+
+			"resource servers", log.Any("error", svcErr))
+		return nil, false, &tidcommon.InternalServerError
+	}
+
+	if requestedOUID == "" {
+		if accessible.AllAllowed {
+			return nil, true, nil
+		}
+		return accessible.IDs, false, nil
+	}
+
+	// An explicit organization unit narrows the result, but never past what the caller already
+	// holds: asking about a unit the caller cannot act on returns nothing rather than its contents.
+	if !accessible.AllAllowed && !slices.Contains(accessible.IDs, requestedOUID) {
+		return []string{}, false, nil
+	}
+	return []string{requestedOUID}, false, nil
+}
+
+// listResourceServersForOUs returns the servers a set of organization units owns, together with
+// those shared to them.
+func (rs *resourceService) listResourceServersForOUs(
+	ctx context.Context, ouIDs []string, limit, offset int,
+) (*ResourceServerList, *tidcommon.ServiceError) {
+	sharedIDs, svcErr := rs.sharedResourceServerIDs(ctx, ouIDs)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	if len(ouIDs) == 0 && len(sharedIDs) == 0 {
+		return &ResourceServerList{
+			TotalResults:    0,
+			ResourceServers: []providers.ResourceServer{},
+			StartIndex:      offset + 1,
+			Links:           buildPaginationLinks("/resource-servers", limit, offset, 0),
+		}, nil
+	}
+
+	totalCount, err := rs.resourceStore.GetResourceServerListCountForOUs(ctx, ouIDs, sharedIDs)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ErrResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error(ctx, "Failed to count resource servers for organization units", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	resourceServers, err := rs.resourceStore.GetResourceServerListForOUs(ctx, ouIDs, sharedIDs, limit, offset)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ErrResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error(ctx, "Failed to list resource servers for organization units", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	return &ResourceServerList{
+		TotalResults:    totalCount,
+		ResourceServers: resourceServers,
+		Origins:         originsFor(resourceServers, ouIDs),
+		StartIndex:      offset + 1,
+		Count:           len(resourceServers),
+		Links:           buildPaginationLinks("/resource-servers", limit, offset, totalCount),
+	}, nil
+}
+
+// originsFor says how each server is held by the organization units the listing was bounded to:
+// owned when one of them is the server's own, shared otherwise, since a bounded listing returns
+// nothing a policy did not reach.
+func originsFor(servers []providers.ResourceServer, ouIDs []string) map[string]string {
+	out := make(map[string]string, len(servers))
+	for _, server := range servers {
+		if slices.Contains(ouIDs, server.OUID) {
+			out[server.ID] = SharingOriginOwned
+			continue
+		}
+		out[server.ID] = SharingOriginShared
+	}
+	return out
+}
+
+// sharedResourceServerIDs returns the servers shared to any of the given organization units.
+func (rs *resourceService) sharedResourceServerIDs(
+	ctx context.Context, ouIDs []string,
+) ([]string, *tidcommon.ServiceError) {
+	if rs.sharingService == nil || len(ouIDs) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[string]struct{})
+	var out []string
+	for _, ouID := range ouIDs {
+		ids, svcErr := rs.sharingService.ListVisibleResourceIDs(ctx, ResourceServerSharingType, ouID)
+		if svcErr != nil {
+			return nil, mapSharingError(svcErr)
+		}
+		for _, id := range ids {
+			if _, dup := seen[id]; dup {
+				continue
+			}
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }

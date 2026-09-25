@@ -150,7 +150,7 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		accessTokenScopes = oidcScopes
 	} else {
 		downscopedNonOidc, dErr := resourceindicators.DownscopeToResourceServer(
-			ctx, h.resourceService, targetRS.ID, nonOidcScopes)
+			ctx, h.resourceService, targetRS.ID, nonOidcScopes, "")
 		if dErr != nil {
 			return nil, dErr
 		}

@@ -20,6 +20,7 @@ import (
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/cors"
@@ -52,6 +53,7 @@ type ApplicationServiceInterface interface {
 		*model.ApplicationArtifactProfile, *tidcommon.ServiceError)
 	ApplyCredentialAction(ctx context.Context, appID string, action model.CredentialAction) (
 		string, *tidcommon.ServiceError)
+	IsApplicationVisibleToOU(ctx context.Context, appID, ouID string) (bool, *tidcommon.ServiceError)
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	SetDependencyRegistry(r resourcedependency.Registry)
@@ -74,6 +76,9 @@ type applicationService struct {
 	dependencyRegistry   resourcedependency.Registry
 	serverConfigService  serverconfig.ServerConfigService
 	resolveLifetime      artifactLifetimeResolver
+	// sharingService answers which organization units may be named on a token request for an
+	// application. Optional: nil leaves every application usable in its own organization unit alone.
+	sharingService sharing.ServiceInterface
 }
 
 // newApplicationService creates a new instance of ApplicationService.
@@ -85,6 +90,7 @@ func newApplicationService(
 	cryptoSvc providers.RuntimeCryptoProvider,
 	serverConfigSvc serverconfig.ServerConfigService,
 	artifactLifetime artifactLifetimeResolver,
+	sharingService sharing.ServiceInterface,
 ) ApplicationServiceInterface {
 	return &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
@@ -95,6 +101,7 @@ func newApplicationService(
 		cryptoSvc:            cryptoSvc,
 		serverConfigService:  serverConfigSvc,
 		resolveLifetime:      artifactLifetime,
+		sharingService:       sharingService,
 	}
 }
 

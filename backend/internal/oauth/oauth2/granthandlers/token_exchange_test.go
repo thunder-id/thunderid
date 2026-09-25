@@ -94,7 +94,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) SetupTest() {
 		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil).Maybe()
 	suite.handler = &tokenExchangeGrantHandler{
 		tokenBuilder:    suite.mockTokenBuilder,
@@ -633,8 +633,8 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_PreservesOIDCSc
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, resourceURI).
 		Return(&providers.ResourceServer{ID: resourceURI, Identifier: resourceURI}, (*tidcommon.ServiceError)(nil))
 	rsPermissions := map[string]struct{}{"read": {}}
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, resourceURI, mock.Anything).
-		Return(func(_ context.Context, _ string, permissions []string) []string {
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, resourceURI, mock.Anything, mock.Anything).
+		Return(func(_ context.Context, _ string, permissions []string, _ string) []string {
 			invalid := []string{}
 			for _, p := range permissions {
 				if _, ok := rsPermissions[p]; !ok {
@@ -642,7 +642,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_PreservesOIDCSc
 				}
 			}
 			return invalid
-		}, func(_ context.Context, _ string, _ []string) *tidcommon.ServiceError { return nil })
+		}, func(_ context.Context, _ string, _ []string, _ string) *tidcommon.ServiceError { return nil })
 
 	// OIDC scopes (openid, profile) are preserved; only "read" survives resource downscoping.
 	const expectedScope = "openid profile read"
@@ -2707,7 +2707,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_Resourc
 	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
 		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
 	// RS only defines [read, write]; ValidatePermissions returns the invalid one (admin).
-	rsvc.On("ValidatePermissions", mock.Anything, testRS01URI, []string{"read", "write", "admin"}).
+	rsvc.On("ValidatePermissions", mock.Anything, testRS01URI, []string{"read", "write", "admin"}, mock.Anything).
 		Return([]string{"admin"}, nil)
 	h := &tokenExchangeGrantHandler{
 		tokenBuilder:    suite.mockTokenBuilder,
@@ -2762,7 +2762,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_ScopeNo
 	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
 		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
 	// RS defines [read] only; ValidatePermissions returns [write] as invalid.
-	rsvc.On("ValidatePermissions", mock.Anything, testRS01URI, []string{"read", "write"}).
+	rsvc.On("ValidatePermissions", mock.Anything, testRS01URI, []string{"read", "write"}, mock.Anything).
 		Return([]string{"write"}, nil)
 	h := &tokenExchangeGrantHandler{
 		tokenBuilder:    suite.mockTokenBuilder,
@@ -3011,7 +3011,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_DownscopeValida
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	rsvc.On("GetResourceServerByIdentifier", mock.Anything, "https://rs.example.com").
 		Return(&providers.ResourceServer{ID: "rs-x", Identifier: "https://rs.example.com"}, nil)
-	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
+	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]string(nil), &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "RES-5001"})
 	handler := &tokenExchangeGrantHandler{
 		tokenBuilder:    suite.mockTokenBuilder,

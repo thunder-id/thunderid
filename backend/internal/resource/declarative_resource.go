@@ -13,9 +13,11 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 
 	"gopkg.in/yaml.v3"
 )
@@ -59,7 +61,7 @@ func (e *resourceServerExporter) GetAllResourceIDs(ctx context.Context) ([]strin
 	ids := make([]string, 0)
 	offset := 0
 	for {
-		servers, err := e.service.GetResourceServerList(ctx, serverconst.MaxPageSize, offset)
+		servers, err := e.service.GetResourceServerList(ctx, serverconst.MaxPageSize, offset, "")
 		if err != nil {
 			return nil, err
 		}
@@ -186,7 +188,11 @@ func (e *resourceServerExporter) GetResourceRules() *declarativeresource.Resourc
 // Works in both declarative-only and composite modes:
 // - In declarative mode: resourceStore is a fileBasedResourceStore
 // - In composite mode: resourceStore is a compositeResourceStore (contains both file and DB stores)
-func loadDeclarativeResources(resourceStore resourceStoreInterface, resourceService ResourceServiceInterface) error {
+func loadDeclarativeResources(
+	resourceStore resourceStoreInterface,
+	resourceService ResourceServiceInterface,
+	sharingService sharing.ServiceInterface,
+) error {
 	var fileStore resourceStoreInterface
 	var dbStore resourceStoreInterface
 
@@ -228,6 +234,55 @@ func loadDeclarativeResources(resourceStore resourceStoreInterface, resourceServ
 		return fmt.Errorf("failed to load resource server resources: %w", err)
 	}
 
+	return seedDeclaredSharingPolicies(fileBasedStoreImpl, sharingService)
+}
+
+// seedDeclaredSharingPolicies records the policies the resource files declare.
+//
+// They are held in memory rather than written to the database: the file is the source of the
+// policy's existence, and a restart re-seeds it. Editing one through the API writes the edited
+// policy to the database, which then supersedes what the file declared.
+func seedDeclaredSharingPolicies(
+	fileStore *fileBasedResourceStore, sharingService sharing.ServiceInterface,
+) error {
+	if sharingService == nil {
+		return nil
+	}
+
+	all, err := fileStore.GenericFileBasedStore.List()
+	if err != nil {
+		return fmt.Errorf("failed to read declared resource servers: %w", err)
+	}
+
+	// Seeding runs at startup with no caller to scope against.
+	ctx := security.WithRuntimeContext(context.Background())
+	for _, item := range all {
+		rs, ok := item.Data.(*providers.ResourceServer)
+		if !ok || len(rs.SharingPolicies) == 0 {
+			continue
+		}
+		for i, declared := range rs.SharingPolicies {
+			req := sharing.RequestFromDeclaration(declared)
+			_, svcErr := sharingService.CreateDeclarativePolicy(
+				ctx, ResourceServerSharingType, rs.ID, rs.OUID, req)
+			if svcErr == nil {
+				continue
+			}
+
+			// Name the policy and carry the framework's own description. A policy naming an
+			// organization unit that does not exist is the common failure here, and it is usually
+			// a configuration one: organization units load from files only when their own store
+			// mode says so, independently of the resource server's.
+			initiator := declared.InitiatingOuID
+			if initiator == "" {
+				initiator = rs.OUID + " (the owner)"
+			}
+			return fmt.Errorf(
+				"failed to declare sharing policy %d of resource server %q "+
+					"(initiating organization unit %q): %s: %s",
+				i+1, rs.Name, initiator, svcErr.Code, svcErr.ErrorDescription.DefaultValue)
+		}
+	}
 	return nil
 }
 

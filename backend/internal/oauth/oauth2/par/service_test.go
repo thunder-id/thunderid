@@ -84,7 +84,7 @@ func (s *ServiceTestSuite) newPermissiveResourceMock() *resourcemock.ResourceSer
 		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
-	m.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
+	m.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, (*tidcommon.ServiceError)(nil)).Maybe()
 	return m
 }

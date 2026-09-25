@@ -31,6 +31,10 @@ type ApplicationDTO struct {
 	providers.InboundAuthProfile
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" jsonschema:"OAuth/OIDC authentication configuration. Required for OAuth-enabled applications. Configure OAuth grant types, redirect URIs, and client authentication methods."`
 	Metadata          map[string]interface{}                  `json:"metadata,omitempty" jsonschema:"Generic metadata. Optional arbitrary key-value pairs for consumer use."`
+	// SharingPolicies carries the organization units the application may issue tokens for. It is
+	// read from declarative files only: there is no API surface for it, so it is never populated by
+	// a request and never returned by one.
+	SharingPolicies []providers.SharingPolicy `json:"-"`
 }
 
 // BasicApplicationDTO represents a simplified data transfer object for application service operations.
@@ -113,6 +117,7 @@ type ApplicationRequestWithID struct {
 
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
 	Metadata          map[string]interface{}                  `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	SharingPolicies   []providers.SharingPolicy               `json:"sharingPolicies,omitempty" yaml:"sharingPolicies,omitempty"`
 }
 
 // ApplicationCompleteResponse represents the complete response structure for an application.

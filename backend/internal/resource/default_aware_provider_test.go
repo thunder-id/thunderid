@@ -137,10 +137,10 @@ func (suite *DefaultAwareProviderTestSuite) TestGetResourceServer_Delegates() {
 }
 
 func (suite *DefaultAwareProviderTestSuite) TestValidatePermissions_Delegates() {
-	suite.base.On("ValidatePermissions", mock.Anything, "rs01", []string{"read"}).
+	suite.base.On("ValidatePermissions", mock.Anything, "rs01", []string{"read"}, mock.Anything).
 		Return([]string{}, nil)
 
-	invalid, err := suite.subject.ValidatePermissions(context.Background(), "rs01", []string{"read"})
+	invalid, err := suite.subject.ValidatePermissions(context.Background(), "rs01", []string{"read"}, "")
 
 	assert.Nil(suite.T(), err)
 	assert.Empty(suite.T(), invalid)

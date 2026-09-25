@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -83,7 +84,9 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		audiences = []string{targetRS.Identifier}
 
 		// Downscope requested scopes to permissions defined on the target resource server.
-		scopes, errResp = resourceindicators.DownscopeToResourceServer(ctx, h.resourceService, targetRS.ID, scopes)
+		// and then to what the organization unit the token is for was actually granted on it.
+		scopes, errResp = resourceindicators.DownscopeToResourceServer(
+			ctx, h.resourceService, targetRS.ID, scopes, syscontext.GetAccessingOUID(ctx))
 		if errResp != nil {
 			return nil, errResp
 		}
@@ -123,7 +126,8 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		}
 	}
 
-	clientAttributes, clientAttrErr := tokenservice.BuildClientAttributes(ctx, oauthApp, h.ouService, h.actorProvider)
+	clientAttributes, clientAttrErr := tokenservice.BuildClientAttributes(
+		ctx, oauthApp, h.ouService, h.actorProvider, syscontext.GetAccessingOUID(ctx))
 	if clientAttrErr != nil {
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorServerError,

@@ -341,7 +341,7 @@ inboundAuthConfig:
 		nil,
 	)
 
-	parser := makeAppEntityParser(mockAppService)
+	parser := makeAppEntityParser(mockAppService, nil)
 	entityObj, _, sysCredsJSON, err := parser(yamlData)
 
 	assert.NoError(s.T(), err)
@@ -379,7 +379,7 @@ inboundAuthConfig:
 		nil,
 	)
 
-	parser := makeAppEntityParser(mockAppService)
+	parser := makeAppEntityParser(mockAppService, nil)
 	entityObj, _, sysCredsJSON, err := parser(yamlData)
 
 	assert.NoError(s.T(), err)
@@ -426,7 +426,7 @@ inboundAuthConfig:
 		nil,
 	)
 
-	parser := makeAppEntityParser(mockAppService)
+	parser := makeAppEntityParser(mockAppService, nil)
 	entityObj, _, sysCredsJSON, err := parser(yamlData)
 
 	assert.NoError(s.T(), err)
@@ -476,7 +476,7 @@ inboundAuthConfig:
 		nil,
 	)
 
-	parser := makeAppEntityParser(mockAppService)
+	parser := makeAppEntityParser(mockAppService, nil)
 	entityObj, _, sysCredsJSON, err := parser(yamlData)
 
 	assert.NoError(s.T(), err)

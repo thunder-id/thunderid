@@ -61,6 +61,25 @@ const (
 	RequestParamAuthReqID           string = "auth_req_id"
 )
 
+// OAuth2 path parameters.
+const (
+	PathParamOUID string = "ouId"
+)
+
+// OUAccessRefusalDescription is the single answer both ways of not being able to act for an
+// organization unit receive: one that does not exist, and one the client has no standing in.
+//
+// Keeping them identical is what stops the token endpoint being used to enumerate organization
+// units. The check runs before client credentials are verified, so an unauthenticated caller can
+// probe it; there must be nothing to learn from the answer. Echoing the id back leaks nothing,
+// because it is the caller's own input.
+//
+// It lives here rather than in either caller so the two cannot drift apart. A difference in wording
+// would reopen the distinction just as surely as a difference in error code.
+func OUAccessRefusalDescription(ouID string) string {
+	return "Client is not authorized to access the OU:" + ouID + " resources"
+}
+
 // OAuth2 HTTP headers.
 const (
 	HeaderDPoP string = "DPoP"

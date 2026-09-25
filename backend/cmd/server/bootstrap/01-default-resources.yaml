@@ -94,6 +94,9 @@ name: System
 description: System resource server
 identifier: https://localhost:8090/mcp
 ouHandle: default
+sharingPolicies:
+  - targetOuScope:
+      allOus: true
 resources:
   - name: System
     handle: system

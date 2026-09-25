@@ -60,7 +60,9 @@ func (s *ResourceServerExporterTestSuite) TestGetAllResourceIDs_Success() {
 		},
 	}
 
-	s.mockService.EXPECT().GetResourceServerList(ctx, serverconst.MaxPageSize, 0).Return(expectedList, nil)
+	s.mockService.EXPECT().GetResourceServerList(
+		ctx, serverconst.MaxPageSize, 0, mock.Anything,
+	).Return(expectedList, nil)
 	s.mockService.EXPECT().IsResourceServerDeclarative("rs1").Return(false)
 	s.mockService.EXPECT().IsResourceServerDeclarative("rs2").Return(false)
 
@@ -83,7 +85,9 @@ func (s *ResourceServerExporterTestSuite) TestGetAllResourceIDs_FilterDeclarativ
 		},
 	}
 
-	s.mockService.EXPECT().GetResourceServerList(ctx, serverconst.MaxPageSize, 0).Return(expectedList, nil)
+	s.mockService.EXPECT().GetResourceServerList(
+		ctx, serverconst.MaxPageSize, 0, mock.Anything,
+	).Return(expectedList, nil)
 	s.mockService.EXPECT().IsResourceServerDeclarative("rs1").Return(false)
 	s.mockService.EXPECT().IsResourceServerDeclarative("rs2").Return(true)
 	s.mockService.EXPECT().IsResourceServerDeclarative("rs3").Return(false)
@@ -103,7 +107,9 @@ func (s *ResourceServerExporterTestSuite) TestGetAllResourceIDs_Error() {
 		Error: tidcommon.I18nMessage{DefaultValue: "test error"},
 	}
 
-	s.mockService.EXPECT().GetResourceServerList(ctx, serverconst.MaxPageSize, 0).Return(nil, expectedError)
+	s.mockService.EXPECT().GetResourceServerList(
+		ctx, serverconst.MaxPageSize, 0, mock.Anything,
+	).Return(nil, expectedError)
 
 	ids, err := s.exporter.GetAllResourceIDs(ctx)
 
@@ -985,7 +991,7 @@ func TestLoadDeclarativeResources_CompositeFileStoreTypeError(t *testing.T) {
 	dbStore := newResourceStoreInterfaceMock(t)
 	compositeStore := newCompositeResourceStore(fileStore, dbStore)
 
-	err := loadDeclarativeResources(compositeStore, nil)
+	err := loadDeclarativeResources(compositeStore, nil, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to assert fileStore")
@@ -994,7 +1000,7 @@ func TestLoadDeclarativeResources_CompositeFileStoreTypeError(t *testing.T) {
 func TestLoadDeclarativeResources_InvalidStoreType(t *testing.T) {
 	invalidStore := newResourceStoreInterfaceMock(t)
 
-	err := loadDeclarativeResources(invalidStore, nil)
+	err := loadDeclarativeResources(invalidStore, nil, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid store type")

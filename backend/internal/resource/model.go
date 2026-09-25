@@ -17,6 +17,11 @@ type ResourceServerResponse struct {
 	OUID        string                       `json:"ouId"`
 	Delimiter   string                       `json:"delimiter"`
 	IsReadOnly  bool                         `json:"isReadOnly"`
+	// Origin says how the answering organization unit holds this server: owned when it is the
+	// server's own organization unit, shared when a sharing policy reaches it. Omitted when the
+	// request was not bounded to an organization unit, because there is then nobody for it to be
+	// relative to.
+	Origin string `json:"origin,omitempty"`
 }
 
 // ResourceResponse represents a resource.
@@ -130,7 +135,11 @@ type ResourceServerList struct {
 	StartIndex      int
 	Count           int
 	ResourceServers []providers.ResourceServer
-	Links           []Link
+	// Origins says how the answering organization unit holds each server, keyed by server id. Empty
+	// when the listing was not bounded to an organization unit. Kept beside the servers rather than
+	// on them, because how a server is held is a fact about the asker, not about the server.
+	Origins map[string]string
+	Links   []Link
 }
 
 // ResourceList represents the result of listing resources.

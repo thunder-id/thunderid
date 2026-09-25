@@ -1,0 +1,32 @@
+resource_type: application
+id: decl-m2m-all-ous
+name: M2M Service (All OUs)
+description: Backend service usable on behalf of every organization unit in the deployment
+ouId: decl-m2m-root
+type: fullstack
+template: web
+url: https://example.com
+# Every organization unit in the deployment, current and future. allOus is owner-only and, for an
+# application owned below a root, also needs resource_sharing.allow_child_ou_cross_tree_sharing.
+sharingPolicies:
+  - targetOuScope:
+      allOus: true
+inboundAuthConfig:
+  - type: "oauth2"
+    config:
+      clientId: "decl-m2m-all-ous-client"
+      clientSecret: "decl-m2m-all-ous-secret"
+      grantTypes:
+        - "client_credentials"
+      tokenEndpointAuthMethod: "client_secret_basic"
+      pkceRequired: false
+      publicClient: false
+      token:
+        accessToken:
+          clientConfig:
+            # Opt in to the organization unit claims so the token states which organization it was
+            # issued for. On an /ou/{ouId} request these resolve to the accessing OU, not the owner.
+            attributes:
+              - ouId
+              - ouName
+              - ouHandle

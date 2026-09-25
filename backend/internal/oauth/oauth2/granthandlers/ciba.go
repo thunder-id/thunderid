@@ -325,7 +325,7 @@ func (h *cibaGrantHandler) resolveIssuedAudiencesAndScopes(ctx context.Context,
 	}
 
 	downscoped, dErr := resourceindicators.DownscopeToResourceServer(
-		ctx, h.resourceService, rs.ID, permissionScopes)
+		ctx, h.resourceService, rs.ID, permissionScopes, "")
 	if dErr != nil {
 		return nil, nil, dErr
 	}

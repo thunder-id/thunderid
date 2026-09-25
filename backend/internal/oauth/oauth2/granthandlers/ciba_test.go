@@ -90,7 +90,7 @@ func (suite *CIBAGrantHandlerTestSuite) boundAuthenticatedRecord(scopes string) 
 func (suite *CIBAGrantHandlerTestSuite) expectResourceServer() {
 	suite.mockResource.EXPECT().GetResourceServerByIdentifier(mock.Anything, testCIBAResourceURL).
 		Return(&providers.ResourceServer{ID: "rs-1", Identifier: testCIBAResourceURL}, nil)
-	suite.mockResource.EXPECT().ValidatePermissions(mock.Anything, "rs-1", mock.Anything).
+	suite.mockResource.EXPECT().ValidatePermissions(mock.Anything, "rs-1", mock.Anything, mock.Anything).
 		Return([]string{}, nil)
 }
 
@@ -543,7 +543,7 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_PermissionScopesOutsideR
 	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
 	suite.mockResource.EXPECT().GetResourceServerByIdentifier(mock.Anything, testCIBAResourceURL).
 		Return(&providers.ResourceServer{ID: "rs-1", Identifier: testCIBAResourceURL}, nil)
-	suite.mockResource.EXPECT().ValidatePermissions(mock.Anything, "rs-1", mock.Anything).
+	suite.mockResource.EXPECT().ValidatePermissions(mock.Anything, "rs-1", mock.Anything, mock.Anything).
 		Return([]string{"write"}, nil)
 	var capturedCtx *tokenservice.AccessTokenBuildContext
 	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.MatchedBy(

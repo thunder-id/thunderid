@@ -188,6 +188,9 @@ func parseToApplicationDTO(data []byte) (*model.ApplicationDTO, error) {
 		PolicyURI:  appRequest.PolicyURI,
 		Contacts:   appRequest.Contacts,
 		Metadata:   appRequest.Metadata,
+		// Carried through rather than acted on here. The policies name organization units, which may
+		// be declared in files parsed after this one, so they are replayed once the batch has loaded.
+		SharingPolicies: appRequest.SharingPolicies,
 	}
 	if len(appRequest.InboundAuthConfig) > 0 {
 		inboundAuthConfigDTOs := make([]providers.InboundAuthConfigWithSecret, 0)
@@ -265,17 +268,20 @@ func (e *applicationExporter) GetResourceRulesForResource(resource interface{}) 
 
 // makeAppDeclarativeConfig creates the declarative loader config for loading application
 // identity data into the entity file store.
-func makeAppDeclarativeConfig(appService ApplicationServiceInterface) entity.DeclarativeLoaderConfig {
+// collect is handed every application that declares sharing policies, for replay after the batch.
+func makeAppDeclarativeConfig(
+	appService ApplicationServiceInterface, collect func(declaredAppPolicies),
+) entity.DeclarativeLoaderConfig {
 	return entity.DeclarativeLoaderConfig{
 		Directory: "applications",
 		Category:  providers.EntityCategoryApp,
-		Parser:    makeAppEntityParser(appService),
+		Parser:    makeAppEntityParser(appService, collect),
 	}
 }
 
 // makeAppEntityParser creates a parser that converts application YAML into an entity.
 func makeAppEntityParser(
-	appService ApplicationServiceInterface,
+	appService ApplicationServiceInterface, collect func(declaredAppPolicies),
 ) func(data []byte) (*providers.Entity, json.RawMessage, json.RawMessage, error) {
 	return func(data []byte) (*providers.Entity, json.RawMessage, json.RawMessage, error) {
 		if appService == nil {
@@ -291,6 +297,22 @@ func makeAppEntityParser(
 			security.WithRuntimeContext(context.Background()), appDTO)
 		if svcErr != nil {
 			return nil, nil, nil, fmt.Errorf("error validating application '%s': %v", appDTO.Name, svcErr)
+		}
+
+		// Validated here, where the file is still identifiable, rather than at replay time.
+		for i, policy := range appDTO.SharingPolicies {
+			if err := validateApplicationPolicy(policy); err != nil {
+				return nil, nil, nil, fmt.Errorf(
+					"invalid sharing policy %d of application %q: %w", i+1, appDTO.Name, err)
+			}
+		}
+		if len(appDTO.SharingPolicies) > 0 && collect != nil {
+			collect(declaredAppPolicies{
+				appID:    appDTO.ID,
+				appName:  appDTO.Name,
+				ownerOU:  appDTO.OUID,
+				policies: appDTO.SharingPolicies,
+			})
 		}
 
 		var clientID, clientSecret string

@@ -462,7 +462,8 @@ func (s *authzenService) validateAction(
 		return nil
 	}
 
-	invalidPermissions, svcErr := s.resourceService.ValidatePermissions(ctx, resourceServerID, []string{actionName})
+	invalidPermissions, svcErr := s.resourceService.ValidatePermissions(
+		ctx, resourceServerID, []string{actionName}, "")
 	if svcErr != nil {
 		s.logger.Error(ctx, "Failed to validate action",
 			log.String("resourceServerID", resourceServerID),

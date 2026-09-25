@@ -166,7 +166,7 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 		grantedScopes = oidcScopes
 	} else {
 		permissionScopes, errResp = resourceindicators.DownscopeToResourceServer(
-			ctx, h.resourceService, targetRS.ID, permissionScopes)
+			ctx, h.resourceService, targetRS.ID, permissionScopes, "")
 		if errResp != nil {
 			return nil, errResp
 		}

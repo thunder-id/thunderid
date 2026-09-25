@@ -107,7 +107,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) SetupTest() {
 		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil).Maybe()
 
 	suite.handler = &authorizationCodeGrantHandler{
@@ -172,7 +172,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) stubDefaultResourceServer()
 		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil).Maybe()
 }
 
@@ -1513,7 +1513,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_TokenReques
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, testResourceURL).
 		Return(&providers.ResourceServer{ID: testResourceURL, Identifier: testResourceURL}, nil)
 	// rs1 only supports "read"; "write" is invalid.
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testResourceURL, mock.Anything).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testResourceURL, mock.Anything, mock.Anything).
 		Return([]string{"write"}, nil)
 
 	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
@@ -1646,7 +1646,7 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_DownscopeVa
 	suite.mockResourceService.ExpectedCalls = nil
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, testResourceURL).
 		Return(&providers.ResourceServer{ID: testResourceURL, Identifier: testResourceURL}, nil)
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testResourceURL, mock.Anything).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testResourceURL, mock.Anything, mock.Anything).
 		Return([]string(nil), &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "RES-5001"})
 
 	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").

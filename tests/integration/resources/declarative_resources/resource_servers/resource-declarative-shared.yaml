@@ -1,0 +1,27 @@
+resource_type: resource_server
+id: decl-rs-shared
+name: Declarative Shared Resource Server
+description: A declarative resource server shared with every organization unit
+identifier: https://localhost:8090/decl-rs-shared
+ouId: decl-ou-1
+delimiter: ":"
+# Declared in the file and held in memory rather than stored. Editing it through the API writes the
+# edited policy to the database, which then supersedes this; deleting that row reverts to this.
+sharingPolicies:
+  - targetOuScope:
+      allOus: true
+resources:
+  - name: Bookings
+    handle: bookings
+    description: Booking operations
+    actions:
+      - name: View
+        handle: view
+      - name: Refund
+        handle: refund
+  - name: Billing
+    handle: billing
+    description: Billing operations
+    actions:
+      - name: View
+        handle: view

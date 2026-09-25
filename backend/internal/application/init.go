@@ -14,6 +14,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
@@ -32,10 +33,18 @@ func Initialize(
 	cryptoSvc providers.RuntimeCryptoProvider,
 	serverConfigSvc serverconfig.ServerConfigService,
 	artifactLifetime artifactLifetimeResolver,
+	sharingService sharing.ServiceInterface,
 ) (ApplicationServiceInterface, declarativeresource.ResourceExporter, error) {
 	appService := newApplicationService(
 		inboundClient, entityService, ouService, i18nService, cryptoSvc, serverConfigSvc, artifactLifetime,
+		sharingService,
 	)
+
+	// Registered before declarative resources load, because loading seeds the sharing policies those
+	// files declare and the framework refuses a type it does not know.
+	if sharingService != nil {
+		sharingService.RegisterResourceType(newApplicationSharing(appService))
+	}
 
 	if err := entityService.LoadIndexedAttributes(getAppIndexedAttributes()); err != nil {
 		return nil, nil, err
@@ -44,11 +53,23 @@ func Initialize(
 	storeMode := getApplicationStoreMode()
 	// TODO: Revisit once the declarative resource loading pattern is finalized.
 	if storeMode == serverconst.StoreModeComposite || storeMode == serverconst.StoreModeDeclarative {
-		if err := entityService.LoadDeclarativeResources(makeAppDeclarativeConfig(appService)); err != nil {
+		// An application's parsed form is not retained anywhere afterwards: the entity store keeps
+		// the identity row and the inbound-client store keeps the OAuth config, and neither holds the
+		// declared policies. They are captured during parsing instead, and replayed once the whole
+		// batch has loaded, because a policy may name an organization unit whose own document is
+		// parsed later than the application's.
+		var declared []declaredAppPolicies
+		collect := func(d declaredAppPolicies) { declared = append(declared, d) }
+
+		if err := entityService.LoadDeclarativeResources(
+			makeAppDeclarativeConfig(appService, collect)); err != nil {
 			return nil, nil, err
 		}
 		if err := inboundClient.LoadDeclarativeResources(
 			context.Background(), makeAppInboundConfig(appService)); err != nil {
+			return nil, nil, err
+		}
+		if err := seedDeclaredApplicationPolicies(declared, sharingService); err != nil {
 			return nil, nil, err
 		}
 	}

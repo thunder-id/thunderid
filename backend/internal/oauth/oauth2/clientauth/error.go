@@ -68,3 +68,18 @@ var (
 		http.StatusUnauthorized,
 	)
 )
+
+// errClientNotAuthorizedForOU is returned when the request names an organization unit the client may
+// not act for.
+//
+// It is byte-identical to what an organization unit that does not exist receives, so the two cannot
+// be told apart. It stays distinct from invalid_client, though: a wrong secret is a different
+// failure, and collapsing that one too would leave a caller unable to tell a bad credential from a
+// missing policy.
+func errClientNotAuthorizedForOU(ouID string) *authError {
+	return newAuthError(
+		constants.ErrorInvalidRequest,
+		constants.OUAccessRefusalDescription(ouID),
+		http.StatusBadRequest,
+	)
+}

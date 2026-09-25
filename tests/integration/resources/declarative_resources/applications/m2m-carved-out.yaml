@@ -1,0 +1,34 @@
+resource_type: application
+id: decl-m2m-carved-out
+name: M2M Service (Carved Out)
+description: Backend service usable on behalf of the owner's subtree except one branch
+ouId: decl-m2m-root
+type: fullstack
+template: web
+url: https://example.com
+# A blanket scope with a carve-out: naming a branch withholds it and everything beneath it. This is
+# how one customer is excluded without enumerating all the others.
+sharingPolicies:
+  - targetOuScope:
+      allChildren: true
+      excludedOuIds:
+        - decl-m2m-child-b
+inboundAuthConfig:
+  - type: "oauth2"
+    config:
+      clientId: "decl-m2m-carved-out-client"
+      clientSecret: "decl-m2m-carved-out-secret"
+      grantTypes:
+        - "client_credentials"
+      tokenEndpointAuthMethod: "client_secret_basic"
+      pkceRequired: false
+      publicClient: false
+      token:
+        accessToken:
+          clientConfig:
+            # Opt in to the organization unit claims so the token states which organization it was
+            # issued for. On an /ou/{ouId} request these resolve to the accessing OU, not the owner.
+            attributes:
+              - ouId
+              - ouName
+              - ouHandle

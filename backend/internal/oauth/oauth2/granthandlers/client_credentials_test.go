@@ -85,7 +85,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil).Maybe()
 
 	suite.handler = &clientCredentialsGrantHandler{

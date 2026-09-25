@@ -17,6 +17,7 @@ var publicPaths = []string{
 	"/flow/execute/**",
 	"/flow/meta",
 	"/oauth2/**",
+	"/ou/*/oauth2/token",
 	// OpenID4VP wallet- and RP-facing endpoints are public; management endpoints
 	// (e.g. /openid4vp/presentation-definitions) are deliberately excluded.
 	"/openid4vp/request",
@@ -66,6 +67,8 @@ const (
 	ResourceTypeUserType ResourceType = "usertype"
 	// ResourceTypeAgentType identifies an agent-category entity type resource.
 	ResourceTypeAgentType ResourceType = "agenttype"
+	// ResourceTypeResourceServer identifies a resource server resource.
+	ResourceTypeResourceServer ResourceType = "resource-server"
 )
 
 // ---- Actions ----
@@ -141,6 +144,17 @@ const (
 	ActionDeleteAgentType Action = "agenttype:delete"
 	// ActionListAgentTypes lists agent types.
 	ActionListAgentTypes Action = "agenttype:list"
+
+	// ActionCreateResourceServer creates a resource server.
+	ActionCreateResourceServer Action = "resource-server:create"
+	// ActionReadResourceServer reads a resource server, its resources or its actions.
+	ActionReadResourceServer Action = "resource-server:read"
+	// ActionUpdateResourceServer changes a resource server, its resources or its actions.
+	ActionUpdateResourceServer Action = "resource-server:update"
+	// ActionDeleteResourceServer deletes a resource server, its resources or its actions.
+	ActionDeleteResourceServer Action = "resource-server:delete"
+	// ActionListResourceServers lists resource servers.
+	ActionListResourceServers Action = "resource-server:list"
 )
 
 // ---- Permissions ----
@@ -161,6 +175,10 @@ type SystemPermissions struct {
 	UserTypeView  string
 	AgentType     string
 	AgentTypeView string
+	// ResourceServer governs the resource-server collection, its resources and actions, and the
+	// sharing policies recorded against it.
+	ResourceServer     string
+	ResourceServerView string
 }
 
 // sysPerms holds the active system permissions, initialized by InitSystemPermissions.
@@ -183,19 +201,21 @@ func buildPermission(parts ...string) string {
 // This function must be called once at startup before any service or middleware uses permissions.
 func InitSystemPermissions(handle string) {
 	p := &SystemPermissions{
-		Root:          buildPermission(handle, "system"),
-		OU:            buildPermission(handle, "system", "ou"),
-		OUView:        buildPermission(handle, "system", "ou", "view"),
-		User:          buildPermission(handle, "system", "user"),
-		UserView:      buildPermission(handle, "system", "user", "view"),
-		Group:         buildPermission(handle, "system", "group"),
-		GroupView:     buildPermission(handle, "system", "group", "view"),
-		Agent:         buildPermission(handle, "system", "agent"),
-		AgentView:     buildPermission(handle, "system", "agent", "view"),
-		UserType:      buildPermission(handle, "system", "usertype"),
-		UserTypeView:  buildPermission(handle, "system", "usertype", "view"),
-		AgentType:     buildPermission(handle, "system", "agenttype"),
-		AgentTypeView: buildPermission(handle, "system", "agenttype", "view"),
+		Root:               buildPermission(handle, "system"),
+		OU:                 buildPermission(handle, "system", "ou"),
+		OUView:             buildPermission(handle, "system", "ou", "view"),
+		User:               buildPermission(handle, "system", "user"),
+		UserView:           buildPermission(handle, "system", "user", "view"),
+		Group:              buildPermission(handle, "system", "group"),
+		GroupView:          buildPermission(handle, "system", "group", "view"),
+		Agent:              buildPermission(handle, "system", "agent"),
+		AgentView:          buildPermission(handle, "system", "agent", "view"),
+		UserType:           buildPermission(handle, "system", "usertype"),
+		UserTypeView:       buildPermission(handle, "system", "usertype", "view"),
+		AgentType:          buildPermission(handle, "system", "agenttype"),
+		AgentTypeView:      buildPermission(handle, "system", "agenttype", "view"),
+		ResourceServer:     buildPermission(handle, "system", "resource-server"),
+		ResourceServerView: buildPermission(handle, "system", "resource-server", "view"),
 	}
 	sysPerms = p
 
@@ -242,6 +262,12 @@ func InitSystemPermissions(handle string) {
 		ActionUpdateAgentType: p.AgentType,
 		ActionDeleteAgentType: p.AgentType,
 		ActionListAgentTypes:  p.AgentTypeView,
+
+		ActionCreateResourceServer: p.ResourceServer,
+		ActionReadResourceServer:   p.ResourceServerView,
+		ActionUpdateResourceServer: p.ResourceServer,
+		ActionDeleteResourceServer: p.ResourceServer,
+		ActionListResourceServers:  p.ResourceServerView,
 	}
 
 	apiPermissionEntries = []apiPermissionEntry{
@@ -300,6 +326,16 @@ func InitSystemPermissions(handle string) {
 		{"GET /agent-types/**", p.AgentTypeView},
 		{"PUT /agent-types/**", p.AgentType},
 		{"DELETE /agent-types/**", p.AgentType},
+
+		// Resource server APIs, covering the nested resource, action and sharing-policy paths.
+		// Changing who a server is shared with is a change to the server, so it needs the same
+		// permission as any other write to it rather than a tier of its own.
+		{"GET /resource-servers", p.ResourceServerView},
+		{"POST /resource-servers", p.ResourceServer},
+		{"GET /resource-servers/**", p.ResourceServerView},
+		{"POST /resource-servers/**", p.ResourceServer},
+		{"PUT /resource-servers/**", p.ResourceServer},
+		{"DELETE /resource-servers/**", p.ResourceServer},
 
 		// Import APIs.
 		{"POST /import", p.Root},

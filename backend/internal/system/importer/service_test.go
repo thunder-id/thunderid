@@ -3046,9 +3046,16 @@ func TestGetAgentOAuthConfigForImport_NilRequest(t *testing.T) {
 }
 
 // fakeResourceServerService is a test double for the resource server adapter used by importer tests.
+// appliedSharing records one ApplySharingPolicies call.
+type appliedSharing struct {
+	resourceServerID string
+	policies         []providers.SharingPolicy
+}
+
 type fakeResourceServerService struct {
-	created []providers.ResourceServer
-	updated []providers.ResourceServer
+	appliedSharingPolicies []appliedSharing
+	created                []providers.ResourceServer
+	updated                []providers.ResourceServer
 }
 
 func (f *fakeResourceServerService) CreateResourceServer(
@@ -3079,6 +3086,18 @@ func (f *fakeResourceServerService) CreateResource(
 	_ context.Context, _ string, _ providers.Resource,
 ) (*providers.Resource, *tidcommon.ServiceError) {
 	return &providers.Resource{}, nil
+}
+
+// ApplySharingPolicies records what the fake was asked to apply, so a test can assert the importer
+// forwarded the document's policies.
+func (f *fakeResourceServerService) ApplySharingPolicies(
+	_ context.Context, resourceServerID string, policies []providers.SharingPolicy,
+) *tidcommon.ServiceError {
+	f.appliedSharingPolicies = append(f.appliedSharingPolicies, appliedSharing{
+		resourceServerID: resourceServerID,
+		policies:         policies,
+	})
+	return nil
 }
 
 func (f *fakeResourceServerService) GetResourceList(
@@ -3534,4 +3553,75 @@ func TestImportResources_IDPUpsertUpdatePropertiesArePassedToService(t *testing.
 	plainValue, err2 := updated.Properties[0].GetValue()
 	require.NoError(t, err2)
 	assert.Equal(t, "updated-client-id", plainValue)
+}
+
+// A resource server document may declare how it is shared. The importer has to forward those
+// policies, or a bundle that shares a server imports a server nobody else can see.
+func TestImportResourceServer_SharingPoliciesAreApplied(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]providers.OrganizationUnit{
+		"ou-default": {ID: "ou-default", Handle: "default"},
+	}}
+	rsSvc := &fakeResourceServerService{}
+	svc := newImportService(
+		nil, nil, nil, nil, ouSvc, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+
+	content := strings.Join([]string{
+		"resource_type: resource_server",
+		"id: rs-shared",
+		"name: Shared RS",
+		"handle: shared-rs",
+		"identifier: shared-rs",
+		"ouHandle: default",
+		"sharingPolicies:",
+		"  - targetOuScope:",
+		"      allOus: true",
+		"resources: []",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: content,
+		Options: &ImportOptions{Upsert: boolPtr(false)},
+	})
+	require.Nil(t, err)
+	require.NotNil(t, resp)
+
+	require.Len(t, rsSvc.appliedSharingPolicies, 1, "the importer forwarded no policies")
+	applied := rsSvc.appliedSharingPolicies[0]
+	assert.Equal(t, "rs-shared", applied.resourceServerID)
+	require.Len(t, applied.policies, 1)
+	assert.True(t, applied.policies[0].TargetOuScope.AllOUs,
+		"the declared scope reached the resource service unchanged")
+}
+
+// A document with no sharing policies must not leave a stray empty application behind.
+func TestImportResourceServer_NoSharingPoliciesIsNotAnError(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]providers.OrganizationUnit{
+		"ou-default": {ID: "ou-default", Handle: "default"},
+	}}
+	rsSvc := &fakeResourceServerService{}
+	svc := newImportService(
+		nil, nil, nil, nil, ouSvc, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+
+	content := strings.Join([]string{
+		"resource_type: resource_server",
+		"id: rs-plain",
+		"name: Plain RS",
+		"handle: plain-rs",
+		"identifier: plain-rs",
+		"ouHandle: default",
+		"resources: []",
+		"",
+	}, "\n")
+
+	_, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: content,
+		Options: &ImportOptions{Upsert: boolPtr(false)},
+	})
+	require.Nil(t, err)
+
+	require.Len(t, rsSvc.appliedSharingPolicies, 1)
+	assert.Empty(t, rsSvc.appliedSharingPolicies[0].policies)
 }

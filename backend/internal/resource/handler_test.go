@@ -31,7 +31,7 @@ type HandlerTestSuite struct {
 // SetupTest runs before each test
 func (suite *HandlerTestSuite) SetupTest() {
 	suite.mockService = new(ResourceServiceInterfaceMock)
-	suite.handler = newResourceHandler(suite.mockService)
+	suite.handler = newResourceHandler(suite.mockService, nil)
 }
 
 // TestHandlerTestSuite runs the test suite
@@ -50,7 +50,7 @@ func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_Success() {
 		{Href: "/resource-servers?limit=30&offset=0", Rel: "self"},
 	}
 	suite.mockService.On("GetResourceServerList", mock.Anything,
-		30, 0).Return(&ResourceServerList{
+		30, 0, "").Return(&ResourceServerList{
 		TotalResults:    2,
 		StartIndex:      1,
 		Count:           2,
@@ -82,7 +82,7 @@ func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_InvalidLimit(
 
 func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_Error() {
 	suite.mockService.On("GetResourceServerList", mock.Anything,
-		30, 0).Return(nil, &tidcommon.InternalServerError)
+		30, 0, "").Return(nil, &tidcommon.InternalServerError)
 
 	req := httptest.NewRequest("GET", "/resource-servers", nil)
 	w := httptest.NewRecorder()
@@ -137,8 +137,8 @@ func (suite *HandlerTestSuite) TestHandleResourceServerPostRequest_InvalidJSON()
 }
 
 func (suite *HandlerTestSuite) TestHandleResourceServerGetRequest_Success() {
-	suite.mockService.On("GetResourceServer", mock.Anything,
-		"rs-123").Return(&providers.ResourceServer{
+	suite.mockService.On("GetResourceServerForOU", mock.Anything,
+		"rs-123", "").Return(&providers.ResourceServer{
 		ID:   "rs-123",
 		Name: "test-rs",
 	}, nil)
@@ -157,8 +157,8 @@ func (suite *HandlerTestSuite) TestHandleResourceServerGetRequest_Success() {
 }
 
 func (suite *HandlerTestSuite) TestHandleResourceServerGetRequest_DefaultsTypeToCustom() {
-	suite.mockService.On("GetResourceServer", mock.Anything,
-		"rs-123").Return(&providers.ResourceServer{
+	suite.mockService.On("GetResourceServerForOU", mock.Anything,
+		"rs-123", "").Return(&providers.ResourceServer{
 		ID:   "rs-123",
 		Name: "legacy-rs",
 	}, nil)
@@ -177,10 +177,25 @@ func (suite *HandlerTestSuite) TestHandleResourceServerGetRequest_DefaultsTypeTo
 }
 
 func (suite *HandlerTestSuite) TestHandleResourceServerGetRequest_NotFound() {
-	suite.mockService.On("GetResourceServer", mock.Anything,
-		"rs-123").Return(nil, &ErrorResourceServerNotFound)
+	suite.mockService.On("GetResourceServerForOU", mock.Anything,
+		"rs-123", "").Return(nil, &ErrorResourceServerNotFound)
 
 	req := httptest.NewRequest("GET", "/resource-servers/rs-123", nil)
+	req.SetPathValue("id", "rs-123")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerGetRequest(w, req)
+
+	suite.Equal(http.StatusNotFound, w.Code)
+}
+
+// ouId asks the question on another organization unit's behalf, and a unit that does not hold the
+// server is told it does not exist rather than being handed the owner's copy.
+func (suite *HandlerTestSuite) TestHandleResourceServerGetRequest_OUIsAsked() {
+	suite.mockService.On("GetResourceServerForOU", mock.Anything,
+		"rs-123", "ou-stranger").Return(nil, &ErrorResourceServerNotFound)
+
+	req := httptest.NewRequest("GET", "/resource-servers/rs-123?ouId=ou-stranger", nil)
 	req.SetPathValue("id", "rs-123")
 	w := httptest.NewRecorder()
 
@@ -236,7 +251,7 @@ func (suite *HandlerTestSuite) TestHandleResourceListRequest_Success() {
 		{Href: "/resource-servers?limit=30&offset=0", Rel: "self"},
 	}
 	suite.mockService.On("GetResourceList", mock.Anything,
-		"rs-123", (*string)(nil), 30, 0).Return(&ResourceList{
+		"rs-123", (*string)(nil), 30, 0, mock.Anything).Return(&ResourceList{
 		TotalResults: 2,
 		StartIndex:   1,
 		Count:        2,
@@ -260,7 +275,7 @@ func (suite *HandlerTestSuite) TestHandleResourceListRequest_Success() {
 func (suite *HandlerTestSuite) TestHandleResourceListRequest_WithParentFilter() {
 	emptyStr := ""
 	suite.mockService.On("GetResourceList", mock.Anything,
-		"rs-123", &emptyStr, 30, 0).Return(&ResourceList{
+		"rs-123", &emptyStr, 30, 0, mock.Anything).Return(&ResourceList{
 		TotalResults: 1,
 		Resources:    []providers.Resource{{ID: "res-1"}},
 	}, nil)
@@ -277,7 +292,7 @@ func (suite *HandlerTestSuite) TestHandleResourceListRequest_WithParentFilter() 
 func (suite *HandlerTestSuite) TestHandleResourceListRequest_WithParentUUID() {
 	parentUUID := "parent-uuid-123"
 	suite.mockService.On("GetResourceList", mock.Anything,
-		"rs-123", &parentUUID, 30, 0).Return(&ResourceList{
+		"rs-123", &parentUUID, 30, 0, mock.Anything).Return(&ResourceList{
 		TotalResults: 2,
 		Resources:    []providers.Resource{{ID: "res-1"}, {ID: "res-2"}},
 	}, nil)
@@ -321,7 +336,7 @@ func (suite *HandlerTestSuite) TestHandleResourcePostRequest_Success() {
 
 func (suite *HandlerTestSuite) TestHandleResourceGetRequest_Success() {
 	suite.mockService.On("GetResource", mock.Anything,
-		"rs-123", "res-123").Return(&providers.Resource{
+		"rs-123", "res-123", mock.Anything).Return(&providers.Resource{
 		ID:   "res-123",
 		Name: "test-resource",
 	}, nil)
@@ -385,7 +400,7 @@ func (suite *HandlerTestSuite) TestHandleActionListAtResourceServerRequest_Succe
 	}
 	var nilResourceID *string
 	suite.mockService.On("GetActionList", mock.Anything,
-		"rs-123", nilResourceID, providers.ActionKind(""), 30, 0).Return(&ActionList{
+		"rs-123", nilResourceID, providers.ActionKind(""), 30, 0, mock.Anything).Return(&ActionList{
 		TotalResults: 2,
 		StartIndex:   1,
 		Count:        2,
@@ -409,7 +424,7 @@ func (suite *HandlerTestSuite) TestHandleActionListAtResourceServerRequest_Succe
 func (suite *HandlerTestSuite) TestHandleActionListAtResourceServerRequest_WithKindFilter() {
 	var nilResourceID *string
 	suite.mockService.On("GetActionList", mock.Anything,
-		"rs-123", nilResourceID, providers.ActionKindTool, 30, 0).Return(&ActionList{
+		"rs-123", nilResourceID, providers.ActionKindTool, 30, 0, mock.Anything).Return(&ActionList{
 		TotalResults: 1,
 		StartIndex:   1,
 		Count:        1,
@@ -451,7 +466,7 @@ func (suite *HandlerTestSuite) TestHandleActionListAtResourceServerRequest_KindP
 func (suite *HandlerTestSuite) TestHandleActionListAtResourceRequest_WithKindFilter() {
 	resourceID := testResourceID
 	suite.mockService.On("GetActionList", mock.Anything,
-		"rs-123", &resourceID, providers.ActionKindResource, 30, 0).Return(&ActionList{
+		"rs-123", &resourceID, providers.ActionKindResource, 30, 0, mock.Anything).Return(&ActionList{
 		TotalResults: 1,
 		Actions:      []providers.Action{{ID: "action-1", Name: "Resource 1", Kind: providers.ActionKindResource}},
 	}, nil)
@@ -549,7 +564,7 @@ func (suite *HandlerTestSuite) TestHandleActionPostAtResourceServerRequest_WithK
 func (suite *HandlerTestSuite) TestHandleActionGetAtResourceServerRequest_Success() {
 	var nilResourceID *string
 	suite.mockService.On("GetAction", mock.Anything,
-		"rs-123", nilResourceID, "action-123").Return(&providers.Action{
+		"rs-123", nilResourceID, "action-123", mock.Anything).Return(&providers.Action{
 		ID:   "action-123",
 		Name: "test-action",
 	}, nil)
@@ -612,7 +627,7 @@ func (suite *HandlerTestSuite) TestHandleActionListAtResourceRequest_Success() {
 
 	resourceID := testResourceID
 	suite.mockService.On("GetActionList", mock.Anything,
-		"rs-123", &resourceID, providers.ActionKind(""), 30, 0).Return(&ActionList{
+		"rs-123", &resourceID, providers.ActionKind(""), 30, 0, mock.Anything).Return(&ActionList{
 		TotalResults: 1,
 		Actions:      actions,
 	}, nil)
@@ -660,7 +675,7 @@ func (suite *HandlerTestSuite) TestHandleActionPostAtResourceRequest_Success() {
 func (suite *HandlerTestSuite) TestHandleActionGetAtResourceRequest_Success() {
 	resourceID := testResourceID
 	suite.mockService.On("GetAction", mock.Anything,
-		"rs-123", &resourceID, "action-123").Return(&providers.Action{
+		"rs-123", &resourceID, "action-123", mock.Anything).Return(&providers.Action{
 		ID:   "action-123",
 		Name: "test-action",
 	}, nil)
@@ -774,8 +789,8 @@ func (suite *HandlerTestSuite) TestSanitizeCreateResourceRequest_NullParent() {
 // Error Handling Tests
 
 func (suite *HandlerTestSuite) TestHandleError_NotFoundStatus() {
-	suite.mockService.On("GetResourceServer", mock.Anything,
-		"rs-123").Return(nil, &ErrorResourceServerNotFound)
+	suite.mockService.On("GetResourceServerForOU", mock.Anything,
+		"rs-123", "").Return(nil, &ErrorResourceServerNotFound)
 
 	req := httptest.NewRequest("GET", "/resource-servers/rs-123", nil)
 	req.SetPathValue("id", "rs-123")
@@ -1028,7 +1043,7 @@ func (suite *HandlerTestSuite) TestHandleResourceListRequest_InvalidLimit() {
 
 func (suite *HandlerTestSuite) TestHandleResourceListRequest_ServiceError() {
 	suite.mockService.On("GetResourceList", mock.Anything,
-		"rs-123", (*string)(nil), 30, 0).
+		"rs-123", (*string)(nil), 30, 0, mock.Anything).
 		Return(nil, &tidcommon.InternalServerError)
 
 	req := httptest.NewRequest("GET", "/resource-servers/rs-123/resources", nil)
@@ -1071,7 +1086,7 @@ func (suite *HandlerTestSuite) TestHandleResourcePostRequest_ServiceError() {
 
 func (suite *HandlerTestSuite) TestHandleResourceGetRequest_NotFound() {
 	suite.mockService.On("GetResource", mock.Anything,
-		"rs-123", "res-123").Return(nil, &ErrorResourceNotFound)
+		"rs-123", "res-123", mock.Anything).Return(nil, &ErrorResourceNotFound)
 
 	req := httptest.NewRequest("GET", "/resource-servers/rs-123/resources/res-123", nil)
 	req.SetPathValue("rsId", "rs-123")
@@ -1085,7 +1100,7 @@ func (suite *HandlerTestSuite) TestHandleResourceGetRequest_NotFound() {
 
 func (suite *HandlerTestSuite) TestHandleResourceGetRequest_ServiceError() {
 	suite.mockService.On("GetResource", mock.Anything,
-		"rs-123", "res-123").Return(nil, &tidcommon.InternalServerError)
+		"rs-123", "res-123", mock.Anything).Return(nil, &tidcommon.InternalServerError)
 
 	req := httptest.NewRequest("GET", "/resource-servers/rs-123/resources/res-123", nil)
 	req.SetPathValue("rsId", "rs-123")
@@ -1158,7 +1173,8 @@ func (suite *HandlerTestSuite) TestHandleActionListAtResourceServerRequest_Inval
 func (suite *HandlerTestSuite) TestHandleActionListAtResourceServerRequest_ServiceError() {
 	var nilResourceID *string
 	suite.mockService.On("GetActionList", mock.Anything,
-		"rs-123", nilResourceID, providers.ActionKind(""), 30, 0).Return(nil, &tidcommon.InternalServerError)
+		"rs-123", nilResourceID, providers.ActionKind(""), 30, 0, mock.Anything).
+		Return(nil, &tidcommon.InternalServerError)
 
 	req := httptest.NewRequest("GET", "/resource-servers/rs-123/actions", nil)
 	req.SetPathValue("rsId", "rs-123")
@@ -1203,7 +1219,7 @@ func (suite *HandlerTestSuite) TestHandleActionPostAtResourceServerRequest_Servi
 func (suite *HandlerTestSuite) TestHandleActionGetAtResourceServerRequest_NotFound() {
 	var nilResourceID *string
 	suite.mockService.On("GetAction", mock.Anything,
-		"rs-123", nilResourceID, "action-123").Return(nil, &ErrorActionNotFound)
+		"rs-123", nilResourceID, "action-123", mock.Anything).Return(nil, &ErrorActionNotFound)
 
 	req := httptest.NewRequest("GET", "/resource-servers/rs-123/actions/action-123", nil)
 	req.SetPathValue("rsId", "rs-123")
@@ -1218,7 +1234,7 @@ func (suite *HandlerTestSuite) TestHandleActionGetAtResourceServerRequest_NotFou
 func (suite *HandlerTestSuite) TestHandleActionGetAtResourceServerRequest_ServiceError() {
 	var nilResourceID *string
 	suite.mockService.On("GetAction", mock.Anything,
-		"rs-123", nilResourceID, "action-123").
+		"rs-123", nilResourceID, "action-123", mock.Anything).
 		Return(nil, &tidcommon.InternalServerError)
 
 	req := httptest.NewRequest("GET", "/resource-servers/rs-123/actions/action-123", nil)
@@ -1296,7 +1312,7 @@ func (suite *HandlerTestSuite) TestHandleActionListAtResourceRequest_InvalidLimi
 func (suite *HandlerTestSuite) TestHandleActionListAtResourceRequest_ServiceError() {
 	resourceID := testResourceID
 	suite.mockService.On("GetActionList", mock.Anything,
-		"rs-123", &resourceID, providers.ActionKind(""), 30, 0).
+		"rs-123", &resourceID, providers.ActionKind(""), 30, 0, mock.Anything).
 		Return(nil, &tidcommon.InternalServerError)
 
 	req := httptest.NewRequest("GET", "/resource-servers/rs-123/resources/res-123/actions", nil)
@@ -1347,7 +1363,7 @@ func (suite *HandlerTestSuite) TestHandleActionPostAtResourceRequest_ServiceErro
 func (suite *HandlerTestSuite) TestHandleActionGetAtResourceRequest_NotFound() {
 	resourceID := testResourceID
 	suite.mockService.On("GetAction", mock.Anything,
-		"rs-123", &resourceID, "action-123").Return(nil, &ErrorActionNotFound)
+		"rs-123", &resourceID, "action-123", mock.Anything).Return(nil, &ErrorActionNotFound)
 
 	req := httptest.NewRequest("GET", "/resource-servers/rs-123/resources/res-123/actions/action-123", nil)
 	req.SetPathValue("rsId", "rs-123")
@@ -1363,7 +1379,7 @@ func (suite *HandlerTestSuite) TestHandleActionGetAtResourceRequest_NotFound() {
 func (suite *HandlerTestSuite) TestHandleActionGetAtResourceRequest_ServiceError() {
 	resourceID := testResourceID
 	suite.mockService.On("GetAction", mock.Anything,
-		"rs-123", &resourceID, "action-123").
+		"rs-123", &resourceID, "action-123", mock.Anything).
 		Return(nil, &tidcommon.InternalServerError)
 
 	req := httptest.NewRequest("GET", "/resource-servers/rs-123/resources/res-123/actions/action-123", nil)

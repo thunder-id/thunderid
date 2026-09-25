@@ -209,22 +209,23 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_NilRes
 // DownscopeToResourceServer tests
 
 func (suite *ResourceIndicatorsTestSuite) TestDownscopeToResourceServer_DropsInvalidScopes() {
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read", "write", "delete"}).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read", "write", "delete"},
+		mock.Anything).
 		Return([]string{"write"}, nil)
 
 	scopes, err := DownscopeToResourceServer(context.Background(), suite.mockResourceService, "rs01",
-		[]string{"read", "write", "delete"})
+		[]string{"read", "write", "delete"}, "")
 
 	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), []string{"read", "delete"}, scopes)
 }
 
 func (suite *ResourceIndicatorsTestSuite) TestDownscopeToResourceServer_PreservesOrder() {
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"c", "a", "b"}).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"c", "a", "b"}, mock.Anything).
 		Return([]string{}, nil)
 
 	scopes, err := DownscopeToResourceServer(context.Background(), suite.mockResourceService, "rs01",
-		[]string{"c", "a", "b"})
+		[]string{"c", "a", "b"}, "")
 
 	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), []string{"c", "a", "b"}, scopes)
@@ -232,7 +233,7 @@ func (suite *ResourceIndicatorsTestSuite) TestDownscopeToResourceServer_Preserve
 
 func (suite *ResourceIndicatorsTestSuite) TestDownscopeToResourceServer_EmptyScopes_Unchanged() {
 	scopes, err := DownscopeToResourceServer(context.Background(), suite.mockResourceService, "rs01",
-		[]string{})
+		[]string{}, "")
 
 	assert.Nil(suite.T(), err)
 	assert.Empty(suite.T(), scopes)
@@ -240,11 +241,11 @@ func (suite *ResourceIndicatorsTestSuite) TestDownscopeToResourceServer_EmptySco
 
 func (suite *ResourceIndicatorsTestSuite) TestDownscopeToResourceServer_ValidatePermissionsError_ReturnsServerError() {
 	svcErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "RSE-5000"}
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read"}).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read"}, mock.Anything).
 		Return(nil, svcErr)
 
 	scopes, err := DownscopeToResourceServer(context.Background(), suite.mockResourceService, "rs01",
-		[]string{"read"})
+		[]string{"read"}, "")
 
 	assert.Nil(suite.T(), scopes)
 	assert.NotNil(suite.T(), err)
@@ -262,7 +263,8 @@ func (suite *ResourceIndicatorsTestSuite) TestComputeRSValidScopes_Empty() {
 
 func (suite *ResourceIndicatorsTestSuite) TestComputeRSValidScopes_DropsInvalidPerRS() {
 	rs := &providers.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read", "write"}).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01",
+		[]string{"read", "write"}, mock.Anything).
 		Return([]string{"write"}, nil)
 
 	result, err := ComputeRSValidScopes(context.Background(), suite.mockResourceService,
@@ -275,7 +277,7 @@ func (suite *ResourceIndicatorsTestSuite) TestComputeRSValidScopes_DropsInvalidP
 func (suite *ResourceIndicatorsTestSuite) TestComputeRSValidScopes_ValidatePermissionsError_ReturnsServerError() {
 	rs := &providers.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
 	svcErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "RSE-5000"}
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read"}).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read"}, mock.Anything).
 		Return(nil, svcErr)
 
 	result, err := ComputeRSValidScopes(context.Background(), suite.mockResourceService,
@@ -301,7 +303,8 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveAndDownscope_Downscopes() {
 	rs := providers.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "https://rs01.example.com").
 		Return(&rs, nil)
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01", []string{"read", "write"}).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs01",
+		[]string{"read", "write"}, mock.Anything).
 		Return([]string{"write"}, nil)
 
 	resolved, scopes, err := ResolveAndDownscope(context.Background(), suite.mockResourceService,

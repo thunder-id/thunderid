@@ -19,9 +19,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -122,6 +124,15 @@ func authenticate(
 
 	oauthApp, svcErr := actorProvider.GetOAuthClientByClientID(ctx, clientID)
 	if svcErr != nil {
+		// Resolution is scoped by the organization unit the request named, so a client that exists
+		// but may not act for it does not resolve. That is a different answer from a bad credential
+		// and has to read as one.
+		if svcErr.Code == tidcommon.ErrorUnauthorized.Code {
+			accessingOUID := syscontext.GetAccessingOUID(ctx)
+			logger.Debug(ctx, "Client is not authorized for the requested organization unit",
+				log.MaskedString("clientID", clientID), log.String("ouId", accessingOUID))
+			return nil, errClientNotAuthorizedForOU(accessingOUID)
+		}
 		logger.Error(ctx, "Failed to retrieve OAuth client",
 			log.String("error", svcErr.Error.DefaultValue), log.MaskedString("clientID", clientID))
 		return nil, errInvalidClientCredentials

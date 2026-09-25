@@ -300,7 +300,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		finalScopes = oidcScopes
 	} else {
 		permissionScopes, resErr = resourceindicators.DownscopeToResourceServer(
-			ctx, h.resourceService, targetRS.ID, permissionScopes)
+			ctx, h.resourceService, targetRS.ID, permissionScopes, "")
 		if resErr != nil {
 			return nil, resErr
 		}

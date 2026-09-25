@@ -108,7 +108,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) SetupTest() {
 		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil).Maybe()
 
 	suite.installPermissiveAuthzStubs()
@@ -1796,7 +1796,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_ScopeDownscopedT
 	suite.mockResourceService.ExpectedCalls = nil
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
 		Return(&providers.ResourceServer{ID: "rs-1", Identifier: testRS01URI}, nil)
-	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs-1", mock.Anything).
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, "rs-1", mock.Anything, mock.Anything).
 		Return([]string{"write"}, nil)
 
 	suite.mockTokenValidator.
@@ -2139,7 +2139,7 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_DownscopeValidat
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRefreshTokenAudience).
 		Return(&providers.ResourceServer{ID: testRefreshTokenAudience, Identifier: testRefreshTokenAudience}, nil)
-	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
+	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]string(nil), &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "RES-5001"})
 	suite.mockResourceService = rsvc
 	suite.rebuildHandlerWithConfig()

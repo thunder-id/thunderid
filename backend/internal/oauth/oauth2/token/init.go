@@ -9,6 +9,7 @@ import (
 
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
@@ -31,6 +32,7 @@ func Initialize(
 	discoveryService discovery.DiscoveryServiceInterface,
 	dpopVerifier dpop.VerifierInterface,
 	jtiStore jti.JTIStoreInterface,
+	ouService providers.OrganizationUnitProvider,
 	cfg oauthconfig.Config,
 ) TokenHandlerInterface {
 	tokenEndpoint := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).TokenEndpoint
@@ -39,7 +41,7 @@ func Initialize(
 		dpopVerifier, tokenEndpoint, dpopRequired)
 	tokenHandler := newTokenHandler(tokenSvc, observabilitySvc)
 	registerRoutes(mux, tokenHandler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, cfg.JWT.Leeway)
+		jtiStore, ouService, cfg.JWT.Leeway)
 	return tokenHandler
 }
 
@@ -52,6 +54,7 @@ func registerRoutes(
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	jtiStore jti.JTIStoreInterface,
+	ouService providers.OrganizationUnitProvider,
 	leeway int64,
 ) {
 	corsOpts := middleware.CORSOptions{
@@ -64,13 +67,17 @@ func registerRoutes(
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
 	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, jwtService,
 		jtiStore, issuer, leeway)
-	handler := clientAuthMiddleware(http.HandlerFunc(tokenHandler.HandleTokenRequest))
+	// The accessing-organization-unit middleware wraps client authentication rather than the other
+	// way round: resolving the client is itself scoped by that organization unit, so it has to be
+	// settled first.
+	handler := accessingOUMiddleware(ouService)(
+		clientAuthMiddleware(http.HandlerFunc(tokenHandler.HandleTokenRequest)))
 
-	pattern, wrappedHandler := middleware.WithCORS(
+	for _, route := range []string{
 		"POST /oauth2/token",
-		handler.ServeHTTP,
-		corsOpts,
-	)
-
-	mux.HandleFunc(pattern, wrappedHandler)
+		"POST /ou/{" + constants.PathParamOUID + "}/oauth2/token",
+	} {
+		pattern, wrappedHandler := middleware.WithCORS(route, handler.ServeHTTP, corsOpts)
+		mux.HandleFunc(pattern, wrappedHandler)
+	}
 }

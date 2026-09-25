@@ -286,6 +286,122 @@ var (
 			DefaultValue: "A resource server with the specified ID already exists",
 		},
 	}
+	// ErrorResourceServerModificationRestrictedToOwner is returned when an organization unit that
+	// was shared a resource server tries to change it.
+	ErrorResourceServerModificationRestrictedToOwner = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1024",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.modification_restricted_to_owner",
+			DefaultValue: "Only the owning organization unit may change this resource server",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.modification_restricted_to_owner_description",
+			DefaultValue: "Being shared a resource server conveys the right to use its permissions, not to change them",
+		},
+	}
+
+	// Sharing errors. The sharing framework has its own vocabulary, which callers of this API
+	// should never see: these are the resource server's own terms for the same failures, and every
+	// sharing error is mapped onto one of them before it leaves the service.
+
+	// ErrorSharingPolicyNotFound is returned when a sharing policy does not exist on this server.
+	ErrorSharingPolicyNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.sharing_policy_not_found",
+			DefaultValue: "Sharing policy not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.sharing_policy_not_found_description",
+			DefaultValue: "The resource server has no sharing policy with the specified id",
+		},
+	}
+	// ErrorSharingPolicyExists is returned when an organization unit already has a policy for this
+	// resource server. Its description names the existing policy, which is the one to edit.
+	ErrorSharingPolicyExists = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1026",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.sharing_policy_exists",
+			DefaultValue: "A sharing policy already exists for this organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.sharing_policy_exists_description",
+			DefaultValue: "Exactly one sharing policy exists per organization unit; edit the existing one",
+		},
+	}
+	// ErrorSharingPolicyVersionMismatch is returned when an edit was built on a stale read.
+	ErrorSharingPolicyVersionMismatch = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1027",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.sharing_policy_version_mismatch",
+			DefaultValue: "Sharing policy version mismatch",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.sharing_policy_version_mismatch_description",
+			DefaultValue: "The sharing policy changed since it was read; re-read it and retry",
+		},
+	}
+	// ErrorSharingPolicyImmutable is returned when an edit or delete targets a policy a resource
+	// file declares and that the file, not the API, owns.
+	ErrorSharingPolicyImmutable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1028",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.sharing_policy_immutable",
+			DefaultValue: "This sharing policy is defined in a resource file",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.sharing_policy_immutable_description",
+			DefaultValue: "A sharing policy a resource file declares can only be removed in that file",
+		},
+	}
+	// ErrorSharingNotPermitted is returned when an organization unit may not share this resource
+	// server to the requested target at all.
+	ErrorSharingNotPermitted = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1029",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.sharing_not_permitted",
+			DefaultValue: "Sharing this resource server is not permitted",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.sharing_not_permitted_description",
+			DefaultValue: "The organization unit may not share this resource server to the requested target",
+		},
+	}
+	// ErrorInvalidSharingPolicy is returned when a sharing policy is malformed, names something the
+	// resource server does not define, or asks for more than the initiating organization unit holds.
+	ErrorInvalidSharingPolicy = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1030",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.invalid_sharing_policy",
+			DefaultValue: "Invalid sharing policy",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.invalid_sharing_policy_description",
+			DefaultValue: "The sharing policy is not valid for this resource server",
+		},
+	}
+	// ErrorViewingOUIDRequired is returned when a read has to be answered as some organization unit
+	// and the caller is not bounded to one of its own.
+	ErrorViewingOUIDRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1031",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.viewing_ou_required",
+			DefaultValue: "An organization unit must be named",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.resourceservice.viewing_ou_required_description",
+			DefaultValue: "The caller is not bounded to a single organization unit, " +
+				"so the ouId query parameter is required",
+		},
+	}
 )
 
 // Internal error constants.

@@ -702,6 +702,7 @@ func (rs *roleService) validatePermissions(
 			ctx,
 			resPerm.ResourceServerID,
 			resPerm.Permissions,
+			"",
 		)
 
 		if svcErr != nil {
@@ -780,7 +781,7 @@ func (rs *roleService) CascadeDeleteDependencies(
 	deleted := 0
 	for _, resPerm := range referenced {
 		invalid, svcErr := rs.resourceService.ValidatePermissions(
-			ctx, resPerm.ResourceServerID, resPerm.Permissions)
+			ctx, resPerm.ResourceServerID, resPerm.Permissions, "")
 		if svcErr != nil {
 			return deleted, fmt.Errorf("failed to validate permissions of resource server %s: %s",
 				resPerm.ResourceServerID, svcErr.Error.DefaultValue)

@@ -10,9 +10,11 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/application"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	"github.com/thunder-id/thunderid/internal/role"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -23,22 +25,28 @@ type actorProvider struct {
 	entityProvider entityprovider.EntityProviderInterface
 	authnProvider  providers.AuthnProviderManager
 	roleService    role.RoleServiceInterface
-	logger         *log.Logger
+	// appService answers which organization units an application may be used on behalf of. It is nil
+	// outside the server, which hosts no application management; that refuses every organization unit
+	// but the application's own.
+	appService application.ApplicationServiceInterface
+	logger     *log.Logger
 }
 
 // newActorProvider creates a new actorProvider backed by the given inbound-client, entity-provider,
-// authentication provider, and role service.
+// authentication provider, role and application services.
 func newActorProvider(
 	inboundClient inboundclient.InboundClientServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	authnProvider providers.AuthnProviderManager,
 	roleService role.RoleServiceInterface,
+	appService application.ApplicationServiceInterface,
 ) providers.ActorProvider {
 	return &actorProvider{
 		inboundClient:  inboundClient,
 		entityProvider: entityProvider,
 		authnProvider:  authnProvider,
 		roleService:    roleService,
+		appService:     appService,
 		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ActorProvider")),
 	}
 }
@@ -55,7 +63,49 @@ func (p *actorProvider) GetOAuthClientByClientID(
 		p.logger.Error(ctx, "Failed to fetch OAuth client", log.String("clientID", clientID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-	return toProviderOAuthClient(client), nil
+
+	oauthClient := toProviderOAuthClient(client)
+	if svcErr := p.requireUsableInAccessingOU(ctx, oauthClient); svcErr != nil {
+		return nil, svcErr
+	}
+	return oauthClient, nil
+}
+
+// requireUsableInAccessingOU refuses a client the request may not act as.
+//
+// Resolution and admission are one step on purpose. The lookup itself stays global, so one
+// registration still serves every organization unit and no per-customer registration is needed;
+// what is scoped is whether the client may be used. Doing it here rather than in a grant handler
+// means every path that resolves a client inherits the rule instead of each handler remembering to
+// ask.
+func (p *actorProvider) requireUsableInAccessingOU(
+	ctx context.Context, oauthClient *providers.OAuthClient,
+) *tidcommon.ServiceError {
+	accessingOUID := syscontext.GetAccessingOUID(ctx)
+	if accessingOUID == "" || oauthClient == nil {
+		return nil
+	}
+
+	// An application's own organization unit needs no policy of its own. The framework would answer
+	// the same, but only after resolving ownership, and this is the common case on the token path.
+	if oauthClient.OUID == accessingOUID {
+		return nil
+	}
+
+	if p.appService == nil {
+		return &tidcommon.ErrorUnauthorized
+	}
+
+	visible, svcErr := p.appService.IsApplicationVisibleToOU(ctx, oauthClient.ID, accessingOUID)
+	if svcErr != nil {
+		p.logger.Error(ctx, "Failed to resolve application access for an organization unit",
+			log.String("appID", oauthClient.ID), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !visible {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
 }
 
 // GetOAuthProfileByID returns the stored OAuth profile for the given entity UUID.

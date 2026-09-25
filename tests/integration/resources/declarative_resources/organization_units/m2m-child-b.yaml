@@ -1,0 +1,6 @@
+resource_type: organization_unit
+id: decl-m2m-child-b
+handle: decl-m2m-child-b
+name: M2M Declarative Child B
+description: Child organization unit carved out of the subtree grant
+parent: decl-m2m-root
