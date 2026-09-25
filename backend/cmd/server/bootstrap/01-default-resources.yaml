@@ -6013,3 +6013,9 @@ translations:
     forms.confirm.description: You are about to sign out of your account. Do you want to continue?
     forms.confirm.actions.submit.label: Sign out
     errors.failed.description: Something went wrong. Please try again.
+  notification:
+    templates.list.title: Notification Templates
+    templates.list.subtitle: Manage the email and SMS templates used for notifications.
+    templates.actions.create.label: New Template
+    templates.editor.fields.subject.label: Subject
+    templates.editor.actions.save.label: Save Template

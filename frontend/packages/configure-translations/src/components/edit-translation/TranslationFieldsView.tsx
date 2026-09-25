@@ -18,8 +18,8 @@ export interface TranslationFieldsViewProps {
   serverValues: Record<string, string>;
   /** Current search query used to filter visible translation keys. */
   search: string;
-  /** Whether the active namespace is "custom", which allows adding new keys. */
-  isCustomNamespace: boolean;
+  /** Whether the active namespace permits admins to add brand-new keys (e.g. the custom and notification namespaces). */
+  isKeyCreationAllowedNamespace: boolean;
   /** Callback invoked when the user edits a translation field value. */
   onChange: (key: string, value: string) => void;
   /** Callback invoked when the user resets a field back to its saved value. */
@@ -68,7 +68,7 @@ export default function TranslationFieldsView({
   localValues,
   serverValues,
   search,
-  isCustomNamespace,
+  isKeyCreationAllowedNamespace,
   onChange,
   onResetField,
 }: TranslationFieldsViewProps): JSX.Element {
@@ -105,7 +105,7 @@ export default function TranslationFieldsView({
 
   return (
     <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
-      {isCustomNamespace && (
+      {isKeyCreationAllowedNamespace && (
         <Box>
           {!addingKey ? (
             <Button

@@ -233,7 +233,12 @@ export default function TranslationsEditPage(): JSX.Element {
   };
 
   const isLoading = !!selectedLanguage && translationsLoading;
-  const isCustomNamespace = selectedNamespace === NamespaceConstants.CUSTOM_NAMESPACE;
+  // Namespaces the admin may add brand-new keys to from the Console. The custom
+  // namespace is fully user-defined; the notification namespace is seeded from the
+  // server bootstrap resources but is likewise open to admin-authored additions.
+  const isKeyCreationAllowedNamespace =
+    selectedNamespace === NamespaceConstants.CUSTOM_NAMESPACE ||
+    selectedNamespace === NamespaceConstants.NOTIFICATION;
 
   return (
     <PageContent sx={{display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0}}>
@@ -284,7 +289,7 @@ export default function TranslationsEditPage(): JSX.Element {
             search={search}
             currentValues={currentValues}
             serverValues={serverValues}
-            isCustomNamespace={isCustomNamespace}
+            isKeyCreationAllowedNamespace={isKeyCreationAllowedNamespace}
             colorMode={colorMode}
             onTabChange={handleTabChange}
             onSearchChange={setSearch}
