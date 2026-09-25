@@ -17,6 +17,9 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/cachemock"
 )
 
+// updatedTestSchemaName is the new name used by tests that rename createTestSchema's schema.
+const updatedTestSchemaName = "UpdatedSchema"
+
 // CacheBackedStoreTestSuite tests the cachedBackedEntityTypeStore.
 type CacheBackedStoreTestSuite struct {
 	suite.Suite
@@ -233,7 +236,7 @@ func (s *CacheBackedStoreTestSuite) TestUpdateEntityTypeByID_Success() {
 	s.schemaByNameData[string(TypeCategoryUser)+":"+oldSchema.Name] = &oldSchema
 
 	updatedSchema := oldSchema
-	updatedSchema.Name = "UpdatedSchema"
+	updatedSchema.Name = updatedTestSchemaName
 	updatedSchema.SystemAttributes = &SystemAttributes{Display: "given_name"}
 
 	s.mockStore.On("UpdateEntityTypeByID", mock.Anything, mock.Anything, oldSchema.ID, updatedSchema).Return(nil).Once()
@@ -248,15 +251,41 @@ func (s *CacheBackedStoreTestSuite) TestUpdateEntityTypeByID_Success() {
 
 	// New name key should be cached.
 	cachedByNewName, ok := s.schemaByNameCache.Get(
-		context.Background(), cacheKeyForName(TypeCategoryUser, "UpdatedSchema"))
+		context.Background(), cacheKeyForName(TypeCategoryUser, updatedTestSchemaName))
 	s.True(ok)
-	s.Equal("UpdatedSchema", cachedByNewName.Name)
+	s.Equal(updatedTestSchemaName, cachedByNewName.Name)
 
 	// ID cache should now point at the updated schema.
 	cachedByID, ok := s.schemaByIDCache.Get(context.Background(), cacheKeyForID(TypeCategoryUser, oldSchema.ID))
 	s.True(ok)
-	s.Equal("UpdatedSchema", cachedByID.Name)
+	s.Equal(updatedTestSchemaName, cachedByID.Name)
 	s.Equal("given_name", cachedByID.SystemAttributes.Display)
+}
+
+// TestUpdateEntityTypeByID_InvalidatesCorrectKeyEvenWhenCachedCategoryIsBlank guards the regression
+// found via issue #5507's follow-up audit: EntityType.Category is tagged json:"-", so a value read
+// back from the Redis cache backend always has Category == "" (the JSON round trip in
+// redisCache[T].Get drops it). Invalidation must key off the category parameter already known at
+// the call site, not the (possibly blanked) cached value's Category field.
+func (s *CacheBackedStoreTestSuite) TestUpdateEntityTypeByID_InvalidatesCorrectKeyEvenWhenCachedCategoryIsBlank() {
+	oldSchema := s.createTestSchema()
+	blankCategorySchema := oldSchema
+	blankCategorySchema.Category = ""
+	s.schemaByIDData[string(TypeCategoryUser)+":"+oldSchema.ID] = &blankCategorySchema
+	s.schemaByNameData[string(TypeCategoryUser)+":"+oldSchema.Name] = &blankCategorySchema
+
+	updatedSchema := oldSchema
+	updatedSchema.Name = updatedTestSchemaName
+
+	s.mockStore.On("UpdateEntityTypeByID", mock.Anything, mock.Anything, oldSchema.ID, updatedSchema).Return(nil).Once()
+
+	err := s.cachedStore.UpdateEntityTypeByID(context.Background(), TypeCategoryUser, oldSchema.ID, updatedSchema)
+	s.Nil(err)
+
+	// The real, correctly-keyed cache entry must be invalidated. Before the fix, invalidation used
+	// the blanked existing.Category ("") to build the key, so this stale entry was left behind.
+	_, ok := s.schemaByNameCache.Get(context.Background(), cacheKeyForName(TypeCategoryUser, "TestSchema"))
+	s.False(ok, "stale name-cache entry should have been invalidated using the category parameter")
 }
 
 func (s *CacheBackedStoreTestSuite) TestUpdateEntityTypeByID_StoreError() {
@@ -265,7 +294,7 @@ func (s *CacheBackedStoreTestSuite) TestUpdateEntityTypeByID_StoreError() {
 	s.schemaByNameData[string(TypeCategoryUser)+":"+oldSchema.Name] = &oldSchema
 
 	updatedSchema := oldSchema
-	updatedSchema.Name = "UpdatedSchema"
+	updatedSchema.Name = updatedTestSchemaName
 
 	storeErr := errors.New("update error")
 	s.mockStore.On("UpdateEntityTypeByID", mock.Anything, mock.Anything, oldSchema.ID, updatedSchema).
@@ -303,6 +332,29 @@ func (s *CacheBackedStoreTestSuite) TestDeleteEntityTypeByID_ExistsInCache() {
 
 	_, ok = s.schemaByNameCache.Get(context.Background(), cacheKeyForName(TypeCategoryUser, schema.Name))
 	s.False(ok)
+}
+
+// TestDeleteEntityTypeByID_InvalidatesCorrectKeyEvenWhenCachedCategoryIsBlank guards the same
+// regression as the Update case above, for the delete path.
+func (s *CacheBackedStoreTestSuite) TestDeleteEntityTypeByID_InvalidatesCorrectKeyEvenWhenCachedCategoryIsBlank() {
+	schema := s.createTestSchema()
+	blankCategorySchema := schema
+	blankCategorySchema.Category = ""
+	s.schemaByIDData[string(TypeCategoryUser)+":"+schema.ID] = &blankCategorySchema
+	s.schemaByNameData[string(TypeCategoryUser)+":"+schema.Name] = &blankCategorySchema
+
+	s.mockStore.On("DeleteEntityTypeByID", mock.Anything, mock.Anything, schema.ID).Return(nil).Once()
+
+	err := s.cachedStore.DeleteEntityTypeByID(context.Background(), TypeCategoryUser, schema.ID)
+	s.Nil(err)
+
+	// Before the fix, invalidation used the blanked existing.Category ("") to build the key,
+	// leaving these real, correctly-keyed entries stale in the cache after delete.
+	_, ok := s.schemaByIDCache.Get(context.Background(), cacheKeyForID(TypeCategoryUser, schema.ID))
+	s.False(ok, "ID-cache entry should have been invalidated using the category parameter")
+
+	_, ok = s.schemaByNameCache.Get(context.Background(), cacheKeyForName(TypeCategoryUser, schema.Name))
+	s.False(ok, "name-cache entry should have been invalidated using the category parameter")
 }
 
 func (s *CacheBackedStoreTestSuite) TestDeleteEntityTypeByID_NotInCache() {
