@@ -70,7 +70,7 @@ func Initialize(
 	// RFC 7009 routes against the already-built service.
 	if cfg.OAuth.TokenRevocation.IsEnabled() {
 		revocation.RegisterRoutes(mux, jwtService, actorProvider, authnProvider, discoveryService,
-			revocationSvc, jtiStore, cfg.JWT.Leeway)
+			revocationSvc, jtiStore, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway)
 	} else {
 		enforcementService = nil
 		revocationSvc = nil
@@ -101,7 +101,7 @@ func Initialize(
 	token.Initialize(mux, jwtService, actorProvider, authnProvider, grantHandlerProvider,
 		scopeValidator, observabilitySvc, discoveryService, dpopVerifier, jtiStore, cfg)
 	introspect.Initialize(mux, jwtService, actorProvider, authnProvider, discoveryService, tokenValidator,
-		jtiStore, cfg.JWT.Leeway)
+		jtiStore, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway)
 	userinfo.Initialize(mux, jwtService, jweService, resolver,
 		tokenValidator, actorProvider, attributeCacheSvc,
 		discoveryService, dpopVerifier, cfg)
