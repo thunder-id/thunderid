@@ -11,16 +11,18 @@ import {useTranslation} from 'react-i18next';
 import {useNavigate, useParams} from 'react-router';
 import useConnection from '../api/useConnection';
 import useConnectionInstances from '../api/useConnectionInstances';
+import useConnectionMeta from '../api/useConnectionMeta';
 import useDeleteConnection from '../api/useDeleteConnection';
 import useUpdateConnection from '../api/useUpdateConnection';
 import AttributeMappingSection from '../components/AttributeMappingSection';
+import AuthenticationSection from '../components/AuthenticationSection';
 import ConnectionDeleteDialog from '../components/ConnectionDeleteDialog';
 import ConnectionForm from '../components/ConnectionForm';
 import ReadOnlyCopyField from '../components/ReadOnlyCopyField';
 import {CONNECTION_FORM_FIELDS} from '../config/connectionFormFields';
 import {VENDOR_META_BY_TYPE} from '../config/connectionVendorMeta';
 import useConnectionRoutes from '../hooks/useConnectionRoutes';
-import type {AttributeConfiguration, ConnectionType} from '../models/connection';
+import type {AttributeConfiguration, ConnectionType, OutboundAuthMethod} from '../models/connection';
 import {
   type ConnectionFormValues,
   formValuesToRequest,
@@ -94,6 +96,8 @@ export default function ConnectionDetailPage(): JSX.Element | null {
 
   const updateMutation = useUpdateConnection(connectionType, resolvedId ?? '');
   const deleteMutation = useDeleteConnection(connectionType);
+  const authenticationMethods: OutboundAuthMethod[] =
+    useConnectionMeta(connectionType).data?.authentication.methods ?? [];
 
   useEffect(() => {
     if (!meta) {
@@ -144,6 +148,11 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     if (updateMutation.isError) {
       updateMutation.reset();
     }
+  };
+
+  const handleFieldChange = (name: string, value: string): void => {
+    clearSaveError();
+    setEditedValues((prev) => ({...prev, [name]: value}));
   };
 
   const handleSave = (): void => {
@@ -286,7 +295,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                 />
               </SettingsCard>
 
-              <SettingsCard title={t('detail.credentials.title')} description={t('detail.credentials.description')}>
+              <SettingsCard title={t('detail.configuration.title')} description={t('detail.configuration.description')}>
                 <ConnectionForm
                   type={connectionType}
                   mode="edit"
@@ -296,13 +305,29 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                   vendorDisplayName={meta.displayName}
                   nameError={nameError}
                   showNameField={isCustom}
-                  onFieldChange={(name, value) => {
-                    clearSaveError();
-                    setEditedValues((prev) => ({...prev, [name]: value}));
-                  }}
+                  showAuthentication={false}
+                  onFieldChange={handleFieldChange}
                   onSecretReplacingChange={setSecretReplacing}
                 />
               </SettingsCard>
+
+              {authenticationMethods.length > 0 && (
+                <SettingsCard
+                  title={t('detail.authentication.title')}
+                  description={t('detail.authentication.description')}
+                >
+                  <AuthenticationSection
+                    methods={authenticationMethods}
+                    values={values}
+                    mode="edit"
+                    secretReplacing={secretReplacing}
+                    hasStoredSecret
+                    showHeading={false}
+                    onFieldChange={handleFieldChange}
+                    onSecretReplacingChange={setSecretReplacing}
+                  />
+                </SettingsCard>
+              )}
             </Stack>
           </TabPanel>
 

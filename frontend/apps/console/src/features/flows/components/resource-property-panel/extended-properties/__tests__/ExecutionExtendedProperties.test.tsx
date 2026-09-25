@@ -81,11 +81,13 @@ vi.mock('@/features/flows/hooks/useValidationStatus', () => ({
   }),
 }));
 
-// Mock useIdentityProviders + useSMSProviders
+// Mock useIdentityProviders + useSMSProviders + useEmailProviders
 const mockIdentityProviders = vi.fn<() => {data: unknown[]; isLoading: boolean}>();
 const mockSMSProviders = vi.fn<() => {data: unknown[]; isLoading: boolean}>();
+const mockEmailProviders = vi.fn<() => {data: unknown[]; isLoading: boolean}>();
 vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
+  useEmailProviders: () => mockEmailProviders(),
   useIdentityProviders: () => mockIdentityProviders(),
   useSMSProviders: () => mockSMSProviders(),
 }));
@@ -100,6 +102,10 @@ describe('ExecutionExtendedProperties', () => {
       isLoading: false,
     });
     mockSMSProviders.mockReturnValue({
+      data: [],
+      isLoading: false,
+    });
+    mockEmailProviders.mockReturnValue({
       data: [],
       isLoading: false,
     });

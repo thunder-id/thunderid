@@ -14,6 +14,7 @@ export const ConnectionTypes = {
   TWILIO: 'twilio',
   VONAGE: 'vonage',
   SMS_GATEWAY: 'sms-gateway',
+  SMTP: 'email-smtp',
 } as const;
 
 export type ConnectionType = (typeof ConnectionTypes)[keyof typeof ConnectionTypes];
@@ -40,6 +41,7 @@ export type ConnectionCategory =
 export const ConnectionInstanceCategories = {
   IDENTITY_PROVIDER: 'identity-provider',
   SMS_PROVIDER: 'sms-provider',
+  EMAIL_PROVIDER: 'email-provider',
 } as const;
 
 export type ConnectionInstanceCategory =
@@ -226,6 +228,36 @@ export interface VonageConnectionRequest {
 }
 
 /**
+ * How ThunderID authenticates itself on an outbound call. `type` selects the method and
+ * `properties` carries that method's field values, so a method the console was not built
+ * against still round-trips. The fields each method takes come from GET /connections/meta.
+ *
+ * A field the method marks as a credential is write-only: returned masked as "******", and
+ * omitted on update to keep the stored value.
+ */
+export interface OutboundAuthentication {
+  type: string;
+  properties?: Record<string, string>;
+}
+
+/**
+ * Request payload for an SMTP email connection.
+ */
+export interface SMTPConnectionRequest {
+  name: string;
+  description?: string;
+  host: string;
+  port: number;
+  fromAddress: string;
+  /** Display name shown beside the address in the From header. Omit for the bare address. */
+  fromName?: string;
+  /** Defaults to starttls when omitted. `none` cannot carry credentials. */
+  tls?: 'none' | 'starttls' | 'implicit';
+  /** Omit to send no credentials. */
+  authentication?: OutboundAuthentication;
+}
+
+/**
  * Request payload for a generic HTTP SMS gateway connection — a webhook ThunderID calls to
  * deliver the message, for SMS providers without a dedicated vendor integration.
  */
@@ -236,8 +268,13 @@ export interface SMSGatewayConnectionRequest {
   url: string;
   httpMethod: string;
   contentType: string;
-  /** Comma-separated "Key: value" pairs sent with every request. */
+  /**
+   * Comma-separated "Key: value" pairs sent with every request, for headers that are not
+   * credentials. Credentials belong in `authentication`, where they are stored encrypted.
+   */
   httpHeaders?: string;
+  /** Omit to send no credentials. A method other than `none` requires an https URL. */
+  authentication?: OutboundAuthentication;
 }
 
 export type ConnectionRequest =
@@ -246,7 +283,8 @@ export type ConnectionRequest =
   | OAuth2ConnectionRequest
   | TwilioConnectionRequest
   | VonageConnectionRequest
-  | SMSGatewayConnectionRequest;
+  | SMSGatewayConnectionRequest
+  | SMTPConnectionRequest;
 
 /**
  * Vendor response — secrets returned masked as "******". A superset carrying every vendor's
@@ -268,6 +306,14 @@ export interface ConnectionResponse extends OIDCConnectionRequest {
   httpMethod?: string;
   contentType?: string;
   httpHeaders?: string;
+  /** Email (SMTP) fields. */
+  host?: string;
+  port?: number;
+  fromAddress?: string;
+  fromName?: string;
+  tls?: string;
+  /** Outbound authentication, shared by every vendor that dials out with credentials. */
+  authentication?: OutboundAuthentication;
 }
 
 /**
@@ -315,4 +361,44 @@ export interface ConnectionCardModel {
   comingSoon: boolean;
   /** Route to navigate to when the card is activated; null for coming-soon. */
   navTarget: string | null;
+}
+
+/**
+ * One field of an authentication method, as the server describes it. It uses the same
+ * vocabulary as an entity type's property schema, so the console can render a method it was
+ * never compiled against.
+ */
+export interface OutboundAuthField {
+  name: string;
+  type: string;
+  required?: boolean;
+  /** A secret: rendered write-only, omitted on update to keep the stored value. */
+  credential?: boolean;
+  /** When present, the value must be one of these choices. */
+  enum?: string[];
+  /** When present, the pattern the value must match. Compiled client-side. */
+  regex?: string;
+  /** Plain text, or an i18n template pattern of the form "{{t(namespace:key)}}". */
+  displayName: string;
+}
+
+/**
+ * One authentication method a vendor supports, with its fields in render order.
+ */
+export interface OutboundAuthMethod {
+  type: string;
+  displayName: string;
+  /** The method's fields, in render order. Absent for a method that takes none. */
+  properties?: OutboundAuthField[];
+}
+
+/**
+ * Response of GET /connections/meta: what a vendor can be configured with. Only authentication
+ * is described today; the rest of the form is still statically known to the console.
+ */
+export interface ConnectionMetaResponse {
+  vendor: string;
+  authentication: {
+    methods: OutboundAuthMethod[];
+  };
 }

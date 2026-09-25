@@ -120,19 +120,9 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
   ];
 
   const footer: JSX.Element | null = (() => {
+    // Picking a type card is itself the step's action, so the type step carries no footer.
     if (step === Step.TYPE) {
-      return (
-        <Box sx={{display: 'flex', justifyContent: 'flex-end'}}>
-          <Button
-            variant="contained"
-            disabled={!selectedType}
-            onClick={() => setStep(Step.NAME)}
-            data-testid="wizard-continue"
-          >
-            {t('common:actions.continue', 'Continue')}
-          </Button>
-        </Box>
-      );
+      return null;
     }
     if (step === Step.NAME) {
       return (
@@ -174,7 +164,15 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
 
   return (
     <FullScreenCreationWizardLayout onClose={close} progress={progress} breadcrumbItems={crumbs} footer={footer}>
-      {step === Step.TYPE && <SelectConnectionType selectedType={selectedType} onSelect={setSelectedType} />}
+      {step === Step.TYPE && (
+        <SelectConnectionType
+          selectedType={selectedType}
+          onSelect={(type) => {
+            setSelectedType(type);
+            setStep(Step.NAME);
+          }}
+        />
+      )}
 
       {step === Step.NAME && (
         <ConnectionNameStep

@@ -18,11 +18,13 @@ import {
 } from '@wso2/oxygen-ui';
 import {type JSX, type ReactNode, useMemo, useState} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
+import AuthenticationSection from './AuthenticationSection';
 import KeyValuePairsField from './KeyValuePairsField';
 import MaskedSecretField from './MaskedSecretField';
 import ReadOnlyCopyField from './ReadOnlyCopyField';
+import useConnectionMeta from '../api/useConnectionMeta';
 import {fieldsForMode, type ConnectionFieldDef} from '../config/connectionFormFields';
-import type {ConnectionType} from '../models/connection';
+import type {ConnectionType, OutboundAuthMethod} from '../models/connection';
 import {type ConnectionFormValues, validateConnectionForm} from '../utils/connectionFormMapping';
 
 interface ConnectionFormProps {
@@ -39,8 +41,19 @@ interface ConnectionFormProps {
   nameError?: string | null;
   /** Render the connection-name field (custom connections only; branded names are fixed). */
   showNameField?: boolean;
+  /** Render the authentication section inline. Off when the caller renders it separately. */
+  showAuthentication?: boolean;
   onFieldChange: (name: string, value: string) => void;
   onSecretReplacingChange: (replacing: boolean) => void;
+}
+
+/**
+ * Authentication methods the vendor supports, fetched rather than hardcoded so a method added
+ * server-side reaches the form without a console change.
+ */
+function useAuthenticationMethods(type: ConnectionType): OutboundAuthMethod[] {
+  const {data} = useConnectionMeta(type);
+  return data?.authentication.methods ?? [];
 }
 
 export default function ConnectionForm({
@@ -52,6 +65,7 @@ export default function ConnectionForm({
   vendorDisplayName,
   nameError = null,
   showNameField = true,
+  showAuthentication = true,
   onFieldChange,
   onSecretReplacingChange,
 }: ConnectionFormProps): JSX.Element {
@@ -60,6 +74,7 @@ export default function ConnectionForm({
     () => fieldsForMode(type, mode).filter((field) => showNameField || field.name !== 'name'),
     [type, mode, showNameField],
   );
+  const authenticationMethods: OutboundAuthMethod[] = useAuthenticationMethods(type);
 
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
@@ -166,7 +181,10 @@ export default function ConnectionForm({
             />
           );
         } else if (field.kind === 'select') {
-          const error: string | undefined = fieldError(field.name);
+          // A select can only hold one of its own choices, so an error on it is always a
+          // consequence of another control. It shows as soon as that control changes rather than
+          // on blur, which a select never receives.
+          const error: string | undefined = errors[field.name] ? t(errors[field.name]) : undefined;
           fieldContent = (
             <FormControl fullWidth required={isRequiredNow(field)} error={Boolean(error)}>
               <FormLabel htmlFor={`connection-field-${field.name}`}>{label}</FormLabel>
@@ -211,6 +229,7 @@ export default function ConnectionForm({
               <TextField
                 id={`connection-field-${field.name}`}
                 fullWidth
+                type={field.kind === 'number' ? 'number' : 'text'}
                 value={values[field.name] ?? ''}
                 placeholder={field.placeholder}
                 error={Boolean(error)}
@@ -242,6 +261,18 @@ export default function ConnectionForm({
           </Box>
         );
       })}
+
+      {showAuthentication && (
+        <AuthenticationSection
+          methods={authenticationMethods}
+          values={values}
+          mode={mode}
+          secretReplacing={secretReplacing}
+          hasStoredSecret={hasStoredSecret}
+          onFieldChange={onFieldChange}
+          onSecretReplacingChange={onSecretReplacingChange}
+        />
+      )}
     </Stack>
   );
 }

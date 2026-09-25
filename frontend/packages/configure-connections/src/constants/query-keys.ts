@@ -16,6 +16,11 @@ const ConnectionQueryKeys = {
   SMS_PROVIDERS: 'sms-providers',
 
   /**
+   * Key for email provider queries (consumed by useEmailProviders)
+   */
+  EMAIL_PROVIDERS: 'email-providers',
+
+  /**
    * Key for the paginated connection instances list (GET /connections)
    */
   CONNECTIONS: 'connections',
@@ -34,6 +39,11 @@ const ConnectionQueryKeys = {
    * Key for the resources referencing a connection instance (GET /connections/{type}/{id}/usages)
    */
   CONNECTION_USAGES: 'connection-usages',
+
+  /**
+   * Key for a vendor's configurable options (GET /connections/meta)
+   */
+  CONNECTION_META: 'connection-meta',
 
   /**
    * Key for a single trusted issuer (GET /connections/oidc/{id})

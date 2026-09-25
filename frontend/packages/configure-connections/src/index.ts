@@ -11,6 +11,8 @@ export {default as useCreateConnection} from './api/useCreateConnection';
 export {default as useDeleteConnection} from './api/useDeleteConnection';
 export {default as useIdentityProviders} from './api/useIdentityProviders';
 export {default as useSMSProviders} from './api/useSMSProviders';
+export {default as useEmailProviders} from './api/useEmailProviders';
+export {default as useConnectionMeta} from './api/useConnectionMeta';
 export {default as useUpdateConnection} from './api/useUpdateConnection';
 
 // Components
@@ -21,6 +23,7 @@ export {default as ConnectionCard} from './components/ConnectionCard';
 export {default as ConnectionCategoryFilters} from './components/ConnectionCategoryFilters';
 export {default as ConnectionDeleteDialog} from './components/ConnectionDeleteDialog';
 export {default as ConnectionForm} from './components/ConnectionForm';
+export {default as AuthenticationSection} from './components/AuthenticationSection';
 export {default as ConnectionsList} from './components/ConnectionsList';
 export {default as KeyValuePairsField} from './components/KeyValuePairsField';
 export {default as MaskedSecretField} from './components/MaskedSecretField';

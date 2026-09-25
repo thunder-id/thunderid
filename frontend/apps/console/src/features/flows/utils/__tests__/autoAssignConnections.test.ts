@@ -129,6 +129,55 @@ describe('autoAssignConnections', () => {
       expect((nodes[0].data.properties as {senderId: string}).senderId).toBe('sms-sender-1');
     });
 
+    it('should auto-assign senderId for the Email executor', () => {
+      const nodes = [createNode('node-1', StepTypes.Execution, ExecutionTypes.EmailExecutor)];
+      const connections = [{executorName: ExecutionTypes.EmailExecutor, connections: ['email-sender-1']}];
+
+      autoAssignConnections(nodes, connections);
+
+      expect((nodes[0].data.properties as {senderId: string}).senderId).toBe('email-sender-1');
+    });
+
+    it('should auto-assign senderId for the Email executor when the placeholder is present', () => {
+      const nodes = [
+        createNode('node-1', StepTypes.Execution, ExecutionTypes.EmailExecutor, {senderId: '{{SENDER_ID}}'}),
+      ];
+      const connections = [{executorName: ExecutionTypes.EmailExecutor, connections: ['email-sender-1']}];
+
+      autoAssignConnections(nodes, connections);
+
+      expect((nodes[0].data.properties as {senderId: string}).senderId).toBe('email-sender-1');
+    });
+
+    it('should not overwrite an existing senderId on the Email executor', () => {
+      const nodes = [
+        createNode('node-1', StepTypes.Execution, ExecutionTypes.EmailExecutor, {senderId: 'chosen-sender'}),
+      ];
+      const connections = [{executorName: ExecutionTypes.EmailExecutor, connections: ['email-sender-1']}];
+
+      autoAssignConnections(nodes, connections);
+
+      expect((nodes[0].data.properties as {senderId: string}).senderId).toBe('chosen-sender');
+    });
+
+    it('should auto-assign the first provider to the Email executor when several exist', () => {
+      const nodes = [createNode('node-1', StepTypes.Execution, ExecutionTypes.EmailExecutor)];
+      const connections = [{executorName: ExecutionTypes.EmailExecutor, connections: ['email-1', 'email-2']}];
+
+      autoAssignConnections(nodes, connections);
+
+      expect((nodes[0].data.properties as {senderId: string}).senderId).toBe('email-1');
+    });
+
+    it('should not auto-assign the Email executor when no providers exist', () => {
+      const nodes = [createNode('node-1', StepTypes.Execution, ExecutionTypes.EmailExecutor)];
+      const connections = [{executorName: ExecutionTypes.EmailExecutor, connections: []}];
+
+      autoAssignConnections(nodes, connections);
+
+      expect(nodes[0].data.properties).toBeUndefined();
+    });
+
     it('should not overwrite existing senderId', () => {
       const nodes = [
         createNode('node-1', StepTypes.Execution, ExecutionTypes.SMSExecutor, {senderId: 'existing-sender'}),

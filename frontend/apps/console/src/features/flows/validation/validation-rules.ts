@@ -12,6 +12,9 @@ import {ExecutionTypes, StepTypes} from '../models/steps';
 import type {StepData} from '../models/steps';
 import VisualFlowConstants from '@/features/flows/constants/VisualFlowConstants';
 
+/** Placeholder a flow template carries until a sender is assigned. */
+const SENDER_ID_PLACEHOLDER = '{{SENDER_ID}}';
+
 /**
  * A single field that must have a non-empty value on a resource.
  */
@@ -170,6 +173,40 @@ export const VALIDATION_RULES: ValidationRuleDefinition[] = [
     match: (r) => (r as {data?: StepData}).data?.action?.executor?.name === ExecutionTypes.SMSExecutor,
     fields: [{name: 'data.properties.senderId', errorMessageKey: 'flows:core.validation.fields.input.senderId'}],
     generalMessageKey: 'flows:core.validation.fields.executor.general',
+  },
+  // Email executor. A node without a provider cannot send: email providers are configured only
+  // through the connections API and there is no deployment-wide default. A plain field rule would
+  // miss the unresolved {{SENDER_ID}} placeholder that shipped templates carry, so check both.
+  //
+  // It warns rather than errors. The shipped default flows declare their email steps before any
+  // provider can exist, so erroring would flag a fresh installation's own recovery and invite
+  // flows and block them from being saved. The server is the one that enforces this, returning
+  // ErrEmailProviderNotConfigured when a step runs without a provider.
+  {
+    match: (r) => (r as {data?: StepData}).data?.action?.executor?.name === ExecutionTypes.EmailExecutor,
+    fields: [],
+    generalMessageKey: 'flows:core.validation.fields.executor.general',
+    customValidator: (resource: Resource): Notification | null => {
+      const senderId = ((resource as {data?: StepData}).data?.properties as {senderId?: string} | undefined)?.senderId;
+
+      if (senderId && senderId !== SENDER_ID_PLACEHOLDER) {
+        return null;
+      }
+
+      const notification = new Notification(
+        `${resource.id}_EMAIL_NO_SENDER`,
+        createElement(Trans, {
+          i18nKey: 'flows:core.validation.fields.email.noSender',
+          values: {id: resource.id},
+          components: {code: createElement('code')},
+        }),
+        NotificationType.WARNING,
+      );
+
+      notification.addResource(resource);
+
+      return notification;
+    },
   },
   // OTP executor
   {

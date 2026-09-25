@@ -1833,6 +1833,7 @@ const translations = {
     'vendor.twilio.description': 'Send SMS one-time passcodes via Twilio.',
     'vendor.vonage.description': 'Deliver SMS and email passcodes through Vonage.',
     'vendor.sms-gateway.description': 'Route SMS through your own HTTP gateway.',
+    'vendor.smtp.description': 'Deliver email through your own SMTP server.',
     'vendor.trustedIdp.description': 'Trusted token issuer for token exchange and ID-JAG.',
 
     // Add custom connection wizard
@@ -1852,6 +1853,9 @@ const translations = {
     'wizard.type.sms.label': 'SMS gateway',
     'wizard.type.sms.description': 'Route SMS through your own HTTP gateway.',
     'wizard.type.sms.tag': 'Message sender · SMS',
+    'wizard.type.smtp.label': 'Email Provider (SMTP)',
+    'wizard.type.smtp.description': 'Deliver email through your own SMTP server.',
+    'wizard.type.smtp.tag': 'Message sender · Email',
     'wizard.type.trustedIdp.label': 'Trusted Token Issuer',
     'wizard.type.trustedIdp.description':
       "Trust an external IdP's identity assertions and exchange them for access tokens.",
@@ -1885,8 +1889,10 @@ const translations = {
     'detail.quickCopy.description': 'Copy connection identifiers for use in your integration.',
     'detail.connectionId': 'Connection ID',
     'detail.connectionId.hint': 'Unique identifier for this connection.',
-    'detail.credentials.title': 'Credentials',
-    'detail.credentials.description': 'Credentials and endpoints for this connection. Secrets are stored write-only.',
+    'detail.configuration.title': 'Connection details',
+    'detail.configuration.description': 'Settings and endpoints for this connection. Secrets are stored write-only.',
+    'detail.authentication.title': 'Authentication',
+    'detail.authentication.description': 'Credentials ThunderID uses to sign in to this provider. Secrets are stored write-only.',
     'detail.dangerZone.title': 'Danger zone',
     'detail.dangerZone.description': 'Actions in this section are irreversible. Proceed with caution.',
     'detail.dangerZone.delete.title': 'Delete connection',
@@ -1958,10 +1964,29 @@ const translations = {
     'form.fields.httpHeaders.hint':
       'Optional headers sent with every request. Commas are not supported in a name or value.',
     'form.fields.httpHeaders.add': 'Add header',
+    'form.fields.smtpHost.label': 'Host',
+    'form.fields.smtpHost.hint': 'Hostname of the SMTP server email is sent through.',
+    'form.fields.smtpPort.label': 'Port',
+    'form.fields.smtpPort.hint': 'Port of the SMTP server. Typically 587 for STARTTLS or 465 for implicit TLS.',
+    'form.fields.smtpFromAddress.label': 'From address',
+    'form.fields.smtpFromAddress.hint': 'Address recipients see the email come from.',
+    'form.fields.smtpFromName.label': 'Sender name',
+    'form.fields.smtpFromName.hint':
+      'Optional name shown beside the address, for example Acme Support. Leave blank to show the address alone.',
+    'form.fields.smtpTls.label': 'Transport security',
+    'form.fields.smtpTls.hint':
+      'How the connection is secured. STARTTLS upgrades a plain connection, implicit TLS connects over TLS directly. None sends email unencrypted.',
+    'form.fields.authenticationType.label': 'Authentication method',
+    'form.fields.authenticationType.hint': 'How ThunderID signs in to this server when sending.',
+    'outboundAuth.method.none': 'None',
+    'outboundAuth.method.basic': 'Username and Password',
+    'outboundAuth.field.username': 'Username',
+    'outboundAuth.field.password': 'Password',
     'form.keyValue.name': 'Name',
     'form.keyValue.value': 'Value',
     'form.keyValue.add': 'Add',
     'form.keyValue.remove': 'Remove',
+    'form.sections.authentication': 'Authentication',
     'form.sections.federation': 'Federation',
     'form.secret.update': 'Update',
     'form.secret.keepHelp': 'Leave unchanged to keep the stored secret.',
@@ -2034,11 +2059,15 @@ const translations = {
     'validation.required': 'This field is required.',
     'validation.url': 'Enter a valid URL.',
     'validation.accountSid': 'Enter a valid Account SID: “AC” followed by 32 hexadecimal characters.',
+    'validation.emailAddress': 'Enter a valid email address.',
+    'validation.tlsRequiredForAuthentication':
+      'Credentials cannot be sent over an unencrypted connection. Choose STARTTLS or implicit TLS, or set the authentication method to None.',
 
     // Error codes (backend)
     'errors.CON-1001': 'The requested connection category is not supported.',
     'errors.CON-1002': 'The limit parameter must be a positive integer.',
     'errors.CON-1003': 'The offset parameter must be a non-negative integer.',
+    'errors.CON-1005': 'The selected authentication method is not supported by this deployment.',
     'errors.IDP-1001': 'This identity provider no longer exists. It may have already been deleted.',
     'errors.IDP-1002': 'The identity provider ID is invalid or missing.',
     'errors.IDP-1003': 'The identity provider name is invalid or missing.',
@@ -3673,6 +3702,10 @@ const translations = {
     'core.executions.email.emailTemplate.label': 'Email Template',
     'core.executions.email.emailTemplate.placeholder': 'Select an email template',
     'core.executions.email.emailTemplate.hint': 'The email template scenario to use when sending the email.',
+    'core.executions.email.sender.label': 'Email Provider',
+    'core.executions.email.sender.placeholder': 'Select an email provider',
+    'core.executions.email.sender.hint': 'The email provider used to deliver this email.',
+    'core.executions.email.sender.noSenders': 'No email providers available. Please create an email provider first.',
 
     // SMS executor
     'core.executions.sms.description': 'Configure the SMS executor settings.',
@@ -3910,6 +3943,10 @@ const translations = {
     // Validation messages - phone number input
     'core.validation.fields.phoneNumberInput.label': 'Phone number label is required',
     'core.validation.fields.phoneNumberInput.ref': 'Phone number attribute is required',
+
+    // Validation messages - email
+    'core.validation.fields.email.noSender':
+      'Email executor <code>{{id}}</code> has no email provider selected. Select an email provider so the step can send.',
 
     // Validation messages - form
     'core.validation.fields.form.noSubmitButton':

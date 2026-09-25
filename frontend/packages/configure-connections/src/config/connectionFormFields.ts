@@ -1,10 +1,12 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {EMAIL_REGEX} from '@thunderid/utils';
 import {type ConnectionType, ConnectionTypes} from '../models/connection';
 
 export type ConnectionFieldKind =
   | 'text'
+  | 'number'
   | 'url'
   | 'secret'
   | 'scopes'
@@ -366,6 +368,56 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
       kind: 'key-value',
       placeholder: 'X-API-Key',
       addLabelKey: 'connections:form.fields.httpHeaders.add',
+    },
+  ],
+  [ConnectionTypes.SMTP]: [
+    NAME_FIELD('Corp SMTP'),
+    {
+      name: 'host',
+      labelKey: 'connections:form.fields.smtpHost.label',
+      hintKey: 'connections:form.fields.smtpHost.hint',
+      kind: 'text',
+      required: true,
+      placeholder: 'smtp.example.com',
+    },
+    {
+      name: 'port',
+      labelKey: 'connections:form.fields.smtpPort.label',
+      hintKey: 'connections:form.fields.smtpPort.hint',
+      kind: 'number',
+      required: true,
+      defaultValue: '587',
+      placeholder: '587',
+    },
+    {
+      name: 'fromAddress',
+      labelKey: 'connections:form.fields.smtpFromAddress.label',
+      hintKey: 'connections:form.fields.smtpFromAddress.hint',
+      kind: 'text',
+      required: true,
+      placeholder: 'noreply@example.com',
+      pattern: EMAIL_REGEX,
+      patternErrorKey: 'connections:validation.emailAddress',
+    },
+    {
+      name: 'fromName',
+      labelKey: 'connections:form.fields.smtpFromName.label',
+      hintKey: 'connections:form.fields.smtpFromName.hint',
+      kind: 'text',
+      placeholder: 'Acme Support',
+    },
+    {
+      name: 'tls',
+      labelKey: 'connections:form.fields.smtpTls.label',
+      hintKey: 'connections:form.fields.smtpTls.hint',
+      kind: 'select',
+      required: true,
+      defaultValue: 'starttls',
+      options: [
+        {value: 'starttls', label: 'STARTTLS'},
+        {value: 'implicit', label: 'Implicit TLS (SMTPS)'},
+        {value: 'none', label: 'None'},
+      ],
     },
   ],
 };

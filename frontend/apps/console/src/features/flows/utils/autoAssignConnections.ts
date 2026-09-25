@@ -11,10 +11,12 @@ const SENDER_ID_PLACEHOLDER = '{{SENDER_ID}}';
 /**
  * Automatically assigns connections to nodes based on available connections.
  * - Sets idpId in data.properties for IDP-based executors (Google, GitHub, etc.)
- * - Sets senderId in data.properties for SMS OTP executor
+ * - Sets senderId in data.properties for the SMS and Email executors
  *
- * Only auto-assigns when there's exactly one connection configured.
- * If there are multiple connections, the user should select one from the resource panel.
+ * Only auto-assigns when there's exactly one connection configured, except for the Email
+ * executor, which always takes the first provider because an email step is unusable without one.
+ * Otherwise, when there are multiple connections, the user should select one from the resource
+ * panel.
  *
  * @param nodes - The array of nodes to process.
  * @param availableConnections - The array of available executor connections.
@@ -43,13 +45,16 @@ const autoAssignConnections = (nodes: Node[], availableConnections: ExecutorConn
       const connections: string[] = availableConnectionsMap[executorName] ?? [];
       const [firstConnection] = connections;
 
-      // Only auto-assign if there's exactly one connection configured.
-      if (connections.length !== 1 || !firstConnection) {
+      // The Email executor takes the first provider whatever the count: an email step is unusable
+      // without one, and the user can switch it in the resource panel. Every other executor only
+      // auto-assigns when a single configured connection makes the choice unambiguous.
+      const isEmailExecutor: boolean = executorName === ExecutionTypes.EmailExecutor;
+      if (!firstConnection || (!isEmailExecutor && connections.length !== 1)) {
         return;
       }
 
-      // Handle SMS executor - uses senderId
-      if (executorName === ExecutionTypes.SMSExecutor) {
+      // Handle the sender-backed executors (SMS, Email) - both use senderId
+      if (executorName === ExecutionTypes.SMSExecutor || executorName === ExecutionTypes.EmailExecutor) {
         if (properties?.senderId === SENDER_ID_PLACEHOLDER || properties?.senderId === '' || !properties?.senderId) {
           // Initialize properties if needed
           step.data.properties ??= {};

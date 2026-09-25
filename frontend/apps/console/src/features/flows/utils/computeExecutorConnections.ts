@@ -20,17 +20,18 @@ const IDP_TYPE_TO_EXECUTOR: Record<string, string> = {
 export interface ComputeExecutorConnectionsParams {
   identityProviders?: BasicIdentityProvider[];
   smsProviders?: ConnectionInstance[];
+  emailProviders?: ConnectionInstance[];
 }
 
 /**
- * Computes executor connections from identity providers and SMS providers.
+ * Computes executor connections from identity providers, SMS providers and email providers.
  * Groups connections by their corresponding executor type.
  *
- * @param params - Object containing identity providers and SMS providers
+ * @param params - Object containing identity providers, SMS providers and email providers
  * @returns Array of executor connections with their associated IDs
  */
 const computeExecutorConnections = (params: ComputeExecutorConnectionsParams): ExecutorConnectionInterface[] => {
-  const {identityProviders, smsProviders} = params;
+  const {identityProviders, smsProviders, emailProviders} = params;
 
   const executorMap = new Map<string, string[]>();
 
@@ -51,6 +52,12 @@ const computeExecutorConnections = (params: ComputeExecutorConnectionsParams): E
   if (smsProviders && smsProviders.length > 0) {
     const providerIds = smsProviders.map((provider) => provider.id);
     executorMap.set(ExecutionTypes.SMSExecutor, providerIds);
+  }
+
+  // Process email providers (for Email executor)
+  if (emailProviders && emailProviders.length > 0) {
+    const providerIds = emailProviders.map((provider) => provider.id);
+    executorMap.set(ExecutionTypes.EmailExecutor, providerIds);
   }
 
   return Array.from(executorMap.entries()).map(([executorName, connections]) => ({

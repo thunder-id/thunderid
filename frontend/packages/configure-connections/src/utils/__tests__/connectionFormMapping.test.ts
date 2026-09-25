@@ -5,8 +5,11 @@ import {describe, expect, it} from 'vitest';
 import {CONNECTION_FORM_FIELDS, type ConnectionFieldDef} from '../../config/connectionFormFields';
 import type {ConnectionResponse} from '../../models/connection';
 import {
+  AUTH_TYPE_FIELD,
+  authPropertyField,
   emptyFormValues,
   formValuesToRequest,
+  MASKED_SECRET,
   responseToFormValues,
   validateConnectionForm,
 } from '../connectionFormMapping';
@@ -16,6 +19,7 @@ const OIDC_FIELDS = CONNECTION_FORM_FIELDS.oidc;
 const OAUTH_FIELDS = CONNECTION_FORM_FIELDS.oauth;
 const TWILIO_FIELDS = CONNECTION_FORM_FIELDS.twilio;
 const SMS_GATEWAY_FIELDS = CONNECTION_FORM_FIELDS['sms-gateway'];
+const SMTP_FIELDS = CONNECTION_FORM_FIELDS['email-smtp'];
 const REDIRECT = 'https://id.acme.io/oauth/callback/google';
 const VALID_ACCOUNT_SID = `AC${'a1b2c3d4e5f6'.repeat(2)}01234567`;
 
@@ -122,6 +126,30 @@ describe('formValuesToRequest', () => {
       httpMethod: 'POST',
       contentType: 'JSON',
     });
+  });
+
+  // The sender name is optional, and clearing it must drop it from the payload rather than send
+  // an empty display name the server would store.
+  it('sends the SMTP sender name only when it has a value', () => {
+    const values = {
+      ...emptyFormValues(SMTP_FIELDS, REDIRECT),
+      fromAddress: 'noreply@acme.io',
+      host: 'smtp.acme.io',
+      name: 'Corp SMTP',
+    };
+
+    expect(formValuesToRequest(values, SMTP_FIELDS, {mode: 'create'})).toEqual({
+      name: 'Corp SMTP',
+      host: 'smtp.acme.io',
+      port: 587,
+      fromAddress: 'noreply@acme.io',
+      tls: 'starttls',
+    });
+
+    const named = formValuesToRequest({...values, fromName: 'Acme Support'}, SMTP_FIELDS, {
+      mode: 'create',
+    }) as unknown as Record<string, unknown>;
+    expect(named.fromName).toBe('Acme Support');
   });
 
   it('still sends the SMS gateway transport defaults now that neither field is required', () => {
@@ -346,5 +374,182 @@ describe('validateConnectionForm', () => {
 
     const shown = validateConnectionForm({gate: 'true', child: 'not-a-url'}, fields, 'create');
     expect(shown.child).toBe('connections:validation.url');
+  });
+
+  it('rejects an SMTP from address that is not an email address', () => {
+    const values = {
+      ...emptyFormValues(SMTP_FIELDS, REDIRECT),
+      fromAddress: 'noreply',
+      host: 'smtp.acme.io',
+      name: 'Corp SMTP',
+    };
+
+    expect(validateConnectionForm(values, SMTP_FIELDS, 'create').fromAddress).toBe(
+      'connections:validation.emailAddress',
+    );
+    expect(validateConnectionForm({...values, fromAddress: 'noreply@acme.io'}, SMTP_FIELDS, 'create')).toEqual({});
+  });
+
+  // The backend rejects this combination with a message the console is not allowed to surface,
+  // so the form has to catch it before the request is sent.
+  it('rejects credentials over an unencrypted transport', () => {
+    const values = {
+      ...emptyFormValues(SMTP_FIELDS, REDIRECT),
+      [AUTH_TYPE_FIELD]: 'basic',
+      fromAddress: 'noreply@acme.io',
+      host: 'smtp.acme.io',
+      name: 'Corp SMTP',
+      tls: 'none',
+    };
+
+    expect(validateConnectionForm(values, SMTP_FIELDS, 'create').tls).toBe(
+      'connections:validation.tlsRequiredForAuthentication',
+    );
+    expect(validateConnectionForm({...values, tls: 'starttls'}, SMTP_FIELDS, 'create')).toEqual({});
+    expect(validateConnectionForm({...values, [AUTH_TYPE_FIELD]: 'none'}, SMTP_FIELDS, 'create')).toEqual({});
+  });
+
+  // The rule is keyed off the transport security field, so a vendor without one is unaffected.
+  it('leaves a vendor that does not secure its own transport alone', () => {
+    const values = {
+      ...emptyFormValues(SMS_GATEWAY_FIELDS, REDIRECT),
+      [AUTH_TYPE_FIELD]: 'basic',
+      name: 'Custom SMS Sender',
+      url: 'https://sms.example.com/send',
+    };
+
+    expect(validateConnectionForm(values, SMS_GATEWAY_FIELDS, 'create')).toEqual({});
+  });
+});
+
+describe('outbound authentication mapping', () => {
+  const BASE_SMTP = {
+    fromAddress: 'noreply@acme.io',
+    host: 'smtp.acme.io',
+    name: 'Corp SMTP',
+    port: '587',
+    tls: 'starttls',
+  };
+
+  it('nests the namespaced form values under authentication', () => {
+    const request = formValuesToRequest(
+      {
+        ...BASE_SMTP,
+        [AUTH_TYPE_FIELD]: 'basic',
+        [authPropertyField('password')]: 's3cret',
+        [authPropertyField('username')]: 'mailer',
+      },
+      SMTP_FIELDS,
+      {mode: 'create'},
+    ) as Record<string, unknown>;
+
+    expect(request.authentication).toEqual({
+      properties: {password: 's3cret', username: 'mailer'},
+      type: 'basic',
+    });
+    // The flat keys must not leak into the payload alongside the nested object.
+    expect(request['authentication.type']).toBeUndefined();
+  });
+
+  it('sends the method alone when it takes no fields', () => {
+    const request = formValuesToRequest({...BASE_SMTP, [AUTH_TYPE_FIELD]: 'none'}, SMTP_FIELDS, {
+      mode: 'create',
+    }) as Record<string, unknown>;
+
+    expect(request.authentication).toEqual({type: 'none'});
+  });
+
+  it('omits authentication entirely when the form carries none', () => {
+    const request = formValuesToRequest(BASE_SMTP, SMTP_FIELDS, {mode: 'create'}) as Record<string, unknown>;
+
+    expect(request.authentication).toBeUndefined();
+  });
+
+  // A blank credential is how the form says "keep the stored one", so it must not be sent.
+  it('omits a blank credential but keeps the other fields', () => {
+    const request = formValuesToRequest(
+      {
+        ...BASE_SMTP,
+        [AUTH_TYPE_FIELD]: 'basic',
+        [authPropertyField('password')]: '',
+        [authPropertyField('username')]: 'mailer',
+      },
+      SMTP_FIELDS,
+      {mode: 'edit'},
+    ) as Record<string, unknown>;
+
+    expect(request.authentication).toEqual({properties: {username: 'mailer'}, type: 'basic'});
+  });
+
+  // Sending the mask back would store the literal asterisks as the password.
+  it('never sends the masked placeholder back', () => {
+    const request = formValuesToRequest(
+      {
+        ...BASE_SMTP,
+        [AUTH_TYPE_FIELD]: 'basic',
+        [authPropertyField('password')]: MASKED_SECRET,
+        [authPropertyField('username')]: 'mailer',
+      },
+      SMTP_FIELDS,
+      {mode: 'edit'},
+    ) as Record<string, unknown>;
+
+    expect(request.authentication).toEqual({properties: {username: 'mailer'}, type: 'basic'});
+  });
+
+  it('flattens a response into namespaced values and blanks the masked credential', () => {
+    const response = {
+      authentication: {
+        properties: {password: MASKED_SECRET, username: 'mailer'},
+        type: 'basic',
+      },
+      fromAddress: 'noreply@acme.io',
+      host: 'smtp.acme.io',
+      id: '1',
+      name: 'Corp SMTP',
+      port: 587,
+      tls: 'starttls',
+      type: 'email-smtp',
+    } as unknown as ConnectionResponse;
+
+    const values = responseToFormValues(response, SMTP_FIELDS, REDIRECT);
+
+    expect(values[AUTH_TYPE_FIELD]).toBe('basic');
+    expect(values[authPropertyField('username')]).toBe('mailer');
+    expect(values[authPropertyField('password')]).toBe('');
+  });
+
+  // A connection stored before outbound authentication existed has no block at all; the form
+  // must not invent a selection for it.
+  it('leaves the method unset when the response carries no authentication', () => {
+    const response = {
+      fromAddress: 'noreply@acme.io',
+      host: 'smtp.acme.io',
+      id: '1',
+      name: 'Corp SMTP',
+      port: 587,
+      type: 'email-smtp',
+    } as unknown as ConnectionResponse;
+
+    expect(responseToFormValues(response, SMTP_FIELDS, REDIRECT)[AUTH_TYPE_FIELD]).toBeUndefined();
+  });
+
+  // A method the console was never compiled against must still round-trip.
+  it('round-trips an unknown method and its fields', () => {
+    const request = formValuesToRequest(
+      {
+        ...BASE_SMTP,
+        [AUTH_TYPE_FIELD]: 'client_credentials',
+        [authPropertyField('clientId')]: 'abc',
+        [authPropertyField('tokenEndpoint')]: 'https://idp.acme.io/token',
+      },
+      SMTP_FIELDS,
+      {mode: 'create'},
+    ) as Record<string, unknown>;
+
+    expect(request.authentication).toEqual({
+      properties: {clientId: 'abc', tokenEndpoint: 'https://idp.acme.io/token'},
+      type: 'client_credentials',
+    });
   });
 });

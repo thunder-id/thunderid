@@ -53,6 +53,7 @@ const OIDC_CONNECTION = {
 
 const mockParams: {type: string; id: string} = {type: 'google', id: 'g1'};
 const mockConn: {data: Record<string, unknown>} = {data: CONNECTION};
+const mockMeta: {methods: {type: string; displayName: string}[]} = {methods: []};
 
 vi.mock('react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-router')>()),
@@ -78,6 +79,9 @@ vi.mock('@thunderid/components', async (importOriginal) => ({
 
 vi.mock('../../api/useConnection', () => ({
   default: () => ({data: mockConn.data, isLoading: false, isError: false, refetch: refetchMock}),
+}));
+vi.mock('../../api/useConnectionMeta', () => ({
+  default: () => ({data: {authentication: {methods: mockMeta.methods}}}),
 }));
 vi.mock('../../api/useConnectionInstances', () => ({default: () => ({data: [], isLoading: false})}));
 vi.mock('../../api/useUpdateConnection', () => ({
@@ -127,6 +131,7 @@ describe('ConnectionDetailPage', () => {
     mockConn.data = CONNECTION;
     updateMutationState.isPending = false;
     updateMutationState.isError = false;
+    mockMeta.methods = [];
   });
 
   it('renders the general tab with quick-copy and the credentials form', () => {
@@ -135,6 +140,26 @@ describe('ConnectionDetailPage', () => {
     expect(screen.getByDisplayValue('g1')).toBeInTheDocument();
     expect(screen.getByText('Unique identifier for this connection.')).toBeInTheDocument();
     expect(screen.getByTestId('stub-connection-form')).toBeInTheDocument();
+  });
+
+  it('renders the connection form in the Connection details card', () => {
+    render(<ConnectionDetailPage />);
+    expect(screen.getByRole('region', {name: 'Connection details'})).toContainElement(
+      screen.getByTestId('stub-connection-form'),
+    );
+  });
+
+  it('omits the Authentication card when the vendor advertises no authentication methods', () => {
+    render(<ConnectionDetailPage />);
+    expect(screen.queryByRole('region', {name: 'Authentication'})).not.toBeInTheDocument();
+  });
+
+  it('renders the authentication section in its own card when the vendor advertises methods', () => {
+    mockMeta.methods = [{type: 'none', displayName: 'None'}];
+    render(<ConnectionDetailPage />);
+    expect(screen.getByRole('region', {name: 'Authentication'})).toContainElement(
+      screen.getByTestId('connection-authentication-section'),
+    );
   });
 
   it('renders the danger-zone delete on the advanced tab', () => {

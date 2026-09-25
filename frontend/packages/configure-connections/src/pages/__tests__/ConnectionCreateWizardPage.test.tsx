@@ -32,13 +32,16 @@ vi.mock('../../components/ConnectionForm', () => ({
   default: function StubConnectionForm({onFieldChange}: {onFieldChange: (name: string, value: string) => void}) {
     useEffect(() => {
       // Populate the fields required by every connection type used in these tests
-      // (oidc, oauth, sms-gateway).
+      // (oidc, oauth, sms-gateway, email-smtp).
       onFieldChange('clientId', 'x');
       onFieldChange('clientSecret', 's');
       onFieldChange('authorizationEndpoint', 'https://idp.example.com/authorize');
       onFieldChange('tokenEndpoint', 'https://idp.example.com/token');
       onFieldChange('userInfoEndpoint', 'https://idp.example.com/userinfo');
       onFieldChange('url', 'https://sms.example.com/send');
+      onFieldChange('host', 'smtp.example.com');
+      onFieldChange('fromAddress', 'noreply@example.com');
+      onFieldChange('fromName', 'Acme Support');
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     return <div data-testid="stub-connection-form" />;
@@ -72,7 +75,6 @@ vi.mock('../../components/TrustedIssuerCreateForm', () => ({
 /** Drives the wizard from the type step through the name step, entering the given name. */
 function selectTypeAndName(typeTestId: string, name = 'Acme Connection'): void {
   fireEvent.click(screen.getByTestId(typeTestId));
-  fireEvent.click(screen.getByTestId('wizard-continue'));
   fireEvent.change(screen.getByTestId('connection-name-input'), {target: {value: name}});
   fireEvent.click(screen.getByTestId('wizard-continue'));
 }
@@ -91,11 +93,20 @@ describe('ConnectionCreateWizardPage', () => {
     expect(screen.getAllByText('Connection type')).toHaveLength(1);
   });
 
+  it('carries no footer on the type step, advancing on the card click alone', () => {
+    render(<ConnectionCreateWizardPage />);
+
+    expect(screen.queryByTestId('wizard-continue')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('connection-type-option-oidc'));
+
+    expect(screen.getByTestId('connection-name-step')).toBeInTheDocument();
+  });
+
   it('shows the name step after selecting a type, gated on a non-empty name', () => {
     render(<ConnectionCreateWizardPage />);
 
     fireEvent.click(screen.getByTestId('connection-type-option-oidc'));
-    fireEvent.click(screen.getByTestId('wizard-continue'));
 
     expect(screen.getByTestId('connection-name-step')).toBeInTheDocument();
     expect(screen.getByTestId('wizard-continue')).toBeDisabled();
@@ -173,6 +184,28 @@ describe('ConnectionCreateWizardPage', () => {
     onSuccess({id: 'sms-1'});
 
     expect(navigateMock).toHaveBeenCalledWith('/connections/sms-gateway/sms-1');
+  });
+
+  it('creates an SMTP connection with the transport defaults and a numeric port', () => {
+    render(<ConnectionCreateWizardPage />);
+
+    selectTypeAndName('connection-type-option-email-smtp', 'Corp SMTP');
+    fireEvent.click(screen.getByTestId('wizard-create'));
+
+    expect(mutateMock).toHaveBeenCalledTimes(1);
+    expect(mutateMock.mock.calls[0][0]).toEqual({
+      name: 'Corp SMTP',
+      host: 'smtp.example.com',
+      port: 587,
+      fromAddress: 'noreply@example.com',
+      fromName: 'Acme Support',
+      tls: 'starttls',
+    });
+
+    const {onSuccess} = mutateMock.mock.calls[0][1] as {onSuccess: (data: {id: string}) => void};
+    onSuccess({id: 'smtp-1'});
+
+    expect(navigateMock).toHaveBeenCalledWith('/connections/email-smtp/smtp-1');
   });
 
   it('hides the redirect-URI hint for connection types that do not use one', () => {
@@ -289,10 +322,11 @@ describe('ConnectionCreateWizardPage', () => {
     expect(screen.queryByTestId('custom-step')).not.toBeInTheDocument();
   });
 
-  it('shows four type cards including trusted-idp', () => {
+  it('shows five type cards including trusted-idp and email-smtp', () => {
     render(<ConnectionCreateWizardPage />);
 
-    expect(screen.getAllByTestId(/^connection-type-option-/)).toHaveLength(4);
+    expect(screen.getAllByTestId(/^connection-type-option-/)).toHaveLength(5);
     expect(screen.getByTestId('connection-type-option-trusted-idp')).toBeInTheDocument();
+    expect(screen.getByTestId('connection-type-option-email-smtp')).toBeInTheDocument();
   });
 });
