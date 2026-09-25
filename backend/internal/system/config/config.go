@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -624,10 +625,23 @@ func (c OAuthConfig) ToEngineConfig() engineconfig.OAuthConfig {
 
 // Config holds the complete configuration details of the server.
 type Config struct {
-	Server               engineconfig.ServerConfig         `yaml:"server"                json:"server"`
-	Log                  LogConfig                         `yaml:"log"                   json:"log"`
-	GateClient           engineconfig.GateClientConfig     `yaml:"gate_client"           json:"gate_client"`
-	TLS                  TLSConfig                         `yaml:"tls"                   json:"tls"`
+	Server     engineconfig.ServerConfig     `yaml:"server"                json:"server"`
+	Log        LogConfig                     `yaml:"log"                   json:"log"`
+	GateClient engineconfig.GateClientConfig `yaml:"gate_client"           json:"gate_client"`
+	TLS        TLSConfig                     `yaml:"tls" json:"tls"`
+	// CORS holds the cors.allowedOrigins list: each entry is either a literal origin string
+	// (e.g. "https://app.example.com") or a regex object ({ regex: "^https://.*\\.example\\.com$" }),
+	// same shape as a declarative_resources/server_configs/cors.yaml resource.
+	//
+	// In "declarative" and "composite" server_config.store modes, this is injected into the CORS
+	// read-only layer at startup; a conflicting cors.yaml resource file for the same section fails
+	// startup rather than silently overriding it.
+	//
+	// In "mutable" mode there is no read-only layer, so these origins are merged into the writable
+	// (database) layer instead: they are guaranteed present, but the merge is additive and runs on
+	// every startup, so removing an origin via the server-config API alone does not persist across a
+	// restart. To permanently remove a deployment.yaml-configured origin, remove it here and restart.
+	CORS                 cors.OriginConfig                 `yaml:"cors"                  json:"cors"`
 	Database             DatabaseConfig                    `yaml:"database"              json:"database"`
 	Cache                engineconfig.CacheConfig          `yaml:"cache"                 json:"cache"`
 	JWT                  engineconfig.JWTConfig            `yaml:"jwt"                   json:"jwt"`
