@@ -5,7 +5,8 @@ import BrowserOnly from '@docusaurus/BrowserOnly';
 import {ApiReferenceReact, type AnyApiReferenceConfiguration} from '@scalar/api-reference-react';
 import '@scalar/api-reference-react/style.css';
 import {Box, CircularProgress} from '@wso2/oxygen-ui';
-import {JSX, useEffect, useRef} from 'react';
+import {JSX, useEffect, useRef, useState} from 'react';
+import {API_REFERENCE_ACTION_BAR_HEIGHT} from './ApiReferenceActionBar';
 
 export type ApiReferenceProps = AnyApiReferenceConfiguration & {
   specUrl: string;
@@ -85,8 +86,39 @@ function buildSvg(nodes: IconNode): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">${children}</svg>`;
 }
 
+/**
+ * Distance from the viewport top to where Scalar's fixed-position viewport should start:
+ * the navbar's height, plus the doc-version banner's, when one is rendered (it isn't on
+ * every version), plus ThunderID's own `ApiReferenceActionBar` sitting between the two and
+ * Scalar's content. Static `var(--ifm-navbar-height)` alone leaves Scalar's own toolbar and
+ * sidebar starting underneath all of that instead of below it.
+ */
+function useHeaderOffset(): number {
+  const [offset, setOffset] = useState(0);
+
+  useEffect(() => {
+    const navbar = document.querySelector<HTMLElement>('.navbar');
+    if (!navbar) return undefined;
+
+    const update = () => {
+      const banner = document.querySelector<HTMLElement>('.theme-doc-version-banner');
+      setOffset(navbar.getBoundingClientRect().bottom + (banner?.getBoundingClientRect().height ?? 0) + API_REFERENCE_ACTION_BAR_HEIGHT);
+    };
+
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(navbar);
+    const banner = document.querySelector<HTMLElement>('.theme-doc-version-banner');
+    if (banner) ro.observe(banner);
+    return () => ro.disconnect();
+  }, []);
+
+  return offset;
+}
+
 function ApiReferenceContent({specUrl, ...rest}: ApiReferenceProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
+  const headerOffset = useHeaderOffset();
 
   useEffect(() => {
     const container = containerRef.current;
@@ -134,11 +166,11 @@ function ApiReferenceContent({specUrl, ...rest}: ApiReferenceProps): JSX.Element
       className="apis-page"
       style={{
         position: 'fixed',
-        top: 'var(--ifm-navbar-height)',
+        top: `${headerOffset}px`,
         left: 0,
         right: 0,
         bottom: 0,
-        height: 'calc(100vh - var(--ifm-navbar-height))',
+        height: `calc(100vh - ${headerOffset}px)`,
         overflowY: 'scroll',
         overflowX: 'hidden',
         WebkitOverflowScrolling: 'touch',

@@ -20,7 +20,7 @@ import WindowsLogo from '../icons/WindowsLogo';
 import {useDocsUrl} from '@site/src/hooks/useDocsUrl';
 
 const INSTALL_TABS = [
-  {id: 'cli', label: 'npx', icon: CliLogo, command: 'npx thunderid', brandColor: null, enabled: true},
+  {id: 'cli', label: 'CLI', icon: CliLogo, command: 'npx thunderid', brandColor: null, enabled: true},
   {
     id: 'docker',
     label: 'Docker',
