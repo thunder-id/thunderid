@@ -17,4 +17,7 @@ const (
 	// TokenTypeIDJAG is the JWT type header value for an Identity Assertion Authorization Grant
 	// (draft-ietf-oauth-identity-assertion-authz-grant).
 	TokenTypeIDJAG = "oauth-id-jag+jwt" //nolint:gosec // JWT typ header value, not a credential
+
+	// TokenTypeLogout is the JWT type header value for an OIDC Back-Channel Logout token.
+	TokenTypeLogout = "logout+jwt" //nolint:gosec // JWT typ header value, not a credential
 )

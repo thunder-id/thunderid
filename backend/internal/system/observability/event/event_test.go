@@ -301,3 +301,12 @@ func TestPrincipalType(t *testing.T) {
 		})
 	}
 }
+
+func TestBackchannelLogoutDataKeys(t *testing.T) {
+	if DataKey.SessionID != "session_id" {
+		t.Errorf("DataKey.SessionID = %q, want session_id", DataKey.SessionID)
+	}
+	if DataKey.HTTPStatus != "http_status" {
+		t.Errorf("DataKey.HTTPStatus = %q, want http_status", DataKey.HTTPStatus)
+	}
+}

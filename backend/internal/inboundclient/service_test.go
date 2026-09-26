@@ -3697,3 +3697,34 @@ func (suite *InboundClientServiceTestSuite) TestValidateSubjectAttributeMapping_
 		context.Background(), map[string]string{"employee": "email"}, []string{"employee"}),
 		ErrUniqueAttributeLookupFailed)
 }
+
+func (suite *InboundClientServiceTestSuite) TestValidateBackchannelLogoutURI() {
+	cases := []struct {
+		name   string
+		uri    string
+		public bool
+		want   error
+	}{
+		{"empty is allowed", "", false, nil},
+		{"https", "https://rp.example.com/backchannel-logout", false, nil},
+		{"https for a public client", "https://spa.example.com/bcl", true, nil},
+		{"http for a confidential client", "http://rp.internal:8080/bcl", false, nil},
+		{"loopback is allowed", "https://127.0.0.1:9443/bcl", false, nil},
+		{"http for a public client", "http://spa.example.com/bcl", true, ErrOAuthBackchannelLogoutURIRequiresHTTPS},
+		{"custom scheme", "myapp://logout", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"no host", "https:///bcl", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"port without host", "https://:443/bcl", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"relative", "/bcl", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"fragment", "https://rp.example.com/bcl#x", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"empty fragment", "https://rp.example.com/bcl#", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"wildcard in host", "https://*.example.com/bcl", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"wildcard in path", "https://rp.example.com/*", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"unparsable", "https://rp.example.com/%zz", false, ErrOAuthInvalidBackchannelLogoutURI},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			p := &providers.OAuthProfile{BackchannelLogoutURI: tc.uri, PublicClient: tc.public}
+			assert.ErrorIs(suite.T(), validateBackchannelLogoutURI(p), tc.want)
+		})
+	}
+}

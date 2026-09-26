@@ -580,6 +580,8 @@ func BuildOAuthClient(
 		EntityCategory:                     entityCategory,
 		RedirectURIs:                       p.RedirectURIs,
 		PostLogoutRedirectURIs:             p.PostLogoutRedirectURIs,
+		BackchannelLogoutURI:               p.BackchannelLogoutURI,
+		BackchannelLogoutSessionRequired:   p.BackchannelLogoutSessionRequired,
 		TokenEndpointAuthMethod:            providers.TokenEndpointAuthMethod(p.TokenEndpointAuthMethod),
 		PKCERequired:                       p.PKCERequired,
 		PublicClient:                       p.PublicClient,
@@ -820,6 +822,9 @@ func validateOAuthProfile(ctx context.Context, p *providers.OAuthProfile, hasCli
 	if err := validateRedirectURIs(p); err != nil {
 		return err
 	}
+	if err := validateBackchannelLogoutURI(p); err != nil {
+		return err
+	}
 	if err := validateGrantAndResponseTypes(p); err != nil {
 		return err
 	}
@@ -841,6 +846,36 @@ func validateOAuthProfile(ctx context.Context, p *providers.OAuthProfile, hasCli
 		return err
 	}
 	return nil
+}
+
+// validateBackchannelLogoutURI checks the client's OIDC Back-Channel Logout endpoint: an absolute http
+// or https URL with a host and no fragment or wildcard, and https for a public client. Private and
+// loopback hosts are allowed on purpose: an administrator registers the URI, and relying parties on
+// internal networks are legitimate.
+func validateBackchannelLogoutURI(p *providers.OAuthProfile) error {
+	uri := p.BackchannelLogoutURI
+	if uri == "" {
+		return nil
+	}
+	// A bare "#" parses to an empty fragment, so the delimiter is rejected rather than the parsed value.
+	if strings.ContainsAny(uri, "*#") {
+		return ErrOAuthInvalidBackchannelLogoutURI
+	}
+	parsed, err := sysutils.ParseURL(uri)
+	if err != nil || parsed.Hostname() == "" {
+		return ErrOAuthInvalidBackchannelLogoutURI
+	}
+	switch parsed.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if p.PublicClient {
+			return ErrOAuthBackchannelLogoutURIRequiresHTTPS
+		}
+		return nil
+	default:
+		return ErrOAuthInvalidBackchannelLogoutURI
+	}
 }
 
 // maxDefaultAudienceLength bounds the access token default audience, a single audience identifier

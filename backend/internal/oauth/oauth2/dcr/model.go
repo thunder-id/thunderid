@@ -19,21 +19,23 @@ const (
 
 // DCRRegistrationRequest represents the RFC 7591 Dynamic Client Registration request.
 type DCRRegistrationRequest struct {
-	OUID                    string                            `json:"ou_id,omitempty"`
-	RedirectURIs            []string                          `json:"redirect_uris"`
-	PostLogoutRedirectURIs  []string                          `json:"post_logout_redirect_uris,omitempty"`
-	GrantTypes              []providers.GrantType             `json:"grant_types,omitempty"`
-	ResponseTypes           []providers.ResponseType          `json:"response_types,omitempty"`
-	ClientName              string                            `json:"client_name,omitempty"`
-	ClientURI               string                            `json:"client_uri,omitempty"`
-	LogoURI                 string                            `json:"logo_uri,omitempty"`
-	TokenEndpointAuthMethod providers.TokenEndpointAuthMethod `json:"token_endpoint_auth_method,omitempty"`
-	JWKSUri                 string                            `json:"jwks_uri,omitempty"`
-	JWKS                    map[string]interface{}            `json:"jwks,omitempty"`
-	Scope                   string                            `json:"scope,omitempty"`
-	Contacts                []string                          `json:"contacts,omitempty"`
-	TosURI                  string                            `json:"tos_uri,omitempty"`
-	PolicyURI               string                            `json:"policy_uri,omitempty"`
+	OUID                             string                            `json:"ou_id,omitempty"`
+	RedirectURIs                     []string                          `json:"redirect_uris"`
+	PostLogoutRedirectURIs           []string                          `json:"post_logout_redirect_uris,omitempty"`
+	BackchannelLogoutURI             string                            `json:"backchannel_logout_uri,omitempty"`
+	BackchannelLogoutSessionRequired bool                              `json:"backchannel_logout_session_required,omitempty"` //nolint:lll
+	GrantTypes                       []providers.GrantType             `json:"grant_types,omitempty"`
+	ResponseTypes                    []providers.ResponseType          `json:"response_types,omitempty"`
+	ClientName                       string                            `json:"client_name,omitempty"`
+	ClientURI                        string                            `json:"client_uri,omitempty"`
+	LogoURI                          string                            `json:"logo_uri,omitempty"`
+	TokenEndpointAuthMethod          providers.TokenEndpointAuthMethod `json:"token_endpoint_auth_method,omitempty"`
+	JWKSUri                          string                            `json:"jwks_uri,omitempty"`
+	JWKS                             map[string]interface{}            `json:"jwks,omitempty"`
+	Scope                            string                            `json:"scope,omitempty"`
+	Contacts                         []string                          `json:"contacts,omitempty"`
+	TosURI                           string                            `json:"tos_uri,omitempty"`
+	PolicyURI                        string                            `json:"policy_uri,omitempty"`
 
 	RequirePushedAuthorizationRequests bool   `json:"require_pushed_authorization_requests,omitempty"`
 	DPoPBoundAccessTokens              bool   `json:"dpop_bound_access_tokens,omitempty"`
@@ -115,24 +117,26 @@ func setLocalizedVariant(m *map[string]string, field, tag, val string) error {
 
 // DCRRegistrationResponse represents the RFC 7591 Dynamic Client Registration response.
 type DCRRegistrationResponse struct {
-	ClientID                string                            `json:"client_id"`
-	ClientSecret            string                            `json:"client_secret,omitempty"`
-	ClientSecretExpiresAt   int64                             `json:"client_secret_expires_at"`
-	RedirectURIs            []string                          `json:"redirect_uris,omitempty"`
-	PostLogoutRedirectURIs  []string                          `json:"post_logout_redirect_uris,omitempty"`
-	GrantTypes              []providers.GrantType             `json:"grant_types,omitempty"`
-	ResponseTypes           []providers.ResponseType          `json:"response_types,omitempty"`
-	ClientName              string                            `json:"client_name,omitempty"`
-	ClientURI               string                            `json:"client_uri,omitempty"`
-	LogoURI                 string                            `json:"logo_uri,omitempty"`
-	TokenEndpointAuthMethod providers.TokenEndpointAuthMethod `json:"token_endpoint_auth_method,omitempty"`
-	JWKSUri                 string                            `json:"jwks_uri,omitempty"`
-	JWKS                    map[string]interface{}            `json:"jwks,omitempty"`
-	Scope                   string                            `json:"scope,omitempty"`
-	Contacts                []string                          `json:"contacts,omitempty"`
-	TosURI                  string                            `json:"tos_uri,omitempty"`
-	PolicyURI               string                            `json:"policy_uri,omitempty"`
-	AppID                   string                            `json:"app_id,omitempty"`
+	ClientID                         string                            `json:"client_id"`
+	ClientSecret                     string                            `json:"client_secret,omitempty"`
+	ClientSecretExpiresAt            int64                             `json:"client_secret_expires_at"`
+	RedirectURIs                     []string                          `json:"redirect_uris,omitempty"`
+	PostLogoutRedirectURIs           []string                          `json:"post_logout_redirect_uris,omitempty"`
+	BackchannelLogoutURI             string                            `json:"backchannel_logout_uri,omitempty"`
+	BackchannelLogoutSessionRequired bool                              `json:"backchannel_logout_session_required,omitempty"` //nolint:lll
+	GrantTypes                       []providers.GrantType             `json:"grant_types,omitempty"`
+	ResponseTypes                    []providers.ResponseType          `json:"response_types,omitempty"`
+	ClientName                       string                            `json:"client_name,omitempty"`
+	ClientURI                        string                            `json:"client_uri,omitempty"`
+	LogoURI                          string                            `json:"logo_uri,omitempty"`
+	TokenEndpointAuthMethod          providers.TokenEndpointAuthMethod `json:"token_endpoint_auth_method,omitempty"`
+	JWKSUri                          string                            `json:"jwks_uri,omitempty"`
+	JWKS                             map[string]interface{}            `json:"jwks,omitempty"`
+	Scope                            string                            `json:"scope,omitempty"`
+	Contacts                         []string                          `json:"contacts,omitempty"`
+	TosURI                           string                            `json:"tos_uri,omitempty"`
+	PolicyURI                        string                            `json:"policy_uri,omitempty"`
+	AppID                            string                            `json:"app_id,omitempty"`
 
 	RequirePushedAuthorizationRequests bool   `json:"require_pushed_authorization_requests,omitempty"`
 	DPoPBoundAccessTokens              bool   `json:"dpop_bound_access_tokens,omitempty"`

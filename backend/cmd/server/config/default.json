@@ -159,7 +159,17 @@
       "enabled" : true
     },
     "logout" : {
-      "enabled" : true
+      "enabled" : true,
+      "backchannel" : {
+        "enabled" : false,
+        "token_validity_period" : 120,
+        "request_timeout" : 5,
+        "max_attempts" : 3,
+        "retry_delay" : 2,
+        "retry_max_delay" : 30,
+        "max_in_flight" : 16,
+        "queue_size" : 1024
+      }
     },
     "revocation": {
       "token_family": {

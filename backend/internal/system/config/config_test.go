@@ -1785,3 +1785,37 @@ allowed_subject_types:
 	assert.Empty(suite.T(), dst.DefaultScopeClaimsMapping)
 	assert.Empty(suite.T(), dst.AllowedSubjectTypes)
 }
+
+func (suite *ConfigTestSuite) TestBackchannelLogoutConfig_IsEnabled() {
+	var unset engineconfig.BackchannelLogoutConfig
+	assert.False(suite.T(), unset.IsEnabled(), "unset means disabled")
+	assert.False(suite.T(), engineconfig.BackchannelLogoutConfig{Enabled: boolPtr(false)}.IsEnabled())
+	assert.True(suite.T(), engineconfig.BackchannelLogoutConfig{Enabled: boolPtr(true)}.IsEnabled())
+}
+
+// The full block ships in default.json with delivery switched off, so enabling it later is one key.
+func (suite *ConfigTestSuite) TestMergeConfigs_BackchannelLogoutDefaultsSurviveAnEnableOverride() {
+	base := &Config{OAuth: OAuthConfig{Logout: engineconfig.LogoutConfig{
+		Enabled: boolPtr(true),
+		Backchannel: engineconfig.BackchannelLogoutConfig{
+			Enabled: boolPtr(false), TokenValidityPeriod: 120, RequestTimeout: 5, MaxAttempts: 3,
+			RetryDelay: 2, RetryMaxDelay: 30, MaxInFlight: 16, QueueSize: 1024,
+		},
+	}}}
+	user := &Config{OAuth: OAuthConfig{Logout: engineconfig.LogoutConfig{
+		Backchannel: engineconfig.BackchannelLogoutConfig{Enabled: boolPtr(true)},
+	}}}
+
+	mergeConfigs(base, user)
+
+	got := base.OAuth.Logout.Backchannel
+	assert.True(suite.T(), got.IsEnabled())
+	assert.True(suite.T(), base.OAuth.Logout.IsEnabled(), "the parent flag is untouched")
+	assert.Equal(suite.T(), int64(120), got.TokenValidityPeriod)
+	assert.Equal(suite.T(), int64(5), got.RequestTimeout)
+	assert.Equal(suite.T(), 3, got.MaxAttempts)
+	assert.Equal(suite.T(), int64(2), got.RetryDelay)
+	assert.Equal(suite.T(), int64(30), got.RetryMaxDelay)
+	assert.Equal(suite.T(), 16, got.MaxInFlight)
+	assert.Equal(suite.T(), 1024, got.QueueSize)
+}

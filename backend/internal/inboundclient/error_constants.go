@@ -74,6 +74,12 @@ var (
 	ErrOAuthRedirectURIFragmentNotAllowed = errors.New("redirect URI must not contain a fragment")
 	// ErrOAuthAuthCodeRequiresRedirectURIs is returned when authorization_code grant has no redirect URIs.
 	ErrOAuthAuthCodeRequiresRedirectURIs = errors.New("authorization_code grant requires redirect URIs")
+	// ErrOAuthInvalidBackchannelLogoutURI is returned when the back-channel logout URI is not an absolute
+	// http or https URL, or carries a fragment or wildcard.
+	ErrOAuthInvalidBackchannelLogoutURI = errors.New("invalid backchannel logout URI")
+	// ErrOAuthBackchannelLogoutURIRequiresHTTPS is returned when a public client registers a plain http
+	// back-channel logout URI.
+	ErrOAuthBackchannelLogoutURIRequiresHTTPS = errors.New("backchannel logout URI must use https for a public client")
 	// ErrOAuthInvalidGrantType is returned when an unsupported grant type is specified.
 	ErrOAuthInvalidGrantType = errors.New("invalid grant type")
 	// ErrOAuthInvalidResponseType is returned when an unsupported response type is specified.

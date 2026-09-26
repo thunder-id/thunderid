@@ -1496,6 +1496,12 @@ func (suite *AgentServiceTestSuite) TestTranslateOAuthValidationError() {
 		{"PublicClientMustHavePKCE", inboundclient.ErrOAuthPublicClientMustHavePKCE,
 			ErrorInvalidPublicClientConfiguration.Code,
 			"error.agentservice.public_client_must_have_pkce_description"},
+		{"InvalidBackchannelLogoutURI", inboundclient.ErrOAuthInvalidBackchannelLogoutURI,
+			ErrorInvalidOAuthConfiguration.Code,
+			"error.agentservice.invalid_backchannel_logout_uri_description"},
+		{"BackchannelLogoutURIRequiresHTTPS", inboundclient.ErrOAuthBackchannelLogoutURIRequiresHTTPS,
+			ErrorInvalidOAuthConfiguration.Code,
+			"error.agentservice.backchannel_logout_uri_requires_https_description"},
 	}
 	for _, tc := range cases {
 		suite.Run(tc.name, func() {

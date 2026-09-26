@@ -3573,6 +3573,18 @@ func (suite *ServiceTestSuite) TestTranslateOAuthValidationError() {
 			wantCode:    ErrorInvalidPublicClientConfiguration.Code,
 			wantDescKey: "error.applicationservice.public_client_must_have_pkce_description",
 		},
+		{
+			name:        "InvalidBackchannelLogoutURI",
+			err:         inboundclient.ErrOAuthInvalidBackchannelLogoutURI,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.invalid_backchannel_logout_uri_description",
+		},
+		{
+			name:        "BackchannelLogoutURIRequiresHTTPS",
+			err:         inboundclient.ErrOAuthBackchannelLogoutURIRequiresHTTPS,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.backchannel_logout_uri_requires_https_description",
+		},
 	}
 	for _, tc := range cases {
 		suite.Run(tc.name, func() {

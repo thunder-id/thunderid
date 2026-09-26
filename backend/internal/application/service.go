@@ -1239,6 +1239,8 @@ func buildOAuthProfileFromProcessed(inboundAuth inboundmodel.InboundAuthConfigPr
 	return &providers.OAuthProfile{
 		RedirectURIs:                       oa.RedirectURIs,
 		PostLogoutRedirectURIs:             oa.PostLogoutRedirectURIs,
+		BackchannelLogoutURI:               oa.BackchannelLogoutURI,
+		BackchannelLogoutSessionRequired:   oa.BackchannelLogoutSessionRequired,
 		GrantTypes:                         sysutils.ConvertToStringSlice(oa.GrantTypes),
 		ResponseTypes:                      sysutils.ConvertToStringSlice(oa.ResponseTypes),
 		TokenEndpointAuthMethod:            string(oa.TokenEndpointAuthMethod),
@@ -1589,6 +1591,16 @@ func translateOAuthValidationError(err error) *tidcommon.ServiceError {
 		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.applicationservice.auth_code_requires_redirect_uris_description",
 			DefaultValue: "authorization_code grant type requires redirect URIs",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthInvalidBackchannelLogoutURI):
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_backchannel_logout_uri_description",
+			DefaultValue: "Backchannel logout URI must be an absolute http or https URL without a fragment or wildcard",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthBackchannelLogoutURIRequiresHTTPS):
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
+			Key:          "error.applicationservice.backchannel_logout_uri_requires_https_description",
+			DefaultValue: "Backchannel logout URI must use https for a public client",
 		})
 
 	// OAuth: grant + response type
@@ -2120,6 +2132,8 @@ func buildApplicationResponse(dto *model.ApplicationProcessedDTO) *providers.App
 					ClientID:                           oauthAppConfig.ClientID,
 					RedirectURIs:                       oauthAppConfig.RedirectURIs,
 					PostLogoutRedirectURIs:             oauthAppConfig.PostLogoutRedirectURIs,
+					BackchannelLogoutURI:               oauthAppConfig.BackchannelLogoutURI,
+					BackchannelLogoutSessionRequired:   oauthAppConfig.BackchannelLogoutSessionRequired,
 					GrantTypes:                         oauthAppConfig.GrantTypes,
 					ResponseTypes:                      oauthAppConfig.ResponseTypes,
 					TokenEndpointAuthMethod:            oauthAppConfig.TokenEndpointAuthMethod,
@@ -2256,6 +2270,8 @@ func buildOAuthInboundAuthConfigProcessedDTO(
 			ClientID:                           inboundAuthConfig.OAuthConfig.ClientID,
 			RedirectURIs:                       inboundAuthConfig.OAuthConfig.RedirectURIs,
 			PostLogoutRedirectURIs:             inboundAuthConfig.OAuthConfig.PostLogoutRedirectURIs,
+			BackchannelLogoutURI:               inboundAuthConfig.OAuthConfig.BackchannelLogoutURI,
+			BackchannelLogoutSessionRequired:   inboundAuthConfig.OAuthConfig.BackchannelLogoutSessionRequired,
 			GrantTypes:                         inboundAuthConfig.OAuthConfig.GrantTypes,
 			ResponseTypes:                      inboundAuthConfig.OAuthConfig.ResponseTypes,
 			TokenEndpointAuthMethod:            inboundAuthConfig.OAuthConfig.TokenEndpointAuthMethod,
@@ -2323,6 +2339,8 @@ func buildReturnApplicationDTO(
 				ClientSecret:                       inboundAuthConfig.OAuthConfig.ClientSecret,
 				RedirectURIs:                       inboundAuthConfig.OAuthConfig.RedirectURIs,
 				PostLogoutRedirectURIs:             inboundAuthConfig.OAuthConfig.PostLogoutRedirectURIs,
+				BackchannelLogoutURI:               inboundAuthConfig.OAuthConfig.BackchannelLogoutURI,
+				BackchannelLogoutSessionRequired:   inboundAuthConfig.OAuthConfig.BackchannelLogoutSessionRequired,
 				GrantTypes:                         inboundAuthConfig.OAuthConfig.GrantTypes,
 				ResponseTypes:                      inboundAuthConfig.OAuthConfig.ResponseTypes,
 				TokenEndpointAuthMethod:            inboundAuthConfig.OAuthConfig.TokenEndpointAuthMethod,

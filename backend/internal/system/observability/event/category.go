@@ -62,6 +62,8 @@ var eventTypeToCategory = map[providers.EventType]EventCategory{
 	EventTypeTokenIssuanceFailed:            CategoryAuthentication,
 	EventTypeTokenRevoked:                   CategoryAuthentication,
 	EventTypeRuntimePersistentDBUnavailable: CategoryAuthentication,
+	EventTypeBackchannelLogoutDelivered:     CategoryAuthentication,
+	EventTypeBackchannelLogoutFailed:        CategoryAuthentication,
 
 	// Flow events
 	EventTypeFlowStarted:                CategoryFlows,

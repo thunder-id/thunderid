@@ -1021,6 +1021,17 @@ components:
           items:
             type: string
           description: Registered redirect URIs.
+        post_logout_redirect_uris:
+          type: array
+          items:
+            type: string
+          description: Allowed post-logout redirect URIs for RP-Initiated Logout.
+        backchannel_logout_uri:
+          type: string
+          description: OIDC Back-Channel Logout endpoint. An absolute http or https URL without a fragment or wildcard; public clients must use https.
+        backchannel_logout_session_required:
+          type: boolean
+          description: Whether the client requires a session identifier in its logout tokens. Stored and echoed; logout tokens always carry one.
         grant_types:
           type: array
           items:
@@ -1101,6 +1112,14 @@ components:
           type: array
           items:
             type: string
+        post_logout_redirect_uris:
+          type: array
+          items:
+            type: string
+        backchannel_logout_uri:
+          type: string
+        backchannel_logout_session_required:
+          type: boolean
         grant_types:
           type: array
           items:

@@ -1555,6 +1555,22 @@ components:
             format: uri
           description: A list of redirect URIs for the OAuth application.
           example: ["https://myapp.example.com/callback", "https://myapp.example.com/oauth/callback"]
+        postLogoutRedirectUris:
+          type: array
+          items:
+            type: string
+            format: uri
+          description: Allowed post-logout redirect URIs. A post_logout_redirect_uri sent to the logout endpoint must match one of these.
+          example: ["https://myapp.example.com/logged-out"]
+        backchannelLogoutUri:
+          type: string
+          format: uri
+          description: OIDC Back-Channel Logout endpoint of the application. ThunderID POSTs a logout token here when a session the application shares ends. Must be an absolute http or https URL without a fragment or wildcard; public clients must use https.
+          example: "https://myapp.example.com/backchannel-logout"
+        backchannelLogoutSessionRequired:
+          type: boolean
+          readOnly: true
+          description: Whether the application asked, through Dynamic Client Registration, for a session identifier in its logout tokens. Informational; logout tokens always carry one.
         grantTypes:
           type: array
           items:
@@ -1669,6 +1685,22 @@ components:
             format: uri
           description: A list of redirect URIs for the OAuth application.
           example: ["https://myapp.example.com/callback", "https://myapp.example.com/oauth/callback"]
+        postLogoutRedirectUris:
+          type: array
+          items:
+            type: string
+            format: uri
+          description: Allowed post-logout redirect URIs. A post_logout_redirect_uri sent to the logout endpoint must match one of these.
+          example: ["https://myapp.example.com/logged-out"]
+        backchannelLogoutUri:
+          type: string
+          format: uri
+          description: OIDC Back-Channel Logout endpoint of the application. ThunderID POSTs a logout token here when a session the application shares ends. Must be an absolute http or https URL without a fragment or wildcard; public clients must use https.
+          example: "https://myapp.example.com/backchannel-logout"
+        backchannelLogoutSessionRequired:
+          type: boolean
+          readOnly: true
+          description: Whether the application asked, through Dynamic Client Registration, for a session identifier in its logout tokens. Informational; logout tokens always carry one.
         grantTypes:
           type: array
           items:

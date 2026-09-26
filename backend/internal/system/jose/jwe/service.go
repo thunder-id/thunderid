@@ -20,10 +20,29 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
+// EncryptOption adds to the JWE protected header. Options never replace a header the service
+// computes itself (typ, alg, enc, cty, kid, epk, iv, tag) and cannot declare zip, since Encrypt does
+// not compress.
+type EncryptOption func(header map[string]interface{})
+
+// WithProtectedHeader adds one member to the JWE protected header, such as the "iss" a logout token
+// replicates so a relying party can pick its decryption key before decrypting.
+func WithProtectedHeader(name string, value interface{}) EncryptOption {
+	return func(header map[string]interface{}) { header[name] = value }
+}
+
+// reservedProtectedHeaders cannot be supplied through an EncryptOption: Encrypt sets the first eight
+// itself, and zip would announce a compression it does not apply.
+var reservedProtectedHeaders = map[string]bool{
+	"typ": true, "alg": true, "enc": true, "cty": true, "kid": true, "epk": true, "iv": true, "tag": true,
+	"zip": true,
+}
+
 // JWEServiceInterface defines the interface for JWE operations.
 type JWEServiceInterface interface {
 	Encrypt(ctx context.Context, payload []byte, recipientPublicKey *providers.KeyRef,
-		alg string, enc ContentEncAlgorithm, cty string, kid string) (string, *tidcommon.ServiceError)
+		alg string, enc ContentEncAlgorithm, cty string, kid string,
+		opts ...EncryptOption) (string, *tidcommon.ServiceError)
 	Decrypt(ctx context.Context, jweToken string) ([]byte, *tidcommon.ServiceError)
 
 	// SupportedKeyEncryptionAlgorithms returns the JWE "alg" (key management) algorithm values
@@ -59,8 +78,10 @@ func newJWEService(
 // Encrypt encrypts the payload for the recipient's public key via the runtime crypto provider.
 // cty is the content type placed in the JWE protected header (e.g. "json" or "JWT").
 // kid identifies the recipient's key; it is stamped in the header only when non-empty.
+// opts add further protected headers; see EncryptOption.
 func (js *jweService) Encrypt(ctx context.Context, payload []byte, recipientPublicKey *providers.KeyRef,
-	keyEncAlgorithm string, enc ContentEncAlgorithm, cty string, kid string) (string, *tidcommon.ServiceError) {
+	keyEncAlgorithm string, enc ContentEncAlgorithm, cty string, kid string,
+	opts ...EncryptOption) (string, *tidcommon.ServiceError) {
 	if !isSupportedEnc(enc) {
 		return "", &ErrorUnsupportedEncryptionAlgorithm
 	}
@@ -84,12 +105,17 @@ func (js *jweService) Encrypt(ctx context.Context, payload []byte, recipientPubl
 
 	cek := details.CEK
 
-	// Build the JWE protected header.
-	header := map[string]interface{}{
-		"typ": "JWE",
-		"alg": keyEncAlgorithm,
-		"enc": string(enc),
+	// Build the JWE protected header. Option-supplied members go first so the computed ones win.
+	header := make(map[string]interface{})
+	for _, opt := range opts {
+		opt(header)
 	}
+	for name := range reservedProtectedHeaders {
+		delete(header, name)
+	}
+	header["typ"] = "JWE"
+	header["alg"] = keyEncAlgorithm
+	header["enc"] = string(enc)
 	if kid != "" {
 		header["kid"] = kid
 	}

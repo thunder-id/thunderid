@@ -131,6 +131,14 @@ packages:
       pkgname: granthandlersmock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/logout/backchannel:
+    config:
+      all: true
+      dir: tests/mocks/oauth/oauth2/backchannelmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: backchannelmock
+      filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba:
     interfaces:
       CIBARequestStoreInterface:

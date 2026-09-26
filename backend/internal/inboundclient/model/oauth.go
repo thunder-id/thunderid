@@ -17,6 +17,8 @@ type OAuthConfig struct {
 	ClientID                           string                            `json:"clientId,omitempty"                 yaml:"clientId,omitempty"`
 	RedirectURIs                       []string                          `json:"redirectUris,omitempty"             yaml:"redirectUris,omitempty"`
 	PostLogoutRedirectURIs             []string                          `json:"postLogoutRedirectUris,omitempty"   yaml:"postLogoutRedirectUris,omitempty"`
+	BackchannelLogoutURI               string                            `json:"backchannelLogoutUri,omitempty"     yaml:"backchannelLogoutUri,omitempty"`
+	BackchannelLogoutSessionRequired   bool                              `json:"backchannelLogoutSessionRequired"   yaml:"backchannelLogoutSessionRequired"`
 	GrantTypes                         []providers.GrantType             `json:"grantTypes,omitempty"               yaml:"grantTypes,omitempty"`
 	ResponseTypes                      []providers.ResponseType          `json:"responseTypes,omitempty"            yaml:"responseTypes,omitempty"`
 	TokenEndpointAuthMethod            providers.TokenEndpointAuthMethod `json:"tokenEndpointAuthMethod,omitempty"  yaml:"tokenEndpointAuthMethod,omitempty"`

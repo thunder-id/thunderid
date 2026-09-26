@@ -281,3 +281,66 @@ func (suite *HTTPClientTestSuite) TestPostForm() {
 
 	_ = resp.Body.Close()
 }
+
+func (suite *HTTPClientTestSuite) TestNewHTTPClientForRegisteredEndpoint() {
+	timeout := 3 * time.Second
+	client := NewHTTPClientForRegisteredEndpoint(timeout)
+	assert.Implements(suite.T(), (*HTTPClientInterface)(nil), client)
+
+	httpClient := client.(*HTTPClient)
+	assert.Equal(suite.T(), timeout, httpClient.client.Timeout)
+	transport := httpClient.client.Transport.(*http.Transport)
+	assert.Nil(suite.T(), transport.DialContext, "registered endpoints get no SSRF dial guard by design")
+}
+
+func (suite *HTTPClientTestSuite) TestRegisteredEndpointClient_DoesNotFollowRedirects() {
+	landed := false
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		landed = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer redirecting.Close()
+
+	client := NewHTTPClientForRegisteredEndpoint(5 * time.Second)
+	resp, err := client.Post(redirecting.URL, "application/x-www-form-urlencoded",
+		strings.NewReader("logout_token=x"))
+
+	assert.NoError(suite.T(), err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(suite.T(), http.StatusFound, resp.StatusCode, "the redirect is returned, not followed")
+	assert.Equal(suite.T(), target.URL, resp.Header.Get("Location"))
+	assert.False(suite.T(), landed, "the redirect target must never be called")
+}
+
+func (suite *HTTPClientTestSuite) TestRegisteredEndpointClient_ReachesLoopback() {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// httptest binds to 127.0.0.1, which the SSRF-guarded client would refuse to dial.
+	resp, err := NewHTTPClientForRegisteredEndpoint(5 * time.Second).Get(server.URL)
+
+	assert.NoError(suite.T(), err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(suite.T(), http.StatusOK, resp.StatusCode)
+}
+
+func (suite *HTTPClientTestSuite) TestRegisteredEndpointClient_HonoursTimeout() {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	resp, err := NewHTTPClientForRegisteredEndpoint(50 * time.Millisecond).Get(server.URL)
+
+	assert.Error(suite.T(), err)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
+}

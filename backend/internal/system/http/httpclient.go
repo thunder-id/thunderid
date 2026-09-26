@@ -6,6 +6,8 @@
 //
 //   - NewHTTPClient() - creates a client with default 30s timeout
 //   - NewHTTPClientWithTimeout(duration) - creates a client with custom timeout
+//   - NewHTTPClientWithCheckRedirect(policy) - creates a client with a redirect policy and an SSRF dial guard
+//   - NewHTTPClientForRegisteredEndpoint(duration) - creates a client for administrator-registered endpoints
 //
 // Usage examples:
 //
@@ -88,6 +90,26 @@ func NewHTTPClientWithCheckRedirect(checkRedirect func(*http.Request, []*http.Re
 				},
 			},
 			CheckRedirect: checkRedirect,
+		},
+	}
+}
+
+// NewHTTPClientForRegisteredEndpoint creates an HTTPClient for calling an endpoint an administrator
+// registered on a client, such as a back-channel logout URI. It never follows redirects and uses the
+// caller's timeout. It deliberately applies no SSRF dial guard: the target comes from client
+// configuration, never from a request parameter, so URL provenance is the control, and registered
+// endpoints on private networks are legitimate.
+func NewHTTPClientForRegisteredEndpoint(timeout time.Duration) HTTPClientInterface {
+	return &HTTPClient{
+		client: &http.Client{
+			Timeout: timeout,
+			Transport: &http.Transport{
+				// #nosec G402 -- Min TLS version is TLS 1.2 or higher based on config
+				TLSClientConfig: &tls.Config{
+					MinVersion: GetTLSVersion(config.GetServerRuntime().Config),
+				},
+			},
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
 	}
 }

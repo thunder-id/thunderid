@@ -325,6 +325,37 @@ type LogoutConfig struct {
 	// explicit false in deployment.yaml overrides the default.json default of true; a nil
 	// pointer means "not set" and keeps the default.
 	Enabled *bool `yaml:"enabled" json:"enabled"`
+	// Backchannel configures OIDC Back-Channel Logout, which tells the applications that shared a
+	// terminated session about it.
+	Backchannel BackchannelLogoutConfig `yaml:"backchannel" json:"backchannel"`
+}
+
+// BackchannelLogoutConfig holds the settings for OIDC Back-Channel Logout delivery. Durations are
+// in seconds. The defaults live in default.json.
+type BackchannelLogoutConfig struct {
+	// Enabled controls whether terminated sessions are announced to relying parties. It uses a
+	// pointer so an explicit false in deployment.yaml overrides default.json; nil means "not set".
+	Enabled *bool `yaml:"enabled" json:"enabled"`
+	// TokenValidityPeriod is the lifetime of a logout token.
+	TokenValidityPeriod int64 `yaml:"token_validity_period" json:"token_validity_period"`
+	// RequestTimeout bounds one delivery attempt to a relying party.
+	RequestTimeout int64 `yaml:"request_timeout" json:"request_timeout"`
+	// MaxAttempts is the number of delivery attempts per relying party; 1 means no retry.
+	MaxAttempts int `yaml:"max_attempts" json:"max_attempts"`
+	// RetryDelay is the wait before the second attempt; it doubles on every further attempt.
+	RetryDelay int64 `yaml:"retry_delay" json:"retry_delay"`
+	// RetryMaxDelay caps the backoff and any Retry-After a relying party returns.
+	RetryMaxDelay int64 `yaml:"retry_max_delay" json:"retry_max_delay"`
+	// MaxInFlight caps concurrent deliveries across the whole dispatcher.
+	MaxInFlight int `yaml:"max_in_flight" json:"max_in_flight"`
+	// QueueSize caps pending termination events; beyond it events are dropped and recorded.
+	QueueSize int `yaml:"queue_size" json:"queue_size"`
+}
+
+// IsEnabled reports whether back-channel logout delivery is active, defaulting to false when
+// unset (an explicit default lives in default.json).
+func (c BackchannelLogoutConfig) IsEnabled() bool {
+	return c.Enabled != nil && *c.Enabled
 }
 
 // IsEnabled reports whether the OAuth logout endpoint is active,

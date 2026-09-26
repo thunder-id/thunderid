@@ -490,12 +490,13 @@ func (tb *tokenBuilder) BuildIDToken(
 	tokenConfig := ResolveTokenConfig(tb.cfg, tokenCtx.OAuthApp, TokenTypeID, 0)
 
 	jwtClaims := tb.buildIDTokenClaims(tokenCtx)
+	subject := SubjectClaim(tokenCtx.Subject)
 
 	tokenDTO := &oauth2model.TokenDTO{
 		ExpiresIn: tokenConfig.ValidityPeriod,
 		Scopes:    tokenCtx.Scopes,
 		ClientID:  tokenCtx.Audience,
-		Subject:   tokenCtx.Subject,
+		Subject:   subject,
 		Audiences: []string{tokenCtx.Audience},
 	}
 
@@ -503,7 +504,7 @@ func (tb *tokenBuilder) BuildIDToken(
 
 	token, iat, err := tb.jwtService.GenerateJWT(
 		ctx,
-		tokenCtx.Subject,
+		subject,
 		tokenConfig.Issuer,
 		tokenConfig.ValidityPeriod,
 		jwtClaims,
@@ -550,6 +551,13 @@ func (tb *tokenBuilder) BuildIDToken(
 	tokenDTO.IssuedAt = iat
 
 	return tokenDTO, nil
+}
+
+// SubjectClaim returns the `sub` value a token about subjectID carries. Every token that names a
+// subject, the ID token today and the logout token next, derives it here so the two always agree.
+// It is the subject id unchanged.
+func SubjectClaim(subjectID string) string {
+	return subjectID
 }
 
 // buildIDTokenClaims builds the claims map for an ID token (OIDC).

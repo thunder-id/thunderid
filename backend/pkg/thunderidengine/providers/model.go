@@ -566,6 +566,8 @@ type OAuthClient struct {
 	ClientID                           string                  `yaml:"clientId,omitempty"`
 	RedirectURIs                       []string                `yaml:"redirectUris,omitempty"`
 	PostLogoutRedirectURIs             []string                `yaml:"postLogoutRedirectUris,omitempty"`
+	BackchannelLogoutURI               string                  `yaml:"backchannelLogoutUri,omitempty"`
+	BackchannelLogoutSessionRequired   bool                    `yaml:"backchannelLogoutSessionRequired,omitempty"`
 	GrantTypes                         []GrantType             `yaml:"grantTypes,omitempty"`
 	ResponseTypes                      []ResponseType          `yaml:"responseTypes,omitempty"`
 	TokenEndpointAuthMethod            TokenEndpointAuthMethod `yaml:"tokenEndpointAuthMethod,omitempty"`
@@ -699,6 +701,8 @@ func (c *AttestationConfig) WithoutCredentials() *AttestationConfig {
 type OAuthProfile struct {
 	RedirectURIs                       []string            `json:"redirectUris"`
 	PostLogoutRedirectURIs             []string            `json:"postLogoutRedirectUris,omitempty"`
+	BackchannelLogoutURI               string              `json:"backchannelLogoutUri,omitempty"`
+	BackchannelLogoutSessionRequired   bool                `json:"backchannelLogoutSessionRequired,omitempty"`
 	GrantTypes                         []string            `json:"grantTypes"`
 	ResponseTypes                      []string            `json:"responseTypes"`
 	TokenEndpointAuthMethod            string              `json:"tokenEndpointAuthMethod"`
@@ -1279,6 +1283,8 @@ type OAuthConfigWithSecret struct {
 	ClientSecret                       string                  `json:"clientSecret,omitempty"             yaml:"clientSecret,omitempty"             jsonschema:"OAuth client secret (auto-generated if not provided)"`
 	RedirectURIs                       []string                `json:"redirectUris,omitempty"             yaml:"redirectUris,omitempty"             jsonschema:"Allowed redirect URIs. Required for Public (SPA/Mobile) and Confidential (Server) clients. Omit for M2M."`
 	PostLogoutRedirectURIs             []string                `json:"postLogoutRedirectUris,omitempty"   yaml:"postLogoutRedirectUris,omitempty"   jsonschema:"Allowed post-logout redirect URIs. Optional. A post_logout_redirect_uri supplied to the logout endpoint must match one of these."`
+	BackchannelLogoutURI               string                  `json:"backchannelLogoutUri,omitempty"     yaml:"backchannelLogoutUri,omitempty"     jsonschema:"OIDC Back-Channel Logout endpoint. Optional. ThunderID POSTs a logout token here when a session this client shares ends. Absolute http or https URL; public clients must use https."`
+	BackchannelLogoutSessionRequired   bool                    `json:"backchannelLogoutSessionRequired,omitempty" yaml:"backchannelLogoutSessionRequired,omitempty" jsonschema:"Whether the client asked for a session identifier in its logout tokens. Informational: logout tokens always carry one."`
 	GrantTypes                         []GrantType             `json:"grantTypes,omitempty"               yaml:"grantTypes,omitempty"               jsonschema:"OAuth grant types. Common: [authorization_code, refresh_token] for user apps, [client_credentials] for M2M."`
 	ResponseTypes                      []ResponseType          `json:"responseTypes,omitempty"            yaml:"responseTypes,omitempty"            jsonschema:"OAuth response types. Common: [code] for user apps. Omit for M2M."`
 	TokenEndpointAuthMethod            TokenEndpointAuthMethod `json:"tokenEndpointAuthMethod,omitempty"  yaml:"tokenEndpointAuthMethod,omitempty"  jsonschema:"Client authentication method. Use 'none' for Public clients, 'client_secret_basic' for Confidential/M2M."`

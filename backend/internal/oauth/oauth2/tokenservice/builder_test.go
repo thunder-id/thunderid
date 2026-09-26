@@ -2955,3 +2955,23 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_UserAttributeCannotSynthesi
 	assert.Equal(suite.T(), testIDToken, result.Token)
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
+
+func (suite *TokenBuilderTestSuite) TestSubjectClaim_IsTheSubjectID() {
+	assert.Equal(suite.T(), "user123", SubjectClaim("user123"))
+}
+
+// The ID token's sub must come from SubjectClaim, so a logout token built through the same function
+// names the same subject.
+func (suite *TokenBuilderTestSuite) TestBuildIDToken_SubjectComesFromSubjectClaim() {
+	ctx := &IDTokenBuildContext{Subject: "user123", Audience: "app123", OAuthApp: suite.oauthApp}
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, SubjectClaim("user123"), "https://example.com", int64(3600),
+		mock.Anything, mock.Anything, mock.Anything,
+	).Return(testIDToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildIDToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), SubjectClaim("user123"), result.Subject)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
