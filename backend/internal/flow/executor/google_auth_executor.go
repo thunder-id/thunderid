@@ -7,7 +7,6 @@ import (
 	authngoogle "github.com/thunder-id/thunderid/internal/authn/google"
 	authnoidc "github.com/thunder-id/thunderid/internal/authn/oidc"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -22,7 +21,7 @@ var _ providers.Executor = (*googleOIDCAuthExecutor)(nil)
 // newGoogleOIDCAuthExecutor creates a new instance of GoogleOIDCAuthExecutor with the provided details.
 func newGoogleOIDCAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
-	idpService idp.IDPServiceInterface,
+	idpService providers.IDPProvider,
 	authService authngoogle.GoogleOIDCAuthnServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 ) oidcAuthExecutorInterface {

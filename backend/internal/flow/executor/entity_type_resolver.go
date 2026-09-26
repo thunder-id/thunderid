@@ -10,7 +10,6 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -37,7 +36,7 @@ type entityTypeResolutionInterface interface {
 // without asking, several are offered as a choice.
 type entityTypeResolution struct {
 	entityTypeService entitytype.EntityTypeServiceInterface
-	ouService         ou.OrganizationUnitServiceInterface
+	ouService         providers.OrganizationUnitProvider
 }
 
 var _ entityTypeResolutionInterface = (*entityTypeResolution)(nil)

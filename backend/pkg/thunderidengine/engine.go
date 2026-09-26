@@ -160,6 +160,8 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		AuthZService:      engineCtx.authzProvider,
 		ConsentEnforcer:   engineCtx.consentProvider,
 		AuthnProvider:     authnProviderManager,
+		OUService:         engineCtx.ouProvider,
+		IDPService:        engineCtx.idpProvider,
 		JWTService:        engineCtx.jwtService,
 		AuthAssertGen:     engineCtx.authAssertGen,
 		ResourceService:   engineCtx.resourceProvider,

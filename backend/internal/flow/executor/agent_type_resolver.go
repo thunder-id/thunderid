@@ -6,7 +6,6 @@ package executor
 import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -31,7 +30,7 @@ var _ entityTypeResolutionInterface = (*agentTypeResolver)(nil)
 func newAgentTypeResolver(
 	flowFactory core.FlowFactoryInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
-	ouService ou.OrganizationUnitServiceInterface,
+	ouService providers.OrganizationUnitProvider,
 ) *agentTypeResolver {
 	logger := log.GetLogger().With(
 		log.String(log.LoggerKeyComponentName, agentTypeResolverLoggerComponentName),

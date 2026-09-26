@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
@@ -396,7 +395,7 @@ func (suite *OUExecutorTestSuite) TestExecute_ErrorScenarios() {
 	}{
 		{
 			name:            "OU name conflict",
-			serviceError:    ou.ErrorOrganizationUnitNameConflict,
+			serviceError:    providers.ErrorOrganizationUnitNameConflict,
 			expectedFailure: ErrOUNameConflict.Error.DefaultValue,
 			expectError:     false,
 			expectNilResult: false,
@@ -411,7 +410,7 @@ func (suite *OUExecutorTestSuite) TestExecute_ErrorScenarios() {
 		},
 		{
 			name:            "OU handle conflict",
-			serviceError:    ou.ErrorOrganizationUnitHandleConflict,
+			serviceError:    providers.ErrorOrganizationUnitHandleConflict,
 			expectedFailure: ErrOUHandleConflict.Error.DefaultValue,
 			expectError:     false,
 			expectNilResult: false,
@@ -744,13 +743,13 @@ func (suite *OUExecutorTestSuite) TestExecute_RetryableOUCreationErrors() {
 	}{
 		{
 			name:           "OU name conflict",
-			serviceError:   ou.ErrorOrganizationUnitNameConflict,
+			serviceError:   providers.ErrorOrganizationUnitNameConflict,
 			expectedReason: ErrOUNameConflict.Error.DefaultValue,
 			message:        "Should return inputs for retry when OU name already exists",
 		},
 		{
 			name:           "OU handle conflict",
-			serviceError:   ou.ErrorOrganizationUnitHandleConflict,
+			serviceError:   providers.ErrorOrganizationUnitHandleConflict,
 			expectedReason: ErrOUHandleConflict.Error.DefaultValue,
 			message:        "Should return inputs for retry when OU handle already exists",
 		},

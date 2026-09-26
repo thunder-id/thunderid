@@ -20,7 +20,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
-	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -84,13 +83,19 @@ type OrganizationUnitRequestWithID struct {
 	CookiePolicyURI           string  `json:"cookiePolicyUri,omitempty"    yaml:"cookiePolicyUri,omitempty"    native:"url,max=2048"`
 }
 
+// Link is a pagination hyperlink on a list response.
+type Link struct {
+	Href string `json:"href"`
+	Rel  string `json:"rel"`
+}
+
 // OrganizationUnitListResponse represents the response for listing organization units with pagination.
 type OrganizationUnitListResponse struct {
 	TotalResults      int                     `json:"totalResults"`
 	StartIndex        int                     `json:"startIndex"`
 	Count             int                     `json:"count"`
 	OrganizationUnits []OrganizationUnitBasic `json:"organizationUnits"`
-	Links             []utils.Link            `json:"links"`
+	Links             []Link                  `json:"links"`
 }
 
 // OrganizationUnitBasic represents the basic information of an organization unit.

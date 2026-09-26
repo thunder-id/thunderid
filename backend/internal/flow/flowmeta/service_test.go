@@ -70,9 +70,10 @@ func (suite *FlowMetaServiceTestSuite) TearDownTest() {
 }
 
 // expectInboundLookup wires the inbound + entity mocks for an APP-type lookup. The synthesized
-// inbound client carries the fields populateTypeMetadata reads onto ApplicationMetadata.
+// inbound client carries the fields populateTypeMetadata reads onto ApplicationMetadata, and the
+// entity carries the organization unit the application belongs to.
 func (suite *FlowMetaServiceTestSuite) expectInboundLookup(
-	appID string, name string, isRegEnabled bool, props map[string]interface{},
+	appID string, ouID string, name string, isRegEnabled bool, props map[string]interface{},
 ) {
 	client := &inboundmodel.InboundClient{
 		ID:                        appID,
@@ -83,6 +84,7 @@ func (suite *FlowMetaServiceTestSuite) expectInboundLookup(
 	entity := &providers.Entity{
 		ID:               appID,
 		Category:         providers.EntityCategoryApp,
+		OUID:             ouID,
 		SystemAttributes: sysAttrs,
 	}
 	suite.mockInboundClient.On("GetInboundClientByEntityID", mock.Anything, appID).Return(client, nil)
@@ -98,19 +100,12 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_APP_Success() {
 	language := "en"
 	namespace := "auth"
 
-	suite.expectInboundLookup(appID, "Test App", true, map[string]interface{}{
+	suite.expectInboundLookup(appID, ouID, "Test App", true, map[string]interface{}{
 		"logo_url":   "https://example.com/logo.png",
 		"url":        "https://example.com",
 		"tos_uri":    "https://example.com/tos",
 		"policy_uri": "https://example.com/policy",
 	})
-
-	mockOUList := &providers.OrganizationUnitListResponse{
-		TotalResults: 1,
-		OrganizationUnits: []providers.OrganizationUnitBasic{
-			{ID: ouID, Handle: "default", Name: "Default OU"},
-		},
-	}
 
 	mockOU := providers.OrganizationUnit{
 		ID:          ouID,
@@ -136,7 +131,6 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_APP_Success() {
 		},
 	}
 
-	suite.mockOUService.On("GetOrganizationUnitList", mock.Anything, 1, 0, mock.Anything).Return(mockOUList, nil)
 	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, ouID).Return(mockOU, nil)
 	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, providers.DesignResolveTypeAPP, appID).
 		Return(mockDesign, nil)
@@ -161,6 +155,37 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_APP_Success() {
 	assert.NotNil(suite.T(), result.Design.Layout)
 	assert.Equal(suite.T(), 2, len(result.I18n.Languages))
 	assert.Equal(suite.T(), 2, result.I18n.TotalResults)
+}
+
+func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_APP_NoOrganizationUnit_OmitsOUMetadata() {
+	// Arrange
+	appID := testAppID
+	metaType := MetaTypeAPP
+
+	// The application's entity carries no organization unit, so no OU metadata is resolved.
+	suite.expectInboundLookup(appID, "", "Test App", false, nil)
+
+	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, providers.DesignResolveTypeAPP, appID).
+		Return(&providers.DesignResponse{
+			Theme:  json.RawMessage(`{}`),
+			Layout: json.RawMessage(`{}`),
+		}, nil)
+	suite.mockI18nService.On("ResolveTranslations", mock.Anything, "en-US", "").
+		Return(&providers.LanguageTranslationsResponse{
+			Language:     "en-US",
+			TotalResults: 0,
+			Translations: map[string]map[string]string{},
+		}, nil)
+	suite.mockI18nService.On("ListLanguages", mock.Anything).Return([]string{"en"}, nil)
+
+	// Act
+	result, svcErr := suite.service.GetFlowMetadata(suite.ctx, metaType, appID, nil, nil)
+
+	// Assert
+	assert.Nil(suite.T(), svcErr)
+	assert.NotNil(suite.T(), result)
+	assert.Nil(suite.T(), result.OU)
+	suite.mockOUService.AssertNotCalled(suite.T(), "GetOrganizationUnit", mock.Anything, mock.Anything)
 }
 
 func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_OU_Success() {
@@ -260,14 +285,7 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_DesignResolveError_Co
 	ouID := testOUID
 	metaType := MetaTypeAPP
 
-	suite.expectInboundLookup(appID, "Test App", false, nil)
-
-	mockOUList := &providers.OrganizationUnitListResponse{
-		TotalResults: 1,
-		OrganizationUnits: []providers.OrganizationUnitBasic{
-			{ID: ouID, Handle: "default", Name: "Default OU"},
-		},
-	}
+	suite.expectInboundLookup(appID, ouID, "Test App", false, nil)
 
 	mockOU := providers.OrganizationUnit{
 		ID:     ouID,
@@ -275,7 +293,6 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_DesignResolveError_Co
 		Name:   "Default OU",
 	}
 
-	suite.mockOUService.On("GetOrganizationUnitList", mock.Anything, 1, 0, mock.Anything).Return(mockOUList, nil)
 	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, ouID).Return(mockOU, nil)
 	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, providers.DesignResolveTypeAPP, appID).
 		Return(nil, &tidcommon.InternalServerError)

@@ -22,7 +22,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
-	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -36,7 +35,7 @@ const (
 type authAssertExecutor struct {
 	providers.Executor
 	jwtService          jwt.JWTServiceInterface
-	ouService           ou.OrganizationUnitServiceInterface
+	ouService           providers.OrganizationUnitProvider
 	authAssertGenerator assert.AuthAssertGeneratorInterface
 	authnProvider       providers.AuthnProviderManager
 	entityProvider      entityprovider.EntityProviderInterface
@@ -51,7 +50,7 @@ var _ providers.Executor = (*authAssertExecutor)(nil)
 func newAuthAssertExecutor(
 	flowFactory core.FlowFactoryInterface,
 	jwtService jwt.JWTServiceInterface,
-	ouService ou.OrganizationUnitServiceInterface,
+	ouService providers.OrganizationUnitProvider,
 	assertGenerator assert.AuthAssertGeneratorInterface,
 	authnProvider providers.AuthnProviderManager,
 	entityProvider entityprovider.EntityProviderInterface,

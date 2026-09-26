@@ -206,7 +206,7 @@ func (ous *organizationUnitService) listAllOrganizationUnits(
 		OrganizationUnits: ouList,
 		StartIndex:        offset + 1,
 		Count:             len(ouList),
-		Links:             utils.BuildPaginationLinks("/organization-units", limit, offset, totalCount, ""),
+		Links:             buildProviderPaginationLinks("/organization-units", limit, offset, totalCount),
 	}, nil
 }
 
@@ -224,7 +224,7 @@ func (ous *organizationUnitService) listAccessibleOrganizationUnits(
 			OrganizationUnits: []providers.OrganizationUnitBasic{},
 			StartIndex:        1,
 			Count:             0,
-			Links:             utils.BuildPaginationLinks("/organization-units", limit, offset, 0, ""),
+			Links:             buildProviderPaginationLinks("/organization-units", limit, offset, 0),
 		}, nil
 	}
 
@@ -260,7 +260,7 @@ func (ous *organizationUnitService) listAccessibleOrganizationUnits(
 			OrganizationUnits: page,
 			StartIndex:        offset + 1,
 			Count:             len(page),
-			Links:             utils.BuildPaginationLinks("/organization-units", limit, offset, total, ""),
+			Links:             buildProviderPaginationLinks("/organization-units", limit, offset, total),
 		}, nil
 	}
 
@@ -282,7 +282,7 @@ func (ous *organizationUnitService) listAccessibleOrganizationUnits(
 			OrganizationUnits: []providers.OrganizationUnitBasic{},
 			StartIndex:        offset + 1,
 			Count:             0,
-			Links:             utils.BuildPaginationLinks("/organization-units", limit, offset, total, ""),
+			Links:             buildProviderPaginationLinks("/organization-units", limit, offset, total),
 		}, nil
 	}
 
@@ -297,7 +297,7 @@ func (ous *organizationUnitService) listAccessibleOrganizationUnits(
 		OrganizationUnits: pageOUs,
 		StartIndex:        offset + 1,
 		Count:             len(pageOUs),
-		Links:             utils.BuildPaginationLinks("/organization-units", limit, offset, total, ""),
+		Links:             buildProviderPaginationLinks("/organization-units", limit, offset, total),
 	}, nil
 }
 
@@ -1445,7 +1445,7 @@ func buildOrganizationUnitListResponse(
 		OrganizationUnits: children,
 		StartIndex:        offset + 1,
 		Count:             len(children),
-		Links:             utils.BuildPaginationLinks(base, limit, offset, totalCount, ""),
+		Links:             buildProviderPaginationLinks(base, limit, offset, totalCount),
 	}, nil
 }
 
@@ -1483,4 +1483,15 @@ func stringPtrEqual(a, b *string) bool {
 		return false
 	}
 	return *a == *b
+}
+
+// buildProviderPaginationLinks builds pagination links for a provider list response. The provider
+// contract declares its own Link type so that an implementation outside this module can populate it.
+func buildProviderPaginationLinks(base string, limit, offset, totalCount int) []providers.Link {
+	links := utils.BuildPaginationLinks(base, limit, offset, totalCount, "")
+	out := make([]providers.Link, 0, len(links))
+	for _, link := range links {
+		out = append(out, providers.Link{Href: link.Href, Rel: link.Rel})
+	}
+	return out
 }
