@@ -1,0 +1,391 @@
+openapi: 3.0.3
+info:
+  title: Gateway API
+  version: "1.0"
+  description: |
+    Registers the gateways this control plane administers.
+
+    A registration records two things: where the gateway answers, and the management token it is
+    configured with. Registering records where a gateway is and how to authenticate to it; it does
+    not contact the gateway.
+
+    The management token is **write-only**. It is held encrypted and is never returned by any
+    response, because a read that returned it would hand every operator of this control plane the
+    credentials to every gateway it administers.
+
+    ## Authorization
+
+    Every route here requires the **root system permission**, the one named by
+    `server.security.system_permission_prefix` plus `system` (so `system` by default, or for example
+    `tenant_instance:system` where a prefix is configured). A narrower permission is not enough for
+    any of them, including the reads.
+
+    A registration holds the credential to a gateway, and even the list of names and addresses is
+    worth protecting: it describes the fleet. Reading it is therefore as privileged as changing it.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host:
+        default: "localhost"
+      port:
+        default: "8090"
+
+tags:
+  - name: Gateways
+    description: The gateways this control plane administers.
+
+security:
+  - OAuth2: [system]
+
+paths:
+  /gateways:
+    get:
+      tags: [Gateways]
+      summary: List the registered gateways
+      description: Returns every gateway this deployment administers, oldest first. No management token is included.
+      responses:
+        "200":
+          description: The registered gateways
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Gateway'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Gateways]
+      summary: Register a gateway
+      description: |
+        Records a gateway this control plane administers.
+
+        The control plane issues the key it will present to that gateway and returns it once, in
+        this response. Configure the gateway with it: nothing reads it back.
+
+        The gateway is not contacted. An unreachable `baseUrl` is found when something first
+        calls that gateway, not here.
+
+        How many gateways a deployment may hold is bounded by `server.max_gateways`, which is one
+        unless a deployment raises it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              name: "production"
+              baseUrl: "https://dp.example.com:8090"
+      responses:
+        "201":
+          description: |
+            The registered gateway, and the key it issued. This is the only response that carries
+            the key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Registration'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+
+  /gateways/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The gateway's id.
+    get:
+      tags: [Gateways]
+      summary: Get a gateway
+      responses:
+        "200":
+          description: The gateway. The management token is not returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Gateway'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Gateways]
+      summary: Change a gateway
+      description: |
+        Changes a registration. A field the body omits keeps the value it already has, so an
+        address can be moved without restating the certificate.
+
+        `baseUrl` is what says which gateway this is, so moving it is how a gateway that moved
+        is followed, and it is refused if another gateway already answers at that address.
+
+        A key the body carries replaces the stored one, which is how a gateway's credential is
+        rotated: send the new value here and give the same value to the gateway.
+
+        A body that omits it keeps what is held. Nothing is generated on an edit, because a change
+        nobody asked for would leave the gateway unreachable until the new value reached it, and
+        because a generated value would have to be returned by a response an edit has nowhere to put
+        one in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRequest'
+            example:
+              baseUrl: "https://dp.example.com:9443"
+      responses:
+        "200":
+          description: The updated gateway
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Gateway'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [Gateways]
+      summary: Remove a gateway
+      description: |
+        Removes the registration. The gateway itself is untouched and keeps running with whatever
+        configuration it already holds.
+      responses:
+        "204":
+          description: The gateway was removed
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+components:
+  responses:
+    BadRequest:
+      description: The request was malformed, or a required field was missing
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            invalidBody:
+              summary: The body is not one JSON object
+              value:
+                code: "GTW-1007"
+                message:
+                  key: "error.gatewayservice.invalid_request_body"
+                  defaultValue: "The request body is not valid JSON"
+            connectionRequired:
+              summary: A field needed to reach the gateway is missing
+              value:
+                code: "GTW-1005"
+                message:
+                  key: "error.gatewayservice.connection_required"
+                  defaultValue: "A base URL is required to reach the gateway"
+    Unauthorized:
+      description: No valid credentials were presented
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The caller is authenticated but not permitted
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No gateway of that id is registered
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "GTW-1002"
+            message:
+              key: "error.gatewayservice.gateway_not_found"
+              defaultValue: "Gateway not found"
+    Conflict:
+      description: The registration conflicts with one that already exists, or with the configured bound
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            nameTaken:
+              summary: The name is already registered
+              value:
+                code: "GTW-1004"
+                message:
+                  key: "error.gatewayservice.name_taken"
+                  defaultValue: "A gateway with this name is already registered"
+            gatewayAlreadyRegistered:
+              summary: One gateway registers once
+              value:
+                code: "GTW-1008"
+                message:
+                  key: "error.gateway.already_registered"
+                  defaultValue: "Gateway already registered"
+            limitReached:
+              summary: The deployment already holds as many gateways as it allows
+              value:
+                code: "GTW-1006"
+                message:
+                  key: "error.gatewayservice.limit_reached"
+                  defaultValue: "This deployment already administers as many gateways as it is configured to allow"
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [name, baseUrl]
+      properties:
+        name:
+          type: string
+          description: A label for this gateway, unique within the deployment.
+          example: "production"
+        baseUrl:
+          type: string
+          description: |
+            Where the gateway answers, and what identifies it.
+
+            **One gateway registers once**, so this is unique within the deployment. A gateway
+            reached by more than one name can therefore be registered more than once, under each of
+            them; nothing here can tell they are the same deployment. Register the name the control
+            plane should call it by.
+          example: "https://dp.example.com:8090"
+        key:
+          type: string
+          format: password
+          description: |
+            The token this control plane will present to that gateway.
+
+            Optional. Supply it when the gateway was configured with a key first and this
+            registration has to match; leave it out and one is generated, which is the usual way and
+            means a key is not typed, mailed or committed on the way in. Either way the response
+            returns it, and that is the only time it is readable.
+
+            A gateway declared in a file may name one the same way. Write it as an environment
+            reference there, `key: "{{.GATEWAY_TOKEN}}"`, so the file carries the name and not the
+            credential.
+          example: "a-key-the-gateway-already-holds"
+        caCertificate:
+          type: string
+          description: |
+            A PEM certificate to trust when calling this gateway, in addition to the system roots.
+
+            For a gateway serving a certificate no public authority signed, which is what a local
+            or on-premise deployment usually has. Leave empty for a gateway behind an ingress with
+            a publicly-issued certificate: it verifies against the system roots with nothing here.
+    UpdateRequest:
+      type: object
+      minProperties: 1
+      description: |
+        What to change. Every property is optional and what is omitted keeps the value it already
+        has, so a caller changing one field need not restate the others.
+      properties:
+        name:
+          type: string
+          description: A label for this gateway, unique within the deployment.
+        baseUrl:
+          type: string
+          description: Where the gateway answers.
+        caCertificate:
+          type: string
+          description: A PEM certificate to trust when calling this gateway.
+        key:
+          type: string
+          format: password
+          description: |
+            The token this control plane presents to that gateway.
+
+            Omit it to keep the one already held. Sending a new value is how a credential is
+            rotated, and the same value has to reach the gateway, which holds it as its
+            management API key.
+    Registration:
+      type: object
+      description: |
+        A registration, and the key it issued.
+
+        The key appears here and nowhere else. It is generated when the gateway is registered, held
+        encrypted, and never read back, so this response is the only chance to configure it on the
+        gateway. Lose it and the way forward is to rotate, not to look it up.
+      allOf:
+        - $ref: '#/components/schemas/Gateway'
+        - type: object
+          required: [key]
+          properties:
+            key:
+              type: string
+              format: password
+              description: The token this control plane will present to that gateway.
+    Gateway:
+      type: object
+      description: A registered gateway. Carries no `key` property, so no read can disclose one.
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        baseUrl:
+          type: string
+        caCertificate:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          $ref: '#/components/schemas/I18nMessage'
+        description:
+          $ref: '#/components/schemas/I18nMessage'
+    I18nMessage:
+      type: object
+      properties:
+        key:
+          type: string
+        defaultValue:
+          type: string
+
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth2/token
+          scopes:
+            system: Manage this deployment

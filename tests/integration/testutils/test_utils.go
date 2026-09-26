@@ -420,6 +420,7 @@ func CopyDeclarativeResources(zipFilePattern string) error {
 		"connections",
 		"credential_configurations",
 		"flows",
+		"gateways",
 		"groups",
 		"layouts",
 		"organization_units",
@@ -759,6 +760,7 @@ func startServerInternal(port string, extraArgs ...string) error {
 	// Preserve GOCOVERDIR environment variable for coverage collection
 	envVars := []string{
 		"PORT=" + port,
+		"GATEWAY_TOKEN=" + DeclaredGatewayToken,
 	}
 
 	if goCoverDir := os.Getenv("GOCOVERDIR"); goCoverDir != "" {
@@ -1123,6 +1125,7 @@ func RunSetupScript() error {
 		"DIRECT_AUTH_SECRET="+DirectAuthHeaderValue,
 		"ADMIN_USERNAME="+AdminUsername,
 		"ADMIN_PASSWORD="+AdminPassword,
+		"GATEWAY_TOKEN="+DeclaredGatewayToken,
 	)
 
 	log.Println("Setup script will start server, run bootstrap, and stop server automatically")

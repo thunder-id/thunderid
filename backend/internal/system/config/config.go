@@ -313,6 +313,21 @@ type SMTPEmailConfig struct {
 	EnableAuthentication *bool  `yaml:"enable_authentication" json:"enable_authentication"`
 }
 
+// GatewayConfig holds how many gateways this deployment administers.
+//
+// It is here rather than in the engine's server configuration because only a deployment that
+// administers gateways reads it, and the engine serves deployments that administer none.
+type GatewayConfig struct {
+	// MaxGateways bounds how many gateways a deployment may register.
+	//
+	// It is a guard against a deployment accumulating gateways it was not configured for, not an
+	// invariant. Two registrations arriving at the same moment can each be admitted against the
+	// same count on PostgreSQL and leave one more than configured. Nothing is corrupted when that
+	// happens: a gateway's name and its address are unique by table constraint, and those are
+	// exact. Raise or lower it freely; do not rely on it as a licensing or security boundary.
+	MaxGateways int `yaml:"max_gateways" json:"max_gateways"`
+}
+
 // DeclarativeResources holds the configuration details for the declarative resources.
 type DeclarativeResources struct {
 	Enabled bool `yaml:"enabled" json:"enabled" default:"false"`
@@ -640,6 +655,7 @@ func (c AuthZENPDPConfig) Validate() error {
 // Config holds the complete configuration details of the server.
 type Config struct {
 	Server               engineconfig.ServerConfig         `yaml:"server"                json:"server"`
+	Gateway              GatewayConfig                     `yaml:"gateway"               json:"gateway"`
 	AuthZENPDP           AuthZENPDPConfig                  `yaml:"authzen_pdp"           json:"authzen_pdp"`
 	Log                  LogConfig                         `yaml:"log"                   json:"log"`
 	GateClient           engineconfig.GateClientConfig     `yaml:"gate_client"           json:"gate_client"`

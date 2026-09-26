@@ -1,6 +1,8 @@
 server:
   hostname: "localhost"
   port: 8095
+  # The default of one gateway is what a standalone deployment wants, but it would refuse the second
+  # registration in every uniqueness test before the rule under test was reached.
   security:
     direct_auth_secret: "integration-direct-auth-secret"
     # Exercised by tests/integration/managementapikey: a deployment pipeline authenticating to the
@@ -18,6 +20,9 @@ server:
       # configured-audience path is exercised without changing what MCP enforces. Keep in step with
       # mcpResourceIdentifier in tests/integration/mcp/mcp_test.go.
       audience: "https://localhost:8095/mcp"
+
+gateway:
+  max_gateways: 5
 
 tls:
   cert_file: "config/certs/server.cert"

@@ -24,6 +24,11 @@ server:
       audience: "https://localhost:8095/mcp"
 
 
+gateway:
+  # The default of one gateway would refuse the second registration in every uniqueness test before
+  # the rule under test was reached.
+  max_gateways: 5
+
 tls:
   cert_file: "config/certs/server.cert"
   key_file: "config/certs/server.key"

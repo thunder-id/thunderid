@@ -1,0 +1,9 @@
+# A gateway declared in a file rather than registered through the API.
+#
+# The server reads this on every start and adopts it by name, which is what makes the load
+# idempotent: a restart updates the gateway it already registered rather than adding another.
+name: declared-integration-gateway
+baseUrl: https://declared.integration.test:8090
+# The token this control plane presents to that gateway, written as an environment reference so
+# the credential is not in the file. The harness sets GATEWAY_TOKEN when it starts the server.
+key: "{{.GATEWAY_TOKEN}}"

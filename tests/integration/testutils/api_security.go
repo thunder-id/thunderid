@@ -45,6 +45,13 @@ const (
 	AdminPassword = "integration-admin-password"
 )
 
+// DeclaredGatewayToken is the management token the declared gateway holds
+// (resources/declarative_resources/gateways/declared-gateway.yaml). That file names its key as the
+// environment reference "{{.GATEWAY_TOKEN}}" rather than carrying the credential, so the harness
+// sets GATEWAY_TOKEN to this on every path that starts the server. Unset, the reference fails to
+// resolve and the server refuses to start.
+const DeclaredGatewayToken = "declared-integration-management-token"
+
 // isDirectAuthPath reports whether the path is one of the Direct API endpoints gated by the Direct API
 // Secret.
 func isDirectAuthPath(path string) bool {
