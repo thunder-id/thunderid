@@ -23,7 +23,7 @@ import {
   DialogContent,
 } from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
-import {useState, useCallback, useMemo, type SyntheticEvent} from 'react';
+import {useState, useCallback, useMemo, type JSX, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useLocation, useNavigate, useParams} from 'react-router';
 import RouteConfig from '../../../configs/RouteConfig';
@@ -35,7 +35,7 @@ import EditAdvancedSettings from '../components/edit-application/advanced-settin
 import EditCredentialsSettings from '../components/edit-application/credentials/EditCredentialsSettings';
 import EditCustomizationSettings from '../components/edit-application/customization-settings/EditCustomizationSettings';
 import EditFlowsSettings from '../components/edit-application/flows-settings/EditFlowsSettings';
-import IntegrationGuides from '../components/edit-application/integration-guides/IntegrationGuides';
+import type {IntegrationGuidesProps} from '../components/edit-application/integration-guides/IntegrationGuides';
 import McpConnectTab from '../components/edit-application/mcp/McpConnectTab';
 import EditTokenSettings from '../components/edit-application/token-settings/EditTokenSettings';
 import EditTokenSettingsTabs from '../components/edit-application/token-settings/EditTokenSettingsTabs';
@@ -84,7 +84,22 @@ function TabPanel({children = null, value, index, ...other}: TabPanelProps) {
   );
 }
 
-export default function ApplicationEditPage() {
+/**
+ * Props for {@link ApplicationEditPage}.
+ */
+export interface ApplicationEditPageProps {
+  /**
+   * Renders the Overview tab, which tells a developer how to integrate against this application.
+   *
+   * Supplied by the console rather than imported here, because that tab advertises the endpoints a
+   * client calls at runtime: the authorization, token, userinfo, JWKS, flow and passkey paths. A
+   * console serving a deployment that answers none of them supplies nothing, and the tab is absent
+   * rather than printing URLs that lead nowhere.
+   */
+  renderIntegrationGuides?: (props: IntegrationGuidesProps) => JSX.Element;
+}
+
+export default function ApplicationEditPage({renderIntegrationGuides}: ApplicationEditPageProps = {}) {
   const logger = useLogger('ApplicationEditPage');
   const {t} = useTranslation();
   const navigate = useNavigate();
@@ -374,36 +389,41 @@ export default function ApplicationEditPage() {
 
   const mcpTabs: TabConfig[] = isMcpClient
     ? [
-        {
-          key: 'overview',
-          label: t('applications:edit.page.tabs.overview'),
-          panel: (
-            <IntegrationGuides
-              application={application}
-              oauth2Config={oauth2Config}
-              onGoToFlows={mcpFlowsTabIndex >= 0 ? () => setActiveTabKey('flows') : undefined}
-              onGoToCustomization={mcpCustomizationTabIndex >= 0 ? () => setActiveTabKey('customization') : undefined}
-            />
-          ),
-        },
+        ...(renderIntegrationGuides
+          ? [
+              {
+                key: 'overview',
+                label: t('applications:edit.page.tabs.overview'),
+                panel: renderIntegrationGuides({
+                  application,
+                  oauth2Config,
+                  onGoToCustomization:
+                    mcpCustomizationTabIndex >= 0 ? () => setActiveTabKey('customization') : undefined,
+                  onGoToFlows: mcpFlowsTabIndex >= 0 ? () => setActiveTabKey('flows') : undefined,
+                }),
+              },
+            ]
+          : []),
         ...baseMcpTabs,
       ]
     : [];
 
   const standardTabs: TabConfig[] = !isMcpClient
     ? [
-        {
-          key: 'overview',
-          label: t('applications:edit.page.tabs.overview'),
-          panel: (
-            <IntegrationGuides
-              application={application}
-              oauth2Config={oauth2Config}
-              onGoToFlows={() => setActiveTabKey('flows')}
-              onGoToCustomization={() => setActiveTabKey('customization')}
-            />
-          ),
-        },
+        ...(renderIntegrationGuides
+          ? [
+              {
+                key: 'overview',
+                label: t('applications:edit.page.tabs.overview'),
+                panel: renderIntegrationGuides({
+                  application,
+                  oauth2Config,
+                  onGoToCustomization: () => setActiveTabKey('customization'),
+                  onGoToFlows: () => setActiveTabKey('flows'),
+                }),
+              },
+            ]
+          : []),
         {
           key: 'access',
           label: t('applications:edit.page.tabs.access', 'Access'),

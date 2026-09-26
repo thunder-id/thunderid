@@ -8,10 +8,19 @@ import {Plus} from '@wso2/oxygen-ui-icons-react';
 import {type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
-import VerifiableCredentialsList from '../components/VerifiableCredentialsList';
+import VerifiableCredentialsList, {
+  type VerifiableCredentialsListProps,
+} from '../components/VerifiableCredentialsList';
 import useVerifiableCredentialRoutes from '../hooks/useVerifiableCredentialRoutes';
 
-export default function VerifiableCredentialsListPage(): JSX.Element {
+/**
+ * Props for {@link VerifiableCredentialsListPage}, forwarded to the listing.
+ */
+export type VerifiableCredentialsListPageProps = VerifiableCredentialsListProps;
+
+export default function VerifiableCredentialsListPage({
+  renderOffer,
+}: VerifiableCredentialsListPageProps = {}): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('VerifiableCredentialsListPage');
@@ -44,7 +53,7 @@ export default function VerifiableCredentialsListPage(): JSX.Element {
         </PageTitle.Actions>
       </PageTitle>
 
-      <VerifiableCredentialsList />
+      <VerifiableCredentialsList renderOffer={renderOffer} />
     </PageContent>
   );
 }

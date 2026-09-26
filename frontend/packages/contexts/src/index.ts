@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Export types
-export type {ProductConfig, ServerConfig, TrustedIssuerConfig, BrandConfig, SdkConfig} from './Config/types';
+export type {ProductConfig, ServerConfig, TrustedIssuerConfig, BrandConfig, SdkConfig, Plane} from './Config/types';
 export type {ToastContextType, ToastSeverity} from './Toast/ToastContext';
 export type {RoutePaths} from './Routes/RoutesContext';
 
@@ -16,3 +16,16 @@ export {default as useToast} from './Toast/useToast';
 export {default as RoutesContext} from './Routes/RoutesContext';
 export {default as RoutesProvider, type RoutesProviderProps} from './Routes/RoutesProvider';
 export {default as useRoutes} from './Routes/useRoutes';
+
+// Administration actions: how this console carries out the operations that depend on a runtime.
+// A console that installs none takes the plain management path for every one of them.
+export {
+  AdministrationActionsContext,
+  AdministrationActionsProvider,
+  useAdministrationActions,
+} from './AdministrationActions';
+export type {
+  AdministrationActions,
+  AdministrationActionsProviderProps,
+  AdministrationHttpLike,
+} from './AdministrationActions';

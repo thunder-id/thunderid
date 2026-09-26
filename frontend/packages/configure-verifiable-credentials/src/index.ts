@@ -44,6 +44,7 @@ export type {
 export {default as VerifiableCredentialCreatePage} from './pages/VerifiableCredentialCreatePage';
 export {default as VerifiableCredentialEditPage} from './pages/VerifiableCredentialEditPage';
 export {default as VerifiableCredentialsListPage} from './pages/VerifiableCredentialsListPage';
+export type {VerifiableCredentialsListPageProps} from './pages/VerifiableCredentialsListPage';
 export {default as VerifiablePresentationCreatePage} from './pages/VerifiablePresentationCreatePage';
 export {default as VerifiablePresentationEditPage} from './pages/VerifiablePresentationEditPage';
 export {default as VerifiablePresentationsListPage} from './pages/VerifiablePresentationsListPage';

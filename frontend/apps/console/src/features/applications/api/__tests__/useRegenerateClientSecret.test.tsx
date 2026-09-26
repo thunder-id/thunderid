@@ -6,6 +6,7 @@ import type {Application, InboundAuthConfig} from '@thunderid/configure-applicat
 import {waitFor, renderHook} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import useRegenerateClientSecret from '../useRegenerateClientSecret';
+import dataPlaneAdministrationActions from '@/features/administration/dataPlaneAdministrationActions';
 
 vi.mock('@thunderid/react', () => ({
   useThunderID: vi.fn(),
@@ -15,13 +16,14 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
     ...actual,
+    useAdministrationActions: vi.fn(),
     useConfig: vi.fn(),
     useToast: vi.fn(),
   };
 });
 
 const {useThunderID} = await import('@thunderid/react');
-const {useConfig, useToast} = await import('@thunderid/contexts');
+const {useAdministrationActions, useConfig, useToast} = await import('@thunderid/contexts');
 
 const FLOW_ID = '01900000-0000-7000-8000-00000000007a';
 const FLOW_HANDLE = 'default-secret-regeneration-flow';
@@ -121,6 +123,10 @@ describe('useRegenerateClientSecret', () => {
     vi.mocked(useToast).mockReturnValue({
       showToast: mockShowToast,
     } as unknown as ReturnType<typeof useToast>);
+
+    // These cases describe a Data Plane console, which is the one that installs the flow-backed
+    // actions. A Control Plane console installs none; that path is covered separately below.
+    vi.mocked(useAdministrationActions).mockReturnValue(dataPlaneAdministrationActions);
   });
 
   afterEach(() => {
@@ -508,4 +514,45 @@ describe('useRegenerateClientSecret', () => {
     // Cryptographically random secrets should be different
     expect(firstSecret).not.toBe(secondSecret);
   });
+
+  // A Control Plane console installs no administration actions. It serves no runtime, so there are
+  // no tokens signed by the old secret to revoke alongside the rotation, and no /flow/execute to
+  // reach. The rotation is the update, and the flow configuration is never consulted.
+  describe('on a control plane console', () => {
+    beforeEach(() => {
+      vi.mocked(useAdministrationActions).mockReturnValue({});
+    });
+
+    it('rotates through the applications API', async () => {
+      mockNativeRotation();
+
+      const {result} = renderHook(() => useRegenerateClientSecret());
+
+      result.current.mutate({applicationId});
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+
+      expect(requestsTo('PUT', '/applications/')).toHaveLength(1);
+      expect(result.current.data?.clientSecret).toEqual(expect.any(String));
+    });
+
+    it('executes no flow and does not read the flow configuration', async () => {
+      mockNativeRotation();
+
+      const {result} = renderHook(() => useRegenerateClientSecret());
+
+      result.current.mutate({applicationId});
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+
+      expect(requestsTo('POST', '/flow/execute')).toHaveLength(0);
+      expect(requestsTo('GET', '/server-config/flow')).toHaveLength(0);
+      expect(requestsTo('GET', '/flows')).toHaveLength(0);
+    });
+  });
+
 });

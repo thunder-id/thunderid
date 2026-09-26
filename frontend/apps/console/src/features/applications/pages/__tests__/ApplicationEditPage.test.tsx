@@ -19,6 +19,7 @@ import ApplicationConstants from '../../constants/application-constants';
 import {getIntegrationGuideForTemplate} from '../../utils/getIntegrationGuidesForTemplate';
 import getTemplateMetadata from '../../utils/getTemplateMetadata';
 import ApplicationEditPage from '../ApplicationEditPage';
+import renderIntegrationGuides from '@/features/administration/renderIntegrationGuides';
 
 // Mock dependencies
 vi.mock('react-router', async () => {
@@ -359,7 +360,9 @@ describe('ApplicationEditPage', () => {
     } as unknown as UseMutationResult<Application, Error, Partial<Application>>);
   });
 
-  const renderComponent = () => render(<ApplicationEditPage />);
+  // These cases describe a Data Plane console, which is the one that supplies the Overview tab. A
+  // Control Plane supplies none, and that the tab is then absent is covered separately below.
+  const renderComponent = () => render(<ApplicationEditPage renderIntegrationGuides={renderIntegrationGuides} />);
 
   describe('Loading State', () => {
     it('should display loading state while fetching application', () => {
@@ -2279,4 +2282,18 @@ describe('ApplicationEditPage', () => {
       });
     });
   });
+
+  // A Control Plane console supplies no Overview renderer. That tab prints the authorization, token,
+  // userinfo, JWKS, flow and passkey endpoints, none of which a Control Plane serves, so it is absent
+  // rather than showing URLs that answer nothing.
+  describe('on a control plane console', () => {
+    it('renders no overview tab when the console supplies no renderer', async () => {
+      render(<ApplicationEditPage />);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('integration-guides')).toBeNull();
+      });
+    });
+  });
+
 });

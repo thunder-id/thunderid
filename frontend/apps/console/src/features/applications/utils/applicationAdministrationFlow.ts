@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {deleteApplicationNatively} from './applicationAdministrationNative';
 import {
   ADMINISTRATION_FLOW_TYPE,
   APPLICATION_TARGET_INPUT,
@@ -172,21 +173,6 @@ async function runConfiguredFlow(
   }
 
   return executeApplicationFlow(http, serverUrl, flowId, applicationId, action);
-}
-
-/**
- * Deletes an application through the native endpoint.
- */
-export async function deleteApplicationNatively(
-  http: HttpLike,
-  serverUrl: string,
-  applicationId: string,
-): Promise<void> {
-  await http.request({
-    url: `${serverUrl}/applications/${applicationId}`,
-    method: 'DELETE',
-    headers: {'Content-Type': 'application/json'},
-  });
 }
 
 /**

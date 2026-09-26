@@ -8,6 +8,7 @@ import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import AgentConstants from '../../constants/agent-constants';
 import AgentEditPage from '../AgentEditPage';
+import renderAgentOverview from '@/features/administration/renderAgentOverview';
 
 const {
   mockNavigate,
@@ -239,7 +240,7 @@ describe('AgentEditPage', () => {
         refetch: mockRefetch,
       });
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       expect(screen.getByRole('progressbar')).toBeInTheDocument();
     });
@@ -247,7 +248,7 @@ describe('AgentEditPage', () => {
     it('renders a progressbar while the type schema is still resolving', () => {
       mockUseGetAgentType.mockReturnValue({data: undefined, isLoading: true, error: null});
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       expect(screen.getByRole('progressbar')).toBeInTheDocument();
     });
@@ -261,7 +262,7 @@ describe('AgentEditPage', () => {
         refetch: mockRefetch,
       });
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       expect(screen.getByText('Failed to load agent')).toBeInTheDocument();
       expect(screen.getByText('Something went wrong')).toBeInTheDocument();
@@ -277,7 +278,7 @@ describe('AgentEditPage', () => {
         refetch: mockRefetch,
       });
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       expect(screen.getByText('Agent not found')).toBeInTheDocument();
     });
@@ -285,7 +286,7 @@ describe('AgentEditPage', () => {
 
   describe('Tabs', () => {
     it('renders Overview, Attributes, Access, and Advanced tabs by default', () => {
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       expect(screen.getByRole('tab', {name: 'Overview'})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: 'Attributes'})).toBeInTheDocument();
@@ -294,7 +295,7 @@ describe('AgentEditPage', () => {
     });
 
     it('does not render icons on any tab', () => {
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       screen.getAllByRole('tab').forEach((tab) => {
         expect(tab.querySelector('svg')).not.toBeInTheDocument();
@@ -302,7 +303,7 @@ describe('AgentEditPage', () => {
     });
 
     it('renders OAuth-specific tabs when the agent has an OAuth2 inbound config', () => {
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       expect(screen.getByRole('tab', {name: /Credentials/i})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: 'Flows'})).toBeInTheDocument();
@@ -310,7 +311,7 @@ describe('AgentEditPage', () => {
     });
 
     it('orders tabs as Overview, Attributes, Credentials, Access, Flows, Tokens, Advanced', () => {
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       const tabNames = screen.getAllByRole('tab').map((tab) => tab.textContent);
       expect(tabNames).toEqual(['Overview', 'Attributes', 'Credentials', 'Access', 'Flows', 'Tokens', 'Advanced']);
@@ -318,7 +319,7 @@ describe('AgentEditPage', () => {
 
     it('switches tabs when clicked', async () => {
       const user = userEvent.setup();
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       await user.click(screen.getByRole('tab', {name: /Access/i}));
 
@@ -334,7 +335,7 @@ describe('AgentEditPage', () => {
         refetch: mockRefetch,
       });
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       expect(screen.queryByRole('tab', {name: /Credentials/i})).not.toBeInTheDocument();
       expect(screen.queryByRole('tab', {name: 'Flows'})).not.toBeInTheDocument();
@@ -347,7 +348,7 @@ describe('AgentEditPage', () => {
 
   describe('Header inline editing', () => {
     it('renders the agent name and description', () => {
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       expect(screen.getByText('Test Agent')).toBeInTheDocument();
       expect(screen.getByText('Test description')).toBeInTheDocument();
@@ -355,7 +356,7 @@ describe('AgentEditPage', () => {
 
     it('shows the edit name input when its edit icon is clicked', async () => {
       const user = userEvent.setup();
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       // Find and click the first edit icon (next to the name)
       const editIcons = screen.getAllByRole('button').filter((b) => b.querySelector('svg'));
@@ -371,7 +372,7 @@ describe('AgentEditPage', () => {
 
     it('does not raise an unsaved-changes diff when description editor is opened and closed without changes', async () => {
       const user = userEvent.setup();
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       const editIcons = screen.getAllByRole('button').filter((b) => b.querySelector('svg'));
       const descEditButton = editIcons.find((btn) => btn.parentElement?.textContent?.includes('Test description'));
@@ -399,7 +400,7 @@ describe('AgentEditPage', () => {
         isError: false,
         refetch: mockRefetch,
       });
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
     };
 
     it('offers the logo picker for a writable agent', () => {
@@ -417,7 +418,7 @@ describe('AgentEditPage', () => {
         refetch: mockRefetch,
       });
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       expect(screen.queryByRole('button', {name: 'Update Logo'})).not.toBeInTheDocument();
       // ResourceAvatar opens its picker from the avatar itself whenever onSelect is set, so the
@@ -506,7 +507,7 @@ describe('AgentEditPage', () => {
         refetch: mockRefetch,
       });
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       // The picker still stages a pick, but persisting it would send the whole invalid payload.
       expect(screen.queryByRole('button', {name: 'Save logo'})).not.toBeInTheDocument();
@@ -550,7 +551,7 @@ describe('AgentEditPage', () => {
 
     it('hides the bar when a field is manually retyped back to its original value', async () => {
       const user = userEvent.setup();
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       await editName(user, 'Test Agent', 'Renamed Agent');
       expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
@@ -563,7 +564,7 @@ describe('AgentEditPage', () => {
 
     it('discards a rename that exceeds the maximum length', async () => {
       const user = userEvent.setup();
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       const editIcons = screen.getAllByRole('button').filter((button) => button.querySelector('svg'));
       const nameEditButton = editIcons.find((button) => button.parentElement?.textContent?.includes('Test Agent'));
@@ -579,7 +580,7 @@ describe('AgentEditPage', () => {
 
     it('keeps the bar visible when only one of two edited fields is reverted', async () => {
       const user = userEvent.setup();
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       // Edit description
       const editIcons = screen.getAllByRole('button').filter((b) => b.querySelector('svg'));
@@ -607,7 +608,7 @@ describe('AgentEditPage', () => {
   describe('Delete success', () => {
     it('navigates back to /agents when EditAdvancedSettings reports onDeleteSuccess', async () => {
       const user = userEvent.setup();
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       await user.click(screen.getByRole('tab', {name: /Advanced/i}));
       await user.click(screen.getByText('Delete Successful'));
@@ -621,7 +622,7 @@ describe('AgentEditPage', () => {
   describe('Attribute edits', () => {
     it('surfaces the page-level unsaved-changes bar when an attribute is edited', async () => {
       const user = userEvent.setup();
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       await user.click(screen.getByRole('tab', {name: 'Attributes'}));
       await user.click(screen.getByText('Edit an attribute'));
@@ -631,7 +632,7 @@ describe('AgentEditPage', () => {
 
     it('includes staged attribute edits when the page-level Save button is clicked', async () => {
       const user = userEvent.setup();
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       await user.click(screen.getByRole('tab', {name: 'Attributes'}));
       await user.click(screen.getByText('Edit an attribute'));
@@ -649,7 +650,7 @@ describe('AgentEditPage', () => {
     it('keeps the unsaved-changes bar and edited state when saving fails', async () => {
       const user = userEvent.setup();
       mockMutateAsync.mockRejectedValueOnce(new Error('Boom'));
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       await user.click(screen.getByRole('tab', {name: 'Attributes'}));
       await user.click(screen.getByText('Edit an attribute'));
@@ -666,7 +667,7 @@ describe('AgentEditPage', () => {
       // A new callback per render refired the tab's staging effect after any real edit, until
       // React stopped committing renders at all.
       const user = userEvent.setup();
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       await user.click(screen.getByRole('tab', {name: 'Attributes'}));
       await user.click(screen.getByText('Edit an attribute'));
@@ -684,7 +685,7 @@ describe('AgentEditPage', () => {
         reset: vi.fn(),
       });
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       await user.click(screen.getByRole('tab', {name: 'Attributes'}));
       await user.click(screen.getByText('Edit an attribute'));
@@ -704,7 +705,7 @@ describe('AgentEditPage', () => {
         reset: mockReset,
       });
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       await user.click(screen.getByRole('tab', {name: 'Attributes'}));
       await user.click(screen.getByText('Edit an attribute'));
@@ -716,7 +717,7 @@ describe('AgentEditPage', () => {
   describe('Reset', () => {
     it('clears edited fields and resets tab content when Reset is clicked', async () => {
       const user = userEvent.setup();
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       await user.click(screen.getByRole('tab', {name: 'Attributes'}));
       await user.click(screen.getByText('Edit an attribute'));
@@ -730,7 +731,7 @@ describe('AgentEditPage', () => {
 
   describe('Back navigation', () => {
     it('renders the back link to /agents', () => {
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       const backLink = screen.getByRole('link', {name: /Back to agents/i});
       expect(backLink).toHaveAttribute('href', '/agents');
@@ -774,7 +775,7 @@ describe('AgentEditPage', () => {
         refetch: mockRefetch,
       });
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
       await triggerAChange(user);
 
       expect(
@@ -808,7 +809,7 @@ describe('AgentEditPage', () => {
         refetch: mockRefetch,
       });
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
       await triggerAChange(user);
 
       expect(screen.getByText('Before saving, add a redirect URI.')).toBeInTheDocument();
@@ -838,7 +839,7 @@ describe('AgentEditPage', () => {
         refetch: mockRefetch,
       });
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
       await triggerAChange(user);
 
       expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
@@ -855,7 +856,7 @@ describe('AgentEditPage', () => {
         refetch: mockRefetch,
       });
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
       await triggerAChange(user);
 
       expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
@@ -884,7 +885,7 @@ describe('AgentEditPage', () => {
         refetch: mockRefetch,
       });
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
       await triggerAChange(user);
 
       expect(screen.getByText('Before saving, add a certificate.')).toBeInTheDocument();
@@ -915,7 +916,7 @@ describe('AgentEditPage', () => {
         refetch: mockRefetch,
       });
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
       await triggerAChange(user);
 
       expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
@@ -928,7 +929,7 @@ describe('AgentEditPage', () => {
     });
 
     it('does not render the secret dialog when there is no justCreatedSecret navigation state', () => {
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       expect(screen.queryByTestId('agent-show-client-secret')).not.toBeInTheDocument();
     });
@@ -944,7 +945,7 @@ describe('AgentEditPage', () => {
         },
       });
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       expect(screen.getByTestId('agent-show-client-secret')).toBeInTheDocument();
       expect(screen.getByDisplayValue('brand-new-agent-secret')).toBeInTheDocument();
@@ -961,7 +962,7 @@ describe('AgentEditPage', () => {
         },
       });
 
-      render(<AgentEditPage />);
+      render(<AgentEditPage renderAgentOverview={renderAgentOverview} />);
 
       await user.click(screen.getByTestId('agent-client-secret-continue'));
 
@@ -970,4 +971,17 @@ describe('AgentEditPage', () => {
       });
     });
   });
+
+  // A Control Plane console supplies no Overview renderer, for the reason the application edit page
+  // gives: the tab prints OAuth endpoints only a Data Plane serves.
+  describe('on a control plane console', () => {
+    it('renders no overview tab when the console supplies no renderer', async () => {
+      render(<AgentEditPage />);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('agent-overview')).toBeNull();
+      });
+    });
+  });
+
 });

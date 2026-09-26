@@ -4,10 +4,9 @@
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {ApplicationQueryKeys} from '@thunderid/configure-applications';
 import type {Application, InboundAuthConfig} from '@thunderid/configure-applications';
-import {useConfig, useToast} from '@thunderid/contexts';
+import {useAdministrationActions, useConfig, useToast, type AdministrationHttpLike} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
-import {regenerateClientSecretViaFlow, type HttpLike} from '../utils/applicationAdministrationFlow';
 
 /**
  * Variables for the {@link useRegenerateClientSecret} mutation.
@@ -130,19 +129,25 @@ export default function useRegenerateClientSecret(): UseMutationResult<
   const queryClient = useQueryClient();
   const {t} = useTranslation('applications');
   const {showToast} = useToast();
+  const {regenerateClientSecret} = useAdministrationActions();
 
   return useMutation<RegenerateSecretResult, Error, RegenerateSecretVariables>({
     mutationFn: async ({applicationId}: RegenerateSecretVariables): Promise<RegenerateSecretResult> => {
       const serverUrl: string = getServerUrl();
 
-      const flowSecret: string | null = await regenerateClientSecretViaFlow(
-        http as unknown as HttpLike,
-        serverUrl,
-        applicationId,
-      );
+      // A Data Plane console installs an action that rotates the credential where the tokens it
+      // signed can be revoked with it. A Control Plane console installs none: it serves no runtime,
+      // so the rotation below, which updates the application, is the whole operation.
+      if (regenerateClientSecret) {
+        const rotated: string | null = await regenerateClientSecret(
+          http as unknown as AdministrationHttpLike,
+          serverUrl,
+          applicationId,
+        );
 
-      if (flowSecret) {
-        return {clientSecret: flowSecret};
+        if (rotated) {
+          return {clientSecret: rotated};
+        }
       }
 
       // Step 1: Fetch the current application details

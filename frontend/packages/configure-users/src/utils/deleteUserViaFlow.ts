@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import deleteUserNatively from './deleteUserNatively';
 import {
   ADMINISTRATION_FLOW_TYPE,
   DELETION_SUBJECT_INPUT,
@@ -126,17 +127,6 @@ export async function executeDeletionFlow(
   }
 
   throw new FlowExecutionFailure(result.error ?? {}, 'The user deletion flow did not complete');
-}
-
-/**
- * Deletes a user through the native endpoint.
- */
-export async function deleteUserNatively(http: HttpLike, serverUrl: string, userId: string): Promise<void> {
-  await http.request({
-    url: `${serverUrl}/users/${userId}`,
-    method: 'DELETE',
-    headers: {'Content-Type': 'application/json'},
-  });
 }
 
 /**

@@ -39,7 +39,7 @@ import resolveTemplateLink from '../../../utils/resolveTemplateLink';
 /**
  * Props for the {@link IntegrationGuides} component.
  */
-interface IntegrationGuidesProps {
+export interface IntegrationGuidesProps {
   /**
    * The application to show the overview for
    */

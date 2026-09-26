@@ -28,7 +28,7 @@ const formatUserLabel = (user: {id: string; display?: string; attributes?: Recor
 /**
  * Props for the {@link AgentOverview} component.
  */
-interface AgentOverviewProps {
+export interface AgentOverviewProps {
   /**
    * The agent to show the overview for.
    */

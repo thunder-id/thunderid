@@ -4,6 +4,7 @@
 import {waitFor, renderHook} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import UserQueryKeys from '../../constants/user-query-keys';
+import deleteUserViaFlow from '../../utils/deleteUserViaFlow';
 import useDeleteUser from '../useDeleteUser';
 
 const mockHttpRequest = vi.fn();
@@ -29,8 +30,17 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
     useToast: () => ({
       showToast: mockShowToast,
     }),
+    useAdministrationActions: () => administrationActions,
   };
 });
+
+/**
+ * The actions the console under test installs.
+ *
+ * A Data Plane console installs the flow-backed deletion, which is what most cases here describe. A
+ * Control Plane console installs none, and deletion is the plain write.
+ */
+let administrationActions: {deleteUser?: typeof deleteUserViaFlow} = {deleteUser: deleteUserViaFlow};
 
 const FLOW_ID = '01900000-0000-7000-8000-000000000077';
 const FLOW_HANDLE = 'default-user-deletion-flow';
@@ -112,6 +122,7 @@ function requestsTo(fragment: string): RecordedRequest[] {
 
 describe('useDeleteUser', () => {
   beforeEach(() => {
+    administrationActions = {deleteUser: deleteUserViaFlow};
     mockHttpRequest.mockReset();
     mockGetServerUrl.mockReset().mockReturnValue('https://api.test.com');
     mockShowToast.mockReset();
@@ -549,4 +560,47 @@ describe('useDeleteUser', () => {
     expect(result.current.error).toEqual(serverError);
     expect(result.current.error?.message).toBe('User has active sessions and cannot be deleted');
   });
+
+  // A Control Plane console installs no administration actions. It serves no runtime, so the user
+  // has no sessions there to terminate and no grants to detach, and there is no /flow/execute to
+  // call. The deletion is the write, and the flow configuration is never read.
+  describe('on a control plane console', () => {
+    beforeEach(() => {
+      administrationActions = {};
+    });
+
+    it('deletes through the users API', async () => {
+      routeHttp({'/users/': {}});
+
+      const userId = '550e8400-e29b-41d4-a716-446655440000';
+      const {result} = renderHook(() => useDeleteUser());
+
+      result.current.mutate(userId);
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+
+      const deletions = requestsTo(`/users/${userId}`);
+      expect(deletions).toHaveLength(1);
+      expect(deletions[0].method).toBe('DELETE');
+    });
+
+    it('executes no flow and does not read the flow configuration', async () => {
+      routeHttp({'/users/': {}});
+
+      const {result} = renderHook(() => useDeleteUser());
+
+      result.current.mutate('550e8400-e29b-41d4-a716-446655440000');
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+
+      expect(requestsTo('/flow/execute')).toHaveLength(0);
+      expect(requestsTo('/server-config/flow')).toHaveLength(0);
+      expect(requestsTo('/flows')).toHaveLength(0);
+    });
+  });
+
 });

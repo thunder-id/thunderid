@@ -33,7 +33,7 @@ import EditAdvancedSettings from '../components/edit-agent/advanced-settings/Edi
 import EditAgentAttributes from '../components/edit-agent/attributes/EditAgentAttributes';
 import EditCredentialsSettings from '../components/edit-agent/credentials/EditCredentialsSettings';
 import EditFlowsSettings from '../components/edit-agent/flows/EditFlowsSettings';
-import AgentOverview from '../components/edit-agent/overview/AgentOverview';
+import type {AgentOverviewProps} from '../components/edit-agent/overview/AgentOverview';
 import EditTokensSettings from '../components/edit-agent/tokens/EditTokensSettings';
 import ShowClientSecret from '../components/ShowClientSecret';
 import AgentConstants from '../constants/agent-constants';
@@ -65,7 +65,20 @@ function TabPanel({children = null, value, index, ...other}: TabPanelProps) {
   );
 }
 
-export default function AgentEditPage(): JSX.Element {
+/**
+ * Props for {@link AgentEditPage}.
+ */
+export interface AgentEditPageProps {
+  /**
+   * Renders the Overview tab, which tells a developer how to integrate against this agent.
+   *
+   * Supplied by the console rather than imported here, for the reason the application edit page
+   * gives: the tab prints the OAuth endpoints a client calls at runtime.
+   */
+  renderAgentOverview?: (props: AgentOverviewProps) => JSX.Element;
+}
+
+export default function AgentEditPage({renderAgentOverview}: AgentEditPageProps = {}): JSX.Element {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
@@ -275,17 +288,20 @@ export default function AgentEditPage(): JSX.Element {
   }
 
   const tabs: TabConfig[] = [
-    {
-      key: 'overview',
-      label: t('agents:edit.page.tabs.overview', 'Overview'),
-      render: () => (
-        <AgentOverview
-          agent={agent}
-          oauth2Config={oauth2Config}
-          onGoToAdvanced={() => handleNavigateToTab('advanced')}
-        />
-      ),
-    },
+    ...(renderAgentOverview
+      ? [
+          {
+            key: 'overview',
+            label: t('agents:edit.page.tabs.overview', 'Overview'),
+            render: () =>
+              renderAgentOverview({
+                agent,
+                oauth2Config,
+                onGoToAdvanced: () => handleNavigateToTab('advanced'),
+              }),
+          },
+        ]
+      : []),
     {
       key: 'attributes',
       label: t('agents:edit.page.tabs.attributes', 'Attributes'),

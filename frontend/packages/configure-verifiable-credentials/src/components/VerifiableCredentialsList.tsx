@@ -9,16 +9,30 @@ import {Pencil, QrCode as QrCodeIcon, Trash2} from '@wso2/oxygen-ui-icons-react'
 import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
-import CredentialOfferDialog from './CredentialOfferDialog';
 import VerifiableCredentialDeleteDialog from './VerifiableCredentialDeleteDialog';
 import useGetVerifiableCredentials from '../api/useGetVerifiableCredentials';
 import useVerifiableCredentialRoutes from '../hooks/useVerifiableCredentialRoutes';
 import type {VerifiableCredentialSummary} from '../models/vc';
 
 /**
+ * Props for {@link VerifiableCredentialsList}.
+ */
+export interface VerifiableCredentialsListProps {
+  /**
+   * Renders the dialog that issues a credential offer for one configuration.
+   *
+   * Supplied by the console rather than imported here, because issuing an offer is a runtime
+   * operation: it is served by the OpenID4VCI endpoints, which only a Data Plane has. A Control
+   * Plane console supplies nothing, and the offer action is not rendered at all, so the listing does
+   * not present a button whose endpoint that plane does not serve.
+   */
+  renderOffer?: (props: {handle: string | null; onClose: () => void}) => JSX.Element;
+}
+
+/**
  * DataGrid listing of OpenID4VCI credential configurations.
  */
-export default function VerifiableCredentialsList(): JSX.Element {
+export default function VerifiableCredentialsList({renderOffer}: VerifiableCredentialsListProps = {}): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('VerifiableCredentialsList');
@@ -94,17 +108,19 @@ export default function VerifiableCredentialsList(): JSX.Element {
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<VerifiableCredentialSummary>): JSX.Element => (
           <ListingTable.RowActions>
-            <Tooltip title={t('verifiable-credentials:listing.offer')}>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setOfferHandle(params.row.handle);
-                }}
-              >
-                <QrCodeIcon size={16} />
-              </IconButton>
-            </Tooltip>
+            {renderOffer ? (
+              <Tooltip title={t('verifiable-credentials:listing.offer')}>
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOfferHandle(params.row.handle);
+                  }}
+                >
+                  <QrCodeIcon size={16} />
+                </IconButton>
+              </Tooltip>
+            ) : null}
             <Tooltip title={t('common:actions.edit')}>
               <IconButton
                 size="small"
@@ -132,7 +148,7 @@ export default function VerifiableCredentialsList(): JSX.Element {
         ),
       },
     ],
-    [handleDeleteClick, handleEditClick, t],
+    [handleDeleteClick, handleEditClick, renderOffer, t],
   );
 
   if (error) {
@@ -173,11 +189,7 @@ export default function VerifiableCredentialsList(): JSX.Element {
 
       <VerifiableCredentialDeleteDialog open={deleteDialogOpen} vcId={selectedId} onClose={handleDeleteDialogClose} />
 
-      <CredentialOfferDialog
-        open={offerHandle !== null}
-        handle={offerHandle}
-        onClose={(): void => setOfferHandle(null)}
-      />
+      {renderOffer?.({handle: offerHandle, onClose: (): void => setOfferHandle(null)})}
     </>
   );
 }
