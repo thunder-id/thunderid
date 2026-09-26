@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {OrganizationUnitSummaryChip} from '@thunderid/components';
+import {
+  computeOrganizationUnitDefaultAvailability,
+  type OrganizationUnitDefaultItem,
+  type OrganizationUnitDefaultsSelection,
+} from '@thunderid/configure-applications';
 import {OrganizationUnitTreeConstants, useGetOrganizationUnit} from '@thunderid/configure-organization-units';
 import type {UserTypeListItem} from '@thunderid/configure-user-types';
 import {Stack, Typography, Box, Divider} from '@wso2/oxygen-ui';
@@ -11,11 +16,6 @@ import {useTranslation} from 'react-i18next';
 import ConfigureName from './ConfigureName';
 import OrganizationUnitDefaultsSection from './OrganizationUnitDefaultsSection';
 import UserAccessSection from './UserAccessSection';
-import {
-  type OrganizationUnitDefaultItem,
-  type OrganizationUnitDefaultsSelection,
-} from '../../models/application-create-flow';
-import computeOrganizationUnitDefaultAvailability from '../../utils/computeOrganizationUnitDefaultAvailability';
 
 export interface ConfigureApplicationDetailsProps {
   /**

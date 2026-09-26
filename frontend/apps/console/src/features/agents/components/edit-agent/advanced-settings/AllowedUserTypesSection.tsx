@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
+import {deriveOAuth2Flags} from '@thunderid/configure-applications';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
 import {Autocomplete, FormControl, FormLabel, TextField} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {deriveOAuth2Flags} from '../../../../applications/utils/oauth2Rules';
 import type {Agent, OAuthAgentConfig} from '../../../models/agent';
 
 interface AllowedUserTypesSectionProps {

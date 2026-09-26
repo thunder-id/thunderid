@@ -1,17 +1,17 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+  computeOrganizationUnitDefaultAvailability,
+  OrganizationUnitDefaultItem,
+  type OrganizationUnitDefaultsSelection,
+} from '@thunderid/configure-applications';
 import type {OrganizationUnit} from '@thunderid/configure-organization-units';
 import {Box, Checkbox, Collapse, Divider, IconButton, Typography} from '@wso2/oxygen-ui';
 import {ChevronDown, ChevronUp} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {
-  OrganizationUnitDefaultItem,
-  type OrganizationUnitDefaultsSelection,
-} from '../../models/application-create-flow';
-import computeOrganizationUnitDefaultAvailability from '../../utils/computeOrganizationUnitDefaultAvailability';
 
 export interface OrganizationUnitDefaultsSectionProps {
   /**

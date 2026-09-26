@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {
+  ApplicationCreateFlowStep,
+  PlatformApplicationTemplate,
+  TechnologyApplicationTemplate,
+} from '@thunderid/configure-applications';
 import {fireEvent, render, screen} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import ApplicationCreateContext, {
   type ApplicationCreateContextType,
 } from '../../contexts/ApplicationCreate/ApplicationCreateContext';
-import {ApplicationCreateFlowStep} from '../../models/application-create-flow';
-import {PlatformApplicationTemplate, TechnologyApplicationTemplate} from '../../models/application-templates';
 import ApplicationTemplateSelectPage from '../ApplicationTemplateSelectPage';
 
 const mockNavigate = vi.fn(() => Promise.resolve());

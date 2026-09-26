@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen} from '@testing-library/react';
+import {OrganizationUnitDefaultItem} from '@thunderid/configure-applications';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ConfigureSecuritySettings from '../ConfigureSecuritySettings';
-import {OrganizationUnitDefaultItem} from '@/features/applications/models/application-create-flow';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({

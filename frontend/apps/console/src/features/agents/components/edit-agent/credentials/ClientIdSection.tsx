@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
+import {CopyableField} from '@thunderid/configure-applications';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import CopyableField from '../../../../applications/components/common/CopyableField';
 import type {OAuthAgentConfig} from '../../../models/agent';
 
 interface ClientIdSectionProps {

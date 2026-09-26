@@ -10,6 +10,14 @@ export {default as useGetFlows} from './api/useGetFlows';
 
 // Components
 export {default as OrganizationUnitDefaultFlowsSettings} from './components/OrganizationUnitDefaultFlowsSettings';
+export {default as EditFlowsSettings} from './components/flows-settings/EditFlowsSettings';
+export {default as AuthenticationFlowSection} from './components/flows-settings/AuthenticationFlowSection';
+export {default as RecoveryFlowSection} from './components/flows-settings/RecoveryFlowSection';
+export {default as RegistrationFlowSection} from './components/flows-settings/RegistrationFlowSection';
+export {default as SignOutFlowSection} from './components/flows-settings/SignOutFlowSection';
+export {default as IntegrationGuides} from './components/integration-guides/IntegrationGuides';
+export {default as TechnologyGuide} from './components/integration-guides/TechnologyGuide';
+export type {TechnologyGuideProps} from './components/integration-guides/TechnologyGuide';
 
 // Models
 export * from './models/flows';

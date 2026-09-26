@@ -4,6 +4,7 @@
     "declaration": true,
     "outDir": "dist",
     "declarationDir": "dist",
+    "rootDir": "src",
     "types": ["node"]
   },
   "exclude": [

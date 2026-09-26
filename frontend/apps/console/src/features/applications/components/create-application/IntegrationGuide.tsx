@@ -1,6 +1,8 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {IntegrationGuides} from '@thunderid/configure-applications';
+import {TechnologyGuide} from '@thunderid/configure-flows';
 import {Box, Typography, Stack, TextField, IconButton, InputAdornment, Alert, Avatar, Paper} from '@wso2/oxygen-ui';
 import {Copy, Eye, EyeOff, Check} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
@@ -8,8 +10,6 @@ import {useState, useEffect, useRef} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import RouteConfig from '../../../../configs/RouteConfig';
-import type {IntegrationGuides} from '../../models/application-templates';
-import TechnologyGuide from '../edit-application/integration-guides/TechnologyGuide';
 
 /**
  * Props for the {@link IntegrationGuide} component.

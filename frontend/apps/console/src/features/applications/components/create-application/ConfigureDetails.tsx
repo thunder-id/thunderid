@@ -2,6 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {zodResolver} from '@hookform/resolvers/zod';
+import {
+  ApplicationCreateFlowConfiguration,
+  ApplicationCreateFlowSignInApproach,
+  CUSTOM_WALLET_VENDOR,
+  getConfigurationTypeFromTemplate,
+  hasInvalidCorsRows,
+  isRedirectCapableTemplate,
+  WALLET_VENDORS,
+  type PlatformApplicationTemplate,
+  type TechnologyApplicationTemplate,
+} from '@thunderid/configure-applications';
 import {AuthenticatorTypes} from '@thunderid/configure-connections';
 import {useLogger} from '@thunderid/logger/react';
 import {
@@ -28,16 +39,7 @@ import {useForm, Controller, useWatch} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import {z} from 'zod';
 import ConfigureRedirectUris from './ConfigureRedirectUris';
-import {CUSTOM_WALLET_VENDOR, WALLET_VENDORS} from '../../constants/wallet-vendors';
 import useApplicationCreate from '../../contexts/ApplicationCreate/useApplicationCreate';
-import {
-  ApplicationCreateFlowConfiguration,
-  ApplicationCreateFlowSignInApproach,
-} from '../../models/application-create-flow';
-import type {PlatformApplicationTemplate, TechnologyApplicationTemplate} from '../../models/application-templates';
-import getConfigurationTypeFromTemplate from '../../utils/getConfigurationTypeFromTemplate';
-import hasInvalidCorsRows from '../../utils/hasInvalidCorsRows';
-import isRedirectCapableTemplate from '../../utils/isRedirectCapableTemplate';
 
 /**
  * Zod schema for validating URL inputs (hosting URLs and callback URLs).

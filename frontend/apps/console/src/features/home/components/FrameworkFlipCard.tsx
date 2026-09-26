@@ -1,12 +1,12 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {TechnologyBasedApplicationTemplateMetadata} from '@thunderid/configure-applications';
 import {Box, Stack, Typography, useColorScheme} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import RouteConfig from '../../../configs/RouteConfig';
-import TechnologyBasedApplicationTemplateMetadata from '../../applications/config/TechnologyBasedApplicationTemplateMetadata';
 
 const SLOT_COUNT = 3;
 const ICON_SIZE = 24;

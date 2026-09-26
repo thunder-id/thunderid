@@ -1,12 +1,12 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {OrganizationUnitDefaultItem} from '@thunderid/configure-applications';
 import {Stack, Typography} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import useApplicationCreateContext from '../../../hooks/useApplicationCreateContext';
-import {OrganizationUnitDefaultItem} from '../../../models/application-create-flow';
 import ConfigureSignInOptions from '../configure-signin-options/ConfigureSignInOptions';
 
 export interface ConfigureSecuritySettingsProps {

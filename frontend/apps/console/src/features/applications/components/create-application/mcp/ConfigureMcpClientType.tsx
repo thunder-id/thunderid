@@ -1,6 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {McpClientTypeMetadataList, McpClientTypes} from '@thunderid/configure-applications';
+import type {McpClientType} from '@thunderid/configure-applications';
 import {
   Box,
   Card,
@@ -20,9 +22,6 @@ import {useEffect} from 'react';
 import {useTranslation} from 'react-i18next';
 import ConfigureMcpConnection from './ConfigureMcpConnection';
 import McpClientTypePreview from './McpClientTypePreview';
-import McpClientTypeMetadataList from '../../../config/McpClientTypeMetadata';
-import {McpClientTypes} from '../../../models/mcp-client';
-import type {McpClientType} from '../../../models/mcp-client';
 
 /**
  * Props for the {@link ConfigureMcpClientType} component.

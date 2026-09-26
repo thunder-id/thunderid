@@ -3,21 +3,22 @@
 
 import userEvent from '@testing-library/user-event';
 import type {Application} from '@thunderid/configure-applications';
+import {OrganizationUnitDefaultItem} from '@thunderid/configure-applications';
 import type {Theme} from '@thunderid/design';
 import {fireEvent, render, screen, waitFor, within} from '@thunderid/test-utils';
 import type {JSX} from 'react';
-import {useEffect} from 'react';
+import {useEffect, useState} from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import ApplicationCreateProvider from '../../contexts/ApplicationCreate/ApplicationCreateProvider';
 import useApplicationCreateContext from '../../hooks/useApplicationCreateContext';
-import {OrganizationUnitDefaultItem} from '../../models/application-create-flow';
 import ApplicationCreatePage from '../ApplicationCreatePage';
 
 // Mock functions
-const mockCreateApplication = vi.fn();
+const mockCreateApplication = vi.hoisted(() => vi.fn());
 const mockNavigate = vi.fn();
 let mockPathname = '/';
 const mockUseGetApplications = vi.hoisted(() => vi.fn());
+const mockGetConfigurationTypeFromTemplate = vi.hoisted(() => vi.fn(() => 'URL'));
 const mockUserTypes = vi.hoisted(() => ({
   types: [
     {id: 'customer', name: 'customer', displayName: 'Customer'},
@@ -36,9 +37,46 @@ vi.mock('@thunderid/logger/react', () => ({
   }),
 }));
 
+// isPending is backed by real state, as in the actual hook, so the wizard can keep the submit
+// button disabled until the create settles.
+const useMockCreateApplication = vi.hoisted(
+  () =>
+    (): {
+      isPending: boolean;
+      mutate: (
+        data: unknown,
+        options?: {onError?: (err: Error) => void; onSuccess?: (app: Application) => void},
+      ) => void;
+    } => {
+      const [isPending, setIsPending] = useState(false);
+
+      return {
+        isPending,
+        mutate: (
+          data: unknown,
+          options?: {onError?: (err: Error) => void; onSuccess?: (app: Application) => void},
+        ): void => {
+          setIsPending(true);
+          mockCreateApplication(data, {
+            onError: (err: Error) => {
+              setIsPending(false);
+              options?.onError?.(err);
+            },
+            onSuccess: (app: Application) => {
+              setIsPending(false);
+              options?.onSuccess?.(app);
+            },
+          });
+        },
+      };
+    },
+);
+
 vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
   useGetApplications: mockUseGetApplications,
+  getConfigurationTypeFromTemplate: mockGetConfigurationTypeFromTemplate,
+  useCreateApplication: useMockCreateApplication,
 }));
 
 // Mock react-router
@@ -63,38 +101,6 @@ vi.mock('@thunderid/design', () => ({
   }),
   DefaultTheme: {},
 }));
-
-// Mock application API. isPending is backed by real state, as in the actual hook, so the wizard can
-// keep the submit button disabled until the create settles.
-vi.mock('../../api/useCreateApplication', async () => {
-  const {useState} = await vi.importActual<typeof import('react')>('react');
-
-  const useMockCreateApplication = () => {
-    const [isPending, setIsPending] = useState(false);
-
-    return {
-      isPending,
-      mutate: (
-        data: unknown,
-        options?: {onError?: (err: Error) => void; onSuccess?: (app: Application) => void},
-      ): void => {
-        setIsPending(true);
-        mockCreateApplication(data, {
-          onError: (err: Error) => {
-            setIsPending(false);
-            options?.onError?.(err);
-          },
-          onSuccess: (app: Application) => {
-            setIsPending(false);
-            options?.onSuccess?.(app);
-          },
-        });
-      },
-    };
-  };
-
-  return {default: useMockCreateApplication};
-});
 
 // Mock user types API
 vi.mock('@thunderid/configure-user-types', () => ({
@@ -147,11 +153,6 @@ vi.mock('@thunderid/configure-flows', async (importOriginal) => ({
     error: null,
   }),
   useGetFlowById: () => ({data: undefined, isLoading: false, error: null}),
-}));
-
-// Mock configuration type utility
-vi.mock('../../utils/getConfigurationTypeFromTemplate', () => ({
-  default: vi.fn(() => 'URL'),
 }));
 
 const {mockUseHasMultipleOUs, mockUseGetOrganizationUnit} = vi.hoisted(() => ({
@@ -661,7 +662,7 @@ describe('ApplicationCreatePage', () => {
     });
   };
 
-  beforeEach(async () => {
+  beforeEach(() => {
     user = userEvent.setup();
 
     window.history.replaceState({}, '', '/');
@@ -675,8 +676,7 @@ describe('ApplicationCreatePage', () => {
       options?.onSuccess?.();
     });
 
-    const getConfigurationTypeFromTemplate = await import('../../utils/getConfigurationTypeFromTemplate');
-    vi.mocked(getConfigurationTypeFromTemplate.default).mockReturnValue('URL');
+    mockGetConfigurationTypeFromTemplate.mockReturnValue('URL');
 
     mockUseHasMultipleOUs.mockReturnValue({
       hasMultipleOUs: false,
@@ -1115,8 +1115,7 @@ describe('ApplicationCreatePage', () => {
 
   describe('Application Creation - Embedded Approach', () => {
     it('should create application without OAuth config for embedded approach', async () => {
-      const getConfigurationTypeFromTemplate = await import('../../utils/getConfigurationTypeFromTemplate');
-      vi.mocked(getConfigurationTypeFromTemplate.default).mockReturnValue('NONE');
+      mockGetConfigurationTypeFromTemplate.mockReturnValue('NONE');
 
       mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
         onSuccess({id: 'app-123', name: 'My App'} as Application);
@@ -1142,8 +1141,7 @@ describe('ApplicationCreatePage', () => {
     });
 
     it('should skip configure step for embedded approach', async () => {
-      const getConfigurationTypeFromTemplate = await import('../../utils/getConfigurationTypeFromTemplate');
-      vi.mocked(getConfigurationTypeFromTemplate.default).mockReturnValue('NONE');
+      mockGetConfigurationTypeFromTemplate.mockReturnValue('NONE');
 
       mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
         onSuccess({id: 'app-123', name: 'My App'} as Application);
@@ -1238,8 +1236,7 @@ describe('ApplicationCreatePage', () => {
       // (mocked here to match its real behavior for such a template) returns NONE; the CONFIGURE
       // step must still show because the template is redirect-capable, so the redirect URI needs
       // to be confirmed/edited rather than silently left at the placeholder.
-      const getConfigurationTypeFromTemplate = await import('../../utils/getConfigurationTypeFromTemplate');
-      vi.mocked(getConfigurationTypeFromTemplate.default).mockReturnValue('NONE');
+      mockGetConfigurationTypeFromTemplate.mockReturnValue('NONE');
 
       renderWithProviders();
 
@@ -2940,8 +2937,7 @@ describe('ApplicationCreatePage', () => {
     });
 
     it('advances the progress from DETAILS to SECURITY for a non-mcp template when CONFIGURE is skipped (regression)', async () => {
-      const getConfigurationTypeFromTemplate = await import('../../utils/getConfigurationTypeFromTemplate');
-      vi.mocked(getConfigurationTypeFromTemplate.default).mockReturnValue('NONE');
+      mockGetConfigurationTypeFromTemplate.mockReturnValue('NONE');
 
       renderWithProviders();
 

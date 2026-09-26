@@ -9,8 +9,15 @@ import {describe, it, expect, vi} from 'vitest';
 import type {Agent} from '../../../../models/agent';
 import EditTokensSettings from '../EditTokensSettings';
 
-vi.mock('../../../../../applications/components/edit-application/token-settings/EditTokenSettings', () => ({
-  default: ({application, sectionResetKey}: {application: Application; sectionResetKey?: number}) => (
+vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
+  EditTokenSettings: ({
+    application,
+    sectionResetKey = undefined,
+  }: {
+    application: Application;
+    sectionResetKey?: number;
+  }) => (
     <div
       data-testid="token-settings"
       data-readonly={String(application.isReadOnly)}

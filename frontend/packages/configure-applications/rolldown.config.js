@@ -15,6 +15,7 @@ const external = [
   /^@mui\//,
   // Peer dep subpaths are not matched by exact string - add them explicitly.
   '@thunderid/logger/react',
+  '@hookform/resolvers/zod',
 ];
 
 const commonOptions = {

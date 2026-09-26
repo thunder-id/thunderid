@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {renderHook} from '@testing-library/react';
+import {ApplicationCreateFlowStep, ApplicationCreateFlowSignInApproach} from '@thunderid/configure-applications';
 import type {ReactNode} from 'react';
 import {describe, it, expect, vi} from 'vitest';
 import ApplicationCreateContext, {
   type ApplicationCreateContextType,
 } from '../../contexts/ApplicationCreate/ApplicationCreateContext';
-import {ApplicationCreateFlowStep, ApplicationCreateFlowSignInApproach} from '../../models/application-create-flow';
 import useApplicationCreateContext from '../useApplicationCreateContext';
 
 describe('useApplicationCreateContext', () => {

@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {NameSuggestion, ResourceAvatar} from '@thunderid/components';
+import {ApplicationConstants} from '@thunderid/configure-applications';
 import {buildAvatarSpec, pickAnonymousEntityName} from '@thunderid/react';
 import {Typography, Stack, TextField, FormControl, FormLabel} from '@wso2/oxygen-ui';
 import type {ChangeEvent, JSX} from 'react';
 import {useEffect, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
-import ApplicationConstants from '../../constants/application-constants';
 
 /**
  * Props for the {@link ConfigureName} component.

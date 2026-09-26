@@ -1,22 +1,20 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {
+  ApplicationCreateFlowSignInApproach,
+  ApplicationCreateFlowStep,
+  ApplicationTemplate,
+  McpClientType,
+  OrganizationUnitDefaultsSelection,
+  PlatformApplicationTemplate,
+  TechnologyApplicationTemplate,
+} from '@thunderid/configure-applications';
 import {type BasicFlowDefinition} from '@thunderid/configure-flows';
 import type {AllowedOriginDraftRow} from '@thunderid/configure-settings';
 import type {LayoutConfig, Theme} from '@thunderid/design';
 import type {Context} from 'react';
 import {createContext} from 'react';
-import type {
-  ApplicationCreateFlowSignInApproach,
-  ApplicationCreateFlowStep,
-  OrganizationUnitDefaultsSelection,
-} from '../../models/application-create-flow';
-import type {
-  TechnologyApplicationTemplate,
-  PlatformApplicationTemplate,
-  ApplicationTemplate,
-} from '../../models/application-templates';
-import type {McpClientType} from '../../models/mcp-client';
 
 /**
  * Application creation context state interface

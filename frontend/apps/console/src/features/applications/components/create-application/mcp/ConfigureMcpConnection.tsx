@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {validateMcpRedirectUri} from '@thunderid/configure-applications';
 import {
   Alert,
   Box,
@@ -18,7 +19,6 @@ import type {ChangeEvent, JSX} from 'react';
 import {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import McpInspectorLogo from './McpInspectorLogo';
-import validateMcpRedirectUri from '../../../utils/validateMcpRedirectUri';
 
 const MCP_INSPECTOR_CALLBACK_URI = 'http://localhost:6274/oauth/callback';
 

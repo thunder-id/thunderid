@@ -1,17 +1,18 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {OAuth2GrantTypes} from '@thunderid/configure-applications';
-import type {Application} from '@thunderid/configure-applications';
+import {
+  EditTokenSettings,
+  OAuth2GrantTypes,
+  TokenAudienceSelector,
+  type Application,
+  type TokenAudienceOption,
+} from '@thunderid/configure-applications';
 import {Alert, Link, Stack} from '@wso2/oxygen-ui';
 import {Lock} from '@wso2/oxygen-ui-icons-react';
 import {useEffect, useState, type JSX} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import AgentAccessTokenSection from './AgentAccessTokenSection';
-import TokenAudienceSelector, {
-  type TokenAudienceOption,
-} from '../../../../applications/components/common/TokenAudienceSelector';
-import EditTokenSettings from '../../../../applications/components/edit-application/token-settings/EditTokenSettings';
 import type {Agent, OAuthAgentConfig} from '../../../models/agent';
 
 const AGENT_AUDIENCE = 'agent';

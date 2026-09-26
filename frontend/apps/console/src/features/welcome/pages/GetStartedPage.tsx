@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {TechnologyApplicationTemplate} from '@thunderid/configure-applications';
 import {useConfig} from '@thunderid/contexts';
 import {Box, Button, IconButton, Stack, Typography, AppBreadcrumbs} from '@wso2/oxygen-ui';
 import {AppWindow, Bot, MCP, SkipForward, X} from '@wso2/oxygen-ui-icons-react';
@@ -9,7 +10,6 @@ import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import RouteConfig from '../../../configs/RouteConfig';
-import {TechnologyApplicationTemplate} from '../../applications/models/application-templates';
 import useWelcomeClose from '../hooks/useWelcomeClose';
 
 const MotionBox = motion.create(Box);

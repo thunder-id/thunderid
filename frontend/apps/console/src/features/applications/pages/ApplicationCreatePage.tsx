@@ -2,8 +2,31 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {FullScreenCreationWizardLayout} from '@thunderid/components';
-import {OAuth2GrantTypes, TokenEndpointAuthMethods, useGetApplications} from '@thunderid/configure-applications';
-import type {Application, ApplicationType, OAuth2Config} from '@thunderid/configure-applications';
+import {
+  ApplicationConstants,
+  ApplicationCreateFlowConfiguration,
+  ApplicationCreateFlowSignInApproach,
+  ApplicationCreateFlowStep,
+  getApplicationErrorMessage,
+  getConfigurationTypeFromTemplate,
+  isRedirectCapableTemplate,
+  McpClientTypes,
+  mergeCorsOrigins,
+  OAuth2GrantTypes,
+  OrganizationUnitDefaultItem,
+  PlatformApplicationTemplate,
+  resolveApplicationType,
+  resolveCreationFlow,
+  TechnologyApplicationTemplate,
+  TemplateConstants,
+  TokenEndpointAuthMethods,
+  useCreateApplication,
+  useGetApplications,
+  type Application,
+  type ApplicationType,
+  type CreateApplicationRequest,
+  type OAuth2Config,
+} from '@thunderid/configure-applications';
 import {AuthenticatorTypes, IdentityProviderTypes, useIdentityProviders} from '@thunderid/configure-connections';
 import {GatePreview, VIEWPORT_WIDTHS, VIEWPORT_HEIGHTS} from '@thunderid/configure-design';
 import {
@@ -36,30 +59,12 @@ import {useState, useCallback, useEffect, useMemo, useRef} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useLocation, useNavigate} from 'react-router';
 import RouteConfig from '../../../configs/RouteConfig';
-import useCreateApplication from '../api/useCreateApplication';
 import ConfigureSecuritySettings from '../components/create-application/configure-security-settings/ConfigureSecuritySettings';
 import ConfigureApplicationDetails from '../components/create-application/ConfigureApplicationDetails';
 import ConfigureDesign from '../components/create-application/ConfigureDesign';
 import ConfigureDetails from '../components/create-application/ConfigureDetails';
 import ConfigureMcpClientType from '../components/create-application/mcp/ConfigureMcpClientType';
-import ApplicationConstants from '../constants/application-constants';
-import TemplateConstants from '../constants/template-constants';
 import useApplicationCreate from '../contexts/ApplicationCreate/useApplicationCreate';
-import {
-  ApplicationCreateFlowConfiguration,
-  ApplicationCreateFlowSignInApproach,
-  ApplicationCreateFlowStep,
-  OrganizationUnitDefaultItem,
-} from '../models/application-create-flow';
-import {PlatformApplicationTemplate, TechnologyApplicationTemplate} from '../models/application-templates';
-import {McpClientTypes} from '../models/mcp-client';
-import type {CreateApplicationRequest} from '../models/requests';
-import getApplicationErrorMessage from '../utils/getApplicationErrorMessage';
-import getConfigurationTypeFromTemplate from '../utils/getConfigurationTypeFromTemplate';
-import isRedirectCapableTemplate from '../utils/isRedirectCapableTemplate';
-import mergeCorsOrigins from '../utils/mergeCorsOrigins';
-import resolveApplicationType from '../utils/resolveApplicationType';
-import resolveCreationFlow from '../utils/resolveCreationFlow';
 
 export default function ApplicationCreatePage(): JSX.Element {
   const {t} = useTranslation();

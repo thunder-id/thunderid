@@ -1,7 +1,18 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useGetApplications} from '@thunderid/configure-applications';
+import {
+  ApplicationCreateFlowSignInApproach,
+  ApplicationCreateFlowStep,
+  McpClientTypes,
+  OrganizationUnitDefaultItem,
+  useGetApplications,
+  type ApplicationTemplate,
+  type McpClientType,
+  type OrganizationUnitDefaultsSelection,
+  type PlatformApplicationTemplate,
+  type TechnologyApplicationTemplate,
+} from '@thunderid/configure-applications';
 import {AuthenticatorTypes} from '@thunderid/configure-connections';
 import {type BasicFlowDefinition} from '@thunderid/configure-flows';
 import type {AllowedOriginDraftRow} from '@thunderid/configure-settings';
@@ -9,18 +20,6 @@ import type {LayoutConfig, Theme} from '@thunderid/design';
 import type {PropsWithChildren} from 'react';
 import {useState, useMemo, useCallback} from 'react';
 import ApplicationCreateContext, {type ApplicationCreateContextType} from './ApplicationCreateContext';
-import {
-  ApplicationCreateFlowSignInApproach,
-  ApplicationCreateFlowStep,
-  OrganizationUnitDefaultItem,
-  type OrganizationUnitDefaultsSelection,
-} from '../../models/application-create-flow';
-import type {
-  TechnologyApplicationTemplate,
-  PlatformApplicationTemplate,
-  ApplicationTemplate,
-} from '../../models/application-templates';
-import {McpClientTypes, type McpClientType} from '../../models/mcp-client';
 
 /**
  * Props for the {@link ApplicationCreateProvider} component.

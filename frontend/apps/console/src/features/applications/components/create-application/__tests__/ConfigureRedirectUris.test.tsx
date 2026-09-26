@@ -3,12 +3,12 @@
 
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type {ApplicationTemplate} from '@thunderid/configure-applications';
 import {AllowedOriginTypes, createRow} from '@thunderid/configure-settings';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import ApplicationCreateContext, {
   type ApplicationCreateContextType,
 } from '../../../contexts/ApplicationCreate/ApplicationCreateContext';
-import type {ApplicationTemplate} from '../../../models/application-templates';
 import ConfigureRedirectUris from '../ConfigureRedirectUris';
 
 let translationLookup = (key: string): string => key;

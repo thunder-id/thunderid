@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen} from '@testing-library/react';
+import {OrganizationUnitDefaultItem, type OrganizationUnitDefaultsSelection} from '@thunderid/configure-applications';
 import type {OrganizationUnit} from '@thunderid/configure-organization-units';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {OrganizationUnitDefaultItem} from '../../../models/application-create-flow';
-import type {OrganizationUnitDefaultsSelection} from '../../../models/application-create-flow';
 import ConfigureApplicationDetails from '../ConfigureApplicationDetails';
 
 interface MockOrganizationUnitQueryResult {

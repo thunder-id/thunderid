@@ -2,8 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {OAuth2Logo, SettingsCard} from '@thunderid/components';
-import {OAuth2GrantTypes, TokenEndpointAuthMethods} from '@thunderid/configure-applications';
-import type {OAuth2Config} from '@thunderid/configure-applications';
+import {
+  applyGrantTypesChange,
+  applyTokenEndpointAuthMethodChange,
+  deriveOAuth2Flags,
+  getGrantTypeLabel,
+  OAuth2GrantTypes,
+  TokenEndpointAuthMethods,
+  type OAuth2Config,
+} from '@thunderid/configure-applications';
 import {useThunderID} from '@thunderid/react';
 import {
   Box,
@@ -24,12 +31,6 @@ import {
 import type {ReactNode} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import RedirectURIsSection from './RedirectURIsSection';
-import {getGrantTypeLabel} from '../../../../applications/utils/getGrantTypeLabel';
-import {
-  applyGrantTypesChange,
-  applyTokenEndpointAuthMethodChange,
-  deriveOAuth2Flags,
-} from '../../../../applications/utils/oauth2Rules';
 import {DELEGATED_ONLY_GRANTS} from '../../../constants/delegationGrants';
 import {codeComponents} from '../shared/transCodeComponents';
 

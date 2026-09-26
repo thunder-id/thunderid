@@ -58,16 +58,8 @@ vi.mock('../features/agents/pages/AgentEditPage', () => ({
   default: () => <div data-testid="agent-edit-page">Agent Edit Page</div>,
 }));
 
-vi.mock('../features/applications/pages/ApplicationsListPage', () => ({
-  default: () => <div data-testid="applications-list-page">Applications List Page</div>,
-}));
-
 vi.mock('../features/applications/pages/ApplicationCreatePage', () => ({
   default: () => <div data-testid="application-create-page">Application Create Page</div>,
-}));
-
-vi.mock('../features/applications/pages/ApplicationEditPage', () => ({
-  default: () => <div data-testid="application-edit-page">Application Edit Page</div>,
 }));
 
 vi.mock('@thunderid/configure-design', async (importOriginal) => ({
@@ -103,6 +95,24 @@ vi.mock('@thunderid/configure-import-export', async (importOriginal) => ({
   ImportExportPage: () => <div data-testid="import-export-page">Import Export Page</div>,
 }));
 
+vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
+  ApplicationsListPage: () => <div data-testid="applications-list-page">Applications List Page</div>,
+  ApplicationEditPage: ({
+    renderFlowsSettings,
+    renderIntegrationGuides,
+  }: {
+    renderFlowsSettings: (props: Record<string, never>) => React.ReactNode;
+    renderIntegrationGuides: (props: Record<string, never>) => React.ReactNode;
+  }) => (
+    <div data-testid="application-edit-page">
+      Application Edit Page
+      {renderFlowsSettings({})}
+      {renderIntegrationGuides({})}
+    </div>
+  ),
+}));
+
 vi.mock('@thunderid/configure-organization-units', async () => {
   const {Outlet} = await import('react-router');
   return {
@@ -117,11 +127,14 @@ vi.mock('@thunderid/configure-organization-units', async () => {
   };
 });
 
-vi.mock('@thunderid/configure-flows', () => ({
+vi.mock('@thunderid/configure-flows', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-flows')>()),
   OrganizationUnitDefaultFlowsSettings: () => <div data-testid="ou-default-flows-settings" />,
   FlowCreatePage: () => <div data-testid="flow-create-page">Flow Create Page</div>,
   FlowsListPage: () => <div data-testid="flows-list-page">Flows List Page</div>,
   FlowBuilderPage: () => <div data-testid="flow-builder-page">Flow Builder Page</div>,
+  EditFlowsSettings: () => <div data-testid="application-edit-flows-settings" />,
+  IntegrationGuides: () => <div data-testid="application-integration-guides" />,
 }));
 
 vi.mock('@thunderid/configure-resource-servers', () => ({
@@ -162,12 +175,22 @@ describe('App', () => {
     });
   });
 
-  it('loads ApplicationEditPage lazily via the monaco-setup chain', async () => {
+  it('loads ApplicationsListPage lazily at /applications', async () => {
+    window.history.pushState({}, '', '/applications');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('applications-list-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads ApplicationEditPage lazily via the monaco-setup chain, wiring the flows-settings and integration-guides render props', async () => {
     window.history.pushState({}, '', '/applications/app-123');
     render(<App />);
     await waitFor(() => {
       expect(screen.getByTestId('application-edit-page')).toBeInTheDocument();
     });
+    expect(screen.getByTestId('application-edit-flows-settings')).toBeInTheDocument();
+    expect(screen.getByTestId('application-integration-guides')).toBeInTheDocument();
   });
 
   it('loads AgentEditPage lazily via the monaco-setup chain', async () => {

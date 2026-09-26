@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
+import {CertificateTypes} from '@thunderid/configure-applications';
 import {Stack, TextField, FormControl, FormLabel, Autocomplete, FormHelperText, Alert} from '@wso2/oxygen-ui';
 import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import CertificateTypes from '../../../../applications/constants/certificate-types';
 
 interface CertificateSectionProps {
   certificate?: {type?: string; value?: string} | null;

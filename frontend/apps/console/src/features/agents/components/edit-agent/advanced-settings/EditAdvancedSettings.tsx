@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {OAuth2GrantTypes} from '@thunderid/configure-applications';
-import type {OAuth2Config} from '@thunderid/configure-applications';
+import {applyGrantTypesChange, OAuth2GrantTypes, type OAuth2Config} from '@thunderid/configure-applications';
 import {Box, FormControlLabel, Stack, Switch, Typography} from '@wso2/oxygen-ui';
 import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -12,7 +11,6 @@ import AllowedUserTypesSection from './AllowedUserTypesSection';
 import DangerZoneSection from './DangerZoneSection';
 import OperationModesSection from './OperationModesSection';
 import OwnerSection from './OwnerSection';
-import {applyGrantTypesChange} from '../../../../applications/utils/oauth2Rules';
 import {DELEGATED_ONLY_GRANTS} from '../../../constants/delegationGrants';
 import type {Agent, AgentInboundAuthConfig, OAuthAgentConfig} from '../../../models/agent';
 import AgentDeleteDialog from '../../AgentDeleteDialog';

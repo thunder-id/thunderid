@@ -1,0 +1,152 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+import {render, screen, waitFor} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type {Application} from '@thunderid/configure-applications';
+import {MemoryRouter} from 'react-router';
+import {describe, it, expect, vi, beforeEach} from 'vitest';
+import useGetFlows from '../../../api/useGetFlows';
+import SignOutFlowSection from '../SignOutFlowSection';
+
+// Mock the useGetFlows hook
+vi.mock('../../../api/useGetFlows', () => ({
+  default: vi.fn(),
+}));
+
+type MockedUseGetFlows = ReturnType<typeof useGetFlows>;
+
+// Mock the Components
+vi.mock('@thunderid/components', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/components')>()),
+  SettingsCard: ({title, description, children}: {title: string; description: string; children: React.ReactNode}) => (
+    <div data-testid="settings-card">
+      <div data-testid="card-title">{title}</div>
+      <div data-testid="card-description">{description}</div>
+      {children}
+    </div>
+  ),
+}));
+
+describe('SignOutFlowSection', () => {
+  const mockOnFieldChange = vi.fn();
+  const mockApplication: Application = {
+    id: 'app-123',
+    name: 'Test App',
+    signOutFlowId: 'signout-flow-1',
+  } as Application;
+
+  const mockSignOutFlows = [
+    {id: 'signout-flow-1', name: 'Default SignOut Flow', handle: 'default-signout'},
+    {id: 'signout-flow-2', name: 'Custom SignOut Flow', handle: 'custom-signout'},
+  ];
+
+  const mockFlows = (flows: unknown[], isLoading = false): void => {
+    vi.mocked(useGetFlows).mockReturnValue({data: {flows}, isLoading} as unknown as MockedUseGetFlows);
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should query SIGNOUT flows', () => {
+    mockFlows(mockSignOutFlows);
+    render(
+      <MemoryRouter>
+        <SignOutFlowSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />
+      </MemoryRouter>,
+    );
+    expect(useGetFlows).toHaveBeenCalledWith({flowType: 'SIGNOUT'});
+  });
+
+  it('should render the autocomplete', () => {
+    mockFlows(mockSignOutFlows);
+    render(
+      <MemoryRouter>
+        <SignOutFlowSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByPlaceholderText('Select a sign-out flow')).toBeInTheDocument();
+  });
+
+  it('should show a loading indicator while fetching flows', () => {
+    mockFlows([], true);
+    render(
+      <MemoryRouter>
+        <SignOutFlowSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
+  });
+
+  it('should display the selected flow, preferring editedApp over application', () => {
+    mockFlows(mockSignOutFlows);
+    render(
+      <MemoryRouter>
+        <SignOutFlowSection
+          application={mockApplication}
+          editedApp={{signOutFlowId: 'signout-flow-2'}}
+          onFieldChange={mockOnFieldChange}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByPlaceholderText('Select a sign-out flow')).toHaveValue('Custom SignOut Flow');
+  });
+
+  it('should show the info alert only when a signout flow is selected', () => {
+    mockFlows(mockSignOutFlows);
+    const {rerender} = render(
+      <MemoryRouter>
+        <SignOutFlowSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <SignOutFlowSection
+          application={{...mockApplication, signOutFlowId: undefined}}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('should call onFieldChange with the selected signout flow id', async () => {
+    const user = userEvent.setup();
+    mockFlows(mockSignOutFlows);
+    render(
+      <MemoryRouter>
+        <SignOutFlowSection
+          application={{...mockApplication, signOutFlowId: undefined}}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+        />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByPlaceholderText('Select a sign-out flow'));
+    await waitFor(() => {
+      expect(screen.getByText('Custom SignOut Flow')).toBeInTheDocument();
+    });
+    await user.click(screen.getByText('Custom SignOut Flow'));
+
+    expect(mockOnFieldChange).toHaveBeenCalledWith('signOutFlowId', 'signout-flow-2');
+  });
+
+  it('should disable the picker for a read-only application', () => {
+    mockFlows(mockSignOutFlows);
+    render(
+      <MemoryRouter>
+        <SignOutFlowSection
+          application={{...mockApplication, isReadOnly: true}}
+          editedApp={{}}
+          onFieldChange={mockOnFieldChange}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByPlaceholderText('Select a sign-out flow')).toBeDisabled();
+  });
+});

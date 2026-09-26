@@ -2,6 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {PageLoader, ResourceAvatar} from '@thunderid/components';
+import {
+  PlatformApplicationTemplate,
+  PlatformBasedApplicationTemplateMetadata,
+  resolveCreationFlow,
+  TechnologyApplicationTemplate,
+  TechnologyBasedApplicationTemplateMetadata,
+  type ApplicationTemplateMetadata,
+  type TemplateCategory,
+} from '@thunderid/configure-applications';
 import {useLogger} from '@thunderid/logger/react';
 import {
   Box,
@@ -20,12 +29,7 @@ import type {JSX} from 'react';
 import {useEffect, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useLocation, useNavigate, useSearchParams} from 'react-router';
-import PlatformBasedApplicationTemplateMetadata from '../config/PlatformBasedApplicationTemplateMetadata';
-import TechnologyBasedApplicationTemplateMetadata from '../config/TechnologyBasedApplicationTemplateMetadata';
 import useApplicationCreate from '../contexts/ApplicationCreate/useApplicationCreate';
-import type {ApplicationTemplateMetadata, TemplateCategory} from '../models/application-templates';
-import {PlatformApplicationTemplate, TechnologyApplicationTemplate} from '../models/application-templates';
-import resolveCreationFlow from '../utils/resolveCreationFlow';
 
 type CategoryFilter = TemplateCategory | 'all';
 

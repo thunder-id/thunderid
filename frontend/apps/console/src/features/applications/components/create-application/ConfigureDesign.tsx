@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {ApplicationCreateFlowSignInApproach, OrganizationUnitDefaultItem} from '@thunderid/configure-applications';
 import {
   LayoutPresetThumbnail,
   LayoutThumbnail,
@@ -40,7 +41,6 @@ import type {JSX, ChangeEvent} from 'react';
 import {useState, useEffect} from 'react';
 import {useTranslation} from 'react-i18next';
 import useApplicationCreateContext from '../../hooks/useApplicationCreateContext';
-import {ApplicationCreateFlowSignInApproach, OrganizationUnitDefaultItem} from '../../models/application-create-flow';
 
 const LAYOUT_PRESET_VARIANTS: readonly LayoutPresetVariant[] = ['centered', 'split', 'fullscreen', 'popup'];
 

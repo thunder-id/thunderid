@@ -3,8 +3,8 @@
 
 import {render, screen, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {CertificateTypes} from '@thunderid/configure-applications';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import CertificateTypes from '../../../../../applications/constants/certificate-types';
 import CertificateSection from '../CertificateSection';
 
 vi.mock('react-i18next', () => ({

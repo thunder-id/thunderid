@@ -18,10 +18,12 @@ vi.mock('@thunderid/configure-agent-types', () => ({
   useGetAgentType: (id?: string) => mockUseGetAgentType(id),
 }));
 
-vi.mock('../../../../../applications/components/edit-application/token-settings/JwtPreview', () => ({
-  default: ({payload}: {payload: Record<string, unknown>}) => (
-    <pre data-testid="jwt-preview">{JSON.stringify(payload)}</pre>
-  ),
+// AgentAccessTokenSection renders `@thunderid/configure-applications`'s ClientAccessTokenSection
+// (and its JwtPreview) for real, so this test exercises the actual payload-building logic; only the
+// monaco-editor pane itself is stubbed. ClientAccessTokenSection never passes JwtPreview a `header`,
+// so only the payload editor renders here, avoiding a duplicate-testid collision with a header pane.
+vi.mock('@monaco-editor/react', () => ({
+  default: ({value}: {value: string}) => <pre data-testid="jwt-preview">{value}</pre>,
 }));
 
 describe('AgentAccessTokenSection', () => {
@@ -213,7 +215,7 @@ describe('AgentAccessTokenSection', () => {
       />,
     );
 
-    expect(screen.getByTestId('jwt-preview')).toHaveTextContent('"name":"<name>"');
+    expect(screen.getByTestId('jwt-preview')).toHaveTextContent('"name": "<name>"');
   });
 
   // The agent tab must declare its own identity class, not the application value.
@@ -233,7 +235,7 @@ describe('AgentAccessTokenSection', () => {
       />,
     );
 
-    expect(screen.getByTestId('jwt-preview')).toHaveTextContent('"sub_type":"agent"');
+    expect(screen.getByTestId('jwt-preview')).toHaveTextContent('"sub_type": "agent"');
   });
 
   it('does not show a scopes section', () => {

@@ -1,14 +1,11 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {OAuth2GrantTypes} from '@thunderid/configure-applications';
-import type {Application} from '@thunderid/configure-applications';
+import {OAuth2GrantTypes, SettingsLockNotice, type Application} from '@thunderid/configure-applications';
+import {AuthenticationFlowSection, RegistrationFlowSection} from '@thunderid/configure-flows';
 import {Stack} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import SettingsLockNotice from '../../../../applications/components/common/SettingsLockNotice';
-import AuthenticationFlowSection from '../../../../applications/components/edit-application/flows-settings/AuthenticationFlowSection';
-import RegistrationFlowSection from '../../../../applications/components/edit-application/flows-settings/RegistrationFlowSection';
 import type {Agent, OAuthAgentConfig} from '../../../models/agent';
 
 interface EditFlowsSettingsProps {

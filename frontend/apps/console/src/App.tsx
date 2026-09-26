@@ -69,10 +69,20 @@ const AgentEditPage = lazy(() =>
 const AgentsListPage = lazy(() => import('./features/agents/pages/AgentsListPage'));
 const ApplicationCreatePage = lazy(() => import('./features/applications/pages/ApplicationCreatePage'));
 const ApplicationEditPage = lazy(() =>
-  import('./lib/monaco-setup').then(() => import('./features/applications/pages/ApplicationEditPage')),
+  import('./lib/monaco-setup').then(() =>
+    import('@thunderid/configure-applications').then((m) => ({default: m.ApplicationEditPage})),
+  ),
 );
-const ApplicationsListPage = lazy(() => import('./features/applications/pages/ApplicationsListPage'));
+const ApplicationsListPage = lazy(() =>
+  import('@thunderid/configure-applications').then((m) => ({default: m.ApplicationsListPage})),
+);
 const ApplicationTemplateSelectPage = lazy(() => import('./features/applications/pages/ApplicationTemplateSelectPage'));
+const ApplicationEditFlowsSettings = lazy(() =>
+  import('@thunderid/configure-flows').then((m) => ({default: m.EditFlowsSettings})),
+);
+const ApplicationIntegrationGuides = lazy(() =>
+  import('@thunderid/configure-flows').then((m) => ({default: m.IntegrationGuides})),
+);
 const DesignPage = lazy(() => import('@thunderid/configure-design').then((m) => ({default: m.DesignPage})));
 const LayoutBuilderPage = lazy(() =>
   import('./lib/monaco-setup').then(() =>
@@ -202,7 +212,15 @@ export default function App(): JSX.Element {
                   element={<VerifiableCredentialEditPage />}
                 />
                 <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage />} />
-                <Route path={`${ROUTE_SEGMENTS.applications}/:applicationId`} element={<ApplicationEditPage />} />
+                <Route
+                  path={`${ROUTE_SEGMENTS.applications}/:applicationId`}
+                  element={
+                    <ApplicationEditPage
+                      renderFlowsSettings={(props) => <ApplicationEditFlowsSettings {...props} />}
+                      renderIntegrationGuides={(props) => <ApplicationIntegrationGuides {...props} />}
+                    />
+                  }
+                />
                 <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
                 <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
                 <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />

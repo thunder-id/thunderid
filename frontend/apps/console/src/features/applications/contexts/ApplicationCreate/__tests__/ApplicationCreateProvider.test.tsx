@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {
+  ApplicationCreateFlowSignInApproach,
+  ApplicationCreateFlowStep,
+  PlatformApplicationTemplate,
+  TechnologyApplicationTemplate,
+} from '@thunderid/configure-applications';
 import {AuthenticatorTypes} from '@thunderid/configure-connections';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
-import {ApplicationCreateFlowSignInApproach, ApplicationCreateFlowStep} from '../../../models/application-create-flow';
-import {TechnologyApplicationTemplate, PlatformApplicationTemplate} from '../../../models/application-templates';
 import ApplicationCreateProvider from '../ApplicationCreateProvider';
 import useApplicationCreate from '../useApplicationCreate';
 

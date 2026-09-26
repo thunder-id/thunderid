@@ -7,19 +7,16 @@ import {describe, it, expect, vi} from 'vitest';
 import type {Agent} from '../../../../models/agent';
 import EditFlowsSettings from '../EditFlowsSettings';
 
-vi.mock('../../../../../applications/components/edit-application/flows-settings/AuthenticationFlowSection', () => ({
-  default: ({application}: {application: Application}) => (
+// RecoveryFlowSection is mocked too so the absence assertions below fail if the section is ever
+// wired back in.
+vi.mock('@thunderid/configure-flows', () => ({
+  AuthenticationFlowSection: ({application}: {application: Application}) => (
     <div data-testid="auth-flow" data-readonly={String(application.isReadOnly)} />
   ),
-}));
-vi.mock('../../../../../applications/components/edit-application/flows-settings/RegistrationFlowSection', () => ({
-  default: ({application}: {application: Application}) => (
+  RegistrationFlowSection: ({application}: {application: Application}) => (
     <div data-testid="registration-flow" data-readonly={String(application.isReadOnly)} />
   ),
-}));
-// Mocked so the absence assertions below fail if the section is ever wired back in.
-vi.mock('../../../../../applications/components/edit-application/flows-settings/RecoveryFlowSection', () => ({
-  default: ({application}: {application: Application}) => (
+  RecoveryFlowSection: ({application}: {application: Application}) => (
     <div data-testid="recovery-flow" data-readonly={String(application.isReadOnly)} />
   ),
 }));

@@ -1,12 +1,11 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {McpClientTypes, type McpClientType} from '@thunderid/configure-applications';
 import {Chip, Stack, Typography} from '@wso2/oxygen-ui';
 import {KeyRound, Lock, RefreshCw, ShieldCheck} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {McpClientTypes} from '../../../models/mcp-client';
-import type {McpClientType} from '../../../models/mcp-client';
 
 /**
  * Props for the {@link McpClientTypePreview} component.

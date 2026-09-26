@@ -25,8 +25,9 @@ vi.mock('react-router', async () => {
 });
 
 // Mock TechnologyGuide component
-vi.mock('../../edit-application/integration-guides/TechnologyGuide', () => ({
-  default: () => <div data-testid="technology-guide">Technology Guide</div>,
+vi.mock('@thunderid/configure-flows', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-flows')>()),
+  TechnologyGuide: () => <div data-testid="technology-guide">Technology Guide</div>,
 }));
 
 describe('IntegrationGuide', () => {

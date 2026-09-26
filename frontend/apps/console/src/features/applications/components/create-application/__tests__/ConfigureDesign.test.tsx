@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {ApplicationCreateFlowSignInApproach} from '@thunderid/configure-applications';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
-import {ApplicationCreateFlowSignInApproach} from '../../../models/application-create-flow';
 import ConfigureDesign, {type ConfigureDesignProps} from '../ConfigureDesign';
 
 // Mock the Packages
