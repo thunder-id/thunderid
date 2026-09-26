@@ -52,7 +52,7 @@ const (
 type parameterizerInterface interface {
 	ToParameterizedYAML(ctx context.Context, obj interface{},
 		resourceType string, resourceName string,
-		rules *declarativeresource.ResourceRules) (string, map[string]string, error)
+		rules *declarativeresource.ResourceRules) (string, map[string]string, map[string]bool, error)
 	VarPrefix(resourceName string) string
 }
 
@@ -398,7 +398,7 @@ func (es *exportService) generateTemplateFromStruct(ctx context.Context, data in
 	} else {
 		rules = exporter.GetResourceRules()
 	}
-	template, vars, err := es.parameterizer.ToParameterizedYAML(ctx,
+	template, vars, _, err := es.parameterizer.ToParameterizedYAML(ctx,
 		data, paramResourceType, resourceName, rules)
 	if err != nil {
 		return "", nil, err

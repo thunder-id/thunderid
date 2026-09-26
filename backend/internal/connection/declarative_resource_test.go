@@ -384,7 +384,10 @@ func (s *DeclarativeResourceTestSuite) TestGetResourceRulesForResourceSecretSele
 	for _, tc := range cases {
 		rules := s.exporter.GetResourceRulesForResource(&tc.model)
 		s.Require().NotNil(rules)
-		s.Equal(tc.want, rules.Variables, tc.model.Type)
+		// Every one of these is a credential, so it is named on the list that says so: a value under
+		// Variables is readable back from wherever it is held, and one under SecretVariables is not.
+		s.Equal(tc.want, rules.SecretVariables, tc.model.Type)
+		s.Empty(rules.Variables, tc.model.Type)
 	}
 }
 

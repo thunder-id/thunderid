@@ -95,7 +95,7 @@ func (suite *ExportServiceTestSuite) SetupTest() {
 	}
 
 	// Create parameterizer instance
-	parameterizer := newParameterizer(templatingRules{})
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	suite.exportService = newExportService(exporters, parameterizer)
 }
@@ -1229,16 +1229,16 @@ type MockParameterizer struct {
 
 func (m *MockParameterizer) ToParameterizedYAML(_ context.Context, obj interface{},
 	resourceType string, resourceName string,
-	rules *declarativeresource.ResourceRules) (string, map[string]string, error) {
+	rules *declarativeresource.ResourceRules) (string, map[string]string, map[string]bool, error) {
 	if m.shouldFail {
-		return "", nil, fmt.Errorf("%s", m.errorMsg)
+		return "", nil, nil, fmt.Errorf("%s", m.errorMsg)
 	}
 	// Return minimal valid YAML
-	return "id: test\nname: test\n", nil, nil
+	return "id: test\nname: test\n", nil, nil, nil
 }
 
 func (m *MockParameterizer) VarPrefix(resourceName string) string {
-	return newParameterizer(templatingRules{}).VarPrefix(resourceName)
+	return newParameterizer(templatingRules{}, TemplatePlaceholders).VarPrefix(resourceName)
 }
 
 // TestExportResources_TemplateGenerationError tests the error path in generateTemplateFromStruct.

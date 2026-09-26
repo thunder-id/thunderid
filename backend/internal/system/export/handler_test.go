@@ -58,7 +58,7 @@ func (suite *HandlerTestSuite) SetupTest() {
 		connection.NewConnectionExporterForTest(suite.mockIDPService, suite.mockNotificationService, nil),
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService, entitytype.TypeCategoryUser),
 	}
-	parameterizer := newParameterizer(templatingRules{})
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
 	suite.exportService = newExportService(exporters, parameterizer)
 	suite.handler = newExportHandler(suite.exportService)
 }
@@ -82,7 +82,7 @@ func TestNewExportHandler(t *testing.T) {
 		connection.NewConnectionExporterForTest(mockIDPService, mockNotificationService, nil),
 		entitytype.NewEntityTypeExporterForTest(mockEntityTypeService, entitytype.TypeCategoryUser),
 	}
-	parameterizer := newParameterizer(templatingRules{})
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
 	exportService := newExportService(exporters, parameterizer)
 
 	handler := newExportHandler(exportService)
@@ -436,7 +436,7 @@ func setupBenchmarkTest(b *testing.B) (*exportHandler, []byte) {
 		connection.NewConnectionExporterForTest(mockIDPService, mockNotificationService, nil),
 		entitytype.NewEntityTypeExporterForTest(mockEntityTypeService, entitytype.TypeCategoryUser),
 	}
-	parameterizer := newParameterizer(templatingRules{})
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
 	exportService := newExportService(exporters, parameterizer)
 	handler := newExportHandler(exportService)
 

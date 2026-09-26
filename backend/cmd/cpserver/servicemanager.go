@@ -311,7 +311,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		groupService, ouService, ouUserResolver, ouGroupResolver, resourceService)
 
 	// Initialize export service with collected exporters
-	_ = export.Initialize(mux, exporters)
+	// This plane authors configuration and does not hold the values it refers to, so an export
+	// carries references naming where each value lives rather than the values themselves.
+	_ = export.Initialize(mux, exporters, export.ValueReferences)
 
 	// Initialize import service
 	importService := importer.Initialize(

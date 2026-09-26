@@ -473,7 +473,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	_ = flowmeta.Initialize(mux, actorProvider, ouService, designResolveService, i18nService)
 
 	// Initialize export service with collected exporters
-	_ = export.Initialize(mux, exporters)
+	_ = export.Initialize(mux, exporters, export.TemplatePlaceholders)
 
 	// Initialize import service
 	importService := importer.Initialize(

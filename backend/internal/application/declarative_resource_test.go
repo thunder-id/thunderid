@@ -188,7 +188,7 @@ func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_PublicCli
 
 	assert.NotNil(s.T(), rules)
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
-	assert.NotContains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
+	assert.NotContains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Contains(s.T(), rules.ArrayVariables, "InboundAuthConfig[].OAuthConfig.RedirectURIs")
 }
 
@@ -213,7 +213,7 @@ func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_Confident
 
 	assert.NotNil(s.T(), rules)
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
-	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
+	assert.Contains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Contains(s.T(), rules.ArrayVariables, "InboundAuthConfig[].OAuthConfig.RedirectURIs")
 }
 
@@ -225,5 +225,5 @@ func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_NonApplic
 
 	assert.NotNil(s.T(), rules)
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
-	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
+	assert.Contains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 }

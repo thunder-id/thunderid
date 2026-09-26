@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -70,8 +71,8 @@ func TestToParameterizedYAML_WithOmitemptyFields(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(rules)
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(),
+	parameterizer := newParameterizer(rules, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
 		app, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
@@ -122,8 +123,8 @@ func TestToParameterizedYAML_WithPopulatedFields(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(rules)
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(),
+	parameterizer := newParameterizer(rules, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
 		app, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
@@ -174,8 +175,8 @@ func TestToParameterizedYAML_MixedEmptyAndPopulated(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(rules)
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(),
+	parameterizer := newParameterizer(rules, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
 		app, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
@@ -210,7 +211,7 @@ func TestStructToMapIgnoringOmitempty(t *testing.T) {
 		Scopes: nil,
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
 	result, err := parameterizer.structToMapIgnoringOmitempty(app)
 
 	require.NoError(t, err)
@@ -239,7 +240,7 @@ func TestConvertFieldToInterface_NestedStructs(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
 	result, err := parameterizer.structToMapIgnoringOmitempty(app)
 
 	require.NoError(t, err)
@@ -258,7 +259,7 @@ func TestConvertFieldToInterface_NestedStructs(t *testing.T) {
 }
 
 func TestPathToVariableName(t *testing.T) {
-	parameterizer := newParameterizer(templatingRules{}).forResourceType("Application")
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders).forResourceType("Application")
 
 	tests := []struct {
 		appName  string
@@ -285,7 +286,7 @@ func TestPathToVariableName(t *testing.T) {
 }
 
 func TestGeneratePropertyVarName(t *testing.T) {
-	parameterizer := newParameterizer(templatingRules{})
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	tests := []struct {
 		resourceName string
@@ -310,7 +311,7 @@ func TestGeneratePropertyVarName(t *testing.T) {
 // name ending in a separator used to produce a different prefix ("MY_APP_") from the name it
 // rendered as ("MY_APP_CLIENT_ID"), letting two resources share one variable.
 func TestVarPrefixMatchesGeneratedVarName(t *testing.T) {
-	parameterizer := newParameterizer(templatingRules{})
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	names := []string{
 		"My App", "My App-", "My App.", "My App ", "My App!",
@@ -346,8 +347,8 @@ func TestOmitempty_EmptyFieldsWithoutRules(t *testing.T) {
 	}
 
 	// No parameterization rules - omitempty should work normally
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
@@ -373,8 +374,8 @@ func TestOmitempty_EmptyArraysOmitted(t *testing.T) {
 		Scopes: []string{}, // Empty array - should be omitted
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 	assert.NotContains(t, result, "grantTypes:", "Empty GrantTypes array should be omitted")
@@ -391,8 +392,8 @@ func TestOmitempty_NilSlicesOmitted(t *testing.T) {
 		Scopes: nil, // Nil slice
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 	assert.NotContains(t, result, "grantTypes:", "Nil GrantTypes should be omitted")
@@ -406,8 +407,8 @@ func TestOmitempty_NilPointersOmitted(t *testing.T) {
 		OAuth: nil, // Nil pointer - should be omitted
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 	assert.NotContains(t, result, "oauth:", "Nil OAuth pointer should be omitted")
@@ -436,8 +437,8 @@ func TestParameterization_OverridesOmitemptyForVariables(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(rules)
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(),
+	parameterizer := newParameterizer(rules, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
 		app, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
@@ -466,8 +467,8 @@ func TestParameterization_OverridesOmitemptyForArrays(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(rules)
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(),
+	parameterizer := newParameterizer(rules, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
 		app, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
@@ -499,8 +500,8 @@ func TestParameterization_NestedFieldsWithOmitempty(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(rules)
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(),
+	parameterizer := newParameterizer(rules, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
 		app, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
@@ -536,8 +537,8 @@ func TestParameterization_MixedRulesAndOmitempty(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(rules)
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(),
+	parameterizer := newParameterizer(rules, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
 		app, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
@@ -576,8 +577,8 @@ func TestFieldOrder_TopLevelFieldsPreserved(t *testing.T) {
 		FieldE: "valueE",
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 
@@ -604,8 +605,8 @@ func TestFieldOrder_WithOmittedFields(t *testing.T) {
 		FieldE: "", // Empty with omitempty - will be omitted
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 
@@ -646,8 +647,8 @@ func TestFieldOrder_NestedFieldsPreserved(t *testing.T) {
 		Extra: "extra",
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 
@@ -706,8 +707,8 @@ func TestEdgeCase_DeeplyNestedStructures(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 	assert.Contains(t, result, "level1:")
@@ -738,8 +739,8 @@ func TestEdgeCase_ArraysOfStructs(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 	assert.Contains(t, result, "items:")
@@ -761,8 +762,8 @@ func TestEdgeCase_EmptyStructWithOmitempty(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 
@@ -828,8 +829,8 @@ func TestIsEmptyValue_IntegerTypes(t *testing.T) {
 		Int64Field: 0,
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 
@@ -851,8 +852,8 @@ func TestIsEmptyValue_UnsignedIntegerTypes(t *testing.T) {
 		Uint64Field: 0,
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 
@@ -871,8 +872,8 @@ func TestIsEmptyValue_FloatTypes(t *testing.T) {
 		Float64Field: 0.0,
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 
@@ -887,8 +888,8 @@ func TestIsEmptyValue_BoolType(t *testing.T) {
 		BoolField: false,
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 
@@ -906,8 +907,8 @@ func TestIsEmptyValue_NonZeroValues(t *testing.T) {
 		BoolField:    true,
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 
@@ -941,7 +942,7 @@ func TestConvertFieldToInterface_Maps(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
 	result, err := parameterizer.structToMapIgnoringOmitempty(obj)
 
 	require.NoError(t, err)
@@ -965,7 +966,7 @@ func TestConvertFieldToInterface_EmptyMap(t *testing.T) {
 		IntMap:    nil,
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
 	result, err := parameterizer.structToMapIgnoringOmitempty(obj)
 
 	require.NoError(t, err)
@@ -991,7 +992,7 @@ func TestConvertFieldToInterface_PrimitiveArrays(t *testing.T) {
 		Float64Array: []float64{1.1, 2.2, 3.3},
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
 	result, err := parameterizer.structToMapIgnoringOmitempty(obj)
 
 	require.NoError(t, err)
@@ -1058,8 +1059,8 @@ func TestRenderNode_ComplexTemplateStructures(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(rules)
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(),
+	parameterizer := newParameterizer(rules, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
 		obj, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
@@ -1081,8 +1082,8 @@ func TestRenderNode_ArrayOfMaps(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 
@@ -1100,8 +1101,8 @@ func TestToParameterizedYAML_NilRules(t *testing.T) {
 		ClientID: "test-client-id",
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
@@ -1123,8 +1124,8 @@ func TestToParameterizedYAML_NilRulesWithOmitempty(t *testing.T) {
 		Application: nil, // Nil rules
 	}
 
-	parameterizer := newParameterizer(rules)
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(),
+	parameterizer := newParameterizer(rules, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
 		obj, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
@@ -1138,7 +1139,7 @@ func TestToParameterizedYAML_NilRulesWithOmitempty(t *testing.T) {
 
 // TestStructToMapIgnoringOmitempty_NonStructInput tests error handling for non-struct input
 func TestStructToMapIgnoringOmitempty_NonStructInput(t *testing.T) {
-	parameterizer := newParameterizer(templatingRules{})
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	// Test with string
 	_, err := parameterizer.structToMapIgnoringOmitempty("not a struct")
@@ -1173,8 +1174,8 @@ func TestRenderNode_NestedArraysInSequence(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 
@@ -1193,8 +1194,8 @@ func TestFieldToNode_NilPointer(t *testing.T) {
 		OAuth: nil, // Nil pointer
 	}
 
-	parameterizer := newParameterizer(templatingRules{})
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
 
 	require.NoError(t, err)
 
@@ -1217,8 +1218,8 @@ func TestConvertPathToYAMLPath_NonStructType(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(rules)
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(),
+	parameterizer := newParameterizer(rules, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
 		obj, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
@@ -1240,8 +1241,8 @@ func TestFindFieldByNameCaseInsensitive_NotFound(t *testing.T) {
 		},
 	}
 
-	parameterizer := newParameterizer(rules)
-	result, _, err := parameterizer.ToParameterizedYAML(context.Background(),
+	parameterizer := newParameterizer(rules, TemplatePlaceholders)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
 		obj, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
@@ -1255,12 +1256,12 @@ func TestToParameterizedYAML_InvalidStruct(t *testing.T) {
 		Application: &resourceRules{
 			Variables: []string{"Name"},
 		},
-	})
+	}, TemplatePlaceholders)
 
 	// Pass non-struct type
 	var notAStruct int = 42
 
-	_, _, err := p.ToParameterizedYAML(context.Background(), notAStruct, "Application", "Test", nil)
+	_, _, _, err := p.ToParameterizedYAML(context.Background(), notAStruct, "Application", "Test", nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to convert object to node")
@@ -1269,7 +1270,7 @@ func TestToParameterizedYAML_InvalidStruct(t *testing.T) {
 
 // TestHandleInterfaceValue_WithComplexObject tests handleInterfaceValue with complex nested objects
 func TestHandleInterfaceValue_WithComplexObject(t *testing.T) {
-	p := newParameterizer(templatingRules{})
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	// Create a complex interface{} value
 	complexData := map[string]interface{}{
@@ -1331,7 +1332,7 @@ func TestHandleInterfaceValue_WithComplexObject(t *testing.T) {
 
 // TestHandleInterfaceValue_WithNilInterface tests handleInterfaceValue with nil interface
 func TestHandleInterfaceValue_WithNilInterface(t *testing.T) {
-	p := newParameterizer(templatingRules{})
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	var nilInterface interface{}
 	reflectValue := reflect.ValueOf(&nilInterface).Elem()
@@ -1346,7 +1347,7 @@ func TestHandleInterfaceValue_WithNilInterface(t *testing.T) {
 
 // TestHandleInterfaceValue_WithPrimitiveTypes tests handleInterfaceValue with various primitive types
 func TestHandleInterfaceValue_WithPrimitiveTypes(t *testing.T) {
-	p := newParameterizer(templatingRules{})
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	testCases := []struct {
 		name          string
@@ -1398,7 +1399,7 @@ func TestHandleInterfaceValue_WithPrimitiveTypes(t *testing.T) {
 
 // TestHandleInterfaceValue_WithArrays tests handleInterfaceValue with arrays
 func TestHandleInterfaceValue_WithArrays(t *testing.T) {
-	p := newParameterizer(templatingRules{})
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	testCases := []struct {
 		name  string
@@ -1445,7 +1446,7 @@ func TestHandleInterfaceValue_WithArrays(t *testing.T) {
 
 // TestHandleInterfaceValue_WithNestedStructures tests handleInterfaceValue with deeply nested structures
 func TestHandleInterfaceValue_WithNestedStructures(t *testing.T) {
-	p := newParameterizer(templatingRules{})
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	deeplyNested := map[string]interface{}{
 		"level1": map[string]interface{}{
@@ -1493,7 +1494,7 @@ func TestHandleInterfaceValue_WithNestedStructures(t *testing.T) {
 
 // TestHandleInterfaceValue_WithEmptyStructures tests handleInterfaceValue with empty containers
 func TestHandleInterfaceValue_WithEmptyStructures(t *testing.T) {
-	p := newParameterizer(templatingRules{})
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	testCases := []struct {
 		name  string
@@ -1535,7 +1536,7 @@ func TestHandleInterfaceValue_WithEmptyStructures(t *testing.T) {
 
 // TestHandleInterfaceValue_WithUnmarshallableType tests fallback to fmt.Sprintf when JSON marshaling fails
 func TestHandleInterfaceValue_WithUnmarshallableType(t *testing.T) {
-	p := newParameterizer(templatingRules{})
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	// Create a type that json.Marshal cannot handle but doesn't panic
 	// Use a map with non-string keys (json.Marshal will fail for this)
@@ -1569,7 +1570,7 @@ func TestHandleInterfaceValue_WithUnmarshallableType(t *testing.T) {
 
 // TestFieldToNode_JSONRawMessage tests that json.RawMessage fields are properly converted to JSON strings.
 func TestFieldToNode_JSONRawMessage(t *testing.T) {
-	p := newParameterizer(templatingRules{})
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	// Test with a JSON object - should be exported as a JSON string
 	jsonObj := json.RawMessage(
@@ -1589,7 +1590,7 @@ func TestFieldToNode_JSONRawMessage(t *testing.T) {
 
 // TestFieldToNode_JSONRawMessageArray tests that json.RawMessage with JSON array is properly converted to JSON string.
 func TestFieldToNode_JSONRawMessageArray(t *testing.T) {
-	p := newParameterizer(templatingRules{})
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	// Test with a JSON array - should be exported as a JSON string
 	jsonArr := json.RawMessage(`["item1","item2","item3"]`)
@@ -1607,7 +1608,7 @@ func TestFieldToNode_JSONRawMessageArray(t *testing.T) {
 
 // TestFieldToNode_JSONRawMessageEmpty tests that empty json.RawMessage is handled correctly.
 func TestFieldToNode_JSONRawMessageEmpty(t *testing.T) {
-	p := newParameterizer(templatingRules{})
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	// Test with empty JSON
 	jsonEmpty := json.RawMessage(``)
@@ -1624,7 +1625,7 @@ func TestFieldToNode_JSONRawMessageEmpty(t *testing.T) {
 
 // TestFieldToNode_JSONRawMessageNil tests that nil json.RawMessage is handled correctly.
 func TestFieldToNode_JSONRawMessageNil(t *testing.T) {
-	p := newParameterizer(templatingRules{})
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	// Test with nil json.RawMessage (nil slice)
 	var jsonNil json.RawMessage // nil slice
@@ -1641,7 +1642,7 @@ func TestFieldToNode_JSONRawMessageNil(t *testing.T) {
 
 // TestFieldToNode_JSONRawMessageInvalid tests that invalid JSON in RawMessage returns an error.
 func TestFieldToNode_JSONRawMessageInvalid(t *testing.T) {
-	p := newParameterizer(templatingRules{})
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	// Test with invalid JSON
 	jsonInvalid := json.RawMessage(`{invalid json}`)
@@ -1663,7 +1664,7 @@ func TestToParameterizedYAML_JSONRawMessageInvalid(t *testing.T) {
 		Schema json.RawMessage `yaml:"schema"`
 	}
 
-	p := newParameterizer(templatingRules{})
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	// Create a schema with invalid JSON
 	schema := TestSchema{
@@ -1673,7 +1674,7 @@ func TestToParameterizedYAML_JSONRawMessageInvalid(t *testing.T) {
 	}
 
 	// Should return an error
-	result, _, err := p.ToParameterizedYAML(context.Background(), schema, "EntityType", "TestSchema", nil)
+	result, _, _, err := p.ToParameterizedYAML(context.Background(), schema, "EntityType", "TestSchema", nil)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid JSON in RawMessage")
@@ -1693,7 +1694,7 @@ func TestToParameterizedYAML_NestedStructWithInvalidJSON(t *testing.T) {
 		Nested *NestedConfig `yaml:"nested"`
 	}
 
-	p := newParameterizer(templatingRules{})
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
 	// Create a struct with nested invalid JSON
 	obj := OuterStruct{
@@ -1705,7 +1706,7 @@ func TestToParameterizedYAML_NestedStructWithInvalidJSON(t *testing.T) {
 	}
 
 	// Should return an error from the nested structure
-	result, _, err := p.ToParameterizedYAML(context.Background(), obj, "Config", "TestConfig", nil)
+	result, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Config", "TestConfig", nil)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid JSON in RawMessage")
@@ -1749,8 +1750,8 @@ func TestEntityTypeImportExportSymmetry(t *testing.T) {
 	}
 
 	// Export using the parameterizer
-	p := newParameterizer(templatingRules{})
-	yamlOutput, _, err := p.ToParameterizedYAML(context.Background(), originalSchema, "EntityType", "Person", nil)
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	yamlOutput, _, _, err := p.ToParameterizedYAML(context.Background(), originalSchema, "EntityType", "Person", nil)
 	require.NoError(t, err)
 
 	t.Logf("Exported YAML:\n%s", yamlOutput)
@@ -1828,9 +1829,9 @@ func TestRenderNode_I18nRefsInSequenceItemAreQuoted(t *testing.T) {
 		},
 	}
 
-	p := newParameterizer(templatingRules{})
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 	// Use empty (non-nil) rules to exercise the custom renderNode path (same as flows)
-	result, _, err := p.ToParameterizedYAML(context.Background(),
+	result, _, _, err := p.ToParameterizedYAML(context.Background(),
 		obj, "Flow", "User Onboarding Flow",
 		toDeclarativeResourceRules(&resourceRules{}))
 	require.NoError(t, err)
@@ -1868,8 +1869,8 @@ func TestRenderMappingValue_I18nRefsAreQuoted(t *testing.T) {
 		Callback: "{{.APPLICATION_TEST_CALLBACK_URL}}",
 	}
 
-	p := newParameterizer(templatingRules{})
-	result, _, err := p.ToParameterizedYAML(context.Background(),
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := p.ToParameterizedYAML(context.Background(),
 		obj, "Application", "Test",
 		toDeclarativeResourceRules(&resourceRules{Variables: []string{"Callback"}}))
 	require.NoError(t, err)
@@ -1897,8 +1898,8 @@ func TestEntityTypeExportFormat(t *testing.T) {
 		Schema:                json.RawMessage(`{"field1":"value1"}`),
 	}
 
-	p := newParameterizer(templatingRules{})
-	yamlOutput, _, err := p.ToParameterizedYAML(context.Background(), schema, "EntityType", "TestSchema", nil)
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	yamlOutput, _, _, err := p.ToParameterizedYAML(context.Background(), schema, "EntityType", "TestSchema", nil)
 	require.NoError(t, err)
 
 	// Verify the schema field is a plain string in the YAML, not a structured object
@@ -1927,9 +1928,9 @@ func TestResourceServerExport_IdentifierAndOUIDNotParameterized(t *testing.T) {
 		Delimiter:  ":",
 	}
 
-	p := newParameterizer(templatingRules{})
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 	// nil rules mirrors what GetResourceRules() returns for resource servers
-	result, vars, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", "System", nil)
+	result, vars, _, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", "System", nil)
 	require.NoError(t, err)
 
 	// identifier must be the literal value, not a template variable
@@ -1959,8 +1960,8 @@ func TestResourceServerExport_DelimiterIsQuoted(t *testing.T) {
 		Delimiter:  ":",
 	}
 
-	p := newParameterizer(templatingRules{})
-	result, _, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", "System", nil)
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	result, _, _, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", "System", nil)
 	require.NoError(t, err)
 
 	// delimiter must be quoted so bare ":" is not parsed as a YAML mapping indicator
@@ -2000,8 +2001,8 @@ func TestInlineEmbed_TopLevelFlattensFields(t *testing.T) {
 		Tail:  "end",
 	}
 
-	p := newParameterizer(templatingRules{})
-	out, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "MyApp", nil)
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "MyApp", nil)
 	require.NoError(t, err)
 
 	// Bug signature: a bare-colon line (empty key holding the embedded struct).
@@ -2024,8 +2025,8 @@ type inlinePtrParent struct {
 // without emitting anything for it.
 func TestInlineEmbed_NilPointerSkipped(t *testing.T) {
 	obj := &inlinePtrParent{Name: "App", Inner: nil}
-	p := newParameterizer(templatingRules{})
-	out, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "name: App")
@@ -2038,8 +2039,8 @@ func TestInlineEmbed_NilPointerSkipped(t *testing.T) {
 // dereferenced and its fields flattened.
 func TestInlineEmbed_PointerDereferenced(t *testing.T) {
 	obj := &inlinePtrParent{Name: "App", Inner: &inlineInner{A: "alpha"}}
-	p := newParameterizer(templatingRules{})
-	out, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
 	require.NoError(t, err)
 
 	assert.NotContains(t, out, "\n:\n")
@@ -2065,8 +2066,8 @@ type recParent struct {
 // contains an inline embed is recursively flattened into the parent mapping.
 func TestInlineEmbed_RecursivelyFlattensNestedInline(t *testing.T) {
 	obj := &recParent{Name: "App", Mid: recMiddle{Inner: recInner{Deep: "value"}, Mid: "middle"}}
-	p := newParameterizer(templatingRules{})
-	out, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
 	require.NoError(t, err)
 
 	assert.NotContains(t, out, "\n:\n")
@@ -2082,8 +2083,8 @@ func TestInlineEmbed_RuleOverridesOmitemptyForInlineField(t *testing.T) {
 	obj := &inlineTopParent{Name: "App", Inner: inlineInner{A: "", B: "", C: nil}}
 	rules := &resourceRules{Variables: []string{"A"}}
 
-	p := newParameterizer(templatingRules{Application: rules})
-	out, _, err := p.ToParameterizedYAML(
+	p := newParameterizer(templatingRules{Application: rules}, TemplatePlaceholders)
+	out, _, _, err := p.ToParameterizedYAML(
 		context.Background(),
 		obj,
 		"Application",
@@ -2110,8 +2111,8 @@ type inlineQuotedParent struct {
 // an inline embed is honored (the value is wrapped in double quotes in the output).
 func TestInlineEmbed_QuotedFieldHonored(t *testing.T) {
 	obj := &inlineQuotedParent{Name: "App", Inner: inlineQuotedInner{Delim: ":"}}
-	p := newParameterizer(templatingRules{})
-	out, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, `delim: ":"`)
@@ -2128,8 +2129,8 @@ type bogusInlineParent struct {
 // `yaml:",inline"` is skipped without panicking.
 func TestInlineEmbed_NonStructValueSkipped(t *testing.T) {
 	obj := &bogusInlineParent{Name: "App", Foo: 42}
-	p := newParameterizer(templatingRules{})
-	out, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "name: App")
@@ -2154,8 +2155,8 @@ func TestInlineEmbed_HiddenAndUntaggedFieldsSkipped(t *testing.T) {
 		Name:  "App",
 		Inner: skipFieldInner{Visible: "yes", Skipped: "secret", NoTag: "untagged"},
 	}
-	p := newParameterizer(templatingRules{})
-	out, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "visible: yes")
@@ -2181,8 +2182,8 @@ func TestInlineEmbed_InsideNestedStructFlattened(t *testing.T) {
 		Name:  "App",
 		Child: nestedInlineChild{Y: "outer", Inner: inlineInner{A: "alpha"}},
 	}
-	p := newParameterizer(templatingRules{})
-	out, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
 	require.NoError(t, err)
 
 	// No empty-key nesting inside the child mapping.
@@ -2190,4 +2191,185 @@ func TestInlineEmbed_InsideNestedStructFlattened(t *testing.T) {
 	assert.Contains(t, out, "child:")
 	assert.Contains(t, out, "y: outer")
 	assert.Contains(t, out, "a: alpha")
+}
+
+// A field named under SecretVariables is parameterized exactly as an ordinary one, and additionally
+// reported as a credential. This is what lets a caller place it where a read cannot return it.
+func TestSecretVariablesAreReportedAsCredentials(t *testing.T) {
+	type oauth struct {
+		ClientID     string `yaml:"clientId"`
+		ClientSecret string `yaml:"clientSecret"`
+	}
+	type app struct {
+		Name  string `yaml:"name"`
+		OAuth *oauth `yaml:"oauth"`
+	}
+
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	doc, values, secrets, err := p.ToParameterizedYAML(context.Background(),
+		&app{Name: "My App", OAuth: &oauth{ClientID: "the-id", ClientSecret: "the-secret"}},
+		"Application", "My App",
+		&declarativeresource.ResourceRules{
+			Variables:       []string{"OAuth.ClientID"},
+			SecretVariables: []string{"OAuth.ClientSecret"},
+		})
+	if err != nil {
+		t.Fatalf("parameterizing failed: %v", err)
+	}
+
+	const idVar, secretVar = "APPLICATION_MY_APP_CLIENT_ID", "APPLICATION_MY_APP_CLIENT_SECRET"
+
+	// Both are parameterized: the secret one is not treated differently in the document.
+	for _, name := range []string{idVar, secretVar} {
+		if !strings.Contains(doc, "{{."+name+"}}") {
+			t.Fatalf("%s was not parameterized:\n%s", name, doc)
+		}
+	}
+	if values[idVar] != "the-id" || values[secretVar] != "the-secret" {
+		t.Fatalf("values did not carry both originals: %v", values)
+	}
+
+	// Only the secret one is reported as a credential.
+	if !secrets[secretVar] {
+		t.Errorf("%s was not reported as a credential", secretVar)
+	}
+	if secrets[idVar] {
+		t.Errorf("%s was reported as a credential", idVar)
+	}
+}
+
+// Nothing is reported as a credential when no rule says so, so a resource with no secrets does not
+// send an ordinary value where a read cannot reach it.
+func TestNoSecretVariablesReportsNoCredentials(t *testing.T) {
+	type app struct {
+		Name string `yaml:"name"`
+		Home string `yaml:"home"`
+	}
+
+	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	_, _, secrets, err := p.ToParameterizedYAML(context.Background(),
+		&app{Name: "My App", Home: "https://app.test"},
+		"Application", "My App",
+		&declarativeresource.ResourceRules{Variables: []string{"Home"}})
+	if err != nil {
+		t.Fatalf("parameterizing failed: %v", err)
+	}
+	if len(secrets) != 0 {
+		t.Fatalf("expected no credentials, got %v", secrets)
+	}
+}
+
+// A control plane writes references rather than template placeholders, and says which collection
+// each value is held in. A data plane's export is unchanged by any of this.
+func TestTheTwoPlanesWriteDifferentPlaceholders(t *testing.T) {
+	type oauth struct {
+		ClientID     string `yaml:"clientId"`
+		ClientSecret string `yaml:"clientSecret"`
+	}
+	type app struct {
+		Name  string `yaml:"name"`
+		OAuth *oauth `yaml:"oauth"`
+	}
+	rules := &declarativeresource.ResourceRules{
+		Variables:       []string{"OAuth.ClientID"},
+		SecretVariables: []string{"OAuth.ClientSecret"},
+	}
+	resource := func() *app {
+		return &app{Name: "My App", OAuth: &oauth{ClientID: "the-id", ClientSecret: "the-secret"}}
+	}
+
+	dataPlane, _, _, err := newParameterizer(templatingRules{}, TemplatePlaceholders).
+		ToParameterizedYAML(context.Background(), resource(), "Application", "My App", rules)
+	require.NoError(t, err)
+
+	controlPlane, _, _, err := newParameterizer(templatingRules{}, ValueReferences).
+		ToParameterizedYAML(context.Background(), resource(), "Application", "My App", rules)
+	require.NoError(t, err)
+
+	// The data plane exports exactly as it did.
+	assert.Contains(t, dataPlane, "{{.APPLICATION_MY_APP_CLIENT_ID}}")
+	assert.Contains(t, dataPlane, "{{.APPLICATION_MY_APP_CLIENT_SECRET}}")
+
+	// The control plane names where each value is held, and the prefix is what says which.
+	assert.Contains(t, controlPlane, "var:APPLICATION_MY_APP_CLIENT_ID")
+	assert.Contains(t, controlPlane, "sec:APPLICATION_MY_APP_CLIENT_SECRET")
+	assert.NotContains(t, controlPlane, "{{.", "a reference export carried a template placeholder")
+
+	// Neither carries the value it replaced.
+	for _, doc := range []string{dataPlane, controlPlane} {
+		assert.NotContains(t, doc, "the-secret")
+		assert.NotContains(t, doc, "the-id")
+	}
+}
+
+// An export that writes references reports no values beside it: the control plane does not hold
+// them, so a .env would be empty or, worse, wrong.
+func TestAReferenceExportReportsNoEnvFile(t *testing.T) {
+	svc := &exportService{parameterizer: newParameterizer(templatingRules{}, ValueReferences)}
+
+	envFile := svc.generateEnvFile([]ExportFile{{
+		Content: "clientId: var:APPLICATION_MY_APP_CLIENT_ID\nclientSecret: sec:APPLICATION_MY_APP_CLIENT_SECRET\n",
+	}}, map[string]string{"APPLICATION_MY_APP_CLIENT_ID": "the-id"})
+
+	assert.Nil(t, envFile, "a reference export produced a .env")
+}
+
+// A value already held as a reference is written out as it stands, not derived again.
+//
+// The name in a reference is where the value actually went. Deriving a new one from the resource as
+// it is now would rewrite that name after a rename, and the document would then point at a value the
+// data plane has never held.
+func TestAStoredReferenceSurvivesARename(t *testing.T) {
+	type oauth struct {
+		ClientID     string `yaml:"clientId"`
+		ClientSecret string `yaml:"clientSecret"`
+	}
+	type app struct {
+		Name  string `yaml:"name"`
+		OAuth *oauth `yaml:"oauth"`
+	}
+
+	// Placed while the application was called "Old Name", and renamed since.
+	stored := &app{Name: "New Name", OAuth: &oauth{
+		ClientID:     "var:APPLICATION_OLD_NAME_CLIENT_ID",
+		ClientSecret: "sec:APPLICATION_OLD_NAME_CLIENT_SECRET",
+	}}
+	rules := &declarativeresource.ResourceRules{
+		Variables:       []string{"OAuth.ClientID"},
+		SecretVariables: []string{"OAuth.ClientSecret"},
+	}
+
+	doc, _, secrets, err := newParameterizer(templatingRules{}, ValueReferences).
+		ToParameterizedYAML(context.Background(), stored, "Application", "New Name", rules)
+	require.NoError(t, err)
+
+	assert.Contains(t, doc, "var:APPLICATION_OLD_NAME_CLIENT_ID")
+	assert.Contains(t, doc, "sec:APPLICATION_OLD_NAME_CLIENT_SECRET")
+	assert.NotContains(t, doc, "NEW_NAME", "a stored reference was re-derived from the current name")
+
+	// The credential is still reported as one, under the name it is actually held by.
+	assert.True(t, secrets["APPLICATION_OLD_NAME_CLIENT_SECRET"],
+		"the stored credential was not reported as one")
+}
+
+// A value that is not yet a reference is still parameterized, so this only preserves what was
+// already placed rather than stopping anything from being placed.
+func TestAValueThatIsNotAReferenceIsStillParameterized(t *testing.T) {
+	type oauth struct {
+		ClientSecret string `yaml:"clientSecret"`
+	}
+	type app struct {
+		Name  string `yaml:"name"`
+		OAuth *oauth `yaml:"oauth"`
+	}
+
+	doc, _, _, err := newParameterizer(templatingRules{}, ValueReferences).
+		ToParameterizedYAML(context.Background(),
+			&app{Name: "My App", OAuth: &oauth{ClientSecret: "a-literal-secret"}},
+			"Application", "My App",
+			&declarativeresource.ResourceRules{SecretVariables: []string{"OAuth.ClientSecret"}})
+	require.NoError(t, err)
+
+	assert.Contains(t, doc, "sec:APPLICATION_MY_APP_CLIENT_SECRET")
+	assert.NotContains(t, doc, "a-literal-secret")
 }

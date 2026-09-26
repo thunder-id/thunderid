@@ -199,14 +199,14 @@ func (e *connectionExporter) GetResourceRulesForResource(
 		if model.ClientSecret == "" {
 			return &declarativeresource.ResourceRules{}
 		}
-		return &declarativeresource.ResourceRules{Variables: []string{"ClientSecret"}}
+		return &declarativeresource.ResourceRules{SecretVariables: []string{"ClientSecret"}}
 	}
 
 	switch model.Type {
 	case "twilio":
-		return &declarativeresource.ResourceRules{Variables: []string{"AuthToken"}}
+		return &declarativeresource.ResourceRules{SecretVariables: []string{"AuthToken"}}
 	case "vonage":
-		return &declarativeresource.ResourceRules{Variables: []string{"APISecret"}}
+		return &declarativeresource.ResourceRules{SecretVariables: []string{"APISecret"}}
 	default:
 		// sms-gateway (and any future no-secret vendor) has nothing to externalize.
 		return &declarativeresource.ResourceRules{}
