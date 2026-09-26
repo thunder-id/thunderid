@@ -6,6 +6,7 @@ package connection
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"testing"
 
@@ -17,6 +18,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/outboundauthn"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -27,6 +29,7 @@ import (
 const (
 	resourceTypeConnection = "connection"
 	paramTypeConnection    = "Connection"
+	authZENPDPVendorName   = "authzen-pdp"
 )
 
 // connectionExporter implements declarativeresource.ResourceExporter and
@@ -154,7 +157,10 @@ func (e *connectionExporter) GetResourceByID(ctx context.Context, id string) (
 			return nil, "", svcErr
 		}
 		if pdpConnection != nil {
-			model := connectionModelFromAuthZENPDP(*pdpConnection)
+			model, err := connectionModelFromAuthZENPDP(*pdpConnection)
+			if err != nil {
+				return nil, "", &tidcommon.InternalServerError
+			}
 			return &model, model.Name, nil
 		}
 	}
@@ -207,8 +213,27 @@ func (e *connectionExporter) GetResourceRulesForResource(
 		return &declarativeresource.ResourceRules{Variables: []string{"AuthToken"}}
 	case "vonage":
 		return &declarativeresource.ResourceRules{Variables: []string{"APISecret"}}
+	case authZENPDPVendorName:
+		if model.Authentication == nil {
+			return &declarativeresource.ResourceRules{}
+		}
+		switch model.Authentication.Scheme {
+		case outboundauthn.SchemeBearer:
+			return &declarativeresource.ResourceRules{Variables: []string{"Authentication.BearerToken"}}
+		case outboundauthn.SchemeAPIKey:
+			return &declarativeresource.ResourceRules{
+				Variables: []string{"Authentication.APIKeyHeaders[].Value"},
+			}
+		default:
+			return &declarativeresource.ResourceRules{}
+		}
+	case smsGatewayVendorName:
+		if len(model.APIKeyHeaders) == 0 {
+			return &declarativeresource.ResourceRules{}
+		}
+		return &declarativeresource.ResourceRules{Variables: []string{"APIKeyHeaders[].Value"}}
 	default:
-		// sms-gateway (and any future no-secret vendor) has nothing to externalize.
+		// Future vendors with no secrets have nothing to externalize.
 		return &declarativeresource.ResourceRules{}
 	}
 }
@@ -308,25 +333,47 @@ func connectionModelFromSenderDTO(dto ncommon.NotificationSenderDTO) (connection
 	case ncommon.NotificationProviderTypeCustom:
 		model.URL = values[ncommon.CustomPropKeyURL]
 		model.HTTPMethod = values[ncommon.CustomPropKeyHTTPMethod]
-		model.HTTPHeaders = values[ncommon.CustomPropKeyHTTPHeaders]
+		model.APIKeyHeaders, err = smsGatewayAPIKeyHeaders(dto.Properties, false)
+		if err != nil {
+			return connectionExportModel{}, err
+		}
 		model.ContentType = values[ncommon.CustomPropKeyContentType]
 	}
 	return model, nil
 }
 
 // connectionModelFromAuthZENPDP builds the unified export model from an AuthZEN PDP connection.
-func connectionModelFromAuthZENPDP(connection authzenpdp.AuthZENPDPConnection) connectionExportModel {
+func connectionModelFromAuthZENPDP(connection authzenpdp.AuthZENPDPConnection) (connectionExportModel, error) {
+	authenticationConfig, err := connection.OutboundAuthenticationConfig()
+	if err != nil {
+		return connectionExportModel{}, err
+	}
+	authentication := &authzenpdp.AuthenticationRequest{
+		Scheme:      authenticationConfig.Scheme,
+		BearerToken: authenticationConfig.BearerToken,
+	}
+	headerNames := make([]string, 0, len(authenticationConfig.APIKeyHeaders))
+	for name := range authenticationConfig.APIKeyHeaders {
+		headerNames = append(headerNames, name)
+	}
+	sort.Strings(headerNames)
+	for _, name := range headerNames {
+		authentication.APIKeyHeaders = append(authentication.APIKeyHeaders, outboundauthn.APIKeyHeader{
+			Name: name, Value: authenticationConfig.APIKeyHeaders[name],
+		})
+	}
 	return connectionExportModel{
 		ID:                       connection.ID,
-		Type:                     "authzen-pdp",
+		Type:                     authZENPDPVendorName,
 		Name:                     connection.Name,
 		Description:              connection.Description,
 		AuthZENPDPEndpoint:       connection.Endpoint,
 		AuthZENPDPBatchEndpoint:  connection.BatchEndpoint,
 		AuthZENPDPTimeoutMS:      connection.TimeoutMS,
 		AuthZENPDPRetryCount:     &connection.RetryCount,
+		Authentication:           authentication,
 		SubjectAttributeMappings: connection.SubjectAttributeMappings,
-	}
+	}, nil
 }
 
 // connectionModelToDTO converts a parsed connection document into the underlying
@@ -408,7 +455,7 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 	case smsGatewayVendorName:
 		dto, err := smsGatewayToSenderDTO(smsGatewayConnectionRequest{
 			Name: model.Name, Description: model.Description, URL: model.URL,
-			HTTPMethod: model.HTTPMethod, HTTPHeaders: model.HTTPHeaders, ContentType: model.ContentType,
+			HTTPMethod: model.HTTPMethod, APIKeyHeaders: model.APIKeyHeaders, ContentType: model.ContentType,
 		})
 		if err != nil {
 			return nil, nil, err
@@ -421,7 +468,7 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 }
 
 // connectionModelToAuthZENPDP converts the unified connection export model into an AuthZEN PDP connection.
-func connectionModelToAuthZENPDP(model connectionExportModel) *authzenpdp.AuthZENPDPConnection {
+func connectionModelToAuthZENPDP(model connectionExportModel) (*authzenpdp.AuthZENPDPConnection, error) {
 	connection := authzenpdp.AuthZENPDPConnection{
 		ID:                       model.ID,
 		Name:                     model.Name,
@@ -435,7 +482,10 @@ func connectionModelToAuthZENPDP(model connectionExportModel) *authzenpdp.AuthZE
 	if model.AuthZENPDPRetryCount != nil {
 		connection.RetryCount = *model.AuthZENPDPRetryCount
 	}
-	return &connection
+	if err := connection.SetAuthentication(model.Authentication); err != nil {
+		return nil, err
+	}
+	return &connection, nil
 }
 
 // ParseConnectionFromNode decodes a yaml.Node into the underlying identity-provider or
@@ -455,10 +505,10 @@ func ParseAuthZENPDPConnectionFromNode(node *yaml.Node) (*authzenpdp.AuthZENPDPC
 	if err := node.Decode(&model); err != nil {
 		return nil, fmt.Errorf("failed to parse connection document: %w", err)
 	}
-	if model.Type != "authzen-pdp" {
+	if model.Type != authZENPDPVendorName {
 		return nil, nil
 	}
-	return connectionModelToAuthZENPDP(model), nil
+	return connectionModelToAuthZENPDP(model)
 }
 
 // parseToConnectionDTOWrapper wraps connectionModelToDTO to match ResourceConfig.Parser,
@@ -468,8 +518,8 @@ func parseToConnectionDTOWrapper(data []byte) (interface{}, error) {
 	if err := yaml.Unmarshal(data, &model); err != nil {
 		return nil, err
 	}
-	if model.Type == "authzen-pdp" {
-		return connectionModelToAuthZENPDP(model), nil
+	if model.Type == authZENPDPVendorName {
+		return connectionModelToAuthZENPDP(model)
 	}
 	idpDTO, senderDTO, err := connectionModelToDTO(model)
 	if err != nil {

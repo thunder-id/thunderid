@@ -1371,6 +1371,13 @@ components:
         attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
 
     AuthZENPDPConnectionUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/AuthZENPDPConnectionConfiguration'
+        - type: object
+          properties:
+            authentication:
+              $ref: '#/components/schemas/AuthZENPDPAuthenticationRequest'
+    AuthZENPDPConnectionConfiguration:
       type: object
       required: [name, endpoint]
       properties:
@@ -1405,12 +1412,81 @@ components:
       $ref: '#/components/schemas/AuthZENPDPConnectionUpdateRequest'
     AuthZENPDPConnectionResponse:
       allOf:
-        - $ref: '#/components/schemas/AuthZENPDPConnectionUpdateRequest'
         - type: object
           required: [id, type]
           properties:
             id: { type: string, format: uuid }
             type: { type: string, enum: [authzen-pdp] }
+            authentication:
+              $ref: '#/components/schemas/AuthZENPDPAuthenticationResponse'
+        - $ref: '#/components/schemas/AuthZENPDPConnectionConfiguration'
+
+    AuthZENPDPAuthenticationRequest:
+      example:
+        scheme: NONE
+      oneOf:
+        - $ref: '#/components/schemas/AuthZENPDPNoAuthenticationRequest'
+        - $ref: '#/components/schemas/AuthZENPDPBearerAuthenticationRequest'
+        - $ref: '#/components/schemas/AuthZENPDPAPIKeyAuthenticationRequest'
+      discriminator:
+        propertyName: scheme
+        mapping:
+          NONE: '#/components/schemas/AuthZENPDPNoAuthenticationRequest'
+          BEARER: '#/components/schemas/AuthZENPDPBearerAuthenticationRequest'
+          API_KEY: '#/components/schemas/AuthZENPDPAPIKeyAuthenticationRequest'
+    AuthZENPDPNoAuthenticationRequest:
+      type: object
+      required: [scheme]
+      properties:
+        scheme:
+          type: string
+          enum: [NONE]
+    AuthZENPDPBearerAuthenticationRequest:
+      type: object
+      required: [scheme, bearerToken]
+      properties:
+        scheme:
+          type: string
+          enum: [BEARER]
+        bearerToken:
+          type: string
+          writeOnly: true
+    AuthZENPDPAPIKeyAuthenticationRequest:
+      type: object
+      required: [scheme, apiKeyHeaders]
+      properties:
+        scheme:
+          type: string
+          enum: [API_KEY]
+        apiKeyHeaders:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/AuthZENPDPAPIKeyHeader' }
+    AuthZENPDPAPIKeyHeader:
+      type: object
+      required: [name, value]
+      properties:
+        name: { type: string }
+        value: { type: string, writeOnly: true }
+    AuthZENPDPAuthenticationResponse:
+      type: object
+      required: [scheme]
+      example:
+        scheme: NONE
+      properties:
+        scheme:
+          type: string
+          enum: [NONE, BEARER, API_KEY]
+        apiKeyHeaders:
+          type: array
+          items:
+            type: object
+            required: [name, value]
+            properties:
+              name: { type: string }
+              value:
+                type: string
+                description: Masked stored credential value.
 
     AuthZENPDPSubjectAttributeMapping:
       type: object
@@ -1490,7 +1566,9 @@ components:
         description: { type: string }
         url: { type: string, description: "The HTTP endpoint to call to send an SMS.", example: "https://sms.example.com/send" }
         httpMethod: { type: string, enum: [GET, POST], example: "POST" }
-        httpHeaders: { type: string, description: "Comma-separated \"Key: value\" pairs.", example: "Authorization: Bearer abc123" }
+        apiKeyHeaders:
+          type: array
+          items: { $ref: '#/components/schemas/SMSGatewayAPIKeyHeader' }
         contentType: { type: string, enum: [JSON, FORM], example: "JSON" }
     SMSGatewayConnectionCreateRequest:
       $ref: '#/components/schemas/SMSGatewayConnectionUpdateRequest'
@@ -1503,8 +1581,25 @@ components:
         type: { type: string, example: "sms-gateway" }
         url: { type: string }
         httpMethod: { type: string }
-        httpHeaders: { type: string }
+        apiKeyHeaders:
+          type: array
+          items:
+            type: object
+            required: [name, value]
+            properties:
+              name: { type: string }
+              value: { type: string, example: "******" }
         contentType: { type: string }
+
+    SMSGatewayAPIKeyHeader:
+      type: object
+      required: [name, value]
+      properties:
+        name: { type: string }
+        value:
+          type: string
+          writeOnly: true
+          description: On update, use the masked value returned by the API to retain an existing header.
 
     AttributeConfiguration:
       type: object

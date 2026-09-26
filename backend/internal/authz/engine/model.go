@@ -11,6 +11,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/role"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/outboundauthn"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -57,6 +58,7 @@ type authZENPDPSettings struct {
 	retryCount               int
 	subjectAttributeMappings []authzenpdp.SubjectAttributeMapping
 	timeout                  time.Duration
+	authenticator            outboundauthn.RequestAuthenticator
 }
 
 // authZENPDPBatch holds grouped evaluations and their original indexes.

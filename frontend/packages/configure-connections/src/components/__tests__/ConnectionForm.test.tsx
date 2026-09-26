@@ -233,7 +233,7 @@ describe('ConnectionForm', () => {
         url: '',
         httpMethod: 'POST',
         contentType: 'JSON',
-        httpHeaders: '',
+        apiKeyHeaders: '',
       },
     };
 
@@ -241,7 +241,7 @@ describe('ConnectionForm', () => {
       render(<ConnectionForm {...smsGatewayProps} />);
 
       expect(getConnectionField('url')).toBeInTheDocument();
-      expect(screen.getByTestId('connection-field-httpHeaders-rows')).toBeInTheDocument();
+      expect(screen.getByTestId('connection-field-apiKeyHeaders-rows')).toBeInTheDocument();
       expect(screen.getByTestId('connection-field-select-httpMethod')).toHaveTextContent('POST');
       expect(screen.getByTestId('connection-field-select-contentType')).toHaveTextContent('JSON');
       expect(isFieldMarkedRequired('url')).toBe(true);
@@ -254,7 +254,7 @@ describe('ConnectionForm', () => {
       expect(isFieldMarkedRequired('url')).toBe(true);
       expect(isFieldMarkedRequired('httpMethod')).toBe(false);
       expect(isFieldMarkedRequired('contentType')).toBe(false);
-      expect(isFieldMarkedRequired('httpHeaders')).toBe(false);
+      expect(isFieldMarkedRequired('apiKeyHeaders')).toBe(false);
     });
 
     it('reports a select change through onFieldChange', async () => {
@@ -271,39 +271,111 @@ describe('ConnectionForm', () => {
       render(
         <ConnectionForm
           {...smsGatewayProps}
-          values={{...smsGatewayProps.values, httpHeaders: 'X-API-Key: abc123, Accept: application/json'}}
+          values={{...smsGatewayProps.values, apiKeyHeaders: 'X-API-Key: abc123, Accept: application/json'}}
         />,
       );
 
-      expect(getConnectionField('httpHeaders-name-1')).toHaveValue('X-API-Key');
-      expect(getConnectionField('httpHeaders-value-1')).toHaveValue('abc123');
-      expect(getConnectionField('httpHeaders-name-2')).toHaveValue('Accept');
-      expect(getConnectionField('httpHeaders-value-2')).toHaveValue('application/json');
-      expect(document.getElementById('connection-field-httpHeaders-name-3')).not.toBeInTheDocument();
+      expect(getConnectionField('apiKeyHeaders-name-1')).toHaveValue('X-API-Key');
+      expect(getConnectionField('apiKeyHeaders-value-1')).toHaveValue('abc123');
+      expect(getConnectionField('apiKeyHeaders-name-2')).toHaveValue('Accept');
+      expect(getConnectionField('apiKeyHeaders-value-2')).toHaveValue('application/json');
+      expect(document.getElementById('connection-field-apiKeyHeaders-name-3')).not.toBeInTheDocument();
     });
 
     it('starts with a single blank row when no headers are stored', () => {
       render(<ConnectionForm {...smsGatewayProps} />);
 
-      expect(getConnectionField('httpHeaders-name-1')).toHaveValue('');
-      expect(document.getElementById('connection-field-httpHeaders-name-2')).not.toBeInTheDocument();
-      expect(screen.getByTestId('connection-field-httpHeaders-add')).toBeDisabled();
+      expect(getConnectionField('apiKeyHeaders-name-1')).toHaveValue('');
+      expect(document.getElementById('connection-field-apiKeyHeaders-name-2')).not.toBeInTheDocument();
+      expect(screen.getByTestId('connection-field-apiKeyHeaders-add')).toBeDisabled();
+    });
+
+    it('masks stored headers and removes one stored header at a time', () => {
+      const onFieldChange = vi.fn();
+      render(
+        <ControlledConnectionForm
+          {...smsGatewayProps}
+          mode="edit"
+          hasStoredSecret
+          values={{...smsGatewayProps.values, apiKeyHeaders: 'Key-1: ******, Key-2: ******'}}
+          onFieldChange={onFieldChange}
+        />,
+      );
+
+      expect(getConnectionField('apiKeyHeaders-name-1')).toHaveValue('Key-1');
+      expect(getConnectionField('apiKeyHeaders-value-1')).toHaveValue('••••••••••••••••');
+      expect(screen.getByTestId('connection-field-apiKeyHeaders-remove-1')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('connection-field-apiKeyHeaders-remove-1'));
+
+      expect(onFieldChange).toHaveBeenLastCalledWith('apiKeyHeaders', 'Key-2: ******');
+      expect(getConnectionField('apiKeyHeaders-name-1')).toHaveValue('Key-2');
+    });
+
+    it('adds a new header while keeping stored headers masked', () => {
+      const onFieldChange = vi.fn();
+      render(
+        <ControlledConnectionForm
+          {...smsGatewayProps}
+          mode="edit"
+          hasStoredSecret
+          values={{...smsGatewayProps.values, apiKeyHeaders: 'Key-1: ******'}}
+          onFieldChange={onFieldChange}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('connection-field-apiKeyHeaders-add'));
+      fireEvent.change(getConnectionField('apiKeyHeaders-name-2'), {target: {value: 'Key-2'}});
+      fireEvent.change(getConnectionField('apiKeyHeaders-value-2'), {target: {value: 'new-secret'}});
+
+      expect(getConnectionField('apiKeyHeaders-value-1')).toBeDisabled();
+      expect(onFieldChange).toHaveBeenLastCalledWith('apiKeyHeaders', 'Key-1: ******, Key-2: new-secret');
+    });
+
+    it('updates a stored header name and value, and can cancel the replacement', () => {
+      const onFieldChange = vi.fn();
+      render(
+        <ControlledConnectionForm
+          {...smsGatewayProps}
+          mode="edit"
+          hasStoredSecret
+          values={{...smsGatewayProps.values, apiKeyHeaders: 'Key-1: ******'}}
+          onFieldChange={onFieldChange}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('connection-field-apiKeyHeaders-update-1'));
+
+      expect(getConnectionField('apiKeyHeaders-name-1')).not.toBeDisabled();
+      expect(getConnectionField('apiKeyHeaders-value-1')).toHaveValue('');
+      expect(onFieldChange).toHaveBeenLastCalledWith('apiKeyHeaders', 'Key-1: ');
+
+      fireEvent.change(getConnectionField('apiKeyHeaders-name-1'), {target: {value: 'Key-2'}});
+      fireEvent.change(getConnectionField('apiKeyHeaders-value-1'), {target: {value: 'new-secret'}});
+
+      expect(onFieldChange).toHaveBeenLastCalledWith('apiKeyHeaders', 'Key-2: new-secret');
+
+      fireEvent.click(screen.getByTestId('connection-field-apiKeyHeaders-cancel-1'));
+
+      expect(getConnectionField('apiKeyHeaders-name-1')).toHaveValue('Key-1');
+      expect(getConnectionField('apiKeyHeaders-value-1')).toHaveValue('••••••••••••••••');
+      expect(onFieldChange).toHaveBeenLastCalledWith('apiKeyHeaders', 'Key-1: ******');
     });
 
     it('serializes edited rows into the stored comma-separated format', () => {
       const onFieldChange = vi.fn();
       render(<ControlledConnectionForm {...smsGatewayProps} onFieldChange={onFieldChange} />);
 
-      fireEvent.change(getConnectionField('httpHeaders-name-1'), {target: {value: 'X-API-Key'}});
-      fireEvent.change(getConnectionField('httpHeaders-value-1'), {target: {value: 'abc123'}});
+      fireEvent.change(getConnectionField('apiKeyHeaders-name-1'), {target: {value: 'X-API-Key'}});
+      fireEvent.change(getConnectionField('apiKeyHeaders-value-1'), {target: {value: 'abc123'}});
 
-      expect(onFieldChange).toHaveBeenLastCalledWith('httpHeaders', 'X-API-Key: abc123');
+      expect(onFieldChange).toHaveBeenLastCalledWith('apiKeyHeaders', 'X-API-Key: abc123');
 
-      fireEvent.click(screen.getByTestId('connection-field-httpHeaders-add'));
-      fireEvent.change(getConnectionField('httpHeaders-name-2'), {target: {value: 'Accept'}});
-      fireEvent.change(getConnectionField('httpHeaders-value-2'), {target: {value: 'application/json'}});
+      fireEvent.click(screen.getByTestId('connection-field-apiKeyHeaders-add'));
+      fireEvent.change(getConnectionField('apiKeyHeaders-name-2'), {target: {value: 'Accept'}});
+      fireEvent.change(getConnectionField('apiKeyHeaders-value-2'), {target: {value: 'application/json'}});
 
-      expect(onFieldChange).toHaveBeenLastCalledWith('httpHeaders', 'X-API-Key: abc123, Accept: application/json');
+      expect(onFieldChange).toHaveBeenLastCalledWith('apiKeyHeaders', 'X-API-Key: abc123, Accept: application/json');
     });
 
     it('removes a header row and re-serializes without it', () => {
@@ -311,58 +383,61 @@ describe('ConnectionForm', () => {
       render(
         <ControlledConnectionForm
           {...smsGatewayProps}
-          values={{...smsGatewayProps.values, httpHeaders: 'X-API-Key: abc123, Accept: application/json'}}
+          values={{...smsGatewayProps.values, apiKeyHeaders: 'X-API-Key: abc123, Accept: application/json'}}
           onFieldChange={onFieldChange}
         />,
       );
 
-      fireEvent.click(screen.getByTestId('connection-field-httpHeaders-remove-1'));
+      fireEvent.click(screen.getByTestId('connection-field-apiKeyHeaders-remove-1'));
 
-      expect(onFieldChange).toHaveBeenLastCalledWith('httpHeaders', 'Accept: application/json');
-      expect(getConnectionField('httpHeaders-name-1')).toHaveValue('Accept');
+      expect(onFieldChange).toHaveBeenLastCalledWith('apiKeyHeaders', 'Accept: application/json');
+      expect(getConnectionField('apiKeyHeaders-name-1')).toHaveValue('Accept');
     });
 
-    it('omits a header row whose value is empty, keeping the row on screen to finish', () => {
+    it('keeps an incomplete header in form state until its value is entered', () => {
       const onFieldChange = vi.fn();
       render(<ControlledConnectionForm {...smsGatewayProps} onFieldChange={onFieldChange} />);
 
-      fireEvent.change(getConnectionField('httpHeaders-name-1'), {target: {value: 'Content-Type'}});
-      fireEvent.change(getConnectionField('httpHeaders-value-1'), {target: {value: 'application/json'}});
-      fireEvent.click(screen.getByTestId('connection-field-httpHeaders-add'));
-      fireEvent.change(getConnectionField('httpHeaders-name-2'), {target: {value: 'Accept'}});
+      fireEvent.change(getConnectionField('apiKeyHeaders-name-1'), {target: {value: 'Content-Type'}});
+      fireEvent.change(getConnectionField('apiKeyHeaders-value-1'), {target: {value: 'application/json'}});
+      fireEvent.click(screen.getByTestId('connection-field-apiKeyHeaders-add'));
+      fireEvent.change(getConnectionField('apiKeyHeaders-name-2'), {target: {value: 'Accept'}});
 
-      expect(onFieldChange).toHaveBeenLastCalledWith('httpHeaders', 'Content-Type: application/json');
-      expect(getConnectionField('httpHeaders-name-2')).toHaveValue('Accept');
+      expect(onFieldChange).toHaveBeenLastCalledWith('apiKeyHeaders', 'Content-Type: application/json, Accept: ');
+      expect(getConnectionField('apiKeyHeaders-name-2')).toHaveValue('Accept');
 
-      fireEvent.change(getConnectionField('httpHeaders-value-2'), {target: {value: 'text/plain'}});
+      fireEvent.change(getConnectionField('apiKeyHeaders-value-2'), {target: {value: 'text/plain'}});
 
       expect(onFieldChange).toHaveBeenLastCalledWith(
-        'httpHeaders',
+        'apiKeyHeaders',
         'Content-Type: application/json, Accept: text/plain',
       );
     });
 
     it('re-derives rows when the value changes outside the editor, as the detail page Reset does', () => {
       const {rerender} = render(
-        <ConnectionForm {...smsGatewayProps} values={{...smsGatewayProps.values, httpHeaders: 'X-API-Key: abc123'}} />,
+        <ConnectionForm
+          {...smsGatewayProps}
+          values={{...smsGatewayProps.values, apiKeyHeaders: 'X-API-Key: abc123'}}
+        />,
       );
-      expect(getConnectionField('httpHeaders-name-1')).toHaveValue('X-API-Key');
+      expect(getConnectionField('apiKeyHeaders-name-1')).toHaveValue('X-API-Key');
 
-      rerender(<ConnectionForm {...smsGatewayProps} values={{...smsGatewayProps.values, httpHeaders: ''}} />);
+      rerender(<ConnectionForm {...smsGatewayProps} values={{...smsGatewayProps.values, apiKeyHeaders: ''}} />);
 
-      expect(getConnectionField('httpHeaders-name-1')).toHaveValue('');
-      expect(document.getElementById('connection-field-httpHeaders-name-2')).not.toBeInTheDocument();
+      expect(getConnectionField('apiKeyHeaders-name-1')).toHaveValue('');
+      expect(document.getElementById('connection-field-apiKeyHeaders-name-2')).not.toBeInTheDocument();
     });
 
     it('strips characters the stored format cannot represent', () => {
       const onFieldChange = vi.fn();
       render(<ControlledConnectionForm {...smsGatewayProps} onFieldChange={onFieldChange} />);
 
-      fireEvent.change(getConnectionField('httpHeaders-name-1'), {target: {value: 'X-A:B,C'}});
-      fireEvent.change(getConnectionField('httpHeaders-value-1'), {target: {value: 'text/html, application/json'}});
+      fireEvent.change(getConnectionField('apiKeyHeaders-name-1'), {target: {value: 'X-A:B,C'}});
+      fireEvent.change(getConnectionField('apiKeyHeaders-value-1'), {target: {value: 'text/html, application/json'}});
 
-      expect(getConnectionField('httpHeaders-name-1')).toHaveValue('X-ABC');
-      expect(onFieldChange).toHaveBeenLastCalledWith('httpHeaders', 'X-ABC: text/html application/json');
+      expect(getConnectionField('apiKeyHeaders-name-1')).toHaveValue('X-ABC');
+      expect(onFieldChange).toHaveBeenLastCalledWith('apiKeyHeaders', 'X-ABC: text/html application/json');
     });
   });
 });

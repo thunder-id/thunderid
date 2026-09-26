@@ -26,7 +26,18 @@ type authZENPDPConnectionResponse struct {
 	BatchEndpoint            string                              `json:"batchEndpoint,omitempty"`
 	TimeoutMS                int                                 `json:"timeoutMs"`
 	RetryCount               int                                 `json:"retryCount"`
+	Authentication           authZENPDPAuthenticationResponse    `json:"authentication"`
 	SubjectAttributeMappings []authZENPDPSubjectAttributeMapping `json:"subjectAttributeMappings,omitempty"`
+}
+
+type authZENPDPAuthenticationResponse struct {
+	Scheme        string                `json:"scheme"`
+	APIKeyHeaders []authZENPDPAPIHeader `json:"apiKeyHeaders,omitempty"`
+}
+
+type authZENPDPAPIHeader struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 type authZENPDPSubjectAttributeMapping struct {
@@ -117,6 +128,8 @@ type AuthZENPDPIntegrationSuite struct {
 
 func (s *AuthZENPDPIntegrationSuite) SetupSuite() {
 	s.pdpServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.Require().Equal("authzen-primary-key", r.Header.Get("X-AuthZEN-Key"))
+		s.Require().Equal("authzen-tenant", r.Header.Get("X-AuthZEN-Tenant"))
 		switch r.URL.Path {
 		case "/access/v1/evaluation":
 			var evaluation authZENPDPSingleRequest
@@ -228,6 +241,13 @@ func (s *AuthZENPDPIntegrationSuite) SetupSuite() {
 		"batchEndpoint": s.pdpServer.URL + "/access/v1/evaluations",
 		"timeoutMs":     750,
 		"retryCount":    2,
+		"authentication": map[string]interface{}{
+			"scheme": "API_KEY",
+			"apiKeyHeaders": []authZENPDPAPIHeader{
+				{Name: "X-AuthZEN-Key", Value: "authzen-primary-key"},
+				{Name: "X-AuthZEN-Tenant", Value: "authzen-tenant"},
+			},
+		},
 		"subjectAttributeMappings": []authZENPDPSubjectAttributeMapping{{
 			EntityType: "authzen-pdp-person",
 			Attributes: []authZENPDPSubjectAttributeRow{{
@@ -528,6 +548,12 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPConnectionSettingsAndUsagePer
 	s.Equal(s.pdpServer.URL+"/access/v1/evaluations", connection.BatchEndpoint)
 	s.Equal(750, connection.TimeoutMS)
 	s.Equal(2, connection.RetryCount)
+	s.Equal("API_KEY", connection.Authentication.Scheme)
+	s.Require().Len(connection.Authentication.APIKeyHeaders, 2)
+	s.Equal("X-Authzen-Key", connection.Authentication.APIKeyHeaders[0].Name)
+	s.Equal("******", connection.Authentication.APIKeyHeaders[0].Value)
+	s.Equal("X-Authzen-Tenant", connection.Authentication.APIKeyHeaders[1].Name)
+	s.Equal("******", connection.Authentication.APIKeyHeaders[1].Value)
 	s.Require().Len(connection.SubjectAttributeMappings, 1)
 	s.Equal("authzen-pdp-person", connection.SubjectAttributeMappings[0].EntityType)
 	s.Require().Len(connection.SubjectAttributeMappings[0].Attributes, 1)

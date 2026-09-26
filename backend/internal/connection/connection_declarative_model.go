@@ -5,6 +5,7 @@ package connection
 
 import (
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/system/outboundauthn"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -43,17 +44,20 @@ type connectionExportModel struct {
 	AuthZENPDPBatchEndpoint string `yaml:"batchEndpoint,omitempty"            json:"batchEndpoint,omitempty"`
 	AuthZENPDPTimeoutMS     int    `yaml:"timeoutMs,omitempty"                json:"timeoutMs,omitempty"`
 	AuthZENPDPRetryCount    *int   `yaml:"retryCount,omitempty"               json:"retryCount,omitempty"`
+
+	Authentication *authzenpdp.AuthenticationRequest `yaml:"authentication,omitempty" json:"authentication,omitempty"`
+
 	//nolint:lll
 	SubjectAttributeMappings []authzenpdp.SubjectAttributeMapping `yaml:"subjectAttributeMappings,omitempty" json:"subjectAttributeMappings,omitempty"`
 
 	// SMS-backed vendor fields (twilio, vonage, sms-gateway).
-	AccountSID  string `yaml:"accountSid,omitempty"  json:"accountSid,omitempty"`
-	AuthToken   string `yaml:"authToken,omitempty"   json:"authToken,omitempty"`
-	APIKey      string `yaml:"apiKey,omitempty"      json:"apiKey,omitempty"`
-	APISecret   string `yaml:"apiSecret,omitempty"   json:"apiSecret,omitempty"`
-	SenderID    string `yaml:"senderId,omitempty"    json:"senderId,omitempty"`
-	URL         string `yaml:"url,omitempty"         json:"url,omitempty"`
-	HTTPMethod  string `yaml:"httpMethod,omitempty"  json:"httpMethod,omitempty"`
-	HTTPHeaders string `yaml:"httpHeaders,omitempty" json:"httpHeaders,omitempty"`
-	ContentType string `yaml:"contentType,omitempty" json:"contentType,omitempty"`
+	AccountSID    string                       `yaml:"accountSid,omitempty"  json:"accountSid,omitempty"`
+	AuthToken     string                       `yaml:"authToken,omitempty"   json:"authToken,omitempty"`
+	APIKey        string                       `yaml:"apiKey,omitempty"      json:"apiKey,omitempty"`
+	APISecret     string                       `yaml:"apiSecret,omitempty"   json:"apiSecret,omitempty"`
+	SenderID      string                       `yaml:"senderId,omitempty"    json:"senderId,omitempty"`
+	URL           string                       `yaml:"url,omitempty"         json:"url,omitempty"`
+	HTTPMethod    string                       `yaml:"httpMethod,omitempty"  json:"httpMethod,omitempty"`
+	APIKeyHeaders []outboundauthn.APIKeyHeader `yaml:"apiKeyHeaders,omitempty" json:"apiKeyHeaders,omitempty"`
+	ContentType   string                       `yaml:"contentType,omitempty"    json:"contentType,omitempty"`
 }

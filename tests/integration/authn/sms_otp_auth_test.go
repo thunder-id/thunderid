@@ -694,7 +694,11 @@ func (suite *SMSOTPAuthTestSuite) createNotificationSender(sender NotificationSe
 		case "http_method":
 			body["httpMethod"] = prop.Value
 		case "http_headers":
-			body["httpHeaders"] = prop.Value
+			var headers []map[string]string
+			if err := json.Unmarshal([]byte(prop.Value), &headers); err != nil {
+				return "", fmt.Errorf("failed to decode API key headers: %w", err)
+			}
+			body["apiKeyHeaders"] = headers
 		case "content_type":
 			body["contentType"] = prop.Value
 		}

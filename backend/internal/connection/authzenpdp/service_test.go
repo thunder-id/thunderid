@@ -237,6 +237,24 @@ func TestServiceRejectsInvalidConnectionBeforePersistence(t *testing.T) {
 	require.Zero(t, store.updateCalls)
 }
 
+func TestServiceUpdateRejectsRemoteHTTPForStoredAuthentication(t *testing.T) {
+	store := &serviceStoreStub{connection: AuthZENPDPConnection{
+		ID:                   "pdp-1",
+		Name:                 "AuthZEN PDP",
+		Endpoint:             "https://pdp.example.com/evaluation",
+		AuthenticationScheme: "BEARER",
+	}}
+	service := newTestAuthZENPDPService(store, config.AuthZENPDPConfig{})
+
+	_, svcErr := service.UpdateAuthZENPDPConnection(context.Background(), "pdp-1", ConnectionRequest{
+		Name:     "AuthZEN PDP",
+		Endpoint: "http://pdp.example.com/evaluation",
+	})
+
+	require.NotNil(t, svcErr)
+	require.Zero(t, store.updateCalls)
+}
+
 func TestServiceRejectsEmptyConnectionName(t *testing.T) {
 	for _, name := range []string{"", " \t "} {
 		t.Run(fmt.Sprintf("name %q", name), func(t *testing.T) {

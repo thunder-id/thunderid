@@ -1,18 +1,14 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-/** One editable row of a key-value field (e.g. an HTTP header). */
+/** One editable row of a key-value field. */
 export interface KeyValuePair {
   name: string;
   value: string;
 }
 
 /**
- * Parse the stored wire format ("Key: value, Other: value") into editable rows.
- *
- * Mirrors the backend parser, which splits on "," and then on the first ":". A segment with no
- * colon keeps its whole text as the name rather than being dropped, so a hand-written value that
- * the backend would reject stays visible and fixable in the form.
+ * Parse the form's serialized representation into editable rows.
  */
 export function parseKeyValuePairs(raw: string): KeyValuePair[] {
   return raw
@@ -29,9 +25,8 @@ export function parseKeyValuePairs(raw: string): KeyValuePair[] {
 }
 
 /**
- * Serialize rows back to the wire format. A row is only included when both parts are filled in, so
- * a half-typed row never reaches the API as a segment the backend would reject or as a header with
- * an empty value.
+ * Serialize rows for form state. A row is only included when both parts are filled in, so a
+ * half-typed row never reaches the API.
  */
 export function serializeKeyValuePairs(pairs: KeyValuePair[]): string {
   return pairs
@@ -41,8 +36,7 @@ export function serializeKeyValuePairs(pairs: KeyValuePair[]): string {
 }
 
 /**
- * Strip characters the wire format cannot represent: commas separate pairs, so they are removed
- * from both parts, and the first colon separates name from value, so it is removed from names.
+ * Strip delimiters reserved by the form's serialized representation.
  */
 export function sanitizeKeyValuePart(text: string, part: 'name' | 'value'): string {
   const withoutCommas: string = text.replace(/,/g, '');

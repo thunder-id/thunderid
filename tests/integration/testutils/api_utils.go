@@ -2385,7 +2385,6 @@ var senderPropertyToConnectionField = map[string]string{
 	"sender_id":    "senderId",
 	"url":          "url",
 	"http_method":  "httpMethod",
-	"http_headers": "httpHeaders",
 	"content_type": "contentType",
 }
 
@@ -2397,6 +2396,13 @@ func senderToConnectionBody(sender NotificationSender) map[string]interface{} {
 		"description": sender.Description,
 	}
 	for _, prop := range sender.Properties {
+		if prop.Name == "http_headers" {
+			var headers []map[string]string
+			if err := json.Unmarshal([]byte(prop.Value), &headers); err == nil {
+				body["apiKeyHeaders"] = headers
+			}
+			continue
+		}
 		if field, ok := senderPropertyToConnectionField[prop.Name]; ok {
 			body[field] = prop.Value
 		}

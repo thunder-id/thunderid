@@ -1943,13 +1943,14 @@ const translations = {
     'form.fields.httpMethod.hint': 'Method used to call the gateway URL.',
     'form.fields.contentType.label': 'Content type',
     'form.fields.contentType.hint': 'Format of the request body sent to the gateway.',
-    'form.fields.httpHeaders.label': 'HTTP headers',
-    'form.fields.httpHeaders.hint':
-      'Optional headers sent with every request. Commas are not supported in a name or value.',
-    'form.fields.httpHeaders.add': 'Add header',
+    'form.fields.apiKeyHeaders.label': 'API key headers',
+    'form.fields.apiKeyHeaders.hint': 'Optional API key headers sent with every request. Stored values are masked.',
+    'form.fields.apiKeyHeaders.add': 'Add API key header',
     'form.keyValue.name': 'Name',
     'form.keyValue.value': 'Value',
     'form.keyValue.add': 'Add',
+    'form.keyValue.update': 'Update',
+    'form.keyValue.cancel': 'Cancel',
     'form.keyValue.remove': 'Remove',
     'form.sections.federation': 'Federation',
     'form.secret.update': 'Update',
@@ -2022,6 +2023,7 @@ const translations = {
     'error.loadFailed': 'Failed to load connection.',
     'validation.required': 'This field is required.',
     'validation.url': 'Enter a valid URL.',
+    'validation.keyValuePair': 'Enter both a name and value for every header.',
     'validation.accountSid': 'Enter a valid Account SID: “AC” followed by 32 hexadecimal characters.',
 
     // Error codes (backend)

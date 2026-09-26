@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/outboundauthn"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -69,7 +71,10 @@ func (s *AuthZENPDPService) CreateAuthZENPDPConnection(
 	ctx context.Context,
 	request ConnectionRequest,
 ) (*AuthZENPDPConnection, *tidcommon.ServiceError) {
-	connection := s.fromRequest(request)
+	connection, err := s.fromRequest(request)
+	if err != nil {
+		return nil, &ErrorInvalidAuthentication
+	}
 	if svcErr := declarativeresource.CheckDeclarativeCreate(); svcErr != nil {
 		return nil, svcErr
 	}
@@ -86,7 +91,7 @@ func (s *AuthZENPDPService) CreateAuthZENPDPConnection(
 		connection.ID = sysutils.GenerateUUID()
 	}
 	var svcErr *tidcommon.ServiceError
-	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+	err = s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		existing, getErr := s.GetAuthZENPDPByName(txCtx, connection.Name)
 		if getErr != nil {
 			return getErr
@@ -114,12 +119,8 @@ func (s *AuthZENPDPService) UpdateAuthZENPDPConnection(
 	id string,
 	request ConnectionRequest,
 ) (*AuthZENPDPConnection, *tidcommon.ServiceError) {
-	connection := s.fromRequest(request)
 	if svcErr := declarativeresource.CheckDeclarativeUpdate(); svcErr != nil {
 		return nil, svcErr
-	}
-	if connection.Name == "" {
-		return nil, &ErrorInvalidName
 	}
 	current, svcErr := s.GetAuthZENPDP(ctx, id)
 	if svcErr != nil {
@@ -127,6 +128,17 @@ func (s *AuthZENPDPService) UpdateAuthZENPDPConnection(
 	}
 	if current == nil {
 		return nil, &ErrorNotFound
+	}
+	connection, err := s.fromRequest(request)
+	if err != nil {
+		return nil, &ErrorInvalidAuthentication
+	}
+	if connection.Name == "" {
+		return nil, &ErrorInvalidName
+	}
+	if request.Authentication == nil {
+		connection.AuthenticationScheme = current.AuthenticationScheme
+		connection.AuthenticationProperties = current.AuthenticationProperties
 	}
 	if err := normalizeEndpoints(&connection); err != nil {
 		return nil, &ErrorInvalidEndpoint
@@ -240,8 +252,16 @@ func validateConnection(connection AuthZENPDPConnection) error {
 	if err := validateEndpoint(connection.Endpoint); err != nil {
 		return fmt.Errorf("invalid access evaluation endpoint: %w", err)
 	}
+	if err := validateAuthenticationEndpoint(connection.Endpoint, connection.AuthenticationScheme); err != nil {
+		return fmt.Errorf("invalid access evaluation endpoint: %w", err)
+	}
 	if connection.BatchEndpoint != "" {
 		if err := validateEndpoint(connection.BatchEndpoint); err != nil {
+			return fmt.Errorf("invalid access evaluations endpoint: %w", err)
+		}
+		if err := validateAuthenticationEndpoint(
+			connection.BatchEndpoint, connection.AuthenticationScheme,
+		); err != nil {
 			return fmt.Errorf("invalid access evaluations endpoint: %w", err)
 		}
 	}
@@ -256,6 +276,28 @@ func validateEndpoint(endpoint string) error {
 		return fmt.Errorf("endpoint must be an absolute URL")
 	}
 	return nil
+}
+
+func validateAuthenticationEndpoint(endpoint, scheme string) error {
+	if scheme != outboundauthn.SchemeBearer && scheme != outboundauthn.SchemeAPIKey {
+		return nil
+	}
+	parsedEndpoint, err := url.Parse(endpoint)
+	if err != nil {
+		return err
+	}
+	if parsedEndpoint.Scheme == "https" || isLoopbackHost(parsedEndpoint.Hostname()) {
+		return nil
+	}
+	return fmt.Errorf("HTTPS is required when authentication is configured")
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	address := net.ParseIP(host)
+	return address != nil && address.IsLoopback()
 }
 
 // validateSubjectAttributeMappings verifies mapped attributes against the declared subject type.
@@ -316,7 +358,7 @@ func (s *AuthZENPDPService) getSubjectTypeAttributes(
 }
 
 // fromRequest converts an API request into the internal connection model with configured defaults.
-func (s *AuthZENPDPService) fromRequest(req ConnectionRequest) AuthZENPDPConnection {
+func (s *AuthZENPDPService) fromRequest(req ConnectionRequest) (AuthZENPDPConnection, error) {
 	timeoutMS := req.TimeoutMS
 	if timeoutMS <= 0 {
 		timeoutMS = s.defaults.TimeoutMS
@@ -335,7 +377,10 @@ func (s *AuthZENPDPService) fromRequest(req ConnectionRequest) AuthZENPDPConnect
 		RetryCount:               retryCount,
 		SubjectAttributeMappings: sanitizeSubjectAttributeMappings(req.SubjectAttributeMappings),
 	}
-	return connection
+	if err := connection.SetAuthentication(req.Authentication); err != nil {
+		return AuthZENPDPConnection{}, err
+	}
+	return connection, nil
 }
 
 // cloneSubjectAttributeMappings returns an independent copy of subject attribute mappings.

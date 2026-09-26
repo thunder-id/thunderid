@@ -163,6 +163,8 @@ export default function ConnectionForm({
               hint={field.hintKey ? renderHint(field.hintKey) : undefined}
               namePlaceholder={field.placeholder}
               addLabel={field.addLabelKey ? t(field.addLabelKey) : t('form.keyValue.add')}
+              hasStoredValues={mode === 'edit' && hasStoredSecret}
+              error={errors[field.name] ? t(errors[field.name]) : undefined}
             />
           );
         } else if (field.kind === 'select') {

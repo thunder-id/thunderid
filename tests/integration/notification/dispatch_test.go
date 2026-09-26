@@ -241,9 +241,9 @@ func (ts *DispatchTestSuite) TestDispatchFormPost() {
 // TestDispatchCustomHeaders confirms configured headers reach the gateway.
 func (ts *DispatchTestSuite) TestDispatchCustomHeaders() {
 	senderID := ts.createSender("Dispatch Custom Headers Sender", map[string]interface{}{
-		"httpMethod":  "POST",
-		"contentType": "JSON",
-		"httpHeaders": "X-Dispatch-Test: integration",
+		"httpMethod":    "POST",
+		"contentType":   "JSON",
+		"apiKeyHeaders": []map[string]string{{"name": "X-Dispatch-Test", "value": "integration"}},
 	})
 
 	ts.Require().Equal(http.StatusOK, ts.sendOTP(senderID), "Expected the OTP send to succeed")

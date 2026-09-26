@@ -48,7 +48,8 @@ func (suite *CustomClientTestSuite) getValidCustomSenderJSON() common.Notificati
 			createProperty("url", "https://api.example.com/sms", false),
 			createProperty("http_method", "POST", false),
 			createProperty("content_type", "JSON", false),
-			createProperty("http_headers", "Authorization:Bearer token,X-Api-Key:key123", false),
+			createProperty(common.CustomPropKeyAPIKeyHeaders,
+				`[{"name":"X-Api-Key","value":"key123"},{"name":"X-Tenant","value":"tenant-1"}]`, true),
 		},
 	}
 }
@@ -92,8 +93,8 @@ func (suite *CustomClientTestSuite) TestSendSMS_JSON_Success() {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		suite.Equal(http.MethodPost, r.Method)
 		suite.Equal("application/json", r.Header.Get("Content-Type"))
-		suite.Equal("Bearer token", r.Header.Get("Authorization"))
 		suite.Equal("key123", r.Header.Get("X-Api-Key"))
+		suite.Equal("tenant-1", r.Header.Get("X-Tenant"))
 
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte(`{"success":true}`)); err != nil {
@@ -112,6 +113,29 @@ func (suite *CustomClientTestSuite) TestSendSMS_JSON_Success() {
 	}
 
 	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
+
+	suite.NoError(err)
+}
+
+func (suite *CustomClientTestSuite) TestSendSMSLegacyHTTPHeadersSuccess() {
+	sender := suite.getValidCustomSenderJSON()
+	sender.Properties[len(sender.Properties)-1] = createProperty(
+		"http_headers", "X-API-Key: legacy-key, X-Tenant: legacy-tenant", false,
+	)
+	client, err := newCustomClient(context.Background(), sender)
+	suite.Require().NoError(err)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		suite.Equal("legacy-key", r.Header.Get("X-API-Key"))
+		suite.Equal("legacy-tenant", r.Header.Get("X-Tenant"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client.(*CustomClient).url = server.URL
+	err = client.Send(context.Background(), common.ChannelTypeSMS, common.NotificationData{
+		Recipient: "+15559876543", Body: `{"message":"Test message"}`,
+	})
 
 	suite.NoError(err)
 }
@@ -215,31 +239,6 @@ func (suite *CustomClientTestSuite) TestSendSMS_UnsupportedContentType() {
 	suite.Contains(err.Error(), "unsupported content type")
 }
 
-func (suite *CustomClientTestSuite) TestGetHeadersFromString_Success() {
-	sender := suite.getValidCustomSenderJSON()
-	client, _ := newCustomClient(context.Background(), sender)
-	customClient := client.(*CustomClient)
-
-	headers, err := customClient.getHeadersFromString("Authorization:Bearer token,X-Api-Key:key123")
-
-	suite.NoError(err)
-	suite.Equal(2, len(headers))
-	suite.Equal("Bearer token", headers["Authorization"])
-	suite.Equal("key123", headers["X-Api-Key"])
-}
-
-func (suite *CustomClientTestSuite) TestGetHeadersFromString_InvalidFormat() {
-	sender := suite.getValidCustomSenderJSON()
-	client, _ := newCustomClient(context.Background(), sender)
-	customClient := client.(*CustomClient)
-
-	headers, err := customClient.getHeadersFromString("InvalidHeader")
-
-	suite.Error(err)
-	suite.Nil(headers)
-	suite.Contains(err.Error(), "invalid HTTP header format")
-}
-
 func (suite *CustomClientTestSuite) TestNewCustomClient_WithUnknownProperty() {
 	sender := suite.getValidCustomSenderJSON()
 	sender.Properties = append(sender.Properties, createProperty("unknown_prop", "value", false))
@@ -251,7 +250,7 @@ func (suite *CustomClientTestSuite) TestNewCustomClient_WithUnknownProperty() {
 	suite.NotNil(client)
 }
 
-func (suite *CustomClientTestSuite) TestNewCustomClient_InvalidHeaders() {
+func (suite *CustomClientTestSuite) TestNewCustomClient_InvalidAPIKeyHeaders() {
 	sender := common.NotificationSenderDTO{
 		Name:     "Test Custom",
 		Provider: common.NotificationProviderTypeCustom,
@@ -259,7 +258,7 @@ func (suite *CustomClientTestSuite) TestNewCustomClient_InvalidHeaders() {
 			createProperty("url", "https://api.example.com/sms", false),
 			createProperty("http_method", "POST", false),
 			createProperty("content_type", "JSON", false),
-			createProperty("http_headers", "InvalidHeaderFormat", false),
+			createProperty(common.CustomPropKeyAPIKeyHeaders, "InvalidHeaderFormat", true),
 		},
 	}
 
@@ -267,5 +266,5 @@ func (suite *CustomClientTestSuite) TestNewCustomClient_InvalidHeaders() {
 
 	suite.Error(err)
 	suite.Nil(client)
-	suite.Contains(err.Error(), "invalid HTTP header format")
+	suite.Contains(err.Error(), "failed to decode API key headers")
 }

@@ -47,6 +47,19 @@ var (
 			DefaultValue: "The single and batch evaluation endpoints must be absolute URLs.",
 		},
 	}
+	// ErrorInvalidAuthentication is returned when PDP outbound authentication is invalid.
+	ErrorInvalidAuthentication = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1011",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_authzen_pdp_authentication",
+			DefaultValue: "Invalid AuthZEN PDP authentication",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_authzen_pdp_authentication_description",
+			DefaultValue: "Configure a bearer token or one or more API key headers for the selected scheme.",
+		},
+	}
 	// ErrorInvalidName is returned when an AuthZEN PDP connection name is missing.
 	ErrorInvalidName = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

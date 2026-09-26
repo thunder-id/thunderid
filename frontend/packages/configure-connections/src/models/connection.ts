@@ -236,8 +236,14 @@ export interface SMSGatewayConnectionRequest {
   url: string;
   httpMethod: string;
   contentType: string;
-  /** Comma-separated "Key: value" pairs sent with every request. */
-  httpHeaders?: string;
+  /** Optional API-key headers sent with every request. */
+  apiKeyHeaders?: APIKeyHeader[];
+}
+
+/** One API-key HTTP header. Values are write-only and returned masked. */
+export interface APIKeyHeader {
+  name: string;
+  value: string;
 }
 
 export type ConnectionRequest =
@@ -267,7 +273,7 @@ export interface ConnectionResponse extends OIDCConnectionRequest {
   url?: string;
   httpMethod?: string;
   contentType?: string;
-  httpHeaders?: string;
+  apiKeyHeaders?: APIKeyHeader[];
 }
 
 /**
