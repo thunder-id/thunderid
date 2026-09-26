@@ -258,9 +258,6 @@ func buildIdentifyQuery(filters map[string]interface{}, deploymentID string) (mo
 
 	keys := make([]string, 0, len(filters))
 	for key := range filters {
-		if err := utils.ValidateKey(key); err != nil {
-			return model.DBQuery{}, nil, fmt.Errorf("invalid filter key: %w", err)
-		}
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
@@ -268,15 +265,18 @@ func buildIdentifyQuery(filters map[string]interface{}, deploymentID string) (mo
 	pgQuery := `SELECT ID FROM "ENTITY" WHERE 1=1`
 	sqQuery := `SELECT ID FROM "ENTITY" WHERE 1=1`
 	args := make([]interface{}, 0, len(keys)+1)
+	paramIndex := 1
 
-	for i, key := range keys {
-		pg, sq := buildDualColumnConditions("", key, i+1)
+	for _, key := range keys {
+		pg, sq := buildDualColumnConditions("", key, paramIndex)
 		pgQuery += pg
 		sqQuery += sq
-		args = append(args, filters[key])
+		keyArgs := buildDualColumnArgs(key, filters[key])
+		args = append(args, keyArgs...)
+		paramIndex += len(keyArgs)
 	}
 
-	pgQuery += fmt.Sprintf(" AND DEPLOYMENT_ID = $%d", len(keys)+1)
+	pgQuery += fmt.Sprintf(" AND DEPLOYMENT_ID = $%d", paramIndex)
 	sqQuery += " AND DEPLOYMENT_ID = ?"
 	args = append(args, deploymentID)
 
@@ -561,9 +561,6 @@ func buildIdentifyQueryHybrid(
 
 	nonIndexedKeys := make([]string, 0, len(nonIndexedFilters))
 	for key := range nonIndexedFilters {
-		if err := utils.ValidateKey(key); err != nil {
-			return model.DBQuery{}, nil, fmt.Errorf("invalid non-indexed filter key: %w", err)
-		}
 		nonIndexedKeys = append(nonIndexedKeys, key)
 	}
 	sort.Strings(nonIndexedKeys)
@@ -572,8 +569,9 @@ func buildIdentifyQueryHybrid(
 		pg, sq := buildDualColumnConditions("e.", key, paramIndex)
 		postgresQuery += pg
 		sqliteQuery += sq
-		args = append(args, nonIndexedFilters[key])
-		paramIndex++
+		keyArgs := buildDualColumnArgs(key, nonIndexedFilters[key])
+		args = append(args, keyArgs...)
+		paramIndex += len(keyArgs)
 	}
 
 	postgresQuery += fmt.Sprintf(" AND e.DEPLOYMENT_ID = $%d", paramIndex)
@@ -601,22 +599,36 @@ func buildGetEntitiesByIDsQuery(entityIDs []string, deploymentID string) (model.
 }
 
 // buildDualColumnConditions returns AND conditions for both Postgres and SQLite that match a key
-// against both ATTRIBUTES and SYSTEM_ATTRIBUTES using COALESCE (one parameter per key).
+// against both ATTRIBUTES and SYSTEM_ATTRIBUTES using COALESCE. The key's path segments and the
+// compared value are bind parameters, numbered from paramIndex: one set of segments per column
+// followed by the value. Use buildDualColumnArgs to supply them in the matching order.
 func buildDualColumnConditions(tablePrefix, key string, paramIndex int) (pgCond, sqCond string) {
 	attrCol := tablePrefix + AttributesColumn
 	sysCol := tablePrefix + SystemAttributesColumn
-	sqCond = fmt.Sprintf(" AND COALESCE(json_extract(%s, '$.%s'), json_extract(%s, '$.%s')) = ?",
-		sysCol, key, attrCol, key)
-	if strings.Contains(key, ".") {
-		parts := strings.Split(key, ".")
-		pathArray := "{" + strings.Join(parts, ",") + "}"
-		pgCond = fmt.Sprintf(" AND COALESCE(%s#>>'%s', %s#>>'%s') = $%d",
-			sysCol, pathArray, attrCol, pathArray, paramIndex)
-		return
-	}
-	pgCond = fmt.Sprintf(" AND COALESCE(%s->>'%s', %s->>'%s') = $%d",
-		sysCol, key, attrCol, key, paramIndex)
+	segments := len(utils.SplitJSONKey(key))
+
+	sqCond = fmt.Sprintf(" AND COALESCE(%s, %s) = ?",
+		utils.BuildSQLiteJSONPathExpr(sysCol, segments),
+		utils.BuildSQLiteJSONPathExpr(attrCol, segments))
+	pgCond = fmt.Sprintf(" AND COALESCE(%s, %s) = $%d",
+		utils.BuildPostgresJSONPathExpr(sysCol, segments, paramIndex),
+		utils.BuildPostgresJSONPathExpr(attrCol, segments, paramIndex+segments),
+		paramIndex+2*segments)
 	return
+}
+
+// buildDualColumnArgs returns the bind arguments for one condition built by
+// buildDualColumnConditions: the key's path segments once for each of the two columns,
+// followed by the compared value.
+func buildDualColumnArgs(key string, value interface{}) []interface{} {
+	segments := utils.SplitJSONKey(key)
+	args := make([]interface{}, 0, 2*len(segments)+1)
+	for i := 0; i < 2; i++ {
+		for _, segment := range segments {
+			args = append(args, segment)
+		}
+	}
+	return append(args, value)
 }
 
 // buildPaginatedQuery constructs a paginated query string with ORDER BY, LIMIT, and OFFSET clauses.
@@ -636,6 +648,8 @@ func buildPaginatedQuery(baseQuery string, paramCount int, placeholder string) (
 
 // buildFilterQueryWithOffset constructs a filter query where parameter numbering starts at the given offset.
 // This is used when the base query already has parameters (e.g., CATEGORY = $1).
+//
+//nolint:unparam // The error result is kept so all query builders share one signature; callers propagate it.
 func buildFilterQueryWithOffset(
 	queryID string, baseQuery string, filters map[string]interface{}, paramOffset int,
 ) (model.DBQuery, []interface{}, error) {
@@ -645,20 +659,20 @@ func buildFilterQueryWithOffset(
 
 	keys := make([]string, 0, len(filters))
 	for key := range filters {
-		if err := utils.ValidateKey(key); err != nil {
-			return model.DBQuery{}, nil, fmt.Errorf("invalid filter key: %w", err)
-		}
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 
 	postgresQuery := baseQuery
 	sqliteQuery := strings.Replace(baseQuery, "$1", "?", 1)
+	paramIndex := paramOffset + 1
 
-	for i, key := range keys {
-		postgresQuery += utils.BuildPostgresJSONCondition(columnName, key, paramOffset+i+1)
+	for _, key := range keys {
+		postgresQuery += utils.BuildPostgresJSONCondition(columnName, key, paramIndex)
 		sqliteQuery += utils.BuildSQLiteJSONCondition(columnName, key)
-		args = append(args, filters[key])
+		keyArgs := utils.JSONConditionArgs(key, filters[key])
+		args = append(args, keyArgs...)
+		paramIndex += len(keyArgs)
 	}
 
 	resultQuery := model.DBQuery{
