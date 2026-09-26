@@ -1,0 +1,96 @@
+---
+title: Value References
+docType: reference
+description: Store a credential or a configuration value as a reference the deployment resolves, instead of carrying it inline.
+sidebar_position: 5
+---
+
+# Value References
+
+A configuration value can name something the deployment holds instead of carrying it. <ProductName />
+recognizes two prefixes and resolves either through the deployment's provider when it is needed.
+
+| Prefix | Refers to | Read back |
+|---|---|---|
+| `sec:` | a credential | never returned by a listing |
+| `var:` | an ordinary value | returned as it is |
+
+```yaml
+properties:
+  - name: client_secret
+    value: "sec:CONNECTION_GOOGLE_CLIENT_SECRET"
+    is_secret: true
+  - name: token_endpoint
+    value: "var:GOOGLE_TOKEN_ENDPOINT"
+```
+
+The two are independent collections, so the same name may exist in both. The prefix is what says
+which one a reference means, and a value with neither prefix is not a reference: it is used as it is.
+
+The part after the prefix is the name the provider holds the value under. It matches the template
+variable name an export generates for that field, so a credential captured under that name and a
+configuration referencing it agree without a second mapping to keep in sync. See
+[Export Resources](../resource-export.mdx) for how those names are derived.
+
+## Why Reference Instead of Store
+
+A reference lets configuration move between deployments without carrying credentials with it. The
+configuration says which credential a resource needs; the deployment says what that credential is. Two
+deployments can then run the same configuration with different credentials, and the configuration
+itself holds nothing sensitive.
+
+The reference is stored in the clear, because the name of a credential is not itself sensitive.
+
+## How a Reference Resolves
+
+Resolution depends on which collection the reference names and what the value is for.
+
+**A `var:` reference** resolves to the value the deployment holds under that name, and is used
+wherever the configuration put it.
+
+**A property that is replayed to a third party**, such as an identity provider's client secret, resolves
+to the credential itself, because <ProductName /> has to present it. Reading the property returns the
+resolved value.
+
+**A credential that is only ever verified**, such as a password, resolves to a hash and the parameters
+that produced it. Verification then compares the presented credential against that hash, exactly as it
+would for one stored locally. The original is never needed and never returned.
+
+A credential that resolves to nothing does not pass verification. An unresolvable reference rejects
+rather than matching, so a provider that is unreachable or missing the name cannot let a sign-in
+through.
+
+A `var:` reference is refused where a credential is expected. A variable is read back in the clear by
+anything allowed to list it, so verifying a credential against one would check it against a value
+that is not protected as a credential.
+
+## Reading a Value Without Resolving It
+
+Some callers need the stored value rather than the credential: checking whether a property is set, or
+carrying it from one place to another unchanged. Those read the value as it stands, reference and all.
+
+This matters where a deployment runs no secret provider. Resolving there would fail outright, and
+resolving where one does run would copy the credential somewhere it does not belong.
+
+## When No Provider Is Configured
+
+A deployment with no secret provider resolves nothing. A value that is not a reference is returned as
+it stands, so a deployment that stores its credentials directly is unaffected. A reference cannot be
+resolved, and the attempt reports that the provider is not configured rather than yielding an empty
+credential.
+
+## Reaching the Provider
+
+The provider is addressed over HTTPS. Where a token is configured, <ProductName /> refuses to send it
+over a plaintext connection, and refuses to follow a redirect onto one, so a bearer credential is
+never put on the wire in the clear. A provider on the same host is the exception, because the request
+never reaches a network, which is what a local development setup runs.
+
+A referenced name is escaped into a single path segment, so a name carrying a separator addresses the
+secret it names and nothing else.
+
+## Names That Are Not Found
+
+A provider that does not hold a referenced name is asked once, and the miss is remembered for a short
+interval rather than retried on every request. A reference resolves as soon as the credential is added
+to the provider, without a restart, once that interval has passed.
