@@ -378,3 +378,34 @@ CREATE TABLE "SERVER_CONFIG" (
     UPDATED_AT    TIMESTAMPTZ  DEFAULT NOW(),
     PRIMARY KEY (DEPLOYMENT_ID, NAME)
 );
+
+-- Named values this deployment holds, for configuration to refer to instead of carrying inline.
+--
+-- Two tables rather than one with a flag, because the two differ in what may be read back: a
+-- variable's value is returned by the API and a secret's never is. Keeping them apart means a query
+-- written against variables cannot reach a secret by forgetting a predicate.
+CREATE TABLE "VARIABLE" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    NAME          VARCHAR(255) NOT NULL,
+    VALUE         TEXT         NOT NULL,
+    DESCRIPTION   TEXT,
+    CREATED_AT    TIMESTAMPTZ  DEFAULT NOW(),
+    UPDATED_AT    TIMESTAMPTZ  DEFAULT NOW(),
+    PRIMARY KEY (DEPLOYMENT_ID, NAME)
+);
+-- Listing is always scoped to a deployment and ordered by name, which the primary key already
+-- serves; this covers the prefix match a filter does.
+CREATE INDEX idx_variable_deployment_name ON "VARIABLE" (DEPLOYMENT_ID, NAME);
+
+-- A secret's value is stored encrypted, never in the clear. VALUE therefore holds ciphertext and is
+-- meaningless without the deployment's configuration key.
+CREATE TABLE "SECRET" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    NAME          VARCHAR(255) NOT NULL,
+    VALUE         TEXT         NOT NULL,
+    DESCRIPTION   TEXT,
+    CREATED_AT    TIMESTAMPTZ  DEFAULT NOW(),
+    UPDATED_AT    TIMESTAMPTZ  DEFAULT NOW(),
+    PRIMARY KEY (DEPLOYMENT_ID, NAME)
+);
+CREATE INDEX idx_secret_deployment_name ON "SECRET" (DEPLOYMENT_ID, NAME);

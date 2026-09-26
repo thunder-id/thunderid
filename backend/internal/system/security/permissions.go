@@ -301,6 +301,20 @@ func InitSystemPermissions(handle string) {
 		{"PUT /agent-types/**", p.AgentType},
 		{"DELETE /agent-types/**", p.AgentType},
 
+		// Variable store APIs. The whole surface requires root rather than a narrower permission:
+		// the store holds credentials, and even the list of names is sensitive. This matches the
+		// default for an unlisted path, and says so rather than relying on it.
+		{"GET /variables", p.Root},
+		{"POST /variables", p.Root},
+		{"GET /variables/**", p.Root},
+		{"PUT /variables/**", p.Root},
+		{"DELETE /variables/**", p.Root},
+		{"GET /secrets", p.Root},
+		{"POST /secrets", p.Root},
+		{"GET /secrets/**", p.Root},
+		{"PUT /secrets/**", p.Root},
+		{"DELETE /secrets/**", p.Root},
+
 		// Import APIs.
 		{"POST /import", p.Root},
 		{"POST /import/delete", p.Root},

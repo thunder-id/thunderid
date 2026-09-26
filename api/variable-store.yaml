@@ -1,0 +1,734 @@
+openapi: 3.0.3
+info:
+  title: Variable Store API
+  version: "1.0"
+  description: |
+    Named values this deployment holds, for configuration to refer to instead of carrying inline.
+
+    There are two collections, and the difference between them is what may be read back:
+
+    - **Variables** are ordinary values. A read returns the value.
+    - **Secrets** are credentials. They are encrypted at rest, and a read never returns the value:
+      it says only whether one is held. A secret that cannot be read back cannot be leaked by a
+      listing, an export, or an audit log.
+
+    The two are independent collections. The same name may exist in both, so a reference says which
+    it means: `var:DB_HOST` and `sec:DB_PASSWORD`.
+
+    ## Authorization
+
+    Every route here requires the **root system permission**, the one named by
+    `server.security.system_permission_prefix` plus `system` (so `system` by default, or for example
+    `tenant_instance:system` where a prefix is configured). A narrower permission is not enough for
+    any of them, including the reads.
+
+    That is deliberate rather than an omission. The store holds credentials, and the list of names is
+    itself sensitive: knowing that a deployment holds `sec:STRIPE_KEY` says something about it even
+    though the value is never returned. A caller that should only read one variable should be given a
+    variable, not an account on this API.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host:
+        default: "localhost"
+      port:
+        default: "8090"
+
+tags:
+  - name: Variables
+    description: Named values whose contents can be read back.
+  - name: Secrets
+    description: Named credentials, encrypted at rest. A read reports only whether one is held.
+
+security:
+  - OAuth2: [system]
+
+paths:
+  /variables:
+    get:
+      tags: [Variables]
+      summary: List variables
+      description: |
+        Returns variables with their values, in ascending name order, paginated.
+
+        Narrow the result either by naming exactly what you want with `names`, or by matching with
+        `filter`. Using both applies both.
+      parameters:
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+        - $ref: '#/components/parameters/namesQueryParam'
+        - $ref: '#/components/parameters/filterQueryParam'
+      responses:
+        "200":
+          description: List of variables
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VariableListResponse'
+              example:
+                totalResults: 3
+                startIndex: 1
+                count: 2
+                variables:
+                  - name: "DB_HOST"
+                    value: "db.internal"
+                    description: "Where the application database answers"
+                    createdAt: "2026-09-17T10:04:11Z"
+                    updatedAt: "2026-09-17T10:04:11Z"
+                  - name: "DB_PORT"
+                    value: "5432"
+                    createdAt: "2026-09-17T10:04:20Z"
+                    updatedAt: "2026-09-17T10:04:20Z"
+                links:
+                  - href: "variables?offset=2&limit=2"
+                    rel: "next"
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [Variables]
+      summary: Add a variable
+      description: |
+        Fails with 409 when a variable of that name already exists. Use `PUT /variables/{name}` to
+        create or replace without caring which it is.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VariableRequest'
+            example:
+              name: "DB_HOST"
+              value: "db.internal"
+              description: "Where the application database answers"
+      responses:
+        "201":
+          description: Variable created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variable'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /variables/{name}:
+    parameters:
+      - $ref: '#/components/parameters/namePathParam'
+    get:
+      tags: [Variables]
+      summary: Get a variable
+      responses:
+        "200":
+          description: The variable, with its value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variable'
+              example:
+                name: "DB_HOST"
+                value: "db.internal"
+                description: "Where the application database answers"
+                createdAt: "2026-09-17T10:04:11Z"
+                updatedAt: "2026-09-17T10:04:11Z"
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags: [Variables]
+      summary: Create or replace a variable
+      description: |
+        Idempotent: the same request twice leaves the same state. Creates when the name is unused,
+        replaces the value and description when it is.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VariableUpdateRequest'
+            example:
+              value: "db-replica.internal"
+              description: "Where the application database answers"
+      responses:
+        "200":
+          description: Variable replaced
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variable'
+        "201":
+          description: Variable created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Variable'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [Variables]
+      summary: Delete a variable
+      description: |
+        Succeeds whether or not the variable existed, so a caller cleaning up does not have to ask
+        first. Configuration still referring to the name will fail to resolve it.
+      responses:
+        "204":
+          description: Variable deleted, or there was none
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /secrets:
+    get:
+      tags: [Secrets]
+      summary: List secrets
+      description: |
+        Returns the names this deployment holds a secret for, in ascending name order, paginated.
+        **No value is ever returned**, by this or any other endpoint: a secret is written and
+        referenced, never read back.
+
+        Narrow the result with `names` or `filter`, the same way as variables.
+      parameters:
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+        - $ref: '#/components/parameters/namesQueryParam'
+        - $ref: '#/components/parameters/filterQueryParam'
+      responses:
+        "200":
+          description: |
+            The secrets held. Every entry reports `exists: true`; a name with nothing stored is
+            absent from the result rather than listed as not existing. The field states in the body
+            what membership already implies, so a client reads one rather than inferring it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretListResponse'
+              example:
+                totalResults: 2
+                startIndex: 1
+                count: 2
+                secrets:
+                  - name: "DB_PASSWORD"
+                    exists: true
+                    description: "Application database password"
+                    createdAt: "2026-09-17T10:05:02Z"
+                    updatedAt: "2026-09-17T10:05:02Z"
+                  - name: "SMTP_PASSWORD"
+                    exists: true
+                    createdAt: "2026-09-17T10:06:40Z"
+                    updatedAt: "2026-09-17T10:06:40Z"
+                links: []
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [Secrets]
+      summary: Add a secret
+      description: |
+        The value is encrypted before it is stored and is not returned here or anywhere else. Fails
+        with 409 when a secret of that name already exists; use `PUT /secrets/{name}` to set a value
+        without caring whether one is already held.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretRequest'
+            example:
+              name: "DB_PASSWORD"
+              value: "s3cr3t-value"
+              description: "Application database password"
+      responses:
+        "201":
+          description: Secret stored. The response reports that it is held, not what it is.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Secret'
+              example:
+                name: "DB_PASSWORD"
+                exists: true
+                description: "Application database password"
+                createdAt: "2026-09-17T10:05:02Z"
+                updatedAt: "2026-09-17T10:05:02Z"
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /secrets/{name}:
+    parameters:
+      - $ref: '#/components/parameters/namePathParam'
+    get:
+      tags: [Secrets]
+      summary: Check whether a secret is held
+      description: |
+        Reports whether this deployment holds a secret of that name. The value is never returned.
+
+        A name with no secret is a 404 rather than `exists: false`, so that "is it there?" is
+        answered the same way as for every other resource in this API.
+      responses:
+        "200":
+          description: A secret of that name is held
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Secret'
+              example:
+                name: "DB_PASSWORD"
+                exists: true
+                description: "Application database password"
+                createdAt: "2026-09-17T10:05:02Z"
+                updatedAt: "2026-09-17T10:05:02Z"
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags: [Secrets]
+      summary: Set or replace a secret
+      description: |
+        Idempotent. Creates when no secret of that name is held, replaces the value when one is.
+        Replacing is how a credential is rotated; the previous value is not recoverable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretUpdateRequest'
+            example:
+              value: "the-new-value"
+              description: "Application database password"
+      responses:
+        "200":
+          description: Secret replaced
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Secret'
+        "201":
+          description: Secret stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Secret'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [Secrets]
+      summary: Delete a secret
+      description: |
+        Succeeds whether or not a secret of that name was held. Configuration still referring to the
+        name will fail to resolve it.
+      responses:
+        "204":
+          description: Secret deleted, or there was none
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://localhost:8090/oauth2/authorize
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+        clientCredentials:
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+
+  parameters:
+    namePathParam:
+      in: path
+      name: name
+      required: true
+      description: |
+        The name of the variable or secret. Names are the identifier here: there is no separate id,
+        because the whole purpose of the store is lookup by name.
+      schema:
+        $ref: '#/components/schemas/EntryName'
+
+    limitQueryParam:
+      in: query
+      name: limit
+      required: false
+      description: Maximum number of records to return. Must be between 1 and 100 inclusive.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 30
+
+    offsetQueryParam:
+      in: query
+      name: offset
+      required: false
+      description: Number of records to skip for pagination. Must be a non-negative integer.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+    namesQueryParam:
+      in: query
+      name: names
+      required: false
+      description: |
+        Return only these names, comma separated. For fetching a known set in one call rather than
+        one request per name.
+
+        A name with nothing stored is simply absent from the result; asking for a name that does not
+        exist is not an error, because the caller is asking which of these exist.
+      schema:
+        type: array
+        items:
+          $ref: '#/components/schemas/EntryName'
+        maxItems: 100
+      style: form
+      explode: false
+      example: ["DB_HOST", "DB_PORT"]
+
+    filterQueryParam:
+      in: query
+      name: filter
+      required: false
+      description: |
+        Filter by name.
+
+        Supported operators: `eq` (equals), `sw` (starts with).
+        Format: `attribute operator "value"`. Filterable attributes: `name`.
+
+        `sw` is here because names in this store are conventionally prefixed by what owns them, so
+        matching a prefix is how a caller asks for one thing's values.
+      schema:
+        type: string
+      examples:
+        exact:
+          value: 'name eq "DB_HOST"'
+        prefix:
+          value: 'name sw "DB_"'
+
+  responses:
+    BadRequest:
+      description: The request was malformed, or a name or value failed validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            invalidRequestFormat:
+              summary: The body could not be read as the expected document
+              value:
+                code: "VAR-1001"
+                message:
+                  key: "error.variablestore.invalid_request_format"
+                  defaultValue: "Invalid request format"
+                description:
+                  key: "error.variablestore.invalid_request_format_description"
+                  defaultValue: "The request body could not be read as a variable store request"
+            invalidName:
+              summary: The name is not one this store accepts
+              value:
+                code: "VAR-1002"
+                message:
+                  key: "error.variablestore.invalid_name"
+                  defaultValue: "Invalid name"
+                description:
+                  key: "error.variablestore.invalid_name_description"
+                  defaultValue: "A name must match ^[A-Za-z_][A-Za-z0-9_]*$ and be at most 255 characters"
+    Unauthorized:
+      description: No valid credentials were presented
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The caller is authenticated but not permitted
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: The store could not serve the request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "VAR-5000"
+            message:
+              key: "error.variablestore.internal_error"
+              defaultValue: "Internal server error"
+            description:
+              key: "error.variablestore.internal_error_description"
+              defaultValue: "An unexpected error occurred while processing the request"
+    NotFound:
+      description: Nothing of that name is stored
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "VAR-1004"
+            message:
+              key: "error.variablestore.not_found"
+              defaultValue: "Not found"
+            description:
+              key: "error.variablestore.not_found_description"
+              defaultValue: "Nothing of that name is stored"
+    Conflict:
+      description: Something of that name already exists in this collection
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "VAR-1009"
+            message:
+              key: "error.variablestore.already_exists"
+              defaultValue: "Already exists"
+            description:
+              key: "error.variablestore.already_exists_description"
+              defaultValue: "Something of that name already exists. Use PUT to replace it"
+
+  schemas:
+    EntryName:
+      type: string
+      minLength: 1
+      maxLength: 255
+      pattern: '^[A-Za-z_][A-Za-z0-9_]*$'
+      description: |
+        Letters, digits and underscores, not starting with a digit. Constrained because these names
+        are substituted into configuration as template variables, where a name that needs escaping
+        is a name that will eventually be got wrong.
+      example: "DB_HOST"
+
+    Variable:
+      type: object
+      required: [name, value]
+      properties:
+        name:
+          $ref: '#/components/schemas/EntryName'
+        value:
+          type: string
+          description: The value. Returned in full, which is what makes this a variable and not a secret.
+          example: "db.internal"
+        description:
+          type: string
+          maxLength: 1000
+          description: What this value is for, for whoever reads the list later.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    VariableRequest:
+      type: object
+      required: [name, value]
+      properties:
+        name:
+          $ref: '#/components/schemas/EntryName'
+        value:
+          type: string
+          maxLength: 8192
+        description:
+          type: string
+          maxLength: 1000
+
+    VariableUpdateRequest:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: string
+          maxLength: 8192
+        description:
+          type: string
+          maxLength: 1000
+
+    Secret:
+      type: object
+      required: [name, exists]
+      properties:
+        name:
+          $ref: '#/components/schemas/EntryName'
+        exists:
+          type: boolean
+          description: |
+            Whether a secret of this name is held. There is deliberately no `value` field anywhere in
+            this schema: the value leaves the client once, on the way in, and never comes back.
+          example: true
+        description:
+          type: string
+          maxLength: 1000
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the value was last set, which is how a caller tells a rotation happened.
+
+    SecretRequest:
+      type: object
+      required: [name, value]
+      properties:
+        name:
+          $ref: '#/components/schemas/EntryName'
+        value:
+          type: string
+          minLength: 1
+          maxLength: 8192
+          description: Encrypted before it is stored, and never returned.
+        description:
+          type: string
+          maxLength: 1000
+
+    SecretUpdateRequest:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: string
+          minLength: 1
+          maxLength: 8192
+        description:
+          type: string
+          maxLength: 1000
+
+    VariableListResponse:
+      type: object
+      required: [totalResults, startIndex, count, variables]
+      properties:
+        totalResults:
+          type: integer
+        startIndex:
+          type: integer
+        count:
+          type: integer
+        variables:
+          type: array
+          items:
+            $ref: '#/components/schemas/Variable'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
+
+    SecretListResponse:
+      type: object
+      required: [totalResults, startIndex, count, secrets]
+      properties:
+        totalResults:
+          type: integer
+        startIndex:
+          type: integer
+        count:
+          type: integer
+        secrets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Secret'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
+
+    Link:
+      type: object
+      properties:
+        href:
+          type: string
+        rel:
+          type: string
+          example: "next"
+
+    I18nMessage:
+      type: object
+      required: [key, defaultValue]
+      properties:
+        key:
+          type: string
+        defaultValue:
+          type: string
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: "Error code. The prefix identifies the service that produced the error; VAR for the variable store."
+          example: "VAR-1001"
+        message:
+          $ref: '#/components/schemas/I18nMessage'
+        description:
+          $ref: '#/components/schemas/I18nMessage'
