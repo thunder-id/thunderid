@@ -118,7 +118,9 @@ describe('ConfigureMcpConnection', () => {
     await user.type(input, 'http://example.com/cb');
     await user.tab();
 
-    expect(screen.getByText('Enter a valid loopback (http://127.0.0.1) or HTTPS URI.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Enter a valid HTTPS URI or an HTTP URI using localhost, 127.0.0.1, or [::1].'),
+    ).toBeInTheDocument();
   });
 
   it('should clear the inline error once the value becomes valid', async () => {
@@ -128,12 +130,16 @@ describe('ConfigureMcpConnection', () => {
     const input = screen.getByPlaceholderText('http://localhost:8080/callback');
     await user.type(input, 'http://example.com/cb');
     await user.tab();
-    expect(screen.getByText('Enter a valid loopback (http://127.0.0.1) or HTTPS URI.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Enter a valid HTTPS URI or an HTTP URI using localhost, 127.0.0.1, or [::1].'),
+    ).toBeInTheDocument();
 
     await user.clear(input);
     await user.type(input, 'https://agent.example.com/cb');
 
-    expect(screen.queryByText('Enter a valid loopback (http://127.0.0.1) or HTTPS URI.')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Enter a valid HTTPS URI or an HTTP URI using localhost, 127.0.0.1, or [::1].'),
+    ).not.toBeInTheDocument();
   });
 
   describe('MCP Inspector guidance', () => {

@@ -1,6 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {isValidRedirectUriTransport} from './isValidRedirectUriFormat';
+
 /**
  * Result of validating an MCP client redirect URI.
  *
@@ -17,12 +19,6 @@ export interface McpRedirectUriValidationResult {
    */
   errorKey?: string;
 }
-
-/**
- * Loopback hostnames accepted for the `http:` scheme. `[::1]` is how the WHATWG `URL` parser
- * reports the IPv6 loopback hostname (brackets included).
- */
-const LOOPBACK_HOSTNAMES = ['localhost', '127.0.0.1', '[::1]'];
 
 /**
  * Validates a redirect URI against the MCP client redirect URI rule: the URI must be a loopback
@@ -56,7 +52,7 @@ export default function validateMcpRedirectUri(uri: string): McpRedirectUriValid
 
   try {
     const parsedUri = new URL(trimmedUri);
-    const isLoopbackHttp = parsedUri.protocol === 'http:' && LOOPBACK_HOSTNAMES.includes(parsedUri.hostname);
+    const isLoopbackHttp = parsedUri.protocol === 'http:' && isValidRedirectUriTransport(trimmedUri);
     const isHttps = parsedUri.protocol === 'https:';
 
     if (isLoopbackHttp || isHttps) {

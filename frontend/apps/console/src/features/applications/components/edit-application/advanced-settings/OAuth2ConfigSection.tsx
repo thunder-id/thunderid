@@ -29,7 +29,7 @@ import {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {ApplicationTemplate} from '../../../models/application-templates';
 import {getGrantTypeLabel} from '../../../utils/getGrantTypeLabel';
-import isValidRedirectUriFormat from '../../../utils/isValidRedirectUriFormat';
+import isValidRedirectUriFormat, {isValidRedirectUriTransport} from '../../../utils/isValidRedirectUriFormat';
 import {
   applyGrantTypesChange,
   applyPublicClientChange,
@@ -139,7 +139,7 @@ export default function OAuth2ConfigSection({
       setUriErrors((prev) => ({...prev, [index]: t('applications:edit.general.redirectUris.error.empty')}));
       return false;
     }
-    if (!isValidRedirectUriFormat(uri)) {
+    if (!isValidRedirectUriFormat(uri) || !isValidRedirectUriTransport(uri)) {
       setUriErrors((prev) => ({...prev, [index]: t('applications:edit.general.redirectUris.error.invalid')}));
       return false;
     }
