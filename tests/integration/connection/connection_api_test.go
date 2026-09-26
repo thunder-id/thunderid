@@ -156,9 +156,37 @@ type vonageConnectionRequest struct {
 }
 
 type smsGatewayConnectionRequest struct {
-	Name       string `json:"name"`
-	URL        string `json:"url"`
-	HTTPMethod string `json:"httpMethod,omitempty"`
+	Name        string `json:"name"`
+	URL         string `json:"url"`
+	HTTPMethod  string `json:"httpMethod,omitempty"`
+	HTTPHeaders string `json:"httpHeaders,omitempty"`
+}
+
+type smtpConnectionRequest struct {
+	Name           string                  `json:"name"`
+	Host           string                  `json:"host"`
+	Port           int                     `json:"port"`
+	FromAddress    string                  `json:"fromAddress"`
+	FromName       string                  `json:"fromName,omitempty"`
+	TLS            string                  `json:"tls,omitempty"`
+	Authentication *outboundAuthentication `json:"authentication,omitempty"`
+}
+
+// outboundAuthentication is the discriminated authentication block shared by every connection
+// vendor that dials out with credentials.
+type outboundAuthentication struct {
+	Type       string            `json:"type"`
+	Properties map[string]string `json:"properties,omitempty"`
+}
+
+// basicAuth builds the authentication block for the basic method. An empty password omits the
+// field, which is how an update asks to keep the stored secret.
+func basicAuth(username, password string) *outboundAuthentication {
+	properties := map[string]string{"username": username}
+	if password != "" {
+		properties["password"] = password
+	}
+	return &outboundAuthentication{Type: "basic", Properties: properties}
 }
 
 // connectionResponse is a superset response shape covering all vendors' fields, used to
@@ -175,6 +203,14 @@ type connectionResponse struct {
 	APISecret    string `json:"apiSecret,omitempty"`
 	SenderID     string `json:"senderId,omitempty"`
 	URL          string `json:"url,omitempty"`
+
+	Host        string `json:"host,omitempty"`
+	Port        int    `json:"port,omitempty"`
+	FromAddress string `json:"fromAddress,omitempty"`
+	FromName    string `json:"fromName,omitempty"`
+	TLS         string `json:"tls,omitempty"`
+
+	Authentication *outboundAuthentication `json:"authentication,omitempty"`
 
 	Scopes                 []string                          `json:"scopes,omitempty"`
 	AttributeConfiguration *testutils.AttributeConfiguration `json:"attributeConfiguration,omitempty"`
@@ -412,6 +448,151 @@ func (s *ConnectionAPITestSuite) TestSMSGatewayCRUDRoundTrip() {
 	s.Equal("https://sms.example.com/send", fetched.URL)
 }
 
+func (s *ConnectionAPITestSuite) TestSMTPCRUDRoundTripWithSecretMasking() {
+	created := s.createConnection("email-smtp", smtpConnectionRequest{
+		Name: "Test SMTP", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com", FromName: "Acme Support", TLS: "starttls",
+		Authentication: basicAuth("mailer", "s3cret"),
+	})
+	defer s.deleteConnection("email-smtp", created.ID)
+
+	s.Equal("email-smtp", created.Type)
+	// Port is an integer in the contract, not a string.
+	s.Equal(587, created.Port)
+	s.Require().NotNil(created.Authentication)
+	s.Equal("basic", created.Authentication.Type)
+	s.Equal("mailer", created.Authentication.Properties["username"])
+	s.Equal(maskedSecretValue, created.Authentication.Properties["password"])
+
+	res, err := doRequest(http.MethodGet, "/connections/email-smtp/"+created.ID, nil)
+	s.Require().NoError(err)
+	s.Equal(http.StatusOK, res.status)
+	var fetched connectionResponse
+	s.Require().NoError(res.decode(&fetched))
+	s.Equal("smtp.example.com", fetched.Host)
+	s.Equal(587, fetched.Port)
+	s.Equal("noreply@example.com", fetched.FromAddress)
+	s.Equal("Acme Support", fetched.FromName)
+	s.Require().NotNil(fetched.Authentication)
+	s.Equal(maskedSecretValue, fetched.Authentication.Properties["password"])
+
+	// Omitting the password on update keeps the stored one while the host and port are unchanged.
+	res, err = doRequest(http.MethodPut, "/connections/email-smtp/"+created.ID, smtpConnectionRequest{
+		Name: "Test SMTP", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com", FromName: "Acme Mailer", TLS: "implicit",
+		Authentication: basicAuth("mailer", ""),
+	})
+	s.Require().NoError(err)
+	s.Equal(http.StatusOK, res.status)
+	var updated connectionResponse
+	s.Require().NoError(res.decode(&updated))
+	s.Equal("smtp.example.com", updated.Host)
+	s.Equal(587, updated.Port)
+	s.Equal("Acme Mailer", updated.FromName)
+	s.Equal("implicit", updated.TLS)
+	s.Require().NotNil(updated.Authentication)
+	s.Equal(maskedSecretValue, updated.Authentication.Properties["password"])
+}
+
+// Switching the method off must discard the stored credential, so switching back requires the
+// administrator to re-enter it rather than silently reusing a password they never confirmed.
+func (s *ConnectionAPITestSuite) TestSMTPSwitchingAuthenticationOffDiscardsTheStoredSecret() {
+	created := s.createConnection("email-smtp", smtpConnectionRequest{
+		Name: "Test SMTP Switch", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com", TLS: "starttls",
+		Authentication: basicAuth("mailer", "s3cret"),
+	})
+	defer s.deleteConnection("email-smtp", created.ID)
+
+	res, err := doRequest(http.MethodPut, "/connections/email-smtp/"+created.ID, smtpConnectionRequest{
+		Name: "Test SMTP Switch", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com", TLS: "starttls",
+		Authentication: &outboundAuthentication{Type: "none"},
+	})
+	s.Require().NoError(err)
+	s.Equal(http.StatusOK, res.status)
+
+	// Switching back without a password must now be rejected: nothing is stored to fall back on.
+	res, err = doRequest(http.MethodPut, "/connections/email-smtp/"+created.ID, smtpConnectionRequest{
+		Name: "Test SMTP Switch", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com", TLS: "starttls",
+		Authentication: basicAuth("mailer", ""),
+	})
+	s.Require().NoError(err)
+	s.Equal(http.StatusBadRequest, res.status)
+}
+
+// An omitted tls value must resolve to the secure default rather than to plaintext.
+func (s *ConnectionAPITestSuite) TestSMTPDefaultsToSTARTTLS() {
+	created := s.createConnection("email-smtp", smtpConnectionRequest{
+		Name: "Test SMTP Defaults", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com",
+	})
+	defer s.deleteConnection("email-smtp", created.ID)
+
+	s.Equal("starttls", created.TLS)
+	// An omitted block reads back as authenticating with nothing, so a console always has a
+	// concrete selection to bind to.
+	s.Require().NotNil(created.Authentication)
+	s.Equal("none", created.Authentication.Type)
+}
+
+// A sender that cannot deliver must be rejected when it is configured, not at first send.
+func (s *ConnectionAPITestSuite) TestSMTPInvalidConfigurationReturnsBadRequest() {
+	cases := []struct {
+		name string
+		body smtpConnectionRequest
+	}{
+		{"missing host", smtpConnectionRequest{
+			Name: "Bad SMTP", Port: 587, FromAddress: "noreply@example.com"}},
+		{"missing port", smtpConnectionRequest{
+			Name: "Bad SMTP", Host: "smtp.example.com", FromAddress: "noreply@example.com"}},
+		{"port out of range", smtpConnectionRequest{
+			Name: "Bad SMTP", Host: "smtp.example.com", Port: 70000,
+			FromAddress: "noreply@example.com"}},
+		{"invalid from address", smtpConnectionRequest{
+			Name: "Bad SMTP", Host: "smtp.example.com", Port: 587, FromAddress: "not-an-address"}},
+		{"invalid tls mode", smtpConnectionRequest{
+			Name: "Bad SMTP", Host: "smtp.example.com", Port: 587,
+			FromAddress: "noreply@example.com", TLS: "true"}},
+		{"auth without tls", smtpConnectionRequest{
+			Name: "Bad SMTP", Host: "smtp.example.com", Port: 587,
+			FromAddress: "noreply@example.com", TLS: "none",
+			Authentication: basicAuth("u", "p")}},
+		{"auth without credentials", smtpConnectionRequest{
+			Name: "Bad SMTP", Host: "smtp.example.com", Port: 587,
+			FromAddress: "noreply@example.com", TLS: "starttls",
+			Authentication: &outboundAuthentication{Type: "basic"}}},
+		{"auth without password", smtpConnectionRequest{
+			Name: "Bad SMTP", Host: "smtp.example.com", Port: 587,
+			FromAddress: "noreply@example.com", TLS: "starttls",
+			Authentication: basicAuth("u", "")}},
+		{"unsupported auth type", smtpConnectionRequest{
+			Name: "Bad SMTP", Host: "smtp.example.com", Port: 587,
+			FromAddress: "noreply@example.com", TLS: "starttls",
+			Authentication: &outboundAuthentication{Type: "bearer"}}},
+	}
+
+	for _, tc := range cases {
+		res, err := doRequest(http.MethodPost, "/connections/email-smtp", tc.body)
+		s.Require().NoError(err, tc.name)
+		s.Equal(http.StatusBadRequest, res.status, tc.name)
+	}
+}
+
+// An email endpoint must not reach a message sender, even by ID.
+func (s *ConnectionAPITestSuite) TestSMTPCannotReadMessageSender() {
+	sender := s.createConnection("twilio", twilioConnectionRequest{
+		Name: "SMTP Isolation Sender", AccountSID: "AC00000000000000000000000000000009",
+		AuthToken: "tok", SenderID: "+15005550009",
+	})
+	defer s.deleteConnection("twilio", sender.ID)
+
+	res, err := doRequest(http.MethodGet, "/connections/email-smtp/"+sender.ID, nil)
+	s.Require().NoError(err)
+	s.Equal(http.StatusNotFound, res.status)
+}
+
 // --- Cross-cutting behaviors ---
 
 func (s *ConnectionAPITestSuite) TestCrossVendorIsolationReturnsNotFound() {
@@ -522,6 +703,20 @@ func (s *ConnectionAPITestSuite) TestListConnectionsFiltersByCategory() {
 	s.Equal(http.StatusOK, res.status)
 	s.Require().NoError(res.decode(&list))
 	s.True(containsID(list.Connections, sender.ID))
+	s.False(containsID(list.Connections, idp.ID))
+
+	emailSender := s.createConnection("email-smtp", smtpConnectionRequest{
+		Name: "List Category Email Sender", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com",
+	})
+	defer s.deleteConnection("email-smtp", emailSender.ID)
+
+	res, err = doRequest(http.MethodGet, "/connections?category=email-provider&limit=100", nil)
+	s.Require().NoError(err)
+	s.Equal(http.StatusOK, res.status)
+	s.Require().NoError(res.decode(&list))
+	s.True(containsID(list.Connections, emailSender.ID))
+	s.False(containsID(list.Connections, sender.ID))
 	s.False(containsID(list.Connections, idp.ID))
 }
 
@@ -1550,4 +1745,77 @@ func (s *ConnectionAPITestSuite) TestAttributeConfigurationWithExistingAuthoriza
 		s.oauthRequestWithConfig("OAuth Authz Mapping Accepted", config))
 	s.Require().NoError(err)
 	s.Require().Equal(http.StatusOK, updateRes.status, string(updateRes.body))
+}
+
+// An Authorization header is how a gateway carries a credential today.
+func (s *ConnectionAPITestSuite) TestSMSGatewayAuthorizationHeaderAllowed() {
+	created := s.createConnection("sms-gateway", smsGatewayConnectionRequest{
+		Name: "Gateway Header Auth", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+		HTTPHeaders: "Authorization: Bearer token",
+	})
+	s.deleteConnection("sms-gateway", created.ID)
+}
+
+// connectionMetaResponse is the payload of GET /connections/meta.
+type connectionMetaResponse struct {
+	Vendor         string `json:"vendor"`
+	Authentication struct {
+		Methods []struct {
+			Type        string `json:"type"`
+			DisplayName string `json:"displayName"`
+			Properties  []struct {
+				Name       string `json:"name"`
+				Type       string `json:"type"`
+				Required   bool   `json:"required"`
+				Credential bool   `json:"credential"`
+			} `json:"properties"`
+		} `json:"methods"`
+	} `json:"authentication"`
+}
+
+// The console renders the authentication section from this endpoint rather than from a
+// hardcoded list, so a method added server-side reaches it without a console release.
+func (s *ConnectionAPITestSuite) TestConnectionMetaDescribesAuthenticationMethods() {
+	for _, vendor := range []string{"email-smtp"} {
+		res, err := doRequest(http.MethodGet, "/connections/meta?vendor="+vendor, nil)
+		s.Require().NoError(err, vendor)
+		s.Require().Equal(http.StatusOK, res.status, vendor)
+
+		var meta connectionMetaResponse
+		s.Require().NoError(res.decode(&meta), vendor)
+		s.Equal(vendor, meta.Vendor)
+		s.Require().Len(meta.Authentication.Methods, 2, vendor)
+		s.Equal("none", meta.Authentication.Methods[0].Type, vendor)
+
+		basic := meta.Authentication.Methods[1]
+		s.Equal("basic", basic.Type, vendor)
+		s.Require().Len(basic.Properties, 2, vendor)
+		// Field order is part of the contract: a credential form shows the username first.
+		s.Equal("username", basic.Properties[0].Name, vendor)
+		s.Equal("password", basic.Properties[1].Name, vendor)
+		s.False(basic.Properties[0].Credential, vendor)
+		s.True(basic.Properties[1].Credential, vendor)
+		s.NotEmpty(basic.DisplayName, vendor)
+	}
+}
+
+// A vendor whose credentials are a fixed contract offers no choice, so it advertises none.
+func (s *ConnectionAPITestSuite) TestConnectionMetaVendorsWithoutConfigurableAuthentication() {
+	for _, vendor := range []string{"twilio", "vonage", "google", "sms-gateway"} {
+		res, err := doRequest(http.MethodGet, "/connections/meta?vendor="+vendor, nil)
+		s.Require().NoError(err, vendor)
+		s.Require().Equal(http.StatusOK, res.status, vendor)
+
+		var meta connectionMetaResponse
+		s.Require().NoError(res.decode(&meta), vendor)
+		s.Empty(meta.Authentication.Methods, vendor)
+	}
+}
+
+func (s *ConnectionAPITestSuite) TestConnectionMetaRejectsUnknownVendor() {
+	for _, query := range []string{"?vendor=nope", ""} {
+		res, err := doRequest(http.MethodGet, "/connections/meta"+query, nil)
+		s.Require().NoError(err, query)
+		s.Equal(http.StatusBadRequest, res.status, query)
+	}
 }

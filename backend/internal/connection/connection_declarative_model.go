@@ -56,4 +56,23 @@ type connectionExportModel struct {
 	HTTPMethod  string `yaml:"httpMethod,omitempty"  json:"httpMethod,omitempty"`
 	HTTPHeaders string `yaml:"httpHeaders,omitempty" json:"httpHeaders,omitempty"`
 	ContentType string `yaml:"contentType,omitempty" json:"contentType,omitempty"`
+
+	// Email-backed vendor fields (smtp).
+	Host        string `yaml:"host,omitempty"        json:"host,omitempty"`
+	Port        int    `yaml:"port,omitempty"        json:"port,omitempty"`
+	FromAddress string `yaml:"fromAddress,omitempty" json:"fromAddress,omitempty"`
+	FromName    string `yaml:"fromName,omitempty"    json:"fromName,omitempty"`
+	TLS         string `yaml:"tls,omitempty"         json:"tls,omitempty"`
+
+	// Outbound authentication, shared by every vendor that dials out with credentials.
+	//nolint:lll // long struct tag: both yaml and json keys needed for declarative load/export and import
+	Authentication *connectionAuthenticationExportModel `yaml:"authentication,omitempty" json:"authentication,omitempty"`
+}
+
+// connectionAuthenticationExportModel is the declarative form of a connection's outbound
+// authentication: the same discriminator-plus-properties shape the REST API carries, so a
+// declarative document and an API payload read the same.
+type connectionAuthenticationExportModel struct {
+	Type       string            `yaml:"type"                 json:"type"`
+	Properties map[string]string `yaml:"properties,omitempty" json:"properties,omitempty"`
 }

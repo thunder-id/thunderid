@@ -511,27 +511,6 @@ configuration:
     # Leave empty to inherit the global declarativeResources.enabled setting.
     store: ""
 
-  # SMTP server used to deliver emails (email OTP, magic link, verification).
-  # Leave host empty to omit the section, in which case no email can be sent.
-  # port and fromAddress are required once host is set. enableStartTls and
-  # enableAuthentication both default to true when omitted.
-  email:
-    smtp:
-      host: ""
-      port: 587
-      fromAddress: ""
-      username: ""
-      enableStartTls: true
-      enableAuthentication: true
-      # Inline SMTP password. Stored in the "<release>-db-credentials" Secret and
-      # injected as the SMTP_PASSWORD environment variable.
-      password: ""
-      # Source the SMTP password from an existing Kubernetes Secret. When both
-      # name and key are set, it takes precedence over the inline password above.
-      passwordRef:
-        name: ""
-        key: ""
-
   # Logging configuration. Logs go to the console (stdout) so a log collector can pick
   # them up from the pod, which is the expected setup on Kubernetes. Everything below
   # console output is optional; omitted keys keep the server defaults.

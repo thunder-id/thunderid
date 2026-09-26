@@ -152,6 +152,7 @@ type magicLinkAuthFlowTestSuite struct {
 	shortTTLAppID    string
 	reusedTokenAppID string
 	userSchemaID     string
+	senderID         string
 	originalPatchSet bool
 }
 
@@ -166,17 +167,6 @@ func (ts *magicLinkAuthFlowTestSuite) SetupSuite() {
 	ts.Require().NoError(ts.mockSMTP.Start(), "Failed to start mock SMTP server")
 
 	patch := map[string]interface{}{
-		"email": map[string]interface{}{
-			"smtp": map[string]interface{}{
-				"host":                  "localhost",
-				"port":                  ts.mockSMTP.GetPort(),
-				"username":              "",
-				"password":              "",
-				"from_address":          "no-reply@example.com",
-				"enable_start_tls":      false,
-				"enable_authentication": false,
-			},
-		},
 		"jwt": map[string]interface{}{
 			"leeway": 1,
 		},
@@ -188,11 +178,20 @@ func (ts *magicLinkAuthFlowTestSuite) SetupSuite() {
 	ts.originalPatchSet = true
 
 	if err := testutils.RestartServer(); err != nil {
-		ts.T().Fatalf("Failed to restart server with SMTP configuration: %v", err)
+		ts.T().Fatalf("Failed to restart server with the patched JWT leeway: %v", err)
 	}
 	if err := testutils.ObtainAdminAccessToken(); err != nil {
 		ts.T().Fatalf("Failed to re-obtain admin token after restart: %v", err)
 	}
+
+	// Email providers are configured only through the connections API, so point one at the mock
+	// SMTP server and name it on the node that sends the magic link. Every flow below is derived
+	// from magicLinkAuthFlow, so setting it here covers all of them.
+	senderID, err := testutils.CreateSMTPEmailProvider("Magic Link Auth Test Provider",
+		"localhost", ts.mockSMTP.GetPort(), "no-reply@example.com")
+	ts.Require().NoError(err, "Failed to create the SMTP email provider")
+	ts.senderID = senderID
+	ts.setEmailSenderOnStaticFlow(&magicLinkAuthFlow, "email_magic_link", senderID)
 
 	ouID, err := testutils.CreateOrganizationUnit(magicLinkTestOU)
 	ts.Require().NoError(err, "Failed to create test organization unit")
@@ -335,6 +334,11 @@ func (ts *magicLinkAuthFlowTestSuite) TearDownSuite() {
 	if ts.ouID != "" {
 		_ = testutils.DeleteOrganizationUnit(ts.ouID)
 	}
+	if ts.senderID != "" {
+		if err := testutils.DeleteNotificationSender(ts.senderID); err != nil {
+			ts.T().Logf("Failed to delete email provider during teardown: %v", err)
+		}
+	}
 	if ts.mockSMTP != nil {
 		_ = ts.mockSMTP.Stop()
 	}
@@ -352,6 +356,28 @@ func (ts *magicLinkAuthFlowTestSuite) TearDownSuite() {
 }
 
 // modifyFlowNode safely finds a node by ID in a Flow and applies a modifier function to it.
+// setEmailSenderOnStaticFlow sets the senderId property on a node of a flow declared as a literal,
+// whose Nodes are still []map[string]interface{}. modifyFlowNode handles the flows rebuilt from
+// JSON, where the same nodes have decoded to []interface{}.
+func (ts *magicLinkAuthFlowTestSuite) setEmailSenderOnStaticFlow(flow *testutils.Flow, nodeID, senderID string) {
+	nodes, ok := flow.Nodes.([]map[string]interface{})
+	ts.Require().True(ok, "flow.Nodes is not a slice of maps")
+
+	for _, node := range nodes {
+		if node["id"] != nodeID {
+			continue
+		}
+		props, ok := node["properties"].(map[string]interface{})
+		if !ok {
+			props = make(map[string]interface{})
+			node["properties"] = props
+		}
+		props["senderId"] = senderID
+		return
+	}
+	ts.Require().FailNow(fmt.Sprintf("Node with ID %s not found in flow", nodeID))
+}
+
 func (ts *magicLinkAuthFlowTestSuite) modifyFlowNode(flow *testutils.Flow, nodeID string, modifier func(node map[string]interface{})) {
 	nodesArray, ok := flow.Nodes.([]interface{})
 	ts.Require().True(ok, "flow.Nodes is not a slice of interfaces")

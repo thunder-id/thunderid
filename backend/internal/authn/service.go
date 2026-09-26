@@ -224,8 +224,8 @@ func (as *authenticationService) SendOTP(ctx context.Context, senderID string, c
 		return "", renderErr
 	}
 
-	notifData := notifcommon.NotificationData{Recipient: recipient, Body: rendered.Body}
-	if sendErr := as.notifSenderSvc.Send(ctx, channel, senderID, notifData); sendErr != nil {
+	notifData := notifcommon.MessageData{Recipient: recipient, Body: rendered.Body}
+	if sendErr := as.notifSenderSvc.SendMessage(ctx, channel, senderID, notifData); sendErr != nil {
 		if sendErr.Type == tidcommon.ServerErrorType {
 			logger.Error(ctx, "Failed to send OTP notification", log.String("error", sendErr.Code))
 			return "", &tidcommon.InternalServerError

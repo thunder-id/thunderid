@@ -72,7 +72,7 @@ func (s *VonageTestSuite) TestCreateMasksSecret() {
 	})
 	req := httptest.NewRequest(http.MethodPost, "/connections/vonage", bytes.NewReader(body))
 	rr := httptest.NewRecorder()
-	createSMSHandler(s.handler, vonageToSenderDTO, vonageFromSenderDTO)(rr, req)
+	createSenderHandler(s.handler, vonageToSenderDTO, vonageFromSenderDTO)(rr, req)
 
 	s.Equal(http.StatusCreated, rr.Code)
 	var resp vonageConnectionResponse
@@ -101,7 +101,8 @@ func (s *VonageTestSuite) TestGetRoundTrip() {
 	req := httptest.NewRequest(http.MethodGet, "/connections/vonage/vo-1", nil)
 	req.SetPathValue("id", "vo-1")
 	rr := httptest.NewRecorder()
-	getSMSHandler(s.handler, ncommon.NotificationProviderTypeVonage, vonageFromSenderDTO)(rr, req)
+	getSenderHandler(s.handler, ncommon.NotificationSenderTypeMessage,
+		ncommon.NotificationProviderTypeVonage, vonageFromSenderDTO)(rr, req)
 
 	s.Equal(http.StatusOK, rr.Code)
 	var resp vonageConnectionResponse

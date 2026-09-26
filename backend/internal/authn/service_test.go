@@ -488,7 +488,7 @@ func (suite *AuthenticationServiceTestSuite) TestSendOTPSuccess() {
 	suite.mockTemplateService.On("Render",
 		mock.Anything, template.ScenarioOTP, template.TemplateTypeSMS, mock.Anything).
 		Return(&template.RenderedTemplate{Body: "Your OTP is 123456"}, nil)
-	suite.mockNotifSenderSvc.On("Send",
+	suite.mockNotifSenderSvc.On("SendMessage",
 		mock.Anything, notifcommon.ChannelTypeSMS, senderID, mock.Anything).
 		Return(nil)
 
@@ -536,7 +536,7 @@ func (suite *AuthenticationServiceTestSuite) TestSendOTPSendError() {
 	suite.mockTemplateService.On("Render",
 		mock.Anything, template.ScenarioOTP, template.TemplateTypeSMS, mock.Anything).
 		Return(&template.RenderedTemplate{Body: "Your OTP is 123456"}, nil)
-	suite.mockNotifSenderSvc.On("Send",
+	suite.mockNotifSenderSvc.On("SendMessage",
 		mock.Anything, notifcommon.ChannelTypeSMS, senderID, mock.Anything).
 		Return(svcErr)
 

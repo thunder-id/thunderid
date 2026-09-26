@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -99,6 +100,134 @@ func (s *MappingTestSuite) TestMergeStoredSecretsOnlyBackfillsSecrets() {
 
 	merged := mergeStoredSecrets(nil, existing)
 	s.Empty(merged)
+}
+
+// authBag builds a property bag carrying an authentication method and, optionally, its stored
+// password.
+func (s *MappingTestSuite) authBag(authType outboundauth.Type, password string) []cmodels.Property {
+	props := []cmodels.Property{
+		mustProperty(s.T(), outboundauth.PropertyKeyType, string(authType), false),
+	}
+	if password != "" {
+		props = append(props,
+			mustProperty(s.T(), outboundauth.PropertyKey(outboundauth.FieldBasicPassword), password, true))
+	}
+	return props
+}
+
+// secretValue returns the value of the authentication password in a merged bag, and whether it
+// is present at all.
+func (s *MappingTestSuite) secretValue(props []cmodels.Property) (string, bool) {
+	for i := range props {
+		if props[i].GetName() != outboundauth.PropertyKey(outboundauth.FieldBasicPassword) {
+			continue
+		}
+		value, err := props[i].GetValue()
+		s.Require().NoError(err)
+		return value, true
+	}
+	return "", false
+}
+
+// Omitting the password while keeping the same method is how an update says "keep the stored
+// credential", so it must still be carried over.
+func (s *MappingTestSuite) TestMergeStoredSecretsKeepsAuthSecretWhenTypeUnchanged() {
+	incoming := s.authBag(outboundauth.TypeBasic, "")
+	existing := s.authBag(outboundauth.TypeBasic, "stored")
+
+	value, found := s.secretValue(mergeStoredSecrets(incoming, existing))
+	s.True(found)
+	s.Equal("stored", value)
+}
+
+// Turning authentication off must not leave the credential behind, or a later switch back to
+// basic would silently reuse a password the administrator never re-entered.
+func (s *MappingTestSuite) TestMergeStoredSecretsDropsAuthSecretWhenSwitchedToNone() {
+	incoming := s.authBag(outboundauth.TypeNone, "")
+	existing := s.authBag(outboundauth.TypeBasic, "stored")
+
+	_, found := s.secretValue(mergeStoredSecrets(incoming, existing))
+	s.False(found, "the previous method's credential must not survive being switched off")
+}
+
+// The same applies to switching between two authenticating methods.
+func (s *MappingTestSuite) TestMergeStoredSecretsDropsAuthSecretWhenTypeChanges() {
+	incoming := []cmodels.Property{
+		mustProperty(s.T(), outboundauth.PropertyKeyType, "bearer", false),
+	}
+	existing := s.authBag(outboundauth.TypeBasic, "stored")
+
+	_, found := s.secretValue(mergeStoredSecrets(incoming, existing))
+	s.False(found)
+}
+
+// A changed transport key names a different credential target, so the stored credential is not
+// carried over to it.
+func (s *MappingTestSuite) TestMergeStoredSecretsDropsAuthSecretWhenTargetKeyChanges() {
+	incoming := append(s.authBag(outboundauth.TypeBasic, ""),
+		mustProperty(s.T(), "host", "smtp.attacker.example", false))
+	existing := append(s.authBag(outboundauth.TypeBasic, "stored"),
+		mustProperty(s.T(), "host", "smtp.example.com", false))
+
+	_, found := s.secretValue(mergeStoredSecrets(incoming, existing, "host"))
+	s.False(found)
+}
+
+// Adding a transport key the stored connection did not have is a change too.
+func (s *MappingTestSuite) TestMergeStoredSecretsDropsAuthSecretWhenTargetKeyAdded() {
+	incoming := append(s.authBag(outboundauth.TypeBasic, ""),
+		mustProperty(s.T(), "port", "2525", false))
+	existing := s.authBag(outboundauth.TypeBasic, "stored")
+
+	_, found := s.secretValue(mergeStoredSecrets(incoming, existing, "port"))
+	s.False(found)
+}
+
+// An unchanged transport key keeps the stored credential.
+func (s *MappingTestSuite) TestMergeStoredSecretsKeepsAuthSecretWhenTargetUnchanged() {
+	incoming := append(s.authBag(outboundauth.TypeBasic, ""),
+		mustProperty(s.T(), "host", "smtp.example.com", false),
+		mustProperty(s.T(), "from_address", "new@example.com", false))
+	existing := append(s.authBag(outboundauth.TypeBasic, "stored"),
+		mustProperty(s.T(), "host", "smtp.example.com", false),
+		mustProperty(s.T(), "from_address", "old@example.com", false))
+
+	value, found := s.secretValue(mergeStoredSecrets(incoming, existing, "host"))
+	s.True(found, "a property outside the credential target must not drop the credential")
+	s.Equal("stored", value)
+}
+
+// A changed non-secret authentication property, such as the username, presents the credential
+// as someone else, so it is not carried over either.
+func (s *MappingTestSuite) TestMergeStoredSecretsDropsAuthSecretWhenUsernameChanges() {
+	usernameKey := outboundauth.PropertyKey(outboundauth.FieldBasicUsername)
+	incoming := append(s.authBag(outboundauth.TypeBasic, ""),
+		mustProperty(s.T(), usernameKey, "other", false))
+	existing := append(s.authBag(outboundauth.TypeBasic, "stored"),
+		mustProperty(s.T(), usernameKey, "mailer", false))
+
+	_, found := s.secretValue(mergeStoredSecrets(incoming, existing))
+	s.False(found)
+}
+
+// A vendor's own secret is not an outbound-authentication property, so it keeps the original
+// carry-over behavior regardless of what the authentication block does.
+func (s *MappingTestSuite) TestMergeStoredSecretsStillCarriesVendorSecrets() {
+	incoming := s.authBag(outboundauth.TypeNone, "")
+	existing := append(s.authBag(outboundauth.TypeBasic, "stored"),
+		mustProperty(s.T(), "auth_token", "twilio-secret", true))
+
+	merged := mergeStoredSecrets(incoming, existing)
+
+	var carried string
+	for i := range merged {
+		if merged[i].GetName() == "auth_token" {
+			value, err := merged[i].GetValue()
+			s.Require().NoError(err)
+			carried = value
+		}
+	}
+	s.Equal("twilio-secret", carried)
 }
 
 func (s *MappingTestSuite) TestScopes() {

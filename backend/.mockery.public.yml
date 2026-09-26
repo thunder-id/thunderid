@@ -689,13 +689,6 @@ packages:
       pkgname: attributecachemock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/thunder-id/thunderid/internal/system/email:
-    config:
-      all: true
-      dir: tests/mocks/emailmock
-      structname: '{{.InterfaceName}}Mock'
-      pkgname: emailmock
-      filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/system/template:
     config:

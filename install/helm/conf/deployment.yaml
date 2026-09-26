@@ -327,29 +327,6 @@ openid4vci:
   store: {{ include "thunderid.validateStoreMode" (dict "value" .Values.configuration.openid4vci.store "field" "configuration.openid4vci.store") | quote }}
   {{- end }}
 
-{{- $email := default dict .Values.configuration.email }}
-{{- $smtp := default dict $email.smtp }}
-{{- if $smtp.host }}
-
-email:
-  smtp:
-    host: {{ $smtp.host | quote }}
-    port: {{ required "configuration.email.smtp.port is required when configuration.email.smtp.host is set." $smtp.port }}
-    from_address: {{ required "configuration.email.smtp.fromAddress is required when configuration.email.smtp.host is set." $smtp.fromAddress | quote }}
-    {{- if hasKey $smtp "enableStartTls" }}
-    enable_start_tls: {{ $smtp.enableStartTls }}
-    {{- end }}
-    {{- if hasKey $smtp "enableAuthentication" }}
-    enable_authentication: {{ $smtp.enableAuthentication }}
-    {{- end }}
-    {{- if $smtp.username }}
-    username: {{ $smtp.username | quote }}
-    {{- end }}
-    {{- if or $smtp.password (default dict $smtp.passwordRef).key }}
-    password: {{ "{{.SMTP_PASSWORD}}" | quote }}
-    {{- end }}
-{{- end }}
-
 {{- $log := default dict .Values.configuration.log }}
 {{- $logOutput := default dict $log.output }}
 {{- $logConsole := default dict $logOutput.console }}

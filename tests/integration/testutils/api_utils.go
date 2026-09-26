@@ -2456,6 +2456,68 @@ func CreateNotificationSender(sender NotificationSender) (string, error) {
 	return id, nil
 }
 
+// CreateSMTPEmailProvider creates an email provider via /connections/email-smtp pointed at the
+// given host and port, and returns its ID. Suites that deliver mail through the mock SMTP server
+// use it to obtain the sender ID an EmailExecutor node names in its senderId property: providers
+// are configured only through this API, so a flow has no deployment-wide default to fall back to.
+// The returned ID is deletable through DeleteNotificationSender.
+func CreateSMTPEmailProvider(name, host string, port int, fromAddress string) (string, error) {
+	body := map[string]interface{}{
+		"name":        name,
+		"description": "Email provider backed by the integration test mock SMTP server",
+		"host":        host,
+		"port":        port,
+		"fromAddress": fromAddress,
+		"tls":         "none",
+		"authentication": map[string]interface{}{
+			"type": "none",
+		},
+	}
+
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal SMTP connection body: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", TestServerURL+"/connections/email-smtp", bytes.NewReader(bodyJSON))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := GetHTTPClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var respBody map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &respBody); err != nil {
+		return "", fmt.Errorf("failed to parse response body: %w. Response: %s", err, string(bodyBytes))
+	}
+
+	id, ok := respBody["id"].(string)
+	if !ok {
+		return "", fmt.Errorf("response does not contain id or id is not a string. Response: %s", string(bodyBytes))
+	}
+
+	senderVendorRegistryMu.Lock()
+	senderVendorRegistry[id] = "email-smtp"
+	senderVendorRegistryMu.Unlock()
+
+	return id, nil
+}
+
 // DeleteNotificationSender deletes a notification sender (created via CreateNotificationSender)
 // by ID.
 func DeleteNotificationSender(senderID string) error {

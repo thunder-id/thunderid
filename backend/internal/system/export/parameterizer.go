@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -824,18 +825,24 @@ func (p *parameterizer) handleJSONRawMessage(v reflect.Value) (*yaml.Node, error
 	}, nil
 }
 
-// handleMapNode converts a map reflect.Value to a YAML mapping node.
+// handleMapNode converts a map reflect.Value to a YAML mapping node. Keys are emitted in sorted
+// order: Go randomizes map iteration, which would otherwise make a re-export of unchanged data
+// produce a different document and churn GitOps diffs.
 func (p *parameterizer) handleMapNode(
 	v reflect.Value, rules *resourceRules, currentPath string, resourceName string) (*yaml.Node, error) {
+	keys := v.MapKeys()
+	sort.Slice(keys, func(i, j int) bool {
+		return fmt.Sprintf("%v", keys[i].Interface()) < fmt.Sprintf("%v", keys[j].Interface())
+	})
+
 	node := &yaml.Node{Kind: yaml.MappingNode}
-	iter := v.MapRange()
-	for iter.Next() {
+	for _, key := range keys {
 		keyNode := &yaml.Node{
 			Kind:  yaml.ScalarNode,
 			Tag:   "!!str",
-			Value: fmt.Sprintf("%v", iter.Key().Interface()),
+			Value: fmt.Sprintf("%v", key.Interface()),
 		}
-		valueNode, err := p.fieldToNode(iter.Value(), rules, currentPath, resourceName)
+		valueNode, err := p.fieldToNode(v.MapIndex(key), rules, currentPath, resourceName)
 		if err != nil {
 			return nil, err
 		}

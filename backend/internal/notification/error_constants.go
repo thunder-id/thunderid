@@ -22,6 +22,22 @@ var (
 			DefaultValue: "The requested notification sender could not be found",
 		},
 	}
+	// ErrorEmailSenderNotSpecified is the error returned when an email is dispatched without
+	// naming a provider. Email providers are managed through /connections/email-smtp and selected per
+	// flow node; there is no deployment-wide default.
+	ErrorEmailSenderNotSpecified = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "MNS-1017",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationservice.email_sender_not_specified",
+			DefaultValue: "Email provider not specified",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.notificationservice.email_sender_not_specified_description",
+			DefaultValue: "An email provider must be selected. Create one through " +
+				"/connections/email-smtp and set it on the flow node.",
+		},
+	}
 	// ErrorInvalidSenderID is the error returned when an invalid sender ID is provided.
 	ErrorInvalidSenderID = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

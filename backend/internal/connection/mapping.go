@@ -5,7 +5,9 @@ package connection
 
 import (
 	"context"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
@@ -13,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -59,20 +62,71 @@ func propertyValues(props []cmodels.Property) (map[string]string, error) {
 // optional on update, so any secret present in the stored connection but absent from the
 // incoming request is carried over unchanged. A secret that IS present in the request is
 // used verbatim (presence-based — the value is not inspected).
-func mergeStoredSecrets(incoming, existing []cmodels.Property) []cmodels.Property {
+//
+// An outbound-authentication secret is carried over only while the credential target is
+// unchanged: the authentication type, every non-secret authentication property (such as the
+// username), and every property named in credentialTargetKeys (such as the server host and
+// port). Changing the method, or turning authentication off, must not leave the previous
+// method's credential behind for a later switch back to silently reuse. Changing where or as
+// whom the credential is presented must not either, or a caller allowed to edit a connection
+// but not to read its secrets could redirect the stored credential to a server they control.
+func mergeStoredSecrets(incoming, existing []cmodels.Property,
+	credentialTargetKeys ...string) []cmodels.Property {
 	incomingNames := make(map[string]bool, len(incoming))
 	for i := range incoming {
 		incomingNames[incoming[i].GetName()] = true
 	}
 
+	targetUnchanged := credentialTargetUnchanged(incoming, existing, credentialTargetKeys)
+
 	merged := make([]cmodels.Property, 0, len(incoming)+len(existing))
 	merged = append(merged, incoming...)
 	for i := range existing {
-		if existing[i].IsSecret() && !incomingNames[existing[i].GetName()] {
-			merged = append(merged, existing[i])
+		if !existing[i].IsSecret() || incomingNames[existing[i].GetName()] {
+			continue
 		}
+		if outboundauth.OwnsPropertyKey(existing[i].GetName()) && !targetUnchanged {
+			continue
+		}
+		merged = append(merged, existing[i])
 	}
 	return merged
+}
+
+// credentialTargetUnchanged reports whether two property bags agree on every property that
+// identifies the target of an outbound-authentication credential: the non-secret authentication
+// properties, including the type, and the given transport keys. An absent property compares
+// equal only to an absent property. A value that cannot be read is treated as a change, so the
+// stored credential is dropped rather than risked.
+func credentialTargetUnchanged(incoming, existing []cmodels.Property, credentialTargetKeys []string) bool {
+	incomingValues, ok := credentialTargetValues(incoming, credentialTargetKeys)
+	if !ok {
+		return false
+	}
+	existingValues, ok := credentialTargetValues(existing, credentialTargetKeys)
+	if !ok {
+		return false
+	}
+	return maps.Equal(incomingValues, existingValues)
+}
+
+// credentialTargetValues collects the values credentialTargetUnchanged compares. None of them is
+// secret, so they are readable without decryption.
+func credentialTargetValues(props []cmodels.Property, credentialTargetKeys []string) (map[string]string, bool) {
+	values := make(map[string]string, len(credentialTargetKeys)+2)
+	for i := range props {
+		name := props[i].GetName()
+		if props[i].IsSecret() ||
+			(!outboundauth.OwnsPropertyKey(name) && !slices.Contains(credentialTargetKeys, name)) {
+			continue
+		}
+		value, err := props[i].GetValue()
+		if err != nil {
+			return nil, false
+		}
+		values[name] = value
+	}
+	return values, true
 }
 
 // connectionTypeName returns the lowercase connection-type identifier (e.g. "google") that

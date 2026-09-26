@@ -9,6 +9,7 @@ package connection
 
 import (
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -35,17 +36,48 @@ var idpBackedVendors = []idpBackedVendor{
 // surfaced in the /connections/{vendor} path and the flat-list type.
 const smsGatewayVendorName = "sms-gateway"
 
-// smsBackedVendor maps a connection path segment to an underlying message provider.
+// smsBackedVendor maps a connection path segment to an underlying message provider. authTypes
+// is the set of outbound authentication methods the vendor accepts, served by the metadata
+// endpoint; an empty set means the vendor has no configurable choice to offer.
 type smsBackedVendor struct {
-	name     string
-	provider ncommon.NotificationProviderType
+	name      string
+	provider  ncommon.NotificationProviderType
+	authTypes []outboundauth.Type
 }
 
 // smsBackedVendors is the set of connection types backed by the notification-sender service.
+// None of them advertise authentication methods yet: Twilio and Vonage take a fixed vendor
+// credential contract, and the HTTP gateway carries its credentials in httpHeaders.
 var smsBackedVendors = []smsBackedVendor{
 	{name: "twilio", provider: ncommon.NotificationProviderTypeTwilio},
 	{name: "vonage", provider: ncommon.NotificationProviderTypeVonage},
 	{name: smsGatewayVendorName, provider: ncommon.NotificationProviderTypeCustom},
+}
+
+// emailSMTPVendorName is the connection vendor name for email delivered over SMTP. The channel
+// is part of the name because the protocol alone does not identify the contract: a carrier
+// email-to-SMS gateway would speak the same SMTP to a different channel. The stored email
+// provider stays NotificationProviderTypeSMTP; this name is presentation-only, surfaced in the
+// /connections/{vendor} path and the flat-list type.
+const emailSMTPVendorName = "email-smtp"
+
+// emailBackedVendor maps a connection path segment to an underlying email provider.
+// credentialTargetKeys names the transport properties that identify where an outbound
+// authentication credential is presented; changing any of them on update requires the
+// credential to be supplied again rather than carried over.
+type emailBackedVendor struct {
+	name                 string
+	provider             ncommon.NotificationProviderType
+	authTypes            []outboundauth.Type
+	credentialTargetKeys []string
+}
+
+// emailBackedVendors is the set of email connection types backed by the notification-sender
+// service.
+var emailBackedVendors = []emailBackedVendor{
+	{name: emailSMTPVendorName, provider: ncommon.NotificationProviderTypeSMTP,
+		authTypes:            ncommon.SMTPSupportedAuthTypes,
+		credentialTargetKeys: []string{ncommon.SMTPPropKeyHost, ncommon.SMTPPropKeyPort}},
 }
 
 // connectionCategory is the functional category of a connection instance, used as the
@@ -56,13 +88,14 @@ const (
 	categoryIdentityProvider connectionCategory = "identity-provider"
 	categorySMSProvider      connectionCategory = "sms-provider"
 	categoryAuthorizationPDP connectionCategory = "authorization-pdp"
+	categoryEmailProvider    connectionCategory = "email-provider"
 )
 
 // parseConnectionCategory validates the raw category query value. Empty means "no filter";
 // any other unrecognized value returns false.
 func parseConnectionCategory(raw string) (connectionCategory, bool) {
 	switch connectionCategory(raw) {
-	case "", categoryIdentityProvider, categorySMSProvider, categoryAuthorizationPDP:
+	case "", categoryIdentityProvider, categorySMSProvider, categoryAuthorizationPDP, categoryEmailProvider:
 		return connectionCategory(raw), true
 	default:
 		return "", false

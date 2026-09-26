@@ -6,7 +6,9 @@ package testutils
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
+	"mime/quotedprintable"
 	"net"
 	"net/url"
 	"regexp"
@@ -138,7 +140,7 @@ func (m *MockSMTPServer) handleConnection(conn net.Conn) {
 			// SMTP dot-stuffing: a lone "." ends the message
 			if line == "." {
 				inData = false
-				email.Body = bodyBuilder.String()
+				email.Body = decodeQuotedPrintableBody(bodyBuilder.String())
 				m.mutex.Lock()
 				m.emails = append(m.emails, email)
 				m.mutex.Unlock()
@@ -189,6 +191,20 @@ func extractSMTPAngle(s string) string {
 	s = strings.TrimPrefix(s, "<")
 	s = strings.TrimSuffix(s, ">")
 	return strings.TrimSpace(s)
+}
+
+// decodeQuotedPrintableBody undoes a quoted-printable transfer encoding, as a mail client would,
+// so the extractors see the body the template rendered. The headers are kept as captured.
+func decodeQuotedPrintableBody(raw string) string {
+	headers, body, found := strings.Cut(raw, "\n\n")
+	if !found || !strings.Contains(strings.ToLower(headers), "content-transfer-encoding: quoted-printable") {
+		return raw
+	}
+	decoded, err := io.ReadAll(quotedprintable.NewReader(strings.NewReader(body)))
+	if err != nil {
+		return raw
+	}
+	return headers + "\n\n" + string(decoded)
 }
 
 // otpCellPattern matches the OTP the email template renders inside its own table cell.

@@ -99,7 +99,7 @@ func (suite *VonageClientTestSuite) TestSendSMS_Success() {
 	vonageClient := client.(*VonageClient)
 	vonageClient.url = server.URL
 
-	data := common.NotificationData{
+	data := common.MessageData{
 		Recipient: "+15559876543",
 		Body:      "Test message",
 	}
@@ -126,7 +126,7 @@ func (suite *VonageClientTestSuite) TestSendSMS_PropagatesCorrelationID() {
 	vonageClient := client.(*VonageClient)
 	vonageClient.url = server.URL
 
-	data := common.NotificationData{
+	data := common.MessageData{
 		Recipient: "+15559876543",
 		Body:      "Test message",
 	}
@@ -157,7 +157,7 @@ func (suite *VonageClientTestSuite) TestSendSMS_Error() {
 	vonageClient := client.(*VonageClient)
 	vonageClient.url = server.URL
 
-	data := common.NotificationData{
+	data := common.MessageData{
 		Recipient: "+15559876543",
 		Body:      "Test message",
 	}
@@ -176,7 +176,7 @@ func (suite *VonageClientTestSuite) TestSendSMS_NetworkError() {
 	vonageClient := client.(*VonageClient)
 	vonageClient.url = "http://invalid-vonage-url.local:99999"
 
-	data := common.NotificationData{
+	data := common.MessageData{
 		Recipient: "+15559876543",
 		Body:      "Test message",
 	}

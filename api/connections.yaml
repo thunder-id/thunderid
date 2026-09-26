@@ -44,7 +44,7 @@ paths:
           description: Filter instances by functional category. Omit to return all instances.
           schema:
             type: string
-            enum: [identity-provider, sms-provider, authorization-pdp]
+            enum: [identity-provider, sms-provider, authorization-pdp, email-provider]
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
       responses:
@@ -162,6 +162,55 @@ paths:
       responses:
         "200": { $ref: '#/components/responses/ConnectionUsages' }
         "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/meta:
+    get:
+      tags: [Connections]
+      summary: Describe a connection vendor's configurable options
+      description: >-
+        Returns the server-driven description of what a connection vendor can be configured
+        with, so a console can render options it was not built against. Only authentication is
+        described today: which methods the vendor supports and which fields each one takes.
+        A vendor whose credentials are a fixed contract, such as Twilio, reports no methods.
+      parameters:
+        - name: vendor
+          in: query
+          required: true
+          description: The connection vendor to describe, as it appears in the /connections/{vendor} path.
+          schema:
+            type: string
+            enum: [google, github, oidc, oauth, twilio, vonage, sms-gateway, email-smtp]
+          example: "email-smtp"
+      responses:
+        "200":
+          description: The vendor's configurable options
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionMetaResponse'
+              example:
+                vendor: "email-smtp"
+                authentication:
+                  methods:
+                    - type: "none"
+                      displayName: "{{t(connections:outboundAuth.method.none)}}"
+                      properties: []
+                    - type: "basic"
+                      displayName: "{{t(connections:outboundAuth.method.basic)}}"
+                      properties:
+                        - name: "username"
+                          type: "string"
+                          required: true
+                          displayName: "{{t(connections:outboundAuth.field.username)}}"
+                        - name: "password"
+                          type: "string"
+                          required: true
+                          credential: true
+                          displayName: "{{t(connections:outboundAuth.field.password)}}"
+        "400": { $ref: '#/components/responses/BadRequest' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
@@ -778,6 +827,113 @@ paths:
         "403": { $ref: '#/components/responses/Forbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
 
+  /connections/email-smtp:
+    get:
+      tags: [Connections]
+      summary: List configured SMTP connections
+      responses:
+        "200": { $ref: '#/components/responses/InstanceList' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create an SMTP connection
+      description: |
+        Creates an email provider backed by an SMTP server. Flows select it per node through
+        the email executor's `senderId` property.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SMTPConnectionCreateRequest' }
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SMTPConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/email-smtp/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get an SMTP connection
+      responses:
+        "200":
+          description: Connection details (secrets masked)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SMTPConnectionResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update an SMTP connection
+      description: >-
+        Omit password to keep the stored value. The stored password is kept only while host, port,
+        authentication type and username are unchanged; changing any of them requires the password
+        to be supplied again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SMTPConnectionUpdateRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SMTPConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete an SMTP connection
+      responses:
+        "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/email-smtp/{id}/usages:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get SMTP connection usages
+      description: |
+        Returns the resources that reference this connection, aggregated across all resource
+        types (for example, flows that use it). Informational only: it drives the pre-delete
+        confirmation dialog in the UI and does not gate deletion on the server.
+
+        Each usage entry includes a `behaviorOnDelete` field describing what happens to the
+        referencing resource if the connection is deleted:
+        - `fallback`: the reference is kept as-is.
+        - `cascade`: the resource is permanently deleted along with the connection.
+        - `restrict`: the resource blocks deletion of the connection.
+
+        When usage data is unavailable (e.g. the server has not fully initialised),
+        `totalResults` and `summary` are `null` rather than `0`/empty. Consumers must treat
+        `null` as "unknown" and `0` as "confirmed empty".
+      responses:
+        "200": { $ref: '#/components/responses/ConnectionUsages' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
   /connections/oauth:
     get:
       tags: [Connections]
@@ -1127,14 +1283,14 @@ components:
           type: string
           description: >-
             Lowercase vendor identifier. `sms-gateway` denotes a generic HTTP webhook SMS sender.
-          enum: [google, github, oidc, oauth, twilio, vonage, sms-gateway, authzen-pdp]
+          enum: [google, github, oidc, oauth, twilio, vonage, sms-gateway, authzen-pdp, email-smtp]
           example: "google"
         categories:
           type: array
           minItems: 1
           items:
             type: string
-            enum: [identity-provider, sms-provider, authorization-pdp]
+            enum: [identity-provider, sms-provider, authorization-pdp, email-provider]
           example: ["identity-provider"]
 
     ConnectionInstanceSummary:
@@ -1490,7 +1646,12 @@ components:
         description: { type: string }
         url: { type: string, description: "The HTTP endpoint to call to send an SMS.", example: "https://sms.example.com/send" }
         httpMethod: { type: string, enum: [GET, POST], example: "POST" }
-        httpHeaders: { type: string, description: "Comma-separated \"Key: value\" pairs.", example: "Authorization: Bearer abc123" }
+        httpHeaders:
+          type: string
+          description: |
+            Comma-separated `Key: value` pairs sent with every request, including any credential
+            header the gateway requires. Header values are stored and returned in plain text.
+          example: "Authorization: Bearer token"
         contentType: { type: string, enum: [JSON, FORM], example: "JSON" }
     SMSGatewayConnectionCreateRequest:
       $ref: '#/components/schemas/SMSGatewayConnectionUpdateRequest'
@@ -1505,6 +1666,135 @@ components:
         httpMethod: { type: string }
         httpHeaders: { type: string }
         contentType: { type: string }
+
+    SMTPConnectionUpdateRequest:
+      type: object
+      required: [name, host, port, fromAddress]
+      properties:
+        name: { type: string, example: "Corp SMTP" }
+        description: { type: string }
+        host: { type: string, description: "Hostname of the SMTP server.", example: "smtp.example.com" }
+        port: { type: integer, minimum: 1, maximum: 65535, example: 587 }
+        fromAddress: { type: string, format: email, description: "Address used in the From header and the SMTP envelope.", example: "noreply@example.com" }
+        fromName:
+          type: string
+          description: |
+            Display name shown beside `fromAddress` in the From header, so a recipient sees
+            `Acme Support <noreply@example.com>`. Optional: without it the From header carries
+            the bare address. It must not contain a line break. The SMTP envelope sender is
+            always the bare `fromAddress`, whether or not a name is set.
+          example: "Acme Support"
+        tls:
+          type: string
+          enum: [none, starttls, implicit]
+          default: starttls
+          description: |
+            How the connection to the SMTP server is secured. Defaults to `starttls` when
+            omitted. `implicit` dials TLS directly (SMTPS, usually port 465). `none` sends in
+            the clear and cannot carry credentials, so it cannot be combined with an
+            `authentication` method other than `none`.
+          example: "starttls"
+        authentication:
+          allOf:
+            - $ref: '#/components/schemas/OutboundAuthentication'
+          description: |
+            How ThunderID authenticates to the SMTP server. Omit it to send no credentials.
+            Call `GET /connections/meta?vendor=email-smtp` for the methods this deployment supports
+            and the fields each one takes.
+    SMTPConnectionCreateRequest:
+      $ref: '#/components/schemas/SMTPConnectionUpdateRequest'
+    SMTPConnectionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        type: { type: string, example: "email-smtp" }
+        host: { type: string }
+        port: { type: integer, example: 587 }
+        fromAddress: { type: string, format: email }
+        fromName: { type: string, example: "Acme Support" }
+        tls: { type: string, enum: [none, starttls, implicit] }
+        authentication: { $ref: '#/components/schemas/OutboundAuthentication' }
+
+    OutboundAuthentication:
+      type: object
+      description: |
+        How ThunderID authenticates itself on an outbound call. The `type` selects the method
+        and `properties` carries that method's fields, so a new method needs no change to this
+        schema. Call `GET /connections/meta?vendor={vendor}` to discover the methods a vendor
+        supports and the fields each one takes.
+
+        A field the method marks as a credential is write-only: it is stored encrypted, returned
+        masked as `"******"`, and may be omitted on update to keep the stored value. Changing
+        `type`, or setting it to `none`, discards the previous method's stored credentials.
+      required: [type]
+      properties:
+        type:
+          type: string
+          description: "The authentication method. `none` sends no credentials."
+          example: "basic"
+        properties:
+          type: object
+          additionalProperties: { type: string }
+          description: "The selected method's field values, keyed by field name."
+          example:
+            username: "mailer"
+            password: "<smtp_password>"
+
+    ConnectionMetaResponse:
+      type: object
+      description: "Server-driven description of a connection vendor's configurable options."
+      properties:
+        vendor: { type: string, example: "email-smtp" }
+        authentication:
+          type: object
+          properties:
+            methods:
+              type: array
+              description: |
+                The outbound authentication methods this vendor supports, in the order a console
+                should offer them. Empty when the vendor has no configurable choice, such as a
+                provider whose credentials are a fixed vendor contract.
+              items: { $ref: '#/components/schemas/OutboundAuthMethod' }
+
+    OutboundAuthMethod:
+      type: object
+      properties:
+        type: { type: string, example: "basic" }
+        displayName:
+          type: string
+          description: "Label for the method. Either plain text or an i18n template pattern."
+          example: "{{t(connections:outboundAuth.method.basic)}}"
+        properties:
+          type: array
+          description: "The method's fields, in the order a console should render them."
+          items: { $ref: '#/components/schemas/OutboundAuthField' }
+
+    OutboundAuthField:
+      type: object
+      description: |
+        One field of an authentication method, described with the same vocabulary as an entity
+        type's property schema so a console can reuse its schema-driven form renderer.
+      properties:
+        name: { type: string, example: "password" }
+        type: { type: string, enum: [string], example: "string" }
+        required: { type: boolean, example: true }
+        credential:
+          type: boolean
+          description: "A secret: stored encrypted, returned masked, omit on update to keep it."
+          example: true
+        enum:
+          type: array
+          items: { type: string }
+          description: "When present, the value must be one of these choices."
+        regex:
+          type: string
+          description: "When present, the pattern the value must match."
+        displayName:
+          type: string
+          description: "Label for the field. Either plain text or an i18n template pattern."
+          example: "{{t(connections:outboundAuth.field.password)}}"
 
     AttributeConfiguration:
       type: object

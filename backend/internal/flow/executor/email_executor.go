@@ -12,7 +12,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/system/email"
+	"github.com/thunder-id/thunderid/internal/notification"
+	notifcm "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/template"
 )
@@ -21,13 +22,14 @@ import (
 type emailExecutor struct {
 	providers.Executor
 	logger          *log.Logger
-	emailClient     email.EmailClientInterface
+	notifSenderSvc  notification.NotificationSenderServiceInterface
 	templateService template.TemplateServiceInterface
 	entityProvider  entityprovider.EntityProviderInterface
 }
 
 // newEmailExecutor creates a new instance of the email executor.
-func newEmailExecutor(flowFactory core.FlowFactoryInterface, emailClient email.EmailClientInterface,
+func newEmailExecutor(flowFactory core.FlowFactoryInterface,
+	notifSenderSvc notification.NotificationSenderServiceInterface,
 	templateService template.TemplateServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface) *emailExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "EmailExecutor"))
@@ -42,13 +44,18 @@ func newEmailExecutor(flowFactory core.FlowFactoryInterface, emailClient email.E
 			SupportedModes: []string{ExecutorModeSend},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: propertyKeyEmailTemplate, IsRequired: true},
+				// A node must name the provider it sends through: providers are managed through
+				// /connections/email-smtp and there is no deployment-wide default to fall back
+				// to. It is not marked required, because the shipped flows declare their email
+				// steps before any provider exists. Sending without one fails at execution.
+				{Property: propertyKeyNotificationSenderID},
 			},
 		},
 	)
 	return &emailExecutor{
 		Executor:        base,
 		logger:          logger,
-		emailClient:     emailClient,
+		notifSenderSvc:  notifSenderSvc,
 		templateService: templateService,
 		entityProvider:  entityProvider,
 	}
@@ -81,12 +88,8 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 		return execResp, nil
 	}
 
-	if e.emailClient == nil {
-		execResp.AdditionalData[common.DataEmailSent] = dataValueFalse
-		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrEmailServiceNotConfigured
-		logger.Debug(ctx.Context, "Email client not configured")
-		return execResp, nil
+	if e.notifSenderSvc == nil {
+		return nil, errors.New("notification sender service is not configured")
 	}
 
 	if e.templateService == nil {
@@ -120,6 +123,11 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 		return nil, fmt.Errorf("missing required property: %s", propertyKeyEmailTemplate)
 	}
 
+	senderID, err := e.resolveSenderID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	templateData := e.resolveTemplateData(ctx)
 
 	rendered, svcErr := e.templateService.Render(ctx.Context, scenario, template.TemplateTypeEmail, templateData)
@@ -127,14 +135,25 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 		return nil, fmt.Errorf("failed to render email template: %s", svcErr.Code)
 	}
 
-	emailData := email.EmailData{
+	notifSvcErr := e.notifSenderSvc.SendEmail(ctx.Context, senderID, notifcm.EmailData{
 		To:      []string{recipient},
 		Subject: rendered.Subject,
 		Body:    rendered.Body,
 		IsHTML:  rendered.IsHTML,
-	}
-
-	if err := e.emailClient.Send(ctx.Context, emailData); err != nil {
+	})
+	if notifSvcErr != nil {
+		// A missing or unnamed sender is a configuration problem the flow can surface to the
+		// caller; every other failure is a delivery problem and is logged so it can be diagnosed.
+		if notifSvcErr.Code == notification.ErrorSenderNotFound.Code ||
+			notifSvcErr.Code == notification.ErrorEmailSenderNotSpecified.Code {
+			logger.Debug(ctx.Context, "Email provider not configured", log.String("senderId", senderID))
+			execResp.AdditionalData[common.DataEmailSent] = dataValueFalse
+			execResp.Status = providers.ExecFailure
+			execResp.Error = &ErrEmailProviderNotConfigured
+			return execResp, nil
+		}
+		logger.Error(ctx.Context, "Failed to send email", log.String("error", notifSvcErr.Code))
+		execResp.AdditionalData[common.DataEmailSent] = dataValueFalse
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrEmailSendFailed
 		return execResp, nil
@@ -145,6 +164,21 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 	execResp.AdditionalData[common.DataEmailSent] = dataValueTrue
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
+}
+
+// resolveSenderID reads the notification sender from the node properties. An absent property
+// yields an empty ID, which SendEmail rejects: a node must name the provider it sends through.
+func (e *emailExecutor) resolveSenderID(ctx *providers.NodeContext) (string, error) {
+	raw, ok := ctx.NodeProperties[propertyKeyNotificationSenderID]
+	if !ok {
+		return "", nil
+	}
+	senderID, ok := raw.(string)
+	if !ok {
+		return "", fmt.Errorf("invalid type for %s: expected string, got %T with value %v",
+			propertyKeyNotificationSenderID, raw, raw)
+	}
+	return senderID, nil
 }
 
 // resolveRecipientEmail retrieves the recipient email from user inputs, runtime data, or forwarded data.

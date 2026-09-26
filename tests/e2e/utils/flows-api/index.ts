@@ -58,6 +58,12 @@ export class FlowsApi {
     }
   }
 
+  /** Read a single flow's full definition, including its nodes (which `GET /flows` omits). */
+  async get(id: string): Promise<ApiFlow> {
+    const response = await sendOk(this.request, "GET", `/flows/${id}`);
+    return (await response.json()) as ApiFlow;
+  }
+
   /** Overwrite a flow's fields. Used to re-point a reused flow's nodes at fresh dependency ids. */
   async update(id: string, data: Record<string, unknown>): Promise<void> {
     await sendOk(this.request, "PUT", `/flows/${id}`, data);

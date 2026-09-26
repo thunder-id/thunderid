@@ -132,7 +132,7 @@ func (suite *TwilioClientTestSuite) TestSendSMS_Success() {
 	twilioClient := client.(*TwilioClient)
 	twilioClient.url = server.URL
 
-	data := common.NotificationData{
+	data := common.MessageData{
 		Recipient: "+15559876543",
 		Body:      "Test message",
 	}
@@ -159,7 +159,7 @@ func (suite *TwilioClientTestSuite) TestSendSMS_Error() {
 	twilioClient := client.(*TwilioClient)
 	twilioClient.url = server.URL
 
-	data := common.NotificationData{
+	data := common.MessageData{
 		Recipient: "+15559876543",
 		Body:      "Test message",
 	}
@@ -178,7 +178,7 @@ func (suite *TwilioClientTestSuite) TestSendSMS_NetworkError() {
 	twilioClient := client.(*TwilioClient)
 	twilioClient.url = "http://invalid-twilio-url.local:99999"
 
-	data := common.NotificationData{
+	data := common.MessageData{
 		Recipient: "+15559876543",
 		Body:      "Test message",
 	}

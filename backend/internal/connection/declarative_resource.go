@@ -17,6 +17,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -91,11 +92,15 @@ func (e *connectionExporter) GetAllResourceIDs(ctx context.Context) ([]string, *
 		return nil, svcErr
 	}
 	for _, sender := range senders {
-		if sender.Type != ncommon.NotificationSenderTypeMessage {
-			continue
-		}
-		if _, ok := smsVendorName(sender.Provider); ok {
-			ids = append(ids, sender.ID)
+		switch sender.Type {
+		case ncommon.NotificationSenderTypeMessage:
+			if _, ok := smsVendorName(sender.Provider); ok {
+				ids = append(ids, sender.ID)
+			}
+		case ncommon.NotificationSenderTypeEmail:
+			if _, ok := emailVendorName(sender.Provider); ok {
+				ids = append(ids, sender.ID)
+			}
 		}
 	}
 
@@ -207,9 +212,60 @@ func (e *connectionExporter) GetResourceRulesForResource(
 		return &declarativeresource.ResourceRules{Variables: []string{"AuthToken"}}
 	case "vonage":
 		return &declarativeresource.ResourceRules{Variables: []string{"APISecret"}}
+	case emailSMTPVendorName, smsGatewayVendorName:
+		return authenticationResourceRules(model.Authentication)
 	default:
-		// sms-gateway (and any future no-secret vendor) has nothing to externalize.
+		// Any future vendor with no secret of its own has nothing to externalize.
 		return &declarativeresource.ResourceRules{}
+	}
+}
+
+// authenticationResourceRules externalizes each secret field of a connection's outbound
+// authentication to a template variable. The field names are not statically known, since they
+// come from the registered method, so the paths are derived rather than hardcoded. That is what
+// keeps a new authentication method from needing a change here.
+func authenticationResourceRules(
+	auth *connectionAuthenticationExportModel) *declarativeresource.ResourceRules {
+	if auth == nil {
+		return &declarativeresource.ResourceRules{}
+	}
+
+	authType, ok := outboundauth.ParseType(auth.Type)
+	if !ok {
+		return &declarativeresource.ResourceRules{}
+	}
+	method, ok := outboundauth.GetMethod(authType)
+	if !ok {
+		return &declarativeresource.ResourceRules{}
+	}
+
+	var variables []string
+	for _, field := range method.Fields {
+		// An empty value has nothing to externalize, matching how an unset vendor secret is
+		// left out rather than exported as a blank variable.
+		if field.Credential && auth.Properties[field.Name] != "" {
+			variables = append(variables, "Authentication.Properties."+field.Name)
+		}
+	}
+	if len(variables) == 0 {
+		return &declarativeresource.ResourceRules{}
+	}
+
+	return &declarativeresource.ResourceRules{Variables: variables}
+}
+
+// authenticationExportModel renders the authentication block of an export document from a
+// resolved property-value map.
+func authenticationExportModel(values map[string]string) *connectionAuthenticationExportModel {
+	cfg := outboundauth.FromValues(values)
+	authType := cfg.Type
+	if authType == "" {
+		authType = outboundauth.TypeNone
+	}
+
+	return &connectionAuthenticationExportModel{
+		Type:       string(authType),
+		Properties: cfg.Properties,
 	}
 }
 
@@ -282,8 +338,10 @@ func connectionModelFromIDPDTO(dto providers.IDPDTO) (connectionExportModel, err
 func connectionModelFromSenderDTO(dto ncommon.NotificationSenderDTO) (connectionExportModel, error) {
 	vendor, ok := smsVendorName(dto.Provider)
 	if !ok {
-		return connectionExportModel{}, fmt.Errorf(
-			"unsupported message provider for connection export: %s", dto.Provider)
+		if vendor, ok = emailVendorName(dto.Provider); !ok {
+			return connectionExportModel{}, fmt.Errorf(
+				"unsupported notification provider for connection export: %s", dto.Provider)
+		}
 	}
 	values, err := rawPropertyValues(dto.Properties)
 	if err != nil {
@@ -310,6 +368,13 @@ func connectionModelFromSenderDTO(dto ncommon.NotificationSenderDTO) (connection
 		model.HTTPMethod = values[ncommon.CustomPropKeyHTTPMethod]
 		model.HTTPHeaders = values[ncommon.CustomPropKeyHTTPHeaders]
 		model.ContentType = values[ncommon.CustomPropKeyContentType]
+	case ncommon.NotificationProviderTypeSMTP:
+		model.Host = values[ncommon.SMTPPropKeyHost]
+		model.Port, _ = strconv.Atoi(values[ncommon.SMTPPropKeyPort])
+		model.FromAddress = values[ncommon.SMTPPropKeyFromAddress]
+		model.FromName = values[ncommon.SMTPPropKeyFromName]
+		model.TLS = values[ncommon.SMTPPropKeyTLS]
+		model.Authentication = authenticationExportModel(values)
 	}
 	return model, nil
 }
@@ -409,6 +474,17 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 		dto, err := smsGatewayToSenderDTO(smsGatewayConnectionRequest{
 			Name: model.Name, Description: model.Description, URL: model.URL,
 			HTTPMethod: model.HTTPMethod, HTTPHeaders: model.HTTPHeaders, ContentType: model.ContentType,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		dto.ID = model.ID
+		return nil, dto, nil
+	case emailSMTPVendorName:
+		dto, err := emailSMTPToSenderDTO(emailSMTPConnectionRequest{
+			Name: model.Name, Description: model.Description, Host: model.Host, Port: model.Port,
+			FromAddress: model.FromAddress, FromName: model.FromName, TLS: model.TLS,
+			Authentication: authenticationFromExportModel(model.Authentication),
 		})
 		if err != nil {
 			return nil, nil, err

@@ -36,6 +36,7 @@ import { Timeouts } from "../../constants/timeouts";
 import { TestDataFactory } from "../../utils/test-data";
 import { sendOk } from "../../utils/api-request";
 import { WayfinderAppPage, MockEmailAppPage } from "../../pages/wayfinder-sample";
+import { setUpMockEmailProvider, type MockEmailProviderSetup } from "../../utils/server-setup";
 
 const baseUrl = process.env.BASE_URL;
 if (!baseUrl) {
@@ -50,6 +51,11 @@ const SEED_USERNAME = "john.doe";
 const SEED_PASSWORD = "john.doe";
 
 const ONBOARDING_FLOW_HANDLE = "wayfinder-onboarding-flow";
+const RECOVERY_FLOW_HANDLE = "wayfinder-recovery-flow";
+
+// Both flows send through an email provider named on their email steps: there is no
+// deployment-wide SMTP configuration to fall back to.
+const EMAIL_FLOW_HANDLES = [RECOVERY_FLOW_HANDLE, ONBOARDING_FLOW_HANDLE] as const;
 
 const staffMembers = [
   { role: "Support", user: TestDataFactory.createUser() },
@@ -59,8 +65,11 @@ const staffMembers = [
 test.describe.serial("Wayfinder Mock Email Inbox", { tag: [TestTags.WAYFINDER] }, () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let originalFlowConfig: any;
+  let emailProvider: MockEmailProviderSetup | undefined;
 
   test.beforeAll(async ({ request }) => {
+    emailProvider = await setUpMockEmailProvider(request, EMAIL_FLOW_HANDLES);
+
     const response = await sendOk(request, "GET", "/server-config/flow");
     originalFlowConfig = (await response.json()).writable ?? {};
 
@@ -77,6 +86,8 @@ test.describe.serial("Wayfinder Mock Email Inbox", { tag: [TestTags.WAYFINDER] }
     if (originalFlowConfig !== undefined) {
       await sendOk(request, "PUT", "/server-config/flow", originalFlowConfig);
     }
+
+    await emailProvider?.tearDown();
 
     const usersApi = new UsersApi(request);
     for (const { user } of staffMembers) {

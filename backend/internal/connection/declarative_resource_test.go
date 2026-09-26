@@ -18,6 +18,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
@@ -579,4 +580,133 @@ func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreSkipsIDPWhe
 	got, err := store.senderStore.Get("sender-1")
 	s.Require().NoError(err)
 	s.Equal(senderDTO, got)
+}
+
+func (s *DeclarativeResourceTestSuite) TestConnectionModelFromSenderDTOSMTP() {
+	dto := ncommon.NotificationSenderDTO{
+		ID: "sm-1", Name: "Corp SMTP", Type: ncommon.NotificationSenderTypeEmail,
+		Provider: ncommon.NotificationProviderTypeSMTP,
+		Properties: []cmodels.Property{
+			mustProperty(s.T(), ncommon.SMTPPropKeyHost, "smtp.example.com", false),
+			mustProperty(s.T(), ncommon.SMTPPropKeyPort, "587", false),
+			mustProperty(s.T(), outboundauth.PropertyKeyType, string(outboundauth.TypeBasic), false),
+			mustProperty(s.T(), outboundauth.PropertyKey(outboundauth.FieldBasicUsername), "mailer", false),
+			mustProperty(s.T(), outboundauth.PropertyKey(outboundauth.FieldBasicPassword), "s3cret", true),
+			mustProperty(s.T(), ncommon.SMTPPropKeyFromAddress, "noreply@example.com", false),
+			mustProperty(s.T(), ncommon.SMTPPropKeyFromName, "Acme Support", false),
+			mustProperty(s.T(), ncommon.SMTPPropKeyTLS, string(ncommon.TLSModeSTARTTLS), false),
+		},
+	}
+
+	model, err := connectionModelFromSenderDTO(dto)
+	s.Require().NoError(err)
+	s.Equal(emailSMTPVendorName, model.Type)
+	s.Equal("smtp.example.com", model.Host)
+	s.Equal(587, model.Port)
+	s.Equal("noreply@example.com", model.FromAddress)
+	s.Equal("Acme Support", model.FromName)
+	s.Equal(string(ncommon.TLSModeSTARTTLS), model.TLS)
+
+	s.Require().NotNil(model.Authentication)
+	s.Equal(string(outboundauth.TypeBasic), model.Authentication.Type)
+	s.Equal("mailer", model.Authentication.Properties[outboundauth.FieldBasicUsername])
+	// The export parameterizer needs the real value to externalize it to the .env file.
+	s.Equal("s3cret", model.Authentication.Properties[outboundauth.FieldBasicPassword])
+}
+
+func (s *DeclarativeResourceTestSuite) TestConnectionModelToDTORoundTripsSMTP() {
+	model := connectionExportModel{
+		ID: "sm-1", Type: emailSMTPVendorName, Name: "Corp SMTP", Host: "smtp.example.com", Port: 587,
+		FromAddress: "noreply@example.com", FromName: "Acme Support", TLS: string(ncommon.TLSModeSTARTTLS),
+		Authentication: &connectionAuthenticationExportModel{
+			Type: string(outboundauth.TypeBasic),
+			Properties: map[string]string{
+				outboundauth.FieldBasicUsername: "mailer",
+				outboundauth.FieldBasicPassword: "s3cret",
+			},
+		},
+	}
+
+	idpDTO, senderDTO, err := connectionModelToDTO(model)
+	s.Require().NoError(err)
+	s.Nil(idpDTO)
+	s.Require().NotNil(senderDTO)
+	s.Equal("sm-1", senderDTO.ID)
+	s.Equal(ncommon.NotificationSenderTypeEmail, senderDTO.Type)
+	s.Equal(ncommon.NotificationProviderTypeSMTP, senderDTO.Provider)
+
+	roundTripped, err := connectionModelFromSenderDTO(*senderDTO)
+	s.Require().NoError(err)
+	s.Equal(model.Host, roundTripped.Host)
+	s.Equal(model.Port, roundTripped.Port)
+	s.Equal(model.FromAddress, roundTripped.FromAddress)
+	s.Equal(model.FromName, roundTripped.FromName)
+	s.Equal(model.TLS, roundTripped.TLS)
+	s.Require().NotNil(roundTripped.Authentication)
+	s.Equal(model.Authentication.Type, roundTripped.Authentication.Type)
+	s.Equal(model.Authentication.Properties, roundTripped.Authentication.Properties)
+}
+
+func (s *DeclarativeResourceTestSuite) TestParseConnectionFromNodeSMTPVendor() {
+	doc := `
+id: prod-smtp
+type: email-smtp
+name: Prod SMTP
+host: smtp.example.com
+port: 587
+fromAddress: noreply@example.com
+tls: starttls
+authentication:
+  type: basic
+  properties:
+    username: mailer
+    password: s3cret
+`
+	var node yaml.Node
+	s.Require().NoError(yaml.Unmarshal([]byte(doc), &node))
+	idpDTO, senderDTO, err := ParseConnectionFromNode(node.Content[0])
+	s.Require().NoError(err)
+	s.Nil(idpDTO)
+	s.Require().NotNil(senderDTO)
+	s.Equal("prod-smtp", senderDTO.ID)
+	s.Equal(ncommon.NotificationSenderTypeEmail, senderDTO.Type)
+	s.Equal(ncommon.NotificationProviderTypeSMTP, senderDTO.Provider)
+}
+
+// A credential field of the configured authentication method is the secret an exported
+// connection must externalize, so it never lands in the rendered YAML. The path is derived from
+// the registered method, which is what keeps a new method from needing a change here.
+func (s *DeclarativeResourceTestSuite) TestGetResourceRulesExternalizesAuthenticationSecrets() {
+	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil)
+
+	basicAuth := func(properties map[string]string) *connectionAuthenticationExportModel {
+		return &connectionAuthenticationExportModel{
+			Type: string(outboundauth.TypeBasic), Properties: properties,
+		}
+	}
+
+	for _, vendor := range []string{emailSMTPVendorName, smsGatewayVendorName} {
+		s.Run(vendor, func() {
+			rules := exporter.GetResourceRulesForResource(&connectionExportModel{
+				Type: vendor,
+				Authentication: basicAuth(map[string]string{
+					outboundauth.FieldBasicUsername: "mailer",
+					outboundauth.FieldBasicPassword: "s3cret",
+				}),
+			})
+			// Only the credential field is externalized; the username stays in the document.
+			s.Equal([]string{"Authentication.Properties.password"}, rules.Variables)
+
+			// Nothing to externalize when the method carries no credential value.
+			rules = exporter.GetResourceRulesForResource(&connectionExportModel{
+				Type:           vendor,
+				Authentication: basicAuth(map[string]string{outboundauth.FieldBasicUsername: "mailer"}),
+			})
+			s.Empty(rules.Variables)
+
+			// Nor when the connection authenticates with nothing at all.
+			rules = exporter.GetResourceRulesForResource(&connectionExportModel{Type: vendor})
+			s.Empty(rules.Variables)
+		})
+	}
 }
