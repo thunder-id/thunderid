@@ -73,6 +73,10 @@ func (s *tokenIntrospectionService) validateByType(
 		return nil, fmt.Errorf("failed to decode token header: %w", err)
 	}
 
+	// TokenTypeJWT covers refresh tokens minted before rt+jwt existed. ValidateRefreshToken asserts
+	// the refresh claim shape, so an ID token routed here by its shared generic type is rejected there.
+	// TODO: Drop the TokenTypeJWT arm on the next major version, once no pre-rt+jwt refresh token can
+	// still be valid.
 	switch typ, _ := header["typ"].(string); typ {
 	case jwt.TokenTypeAccessToken:
 		claims, validateErr := s.tokenValidator.ValidateAccessToken(ctx, token)
@@ -80,7 +84,7 @@ func (s *tokenIntrospectionService) validateByType(
 			return nil, validateErr
 		}
 		return claims.Claims, nil
-	case jwt.TokenTypeJWT:
+	case jwt.TokenTypeRefreshToken, jwt.TokenTypeJWT:
 		claims, validateErr := s.tokenValidator.ValidateRefreshToken(ctx, token)
 		if validateErr != nil {
 			return nil, validateErr

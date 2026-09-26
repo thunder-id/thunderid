@@ -154,12 +154,18 @@ func (tv *tokenValidator) ValidateRefreshToken(
 		return nil, fmt.Errorf("invalid refresh token: %v", err.Error)
 	}
 
+	header, err := jwt.DecodeJWTHeader(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode refresh token header: %w", err)
+	}
+
 	claims, err := jwt.DecodeJWTPayload(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode refresh token: %w", err)
 	}
 
-	clientID, err := tv.validateOAuth2RefreshClaims(claims)
+	typ, _ := header["typ"].(string)
+	clientID, err := tv.validateOAuth2RefreshClaims(typ, claims)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +292,8 @@ func (tv *tokenValidator) validateExchangeToken(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to decode token header: %w", err)
 	}
-	if typ, _ := header["typ"].(string); typ == jwt.TokenTypeIDJAG {
+	typ, _ := header["typ"].(string)
+	if typ == jwt.TokenTypeIDJAG {
 		return nil, nil, fmt.Errorf("an ID-JAG cannot be presented as a subject_token")
 	}
 
@@ -302,6 +309,19 @@ func (tv *tokenValidator) validateExchangeToken(
 
 	// Try the server's own issuer first.
 	if tv.isSelfIssuer(iss) {
+		// A refresh token is not a subject token. Scoped to self-issued tokens, because rt+jwt and
+		// access_token_sub describe our own refresh tokens only. An external issuer's typ header is not
+		// ours to interpret, exactly as its jti contributes nothing to the revocation deny list.
+		if jwt.IsRefreshTokenType(typ) {
+			return nil, nil, fmt.Errorf("a refresh token cannot be presented as a subject_token")
+		}
+		// Refresh tokens minted before rt+jwt carry the generic type; access_token_sub identifies them.
+		// TODO: Remove on the next major version, once no pre-rt+jwt refresh token can still be valid.
+		if _, isLegacyRefresh := claims[constants.ClaimAccessTokenSubject]; isLegacyRefresh &&
+			jwt.IsLegacyRefreshTokenType(typ) {
+			return nil, nil, fmt.Errorf("a refresh token cannot be presented as a subject_token")
+		}
+
 		if err := tv.verifyTokenSignatureByIssuer(ctx, token, iss); err != nil {
 			return nil, nil, fmt.Errorf("invalid subject token signature: %w", err)
 		}
@@ -376,6 +396,9 @@ func (tv *tokenValidator) ValidateIDJAGSubjectToken(
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode subject token payload: %w", err)
 	}
+	// An rt+jwt refresh token is already refused by the typ check above. This catches the ones minted
+	// before rt+jwt existed, which share the generic type with ID tokens.
+	// TODO: Remove on the next major version, once no pre-rt+jwt refresh token can still be valid.
 	if _, isRefreshToken := claims["access_token_sub"]; isRefreshToken {
 		return nil, fmt.Errorf("subject_token must be an ID token, not a refresh token")
 	}
@@ -749,7 +772,13 @@ func (tv *tokenValidator) validateTimeClaims(claims map[string]interface{}) erro
 // validateOAuth2RefreshClaims validates OAuth2-specific refresh token claims.
 // validateOAuth2RefreshClaims asserts the claim shape unique to a refresh token and returns the client
 // the token was issued to.
-func (tv *tokenValidator) validateOAuth2RefreshClaims(claims map[string]interface{}) (string, error) {
+func (tv *tokenValidator) validateOAuth2RefreshClaims(typ string, claims map[string]interface{}) (string, error) {
+	// A refresh token must be typed rt+jwt, or carry the generic type it was minted with before
+	// rt+jwt existed. The claim checks below settle the legacy case: only a refresh token has them.
+	if !jwt.IsRefreshTokenType(typ) && !jwt.IsLegacyRefreshTokenType(typ) {
+		return "", fmt.Errorf("token is not a refresh token (unexpected typ header %q)", typ)
+	}
+
 	clientID, err := extractStringClaim(claims, "sub")
 	if err != nil {
 		return "", fmt.Errorf("missing or invalid 'sub' claim: %w", err)

@@ -2955,3 +2955,29 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_UserAttributeCannotSynthesi
 	assert.Equal(suite.T(), testIDToken, result.Token)
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
+
+// Refresh tokens are minted with the rt+jwt typ so they are self-identifying: a validator that
+// whitelists the types it accepts rejects one by default, rather than by remembering to check the
+// access_token_sub claim. The other BuildRefreshToken tests pass mock.Anything for the typ argument,
+// so this is the only assertion tying the minted type to the constant.
+func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_MintsRTJWTTyp() {
+	ctx := &RefreshTokenBuildContext{
+		ClientID:             "test-client",
+		Scopes:               []string{"read"},
+		GrantType:            string(providers.GrantTypeAuthorizationCode),
+		AccessTokenSubject:   "user123",
+		AccessTokenAudiences: []string{testAppID},
+		OAuthApp:             &providers.OAuthClient{ClientID: "test-client"},
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		jwt.TokenTypeRefreshToken, mock.Anything,
+	).Return(testRefreshToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildRefreshToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}

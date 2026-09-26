@@ -65,3 +65,17 @@ func DecodeJWTHeader(jwtToken string) (map[string]interface{}, error) {
 
 	return header, nil
 }
+
+// IsRefreshTokenType reports whether a typ header names a refresh token.
+func IsRefreshTokenType(typ string) bool {
+	return strings.EqualFold(typ, TokenTypeRefreshToken)
+}
+
+// IsLegacyRefreshTokenType reports whether a typ header is the generic type that refresh tokens
+// minted before rt+jwt carry. Such a token is a refresh token only if it also has access_token_sub.
+//
+// TODO: Remove this and its callers on the next major version, once no pre-rt+jwt refresh token
+// can still be valid; refresh tokens will then be identified by their typ header alone.
+func IsLegacyRefreshTokenType(typ string) bool {
+	return strings.EqualFold(typ, TokenTypeJWT)
+}

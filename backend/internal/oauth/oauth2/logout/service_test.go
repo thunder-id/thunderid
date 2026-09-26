@@ -16,6 +16,7 @@ import (
 	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
@@ -465,8 +466,8 @@ func (suite *LogoutServiceTestSuite) TestResolve_AccessTokenAsIDTokenHintRejecte
 	suite.Require().ErrorIs(err, errInvalidIDTokenHint)
 }
 
-// A refresh token shares the generic JWT typ with ID tokens, so it is separated by its
-// access_token_sub claim, the same way the ID-JAG subject token check does it.
+// A refresh token minted before rt+jwt shares the generic JWT typ with ID tokens, so it is separated
+// by its access_token_sub claim, the same way the ID-JAG subject token check does it.
 func (suite *LogoutServiceTestSuite) TestResolve_RefreshTokenAsIDTokenHintRejected() {
 	svc, jwtSvc, _ := suite.newService()
 	token := makeTypedToken("JWT", testIssuer, "client-x",
@@ -571,4 +572,17 @@ func (suite *LogoutServiceTestSuite) TestCompleteSignOut_ClearErrorStillReturnsR
 
 	suite.Require().NoError(err)
 	suite.Equal("https://rp.example/after", redirectURI)
+}
+
+// A refresh token minted with the rt+jwt typ is refused as an id_token_hint by the typ check alone,
+// before the access_token_sub claim is consulted.
+func (suite *LogoutServiceTestSuite) TestResolve_RTJWTRefreshTokenAsIDTokenHintRejected() {
+	svc, jwtSvc, _ := suite.newService()
+	token := makeTypedToken(jwt.TokenTypeRefreshToken, testIssuer, "client-x",
+		map[string]interface{}{"access_token_sub": "user-1"})
+	jwtSvc.EXPECT().VerifyJWTSignature(mock.Anything, token).Return(nil)
+
+	_, err := svc.Resolve(context.Background(), LogoutRequest{IDTokenHint: token})
+
+	suite.Require().ErrorIs(err, errInvalidIDTokenHint)
 }

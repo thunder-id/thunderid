@@ -808,8 +808,8 @@ func (suite *TokenValidatorTestSuite) TestValidateIDJAGSubjectToken_RejectsAcces
 	assert.Contains(suite.T(), err.Error(), "must be an ID token")
 }
 
-// A refresh token carries typ=JWT (shared with ID tokens) but a top-level access_token_sub claim;
-// it is rejected so a refresh token cannot be laundered into an ID-JAG.
+// A refresh token minted before rt+jwt carries typ=JWT (shared with ID tokens) but a top-level
+// access_token_sub claim; it is rejected so a refresh token cannot be laundered into an ID-JAG.
 func (suite *TokenValidatorTestSuite) TestValidateIDJAGSubjectToken_RejectsRefreshTokenShape() {
 	now := time.Now().Unix()
 	claims := map[string]interface{}{
@@ -2687,12 +2687,71 @@ func (suite *ExternalIDPValidatorTestSuite) validateRejectedExternalAudience(
 
 // createExternalJWT creates a signed-looking JWT for an external IDP test.
 func (suite *ExternalIDPValidatorTestSuite) createExternalJWT(claims map[string]interface{}) string {
-	header := map[string]interface{}{"alg": "RS256", "typ": "JWT"}
+	return suite.createExternalJWTWithTyp(jwt.TokenTypeJWT, claims)
+}
+
+func (suite *ExternalIDPValidatorTestSuite) createExternalJWTWithTyp(
+	typ string, claims map[string]interface{},
+) string {
+	header := map[string]interface{}{"alg": "RS256", "typ": typ}
 	headerJSON, _ := json.Marshal(header)
 	claimsJSON, _ := json.Marshal(claims)
 	headerB64 := base64.RawURLEncoding.EncodeToString(headerJSON)
 	claimsB64 := base64.RawURLEncoding.EncodeToString(claimsJSON)
 	return fmt.Sprintf("%s.%s.signature", headerB64, claimsB64)
+}
+
+// The refresh token rejection is scoped to our own issuer. An external IDP's typ header is not ours
+// to interpret: rt+jwt from a trusted external issuer describes that issuer's token, not one of our
+// refresh tokens, so it is validated on its own terms rather than refused.
+func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP_RTJWTTypNotRefused() {
+	now := time.Now().Unix()
+	claims := map[string]interface{}{
+		"sub": "ext-user-123",
+		"iss": testExternalIssuer,
+		"aud": "https://example.com",
+		"exp": float64(now + 3600),
+		"nbf": float64(now - 60),
+	}
+	token := suite.createExternalJWTWithTyp(jwt.TokenTypeRefreshToken, claims)
+	idpDTOs := buildExternalIDPDTOs()
+
+	suite.mockIDPService.On("GetIdentityProvidersByProperty", context.Background(),
+		idp.PropIssuer, testExternalIssuer).Return(idpDTOs, nil)
+	suite.mockJWTService.On("VerifyJWTSignatureWithJWKS", mock.Anything, token, testExternalJWKS).Return(nil)
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), "ext-user-123", result.Sub)
+}
+
+// The same, for the legacy shape: a generic typ plus an access_token_sub claim marks one of our
+// pre-rt+jwt refresh tokens, but on an external issuer's token that claim name carries no such
+// meaning and must not trigger the rejection.
+func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP_AccessTokenSubNotRefused() {
+	now := time.Now().Unix()
+	claims := map[string]interface{}{
+		"sub":              "ext-user-123",
+		"iss":              testExternalIssuer,
+		"aud":              "https://example.com",
+		"exp":              float64(now + 3600),
+		"nbf":              float64(now - 60),
+		"access_token_sub": "someone-else",
+	}
+	token := suite.createExternalJWT(claims)
+	idpDTOs := buildExternalIDPDTOs()
+
+	suite.mockIDPService.On("GetIdentityProvidersByProperty", context.Background(),
+		idp.PropIssuer, testExternalIssuer).Return(idpDTOs, nil)
+	suite.mockJWTService.On("VerifyJWTSignatureWithJWKS", mock.Anything, token, testExternalJWKS).Return(nil)
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), "ext-user-123", result.Sub)
 }
 
 func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP_Success_AudIsServerIssuer() {
@@ -3577,4 +3636,180 @@ func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Success_RestoresS
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "sess-1", result.SessionID)
 	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// createTestJWTWithTyp builds a test token with an explicit typ header, for the refresh token typ
+// migration: refresh tokens are minted rt+jwt, and those minted before it carry the generic type.
+func (suite *TokenValidatorTestSuite) createTestJWTWithTyp(typ string, claims map[string]interface{}) string {
+	headerJSON, _ := json.Marshal(map[string]interface{}{"alg": "RS256", "typ": typ})
+	claimsJSON, _ := json.Marshal(claims)
+	return fmt.Sprintf("%s.%s.signature",
+		base64.RawURLEncoding.EncodeToString(headerJSON),
+		base64.RawURLEncoding.EncodeToString(claimsJSON))
+}
+
+// refreshTokenClaims returns the claim shape BuildRefreshToken produces: the OAuth client in sub,
+// the end user in access_token_sub.
+func refreshTokenClaims() map[string]interface{} {
+	now := time.Now().Unix()
+	return map[string]interface{}{
+		"sub":              "test-client",
+		"iss":              "https://example.com",
+		"aud":              "https://example.com",
+		"exp":              float64(now + 86400),
+		"nbf":              float64(now - 60),
+		"iat":              float64(now - 60),
+		"jti":              "refresh-jti-1",
+		"access_token_sub": "real-user-999",
+		"access_token_aud": []interface{}{"https://api.example.com"},
+		"grant_type":       "authorization_code",
+		"scope":            "openid profile",
+	}
+}
+
+// A refresh token minted with the rt+jwt typ validates on the refresh grant.
+func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Success_RTJWTTyp() {
+	token := suite.createTestJWTWithTyp(jwt.TokenTypeRefreshToken, refreshTokenClaims())
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "https://example.com").Return(nil)
+
+	result, err := suite.validator.ValidateRefreshToken(context.Background(), token)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), "real-user-999", result.Sub, "Sub must be the end user, not the client")
+	assert.Equal(suite.T(), "test-client", result.ClientID)
+}
+
+// A refresh token minted before rt+jwt carries the generic typ and must keep validating for the
+// length of the migration window.
+func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Success_LegacyJWTTyp() {
+	token := suite.createTestJWTWithTyp(jwt.TokenTypeJWT, refreshTokenClaims())
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "https://example.com").Return(nil)
+
+	result, err := suite.validator.ValidateRefreshToken(context.Background(), token)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), "real-user-999", result.Sub)
+}
+
+// An access token is not a refresh token, whatever its claims: at+jwt is refused on the refresh grant.
+func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Error_AccessTokenTyp() {
+	token := suite.createTestJWTWithTyp(jwt.TokenTypeAccessToken, refreshTokenClaims())
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "https://example.com").Return(nil)
+
+	result, err := suite.validator.ValidateRefreshToken(context.Background(), token)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Contains(suite.T(), err.Error(), "not a refresh token")
+}
+
+// A refresh token is not a subject token. Its sub is the OAuth client, so redeeming one on token
+// exchange would mint a token attributed to the client rather than the end user, and would sidestep
+// the client binding the refresh grant enforces. Covers the rt+jwt form.
+func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Error_RefreshTokenRTJWT() {
+	token := suite.createTestJWTWithTyp(jwt.TokenTypeRefreshToken, refreshTokenClaims())
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Contains(suite.T(), err.Error(), "refresh token cannot be presented as a subject_token")
+}
+
+// The same, for a refresh token minted before rt+jwt: the generic typ plus access_token_sub.
+func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Error_RefreshTokenLegacyTyp() {
+	token := suite.createTestJWTWithTyp(jwt.TokenTypeJWT, refreshTokenClaims())
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Contains(suite.T(), err.Error(), "refresh token cannot be presented as a subject_token")
+}
+
+// A refresh token is refused in the actor slot for the same reasons.
+func (suite *TokenValidatorTestSuite) TestValidateActorToken_Error_RefreshToken() {
+	token := suite.createTestJWTWithTyp(jwt.TokenTypeRefreshToken, refreshTokenClaims())
+
+	result, err := suite.validator.ValidateActorToken(context.Background(), token, suite.oauthApp)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Contains(suite.T(), err.Error(), "refresh token cannot be presented as a subject_token")
+}
+
+// An ID token remains a valid subject token: its sub is the end user, so the exchange is the
+// documented "act on behalf of a user you hold an id_token for" case. Guards against the refresh
+// token rejection above over-matching on the shared generic typ.
+func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Success_IDTokenStillAccepted() {
+	now := time.Now().Unix()
+	claims := map[string]interface{}{
+		"sub": "real-user-999",
+		"iss": "https://example.com",
+		"aud": "test-client",
+		"exp": float64(now + 3600),
+		"nbf": float64(now - 60),
+		"jti": "id-token-jti-1",
+	}
+	token := suite.createTestJWTWithTyp(jwt.TokenTypeJWT, claims)
+	suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), "real-user-999", result.Sub)
+}
+
+// The rt+jwt form of the same case: an ID-JAG subject token must be an ID token, and the typ check
+// refuses a refresh token before its claims are consulted.
+func (suite *TokenValidatorTestSuite) TestValidateIDJAGSubjectToken_RejectsRTJWTRefreshToken() {
+	token := suite.createTestJWTWithTyp(jwt.TokenTypeRefreshToken, refreshTokenClaims())
+
+	result, err := suite.validator.ValidateIDJAGSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Contains(suite.T(), err.Error(), "must be an ID token")
+}
+
+// A token whose header is not decodable is refused before its claims are read. The signature check
+// runs first and is mocked here, so this covers the header decode that the typ check depends on.
+func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Error_UndecodableHeader() {
+	token := "not-base64!!.eyJzdWIiOiJ4In0.signature" //nolint:gosec // Test token, not a real credential
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "https://example.com").Return(nil)
+
+	result, err := suite.validator.ValidateRefreshToken(context.Background(), token)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Contains(suite.T(), err.Error(), "failed to decode refresh token header")
+}
+
+// A token with a decodable header but an undecodable payload is refused on the refresh grant.
+func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Error_UndecodablePayload() {
+	headerJSON, _ := json.Marshal(map[string]interface{}{"alg": "RS256", "typ": jwt.TokenTypeRefreshToken})
+	token := base64.RawURLEncoding.EncodeToString(headerJSON) + ".not-base64!!.signature"
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "https://example.com").Return(nil)
+
+	result, err := suite.validator.ValidateRefreshToken(context.Background(), token)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Contains(suite.T(), err.Error(), "failed to decode refresh token")
+}
+
+// The same on the token exchange path: a subject token whose payload cannot be decoded is refused
+// after the header-based typ checks have passed.
+func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_Error_UndecodablePayload() {
+	headerJSON, _ := json.Marshal(map[string]interface{}{"alg": "RS256", "typ": jwt.TokenTypeJWT})
+	token := base64.RawURLEncoding.EncodeToString(headerJSON) + ".not-base64!!.signature"
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Contains(suite.T(), err.Error(), "failed to decode token")
 }
