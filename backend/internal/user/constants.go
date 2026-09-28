@@ -14,6 +14,11 @@ const (
 	CredentialTypePasskey CredentialType = "passkey"
 )
 
+// CredentialTypePassword is the schema-defined password credential. It is not system-managed, but
+// it is named here because it acts as the account-level proof of ownership when a user changes
+// their own credentials.
+const CredentialTypePassword CredentialType = "password"
+
 // systemManagedCredentialTypes defines credential types that are managed by the system,
 // not through user types. These may support multiple values per user.
 var systemManagedCredentialTypes = []CredentialType{

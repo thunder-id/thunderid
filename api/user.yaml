@@ -1347,8 +1347,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateSelfUserRequest'
+              $ref: '#/components/schemas/UpdateSelfCredentialsRequest'
             example:
+              currentPassword: "0ldP@ssword!"
               attributes:
                 password: "n3wP@ssword!"
       responses:
@@ -1371,6 +1372,16 @@ paths:
                     description:
                       key: "error.userservice.missing_credentials_description"
                       defaultValue: "At least one credential field must be provided"
+                unsupported-credential-type:
+                  summary: A credential type other than password was supplied
+                  value:
+                    code: "USR-1024"
+                    message:
+                      key: "error.userservice.invalid_credential"
+                      defaultValue: "Invalid request format"
+                    description:
+                      key: "error.userservice.invalid_credential_description"
+                      defaultValue: "Invalid credential fields in request"
         "401":
           description: Unauthorized - missing or invalid authentication token
           content:
@@ -1385,6 +1396,20 @@ paths:
                 description:
                   key: "error.unauthorized_description"
                   defaultValue: "Authentication is required to access this resource"
+        "403":
+          description: Forbidden - the supplied current password is incorrect
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "USR-1029"
+                message:
+                  key: "error.userservice.invalid_current_password"
+                  defaultValue: "Invalid current password"
+                description:
+                  key: "error.userservice.invalid_current_password_description"
+                  defaultValue: "The provided current password is incorrect"
         "404":
           description: Authenticated user not found
           content:
@@ -2190,6 +2215,27 @@ components:
           type: object
           description: "User attributes"
           additionalProperties: true
+
+    UpdateSelfCredentialsRequest:
+      type: object
+      required: [attributes]
+      properties:
+        currentPassword:
+          type: string
+          format: password
+          description: "The user's existing password, verified before the write. Required once the account has a password. Omit it for a first-time set, on an account with no password yet."
+          example: "0ldP@ssword!"
+        attributes:
+          type: object
+          description: "Credential attributes to write. Only `password` is accepted here; other types are rejected with 400 USR-1024."
+          required: [password]
+          properties:
+            password:
+              type: string
+              format: password
+              description: "The new password to set."
+              example: "n3wP@ssword!"
+          additionalProperties: false
 
     UpdateUserCredentialsRequest:
       type: object
