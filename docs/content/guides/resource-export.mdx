@@ -128,6 +128,30 @@ The API reference schema also defines an internal `ExportResponse` model (see `E
 
 When no template variables are detected, `envFile` is omitted (or `null` in internal JSON serialization paths).
 
+## Organization Unit Timestamps
+
+Exported organization units carry the time the unit was created and the time it was last modified:
+
+| Field | Description |
+|---|---|
+| `createdAt` | Time the organization unit was created. |
+| `updatedAt` | Time the organization unit was last modified. |
+
+Both values are converted to UTC and serialized as RFC 3339:
+
+```yaml
+resource_type: organization_unit
+id: 01a08051-11b3-71d2-8952-ffe7f57000af
+handle: clever-ants-kneel
+name: Clever Ants Kneel
+createdAt: 2026-09-08T09:16:26Z
+updatedAt: 2026-09-09T10:30:00Z
+```
+
+Sub-second precision is retained when the stored value carries it, as in `2026-09-08T09:16:26.123456789Z`. Trailing zeros are dropped, so a whole-second value carries no fractional part.
+
+Both fields are omitted when no timestamps are recorded for the unit. Organization units defined declaratively in YAML files record no timestamps.
+
 ## Format Option
 
 In `options.format`, only `yaml` is currently supported for generated resource content.

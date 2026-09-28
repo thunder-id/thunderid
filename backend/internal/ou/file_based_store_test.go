@@ -770,3 +770,70 @@ func TestMatchesOUFilter(t *testing.T) {
 		})
 	}
 }
+
+// A declarative file is not required to carry timestamps. Loading one without them must not
+// leave the zero time, which surfaces as year 0001 over the REST API and is dropped from
+// exports.
+func (s *FileBasedStoreTestSuite) TestDeclarativeLoadStampsMissingTimestamps() {
+	before := time.Now().UTC().Add(-time.Second)
+
+	err := s.store.Create("decl-ou-1", &providers.OrganizationUnit{
+		ID:     "decl-ou-1",
+		Handle: "decl",
+		Name:   "Declarative OU",
+	})
+	s.Require().NoError(err)
+
+	loaded, err := s.store.GetOrganizationUnit(context.Background(), "decl-ou-1")
+	s.Require().NoError(err)
+
+	assert.False(s.T(), loaded.CreatedAt.IsZero(), "load must stamp a missing createdAt")
+	assert.False(s.T(), loaded.UpdatedAt.IsZero(), "load must stamp a missing updatedAt")
+	assert.True(s.T(), loaded.CreatedAt.After(before))
+	assert.Equal(s.T(), time.UTC, loaded.CreatedAt.Location())
+}
+
+// A previously exported document used as a declarative resource keeps its original dates.
+func (s *FileBasedStoreTestSuite) TestDeclarativeLoadKeepsSuppliedTimestamps() {
+	createdAt := time.Date(2026, 9, 8, 9, 16, 26, 0, time.UTC)
+	updatedAt := time.Date(2026, 9, 9, 10, 30, 0, 0, time.UTC)
+
+	err := s.store.Create("decl-ou-2", &providers.OrganizationUnit{
+		ID:        "decl-ou-2",
+		Handle:    "decl-two",
+		Name:      "Declarative OU Two",
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+	})
+	s.Require().NoError(err)
+
+	loaded, err := s.store.GetOrganizationUnit(context.Background(), "decl-ou-2")
+	s.Require().NoError(err)
+
+	assert.True(s.T(), createdAt.Equal(loaded.CreatedAt), "supplied createdAt must be kept")
+	assert.True(s.T(), updatedAt.Equal(loaded.UpdatedAt), "supplied updatedAt must be kept")
+}
+
+// List responses must carry the timestamps too, not just the single-resource lookup.
+func (s *FileBasedStoreTestSuite) TestDeclarativeListCarriesTimestamps() {
+	err := s.store.Create("decl-ou-3", &providers.OrganizationUnit{
+		ID:     "decl-ou-3",
+		Handle: "decl-three",
+		Name:   "Declarative OU Three",
+	})
+	s.Require().NoError(err)
+
+	list, err := s.store.GetOrganizationUnitList(context.Background(), 10, 0, nil)
+	s.Require().NoError(err)
+	s.Require().NotEmpty(list)
+
+	var found bool
+	for _, item := range list {
+		if item.ID == "decl-ou-3" {
+			found = true
+			assert.False(s.T(), item.CreatedAt.IsZero(), "list entry must carry createdAt")
+			assert.False(s.T(), item.UpdatedAt.IsZero(), "list entry must carry updatedAt")
+		}
+	}
+	s.Require().True(found, "the declarative OU should appear in the list")
+}

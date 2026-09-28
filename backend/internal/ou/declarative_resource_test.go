@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
@@ -46,12 +47,16 @@ func (s *DeclarativeResourceTestSuite) TestGetParameterizerType() {
 }
 
 func (s *DeclarativeResourceTestSuite) TestGetResourceByID() {
+	createdAt := time.Date(2026, 9, 8, 9, 16, 26, 0, time.UTC)
+	updatedAt := time.Date(2026, 9, 9, 10, 30, 0, 0, time.UTC)
 	ou := providers.OrganizationUnit{
 		ID:          "test-ou-1",
 		Handle:      "test",
 		Name:        "Test OU",
 		Description: "Test organization unit",
 		Parent:      nil,
+		CreatedAt:   createdAt,
+		UpdatedAt:   updatedAt,
 	}
 
 	s.mockService.EXPECT().GetOrganizationUnit(mock.Anything, "test-ou-1").
@@ -65,6 +70,8 @@ func (s *DeclarativeResourceTestSuite) TestGetResourceByID() {
 	retrievedOU, ok := resource.(*providers.OrganizationUnit)
 	assert.True(s.T(), ok)
 	assert.Equal(s.T(), "test-ou-1", retrievedOU.ID)
+	assert.Equal(s.T(), createdAt, retrievedOU.CreatedAt)
+	assert.Equal(s.T(), updatedAt, retrievedOU.UpdatedAt)
 }
 
 func (s *DeclarativeResourceTestSuite) TestValidateResource() {
