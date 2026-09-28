@@ -42,7 +42,6 @@ import {useNavigate} from 'react-router';
 import {z} from 'zod';
 import CredentialFieldInput from '../components/CredentialFieldInput';
 import useFlowTextResolver from '../hooks/useFlowTextResolver';
-import useUserRoutes from '../hooks/useUserRoutes';
 import getUserErrorMessage from '../utils/getUserErrorMessage';
 
 /** Typed shape for flow sub-components */
@@ -1006,8 +1005,10 @@ export default function UserAddPage(): JSX.Element {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const logger = useLogger('UserAddPage');
-  const routes = useUserRoutes();
   const [flowError, setFlowError] = useState<string | null>(null);
+  // Set when the onboarding flow cannot be resolved at all. The run cannot start, so the page
+  // reports it rather than leaving the wizard on a step that will never load.
+  const [isFlowUnavailable, setIsFlowUnavailable] = useState(false);
   const resetFlowRef = useRef<(() => void) | null>(null);
 
   // Track breadcrumb trail of visited step labels, starting with "Add User"
@@ -1021,14 +1022,10 @@ export default function UserAddPage(): JSX.Element {
     });
   }, [navigate, logger]);
 
-  const handleManualCreateFallback = useCallback(() => {
-    logger.info('Falling back to manual user creation because the onboarding flow is unavailable');
-    (async () => {
-      await navigate(routes.addCreate());
-    })().catch((err: unknown) => {
-      logger.error('Failed to navigate to fallback user creation page', {error: err});
-    });
-  }, [navigate, routes, logger]);
+  const handleUnavailableFlow = useCallback(() => {
+    logger.error('The user onboarding flow could not be resolved, so onboarding cannot start');
+    setIsFlowUnavailable(true);
+  }, [logger]);
 
   const handleStepLabelChange = useCallback(
     (label: string) => {
@@ -1074,6 +1071,27 @@ export default function UserAddPage(): JSX.Element {
   const totalSteps = hasOuStep ? 5 : 4;
   const progress = Math.min((breadcrumbs.length / totalSteps) * 100, 100);
 
+  if (isFlowUnavailable) {
+    return (
+      <FullScreenCreationWizardLayout
+        onClose={handleClose}
+        progress={0}
+        breadcrumbItems={[{key: 'breadcrumb-0', label: t('users:addUser', 'Add User')}]}
+        footer={null}
+      >
+        <Box sx={{p: 3}}>
+          <Alert severity="error">
+            <AlertTitle>{t('users:errors.onboardingFlowUnavailable.title', 'User onboarding is unavailable')}</AlertTitle>
+            {t(
+              'users:errors.onboardingFlowUnavailable.description',
+              'The user onboarding flow could not be resolved. Check that a user onboarding flow is configured for this deployment and that the flow it names exists.',
+            )}
+          </Alert>
+        </Box>
+      </FullScreenCreationWizardLayout>
+    );
+  }
+
   return (
     <FullScreenCreationWizardLayout
       onClose={handleClose}
@@ -1100,7 +1118,7 @@ export default function UserAddPage(): JSX.Element {
       <InviteUser
         onError={(err: Error) => {
           if (isMissingOnboardingFlow(err)) {
-            handleManualCreateFallback();
+            handleUnavailableFlow();
             return;
           }
           logger.error('User onboarding error', {error: err});
@@ -1120,7 +1138,7 @@ export default function UserAddPage(): JSX.Element {
         }}
         onFlowChange={(response) => {
           if (isMissingOnboardingFlow(response)) {
-            handleManualCreateFallback();
+            handleUnavailableFlow();
             return;
           }
           if (!response?.error) {
