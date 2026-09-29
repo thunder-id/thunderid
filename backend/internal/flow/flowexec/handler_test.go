@@ -14,6 +14,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/session"
+	"github.com/thunder-id/thunderid/internal/system/clientip"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -234,6 +235,34 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_CapturesCurrentRequest
 	s.Equal("newsletter", gotRequest.QueryParams["utm_source"][0])
 	// client_secret is a credential query param and must be stripped at capture.
 	s.NotContains(gotRequest.QueryParams, "client_secret", "credential query params must be stripped")
+}
+
+func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_PropagatesClientInfo() {
+	t := s.T()
+	mockSvc := NewFlowExecServiceInterfaceMock(t)
+
+	var got session.ClientInfo
+	mockSvc.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(ctx context.Context, _ string, _ string, _ string, _ bool, _ string,
+			_ map[string]string, _ string, _ string, _ string) {
+			got = session.ClientInfoFrom(ctx)
+		}).
+		Return(&FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete},
+			(*tidcommon.ServiceError)(nil))
+
+	h := newFlowExecutionHandler(mockSvc, session.NewHandleTransport(session.TransportConfig{SecureCookies: false}), 0)
+	req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString(testFlowExecRequestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh) Chrome/140.0")
+	req = req.WithContext(clientip.WithIP(req.Context(), "203.0.113.10"))
+	w := httptest.NewRecorder()
+
+	h.HandleFlowExecutionRequest(w, req)
+
+	s.Equal(http.StatusOK, w.Code)
+	s.Equal("203.0.113.10", got.IP)
+	s.Equal("Mozilla/5.0 (Macintosh) Chrome/140.0", got.UserAgent)
 }
 
 // TestHandleFlowExecutionRequest_WritesSSOHandleCookie verifies a minted handle is emitted as the

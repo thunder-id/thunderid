@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -39,7 +40,9 @@ func (st *store) Create(ctx context.Context, s Session) error {
 			s.SessionID, st.deploymentID, s.SubjectID, s.FlowID, s.FlowVersion,
 			s.FlowExecutionID, s.HandleID,
 			s.AuthenticatedAt, s.CreatedAt, s.LastActiveAt,
-			nullableTime(s.IdleExpiresAt), nullableTime(s.AbsoluteExpiresAt), string(s.State), s.Version)
+			nullableTime(s.IdleExpiresAt), nullableTime(s.AbsoluteExpiresAt),
+			marshalProperties(s.Properties),
+			string(s.State), s.Version)
 		if err != nil {
 			return fmt.Errorf("failed to create session: %w", err)
 		}
@@ -113,7 +116,7 @@ func (st *store) Update(ctx context.Context, s *Session) error {
 	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
 		rowsAffected, err := dbClient.ExecuteContext(ctx, queryUpdateSession,
 			s.FlowVersion, s.HandleID,
-			s.LastActiveAt,
+			s.LastActiveAt, marshalProperties(s.Properties),
 			nullableTime(s.IdleExpiresAt), nullableTime(s.AbsoluteExpiresAt), string(s.State),
 			s.SessionID, st.deploymentID, s.Version)
 		if err != nil {
@@ -127,15 +130,16 @@ func (st *store) Update(ctx context.Context, s *Session) error {
 	})
 }
 
-// TouchAuthenticatedAt records that the subject authenticated again inside an existing session,
-// sliding the idle deadline along with it. Unlike Update it carries no version guard: the write
-// records an authentication that already happened, so a concurrent liveness slide must not cause it
-// to be dropped.
+// TouchAuthenticatedAt records that the subject authenticated again inside an existing session, and the
+// session's properties with the IP it authenticated from, sliding the idle deadline along with it. Unlike
+// Update it carries no version guard: the write records an authentication that already happened, so a
+// concurrent liveness slide must not cause it to be dropped.
 func (st *store) TouchAuthenticatedAt(ctx context.Context, sessionID string, authenticatedAt,
-	idleExpiresAt time.Time) error {
+	idleExpiresAt time.Time, properties SessionProperties) error {
 	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(ctx, queryTouchAuthenticatedAt,
-			authenticatedAt, authenticatedAt, nullableTime(idleExpiresAt), sessionID, st.deploymentID)
+			authenticatedAt, authenticatedAt, marshalProperties(properties), nullableTime(idleExpiresAt),
+			sessionID, st.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to refresh session authentication time: %w", err)
 		}
@@ -413,6 +417,31 @@ func nullableTime(t time.Time) interface{} {
 	return t
 }
 
+// marshalProperties encodes a session's properties for the PROPERTIES column, or NULL when it has none.
+// Encoding a struct of strings can't fail, so the error is ignored.
+func marshalProperties(p SessionProperties) interface{} {
+	if p == (SessionProperties{}) {
+		return nil
+	}
+	data, _ := json.Marshal(p)
+	return string(data)
+}
+
+// parseProperties decodes the PROPERTIES column. NULL, from a session recorded without properties, and
+// an unreadable value both decode to empty properties: they are only displayed, so they must not block
+// SSO or sign-out.
+func parseProperties(value interface{}) SessionProperties {
+	var p SessionProperties
+	raw := parseNullableString(value)
+	if raw == "" {
+		return p
+	}
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		return SessionProperties{}
+	}
+	return p
+}
+
 // buildSessionFromRow maps a database result row into a Session.
 func buildSessionFromRow(row map[string]interface{}) (*Session, error) {
 	sessionID, err := parseString(row["session_id"], "session_id")
@@ -455,7 +484,6 @@ func buildSessionFromRow(row map[string]interface{}) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return &Session{
 		SessionID:         sessionID,
 		SubjectID:         subjectID,
@@ -468,6 +496,7 @@ func buildSessionFromRow(row map[string]interface{}) (*Session, error) {
 		LastActiveAt:      lastActiveAt,
 		IdleExpiresAt:     parseNullableTime(row["idle_expires_at"]),
 		AbsoluteExpiresAt: parseNullableTime(row["absolute_expires_at"]),
+		Properties:        parseProperties(row["properties"]),
 		State:             State(parseNullableString(row["state"])),
 		Version:           version,
 	}, nil

@@ -165,6 +165,7 @@ func (e *sessionExecutor) saveCheckpoint(ctx *providers.NodeContext, execResp *p
 		CompletedSteps: buildCompletedSteps(ctx.ExecutionHistory),
 		AppID:          ctx.Application.ID,
 		TokenFamilyID:  tokenFamilyID,
+		ClientInfo:     session.ClientInfoFrom(ctx.Context),
 	})
 	if err != nil {
 		return err
@@ -263,6 +264,7 @@ func (e *sessionExecutor) loadCheckpoint(ctx *providers.NodeContext, execResp *p
 		TokenFamilyID: tokenFamilyID,
 		Session:       forwardedSession,
 		Context:       forwardedContext,
+		ClientInfo:    session.ClientInfoFrom(ctx.Context),
 	})
 	if err != nil {
 		return err
