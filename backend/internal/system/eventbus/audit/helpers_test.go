@@ -123,7 +123,7 @@ func newRequest(method, target, bearer, apiKey string) *http.Request {
 	return r
 }
 
-// securedContext returns the context the client middleware and the security layer hand down for r,
+// securedContext returns the context the request metadata middleware and the security layer hand down for r,
 // built by the real middleware and authenticators.
 func securedContext(t *testing.T, r *http.Request) context.Context {
 	t.Helper()
@@ -137,8 +137,11 @@ func securedContext(t *testing.T, r *http.Request) context.Context {
 	secure, err := security.Initialize(jwtService, enforcer, "", cryptolib.HashToken(testAPIKey))
 	require.NoError(t, err)
 
+	withRequestMetadata, err := middleware.RequestMetadataMiddleware(nil)
+	require.NoError(t, err)
+
 	var ctx context.Context
-	handler := middleware.ClientMiddleware(secure(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+	handler := withRequestMetadata(secure(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		ctx = r.Context()
 	})))
 	recorder := httptest.NewRecorder()

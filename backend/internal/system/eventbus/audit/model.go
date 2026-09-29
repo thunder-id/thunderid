@@ -23,7 +23,7 @@ type Outcome struct {
 
 // Client is where a request came from.
 type Client struct {
-	// Address is the TCP peer address, so behind a proxy it is the proxy's.
+	// Address is the client IP, resolved through the trusted proxies, or the TCP peer address.
 	Address string
 	// UserAgent is the request's user agent, capped at 256 characters.
 	UserAgent string
