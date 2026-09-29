@@ -87,6 +87,9 @@ type Session struct {
 	IdleExpiresAt     time.Time
 	AbsoluteExpiresAt time.Time
 
+	// Properties is the client metadata recorded on the session, stored as JSON in the PROPERTIES column.
+	Properties SessionProperties
+
 	// State is the lifecycle state of the session.
 	State State
 	// Version is the optimistic-lock token, incremented on every successful update.
@@ -141,4 +144,25 @@ func SSOInputsFrom(ctx context.Context) SSOInputs {
 		return in
 	}
 	return SSOInputs{}
+}
+
+// SessionProperties is the client metadata recorded on a session so it can be recognized later. It is
+// stored as one JSON document, so a new field needs no schema change.
+type SessionProperties struct {
+	// UserAgent is the User-Agent of the client that established the session, recorded once at creation.
+	UserAgent string `json:"userAgent,omitempty"`
+	// CreationIP is the client IP address the session was established from, recorded once at creation.
+	CreationIP string `json:"creationIp,omitempty"`
+	// LastActiveIP is the client IP address the session was last used from: recorded at creation, and
+	// refreshed when a login flow reuses the session or the subject authenticates again inside it.
+	LastActiveIP string `json:"lastActiveIp,omitempty"`
+}
+
+// ClientInfo is the request-scoped client metadata recorded on a session so it can be recognized
+// later (the device and the network location it was used from).
+type ClientInfo struct {
+	// IP is the client IP address.
+	IP string
+	// UserAgent is the client's User-Agent header.
+	UserAgent string
 }

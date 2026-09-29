@@ -163,6 +163,77 @@ func (suite *ValidateTestSuite) TestSecurityConfig_Validate() {
 	})
 }
 
+// ----- ServerConfig.TrustedProxies -----
+
+func (suite *ValidateTestSuite) TestServerConfig_Validate() {
+	suite.T().Run("valid config passes", func(t *testing.T) {
+		c := &ServerConfig{TrustedProxies: []TrustedProxyConfig{{CIDR: "10.0.1.0/24"}}}
+		assert.NoError(t, c.Validate())
+	})
+
+	suite.T().Run("propagates security error", func(t *testing.T) {
+		c := &ServerConfig{SecurityConfig: SecurityConfig{JWKSCacheTTL: -1}}
+		assert.ErrorContains(t, c.Validate(), "jwks_cache_ttl")
+	})
+
+	suite.T().Run("propagates trusted proxy error", func(t *testing.T) {
+		c := &ServerConfig{TrustedProxies: []TrustedProxyConfig{{CIDR: "10.0.0.5"}}}
+		assert.ErrorContains(t, c.Validate(), "trusted_proxies[0]")
+	})
+}
+
+func (suite *ValidateTestSuite) TestServerConfig_ValidateTrustedProxies() {
+	suite.T().Run("valid entries pass", func(t *testing.T) {
+		c := &ServerConfig{TrustedProxies: []TrustedProxyConfig{
+			{CIDR: "10.0.1.0/24", Header: "X-Real-IP"},
+			{CIDR: "2001:db8::/32"},
+			{CIDR: "::ffff:10.0.0.0/104"},
+		}}
+		assert.NoError(t, c.validateTrustedProxies())
+	})
+
+	suite.T().Run("no trusted proxies passes", func(t *testing.T) {
+		assert.NoError(t, (&ServerConfig{}).validateTrustedProxies())
+	})
+
+	tests := []struct {
+		name  string
+		proxy TrustedProxyConfig
+		want  string
+	}{
+		{"missing cidr fails", TrustedProxyConfig{}, "trusted_proxies[0]: cidr"},
+		{"invalid cidr fails", TrustedProxyConfig{CIDR: "10.0.0.0/33"}, "not a valid CIDR range"},
+		{"an address without a prefix length fails", TrustedProxyConfig{CIDR: "172.28.0.10"},
+			"not a valid CIDR range"},
+		{"IPv4-mapped range shorter than /96 fails", TrustedProxyConfig{CIDR: "::ffff:0.0.0.0/95"},
+			"IPv4-mapped range shorter than /96"},
+		{"invalid header fails", TrustedProxyConfig{CIDR: "10.0.0.0/24", Header: "x real ip"},
+			"not a valid header name"},
+		{"forwarded is not supported", TrustedProxyConfig{CIDR: "10.0.0.0/24", Header: "Forwarded"},
+			`header "Forwarded" is not supported; use "x-forwarded-for"`},
+	}
+	for _, tc := range tests {
+		suite.T().Run(tc.name, func(t *testing.T) {
+			c := &ServerConfig{TrustedProxies: []TrustedProxyConfig{tc.proxy}}
+			assert.ErrorContains(t, c.validateTrustedProxies(), tc.want)
+		})
+	}
+}
+
+func (suite *ValidateTestSuite) TestTrustedProxyConfig_Range() {
+	suite.T().Run("returns the range", func(t *testing.T) {
+		r, err := (&TrustedProxyConfig{CIDR: "10.0.1.0/24"}).Range()
+		assert.NoError(t, err)
+		assert.Equal(t, "10.0.1.0/24", r.String())
+	})
+
+	suite.T().Run("returns an IPv4-mapped range as its IPv4 range", func(t *testing.T) {
+		r, err := (&TrustedProxyConfig{CIDR: "::ffff:10.0.1.0/120"}).Range()
+		assert.NoError(t, err)
+		assert.Equal(t, "10.0.1.0/24", r.String())
+	})
+}
+
 // ----- MCPConfig -----
 
 func (suite *ValidateTestSuite) TestMCPConfig_Validate() {

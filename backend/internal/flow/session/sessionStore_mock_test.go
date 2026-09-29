@@ -1025,16 +1025,16 @@ func (_c *sessionStoreMock_SlideIdleDeadline_Call) RunAndReturn(run func(ctx con
 }
 
 // TouchAuthenticatedAt provides a mock function for the type sessionStoreMock
-func (_mock *sessionStoreMock) TouchAuthenticatedAt(ctx context.Context, sessionID string, authenticatedAt time.Time, idleExpiresAt time.Time) error {
-	ret := _mock.Called(ctx, sessionID, authenticatedAt, idleExpiresAt)
+func (_mock *sessionStoreMock) TouchAuthenticatedAt(ctx context.Context, sessionID string, authenticatedAt time.Time, idleExpiresAt time.Time, properties SessionProperties) error {
+	ret := _mock.Called(ctx, sessionID, authenticatedAt, idleExpiresAt, properties)
 
 	if len(ret) == 0 {
 		panic("no return value specified for TouchAuthenticatedAt")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, time.Time) error); ok {
-		r0 = returnFunc(ctx, sessionID, authenticatedAt, idleExpiresAt)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time, time.Time, SessionProperties) error); ok {
+		r0 = returnFunc(ctx, sessionID, authenticatedAt, idleExpiresAt, properties)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -1051,11 +1051,12 @@ type sessionStoreMock_TouchAuthenticatedAt_Call struct {
 //   - sessionID string
 //   - authenticatedAt time.Time
 //   - idleExpiresAt time.Time
-func (_e *sessionStoreMock_Expecter) TouchAuthenticatedAt(ctx any, sessionID any, authenticatedAt any, idleExpiresAt any) *sessionStoreMock_TouchAuthenticatedAt_Call {
-	return &sessionStoreMock_TouchAuthenticatedAt_Call{Call: _e.mock.On("TouchAuthenticatedAt", ctx, sessionID, authenticatedAt, idleExpiresAt)}
+//   - properties SessionProperties
+func (_e *sessionStoreMock_Expecter) TouchAuthenticatedAt(ctx any, sessionID any, authenticatedAt any, idleExpiresAt any, properties any) *sessionStoreMock_TouchAuthenticatedAt_Call {
+	return &sessionStoreMock_TouchAuthenticatedAt_Call{Call: _e.mock.On("TouchAuthenticatedAt", ctx, sessionID, authenticatedAt, idleExpiresAt, properties)}
 }
 
-func (_c *sessionStoreMock_TouchAuthenticatedAt_Call) Run(run func(ctx context.Context, sessionID string, authenticatedAt time.Time, idleExpiresAt time.Time)) *sessionStoreMock_TouchAuthenticatedAt_Call {
+func (_c *sessionStoreMock_TouchAuthenticatedAt_Call) Run(run func(ctx context.Context, sessionID string, authenticatedAt time.Time, idleExpiresAt time.Time, properties SessionProperties)) *sessionStoreMock_TouchAuthenticatedAt_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -1073,11 +1074,16 @@ func (_c *sessionStoreMock_TouchAuthenticatedAt_Call) Run(run func(ctx context.C
 		if args[3] != nil {
 			arg3 = args[3].(time.Time)
 		}
+		var arg4 SessionProperties
+		if args[4] != nil {
+			arg4 = args[4].(SessionProperties)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -1088,7 +1094,7 @@ func (_c *sessionStoreMock_TouchAuthenticatedAt_Call) Return(err error) *session
 	return _c
 }
 
-func (_c *sessionStoreMock_TouchAuthenticatedAt_Call) RunAndReturn(run func(ctx context.Context, sessionID string, authenticatedAt time.Time, idleExpiresAt time.Time) error) *sessionStoreMock_TouchAuthenticatedAt_Call {
+func (_c *sessionStoreMock_TouchAuthenticatedAt_Call) RunAndReturn(run func(ctx context.Context, sessionID string, authenticatedAt time.Time, idleExpiresAt time.Time, properties SessionProperties) error) *sessionStoreMock_TouchAuthenticatedAt_Call {
 	_c.Call.Return(run)
 	return _c
 }

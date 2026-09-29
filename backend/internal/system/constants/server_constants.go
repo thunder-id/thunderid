@@ -33,6 +33,9 @@ const RetryAfterHeaderName = "Retry-After"
 // the request's trace ID across service boundaries.
 const CorrelationIDHeaderName = "X-Correlation-ID"
 
+// XForwardedForHeaderName is the name of the header a reverse proxy reports the client IP in.
+const XForwardedForHeaderName = "X-Forwarded-For"
+
 // HostHeaderName is the name of the Host header. Go carries the inbound host on http.Request.Host
 // rather than in http.Request.Header, so it is surfaced under this key when capturing request data.
 const HostHeaderName = "Host"

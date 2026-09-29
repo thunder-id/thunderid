@@ -1058,7 +1058,7 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 		cfg.JWT.Issuer = engineconfig.GetServerURL(&cfg.Server)
 	}
 
-	if err := cfg.Server.SecurityConfig.Validate(); err != nil {
+	if err := cfg.Server.Validate(); err != nil {
 		return nil, err
 	}
 

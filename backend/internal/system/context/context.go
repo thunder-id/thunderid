@@ -28,6 +28,9 @@ const (
 
 	// ClientUserAgentKey is the context key for the user agent of the request.
 	ClientUserAgentKey contextKey = "client_user_agent"
+
+	// RequestMetadataKey is the context key for the client metadata of a request.
+	RequestMetadataKey contextKey = "request_metadata"
 )
 
 // ============================================================================
@@ -156,4 +159,35 @@ func GetClient(ctx context.Context) (address, userAgent string) {
 // middleware records them only for a public peer.
 func WithClient(ctx context.Context, address, userAgent string) context.Context {
 	return context.WithValue(context.WithValue(ctx, ClientAddressKey, address), ClientUserAgentKey, userAgent)
+}
+
+// ============================================================================
+// Request Metadata Functions
+// ============================================================================
+
+// RequestMetadata is the client metadata of a request, set on its context by the
+// RequestMetadataMiddleware.
+type RequestMetadata struct {
+	// ClientIP is the client IP resolved from the trusted proxies, or the connecting address. It is for
+	// display and logging, never for a security decision.
+	ClientIP string
+	// UserAgent is the request's User-Agent header, as the client sent it.
+	UserAgent string
+}
+
+// GetRequestMetadata retrieves the client metadata of the request, or the zero value when none was set.
+func GetRequestMetadata(ctx context.Context) RequestMetadata {
+	if ctx == nil {
+		return RequestMetadata{}
+	}
+	md, _ := ctx.Value(RequestMetadataKey).(RequestMetadata)
+	return md
+}
+
+// WithRequestMetadata adds the client metadata of the request to the context.
+func WithRequestMetadata(ctx context.Context, md RequestMetadata) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, RequestMetadataKey, md)
 }

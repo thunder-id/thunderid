@@ -6,8 +6,11 @@ package config
 
 import (
 	"fmt"
+	"net/netip"
 	"net/url"
 	"strings"
+
+	"golang.org/x/net/http/httpguts"
 )
 
 const schemeHTTPS = "https"
@@ -30,6 +33,56 @@ func (c *SecurityConfig) Validate() error {
 		return err
 	}
 	return c.TrustedIssuer.Validate()
+}
+
+// Validate checks the server configuration for correctness: the security section and the trusted
+// proxies.
+func (c *ServerConfig) Validate() error {
+	if err := c.SecurityConfig.Validate(); err != nil {
+		return err
+	}
+	return c.validateTrustedProxies()
+}
+
+// validateTrustedProxies checks each server.trusted_proxies entry. An omitted header is valid: it means
+// x-forwarded-for.
+func (c *ServerConfig) validateTrustedProxies() error {
+	for i, proxy := range c.TrustedProxies {
+		if _, err := proxy.Range(); err != nil {
+			return fmt.Errorf("invalid server.trusted_proxies[%d]: %w", i, err)
+		}
+		if proxy.Header == "" {
+			continue
+		}
+		if !httpguts.ValidHeaderFieldName(proxy.Header) {
+			return fmt.Errorf("invalid server.trusted_proxies[%d]: header %q is not a valid header name",
+				i, proxy.Header)
+		}
+		// The RFC 7239 value (for=192.0.2.60;proto=https) is not a plain IP, so reading it as one would
+		// fail on every request.
+		if strings.EqualFold(proxy.Header, "forwarded") {
+			return fmt.Errorf("invalid server.trusted_proxies[%d]: header %q is not supported; "+
+				"use \"x-forwarded-for\"", i, proxy.Header)
+		}
+	}
+	return nil
+}
+
+// Range parses CIDR into the range client addresses are matched against. Addresses are matched in
+// their IPv4 form, so an IPv4-mapped range is returned as its IPv4 range, and one shorter than /96 is
+// rejected since it could never match.
+func (c *TrustedProxyConfig) Range() (netip.Prefix, error) {
+	cidr, err := netip.ParsePrefix(c.CIDR)
+	if err != nil {
+		return netip.Prefix{}, fmt.Errorf("cidr %q is not a valid CIDR range", c.CIDR)
+	}
+	if cidr.Addr().Is4In6() {
+		if cidr.Bits() < 96 {
+			return netip.Prefix{}, fmt.Errorf("cidr %q is an IPv4-mapped range shorter than /96", c.CIDR)
+		}
+		cidr = netip.PrefixFrom(cidr.Addr().Unmap(), cidr.Bits()-96)
+	}
+	return cidr, nil
 }
 
 // Validate checks the REST API gate configuration; an absent audience leaves it unchecked.
