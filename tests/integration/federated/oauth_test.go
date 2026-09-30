@@ -7,28 +7,16 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 /*
 Generic OAuth transport failures.
 
 A generic OAuth connection has no ID token: the profile always comes from the userinfo endpoint, so
-these cover what happens when the token or userinfo exchange misbehaves. As with the OIDC block, each
-identity is given a local user first so a well-formed exchange would authenticate — otherwise every
-assertion would hold merely because no user existed.
+these cover what happens when the token or userinfo exchange misbehaves. Each identity is linked to a
+local user first, and TestOAuthLinkedIdentityAuthenticates shows a well-formed exchange then
+authenticates, so every rejection below is the exchange's doing rather than a missing link.
 */
-
-// oauthUser registers an identity on the OAuth mock and a local user carrying its subject.
-func (s *FederatedMappingSuite) oauthUser() string {
-	s.T().Helper()
-	sub := s.nextSubject()
-	email := sub + "@example.com"
-	s.mockOAuth.AddUser(&testutils.OAuthUserInfo{Sub: sub, Email: email, Name: "OAuth User"})
-	s.createLocalUser(map[string]interface{}{"username": email, "email": email, "sub": sub})
-	return sub
-}
 
 // authenticateOAuth applies a configuration and authenticates through the OAuth connection.
 func (s *FederatedMappingSuite) authenticateOAuth(sub string) int {
@@ -38,10 +26,18 @@ func (s *FederatedMappingSuite) authenticateOAuth(sub string) int {
 	return status
 }
 
+// A linked identity whose exchange is well-formed authenticates, which is what makes the failures
+// below meaningful.
+func (s *FederatedMappingSuite) TestOAuthLinkedIdentityAuthenticates() {
+	sub := s.knownOAuthIdentity().Sub
+	s.Equal(http.StatusOK, s.authenticateOAuth(sub),
+		"a linked identity with a well-formed exchange should authenticate")
+}
+
 // BO16: the token response is well-formed JSON but carries no access token, so there is nothing to
 // fetch the profile with.
 func (s *FederatedMappingSuite) TestOAuthTokenResponseMissingAccessToken() {
-	sub := s.oauthUser()
+	sub := s.knownOAuthIdentity().Sub
 	defer s.mockOAuth.ClearOverrides()
 	s.mockOAuth.SetTokenResponseOverride(func() (int, string) {
 		return http.StatusOK, `{"token_type":"Bearer","expires_in":3600}`
@@ -52,7 +48,7 @@ func (s *FederatedMappingSuite) TestOAuthTokenResponseMissingAccessToken() {
 
 // BO17: the token endpoint refuses the exchange.
 func (s *FederatedMappingSuite) TestOAuthTokenEndpointError() {
-	sub := s.oauthUser()
+	sub := s.knownOAuthIdentity().Sub
 	defer s.mockOAuth.ClearOverrides()
 	s.mockOAuth.SetTokenResponseOverride(func() (int, string) {
 		return http.StatusBadRequest, `{"error":"invalid_grant"}`
@@ -63,7 +59,7 @@ func (s *FederatedMappingSuite) TestOAuthTokenEndpointError() {
 
 // BO18: the token endpoint answers with something that is not JSON.
 func (s *FederatedMappingSuite) TestOAuthTokenEndpointMalformedJSON() {
-	sub := s.oauthUser()
+	sub := s.knownOAuthIdentity().Sub
 	defer s.mockOAuth.ClearOverrides()
 	s.mockOAuth.SetTokenResponseOverride(func() (int, string) {
 		return http.StatusOK, `{"access_token": `
@@ -74,7 +70,7 @@ func (s *FederatedMappingSuite) TestOAuthTokenEndpointMalformedJSON() {
 
 // BO19: the profile cannot be fetched.
 func (s *FederatedMappingSuite) TestOAuthUserInfoEndpointError() {
-	sub := s.oauthUser()
+	sub := s.knownOAuthIdentity().Sub
 	defer s.mockOAuth.ClearOverrides()
 	s.mockOAuth.SetUserInfoResponseOverride(func() (int, string) {
 		return http.StatusUnauthorized, `{"error":"invalid_token"}`
@@ -86,7 +82,7 @@ func (s *FederatedMappingSuite) TestOAuthUserInfoEndpointError() {
 
 // BO20: the profile response is not JSON.
 func (s *FederatedMappingSuite) TestOAuthUserInfoMalformedJSON() {
-	sub := s.oauthUser()
+	sub := s.knownOAuthIdentity().Sub
 	defer s.mockOAuth.ClearOverrides()
 	s.mockOAuth.SetUserInfoResponseOverride(func() (int, string) {
 		return http.StatusOK, `not-json-at-all`
@@ -104,7 +100,7 @@ func (s *FederatedMappingSuite) TestOAuthUserInfoWithoutUsableSub() {
 	}
 	for name, body := range bodies {
 		s.Run(name, func() {
-			sub := s.oauthUser()
+			sub := s.knownOAuthIdentity().Sub
 			defer s.mockOAuth.ClearOverrides()
 			s.mockOAuth.SetUserInfoResponseOverride(func() (int, string) {
 				return http.StatusOK, body

@@ -206,7 +206,7 @@ func (s *openid4vpService) Authenticate(_ context.Context, cred *authncommon.Ope
 	return &authncommon.AuthnResult{
 		Token: map[string]interface{}{
 			authnprovidercm.UserAttributeFederatedIdpID: LinkedConnectionID(cred.DefinitionID, cred.Issuer),
-			authnprovidercm.UserAttributeSub:            cred.Subject,
+			authnprovidercm.ClaimSub:                    cred.Subject,
 		},
 		AuthenticatedClaims: claims,
 	}, nil

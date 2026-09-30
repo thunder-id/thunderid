@@ -51,7 +51,6 @@ var fedPersonType = testutils.UserType{
 		"lastName":   map[string]interface{}{"type": "string"},
 		"city":       map[string]interface{}{"type": "string"},
 		"costCenter": map[string]interface{}{"type": "string", "displayName": "Cost center"},
-		"sub":        map[string]interface{}{"type": "string"},
 		// Optional, and only the OTP linking scenario sets it, to prove an account with.
 		"mobile_number": map[string]interface{}{"type": "string"},
 		// Optional; signs a user in before a federated sign-in, and proves an account when a link is
@@ -73,7 +72,6 @@ var fedContractorType = testutils.UserType{
 		"email":          map[string]interface{}{"type": "string", "required": true, "unique": true},
 		"firstName":      map[string]interface{}{"type": "string"},
 		"employeeNumber": map[string]interface{}{"type": "string"},
-		"sub":            map[string]interface{}{"type": "string"},
 	},
 }
 

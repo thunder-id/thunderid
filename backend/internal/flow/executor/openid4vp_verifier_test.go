@@ -188,9 +188,9 @@ func TestOpenID4VPExecutorPollCompleted(t *testing.T) {
 				cred.IssuerTrusted && cred.Subject == "sub-1"
 		}), mock.Anything, mock.Anything, mock.Anything).
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{
-			"given_name":     "Erika",
-			"family_name":    "Mustermann",
-			userAttributeSub: "sub-1",
+			"given_name":  "Erika",
+			"family_name": "Mustermann",
+			claimSub:      "sub-1",
 		}, nil)
 
 	exec := newTestOpenID4VPExecutorWithProvider(t, svc, mockAuthnProvider)
@@ -207,7 +207,7 @@ func TestOpenID4VPExecutorPollCompleted(t *testing.T) {
 	require.NotNil(t, identity)
 	assert.Equal(t, "openid4vp:def-1:https://issuer.example", identity.IdpID)
 	assert.Equal(t, "sub-1", identity.Sub)
-	assert.NotContains(t, identity.Claims, userAttributeSub)
+	assert.NotContains(t, identity.Claims, claimSub)
 	assert.Equal(t, "Erika", externalClaim(resp.RuntimeData, "given_name"))
 	// AuthUser is not authenticated (no entity reference resolved), so eligible for provisioning
 	assert.Equal(t, dataValueTrue, resp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning])

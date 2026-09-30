@@ -57,14 +57,6 @@ schema:
       order: 4
     required: false
     regex: "^\\+[1-9]\\d{1,14}$"
-  sub:
-    type: string
-    displayName: Subject
-    display:
-      order: 8
-      onCreate:
-        hidden: true
-    required: false
   name:
     type: string
     displayName: Full Name
@@ -6058,7 +6050,6 @@ type: person
 ouHandle: default
 attributes:
   username: "{{ .ADMIN_USERNAME }}"
-  sub: "{{ .ADMIN_USERNAME }}"
   email: admin@example.com
   name: Administrator
   given_name: Admin

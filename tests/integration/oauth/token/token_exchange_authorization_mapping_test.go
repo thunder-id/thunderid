@@ -660,15 +660,17 @@ func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) TestTokenExchange_Perm
 // user ever created for its subject.
 func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) TestTokenExchange_NoLocalRecordRequired() {
 	sub := ts.nextSubject()
+	email := sub + "@example.com"
 	ts.mockIDP.AddUser(&testutils.OIDCUserInfo{
 		Sub:    sub,
+		Email:  email,
 		Custom: map[string]interface{}{"groups": []interface{}{"te-admins"}},
 	})
 	ts.applyAuthorizationRuleMapping("groups", "", map[string][]testutils.AuthorizationTarget{
 		"te-admins": {{Type: testutils.AuthorizationTargetRole, ID: ts.mappedRoleID}},
 	})
 
-	before, err := testutils.FindUserByAttribute("sub", sub)
+	before, err := testutils.FindUserByAttribute("email", email)
 	ts.Require().NoError(err)
 	ts.Require().Nil(before, "no local record should exist before the exchange")
 
@@ -681,7 +683,7 @@ func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) TestTokenExchange_NoLo
 	ts.Require().NoError(err)
 	ts.Equal(sub, claims.Sub)
 
-	after, err := testutils.FindUserByAttribute("sub", sub)
+	after, err := testutils.FindUserByAttribute("email", email)
 	ts.Require().NoError(err)
 	ts.Nil(after, "authorizing the exchange must not have created a local record")
 }

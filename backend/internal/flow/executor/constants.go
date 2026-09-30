@@ -124,7 +124,7 @@ const (
 	userAttributeUserID   = "userID"
 	userAttributeEmail    = "email"
 	userAttributeGroups   = "groups"
-	userAttributeSub      = "sub"
+	claimSub              = "sub"
 
 	userInputCode  = "code"
 	userInputState = "state"

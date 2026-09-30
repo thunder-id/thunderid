@@ -325,7 +325,7 @@ func (s *oAuthAuthnService) BuildFederatedAuthResult(ctx context.Context, idpID,
 
 	token := map[string]interface{}{
 		authnprovidercm.UserAttributeFederatedIdpID: idpID,
-		authnprovidercm.UserAttributeSub:            sub,
+		authnprovidercm.ClaimSub:                    sub,
 	}
 
 	// Linking filters go under their own key so claim values cannot overwrite the identity keys.
@@ -341,7 +341,7 @@ func (s *oAuthAuthnService) BuildFederatedAuthResult(ctx context.Context, idpID,
 	if mappedClaims == nil {
 		mappedClaims = map[string]interface{}{}
 	}
-	mappedClaims[authnprovidercm.UserAttributeSub] = sub
+	mappedClaims[authnprovidercm.ClaimSub] = sub
 
 	return &common.AuthnResult{
 		Token:               token,

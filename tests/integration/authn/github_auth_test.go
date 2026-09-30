@@ -40,9 +40,6 @@ var githubEntityType = testutils.UserType{
 			"type":       "string",
 			"credential": true,
 		},
-		"sub": map[string]interface{}{
-			"type": "string",
-		},
 		"email": map[string]interface{}{
 			"type": "string",
 		},
@@ -104,7 +101,6 @@ func (suite *GithubAuthTestSuite) SetupSuite() {
 	userAttributes := map[string]interface{}{
 		"username":   "githubuser",
 		"password":   "Test@1234",
-		"sub":        "12345",
 		"email":      "testuser@github.com",
 		"givenName":  "Test",
 		"familyName": "User",

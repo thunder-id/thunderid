@@ -44,7 +44,7 @@ func setExternalIdentity(execResp *providers.ExecutorResponse, idpID, sub string
 		delete(claims, key)
 	}
 	if sub != "" {
-		delete(claims, userAttributeSub)
+		delete(claims, claimSub)
 	}
 	encoded, err := json.Marshal(core.ExternalIdentity{IdpID: idpID, Sub: sub, Claims: claims})
 	if err != nil {
@@ -395,7 +395,7 @@ func validateFederatedIdentifierConsistency(ctx *providers.NodeContext, idpDTO *
 		return true
 	}
 
-	sub := systemutils.ConvertInterfaceValueToString(federatedIdentifiers[userAttributeSub])
+	sub := systemutils.ConvertInterfaceValueToString(federatedIdentifiers[claimSub])
 	earlier := core.GetExternalIdentity(ctx.RuntimeData)
 	if earlier != nil && earlier.Sub != "" && (earlier.IdpID != idpDTO.ID || earlier.Sub != sub) {
 		return false

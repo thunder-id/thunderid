@@ -1842,7 +1842,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestStoreAccountLink_StoreFailureIsS
 func federatedToken(extra map[string]interface{}) map[string]interface{} {
 	token := map[string]interface{}{
 		authnprovidercm.UserAttributeFederatedIdpID: "idp-a",
-		authnprovidercm.UserAttributeSub:            "sub-1",
+		authnprovidercm.ClaimSub:                    "sub-1",
 	}
 	for k, v := range extra {
 		token[k] = v

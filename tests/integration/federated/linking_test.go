@@ -303,12 +303,11 @@ func (s *FederatedMappingSuite) TestAmbiguousLinkingAttributeOffersPrompt() {
 }
 
 // B15: a linking attribute whose claim carries no value contributes nothing, and there is nothing else
-// to consult. The local user is given the identity's subject, which used to be the fallback filter and
-// matches nobody now.
+// to consult.
 func (s *FederatedMappingSuite) TestLinkingAttributeAbsentMatchesNobody() {
 	sub := s.nextSubject()
 	email := sub + "@example.com"
-	s.createLocalUser(map[string]interface{}{"username": email, "email": email, "sub": sub})
+	s.createLocalUser(map[string]interface{}{"username": email, "email": email})
 
 	// The identity carries no cost_centre claim, so the configured linking attribute has no value.
 	s.Empty(s.matchedOn(linkOn([]string{"costCenter"}, pair("cost_centre", "costCenter")), s.baseUser(sub)),
@@ -316,13 +315,12 @@ func (s *FederatedMappingSuite) TestLinkingAttributeAbsentMatchesNobody() {
 }
 
 // B16: with no linking configured there is nothing to match on, so a connection that maps claims but
-// lists no linking attributes matches nobody. The local user is given both the identity's subject and
-// its email and neither reaches it: the subject is not a filter any more, and a mapped claim only joins
-// the lookup when the connection names it as a linking attribute.
+// lists no linking attributes matches nobody. The local user is given the identity's email and it does
+// not reach it: a mapped claim only joins the lookup when the connection names it as a linking attribute.
 func (s *FederatedMappingSuite) TestWithoutLinkingNothingMatches() {
 	sub := s.nextSubject()
 	email := sub + "@example.com"
-	s.createLocalUser(map[string]interface{}{"username": email, "email": email, "sub": sub})
+	s.createLocalUser(map[string]interface{}{"username": email, "email": email})
 
 	s.Empty(s.matchedOn(mapping(fedPersonType.Handle, pair("email", "email")), s.baseUser(sub)),
 		"without account linking configured nothing should match")

@@ -138,9 +138,6 @@ var (
 				"type":       "string",
 				"credential": true,
 			},
-			"sub": map[string]interface{}{
-				"type": "string",
-			},
 			"email": map[string]interface{}{
 				"type": "string",
 			},
