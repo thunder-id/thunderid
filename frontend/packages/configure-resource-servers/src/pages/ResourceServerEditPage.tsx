@@ -33,7 +33,15 @@ import ResourceServerDeleteDialog from '../components/ResourceServerDeleteDialog
 import SetDefaultResourceServerDialog from '../components/SetDefaultResourceServerDialog';
 import {getResourceServerTypeLabel} from '../config/resource-server-types';
 import useResourceServerRoutes from '../hooks/useResourceServerRoutes';
-import {isDefaultEligibleType} from '../models/resource-server';
+import {AuthorizationEngines, isDefaultEligibleType, type AuthorizationEngine} from '../models/resource-server';
+
+interface EditedFields {
+  name: string;
+  description: string;
+  identifier: string;
+  authorizationEngine: AuthorizationEngine;
+  pdpConnectionId: string;
+}
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -81,9 +89,7 @@ export default function ResourceServerEditPage(): JSX.Element {
   const initialTab = searchParams.get('tab') === 'advanced' ? TAB_ADVANCED : TAB_RESOURCES;
   const [activeTab, setActiveTab] = useState(initialTab);
 
-  const [editedFields, setEditedFields] = useState<Partial<{name: string; description: string; identifier: string}>>(
-    {},
-  );
+  const [editedFields, setEditedFields] = useState<Partial<EditedFields>>({});
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [tempName, setTempName] = useState('');
@@ -95,7 +101,7 @@ export default function ResourceServerEditPage(): JSX.Element {
     setActiveTab(newValue);
   };
 
-  const handleFieldChange = (field: 'name' | 'description' | 'identifier', value: string): void => {
+  const handleFieldChange = <Field extends keyof EditedFields>(field: Field, value: EditedFields[Field]): void => {
     if (updateRs.isError) {
       updateRs.reset(); // a save error is stale once the form changes
     }
@@ -110,6 +116,8 @@ export default function ResourceServerEditPage(): JSX.Element {
       name: resourceServer?.name,
       description: resourceServer?.description,
       identifier: resourceServer?.identifier,
+      authorizationEngine: resourceServer?.authorizationEngine?.type ?? AuthorizationEngines.RBAC,
+      pdpConnectionId: resourceServer?.authorizationEngine?.properties?.pdpConnectionId,
     };
     return Object.entries(editedFields).some(
       ([key, value]) => !isEqualIgnoringEmpty(norm(value), norm(originalOf[key])),
@@ -126,6 +134,13 @@ export default function ResourceServerEditPage(): JSX.Element {
       return;
     }
 
+    const authorizationEngineType =
+      editedFields.authorizationEngine ?? resourceServer.authorizationEngine?.type ?? AuthorizationEngines.RBAC;
+    const pdpConnectionId =
+      'pdpConnectionId' in editedFields
+        ? editedFields.pdpConnectionId
+        : resourceServer.authorizationEngine?.properties?.pdpConnectionId;
+
     updateRs.mutate(
       {
         id: resourceServer.id,
@@ -139,6 +154,10 @@ export default function ResourceServerEditPage(): JSX.Element {
               : (resourceServer.description ?? null),
           identifier: 'identifier' in editedFields ? nextIdentifier : resourceServer.identifier,
           ouId: resourceServer.ouId,
+          authorizationEngine: {
+            type: authorizationEngineType,
+            ...(authorizationEngineType === AuthorizationEngines.AUTHZEN_PDP ? {properties: {pdpConnectionId}} : {}),
+          },
         },
       },
       {
@@ -397,7 +416,15 @@ export default function ResourceServerEditPage(): JSX.Element {
           key={resourceServer.id}
           resourceServer={resourceServer}
           identifier={editedFields.identifier ?? resourceServer.identifier ?? ''}
+          authorizationEngine={
+            editedFields.authorizationEngine ?? resourceServer.authorizationEngine?.type ?? AuthorizationEngines.RBAC
+          }
+          pdpConnectionId={
+            editedFields.pdpConnectionId ?? resourceServer.authorizationEngine?.properties?.pdpConnectionId ?? ''
+          }
           onIdentifierChange={(v) => handleFieldChange('identifier', v)}
+          onAuthorizationEngineChange={(v) => handleFieldChange('authorizationEngine', v)}
+          onPDPConnectionChange={(v) => handleFieldChange('pdpConnectionId', v)}
         />
 
         {!resourceServer.isReadOnly && (

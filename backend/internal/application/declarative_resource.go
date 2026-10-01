@@ -203,6 +203,7 @@ func parseToApplicationDTO(data []byte) (*model.ApplicationDTO, error) {
 					ClientSecret:                       config.OAuthConfig.ClientSecret,
 					RedirectURIs:                       config.OAuthConfig.RedirectURIs,
 					PostLogoutRedirectURIs:             config.OAuthConfig.PostLogoutRedirectURIs,
+					BackchannelLogoutURI:               config.OAuthConfig.BackchannelLogoutURI,
 					GrantTypes:                         config.OAuthConfig.GrantTypes,
 					ResponseTypes:                      config.OAuthConfig.ResponseTypes,
 					TokenEndpointAuthMethod:            config.OAuthConfig.TokenEndpointAuthMethod,
@@ -230,6 +231,8 @@ func (e *applicationExporter) GetResourceRules() *declarativeresource.ResourceRu
 	return &declarativeresource.ResourceRules{
 		Variables: []string{
 			"InboundAuthConfig[].OAuthConfig.ClientID",
+		},
+		SecretVariables: []string{
 			"InboundAuthConfig[].OAuthConfig.ClientSecret",
 		},
 		ArrayVariables: []string{

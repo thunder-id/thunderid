@@ -744,9 +744,10 @@ func ArtifactLifetime(cfg oauthconfig.Config, client *providers.OAuthClient) tim
 }
 
 // BuildAccessEvaluationsRequest builds a batch access evaluation request, one evaluation per
-// permission, for the given subject. Shared by every grant handler that evaluates against the RBAC engine.
+// permission, for the given subject. Shared by grant handlers that evaluate authorization permissions.
 func BuildAccessEvaluationsRequest(
 	entityID string,
+	entityCategory string,
 	groupIDs []string,
 	roleIDs []string,
 	permissions []string,
@@ -756,6 +757,7 @@ func BuildAccessEvaluationsRequest(
 	for _, permission := range permissions {
 		evaluations = append(evaluations, providers.AccessEvaluationRequest{
 			Subject: providers.Subject{
+				Category: entityCategory,
 				ID:       entityID,
 				GroupIDs: groupIDs,
 				RoleIDs:  roleIDs,
@@ -827,7 +829,7 @@ func ApplyMappedAuthorization(
 	}
 
 	authzResp, svcErr := authzService.EvaluateAccessBatch(ctx,
-		BuildAccessEvaluationsRequest("", groupIDs, roleIDs, pending, resourceServerID))
+		BuildAccessEvaluationsRequest("", "", groupIDs, roleIDs, pending, resourceServerID))
 	if svcErr != nil {
 		logger.Error(ctx, "Failed to evaluate mapped authorization",
 			log.String("error", svcErr.Error.DefaultValue))

@@ -243,6 +243,74 @@ func (_c *TokenBuilderInterfaceMock_BuildIDToken_Call) RunAndReturn(run func(ctx
 	return _c
 }
 
+// BuildLogoutToken provides a mock function for the type TokenBuilderInterfaceMock
+func (_mock *TokenBuilderInterfaceMock) BuildLogoutToken(ctx context.Context, tokenCtx *tokenservice.LogoutTokenBuildContext) (*model.TokenDTO, error) {
+	ret := _mock.Called(ctx, tokenCtx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for BuildLogoutToken")
+	}
+
+	var r0 *model.TokenDTO
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *tokenservice.LogoutTokenBuildContext) (*model.TokenDTO, error)); ok {
+		return returnFunc(ctx, tokenCtx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *tokenservice.LogoutTokenBuildContext) *model.TokenDTO); ok {
+		r0 = returnFunc(ctx, tokenCtx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.TokenDTO)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *tokenservice.LogoutTokenBuildContext) error); ok {
+		r1 = returnFunc(ctx, tokenCtx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// TokenBuilderInterfaceMock_BuildLogoutToken_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'BuildLogoutToken'
+type TokenBuilderInterfaceMock_BuildLogoutToken_Call struct {
+	*mock.Call
+}
+
+// BuildLogoutToken is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tokenCtx *tokenservice.LogoutTokenBuildContext
+func (_e *TokenBuilderInterfaceMock_Expecter) BuildLogoutToken(ctx interface{}, tokenCtx interface{}) *TokenBuilderInterfaceMock_BuildLogoutToken_Call {
+	return &TokenBuilderInterfaceMock_BuildLogoutToken_Call{Call: _e.mock.On("BuildLogoutToken", ctx, tokenCtx)}
+}
+
+func (_c *TokenBuilderInterfaceMock_BuildLogoutToken_Call) Run(run func(ctx context.Context, tokenCtx *tokenservice.LogoutTokenBuildContext)) *TokenBuilderInterfaceMock_BuildLogoutToken_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *tokenservice.LogoutTokenBuildContext
+		if args[1] != nil {
+			arg1 = args[1].(*tokenservice.LogoutTokenBuildContext)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *TokenBuilderInterfaceMock_BuildLogoutToken_Call) Return(tokenDTO *model.TokenDTO, err error) *TokenBuilderInterfaceMock_BuildLogoutToken_Call {
+	_c.Call.Return(tokenDTO, err)
+	return _c
+}
+
+func (_c *TokenBuilderInterfaceMock_BuildLogoutToken_Call) RunAndReturn(run func(ctx context.Context, tokenCtx *tokenservice.LogoutTokenBuildContext) (*model.TokenDTO, error)) *TokenBuilderInterfaceMock_BuildLogoutToken_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // BuildRefreshToken provides a mock function for the type TokenBuilderInterfaceMock
 func (_mock *TokenBuilderInterfaceMock) BuildRefreshToken(ctx context.Context, tokenCtx *tokenservice.RefreshTokenBuildContext) (*model.TokenDTO, error) {
 	ret := _mock.Called(ctx, tokenCtx)

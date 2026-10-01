@@ -133,6 +133,50 @@ describe('ConnectionCreateWizardPage', () => {
     expect(screen.getByText('Configure your connection')).toBeInTheDocument();
   });
 
+  it('navigates from Policy Decision Point through AuthZEN to the name step', () => {
+    render(<ConnectionCreateWizardPage />);
+
+    fireEvent.click(screen.getByTestId('connection-type-option-policy-decision-point'));
+    fireEvent.click(screen.getByTestId('wizard-continue'));
+
+    expect(screen.getByTestId('select-pdp-protocol')).toBeInTheDocument();
+    expect(screen.getByTestId('pdp-protocol-option-authzen')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('pdp-protocol-option-authzen'));
+    fireEvent.click(screen.getByTestId('wizard-continue'));
+
+    expect(screen.getByTestId('connection-name-input')).toHaveValue('');
+    expect(screen.getByTestId('wizard-continue')).toBeDisabled();
+
+    fireEvent.change(screen.getByTestId('connection-name-input'), {target: {value: 'Booking PDP'}});
+    fireEvent.click(screen.getByTestId('wizard-continue'));
+
+    expect(screen.getByRole('heading', {name: 'Connection Configuration', level: 1})).toBeInTheDocument();
+    expect(screen.getByText('Add custom connection')).toBeInTheDocument();
+    expect(screen.getByText('Policy Decision Point (PDP)')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', {name: 'Show hidden breadcrumbs'}));
+    expect(screen.getByText('AuthZEN')).toBeInTheDocument();
+  });
+
+  it('preserves the PDP wizard path when navigating back', () => {
+    render(<ConnectionCreateWizardPage />);
+
+    fireEvent.click(screen.getByTestId('connection-type-option-policy-decision-point'));
+    fireEvent.click(screen.getByTestId('wizard-continue'));
+    fireEvent.click(screen.getByTestId('pdp-protocol-option-authzen'));
+    fireEvent.click(screen.getByTestId('wizard-continue'));
+
+    fireEvent.click(screen.getByText('Back'));
+    expect(screen.getByTestId('select-pdp-protocol')).toBeInTheDocument();
+    expect(screen.getByTestId('pdp-protocol-option-authzen')).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByText('Back'));
+    expect(screen.getByTestId('connection-type-option-policy-decision-point')).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByTestId('wizard-continue'));
+    expect(screen.getByTestId('select-pdp-protocol')).toBeInTheDocument();
+  });
+
   it('creates the connection from the configure step with the step-collected name and navigates to its detail page', () => {
     render(<ConnectionCreateWizardPage />);
 
@@ -289,10 +333,10 @@ describe('ConnectionCreateWizardPage', () => {
     expect(screen.queryByTestId('custom-step')).not.toBeInTheDocument();
   });
 
-  it('shows four type cards including trusted-idp', () => {
+  it('shows five type cards including trusted-idp', () => {
     render(<ConnectionCreateWizardPage />);
 
-    expect(screen.getAllByTestId(/^connection-type-option-/)).toHaveLength(4);
+    expect(screen.getAllByTestId(/^connection-type-option-/)).toHaveLength(5);
     expect(screen.getByTestId('connection-type-option-trusted-idp')).toBeInTheDocument();
   });
 });

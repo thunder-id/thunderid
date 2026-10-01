@@ -26,6 +26,7 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -3573,6 +3574,24 @@ func (suite *ServiceTestSuite) TestTranslateOAuthValidationError() {
 			wantCode:    ErrorInvalidPublicClientConfiguration.Code,
 			wantDescKey: "error.applicationservice.public_client_must_have_pkce_description",
 		},
+		{
+			name:        "InvalidBackchannelLogoutURI",
+			err:         inboundclient.ErrOAuthInvalidBackchannelLogoutURI,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.invalid_backchannel_logout_uri_description",
+		},
+		{
+			name:        "BackchannelLogoutURIRequiresHTTPS",
+			err:         inboundclient.ErrOAuthBackchannelLogoutURIRequiresHTTPS,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.backchannel_logout_uri_requires_https_description",
+		},
+		{
+			name:        "BackchannelLogoutURIPrivateHost",
+			err:         inboundclient.ErrOAuthBackchannelLogoutURIPrivateHost,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.backchannel_logout_uri_private_host_description",
+		},
 	}
 	for _, tc := range cases {
 		suite.Run(tc.name, func() {
@@ -3831,7 +3850,7 @@ func (suite *ServiceTestSuite) TestValidateApplicationFields_OUHandleResolved() 
 
 	ouMock := service.ouService.(*oumock.OrganizationUnitServiceInterfaceMock)
 	ouMock.On("GetOrganizationUnitByPath", mock.Anything, "default").
-		Return(providers.OrganizationUnit{ID: testOUID}, nil).Once()
+		Return(ou.OrganizationUnit{ID: testOUID}, nil).Once()
 
 	app := &model.ApplicationDTO{
 		Name:     "test-app",
@@ -3858,7 +3877,7 @@ func (suite *ServiceTestSuite) TestValidateApplicationFields_OUHandleNotFound() 
 
 	ouMock := service.ouService.(*oumock.OrganizationUnitServiceInterfaceMock)
 	ouMock.On("GetOrganizationUnitByPath", mock.Anything, "bad-handle").
-		Return(providers.OrganizationUnit{}, &tidcommon.ServiceError{Code: "OUS-4004"}).Once()
+		Return(ou.OrganizationUnit{}, &tidcommon.ServiceError{Code: "OUS-4004"}).Once()
 
 	app := &model.ApplicationDTO{
 		Name:     "test-app",

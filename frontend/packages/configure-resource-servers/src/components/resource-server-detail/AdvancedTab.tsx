@@ -2,19 +2,46 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {FormControl, FormLabel, Stack, TextField} from '@wso2/oxygen-ui';
+import {FormControl, FormHelperText, FormLabel, MenuItem, Select, Stack, TextField} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import type {ResourceServer} from '../../models/resource-server';
+import {Link} from 'react-router';
+import useAuthZENPDPConnections from '../../api/useAuthZENPDPConnections';
+import {useResourceServerConnectionRoutes} from '../../hooks/useResourceServerRoutes';
+import {type AuthorizationEngine, AuthorizationEngines, type ResourceServer} from '../../models/resource-server';
+
+const PDP_OPTION_PREFIX = `${AuthorizationEngines.AUTHZEN_PDP}:`;
 
 interface AdvancedTabProps {
   resourceServer: ResourceServer;
   identifier: string;
+  authorizationEngine: AuthorizationEngine;
+  pdpConnectionId: string;
   onIdentifierChange: (value: string) => void;
+  onAuthorizationEngineChange: (value: AuthorizationEngine) => void;
+  onPDPConnectionChange: (value: string) => void;
 }
 
-export default function AdvancedTab({resourceServer, identifier, onIdentifierChange}: AdvancedTabProps): JSX.Element {
+export default function AdvancedTab({
+  resourceServer,
+  identifier,
+  authorizationEngine,
+  pdpConnectionId,
+  onIdentifierChange,
+  onAuthorizationEngineChange,
+  onPDPConnectionChange,
+}: AdvancedTabProps): JSX.Element {
   const {t} = useTranslation();
+  const pdpConnections = useAuthZENPDPConnections();
+  const connectionRoutes = useResourceServerConnectionRoutes();
+  const authorizationEngineValue =
+    authorizationEngine === AuthorizationEngines.AUTHZEN_PDP && pdpConnectionId
+      ? `${PDP_OPTION_PREFIX}${pdpConnectionId}`
+      : authorizationEngine;
+  const hasSelectedPDP =
+    authorizationEngine === AuthorizationEngines.AUTHZEN_PDP &&
+    pdpConnectionId &&
+    !(pdpConnections.data ?? []).some((connection) => connection.id === pdpConnectionId);
 
   return (
     <Stack spacing={3}>
@@ -60,6 +87,68 @@ export default function AdvancedTab({resourceServer, identifier, onIdentifierCha
             }
             disabled={resourceServer.isReadOnly}
           />
+        </FormControl>
+        <FormControl fullWidth error={Boolean(pdpConnections.error)} sx={{mt: 3}}>
+          <FormLabel id="resource-server-authorization-engine-label">
+            {t('resourceServers:edit.advanced.authorizationEngine.label', 'Authorization engine')}
+          </FormLabel>
+          <Select
+            id="resource-server-authorization-engine"
+            labelId="resource-server-authorization-engine-label"
+            value={authorizationEngineValue}
+            onChange={(event) => {
+              const value = event.target.value;
+              if (value.startsWith(PDP_OPTION_PREFIX)) {
+                onAuthorizationEngineChange(AuthorizationEngines.AUTHZEN_PDP);
+                onPDPConnectionChange(value.slice(PDP_OPTION_PREFIX.length));
+                return;
+              }
+              onAuthorizationEngineChange(AuthorizationEngines.RBAC);
+              onPDPConnectionChange('');
+            }}
+            size="small"
+            disabled={Boolean(resourceServer.isReadOnly) || pdpConnections.isLoading}
+          >
+            <MenuItem value={AuthorizationEngines.RBAC}>
+              {t('resourceServers:edit.advanced.authorizationEngine.option.rbac', 'Local - Role Based Access Control')}
+            </MenuItem>
+            {hasSelectedPDP && (
+              <MenuItem value={`${PDP_OPTION_PREFIX}${pdpConnectionId}`}>
+                {t('resourceServers:edit.advanced.authorizationEngine.option.selectedPDP', 'Selected PDP')}
+              </MenuItem>
+            )}
+            {(pdpConnections.data ?? []).map((connection) => (
+              <MenuItem key={connection.id} value={`${PDP_OPTION_PREFIX}${connection.id}`}>
+                {connection.name}
+              </MenuItem>
+            ))}
+          </Select>
+          <FormHelperText>
+            {pdpConnections.error ? (
+              t(
+                'resourceServers:edit.advanced.authorizationEngine.loadPDPError',
+                'Failed to load AuthZEN PDP connections.',
+              )
+            ) : pdpConnections.data?.length === 0 ? (
+              <>
+                {t(
+                  'resourceServers:edit.advanced.authorizationEngine.noPDPConnections',
+                  'No external PDP connections are available.',
+                )}{' '}
+                <Link to={connectionRoutes.create()}>
+                  {t(
+                    'resourceServers:edit.advanced.authorizationEngine.createPDPConnection',
+                    'Create a PDP connection',
+                  )}
+                </Link>
+              </>
+            ) : (
+              t(
+                'resourceServers:edit.advanced.authorizationEngine.hint',
+                'Choose Local - Role Based Access Control or a configured PDP connection for this resource server.',
+              )
+            )}
+          </FormHelperText>
         </FormControl>
       </SettingsCard>
     </Stack>

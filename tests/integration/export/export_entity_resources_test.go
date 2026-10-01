@@ -112,9 +112,13 @@ func (ts *ExportEntityResourcesTestSuite) TearDownSuite() {
 	ts.clearTranslationLanguage()
 
 	// Restored before the OU is deleted, so the singleton is never left pointing at a missing OU.
+	// A failed restore keeps the OU: leaking one is cheaper than leaving the shared agent type
+	// referencing a deleted resource, which every later suite would inherit.
+	agentTypeRestored := true
 	if ts.agentTypeSnapshot != nil {
 		if err := testutils.RestoreAgentType(ts.agentTypeSnapshot); err != nil {
 			ts.T().Errorf("teardown: failed to restore the default agent type: %v", err)
+			agentTypeRestored = false
 		}
 	}
 
@@ -128,7 +132,7 @@ func (ts *ExportEntityResourcesTestSuite) TearDownSuite() {
 			ts.T().Logf("Failed to delete the user type: %v", err)
 		}
 	}
-	if ts.ouID != "" {
+	if ts.ouID != "" && agentTypeRestored {
 		if err := testutils.DeleteOrganizationUnit(ts.ouID); err != nil {
 			ts.T().Logf("Failed to delete the test organization unit: %v", err)
 		}
@@ -218,6 +222,49 @@ func (ts *ExportEntityResourcesTestSuite) TestUserExportParameterizesCredentials
 		"an exported user must carry its credentials block")
 	ts.Assert().Contains(yamlContent, `password: "{{.USER_EXPORT_ENTITY_USER_PASSWORD}}"`,
 		"the credential must leave as a template variable")
+}
+
+// TestUserWithoutAPasswordIsExportedWithoutOne verifies a user who never set a password is still
+// exported, and carries no password variable. Exporting one anyway would demand a value on import
+// for a credential the user never had.
+func (ts *ExportEntityResourcesTestSuite) TestUserWithoutAPasswordIsExportedWithoutOne() {
+	userID, err := testutils.CreateUser(testutils.User{
+		Type:       entityExportUserTypeName,
+		OUID:       ts.ouID,
+		Attributes: json.RawMessage(`{"username": "export-entity-no-password", "email": "np@example.com"}`),
+	})
+	ts.Require().NoError(err, "Failed to create the user")
+	defer func() { _ = testutils.DeleteUser(userID) }()
+
+	yamlContent, err := ts.exportResourcesYAML(ExportRequest{Users: []string{userID}})
+	ts.Require().NoError(err)
+
+	ts.Assert().Contains(yamlContent, `username: "export-entity-no-password"`, "the user was not exported")
+	ts.Assert().NotContains(yamlContent, "USER_EXPORT_ENTITY_NO_PASSWORD_PASSWORD",
+		"a user without a password must not export a password variable")
+}
+
+// TestUserWithoutAUsernameIsLeftOut verifies a user with no username is left out of the export
+// rather than exported without one. Its credential placeholders are named after the username, so
+// there is nothing to name them after, and a user with no username cannot be identified on import.
+// The rest of the export still goes through.
+func (ts *ExportEntityResourcesTestSuite) TestUserWithoutAUsernameIsLeftOut() {
+	userID, err := testutils.CreateUser(testutils.User{
+		Type: entityExportUserTypeName,
+		OUID: ts.ouID,
+		Attributes: json.RawMessage(
+			`{"password": "ExportEntity@123", "email": "export-entity-nameless@example.com"}`),
+	})
+	ts.Require().NoError(err, "Failed to create the user")
+	defer func() { _ = testutils.DeleteUser(userID) }()
+
+	yamlContent, err := ts.exportResourcesYAML(ExportRequest{Users: []string{userID, ts.userID}})
+	ts.Require().NoError(err)
+
+	ts.Assert().Contains(yamlContent, `username: "`+entityExportUsername+`"`,
+		"the other user must still be exported")
+	ts.Assert().NotContains(yamlContent, "export-entity-nameless@example.com",
+		"a user without a username must not be exported")
 }
 
 // TestUserExportRefusesTwoUsersWithOneVariableName verifies an export that cannot represent both

@@ -15,9 +15,11 @@ import ConnectionNameStep from '../components/create-connection/ConnectionNameSt
 import SelectConnectionType, {
   type SelectableConnectionType,
 } from '../components/create-connection/SelectConnectionType';
+import SelectPDPProtocol from '../components/create-connection/SelectPDPProtocol';
 import TrustedIssuerCreateForm from '../components/TrustedIssuerCreateForm';
 import {CONNECTION_FORM_FIELDS, fieldsForMode} from '../config/connectionFormFields';
 import {VENDOR_META_BY_TYPE} from '../config/connectionVendorMeta';
+import {POLICY_DECISION_POINT_TYPE} from '../constants/connection-wizard';
 import useConnectionRoutes from '../hooks/useConnectionRoutes';
 import {type ConnectionResponse, type ConnectionType, ConnectionTypes} from '../models/connection';
 import {
@@ -28,14 +30,12 @@ import {
 } from '../utils/connectionFormMapping';
 import isConflictError from '../utils/isConflictError';
 
-const Step = {TYPE: 'TYPE', NAME: 'NAME', CONFIGURE: 'CONFIGURE'} as const;
+const Step = {TYPE: 'TYPE', PROTOCOL: 'PROTOCOL', NAME: 'NAME', CONFIGURE: 'CONFIGURE'} as const;
 type Step = (typeof Step)[keyof typeof Step];
-const ALL_STEPS: Step[] = [Step.TYPE, Step.NAME, Step.CONFIGURE];
 
 /**
- * Three-step full-screen wizard for adding a custom connection: pick the type, name it, then
- * enter the credentials/endpoints and create it. The `'trusted-idp'` type renders the dedicated
- * trusted-issuer form instead of the generic configure step.
+ * Full-screen wizard for adding a custom connection. The `'trusted-idp'` type renders the
+ * dedicated trusted-issuer form instead of the generic configure step.
  */
 export default function ConnectionCreateWizardPage(): JSX.Element {
   const {t} = useTranslation('connections');
@@ -51,21 +51,31 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
   const [generalError, setGeneralError] = useState<string | null>(null);
 
   const isTrustedIdp: boolean = selectedType === 'trusted-idp';
+  const isAuthZENPDP: boolean = selectedType === ConnectionTypes.AUTHZEN_PDP;
+  const isPDPFlow: boolean = selectedType === POLICY_DECISION_POINT_TYPE || isAuthZENPDP;
 
   // Defaults to OIDC before the user picks a type on the first step; the trusted-idp pseudo-type
   // renders via TrustedIssuerCreateForm instead, so this is only read when rendering the generic
   // configure step.
   const activeType: ConnectionType =
-    selectedType && selectedType !== 'trusted-idp' ? selectedType : ConnectionTypes.OIDC;
+    selectedType && selectedType !== 'trusted-idp' && selectedType !== POLICY_DECISION_POINT_TYPE
+      ? selectedType
+      : ConnectionTypes.OIDC;
   const createMutation = useCreateConnection(activeType);
   const meta = VENDOR_META_BY_TYPE[activeType];
   const fields = CONNECTION_FORM_FIELDS[activeType];
   const createFields = useMemo(() => fieldsForMode(activeType, 'create'), [activeType]);
   const redirectUri = getGateCallbackUrl();
-  const emptyValues = useMemo(() => emptyFormValues(fields, redirectUri), [fields, redirectUri]);
 
   // Only federated login providers carry a redirect URI to register with the provider.
   const usesRedirectUri: boolean = fields.some((field) => field.name === 'redirectUri');
+  const emptyValues = useMemo(
+    () => ({
+      ...emptyFormValues(createFields, redirectUri),
+      ...(usesRedirectUri ? {redirectUri} : {}),
+    }),
+    [createFields, redirectUri, usesRedirectUri],
+  );
 
   const trimmedName: string = connectionName.trim();
   const values: ConnectionFormValues = {...emptyValues, ...editedValues, name: trimmedName};
@@ -75,11 +85,21 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
     void navigate(routes.connections.list());
   };
 
-  const progress: number = ((ALL_STEPS.indexOf(step) + 1) / ALL_STEPS.length) * 100;
+  const activeSteps: Step[] = isPDPFlow
+    ? [Step.TYPE, Step.PROTOCOL, Step.NAME, Step.CONFIGURE]
+    : [Step.TYPE, Step.NAME, Step.CONFIGURE];
+  const progress: number = ((activeSteps.indexOf(step) + 1) / activeSteps.length) * 100;
 
   const bounceToNameStep = (): void => {
     setNameError(t('error.duplicateName', 'A connection with this name already exists.'));
     setStep(Step.NAME);
+  };
+
+  const returnToTypeStep = (): void => {
+    if (isPDPFlow) {
+      setSelectedType(POLICY_DECISION_POINT_TYPE);
+    }
+    setStep(Step.TYPE);
   };
 
   // A create failure is stale once the user edits any field. Only reset the mutation once it has
@@ -113,10 +133,34 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
 
   const crumbs = [
     {key: 'connections', label: t('listing.title'), onClick: close},
-    {key: 'add', label: t('wizard.title'), onClick: () => setStep(Step.TYPE)},
+    {key: 'add', label: t('wizard.title'), onClick: returnToTypeStep},
+    ...(step === Step.PROTOCOL || isAuthZENPDP
+      ? [
+          {
+            key: 'pdp',
+            label: t('wizard.type.policyDecisionPoint.label', 'Policy Decision Point (PDP)'),
+            onClick: () => {
+              setSelectedType(POLICY_DECISION_POINT_TYPE);
+              setStep(Step.PROTOCOL);
+            },
+          },
+        ]
+      : []),
+    ...(isAuthZENPDP
+      ? [{key: 'authzen', label: t('wizard.protocol.authzen.label', 'AuthZEN'), onClick: () => setStep(Step.PROTOCOL)}]
+      : []),
     ...(step === Step.TYPE ? [{key: 'type', label: t('wizard.steps.type')}] : []),
     ...(step === Step.NAME ? [{key: 'name', label: t('wizard.steps.name', 'Details')}] : []),
-    ...(step === Step.CONFIGURE ? [{key: 'configure', label: t('form.chrome.configure')}] : []),
+    ...(step === Step.CONFIGURE
+      ? [
+          {
+            key: 'configure',
+            label: isAuthZENPDP
+              ? t('detail.configuration.title', 'Connection Configuration')
+              : t('form.chrome.configure', 'Configure connection'),
+          },
+        ]
+      : []),
   ];
 
   const footer: JSX.Element | null = (() => {
@@ -126,6 +170,23 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
           <Button
             variant="contained"
             disabled={!selectedType}
+            onClick={() => setStep(selectedType === POLICY_DECISION_POINT_TYPE ? Step.PROTOCOL : Step.NAME)}
+            data-testid="wizard-continue"
+          >
+            {t('common:actions.continue', 'Continue')}
+          </Button>
+        </Box>
+      );
+    }
+    if (step === Step.PROTOCOL) {
+      return (
+        <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+          <Button variant="outlined" onClick={returnToTypeStep} sx={{minWidth: 100}}>
+            {t('common:actions.back', 'Back')}
+          </Button>
+          <Button
+            variant="contained"
+            disabled={!isAuthZENPDP}
             onClick={() => setStep(Step.NAME)}
             data-testid="wizard-continue"
           >
@@ -137,7 +198,11 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
     if (step === Step.NAME) {
       return (
         <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-          <Button variant="outlined" onClick={() => setStep(Step.TYPE)} sx={{minWidth: 100}}>
+          <Button
+            variant="outlined"
+            onClick={() => setStep(isPDPFlow ? Step.PROTOCOL : Step.TYPE)}
+            sx={{minWidth: 100}}
+          >
             {t('common:actions.back', 'Back')}
           </Button>
           <Button
@@ -176,6 +241,13 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
     <FullScreenCreationWizardLayout onClose={close} progress={progress} breadcrumbItems={crumbs} footer={footer}>
       {step === Step.TYPE && <SelectConnectionType selectedType={selectedType} onSelect={setSelectedType} />}
 
+      {step === Step.PROTOCOL && (
+        <SelectPDPProtocol
+          selectedProtocol={isAuthZENPDP ? ConnectionTypes.AUTHZEN_PDP : null}
+          onSelect={setSelectedType}
+        />
+      )}
+
       {step === Step.NAME && (
         <ConnectionNameStep
           name={connectionName}
@@ -200,10 +272,17 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
         <Stack direction="column" spacing={3}>
           <Stack direction="column" spacing={1}>
             <Typography variant="h1" gutterBottom>
-              {t('wizard.configure.heading')}
+              {isAuthZENPDP
+                ? t('detail.configuration.title', 'Connection Configuration')
+                : t('wizard.configure.heading')}
             </Typography>
             <Typography variant="subtitle1" gutterBottom>
-              {t('wizard.configure.subheading')}
+              {isAuthZENPDP
+                ? t(
+                    'wizard.configure.pdpSubheading',
+                    'Configure the endpoints and runtime settings for this connection.',
+                  )
+                : t('wizard.configure.subheading')}
             </Typography>
           </Stack>
 

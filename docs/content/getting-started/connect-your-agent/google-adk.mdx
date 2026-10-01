@@ -1,0 +1,387 @@
+---
+title: Google ADK Agent Quickstart
+docType: quickstart
+toc_progress: quickstart
+sidebar_position: 2
+persona: app
+description: Build a course enrollment agent with Google ADK and {{ProductName}} using agent or delegated user identity.
+---
+
+# Connect an AI Agent with Google ADK
+
+Use this guide to build an interactive course enrollment agent with Google ADK and <ProductName />. Complete the [shared setup](../) first, including the student role and consent flow.
+
+Ask **“List the available courses”** to use the agent's own identity. Then ask **“Enroll me in CS205”** to trigger sign-in and consent before the agent acts on your behalf. Both tools are available in the same session.
+
+## Prerequisites
+
+- Python 3.12 and pip.
+- A [Google AI Studio API key](https://aistudio.google.com/apikey) with access to the Gemini model you configure.
+- A browser on the same computer as the sample. User sign-in uses local port `6274`.
+
+<Stepper stepNode="h2" as="h2">
+
+## Create the Sample Project
+
+Run these commands in a new directory. Use Python 3.12 for these pinned dependencies:
+
+```bash
+mkdir google-adk-enrollment
+cd google-adk-enrollment
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install google-adk==2.9.2 requests==2.34.2 python-dotenv==1.2.3
+```
+
+On Windows, create the environment with `py -3.12 -m venv .venv`. Activate it with `.venv\Scripts\Activate.ps1` in PowerShell before running the install command. Use a separate environment for each framework.
+
+Create `.env` in this directory:
+
+```dotenv title=".env"
+THUNDERID_BASE_URL=https://localhost:8090
+AGENT_CLIENT_ID=replace-with-your-client-id
+AGENT_SECRET=replace-with-your-client-secret
+GOOGLE_API_KEY=replace-with-your-google-api-key
+GEMINI_MODEL=gemini-flash-lite-latest
+COURSE_RESOURCE=https://courses.example.com
+THUNDERID_CA_BUNDLE=./thunderid.pem
+```
+
+Use the **Client ID**, not the Agent ID, for `AGENT_CLIENT_ID`. Keep `.env` out of version control.
+
+For a local instance, save its public server certificate as `thunderid.pem` in the sample directory. With OpenSSL installed, run this command against the local instance you started:
+
+```bash
+openssl s_client -connect localhost:8090 -servername localhost </dev/null 2>/dev/null | openssl x509 -out thunderid.pem
+```
+
+Alternatively, copy `config/certs/server.cert` from your installation directory. For a source checkout, copy `backend/cmd/server/config/certs/server.cert`. Rename the copy to `thunderid.pem`.
+
+For an instance with a publicly trusted certificate, set `THUNDERID_BASE_URL` to its HTTPS URL and omit the local certificate configuration.
+
+## Add the Authentication Helper
+
+The helper requests `courses:read` with client credentials, or `courses:enroll` through authorization code with PKCE when enrollment needs your permission.
+
+Create the helper next to `.env`. The callback checks `state` and waits up to 180 seconds for sign-in and consent.
+
+<details>
+<summary>Copy the complete authentication helper</summary>
+
+```python title="auth.py"
+import base64
+import hashlib
+import json
+import os
+import secrets
+import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, quote_plus, urlencode, urlsplit
+
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+BASE_URL = os.environ["THUNDERID_BASE_URL"].rstrip("/")
+CLIENT_ID = os.environ["AGENT_CLIENT_ID"]
+CLIENT_SECRET = os.environ["AGENT_SECRET"]
+RESOURCE = os.environ["COURSE_RESOURCE"]
+REDIRECT_URI = "http://localhost:6274/callback"
+
+
+def post(path, data):
+    credentials = f"{quote_plus(CLIENT_ID)}:{quote_plus(CLIENT_SECRET)}"
+    basic = base64.b64encode(credentials.encode()).decode()
+    response = requests.post(
+        f"{BASE_URL}{path}",
+        data=data,
+        headers={"Authorization": f"Basic {basic}"},
+        verify=os.environ.get("THUNDERID_CA_BUNDLE") or True,
+        timeout=30,
+        allow_redirects=False,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"{path} returned HTTP {response.status_code}; check the agent configuration.")
+    return response.json()
+
+
+def get_agent_token():
+    return post("/oauth2/token", {"grant_type": "client_credentials", "resource": RESOURCE, "scope": "courses:read"})["access_token"]
+
+
+def get_user_token():
+    verifier = secrets.token_urlsafe(32)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    state = secrets.token_urlsafe(32)
+    result = {}
+
+    class Callback(BaseHTTPRequestHandler):
+        def do_GET(self):
+            url = urlsplit(self.path)
+            params = parse_qs(url.query)
+            valid = (
+                url.path == "/callback"
+                and len(params.get("state", [])) == 1
+                and secrets.compare_digest(params["state"][0], state)
+                and (len(params.get("code", [])) == 1 or "error" in params)
+            )
+            self.send_response(200 if valid else 400)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"Return to your terminal." if valid else b"Invalid callback.")
+            if valid:
+                result.update(params)
+
+        def log_message(self, *args):
+            pass
+
+    params = {
+        "response_type": "code", "client_id": CLIENT_ID,
+        "redirect_uri": REDIRECT_URI, "scope": "openid courses:enroll", "resource": RESOURCE, "state": state, "prompt": "consent",
+        "code_challenge": challenge, "code_challenge_method": "S256",
+    }
+    with HTTPServer(("localhost", 6274), Callback) as server:
+        server.timeout = 1
+        print("Open this URL in your browser to sign in:", flush=True)
+        print(f"{BASE_URL}/oauth2/authorize?{urlencode(params)}", flush=True)
+        deadline = time.monotonic() + 180
+        while not result and time.monotonic() < deadline:
+            server.handle_request()
+    if not result:
+        raise TimeoutError("Sign-in timed out after 180 seconds. Submit the request again.")
+    if "error" in result:
+        raise RuntimeError("Sign-in was denied or failed. Submit the request again.")
+    return post("/oauth2/token", {
+        "grant_type": "authorization_code", "code": result["code"][0],
+        "redirect_uri": REDIRECT_URI, "code_verifier": verifier,
+    })["access_token"]
+
+
+def inspect_identity(token, permission):
+    data = post("/oauth2/introspect", {"token": token})
+    if data.get("active") is not True:
+        raise RuntimeError("The access token is inactive. Submit the request again.")
+    if data.get("client_id") != CLIENT_ID or not data.get("sub"):
+        raise RuntimeError("The token does not belong to this agent client.")
+    audiences = data.get("aud", [])
+    if isinstance(audiences, str):
+        audiences = [audiences]
+    if RESOURCE not in audiences or permission not in data.get("scope", "").split():
+        raise PermissionError(f"Access denied: the token needs {permission} for {RESOURCE}.")
+    # Introspection has validated this exact token. Decode only to read its actor,
+    # which the introspection response does not expose.
+    payload = token.split(".")[1]
+    claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    identity = {key: data[key] for key in ("active", "sub", "client_id", "scope")}
+    if "act" in claims:
+        identity["act"] = claims["act"]
+    print("Verified identity:", json.dumps(identity), flush=True)
+    return identity
+```
+
+</details>
+
+`inspect_identity` validates the access token through <ProductName /> before checking its audience and required permission. It reads `act` from the validated JWT because the introspection response does not include that claim.
+
+## Add the Course Tools
+
+Create the following file beside the helper. These protected course operations accept a token from the runtime, validate it, and enforce the required permission before reading or changing course data.
+
+```python title="course_tools.py"
+import json
+from threading import Lock
+
+from auth import inspect_identity
+
+COURSES = [
+    {"id": "CS101", "name": "Introduction to Computer Science"},
+    {"id": "CS205", "name": "Data Structures"},
+]
+enrollments = {}
+enrollment_lock = Lock()
+
+
+def list_courses(access_token: str) -> dict:
+    """List available courses using the agent's own identity. No student sign-in needed."""
+    inspect_identity(access_token, "courses:read")
+    result = {"courses": COURSES}
+    print("Tool result:", json.dumps(result), flush=True)
+    return result
+
+
+def enroll_course(course_id: str, access_token: str) -> dict:
+    """Enroll the requesting student after the runtime obtains delegated authority."""
+    if course_id not in {course["id"] for course in COURSES}:
+        return {"status": "not_enrolled", "reason": "Unknown course ID."}
+    with enrollment_lock:
+        identity = inspect_identity(access_token, "courses:enroll")
+        if not identity.get("act", {}).get("sub"):
+            raise PermissionError("Enrollment requires a delegated user token.")
+        student_id = identity["sub"]  # The model cannot choose the student.
+        enrolled = enrollments.setdefault(student_id, set())
+        status = "already_enrolled" if course_id in enrolled else "enrolled"
+        enrolled.add(course_id)
+        result = {"student_id": student_id, "course_id": course_id, "status": status}
+        print("Tool result:", json.dumps(result), flush=True)
+        return result
+```
+
+The course operations validate tokens but never acquire them. The runtime wrapper supplies each token outside the model-visible tool arguments, so the model cannot provide credentials or choose another student.
+
+## Connect the Tools to the Agent
+
+The entrypoint defines runtime-owned wrappers that acquire the required token before calling the protected course operations. Google ADK exposes only those wrappers to the model and runs each request through an in-memory session.
+
+```python title="google_adk.py"
+import asyncio
+import os
+
+from google.adk.agents import Agent
+from google.adk.runners import InMemoryRunner
+from google.genai import types
+
+from auth import get_agent_token, get_user_token
+from course_tools import enroll_course as enroll_student
+from course_tools import list_courses as read_courses
+
+
+def list_courses() -> dict:
+    return read_courses(get_agent_token())
+
+
+def enroll_course(course_id: str) -> dict:
+    print(f"Agent: Enrolling you in {course_id} needs your permission.", flush=True)
+    access_token = get_user_token()  # Pause until the student signs in and consents.
+    return enroll_student(course_id, access_token)
+
+
+async def main():
+    agent = Agent(
+        name="course_agent",
+        model=os.environ["GEMINI_MODEL"],
+        instruction=(
+            "Help with courses. Use list_courses for the catalog and enroll_course only when "
+            "the student asks to enroll. The runtime handles sign-in and consent. "
+            "Use the supplied course ID. Report success only if the tool succeeds. "
+            "If a tool fails or consent is denied, report it and do not retry in this turn."
+        ),
+        tools=[list_courses, enroll_course],
+    )
+    runner = InMemoryRunner(agent=agent, app_name="course_demo")
+    print("Ask about courses, or ask to enroll in CS205. Type exit to stop.")
+    try:
+        while True:
+            try:
+                question = input("You: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                break
+            if question.lower() == "exit":
+                break
+            if not question:
+                continue
+            # Each request is independent; this ID is ADK bookkeeping, not an OAuth identity.
+            session = await runner.session_service.create_session(app_name="course_demo", user_id="local")
+            try:
+                async for event in runner.run_async(
+                    user_id="local", session_id=session.id,
+                    new_message=types.Content(role="user", parts=[types.Part(text=question)]),
+                ):
+                    if event.is_final_response() and event.content:
+                        print("Agent:", "".join(part.text or "" for part in event.content.parts or []))
+            except Exception as error:
+                print("Request failed:", error)
+            finally:
+                await runner.session_service.delete_session(
+                    app_name="course_demo", user_id="local", session_id=session.id,
+                )
+    finally:
+        await runner.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Each request is independent: include the course ID when asking to enroll. Enrollment records remain in memory until you exit; delegated tokens are not cached between requests.
+
+## Ask the Agent to List Courses
+
+Start the agent:
+
+```bash
+python google_adk.py
+```
+
+At the `You:` prompt, type:
+
+```text
+List the available courses.
+```
+
+The agent uses its own credentials. No student signs in. Look for the identity and tool result:
+
+```text
+Verified identity: {"active":true,"sub":"<agent-id>","client_id":"<agent-client-id>","scope":"courses:read"}
+Tool result: {"courses":[{"id":"CS101","name":"Introduction to Computer Science"},{"id":"CS205","name":"Data Structures"}]}
+```
+
+The `sub` value matches the **Agent ID** in the Console; the final response lists the courses in natural language.
+
+## Ask the Agent to Enroll You
+
+In the same terminal session, type:
+
+```text
+Enroll me in CS205.
+```
+
+The enrollment tool pauses and prints:
+
+```text
+Agent: Enrolling you in CS205 needs your permission.
+Open this URL in your browser to sign in:
+https://localhost:8090/oauth2/authorize?...
+```
+
+1. Open the printed URL in your browser.
+2. Sign in as the student you assigned the **Student** role to in the shared setup.
+3. On the <ProductName /> consent screen, turn on the `courses:enroll` permission switch and click **Allow**.
+4. Return to the terminal after the browser reaches the local redirect URI.
+
+The pending tool call resumes, verifies your permission, and records the enrollment:
+
+```text
+Verified identity: {"active":true,"sub":"<student-id>","client_id":"<agent-client-id>","scope":"openid courses:enroll","act":{"sub":"<agent-id>"}}
+Tool result: {"student_id":"<student-id>","course_id":"CS205","status":"enrolled"}
+Agent: You are enrolled in CS205.
+```
+
+Scope order, JSON spacing, and the agent's wording can vary. Check the `Tool result` line for the actual enrollment; `student_id` comes from the verified token, and `act.sub` identifies the agent that acted for you.
+
+To try denial, submit another enrollment request and click **Deny** on the consent screen. The request fails without adding an enrollment. The sample sends `prompt=consent` on every enrollment request so you can repeat both outcomes.
+
+Type `exit` to stop. Restarting the process clears the course records; this example uses real tokens and permission checks with an in-memory course store.
+
+## Resolve Common Errors
+
+| Symptom | Check |
+|---|---|
+| HTTP `401` from the token or introspection endpoint | Use the agent's Client ID and current secret. Confirm `client_secret_basic` is configured. |
+| `invalid_target` | Match `COURSE_RESOURCE` to the **Course Catalog** resource server's identifier. |
+| Token lacks `courses:read` | Assign the **Course Reader** role to the agent. |
+| Token lacks `courses:enroll` | Assign the **Student** role to the signed-in user, and allow the requested permission on the consent screen. |
+| No consent screen appears | Select **Course Enrollment Sign-in** on the agent's **Flows** tab, with **User Consent** between **Authorization** and **Auth Assertion Generator**. |
+| Sign-in fails before the redirect | Enable delegated mode and register `http://localhost:6274/callback` exactly. |
+| Certificate verification fails | Copy the running instance's certificate. For Node.js, set `NODE_EXTRA_CA_CERTS` in the shell before starting the process. |
+| Port `6274` is in use | Stop the other sample and retry. |
+| Sign-in times out | Submit the request again and finish sign-in and consent within 180 seconds. |
+| Gemini reports a model or quota error | Check the model name, API key, and quota in your Google project. |
+| No `Tool result` line | The tool did not complete; do not treat a conversational confirmation as a successful enrollment. |
+
+## What's Next
+
+- [Agent tokens](../../../guides/agents/authentication/agent-own-token) explains own-identity access.
+- [Agent access on behalf of users](../../../guides/agents/authentication/on-behalf-of-user) covers delegated tokens and refresh.
+- [Control agent access](../../../use-cases/ai-agents/solve-access) covers permissions when connecting a separate business API.
+
+</Stepper>

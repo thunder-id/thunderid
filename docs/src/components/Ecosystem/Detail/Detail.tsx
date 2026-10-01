@@ -228,7 +228,7 @@ function Breadcrumb({entry, trail = []}: {entry: EcosystemEntry; trail?: {label:
       aria-label="Breadcrumb"
       sx={{display: 'flex', alignItems: 'center', gap: 1, mb: 3.25, fontSize: '12.5px', color: ink(0.4, 0.35)}}
     >
-      <Box component={Link} to="/sdks" sx={linkSx}>
+      <Box component={Link} to="/sdks-and-tools" sx={linkSx}>
         SDKs &amp; Tools
       </Box>
       {separator}
@@ -237,7 +237,7 @@ function Breadcrumb({entry, trail = []}: {entry: EcosystemEntry; trail?: {label:
           {entry.name}
         </Box>
       ) : (
-        <Box component={Link} to={`/sdks/${entry.id}`} sx={linkSx}>
+        <Box component={Link} to={`/sdks-and-tools/${entry.id}`} sx={linkSx}>
           {entry.name}
         </Box>
       )}
@@ -564,7 +564,7 @@ export default function Detail({entry}: {entry: EcosystemEntry}): JSX.Element {
     <Shell
       entry={entry}
       sections={entry.sections ?? []}
-      apiHref={`/sdks/${entry.id}/apis`}
+      apiHref={`/sdks-and-tools/${entry.id}/apis`}
       banner={
         // The callout carries its own bottom margin for prose pages; here the
         // column's own gap does that work.

@@ -1,0 +1,521 @@
+---
+title: Agent Analytics
+docType: guide
+sidebar_position: 6
+persona: iam
+description: Turn the {{ProductName}} observability events into agent activity analytics, with dashboard definitions for Moesif and Grafana Tempo and the query behind every panel.
+---
+
+# Agent Analytics
+
+<ProductName /> publishes a structured event for every token issuance and every flow execution. Those events carry enough principal and delegation context to answer the questions an administrator actually has about agent identities: which agents are issuing tokens, whether issuance is healthy, which agents act on behalf of users, and why issuance fails.
+
+This guide describes what <ProductName /> publishes, how to get it into an analytics pipeline, and the query behind each panel of the reference dashboard. <ProductName /> ships no analytics view of its own, so the dashboard lives in whatever monitoring stack you already run.
+
+Both supported products read the same OpenTelemetry export, so there is one pipeline to set up and two places to point it. Dashboard definitions for Moesif and for Grafana Tempo are in <RepoLink path="/tree/main/samples/observability/agent-analytics">samples/observability/agent-analytics</RepoLink>. The Quickstart below loads one of them. The rest of the guide is reference: the event schema, the field shapes that will catch you out, and the query behind every panel, written so you can rebuild them in a product neither definition covers.
+
+## Prerequisites
+
+- <ProductName /> running, with access to `deployment.yaml`. See [Get <ProductName />](../../getting-started/get-thunderid).
+- Docker, to run the OpenTelemetry Collector that both paths depend on.
+- Either a Moesif account, or Docker to stand up Tempo and Grafana locally.
+
+## Quickstart
+
+Both paths begin the same way, because <ProductName /> speaks OTLP and neither product can receive it unmodified. Enable the OpenTelemetry output, run a collector, then point the collector at your product.
+
+### 1. Enable the OpenTelemetry output
+
+Add to `deployment.yaml`, then restart <ProductName />:
+
+```yaml
+observability:
+  enabled: true
+  output:
+    opentelemetry:
+      enabled: true
+      exporter_type: otlp
+      otlp_endpoint: "localhost:4317"
+      insecure: true
+      service_name: "{{productSlug}}"
+      categories:
+        - observability.authentication
+        - observability.flows
+```
+
+### 2. Run the collector
+
+The collector is not optional on either path. <ProductName /> exports OTLP over gRPC and cannot attach an authentication header, and it publishes two fields in shapes no store can chart. The collector bridges the protocol, adds the header, and reshapes those fields. Take its configuration from [Run the Collector](#run-the-collector).
+
+### 3. Point it at your product
+
+**Moesif.** Set `MOESIF_APPLICATION_ID` and keep the `otlphttp/moesif` exporter. Then import `moesif/agent-analytics.json` in Moesif. It carries every panel and the dashboard that holds them, needs no credentials, and needs no values substituted.
+
+**Grafana Tempo.** Add the `otlp/tempo` exporter, run the stack from [Run Tempo and Grafana](#run-tempo-and-grafana), and the dashboard is provisioned already at `http://localhost:3000`.
+
+### Four things that commonly go wrong
+
+- **The collector must be running before <ProductName /> starts sending.** OTLP is fire and forget. Spans emitted while the collector is down are lost with no error and no way to replay them.
+- **Tempo caps metrics queries at three hours by default.** Every panel returns empty at a 24 hour range until `query_frontend.metrics.max_duration` is raised.
+- **Tempo aggregates only what it has ingested since it started.** Restarting it leaves the traces searchable but the panels empty until new events arrive.
+- **Nothing appears until an agent authenticates.** Issue one token before concluding the pipeline is broken.
+
+## What <ProductName /> Publishes
+
+Every event shares one envelope:
+
+```json
+{
+  "trace_id": "8ebc87a6-b344-4292-a882-64cfee579fe1",
+  "event_id": "01a01e38-9e09-7c87-a858-1584bbf04a52",
+  "type": "TOKEN_ISSUED",
+  "timestamp": "2026-08-20T13:40:22.089281+05:30",
+  "component": "AuthHandler",
+  "status": "success",
+  "data": { }
+}
+```
+
+`status` is one of `in_progress`, `success`, or `failure`. Everything specific to the event is under `data`.
+
+### Event Types
+
+| Event type | Emitted when |
+|---|---|
+| `TOKEN_ISSUANCE_STARTED` | A token request begins |
+| `TOKEN_ISSUED` | A token is issued |
+| `TOKEN_ISSUANCE_FAILED` | A token request fails |
+| `TOKEN_REVOKED` | A token is revoked |
+| `RUNTIME_PERSISTENT_DB_UNAVAILABLE` | Revocation enforcement fails closed |
+| `FLOW_STARTED`, `FLOW_COMPLETED`, `FLOW_FAILED` | A flow execution starts, succeeds, or fails |
+| `FLOW_NODE_EXECUTION_STARTED`, `FLOW_NODE_EXECUTION_COMPLETED`, `FLOW_NODE_EXECUTION_FAILED` | A single flow node runs |
+| `FLOW_USER_INPUT_REQUIRED` | A flow pauses for user input |
+
+This is the full set. There are no agent lifecycle events, no credential rotation events, and no events for an agent calling an API with a token it already holds. What you can measure is agent **token activity**, which is not the same as everything an agent does.
+
+### Agent Attribution Keys
+
+These `data` keys are what make per-agent analytics possible. They appear on token issuance and flow events.
+
+| Key | Meaning |
+|---|---|
+| `act_type` | Principal type of the acting party: `user`, `agent`, or `application` |
+| `act_sub` | Resource ID of the actor, on a delegated issuance |
+| `sub` | Resource ID of the principal the token is about |
+| `sub_type` | Principal type of that subject |
+| `is_delegated` | Whether the issuance carries actor-to-subject delegation |
+| `client_id` | The OAuth client identifier |
+| `app_id` | Resource ID of the application or agent behind the client |
+| `grant_type` | The OAuth grant used |
+| `correlation_id` | Shared by every event of one authentication |
+| `duration_ms` | Duration of the operation |
+
+**`act_type` is what identifies agent traffic.** An agent's `client_credentials` token and an ordinary machine client's are byte-identical requests using the same grant; only the declared entity category separates them.
+
+**Where `sub_type` differs from `act_type`, the issuance is delegated**, and `act_sub` says on whose behalf. An agent acting for a user reports `act_type: agent` with `sub_type: user`.
+
+`sub` and `act_sub` are always opaque entity resource IDs, never the token's `sub` claim. An application can map that claim to a schema attribute such as an email address, and it varies per application for the same principal. Use `client_id` when you need a label a human recognizes, and the resource IDs when you need to join events. For the full data key reference, see [Observability](/community/contributing/contributing-code/backend-development/observability) in the contributor documentation.
+
+## Field Shapes to Know About
+
+Four things in the payload will cost you a debugging session if you meet them by surprise.
+
+### Numerics Arrive as Strings
+
+`duration_ms`, `step_number`, and `attempt_number` are emitted as JSON strings:
+
+```json
+"duration_ms": "2"
+```
+
+A store that parses JSON at query time handles this without configuration. A search index that infers types from the first document will map them as keywords, and no latency or percentile query will aggregate. On Elasticsearch or OpenSearch, define an index template mapping them as numbers before ingesting anything.
+
+### `data.error` Has Two Different Shapes
+
+Token events carry flat strings:
+
+```json
+"error": {
+  "code": "401",
+  "message": "Client not authorized for grant type",
+  "type": "client_error"
+}
+```
+
+Flow node events carry localizable objects, alongside a <ProductName /> error code:
+
+```json
+"error": {
+  "code": "FET-1081",
+  "message": {
+    "defaultValue": "No live SSO session",
+    "key": "flows.executor.errors.no_live_sso_session"
+  },
+  "description": {
+    "defaultValue": "No live, compatible SSO session exists for this flow; full authentication is required",
+    "key": "flows.executor.errors.no_live_sso_session_desc"
+  }
+}
+```
+
+Two consequences. First, **no single query can group on the error message across both families**: extracting `data.error.message` on a flow event returns the raw JSON object as your group key, and you need `data.error.message.defaultValue` instead, which is empty on token events. Second, **`data.error.code` means different things**: an HTTP status on token events, a <ProductName /> error code on flow events. Group token failures on the message and flow failures on the code, in separate panels.
+
+### A Failed Issuance Reports the Actor but Not the Subject
+
+`TOKEN_ISSUANCE_FAILED` carries `act_type`, `client_id`, `app_id`, `grant_type`, `duration_ms`, and `error`. It carries no `sub` or `sub_type`, because the failure can occur before the subject is resolved.
+
+So **filter agent traffic on `act_type`, never on `sub_type`.** A query keyed on `sub_type` looks correct and silently drops every failure, which is the opposite of what a failure panel is for.
+
+### Delegation Is Undercounted
+
+`is_delegated` is a floor, not an exact count:
+
+- An impersonation exchange that presents no actor token reports `is_delegated: false`.
+- On token exchange, `jwt-bearer`, and ID-JAG, `sub` and `sub_type` are omitted when the presented subject is a mapped attribute rather than a resource ID, because a mapped attribute resolves to no entity and <ProductName /> omits the field rather than publishing a value it cannot verify.
+
+Note this next to any panel that reports delegation, because a reviewer will act on the number.
+
+
+## Set Up the Pipeline
+
+### Run the Collector
+
+Both products sit behind a collector, for three reasons. <ProductName /> exports OTLP over gRPC while Moesif accepts only OTLP over HTTP. <ProductName /> cannot attach a custom authentication header, which Moesif requires. And two published fields cannot be charted in the shape <ProductName /> emits them, so the collector reshapes them before either product sees them.
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+
+  transform:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          # Moesif keys its analytics on user.id.
+          - set(attributes["user.id"], attributes["sub"]) where attributes["sub"] != nil
+
+          # is_delegated is the only boolean in the payload. Neither product groups
+          # cleanly on a boolean, so publish the reader-facing wording as a string.
+          - set(attributes["agent.acting_for_user"], "Delegated") where attributes["is_delegated"] == true
+          - set(attributes["agent.acting_for_user"], "Direct") where attributes["is_delegated"] == false
+
+          # data.error is one opaque JSON object. Split it so failures group by cause.
+          - set(cache["err"], ParseJSON(attributes["error"])) where attributes["error"] != nil
+          - set(attributes["error_code"], cache["err"]["code"]) where cache["err"]["code"] != nil
+          - set(attributes["error_type"], cache["err"]["type"]) where cache["err"]["type"] != nil
+          - set(attributes["error_message"], cache["err"]["message"]) where IsString(cache["err"]["message"])
+          - set(attributes["error_message"], cache["err"]["message"]["defaultValue"]) where cache["err"]["message"]["defaultValue"] != nil
+
+          # duration is published as a string. Int() is required here: a Double() copy is a
+          # valid numeric attribute that the metrics functions silently return no series over.
+          - set(attributes["duration_ms_int"], Int(attributes["duration_ms"])) where attributes["duration_ms"] != nil
+
+exporters:
+  otlphttp/moesif:
+    traces_endpoint: https://api.moesif.net/v1/traces
+    headers:
+      X-Moesif-Application-Id: ${env:MOESIF_APPLICATION_ID}
+
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+service:
+  telemetry:
+    metrics:
+      address: 0.0.0.0:8888
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [transform, batch]
+      exporters: [otlphttp/moesif, otlp/tempo]
+```
+
+Keep only the exporters you use. Listing both sends every event to both products, which is useful while migrating and wasteful otherwise.
+
+### Run Tempo and Grafana
+
+Tempo stores the spans and Grafana renders them. Tempo has no UI of its own.
+
+Two settings matter and neither is in Tempo's default configuration. The `local-blocks` processor is what makes TraceQL metrics work at all; without it Tempo can retrieve a trace by id but cannot count anything. And `max_duration` lifts the three hour cap on metrics queries, which otherwise rejects any dashboard window longer than that.
+
+`tempo/tempo-config.yaml`:
+
+```yaml
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+
+query_frontend:
+  metrics:
+    max_duration: 168h
+    concurrent_jobs: 8
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:4317"
+
+ingester:
+  max_block_duration: 1m
+
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+  storage:
+    path: /var/tempo/generator/wal
+  traces_storage:
+    path: /var/tempo/generator/traces
+  processor:
+    local_blocks:
+      filter_server_spans: false
+      flush_to_storage: true
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [local-blocks]
+```
+
+A Grafana datasource provisioning file, `grafana/provisioning/datasources/tempo.yaml`:
+
+```yaml
+apiVersion: 1
+datasources:
+  - name: Tempo
+    type: tempo
+    uid: {{productSlug}}-tempo
+    access: proxy
+    url: http://tempo:3200
+```
+
+The dashboard definition expects that `uid`. Change it in both places or in neither.
+
+A dashboard provisioning file, `grafana/provisioning/dashboards/dashboards.yaml`:
+
+```yaml
+apiVersion: 1
+providers:
+  - name: {{ProductName}}
+    orgId: 1
+    folder: {{ProductName}}
+    type: file
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+```
+
+And `docker-compose.yaml` to run the collector, Tempo and Grafana together:
+
+```yaml
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.116.1
+    command: ["--config=/etc/otel/config.yaml"]
+    environment:
+      MOESIF_APPLICATION_ID: ${MOESIF_APPLICATION_ID:-}
+    volumes:
+      - ./collector-config.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:8888:8888"
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo/tempo-config.yaml"]
+    volumes:
+      - ./tempo/tempo-config.yaml:/etc/tempo/tempo-config.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "127.0.0.1:3200:3200"
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - tempo
+
+volumes:
+  tempo-data:
+  grafana-data:
+```
+
+Every port is bound to `127.0.0.1`, so nothing in this stack is reachable from the network. Anonymous access is read only: it is there so the dashboard opens without a login, and it grants no rights to edit dashboards or add datasources. Tempo carries no authentication of its own, and the traces include the resource identifier of every person an agent acted for, so do not publish these ports as they stand.
+
+Start it:
+
+```bash
+docker compose up -d
+```
+
+### Confirm Delivery
+
+Exercise an agent, then read the collector's own counters:
+
+```bash
+curl -s http://localhost:8888/metrics | grep otelcol_exporter_se
+```
+
+`otelcol_exporter_sent_spans` should climb and `otelcol_exporter_send_failed_spans` should stay at zero. If sent is zero, <ProductName /> is not reaching the collector. If failed is climbing, the collector is not reaching the product.
+
+## Load a Dashboard Definition
+
+Copy `grafana/agent-analytics.json` into the `grafana/dashboards` directory the provisioning file points at. Grafana picks it up within thirty seconds, and the dashboard appears in the <ProductName /> folder.
+
+For Moesif, import `moesif/agent-analytics.json` through the canvas import in the UI.
+
+A definition encodes its product's chart types, field names and query language, so one product's file does not load into another.
+
+## The Panel Queries
+
+Every panel uses TraceQL metrics. Tempo returns a series over time rather than a single value, so the categorical panels carry a `reduce` transformation that collapses each series to one number, and a `renameByRegex` that strips Tempo's `{span.x="y"}` series naming down to the value.
+
+Attribute names containing a dot must be quoted: `span."event.status"` works, `span.event.status` silently matches nothing.
+
+Use an explicit `||` rather than `!=` when excluding a value. A `!=` comparison over-matches in Tempo: filtering `span."event.status"!="in_progress"` returned more events than the unfiltered query on the same data.
+
+### Agent tokens issued
+
+```
+{span.act_type="agent" && span.component="AuthHandler" && (span."event.status"="success" || span."event.status"="failure")} | count_over_time() by (span."event.status")
+```
+
+`in_progress` is excluded deliberately. `TOKEN_ISSUANCE_STARTED` pairs one to one with every outcome, so counting it doubles the figure.
+
+### Agent token issuance over time
+
+```
+{span.act_type="agent" && span.component="AuthHandler" && (span."event.status"="success" || span."event.status"="failure")} | count_over_time() by (span."event.status")
+```
+
+The only panel that is genuinely a time series. The rest reduce their series to one value per category.
+
+### Most active agents
+
+```
+{span.act_type="agent" && span.component="AuthHandler" && span."event.status"="success"} | count_over_time() by (span.client_id)
+```
+
+Keyed on `client_id`, which is operator chosen and present on every token event. `sub`, `act_sub` and `app_id` are opaque resource identifiers, so a panel keyed on those renders a list of UUIDs.
+
+### Grant types
+
+```
+{span.act_type="agent" && span.component="AuthHandler" && span."event.status"="success"} | count_over_time() by (span.grant_type)
+```
+
+`client_credentials` is the agent acting as itself. The authorization code flow with an actor claim is the on-behalf-of path.
+
+### Delegated against direct
+
+```
+{span.act_type="agent" && span.component="AuthHandler" && span."event.status"="success"} | count_over_time() by (span."agent.acting_for_user")
+```
+
+Grouped on the string the collector derives from `is_delegated`, because the raw field is a boolean and renders as `true`/`false`. Read the result as a floor on delegated issuance. See [Delegation Is Undercounted](#delegation-is-undercounted).
+
+### Work performed for a person
+
+```
+{span.act_type="agent" && span.component="AuthHandler" && span."event.status"="success" && span.is_delegated=true} | count_over_time() by (span.sub)
+```
+
+Delegated issuances only, grouped by the subject acted for. Subjects are entity resource IDs, opaque by design but stable and correlatable against the directory. Delegation records that an agent acted for someone, not that they agreed to it.
+
+### Issuance latency
+
+```
+{span.act_type="agent" && span.component="AuthHandler" && span."event.status"="success"} | quantile_over_time(span.duration_ms_int, .5, .95, .99)
+```
+
+Percentiles of the published duration over successful issuances. Reads `duration_ms_int`, the integer copy the collector derives. One call returns every quantile, labelled by `p`. Do not substitute the intrinsic span `duration`: it measures delivery rather than the operation and reads a fraction of the real value.
+
+### Failure reasons
+
+```
+{span.act_type="agent" && span.component="AuthHandler" && span."event.status"="failure"} | count_over_time() by (span.error_message)
+```
+
+Only groups by cause because the collector splits `data.error`. Without that step every distinct blob becomes its own row.
+
+
+## Transformations the Panels Require
+
+Three fields cannot be charted in the form <ProductName /> publishes them, and all three are reshaped in the collector rather than in any dashboard.
+
+**The delegation indicator is a boolean.** `is_delegated` is the only boolean in the payload. Moesif builds no keyword subfield for a boolean, so grouping on it silently returns nothing, and Tempo renders the series as `true` and `false`. The collector publishes `agent.acting_for_user` as the string `Delegated` or `Direct`, and both dashboards group on that.
+
+**The failure cause is a nested object**, which serializes to one opaque value, so grouping returns a row per unique blob rather than per cause. It has to be split into scalar fields, reading `defaultValue` where the message is a localizable object rather than a flat string. See [`data.error` Has Two Different Shapes](#dataerror-has-two-different-shapes).
+
+**Duration is a string.** `data.duration_ms` cannot be aggregated as published. The type of the copy matters: `Int()` aggregates correctly, while `Double()` produces a valid numeric attribute that `quantile_over_time` and `histogram_over_time` silently return no series over.
+
+Where you reshape events with something other than a collector, reproduce the same three outcomes: a string delegation indicator, the failure cause as a scalar, and an integer duration.
+
+## If a Panel Is Empty
+
+Work down this list before suspecting the dashboard.
+
+**Every panel is empty.** Check the collector counters under [Confirm Delivery](#confirm-delivery). If `otelcol_exporter_sent_spans` is zero, <ProductName /> never reached the collector: confirm `otlp_endpoint` matches the collector's published port and that `observability.output.opentelemetry.enabled` is true.
+
+**Every panel is empty and the collector is sending.** On Tempo, this is almost always the three hour metrics cap. A range longer than `query_frontend.metrics.max_duration` is rejected outright with HTTP 400 rather than returning what it can, so a 24 hour dashboard shows nothing at all. Raise it, then restart Tempo. Restarting matters: `docker compose up -d` does not restart a container when only a bind mounted file changed.
+
+**Traces are searchable but panels are empty.** Tempo's `local-blocks` processor aggregates only what it has ingested since it started. After a restart the stored traces remain searchable while the panels stay empty until new events arrive. This does not heal retroactively.
+
+**Panels lag behind reality.** TraceQL metrics read flushed blocks, so counts trail live traffic by a minute or two. Wait before concluding a panel is wrong.
+
+**One panel is empty and the rest are populated.** Check that its grouping attribute exists on the events you are producing. `agent.acting_for_user` only appears once the collector's transform block is in place, and `error_message` only on failures.
+
+**A grouped panel returns nothing while the same filter works.** An attribute name containing a dot needs quoting inside the `by()` clause.
+
+## What This Cannot Tell You
+
+The dashboard measures access being granted. It does not measure what an agent did with the access afterwards, because <ProductName /> never sees those calls.
+
+There are no agent lifecycle events, no credential rotation events, and no event when an agent calls an API with a token it already holds.
+
+**Failed client authentication is invisible.** An agent presenting a wrong secret is rejected before any event is published, so credential stuffing against agent secrets cannot be seen here.
+
+**Span timing and trace structure are not usable.** The subscriber starts each span at the event timestamp and ends it at the current clock, and writes no parent reference. Span duration measures delivery, and no trace hierarchy exists.
+
+## Using a Different Stack
+
+Nothing above is specific to Tempo except the TraceQL syntax. The event schema, the choice of `act_type` as the agent filter, the `client_id` display key, and the per-family error handling all transfer to Elasticsearch, OpenSearch, Splunk or Datadog. Only the Moesif and Tempo definitions are maintained in this repository.
+
+If your store indexes rather than parses at query time, define the field mappings before ingesting. See [Numerics Arrive as Strings](#numerics-arrive-as-strings).
+
+If your store ingests log files rather than OTLP, <ProductName /> can write the same events to disk. Set `observability.output.file.enabled` and point a log shipper at the path. The events are identical; only the transport differs.
+
+## Next Steps
+
+- [Observability](../observability) for the full event reference and the other output sinks.
+- [Configuration](../configuration#observability-configuration) for every `observability` key.

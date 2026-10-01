@@ -12,7 +12,6 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
@@ -30,14 +29,14 @@ const (
 // ouResolverExecutor resolves the organization unit for a user being onboarded.
 type ouResolverExecutor struct {
 	providers.Executor
-	ouService ou.OrganizationUnitServiceInterface
+	ouService providers.OrganizationUnitProvider
 	logger    *log.Logger
 }
 
 // newOUResolverExecutor creates a new OU resolver executor.
 func newOUResolverExecutor(
 	flowFactory core.FlowFactoryInterface,
-	ouService ou.OrganizationUnitServiceInterface,
+	ouService providers.OrganizationUnitProvider,
 ) *ouResolverExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OUResolverExecutor"))
 

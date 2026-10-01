@@ -3,7 +3,10 @@
 
 package connection
 
-import "github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+import (
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+)
 
 // connectionExportModel is the unified declarative/export representation of a connection,
 // matching the /connections API's typed, vendor-scoped shape (as opposed to the legacy
@@ -32,8 +35,16 @@ type connectionExportModel struct {
 	TokenExchangeEnabled  *bool    `yaml:"tokenExchangeEnabled,omitempty"  json:"tokenExchangeEnabled,omitempty"`
 	TrustedTokenAudience  string   `yaml:"trustedTokenAudience,omitempty"  json:"trustedTokenAudience,omitempty"`
 
-	//nolint:lll // long struct tag: both yaml and json keys needed for declarative load/export and import
+	//nolint:lll
 	AttributeConfiguration *providers.AttributeConfiguration `yaml:"attributeConfiguration,omitempty" json:"attributeConfiguration,omitempty"`
+
+	// AuthZEN PDP connection fields.
+	AuthZENPDPEndpoint      string `yaml:"endpoint,omitempty"                 json:"endpoint,omitempty"`
+	AuthZENPDPBatchEndpoint string `yaml:"batchEndpoint,omitempty"            json:"batchEndpoint,omitempty"`
+	AuthZENPDPTimeoutMS     int    `yaml:"timeoutMs,omitempty"                json:"timeoutMs,omitempty"`
+	AuthZENPDPRetryCount    *int   `yaml:"retryCount,omitempty"               json:"retryCount,omitempty"`
+	//nolint:lll
+	SubjectAttributeMappings []authzenpdp.SubjectAttributeMapping `yaml:"subjectAttributeMappings,omitempty" json:"subjectAttributeMappings,omitempty"`
 
 	// SMS-backed vendor fields (twilio, vonage, sms-gateway).
 	AccountSID  string `yaml:"accountSid,omitempty"  json:"accountSid,omitempty"`

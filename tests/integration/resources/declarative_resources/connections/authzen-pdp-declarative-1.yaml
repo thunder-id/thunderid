@@ -1,0 +1,9 @@
+resource_type: connection
+id: decl-authzen-pdp-1
+name: Declarative File AuthZEN PDP
+description: A declarative AuthZEN PDP connection
+type: authzen-pdp
+endpoint: http://localhost:3592/access/v1/evaluation
+batchEndpoint: http://localhost:3592/access/v1/evaluations
+timeoutMs: 1000
+retryCount: 1

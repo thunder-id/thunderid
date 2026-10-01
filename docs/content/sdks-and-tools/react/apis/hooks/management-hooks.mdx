@@ -1,0 +1,170 @@
+---
+displayed_sidebar: null
+title: Management Hooks
+docType: reference
+description: React hooks for listing, reading, creating, updating, and deleting applications, users, and agents, with no data fetching library required.
+---
+
+# Management Hooks
+
+These hooks list, read, create, update, and delete applications, users, and agents through the <ProductName /> management API. They depend on no data fetching library. Each hook runs its request through a fetcher resolved from the hook, the `ThunderIDProvider`, or the SDK's authenticated HTTP client. A successful mutation refetches every mounted query whose data it changed.
+
+## List and Delete Applications
+
+```jsx title="src/Applications.jsx" showLineNumbers
+import { useGetApplications, useDeleteApplication } from '@thunderid/react'
+
+function Applications() {
+  const { data, isLoading, error } = useGetApplications({ limit: 20 })
+  const { mutate: deleteApplication, isLoading: isDeleting } = useDeleteApplication()
+
+  if (isLoading) return <p>Loading...</p>
+  if (error) return <p>Could not load applications.</p>
+
+  return (
+    <ul>
+      {data.applications.map((application) => (
+        <li key={application.id}>
+          {application.name}
+          <button disabled={isDeleting} onClick={() => deleteApplication(application.id)}>
+            Delete
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+}
+```
+
+Deleting an application refetches the list above, because `useDeleteApplication` invalidates the applications list.
+
+:::note
+These hooks must be used inside a component rendered within `ThunderIDProvider`. The access token of the signed-in user needs the permissions the server requires for each resource.
+:::
+
+## Hooks
+
+| Hook | Arguments | Result |
+|------|-----------|--------|
+| `useGetApplications(params?, options?)` | `params`: `{limit, offset}` | Query of `ApplicationListResponse` |
+| `useGetApplication(applicationId, options?)` | `applicationId`: `string \| undefined` | Query of `Application` |
+| `useCreateApplication(options?)` | `mutate(payload: CreateApplicationRequest)` | Mutation returning `Application` |
+| `useUpdateApplication(options?)` | `mutate({applicationId, data})` | Mutation returning `Application` |
+| `useDeleteApplication(options?)` | `mutate(applicationId: string)` | Mutation returning `void` |
+| `useGetUsers(params?, options?)` | `params`: `{limit, offset, filter}` | Query of `ManagedUserListResponse` |
+| `useGetUser(userId, options?)` | `userId`: `string \| undefined` | Query of `ManagedUser` |
+| `useCreateUser(options?)` | `mutate(payload: CreateManagedUserRequest)` | Mutation returning `ManagedUser` |
+| `useUpdateUser(options?)` | `mutate({userId, data})` | Mutation returning `ManagedUser` |
+| `useDeleteUser(options?)` | `mutate(userId: string)` | Mutation returning `void` |
+| `useGetAgents(params?, options?)` | `params`: `{limit, offset}` | Query of `AgentListResponse` |
+| `useGetAgent(agentId, options?)` | `agentId`: `string \| undefined` | Query of `Agent` |
+| `useCreateAgent(options?)` | `mutate(payload: CreateAgentRequest)` | Mutation returning `Agent` |
+| `useUpdateAgent(options?)` | `mutate({agentId, data})` | Mutation returning `Agent` |
+| `useDeleteAgent(options?)` | `mutate(agentId: string)` | Mutation returning `void` |
+
+A single-resource query such as `useGetApplication` does not send a request until its identifier is set. The request and response types are the same as the [JavaScript management functions](../../../../javascript/apis/management).
+
+## Query Hooks
+
+### Options
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `enabled` | `boolean` | `true` | Set to `false` to skip fetching. |
+| `fetcher` | `(url: string, config: RequestInit) => Promise<Response>` | See [Fetcher Resolution](#fetcher-resolution) | Transport for this hook only. |
+
+### Return Values
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `data` | `T \| undefined` | The latest successful response. Kept when a later refetch fails. |
+| `error` | `Error \| null` | The error from the latest request, or `null`. |
+| `isLoading` | `boolean` | `true` while a request is in flight. |
+| `refetch` | `() => Promise<T \| undefined>` | Fetches again. Resolves with the new data, or `undefined` if the request failed. |
+
+## Mutation Hooks
+
+Mutation hooks produce no toast, message, or log entry. Use `error`, `onSuccess`, and `onError` to show the outcome.
+
+### Options
+
+| Option | Type | Description |
+| :--- | :--- | :--- |
+| `onSuccess` | `(data, variables) => void` | Called after a successful mutation, once the affected queries are invalidated. |
+| `onError` | `(error, variables) => void` | Called when the mutation fails. |
+| `fetcher` | `(url: string, config: RequestInit) => Promise<Response>` | Transport for this hook only. |
+
+### Return Values
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `mutate` | `(variables) => Promise<TData \| undefined>` | Runs the mutation. Never rejects; read `error` or use `onError` to handle a failure. |
+| `mutateAsync` | `(variables) => Promise<TData>` | Runs the mutation and rejects if it fails. |
+| `data` | `TData \| undefined` | The result of the latest successful mutation. |
+| `error` | `Error \| null` | The error from the latest mutation, or `null`. |
+| `isLoading` | `boolean` | `true` while the mutation is in flight. |
+| `reset` | `() => void` | Clears `data` and `error`. |
+
+### Invalidation
+
+| Mutation | Refetches |
+| :--- | :--- |
+| Create | Every mounted list query of the resource |
+| Update | The mounted query for that resource, and every mounted list query of the resource |
+| Delete | Every mounted list query of the resource |
+
+## Fetcher Resolution
+
+Each hook uses the first fetcher it finds:
+
+1. The `fetcher` option passed to the hook.
+2. The `http.fetcher` prop on [`ThunderIDProvider`](../../contexts/thunderid-provider).
+3. The SDK's authenticated HTTP client, which attaches the signed-in user's access token.
+
+A custom fetcher replaces the SDK's authenticated client, so it must attach the access token itself, or call a proxy that authorizes the request on the server. This example routes one hook through a proxy and forwards the signed-in user's token:
+
+```jsx title="src/Users.jsx" showLineNumbers
+import { useGetUsers, useThunderID } from '@thunderid/react'
+
+function Users() {
+  const { getAccessToken } = useThunderID()
+
+  const proxyFetcher = async (url, config) =>
+    fetch(`/api/proxy?target=${encodeURIComponent(url)}`, {
+      ...config,
+      headers: { ...config.headers, Authorization: `Bearer ${await getAccessToken()}` },
+    })
+
+  const { data } = useGetUsers({ limit: 20 }, { fetcher: proxyFetcher })
+
+  return <ul>{data?.users.map((user) => <li key={user.id}>{user.display}</li>)}</ul>
+}
+```
+
+To apply a fetcher to every management hook, pass it as `http={{ fetcher }}` on `ThunderIDProvider`. `http.fetcher` applies to the management hooks only. Sign-in, token, and flow requests keep using the SDK's own HTTP client.
+
+## Management API on a Separate Host
+
+The hooks send requests to `{baseUrl}/applications`, `{baseUrl}/users`, and `{baseUrl}/agents`. When the management API runs on a different host from the authorization server, set `endpoints.applications`, `endpoints.users`, or `endpoints.agents` on `ThunderIDProvider` to the collection URL:
+
+```jsx
+<ThunderIDProvider
+  clientId="<your-app-client-id>"
+  baseUrl="https://idp.example.com"
+  endpoints={{
+    applications: 'https://rs.example.com/applications',
+    users: 'https://rs.example.com/users',
+    agents: 'https://rs.example.com/agents',
+  }}
+>
+  <App />
+</ThunderIDProvider>
+```
+
+## Using a Data Fetching Library
+
+To cache with a library such as TanStack Query, call the [JavaScript management functions](../../../../javascript/apis/management) from your own query hooks, and reuse `ApplicationQueryKeys`, `UserQueryKeys`, and `AgentQueryKeys` as cache keys. All of them are exported from `@thunderid/react`.
+
+## Error Handling
+
+Query and mutation errors are `ThunderIDAPIError` instances. HTTP 403 and 404 produce distinct codes, such as `getApplication-ForbiddenError-001` and `getApplication-NotFoundError-001`. See [Error Handling](../../../../javascript/apis/management#error-handling) for the full list.

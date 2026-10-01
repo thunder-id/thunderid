@@ -11,7 +11,8 @@ import useGetApplications from '../useGetApplications';
 const mockHttpRequest = vi.fn();
 
 // Mock the dependencies
-vi.mock('@thunderid/react', () => ({
+vi.mock('@thunderid/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/react')>()),
   useThunderID: () => ({http: {request: mockHttpRequest}}),
 }));
 

@@ -1,13 +1,14 @@
 # SDK Development Specification
 
 - **Status:** Draft
-- **Version:** 0.2
+- **Version:** 0.3
 - **Related documents:**
   [threat-model.md](threat-model.md),
   [#5305](https://github.com/thunder-id/thunderid/issues/5305),
   [#3292](https://github.com/thunder-id/thunderid/discussions/3292),
   [#4065](https://github.com/thunder-id/thunderid/discussions/4065),
   [#5354](https://github.com/thunder-id/thunderid/discussions/5354),
+  [#5162](https://github.com/thunder-id/thunderid/issues/5162),
   [RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749),
   [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636),
   [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html)
@@ -325,6 +326,7 @@ this table already covers.
 | `discovery` | Object | No | Enabled | OIDC discovery behaviour. Discovered metadata MUST be fetched over HTTPS, and its `issuer` MUST match the expected issuer exactly before any endpoint from it is used. |
 | `endpoints` | Object | No | Discovered | Per-endpoint overrides for a server that does not publish discovery. Every override MUST use HTTPS and MUST share the origin of `baseUrl`, unless the application has explicitly allowed the other origin. |
 | `tokenRequest` | Object | No | Platform default | Token endpoint authentication and request shaping. |
+| `http` | Object | No | None | HTTP options. `http.fetcher` replaces the transport for [management operations](#management-operations) only. |
 
 **Session and tokens**
 
@@ -402,6 +404,51 @@ some platforms and not on others. An SDK adding an operation in this position MU
 Organization operations (listing, reading, and switching organizations) are a specification
 target and are deliberately not part of the required surface yet. An SDK MUST NOT ship a
 partial implementation of them ahead of a specification update.
+
+#### Management operations
+
+Management operations let an application administer ThunderID resources, so that an
+organization can build its own console, or embed part of one in its product, without calling
+the management API by hand. They are optional: an SDK MAY ship them, and one that does MUST
+follow this section.
+
+The initial resources are applications, users, and agents. Each exposes the same five
+operations, named for the resource in the platform's idiom (`getApplications`,
+`client.applications.list`, and so on):
+
+| Operation | Contract |
+|---|---|
+| List | Returns one page of the resource, with the total count. Accepts `limit` and `offset`, and a `filter` where the server supports one. |
+| Get | Returns a single resource by identifier. |
+| Create | Creates the resource and returns it as the server stored it. |
+| Update | Replaces the resource's mutable fields and returns the updated resource. |
+| Delete | Deletes the resource. Returns nothing. |
+
+Requirements:
+
+1. Requests are authorized with the signed-in user's access token. The SDK MUST NOT mint,
+   widen, or cache a separate credential for them. Whether a call succeeds is the server's
+   decision, and the token needs the permissions the server requires for that resource.
+2. The management API can run on a different host from the authorization server. The request
+   URL for each resource MUST come from, in order: an explicit URL passed to the call, then an
+   `endpoints` override for that resource's collection (`applications`, `users`, `agents`),
+   then `baseUrl` followed by the collection path. A single resource is addressed as the
+   collection URL followed by its identifier.
+3. The transport MUST be replaceable by the application through a `fetcher`. A `fetcher` passed
+   to a single call takes precedence over `http.fetcher` supplied at initialization, which takes
+   precedence over the SDK's default authenticated transport. `http.fetcher` applies to
+   management operations only. Authentication, token, and flow requests MUST keep using the
+   SDK's own transport until this specification says otherwise.
+4. A Core Lib or Framework Specific SDK MAY wrap these operations in its framework's reactive
+   model, such as a hook, an observable object, or a state holder. The wrapper MUST NOT depend
+   on a third-party data fetching or caching library, so an application can use its own.
+5. The SDK MUST NOT produce a user-visible side effect from a management operation. It does not
+   show a notification, translate a message, or write to the application's log. Success and
+   failure are reported to the caller, who decides what the user sees.
+6. A resource returned by these operations is a server record, not the signed-in user. It MUST
+   NOT reuse a type name the SDK already uses for the authenticated user.
+7. HTTP 403 and 404 MUST surface as distinct API error codes, so a caller can tell a missing
+   permission from a missing resource.
 
 ### Framework integration
 
@@ -956,3 +1003,4 @@ I need.
 |---|---|---|
 | 0.1 | 2026-09-10 | Initial specification. |
 | 0.2 | 2026-09-15 | Cross-SDK parity enforcement stated as an outcome. How a check reads and records the decision is left to the implementation. |
+| 0.3 | 2026-09-26 | Management operations for applications, users, and agents added as an optional capability. |

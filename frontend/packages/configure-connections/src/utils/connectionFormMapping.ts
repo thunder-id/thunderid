@@ -1,14 +1,32 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {parseKeyValuePairs} from './keyValuePairs';
 import type {ConnectionFieldDef} from '../config/connectionFormFields';
-import type {ConnectionRequest, ConnectionResponse} from '../models/connection';
+import {AuthenticationMethods, type AuthenticationMethod} from '../models/authentication-methods';
+import type {ConnectionRequest, ConnectionResponse, OutboundAuthentication} from '../models/connection';
 
 /** The placeholder value the API returns for stored secrets. Must never be sent back. */
 export const MASKED_SECRET = '******';
 
+function matchesRequiredWhenValue(
+  values: ConnectionFormValues,
+  requiredWhenValue: ConnectionFieldDef['requiredWhenValue'],
+): boolean {
+  return requiredWhenValue?.field !== undefined && values[requiredWhenValue.field] === requiredWhenValue.value;
+}
+
 /** Flat string-keyed form state shared by all per-vendor forms. */
 export type ConnectionFormValues = Record<string, string>;
+
+function valueAtPath(source: unknown, path: string): unknown {
+  return path.split('.').reduce<unknown>((value, key) => {
+    if (typeof value !== 'object' || value === null) {
+      return undefined;
+    }
+    return (value as Record<string, unknown>)[key];
+  }, source);
+}
 
 /**
  * Build empty form values for a create form (all fields blank except the derived redirect URI
@@ -47,14 +65,41 @@ export function responseToFormValues(
       values[field.name] = response.redirectUri || redirectUri;
       continue;
     }
-    const raw: unknown = (response as unknown as Record<string, unknown>)[field.name];
+    const raw: unknown = valueAtPath(response, field.responsePath ?? field.name);
     if (field.kind === 'switch') {
       values[field.name] = raw === true ? 'true' : 'false';
       continue;
     }
-    values[field.name] = typeof raw === 'string' && raw !== '' ? raw : (field.defaultValue ?? '');
+    if (typeof raw === 'string' && raw !== '') {
+      values[field.name] = raw;
+    } else if (typeof raw === 'number' && Number.isFinite(raw)) {
+      values[field.name] = String(raw);
+    } else {
+      values[field.name] = field.defaultValue ?? '';
+    }
   }
   return values;
+}
+
+/** Convert flat authentication form values into the structured outbound-authentication API contract. */
+export function outboundAuthenticationFromFormValues(values: ConnectionFormValues): OutboundAuthentication {
+  const scheme = (values['authenticationScheme'] as AuthenticationMethod | undefined) ?? AuthenticationMethods.NONE;
+  if (scheme === AuthenticationMethods.BEARER) {
+    return {scheme, bearer: {token: (values['bearerToken'] ?? '').trim()}};
+  }
+  if (scheme === AuthenticationMethods.BASIC) {
+    return {
+      scheme,
+      basic: {
+        username: (values['basicUsername'] ?? '').trim(),
+        password: (values['basicPassword'] ?? '').trim(),
+      },
+    };
+  }
+  if (scheme === AuthenticationMethods.API_KEY) {
+    return {scheme, apiKey: {headers: parseKeyValuePairs(values['httpHeaders'] ?? '')}};
+  }
+  return {scheme: AuthenticationMethods.NONE};
 }
 
 export interface ToRequestOptions {
@@ -107,7 +152,7 @@ export function formValuesToRequest(
 
     // Always include required fields and any non-empty value; omit empty optional fields.
     if (field.required || raw !== '') {
-      payload[field.name] = raw;
+      payload[field.name] = field.kind === 'number' ? Number(raw) : raw;
     }
   }
 
@@ -118,6 +163,28 @@ function isValidHttpUrl(value: string): boolean {
   try {
     const url: URL = new URL(value);
     return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  const normalizedHostname = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (normalizedHostname === 'localhost' || normalizedHostname === '::1') {
+    return true;
+  }
+  const octets = normalizedHostname.split('.');
+  return (
+    octets.length === 4 &&
+    octets.every((octet) => /^\d+$/.test(octet) && Number(octet) <= 255) &&
+    Number(octets[0]) === 127
+  );
+}
+
+function isSecureAuthenticatedEndpoint(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || (url.protocol === 'http:' && isLoopbackHost(url.hostname));
   } catch {
     return false;
   }
@@ -142,7 +209,8 @@ export function validateConnectionForm(
     const raw: string = (values[field.name] ?? '').trim();
 
     if (field.kind === 'secret') {
-      if (mode === 'create' && field.required && raw === '') {
+      const requiredByValue = matchesRequiredWhenValue(values, field.requiredWhenValue);
+      if (mode === 'create' && (field.required || requiredByValue) && raw === '') {
         errors[field.name] = 'connections:validation.required';
       }
       continue;
@@ -155,14 +223,27 @@ export function validateConnectionForm(
     const requiredWhen: string | undefined = field.requiredWhen;
     const isRequired: boolean =
       Boolean(field.required) || (requiredWhen !== undefined && values[requiredWhen] === 'true');
+    const isRequiredByValue = matchesRequiredWhenValue(values, field.requiredWhenValue);
 
-    if (isRequired && raw === '') {
+    if ((isRequired || isRequiredByValue) && raw === '') {
       errors[field.name] = 'connections:validation.required';
       continue;
     }
 
     if (field.kind === 'url' && raw !== '' && !isValidHttpUrl(raw)) {
       errors[field.name] = 'connections:validation.url';
+      continue;
+    }
+
+    const authenticationConfigured =
+      values['authenticationScheme'] !== undefined && values['authenticationScheme'] !== AuthenticationMethods.NONE;
+    if (
+      authenticationConfigured &&
+      field.requiresHttpsWhenAuthenticated &&
+      raw !== '' &&
+      !isSecureAuthenticatedEndpoint(raw)
+    ) {
+      errors[field.name] = 'connections:validation.authenticatedEndpointHttps';
       continue;
     }
 

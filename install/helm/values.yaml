@@ -263,6 +263,12 @@ configuration:
     encryption:
       enabled: false
 
+  # Resource sharing configuration
+  resourceSharing:
+    # If true, an organization unit that has a parent may share a resource with a root
+    # organization unit in another tree. If false, only a root OU can share outside its own tree.
+    allowChildOuCrossTreeSharing: false
+
   # Database configuration
   database:
     config:
@@ -510,6 +516,11 @@ configuration:
     # Storage mode for credential configurations: "mutable", "declarative", or "composite".
     # Leave empty to inherit the global declarativeResources.enabled setting.
     store: ""
+
+  # SCIM 2.0 provisioning configuration.
+  scim:
+    # URN prefix of the per-user-type SCIM extension schemas. A trailing colon is added if missing.
+    urnPrefix: "urn:thunderid:params:scim:schemas:"
 
   # SMTP server used to deliver emails (email OTP, magic link, verification).
   # Leave host empty to omit the section, in which case no email can be sent.

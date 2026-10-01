@@ -15,13 +15,14 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
@@ -530,7 +531,7 @@ func (suite *GroupExporterTestSuite) TestValidateGroupWrapper_OUHandleUsesRuntim
 	ouSvc := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	ouSvc.EXPECT().
 		GetOrganizationUnitByPath(mock.MatchedBy(security.IsRuntimeContext), "root/eng").
-		Return(providers.OrganizationUnit{ID: "ou-123"}, nil).Once()
+		Return(ou.OrganizationUnit{ID: "ou-123"}, nil).Once()
 
 	grp := &groupDeclarativeResource{
 		ID:       "group1",

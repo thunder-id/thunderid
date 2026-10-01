@@ -29,7 +29,7 @@ func TestRBACEngineTestSuite(t *testing.T) {
 
 func (suite *RBACEngineTestSuite) SetupTest() {
 	suite.mockRoleService = rolemock.NewRoleServiceInterfaceMock(suite.T())
-	suite.engine = NewRBACEngine(suite.mockRoleService)
+	suite.engine = newRBACEngine(suite.mockRoleService)
 }
 
 func (suite *RBACEngineTestSuite) TestEvaluateAccessSuccess() {

@@ -1,0 +1,146 @@
+---
+title: JavaScript Management API
+docType: reference
+displayed_sidebar: javascriptSdkSidebar
+description: Functions for listing, reading, creating, updating, and deleting applications, users, and agents through the management API.
+---
+
+# JavaScript Management API
+
+These functions call the <ProductName /> management API to list, read, create, update, and delete applications, users, and agents. They take a fetch-compatible `fetcher`, so they run with any HTTP client or data fetching library. Requests are authorized with the signed-in user's access token, and the token needs the permissions the server requires for each resource.
+
+The functions attach no token themselves. Pass a `fetcher` that adds the `Authorization` header, for example one built on [`ThunderIDJavaScriptClient.getAccessToken()`](../thunderid-javascript-client):
+
+```ts
+import { getApplications, createUser } from '@thunderid/javascript'
+
+// `client` is your initialized ThunderIDJavaScriptClient.
+const authenticatedFetch = async (url: string, config: RequestInit): Promise<Response> =>
+  fetch(url, {
+    ...config,
+    headers: {...config.headers, Authorization: `Bearer ${await client.getAccessToken()}`},
+  })
+
+const {applications, totalResults} = await getApplications({
+  baseUrl: 'https://localhost:8090',
+  fetcher: authenticatedFetch,
+  limit: 10,
+})
+
+const user = await createUser({
+  baseUrl: 'https://localhost:8090',
+  fetcher: authenticatedFetch,
+  payload: {ouId: '<organization-unit-id>', type: 'customer', attributes: {username: 'alice'}},
+})
+```
+
+In a React application, use the [management hooks](../../../react/apis/hooks/management-hooks) instead. They supply an authenticated fetcher for you.
+
+## Request Configuration
+
+Every function accepts these options alongside its own parameters. Other `RequestInit` options, such as `headers` and `signal`, pass through to the fetcher.
+
+| Parameter | Type | Required | Description |
+|-----------|------|:--------:|-------------|
+| `baseUrl` | `string` | No | Base URL of the <ProductName /> resource server. The collection URL is derived as `{baseUrl}/applications`, `{baseUrl}/users`, or `{baseUrl}/agents`. |
+| `url` | `string` | No | Absolute URL of the resource collection. Takes precedence over `baseUrl`. A single resource is addressed as `{url}/{id}`. |
+| `fetcher` | `(url: string, config: RequestInit) => Promise<Response>` | No | Performs the request. Defaults to the global `fetch`, which sends no access token, so pass a fetcher that attaches one. |
+
+One of `baseUrl` or `url` is required.
+
+## Applications
+
+| Function | Request | Returns |
+|----------|---------|---------|
+| `getApplications({limit, offset})` | `GET /applications?limit=&offset=` | `ApplicationListResponse` |
+| `getApplication({applicationId})` | `GET /applications/{applicationId}` | `Application` |
+| `createApplication({payload})` | `POST /applications` | `Application` |
+| `updateApplication({applicationId, payload})` | `PUT /applications/{applicationId}` | `Application` |
+| `deleteApplication({applicationId})` | `DELETE /applications/{applicationId}` | `void` |
+
+`payload` is a `CreateApplicationRequest`, which is an `Application` without `id`, `createdAt`, and `updatedAt`. An update replaces the application's mutable fields, so send the full application rather than only the changed fields.
+
+`ApplicationListResponse` contains `applications` (`BasicApplication[]`), `count`, and `totalResults`.
+
+## Users
+
+| Function | Request | Returns |
+|----------|---------|---------|
+| `getUsers({limit, offset, filter})` | `GET /users?limit=&offset=&filter=&include=display` | `ManagedUserListResponse` |
+| `getUser({userId})` | `GET /users/{userId}?include=display` | `ManagedUser` |
+| `createUser({payload})` | `POST /users` | `ManagedUser` |
+| `updateUser({userId, payload})` | `PUT /users/{userId}` | `ManagedUser` |
+| `deleteUser({userId})` | `DELETE /users/{userId}` | `void` |
+
+A `ManagedUser` is a user record on the server, with `id`, `ouId`, `type`, `attributes`, and the resolved `display` value. It is a different type from `User`, which describes the signed-in user.
+
+| Payload | Fields |
+|---------|--------|
+| `CreateManagedUserRequest` | `ouId` (required), `type` (required), `groups`, `attributes` |
+| `UpdateManagedUserRequest` | `ouId`, `type`, `groups`, `attributes` |
+
+`ManagedUserListResponse` contains `users`, `count`, `startIndex`, `totalResults`, and optional pagination `links`.
+
+## Agents
+
+| Function | Request | Returns |
+|----------|---------|---------|
+| `getAgents({limit, offset})` | `GET /agents?limit=&offset=&include=display` | `AgentListResponse` |
+| `getAgent({agentId})` | `GET /agents/{agentId}?include=display` | `Agent` |
+| `createAgent({payload})` | `POST /agents` | `Agent` |
+| `updateAgent({agentId, payload})` | `PUT /agents/{agentId}` | `Agent` |
+| `deleteAgent({agentId})` | `DELETE /agents/{agentId}` | `void` |
+
+| Payload | Fields |
+|---------|--------|
+| `CreateAgentRequest` | `ouId`, `type`, and `name` (required), `description`, `logoUrl`, `owner`, `attributes`, `inboundAuthConfig` |
+| `UpdateAgentRequest` | Any `CreateAgentRequest` field, plus `allowedUserTypes`, `allowedAgentTypes`, `authFlowId`, `registrationFlowId`, and `isRegistrationFlowEnabled` |
+
+`AgentListResponse` contains `agents` (`BasicAgent[]`), `count`, `startIndex`, and `totalResults`.
+
+## Management API on a Separate Host
+
+When the management API runs on a different host from the authorization server, pass the collection URL as `url`. To keep the URL in configuration instead, set `endpoints.applications`, `endpoints.users`, or `endpoints.agents` and read it with `resolveResourceEndpoint`, as the React hooks do. See [Configuration](../configuration#discovery-and-endpoint-parameters).
+
+```ts
+await deleteUser({
+  url: 'https://rs.example.com/users',
+  fetcher: authenticatedFetch,
+  userId: '<user-id>',
+})
+```
+
+## Cache Keys
+
+`ApplicationQueryKeys`, `UserQueryKeys`, and `AgentQueryKeys` name each resource for caching. The React hooks use them to refetch after a mutation. Reuse them as keys in your own data fetching cache.
+
+| Constant | Keys |
+|----------|------|
+| `ApplicationQueryKeys` | `APPLICATIONS` (`'applications'`), `APPLICATION` (`'application'`) |
+| `UserQueryKeys` | `USERS` (`'users'`), `USER` (`'user'`) |
+| `AgentQueryKeys` | `AGENTS` (`'agents'`), `AGENT` (`'agent'`) |
+
+## Error Handling
+
+Every function throws [`ThunderIDAPIError`](../errors#thunderidapierror). The `code` starts with the function name:
+
+| Code | Cause |
+|------|-------|
+| `{function}-ValidationError-001` | `url` or `baseUrl` is not a valid URL. Thrown before any request is sent. |
+| `{function}-ValidationError-002` | The resource identifier is empty. Thrown before any request is sent. |
+| `{function}-ForbiddenError-001` | The server returned HTTP 403. The access token lacks permission for the operation. |
+| `{function}-NotFoundError-001` | The server returned HTTP 404. The resource does not exist. |
+| `{function}-ResponseError-001` | The server returned another non-2xx status. |
+| `{function}-NetworkError-001` | The request failed before a response arrived, or the response could not be parsed. |
+
+```ts
+import { getApplication, ThunderIDAPIError } from '@thunderid/javascript'
+
+try {
+  await getApplication({baseUrl, fetcher, applicationId})
+} catch (err) {
+  if (err instanceof ThunderIDAPIError && err.code === 'getApplication-NotFoundError-001') {
+    // Show a "not found" state.
+  }
+}
+```

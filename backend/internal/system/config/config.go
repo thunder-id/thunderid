@@ -313,6 +313,38 @@ type SMTPEmailConfig struct {
 	EnableAuthentication *bool  `yaml:"enable_authentication" json:"enable_authentication"`
 }
 
+// GatewayConfig holds how many gateways this deployment administers.
+//
+// It is here rather than in the engine's server configuration because only a deployment that
+// administers gateways reads it, and the engine serves deployments that administer none.
+type GatewayConfig struct {
+	// MaxGateways bounds how many gateways a deployment may register.
+	//
+	// It is a guard against a deployment accumulating gateways it was not configured for, not an
+	// invariant. Two registrations arriving at the same moment can each be admitted against the
+	// same count on PostgreSQL and leave one more than configured. Nothing is corrupted when that
+	// happens: a gateway's name and its address are unique by table constraint, and those are
+	// exact. Raise or lower it freely; do not rely on it as a licensing or security boundary.
+	//
+	// It is a pointer so that an explicit zero is honored. The config merge only takes a
+	// user-supplied primitive when it is non-zero, so a plain int could not tell `max_gateways: 0`,
+	// meaning administer none, from an omitted field, and the default of one would win either way.
+	MaxGateways *int `yaml:"max_gateways" json:"max_gateways"`
+	// Store defines the storage mode for gateways.
+	// Valid values: "mutable", "declarative", "composite" (hybrid mode)
+	// If not specified, falls back to global DeclarativeResources.Enabled setting:
+	//   - If DeclarativeResources.Enabled = true: behaves as "declarative"
+	//   - If DeclarativeResources.Enabled = false: behaves as "mutable"
+	Store string `yaml:"store" json:"store"`
+}
+
+// MaxGatewayCount reports how many gateways a deployment may register, defaulting to none when
+// unset (an explicit default lives in default.json). An explicit zero is honored and means the
+// deployment administers none.
+func (c GatewayConfig) MaxGatewayCount() int {
+	return derefInt(c.MaxGateways, 0)
+}
+
 // DeclarativeResources holds the configuration details for the declarative resources.
 type DeclarativeResources struct {
 	Enabled bool `yaml:"enabled" json:"enabled" default:"false"`
@@ -396,6 +428,21 @@ type GroupConfig struct {
 	//   - If DeclarativeResources.Enabled = true: behaves as "declarative"
 	//   - If DeclarativeResources.Enabled = false: behaves as "mutable"
 	Store string `yaml:"store" json:"store"`
+}
+
+// SCIMConfig holds the SCIM service configuration.
+type SCIMConfig struct {
+	// CoreUserTypeID designates the ThunderID user type whose schema backs the SCIM
+	// core User schema (RFC 7643 §4.1): its attribute characteristics are reflected in
+	// /scim/v2/Schemas, and it is the default target for payloads carrying only the core
+	// schema URN. If empty, falls back to the sole configured user type when exactly
+	// one exists; with zero or 2+ user types, the core schema is unavailable.
+	CoreUserTypeID string `yaml:"core_user_type_id" json:"core_user_type_id"`
+
+	// SchemaURNPrefix is the URN prefix of the custom per-user-type SCIM schemas, for example
+	// "urn:example:params:scim:schemas:". A trailing colon is added if missing. If empty, the
+	// built-in default prefix is used.
+	SchemaURNPrefix string `yaml:"urn_prefix" json:"urn_prefix"`
 }
 
 // RoleConfig holds the role service configuration.
@@ -622,9 +669,26 @@ func (c OAuthConfig) ToEngineConfig() engineconfig.OAuthConfig {
 	}
 }
 
+// AuthZENPDPConfig holds server defaults for AuthZEN PDP connections.
+type AuthZENPDPConfig struct {
+	TimeoutMS  int    `yaml:"timeout_ms" json:"timeout_ms"`
+	RetryCount *int   `yaml:"retry_count" json:"retry_count"`
+	Store      string `yaml:"store" json:"store"`
+}
+
+// Validate checks the default timeout and retry count.
+func (c AuthZENPDPConfig) Validate() error {
+	if c.TimeoutMS < 0 || (c.RetryCount != nil && *c.RetryCount < 0) {
+		return fmt.Errorf("AuthZEN PDP timeout and retry defaults must not be negative")
+	}
+	return nil
+}
+
 // Config holds the complete configuration details of the server.
 type Config struct {
 	Server               engineconfig.ServerConfig         `yaml:"server"                json:"server"`
+	Gateway              GatewayConfig                     `yaml:"gateway"               json:"gateway"`
+	AuthZENPDP           AuthZENPDPConfig                  `yaml:"authzen_pdp"           json:"authzen_pdp"`
 	Log                  LogConfig                         `yaml:"log"                   json:"log"`
 	GateClient           engineconfig.GateClientConfig     `yaml:"gate_client"           json:"gate_client"`
 	TLS                  TLSConfig                         `yaml:"tls"                   json:"tls"`
@@ -653,6 +717,7 @@ type Config struct {
 	EntityProvider       EntityProviderConfig              `yaml:"entity_provider"       json:"entity_provider"`
 	AgentMgtProvider     AgentMgtProviderConfig            `yaml:"agent_mgt_provider"        json:"agent_mgt_provider"`
 	Group                GroupConfig                       `yaml:"group"                 json:"group"`
+	SCIM                 SCIMConfig                        `yaml:"scim"                  json:"scim"`
 	Role                 RoleConfig                        `yaml:"role"                  json:"role"`
 	Theme                ThemeConfig                       `yaml:"theme"                 json:"theme"`
 	Layout               LayoutConfig                      `yaml:"layout"                json:"layout"`
@@ -660,6 +725,12 @@ type Config struct {
 	Email                EmailConfig                       `yaml:"email"                 json:"email"`
 	Notification         NotificationConfig                `yaml:"notification"          json:"notification"`
 	AttributeCache       engineconfig.AttributeCacheConfig `yaml:"attribute_cache" json:"attribute_cache"`
+	ResourceSharing      ResourceSharingConfig             `yaml:"resource_sharing"      json:"resource_sharing"`
+}
+
+// ResourceSharingConfig configures how resources may be shared across organization units.
+type ResourceSharingConfig struct {
+	AllowChildOUCrossTreeSharing bool `yaml:"allow_child_ou_cross_tree_sharing" json:"allow_child_ou_cross_tree_sharing"` //nolint:lll
 }
 
 // LoadConfig loads the configurations from the specified YAML file and applies defaults.
@@ -756,7 +827,13 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 	if err := cfg.OAuth.TokenExchange.Validate(); err != nil {
 		return nil, err
 	}
+	if err := cfg.OAuth.Logout.Backchannel.Validate(); err != nil {
+		return nil, err
+	}
 	if err := cfg.Notification.Validate(); err != nil {
+		return nil, err
+	}
+	if err := cfg.AuthZENPDP.Validate(); err != nil {
 		return nil, err
 	}
 
@@ -782,6 +859,7 @@ func loadDefaultConfig(path string, serverHome string) (*Config, error) {
 	return &cfg, nil
 }
 
+// loadUserConfig loads and parses the user-provided configuration file with environment and path substitution.
 func loadUserConfig(path string, serverHome string) (Config, error) {
 	var cfg Config
 	configPath := filepath.Clean(path)

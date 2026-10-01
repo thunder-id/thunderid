@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -64,10 +65,12 @@ type FlowMgtServiceInterface interface {
 }
 
 // ouProvider is the minimal subset of the OU service consumed by flowmgt for OU-level default
-// flow resolution. Defined locally so flowmgt does not import internal/ou (avoids an import cycle
-// since ou already depends on flowmgt via SetOUFlowResolver).
+// flow resolution. It reads the organization unit's per-flow-type default flow IDs, which belong to
+// the management model rather than the runtime provider contract. If those IDs are ever promoted
+// into providers.OrganizationUnit, this can return the contract type and the internal/ou import
+// here goes away.
 type ouProvider interface {
-	GetOrganizationUnit(ctx context.Context, id string) (providers.OrganizationUnit, *tidcommon.ServiceError)
+	GetOrganizationUnit(ctx context.Context, id string) (ou.OrganizationUnit, *tidcommon.ServiceError)
 }
 
 // flowMgtService is the default implementation of the FlowMgtServiceInterface.
@@ -703,18 +706,18 @@ func (s *flowMgtService) ResolveEffectiveFlowID(ctx context.Context, overriddenF
 }
 
 // ouFlowIDForType returns the flow ID for the given flow type from the organization unit.
-func ouFlowIDForType(ou providers.OrganizationUnit, flowType providers.FlowType) string {
+func ouFlowIDForType(orgUnit ou.OrganizationUnit, flowType providers.FlowType) string {
 	switch flowType {
 	case providers.FlowTypeAuthentication:
-		return ou.AuthFlowID
+		return orgUnit.AuthFlowID
 	case providers.FlowTypeRegistration:
-		return ou.RegistrationFlowID
+		return orgUnit.RegistrationFlowID
 	case providers.FlowTypeUserOnboarding:
-		return ou.UserOnboardingFlowID
+		return orgUnit.UserOnboardingFlowID
 	case providers.FlowTypeRecovery:
-		return ou.RecoveryFlowID
+		return orgUnit.RecoveryFlowID
 	case providers.FlowTypeSignOut:
-		return ou.SignOutFlowID
+		return orgUnit.SignOutFlowID
 	}
 	return ""
 }

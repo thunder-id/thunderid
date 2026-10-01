@@ -91,14 +91,15 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 
 	// Build providers.ResourceServer with nested structure
 	rs := &providers.ResourceServer{
-		ID:          server.ID,
-		Name:        server.Name,
-		Description: server.Description,
-		Identifier:  server.Identifier,
-		Type:        server.Type,
-		OUID:        server.OUID,
-		Delimiter:   server.Delimiter,
-		Resources:   []providers.Resource{},
+		ID:                  server.ID,
+		Name:                server.Name,
+		Description:         server.Description,
+		Identifier:          server.Identifier,
+		Type:                server.Type,
+		OUID:                server.OUID,
+		Delimiter:           server.Delimiter,
+		AuthorizationEngine: server.AuthorizationEngine,
+		Resources:           []providers.Resource{},
 	}
 
 	allResources, err := e.service.GetAllResourceList(ctx, id)
@@ -292,6 +293,19 @@ func parseToResourceServer(data []byte) (*providers.ResourceServer, error) {
 
 // ProcessResourceServer processes the resource server and computes permissions in-place.
 func ProcessResourceServer(rs *providers.ResourceServer) error {
+	if rs.AuthorizationEngine.Type == "" {
+		rs.AuthorizationEngine.Type = providers.AuthorizationEngineTypeRBAC
+	}
+	switch rs.AuthorizationEngine.Type {
+	case providers.AuthorizationEngineTypeRBAC:
+		rs.AuthorizationEngine.Properties = providers.AuthorizationEngineProperties{}
+	case providers.AuthorizationEngineTypeAuthZENPDP:
+		if err := validateAuthZENPDPConnectionID(&rs.AuthorizationEngine); err != nil {
+			return fmt.Errorf("resource server %q: %w", rs.ID, err)
+		}
+	default:
+		return fmt.Errorf("unsupported authorization engine type %q", rs.AuthorizationEngine.Type)
+	}
 	delimiter := rs.Delimiter
 	if delimiter == "" {
 		delimiter = ":" // Default delimiter

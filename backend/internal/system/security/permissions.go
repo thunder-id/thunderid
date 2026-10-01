@@ -45,6 +45,8 @@ var publicPaths = []string{
 	"/auth/**",
 	"/register/passkey/**",
 	"/access/**",
+	// SCIM ServiceProviderConfig exposed without authentication.
+	"/scim/v2/ServiceProviderConfig",
 }
 
 // ---- Resource types ----
@@ -279,6 +281,27 @@ func InitSystemPermissions(handle string) {
 		{"PUT /agents/**", p.Agent},
 		{"DELETE /agents/**", p.Agent},
 
+		// SCIM API.
+		{"GET /scim/v2/Me", ""},
+		{"PUT /scim/v2/Me", ""},
+		{"GET /scim/v2/Schemas", ""},
+		{"GET /scim/v2/Schemas/**", ""},
+		{"GET /scim/v2/ResourceTypes", ""},
+		{"GET /scim/v2/ResourceTypes/**", ""},
+		{"GET /scim/v2/Users", p.UserView},
+		{"POST /scim/v2/Users", p.User},
+		{"POST /scim/v2/Users/.search", p.UserView},
+		{"GET /scim/v2/Users/**", p.UserView},
+		{"PUT /scim/v2/Users/**", p.User},
+		{"PATCH /scim/v2/Users/**", p.User},
+		{"DELETE /scim/v2/Users/**", p.User},
+		{"GET /scim/v2/Groups", p.GroupView},
+		{"POST /scim/v2/Groups", p.Group},
+		{"GET /scim/v2/Groups/**", p.GroupView},
+		{"PUT /scim/v2/Groups/**", p.Group},
+		{"PATCH /scim/v2/Groups/**", p.Group},
+		{"DELETE /scim/v2/Groups/**", p.Group},
+
 		// Group APIs.
 		{"GET /groups", p.GroupView},
 		{"POST /groups", p.Group},
@@ -300,6 +323,20 @@ func InitSystemPermissions(handle string) {
 		{"GET /agent-types/**", p.AgentTypeView},
 		{"PUT /agent-types/**", p.AgentType},
 		{"DELETE /agent-types/**", p.AgentType},
+
+		// Variable store APIs. The whole surface requires root rather than a narrower permission:
+		// the store holds credentials, and even the list of names is sensitive. This matches the
+		// default for an unlisted path, and says so rather than relying on it.
+		{"GET /variables", p.Root},
+		{"POST /variables", p.Root},
+		{"GET /variables/**", p.Root},
+		{"PUT /variables/**", p.Root},
+		{"DELETE /variables/**", p.Root},
+		{"GET /secrets", p.Root},
+		{"POST /secrets", p.Root},
+		{"GET /secrets/**", p.Root},
+		{"PUT /secrets/**", p.Root},
+		{"DELETE /secrets/**", p.Root},
 
 		// Import APIs.
 		{"POST /import", p.Root},

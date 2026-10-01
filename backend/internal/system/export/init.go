@@ -12,9 +12,13 @@ import (
 )
 
 // Initialize initializes the export service and registers its routes.
-func Initialize(mux *http.ServeMux, exporters []declarativeresource.ResourceExporter) ExportServiceInterface {
-	// Create parameterizer instance (no longer needs centralized rules)
-	parameterizerInstance := newParameterizer(templatingRules{})
+//
+// style is the plane's, and is why there are two call sites rather than a configured value: a data
+// plane holds its own configuration and exports it with the values alongside, while a control plane
+// holds only references to values a data plane keeps and has nothing to put beside the document.
+func Initialize(mux *http.ServeMux, exporters []declarativeresource.ResourceExporter,
+	style PlaceholderStyle) ExportServiceInterface {
+	parameterizerInstance := newParameterizer(templatingRules{}, style)
 
 	// Create the export service with exporters
 	exportService := newExportService(exporters, parameterizerInstance)

@@ -1,1150 +1,616 @@
 ---
-toc_progress: quickstart
-title: LangChain Quickstart
+title: LangChain Agent Quickstart
 docType: quickstart
+toc_progress: quickstart
 sidebar_position: 1
 persona: app
-description: Connect an AI agent to {{ProductName}} with LangChain, running under its own identity or on behalf of a user.
+description: Build a course enrollment agent with LangChain and {{ProductName}} using agent or delegated user identity.
 ---
-
-import {
-    Bot,
-    Clock,
-    FileCode,
-    KeyRound,
-    Package,
-    UserCheck,
-    Wrench,
-} from '@wso2/oxygen-ui-icons-react';
 
 # Connect an AI Agent with LangChain
 
-Use this guide to connect an AI agent to <ProductName /> with LangChain, running under its own identity or on behalf of a user. In <ProductName /> an agent is a first-class identity that is also an OAuth client, so it can authenticate as **itself** or act with a **user's** delegated authority. You will register an agent once, then run it in whichever mode you pick.
+Use this guide to build an interactive course enrollment agent with LangChain and <ProductName />. Complete the [shared setup](../) first, including the student role and consent flow.
 
-:::tip Choose your language
-Pick **Python** or **TypeScript** in any code block below. Your choice applies to every snippet on this page.
-:::
-
-<TutorialHero>
-
-## What You Will Learn
-
-<TutorialHeroItem icon={<Package />}>Register an AI agent in <ProductName /></TutorialHeroItem>
-<TutorialHeroItem icon={<KeyRound />}>Authenticate the agent with its own credentials, or on behalf of a user</TutorialHeroItem>
-<TutorialHeroItem icon={<Wrench />}>Give the agent a tool and run it with LangChain</TutorialHeroItem>
-<TutorialHeroItem icon={<Bot />}>See how the agent's identity changes what it can do</TutorialHeroItem>
+Ask **“List the available courses”** to use the agent's own identity. Then ask **“Enroll me in CS205”** to trigger sign-in and consent before the agent acts on your behalf. Both tools are available in the same session.
 
 ## Prerequisites
 
-<TutorialHeroItem icon={<Clock />}>About 15 minutes</TutorialHeroItem>
-<TutorialHeroItem icon={<Package />}>Python 3.10+ or Node.js 18+ installed on your system</TutorialHeroItem>
-<TutorialHeroItem icon={<KeyRound />}>An LLM provider API key (e.g. a Google AI Studio key for Gemini)</TutorialHeroItem>
-<TutorialHeroItem icon={<UserCheck />}>A test user in <ProductName />, for the on-behalf-of-a-user mode</TutorialHeroItem>
-<TutorialHeroItem icon={<FileCode />}>Your preferred code editor</TutorialHeroItem>
-
-</TutorialHero>
+- Python 3.12 and pip, or Node.js 24 and npm.
+- A [Google AI Studio API key](https://aistudio.google.com/apikey) with access to the Gemini model you configure.
+- A browser on the same computer as the sample. User sign-in uses local port `6274`.
 
 <Stepper stepNode="h2" as="h2">
 
-## Run <ProductName />
+## Create the Sample Project
 
-Start a local <ProductName /> instance. Pick the method that works best for you:
+<LangTabs>
+<Lang value="python">
 
-<RunThunderID />
+Run these commands in a new directory:
 
-Once it is running, the Console is available at <ConsoleUrl />.
+```bash
+mkdir langchain-enrollment-python
+cd langchain-enrollment-python
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install langchain==1.4.2 langchain-google-genai==4.4.0 requests==2.34.2 python-dotenv==1.2.3
+```
 
-## Register an AI Agent
+On Windows, create the environment with `py -3.12 -m venv .venv`. Activate it with `.venv\Scripts\Activate.ps1` in PowerShell before running the install command.
 
-An agent in <ProductName /> is a first-class identity that is also an OAuth client. Its **Client ID** and **Client Secret** are the OAuth `client_id` and `client_secret` it authenticates with, and are separate from the **Agent ID** that identifies the agent itself.
+</Lang>
+<Lang value="typescript">
 
-Open the Console at <ConsoleUrl />, navigate to **Agents**, and click **Add Agent**:
+Run these commands in a new directory:
 
-1. Enter an **Agent name** (e.g. `Enrollment Agent`), or pick one of the generated suggestions.
-2. Fill in the **agent attributes** the schema asks for. With the default schema these are:
-    - **Model Provider** (required): the LLM vendor, e.g. `gemini`.
-    - **Model** (required): the model name, e.g. `gemini-flash-lite-latest`.
-    - **Function** (optional): what the agent is for, e.g. `assistant`.
+```bash
+mkdir langchain-enrollment-typescript
+cd langchain-enrollment-typescript
+npm init -y
+npm pkg set type=module
+npm install --save-exact langchain@1.5.14 @langchain/google-genai@2.3.2 zod@4.6.5
+npm install --save-dev --save-exact tsx@4.23.15 @types/node@24.19.0
+```
 
-    These are descriptive metadata. If your organization customized the agent schema, you will be prompted for those fields instead.
-3. Select an **Owner**, the user accountable for this agent.
-4. Click **Create agent**.
-5. Copy the **Client Secret** from the dialog that appears. It is shown only once. The **Client ID** is available anytime on the agent's **General** tab, where you can also regenerate the secret if you lose it.
+</Lang>
+</LangTabs>
 
-## Set Up Environment Variables
+Create `.env` in the sample directory:
 
-Create a `.env` file in your project with the agent credentials you just copied and your LLM provider API key. The same file works for both modes:
-
-```bash title=".env"
-# ThunderID (local, self-signed cert)
+```dotenv title=".env"
 THUNDERID_BASE_URL=https://localhost:8090
-
-# The agent's OAuth client credentials (from the ThunderID Console)
-AGENT_CLIENT_ID=<your-agent-client-id>
-AGENT_SECRET=<your-agent-client-secret>
-
-# Used when the agent acts on behalf of a user. Must match a redirect URI
-# registered on the agent.
-REDIRECT_URI=http://localhost:6274/callback
-
-# LLM provider API key (e.g. a Google AI Studio key for Gemini)
-LLM_API_KEY=<your-llm-api-key>
-
-# Optional. Defaults to Gemini Flash Lite; set MODEL_NAME to override, e.g.
-# google_genai:gemini-flash-lite-latest on Python, google-genai:gemini-flash-lite-latest on Node.
-# MODEL_NAME=google_genai:gemini-flash-lite-latest
+AGENT_CLIENT_ID=replace-with-your-client-id
+AGENT_SECRET=replace-with-your-client-secret
+GOOGLE_API_KEY=replace-with-your-google-api-key
+GEMINI_MODEL=gemini-flash-lite-latest
+COURSE_RESOURCE=https://courses.example.com
+THUNDERID_CA_BUNDLE=./thunderid.pem
 ```
 
-## Install the Libraries
+Use the **Client ID** from the shared setup for `AGENT_CLIENT_ID`. Keep `.env` out of version control. The sample uses the same variables for either identity mode.
+
+For a local <ProductName /> instance, save its public server certificate as `thunderid.pem` in the sample directory:
+
+```bash
+openssl s_client -connect localhost:8090 -servername localhost </dev/null 2>/dev/null | openssl x509 -out thunderid.pem
+```
+
+You can instead copy `config/certs/server.cert` from your installation directory, or `backend/cmd/server/config/certs/server.cert` from a source checkout. Rename the copy to `thunderid.pem`. For an instance with a publicly trusted certificate, set `THUNDERID_BASE_URL` to its HTTPS URL and omit the local certificate configuration.
+
+## Add the Authentication Helper
+
+The helper requests `courses:read` with client credentials, or `courses:enroll` through authorization code with PKCE when enrollment needs your permission.
+
+Create the helper next to `.env`. The callback checks `state` and waits up to 180 seconds for sign-in and consent.
+
+<details>
+<summary>Copy the complete authentication helper</summary>
 
 <LangTabs>
 <Lang value="python">
 
-Create and activate a virtual environment:
-
-<CodeGroup>
-  <CodeBlock lang="bash" label="macOS / Linux">
-    python3 -m venv .venv
-    source .venv/bin/activate
-  </CodeBlock>
-
-  <CodeBlock lang="bash" label="Windows (PowerShell)">
-    python -m venv .venv
-    .venv\Scripts\Activate.ps1
-  </CodeBlock>
-</CodeGroup>
-
-Install the core dependencies:
-
-```bash
-pip install requests python-dotenv pydantic langchain langchain-core langgraph
-```
-
-Add the LangChain integration for your LLM provider. For Google Gemini:
-
-```bash
-pip install langchain-google-genai
-```
-
-Using a different provider? Install its integration instead, e.g. `langchain-anthropic` or `langchain-openai`.
-
-</Lang>
-<Lang value="typescript">
-
-Initialize a project and install the dependencies:
-
-<CodeGroup>
-  <CodeBlock lang="bash" label="npm">
-    npm init -y
-    npm install langchain @langchain/core @langchain/google-genai dotenv open zod
-    npm install -D @types/node tsx typescript
-  </CodeBlock>
-
-  <CodeBlock lang="bash" label="pnpm">
-    pnpm init
-    pnpm add langchain @langchain/core @langchain/google-genai dotenv open zod
-    pnpm add -D @types/node tsx typescript
-  </CodeBlock>
-
-  <CodeBlock lang="bash" label="Yarn">
-    yarn init -y
-    yarn add langchain @langchain/core @langchain/google-genai dotenv open zod
-    yarn add -D @types/node tsx typescript
-  </CodeBlock>
-
-  <CodeBlock lang="bash" label="Bun">
-    bun init -y
-    bun add langchain @langchain/core @langchain/google-genai dotenv open zod
-    bun add -d @types/node tsx typescript
-  </CodeBlock>
-
-  <CodeBlock lang="bash" label="Deno">
-    deno init
-    deno add npm:langchain npm:@langchain/core npm:@langchain/google-genai npm:dotenv npm:open npm:zod
-    deno add -D npm:@types/node npm:tsx npm:typescript
-  </CodeBlock>
-</CodeGroup>
-
-Using a different provider? Install its LangChain package instead, e.g. `@langchain/anthropic` or `@langchain/openai`.
-
-Set the project to use ES modules by adding `"type": "module"` to your `package.json`:
-
-```json title="package.json"
-{
-  "name": "enrollment-quickstart",
-  "type": "module"
-}
-```
-
-:::note Using Deno
-Skip this step. Deno treats a `.ts` file as an ES module by default and does not need a
-`package.json` at all.
-:::
-
-</Lang>
-</LangTabs>
-
-## Choose How the Agent Behaves
-
-Your agent can act with its **own** identity or with a **user's** delegated authority. Choose a mode below to see the setup and code for it.
-
-<AgentModeSelector />
-
-<Mode value="own">
-
-No extra agent configuration is needed. An agent can authenticate with its own credentials out of the box.
-
-</Mode>
-
-<Mode value="obo">
-
-### Enable Delegated (On-Behalf-Of) Access
-
-Acting for a user requires a little extra agent configuration. Open **Agents** → select your agent, then:
-
-1. On the **Advanced** tab, under **Operating Mode**, turn on the **Delegated mode** toggle. This extends the agent to also sign users in, enabling the `authorization_code` grant the on-behalf-of flow needs.
-2. On the **Advanced** tab, set the **Allowed user types** (for example, **Person**) so users of that type can sign up through this agent, and under **Redirect URIs** add `http://localhost:6274/callback` (this must match `REDIRECT_URI` in your `.env`).
-3. Click **Save**.
-
-</Mode>
-
-## Build and Run the Agent
-
-<Mode value="own">
-
-<AgentOwnTokenFlow />
-
-You will build a small student enrollment agent with LangChain that reads the student's enrolled modules. Because an agent *is* an OAuth client, it signs in with the standard client-credentials grant, just like any machine-to-machine client. This is the agent's **subject** posture: a low-risk, read-only lookup it can do on its own, with no user in the loop.
-
-Make sure your `.env` has the agent's **Client ID** and **Client Secret** set as `AGENT_CLIENT_ID` and `AGENT_SECRET` (copy them from the agent's **General** tab in the Console), plus your `LLM_API_KEY`.
-
-The core is a single request to the token endpoint, authenticating with the agent's ID and secret:
-
-<LangTabs>
-<Lang value="python">
-
-```python
-def get_agent_token() -> str:
-    """Fetch a brand new client_credentials token. No caching, no reuse."""
-    data = {"grant_type": "client_credentials"}
-    if SCOPE:
-        data["scope"] = SCOPE
-
-    resp = requests.post(
-        TOKEN_ENDPOINT,
-        data=data,
-        auth=(AGENT_CLIENT_ID, AGENT_SECRET),
-        headers={"Accept": "application/json"},
-    )
-    resp.raise_for_status()
-    return resp.json()["access_token"]
-```
-
-A middleware fetches a fresh token before every tool call and hands it to the tool through a context variable, so the `my_modules` tool stays free of auth plumbing.
-
-<details>
-<summary>Complete <code>agent_own_token.py</code></summary>
-
-```python title="agent_own_token.py"
-import os
-import asyncio
-import contextvars
-
-import requests
-from dotenv import load_dotenv
-from pydantic import BaseModel
-
-from langchain_core.tools import StructuredTool
-from langchain_core.messages import HumanMessage
-from langchain.chat_models import init_chat_model
-from langchain.agents import create_agent
-from langchain.agents.middleware import AgentMiddleware
-
-
-# --- Configuration (loaded from .env) ---
-load_dotenv()
-
-BASE_URL        = os.environ.get("THUNDERID_BASE_URL", "https://localhost:8090")
-AGENT_CLIENT_ID = os.environ["AGENT_CLIENT_ID"]  # the agent's OAuth client_id
-AGENT_SECRET    = os.environ["AGENT_SECRET"]     # the agent's OAuth client_secret
-SCOPE           = os.environ.get("AGENT_SCOPE", "")  # optional, space-separated
-MODEL_NAME      = os.environ.get("MODEL_NAME", "google_genai:gemini-flash-lite-latest")
-LLM_API_KEY     = os.environ.get("LLM_API_KEY", "")
-
-TOKEN_ENDPOINT = f"{BASE_URL}/oauth2/token"
-
-
-# --- ThunderID agent authentication (client_credentials) ---
-def get_agent_token() -> str:
-    """Fetch a brand new client_credentials token. No caching, no reuse."""
-    data = {"grant_type": "client_credentials"}
-    if SCOPE:
-        data["scope"] = SCOPE
-
-    resp = requests.post(
-        TOKEN_ENDPOINT,
-        data=data,
-        auth=(AGENT_CLIENT_ID, AGENT_SECRET),
-        headers={"Accept": "application/json"},
-    )
-    resp.raise_for_status()
-    return resp.json()["access_token"]
-
-
-# --- In-memory data ---
-enrolled = ["CS101", "MATH110"]
-
-
-# --- Token handoff: contextvar, not tool args ---
-_agent_token_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "agent_token", default=None
-)
-
-
-# --- Middleware: fetch a fresh agent token right before each tool call ---
-class AgentTokenMiddleware(AgentMiddleware):
-
-    async def awrap_tool_call(self, request, handler):
-        token = get_agent_token()  # fetched fresh, every single tool call
-        reset = _agent_token_ctx.set(token)
-        try:
-            return await handler(request)
-        finally:
-            _agent_token_ctx.reset(reset)
-
-
-# --- Tools ---
-class MyModulesSchema(BaseModel):
-    """No arguments; lists the student's enrolled modules."""
-    pass
-
-
-async def my_modules_fn() -> str:
-    """List the student's enrolled modules."""
-    token = _agent_token_ctx.get()
-    if not token:
-        return "No credentials available; cannot read modules."
-    if not enrolled:
-        return "You are not enrolled in any modules."
-    return "Enrolled modules: " + ", ".join(enrolled)
-
-
-my_modules = StructuredTool(
-    name="my_modules",
-    description="List the student's currently enrolled modules.",
-    args_schema=MyModulesSchema,
-    coroutine=my_modules_fn,
-)
-
-tools = [my_modules]
-
-
-# --- Agent ---
-def get_prompt() -> str:
-    return (
-        "You help a student view their enrolled modules. Use my_modules to list "
-        "them. Call exactly one tool per request and report the tool's result "
-        "plainly, without adding claims the tool did not return."
-    )
-
-
-llm = init_chat_model(MODEL_NAME, api_key=LLM_API_KEY)
-
-agent = create_agent(
-    llm,
-    tools=tools,
-    system_prompt=get_prompt(),
-    middleware=[AgentTokenMiddleware()],
-)
-
-
-# --- Run ---
-async def run_turn(prompt: str):
-    print(f"\n> {prompt}")
-    result = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]})
-    print("Agent:", result["messages"][-1].content)
-
-
-async def main():
-    await run_turn("What modules am I enrolled in?")
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-</details>
-
-<ProductName /> serves HTTPS with a self-signed certificate, so trust it once in the shell you run from. In production, point `REQUESTS_CA_BUNDLE` at your real CA bundle instead, with no code change.
-
-```bash
-openssl s_client -connect localhost:8090 -servername localhost </dev/null 2>/dev/null \
-  | openssl x509 > thunderid.pem
-
-export REQUESTS_CA_BUNDLE="$PWD/thunderid.pem"
-```
-
-Run it:
-
-```bash
-python agent_own_token.py
-```
-
-The agent fetches its own token and runs one turn. You should see output like:
-
-```text
-> What modules am I enrolled in?
-Agent: Enrolled modules: CS101, MATH110
-```
-
-</Lang>
-<Lang value="typescript">
-
-```ts
-async function getAgentToken(): Promise<string> {
-  const body = new URLSearchParams({ grant_type: "client_credentials" });
-  if (SCOPE) body.set("scope", SCOPE);
-
-  const basicAuth = Buffer.from(`${AGENT_CLIENT_ID}:${AGENT_SECRET}`).toString("base64");
-
-  const resp = await fetch(TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-      Authorization: `Basic ${basicAuth}`,
-    },
-    body,
-  });
-  if (!resp.ok) {
-    throw new Error(`Token request failed: ${resp.status} ${await resp.text()}`);
-  }
-  const data = await resp.json();
-  return data.access_token as string;
-}
-```
-
-A middleware fetches a fresh token before every tool call and hands it to the tool through `AsyncLocalStorage`, so the `my_modules` tool stays free of auth plumbing.
-
-<details>
-<summary>Complete <code>agent_own_token.ts</code></summary>
-
-```ts title="agent_own_token.ts"
-import "dotenv/config";
-import { AsyncLocalStorage } from "node:async_hooks";
-import { z } from "zod";
-import { tool } from "@langchain/core/tools";
-import { HumanMessage } from "@langchain/core/messages";
-import { initChatModel } from "langchain/chat_models/universal";
-import { createAgent, createMiddleware } from "langchain";
-
-// --- Configuration (loaded from .env) ---
-const BASE_URL        = process.env.THUNDERID_BASE_URL ?? "https://localhost:8090";
-const AGENT_CLIENT_ID = process.env.AGENT_CLIENT_ID!;  // the agent's OAuth client_id
-const AGENT_SECRET    = process.env.AGENT_SECRET!;     // the agent's OAuth client_secret
-const SCOPE           = process.env.AGENT_SCOPE ?? ""; // optional, space-separated
-const MODEL_NAME      = process.env.MODEL_NAME ?? "google-genai:gemini-flash-lite-latest";
-const LLM_API_KEY     = process.env.LLM_API_KEY ?? "";
-
-const TOKEN_ENDPOINT = `${BASE_URL}/oauth2/token`;
-
-// --- ThunderID agent authentication (client_credentials) ---
-async function getAgentToken(): Promise<string> {
-  const body = new URLSearchParams({ grant_type: "client_credentials" });
-  if (SCOPE) body.set("scope", SCOPE);
-
-  const basicAuth = Buffer.from(`${AGENT_CLIENT_ID}:${AGENT_SECRET}`).toString("base64");
-
-  const resp = await fetch(TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-      Authorization: `Basic ${basicAuth}`,
-    },
-    body,
-  });
-  if (!resp.ok) {
-    throw new Error(`Token request failed: ${resp.status} ${await resp.text()}`);
-  }
-  const data = await resp.json();
-  return data.access_token as string;
-}
-
-// --- In-memory data ---
-const enrolled = ["CS101", "MATH110"];
-
-// --- Token handoff: AsyncLocalStorage, not tool args ---
-const agentTokenStorage = new AsyncLocalStorage<string>();
-
-// --- Middleware: fetch a fresh agent token right before each tool call ---
-const agentTokenMiddleware = createMiddleware({
-  name: "AgentTokenMiddleware",
-  wrapToolCall: async (request, handler) => {
-    const token = await getAgentToken(); // fetched fresh, every single tool call
-    return agentTokenStorage.run(token, () => handler(request));
-  },
-});
-
-// --- Tools ---
-const myModules = tool(
-  async () => {
-    const token = agentTokenStorage.getStore();
-    if (!token) return "No credentials available; cannot read modules.";
-    if (enrolled.length === 0) return "You are not enrolled in any modules.";
-    return "Enrolled modules: " + enrolled.join(", ");
-  },
-  {
-    name: "my_modules",
-    description: "List the student's currently enrolled modules.",
-    schema: z.object({}), // no arguments
-  }
-);
-
-const tools = [myModules];
-
-// --- Agent ---
-const SYSTEM_PROMPT =
-  "You help a student view their enrolled modules. Use my_modules to list " +
-  "them. Call exactly one tool per request and report the tool's result " +
-  "plainly, without adding claims the tool did not return.";
-
-async function buildAgent() {
-  const model = await initChatModel(MODEL_NAME, { apiKey: LLM_API_KEY });
-
-  return createAgent({
-    model,
-    tools,
-    systemPrompt: SYSTEM_PROMPT,
-    middleware: [agentTokenMiddleware],
-  });
-}
-
-// --- Run ---
-async function runTurn(agent: Awaited<ReturnType<typeof buildAgent>>, prompt: string) {
-  console.log(`\n> ${prompt}`);
-  const result = await agent.invoke({ messages: [new HumanMessage(prompt)] });
-  const last = result.messages[result.messages.length - 1];
-  console.log("Agent:", last.content);
-}
-
-async function main() {
-  const agent = await buildAgent();
-  await runTurn(agent, "What modules am I enrolled in?");
-}
-
-main()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
-```
-
-</details>
-
-<ProductName /> serves HTTPS with a self-signed certificate, so trust it once in the shell you run from. In production, point `NODE_EXTRA_CA_CERTS` at your real CA bundle instead, with no code change.
-
-```bash
-openssl s_client -connect localhost:8090 -servername localhost </dev/null 2>/dev/null \
-  | openssl x509 > thunderid.pem
-
-export NODE_EXTRA_CA_CERTS="$PWD/thunderid.pem"
-```
-
-Run it:
-
-```bash
-npx tsx agent_own_token.ts
-```
-
-Using Deno? Run `deno run -A agent_own_token.ts` instead, since Deno runs TypeScript natively and does not need `tsx`.
-
-The agent fetches its own token and runs one turn. You should see output like:
-
-```text
-> What modules am I enrolled in?
-Agent: Enrolled modules: CS101, MATH110
-```
-
-</Lang>
-</LangTabs>
-
-:::tip Success
-The agent authenticated as itself and acted on its own behalf, under its own identity, with no user involved.
-:::
-
-</Mode>
-
-<Mode value="obo">
-
-<AgentOboFlow />
-
-You will build a small student enrollment agent with LangChain that enrolls the student in a new module. Enrolling commits *the student* and changes their academic record, so it has to happen *as the user*, with the user's consent. This is the agent's **actor** posture: instead of using its own identity, the agent asks the user to sign in and consent, then acts with the user's delegated authority, never exceeding what the user is allowed to do.
-
-Make sure your `.env` has the agent's **Client ID** and **Client Secret** set as `AGENT_CLIENT_ID` and `AGENT_SECRET`, a `REDIRECT_URI` that matches the one registered on the agent, plus your `LLM_API_KEY`.
-
-The core is to send the user to sign in, capture the result on a local callback, and exchange it for the user's delegated token:
-
-<LangTabs>
-<Lang value="python">
-
-```python
-def get_obo_token() -> str:
-    verifier, challenge = _gen_pkce()
-    state = secrets.token_urlsafe(16)
-
-    params = {
-        "response_type": "code",
-        "client_id": AGENT_CLIENT_ID,
-        "redirect_uri": REDIRECT_URI,
-        "scope": "openid",
-        "state": state,
-        "code_challenge": challenge,
-        "code_challenge_method": "S256",
-    }
-    signin_url = f"{AUTHORIZE_ENDPOINT}?{urllib.parse.urlencode(params)}"
-
-    code_holder = {}
-    t = threading.Thread(target=lambda: code_holder.update(code=_capture_code()))
-    t.start()
-    webbrowser.open(signin_url)
-    print("A browser window has opened. Log in and approve to continue...")
-    t.join()
-
-    resp = requests.post(
-        TOKEN_ENDPOINT,
-        data={
-            "grant_type": "authorization_code",
-            "code": code_holder["code"],
-            "redirect_uri": REDIRECT_URI,
-            "client_id": AGENT_CLIENT_ID,
-            "code_verifier": verifier,
-        },
-        auth=(AGENT_CLIENT_ID, AGENT_SECRET),
-        headers={"Accept": "application/json"},
-    )
-    resp.raise_for_status()
-    return resp.json()["access_token"]
-```
-
-A middleware runs the sign-in once before the agent starts and keeps the delegated token in agent state. The `enroll_module` tool reads it through injected state, so every call runs with the user's authority.
-
-<details>
-<summary>Complete <code>agent_obo.py</code></summary>
-
-```python title="agent_obo.py"
-import os
+```python title="auth.py"
 import base64
 import hashlib
+import json
+import os
 import secrets
-import asyncio
-import threading
-import http.server
-import urllib.parse
-import webbrowser
-from typing import Annotated
+import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, quote_plus, urlencode, urlsplit
 
 import requests
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
 
-from langchain_core.tools import StructuredTool
-from langgraph.prebuilt import InjectedState
-from langchain_core.messages import HumanMessage
-from langchain.chat_models import init_chat_model
-from langchain.agents import create_agent
-from langchain.agents.middleware import AgentMiddleware, AgentState
-from langgraph.runtime import Runtime
-
-
-# --- Configuration (loaded from .env) ---
 load_dotenv()
-
-BASE_URL        = os.environ.get("THUNDERID_BASE_URL", "https://localhost:8090")
-AGENT_CLIENT_ID = os.environ["AGENT_CLIENT_ID"]  # the agent's OAuth client_id
-AGENT_SECRET    = os.environ["AGENT_SECRET"]     # the agent's OAuth client_secret
-REDIRECT_URI    = os.environ.get("REDIRECT_URI", "http://localhost:6274/callback")
-MODEL_NAME      = os.environ.get("MODEL_NAME", "google_genai:gemini-flash-lite-latest")
-LLM_API_KEY     = os.environ.get("LLM_API_KEY", "")
-
-AUTHORIZE_ENDPOINT = f"{BASE_URL}/oauth2/authorize"
-TOKEN_ENDPOINT     = f"{BASE_URL}/oauth2/token"
+BASE_URL = os.environ["THUNDERID_BASE_URL"].rstrip("/")
+CLIENT_ID = os.environ["AGENT_CLIENT_ID"]
+CLIENT_SECRET = os.environ["AGENT_SECRET"]
+RESOURCE = os.environ["COURSE_RESOURCE"]
+REDIRECT_URI = "http://localhost:6274/callback"
 
 
-# --- ThunderID OBO authentication (authorization_code + PKCE) ---
-def _b64url(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+def post(path, data):
+    credentials = f"{quote_plus(CLIENT_ID)}:{quote_plus(CLIENT_SECRET)}"
+    basic = base64.b64encode(credentials.encode()).decode()
+    response = requests.post(
+        f"{BASE_URL}{path}",
+        data=data,
+        headers={"Authorization": f"Basic {basic}"},
+        verify=os.environ.get("THUNDERID_CA_BUNDLE") or True,
+        timeout=30,
+        allow_redirects=False,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"{path} returned HTTP {response.status_code}; check the agent configuration.")
+    return response.json()
 
 
-def _gen_pkce() -> tuple[str, str]:
-    verifier = _b64url(secrets.token_bytes(32))
-    challenge = _b64url(hashlib.sha256(verifier.encode()).digest())
-    return verifier, challenge
+def get_agent_token():
+    return post("/oauth2/token", {"grant_type": "client_credentials", "resource": RESOURCE, "scope": "courses:read"})["access_token"]
 
 
-def _capture_code() -> str:
-    holder = {}
+def get_user_token():
+    verifier = secrets.token_urlsafe(32)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    state = secrets.token_urlsafe(32)
+    result = {}
 
-    class Handler(http.server.BaseHTTPRequestHandler):
+    class Callback(BaseHTTPRequestHandler):
         def do_GET(self):
-            qs = urllib.parse.urlparse(self.path).query
-            holder["code"] = urllib.parse.parse_qs(qs).get("code", [None])[0]
-            self.send_response(200)
+            url = urlsplit(self.path)
+            params = parse_qs(url.query)
+            valid = (
+                url.path == "/callback"
+                and len(params.get("state", [])) == 1
+                and secrets.compare_digest(params["state"][0], state)
+                and (len(params.get("code", [])) == 1 or "error" in params)
+            )
+            self.send_response(200 if valid else 400)
+            self.send_header("Content-Type", "text/plain")
             self.end_headers()
-            self.wfile.write(b"<h1>Login Successful!</h1><p>You can close this window.</p>")
+            self.wfile.write(b"Return to your terminal." if valid else b"Invalid callback.")
+            if valid:
+                result.update(params)
 
-        def log_message(self, *a):
+        def log_message(self, *args):
             pass
 
-    parsed = urllib.parse.urlparse(REDIRECT_URI)
-    server = http.server.HTTPServer((parsed.hostname, parsed.port), Handler)
-    server.handle_request()  # serve exactly one request, then return
-    return holder["code"]
-
-
-def get_obo_token() -> str:
-    verifier, challenge = _gen_pkce()
-    state = secrets.token_urlsafe(16)
-
     params = {
-        "response_type": "code",
-        "client_id": AGENT_CLIENT_ID,
-        "redirect_uri": REDIRECT_URI,
-        "scope": "openid",
-        "state": state,
-        "code_challenge": challenge,
-        "code_challenge_method": "S256",
+        "response_type": "code", "client_id": CLIENT_ID,
+        "redirect_uri": REDIRECT_URI, "scope": "openid courses:enroll", "resource": RESOURCE, "state": state, "prompt": "consent",
+        "code_challenge": challenge, "code_challenge_method": "S256",
     }
-    signin_url = f"{AUTHORIZE_ENDPOINT}?{urllib.parse.urlencode(params)}"
-
-    code_holder = {}
-    t = threading.Thread(target=lambda: code_holder.update(code=_capture_code()))
-    t.start()
-    webbrowser.open(signin_url)
-    print("A browser window has opened. Log in and approve to continue...")
-    t.join()
-
-    resp = requests.post(
-        TOKEN_ENDPOINT,
-        data={
-            "grant_type": "authorization_code",
-            "code": code_holder["code"],
-            "redirect_uri": REDIRECT_URI,
-            "client_id": AGENT_CLIENT_ID,
-            "code_verifier": verifier,
-        },
-        auth=(AGENT_CLIENT_ID, AGENT_SECRET),
-        headers={"Accept": "application/json"},
-    )
-    resp.raise_for_status()
-    return resp.json()["access_token"]
+    with HTTPServer(("localhost", 6274), Callback) as server:
+        server.timeout = 1
+        print("Open this URL in your browser to sign in:", flush=True)
+        print(f"{BASE_URL}/oauth2/authorize?{urlencode(params)}", flush=True)
+        deadline = time.monotonic() + 180
+        while not result and time.monotonic() < deadline:
+            server.handle_request()
+    if not result:
+        raise TimeoutError("Sign-in timed out after 180 seconds. Submit the request again.")
+    if "error" in result:
+        raise RuntimeError("Sign-in was denied or failed. Submit the request again.")
+    return post("/oauth2/token", {
+        "grant_type": "authorization_code", "code": result["code"][0],
+        "redirect_uri": REDIRECT_URI, "code_verifier": verifier,
+    })["access_token"]
 
 
-# --- In-memory data ---
-enrolled  = ["CS101", "MATH110"]
-available = ["CS205", "PHY100", "ENG150"]
-
-
-# --- Auth state & middleware ---
-class AuthState(AgentState):
-    obo_token: str | None
-
-
-class OboAuthMiddleware(AgentMiddleware):
-    state_schema = AuthState
-
-    def before_agent(self, state: AuthState, runtime: Runtime) -> dict:
-        if not state.get("obo_token"):
-            return {"obo_token": get_obo_token()}
-        return {}
-
-
-# --- Tools ---
-class EnrollModuleSchema(BaseModel):
-    code: str = Field(description="Module code to enroll in, e.g. 'CS205'")
-
-
-async def enroll_module_fn(code: str, state: Annotated[dict, InjectedState]) -> str:
-    """Enroll the student in a new module and return the updated enrollment list."""
-    token = state.get("obo_token")
-    if not token:
-        return "No credentials available; cannot enroll."
-    if code in enrolled:
-        return f"Already enrolled in {code}. Enrolled modules: {', '.join(enrolled)}."
-    if code not in available:
-        return f"Module '{code}' is not available to enroll in. Enrolled modules: {', '.join(enrolled)}."
-    available.remove(code)
-    enrolled.append(code)
-    return f"Enrolled in {code}. Updated enrollment list: {', '.join(enrolled)}."
-
-
-enroll_module = StructuredTool(
-    name="enroll_module",
-    description="Enroll the student in a new module by its code and return the updated enrollment list.",
-    args_schema=EnrollModuleSchema,
-    coroutine=enroll_module_fn,
-)
-
-tools = [enroll_module]
-
-
-# --- Agent ---
-def get_prompt() -> str:
-    return (
-        "You help a student enroll in modules. Use enroll_module with the module "
-        "code to add a new enrollment; it returns the updated enrollment list. "
-        "Call exactly one tool per request and report the tool's result plainly."
-    )
-
-
-llm = init_chat_model(MODEL_NAME, api_key=LLM_API_KEY)
-
-agent = create_agent(
-    llm,
-    tools=tools,
-    system_prompt=get_prompt(),
-    middleware=[OboAuthMiddleware()],
-)
-
-
-# --- Run ---
-async def run_turn(prompt: str):
-    print(f"\n> {prompt}")
-    result = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]})
-    print("Agent:", result["messages"][-1].content)
-
-
-async def main():
-    await run_turn("Enroll me in CS205")
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-</details>
-
-<ProductName /> serves HTTPS with a self-signed certificate, so trust it once in the shell you run from. In production, point `REQUESTS_CA_BUNDLE` at your real CA bundle instead, with no code change.
-
-```bash
-openssl s_client -connect localhost:8090 -servername localhost </dev/null 2>/dev/null \
-  | openssl x509 > thunderid.pem
-
-export REQUESTS_CA_BUNDLE="$PWD/thunderid.pem"
-```
-
-Run it:
-
-```bash
-python agent_obo.py
-```
-
-A browser window opens for you to sign in as a <ProductName /> user and approve the delegated access. After you approve, the agent completes the turn:
-
-```text
-> Enroll me in CS205
-A browser window has opened. Log in and approve to continue...
-Agent: Enrolled in CS205. Updated enrollment list: CS101, MATH110, CS205.
+def inspect_identity(token, permission):
+    data = post("/oauth2/introspect", {"token": token})
+    if data.get("active") is not True:
+        raise RuntimeError("The access token is inactive. Submit the request again.")
+    if data.get("client_id") != CLIENT_ID or not data.get("sub"):
+        raise RuntimeError("The token does not belong to this agent client.")
+    audiences = data.get("aud", [])
+    if isinstance(audiences, str):
+        audiences = [audiences]
+    if RESOURCE not in audiences or permission not in data.get("scope", "").split():
+        raise PermissionError(f"Access denied: the token needs {permission} for {RESOURCE}.")
+    # Introspection has validated this exact token. Decode only to read its actor,
+    # which the introspection response does not expose.
+    payload = token.split(".")[1]
+    claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    identity = {key: data[key] for key in ("active", "sub", "client_id", "scope")}
+    if "act" in claims:
+        identity["act"] = claims["act"]
+    print("Verified identity:", json.dumps(identity), flush=True)
+    return identity
 ```
 
 </Lang>
 <Lang value="typescript">
 
-```ts
-async function getOboToken(): Promise<string> {
-  const { verifier, challenge } = genPkce();
-  const state = b64url(crypto.randomBytes(16));
+```ts title="auth.ts"
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createServer } from 'node:http';
 
-  const params = new URLSearchParams({
-    response_type: "code",
-    client_id: AGENT_CLIENT_ID,
-    redirect_uri: REDIRECT_URI,
-    scope: "openid",
-    state,
-    code_challenge: challenge,
-    code_challenge_method: "S256",
+const BASE_URL = process.env.THUNDERID_BASE_URL!.replace(/\/$/, '');
+const CLIENT_ID = process.env.AGENT_CLIENT_ID!;
+const CLIENT_SECRET = process.env.AGENT_SECRET!;
+const RESOURCE = process.env.COURSE_RESOURCE!;
+const REDIRECT_URI = 'http://localhost:6274/callback';
+
+export async function post(path: string, data: Record<string, string>) {
+  const encode = (value: string) => new URLSearchParams({ v: value }).toString().slice(2);
+  const basic = Buffer.from(`${encode(CLIENT_ID)}:${encode(CLIENT_SECRET)}`).toString('base64');
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Basic ${basic}` },
+    body: new URLSearchParams(data),
+    signal: AbortSignal.timeout(30_000),
+    redirect: 'error',
   });
-  const signinUrl = `${AUTHORIZE_ENDPOINT}?${params.toString()}`;
-
-  const codePromise = captureCode();
-  await open(signinUrl);
-  console.log("A browser window has opened. Log in and approve to continue...");
-  const code = await codePromise;
-
-  const basicAuth = Buffer.from(`${AGENT_CLIENT_ID}:${AGENT_SECRET}`).toString("base64");
-  const resp = await fetch(TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-      Authorization: `Basic ${basicAuth}`,
-    },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: REDIRECT_URI,
-      client_id: AGENT_CLIENT_ID,
-      code_verifier: verifier,
-    }),
-  });
-  if (!resp.ok) {
-    throw new Error(`Token exchange failed: ${resp.status} ${await resp.text()}`);
+  if (!response.ok) {
+    throw new Error(`${path} returned HTTP ${response.status}; check the agent configuration.`);
   }
-  const data = await resp.json();
-  return data.access_token as string;
-}
-```
-
-A middleware runs the sign-in once before the agent starts and caches the delegated token for the process. The `enroll_module` tool reads it from `AsyncLocalStorage`, so every call runs with the user's authority.
-
-<details>
-<summary>Complete <code>agent_obo.ts</code></summary>
-
-```ts title="agent_obo.ts"
-import "dotenv/config";
-import http from "node:http";
-import crypto from "node:crypto";
-import { AsyncLocalStorage } from "node:async_hooks";
-import open from "open";
-import { z } from "zod";
-import { tool } from "@langchain/core/tools";
-import { HumanMessage } from "@langchain/core/messages";
-import { initChatModel } from "langchain/chat_models/universal";
-import { createAgent, createMiddleware } from "langchain";
-
-// --- Configuration (loaded from .env) ---
-const BASE_URL        = process.env.THUNDERID_BASE_URL ?? "https://localhost:8090";
-const AGENT_CLIENT_ID = process.env.AGENT_CLIENT_ID!;
-const AGENT_SECRET    = process.env.AGENT_SECRET!;
-const REDIRECT_URI    = process.env.REDIRECT_URI ?? "http://localhost:6274/callback";
-const MODEL_NAME      = process.env.MODEL_NAME ?? "google-genai:gemini-flash-lite-latest";
-const LLM_API_KEY     = process.env.LLM_API_KEY ?? "";
-
-const AUTHORIZE_ENDPOINT = `${BASE_URL}/oauth2/authorize`;
-const TOKEN_ENDPOINT     = `${BASE_URL}/oauth2/token`;
-
-// --- ThunderID OBO authentication (authorization_code + PKCE) ---
-function b64url(buf: Buffer): string {
-  return buf.toString("base64url");
+  return response.json();
 }
 
-function genPkce(): { verifier: string; challenge: string } {
-  const verifier = b64url(crypto.randomBytes(32));
-  const challenge = b64url(crypto.createHash("sha256").update(verifier).digest());
-  return { verifier, challenge };
+export async function getAgentToken(): Promise<string> {
+  return (await post('/oauth2/token', { grant_type: 'client_credentials', resource: RESOURCE, scope: 'courses:read' })).access_token;
 }
 
-function captureCode(): Promise<string> {
-  const { hostname, port } = new URL(REDIRECT_URI);
-  return new Promise((resolve, reject) => {
-    const server = http.createServer((req, res) => {
-      const url = new URL(req.url ?? "", REDIRECT_URI);
-      const code = url.searchParams.get("code");
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end("<h1>Login Successful!</h1><p>You can close this window.</p>");
+export async function getUserToken(): Promise<string> {
+  const verifier = randomBytes(32).toString('base64url');
+  const challenge = createHash('sha256').update(verifier).digest('base64url');
+  const state = randomBytes(32).toString('base64url');
+  const params = new URLSearchParams({
+    response_type: 'code', client_id: CLIENT_ID,
+    redirect_uri: REDIRECT_URI, scope: 'openid courses:enroll', resource: RESOURCE, state, prompt: 'consent',
+    code_challenge: challenge, code_challenge_method: 'S256',
+  });
+
+  const code = await new Promise<string>((resolve, reject) => {
+    const finish = (error?: Error, value?: string) => {
+      clearTimeout(timer);
       server.close();
-      if (code) resolve(code);
-      else reject(new Error("No authorization code received"));
+      if (error) reject(error);
+      else resolve(value!);
+    };
+    const server = createServer((req, res) => {
+      const url = new URL(req.url ?? '/', REDIRECT_URI);
+      const receivedState = Buffer.from(url.searchParams.get('state') ?? '');
+      const expectedState = Buffer.from(state);
+      const valid = url.pathname === '/callback'
+        && url.searchParams.getAll('state').length === 1
+        && receivedState.length === expectedState.length
+        && timingSafeEqual(receivedState, expectedState)
+        && (url.searchParams.getAll('code').length === 1 || url.searchParams.has('error'));
+      res.writeHead(valid ? 200 : 400, { 'Content-Type': 'text/plain', Connection: 'close' });
+      res.end(valid ? 'Return to your terminal.' : 'Invalid callback.');
+      if (!valid) return;
+      if (url.searchParams.has('error')) finish(new Error('Sign-in was denied or failed.'));
+      else finish(undefined, url.searchParams.get('code')!);
     });
-    server.listen(Number(port), hostname);
+    const timer = setTimeout(() => finish(new Error('Sign-in timed out. Submit the request again.')), 180_000);
+    server.on('error', error => finish(error));
+    server.listen(6274, 'localhost', () => {
+      console.log('Open this URL in your browser to sign in:');
+      console.log(`${BASE_URL}/oauth2/authorize?${params}`);
+    });
   });
+  return (await post('/oauth2/token', {
+    grant_type: 'authorization_code', code,
+    redirect_uri: REDIRECT_URI, code_verifier: verifier,
+  })).access_token;
 }
 
-async function getOboToken(): Promise<string> {
-  const { verifier, challenge } = genPkce();
-  const state = b64url(crypto.randomBytes(16));
-
-  const params = new URLSearchParams({
-    response_type: "code",
-    client_id: AGENT_CLIENT_ID,
-    redirect_uri: REDIRECT_URI,
-    scope: "openid",
-    state,
-    code_challenge: challenge,
-    code_challenge_method: "S256",
-  });
-  const signinUrl = `${AUTHORIZE_ENDPOINT}?${params.toString()}`;
-
-  const codePromise = captureCode();
-  await open(signinUrl);
-  console.log("A browser window has opened. Log in and approve to continue...");
-  const code = await codePromise;
-
-  const basicAuth = Buffer.from(`${AGENT_CLIENT_ID}:${AGENT_SECRET}`).toString("base64");
-  const resp = await fetch(TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-      Authorization: `Basic ${basicAuth}`,
-    },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: REDIRECT_URI,
-      client_id: AGENT_CLIENT_ID,
-      code_verifier: verifier,
-    }),
-  });
-  if (!resp.ok) {
-    throw new Error(`Token exchange failed: ${resp.status} ${await resp.text()}`);
+export async function inspectIdentity(token: string, permission: string) {
+  const data = await post('/oauth2/introspect', { token });
+  if (data.active !== true) throw new Error('The access token is inactive. Submit the request again.');
+  if (data.client_id !== CLIENT_ID || !data.sub) {
+    throw new Error('The token does not belong to this agent client.');
   }
-  const data = await resp.json();
-  return data.access_token as string;
-}
-
-// --- In-memory data ---
-const enrolled: string[] = ["CS101", "MATH110"];
-const available: string[] = ["CS205", "PHY100", "ENG150"];
-
-// --- Auth: one login per process, shared via a module-level variable + AsyncLocalStorage ---
-let cachedOboToken: string | null = null;
-const oboTokenStorage = new AsyncLocalStorage<string>();
-
-const oboAuthMiddleware = createMiddleware({
-  name: "OboAuthMiddleware",
-  beforeAgent: async () => {
-    if (!cachedOboToken) {
-      cachedOboToken = await getOboToken(); // one login, cached for this process
-    }
-    return {};
-  },
-  wrapToolCall: async (request, handler) => {
-    if (!cachedOboToken) {
-      cachedOboToken = await getOboToken(); // fallback, in case beforeAgent hasn't set it yet
-    }
-    return oboTokenStorage.run(cachedOboToken, () => handler(request));
-  },
-});
-
-// --- Tools ---
-const enrollModule = tool(
-  async ({ code }: { code: string }) => {
-    const token = oboTokenStorage.getStore();
-    if (!token) return "No credentials available; cannot enroll.";
-    if (enrolled.includes(code)) {
-      return `Already enrolled in ${code}. Enrolled modules: ${enrolled.join(", ")}.`;
-    }
-    if (!available.includes(code)) {
-      return `Module '${code}' is not available to enroll in. Enrolled modules: ${enrolled.join(", ")}.`;
-    }
-    available.splice(available.indexOf(code), 1);
-    enrolled.push(code);
-    return `Enrolled in ${code}. Updated enrollment list: ${enrolled.join(", ")}.`;
-  },
-  {
-    name: "enroll_module",
-    description: "Enroll the student in a new module by its code and return the updated enrollment list.",
-    schema: z.object({
-      code: z.string().describe("Module code to enroll in, e.g. 'CS205'"),
-    }),
+  const audiences = Array.isArray(data.aud) ? data.aud : [data.aud];
+  if (!audiences.includes(RESOURCE) || !data.scope?.split(' ').includes(permission)) {
+    throw new Error(`Access denied: the token needs ${permission} for ${RESOURCE}.`);
   }
-);
-
-const tools = [enrollModule];
-
-// --- Agent ---
-const SYSTEM_PROMPT =
-  "You help a student enroll in modules. Use enroll_module with the module " +
-  "code to add a new enrollment; it returns the updated enrollment list. " +
-  "Call exactly one tool per request and report the tool's result plainly.";
-
-async function buildAgent() {
-  const model = await initChatModel(MODEL_NAME, { apiKey: LLM_API_KEY });
-
-  return createAgent({
-    model,
-    tools,
-    systemPrompt: SYSTEM_PROMPT,
-    middleware: [oboAuthMiddleware],
-  });
+  // Read the actor only after introspection validates this exact token.
+  const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+  const identity = { active: data.active, sub: data.sub, client_id: data.client_id, scope: data.scope, act: claims.act };
+  console.log('Verified identity:', JSON.stringify(identity));
+  return identity;
 }
-
-// --- Run ---
-async function runTurn(agent: Awaited<ReturnType<typeof buildAgent>>, prompt: string) {
-  console.log(`\n> ${prompt}`);
-  const result = await agent.invoke({ messages: [new HumanMessage(prompt)] });
-  const last = result.messages[result.messages.length - 1];
-  console.log("Agent:", last.content);
-}
-
-async function main() {
-  const agent = await buildAgent();
-  await runTurn(agent, "Enroll me in CS205");
-}
-
-main()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
-```
-
-</details>
-
-<ProductName /> serves HTTPS with a self-signed certificate, so trust it once in the shell you run from. In production, point `NODE_EXTRA_CA_CERTS` at your real CA bundle instead, with no code change.
-
-```bash
-openssl s_client -connect localhost:8090 -servername localhost </dev/null 2>/dev/null \
-  | openssl x509 > thunderid.pem
-
-export NODE_EXTRA_CA_CERTS="$PWD/thunderid.pem"
-```
-
-Run it:
-
-```bash
-npx tsx agent_obo.ts
-```
-
-Using Deno? Run `deno run -A agent_obo.ts` instead, since Deno runs TypeScript natively and does not need `tsx`.
-
-A browser window opens for you to sign in as a <ProductName /> user and approve the delegated access. After you approve, the agent completes the turn:
-
-```text
-> Enroll me in CS205
-A browser window has opened. Log in and approve to continue...
-Agent: Enrolled in CS205. Updated enrollment list: CS101, MATH110, CS205.
 ```
 
 </Lang>
 </LangTabs>
 
-:::note Test user
-You will need a user to sign in with. If you have not created one yet, open the Console at <ConsoleUrl />, navigate to **Users**, and add a test user with a username and password.
-:::
+</details>
 
-:::tip Success
-The user signed in once, and the agent acted on their behalf, operating with the user's delegated authority and never exceeding it.
-:::
+`inspect_identity` (Python) or `inspectIdentity` (TypeScript) validates the access token through <ProductName /> before checking its audience and required permission. It reads `act` from the validated JWT because the introspection response does not include that claim.
 
-</Mode>
+## Add the Course Tools
 
-</Stepper>
+Create the following file beside the helper. These protected course operations accept a token from the runtime, validate it, and enforce the required permission before reading or changing course data.
+
+<LangTabs>
+<Lang value="python">
+
+```python title="course_tools.py"
+import json
+from threading import Lock
+
+from auth import inspect_identity
+
+COURSES = [
+    {"id": "CS101", "name": "Introduction to Computer Science"},
+    {"id": "CS205", "name": "Data Structures"},
+]
+enrollments = {}
+enrollment_lock = Lock()
+
+
+def list_courses(access_token: str) -> dict:
+    """List available courses using the agent's own identity. No student sign-in needed."""
+    inspect_identity(access_token, "courses:read")
+    result = {"courses": COURSES}
+    print("Tool result:", json.dumps(result), flush=True)
+    return result
+
+
+def enroll_course(course_id: str, access_token: str) -> dict:
+    """Enroll the requesting student after the runtime obtains delegated authority."""
+    if course_id not in {course["id"] for course in COURSES}:
+        return {"status": "not_enrolled", "reason": "Unknown course ID."}
+    with enrollment_lock:
+        identity = inspect_identity(access_token, "courses:enroll")
+        if not identity.get("act", {}).get("sub"):
+            raise PermissionError("Enrollment requires a delegated user token.")
+        student_id = identity["sub"]  # The model cannot choose the student.
+        enrolled = enrollments.setdefault(student_id, set())
+        status = "already_enrolled" if course_id in enrolled else "enrolled"
+        enrolled.add(course_id)
+        result = {"student_id": student_id, "course_id": course_id, "status": status}
+        print("Tool result:", json.dumps(result), flush=True)
+        return result
+```
+
+</Lang>
+<Lang value="typescript">
+
+```ts title="course_tools.ts"
+import { inspectIdentity } from './auth.ts';
+
+const COURSES = [
+  { id: 'CS101', name: 'Introduction to Computer Science' },
+  { id: 'CS205', name: 'Data Structures' },
+];
+const enrollments = new Map<string, Set<string>>();
+let enrolling = false;
+
+export async function listCourses(accessToken: string) {
+  await inspectIdentity(accessToken, 'courses:read');
+  const result = { courses: COURSES };
+  console.log('Tool result:', JSON.stringify(result));
+  return result;
+}
+
+export async function enrollCourse(courseId: string, accessToken: string) {
+  if (!COURSES.some(course => course.id === courseId)) {
+    return { status: 'not_enrolled', reason: 'Unknown course ID.' };
+  }
+  if (enrolling) return { status: 'not_enrolled', reason: 'An enrollment is already awaiting consent.' };
+  enrolling = true;
+  try {
+    const identity = await inspectIdentity(accessToken, 'courses:enroll');
+    if (!identity.act?.sub) throw new Error('Enrollment requires a delegated user token.');
+    const studentId: string = identity.sub; // The model cannot choose the student.
+    if (!enrollments.has(studentId)) enrollments.set(studentId, new Set());
+    const enrolled = enrollments.get(studentId)!;
+    const status = enrolled.has(courseId) ? 'already_enrolled' : 'enrolled';
+    enrolled.add(courseId);
+    const result = { student_id: studentId, course_id: courseId, status };
+    console.log('Tool result:', JSON.stringify(result));
+    return result;
+  } finally {
+    enrolling = false;
+  }
+}
+```
+
+</Lang>
+</LangTabs>
+
+The course operations validate tokens but never acquire them. The runtime wrappers supply each token outside the model-visible tool arguments, so the model cannot provide credentials or choose another student.
+
+## Connect the Tools to the Agent
+
+The entrypoint defines runtime-owned wrappers that acquire the required token before calling the protected course operations. LangChain exposes only those wrappers to the model.
+
+<LangTabs>
+<Lang value="python">
+
+```python title="langchain_agent.py"
+import os
+
+from langchain.agents import create_agent
+from langchain.tools import tool
+from langchain_google_genai import ChatGoogleGenerativeAI
+
+from auth import get_agent_token, get_user_token
+from course_tools import enroll_course as enroll_student
+from course_tools import list_courses as read_courses
+
+
+@tool("list_courses")
+def list_courses() -> dict:
+    """List available courses as the agent. No student sign-in needed."""
+    return read_courses(get_agent_token())
+
+
+@tool("enroll_course")
+def enroll_course(course_id: str) -> dict:
+    """Enroll the requesting student. Triggers sign-in and consent first."""
+    print(f"Agent: Enrolling you in {course_id} needs your permission.", flush=True)
+    access_token = get_user_token()  # Pause until the student signs in and consents.
+    return enroll_student(course_id, access_token)
+
+agent = create_agent(
+    model=ChatGoogleGenerativeAI(model=os.environ["GEMINI_MODEL"], temperature=0),
+    tools=[list_courses, enroll_course],
+    system_prompt=(
+        "Help with courses. Use list_courses for the catalog and enroll_course only when "
+        "the student asks to enroll. The runtime handles sign-in and consent. "
+        "Use the supplied course ID. Report success only if the tool succeeds. "
+        "If a tool fails or consent is denied, report it and do not retry in this turn."
+    ),
+)
+
+print("Ask about courses, or ask to enroll in CS205. Type exit to stop.")
+while True:
+    try:
+        question = input("You: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        break
+    if question.lower() == "exit":
+        break
+    if not question:
+        continue
+    try:
+        response = agent.invoke({"messages": [{"role": "user", "content": question}]})
+        print("Agent:", response["messages"][-1].text)
+    except Exception as error:
+        print("Request failed:", error)
+```
+
+</Lang>
+<Lang value="typescript">
+
+```ts title="langchain_agent.ts"
+import { createInterface } from 'node:readline/promises';
+import { stdin, stdout } from 'node:process';
+import { createAgent, tool } from 'langchain';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { z } from 'zod';
+import { getAgentToken, getUserToken } from './auth.ts';
+import { listCourses, enrollCourse } from './course_tools.ts';
+
+const agent = createAgent({
+  model: new ChatGoogleGenerativeAI({ model: process.env.GEMINI_MODEL!, temperature: 0 }),
+  tools: [
+    tool(async () => listCourses(await getAgentToken()), {
+      name: 'list_courses',
+      description: 'List available courses as the agent. No student sign-in needed.',
+      schema: z.object({}),
+    }),
+    tool(async ({ course_id }: { course_id: string }) => {
+      console.log(`Agent: Enrolling you in ${course_id} needs your permission.`);
+      const accessToken = await getUserToken(); // Pause until the student signs in and consents.
+      return enrollCourse(course_id, accessToken);
+    }, {
+      name: 'enroll_course',
+      description: 'Enroll the requesting student. Triggers sign-in and consent first.',
+      schema: z.object({ course_id: z.string() }),
+    }),
+  ],
+  systemPrompt: 'Use list_courses for the catalog and enroll_course only for enrollment requests. '
+    + 'The runtime handles sign-in and consent. Use the supplied course ID. '
+    + 'Report success only if the tool succeeds. If it fails, do not retry in this turn.',
+});
+const terminal = createInterface({ input: stdin, output: stdout });
+console.log('Ask about courses, or ask to enroll in CS205. Type exit to stop.');
+try {
+  while (true) {
+    let question: string;
+    try { question = (await terminal.question('You: ')).trim(); }
+    catch { break; }
+    if (question.toLowerCase() === 'exit') break;
+    if (!question) continue;
+    try {
+      const response = await agent.invoke({ messages: [{ role: 'user', content: question }] });
+      console.log('Agent:', response.messages.at(-1)?.content);
+    } catch (error) {
+      console.error('Request failed:', error instanceof Error ? error.message : 'Unknown error');
+    }
+  }
+} finally {
+  terminal.close();
+}
+```
+
+</Lang>
+</LangTabs>
+
+Each request is independent: include the course ID when asking to enroll. Enrollment records remain in memory until you exit; delegated tokens are not cached between requests.
+
+## Ask the Agent to List Courses
+
+Start the agent:
+
+<LangTabs>
+<Lang value="python">
+
+```bash
+python langchain_agent.py
+```
+
+</Lang>
+<Lang value="typescript">
+
+```bash
+export NODE_EXTRA_CA_CERTS="$PWD/thunderid.pem"
+npx tsx --env-file=.env langchain_agent.ts
+```
+
+</Lang>
+</LangTabs>
+
+In PowerShell, set `$env:NODE_EXTRA_CA_CERTS = "$PWD/thunderid.pem"` before the `npx` command. Omit the certificate variable for a publicly trusted server certificate.
+
+At the `You:` prompt, type:
+
+```text
+List the available courses.
+```
+
+The agent uses its own credentials. No student signs in. Look for the identity and tool result:
+
+```text
+Verified identity: {"active":true,"sub":"<agent-id>","client_id":"<agent-client-id>","scope":"courses:read"}
+Tool result: {"courses":[{"id":"CS101","name":"Introduction to Computer Science"},{"id":"CS205","name":"Data Structures"}]}
+```
+
+The `sub` value matches the **Agent ID** in the Console; the final response lists the courses in natural language.
+
+## Ask the Agent to Enroll You
+
+In the same terminal session, type:
+
+```text
+Enroll me in CS205.
+```
+
+The enrollment tool pauses and prints:
+
+```text
+Agent: Enrolling you in CS205 needs your permission.
+Open this URL in your browser to sign in:
+https://localhost:8090/oauth2/authorize?...
+```
+
+1. Open the printed URL in your browser.
+2. Sign in as the student you assigned the **Student** role to in the shared setup.
+3. On the <ProductName /> consent screen, turn on the `courses:enroll` permission switch and click **Allow**.
+4. Return to the terminal after the browser reaches the local redirect URI.
+
+The pending tool call resumes, verifies your permission, and records the enrollment:
+
+```text
+Verified identity: {"active":true,"sub":"<student-id>","client_id":"<agent-client-id>","scope":"openid courses:enroll","act":{"sub":"<agent-id>"}}
+Tool result: {"student_id":"<student-id>","course_id":"CS205","status":"enrolled"}
+Agent: You are enrolled in CS205.
+```
+
+Scope order, JSON spacing, and the agent's wording can vary. Check the `Tool result` line for the actual enrollment; `student_id` comes from the verified token, and `act.sub` identifies the agent that acted for you.
+
+To try denial, submit another enrollment request and click **Deny** on the consent screen. The request fails without adding an enrollment. The sample sends `prompt=consent` on every enrollment request so you can repeat both outcomes.
+
+Type `exit` to stop. Restarting the process clears the course records; this example uses real tokens and permission checks with an in-memory course store.
+
+## Resolve Common Errors
+
+| Symptom | Check |
+|---|---|
+| HTTP `401` from the token or introspection endpoint | Use the agent's Client ID and current secret. Confirm `client_secret_basic` is configured. |
+| `invalid_target` | Match `COURSE_RESOURCE` to the **Course Catalog** resource server's identifier. |
+| Token lacks `courses:read` | Assign the **Course Reader** role to the agent. |
+| Token lacks `courses:enroll` | Assign the **Student** role to the signed-in user, and allow the requested permission on the consent screen. |
+| No consent screen appears | Select **Course Enrollment Sign-in** on the agent's **Flows** tab, with **User Consent** between **Authorization** and **Auth Assertion Generator**. |
+| Sign-in fails before the redirect | Enable delegated mode and register `http://localhost:6274/callback` exactly. |
+| Certificate verification fails | Copy the running instance's certificate. For Node.js, set `NODE_EXTRA_CA_CERTS` in the shell before starting the process. |
+| Port `6274` is in use | Stop the other sample and retry. |
+| Sign-in times out | Submit the request again and finish sign-in and consent within 180 seconds. |
+| Gemini reports a model or quota error | Check the model name, API key, and quota in your Google project. |
+| No `Tool result` line | The tool did not complete; do not treat a conversational confirmation as a successful enrollment. |
 
 ## What's Next
 
-<NextSteps>
-  <NextStepsCard
-    title="Identity for AI Agents"
-    description="The full agent identity journey: the three postures (subject, actor, resource) and the use cases that map to each."
-    href="../../../use-cases/ai-agents/overview"
-  />
-  <NextStepsCard
-    title="Who May Call the Agent"
-    description="The posture you did not build here: decide which users, applications, and agents may reach your agent at all."
-    href="../../../use-cases/ai-agents/solve-agent-as-resource"
-  />
-  <NextStepsCard
-    title="Act for a Person"
-    description="How an agent acts on a customer's behalf, with a token that names the customer as the subject and the agent as the actor."
-    href="../../../use-cases/ai-agents/solve-acts-for-user"
-  />
-  <NextStepsCard
-    title="Create and Manage Your Agent"
-    description="Go deeper on the agent you registered: manage its owner, attribute schema, and lifecycle from the Console."
-    href="../../../guides/agents/manage-agents"
-  />
-</NextSteps>
+- [Agent tokens](../../../guides/agents/authentication/agent-own-token) explains own-identity access.
+- [Agent access on behalf of users](../../../guides/agents/authentication/on-behalf-of-user) covers delegated tokens and refresh.
+- [Control agent access](../../../use-cases/ai-agents/solve-access) covers permissions when connecting a separate business API.
+
+</Stepper>

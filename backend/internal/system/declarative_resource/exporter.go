@@ -13,8 +13,19 @@ import (
 
 // ResourceRules defines variables and array variables to parameterize for a resource type.
 type ResourceRules struct {
-	Variables             []string `yaml:"Variables,omitempty"`
-	ArrayVariables        []string `yaml:"ArrayVariables,omitempty"`
+	Variables      []string `yaml:"Variables,omitempty"`
+	ArrayVariables []string `yaml:"ArrayVariables,omitempty"`
+	// SecretVariables are parameterized exactly as Variables are, and additionally reported as
+	// credentials.
+	//
+	// The distinction is not cosmetic. A value placed in a data plane's variable collection is
+	// returned by a read; one placed in its secret collection never is. A client secret listed
+	// under Variables would therefore be readable by anything allowed to list variables, which is
+	// the difference the two collections exist to make.
+	//
+	// A dynamic property carries this on itself, through IsSecret. A field named by a rule has
+	// nothing to carry it, so it is named here instead.
+	SecretVariables       []string `yaml:"SecretVariables,omitempty"`
 	DynamicPropertyFields []string `yaml:"DynamicPropertyFields,omitempty"`
 }
 

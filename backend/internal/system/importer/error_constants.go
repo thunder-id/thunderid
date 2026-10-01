@@ -91,4 +91,16 @@ var (
 			DefaultValue: "The required resource adapter is not configured",
 		},
 	}
+
+	// ErrorDeleteNotSupported represents a deletion requested for a resource type that cannot be
+	// removed at runtime.
+	ErrorDeleteNotSupported = tidcommon.ServiceError{
+		Type:  tidcommon.ClientErrorType,
+		Code:  "IMP-1005",
+		Error: tidcommon.I18nMessage{Key: "error.import.deleteNotSupported", DefaultValue: "Deletion not supported"},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.import.deleteNotSupported.description",
+			DefaultValue: "The requested resource type does not support runtime deletion",
+		},
+	}
 )

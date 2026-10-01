@@ -102,6 +102,9 @@ attribute_cache:
   encryption:
     enabled: {{ .Values.configuration.attributeCache.encryption.enabled }}
 
+resource_sharing:
+  allow_child_ou_cross_tree_sharing: {{ .Values.configuration.resourceSharing.allowChildOuCrossTreeSharing }}
+
 database:
   config:
     type: {{ .Values.configuration.database.config.type | quote }}
@@ -326,6 +329,9 @@ openid4vci:
   {{- if .Values.configuration.openid4vci.store }}
   store: {{ include "thunderid.validateStoreMode" (dict "value" .Values.configuration.openid4vci.store "field" "configuration.openid4vci.store") | quote }}
   {{- end }}
+
+scim:
+  urn_prefix: {{ .Values.configuration.scim.urnPrefix | quote }}
 
 {{- $email := default dict .Values.configuration.email }}
 {{- $smtp := default dict $email.smtp }}

@@ -109,7 +109,8 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 			}
 
 			authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx,
-				tokenservice.BuildAccessEvaluationsRequest(oauthApp.ID, groupIDs, nil, scopes, targetRS.ID))
+				tokenservice.BuildAccessEvaluationsRequest(
+					oauthApp.ID, oauthApp.EntityCategory.String(), groupIDs, nil, scopes, targetRS.ID))
 			if svcErr != nil {
 				logger.Error(ctx, "Failed to get authorized permissions for app",
 					log.String("appID", oauthApp.ID), log.String("error", svcErr.Error.DefaultValue))

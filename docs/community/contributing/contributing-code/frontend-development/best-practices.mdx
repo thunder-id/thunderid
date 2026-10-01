@@ -29,7 +29,9 @@ Do **not** import it through an app-local wrapper module. Importing the package 
 
 ```tsx
 const ApplicationEditPage = lazy(() =>
-  import('./lib/monaco-setup').then(() => import('./features/applications/pages/ApplicationEditPage')),
+  import('./lib/monaco-setup').then(() =>
+    import('@thunderid/configure-applications').then((m) => ({default: m.ApplicationEditPage})),
+  ),
 );
 ```
 

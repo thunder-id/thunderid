@@ -27,7 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
-	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
 
@@ -44,7 +44,7 @@ type ClientCredentialsGrantHandlerTestSuite struct {
 	suite.Suite
 	mockJWTService      *jwtmock.JWTServiceInterfaceMock
 	mockTokenBuilder    *tokenservicemock.TokenBuilderInterfaceMock
-	mockOUService       *oumock.OrganizationUnitServiceInterfaceMock
+	mockOUService       *ouprovidermock.OrganizationUnitProviderMock
 	mockAuthzService    *authzmock.AuthorizationProviderMock
 	mockEntityProvider  *actorprovidermock.ActorProviderMock
 	mockResourceService *resourcemock.ResourceServiceInterfaceMock
@@ -69,7 +69,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	suite.mockTokenBuilder = tokenservicemock.NewTokenBuilderInterfaceMock(suite.T())
-	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	suite.mockOUService = ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 	suite.mockAuthzService = authzmock.NewAuthorizationProviderMock(suite.T())
 	suite.mockEntityProvider = actorprovidermock.NewActorProviderMock(suite.T())
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
@@ -146,6 +146,24 @@ func mockEvaluateAccessBatch(
 			return true
 		})).
 		Return(&providers.AccessEvaluationsResponse{Evaluations: evaluations}, nil)
+}
+
+func TestBuildAccessEvaluationsRequestUsesEntityCategory(t *testing.T) {
+	for _, test := range []struct {
+		category providers.EntityCategory
+		typeName string
+	}{
+		{category: providers.EntityCategoryApp, typeName: providers.EntityCategoryApp.String()},
+		{category: providers.EntityCategoryAgent, typeName: providers.EntityCategoryAgent.String()},
+		{category: providers.EntityCategoryUser, typeName: providers.EntityCategoryUser.String()},
+	} {
+		request := tokenservice.BuildAccessEvaluationsRequest(
+			"entity-1", test.category.String(), nil, nil, []string{"bookings:view"}, "rs-1",
+		)
+
+		assert.Len(t, request.Evaluations, 1)
+		assert.Equal(t, test.typeName, request.Evaluations[0].Subject.Category)
+	}
 }
 
 func (suite *ClientCredentialsGrantHandlerTestSuite) TestNewClientCredentialsGrantHandler() {

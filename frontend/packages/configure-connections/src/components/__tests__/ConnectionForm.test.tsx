@@ -88,6 +88,32 @@ describe('ConnectionForm', () => {
     expect(onFieldChange).toHaveBeenCalledWith('clientId', 'my-client-id');
   });
 
+  it('shows HTTPS errors immediately for authenticated remote PDP endpoints', () => {
+    render(
+      <ConnectionForm
+        {...baseProps}
+        type="authzen-pdp"
+        mode="edit"
+        values={{
+          name: 'PDP',
+          endpoint: 'http://pdp.example.com/evaluation',
+          batchEndpoint: 'http://pdp.example.com/evaluations',
+          timeoutMs: '500',
+          retryCount: '1',
+          authenticationScheme: 'BEARER',
+          bearerToken: '',
+        }}
+        vendorDisplayName="AuthZEN PDP"
+      />,
+    );
+
+    expect(
+      screen.getAllByText(
+        'Use HTTPS for authenticated PDP endpoints. HTTP is allowed only for localhost and loopback IP addresses.',
+      ),
+    ).toHaveLength(2);
+  });
+
   it('does not render the redirect URI or scopes fields on create (moved to a create hint / edit view)', () => {
     render(<ConnectionForm {...baseProps} />);
 
@@ -277,6 +303,7 @@ describe('ConnectionForm', () => {
 
       expect(getConnectionField('httpHeaders-name-1')).toHaveValue('X-API-Key');
       expect(getConnectionField('httpHeaders-value-1')).toHaveValue('abc123');
+      expect(getConnectionField('httpHeaders-value-1')).toHaveAttribute('type', 'text');
       expect(getConnectionField('httpHeaders-name-2')).toHaveValue('Accept');
       expect(getConnectionField('httpHeaders-value-2')).toHaveValue('application/json');
       expect(document.getElementById('connection-field-httpHeaders-name-3')).not.toBeInTheDocument();

@@ -1,0 +1,153 @@
+---
+displayed_sidebar: null
+title: iOS Management API
+docType: reference
+description: List, read, create, update, and delete applications, users, and agents from the iOS SDK through the management API.
+---
+
+# iOS Management API
+
+`ThunderIDClient` exposes the <ProductName /> management API through three accessors: `applications`, `users`, and `agents`. Each lists, reads, creates, updates, and deletes its resource. Requests are authorized with the signed-in user's access token, and the token needs the permissions the server requires for each resource.
+
+```swift
+import ThunderID
+
+let page = try await client.applications.list(limit: 20)
+
+var request = ApplicationRequest(name: "My App")
+request.url = "https://app.example.com"
+let application = try await client.applications.create(request)
+
+try await client.users.delete(id: "<user-id>")
+```
+
+The accessors throw `.sdkNotInitialized` until `initialize(config:)` has run.
+
+## Operations
+
+| Accessor | Method | Request | Returns |
+| :--- | :--- | :--- | :--- |
+| `applications` | `list(limit:offset:fetcher:)` | `GET /applications` | `ApplicationListResponse` |
+| | `get(id:fetcher:)` | `GET /applications/{id}` | `Application` |
+| | `create(_:fetcher:)` | `POST /applications` | `Application` |
+| | `update(id:_:fetcher:)` | `PUT /applications/{id}` | `Application` |
+| | `delete(id:fetcher:)` | `DELETE /applications/{id}` | Nothing |
+| `users` | `list(limit:offset:filter:fetcher:)` | `GET /users?include=display` | `ManagedUserListResponse` |
+| | `get(id:fetcher:)` | `GET /users/{id}?include=display` | `ManagedUser` |
+| | `create(_:fetcher:)` | `POST /users` | `ManagedUser` |
+| | `update(id:_:fetcher:)` | `PUT /users/{id}` | `ManagedUser` |
+| | `delete(id:fetcher:)` | `DELETE /users/{id}` | Nothing |
+| `agents` | `list(limit:offset:fetcher:)` | `GET /agents?include=display` | `AgentListResponse` |
+| | `get(id:fetcher:)` | `GET /agents/{id}?include=display` | `Agent` |
+| | `create(_:fetcher:)` | `POST /agents` | `Agent` |
+| | `update(id:_:fetcher:)` | `PUT /agents/{id}` | `Agent` |
+| | `delete(id:fetcher:)` | `DELETE /agents/{id}` | Nothing |
+
+All methods are `async throws`.
+
+## Models
+
+| Payload | Used by | Required fields |
+| :--- | :--- | :--- |
+| `ApplicationRequest` | `applications.create`, `applications.update` | `name` |
+| `CreateManagedUserRequest` | `users.create` | `ouId`, `type` |
+| `UpdateManagedUserRequest` | `users.update` | None |
+| `CreateAgentRequest` | `agents.create` | `ouId`, `type`, `name` |
+| `UpdateAgentRequest` | `agents.update` | None |
+
+`Application` holds the server-generated `id`, `createdAt`, and `updatedAt`, plus an `ApplicationRequest` in its `request` property. Every `ApplicationRequest` field reads directly on the application, as in `application.name`. To update an application, edit `application.request` and pass it to `update(id:_:)`, because an update replaces the application's mutable fields.
+
+A `ManagedUser` is a user record on the server, with `id`, `ouId`, `type`, `attributes`, and the resolved `display` value. It is a different type from `User`, which describes the signed-in user.
+
+## Transport
+
+Set `ThunderIDConfig.http.fetcher` to route management requests through your own transport. A `fetcher` passed to a single call takes precedence over the configured one.
+
+```swift
+public typealias ThunderIDFetcher = (URLRequest) async throws -> (Data, URLResponse)
+
+ThunderIDConfig(
+    baseUrl: "https://localhost:8090",
+    clientId: "<your-client-id>",
+    http: ThunderIDHttpConfig(fetcher: { request in try await URLSession.shared.data(for: request) })
+)
+```
+
+The request passed to the fetcher already carries the `Authorization` header. Without a fetcher, requests use the SDK's `URLSession`. `http.fetcher` applies to management operations only; sign-in, token, and flow requests keep using the SDK's own transport.
+
+## Management API on a Separate Host
+
+Requests go to `{baseUrl}/applications`, `{baseUrl}/users`, and `{baseUrl}/agents`. When the management API runs on a different host, set the collection URL through `ThunderIDConfig.endpoints`:
+
+```swift
+ThunderIDConfig(
+    baseUrl: "https://idp.example.com",
+    clientId: "<your-client-id>",
+    endpoints: ThunderIDEndpoints(
+        agents: "https://rs.example.com/agents",
+        applications: "https://rs.example.com/applications",
+        users: "https://rs.example.com/users"
+    )
+)
+```
+
+## SwiftUI
+
+`ThunderIDState` builds observable wrappers for each operation. Queries are `ResourceQuery` objects with `data`, `error`, and `isLoading`; call `refetch()` to load them. Mutations are `ResourceMutation` objects with `mutate(_:)`, which never throws, and `mutateThrowing(_:)`, which does. Hold either one as a `@StateObject` so the view updates when it changes:
+
+```swift
+struct ApplicationsView: View {
+    @EnvironmentObject private var thunderID: ThunderIDState
+
+    var body: some View {
+        ApplicationsList(query: thunderID.applicationsQuery(limit: 20))
+    }
+}
+
+struct ApplicationsList: View {
+    @StateObject private var query: ResourceQuery<ApplicationListResponse>
+
+    init(query: @autoclosure @escaping () -> ResourceQuery<ApplicationListResponse>) {
+        _query = StateObject(wrappedValue: query())
+    }
+
+    var body: some View {
+        List(query.data?.applications ?? [], id: \.id) { application in
+            Text(application.name)
+        }
+        .task { await query.refetch() }
+    }
+}
+```
+
+| Resource | Queries | Mutations |
+| :--- | :--- | :--- |
+| Applications | `applicationsQuery(limit:offset:fetcher:)`, `applicationQuery(id:fetcher:)` | `createApplicationMutation`, `updateApplicationMutation`, `deleteApplicationMutation` |
+| Users | `usersQuery(limit:offset:filter:fetcher:)`, `userQuery(id:fetcher:)` | `createUserMutation`, `updateUserMutation`, `deleteUserMutation` |
+| Agents | `agentsQuery(limit:offset:fetcher:)`, `agentQuery(id:fetcher:)` | `createAgentMutation`, `updateAgentMutation`, `deleteAgentMutation` |
+
+A successful mutation refetches the queries it changed, once they have loaded: a create or delete refetches the resource's list queries, and an update also refetches the query for that resource. Mutations produce no alert or log entry.
+
+## Error Handling
+
+The methods throw `ThunderIDError`. Catch it and switch on `code`:
+
+```swift
+do {
+    let application = try await client.applications.get(id: applicationId)
+} catch let error as ThunderIDError where error.code == .notFound {
+    // Show a "not found" state.
+} catch let error as ThunderIDError where error.code == .forbidden {
+    // The signed-in user cannot read applications.
+}
+```
+
+Management requests add two codes:
+
+| Code | Value | Description |
+| :--- | :--- | :--- |
+| `.forbidden` | `FORBIDDEN` | The server returned HTTP 403. The access token lacks permission for the operation. |
+| `.notFound` | `NOT_FOUND` | The server returned HTTP 404. The resource does not exist. |
+| `.invalidInput` | `INVALID_INPUT` | The resource identifier is empty, or the server rejected the payload with HTTP 400. |
+
+See [Error Codes](../thunderid-client#error-codes) for the full list.

@@ -1,0 +1,48 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+import {fireEvent, render, screen} from '@testing-library/react';
+import {AuthenticatorTypes} from '@thunderid/configure-connections';
+import {describe, it, expect, vi} from 'vitest';
+import PasswordlessLoginGroup, {type PasswordlessLoginGroupProps} from '../PasswordlessLoginGroup';
+
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-i18next')>()),
+  useTranslation: () => ({
+    t: (key: string, fallback?: string) => fallback ?? key,
+  }),
+}));
+
+describe('PasswordlessLoginGroup', () => {
+  const mockOnIntegrationToggle = vi.fn();
+
+  const defaultProps: PasswordlessLoginGroupProps = {
+    integrations: {[AuthenticatorTypes.PASSKEY]: false, [AuthenticatorTypes.MAGIC_LINK]: false},
+    onIntegrationToggle: mockOnIntegrationToggle,
+  };
+
+  it('starts collapsed, same as always, when no flow is selected', () => {
+    render(<PasswordlessLoginGroup {...defaultProps} />);
+
+    expect(screen.queryByTestId(`auth-method-${AuthenticatorTypes.PASSKEY}`)).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox')).not.toBeDisabled();
+    expect(screen.getByRole('button', {name: 'Expand'})).not.toBeDisabled();
+  });
+
+  it('collapses an already-expanded list and disables the checkbox/chevron once a pre-configured flow is selected', () => {
+    const {rerender} = render(<PasswordlessLoginGroup {...defaultProps} />);
+    const chevron = screen.getByRole('button', {name: 'Expand'});
+    fireEvent.click(chevron);
+    expect(screen.getByTestId(`auth-method-${AuthenticatorTypes.PASSKEY}`)).toBeInTheDocument();
+    expect(chevron).toHaveAttribute('aria-expanded', 'true');
+
+    rerender(<PasswordlessLoginGroup {...defaultProps} disabled />);
+
+    // The Collapse's own exit transition (not run by jsdom) governs when the row actually leaves
+    // the DOM under `unmountOnExit` — asserted here via the chevron/checkbox's immediate state
+    // instead, which the disabling effect updates synchronously regardless of that animation.
+    expect(chevron).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('checkbox')).toBeDisabled();
+    expect(chevron).toBeDisabled();
+  });
+});

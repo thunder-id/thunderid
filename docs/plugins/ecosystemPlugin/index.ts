@@ -313,7 +313,7 @@ export default function ecosystemPlugin(context: LoadContext): Plugin {
         if (!entry.sections?.length && !entry.guides?.length) continue;
         const data = await actions.createData(`ecosystem-${entry.id}.json`, JSON.stringify(entry));
         actions.addRoute({
-          path: `/sdks/${entry.id}`,
+          path: `/sdks-and-tools/${entry.id}`,
           component: '@site/src/components/Ecosystem/Detail/DetailPage',
           modules: {entry: data},
           exact: true,
@@ -323,7 +323,7 @@ export default function ecosystemPlugin(context: LoadContext): Plugin {
         // a handful of exports; this lists every one the registry carries.
         if (entry.sections?.some((section) => section.type === 'api')) {
           actions.addRoute({
-            path: `/sdks/${entry.id}/apis`,
+            path: `/sdks-and-tools/${entry.id}/apis`,
             component: '@site/src/components/Ecosystem/Detail/ApiReferencePage',
             modules: {entry: data},
             exact: true,
@@ -334,7 +334,7 @@ export default function ecosystemPlugin(context: LoadContext): Plugin {
         // the entry into a guide stays in one layout.
         for (const guide of entry.guides ?? []) {
           actions.addRoute({
-            path: `/sdks/${entry.id}/guides/${guide.id}`,
+            path: `/sdks-and-tools/${entry.id}/guides/${guide.id}`,
             component: '@site/src/components/Ecosystem/Detail/GuidePage',
             modules: {entry: data},
             exact: true,

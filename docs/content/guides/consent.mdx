@@ -14,9 +14,7 @@ import ConsentLoginScreenDark from './assets/images/consent-login-screen-dark.pn
 
 <ProductName /> provides built-in support for capturing user consent during the login flow.
 
-:::note
-As of now, <ProductName /> only supports **attribute consent**.
-:::
+Consent can cover profile attributes and permissions. For permission consent, place **Authorization** before **User Consent** in the sign-in flow. The consent screen lists the permissions the authenticated user holds for the requested resource; the issued token carries only the permissions they approve.
 
 ## Attribute Consent in Login Flows
 

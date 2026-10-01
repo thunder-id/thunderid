@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {GithubIcon, GoogleIcon, ResourceAvatar} from '@thunderid/components';
-import {MessageSquare, Send} from '@wso2/oxygen-ui-icons-react';
+import {MessageSquare, Send, ServerCog} from '@wso2/oxygen-ui-icons-react';
 import {CONNECTION_CATEGORIES} from '../constants/connection-categories';
 import ConnectionConstants from '../constants/connection-constants';
 import {
@@ -113,6 +113,18 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
     ),
     categories: ['sms', 'custom'],
     presentation: 'custom',
+  },
+  {
+    key: 'authzen-pdp',
+    backendType: ConnectionTypes.AUTHZEN_PDP,
+    displayName: 'Policy Decision Point (PDP)',
+    descriptionKey: 'connections:vendor.authzen-pdp.description',
+    logo: <ResourceAvatar transparent variant="rounded" size={AVATAR_SIZE} fallback={<ServerCog size={28} />} />,
+    categories: ['authorization', 'custom'],
+    presentation: 'custom',
+    supportsAuthentication: true,
+    supportsSubjectMapping: true,
+    generalSettingsCardCopy: 'configuration',
   },
 ];
 

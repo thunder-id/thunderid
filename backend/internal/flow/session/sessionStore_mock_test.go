@@ -732,6 +732,74 @@ func (_c *sessionStoreMock_ListBySessionID_Call) RunAndReturn(run func(ctx conte
 	return _c
 }
 
+// ListBySessionIDs provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) ListBySessionIDs(ctx context.Context, sessionIDs []string) ([]Participant, error) {
+	ret := _mock.Called(ctx, sessionIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListBySessionIDs")
+	}
+
+	var r0 []Participant
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) ([]Participant, error)); ok {
+		return returnFunc(ctx, sessionIDs)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) []Participant); ok {
+		r0 = returnFunc(ctx, sessionIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]Participant)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []string) error); ok {
+		r1 = returnFunc(ctx, sessionIDs)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sessionStoreMock_ListBySessionIDs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListBySessionIDs'
+type sessionStoreMock_ListBySessionIDs_Call struct {
+	*mock.Call
+}
+
+// ListBySessionIDs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sessionIDs []string
+func (_e *sessionStoreMock_Expecter) ListBySessionIDs(ctx interface{}, sessionIDs interface{}) *sessionStoreMock_ListBySessionIDs_Call {
+	return &sessionStoreMock_ListBySessionIDs_Call{Call: _e.mock.On("ListBySessionIDs", ctx, sessionIDs)}
+}
+
+func (_c *sessionStoreMock_ListBySessionIDs_Call) Run(run func(ctx context.Context, sessionIDs []string)) *sessionStoreMock_ListBySessionIDs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []string
+		if args[1] != nil {
+			arg1 = args[1].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_ListBySessionIDs_Call) Return(participants []Participant, err error) *sessionStoreMock_ListBySessionIDs_Call {
+	_c.Call.Return(participants, err)
+	return _c
+}
+
+func (_c *sessionStoreMock_ListBySessionIDs_Call) RunAndReturn(run func(ctx context.Context, sessionIDs []string) ([]Participant, error)) *sessionStoreMock_ListBySessionIDs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListBySubject provides a mock function for the type sessionStoreMock
 func (_mock *sessionStoreMock) ListBySubject(ctx context.Context, subjectID string) ([]Session, error) {
 	ret := _mock.Called(ctx, subjectID)

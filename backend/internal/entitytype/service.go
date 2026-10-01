@@ -33,8 +33,6 @@ type AttributeInfo = model.AttributeInfo
 type AttributeFilter = model.AttributeFilter
 
 // EntityTypeServiceInterface defines the interface for the entity type service.
-// All methods take a TypeCategory to scope the operation to a specific entity kind
-// (user or agent).
 type EntityTypeServiceInterface interface {
 	GetEntityTypeList(ctx context.Context, category TypeCategory, limit, offset int,
 		includeDisplay bool) (*EntityTypeListResponse, *tidcommon.ServiceError)
@@ -65,6 +63,9 @@ type EntityTypeServiceInterface interface {
 	GetAttributes(
 		ctx context.Context, category TypeCategory, entityType string, filter AttributeFilter,
 	) ([]AttributeInfo, *tidcommon.ServiceError)
+	GetAttributesForEntityType(
+		ctx context.Context, entityType string, filter AttributeFilter,
+	) (map[TypeCategory][]AttributeInfo, *tidcommon.ServiceError)
 	GetUniqueAttributes(
 		ctx context.Context, category TypeCategory, entityType string,
 	) ([]string, *tidcommon.ServiceError)
@@ -610,6 +611,27 @@ func (us *entityTypeService) GetAttributes(
 	}
 
 	return compiledSchema.GetAttributes(filter), nil
+}
+
+// GetAttributesForEntityType returns matching attributes for every category containing an entity type.
+func (us *entityTypeService) GetAttributesForEntityType(
+	ctx context.Context, entityType string, filter AttributeFilter,
+) (map[TypeCategory][]AttributeInfo, *tidcommon.ServiceError) {
+	attributesByCategory := make(map[TypeCategory][]AttributeInfo)
+	for _, category := range []TypeCategory{TypeCategoryUser, TypeCategoryAgent} {
+		attributes, svcErr := us.GetAttributes(ctx, category, entityType, filter)
+		if svcErr == nil {
+			attributesByCategory[category] = attributes
+			continue
+		}
+		if svcErr.Code != ErrorEntityTypeNotFound.Code {
+			return nil, svcErr
+		}
+	}
+	if len(attributesByCategory) == 0 {
+		return nil, &ErrorEntityTypeNotFound
+	}
+	return attributesByCategory, nil
 }
 
 // GetUniqueAttributes returns the names of schema properties marked as unique for a given entity type.

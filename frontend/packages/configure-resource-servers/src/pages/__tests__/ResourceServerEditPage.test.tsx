@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as componentsModule from '@thunderid/components';
-import * as thunderIdReactModule from '@thunderid/react';
 import {renderWithProviders, screen, fireEvent, waitFor} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -34,10 +33,13 @@ vi.mock('react-router', async () => {
   };
 });
 
-vi.mock('@thunderid/react', {spy: true});
-
-// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- vi.mock({spy:true}) type inference doesn't resolve for this package's conditional exports
-vi.mocked(thunderIdReactModule.useThunderID).mockImplementation(() => ({http: {request: vi.fn()}}) as never);
+vi.mock('@thunderid/react', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    useThunderID: () => ({http: {request: vi.fn()}}),
+  };
+});
 
 vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
@@ -95,13 +97,23 @@ vi.mocked(componentsModule.UnsavedChangesBar).mockImplementation(
 const mockUseGetResourceServer = vi.fn();
 const mockUpdateMutate = vi.fn();
 const mockUpdateReset = vi.fn();
-const mockUseUpdateResourceServer = vi.fn(() => ({
-  mutate: mockUpdateMutate,
-  isPending: false,
-  isError: false,
-  error: null,
-  reset: mockUpdateReset,
-}));
+interface UpdateResourceServerMutationMock {
+  mutate: typeof mockUpdateMutate;
+  isPending: boolean;
+  isError: boolean;
+  error: Error | null;
+  reset: typeof mockUpdateReset;
+}
+
+const mockUseUpdateResourceServer = vi.fn(
+  (): UpdateResourceServerMutationMock => ({
+    mutate: mockUpdateMutate,
+    isPending: false,
+    isError: false,
+    error: null,
+    reset: mockUpdateReset,
+  }),
+);
 
 vi.mock('../../api/useGetResourceServer', () => ({
   default: () =>
@@ -384,6 +396,9 @@ describe('ResourceServerEditPage', () => {
           description: null,
           identifier: 'https://new-api.example.com',
           ouId: 'ou-1',
+          authorizationEngine: {
+            type: 'rbac',
+          },
         },
       },
       expect.any(Object),

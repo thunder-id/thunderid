@@ -17,11 +17,12 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/entitytype/model"
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
@@ -177,7 +178,7 @@ func TestCreateEntityTypeResolvesOUHandleToID(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 
 	ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "default").
-		Return(providers.OrganizationUnit{ID: testOUID1}, (*tidcommon.ServiceError)(nil)).Once()
+		Return(ou.OrganizationUnit{ID: testOUID1}, (*tidcommon.ServiceError)(nil)).Once()
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOUID1).
 		Return(true, (*tidcommon.ServiceError)(nil)).Once()
 	storeMock.On("GetEntityTypeByName", mock.Anything, TypeCategoryUser, "test-schema").
@@ -213,7 +214,7 @@ func TestCreateEntityTypeReturnsErrorWhenOUHandleNotFound(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 
 	ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "missing").
-		Return(providers.OrganizationUnit{}, &tidcommon.ServiceError{Code: "OUS-4004"}).Once()
+		Return(ou.OrganizationUnit{}, &tidcommon.ServiceError{Code: "OUS-4004"}).Once()
 
 	service := &entityTypeService{
 		entityTypeStore: storeMock,
@@ -245,7 +246,7 @@ func TestUpdateEntityTypeResolvesOUHandleToID(t *testing.T) {
 
 	storeMock.On("IsEntityTypeDeclarative", TypeCategoryUser, "schema-id").Return(false).Once()
 	ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "default").
-		Return(providers.OrganizationUnit{ID: testOUID1}, (*tidcommon.ServiceError)(nil)).Once()
+		Return(ou.OrganizationUnit{ID: testOUID1}, (*tidcommon.ServiceError)(nil)).Once()
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOUID1).
 		Return(true, (*tidcommon.ServiceError)(nil)).Once()
 	storeMock.On("GetEntityTypeByID", mock.Anything, TypeCategoryUser, "schema-id").
@@ -283,7 +284,7 @@ func TestUpdateEntityTypeReturnsErrorWhenOUHandleNotFound(t *testing.T) {
 
 	storeMock.On("IsEntityTypeDeclarative", TypeCategoryUser, "schema-id").Return(false).Once()
 	ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "missing").
-		Return(providers.OrganizationUnit{}, &tidcommon.ServiceError{Code: "OUS-4004"}).Once()
+		Return(ou.OrganizationUnit{}, &tidcommon.ServiceError{Code: "OUS-4004"}).Once()
 
 	service := &entityTypeService{
 		entityTypeStore: storeMock,
@@ -387,7 +388,7 @@ func TestUpdateEntityTypeOUIDWinsWhenBothOUIDAndOUHandleProvided(t *testing.T) {
 func TestResolveEntityTypeHandles_OUHandleResolved(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "default").
-		Return(providers.OrganizationUnit{ID: testOUID1}, (*tidcommon.ServiceError)(nil)).Once()
+		Return(ou.OrganizationUnit{ID: testOUID1}, (*tidcommon.ServiceError)(nil)).Once()
 
 	svc := &entityTypeService{ouService: ouServiceMock}
 	et := &EntityType{OUHandle: "default"}
@@ -411,7 +412,7 @@ func TestResolveEntityTypeHandles_OUIDAlreadySet(t *testing.T) {
 func TestResolveEntityTypeHandles_OUHandleNotFound(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "bad").
-		Return(providers.OrganizationUnit{}, &tidcommon.ServiceError{Code: "OUS-4004"}).Once()
+		Return(ou.OrganizationUnit{}, &tidcommon.ServiceError{Code: "OUS-4004"}).Once()
 
 	svc := &entityTypeService{ouService: ouServiceMock}
 	et := &EntityType{OUHandle: "bad"}
@@ -444,7 +445,7 @@ func TestResolveEntityTypeHandles_DeclarativeLoaderUsesRuntimeContext(t *testing
 		Run(func(args mock.Arguments) {
 			capturedCtx = args.Get(0).(context.Context)
 		}).
-		Return(providers.OrganizationUnit{ID: testOUID1}, (*tidcommon.ServiceError)(nil)).Once()
+		Return(ou.OrganizationUnit{ID: testOUID1}, (*tidcommon.ServiceError)(nil)).Once()
 
 	svc := &entityTypeService{ouService: ouServiceMock}
 	et := &EntityType{OUHandle: "default"}
@@ -478,7 +479,7 @@ func TestCreateEntityType_OUHandleLookupUsesCallerContext(t *testing.T) {
 		Run(func(args mock.Arguments) {
 			capturedCtx = args.Get(0).(context.Context)
 		}).
-		Return(providers.OrganizationUnit{ID: testOUID1}, (*tidcommon.ServiceError)(nil)).Once()
+		Return(ou.OrganizationUnit{ID: testOUID1}, (*tidcommon.ServiceError)(nil)).Once()
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOUID1).
 		Return(true, (*tidcommon.ServiceError)(nil)).Once()
 	storeMock.On("GetEntityTypeByName", mock.Anything, TypeCategoryUser, "test-schema").
@@ -523,7 +524,7 @@ func TestUpdateEntityType_OUHandleLookupUsesCallerContext(t *testing.T) {
 		Run(func(args mock.Arguments) {
 			capturedCtx = args.Get(0).(context.Context)
 		}).
-		Return(providers.OrganizationUnit{ID: testOUID1}, (*tidcommon.ServiceError)(nil)).Once()
+		Return(ou.OrganizationUnit{ID: testOUID1}, (*tidcommon.ServiceError)(nil)).Once()
 	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOUID1).
 		Return(true, (*tidcommon.ServiceError)(nil)).Once()
 	storeMock.On("GetEntityTypeByID", mock.Anything, TypeCategoryUser, "schema-id").
@@ -1192,6 +1193,27 @@ func (s *EntityTypeServiceTestSuite) TestGetAttributes_SchemaNotFound_ReturnsErr
 	s.Require().Nil(attrs)
 	s.Require().NotNil(svcErr)
 	s.Require().Equal(ErrorEntityTypeNotFound.Code, svcErr.Code)
+}
+
+func (s *EntityTypeServiceTestSuite) TestGetAttributesForEntityType_ReturnsAttributesByCategory() {
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	storeMock.
+		On("GetEntityTypeByName", context.Background(), TypeCategoryUser, "employee").
+		Return(EntityType{Schema: json.RawMessage(`{"email":{"type":"string"}}`)}, nil).
+		Once()
+	storeMock.
+		On("GetEntityTypeByName", context.Background(), TypeCategoryAgent, "employee").
+		Return(EntityType{Schema: json.RawMessage(`{"clientId":{"type":"string"}}`)}, nil).
+		Once()
+	service := &entityTypeService{entityTypeStore: storeMock, transactioner: &mockTransactioner{}}
+
+	attributes, svcErr := service.GetAttributesForEntityType(
+		context.Background(), "employee", AttributeFilter{AllowNonCredential: true},
+	)
+
+	s.Require().Nil(svcErr)
+	s.Require().Equal([]AttributeInfo{{Attribute: "email", Type: "string"}}, attributes[TypeCategoryUser])
+	s.Require().Equal([]AttributeInfo{{Attribute: "clientId", Type: "string"}}, attributes[TypeCategoryAgent])
 }
 
 func (s *EntityTypeServiceTestSuite) TestGetAttributes_EmptyEntityType_ReturnsError() {

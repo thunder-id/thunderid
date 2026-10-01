@@ -271,7 +271,7 @@ func copyFederatedAttributesToRuntimeData(
 // the federated login over what is best-effort enrichment of its runtime state.
 func resolveAndSetMappedAuthorizationTargets(
 	ctx context.Context, execResp *providers.ExecutorResponse,
-	idpService idp.IDPServiceInterface, idpID string, federatedAttributes map[string]interface{},
+	idpService providers.IDPProvider, idpID string, federatedAttributes map[string]interface{},
 	logger *log.Logger,
 ) {
 	idpDTO, svcErr := idpService.GetIdentityProvider(ctx, idpID)

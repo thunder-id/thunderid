@@ -95,7 +95,7 @@ func TestGenericFileBasedStore_GetByField_NotFound(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "entity not found")
+	assert.ErrorIs(t, err, entity.ErrEntityNotFound)
 }
 
 func TestGenericFileBasedStore_List(t *testing.T) {

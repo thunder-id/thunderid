@@ -1,0 +1,364 @@
+---
+title: Vercel AI SDK Agent Quickstart
+docType: quickstart
+toc_progress: quickstart
+sidebar_position: 3
+persona: app
+description: Build a course enrollment agent with Vercel AI SDK and {{ProductName}} using agent or delegated user identity.
+---
+
+# Connect an AI Agent with Vercel AI SDK
+
+Use this guide to build an interactive course enrollment agent with Vercel AI SDK and <ProductName />. Complete the [shared setup](../) first, including the student role and consent flow.
+
+Ask **“List the available courses”** to use the agent's own identity. Then ask **“Enroll me in CS205”** to trigger sign-in and consent before the agent acts on your behalf. Both tools are available in the same session.
+
+## Prerequisites
+
+- Node.js 24 and npm.
+- A [Google AI Studio API key](https://aistudio.google.com/apikey) with access to the Gemini model you configure.
+- A browser on the same computer as the sample. User sign-in uses local port `6274`.
+
+<Stepper stepNode="h2" as="h2">
+
+## Create the Sample Project
+
+Run these commands in a new directory. Use Node.js 24 for these pinned dependencies:
+
+```bash
+mkdir vercel-ai-sdk-enrollment
+cd vercel-ai-sdk-enrollment
+npm init -y
+npm pkg set type=module
+npm install --save-exact ai@7.0.114 @ai-sdk/google@4.0.80 zod@4.6.5 tsx@4.23.15
+npm install --save-dev --save-exact @types/node@24.19.0
+```
+
+Create `.env` in this directory:
+
+```dotenv title=".env"
+THUNDERID_BASE_URL=https://localhost:8090
+AGENT_CLIENT_ID=replace-with-your-client-id
+AGENT_SECRET=replace-with-your-client-secret
+GOOGLE_API_KEY=replace-with-your-google-api-key
+GEMINI_MODEL=gemini-flash-lite-latest
+COURSE_RESOURCE=https://courses.example.com
+# Set NODE_EXTRA_CA_CERTS in your shell as shown below.
+```
+
+Use the **Client ID**, not the Agent ID, for `AGENT_CLIENT_ID`. Keep `.env` out of version control.
+
+For a local instance, save its public server certificate as `thunderid.pem` in the sample directory. With OpenSSL installed, run this command against the local instance you started:
+
+```bash
+openssl s_client -connect localhost:8090 -servername localhost </dev/null 2>/dev/null | openssl x509 -out thunderid.pem
+```
+
+Alternatively, copy `config/certs/server.cert` from your installation directory. For a source checkout, copy `backend/cmd/server/config/certs/server.cert`. Rename the copy to `thunderid.pem`.
+
+For an instance with a publicly trusted certificate, set `THUNDERID_BASE_URL` to its HTTPS URL and omit the local certificate configuration.
+
+For Node.js, set the certificate variable in the shell **before** starting the process. Putting it in `.env` is not sufficient.
+
+```bash
+export NODE_EXTRA_CA_CERTS="$PWD/thunderid.pem"
+```
+
+In PowerShell, use `$env:NODE_EXTRA_CA_CERTS = "$PWD/thunderid.pem"` instead. Omit this step for a publicly trusted certificate.
+
+## Add the Authentication Helper
+
+The helper requests `courses:read` with client credentials, or `courses:enroll` through authorization code with PKCE when enrollment needs your permission.
+
+Create the helper next to `.env`. The callback checks `state` and waits up to 180 seconds for sign-in and consent.
+
+<details>
+<summary>Copy the complete authentication helper</summary>
+
+```ts title="auth.ts"
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createServer } from 'node:http';
+
+const BASE_URL = process.env.THUNDERID_BASE_URL!.replace(/\/$/, '');
+const CLIENT_ID = process.env.AGENT_CLIENT_ID!;
+const CLIENT_SECRET = process.env.AGENT_SECRET!;
+const RESOURCE = process.env.COURSE_RESOURCE!;
+const REDIRECT_URI = 'http://localhost:6274/callback';
+
+export async function post(path: string, data: Record<string, string>) {
+  const encode = (value: string) => new URLSearchParams({ v: value }).toString().slice(2);
+  const basic = Buffer.from(`${encode(CLIENT_ID)}:${encode(CLIENT_SECRET)}`).toString('base64');
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Basic ${basic}` },
+    body: new URLSearchParams(data),
+    signal: AbortSignal.timeout(30_000),
+    redirect: 'error',
+  });
+  if (!response.ok) {
+    throw new Error(`${path} returned HTTP ${response.status}; check the agent configuration.`);
+  }
+  return response.json();
+}
+
+export async function getAgentToken(): Promise<string> {
+  return (await post('/oauth2/token', { grant_type: 'client_credentials', resource: RESOURCE, scope: 'courses:read' })).access_token;
+}
+
+export async function getUserToken(): Promise<string> {
+  const verifier = randomBytes(32).toString('base64url');
+  const challenge = createHash('sha256').update(verifier).digest('base64url');
+  const state = randomBytes(32).toString('base64url');
+  const params = new URLSearchParams({
+    response_type: 'code', client_id: CLIENT_ID,
+    redirect_uri: REDIRECT_URI, scope: 'openid courses:enroll', resource: RESOURCE, state, prompt: 'consent',
+    code_challenge: challenge, code_challenge_method: 'S256',
+  });
+
+  const code = await new Promise<string>((resolve, reject) => {
+    const finish = (error?: Error, value?: string) => {
+      clearTimeout(timer);
+      server.close();
+      if (error) reject(error);
+      else resolve(value!);
+    };
+    const server = createServer((req, res) => {
+      const url = new URL(req.url ?? '/', REDIRECT_URI);
+      const receivedState = Buffer.from(url.searchParams.get('state') ?? '');
+      const expectedState = Buffer.from(state);
+      const valid = url.pathname === '/callback'
+        && url.searchParams.getAll('state').length === 1
+        && receivedState.length === expectedState.length
+        && timingSafeEqual(receivedState, expectedState)
+        && (url.searchParams.getAll('code').length === 1 || url.searchParams.has('error'));
+      res.writeHead(valid ? 200 : 400, { 'Content-Type': 'text/plain', Connection: 'close' });
+      res.end(valid ? 'Return to your terminal.' : 'Invalid callback.');
+      if (!valid) return;
+      if (url.searchParams.has('error')) finish(new Error('Sign-in was denied or failed.'));
+      else finish(undefined, url.searchParams.get('code')!);
+    });
+    const timer = setTimeout(() => finish(new Error('Sign-in timed out. Submit the request again.')), 180_000);
+    server.on('error', error => finish(error));
+    server.listen(6274, 'localhost', () => {
+      console.log('Open this URL in your browser to sign in:');
+      console.log(`${BASE_URL}/oauth2/authorize?${params}`);
+    });
+  });
+  return (await post('/oauth2/token', {
+    grant_type: 'authorization_code', code,
+    redirect_uri: REDIRECT_URI, code_verifier: verifier,
+  })).access_token;
+}
+
+export async function inspectIdentity(token: string, permission: string) {
+  const data = await post('/oauth2/introspect', { token });
+  if (data.active !== true) throw new Error('The access token is inactive. Submit the request again.');
+  if (data.client_id !== CLIENT_ID || !data.sub) {
+    throw new Error('The token does not belong to this agent client.');
+  }
+  const audiences = Array.isArray(data.aud) ? data.aud : [data.aud];
+  if (!audiences.includes(RESOURCE) || !data.scope?.split(' ').includes(permission)) {
+    throw new Error(`Access denied: the token needs ${permission} for ${RESOURCE}.`);
+  }
+  // Read the actor only after introspection validates this exact token.
+  const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+  const identity = { active: data.active, sub: data.sub, client_id: data.client_id, scope: data.scope, act: claims.act };
+  console.log('Verified identity:', JSON.stringify(identity));
+  return identity;
+}
+```
+
+</details>
+
+`inspectIdentity` validates the access token through <ProductName /> before checking its audience and required permission. It reads `act` from the validated JWT because the introspection response does not include that claim.
+
+## Add the Course Tools
+
+Create the following file beside the helper. These protected course operations accept a token from the runtime, validate it, and enforce the required permission before reading or changing course data.
+
+```ts title="course_tools.ts"
+import { inspectIdentity } from './auth.ts';
+
+const COURSES = [
+  { id: 'CS101', name: 'Introduction to Computer Science' },
+  { id: 'CS205', name: 'Data Structures' },
+];
+const enrollments = new Map<string, Set<string>>();
+let enrolling = false;
+
+export async function listCourses(accessToken: string) {
+  await inspectIdentity(accessToken, 'courses:read');
+  const result = { courses: COURSES };
+  console.log('Tool result:', JSON.stringify(result));
+  return result;
+}
+
+export async function enrollCourse(courseId: string, accessToken: string) {
+  if (!COURSES.some(course => course.id === courseId)) {
+    return { status: 'not_enrolled', reason: 'Unknown course ID.' };
+  }
+  if (enrolling) return { status: 'not_enrolled', reason: 'An enrollment is already awaiting consent.' };
+  enrolling = true;
+  try {
+    const identity = await inspectIdentity(accessToken, 'courses:enroll');
+    if (!identity.act?.sub) throw new Error('Enrollment requires a delegated user token.');
+    const studentId: string = identity.sub; // The model cannot choose the student.
+    if (!enrollments.has(studentId)) enrollments.set(studentId, new Set());
+    const enrolled = enrollments.get(studentId)!;
+    const status = enrolled.has(courseId) ? 'already_enrolled' : 'enrolled';
+    enrolled.add(courseId);
+    const result = { student_id: studentId, course_id: courseId, status };
+    console.log('Tool result:', JSON.stringify(result));
+    return result;
+  } finally {
+    enrolling = false;
+  }
+}
+```
+
+The course operations validate tokens but never acquire them. The runtime callbacks supply each token outside the model-visible tool arguments, so the model cannot provide credentials or choose another student.
+
+## Connect the Tools to the Agent
+
+The entrypoint's runtime callbacks acquire the required token before calling the protected course operations. Vercel AI SDK exposes only the callbacks' schemas to the model and limits each request to 3 steps.
+
+```ts title="vercel.ts"
+import { createInterface } from 'node:readline/promises';
+import { stdin, stdout } from 'node:process';
+import { ToolLoopAgent, stepCountIs, tool } from 'ai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { z } from 'zod';
+import { getAgentToken, getUserToken } from './auth.ts';
+import { listCourses, enrollCourse } from './course_tools.ts';
+
+const google = createGoogleGenerativeAI({ apiKey: process.env.GOOGLE_API_KEY });
+const agent = new ToolLoopAgent({
+  model: google(process.env.GEMINI_MODEL!),
+  instructions: 'Use list_courses for the catalog and enroll_course only for enrollment requests. '
+    + 'The runtime handles sign-in and consent. Use the supplied course ID. '
+    + 'Report success only if the tool succeeds. If it fails, do not retry in this turn.',
+  tools: {
+    list_courses: tool({
+      description: 'List available courses as the agent. No student sign-in needed.',
+      inputSchema: z.object({}),
+      execute: async () => listCourses(await getAgentToken()),
+    }),
+    enroll_course: tool({
+      description: 'Enroll the requesting student. Triggers sign-in and consent first.',
+      inputSchema: z.object({ course_id: z.string() }),
+      execute: async ({ course_id }) => {
+        console.log(`Agent: Enrolling you in ${course_id} needs your permission.`);
+        const accessToken = await getUserToken(); // Pause until the student signs in and consents.
+        return enrollCourse(course_id, accessToken);
+      },
+    }),
+  },
+  stopWhen: stepCountIs(3),
+});
+const terminal = createInterface({ input: stdin, output: stdout });
+console.log('Ask about courses, or ask to enroll in CS205. Type exit to stop.');
+try {
+  while (true) {
+    let question: string;
+    try { question = (await terminal.question('You: ')).trim(); }
+    catch { break; }
+    if (question.toLowerCase() === 'exit') break;
+    if (!question) continue;
+    try {
+      const result = await agent.generate({ prompt: question });
+      console.log('Agent:', result.text);
+    } catch (error) {
+      console.error('Request failed:', error instanceof Error ? error.message : 'Unknown error');
+    }
+  }
+} finally {
+  terminal.close();
+}
+```
+
+Each request is independent: include the course ID when asking to enroll. Enrollment records remain in memory until you exit; delegated tokens are not cached between requests.
+
+## Ask the Agent to List Courses
+
+Start the agent:
+
+```bash
+export NODE_EXTRA_CA_CERTS="$PWD/thunderid.pem"
+npx tsx --env-file=.env vercel.ts
+```
+
+In PowerShell, set `$env:NODE_EXTRA_CA_CERTS = "$PWD/thunderid.pem"` before the `npx` command. Omit the certificate variable for a publicly trusted server certificate.
+
+At the `You:` prompt, type:
+
+```text
+List the available courses.
+```
+
+The agent uses its own credentials. No student signs in. Look for the identity and tool result:
+
+```text
+Verified identity: {"active":true,"sub":"<agent-id>","client_id":"<agent-client-id>","scope":"courses:read"}
+Tool result: {"courses":[{"id":"CS101","name":"Introduction to Computer Science"},{"id":"CS205","name":"Data Structures"}]}
+```
+
+The `sub` value matches the **Agent ID** in the Console; the final response lists the courses in natural language.
+
+## Ask the Agent to Enroll You
+
+In the same terminal session, type:
+
+```text
+Enroll me in CS205.
+```
+
+The enrollment tool pauses and prints:
+
+```text
+Agent: Enrolling you in CS205 needs your permission.
+Open this URL in your browser to sign in:
+https://localhost:8090/oauth2/authorize?...
+```
+
+1. Open the printed URL in your browser.
+2. Sign in as the student you assigned the **Student** role to in the shared setup.
+3. On the <ProductName /> consent screen, turn on the `courses:enroll` permission switch and click **Allow**.
+4. Return to the terminal after the browser reaches the local redirect URI.
+
+The pending tool call resumes, verifies your permission, and records the enrollment:
+
+```text
+Verified identity: {"active":true,"sub":"<student-id>","client_id":"<agent-client-id>","scope":"openid courses:enroll","act":{"sub":"<agent-id>"}}
+Tool result: {"student_id":"<student-id>","course_id":"CS205","status":"enrolled"}
+Agent: You are enrolled in CS205.
+```
+
+Scope order, JSON spacing, and the agent's wording can vary. Check the `Tool result` line for the actual enrollment; `student_id` comes from the verified token, and `act.sub` identifies the agent that acted for you.
+
+To try denial, submit another enrollment request and click **Deny** on the consent screen. The request fails without adding an enrollment. The sample sends `prompt=consent` on every enrollment request so you can repeat both outcomes.
+
+Type `exit` to stop. Restarting the process clears the course records; this example uses real tokens and permission checks with an in-memory course store.
+
+## Resolve Common Errors
+
+| Symptom | Check |
+|---|---|
+| HTTP `401` from the token or introspection endpoint | Use the agent's Client ID and current secret. Confirm `client_secret_basic` is configured. |
+| `invalid_target` | Match `COURSE_RESOURCE` to the **Course Catalog** resource server's identifier. |
+| Token lacks `courses:read` | Assign the **Course Reader** role to the agent. |
+| Token lacks `courses:enroll` | Assign the **Student** role to the signed-in user, and allow the requested permission on the consent screen. |
+| No consent screen appears | Select **Course Enrollment Sign-in** on the agent's **Flows** tab, with **User Consent** between **Authorization** and **Auth Assertion Generator**. |
+| Sign-in fails before the redirect | Enable delegated mode and register `http://localhost:6274/callback` exactly. |
+| Certificate verification fails | Copy the running instance's certificate. For Node.js, set `NODE_EXTRA_CA_CERTS` in the shell before starting the process. |
+| Port `6274` is in use | Stop the other sample and retry. |
+| Sign-in times out | Submit the request again and finish sign-in and consent within 180 seconds. |
+| Gemini reports a model or quota error | Check the model name, API key, and quota in your Google project. |
+| No `Tool result` line | The tool did not complete; do not treat a conversational confirmation as a successful enrollment. |
+
+## What's Next
+
+- [Agent tokens](../../../guides/agents/authentication/agent-own-token) explains own-identity access.
+- [Agent access on behalf of users](../../../guides/agents/authentication/on-behalf-of-user) covers delegated tokens and refresh.
+- [Control agent access](../../../use-cases/ai-agents/solve-access) covers permissions when connecting a separate business API.
+
+</Stepper>

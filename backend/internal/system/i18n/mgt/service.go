@@ -43,6 +43,11 @@ type I18nServiceInterface interface {
 	// map[key]map[language]value without locale resolution or best-match logic.
 	GetTranslationsByNamespace(ctx context.Context,
 		namespace string) (map[string]map[string]string, *tidcommon.ServiceError)
+	// GetTranslationsByKeys returns the raw translations of the given keys in a namespace as
+	// map[key]map[language]value, without locale resolution or best-match logic. A caller that
+	// needs a known set of keys uses this rather than reading the whole namespace.
+	GetTranslationsByKeys(ctx context.Context, namespace string,
+		keys []string) (map[string]map[string]string, *tidcommon.ServiceError)
 }
 
 // i18nService is the default implementation of I18nServiceInterface.
@@ -436,6 +441,37 @@ func (s *i18nService) GetTranslationsByNamespace(ctx context.Context,
 			}
 			result[fieldKey][lang] = trans.Value
 		}
+	}
+	return result, nil
+}
+
+// GetTranslationsByKeys returns the raw translations of the given keys in a namespace. It reads one
+// key at a time through the store rather than fetching the namespace and discarding most of it, so
+// the cost is proportional to what the caller asked for. Keys with no translations are absent from
+// the result rather than present and empty.
+func (s *i18nService) GetTranslationsByKeys(ctx context.Context, namespace string,
+	keys []string) (map[string]map[string]string, *tidcommon.ServiceError) {
+	if !ValidateNamespace(namespace) {
+		return nil, &ErrorInvalidNamespace
+	}
+	result := make(map[string]map[string]string, len(keys))
+	for _, key := range keys {
+		if !ValidateKey(key) {
+			return nil, &ErrorInvalidKey
+		}
+		trans, err := s.store.GetTranslationsByKey(ctx, key, namespace)
+		if err != nil {
+			s.logger.Error(ctx, "Failed to get translations by key", log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		if len(trans) == 0 {
+			continue
+		}
+		langs := make(map[string]string, len(trans))
+		for lang, t := range trans {
+			langs[lang] = t.Value
+		}
+		result[key] = langs
 	}
 	return result, nil
 }

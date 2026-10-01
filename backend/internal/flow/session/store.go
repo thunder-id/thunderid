@@ -281,6 +281,43 @@ func (st *store) ListBySessionID(ctx context.Context, sessionID string) ([]Parti
 	return result, nil
 }
 
+// ListBySessionIDs returns the participants of all the given sessions, each session's participants
+// oldest first. Ids are queried in chunks to stay under the bind-parameter limit.
+func (st *store) ListBySessionIDs(ctx context.Context, sessionIDs []string) ([]Participant, error) {
+	if len(sessionIDs) == 0 {
+		return nil, nil
+	}
+	var result []Participant
+
+	err := withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		for start := 0; start < len(sessionIDs); start += participantsBySessionIDsChunkSize {
+			end := min(start+participantsBySessionIDsChunkSize, len(sessionIDs))
+			chunk := sessionIDs[start:end]
+			args := make([]interface{}, 0, len(chunk)+1)
+			for _, id := range chunk {
+				args = append(args, id)
+			}
+			args = append(args, st.deploymentID)
+			results, queryErr := dbClient.QueryContext(ctx, buildListParticipantsBySessionIDsQuery(len(chunk)), args...)
+			if queryErr != nil {
+				return fmt.Errorf("failed to execute query: %w", queryErr)
+			}
+			for _, row := range results {
+				p, buildErr := buildParticipantFromRow(row)
+				if buildErr != nil {
+					return buildErr
+				}
+				result = append(result, p)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // DeleteBySessionID removes all participants of a session.
 func (st *store) DeleteBySessionID(ctx context.Context, sessionID string) error {
 	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {

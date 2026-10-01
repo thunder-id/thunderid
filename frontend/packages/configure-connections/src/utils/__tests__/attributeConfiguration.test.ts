@@ -17,7 +17,6 @@ const emptyState: AttributeMappingFormState = {
   externalAttribute: '',
   valueMapping: [],
   groups: [],
-  linking: [],
 };
 
 describe('toAttributeConfiguration', () => {
@@ -91,11 +90,6 @@ describe('toAttributeConfiguration', () => {
     });
     expect(cfg).toEqual({userTypeResolution: {default: 'Person'}});
   });
-
-  it('includes account linking only for non-empty trimmed attributes', () => {
-    const cfg = toAttributeConfiguration({...emptyState, defaultUserType: 'Person', linking: [' email ', '', '  ']});
-    expect(cfg).toEqual({userTypeResolution: {default: 'Person'}, accountLinking: {attributes: ['email']}});
-  });
 });
 
 describe('fromAttributeConfiguration', () => {
@@ -113,7 +107,6 @@ describe('fromAttributeConfiguration', () => {
       userTypeAttributeMappings: [
         {userType: 'Person', attributes: [{externalAttribute: 'given_name', localAttribute: 'firstName'}]},
       ],
-      accountLinking: {attributes: ['email']},
     };
     expect(fromAttributeConfiguration(cfg)).toEqual({
       defaultUserType: 'Person',
@@ -121,7 +114,6 @@ describe('fromAttributeConfiguration', () => {
       externalAttribute: 'user_type',
       valueMapping: [{value: 'staff', userType: 'Employee'}],
       groups: [{userType: 'Person', rows: [{externalAttribute: 'given_name', localAttribute: 'firstName'}]}],
-      linking: ['email'],
     });
   });
 
@@ -135,7 +127,6 @@ describe('fromAttributeConfiguration', () => {
         {userType: 'Person', rows: [{externalAttribute: 'email', localAttribute: 'email'}]},
         {userType: 'Employee', rows: [{externalAttribute: 'emp_id', localAttribute: 'employeeNumber'}]},
       ],
-      linking: ['email'],
     };
     expect(fromAttributeConfiguration(toAttributeConfiguration(state))).toEqual(state);
   });

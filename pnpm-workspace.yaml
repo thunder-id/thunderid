@@ -36,8 +36,8 @@ catalog:
   '@testing-library/jest-dom': 6.9.1
   '@testing-library/react': 16.3.0
   '@testing-library/user-event': 14.6.1
-  '@thunderid/react': 1.0.3
-  '@thunderid/react-router': 1.0.3
+  '@thunderid/react': 1.1.0
+  '@thunderid/react-router': 1.1.0
   '@types/lodash-es': 4.17.12
   '@types/node': 24.7.2
   '@types/react': 19.2.14
@@ -60,7 +60,7 @@ catalog:
   jsdom: 27.0.1
   lodash-es: 4.18.1
   lucide-react: 0.545.0
-  next: 16.3.4
+  next: 16.3.6
   playwright: 1.60.0
   prettier: 3.6.2
   react: 19.2.3
@@ -128,8 +128,11 @@ overrides:
   # brace-expansion to 5.0.8, and route minimatch@3.1.5 (used by @eslint/config-array,
   # @eslint/eslintrc, and eslint itself, which do CJS `require('brace-expansion')`) through the
   # `patches/minimatch@3.1.5.patch` shim so the switch to the 5.x `{ expand }` API is transparent.
-  # 5.0.9 additionally fixes GHSA-rgw5-rvv9-x895 — DoS via unbounded intermediate arrays.
-  brace-expansion: 5.0.9
+  # 5.0.9 additionally fixes GHSA-rgw5-rvv9-x895 — DoS via unbounded intermediate arrays,
+  # 5.0.10 fixes GHSA-6j4f-fj2g-mc7p — stack exhaustion via uncontrolled recursion in
+  # parseCommaParts, and 5.0.11 fixes GHSA-qhr7-859c-m2p7 — stack exhaustion via uncontrolled
+  # recursion on nested brace groups. Kept on the 5.x line so the minimatch patch above still applies.
+  brace-expansion: 5.0.12
   lodash: 4.18.1
   # JUSTIFICATION: Fixes GHSA-52cp-r559-cp3m — YAML merge-key chains forcing quadratic CPU consumption,
   # GHSA-5p4m-2wfm-xmqj (CVE-2026-59870) — quadratic CPU consumption in !!omap resolution, and
@@ -158,16 +161,18 @@ overrides:
   # Bounded to <8 so it stays on the patched 7.x line: @docusaurus/core and @vitest/coverage-istanbul
   # require Babel 7 and break on the 8.x ESM export changes.
   '@babel/core': '>=7.29.6 <8'
-  # JUSTIFICATION: Transitive dep via docusaurus. Fixes CVE-2026-48038 (GHSA-q7cg-457f-vx79) — uncaught RangeError DoS in joi on deeply nested input through recursive link() schemas.
-  joi: '>=18.2.1'
+  # JUSTIFICATION: Transitive dep via docusaurus. Fixes CVE-2026-48038 (GHSA-q7cg-457f-vx79) — uncaught RangeError DoS in joi on deeply nested input through recursive link() schemas,
+  # and GHSA-6h2x-m376-mqjq — quadratic regular-expression backtracking in Joi.string().isoDate().
+  joi: '>=18.2.6'
   # JUSTIFICATION: Fixes GHSA-gv7w-rqvm-qjhr — esbuild Deno module downloads native binaries without integrity verification, enabling RCE via NPM_CONFIG_REGISTRY.
   esbuild: '>=0.28.1'
   # JUSTIFICATION: Fixes GHSA-vxpw-j846-p89q (high DoS), GHSA-p88m-4jfj-68fv (HTTP header injection),
   # GHSA-35p6-xmwp-9g52 and GHSA-g8m3-5g58-fq7m — transitive via @codecov/vite-plugin chain. The only
   # consumers (@actions/http-client 3.x/4.x) declare undici ^6.23.0, so pin to the patched 6.x line:
-  # >=6.27.0 clears the CVEs above and, by staying off the 8.x line, also avoids GHSA-4cwx-7wf7-3272
+  # >=6.28.1 clears the CVEs above plus GHSA-rfgv-xxqx-mfg5 — DoS via unrequested WebSocket
+  # subprotocol — and, by staying off the 8.x line, also avoids GHSA-4cwx-7wf7-3272
   # (8.0.0-8.8.x cross-user info disclosure). 6.x keeps Node 18 support; 8.x requires Node >=22.19.0.
-  undici: '^6.27.0'
+  undici: '^6.28.1'
   # JUSTIFICATION: Fixes entity encoding bypass and RCE vulnerabilities in fast-xml-parser.
   fast-xml-parser: '>=5.3.6'
   # JUSTIFICATION: Fixes arbitrary file read vulnerability in Vitest UI server.
@@ -222,13 +227,14 @@ overrides:
   # JUSTIFICATION: Fixes GHSA-5jgf-p345-68v8 (host confusion via skipped IDN canonicalization on
   # scheme-relative references), GHSA-f65p-4m7j-42xc (SSRF via malformed IPv6 normalization),
   # GHSA-fph4-wmhf-6fwf (SSRF via repeated hostname percent-decoding) and GHSA-jqff-g426-hqxp
-  # (host confusion via percent-encoded scheme normalization). Transitive via the Docusaurus
+  # (host confusion via percent-encoded scheme normalization); raised to 3.1.8 for GHSA-qw65-cvwx-89v3
+  # (authority injection, fixed in 3.1.7) and GHSA-58mr-gqgx-xq4g (host confusion via an unclosed
+  # bracket in the authority, affects 3.1.6 only). Transitive via the Docusaurus
   # webpack -> schema-utils -> ajv chain (100+ paths), so overridden globally. Constrained to the
-  # 3.x line: the consumers here (ajv) declare fast-uri ^3.0.1, and an open-ended '>=3.1.6' lets
-  # the resolver dedupe this edge onto the 4.x major, which those consumers were never tested
-  # against. 3.1.6 is a patch release on the 3.1.x line already resolved here (3.1.5), so no API
-  # change.
-  fast-uri: '>=3.1.6 <4'
+  # 3.x line: the consumers here (ajv) declare fast-uri ^3.0.1, and an open-ended floor lets the
+  # resolver dedupe this edge onto the 4.x major, which those consumers were never tested against.
+  # 3.1.8 is a patch release on the 3.1.x line already resolved here (3.1.6), so no API change.
+  fast-uri: '>=3.1.8 <4'
 
 packageExtensions:
   '@hookform/resolvers':

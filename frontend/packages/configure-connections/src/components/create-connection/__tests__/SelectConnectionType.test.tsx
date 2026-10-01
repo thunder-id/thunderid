@@ -3,6 +3,7 @@
 
 import {render, screen, fireEvent} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
+import {POLICY_DECISION_POINT_TYPE} from '../../../constants/connection-wizard';
 import SelectConnectionType from '../SelectConnectionType';
 
 describe('SelectConnectionType', () => {
@@ -16,6 +17,7 @@ describe('SelectConnectionType', () => {
     expect(screen.getByTestId('connection-type-option-oidc')).toBeInTheDocument();
     expect(screen.getByTestId('connection-type-option-oauth')).toBeInTheDocument();
     expect(screen.getByTestId('connection-type-option-trusted-idp')).toBeInTheDocument();
+    expect(screen.getByTestId('connection-type-option-policy-decision-point')).toBeInTheDocument();
     expect(screen.getByTestId('connection-type-option-sms-gateway')).toBeInTheDocument();
   });
 
@@ -41,6 +43,12 @@ describe('SelectConnectionType', () => {
     render(<SelectConnectionType selectedType={null} onSelect={onSelect} />);
     fireEvent.click(screen.getByTestId('connection-type-option-trusted-idp'));
     expect(onSelect).toHaveBeenCalledWith('trusted-idp');
+  });
+
+  it('selects the Policy Decision Point type when clicked', () => {
+    render(<SelectConnectionType selectedType={null} onSelect={onSelect} />);
+    fireEvent.click(screen.getByTestId('connection-type-option-policy-decision-point'));
+    expect(onSelect).toHaveBeenCalledWith(POLICY_DECISION_POINT_TYPE);
   });
 
   it('selects a type when Enter is pressed', () => {

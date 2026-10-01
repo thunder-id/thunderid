@@ -2571,6 +2571,18 @@ components:
             format: uri
           description: Redirect URIs. Required for redirect-based grant types (`authorization_code`).
           example: ["https://calendar-agent.example.com/callback"]
+        postLogoutRedirectUris:
+          type: array
+          items:
+            type: string
+            format: uri
+          description: Allowed post-logout redirect URIs. A post_logout_redirect_uri sent to the logout endpoint must match one of these.
+          example: ["https://calendar-agent.example.com/logged-out"]
+        backchannelLogoutUri:
+          type: string
+          format: uri
+          description: OIDC Back-Channel Logout endpoint of the agent. ThunderID POSTs a logout token here when a session the agent shares ends. Must be an absolute http or https URL without userinfo, a fragment or a wildcard; public clients must use https.
+          example: "https://calendar-agent.example.com/backchannel-logout"
         grantTypes:
           type: array
           items:

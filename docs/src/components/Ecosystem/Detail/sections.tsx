@@ -408,7 +408,7 @@ function GuidesSection({
             <Box
               key={guide.id}
               component={Link}
-              to={`/sdks/${entryId}/guides/${guide.id}`}
+              to={`/sdks-and-tools/${entryId}/guides/${guide.id}`}
               sx={{
                 display: 'flex',
                 flexDirection: 'column',

@@ -74,7 +74,8 @@ asks for. Rename each entry to include its resource type, or export again and fi
 
 ## User Credentials
 
-An exported user carries its password as a template variable rather than a value:
+Every user is exported, whether or not it has a password. A user who has one carries it as a
+template variable rather than a value:
 
 ```yaml
 credentials:
@@ -86,8 +87,11 @@ importing server supplies the password from its own environment or secret provid
 the way in, which leaves the imported user able to sign in. Without the placeholder the user would
 import with no credential at all.
 
-Only the password is carried. It is the credential every user type defines, and a device-bound
-credential such as a passkey means nothing on another deployment.
+Which credentials a user carries depends on its user type. The export includes each credential the
+user type declares, such as `password`, when the user has set it. A credential the user has not set
+is left out, so a user created without a password exports with no `credentials` block, and the
+import asks for nothing it would never use. A credential outside the user type, such as a passkey,
+is never exported: it is bound to a device and means nothing on another deployment.
 
 A user with no username exports no credentials, because the variable is named after the username and
 there is nothing to name it after.
@@ -100,6 +104,70 @@ both import with the same password.
 <ProductName /> refuses the whole export in that case, with the error `EXP-1003` naming the two
 resources. The bundle is not returned at all, because one that dropped a resource silently would look
 complete. Rename one of the users, or export them separately.
+
+## Exports From a Control Plane
+
+What an export contains depends on the plane you export from. A data plane holds its own values, so
+each parameterized field carries a template placeholder, and `environment_variables` lists the
+placeholders for you to fill in. A control plane authors configuration but does not hold the values
+it refers to. Each parameterized field carries a reference instead, naming where a data plane holds
+the value, and there is nothing to fill in.
+
+The same application exported from each plane:
+
+```yaml
+# From a data plane
+oauth:
+  clientId: {{.APPLICATION_MY_APP_CLIENT_ID}}
+  clientSecret: {{.APPLICATION_MY_APP_CLIENT_SECRET}}
+
+# From a control plane
+oauth:
+  clientId: var:APPLICATION_MY_APP_CLIENT_ID
+  clientSecret: sec:APPLICATION_MY_APP_CLIENT_SECRET
+```
+
+A reference names one of two collections:
+
+| Prefix | Refers to | Example |
+| --- | --- | --- |
+| `var:` | An ordinary value, such as a client ID | `var:APPLICATION_MY_APP_CLIENT_ID` |
+| `sec:` | A credential, such as a client secret | `sec:APPLICATION_MY_APP_CLIENT_SECRET` |
+
+The prefix is what keeps a credential out of a read. A data plane returns a variable's value when
+asked for it, and never returns a secret's. A client secret, a connection's secret or token, and any
+property marked `isSecret` always export with `sec:`.
+
+### Stored References Keep Their Names
+
+A field that already holds a reference exports as it stands. The name in a reference records where
+the value went, so renaming the resource does not change it. An application renamed from `Old Name`
+to `New Name` still exports `sec:APPLICATION_OLD_NAME_CLIENT_SECRET`, because that is the name the
+data plane holds the secret under.
+
+Each entry in a list gets the same treatment on its own. In an application with two inbound
+configurations, a reference already placed in one is kept, and a value in the other is replaced
+with a new reference.
+
+### What a Control Plane Does Not Parameterize
+
+A field parameterized as a list, such as an application's redirect URIs, exports with its values as
+they are. A reference names a single value and has no form that expands into list entries.
+
+A user's credentials are written as template placeholders on either plane, as described in
+[User Credentials](#user-credentials). A control-plane export that includes users who have set a
+password therefore still lists a password variable for each of them in `environment_variables`.
+Every other control-plane export leaves `environment_variables` empty.
+
+### A Credential That Refers to a Variable
+
+<ProductName /> refuses to export a credential that refers to an ordinary variable, such as a client
+secret holding `var:APPLICATION_MY_APP_CLIENT_SECRET`. Exporting it as it stands would point the
+credential at a value a read returns. Changing the prefix to `sec:` would name a secret that was
+never stored.
+
+The export leaves that resource out and logs a warning naming it. The other resources export as
+usual. Update the field to a `sec:` reference that names the stored secret, then export again.
 
 ## Internal API Model Reference
 

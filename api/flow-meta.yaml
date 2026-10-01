@@ -219,7 +219,8 @@ components:
       description: |
         Organization unit metadata.
         - Always present when `type=OU`
-        - For `type=APP`, only included when deployment has exactly one OU
+        - For `type=APP`, the organization unit the application belongs to. Omitted when the
+          application is not associated with an organization unit.
       properties:
         id:
           type: string

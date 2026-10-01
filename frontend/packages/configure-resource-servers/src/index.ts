@@ -9,6 +9,7 @@ export {default as useUpdateResourceServer} from './api/useUpdateResourceServer'
 export {default as useDeleteResourceServer} from './api/useDeleteResourceServer';
 export {default as useGetDefaultResourceServer} from './api/useGetDefaultResourceServer';
 export {default as useSetDefaultResourceServer} from './api/useSetDefaultResourceServer';
+export {default as useAuthZENPDPConnections} from './api/useAuthZENPDPConnections';
 export {default as useGetResources} from './api/useGetResources';
 export {default as useCreateResource} from './api/useCreateResource';
 export {default as useUpdateResource} from './api/useUpdateResource';
@@ -18,6 +19,7 @@ export {default as useGetResourceActions} from './api/useGetResourceActions';
 export {default as useCreateAction} from './api/useCreateAction';
 export {default as useUpdateAction} from './api/useUpdateAction';
 export {default as useDeleteAction} from './api/useDeleteAction';
+export {default as useSubtreePermissions} from './api/useSubtreePermissions';
 
 // Components
 export {default as PermissionCatalog} from './components/permission-catalog/PermissionCatalog';
@@ -34,8 +36,11 @@ export type {SetDefaultResourceServerDialogProps} from './components/SetDefaultR
 export {default as ResourceServerQueryKeys} from './constants/resource-server-query-keys';
 
 // Models
+export {AuthorizationEngines} from './models/resource-server';
 export type {
   ResourceServer,
+  AuthorizationEngine,
+  AuthZENPDPConnectionSummary,
   ResourceServerListResponse,
   Resource,
   ResourceListResponse,
@@ -71,4 +76,8 @@ export {default as CreateResourceServerPage} from './pages/CreateResourceServerP
 
 // Routes
 export type {ResourceServerRoutePaths} from './hooks/useResourceServerRoutes';
-export {defaultResourceServerRoutePaths, default as useResourceServerRoutes} from './hooks/useResourceServerRoutes';
+export {
+  defaultResourceServerRoutePaths,
+  useResourceServerConnectionRoutes,
+  default as useResourceServerRoutes,
+} from './hooks/useResourceServerRoutes';

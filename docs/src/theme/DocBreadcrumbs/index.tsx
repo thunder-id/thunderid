@@ -31,7 +31,7 @@ export default function DocBreadcrumbsWrapper(): JSX.Element {
   return (
     <Box
       component={Link}
-      to={`/sdks/${entry.id}`}
+      to={`/sdks-and-tools/${entry.id}`}
       sx={{
         display: 'inline-flex',
         alignItems: 'center',

@@ -120,7 +120,7 @@ export default function SdkQuickstartDownload({
 }: SdkQuickstartDownloadProps): React.ReactElement | null {
   const {withBaseUrl} = useBaseUrlUtils();
   // Resolved the way a version-less page resolves it, rather than read from the
-  // docs context, so the callout also works on the standalone `/sdks` routes.
+  // docs context, so the callout also works on the standalone `/sdks-and-tools` routes.
   const active = useActiveVersion(undefined);
   const {preferredVersion} = useDocsPreferredVersion(undefined);
   const latest = useLatestVersion(undefined);

@@ -10,8 +10,6 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -258,8 +256,8 @@ func (
 // sanitizeOrganizationUnitRequest sanitizes the create organization unit request input.
 func (ouh *organizationUnitHandler) sanitizeOrganizationUnitRequest(
 	request OrganizationUnitRequest,
-) providers.OrganizationUnitRequestWithID {
-	return providers.OrganizationUnitRequestWithID{
+) OrganizationUnitRequestWithID {
+	return OrganizationUnitRequestWithID{
 		Handle:                    sysutils.SanitizeString(request.Handle),
 		Name:                      sysutils.SanitizeString(request.Name),
 		Description:               sysutils.SanitizeString(request.Description),
@@ -350,7 +348,7 @@ func (ouh *organizationUnitHandler) handleResourceListRequest(
 	// Extract pagination info for logging based on response type
 	var totalResults, count int
 	switch resp := response.(type) {
-	case *providers.OrganizationUnitListResponse:
+	case *OrganizationUnitListResponse:
 		totalResults = resp.TotalResults
 		count = resp.Count
 	case *UserListResponse:
@@ -483,7 +481,7 @@ func (ouh *organizationUnitHandler) handleResourceListByPathRequest(
 	if logger.IsDebugEnabled() {
 		var totalResults, count int
 		switch resp := response.(type) {
-		case *providers.OrganizationUnitListResponse:
+		case *OrganizationUnitListResponse:
 			totalResults = resp.TotalResults
 			count = resp.Count
 		case *UserListResponse:

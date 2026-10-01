@@ -3697,3 +3697,69 @@ func (suite *InboundClientServiceTestSuite) TestValidateSubjectAttributeMapping_
 		context.Background(), map[string]string{"employee": "email"}, []string{"employee"}),
 		ErrUniqueAttributeLookupFailed)
 }
+
+func (suite *InboundClientServiceTestSuite) TestValidateBackchannelLogoutURI() {
+	cases := []struct {
+		name   string
+		uri    string
+		public bool
+		want   error
+	}{
+		{"empty is allowed", "", false, nil},
+		{"https", "https://rp.example.com/backchannel-logout", false, nil},
+		{"https for a public client", "https://spa.example.com/bcl", true, nil},
+		{"http for a confidential client", "http://rp.internal:8080/bcl", false, nil},
+		{"loopback rejected by default", "https://127.0.0.1/bcl", false, ErrOAuthBackchannelLogoutURIPrivateHost},
+		{"http for a public client", "http://spa.example.com/bcl", true, ErrOAuthBackchannelLogoutURIRequiresHTTPS},
+		{"custom scheme", "myapp://logout", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"no host", "https:///bcl", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"port without host", "https://:443/bcl", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"relative", "/bcl", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"fragment", "https://rp.example.com/bcl#x", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"empty fragment", "https://rp.example.com/bcl#", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"userinfo", "https://user:secret@rp.example.com/bcl", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"port, path and query are allowed", "https://rp.example.com:8443/bcl?tenant=a", false, nil},
+		{"wildcard in host", "https://*.example.com/bcl", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"wildcard in path", "https://rp.example.com/*", false, ErrOAuthInvalidBackchannelLogoutURI},
+		{"unparsable", "https://rp.example.com/%zz", false, ErrOAuthInvalidBackchannelLogoutURI},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			p := &providers.OAuthProfile{BackchannelLogoutURI: tc.uri, PublicClient: tc.public}
+			assert.ErrorIs(suite.T(), validateBackchannelLogoutURI(p), tc.want)
+		})
+	}
+}
+
+// With nothing configured the guard is on, as default.json ships it.
+func (suite *InboundClientServiceTestSuite) TestValidateBackchannelLogoutURI_RejectPrivateAddresses() {
+	rejected := []string{
+		"https://localhost/bcl", "https://app.localhost/bcl", "http://127.0.0.1:8080/bcl", "https://[::1]/bcl",
+		"https://169.254.169.254/latest", "https://10.0.0.5/bcl", "https://172.16.1.1/bcl",
+		"https://192.168.1.10/bcl", "https://[fd00::1]/bcl", "https://0.0.0.0/bcl",
+	}
+	for _, uri := range rejected {
+		p := &providers.OAuthProfile{BackchannelLogoutURI: uri}
+		assert.ErrorIs(suite.T(), validateBackchannelLogoutURI(p), ErrOAuthBackchannelLogoutURIPrivateHost, uri)
+	}
+	allowed := []string{"https://rp.example.com/bcl", "https://8.8.8.8/bcl", "https://rp.internal/bcl"}
+	for _, uri := range allowed {
+		p := &providers.OAuthProfile{BackchannelLogoutURI: uri}
+		assert.NoError(suite.T(), validateBackchannelLogoutURI(p), uri)
+	}
+}
+
+// An operator with relying parties on internal networks can turn the guard off.
+func (suite *InboundClientServiceTestSuite) TestValidateBackchannelLogoutURI_GuardOffAcceptsPrivateHosts() {
+	sysconfig.ResetServerRuntime()
+	cfg := &sysconfig.Config{}
+	allow := false
+	cfg.OAuth.Logout.Backchannel.RejectPrivateAddresses = &allow
+	suite.Require().NoError(sysconfig.InitializeServerRuntime("/tmp/test", cfg))
+	defer suite.SetupTest()
+
+	for _, uri := range []string{"https://localhost/bcl", "http://127.0.0.1:8080/bcl", "https://10.0.0.5/bcl"} {
+		p := &providers.OAuthProfile{BackchannelLogoutURI: uri}
+		assert.NoError(suite.T(), validateBackchannelLogoutURI(p), uri)
+	}
+}

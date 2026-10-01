@@ -1,0 +1,143 @@
+---
+displayed_sidebar: null
+title: Android Management API
+docType: reference
+description: List, read, create, update, and delete applications, users, and agents from the Android SDK through the management API.
+---
+
+# Android Management API
+
+`ThunderIDClient` exposes the <ProductName /> management API through three clients: `applications`, `users`, and `agents`. Each lists, reads, creates, updates, and deletes its resource. Requests are authorized with the signed-in user's access token, and the token needs the permissions the server requires for each resource.
+
+```kotlin
+import dev.thunderid.android.management.ApplicationRequest
+
+val page = client.applications.list(limit = 20)
+
+val application = client.applications.create(
+    ApplicationRequest(name = "My App", url = "https://app.example.com")
+)
+
+client.users.delete("<user-id>")
+```
+
+The models and clients live in the `dev.thunderid.android.management` package. Accessing `applications`, `users`, or `agents` throws `SDK_NOT_INITIALIZED` until `initialize` has run.
+
+## Operations
+
+| Client | Function | Request | Returns |
+| :--- | :--- | :--- | :--- |
+| `applications` | `list(limit, offset, fetcher)` | `GET /applications` | `ApplicationListResponse` |
+| | `get(id, fetcher)` | `GET /applications/{id}` | `Application` |
+| | `create(application, fetcher)` | `POST /applications` | `Application` |
+| | `update(id, application, fetcher)` | `PUT /applications/{id}` | `Application` |
+| | `delete(id, fetcher)` | `DELETE /applications/{id}` | `Unit` |
+| `users` | `list(limit, offset, filter, fetcher)` | `GET /users?include=display` | `ManagedUserListResponse` |
+| | `get(id, fetcher)` | `GET /users/{id}?include=display` | `ManagedUser` |
+| | `create(user, fetcher)` | `POST /users` | `ManagedUser` |
+| | `update(id, user, fetcher)` | `PUT /users/{id}` | `ManagedUser` |
+| | `delete(id, fetcher)` | `DELETE /users/{id}` | `Unit` |
+| `agents` | `list(limit, offset, fetcher)` | `GET /agents?include=display` | `AgentListResponse` |
+| | `get(id, fetcher)` | `GET /agents/{id}?include=display` | `Agent` |
+| | `create(agent, fetcher)` | `POST /agents` | `Agent` |
+| | `update(id, agent, fetcher)` | `PUT /agents/{id}` | `Agent` |
+| | `delete(id, fetcher)` | `DELETE /agents/{id}` | `Unit` |
+
+All functions are `suspend` functions, and every parameter other than `id` and the payload is optional.
+
+## Models
+
+| Payload | Used by | Required fields |
+| :--- | :--- | :--- |
+| `ApplicationRequest` | `applications.create`, `applications.update` | `name` |
+| `CreateManagedUserRequest` | `users.create` | `ouId`, `type` |
+| `UpdateManagedUserRequest` | `users.update` | None |
+| `CreateAgentRequest` | `agents.create` | `ouId`, `type`, `name` |
+| `UpdateAgentRequest` | `agents.update` | None |
+
+An update replaces the application's mutable fields. Call `Application.toRequest()` to get the full payload, then change the fields you need with `copy`:
+
+```kotlin
+val current = client.applications.get("<application-id>")
+client.applications.update(current.id, current.toRequest().copy(description = "Updated"))
+```
+
+A `ManagedUser` is a user record on the server, with `id`, `ouId`, `type`, `attributes`, and the resolved `display` value. It is a different type from `User`, which describes the signed-in user.
+
+## Transport
+
+Set `ThunderIDConfig.http.fetcher` to route management requests through your own transport. A `fetcher` passed to a single call takes precedence over the configured one.
+
+```kotlin
+fun interface ThunderIDFetcher {
+    suspend fun fetch(request: ThunderIDHttpRequest): ThunderIDHttpResponse
+}
+
+ThunderIDConfig(
+    baseUrl = "https://localhost:8090",
+    clientId = "<your-client-id>",
+    http = ThunderIDHttpConfig(fetcher = myFetcher),
+)
+```
+
+`ThunderIDHttpRequest` carries `method`, `url`, `headers`, and the JSON `body`. The headers already include `Authorization`. Return a `ThunderIDHttpResponse` with the `statusCode` and response `body`; the SDK maps non-2xx statuses to `IAMException`. Without a fetcher, requests use the SDK's built-in HTTP transport. `http.fetcher` applies to management operations only; sign-in, token, and flow requests keep using the SDK's own transport.
+
+## Management API on a Separate Host
+
+Requests go to `{baseUrl}/applications`, `{baseUrl}/users`, and `{baseUrl}/agents`. When the management API runs on a different host, set the collection URL through `ThunderIDConfig.endpoints`:
+
+```kotlin
+ThunderIDConfig(
+    baseUrl = "https://idp.example.com",
+    clientId = "<your-client-id>",
+    endpoints = ThunderIDEndpoints(
+        applications = "https://rs.example.com/applications",
+        users = "https://rs.example.com/users",
+        agents = "https://rs.example.com/agents",
+    ),
+)
+```
+
+## Jetpack Compose
+
+The `dev.thunderid.compose.management` package provides composables for each operation. They read the client from `ThunderIDProvider`. Query composables load on first composition and return a `ResourceQueryState` with `data`, `error`, and `isLoading`. Mutation composables return a `ResourceMutationState` with `mutate`, which never throws, and `mutateThrowing`, which does.
+
+```kotlin
+@Composable
+fun Applications() {
+    val applications = rememberGetApplications(limit = 20)
+    val deleteApplication = rememberDeleteApplication()
+    val scope = rememberCoroutineScope()
+
+    LazyColumn {
+        items(applications.data?.applications.orEmpty()) { application ->
+            Row {
+                Text(application.name)
+                Button(onClick = { scope.launch { deleteApplication.mutate(application.id) } }) {
+                    Text("Delete")
+                }
+            }
+        }
+    }
+}
+```
+
+| Resource | Queries | Mutations |
+| :--- | :--- | :--- |
+| Applications | `rememberGetApplications`, `rememberGetApplication` | `rememberCreateApplication`, `rememberUpdateApplication`, `rememberDeleteApplication` |
+| Users | `rememberGetUsers`, `rememberGetUser` | `rememberCreateUser`, `rememberUpdateUser`, `rememberDeleteUser` |
+| Agents | `rememberGetAgents`, `rememberGetAgent` | `rememberCreateAgent`, `rememberUpdateAgent`, `rememberDeleteAgent` |
+
+A single-resource query does not load while its `id` is `null`. A successful mutation refetches the queries it changed: a create or delete refetches the resource's list queries, and an update also refetches the query for that resource. Mutations produce no snackbar or log entry.
+
+## Error Handling
+
+The functions throw `IAMException`. Management requests add two codes:
+
+| Code | Description |
+| :--- | :--- |
+| `FORBIDDEN` | The server returned HTTP 403. The access token lacks permission for the operation. |
+| `NOT_FOUND` | The server returned HTTP 404. The resource does not exist. |
+| `INVALID_INPUT` | The resource identifier is blank, or the server rejected the payload with HTTP 400. |
+
+See [Error Codes](../thunderid-client#error-codes) for the full list.

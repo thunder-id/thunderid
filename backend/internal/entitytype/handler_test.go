@@ -75,6 +75,12 @@ func (s *InlineStubEntityTypeService) GetAttributes(
 	return []AttributeInfo{}, nil
 }
 
+func (s *InlineStubEntityTypeService) GetAttributesForEntityType(
+	ctx context.Context, id string, filter AttributeFilter,
+) (map[TypeCategory][]AttributeInfo, *tidcommon.ServiceError) {
+	return map[TypeCategory][]AttributeInfo{}, nil
+}
+
 func (s *InlineStubEntityTypeService) GetDisplayAttributesByNames(
 	ctx context.Context, cat TypeCategory, names []string,
 ) (map[string]string, *tidcommon.ServiceError) {

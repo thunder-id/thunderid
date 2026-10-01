@@ -6,9 +6,11 @@ package connection
 import (
 	"net/http"
 
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/resource"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -18,9 +20,11 @@ import (
 // services, registers the /connections routes, loads declarative connection resources, and
 // returns the connection exporter for the export API.
 func Initialize(mux *http.ServeMux, idpService idp.IDPServiceInterface,
-	notificationService notification.NotificationSenderMgtSvcInterface) (
+	notificationService notification.NotificationSenderMgtSvcInterface,
+	resourceService resource.ResourceServiceInterface,
+	authZENPDPService authzenpdp.AuthZENPDPServiceInterface) (
 	declarativeresource.ResourceExporter, error) {
-	svc := newService(idpService, notificationService)
+	svc := newService(idpService, notificationService, resourceService, authZENPDPService)
 	h := newHandler(svc)
 	registerRoutes(mux, h)
 
@@ -28,7 +32,7 @@ func Initialize(mux *http.ServeMux, idpService idp.IDPServiceInterface,
 		return nil, err
 	}
 
-	return newConnectionExporter(idpService, notificationService), nil
+	return newConnectionExporter(idpService, notificationService, authZENPDPService), nil
 }
 
 func noContent(w http.ResponseWriter, _ *http.Request) {
@@ -98,6 +102,8 @@ func registerRoutes(mux *http.ServeMux, h *handler) {
 		getSMSHandler(h, ncommon.NotificationProviderTypeCustom, smsGatewayFromSenderDTO),
 		updateSMSHandler(h, ncommon.NotificationProviderTypeCustom, smsGatewayToSenderDTO, smsGatewayFromSenderDTO),
 		collectionOpts, itemOpts)
+
+	registerAuthZENPDPVendorRoutes(mux, h, "/connections/authzen-pdp", collectionOpts, itemOpts)
 }
 
 // registerVendorRoutes registers the collection (list/create) and item (get/update/delete)
@@ -147,5 +153,32 @@ func registerSMSVendorRoutes(mux *http.ServeMux, h *handler, base string, provid
 		MaxAge:           600,
 	}
 	mux.HandleFunc(middleware.WithCORS("GET "+base+"/{id}/usages", h.usagesSMSInstance(provider), usagesOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base+"/{id}/usages", noContent, usagesOpts))
+}
+
+// registerAuthZENPDPVendorRoutes registers CRUD, CORS, and usage routes for AuthZEN PDP connections.
+func registerAuthZENPDPVendorRoutes(
+	mux *http.ServeMux,
+	h *handler,
+	base string,
+	collectionOpts middleware.CORSOptions,
+	itemOpts middleware.CORSOptions,
+) {
+	mux.HandleFunc(middleware.WithCORS("GET "+base, h.listAuthZENPDPConnections, collectionOpts))
+	mux.HandleFunc(middleware.WithCORS("POST "+base, h.createAuthZENPDPConnection, collectionOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base, noContent, collectionOpts))
+
+	mux.HandleFunc(middleware.WithCORS("GET "+base+"/{id}", h.getAuthZENPDPConnection, itemOpts))
+	mux.HandleFunc(middleware.WithCORS("PUT "+base+"/{id}", h.updateAuthZENPDPConnection, itemOpts))
+	mux.HandleFunc(middleware.WithCORS("DELETE "+base+"/{id}", h.deleteAuthZENPDPConnection, itemOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base+"/{id}", noContent, itemOpts))
+
+	usagesOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("GET "+base+"/{id}/usages", h.usagesAuthZENPDPConnection, usagesOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+base+"/{id}/usages", noContent, usagesOpts))
 }

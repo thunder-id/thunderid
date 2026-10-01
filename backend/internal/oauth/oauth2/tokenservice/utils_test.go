@@ -22,7 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
-	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
 )
 
 type UtilsTestSuite struct {
@@ -790,7 +790,7 @@ func newOAuthAppForClientAttributesWith(ouID string, clientAttributes []string) 
 }
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_NoOUID_ReturnsNil() {
-	ous := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ous := ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 
 	app := newOAuthAppForClientAttributes("")
 	claims, err := BuildClientAttributes(context.Background(), app, ous, nil)
@@ -800,7 +800,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_NoOUID_ReturnsNil() {
 }
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_NilOAuthApp_ReturnsNil() {
-	ous := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ous := ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 
 	claims, err := BuildClientAttributes(context.Background(), nil, ous, nil)
 
@@ -809,7 +809,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_NilOAuthApp_ReturnsNil() 
 }
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_HappyPath() {
-	ous := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ous := ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 
 	ous.On("GetOrganizationUnit", context.Background(), testBCCOUID).Return(providers.OrganizationUnit{
 		ID:     testBCCOUID,
@@ -828,7 +828,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_HappyPath() {
 }
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_OULookupError_ReturnsError() {
-	ous := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ous := ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 
 	ous.On("GetOrganizationUnit", context.Background(), testBCCOUID).Return(
 		providers.OrganizationUnit{},
@@ -853,7 +853,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_NilOUService_ReturnsNil()
 }
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_OUAttributes_SkippedWhenNotRequested() {
-	ous := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ous := ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 
 	app := newOAuthAppForClientAttributesWith(testBCCOUID, nil)
 	claims, err := BuildClientAttributes(context.Background(), app, ous, nil)
@@ -864,7 +864,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_OUAttributes_SkippedWhenN
 }
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_OUOnly_SkipsEntityFetch() {
-	ous := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ous := ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 	ous.On("GetOrganizationUnit", context.Background(), testBCCOUID).Return(providers.OrganizationUnit{
 		ID:     testBCCOUID,
 		Name:   "Engineering",
@@ -882,7 +882,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_OUOnly_SkipsEntityFetch()
 }
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_OUAttributes_PartialSelection() {
-	ous := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ous := ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 
 	ous.On("GetOrganizationUnit", context.Background(), testBCCOUID).Return(providers.OrganizationUnit{
 		ID:     testBCCOUID,

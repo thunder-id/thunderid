@@ -4,6 +4,7 @@
 package entity
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -70,8 +71,8 @@ func TestStoreBasicOperations(t *testing.T) {
 
 	// Verify deletion
 	_, err = store.Get(key)
-	if err == nil {
-		t.Error("Expected error when getting deleted entity, got nil")
+	if !errors.Is(err, ErrEntityNotFound) {
+		t.Errorf("Expected entity not found error, got %v", err)
 	}
 }
 

@@ -35,6 +35,12 @@ const (
 	// deny-list (revocation) check becomes unavailable and enforcement fails closed.
 	EventTypeRuntimePersistentDBUnavailable providers.EventType = "RUNTIME_PERSISTENT_DB_UNAVAILABLE"
 
+	// Back-Channel Logout Events
+	// EventTypeBackchannelLogoutDelivered is triggered when a relying party accepts a logout token.
+	EventTypeBackchannelLogoutDelivered providers.EventType = "BACKCHANNEL_LOGOUT_DELIVERED"
+	// EventTypeBackchannelLogoutFailed is triggered when a logout token delivery attempt fails or is abandoned.
+	EventTypeBackchannelLogoutFailed providers.EventType = "BACKCHANNEL_LOGOUT_FAILED"
+
 	// Flow Execution Events
 
 	// EventTypeFlowStarted is triggered when a flow execution begins.

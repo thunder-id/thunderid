@@ -25,9 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/group"
-	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
-	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/email"
@@ -151,8 +149,8 @@ func (r *executorRegistry) GetExecutorMeta(name string) (*providers.ExecutorMeta
 // ExecutorDependencies holds service dependencies required to construct built-in executors.
 type ExecutorDependencies struct {
 	FlowFactory           core.FlowFactoryInterface
-	OUService             ou.OrganizationUnitServiceInterface
-	IDPService            idp.IDPServiceInterface
+	OUService             providers.OrganizationUnitProvider
+	IDPService            providers.IDPProvider
 	NotifSenderSvc        notification.NotificationSenderServiceInterface
 	JWTService            jwt.JWTServiceInterface
 	AuthAssertGen         assert.AuthAssertGeneratorInterface

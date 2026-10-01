@@ -13,7 +13,7 @@
     "@thunderid/console#build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"],
-      "inputs": ["$TURBO_DEFAULT$", "src/features/welcome/data/sample-bundles/**"]
+      "inputs": ["$TURBO_DEFAULT$", "src/data/sample-bundles/**"]
     },
     "typecheck": {
       "dependsOn": ["^build"]

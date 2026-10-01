@@ -1,0 +1,319 @@
+---
+title: Connect to an AuthZEN PDP
+docType: guide
+sidebar_position: 1
+description: Connect {{ProductName}} to an AuthZEN-compatible PDP and verify authorization decisions with Cerbos.
+---
+
+# Connect to an AuthZEN PDP
+
+Configure an AuthZEN-compatible policy decision point (PDP) as the authorization engine for a resource server. This guide uses Cerbos as the AuthZEN PDP for a travel-booking API.
+
+<ProductName /> sends AuthZEN evaluations to Cerbos. During token issuance, <ProductName /> enforces the returned decision. When a PEP calls the <ProductName /> AuthZEN API, <ProductName /> returns the decision to the calling PEP for enforcement. You can use the same connection flow with another AuthZEN-compatible PDP by substituting its endpoints, authentication settings, and policy configuration.
+
+## Prerequisites
+
+- A running <ProductName /> instance. See [Get <ProductName />](../../../../getting-started/get-thunderid).
+- The [Cerbos CLI](https://docs.cerbos.dev/cerbos/latest/cli/cerbos).
+
+## Create the Cerbos Policy
+
+This policy uses the customer, staff, and service rules from the travel-booking policy. An active customer can read a booking, a customer with the `silver` loyalty tier cannot create one, and eligible European staff can upgrade one. The service rules are used later to filter permissions during token issuance.
+
+Create an `authzen-cerbos/policies` directory, then create `authzen-cerbos/policies/travel-booking.yaml` with the following content:
+
+```yaml
+apiVersion: api.cerbos.dev/v1
+
+resourcePolicy:
+  version: default
+  resource: 'https://api.example.com/travel-booking'
+  rules:
+    - name: deny-silver-customer-create
+      actions:
+        - 'booking:create'
+      effect: EFFECT_DENY
+      roles:
+        - '*'
+      condition:
+        match:
+          all:
+            of:
+              - expr: P.attr.customerRef != ""
+              - expr: P.attr.loyaltyTier == "silver"
+
+    - name: allow-active-user-read
+      actions:
+        - 'booking:read'
+      effect: EFFECT_ALLOW
+      roles:
+        - '*'
+      condition:
+        match:
+          all:
+            of:
+              - expr: P.attr.accountStatus == "active"
+
+    - name: allow-eu-staff-upgrade-from-approved-country
+      actions:
+        - 'booking:upgrade'
+      effect: EFFECT_ALLOW
+      roles:
+        - '*'
+      condition:
+        match:
+          all:
+            of:
+              - expr: P.attr.accountStatus == "active"
+              - expr: P.attr.staffRef != ""
+              - expr: P.attr.managedRegion == "EU"
+              - expr: P.attr.country == "DE"
+
+    - name: allow-booking-service-read
+      actions:
+        - 'booking:read'
+      effect: EFFECT_ALLOW
+      roles:
+        - '*'
+      condition:
+        match:
+          expr: P.id == "<application-id>"
+
+    - name: allow-booking-service-create
+      actions:
+        - 'booking:create'
+      effect: EFFECT_ALLOW
+      roles:
+        - '*'
+      condition:
+        match:
+          expr: P.id == "<application-id>"
+```
+
+## Run Cerbos
+
+Start the PDP with the Cerbos [server command](https://docs.cerbos.dev/cerbos/latest/cli/cerbos#server). Configure [disk storage](https://docs.cerbos.dev/cerbos/latest/configuration/storage) to load policies from `authzen-cerbos/policies`.
+
+Verify that Cerbos publishes its AuthZEN metadata:
+
+```bash
+curl -s "https://<CERBOS_HOST>/.well-known/authzen-configuration"
+```
+
+The response includes these endpoints:
+
+```json
+{
+  "access_evaluation_endpoint": "https://<CERBOS_HOST>/access/v1/evaluation",
+  "access_evaluations_endpoint": "https://<CERBOS_HOST>/access/v1/evaluations"
+}
+```
+
+## Configure <ProductName />
+
+### Create a Customer User Type
+
+1. In the Console, navigate to **User Types**. Click **Create User Type**.
+2. Enter `TravelCustomer` as the name. Select an organization unit.
+3. Add these string attributes:
+
+   | Attribute       | Required | Test value     |
+   | --------------- | -------- | -------------- |
+   | `accountStatus` | Yes      | `active`       |
+   | `customerRef`   | Yes      | `customer-bob` |
+   | `loyaltyTier`   | Yes      | `silver`       |
+
+4. Click **Create User Type**.
+
+For details about user type schemas, see [User Types](../../../users/user-types).
+
+### Create a Travel Staff User Type
+
+1. Navigate to **User Types**. Click **Create User Type**.
+2. Enter `TravelStaff` as the name. Select an organization unit.
+3. Add these required string attributes:
+
+   | Attribute       | Travel agent value |
+   | --------------- | ------------------ |
+   | `accountStatus` | `active`           |
+   | `staffRef`      | `staff-tina`       |
+   | `managedRegion` | `EU`               |
+   | `country`       | `DE`               |
+
+4. Click **Create User Type**.
+
+### Create Customer and Travel Agent Users
+
+1. Navigate to **Users**. Click **Add User**.
+2. Select **TravelCustomer**. Select the same organization unit as the user type.
+3. Select **Create User**. Complete the required standard fields. Enter the test values from the table above.
+4. Open the customer's details. Copy the **User ID** from the quick-copy section.
+5. Click **Add User**. Select **TravelStaff**. Select the same organization unit as the user type. Complete the required standard fields. Enter the travel agent values from the `TravelStaff` table.
+6. Open the travel agent's details. Copy the **User ID**.
+
+For details about creating and managing users, see [Manage Users](../../../users/manage-users).
+
+### Create the Resource Server and Actions
+
+1. Navigate to **Resource Servers**. Click **Create Resource Server**.
+2. Select **API**. Configure these values:
+
+   | Field                | Value                                    |
+   | -------------------- | ---------------------------------------- |
+   | Resource Server Name | `Travel Booking API`                     |
+   | Identifier           | `https://api.example.com/travel-booking` |
+   | Permission Delimiter | `:`                                      |
+
+3. Open the new resource server's **Resources** tab. Add a resource named `Booking` with the handle `booking`.
+4. Add these actions to the `Booking` resource:
+
+   | Name    | Handle    | Permission        |
+   | ------- | --------- | ----------------- |
+   | Read    | `read`    | `booking:read`    |
+   | Create  | `create`  | `booking:create`  |
+   | Upgrade | `upgrade` | `booking:upgrade` |
+
+For more information about resources and actions, see [Resource Servers](../../../resource-servers).
+
+### Create the AuthZEN PDP Connection
+
+1. Navigate to **Connections**. Select **Add custom connection**.
+2. Select **Policy Decision Point (PDP)**. Select **AuthZEN**.
+3. Enter `Cerbos Travel PDP` as the connection name.
+4. Set **AuthZEN evaluation endpoint** to `https://<CERBOS_HOST>/access/v1/evaluation`.
+5. Set **AuthZEN batch evaluation endpoint** to `https://<CERBOS_HOST>/access/v1/evaluations`. Select **Create connection**.
+6. Open the **Authentication** tab. Select **None**.
+7. Open the **Attribute Configuration** tab. Under **User**, select **TravelCustomer**. Add `accountStatus`, `customerRef`, and `loyaltyTier`. Keep the same attribute names for the PDP.
+8. Under **User**, select **TravelStaff**. Add `accountStatus`, `staffRef`, `managedRegion`, and `country`. Keep the same attribute names for the PDP.
+9. Select **Save changes**.
+
+For details about AuthZEN connection settings and attribute mappings, see [Policy Enforcement Point](../../../protocols/authzen/pep).
+
+### Assign the PDP to the Resource Server
+
+1. Navigate to **Resource Servers**. Open **Travel Booking API**.
+2. Open the **Advanced** tab. Select **Cerbos Travel PDP** under **Authorization Engine**.
+3. Save the changes.
+
+To restore the built-in authorization engine after completing this walkthrough, open the **Advanced** tab, select **Local - Role Based Access Control** under **Authorization Engine**, and save the changes.
+
+### Create a Backend Service Application
+
+1. Navigate to **Applications**. Click **Add Application**.
+2. Select **Backend Service**. Enter `Travel Booking Service` as the application name.
+3. Create the application. Copy the **Application ID**, **Client ID**, and **Client Secret**.
+4. Replace both `<application-id>` placeholders in `authzen-cerbos/policies/travel-booking.yaml` with the copied **Application ID**.
+
+Use this application to verify the client credentials flow. For details about application types and credentials, see [Manage Applications](../../../applications/manage-applications).
+
+This walkthrough uses the configured AuthZEN PDP as the resource server's authorization engine, so Cerbos makes the final decision for each requested permission. Roles grant permissions when the built-in authorization engine is used. See [Roles](../../../users/manage-roles) for the built-in authorization model.
+
+## Verify Authorization Through the <ProductName /> AuthZEN Endpoint
+
+Set `DIRECT_AUTH_SECRET` to the Direct Auth Secret configured for your <ProductName /> instance:
+
+```bash
+export DIRECT_AUTH_SECRET='<direct-auth-secret>'
+```
+
+Request the `booking:read` action through the <ProductName /> AuthZEN endpoint. Replace `<customer-user-id>` with the customer's copied user ID:
+
+```bash
+curl -sk "https://<THUNDERID_HOST>/access/v1/evaluation" \
+  -H 'Content-Type: application/json' \
+  -H "Direct-Auth-Secret: $DIRECT_AUTH_SECRET" \
+  --data '{
+    "subject": {
+      "type": "user",
+      "id": "<customer-user-id>"
+    },
+    "resource": {
+      "type": "https://api.example.com/travel-booking",
+      "id": "booking-1001"
+    },
+    "action": {
+      "name": "booking:read"
+    }
+  }'
+```
+
+<ProductName /> resolves the user's `TravelCustomer` type and stored attributes. It sends the three configured attributes to Cerbos, then returns the allowed decision:
+
+```json
+{
+  "decision": true
+}
+```
+
+Repeat the request with `booking:create`. Cerbos matches the rule that denies this action to a customer with the `silver` loyalty tier, so <ProductName /> returns:
+
+```json
+{
+  "decision": false,
+  "context": {
+    "reason": "Subject is not authorized to perform the requested action"
+  }
+}
+```
+
+Request `booking:upgrade` for the travel agent. Replace `<travel-agent-user-id>` with the travel agent's copied user ID:
+
+```bash
+curl -sk "https://<THUNDERID_HOST>/access/v1/evaluation" \
+  -H 'Content-Type: application/json' \
+  -H "Direct-Auth-Secret: $DIRECT_AUTH_SECRET" \
+  --data '{
+    "subject": {
+      "type": "user",
+      "id": "<travel-agent-user-id>"
+    },
+    "resource": {
+      "type": "https://api.example.com/travel-booking",
+      "id": "booking-1001"
+    },
+    "action": {
+      "name": "booking:upgrade"
+    }
+  }'
+```
+
+Cerbos permits the action because the travel agent is active, has a staff reference, manages the `EU` region, and has `DE` as the configured country:
+
+```json
+{
+  "decision": true
+}
+```
+
+## Verify Authorization in OAuth Flows
+
+### Authorization Code
+
+Run an authorization code flow from a user-facing application whose authentication flow includes the Authorization executor. Request `booking:read`, `booking:create`, and `booking:upgrade` for the Travel Booking API resource server.
+
+When the customer signs in, Cerbos permits `booking:read` and denies the other requested permissions. When the travel agent signs in, Cerbos permits `booking:read` and `booking:upgrade` but does not permit `booking:create`.
+
+<ProductName /> calls Cerbos while running the authentication flow. The authorization code records the allowed permissions, so the token endpoint does not repeat the AuthZEN evaluation when the client exchanges the code.
+
+For the complete redirect, PKCE, and code exchange steps, see [Authorization Code](../../../protocols/oauth-oidc/authorization-code).
+
+### Client Credentials
+
+Run a client credentials flow with the **Travel Booking Service** application. Request `booking:read`, `booking:create`, and `booking:upgrade` for the Travel Booking API resource server.
+
+<ProductName /> calls Cerbos while processing the token request. Cerbos permits `booking:read` and `booking:create` for the application, but does not permit `booking:upgrade`. The issued access token contains only `booking:read` and `booking:create`.
+
+For more information about this token flow, see [Client Credentials](../../../protocols/oauth-oidc/client-credentials).
+
+## Troubleshooting
+
+| Symptom                                                  | Check                                                                                                                                                             |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cerbos returns no matching policy                        | Confirm that the policy resource is `https://api.example.com/travel-booking`.                                                                                     |
+| Customer or travel agent receives an unexpected decision | Confirm the subject's attribute values and the attribute selections for its user type in the connection configuration.                                            |
+| An access token contains no booking permissions          | Confirm that the request targets the Travel Booking API resource server and that the Cerbos policy permits the requested permissions for the user or application. |
+
+## Related Guides
+
+- [Policy Decision Point](../../../protocols/authzen/pdp): review the AuthZEN request fields, direct endpoints, and Direct Auth Secret configuration.
+- [Policy Enforcement Point](../../../protocols/authzen/pep): review request mapping and connection configuration.

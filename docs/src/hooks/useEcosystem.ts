@@ -32,7 +32,7 @@ function useEcosystemByVersion(name: string): EcosystemEntry[] {
 }
 
 /**
- * Reads the SDK & tools registry from a **version-less** page such as `/sdks`.
+ * Reads the SDK & tools registry from a **version-less** page such as `/sdks-and-tools`.
  *
  * Resolves the version the same way `useDocsUrl()` resolves link targets, so
  * the listing follows the reader: the active version on a versioned route, then

@@ -42,6 +42,8 @@ let config = ThunderIDConfig(
 | `applicationId` | `String?` | `nil` | The Application ID used for app-native (embedded) sign-in flows via the Flow Execution API. |
 | `organizationHandle` | `String?` | `nil` | The organization handle for multi-tenant deployments. |
 | `tokenValidation` | `TokenValidationConfig` | see below | Controls ID token validation behavior. |
+| `endpoints` | `ThunderIDEndpoints` | `ThunderIDEndpoints()` | Collection URL overrides (`applications`, `users`, `agents`) for the [management](../management) operations. A `nil` entry falls back to `{baseUrl}/{collection}`. |
+| `http` | `ThunderIDHttpConfig` | `ThunderIDHttpConfig()` | HTTP options. `http.fetcher` is the transport for the [management](../management) operations and applies to them only. Defaults to the SDK's `URLSession`. |
 | `storage` | `StorageAdapter?` | `nil` | Custom token storage backend. Defaults to `KeychainStorageAdapter`. |
 | `instanceId` | `Int?` | `nil` | Identifies the SDK instance when running multiple instances in one process. |
 

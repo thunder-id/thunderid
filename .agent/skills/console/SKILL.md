@@ -19,6 +19,8 @@ Use the resolved URL as `{CONSOLE_URL}` in all commands below (e.g., `{CONSOLE_U
 
 ## Quick Start
 
+Use this path after accepting any certificate warnings for the origins used by the deployment. For a fresh browser profile, follow First-Time Login below.
+
 ```bash
 # Open Console (redirects to sign-in gate)
 playwright-cli open {CONSOLE_URL} -s=thunderid
@@ -72,27 +74,21 @@ playwright-cli snapshot -s=thunderid
 # 3. Fill username (use the ref from snapshot for the username input)
 playwright-cli fill <username-ref> "admin" -s=thunderid
 
-# 4. Fill password (use the ref from snapshot for the password input;
-#    use the actual generated password from the setup console output, not a literal "admin")
-playwright-cli fill <password-ref> "<generated-password>" -s=thunderid
+# 4. Fill password (use the ref from snapshot and the password for this startup;
+#    make run defaults to admin, while setup scripts may print a generated value)
+playwright-cli fill <password-ref> "<actual-password>" -s=thunderid
 
 # 5. Click Sign In (use the ref from snapshot for the submit button)
 playwright-cli click <submit-ref> -s=thunderid
 
-# 6. Verify redirect to console home
+# 6. Verify the Console loads. A first sign-in may open /console/welcome;
+#    close Welcome to reach /console/home.
 playwright-cli snapshot -s=thunderid
-
-# 7. Save auth state for reuse
-playwright-cli state-save thunderid-auth -s=thunderid
 ```
 
-### Reuse Saved Auth
+### Optional Session Reuse
 
-```bash
-playwright-cli open -s=thunderid
-playwright-cli state-load thunderid-auth -s=thunderid
-playwright-cli goto {CONSOLE_URL} -s=thunderid
-```
+Keep the named browser session open when continuing the same test. Saving browser state to disk is optional and creates reusable admin session material. If a test needs a saved state, follow the environment's rules for storing it, keep it out of tracked files with restricted access, and delete it when the test is done.
 
 ## Routes
 
@@ -127,7 +123,7 @@ playwright-cli screenshot --filename=console-users.png -s=thunderid
 
 ## Troubleshooting
 
-- **Redirected to `/gate/signin`**: Auth expired. Re-authenticate or run `playwright-cli state-load thunderid-auth -s=thunderid`.
+- **Redirected to `/gate/signin`**: Auth expired. Sign in again, or load an existing saved state if the environment permits its use.
 - **Elements not found in snapshot**: Page may still be loading. Wait a moment and run `playwright-cli snapshot -s=thunderid` again.
 - **HTTPS certificate errors**: ThunderID uses self-signed certificates on multiple origins (gate, console, backend). The browser will block navigation with `ERR_CERT_AUTHORITY_INVALID`. To bypass, open a blank session first, then navigate via JS `eval` to trigger Chrome's interstitial error page, and click through it:
 

@@ -350,7 +350,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroupsByPath() {
 					Once()
 
 				ouMock.On("GetOrganizationUnitByPath", mock.Anything, "root/child").
-					Return(providers.OrganizationUnit{ID: "ou-123"}, nil).
+					Return(oupkg.OrganizationUnit{ID: "ou-123"}, nil).
 					Once()
 				return nil
 			},
@@ -389,7 +389,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroupsByPath() {
 				ouMock *oumock.OrganizationUnitServiceInterfaceMock,
 			) *tidcommon.ServiceError {
 				ouMock.On("GetOrganizationUnitByPath", mock.Anything, "root/child").
-					Return(providers.OrganizationUnit{}, &oupkg.ErrorOrganizationUnitNotFound).
+					Return(oupkg.OrganizationUnit{}, &oupkg.ErrorOrganizationUnitNotFound).
 					Once()
 				return nil
 			},
@@ -412,7 +412,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroupsByPath() {
 					Type: tidcommon.ServerErrorType,
 				}
 				ouMock.On("GetOrganizationUnitByPath", mock.Anything, "root/child").
-					Return(providers.OrganizationUnit{}, expectedErr).
+					Return(oupkg.OrganizationUnit{}, expectedErr).
 					Once()
 				return expectedErr
 			},
@@ -428,7 +428,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroupsByPath() {
 				ouMock *oumock.OrganizationUnitServiceInterfaceMock,
 			) *tidcommon.ServiceError {
 				ouMock.On("GetOrganizationUnitByPath", mock.Anything, "root/child").
-					Return(providers.OrganizationUnit{ID: "ou-1"}, nil).
+					Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).
 					Once()
 				return nil
 			},
@@ -451,7 +451,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroupsByPath() {
 					Once()
 
 				ouMock.On("GetOrganizationUnitByPath", mock.Anything, "root/child").
-					Return(providers.OrganizationUnit{ID: "ou-123"}, nil).
+					Return(oupkg.OrganizationUnit{ID: "ou-123"}, nil).
 					Once()
 				return nil
 			},
@@ -478,7 +478,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroupsByPath() {
 					Once()
 
 				ouMock.On("GetOrganizationUnitByPath", mock.Anything, "root/child").
-					Return(providers.OrganizationUnit{ID: "ou-123"}, nil).
+					Return(oupkg.OrganizationUnit{ID: "ou-123"}, nil).
 					Once()
 				return nil
 			},
@@ -494,7 +494,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroupsByPath() {
 				ouMock *oumock.OrganizationUnitServiceInterfaceMock,
 			) *tidcommon.ServiceError {
 				ouMock.On("GetOrganizationUnitByPath", mock.Anything, "/org").
-					Return(providers.OrganizationUnit{ID: testOUID1}, (*tidcommon.ServiceError)(nil)).Once()
+					Return(oupkg.OrganizationUnit{ID: testOUID1}, (*tidcommon.ServiceError)(nil)).Once()
 				return nil
 			},
 			authzSetup: func(t *testing.T) sysauthz.SystemAuthorizationServiceInterface {
@@ -807,7 +807,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_CreateGroupByPath() {
 			setup: func(args *setupArgs) *tidcommon.ServiceError {
 				expected := &tidcommon.ServiceError{Code: "OU-5000", Type: tidcommon.ServerErrorType}
 				args.ou.On("GetOrganizationUnitByPath", mock.Anything, "root").
-					Return(providers.OrganizationUnit{}, expected).
+					Return(oupkg.OrganizationUnit{}, expected).
 					Once()
 				return expected
 			},
@@ -819,7 +819,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_CreateGroupByPath() {
 			request: CreateGroupByPathRequest{Name: "n"},
 			setup: func(args *setupArgs) *tidcommon.ServiceError {
 				args.ou.On("GetOrganizationUnitByPath", mock.Anything, "root").
-					Return(providers.OrganizationUnit{}, &oupkg.ErrorOrganizationUnitNotFound).
+					Return(oupkg.OrganizationUnit{}, &oupkg.ErrorOrganizationUnitNotFound).
 					Once()
 				return nil
 			},

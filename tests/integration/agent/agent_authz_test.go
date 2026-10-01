@@ -244,10 +244,13 @@ func (ts *AgentAuthzTestSuite) TearDownSuite() {
 		}
 	}
 	// Restore the shared agent type before deleting the OU it points at, or the singleton is left
-	// referencing a deleted OU and a later suite's restore fails.
+	// referencing a deleted OU and a later suite's restore fails. A failed restore keeps the OU:
+	// leaking one is cheaper than every later suite inheriting a dangling reference.
+	agentTypeRestored := true
 	if ts.agentTypeSnapshot != nil {
 		if err := testutils.RestoreAgentType(ts.agentTypeSnapshot); err != nil {
 			ts.T().Errorf("teardown: restore the default agent type: %v", err)
+			agentTypeRestored = false
 		}
 	}
 	if ts.userTypeOU1ID != "" {
@@ -255,12 +258,12 @@ func (ts *AgentAuthzTestSuite) TearDownSuite() {
 			ts.T().Logf("teardown: delete agent-manager user type: %v", err)
 		}
 	}
-	if ts.agentOU2ID != "" {
+	if ts.agentOU2ID != "" && agentTypeRestored {
 		if err := testutils.DeleteOrganizationUnit(ts.agentOU2ID); err != nil {
 			ts.T().Logf("teardown: delete agent-authz OU2: %v", err)
 		}
 	}
-	if ts.agentOU1ID != "" {
+	if ts.agentOU1ID != "" && agentTypeRestored {
 		if err := testutils.DeleteOrganizationUnit(ts.agentOU1ID); err != nil {
 			ts.T().Logf("teardown: delete agent-authz OU1: %v", err)
 		}

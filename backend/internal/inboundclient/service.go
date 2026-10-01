@@ -580,6 +580,7 @@ func BuildOAuthClient(
 		EntityCategory:                     entityCategory,
 		RedirectURIs:                       p.RedirectURIs,
 		PostLogoutRedirectURIs:             p.PostLogoutRedirectURIs,
+		BackchannelLogoutURI:               p.BackchannelLogoutURI,
 		TokenEndpointAuthMethod:            providers.TokenEndpointAuthMethod(p.TokenEndpointAuthMethod),
 		PKCERequired:                       p.PKCERequired,
 		PublicClient:                       p.PublicClient,
@@ -820,6 +821,9 @@ func validateOAuthProfile(ctx context.Context, p *providers.OAuthProfile, hasCli
 	if err := validateRedirectURIs(p); err != nil {
 		return err
 	}
+	if err := validateBackchannelLogoutURI(p); err != nil {
+		return err
+	}
 	if err := validateGrantAndResponseTypes(p); err != nil {
 		return err
 	}
@@ -841,6 +845,39 @@ func validateOAuthProfile(ctx context.Context, p *providers.OAuthProfile, hasCli
 		return err
 	}
 	return nil
+}
+
+// validateBackchannelLogoutURI checks the back-channel logout URI: an absolute http or https URL
+// with a host, no userinfo, fragment or wildcard, https for a public client, and no private host when
+// configuration rejects them.
+func validateBackchannelLogoutURI(p *providers.OAuthProfile) error {
+	uri := p.BackchannelLogoutURI
+	if uri == "" {
+		return nil
+	}
+	// A bare "#" parses to an empty fragment, so the delimiter is rejected rather than the parsed value.
+	if strings.ContainsAny(uri, "*#") {
+		return ErrOAuthInvalidBackchannelLogoutURI
+	}
+	parsed, err := sysutils.ParseURL(uri)
+	if err != nil || parsed.Hostname() == "" || parsed.User != nil {
+		return ErrOAuthInvalidBackchannelLogoutURI
+	}
+	if config.GetServerRuntime().Config.OAuth.Logout.Backchannel.RejectsPrivateAddresses() &&
+		syshttp.IsPrivateHost(parsed.Hostname()) {
+		return ErrOAuthBackchannelLogoutURIPrivateHost
+	}
+	switch parsed.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if p.PublicClient {
+			return ErrOAuthBackchannelLogoutURIRequiresHTTPS
+		}
+		return nil
+	default:
+		return ErrOAuthInvalidBackchannelLogoutURI
+	}
 }
 
 // maxDefaultAudienceLength bounds the access token default audience, a single audience identifier

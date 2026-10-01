@@ -30,6 +30,7 @@ export { UserTypesPage } from "../../pages/user-types";
 export { ApplicationsPage, type ApplicationFormData } from "../../pages/applications";
 export { SettingsPage } from "../../pages/settings";
 export { ConnectionsPage, type BrandedConnectionFormData } from "../../pages/connections";
+export { AgentOnboardingPage } from "../../pages/agents";
 
 // Re-export API helpers so hooks can construct them without reaching into utils/
 export { UsersApi, type ApiUser } from "../../utils/users-api";
@@ -37,4 +38,5 @@ export { UserTypesApi, type ApiUserType } from "../../utils/user-types-api";
 export { ApplicationsApi, type ApiApplication } from "../../utils/applications-api";
 export { FlowsApi, type ApiFlow } from "../../utils/flows-api";
 export { ConnectionsApi, type ApiConnection } from "../../utils/connections-api";
+export { AgentsApi, type ApiAgent } from "../../utils/agents-api";
 export { WelcomePage } from "../../pages/welcome";

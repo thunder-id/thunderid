@@ -125,6 +125,20 @@ type IDTokenBuildContext struct {
 	SessionID string
 }
 
+const (
+	// claimEvents is the logout token claim naming the event it carries (Back-Channel Logout §2.4).
+	claimEvents = "events"
+	// eventBackchannelLogout is the single member of the events claim, with an empty object value.
+	eventBackchannelLogout = "http://schemas.openid.net/event/backchannel-logout"
+)
+
+// LogoutTokenBuildContext holds what an OIDC Back-Channel Logout token is built from.
+type LogoutTokenBuildContext struct {
+	OAuthApp  *providers.OAuthClient
+	SubjectID string
+	SessionID string
+}
+
 // RefreshTokenClaims represents the validated claims from a refresh token.
 type RefreshTokenClaims struct {
 	Sub              string

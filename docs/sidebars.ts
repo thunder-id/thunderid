@@ -18,20 +18,9 @@ import reactRouterSdkSidebar from './content/sdks-and-tools/react-router/sidebar
 import springSecurityIntegrationSidebar from './content/sdks-and-tools/spring-security/sidebar';
 import tanstackRouterSdkSidebar from './content/sdks-and-tools/tanstack-router/sidebar';
 import vueSdkSidebar from './content/sdks-and-tools/vue/sidebar';
-import productConfig from './docusaurus.product.config';
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
 // TODO: Use `@wso2/oxygen-ui-icons` in the sidebar. Currently, there's only a React wrapper available, so we need to create custom SVG icons for the sidebar until we have a web component version of the icons.
-
-// Raw HTML sidebar items are emitted verbatim, so Docusaurus does not prepend the
-// site baseUrl to asset URLs inside them. Derive it the same way docusaurus.config.ts
-// does and interpolate it, so icons resolve on base-path deployments too.
-const baseUrl =
-  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-  process.env.DOCUSAURUS_BASE_URL ||
-  (productConfig.documentation.deployment.production.baseUrl
-    ? `/${productConfig.documentation.deployment.production.baseUrl}/`
-    : '/');
 
 /**
  * Creating a sidebar enables you to:
@@ -90,11 +79,12 @@ const sidebars: SidebarsConfig = {
           label: 'AI Agent',
           className: 'connect-section connect-section--agent',
           collapsible: true,
+          link: {type: 'doc', id: 'getting-started/connect-your-agent/index'},
           items: [
             {type: 'doc', id: 'getting-started/connect-your-agent/langchain', label: 'LangChain', customProps: {icon: 'langchain'}},
-            {type: 'html', className: 'menu__list-item', value: `<div class="sidebar-coming-soon"><span class="sidebar-cs-icon"><img src="${baseUrl}assets/images/agent/google-adk.svg" alt="" aria-hidden="true" /></span>Google ADK<span class="sidebar-coming-soon-badge">Soon</span></div>`},
-            {type: 'html', className: 'menu__list-item', value: '<div class="sidebar-coming-soon"><span class="sidebar-cs-icon"><svg viewBox="0 0 512 512" fill="currentColor" aria-hidden="true"><path d="M256 48 496 464H16Z"/></svg></span>Vercel AI SDK<span class="sidebar-coming-soon-badge">Soon</span></div>'},
-            {type: 'html', className: 'menu__list-item', value: `<div class="sidebar-coming-soon"><span class="sidebar-cs-icon"><img src="${baseUrl}assets/images/agent/crewai.svg" alt="" aria-hidden="true" /></span>CrewAI<span class="sidebar-coming-soon-badge">Soon</span></div>`},
+            {type: 'doc', id: 'getting-started/connect-your-agent/google-adk', label: 'Google ADK', customProps: {icon: 'google-adk'}},
+            {type: 'doc', id: 'getting-started/connect-your-agent/vercel-ai-sdk', label: 'Vercel AI SDK', customProps: {icon: 'vercel'}},
+            {type: 'doc', id: 'getting-started/connect-your-agent/crewai', label: 'CrewAI', customProps: {icon: 'crewai'}},
           ],
         },
         {
@@ -214,7 +204,7 @@ const sidebars: SidebarsConfig = {
                 {type: 'doc', id: 'use-cases/b2c/identity-sources', label: 'Identity Sources'},
                 {type: 'doc', id: 'use-cases/b2c/tokens-and-apis', label: 'Protect APIs'},
                 {type: 'doc', id: 'use-cases/b2c/sessions-and-logout', label: 'Sessions & Logout'},
-                {type: 'doc', id: 'use-cases/b2c/notification-delivery', label: 'Notification Delivery'},
+                {type: 'doc', id: 'use-cases/b2c/notification', label: 'Notification'},
                 {type: 'doc', id: 'use-cases/b2c/operations', label: 'Run & Observe'},
               ],
             },
@@ -645,6 +635,33 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'category',
+              label: 'Authorization',
+              collapsed: true,
+              collapsible: true,
+              items: [
+                {
+                  type: 'doc',
+                  id: 'guides/integrations/authorization/overview',
+                  label: 'Overview',
+                  key: 'authorization-overview',
+                },
+                {
+                  type: 'category',
+                  label: 'Policy Decision Points',
+                  collapsed: true,
+                  collapsible: true,
+                  items: [
+                    {
+                      type: 'doc',
+                      id: 'guides/integrations/authorization/authzen',
+                      label: 'AuthZEN',
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: 'category',
               label: 'Notifications',
               collapsed: true,
               collapsible: true,
@@ -1009,6 +1026,11 @@ const sidebars: SidebarsConfig = {
                   id: 'guides/protocols/authzen/pdp',
                   label: 'Policy Decision Point',
                 },
+                {
+                  type: 'doc',
+                  id: 'guides/protocols/authzen/pep',
+                  label: 'Policy Enforcement Point',
+                },
               ],
             },
           ],
@@ -1172,6 +1194,11 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           id: 'deployment/observability',
           label: 'Observability',
+        },
+        {
+          type: 'doc',
+          id: 'deployment/agent-analytics',
+          label: 'Agent Analytics',
         },
       ],
     },

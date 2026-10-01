@@ -6,14 +6,6 @@ import {render, screen} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 import TranslationEditorHeader from '@/components/edit-translation/TranslationEditorHeader';
 
-vi.mock('react-i18next', async () => {
-  const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next');
-  return {
-    ...actual,
-    useTranslation: () => ({t: (key: string) => key}),
-  };
-});
-
 vi.mock('@thunderid/i18n', () => ({
   getDisplayNameForCode: (code: string) => `Language(${code})`,
   toFlagEmoji: (code: string) => `Flag(${code})`,

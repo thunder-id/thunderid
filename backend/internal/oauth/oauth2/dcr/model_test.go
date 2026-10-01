@@ -34,6 +34,46 @@ func (s *DCRModelTestSuite) TestUnmarshalJSON_BasicFields() {
 	s.Nil(req.LocalizedClientName)
 }
 
+// An update request carries the registration metadata plus the two fields only an update has. The
+// embedded registration request defines its own UnmarshalJSON, which an alias of the outer type
+// would promote and let consume the whole object, leaving client_id and client_secret empty while
+// every other field decoded correctly. Decoding has to fill both levels in one pass.
+func (s *DCRModelTestSuite) TestUnmarshalJSON_UpdateRequestFillsBothLevels() {
+	input := `{
+		"client_id": "abc123",
+		"client_secret": "s3cr3t",
+		"client_name": "My App",
+		"client_name#fr": "Mon Application",
+		"redirect_uris": ["https://example.com/cb"]
+	}`
+	var req DCRUpdateRequest
+	s.Require().NoError(json.Unmarshal([]byte(input), &req))
+
+	// The update-only fields, which live on the outer type.
+	s.Equal("abc123", req.ClientID)
+	s.Equal("s3cr3t", req.ClientSecret)
+	// The embedded registration metadata, including the language tagged variants.
+	s.Equal("My App", req.ClientName)
+	s.Equal([]string{"https://example.com/cb"}, req.RedirectURIs)
+	s.Equal(map[string]string{"fr": "Mon Application"}, req.LocalizedClientName)
+}
+
+// Registration has no client_id or client_secret of its own: the server issues both. A body that
+// carries them is decoded as ordinary metadata with those fields ignored.
+func (s *DCRModelTestSuite) TestUnmarshalJSON_RegistrationIgnoresClientCredentials() {
+	input := `{
+		"client_id": "should-be-ignored",
+		"client_secret": "should-be-ignored",
+		"client_name": "My App",
+		"redirect_uris": ["https://example.com/cb"]
+	}`
+	var req DCRRegistrationRequest
+	s.Require().NoError(json.Unmarshal([]byte(input), &req))
+
+	s.Equal("My App", req.ClientName)
+	s.Equal([]string{"https://example.com/cb"}, req.RedirectURIs)
+}
+
 func (s *DCRModelTestSuite) TestUnmarshalJSON_LocalizedFields() {
 	input := `{
 		"client_name": "My App",

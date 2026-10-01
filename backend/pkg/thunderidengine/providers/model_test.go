@@ -21,6 +21,16 @@ func TestModelSuite(t *testing.T) {
 	suite.Run(t, new(ModelTestSuite))
 }
 
+func (suite *ModelTestSuite) TestSubjectJSONFields() {
+	payload, err := json.Marshal(Subject{Category: "user", Type: "Customer", ID: "user-1"})
+	suite.Require().NoError(err)
+
+	var fields map[string]interface{}
+	suite.Require().NoError(json.Unmarshal(payload, &fields))
+	suite.Equal("user", fields["category"])
+	suite.Equal("Customer", fields["type"])
+}
+
 // AuthUser tests live in auth_user_test.go — the multi-provider AuthUser API
 // (ProviderNames / StateFor / SetStateFor) is exercised there.
 

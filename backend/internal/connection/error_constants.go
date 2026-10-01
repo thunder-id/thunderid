@@ -20,7 +20,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.connectionservice.invalid_category_description",
-			DefaultValue: "The category must be one of: identity-provider, sms-provider",
+			DefaultValue: "The category must be one of: identity-provider, sms-provider, authorization-pdp",
 		},
 	}
 	// ErrorInvalidLimit is the error returned when an invalid limit query parameter is provided.
@@ -47,6 +47,19 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.connectionservice.invalid_offset_parameter_description",
 			DefaultValue: "The offset parameter must be a non-negative integer",
+		},
+	}
+	// ErrorInvalidRequestFormat is returned when an AuthZEN PDP request body is malformed.
+	ErrorInvalidRequestFormat = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1007",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_request_format",
+			DefaultValue: "Invalid request format",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.invalid_request_format_description",
+			DefaultValue: "The request body is malformed or contains invalid data",
 		},
 	}
 )

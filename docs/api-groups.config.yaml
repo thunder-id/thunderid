@@ -75,15 +75,18 @@ fileGroupNames:
   flow-execution.yaml: ~         # all tags claimed by Login Flows
   flow-management.yaml: ~        # all tags claimed by Login Flows
   flow-meta.yaml: ~              # all tags claimed by Login Flows
+  gateway.yaml: ~                # Gateways claimed by System
   group.yaml: ~                  # Groups claimed by Identities
   healthcheck.yaml: ~            # Health claimed by System
   i18n.yaml: ~                   # Languages claimed by Branding & Localization
   import.yaml: ~                 # Import claimed by System
+  variable-store.yaml: ~         # Variables and Secrets claimed by System
   oauth2.yaml: ~                 # all tags claimed by OAuth2 / OIDC
   ou.yaml: ~                     # Organization Units claimed by Identities
   registration.yaml: ~           # Passkeys (registration) claimed by Authentication
   resource.yaml: ~               # all tags claimed by Access Control
   role.yaml: ~                   # Roles claimed by Access Control
+  scim.yaml: ~                   # SCIM tags claimed by SCIM Provisioning
   user.yaml: ~                   # all tags claimed by Identities
   openid4vci.yaml: Verifiable Credentials
   openid4vp.yaml: Verifiable Credentials
@@ -155,6 +158,20 @@ explicitSubGroups:
       - Export
       - Import
       - Health
+      - Variables
+      - Secrets
+      - Gateways
+
+  # ── SCIM Provisioning ─────────────────────────────────────────────────────────
+  - name: SCIM Provisioning
+    tags:
+      - SCIM Service Provider Config
+      - SCIM Schemas
+      - SCIM Resource Types
+      - SCIM Users
+      - SCIM Me
+      - SCIM Groups
+      - SCIM Unimplemented
 
 # Defines the display order of all sidebar groups (explicit and auto-derived).
 # Groups not listed here are appended alphabetically after all ordered entries.
@@ -171,4 +188,5 @@ groupOrder:
   - Verifiable Credentials
   - Branding & Localization
   - System
+  - SCIM Provisioning
   - Other

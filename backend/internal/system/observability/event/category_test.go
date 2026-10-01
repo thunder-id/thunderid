@@ -34,6 +34,16 @@ func TestGetCategory(t *testing.T) {
 			eventType:    EventTypeTokenIssuanceFailed,
 			wantCategory: CategoryAuthentication,
 		},
+		{
+			name:         "back-channel logout delivered",
+			eventType:    EventTypeBackchannelLogoutDelivered,
+			wantCategory: CategoryAuthentication,
+		},
+		{
+			name:         "back-channel logout failed",
+			eventType:    EventTypeBackchannelLogoutFailed,
+			wantCategory: CategoryAuthentication,
+		},
 
 		// Flow events
 		{

@@ -664,13 +664,14 @@ packages:
           filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/system/sysauthz:
+    config:
+      dir: tests/mocks/sysauthzmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: sysauthzmock
+      filename: "{{.InterfaceName}}_mock.go"
     interfaces:
       SystemAuthorizationServiceInterface:
-        config:
-          dir: tests/mocks/sysauthzmock
-          structname: '{{.InterfaceName}}Mock'
-          pkgname: sysauthzmock
-          filename: "{{.InterfaceName}}_mock.go"
+      OUHierarchyResolver:
 
   github.com/thunder-id/thunderid/internal/consent:
     interfaces:
@@ -727,4 +728,25 @@ packages:
       dir: tests/mocks/vc/presentationmock
       structname: '{{.InterfaceName}}Mock'
       pkgname: presentationmock
+      filename: "{{.InterfaceName}}_mock.go"
+  github.com/thunder-id/thunderid/internal/scim/discovery:
+    config:
+      all: true
+      dir: tests/mocks/scim/discoverymock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: discoverymock
+      filename: "{{.InterfaceName}}_mock.go"
+  github.com/thunder-id/thunderid/internal/scim/groups:
+    config:
+      all: true
+      dir: tests/mocks/scim/groupsmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: groupsmock
+      filename: "{{.InterfaceName}}_mock.go"
+  github.com/thunder-id/thunderid/internal/scim/users:
+    config:
+      all: true
+      dir: tests/mocks/scim/usersmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: usersmock
       filename: "{{.InterfaceName}}_mock.go"

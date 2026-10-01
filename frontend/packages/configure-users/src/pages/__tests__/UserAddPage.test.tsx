@@ -747,11 +747,13 @@ describe('UserAddPage', () => {
             code: 'FET-1080',
             message: {
               key: 'flows.executor.errors.provisioning_attribute_conflict',
-              defaultValue: 'A user with the provided attributes already exists',
+              defaultValue: 'Another user with the provided attributes already exists',
+              params: {entity: 'user'},
             },
             description: {
               key: 'flows.executor.errors.provisioning_attribute_conflict_desc',
-              defaultValue: 'User provisioning failed because one or more unique attribute values are already taken',
+              defaultValue: 'Provisioning failed because one or more unique attribute values are already taken',
+              params: {entity: 'user'},
             },
           },
         });
@@ -759,7 +761,9 @@ describe('UserAddPage', () => {
       rerender(<UserAddPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('A user with the same unique attribute value already exists.')).toBeInTheDocument();
+        expect(
+          screen.getByText('Another user with the same unique attribute value already exists.'),
+        ).toBeInTheDocument();
       });
       expect(screen.queryByText('An error occurred. Please try again.')).not.toBeInTheDocument();
     });
@@ -789,7 +793,7 @@ describe('UserAddPage', () => {
       rerender(<UserAddPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('A user already exists with the provided email.')).toBeInTheDocument();
+        expect(screen.getByText('Another user already exists with the provided email.')).toBeInTheDocument();
       });
       expect(screen.queryByText('An error occurred. Please try again.')).not.toBeInTheDocument();
     });
@@ -811,7 +815,8 @@ describe('UserAddPage', () => {
             code: 'FET-1080',
             message: {
               key: 'flows.executor.errors.provisioning_attribute_conflict',
-              defaultValue: 'A user with the provided attributes already exists',
+              defaultValue: 'Another user with the provided attributes already exists',
+              params: {entity: 'user'},
             },
           },
         });
@@ -822,7 +827,9 @@ describe('UserAddPage', () => {
       rerender(<UserAddPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('A user with the same unique attribute value already exists.')).toBeInTheDocument();
+        expect(
+          screen.getByText('Another user with the same unique attribute value already exists.'),
+        ).toBeInTheDocument();
       });
       expect(screen.queryByText('An error occurred. Please try again.')).not.toBeInTheDocument();
     });

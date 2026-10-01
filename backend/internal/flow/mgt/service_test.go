@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -2242,7 +2243,7 @@ func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_OUFlowIDUsedWhenNoO
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{}, nil, mockOU)
 
-	ou := providers.OrganizationUnit{AuthFlowID: "ou-auth-flow"}
+	ou := ou.OrganizationUnit{AuthFlowID: "ou-auth-flow"}
 	mockOU.EXPECT().GetOrganizationUnit(mock.Anything, "ou-1").Return(ou, nil)
 
 	id, svcErr := svc.ResolveEffectiveFlowID(context.Background(), "", "ou-1", providers.FlowTypeAuthentication)
@@ -2257,7 +2258,7 @@ func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_ServerDefaultUsedWh
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{}, mockSC, mockOU)
 
-	mockOU.EXPECT().GetOrganizationUnit(mock.Anything, "ou-1").Return(providers.OrganizationUnit{}, nil)
+	mockOU.EXPECT().GetOrganizationUnit(mock.Anything, "ou-1").Return(ou.OrganizationUnit{}, nil)
 
 	flowconfig := flowconfig.FlowSectionConfig{
 		AuthFlow: flowconfig.FlowTypeConfig{DefaultHandle: "default-auth"},
@@ -2297,7 +2298,7 @@ func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_OULookupErrorFallsT
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{}, mockSC, mockOU)
 
 	mockOU.EXPECT().GetOrganizationUnit(mock.Anything, "ou-1").
-		Return(providers.OrganizationUnit{}, &tidcommon.InternalServerError)
+		Return(ou.OrganizationUnit{}, &tidcommon.InternalServerError)
 	mockSC.EXPECT().GetMergedConfig(mock.Anything, "flow").Return(flowconfig.FlowSectionConfig{}, nil)
 
 	id, svcErr := svc.ResolveEffectiveFlowID(context.Background(), "", "ou-1", providers.FlowTypeAuthentication)
@@ -2309,7 +2310,7 @@ func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_OULookupErrorFallsT
 // ----- ouFlowIDForType -----
 
 func (s *FlowMgtServiceTestSuite) TestOUFlowIDForType_AllTypes() {
-	ou := providers.OrganizationUnit{
+	ou := ou.OrganizationUnit{
 		AuthFlowID:           "auth-id",
 		RegistrationFlowID:   "reg-id",
 		UserOnboardingFlowID: "onboard-id",

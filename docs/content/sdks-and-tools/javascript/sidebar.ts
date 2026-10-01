@@ -110,6 +110,11 @@ const sidebar: SidebarsConfig = {
       ],
     },
     {
+      type: 'doc',
+      id: 'sdks-and-tools/javascript/apis/management',
+      label: 'Management',
+    },
+    {
       type: 'category',
       label: 'Branding & Theme',
       collapsed: true,

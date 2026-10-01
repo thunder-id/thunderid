@@ -13,6 +13,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -111,9 +112,15 @@ type resourceService struct {
 	logger             log.Logger
 	resourceStore      resourceStoreInterface
 	ouService          oupkg.OrganizationUnitServiceInterface
+	authZENPDPService  authZENPDPConnectionLookup
 	defaultDelimiter   string
 	transactioner      providers.Transactioner
 	dependencyRegistry resourcedependency.Registry
+}
+
+// authZENPDPConnectionLookup retrieves AuthZEN PDP connections for resource-server validation.
+type authZENPDPConnectionLookup interface {
+	GetAuthZENPDP(ctx context.Context, id string) (*authzenpdp.AuthZENPDPConnection, *tidcommon.ServiceError)
 }
 
 // SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
@@ -210,6 +217,7 @@ func newResourceService(
 	ouService oupkg.OrganizationUnitServiceInterface,
 	resourceStore resourceStoreInterface,
 	transactionerInstance providers.Transactioner,
+	authZENPDPService authZENPDPConnectionLookup,
 ) (ResourceServiceInterface, error) {
 	// Load default delimiter from config
 	defaultDelimiter := getDefaultDelimiter()
@@ -218,11 +226,12 @@ func newResourceService(
 	}
 
 	return &resourceService{
-		logger:           *log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
-		resourceStore:    resourceStore,
-		ouService:        ouService,
-		defaultDelimiter: defaultDelimiter,
-		transactioner:    transactionerInstance,
+		logger:            *log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
+		resourceStore:     resourceStore,
+		ouService:         ouService,
+		authZENPDPService: authZENPDPService,
+		defaultDelimiter:  defaultDelimiter,
+		transactioner:     transactionerInstance,
 	}, nil
 }
 
@@ -235,6 +244,12 @@ func (rs *resourceService) CreateResourceServer(
 ) (*providers.ResourceServer, *tidcommon.ServiceError) {
 	rs.logger.Debug(ctx, "Creating resource server", log.String("name", resourceServer.Name))
 
+	if resourceServer.AuthorizationEngine.Type == "" {
+		resourceServer.AuthorizationEngine.Type = providers.AuthorizationEngineTypeRBAC
+	}
+	if svcErr := rs.validateAuthorizationEngine(ctx, &resourceServer.AuthorizationEngine); svcErr != nil {
+		return nil, svcErr
+	}
 	if err := rs.validateResourceServerCreate(resourceServer); err != nil {
 		return nil, err
 	}
@@ -274,7 +289,6 @@ func (rs *resourceService) CreateResourceServer(
 		return nil, &ErrorIdentifierConflict
 	}
 
-	// Set default type if not provided
 	if resourceServer.Type == "" {
 		resourceServer.Type = providers.ResourceServerTypeCustom
 	}
@@ -312,13 +326,14 @@ func (rs *resourceService) CreateResourceServer(
 		}
 
 		createdRS = &providers.ResourceServer{
-			ID:          id,
-			Name:        resourceServer.Name,
-			Description: resourceServer.Description,
-			Identifier:  resourceServer.Identifier,
-			Type:        resourceServer.Type,
-			OUID:        resourceServer.OUID,
-			Delimiter:   resourceServer.Delimiter,
+			ID:                  id,
+			Name:                resourceServer.Name,
+			Description:         resourceServer.Description,
+			Identifier:          resourceServer.Identifier,
+			Type:                resourceServer.Type,
+			OUID:                resourceServer.OUID,
+			Delimiter:           resourceServer.Delimiter,
+			AuthorizationEngine: resourceServer.AuthorizationEngine,
 		}
 		return nil
 	}); err != nil {
@@ -444,6 +459,16 @@ func (rs *resourceService) UpdateResourceServer(
 	// Type is immutable and always preserved from the existing record
 	resourceServer.Type = existingResServer.Type
 
+	if resourceServer.AuthorizationEngine.Type == "" {
+		resourceServer.AuthorizationEngine = existingResServer.AuthorizationEngine
+	}
+	if resourceServer.AuthorizationEngine.Type == "" {
+		resourceServer.AuthorizationEngine.Type = providers.AuthorizationEngineTypeRBAC
+	}
+	if svcErr := rs.validateAuthorizationEngine(ctx, &resourceServer.AuthorizationEngine); svcErr != nil {
+		return nil, svcErr
+	}
+
 	// Identifier: preserve existing if not provided; check uniqueness if changed
 	if resourceServer.Identifier == "" {
 		resourceServer.Identifier = existingResServer.Identifier
@@ -489,13 +514,14 @@ func (rs *resourceService) UpdateResourceServer(
 		}
 
 		updatedRS = &providers.ResourceServer{
-			ID:          id,
-			Name:        resourceServer.Name,
-			Description: resourceServer.Description,
-			Identifier:  resourceServer.Identifier,
-			Type:        resourceServer.Type,
-			OUID:        resourceServer.OUID,
-			Delimiter:   resourceServer.Delimiter,
+			ID:                  id,
+			Name:                resourceServer.Name,
+			Description:         resourceServer.Description,
+			Identifier:          resourceServer.Identifier,
+			Type:                resourceServer.Type,
+			OUID:                resourceServer.OUID,
+			Delimiter:           resourceServer.Delimiter,
+			AuthorizationEngine: resourceServer.AuthorizationEngine,
 		}
 		return nil
 	}); err != nil {
@@ -1364,6 +1390,11 @@ func (rs *resourceService) validateResourceServerCreate(
 	if resourceServer.Type != "" && !resourceServer.Type.IsValid() {
 		return &ErrorInvalidRequestFormat
 	}
+	if resourceServer.AuthorizationEngine.Type != "" &&
+		resourceServer.AuthorizationEngine.Type != providers.AuthorizationEngineTypeRBAC &&
+		resourceServer.AuthorizationEngine.Type != providers.AuthorizationEngineTypeAuthZENPDP {
+		return &ErrorInvalidRequestFormat
+	}
 	if resourceServer.Delimiter != "" {
 		if err := validateDelimiter(resourceServer.Delimiter); err != nil {
 			return err
@@ -1381,6 +1412,52 @@ func (rs *resourceService) validateResourceServerUpdate(
 	}
 	if resourceServer.OUID == "" {
 		return &ErrorInvalidRequestFormat
+	}
+	if resourceServer.AuthorizationEngine.Type != "" &&
+		resourceServer.AuthorizationEngine.Type != providers.AuthorizationEngineTypeRBAC &&
+		resourceServer.AuthorizationEngine.Type != providers.AuthorizationEngineTypeAuthZENPDP {
+		return &ErrorInvalidRequestFormat
+	}
+	return nil
+}
+
+// validateAuthorizationEngine normalizes and verifies resource-server authorization-engine settings.
+func (rs *resourceService) validateAuthorizationEngine(
+	ctx context.Context,
+	authorizationEngine *providers.AuthorizationEngineConfig,
+) *tidcommon.ServiceError {
+	switch authorizationEngine.Type {
+	case providers.AuthorizationEngineTypeRBAC:
+		authorizationEngine.Properties = providers.AuthorizationEngineProperties{}
+		return nil
+	case providers.AuthorizationEngineTypeAuthZENPDP:
+		if err := validateAuthZENPDPConnectionID(authorizationEngine); err != nil {
+			return &ErrorInvalidRequestFormat
+		}
+		if rs.authZENPDPService == nil {
+			rs.logger.Error(ctx, "AuthZEN PDP service is not configured")
+			return &tidcommon.InternalServerError
+		}
+		connection, svcErr := rs.authZENPDPService.GetAuthZENPDP(
+			ctx, authorizationEngine.Properties.PDPConnectionID)
+		if svcErr != nil {
+			return svcErr
+		}
+		if connection == nil {
+			return &ErrorInvalidRequestFormat
+		}
+		return nil
+	default:
+		return &ErrorInvalidRequestFormat
+	}
+}
+
+// validateAuthZENPDPConnectionID trims and requires the AuthZEN PDP connection ID.
+func validateAuthZENPDPConnectionID(authorizationEngine *providers.AuthorizationEngineConfig) error {
+	authorizationEngine.Properties.PDPConnectionID = strings.TrimSpace(
+		authorizationEngine.Properties.PDPConnectionID)
+	if authorizationEngine.Properties.PDPConnectionID == "" {
+		return errors.New("AuthZEN PDP connection ID is required")
 	}
 	return nil
 }

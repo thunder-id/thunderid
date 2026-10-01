@@ -7,7 +7,7 @@
  * An independent branch off the raw Playwright base, merged in `./index.ts`
  * (same shape as `console-routes.fixture.ts`).
  *
- * - `usersApi` / `userTypesApi` / `applicationsApi` / `flowsApi` / `connectionsApi`: the shared
+ * - `usersApi` / `userTypesApi` / `applicationsApi` / `flowsApi` / `connectionsApi` / `agentsApi`: the shared
  *   API helpers bound to the test's request context. `beforeAll`/`afterAll` cannot take
  *   test-scoped fixtures, so they construct `new UsersApi(request)` (etc.) themselves - same
  *   class, so no logic lives in two places.
@@ -21,6 +21,7 @@ import { UserTypesApi } from "../../utils/user-types-api";
 import { ApplicationsApi } from "../../utils/applications-api";
 import { FlowsApi } from "../../utils/flows-api";
 import { ConnectionsApi } from "../../utils/connections-api";
+import { AgentsApi } from "../../utils/agents-api";
 
 type SupportFixtures = {
   usersApi: UsersApi;
@@ -28,6 +29,7 @@ type SupportFixtures = {
   applicationsApi: ApplicationsApi;
   flowsApi: FlowsApi;
   connectionsApi: ConnectionsApi;
+  agentsApi: AgentsApi;
   isolatedPage: Page;
 };
 
@@ -50,6 +52,10 @@ export const test = base.extend<SupportFixtures>({
 
   connectionsApi: async ({ request }, use) => {
     await use(new ConnectionsApi(request));
+  },
+
+  agentsApi: async ({ request }, use) => {
+    await use(new AgentsApi(request));
   },
 
   isolatedPage: async ({ browser }, use) => {

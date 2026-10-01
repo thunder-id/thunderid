@@ -46,6 +46,9 @@ type sessionStore interface {
 	Record(ctx context.Context, p Participant) error
 	// ListBySessionID returns the applications that have joined the session, oldest first.
 	ListBySessionID(ctx context.Context, sessionID string) ([]Participant, error)
+	// ListBySessionIDs returns the participants of all the given sessions, each session's
+	// participants oldest first.
+	ListBySessionIDs(ctx context.Context, sessionIDs []string) ([]Participant, error)
 	// DeleteBySessionID removes all participants of a session.
 	DeleteBySessionID(ctx context.Context, sessionID string) error
 	// ListByAppID returns every participation of the application, across sessions, oldest first.

@@ -18,6 +18,9 @@ export interface ResourceServerRoutePaths {
     detail: (id: string) => string;
     create: () => string;
   };
+  connections: {
+    create: () => string;
+  };
 }
 
 /**
@@ -31,7 +34,15 @@ export const defaultResourceServerRoutePaths: ResourceServerRoutePaths = {
     detail: (id) => `/resource-servers/${id}`,
     create: () => '/resource-servers/create',
   },
+  connections: {
+    create: () => '/connections/create',
+  },
 };
+
+export function useResourceServerConnectionRoutes(): ResourceServerRoutePaths['connections'] {
+  const routes = useRoutes<Partial<ResourceServerRoutePaths>>();
+  return routes.connections ?? defaultResourceServerRoutePaths.connections;
+}
 
 /**
  * Resolves the resource server route paths, preferring the host application's configuration

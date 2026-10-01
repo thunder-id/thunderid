@@ -16,12 +16,14 @@ import (
 	agentmodel "github.com/thunder-id/thunderid/internal/agent/model"
 	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/connection"
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	"github.com/thunder-id/thunderid/internal/group"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -39,6 +41,7 @@ type applicationAdapter interface {
 		*appmodel.ApplicationDTO,
 		*tidcommon.ServiceError,
 	)
+	DeleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError
 }
 
 type idpAdapter interface {
@@ -49,6 +52,7 @@ type idpAdapter interface {
 		*providers.IDPDTO,
 		*tidcommon.ServiceError,
 	)
+	DeleteIdentityProvider(ctx context.Context, idpID string) *tidcommon.ServiceError
 }
 
 // senderAdapter is the subset of notification.NotificationSenderMgtSvcInterface the importer
@@ -63,6 +67,22 @@ type senderAdapter interface {
 		*ncommon.NotificationSenderDTO,
 		*tidcommon.ServiceError,
 	)
+	DeleteSender(ctx context.Context, id string) *tidcommon.ServiceError
+}
+
+// authZENPDPAdapter defines the AuthZEN PDP connection operations required by the importer.
+type authZENPDPAdapter interface {
+	CreateAuthZENPDPConnection(
+		ctx context.Context,
+		request authzenpdp.ConnectionRequest,
+	) (*authzenpdp.AuthZENPDPConnection, *tidcommon.ServiceError)
+	GetAuthZENPDP(ctx context.Context, id string) (*authzenpdp.AuthZENPDPConnection, *tidcommon.ServiceError)
+	UpdateAuthZENPDPConnection(
+		ctx context.Context,
+		id string,
+		request authzenpdp.ConnectionRequest,
+	) (*authzenpdp.AuthZENPDPConnection, *tidcommon.ServiceError)
+	DeleteAuthZENPDPConnection(ctx context.Context, id string) *tidcommon.ServiceError
 }
 
 type flowAdapter interface {
@@ -75,21 +95,23 @@ type flowAdapter interface {
 		*tidcommon.ServiceError)
 	UpdateFlow(ctx context.Context, flowID string, flowDef *flowmgt.FlowDefinition) (*providers.CompleteFlowDefinition,
 		*tidcommon.ServiceError)
+	DeleteFlow(ctx context.Context, flowID string) *tidcommon.ServiceError
 }
 
 type ouAdapter interface {
-	CreateOrganizationUnit(ctx context.Context, request providers.OrganizationUnitRequestWithID) (
-		providers.OrganizationUnit,
+	CreateOrganizationUnit(ctx context.Context, request ou.OrganizationUnitRequestWithID) (
+		ou.OrganizationUnit,
 		*tidcommon.ServiceError,
 	)
-	GetOrganizationUnit(ctx context.Context, id string) (providers.OrganizationUnit, *tidcommon.ServiceError)
+	GetOrganizationUnit(ctx context.Context, id string) (ou.OrganizationUnit, *tidcommon.ServiceError)
 	GetOrganizationUnitByPath(ctx context.Context, handlePath string) (
-		providers.OrganizationUnit,
+		ou.OrganizationUnit,
 		*tidcommon.ServiceError,
 	)
-	UpdateOrganizationUnit(ctx context.Context, id string, request providers.OrganizationUnitRequestWithID) (
-		providers.OrganizationUnit,
+	UpdateOrganizationUnit(ctx context.Context, id string, request ou.OrganizationUnitRequestWithID) (
+		ou.OrganizationUnit,
 		*tidcommon.ServiceError)
+	DeleteOrganizationUnit(ctx context.Context, id string) *tidcommon.ServiceError
 }
 
 type entityTypeAdapter interface {
@@ -105,6 +127,7 @@ type entityTypeAdapter interface {
 		request entitytype.UpdateEntityTypeRequest) (
 		*entitytype.EntityType,
 		*tidcommon.ServiceError)
+	DeleteEntityType(ctx context.Context, category entitytype.TypeCategory, schemaID string) *tidcommon.ServiceError
 }
 
 type roleAdapter interface {
@@ -113,6 +136,7 @@ type roleAdapter interface {
 	GetRoleWithPermissions(ctx context.Context, id string) (*role.RoleWithPermissions, *tidcommon.ServiceError)
 	UpdateRoleWithPermissions(ctx context.Context, id string, role role.RoleUpdateDetail) (*role.RoleWithPermissions,
 		*tidcommon.ServiceError)
+	DeleteRole(ctx context.Context, id string) *tidcommon.ServiceError
 }
 
 type roleAssignmentAdapter interface {
@@ -126,6 +150,7 @@ type groupAdapter interface {
 		*group.Group, *tidcommon.ServiceError)
 	AddGroupMembers(ctx context.Context, groupID string, members []group.Member) (
 		*group.Group, *tidcommon.ServiceError)
+	DeleteGroup(ctx context.Context, groupID string) *tidcommon.ServiceError
 }
 
 type resourceServerAdapter interface {
@@ -140,6 +165,7 @@ type resourceServerAdapter interface {
 		*resource.ResourceList, *tidcommon.ServiceError)
 	CreateAction(ctx context.Context, resourceServerID string, resourceID *string, action providers.Action) (
 		*providers.Action, *tidcommon.ServiceError)
+	DeleteResourceServer(ctx context.Context, id string) *tidcommon.ServiceError
 }
 
 type themeAdapter interface {
@@ -148,6 +174,7 @@ type themeAdapter interface {
 	GetTheme(ctx context.Context, id string) (*thememgt.Theme, *tidcommon.ServiceError)
 	UpdateTheme(ctx context.Context,
 		id string, theme thememgt.UpdateThemeRequest) (*thememgt.Theme, *tidcommon.ServiceError)
+	DeleteTheme(ctx context.Context, id string) *tidcommon.ServiceError
 }
 
 type layoutAdapter interface {
@@ -156,6 +183,7 @@ type layoutAdapter interface {
 	GetLayout(ctx context.Context, id string) (*layoutmgt.Layout, *tidcommon.ServiceError)
 	UpdateLayout(ctx context.Context,
 		id string, layout layoutmgt.UpdateLayoutRequest) (*layoutmgt.Layout, *tidcommon.ServiceError)
+	DeleteLayout(ctx context.Context, id string) *tidcommon.ServiceError
 }
 
 type userAdapter interface {
@@ -179,6 +207,7 @@ type agentAdapter interface {
 		*agentmodel.AgentGetResponse, *tidcommon.ServiceError)
 	UpdateAgent(ctx context.Context, agentID string, req *agentmodel.UpdateAgentRequest) (
 		*agentmodel.AgentCompleteResponse, *tidcommon.ServiceError)
+	DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError
 }
 
 type presentationDefinitionAdapter interface {
@@ -188,6 +217,7 @@ type presentationDefinitionAdapter interface {
 		*presentation.PresentationDefinitionDTO, *tidcommon.ServiceError)
 	UpdatePresentationDefinition(ctx context.Context, id string, dto *presentation.PresentationDefinitionDTO) (
 		*presentation.PresentationDefinitionDTO, *tidcommon.ServiceError)
+	DeletePresentationDefinition(ctx context.Context, id string) *tidcommon.ServiceError
 }
 
 type credentialConfigurationAdapter interface {
@@ -197,6 +227,7 @@ type credentialConfigurationAdapter interface {
 		*credential.CredentialConfigurationDTO, *tidcommon.ServiceError)
 	UpdateCredentialConfiguration(ctx context.Context, id string, dto *credential.CredentialConfigurationDTO) (
 		*credential.CredentialConfigurationDTO, *tidcommon.ServiceError)
+	DeleteCredentialConfiguration(ctx context.Context, id string) *tidcommon.ServiceError
 }
 
 // ImportServiceInterface defines runtime resource import and declarative resource deletion operations.
@@ -218,6 +249,7 @@ type importService struct {
 	applicationService             applicationAdapter
 	idpService                     idpAdapter
 	senderService                  senderAdapter
+	authZENPDPService              authZENPDPAdapter
 	flowService                    flowAdapter
 	ouService                      ouAdapter
 	entityTypeService              entityTypeAdapter
@@ -233,6 +265,7 @@ type importService struct {
 	presentationDefinitionService  presentationDefinitionAdapter
 	credentialConfigurationService credentialConfigurationAdapter
 	serverConfigService            serverConfigAdapter
+	gatewayService                 gatewayAdapter
 }
 
 func newImportService(
@@ -254,11 +287,18 @@ func newImportService(
 	presentationDefinitionService presentationDefinitionAdapter,
 	credentialConfigurationService credentialConfigurationAdapter,
 	serverConfigService serverConfigAdapter,
+	gatewayService gatewayAdapter,
+	authZENPDPServices ...authZENPDPAdapter,
 ) ImportServiceInterface {
+	var authZENPDPService authZENPDPAdapter
+	if len(authZENPDPServices) > 0 {
+		authZENPDPService = authZENPDPServices[0]
+	}
 	return &importService{
 		applicationService:             applicationService,
 		idpService:                     idpService,
 		senderService:                  senderService,
+		authZENPDPService:              authZENPDPService,
 		flowService:                    flowService,
 		ouService:                      ouService,
 		entityTypeService:              entityTypeService,
@@ -274,13 +314,14 @@ func newImportService(
 		presentationDefinitionService:  presentationDefinitionService,
 		credentialConfigurationService: credentialConfigurationService,
 		serverConfigService:            serverConfigService,
+		gatewayService:                 gatewayService,
 	}
 }
 
 func (s *importService) ImportResources(
 	ctx context.Context, request *ImportRequest,
 ) (*ImportResponse, *tidcommon.ServiceError) {
-	if request == nil || request.Content == "" {
+	if request == nil || (request.Content == "" && len(request.Deletions) == 0) {
 		return nil, tidcommon.CustomServiceError(ErrorInvalidImportRequest,
 			tidcommon.I18nMessage{Key: "error.import.emptyContent", DefaultValue: "import content cannot be empty"})
 	}
@@ -311,18 +352,22 @@ func (s *importService) ImportResources(
 		)
 	}
 
-	resolvedContent, err := resolveTemplate(request.Content, request.Variables)
-	if err != nil {
-		log.GetLogger().Warn(ctx, "Import template resolution failed", log.String("error", err.Error()))
-		return nil, tidcommon.CustomServiceError(ErrorTemplateResolutionFailed,
-			tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
-	}
+	// A request may carry only deletions, in which case there is no payload to resolve or parse.
+	var docs []parsedDocument
+	if request.Content != "" {
+		resolvedContent, err := resolveTemplate(request.Content, request.Variables)
+		if err != nil {
+			log.GetLogger().Warn(ctx, "Import template resolution failed", log.String("error", err.Error()))
+			return nil, tidcommon.CustomServiceError(ErrorTemplateResolutionFailed,
+				tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
+		}
 
-	docs, err := parseDocuments(resolvedContent)
-	if err != nil {
-		log.GetLogger().Warn(ctx, "Import YAML parsing failed", log.String("error", err.Error()))
-		return nil, tidcommon.CustomServiceError(ErrorInvalidYAMLContent,
-			tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
+		docs, err = parseDocuments(resolvedContent)
+		if err != nil {
+			log.GetLogger().Warn(ctx, "Import YAML parsing failed", log.String("error", err.Error()))
+			return nil, tidcommon.CustomServiceError(ErrorInvalidYAMLContent,
+				tidcommon.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
+		}
 	}
 
 	results := make([]ImportItemOutcome, 0, len(docs))
@@ -359,10 +404,22 @@ func (s *importService) ImportResources(
 		}
 	}
 
+	// Deletions run after the upserts so that resources moved or replaced by this same request are in
+	// place before their predecessors are pruned.
+	deleted := 0
+	if len(request.Deletions) > 0 && (failed == 0 || options.IsContinueOnErrorEnabled()) {
+		deleteOutcomes, deleteCount, deleteFailures := s.deleteResources(ctx, request.Deletions, options,
+			request.DryRun)
+		results = append(results, deleteOutcomes...)
+		deleted = deleteCount
+		failed += deleteFailures
+	}
+
 	return &ImportResponse{
 		Summary: &ImportSummary{
 			TotalDocuments: len(docs),
 			Imported:       imported,
+			Deleted:        deleted,
 			Failed:         failed,
 			ImportedAt:     time.Now().UTC(),
 		},
@@ -435,6 +492,8 @@ func (s *importService) importDocument(
 		return s.importCredentialConfiguration(ctx, doc, options, dryRun)
 	case resourceTypeServerConfig:
 		return s.importServerConfig(ctx, doc, dryRun)
+	case resourceTypeGateway:
+		return s.importGateway(ctx, doc, options, dryRun)
 	default:
 		return ImportItemOutcome{
 			ResourceType: doc.ResourceType,
@@ -450,6 +509,17 @@ func (s *importService) importDocument(
 func (s *importService) importConnection(
 	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool,
 ) ImportItemOutcome {
+	if authZENPDP, err := connection.ParseAuthZENPDPConnectionFromNode(doc.Node); err != nil {
+		return ImportItemOutcome{
+			ResourceType: resourceTypeConnection,
+			Status:       statusFailed,
+			Code:         ErrorInvalidYAMLContent.Code,
+			Message:      fmt.Sprintf("failed to decode connection document: %v", err),
+		}
+	} else if authZENPDP != nil {
+		return s.importConnectionAuthZENPDP(ctx, authZENPDP, options, dryRun)
+	}
+
 	idpDTO, senderDTO, err := connection.ParseConnectionFromNode(doc.Node)
 	if err != nil {
 		return ImportItemOutcome{
@@ -464,6 +534,69 @@ func (s *importService) importConnection(
 		return s.importConnectionIDP(ctx, idpDTO, options, dryRun)
 	}
 	return s.importConnectionSender(ctx, senderDTO, options, dryRun)
+}
+
+// importConnectionAuthZENPDP creates or updates an AuthZEN PDP connection from an import document.
+func (s *importService) importConnectionAuthZENPDP(
+	ctx context.Context, req *authzenpdp.AuthZENPDPConnection, options *ImportOptions, dryRun bool,
+) ImportItemOutcome {
+	if s.authZENPDPService == nil {
+		return unsupportedAdapterOutcome(resourceTypeConnection, "AuthZEN PDP")
+	}
+	if options.IsUpsertEnabled() && req.ID != "" {
+		existing, svcErr := s.authZENPDPService.GetAuthZENPDP(ctx, req.ID)
+		if svcErr != nil {
+			return authZENPDPImportServiceError(req, operationUpdate, svcErr)
+		}
+		if existing != nil {
+			if dryRun {
+				return successOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate)
+			}
+			if _, svcErr := s.authZENPDPService.UpdateAuthZENPDPConnection(
+				ctx, req.ID, authZENPDPConnectionRequest(req)); svcErr != nil {
+				return authZENPDPImportServiceError(req, operationUpdate, svcErr)
+			}
+			return successOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate)
+		}
+	}
+	if dryRun {
+		return successOutcome(resourceTypeConnection, req.ID, req.Name, operationCreate)
+	}
+	created, svcErr := s.authZENPDPService.CreateAuthZENPDPConnection(
+		ctx, authZENPDPConnectionRequest(req))
+	if svcErr != nil {
+		return authZENPDPImportServiceError(req, operationCreate, svcErr)
+	}
+	return successOutcome(resourceTypeConnection, created.ID, created.Name, operationCreate)
+}
+
+// authZENPDPConnectionRequest converts an imported connection into the service request shape.
+func authZENPDPConnectionRequest(connection *authzenpdp.AuthZENPDPConnection) authzenpdp.ConnectionRequest {
+	return authzenpdp.ConnectionRequest{
+		ID:                       connection.ID,
+		Name:                     connection.Name,
+		Description:              connection.Description,
+		Endpoint:                 connection.Endpoint,
+		BatchEndpoint:            connection.BatchEndpoint,
+		TimeoutMS:                connection.TimeoutMS,
+		RetryCount:               &connection.RetryCount,
+		SubjectAttributeMappings: connection.SubjectAttributeMappings,
+	}
+}
+
+// authZENPDPImportServiceError converts a service error into an import outcome.
+func authZENPDPImportServiceError(
+	req *authzenpdp.AuthZENPDPConnection, operation string, svcErr *tidcommon.ServiceError,
+) ImportItemOutcome {
+	return ImportItemOutcome{
+		ResourceType: resourceTypeConnection,
+		ResourceID:   req.ID,
+		ResourceName: req.Name,
+		Operation:    operation,
+		Status:       statusFailed,
+		Code:         svcErr.Code,
+		Message:      svcErr.Error.DefaultValue,
+	}
 }
 
 func (s *importService) importConnectionIDP(
@@ -756,11 +889,14 @@ func (s *importService) importFlow(
 }
 
 var resourceDependencyOrder = []string{
+	// A gateway refers to no other resource and nothing refers to it, so its position is free.
+	// First keeps it out of the way of the ordering that does matter.
+	resourceTypeGateway,
 	resourceTypeOrganizationUnit,
 	resourceTypeEntityType,
 	resourceTypeAgentType,
-	resourceTypeResourceServer,
 	resourceTypeConnection,
+	resourceTypeResourceServer,
 	resourceTypeFlow,
 	resourceTypeTheme,
 	resourceTypeLayout,
@@ -985,6 +1121,7 @@ func applicationRequestToDTO(req *appmodel.ApplicationRequestWithID) *appmodel.A
 					ClientSecret:                       config.OAuthConfig.ClientSecret,
 					RedirectURIs:                       config.OAuthConfig.RedirectURIs,
 					PostLogoutRedirectURIs:             config.OAuthConfig.PostLogoutRedirectURIs,
+					BackchannelLogoutURI:               config.OAuthConfig.BackchannelLogoutURI,
 					GrantTypes:                         config.OAuthConfig.GrantTypes,
 					ResponseTypes:                      config.OAuthConfig.ResponseTypes,
 					TokenEndpointAuthMethod:            config.OAuthConfig.TokenEndpointAuthMethod,

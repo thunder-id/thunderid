@@ -31,6 +31,11 @@ const sidebar: SidebarsConfig = {
           label: 'ThunderIDState',
         },
         {
+          type: 'doc',
+          id: 'sdks-and-tools/android/apis/management',
+          label: 'Management',
+        },
+        {
           type: 'category',
           label: 'Components',
           collapsed: false,

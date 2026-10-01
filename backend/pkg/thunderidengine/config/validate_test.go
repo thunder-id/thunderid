@@ -397,3 +397,35 @@ func (suite *ValidateTestSuite) TestOAuthConfig_SendServerErrorsToClientEnabled(
 		})
 	}
 }
+
+func (suite *ValidateTestSuite) TestBackchannelLogoutConfig_Validate() {
+	valid := func() BackchannelLogoutConfig {
+		return BackchannelLogoutConfig{Enabled: boolPtr(true), TokenValidityPeriod: 120, RequestTimeout: 5,
+			MaxAttempts: 3, RetryDelay: 2, MaxInFlight: 16, QueueSize: 1024}
+	}
+	suite.T().Run("disabled skips validation", func(t *testing.T) {
+		assert.NoError(t, (&BackchannelLogoutConfig{Enabled: boolPtr(false)}).Validate())
+	})
+	suite.T().Run("defaults pass when enabled", func(t *testing.T) {
+		c := valid()
+		assert.NoError(t, c.Validate())
+	})
+	suite.T().Run("each tuning value must be positive", func(t *testing.T) {
+		zero := []struct {
+			name string
+			set  func(*BackchannelLogoutConfig)
+		}{
+			{"token_validity_period", func(c *BackchannelLogoutConfig) { c.TokenValidityPeriod = 0 }},
+			{"request_timeout", func(c *BackchannelLogoutConfig) { c.RequestTimeout = 0 }},
+			{"max_attempts", func(c *BackchannelLogoutConfig) { c.MaxAttempts = 0 }},
+			{"retry_delay", func(c *BackchannelLogoutConfig) { c.RetryDelay = -1 }},
+			{"max_in_flight", func(c *BackchannelLogoutConfig) { c.MaxInFlight = 0 }},
+			{"queue_size", func(c *BackchannelLogoutConfig) { c.QueueSize = 0 }},
+		}
+		for _, tc := range zero {
+			c := valid()
+			tc.set(&c)
+			assert.ErrorContains(t, c.Validate(), tc.name)
+		}
+	})
+}

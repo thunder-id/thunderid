@@ -1,0 +1,123 @@
+{
+  "private": true,
+  "name": "@thunderid/configure-agents",
+  "version": "0.0.0",
+  "description": "agents feature for ⚡️ ThunderID applications",
+  "keywords": [
+    "thunderid",
+    "configure",
+    "agents",
+    "react",
+    "feature"
+  ],
+  "homepage": "https://github.com/thunder-id/thunderid/tree/main/frontend/packages/configure-agents#readme",
+  "bugs": {
+    "url": "https://github.com/thunder-id/thunderid/issues"
+  },
+  "author": "The ThunderID Authors",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/cjs/index.cjs",
+  "module": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/cjs/index.cjs"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thunder-id/thunderid",
+    "directory": "frontend/packages/configure-agents"
+  },
+  "scripts": {
+    "build": "pnpm clean:dist && rolldown -c rolldown.config.js && tsc -p tsconfig.lib.json --emitDeclarationOnly --outDir dist",
+    "clean": "pnpm clean:node_modules && pnpm clean:dist",
+    "clean:dist": "rimraf dist",
+    "clean:node_modules": "rimraf node_modules",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --coverage --passWithNoTests",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.lib.json"
+  },
+  "devDependencies": {
+    "@monaco-editor/react": "catalog:",
+    "@playwright/test": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@testing-library/jest-dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@thunderid/components": "workspace:^",
+    "@thunderid/configure-agent-types": "workspace:^",
+    "@thunderid/configure-applications": "workspace:^",
+    "@thunderid/configure-organization-units": "workspace:^",
+    "@thunderid/configure-user-types": "workspace:^",
+    "@thunderid/configure-users": "workspace:^",
+    "@thunderid/contexts": "workspace:^",
+    "@thunderid/design": "workspace:^",
+    "@thunderid/eslint-plugin": "workspace:^",
+    "@thunderid/hooks": "workspace:^",
+    "@thunderid/logger": "workspace:^",
+    "@thunderid/prettier-config": "workspace:^",
+    "@thunderid/react": "catalog:",
+    "@thunderid/test-utils": "workspace:^",
+    "@thunderid/types": "workspace:^",
+    "@thunderid/utils": "workspace:^",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@vitest/browser-playwright": "catalog:",
+    "@vitest/coverage-istanbul": "catalog:",
+    "@wso2/oxygen-ui": "catalog:",
+    "@wso2/oxygen-ui-icons-react": "catalog:",
+    "eslint": "catalog:",
+    "monaco-editor": "^0.55.1",
+    "prettier": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-hook-form": "catalog:",
+    "react-i18next": "catalog:",
+    "react-router": "catalog:",
+    "rimraf": "catalog:",
+    "rolldown": "catalog:",
+    "tslib": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@tanstack/react-query": "catalog:",
+    "@thunderid/components": "workspace:^",
+    "@thunderid/configure-agent-types": "workspace:^",
+    "@thunderid/configure-applications": "workspace:^",
+    "@thunderid/configure-organization-units": "workspace:^",
+    "@thunderid/configure-user-types": "workspace:^",
+    "@thunderid/configure-users": "workspace:^",
+    "@thunderid/contexts": "workspace:^",
+    "@thunderid/design": "workspace:^",
+    "@thunderid/hooks": "workspace:^",
+    "@thunderid/logger": "workspace:^",
+    "@thunderid/react": "catalog:",
+    "@thunderid/utils": "workspace:^",
+    "@wso2/oxygen-ui": "catalog:",
+    "@wso2/oxygen-ui-icons-react": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-hook-form": "catalog:",
+    "react-i18next": "catalog:",
+    "react-router": "catalog:"
+  }
+}

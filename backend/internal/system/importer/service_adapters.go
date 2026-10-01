@@ -16,6 +16,7 @@ import (
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -105,12 +106,12 @@ func (s *importService) importOrganizationUnit(
 		return unsupportedAdapterOutcome(resourceTypeOrganizationUnit, "organization unit")
 	}
 
-	var req providers.OrganizationUnit
+	var req ou.OrganizationUnit
 	if err := doc.Node.Decode(&req); err != nil {
 		return decodeErrorOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, err)
 	}
 
-	createReq := providers.OrganizationUnitRequestWithID{
+	createReq := ou.OrganizationUnitRequestWithID{
 		ID:                        req.ID,
 		Handle:                    req.Handle,
 		Name:                      req.Name,

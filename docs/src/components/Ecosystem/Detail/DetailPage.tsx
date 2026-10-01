@@ -13,7 +13,7 @@ import type {EcosystemEntry} from '@site/src/types/ecosystem';
  * These pages carry a wide banded header and a two-pane API explorer, neither
  * of which fits the docs prose column, and they are not versioned the way a doc
  * page is. So rather than bending the docs layout to hold them, the ecosystem
- * plugin routes them here, at `/sdks/<id>`, with their own shell. The docs keep
+ * plugin routes them here, at `/sdks-and-tools/<id>`, with their own shell. The docs keep
  * their own pages; `docs.overview` is what links the two together.
  */
 export default function DetailPage({entry}: {entry: EcosystemEntry}): JSX.Element {

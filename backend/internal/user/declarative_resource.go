@@ -17,6 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
@@ -31,13 +32,18 @@ const (
 
 // userExporter implements declarativeresource.ResourceExporter for users.
 type userExporter struct {
-	service       UserServiceInterface
-	entityService entity.EntityServiceInterface
+	service           UserServiceInterface
+	entityService     entity.EntityServiceInterface
+	entityTypeService entitytype.EntityTypeServiceInterface
 }
 
 // newUserExporter creates a new user exporter.
-func newUserExporter(service UserServiceInterface, entityService entity.EntityServiceInterface) *userExporter {
-	return &userExporter{service: service, entityService: entityService}
+func newUserExporter(
+	service UserServiceInterface,
+	entityService entity.EntityServiceInterface,
+	entityTypeService entitytype.EntityTypeServiceInterface,
+) *userExporter {
+	return &userExporter{service: service, entityService: entityService, entityTypeService: entityTypeService}
 }
 
 // GetResourceType returns the resource type for users.
@@ -117,35 +123,64 @@ func (e *userExporter) GetResourceByID(
 		attributesMap = make(map[string]interface{})
 	}
 
-	// Export credentials as placeholders rather than values. A stored credential is a one-way hash, so
-	// the value cannot be exported, and an empty map would leave the imported user with no credential at
-	// all and no way to sign in. Naming the credential here makes the parameterizer emit a template
-	// variable for it, which the importing server fills from its own secret provider or environment
-	// before hashing.
+	credentials, svcErr := e.exportableCredentials(ctx, user.ID, user.Type, username)
+	if svcErr != nil {
+		return nil, "", svcErr
+	}
+
 	exportUser := &userDeclarativeResource{
 		ID:          user.ID,
 		Type:        user.Type,
 		OUID:        user.OUID,
 		Attributes:  attributesMap,
-		Credentials: exportableCredentials(username),
+		Credentials: credentials,
 	}
 
 	return exportUser, username, nil
 }
 
-// exportableCredentials describes the credentials an exported user carries.
+// exportableCredentials describes the credentials an exported user carries: one template
+// placeholder for each credential the user's type declares and the user has set.
 //
-// The placeholder is written here because the parameterizer only walks a slice of properties and
-// credentials are a map, so it would export any value here verbatim. Only the password is carried:
-// device bound kinds such as a passkey mean nothing on another deployment. The value never leaves,
-// since it is stored as a one-way hash and the importing server fills the placeholder itself.
-func exportableCredentials(username string) map[string]interface{} {
+// A stored credential is a one-way hash, so its value never leaves. The placeholder names it
+// instead, and the importing server fills it from its own secret provider or environment before
+// hashing it, which leaves the imported user able to sign in with it. A credential the user has not
+// set is left out rather than exported empty, since it would otherwise demand a value on import for
+// something the user never had. The user itself is exported either way.
+//
+// Only credentials the type declares are considered, which leaves out device-bound ones such as a
+// passkey: those mean nothing on another deployment. The placeholder is written here because the
+// parameterizer only walks a slice of properties and credentials are a map, so it would export any
+// value here verbatim.
+func (e *userExporter) exportableCredentials(
+	ctx context.Context, userID, userType, username string,
+) (map[string]interface{}, *tidcommon.ServiceError) {
+	credentials := map[string]interface{}{}
 	if username == "" {
-		return map[string]interface{}{}
+		// The placeholder is named after the username, so there is nothing to name it after.
+		return credentials, nil
 	}
-	return map[string]interface{}{
-		"password": fmt.Sprintf("{{.%s}}", varname.DeriveVariableName(resourceTypeUser, username, "password")),
+
+	declared, svcErr := e.entityTypeService.GetAttributes(ctx, entitytype.TypeCategoryUser, userType,
+		entitytype.AttributeFilter{AllowCredential: true})
+	if svcErr != nil {
+		return nil, svcErr
 	}
+
+	for _, attribute := range declared {
+		stored, err := e.entityService.GetCredentialsByType(ctx, userID, attribute.Attribute)
+		if err != nil {
+			log.GetLogger().Error(ctx, "Failed to read a user's credentials for export",
+				log.MaskedString(log.LoggerKeyUserID, userID), log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		if len(stored) == 0 {
+			continue
+		}
+		credentials[attribute.Attribute] = fmt.Sprintf("{{.%s}}",
+			varname.DeriveVariableName(resourceTypeUser, username, attribute.Attribute))
+	}
+	return credentials, nil
 }
 
 // ValidateResource validates a user resource.

@@ -2955,3 +2955,187 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_UserAttributeCannotSynthesi
 	assert.Equal(suite.T(), testIDToken, result.Token)
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
+
+// Refresh tokens are minted with the rt+jwt typ so they are self-identifying: a validator that
+// whitelists the types it accepts rejects one by default, rather than by remembering to check the
+// access_token_sub claim. The other BuildRefreshToken tests pass mock.Anything for the typ argument,
+// so this is the only assertion tying the minted type to the constant.
+func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_MintsRTJWTTyp() {
+	ctx := &RefreshTokenBuildContext{
+		ClientID:             "test-client",
+		Scopes:               []string{"read"},
+		GrantType:            string(providers.GrantTypeAuthorizationCode),
+		AccessTokenSubject:   "user123",
+		AccessTokenAudiences: []string{testAppID},
+		OAuthApp:             &providers.OAuthClient{ClientID: "test-client"},
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		jwt.TokenTypeRefreshToken, mock.Anything,
+	).Return(testRefreshToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildRefreshToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+// ----- BuildLogoutToken -----
+
+const (
+	logoutTestClientID  = "rp-client"
+	logoutTestSubjectID = "user-1"
+	logoutTestSessionID = "01a0d89e-fc9a-7049-885d-00ebaa20ab41"
+	logoutSignedToken   = "signed.logout.token"
+)
+
+func (suite *TokenBuilderTestSuite) newLogoutBuilder(validity int64, jweService jwe.JWEServiceInterface) *tokenBuilder {
+	cfg := oauthconfig.Config{JWT: engineconfig.JWTConfig{Issuer: "https://example.com", ValidityPeriod: 3600}}
+	cfg.OAuth.Logout.Backchannel.TokenValidityPeriod = validity
+	return &tokenBuilder{cfg: cfg, jwtService: suite.mockJWTService, jweService: jweService,
+		jwksResolver: jwksresolver.Initialize(nil)}
+}
+
+// expectLogoutJWT expects one logout-typed GenerateJWT call and records the claims it was asked to sign.
+func (suite *TokenBuilderTestSuite) expectLogoutJWT(validity int64, alg string) *map[string]interface{} {
+	var got map[string]interface{}
+	suite.mockJWTService.EXPECT().
+		GenerateJWT(mock.Anything, logoutTestSubjectID, "https://example.com", validity, mock.Anything,
+			jwt.TokenTypeLogout, alg).
+		Run(func(_ context.Context, _, _ string, _ int64, claims map[string]interface{}, _, _ string) {
+			got = claims
+		}).Return(logoutSignedToken, int64(1700000000), nil).Once()
+	return &got
+}
+
+func logoutCtx(client *providers.OAuthClient) *LogoutTokenBuildContext {
+	return &LogoutTokenBuildContext{OAuthApp: client, SubjectID: logoutTestSubjectID, SessionID: logoutTestSessionID}
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildLogoutToken_ClaimShape() {
+	claims := suite.expectLogoutJWT(120, "")
+
+	result, err := suite.newLogoutBuilder(120, nil).
+		BuildLogoutToken(context.Background(), logoutCtx(&providers.OAuthClient{ClientID: logoutTestClientID}))
+
+	suite.Require().NoError(err)
+	suite.Equal(logoutSignedToken, result.Token)
+	suite.Equal(int64(120), result.ExpiresIn)
+	suite.Equal(logoutTestSubjectID, result.Subject)
+	suite.Equal(logoutTestClientID, (*claims)["aud"])
+	suite.Equal(logoutTestSessionID, (*claims)["sid"])
+	events, ok := (*claims)["events"].(map[string]interface{})
+	suite.Require().True(ok, "events must be an object")
+	suite.Len(events, 1)
+	suite.Equal(map[string]interface{}{}, events[eventBackchannelLogout], "the member value is an empty object")
+	suite.NotContains(*claims, "nonce", "a logout token must never carry nonce")
+	suite.NotContains(*claims, "sub", "sub is the positional argument, not a claim map entry")
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildLogoutToken_UsesTheClientsIDTokenSigningAlgorithm() {
+	client := &providers.OAuthClient{ClientID: logoutTestClientID,
+		Token: &providers.OAuthTokenConfig{IDToken: &providers.IDTokenConfig{SigningAlg: "ES256"}}}
+	suite.expectLogoutJWT(60, "ES256")
+
+	_, err := suite.newLogoutBuilder(60, nil).BuildLogoutToken(context.Background(), logoutCtx(client))
+
+	suite.NoError(err)
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildLogoutToken_RejectsMissingInputs() {
+	b := suite.newLogoutBuilder(120, nil)
+	cases := []struct {
+		name string
+		ctx  *LogoutTokenBuildContext
+	}{
+		{"nil context", nil},
+		{"nil client", &LogoutTokenBuildContext{SubjectID: logoutTestSubjectID, SessionID: logoutTestSessionID}},
+		{"client without id", logoutCtx(&providers.OAuthClient{})},
+		{"empty subject", &LogoutTokenBuildContext{OAuthApp: &providers.OAuthClient{ClientID: logoutTestClientID},
+			SessionID: logoutTestSessionID}},
+		{"empty session", &LogoutTokenBuildContext{OAuthApp: &providers.OAuthClient{ClientID: logoutTestClientID},
+			SubjectID: logoutTestSubjectID}},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			_, err := b.BuildLogoutToken(context.Background(), tc.ctx)
+			suite.Error(err)
+		})
+	}
+	suite.mockJWTService.AssertNotCalled(suite.T(), "GenerateJWT")
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildLogoutToken_SigningFailurePropagates() {
+	suite.mockJWTService.EXPECT().GenerateJWT(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).Return("", 0, &tidcommon.InternalServerError).Once()
+
+	_, err := suite.newLogoutBuilder(120, nil).
+		BuildLogoutToken(context.Background(), logoutCtx(&providers.OAuthClient{ClientID: logoutTestClientID}))
+
+	suite.Error(err)
+}
+
+// logoutEncryptingClient is a client that negotiated JWE ID tokens with an inline RSA JWKS.
+func logoutEncryptingClient(t *testing.T) *providers.OAuthClient {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &providers.OAuthClient{
+		ClientID: logoutTestClientID,
+		Token: &providers.OAuthTokenConfig{IDToken: &providers.IDTokenConfig{
+			ResponseType:  providers.IDTokenResponseTypeJWE,
+			EncryptionAlg: "RSA-OAEP-256",
+			EncryptionEnc: "A256GCM",
+		}},
+		Certificate: &inboundmodel.Certificate{Type: certmodel.CertificateTypeJWKS,
+			Value: testRSAPublicKeyToJWKS(&key.PublicKey, "enc")},
+	}
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildLogoutToken_EncryptsForAClientThatEncryptsIDTokensAndReplicatesIss() {
+	mockJWE := jwemock.NewJWEServiceInterfaceMock(suite.T())
+	suite.expectLogoutJWT(120, "")
+	var header map[string]interface{}
+	mockJWE.EXPECT().Encrypt(mock.Anything, []byte(logoutSignedToken), mock.Anything, "RSA-OAEP-256",
+		jwe.ContentEncAlgorithm("A256GCM"), "JWT", mock.Anything, mock.Anything).
+		Run(func(_ context.Context, _ []byte, key *providers.KeyRef, _ string, _ jwe.ContentEncAlgorithm,
+			_, _ string, opts ...jwe.EncryptOption) {
+			suite.NotNil(key.PublicKeyJWK, "the client's key is resolved from its certificate")
+			header = map[string]interface{}{}
+			for _, opt := range opts {
+				opt(header)
+			}
+		}).Return("encrypted.logout.token", nil).Once()
+
+	result, err := suite.newLogoutBuilder(120, mockJWE).
+		BuildLogoutToken(context.Background(), logoutCtx(logoutEncryptingClient(suite.T())))
+
+	suite.Require().NoError(err)
+	suite.Equal("encrypted.logout.token", result.Token)
+	suite.Equal("https://example.com", header["iss"], "iss is replicated in the JWE protected header")
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildLogoutToken_EncryptingClientWithoutJWEServiceFails() {
+	suite.expectLogoutJWT(120, "")
+
+	_, err := suite.newLogoutBuilder(120, nil).
+		BuildLogoutToken(context.Background(), logoutCtx(logoutEncryptingClient(suite.T())))
+
+	suite.Error(err, "signing only would be rejected by a client that negotiated encryption")
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildLogoutToken_EncryptionFailurePropagates() {
+	mockJWE := jwemock.NewJWEServiceInterfaceMock(suite.T())
+	suite.expectLogoutJWT(120, "")
+	mockJWE.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).Return("", &tidcommon.InternalServerError).Once()
+
+	_, err := suite.newLogoutBuilder(120, mockJWE).
+		BuildLogoutToken(context.Background(), logoutCtx(logoutEncryptingClient(suite.T())))
+
+	suite.Error(err)
+}

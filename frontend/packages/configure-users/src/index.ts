@@ -37,6 +37,7 @@ export {default as UsersListPage} from './pages/UsersListPage';
 
 // Routes
 export type {UserRoutePaths} from './hooks/useUserRoutes';
+export {default as useFlowTextResolver} from './hooks/useFlowTextResolver';
 export {defaultUserRoutePaths, default as useUserRoutes} from './hooks/useUserRoutes';
 
 // Utils

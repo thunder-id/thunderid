@@ -79,6 +79,31 @@ func (c *TokenRevocationConfig) Validate() error {
 	return nil
 }
 
+// Validate checks the back-channel logout configuration when delivery is enabled: every tuning
+// value must be positive.
+func (c *BackchannelLogoutConfig) Validate() error {
+	if !c.IsEnabled() {
+		return nil
+	}
+	positive := []struct {
+		name  string
+		value int64
+	}{
+		{"token_validity_period", c.TokenValidityPeriod},
+		{"request_timeout", c.RequestTimeout},
+		{"max_attempts", int64(c.MaxAttempts)},
+		{"retry_delay", c.RetryDelay},
+		{"max_in_flight", int64(c.MaxInFlight)},
+		{"queue_size", int64(c.QueueSize)},
+	}
+	for _, f := range positive {
+		if f.value <= 0 {
+			return fmt.Errorf("oauth.logout.backchannel.%s must be positive (got %d)", f.name, f.value)
+		}
+	}
+	return nil
+}
+
 // IsConfigured reports whether any DPoP field has been set. When false, callers should
 // skip validation: this matches the convention used by TrustedIssuerConfig and keeps
 // config-loading tests that omit the dpop section working without surprise failures.

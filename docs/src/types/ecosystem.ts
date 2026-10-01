@@ -8,7 +8,7 @@
  * `content/sdks-and-tools/<id>/entry.yaml` file. Those files are the source of
  * truth for three surfaces:
  *
- *   1. the `/sdks` listing page (card fields: name, icon, kind, description)
+ *   1. the `/sdks-and-tools` listing page (card fields: name, icon, kind, description)
  *   2. the detail page, wherever `docs.overview` points
  *   3. the API reference, wherever `docs.apiReference` points
  *
@@ -227,7 +227,7 @@ export interface EcosystemLinkGridSection extends EcosystemSectionBase {
 }
 
 /**
- * One guide: its own page under `/sdks/<id>/guides/<guide id>`.
+ * One guide: its own page under `/sdks-and-tools/<id>/guides/<guide id>`.
  *
  * A guide is built from the same sections an entry is, so it renders through
  * the same components and is indistinguishable from a section on the entry's

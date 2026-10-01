@@ -20,7 +20,7 @@ import { Timeouts } from "../../constants/timeouts";
 
 /**
  * Navigate to the dashboard and wait for its actual content, not network idle: HomePage
- * (frontend/apps/console/src/features/home/pages/HomePage.tsx) renders its "Hello, <name>" h1
+ * (frontend/apps/console/src/pages/HomePage.tsx) renders its "Hello, <name>" h1
  * and the rest of its content (StartBuildingSection/NextStepsSection, neither of which fetches
  * its own data) in one synchronous pass, so the heading appearing is a reliable proxy for the
  * whole page being ready to scan.

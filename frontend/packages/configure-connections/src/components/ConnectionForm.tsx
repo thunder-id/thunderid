@@ -25,6 +25,8 @@ import {fieldsForMode, type ConnectionFieldDef} from '../config/connectionFormFi
 import type {ConnectionType} from '../models/connection';
 import {type ConnectionFormValues, validateConnectionForm} from '../utils/connectionFormMapping';
 
+const NO_EXCLUDED_FIELD_NAMES: ReadonlySet<string> = new Set();
+
 interface ConnectionFormProps {
   type: ConnectionType;
   mode: 'create' | 'edit';
@@ -39,6 +41,7 @@ interface ConnectionFormProps {
   nameError?: string | null;
   /** Render the connection-name field (custom connections only; branded names are fixed). */
   showNameField?: boolean;
+  excludeFieldNames?: ReadonlySet<string>;
   onFieldChange: (name: string, value: string) => void;
   onSecretReplacingChange: (replacing: boolean) => void;
 }
@@ -52,13 +55,17 @@ export default function ConnectionForm({
   vendorDisplayName,
   nameError = null,
   showNameField = true,
+  excludeFieldNames = NO_EXCLUDED_FIELD_NAMES,
   onFieldChange,
   onSecretReplacingChange,
 }: ConnectionFormProps): JSX.Element {
   const {t} = useTranslation('connections');
   const fields: ConnectionFieldDef[] = useMemo(
-    () => fieldsForMode(type, mode).filter((field) => showNameField || field.name !== 'name'),
-    [type, mode, showNameField],
+    () =>
+      fieldsForMode(type, mode).filter(
+        (field) => (showNameField || field.name !== 'name') && !excludeFieldNames?.has(field.name),
+      ),
+    [excludeFieldNames, mode, showNameField, type],
   );
 
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -72,19 +79,24 @@ export default function ConnectionForm({
     onFieldChange(name, value);
   };
 
-  const fieldError = (name: string): string | undefined => {
-    if (name === 'name' && nameError) {
+  const fieldError = (field: ConnectionFieldDef): string | undefined => {
+    if (field.name === 'name' && nameError) {
       return nameError;
     }
-    if (touched[name] && errors[name]) {
-      return t(errors[name]);
+    if ((field.showErrorImmediately || touched[field.name]) && errors[field.name]) {
+      return t(errors[field.name]);
     }
     return undefined;
   };
 
   const isRequiredNow = (field: ConnectionFieldDef): boolean => {
     const requiredWhen: string | undefined = field.requiredWhen;
-    return Boolean(field.required) || (requiredWhen !== undefined && values[requiredWhen] === 'true');
+    return (
+      Boolean(field.required) ||
+      (requiredWhen !== undefined && values[requiredWhen] === 'true') ||
+      (field.requiredWhenValue?.field !== undefined &&
+        values[field.requiredWhenValue.field] === field.requiredWhenValue.value)
+    );
   };
 
   // Render a hint, resolving inline <code> markup in the translation to a styled code element.
@@ -149,7 +161,7 @@ export default function ConnectionForm({
               replacing={secretReplacing}
               onReplacingChange={onSecretReplacingChange}
               required={mode === 'create' && field.required}
-              error={fieldError(field.name)}
+              error={fieldError(field)}
               hint={field.hintKey ? t(field.hintKey) : undefined}
             />
           );
@@ -166,7 +178,7 @@ export default function ConnectionForm({
             />
           );
         } else if (field.kind === 'select') {
-          const error: string | undefined = fieldError(field.name);
+          const error: string | undefined = fieldError(field);
           fieldContent = (
             <FormControl fullWidth required={isRequiredNow(field)} error={Boolean(error)}>
               <FormLabel htmlFor={`connection-field-${field.name}`}>{label}</FormLabel>
@@ -203,7 +215,7 @@ export default function ConnectionForm({
             />
           );
         } else {
-          const error: string | undefined = fieldError(field.name);
+          const error: string | undefined = fieldError(field);
           const required: boolean = isRequiredNow(field);
           fieldContent = (
             <FormControl fullWidth required={required} error={Boolean(error)}>
@@ -211,6 +223,7 @@ export default function ConnectionForm({
               <TextField
                 id={`connection-field-${field.name}`}
                 fullWidth
+                type={field.kind === 'number' ? 'number' : undefined}
                 value={values[field.name] ?? ''}
                 placeholder={field.placeholder}
                 error={Boolean(error)}

@@ -1066,3 +1066,106 @@ func deleteOU(ouID string) error {
 func stringPtr(s string) *string {
 	return &s
 }
+
+// sendOURequest issues a request against the organization unit API and returns the status code and
+// body. It keeps the update and path error-path tests below to their assertions.
+func (suite *OUAPITestSuite) sendOURequest(method, path string, payload interface{}) (int, string) {
+	suite.T().Helper()
+
+	var bodyReader io.Reader
+	if payload != nil {
+		encoded, err := json.Marshal(payload)
+		suite.Require().NoError(err)
+		bodyReader = bytes.NewReader(encoded)
+	}
+
+	req, err := http.NewRequest(method, testServerURL+path, bodyReader)
+	suite.Require().NoError(err)
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			suite.T().Logf("Failed to close response body: %v", cerr)
+		}
+	}()
+
+	body, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+	return resp.StatusCode, string(body)
+}
+
+// TestUpdateOrganizationUnitToConflictingHandle verifies an update that would give an organization
+// unit a handle already taken by a sibling is rejected as a conflict.
+func (suite *OUAPITestSuite) TestUpdateOrganizationUnitToConflictingHandle() {
+	if createdOUID == "" || createdChildOUID == "" {
+		suite.T().Fatal("OU IDs are not available for the conflict check")
+	}
+
+	sibling, err := createOU(suite, CreateOURequest{
+		Name:        "Handle Conflict Sibling",
+		Handle:      "handle-conflict-sibling",
+		Description: "sibling used to claim a handle",
+		Parent:      &createdOUID,
+	})
+	suite.Require().NoError(err)
+	defer func() {
+		suite.sendOURequest(http.MethodDelete, "/organization-units/"+sibling, nil)
+	}()
+
+	// Rename the existing child onto the sibling's handle under the same parent.
+	status, body := suite.sendOURequest(http.MethodPut, "/organization-units/"+createdChildOUID,
+		map[string]interface{}{
+			"handle":      "handle-conflict-sibling",
+			"name":        childOUToCreate.Name,
+			"description": childOUToCreate.Description,
+			"parent":      createdOUID,
+		})
+
+	suite.Equal(http.StatusConflict, status, "body: %s", body)
+	suite.Contains(body, "OU-1008", "a duplicate handle must report the handle conflict code")
+}
+
+// TestUpdateOrganizationUnitByBlankPath verifies a handle path that carries no usable segment is
+// rejected as an invalid path rather than being treated as an unresolved one.
+func (suite *OUAPITestSuite) TestUpdateOrganizationUnitByBlankPath() {
+	status, body := suite.sendOURequest(http.MethodPut, "/organization-units/tree/%20",
+		map[string]interface{}{
+			"handle":      "blank-path",
+			"name":        "Blank Path",
+			"description": "update against a blank handle path",
+		})
+
+	suite.Equal(http.StatusBadRequest, status, "body: %s", body)
+	suite.Contains(body, "OU-1009", "a blank handle path must report the invalid handle path code")
+}
+
+// TestGetOrganizationUnitChildrenOffsetBeyondEnd verifies paging past the last child returns an
+// empty page while still reporting the true total.
+func (suite *OUAPITestSuite) TestGetOrganizationUnitChildrenOffsetBeyondEnd() {
+	if createdOUID == "" {
+		suite.T().Fatal("OU ID is not available for the children pagination check")
+	}
+
+	status, body := suite.sendOURequest(http.MethodGet,
+		"/organization-units/"+createdOUID+"/ous?limit=10&offset=1000", nil)
+
+	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
+
+	var listResp OrganizationUnitListResponse
+	suite.Require().NoError(json.Unmarshal([]byte(body), &listResp))
+	suite.Empty(listResp.OrganizationUnits, "an offset past the last child must return no children")
+	suite.Equal(0, listResp.Count, "count must be zero for an empty page")
+}
+
+// TestGetOrganizationUnitByUnknownChildPath verifies a handle path whose leaf does not exist under
+// an existing root is reported as not found, exercising path resolution past the first segment.
+func (suite *OUAPITestSuite) TestGetOrganizationUnitByUnknownChildPath() {
+	status, body := suite.sendOURequest(http.MethodGet,
+		"/organization-units/tree/"+ouToCreate.Handle+"/no-such-child", nil)
+
+	suite.Equal(http.StatusNotFound, status, "body: %s", body)
+}

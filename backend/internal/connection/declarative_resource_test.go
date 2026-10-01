@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	"github.com/thunder-id/thunderid/internal/idp"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
@@ -41,7 +42,7 @@ func (s *DeclarativeResourceTestSuite) SetupTest() {
 	s.T().Cleanup(config.ResetServerRuntime)
 	s.mockIDP = idpmock.NewIDPServiceInterfaceMock(s.T())
 	s.mockNotif = notificationmock.NewNotificationSenderMgtSvcInterfaceMock(s.T())
-	s.exporter = NewConnectionExporterForTest(s.mockIDP, s.mockNotif)
+	s.exporter = NewConnectionExporterForTest(s.mockIDP, s.mockNotif, nil)
 }
 
 func (s *DeclarativeResourceTestSuite) TestGetResourceType() {
@@ -190,6 +191,36 @@ func (s *DeclarativeResourceTestSuite) TestConnectionModelToDTORoundTripsSMSVend
 func (s *DeclarativeResourceTestSuite) TestConnectionModelToDTOUnsupportedVendor() {
 	_, _, err := connectionModelToDTO(connectionExportModel{Type: "unknown-vendor"})
 	s.Error(err)
+}
+
+func (s *DeclarativeResourceTestSuite) TestAuthZENPDPConnectionExportModelRoundTrip() {
+	doc := []byte(`
+id: pdp-1
+type: authzen-pdp
+name: Production PDP
+endpoint: http://localhost:3592/access/v1/evaluation
+batchEndpoint: http://localhost:3592/access/v1/evaluations
+subjectAttributeMappings:
+  - subjectCategory: user
+    entityType: TravelCustomer
+    attributes:
+      - attribute: accountStatus
+        pdpAttribute: account_status
+`)
+
+	dto, err := parseToConnectionDTOWrapper(doc)
+	s.Require().NoError(err)
+	pdp, ok := dto.(*authzenpdp.AuthZENPDPConnection)
+	s.Require().True(ok)
+	s.Equal("pdp-1", pdp.ID)
+	s.Equal("authzen-pdp", connectionModelFromAuthZENPDP(*pdp).Type)
+	s.Equal("http://localhost:3592/access/v1/evaluation", pdp.Endpoint)
+	s.Equal("http://localhost:3592/access/v1/evaluations", pdp.BatchEndpoint)
+	exported := connectionModelFromAuthZENPDP(*pdp)
+	s.Equal("pdp-1", connectionResourceID(pdp))
+
+	roundTripped := connectionModelToAuthZENPDP(exported)
+	s.Require().NotNil(roundTripped)
 }
 
 func (s *DeclarativeResourceTestSuite) TestParseConnectionFromNodeIDPVendor() {
@@ -347,12 +378,16 @@ func (s *DeclarativeResourceTestSuite) TestGetResourceRulesForResourceSecretSele
 		{connectionExportModel{Type: "google"}, nil}, // no secret set -> nothing to externalize
 		{connectionExportModel{Type: "twilio"}, []string{"AuthToken"}},
 		{connectionExportModel{Type: "vonage"}, []string{"APISecret"}},
+		{connectionExportModel{Type: "authzen-pdp"}, nil},
 		{connectionExportModel{Type: smsGatewayVendorName}, nil},
 	}
 	for _, tc := range cases {
 		rules := s.exporter.GetResourceRulesForResource(&tc.model)
 		s.Require().NotNil(rules)
-		s.Equal(tc.want, rules.Variables, tc.model.Type)
+		// Every one of these is a credential, so it is named on the list that says so: a value under
+		// Variables is readable back from wherever it is held, and one under SecretVariables is not.
+		s.Equal(tc.want, rules.SecretVariables, tc.model.Type)
+		s.Empty(rules.Variables, tc.model.Type)
 	}
 }
 
@@ -391,6 +426,23 @@ func (s *DeclarativeResourceTestSuite) TestGetAllResourceIDsFiltersUnregisteredV
 	s.ElementsMatch([]string{"1", "s1"}, ids)
 }
 
+func (s *DeclarativeResourceTestSuite) TestGetAllResourceIDsExcludesDeclarativeAuthZENPDPConnections() {
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).
+		Return([]idp.BasicIDPDTO{}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSenders", mock.Anything).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
+	pdpService := &authZENPDPServiceStub{connections: []authzenpdp.AuthZENPDPConnection{
+		{ID: "mutable", Name: "Mutable PDP"},
+		{ID: "declarative", Name: "Declarative PDP", IsReadOnly: true},
+	}}
+	exporter := newConnectionExporter(s.mockIDP, s.mockNotif,
+		pdpService)
+
+	ids, svcErr := exporter.GetAllResourceIDs(context.Background())
+	s.Require().Nil(svcErr)
+	s.Equal([]string{"mutable"}, ids)
+}
+
 func (s *DeclarativeResourceTestSuite) TestValidateResourceRejectsEmptyName() {
 	logger := log.GetLogger()
 	_, exportErr := s.exporter.ValidateResource(context.Background(),
@@ -425,6 +477,83 @@ func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreDispatchesB
 	s.Equal(senderDTO, got)
 
 	s.Error(store.Create("bad", "not-a-dto"))
+}
+
+func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreStoresAuthZENPDPEndpoints() {
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime("/tmp/test", &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: true},
+	}))
+	s.T().Cleanup(config.ResetServerRuntime)
+
+	declarativeStore := &connectionDeclarativeStore{
+		authZENPDPStore: declarativeresource.NewGenericFileBasedStoreForTest(entity.KeyTypeAuthZENPDP),
+	}
+
+	dto := &authzenpdp.AuthZENPDPConnection{
+		Name:          "PDP",
+		Endpoint:      "https://pdp.example.com/access/v1/evaluation",
+		BatchEndpoint: "https://pdp.example.com/access/v1/evaluations",
+	}
+
+	s.Require().NoError(declarativeStore.Create("pdp-1", dto))
+	got, err := declarativeStore.authZENPDPStore.Get("pdp-1")
+	s.Require().NoError(err)
+	s.Equal("pdp-1", got.(*authzenpdp.AuthZENPDPConnection).ID)
+	s.Equal(dto, got)
+}
+
+func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreSkipsAuthZENPDPWhenDisabled() {
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime("/tmp/test", &config.Config{
+		IdentityProvider: config.IdentityProviderConfig{Store: "composite"},
+	}))
+	s.T().Cleanup(config.ResetServerRuntime)
+
+	declarativeStore := &connectionDeclarativeStore{
+		authZENPDPStore: declarativeresource.NewGenericFileBasedStoreForTest(entity.KeyTypeAuthZENPDP),
+	}
+	dto := &authzenpdp.AuthZENPDPConnection{
+		Name:          "PDP",
+		Endpoint:      "https://pdp.example.com/access/v1/evaluation",
+		BatchEndpoint: "https://pdp.example.com/access/v1/evaluations",
+	}
+
+	s.Require().NoError(declarativeStore.Create("pdp-1", dto))
+	_, err := declarativeStore.authZENPDPStore.Get("pdp-1")
+	s.Error(err)
+}
+
+func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreSkipsAuthZENPDPInMutableMode() {
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime("/tmp/test", &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: true},
+		AuthZENPDP:           config.AuthZENPDPConfig{Store: "mutable"},
+	}))
+	s.T().Cleanup(config.ResetServerRuntime)
+
+	store := &connectionDeclarativeStore{
+		authZENPDPStore: declarativeresource.NewGenericFileBasedStoreForTest(entity.KeyTypeAuthZENPDP),
+	}
+	s.Require().NoError(store.Create("pdp-1", &authzenpdp.AuthZENPDPConnection{Name: "PDP"}))
+	_, err := store.authZENPDPStore.Get("pdp-1")
+	s.Error(err)
+}
+
+func (s *DeclarativeResourceTestSuite) TestConnectionDeclarativeStoreLoadsAuthZENPDPInCompositeMode() {
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime("/tmp/test", &config.Config{
+		AuthZENPDP: config.AuthZENPDPConfig{Store: "composite"},
+	}))
+	s.T().Cleanup(config.ResetServerRuntime)
+
+	store := &connectionDeclarativeStore{
+		authZENPDPStore: declarativeresource.NewGenericFileBasedStoreForTest(entity.KeyTypeAuthZENPDP),
+	}
+	s.Require().NoError(store.Create("pdp-1", &authzenpdp.AuthZENPDPConnection{Name: "PDP"}))
+	got, err := store.authZENPDPStore.Get("pdp-1")
+	s.Require().NoError(err)
+	s.Equal("pdp-1", got.(*authzenpdp.AuthZENPDPConnection).ID)
 }
 
 // TestConnectionDeclarativeStoreSkipsIDPWhenIDPStoreModeIsMutable verifies that IdP-typed

@@ -7,7 +7,6 @@ import (
 	"context"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -43,14 +42,14 @@ func (c *compositeOUStore) GetOrganizationUnitListCount(ctx context.Context, f *
 // Returns ErrResultLimitExceededInCompositeMode if the limit is exceeded.
 func (c *compositeOUStore) GetOrganizationUnitList(
 	ctx context.Context, limit, offset int, f *tidcommon.FilterGroup,
-) ([]providers.OrganizationUnitBasic, error) {
+) ([]OrganizationUnitBasic, error) {
 	items, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
 		func() (int, error) { return c.dbStore.GetOrganizationUnitListCount(ctx, f) },
 		func() (int, error) { return c.fileStore.GetOrganizationUnitListCount(ctx, f) },
-		func(count int) ([]providers.OrganizationUnitBasic, error) {
+		func(count int) ([]OrganizationUnitBasic, error) {
 			return c.dbStore.GetOrganizationUnitList(ctx, count, 0, f)
 		},
-		func(count int) ([]providers.OrganizationUnitBasic, error) {
+		func(count int) ([]OrganizationUnitBasic, error) {
 			return c.fileStore.GetOrganizationUnitList(ctx, count, 0, f)
 		},
 		mergeAndDeduplicateOUs,
@@ -70,9 +69,9 @@ func (c *compositeOUStore) GetOrganizationUnitList(
 // GetOrganizationUnitsByIDs retrieves organization units matching the given IDs from both stores.
 func (c *compositeOUStore) GetOrganizationUnitsByIDs(
 	ctx context.Context, ids []string,
-) ([]providers.OrganizationUnitBasic, error) {
+) ([]OrganizationUnitBasic, error) {
 	if len(ids) == 0 {
-		return []providers.OrganizationUnitBasic{}, nil
+		return []OrganizationUnitBasic{}, nil
 	}
 
 	dbOUs, err := c.dbStore.GetOrganizationUnitsByIDs(ctx, ids)
@@ -90,16 +89,16 @@ func (c *compositeOUStore) GetOrganizationUnitsByIDs(
 
 // CreateOrganizationUnit creates a new organization unit in the database store only.
 // Conflict checking and parent validation are handled at the service layer.
-func (c *compositeOUStore) CreateOrganizationUnit(ctx context.Context, ou providers.OrganizationUnit) error {
+func (c *compositeOUStore) CreateOrganizationUnit(ctx context.Context, ou OrganizationUnit) error {
 	return c.dbStore.CreateOrganizationUnit(ctx, ou)
 }
 
 // GetOrganizationUnit retrieves an organization unit by ID from either store.
 // Checks database store first, then falls back to file store.
-func (c *compositeOUStore) GetOrganizationUnit(ctx context.Context, id string) (providers.OrganizationUnit, error) {
+func (c *compositeOUStore) GetOrganizationUnit(ctx context.Context, id string) (OrganizationUnit, error) {
 	return declarativeresource.CompositeGetHelper(
-		func() (providers.OrganizationUnit, error) { return c.dbStore.GetOrganizationUnit(ctx, id) },
-		func() (providers.OrganizationUnit, error) { return c.fileStore.GetOrganizationUnit(ctx, id) },
+		func() (OrganizationUnit, error) { return c.dbStore.GetOrganizationUnit(ctx, id) },
+		func() (OrganizationUnit, error) { return c.fileStore.GetOrganizationUnit(ctx, id) },
 		ErrOrganizationUnitNotFound,
 	)
 }
@@ -108,12 +107,12 @@ func (c *compositeOUStore) GetOrganizationUnit(ctx context.Context, id string) (
 // Checks database store first, then falls back to file store.
 func (c *compositeOUStore) GetOrganizationUnitByHandle(
 	ctx context.Context, handle string, parent *string,
-) (providers.OrganizationUnit, error) {
+) (OrganizationUnit, error) {
 	return declarativeresource.CompositeGetHelper(
-		func() (providers.OrganizationUnit, error) {
+		func() (OrganizationUnit, error) {
 			return c.dbStore.GetOrganizationUnitByHandle(ctx, handle, parent)
 		},
-		func() (providers.OrganizationUnit, error) {
+		func() (OrganizationUnit, error) {
 			return c.fileStore.GetOrganizationUnitByHandle(ctx, handle, parent)
 		},
 		ErrOrganizationUnitNotFound,
@@ -124,33 +123,33 @@ func (c *compositeOUStore) GetOrganizationUnitByHandle(
 func (c *compositeOUStore) GetOrganizationUnitByPath(
 	ctx context.Context,
 	handles []string,
-) (providers.OrganizationUnit, error) {
+) (OrganizationUnit, error) {
 	if len(handles) == 0 {
-		return providers.OrganizationUnit{}, ErrOrganizationUnitNotFound
+		return OrganizationUnit{}, ErrOrganizationUnitNotFound
 	}
 
 	current, err := c.findRootByHandle(ctx, handles[0])
 	if err != nil {
-		return providers.OrganizationUnit{}, err
+		return OrganizationUnit{}, err
 	}
 
 	for i := 1; i < len(handles); i++ {
 		current, err = c.findChildByHandle(ctx, current.ID, handles[i])
 		if err != nil {
-			return providers.OrganizationUnit{}, err
+			return OrganizationUnit{}, err
 		}
 	}
 
 	return current, nil
 }
 
-func (c *compositeOUStore) findRootByHandle(ctx context.Context, handle string) (providers.OrganizationUnit, error) {
+func (c *compositeOUStore) findRootByHandle(ctx context.Context, handle string) (OrganizationUnit, error) {
 	return c.GetOrganizationUnitByHandle(ctx, handle, nil)
 }
 
 func (c *compositeOUStore) findChildByHandle(
 	ctx context.Context, parentID, handle string,
-) (providers.OrganizationUnit, error) {
+) (OrganizationUnit, error) {
 	return c.GetOrganizationUnitByHandle(ctx, handle, &parentID)
 }
 
@@ -192,7 +191,7 @@ func (c *compositeOUStore) CheckOrganizationUnitHandleConflict(
 
 // UpdateOrganizationUnit updates an organization unit in the database store only.
 // Immutability checks and parent validation are handled at the service layer.
-func (c *compositeOUStore) UpdateOrganizationUnit(ctx context.Context, ou providers.OrganizationUnit) error {
+func (c *compositeOUStore) UpdateOrganizationUnit(ctx context.Context, ou OrganizationUnit) error {
 	return c.dbStore.UpdateOrganizationUnit(ctx, ou)
 }
 
@@ -217,14 +216,14 @@ func (c *compositeOUStore) GetOrganizationUnitChildrenCount(
 // Returns ErrResultLimitExceededInCompositeMode if the limit is exceeded.
 func (c *compositeOUStore) GetOrganizationUnitChildrenList(ctx context.Context,
 	id string, limit, offset int, f *tidcommon.FilterGroup,
-) ([]providers.OrganizationUnitBasic, error) {
+) ([]OrganizationUnitBasic, error) {
 	items, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
 		func() (int, error) { return c.dbStore.GetOrganizationUnitChildrenCount(ctx, id, f) },
 		func() (int, error) { return c.fileStore.GetOrganizationUnitChildrenCount(ctx, id, f) },
-		func(count int) ([]providers.OrganizationUnitBasic, error) {
+		func(count int) ([]OrganizationUnitBasic, error) {
 			return c.dbStore.GetOrganizationUnitChildrenList(ctx, id, count, 0, f)
 		},
-		func(count int) ([]providers.OrganizationUnitBasic, error) {
+		func(count int) ([]OrganizationUnitBasic, error) {
 			return c.fileStore.GetOrganizationUnitChildrenList(ctx, id, count, 0, f)
 		},
 		mergeAndDeduplicateChildren,
@@ -244,9 +243,9 @@ func (c *compositeOUStore) GetOrganizationUnitChildrenList(ctx context.Context,
 // mergeAndDeduplicateOUs merges root-level OUs from both stores and removes duplicates by ID.
 // While duplicates shouldn't exist by design (an OU exists in only one store), this provides
 // defensive programming against misconfigurations or bugs.
-func mergeAndDeduplicateOUs(dbOUs, fileOUs []providers.OrganizationUnitBasic) []providers.OrganizationUnitBasic {
+func mergeAndDeduplicateOUs(dbOUs, fileOUs []OrganizationUnitBasic) []OrganizationUnitBasic {
 	seen := make(map[string]bool)
-	result := make([]providers.OrganizationUnitBasic, 0, len(dbOUs)+len(fileOUs))
+	result := make([]OrganizationUnitBasic, 0, len(dbOUs)+len(fileOUs))
 
 	// Add DB OUs first (they take precedence) - mark as mutable (isReadOnly=false)
 	for i := range dbOUs {
@@ -273,10 +272,10 @@ func mergeAndDeduplicateOUs(dbOUs, fileOUs []providers.OrganizationUnitBasic) []
 // While duplicates shouldn't exist by design (an OU exists in only one store), this provides
 // defensive programming against misconfigurations or bugs.
 func mergeAndDeduplicateChildren(
-	dbChildren, fileChildren []providers.OrganizationUnitBasic,
-) []providers.OrganizationUnitBasic {
+	dbChildren, fileChildren []OrganizationUnitBasic,
+) []OrganizationUnitBasic {
 	seen := make(map[string]bool)
-	result := make([]providers.OrganizationUnitBasic, 0, len(dbChildren)+len(fileChildren))
+	result := make([]OrganizationUnitBasic, 0, len(dbChildren)+len(fileChildren))
 
 	// Add DB children first (they take precedence) - mark as mutable (isReadOnly=false)
 	for i := range dbChildren {

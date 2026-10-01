@@ -166,7 +166,7 @@ $WAYFINDER_SAMPLE_APP_DIR = Join-Path $SAMPLE_BASE_DIR "apps/wayfinder-sample"
 $QUICKSTART_SAMPLE_BUNDLES = @(
     @{ Name = "wayfinder"; Source = (Join-Path $WAYFINDER_SAMPLE_APP_DIR "thunderid-config") }
 )
-$QUICKSTART_BUNDLE_STAGE_DIR = Join-Path $FRONTEND_CONSOLE_APP_SOURCE_DIR "src/features/welcome/data/sample-bundles"
+$QUICKSTART_BUNDLE_STAGE_DIR = Join-Path $FRONTEND_CONSOLE_APP_SOURCE_DIR "src/data/sample-bundles"
 
 # Default ports
 $GATE_APP_DEFAULT_PORT = 5190

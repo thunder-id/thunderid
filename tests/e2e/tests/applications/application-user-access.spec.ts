@@ -6,7 +6,7 @@
  *
  * Covers the Create Application wizard's default "allow all user types" path: the master
  * "Allow all user types to access this application" checkbox (see
- * frontend/apps/console/src/features/applications/components/create-application/UserAccessSection.tsx),
+ * frontend/packages/configure-applications/src/components/create-application/UserAccessSection.tsx),
  * left unchecked by every other applications spec so those specs can't race with tests that
  * create/delete user types (see application-onboarding.spec.ts TC002/TC005).
  *

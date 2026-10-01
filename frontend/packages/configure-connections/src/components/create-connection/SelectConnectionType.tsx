@@ -1,10 +1,12 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Box, Card, CardContent, Chip, Stack, Typography} from '@wso2/oxygen-ui';
-import {CircleCheck, KeyRound, MessagesSquare, ShieldCheck} from '@wso2/oxygen-ui-icons-react';
+import {Box, Stack, Typography} from '@wso2/oxygen-ui';
+import {KeyRound, MessagesSquare, ServerCog, ShieldCheck} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import SelectableConnectionCard from './SelectableConnectionCard';
+import {POLICY_DECISION_POINT_TYPE} from '../../constants/connection-wizard';
 import {type ConnectionType, ConnectionTypes} from '../../models/connection';
 
 /**
@@ -13,7 +15,7 @@ import {type ConnectionType, ConnectionTypes} from '../../models/connection';
  * OIDC connection through the dedicated trusted-issuer form rather than the generic
  * `ConnectionForm`.
  */
-export type SelectableConnectionType = ConnectionType | 'trusted-idp';
+export type SelectableConnectionType = ConnectionType | 'trusted-idp' | typeof POLICY_DECISION_POINT_TYPE;
 
 interface SelectConnectionTypeProps {
   selectedType: SelectableConnectionType | null;
@@ -70,6 +72,17 @@ export default function SelectConnectionType({selectedType, onSelect}: SelectCon
       comingSoon: false,
     },
     {
+      type: POLICY_DECISION_POINT_TYPE,
+      labelKey: 'wizard.type.policyDecisionPoint.label',
+      labelDefault: 'Policy Decision Point (PDP)',
+      descriptionKey: 'wizard.type.policyDecisionPoint.description',
+      descriptionDefault: 'Connect a policy decision point using a supported authorization protocol.',
+      tagKey: 'wizard.type.policyDecisionPoint.tag',
+      tagDefault: 'Authorization · PDP',
+      icon: <ServerCog size={28} />,
+      comingSoon: false,
+    },
+    {
       type: ConnectionTypes.SMS_GATEWAY,
       labelKey: 'wizard.type.sms.label',
       labelDefault: 'SMS gateway',
@@ -94,80 +107,21 @@ export default function SelectConnectionType({selectedType, onSelect}: SelectCon
         </Typography>
       </Stack>
 
-      <Box sx={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2}}>
+      <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', md: 'repeat(2, 1fr)'}, gap: 2}}>
         {options.map((option) => {
           const isSelected: boolean = selectedType === option.type;
           return (
-            <Card
+            <SelectableConnectionCard
               key={option.type}
-              variant="outlined"
-              role="button"
-              tabIndex={option.comingSoon ? -1 : 0}
-              aria-pressed={isSelected}
-              aria-disabled={option.comingSoon}
-              data-testid={`connection-type-option-${option.type}`}
-              onClick={option.comingSoon ? undefined : () => onSelect(option.type)}
-              onKeyDown={(e) => {
-                if (!option.comingSoon && (e.key === 'Enter' || e.key === ' ')) {
-                  e.preventDefault();
-                  onSelect(option.type);
-                }
-              }}
-              sx={{
-                cursor: option.comingSoon ? 'not-allowed' : 'pointer',
-                opacity: option.comingSoon ? 0.6 : 1,
-                borderColor: isSelected ? 'primary.main' : 'divider',
-                transition: 'border-color 0.15s',
-                '&:hover': option.comingSoon ? {} : {borderColor: 'primary.main'},
-                '&:focus-visible': option.comingSoon ? {} : {outline: 'none', borderColor: 'primary.main'},
-              }}
-            >
-              <CardContent sx={{p: 2.5, '&:last-child': {pb: 2.5}}}>
-                <Stack direction="column" spacing={2}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: 48,
-                        height: 48,
-                        color: isSelected ? 'primary.main' : 'text.secondary',
-                      }}
-                    >
-                      {option.icon}
-                    </Box>
-                    {option.comingSoon ? (
-                      <Chip size="small" label={t('card.comingSoon', 'Coming soon')} />
-                    ) : (
-                      isSelected && <CircleCheck size={20} color="var(--mui-palette-primary-main)" />
-                    )}
-                  </Stack>
-                  <Stack direction="column" spacing={0.75}>
-                    <Typography variant="subtitle1" sx={{fontWeight: 600, lineHeight: 1.3}}>
-                      {t(option.labelKey, option.labelDefault)}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{lineHeight: 1.5}}>
-                      {t(option.descriptionKey, option.descriptionDefault)}
-                    </Typography>
-                  </Stack>
-                  <Stack direction="row" spacing={0.75} flexWrap="wrap">
-                    {t(option.tagKey, option.tagDefault)
-                      .split(' · ')
-                      .map((tag) => (
-                        <Typography
-                          key={tag}
-                          variant="caption"
-                          color="text.disabled"
-                          sx={{fontWeight: 500, letterSpacing: 0.2}}
-                        >
-                          #{tag.toLocaleLowerCase()}
-                        </Typography>
-                      ))}
-                  </Stack>
-                </Stack>
-              </CardContent>
-            </Card>
+              description={t(option.descriptionKey, option.descriptionDefault)}
+              disabled={option.comingSoon}
+              icon={option.icon}
+              label={t(option.labelKey, option.labelDefault)}
+              selected={isSelected}
+              tags={t(option.tagKey, option.tagDefault).split(' · ')}
+              testId={`connection-type-option-${option.type}`}
+              onSelect={() => onSelect(option.type)}
+            />
           );
         })}
       </Box>

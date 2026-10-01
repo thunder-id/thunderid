@@ -35,6 +35,8 @@ Controls the <ProductName /> server's network settings and identity.
 | `server.http_only` | `false` | If `true`, disables HTTPS and uses HTTP only (not recommended for production) |
 | `server.public_url` | _(derived from server hostname, port and protocol)_ | The public URL clients use to reach the server, if it differs from the bind address. Derived when unset. |
 | `server.identifier` | `default-deployment` | Unique identifier for this deployment instance. Every stored resource is scoped by it, so changing it on a server that already holds data hides that data rather than renaming it. |
+| `gateway.max_gateways` | `1` | Guards how many gateways this deployment administers, through the Gateway API (`POST /gateways`) or a gateway declared in a file. A standalone deployment pairs with one; raise it only where something else manages the fleet, or set it to `0` for a deployment that administers none. A registration beyond the number is refused with `409`. This is a guard rather than a guarantee: two registrations arriving at the same moment can leave one more gateway than configured, so do not rely on it as a licensing or security boundary. |
+| `gateway.store` | `composite` | Where gateways are read from. `mutable` is the database alone, and gateways declared in files are not read. `declarative` is files alone, and registration through the API is refused. `composite` is both: listings merge the two, registration writes to the database, and a gateway declared in a file cannot be changed or removed through the API, because the file is read again on every start and would undo it. |
 
 Resources are stored against this identifier, so it is fixed for the life of a deployment's data.
 
@@ -673,6 +675,21 @@ Authorization resource settings.
 |---------|---------|-------------|
 | `resource.default_delimiter` | `:` | Default delimiter for resource hierarchies |
 
+## Resource Sharing Configuration
+
+Controls whether a resource can reach an organization unit outside the tree that owns it.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `resource_sharing.allow_child_ou_cross_tree_sharing` | `false` | If `true`, an organization unit that has a parent can share a resource with a root organization unit in another tree. If `false`, only a root organization unit can share outside its own tree. |
+
+Organization units form separate trees. Sharing within a tree is always permitted and is not affected by this setting. 
+A root organization unit can always share with another root OU. This setting governs the other case, where an organization unit that sits inside a tree shares outward. Keeping it `false` means a resource leaves a tree only by decision of that tree's root.
+
+```yaml
+resource_sharing:
+  allow_child_ou_cross_tree_sharing: false
+```
 
 ## Observability Configuration
 

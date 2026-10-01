@@ -314,7 +314,7 @@ func TestUserService_GetUsersByPath_HandlesOUServiceErrors(t *testing.T) {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.
 					On("GetOrganizationUnitByPath", mock.Anything, "root").
-					Return(providers.OrganizationUnit{}, &tidcommon.ServiceError{
+					Return(oupkg.OrganizationUnit{}, &tidcommon.ServiceError{
 						Type: tidcommon.ClientErrorType,
 						Code: oupkg.ErrorInvalidHandlePath.Code,
 					}).
@@ -332,7 +332,7 @@ func TestUserService_GetUsersByPath_HandlesOUServiceErrors(t *testing.T) {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.
 					On("GetOrganizationUnitByPath", mock.Anything, "root").
-					Return(providers.OrganizationUnit{ID: "ou-id"}, (*tidcommon.ServiceError)(nil)).
+					Return(oupkg.OrganizationUnit{ID: "ou-id"}, (*tidcommon.ServiceError)(nil)).
 					Once()
 				ouServiceMock.
 					On("GetOrganizationUnitUsers", mock.Anything, "ou-id", 10, 0, false).
@@ -368,7 +368,7 @@ func TestUserService_CreateUserByPath_HandlesOUServiceErrors(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.
 		On("GetOrganizationUnitByPath", mock.Anything, "root/engineering").
-		Return(providers.OrganizationUnit{}, &tidcommon.ServiceError{
+		Return(oupkg.OrganizationUnit{}, &tidcommon.ServiceError{
 			Type: tidcommon.ClientErrorType,
 			Code: oupkg.ErrorInvalidHandlePath.Code,
 		}).
@@ -1774,7 +1774,7 @@ func TestUserService_GetUsersByPath(t *testing.T) {
 	ctx := context.Background()
 
 	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "root").
-		Return(providers.OrganizationUnit{ID: "ou-1"}, nil).
+		Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).
 		Once()
 	mockOU.On("GetOrganizationUnitUsers", mock.Anything, "ou-1", 10, 0, false).Return(&oupkg.UserListResponse{
 		TotalResults: 20,
@@ -1800,7 +1800,7 @@ func TestUserService_GetUsersByPath_WithIncludeDisplay(t *testing.T) {
 	ctx := context.Background()
 
 	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "root").
-		Return(providers.OrganizationUnit{ID: "ou-1"}, nil).Once()
+		Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).Once()
 	mockOU.On("GetOrganizationUnitUsers", mock.Anything, "ou-1", 10, 0, false).
 		Return(&oupkg.UserListResponse{
 			TotalResults: 2,
@@ -1832,7 +1832,7 @@ func TestUserService_GetUsersByPath_WithIncludeDisplay_BatchFetchError(t *testin
 	ctx := context.Background()
 
 	mockOU.On("GetOrganizationUnitByPath", mock.Anything, "root").
-		Return(providers.OrganizationUnit{ID: "ou-1"}, nil).Once()
+		Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).Once()
 	mockOU.On("GetOrganizationUnitUsers", mock.Anything, "ou-1", 10, 0, false).
 		Return(&oupkg.UserListResponse{
 			TotalResults: 1,
@@ -2254,7 +2254,7 @@ func TestUserService_GetUsersByPath_AuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "root").
-					Return(providers.OrganizationUnit{ID: ouID}, (*tidcommon.ServiceError)(nil)).Once()
+					Return(oupkg.OrganizationUnit{ID: ouID}, (*tidcommon.ServiceError)(nil)).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
@@ -2272,7 +2272,7 @@ func TestUserService_GetUsersByPath_AuthzChecks(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 				ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "root").
-					Return(providers.OrganizationUnit{ID: ouID}, (*tidcommon.ServiceError)(nil)).Once()
+					Return(oupkg.OrganizationUnit{ID: ouID}, (*tidcommon.ServiceError)(nil)).Once()
 
 				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
@@ -3438,7 +3438,7 @@ func TestUserService_GetUserList_WithIncludeDisplay(t *testing.T) {
 func TestResolveUserOUHandle_OUHandleResolved(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "default").
-		Return(providers.OrganizationUnit{ID: "ou-resolved"}, (*tidcommon.ServiceError)(nil)).Once()
+		Return(oupkg.OrganizationUnit{ID: "ou-resolved"}, (*tidcommon.ServiceError)(nil)).Once()
 
 	svc := &userService{ouService: ouServiceMock}
 	u := &providers.User{OUHandle: "default"}
@@ -3481,7 +3481,7 @@ func TestResolveUserOUHandle_BothProvided(t *testing.T) {
 func TestResolveUserOUHandle_OUHandleNotFound(t *testing.T) {
 	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "missing").
-		Return(providers.OrganizationUnit{}, &oupkg.ErrorOrganizationUnitNotFound).Once()
+		Return(oupkg.OrganizationUnit{}, &oupkg.ErrorOrganizationUnitNotFound).Once()
 
 	svc := &userService{ouService: ouServiceMock}
 	u := &providers.User{OUHandle: "missing"}

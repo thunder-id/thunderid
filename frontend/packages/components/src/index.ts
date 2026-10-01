@@ -12,6 +12,7 @@ export {default as ExternalLinkConfirmDialog} from './ExternalLinkConfirm/Extern
 export type {ExternalLinkConfirmDialogProps} from './ExternalLinkConfirm/ExternalLinkConfirmDialog';
 export {default as useExternalLinkConfirmation} from './ExternalLinkConfirm/useExternalLinkConfirmation';
 export type {ExternalLinkConfirmationState} from './ExternalLinkConfirm/useExternalLinkConfirmation';
+export {default as GradientBorderButton} from './GradientBorderButton/GradientBorderButton';
 export {default as Helmet} from './Helmet/Helmet';
 export type {HelmetProps} from './Helmet/Helmet';
 export {default as FullScreenCreationWizardLayout} from './FullScreenCreationWizardLayout/FullScreenCreationWizardLayout';

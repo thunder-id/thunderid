@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"gopkg.in/yaml.v3"
@@ -131,7 +129,7 @@ func (e *ouExporter) GetResourceByID(
 func (e *ouExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
-	ou, ok := resource.(*providers.OrganizationUnit)
+	ou, ok := resource.(*OrganizationUnit)
 	if !ok {
 		return "", declarativeresource.CreateTypeError(resourceTypeOU, id)
 	}
@@ -170,7 +168,7 @@ func loadDeclarativeResources(fileStore organizationUnitStoreInterface, dbStore 
 			return validateOUWrapper(data, store, dbStore)
 		},
 		IDExtractor: func(data interface{}) string {
-			return data.(*providers.OrganizationUnit).ID
+			return data.(*OrganizationUnit).ID
 		},
 	}
 
@@ -187,9 +185,9 @@ func parseToOUWrapper(data []byte) (interface{}, error) {
 	return parseToOU(data)
 }
 
-// parseToOU parses YAML data to providers.OrganizationUnit.
-func parseToOU(data []byte) (*providers.OrganizationUnit, error) {
-	var ou providers.OrganizationUnit
+// parseToOU parses YAML data to OrganizationUnit.
+func parseToOU(data []byte) (*OrganizationUnit, error) {
+	var ou OrganizationUnit
 	err := yaml.Unmarshal(data, &ou)
 	if err != nil {
 		return nil, err
@@ -203,9 +201,9 @@ func parseToOU(data []byte) (*providers.OrganizationUnit, error) {
 // In declarative mode, dbStore is nil and only file store is checked.
 // In composite mode, both stores are checked to prevent conflicts.
 func validateOUWrapper(data interface{}, fileStore *fileBasedStore, dbStore organizationUnitStoreInterface) error {
-	ou, ok := data.(*providers.OrganizationUnit)
+	ou, ok := data.(*OrganizationUnit)
 	if !ok {
-		return fmt.Errorf("invalid type: expected *providers.OrganizationUnit")
+		return fmt.Errorf("invalid type: expected *OrganizationUnit")
 	}
 
 	if ou.ID == "" {

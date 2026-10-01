@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/cors/corstest"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
@@ -37,6 +38,9 @@ const testCryptoKey = "0579f866ac7c9273580d0ff163fa01a7b2401a7ff3ddc3e3b14ae3136
 // TestMain wires cmodels' package-level config crypto provider once for the whole test
 // binary, so secret Property encryption works regardless of which test's SetupTest last
 // reset the server runtime.
+// testConfigCrypto is the provider TestMain installs, kept so a test that swaps it can put it back.
+var testConfigCrypto kmprovider.ConfigCryptoProvider
+
 func TestMain(m *testing.M) {
 	config.ResetServerRuntime()
 	if err := config.InitializeServerRuntime("/tmp/test", &config.Config{
@@ -51,6 +55,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	cmodels.SetConfigCryptoProvider(cfgCryptoSvc)
+	testConfigCrypto = cfgCryptoSvc
 	config.ResetServerRuntime()
 	os.Exit(m.Run())
 }
@@ -107,7 +112,7 @@ func createTestExporters(
 ) []declarativeresource.ResourceExporter {
 	return []declarativeresource.ResourceExporter{
 		application.NewApplicationExporterForTest(appService),
-		connection.NewConnectionExporterForTest(idpService, notificationService),
+		connection.NewConnectionExporterForTest(idpService, notificationService, nil),
 		entitytype.NewEntityTypeExporterForTest(entityTypeService, entitytype.TypeCategoryUser),
 	}
 }
@@ -119,7 +124,7 @@ func (suite *InitTestSuite) TestInitialize() {
 		suite.mockNotificationService, suite.mockEntityTypeService)
 
 	// Execute
-	service := Initialize(mux, exporters)
+	service := Initialize(mux, exporters, TemplatePlaceholders)
 
 	// Assert
 	assert.NotNil(suite.T(), service)
@@ -133,7 +138,7 @@ func (suite *InitTestSuite) TestInitialize_ServiceCreation() {
 		suite.mockNotificationService, suite.mockEntityTypeService)
 
 	// Execute
-	service := Initialize(mux, exporters)
+	service := Initialize(mux, exporters, TemplatePlaceholders)
 
 	// Assert
 	assert.NotNil(suite.T(), service)
@@ -147,7 +152,7 @@ func (suite *InitTestSuite) TestRegisterRoutes() {
 	mux := http.NewServeMux()
 	exporters := createTestExporters(suite.mockAppService, suite.mockIDPService,
 		suite.mockNotificationService, suite.mockEntityTypeService)
-	mockService := newExportService(exporters, newParameterizer(templatingRules{}))
+	mockService := newExportService(exporters, newParameterizer(templatingRules{}, TemplatePlaceholders))
 	exportHandler := newExportHandler(mockService)
 
 	// Execute
@@ -161,7 +166,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_JSONEndpoint() {
 	mux := http.NewServeMux()
 	exporters := createTestExporters(suite.mockAppService, suite.mockIDPService,
 		suite.mockNotificationService, suite.mockEntityTypeService)
-	mockService := newExportService(exporters, newParameterizer(templatingRules{}))
+	mockService := newExportService(exporters, newParameterizer(templatingRules{}, TemplatePlaceholders))
 	exportHandler := newExportHandler(mockService)
 
 	registerRoutes(mux, exportHandler)
@@ -183,7 +188,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_OptionsEndpoint() {
 	mux := http.NewServeMux()
 	exporters := createTestExporters(suite.mockAppService, suite.mockIDPService,
 		suite.mockNotificationService, suite.mockEntityTypeService)
-	mockService := newExportService(exporters, newParameterizer(templatingRules{}))
+	mockService := newExportService(exporters, newParameterizer(templatingRules{}, TemplatePlaceholders))
 	exportHandler := newExportHandler(mockService)
 
 	registerRoutes(mux, exportHandler)
@@ -206,7 +211,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSHeaders() {
 	mux := http.NewServeMux()
 	exporters := createTestExporters(suite.mockAppService, suite.mockIDPService,
 		suite.mockNotificationService, suite.mockEntityTypeService)
-	mockService := newExportService(exporters, newParameterizer(templatingRules{}))
+	mockService := newExportService(exporters, newParameterizer(templatingRules{}, TemplatePlaceholders))
 	exportHandler := newExportHandler(mockService)
 
 	registerRoutes(mux, exportHandler)
@@ -232,7 +237,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_InvalidMethod() {
 	mux := http.NewServeMux()
 	exporters := createTestExporters(suite.mockAppService, suite.mockIDPService,
 		suite.mockNotificationService, suite.mockEntityTypeService)
-	mockService := newExportService(exporters, newParameterizer(templatingRules{}))
+	mockService := newExportService(exporters, newParameterizer(templatingRules{}, TemplatePlaceholders))
 	exportHandler := newExportHandler(mockService)
 
 	registerRoutes(mux, exportHandler)
@@ -252,7 +257,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_UnregisteredPath() {
 	mux := http.NewServeMux()
 	exporters := createTestExporters(suite.mockAppService, suite.mockIDPService,
 		suite.mockNotificationService, suite.mockEntityTypeService)
-	mockService := newExportService(exporters, newParameterizer(templatingRules{}))
+	mockService := newExportService(exporters, newParameterizer(templatingRules{}, TemplatePlaceholders))
 	exportHandler := newExportHandler(mockService)
 
 	registerRoutes(mux, exportHandler)
@@ -282,7 +287,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_PreflightRequest() {
 	mux := http.NewServeMux()
 	exporters := createTestExporters(suite.mockAppService, suite.mockIDPService,
 		suite.mockNotificationService, suite.mockEntityTypeService)
-	mockService := newExportService(exporters, newParameterizer(templatingRules{}))
+	mockService := newExportService(exporters, newParameterizer(templatingRules{}, TemplatePlaceholders))
 	exportHandler := newExportHandler(mockService)
 
 	registerRoutes(mux, exportHandler)
@@ -318,7 +323,7 @@ func BenchmarkInitialize(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		exporters := createTestExporters(mockAppService, mockIDPService, mockNotificationService, mockEntityTypeService)
 		mux := http.NewServeMux()
-		Initialize(mux, exporters)
+		Initialize(mux, exporters, TemplatePlaceholders)
 	}
 }
 
@@ -329,7 +334,7 @@ func BenchmarkRegisterRoutes(b *testing.B) {
 	mockNotificationService := notificationmock.NewNotificationSenderMgtSvcInterfaceMock(b)
 	mockEntityTypeService := entitytypemock.NewEntityTypeServiceInterfaceMock(b)
 	exporters := createTestExporters(mockAppService, mockIDPService, mockNotificationService, mockEntityTypeService)
-	mockService := newExportService(exporters, newParameterizer(templatingRules{}))
+	mockService := newExportService(exporters, newParameterizer(templatingRules{}, TemplatePlaceholders))
 	exportHandler := newExportHandler(mockService)
 
 	b.ResetTimer()
@@ -364,7 +369,7 @@ func TestInitialize_Standalone(t *testing.T) {
 	mux := http.NewServeMux()
 
 	// Execute
-	service := Initialize(mux, exporters)
+	service := Initialize(mux, exporters, TemplatePlaceholders)
 
 	// Assert
 	assert.NotNil(t, service)
@@ -391,7 +396,7 @@ func TestRegisterRoutes_Standalone(t *testing.T) {
 	mockNotificationService := notificationmock.NewNotificationSenderMgtSvcInterfaceMock(t)
 	mockEntityTypeService := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	exporters := createTestExporters(mockAppService, mockIDPService, mockNotificationService, mockEntityTypeService)
-	mockService := newExportService(exporters, newParameterizer(templatingRules{}))
+	mockService := newExportService(exporters, newParameterizer(templatingRules{}, TemplatePlaceholders))
 	exportHandler := newExportHandler(mockService)
 	mux := http.NewServeMux()
 
@@ -422,7 +427,7 @@ func TestRouteHandling_Standalone(t *testing.T) {
 	mockEntityTypeService := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	exporters := createTestExporters(mockAppService, mockIDPService, mockNotificationService, mockEntityTypeService)
 	mux := http.NewServeMux()
-	Initialize(mux, exporters)
+	Initialize(mux, exporters, TemplatePlaceholders)
 
 	// Test that all routes are registered
 	testCases := []struct {
@@ -479,7 +484,7 @@ func TestCORSConfiguration_Standalone(t *testing.T) {
 	mockEntityTypeService := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	exporters := createTestExporters(mockAppService, mockIDPService, mockNotificationService, mockEntityTypeService)
 	mux := http.NewServeMux()
-	Initialize(mux, exporters)
+	Initialize(mux, exporters, TemplatePlaceholders)
 
 	// Test CORS on actual request with Origin header
 	req := httptest.NewRequest("OPTIONS", "/export", nil)

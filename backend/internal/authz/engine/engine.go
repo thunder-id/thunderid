@@ -25,6 +25,7 @@ type AuthorizationEngine interface {
 // Subject identifies the principal for an access evaluation. ID is optional: a subject with no
 // local record is described by GroupIDs and RoleIDs alone.
 type Subject struct {
+	Category   string
 	Type       string
 	ID         string
 	GroupIDs   []string
@@ -35,7 +36,20 @@ type Subject struct {
 // ResourceServer identifies the resource server for an access evaluation.
 type ResourceServer struct {
 	ID         string
+	Identifier string
+	Engine     EngineConfig
 	Properties map[string]interface{}
+}
+
+// EngineConfig identifies the configured authorization engine for a resource server.
+type EngineConfig struct {
+	Type       string
+	Properties EngineProperties
+}
+
+// EngineProperties contains engine-specific resource-server settings.
+type EngineProperties struct {
+	PDPConnectionID string
 }
 
 // Permission identifies the permission string being evaluated.

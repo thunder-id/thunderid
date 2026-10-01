@@ -52,6 +52,9 @@ func accessTokenFor(id string) string { return tokenWithTyp(jwt.TokenTypeAccessT
 // tokens and flow assertions; the refresh validator's claim checks separate them.
 func genericTokenFor(id string) string { return tokenWithTyp(jwt.TokenTypeJWT, id) }
 
+// refreshTokenFor returns a token carrying the rt+jwt typ refresh tokens are minted with.
+func refreshTokenFor(id string) string { return tokenWithTyp(jwt.TokenTypeRefreshToken, id) }
+
 // stubAccessToken makes the token resolve as a valid access token carrying the given raw claims.
 func (s *TokenIntrospectionServiceTestSuite) stubAccessToken(token string, claims map[string]interface{}) {
 	s.tokenValidatorMock.On("ValidateAccessToken", mock.Anything, token).
@@ -280,4 +283,24 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_DPoPBoundToken_
 	assert.Equal(s.T(), constants.TokenTypeDPoP, response.TokenType)
 	assert.NotNil(s.T(), response.Cnf)
 	assert.Equal(s.T(), "thumbprint-abc", response.Cnf.Jkt)
+}
+
+// A refresh token minted with the rt+jwt typ is introspectable. The generic-typ case above covers
+// the ones minted before rt+jwt existed, which must keep working for the migration window.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_RefreshToken_RTJWTTyp_Active() {
+	claims := map[string]interface{}{
+		"sub":              "client123",
+		"access_token_sub": "user123",
+		"scope":            "openid profile",
+		"jti":              "refresh-jti",
+	}
+	s.tokenValidatorMock.On("ValidateRefreshToken", mock.Anything, refreshTokenFor("rt")).
+		Return(&tokenservice.RefreshTokenClaims{Claims: claims}, nil)
+
+	response, err := s.introspectService.IntrospectToken(context.Background(), refreshTokenFor("rt"), "")
+
+	assert.NoError(s.T(), err)
+	assert.True(s.T(), response.Active)
+	assert.Equal(s.T(), "refresh-jti", response.Jti)
+	assert.Equal(s.T(), "openid profile", response.Scope)
 }

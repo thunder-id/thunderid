@@ -7,7 +7,6 @@ import (
 	authngithub "github.com/thunder-id/thunderid/internal/authn/github"
 	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -22,7 +21,7 @@ var _ providers.Executor = (*githubOAuthExecutor)(nil)
 // newGithubOAuthExecutor creates a new instance of GithubOAuthExecutor with the provided details.
 func newGithubOAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
-	idpService idp.IDPServiceInterface,
+	idpService providers.IDPProvider,
 	authService authngithub.GithubOAuthAuthnServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 ) oAuthExecutorInterface {

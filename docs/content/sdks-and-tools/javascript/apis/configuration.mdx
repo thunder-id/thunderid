@@ -86,11 +86,15 @@ By default the SDK fetches `{baseUrl}/.well-known/openid-configuration` to resol
 | `endpoints.flowExecute` | `string` | `{baseUrl}/flow/execute` | Override the flow execution endpoint (embedded sign-in, sign-up, recovery, and user onboarding flows) |
 | `endpoints.flowMeta` | `string` | `{baseUrl}/flow/meta` | Override the flow metadata endpoint |
 | `endpoints.usersMe` | `string` | `{baseUrl}/users/me` | Override the current-user profile endpoint |
+| `endpoints.applications` | `string` | `{baseUrl}/applications` | Override the applications collection used by the [management](../management) operations |
+| `endpoints.users` | `string` | `{baseUrl}/users` | Override the users collection used by the [management](../management) operations |
+| `endpoints.agents` | `string` | `{baseUrl}/agents` | Override the agents collection used by the [management](../management) operations |
 
 The `endpoints.authorization`, `endpoints.token`, `endpoints.userInfo`, `endpoints.jwks`, `endpoints.introspection`,
 and `endpoints.endSession` overrides address OIDC/OAuth endpoints, which are otherwise resolved from the discovery
-document. The `endpoints.flowExecute`, `endpoints.flowMeta`, and `endpoints.usersMe` overrides address resource-server
-endpoints, which are otherwise derived by concatenating `baseUrl` with a fixed path.
+document. The `endpoints.flowExecute`, `endpoints.flowMeta`, `endpoints.usersMe`, `endpoints.applications`,
+`endpoints.users`, and `endpoints.agents` overrides address resource-server endpoints, which are otherwise derived by
+concatenating `baseUrl` with a fixed path.
 
 Split these two groups when the OAuth authorization server and the <ProductName /> resource server are different hosts,
 for example when two <ProductName /> instances are connected as trusted issuers. Point `baseUrl` (and hence the

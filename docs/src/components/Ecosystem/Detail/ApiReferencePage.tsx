@@ -190,13 +190,13 @@ export default function ApiReferencePage({entry}: {entry: EcosystemEntry}): JSX.
               aria-label="Breadcrumb"
               sx={{display: 'flex', alignItems: 'center', gap: 1, mb: 2.25, fontSize: '12.5px', color: ink(0.4, 0.35)}}
             >
-              <Box component={Link} to="/sdks" sx={{color: 'inherit', textDecoration: 'none'}}>
+              <Box component={Link} to="/sdks-and-tools" sx={{color: 'inherit', textDecoration: 'none'}}>
                 SDKs &amp; Tools
               </Box>
               <Box component="span" sx={{opacity: 0.5}}>
                 /
               </Box>
-              <Box component={Link} to={`/sdks/${entry.id}`} sx={{color: 'inherit', textDecoration: 'none'}}>
+              <Box component={Link} to={`/sdks-and-tools/${entry.id}`} sx={{color: 'inherit', textDecoration: 'none'}}>
                 {entry.name}
               </Box>
               <Box component="span" sx={{opacity: 0.5}}>

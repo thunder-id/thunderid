@@ -26,6 +26,7 @@ type TokenBuilderInterface interface {
 	BuildRefreshToken(ctx context.Context, tokenCtx *RefreshTokenBuildContext) (*oauth2model.TokenDTO, error)
 	BuildIDToken(ctx context.Context, tokenCtx *IDTokenBuildContext) (*oauth2model.TokenDTO, error)
 	BuildIDJAG(ctx context.Context, tokenCtx *IDJAGBuildContext) (*oauth2model.TokenDTO, error)
+	BuildLogoutToken(ctx context.Context, tokenCtx *LogoutTokenBuildContext) (*oauth2model.TokenDTO, error)
 }
 
 // TokenBuilder implements TokenBuilderInterface.
@@ -413,7 +414,7 @@ func (tb *tokenBuilder) BuildRefreshToken(
 		tokenConfig.Issuer,
 		validityPeriod,
 		claims,
-		jwt.TokenTypeJWT,
+		jwt.TokenTypeRefreshToken,
 		"",
 	)
 	if err != nil {
@@ -514,35 +515,9 @@ func (tb *tokenBuilder) BuildIDToken(
 		return nil, fmt.Errorf("failed to generate ID token: %v", err.Error)
 	}
 
-	// Optionally encrypt the signed ID token when responseType is JWE or NESTED_JWT.
-	if tokenCtx.OAuthApp != nil && tokenCtx.OAuthApp.Token != nil && tokenCtx.OAuthApp.Token.IDToken != nil {
-		idTokenCfg := tokenCtx.OAuthApp.Token.IDToken
-		rt := idTokenCfg.ResponseType
-		if rt == providers.IDTokenResponseTypeJWE || rt == providers.IDTokenResponseTypeNESTEDJWT {
-			if tb.jweService == nil {
-				return nil, fmt.Errorf("JWE service is not configured")
-			}
-			rpKey, rpKID, svcErr := tb.jwksResolver.ResolveEncryptionKey(
-				ctx,
-				tokenCtx.OAuthApp.Certificate,
-				idTokenCfg.EncryptionAlg,
-				jwksresolver.KeyUseLenientEnc,
-			)
-			if svcErr != nil {
-				return nil, fmt.Errorf("failed to resolve ID token encryption key: %v", svcErr)
-			}
-			// cty="JWT" indicates a nested JWT (signed JWS payload encrypted as JWE per OIDC spec)
-			encrypted, svcErr := tb.jweService.Encrypt(ctx,
-				[]byte(token), &providers.KeyRef{PublicKeyJWK: rpKey},
-				idTokenCfg.EncryptionAlg,
-				jwe.ContentEncAlgorithm(idTokenCfg.EncryptionEnc),
-				"JWT", rpKID,
-			)
-			if svcErr != nil {
-				return nil, fmt.Errorf("failed to encrypt ID token: %v", svcErr)
-			}
-			token = encrypted
-		}
+	token, encErr := tb.encryptForClient(ctx, tokenCtx.OAuthApp, token, "ID token")
+	if encErr != nil {
+		return nil, encErr
 	}
 
 	// Assign generated token and issued at time
@@ -550,6 +525,80 @@ func (tb *tokenBuilder) BuildIDToken(
 	tokenDTO.IssuedAt = iat
 
 	return tokenDTO, nil
+}
+
+// BuildLogoutToken builds an OIDC Back-Channel Logout token for one client and one terminated session.
+// It is signed like the client's ID tokens, and encrypted the same way when the client negotiated ID
+// token encryption, with iss replicated in the JWE header (§2.4). Every call yields a fresh jti.
+func (tb *tokenBuilder) BuildLogoutToken(
+	ctx context.Context,
+	tokenCtx *LogoutTokenBuildContext,
+) (*oauth2model.TokenDTO, error) {
+	if tokenCtx == nil || tokenCtx.OAuthApp == nil || tokenCtx.OAuthApp.ClientID == "" {
+		return nil, fmt.Errorf("logout token needs a client with a client id")
+	}
+	if tokenCtx.SubjectID == "" || tokenCtx.SessionID == "" {
+		return nil, fmt.Errorf("logout token needs a subject and a session id")
+	}
+	client := tokenCtx.OAuthApp
+	tokenConfig := ResolveTokenConfig(tb.cfg, client, TokenTypeID, 0)
+	// Validated positive at startup; the default lives in default.json.
+	validity := tb.cfg.OAuth.Logout.Backchannel.TokenValidityPeriod
+
+	// iss, iat, exp, nbf and jti come from the JWT service; nonce is never set (§2.4).
+	claims := map[string]interface{}{
+		constants.ClaimAud:       client.ClientID,
+		constants.ClaimSessionID: tokenCtx.SessionID,
+		claimEvents:              map[string]interface{}{eventBackchannelLogout: map[string]interface{}{}},
+	}
+	token, iat, svcErr := tb.jwtService.GenerateJWT(ctx, tokenCtx.SubjectID, tokenConfig.Issuer, validity, claims,
+		jwt.TokenTypeLogout, tokenConfig.SigningAlg)
+	if svcErr != nil {
+		return nil, fmt.Errorf("failed to generate logout token: %v", svcErr.Error)
+	}
+	token, err := tb.encryptForClient(ctx, client, token, "logout token",
+		jwe.WithProtectedHeader("iss", tokenConfig.Issuer))
+	if err != nil {
+		return nil, err
+	}
+	return &oauth2model.TokenDTO{
+		Token:     token,
+		IssuedAt:  iat,
+		ExpiresIn: validity,
+		ClientID:  client.ClientID,
+		Subject:   tokenCtx.SubjectID,
+		Audiences: []string{client.ClientID},
+	}, nil
+}
+
+// encryptForClient returns the signed token encrypted with the client's ID token encryption settings
+// when the client negotiated JWE or NESTED_JWT ID tokens, and unchanged otherwise. kind names the
+// token in errors.
+func (tb *tokenBuilder) encryptForClient(ctx context.Context, client *providers.OAuthClient, token, kind string,
+	opts ...jwe.EncryptOption) (string, error) {
+	if client == nil || client.Token == nil || client.Token.IDToken == nil {
+		return token, nil
+	}
+	idTokenCfg := client.Token.IDToken
+	rt := idTokenCfg.ResponseType
+	if rt != providers.IDTokenResponseTypeJWE && rt != providers.IDTokenResponseTypeNESTEDJWT {
+		return token, nil
+	}
+	if tb.jweService == nil {
+		return "", fmt.Errorf("JWE service is not configured")
+	}
+	rpKey, rpKID, svcErr := tb.jwksResolver.ResolveEncryptionKey(ctx, client.Certificate, idTokenCfg.EncryptionAlg,
+		jwksresolver.KeyUseLenientEnc)
+	if svcErr != nil {
+		return "", fmt.Errorf("failed to resolve %s encryption key: %v", kind, svcErr)
+	}
+	// cty="JWT" indicates a nested JWT (signed JWS payload encrypted as JWE per OIDC spec)
+	encrypted, svcErr := tb.jweService.Encrypt(ctx, []byte(token), &providers.KeyRef{PublicKeyJWK: rpKey},
+		idTokenCfg.EncryptionAlg, jwe.ContentEncAlgorithm(idTokenCfg.EncryptionEnc), "JWT", rpKID, opts...)
+	if svcErr != nil {
+		return "", fmt.Errorf("failed to encrypt %s: %v", kind, svcErr)
+	}
+	return encrypted, nil
 }
 
 // buildIDTokenClaims builds the claims map for an ID token (OIDC).

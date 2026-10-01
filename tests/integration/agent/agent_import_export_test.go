@@ -134,13 +134,16 @@ func (s *AgentImportExportSuite) TearDownSuite() {
 		}
 	}
 	// Restore the shared agent type before deleting the OU it points at, or the singleton is left
-	// referencing a deleted OU and a later suite's restore fails.
+	// referencing a deleted OU and a later suite's restore fails. A failed restore keeps the OU:
+	// leaking one is cheaper than every later suite inheriting a dangling reference.
+	agentTypeRestored := true
 	if s.agentTypeSnapshot != nil {
 		if err := testutils.RestoreAgentType(s.agentTypeSnapshot); err != nil {
 			s.T().Errorf("teardown: failed to restore the default agent type: %v", err)
+			agentTypeRestored = false
 		}
 	}
-	if s.ouID != "" {
+	if s.ouID != "" && agentTypeRestored {
 		_ = testutils.DeleteOrganizationUnit(s.ouID)
 	}
 }

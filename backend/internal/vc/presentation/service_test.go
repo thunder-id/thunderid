@@ -11,10 +11,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
@@ -115,12 +116,12 @@ func newOUServiceMock(
 			return exists[id], nil
 		}).Maybe()
 	m.EXPECT().GetOrganizationUnitByPath(mock.Anything, mock.Anything).RunAndReturn(
-		func(_ context.Context, handlePath string) (providers.OrganizationUnit, *tidcommon.ServiceError) {
+		func(_ context.Context, handlePath string) (ou.OrganizationUnit, *tidcommon.ServiceError) {
 			id, ok := byPath[handlePath]
 			if !ok {
-				return providers.OrganizationUnit{}, &tidcommon.InternalServerError
+				return ou.OrganizationUnit{}, &tidcommon.InternalServerError
 			}
-			return providers.OrganizationUnit{ID: id}, nil
+			return ou.OrganizationUnit{ID: id}, nil
 		}).Maybe()
 	m.EXPECT().GetOrganizationUnitHandlesByIDs(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, ids []string) (map[string]string, *tidcommon.ServiceError) {
@@ -159,7 +160,7 @@ func newFailingOUServiceMock(t *testing.T) *oumock.OrganizationUnitServiceInterf
 	m.EXPECT().IsOrganizationUnitExists(mock.Anything, mock.Anything).
 		Return(false, &tidcommon.InternalServerError).Maybe()
 	m.EXPECT().GetOrganizationUnitByPath(mock.Anything, mock.Anything).
-		Return(providers.OrganizationUnit{}, &tidcommon.InternalServerError).Maybe()
+		Return(ou.OrganizationUnit{}, &tidcommon.InternalServerError).Maybe()
 	m.EXPECT().GetOrganizationUnitHandlesByIDs(mock.Anything, mock.Anything).
 		Return(nil, &tidcommon.InternalServerError).Maybe()
 	return m

@@ -14,10 +14,11 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 
 	"github.com/stretchr/testify/assert"
@@ -726,7 +727,7 @@ func TestInitialize_StoreModes(t *testing.T) {
 			mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 			// Mock OU service for potential declarative resource loading
 			mockOUService.On("GetOrganizationUnit", mock.Anything, mock.Anything).
-				Return(providers.OrganizationUnit{ID: "ou-1"}, nil).
+				Return(ou.OrganizationUnit{ID: "ou-1"}, nil).
 				Maybe()
 			service, exporter, _, err := Initialize(mux, nil, testCacheManager(), mockOUService, nil)
 
@@ -942,13 +943,13 @@ func TestOUServiceInteractionDuringValidation(t *testing.T) {
 			// Mock the GetOrganizationUnit call that happens in Initialize()
 			if tc.ouServiceError != nil {
 				mockOUService.On("GetOrganizationUnit", mock.Anything, tc.ouID).
-					Return(providers.OrganizationUnit{}, tc.ouServiceError).Once()
+					Return(ou.OrganizationUnit{}, tc.ouServiceError).Once()
 			} else if tc.ouExists {
 				mockOUService.On("GetOrganizationUnit", mock.Anything, tc.ouID).
-					Return(providers.OrganizationUnit{ID: tc.ouID}, (*tidcommon.ServiceError)(nil)).Once()
+					Return(ou.OrganizationUnit{ID: tc.ouID}, (*tidcommon.ServiceError)(nil)).Once()
 			} else {
 				mockOUService.On("GetOrganizationUnit", mock.Anything, tc.ouID).
-					Return(providers.OrganizationUnit{}, &tidcommon.ServiceError{
+					Return(ou.OrganizationUnit{}, &tidcommon.ServiceError{
 						Code: "OUS-1002",
 						Type: tidcommon.ClientErrorType,
 						Error: tidcommon.I18nMessage{
@@ -1235,7 +1236,7 @@ schema: |
 
 	// Mock OU service to return not-found for the handle
 	mockOUService.On("GetOrganizationUnitByPath", mock.Anything, "nonexistent-handle").
-		Return(providers.OrganizationUnit{}, &tidcommon.ServiceError{
+		Return(ou.OrganizationUnit{}, &tidcommon.ServiceError{
 			Code: "OUS-1002",
 			Type: tidcommon.ClientErrorType,
 			Error: tidcommon.I18nMessage{

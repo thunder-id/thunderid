@@ -6,6 +6,8 @@ package session
 import (
 	"context"
 	"time"
+
+	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 )
 
 // State represents the lifecycle state of a session.
@@ -19,6 +21,32 @@ const (
 	// StateEnded indicates the session ended (e.g. logout) and must not be resumed.
 	StateEnded State = "ENDED"
 )
+
+// TerminationReason names the path that ended a session.
+type TerminationReason string
+
+const (
+	// TerminationReasonSignOut is a sign-out of one session.
+	TerminationReasonSignOut TerminationReason = "sign_out"
+	// TerminationReasonSubjectRevocation is an administrative termination of all the subject's sessions.
+	TerminationReasonSubjectRevocation TerminationReason = "subject_revocation"
+)
+
+// TerminatedSession describes a session the service has ended. Participants is captured before the
+// rows are deleted, so it is the only remaining record of which applications shared the session.
+type TerminatedSession struct {
+	SessionID    string
+	SubjectID    string
+	Participants []Participant
+	Reason       TerminationReason
+}
+
+// TerminationListener is told about every terminated session after the terminating transaction
+// commits. The contract is the eventlistener package's.
+type TerminationListener = eventlistener.Listener[TerminatedSession]
+
+// TerminationHook registers termination listeners. Initialize hands it to the composition root.
+type TerminationHook = eventlistener.Hook[TerminatedSession]
 
 // Session is the lean, hot-path SSO session entity. It carries only operational fields plus
 // authenticated_at (used by the max_age policy check), so the resolve, SSO-check, and

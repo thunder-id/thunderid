@@ -14,12 +14,13 @@ import (
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/yaml.v3"
 
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
@@ -345,7 +346,7 @@ func (s *DefinitionExporterTestSuite) TestValidateResolvesOUHandleUsesRuntimeCon
 	ouSvc := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	ouSvc.EXPECT().
 		GetOrganizationUnitByPath(mock.MatchedBy(security.IsRuntimeContext), "root/eng").
-		Return(providers.OrganizationUnit{ID: "ou-123"}, nil).Once()
+		Return(ou.OrganizationUnit{ID: "ou-123"}, nil).Once()
 	ouSvc.EXPECT().IsOrganizationUnitExists(mock.Anything, "ou-123").Return(true, nil).Once()
 
 	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v", OUHandle: "root/eng"}

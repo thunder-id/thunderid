@@ -1,0 +1,579 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+import {PageLoadingAnimation, QueryErrorNotice, ResourceAvatar, UnsavedChangesBar} from '@thunderid/components';
+import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-types';
+import {dropNonConformingOptionalAttributes} from '@thunderid/configure-users';
+import {useLogger} from '@thunderid/logger/react';
+import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
+import {
+  Alert,
+  Box,
+  Button,
+  Dialog,
+  DialogContent,
+  IconButton,
+  PageContent,
+  PageTitle,
+  Stack,
+  Tab,
+  Tabs,
+  TextField,
+  Typography,
+} from '@wso2/oxygen-ui';
+import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
+import {useState, useCallback, useMemo, type SyntheticEvent, type JSX, type ReactNode} from 'react';
+import {useTranslation} from 'react-i18next';
+import {Link, useLocation, useNavigate, useParams} from 'react-router';
+import useGetAgent from '../api/useGetAgent';
+import useUpdateAgent from '../api/useUpdateAgent';
+import EditAccessSettings from '../components/edit-agent/access/EditAccessSettings';
+import EditAdvancedSettings from '../components/edit-agent/advanced-settings/EditAdvancedSettings';
+import EditAgentAttributes from '../components/edit-agent/attributes/EditAgentAttributes';
+import EditCredentialsSettings from '../components/edit-agent/credentials/EditCredentialsSettings';
+import EditFlowsSettings from '../components/edit-agent/flows/EditFlowsSettings';
+import AgentOverview from '../components/edit-agent/overview/AgentOverview';
+import EditTokensSettings from '../components/edit-agent/tokens/EditTokensSettings';
+import ShowClientSecret from '../components/ShowClientSecret';
+import AgentConstants from '../constants/agent-constants';
+import useAgentRoutes from '../hooks/useAgentRoutes';
+import type {Agent, OAuthAgentConfig} from '../models/agent';
+
+interface TabPanelProps {
+  children?: ReactNode;
+  index: number;
+  value: number;
+}
+
+interface JustCreatedSecret {
+  agentName: string;
+  clientId?: string;
+  clientSecret: string;
+}
+
+function TabPanel({children = null, value, index, ...other}: TabPanelProps) {
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`agent-tabpanel-${index}`}
+      aria-labelledby={`agent-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{py: 3}}>{children}</Box>}
+    </div>
+  );
+}
+
+export default function AgentEditPage(): JSX.Element {
+  const routes = useAgentRoutes();
+  const {t} = useTranslation();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const logger = useLogger('AgentEditPage');
+  const {agentId} = useParams<{agentId: string}>();
+
+  const {data: agent, isLoading, error, refetch} = useGetAgent(agentId ?? '');
+  const updateAgent = useUpdateAgent();
+
+  // Resolves an error through the `agents` catalog. `t` defaults to the `common` namespace, so
+  // this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with `agents:`, per
+  // getErrorMessage's namespace-resolution contract.
+  const tForErrors = useCallback(
+    (key: string, options?: Record<string, unknown>): string => t(key.includes(':') ? key : `agents:${key}`, options),
+    [t],
+  );
+
+  const justCreatedSecret = (location.state as {justCreatedSecret?: JustCreatedSecret} | null)?.justCreatedSecret;
+  const [secretDialogOpen, setSecretDialogOpen] = useState(Boolean(justCreatedSecret));
+
+  // The agent's type schema, used to drop stale attribute values on save.
+  const {data: agentTypesData, isLoading: isTypesLoading} = useGetAgentTypes();
+  const matchedSchema = agentTypesData?.types?.find((s) => s.name === agent?.type);
+  const {data: agentTypeDetails, isLoading: isTypeLoading} = useGetAgentType(matchedSchema?.id);
+  // Block save until the schema settles, else stale values bypass sanitization.
+  const isSchemaResolving = isTypesLoading || isTypeLoading;
+
+  const [activeTab, setActiveTab] = useState(0);
+  const [editedAgent, setEditedAgent] = useState<Partial<Agent>>({});
+  const [sectionResetKey, setSectionResetKey] = useState(0);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [tempName, setTempName] = useState('');
+  const [tempDescription, setTempDescription] = useState('');
+  const [validationErrorSources, setValidationErrorSources] = useState<Record<string, boolean>>({});
+  const handleValidationChange = useCallback(
+    (source: string) =>
+      (hasError: boolean): void => {
+        setValidationErrorSources((prev) => {
+          if (prev[source] === hasError) return prev;
+          return {...prev, [source]: hasError};
+        });
+      },
+    [],
+  );
+  const hasAnyOtherValidationError = Object.values(validationErrorSources).some(Boolean);
+
+  const handleBack = async () => {
+    await navigate(routes.agents.list());
+  };
+
+  const handleTabChange = (_event: SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+  };
+
+  // useMutation returns a fresh object every render, so depending on the mutation itself gave
+  // this callback a new identity every render, which looped consumers that stage from an effect.
+  const {isError: isUpdateAgentError, reset: resetUpdateAgent} = updateAgent;
+
+  const handleFieldChange = useCallback(
+    (field: keyof Agent, value: unknown) => {
+      if (isUpdateAgentError) {
+        resetUpdateAgent(); // a save error is stale once the form changes
+      }
+      setEditedAgent((prev) => ({...prev, [field]: value}));
+    },
+    [isUpdateAgentError, resetUpdateAgent],
+  );
+
+  const commitName = useCallback(
+    (value: string): void => {
+      const trimmedName = value.trim();
+      // The API rejects names outside these bounds, so an out of range rename is discarded here.
+      if (trimmedName.length < AgentConstants.NAME_MIN_LENGTH || trimmedName.length > AgentConstants.NAME_MAX_LENGTH) {
+        return;
+      }
+      handleFieldChange('name', trimmedName);
+    },
+    [handleFieldChange],
+  );
+
+  const handleSave = useCallback(async () => {
+    if (!agent || !agentId) return;
+
+    const {certificate, ...updatedData} = {...agent, ...editedAgent} as Agent & {certificate?: unknown};
+    void certificate;
+
+    // Drop stale optional attribute values so an untouched mismatch doesn't block the update.
+    const attributes = dropNonConformingOptionalAttributes(updatedData.attributes ?? {}, agentTypeDetails?.schema);
+
+    try {
+      await updateAgent.mutateAsync({agentId, data: {...updatedData, attributes}});
+      setEditedAgent({});
+      await refetch();
+      setSectionResetKey((key) => key + 1);
+    } catch (err) {
+      logger.error('Failed to update agent', {error: err});
+    }
+  }, [agent, agentId, editedAgent, agentTypeDetails, updateAgent, refetch, logger]);
+
+  const hasChanges = useMemo(
+    () => Object.entries(editedAgent).some(([key, value]) => !isEqualIgnoringEmpty(value, agent?.[key as keyof Agent])),
+    [editedAgent, agent],
+  );
+
+  if (isLoading || isSchemaResolving) {
+    return <PageLoadingAnimation />;
+  }
+
+  if (error) {
+    return (
+      <PageContent>
+        <QueryErrorNotice
+          error={error}
+          t={tForErrors}
+          variant="block"
+          title={t('agents:edit.page.errorTitle', 'Failed to load agent')}
+          onRetry={() => void refetch()}
+          action={
+            <Button onClick={() => void handleBack()} startIcon={<ArrowLeft size={16} />}>
+              {t('agents:edit.page.back', 'Back to agents')}
+            </Button>
+          }
+        />
+      </PageContent>
+    );
+  }
+
+  if (!agent) {
+    return (
+      <PageContent>
+        <Alert severity="warning" sx={{mb: 2}}>
+          {t('agents:edit.page.notFound', 'Agent not found')}
+        </Alert>
+        <Button onClick={() => void handleBack()} startIcon={<ArrowLeft size={16} />}>
+          {t('agents:edit.page.back', 'Back to agents')}
+        </Button>
+      </PageContent>
+    );
+  }
+
+  const oauth2Config: OAuthAgentConfig | undefined = (editedAgent.inboundAuthConfig ?? agent.inboundAuthConfig)?.find(
+    (config) => config.type === 'oauth2',
+  )?.config;
+
+  const hasOAuth = Boolean(oauth2Config);
+
+  // Computed directly from state rather than reported by the Advanced/Access tab content, since
+  // that content unmounts when its tab isn't active — a callback-based report would be stale or
+  // never fire if the user never visits the tab before saving.
+  const hasAuthorizationCodeGrant = oauth2Config?.grantTypes?.includes('authorization_code') ?? false;
+  const hasValidRedirectUri = (oauth2Config?.redirectUris ?? []).some((uri) => {
+    if (!uri.trim()) return false;
+    try {
+      return Boolean(new URL(uri));
+    } catch {
+      return false;
+    }
+  });
+  const isMissingRedirectUri = hasAuthorizationCodeGrant && !hasValidRedirectUri;
+  const allowedUserTypes = editedAgent.allowedUserTypes ?? agent.allowedUserTypes ?? [];
+  const isMissingAllowedUserType = hasAuthorizationCodeGrant && allowedUserTypes.length === 0;
+  const isMissingCertificate =
+    oauth2Config?.tokenEndpointAuthMethod === 'private_key_jwt' && !oauth2Config?.certificate?.value;
+  const hasAnyValidationError =
+    hasAnyOtherValidationError || isMissingRedirectUri || isMissingAllowedUserType || isMissingCertificate;
+
+  // ResourceAvatar opens its picker on any avatar click while onSelect is set, so a read-only
+  // agent has to withhold the callback rather than rely on `editable` alone.
+  const isLogoEditable = !agent.isReadOnly;
+
+  // List every failing check by name rather than a single generic message, so the user knows
+  // exactly what to fix instead of guessing which tab has the problem.
+  const validationIssues: string[] = [];
+  if (isMissingRedirectUri) {
+    validationIssues.push(t('agents:edit.page.validation.missingRedirectUri', 'add a redirect URI'));
+  }
+  if (isMissingAllowedUserType) {
+    validationIssues.push(
+      t('agents:edit.page.validation.missingAllowedUserType', 'select at least one allowed user type'),
+    );
+  }
+  if (isMissingCertificate) {
+    validationIssues.push(t('agents:edit.page.validation.missingCertificate', 'add a certificate'));
+  }
+  if (hasAnyOtherValidationError) {
+    validationIssues.push(t('agents:edit.page.validation.tokenSettings', 'fix the token settings'));
+  }
+
+  const formatIssueList = (issues: string[]): string => {
+    if (issues.length <= 1) return issues[0] ?? '';
+    if (issues.length === 2) return `${issues[0]} and ${issues[1]}`;
+    return `${issues.slice(0, -1).join(', ')}, and ${issues[issues.length - 1]}`;
+  };
+
+  const unsavedChangesMessage =
+    validationIssues.length > 0
+      ? t('agents:edit.page.unsavedChangesInvalid', 'Before saving, {{issues}}.', {
+          issues: formatIssueList(validationIssues),
+        })
+      : t('agents:edit.page.unsavedChanges', 'You have unsaved changes');
+
+  interface TabConfig {
+    key: string;
+    label: string;
+    render: () => ReactNode;
+  }
+
+  const tabs: TabConfig[] = [
+    {
+      key: 'overview',
+      label: t('agents:edit.page.tabs.overview', 'Overview'),
+      render: () => (
+        <AgentOverview
+          agent={agent}
+          oauth2Config={oauth2Config}
+          onGoToAdvanced={() => handleNavigateToTab('advanced')}
+        />
+      ),
+    },
+    {
+      key: 'attributes',
+      label: t('agents:edit.page.tabs.attributes', 'Attributes'),
+      render: () => (
+        <EditAgentAttributes
+          key={sectionResetKey}
+          agent={agent}
+          editedAgent={editedAgent}
+          onFieldChange={handleFieldChange}
+        />
+      ),
+    },
+  ];
+
+  if (hasOAuth) {
+    tabs.push({
+      key: 'credentials',
+      label: t('agents:edit.page.tabs.credentials', 'Credentials'),
+      render: () => (
+        <EditCredentialsSettings
+          agent={agent}
+          editedAgent={editedAgent}
+          oauth2Config={oauth2Config}
+          onFieldChange={handleFieldChange}
+        />
+      ),
+    });
+  }
+
+  tabs.push({
+    key: 'access',
+    label: t('agents:edit.page.tabs.access', 'Access'),
+    render: () => <EditAccessSettings agent={agent} />,
+  });
+
+  if (hasOAuth) {
+    tabs.push({
+      key: 'flows',
+      label: t('agents:edit.page.tabs.flows', 'Flows'),
+      render: () => (
+        <EditFlowsSettings
+          agent={agent}
+          editedAgent={editedAgent}
+          oauth2Config={oauth2Config}
+          onFieldChange={handleFieldChange}
+        />
+      ),
+    });
+
+    tabs.push({
+      key: 'tokens',
+      label: t('agents:edit.page.tabs.tokens', 'Tokens'),
+      render: () => (
+        <EditTokensSettings
+          agent={agent}
+          editedAgent={editedAgent}
+          oauth2Config={oauth2Config}
+          onFieldChange={handleFieldChange}
+          onValidationChange={handleValidationChange('token')}
+          sectionResetKey={sectionResetKey}
+          onNavigateToAdvanced={() => handleNavigateToTab('advanced')}
+        />
+      ),
+    });
+  }
+
+  // Always present, even for entity-only agents with no OAuth2 inbound config (Owner assignment
+  // and the Danger Zone apply regardless of OAuth; the OAuth-specific sections hide themselves).
+  tabs.push({
+    key: 'advanced',
+    label: t('agents:edit.page.tabs.advanced', 'Advanced'),
+    render: () => (
+      <EditAdvancedSettings
+        agent={agent}
+        editedAgent={editedAgent}
+        oauth2Config={oauth2Config}
+        onFieldChange={handleFieldChange}
+        onDeleteSuccess={() => {
+          void handleBack();
+        }}
+      />
+    ),
+  });
+
+  // Lets a tab's content send the user to a sibling tab, e.g. the Tokens tab pointing at where
+  // Delegated mode is turned on. Resolved by key at click time, since which tabs exist depends on
+  // the agent's configuration.
+  const handleNavigateToTab = (key: string): void => {
+    const index = tabs.findIndex((tab) => tab.key === key);
+    if (index >= 0) {
+      setActiveTab(index);
+    }
+  };
+
+  const safeActiveTab = activeTab >= tabs.length ? 0 : activeTab;
+
+  return (
+    <PageContent>
+      {agent.isReadOnly && (
+        <Alert severity="info" sx={{mb: 2}}>
+          {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
+        </Alert>
+      )}
+      <PageTitle>
+        <PageTitle.BackButton component={<Link to={routes.agents.list()} />}>
+          {t('agents:edit.page.back', 'Back to agents')}
+        </PageTitle.BackButton>
+        <PageTitle.Avatar sx={{overflow: 'visible'}}>
+          <ResourceAvatar
+            size={55}
+            supportedShapes={['circle']}
+            editable={isLogoEditable}
+            value={editedAgent.logoUrl ?? agent.logoUrl}
+            fallback={AgentConstants.DEFAULT_AVATAR}
+            editAriaLabel={t('agents:edit.page.logoUpdate.label', 'Update Logo')}
+            onSelect={
+              isLogoEditable
+                ? (newLogoUrl: string) => {
+                    // Not handleFieldChange: reverting to the original logo drops the key rather than setting it.
+                    if (isUpdateAgentError) {
+                      resetUpdateAgent();
+                    }
+                    setEditedAgent((prev) => {
+                      if (newLogoUrl === agent.logoUrl) {
+                        const {logoUrl, ...rest} = prev;
+                        void logoUrl;
+                        return rest;
+                      }
+                      return {...prev, logoUrl: newLogoUrl};
+                    });
+                  }
+                : undefined
+            }
+            // Withheld while the staged agent is invalid: this saves the whole payload, not just
+            // the logo, so it has to respect the same gate as the unsaved-changes bar.
+            onSave={isLogoEditable && !hasAnyValidationError ? handleSave : undefined}
+          />
+        </PageTitle.Avatar>
+        <PageTitle.Header>
+          <Stack direction="row" alignItems="center" spacing={1} mb={1}>
+            {isEditingName ? (
+              <TextField
+                value={tempName}
+                onChange={(e) => setTempName(e.target.value)}
+                onBlur={() => {
+                  commitName(tempName);
+                  setIsEditingName(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    commitName(tempName);
+                    setIsEditingName(false);
+                  } else if (e.key === 'Escape') {
+                    setIsEditingName(false);
+                  }
+                }}
+                size="small"
+              />
+            ) : (
+              <>
+                <Typography variant="h3">{editedAgent.name ?? agent.name}</Typography>
+                {!agent.isReadOnly && (
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setTempName(editedAgent.name ?? agent.name);
+                      setIsEditingName(true);
+                    }}
+                    sx={{opacity: 0.6, '&:hover': {opacity: 1}}}
+                  >
+                    <Edit size={16} />
+                  </IconButton>
+                )}
+              </>
+            )}
+          </Stack>
+        </PageTitle.Header>
+        <PageTitle.SubHeader>
+          <Stack direction="row" alignItems="flex-start" spacing={1}>
+            {isEditingDescription ? (
+              <TextField
+                fullWidth
+                multiline
+                rows={2}
+                value={tempDescription}
+                onChange={(e) => setTempDescription(e.target.value)}
+                onBlur={() => {
+                  const trimmed = tempDescription.trim();
+                  const currentValue = editedAgent.description ?? agent.description ?? '';
+                  if (trimmed !== currentValue) {
+                    handleFieldChange('description', trimmed);
+                  }
+                  setIsEditingDescription(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setIsEditingDescription(false);
+                }}
+                size="small"
+                placeholder={t('agents:edit.page.description.placeholder', 'Add a description')}
+                sx={{maxWidth: '600px', '& .MuiInputBase-root': {fontSize: '0.875rem'}}}
+              />
+            ) : (
+              <>
+                <Typography variant="body2" color="text.secondary">
+                  {editedAgent.description ??
+                    agent.description ??
+                    t('agents:edit.page.description.empty', 'No description')}
+                </Typography>
+                {!agent.isReadOnly && (
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setTempDescription(editedAgent.description ?? agent.description ?? '');
+                      setIsEditingDescription(true);
+                    }}
+                    sx={{opacity: 0.6, '&:hover': {opacity: 1}, mt: -0.5}}
+                  >
+                    <Edit size={14} />
+                  </IconButton>
+                )}
+              </>
+            )}
+          </Stack>
+        </PageTitle.SubHeader>
+      </PageTitle>
+
+      <Tabs value={safeActiveTab} onChange={handleTabChange} aria-label="agent settings tabs">
+        {tabs.map((tab, idx) => (
+          <Tab
+            key={tab.key}
+            label={tab.label}
+            id={`agent-tab-${idx}`}
+            aria-controls={`agent-tabpanel-${idx}`}
+            sx={{textTransform: 'none', minHeight: 48}}
+          />
+        ))}
+      </Tabs>
+
+      {tabs.map((tab, idx) => (
+        <TabPanel key={tab.key} value={safeActiveTab} index={idx}>
+          {tab.render()}
+        </TabPanel>
+      ))}
+
+      {hasChanges && (
+        <UnsavedChangesBar
+          message={unsavedChangesMessage}
+          resetLabel={t('agents:edit.page.reset', 'Reset')}
+          saveLabel={t('agents:edit.page.save', 'Save')}
+          savingLabel={t('agents:edit.page.saving', 'Saving…')}
+          isSaving={updateAgent.isPending}
+          saveDisabled={hasAnyValidationError || agent.isReadOnly === true}
+          error={
+            updateAgent.error
+              ? getErrorMessage(
+                  updateAgent.error,
+                  tForErrors,
+                  'update.error',
+                  'Failed to update agent. Please try again.',
+                )
+              : undefined
+          }
+          onReset={() => {
+            if (updateAgent.isError) {
+              updateAgent.reset(); // a save error is stale once the form resets
+            }
+            setEditedAgent({});
+            setSectionResetKey((key) => key + 1);
+          }}
+          onSave={() => {
+            void handleSave();
+          }}
+        />
+      )}
+
+      {justCreatedSecret && (
+        <Dialog open={secretDialogOpen} onClose={() => setSecretDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogContent>
+            <ShowClientSecret
+              agentName={justCreatedSecret.agentName}
+              clientId={justCreatedSecret.clientId}
+              clientSecret={justCreatedSecret.clientSecret}
+              onContinue={() => setSecretDialogOpen(false)}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+    </PageContent>
+  );
+}

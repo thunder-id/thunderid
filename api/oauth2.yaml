@@ -631,7 +631,139 @@ paths:
               schema:
                 $ref: '#/components/schemas/OAuthError'
 
+  /oauth2/dcr/register/{client_id}:
+    parameters:
+      - name: client_id
+        in: path
+        required: true
+        description: Identifier of the client registration to manage.
+        schema:
+          type: string
+    get:
+      security:
+        - OAuth2: [system]
+      summary: Read Client Registration
+      description: |
+        Returns the current registration of a dynamically registered client. Implements RFC 7592.
+
+        The request must be made by a caller holding system-level permissions, presenting its
+        access token as a Bearer token.
+
+        The `client_secret` is not returned: it is stored write-only and cannot be read back after
+        registration.
+      tags:
+        - DCR
+      responses:
+        "200":
+          description: Current client registration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DCRRegistrationResponse'
+        "401":
+          description: Unauthorized, the caller does not hold the required system-level permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+        "404":
+          description: Not Found — no such client registration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+    put:
+      security:
+        - OAuth2: [system]
+      summary: Update Client Registration
+      description: |
+        Replaces the registered metadata of a dynamically registered client, preserving its
+        `client_id` and `client_secret`. Implements RFC 7592.
+
+        The request must be made by a caller holding system-level permissions, presenting its
+        access token as a Bearer token.
+
+        The update is a full replacement of the client metadata: omitted fields are not retained.
+        The server-managed field `client_secret_expires_at` is ignored if supplied. The body must include `client_id`, and it must match the client being updated.
+      tags:
+        - DCR
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DCRUpdateRequest'
+            example:
+              client_id: "s6BhdRkqt3"
+              client_name: "My Renamed App"
+              redirect_uris:
+                - "https://myapp.example.com/callback2"
+              grant_types:
+                - authorization_code
+              response_types:
+                - code
+      responses:
+        "200":
+          description: Updated client registration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DCRRegistrationResponse'
+        "400":
+          description: Bad Request — invalid client metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+        "401":
+          description: Unauthorized, the caller does not hold the required system-level permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+        "404":
+          description: Not Found — no such client registration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+    delete:
+      security:
+        - OAuth2: [system]
+      summary: Delete Client Registration
+      description: |
+        Deletes a dynamically registered client. Implements RFC 7592.
+
+        The request must be made by a caller holding system-level permissions, presenting its
+        access token as a Bearer token.
+      tags:
+        - DCR
+      responses:
+        "204":
+          description: Client registration deleted.
+        "401":
+          description: Unauthorized, the caller does not hold the required system-level permission.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+        "404":
+          description: Not Found — no such client registration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+
 components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://localhost:8090/oauth2/authorize
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
   schemas:
     AuthCallbackRequest:
       type: object
@@ -1021,6 +1153,14 @@ components:
           items:
             type: string
           description: Registered redirect URIs.
+        post_logout_redirect_uris:
+          type: array
+          items:
+            type: string
+          description: Allowed post-logout redirect URIs for RP-Initiated Logout.
+        backchannel_logout_uri:
+          type: string
+          description: OIDC Back-Channel Logout endpoint. An absolute http or https URL without userinfo, a fragment or a wildcard; public clients must use https.
         grant_types:
           type: array
           items:
@@ -1080,6 +1220,29 @@ components:
           type: string
       description: Language-tagged fields (e.g. `client_name#fr`) are also accepted as top-level properties.
 
+    DCRUpdateRequest:
+      description: |
+        Request body of an RFC 7592 client configuration update. It carries the registration
+        metadata together with the two fields that only an update has.
+      allOf:
+        - $ref: '#/components/schemas/DCRRegistrationRequest'
+        - type: object
+          required:
+            - client_id
+          properties:
+            client_id:
+              type: string
+              description: |
+                Identifier of the client being updated. Required, and it must match the client in
+                the request path: a request that omits it, or that names a different client, is
+                rejected.
+            client_secret:
+              type: string
+              description: |
+                Optional. When present it must match the client's currently issued secret,
+                otherwise the request is rejected. The value is only verified, never written: a
+                client cannot choose its own secret.
+
     DCRRegistrationResponse:
       type: object
       required:
@@ -1101,6 +1264,12 @@ components:
           type: array
           items:
             type: string
+        post_logout_redirect_uris:
+          type: array
+          items:
+            type: string
+        backchannel_logout_uri:
+          type: string
         grant_types:
           type: array
           items:

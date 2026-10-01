@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Link from '@docusaurus/Link';
+import useBaseUrl from '@docusaurus/useBaseUrl';
 import {usePluginData} from '@docusaurus/useGlobalData';
 import OriginalDocSidebarItemLink from '@theme-original/DocSidebarItem/Link';
 import {AndroidLogo, FlutterLogo, LangChainLogo} from '@thunderid/components';
@@ -53,7 +54,15 @@ export default function DocSidebarItemLink({item, ...rest}: OriginalProps): Reac
   const persona = item.docId ? personaMap[item.docId] : undefined;
 
   const iconKey = item.customProps?.icon;
-  const logo = iconKey ? TECH_LOGOS[iconKey] : undefined;
+  const googleAdkLogo = useBaseUrl('/assets/images/agent/google-adk.svg');
+  const crewaiLogo = useBaseUrl('/assets/images/agent/crewai.svg');
+  const logos: Record<string, React.ReactElement> = {
+    ...TECH_LOGOS,
+    'google-adk': <img src={googleAdkLogo} alt="" width={20} height={20} />,
+    crewai: <img src={crewaiLogo} alt="" width={20} height={20} />,
+    vercel: <svg viewBox="0 0 512 512" fill="currentColor" width={20} height={20} aria-hidden="true"><path d="M256 48 496 464H16Z" /></svg>,
+  };
+  const logo = iconKey ? logos[iconKey] : undefined;
 
   // For icon items render our own structure so item.label stays a plain string.
   if (logo) {

@@ -197,19 +197,19 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
         redirects: [
           {
             from: '/docs/next/sdks-and-tools/react/guides/protecting-routes/overview',
-            to: '/sdks/react/guides/protecting-routes',
+            to: '/sdks-and-tools/react/guides/protecting-routes',
           },
           {
             from: '/docs/next/sdks-and-tools/react/guides/protecting-routes/react-router',
-            to: '/sdks/react/guides/protecting-routes',
+            to: '/sdks-and-tools/react/guides/protecting-routes',
           },
           {
             from: '/docs/next/sdks-and-tools/react/guides/protecting-routes/tanstack-router',
-            to: '/sdks/react/guides/protecting-routes',
+            to: '/sdks-and-tools/react/guides/protecting-routes',
           },
           {
             from: '/docs/next/sdks-and-tools/react/guides/protecting-routes/custom',
-            to: '/sdks/react/guides/protecting-routes',
+            to: '/sdks-and-tools/react/guides/protecting-routes',
           },
         ],
 
@@ -368,7 +368,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           label: 'APIs',
         },
         {
-          to: '/sdks',
+          to: '/sdks-and-tools',
           position: 'right',
           label: 'SDKs & Tools',
         },

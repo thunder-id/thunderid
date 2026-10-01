@@ -325,6 +325,45 @@ type LogoutConfig struct {
 	// explicit false in deployment.yaml overrides the default.json default of true; a nil
 	// pointer means "not set" and keeps the default.
 	Enabled *bool `yaml:"enabled" json:"enabled"`
+	// Backchannel configures OIDC Back-Channel Logout delivery.
+	Backchannel BackchannelLogoutConfig `yaml:"backchannel" json:"backchannel"`
+}
+
+// BackchannelLogoutConfig holds the settings for OIDC Back-Channel Logout delivery. Durations are
+// in seconds. The defaults live in default.json.
+type BackchannelLogoutConfig struct {
+	// Enabled controls whether terminated sessions are announced to relying parties. It uses a
+	// pointer so an explicit false in deployment.yaml overrides default.json; nil means "not set".
+	Enabled *bool `yaml:"enabled" json:"enabled"`
+	// TokenValidityPeriod is the lifetime of a logout token.
+	TokenValidityPeriod int64 `yaml:"token_validity_period" json:"token_validity_period"`
+	// RequestTimeout bounds one delivery attempt to a relying party.
+	RequestTimeout int64 `yaml:"request_timeout" json:"request_timeout"`
+	// MaxAttempts is the number of delivery attempts per relying party; 1 means no retry.
+	MaxAttempts int `yaml:"max_attempts" json:"max_attempts"`
+	// RetryDelay is the wait before the second attempt; it doubles on every further attempt. A
+	// Retry-After returned on 429 is honored up to the longest wait of that schedule.
+	RetryDelay int64 `yaml:"retry_delay" json:"retry_delay"`
+	// MaxInFlight caps concurrent deliveries across the whole dispatcher.
+	MaxInFlight int `yaml:"max_in_flight" json:"max_in_flight"`
+	// QueueSize caps pending termination events; beyond it events are dropped and recorded.
+	QueueSize int `yaml:"queue_size" json:"queue_size"`
+	// RejectPrivateAddresses rejects back-channel logout URIs whose host is localhost or an IP literal
+	// in a loopback, link-local, private or unspecified range. Hostnames are checked as written. It
+	// uses a pointer so an explicit false in deployment.yaml overrides the default of true.
+	RejectPrivateAddresses *bool `yaml:"reject_private_addresses" json:"reject_private_addresses"`
+}
+
+// IsEnabled reports whether back-channel logout delivery is active, defaulting to false when
+// unset (an explicit default lives in default.json).
+func (c BackchannelLogoutConfig) IsEnabled() bool {
+	return c.Enabled != nil && *c.Enabled
+}
+
+// RejectsPrivateAddresses reports whether private back-channel logout URIs are rejected. It defaults
+// to true when unset, so a configuration that never loaded default.json still fails safe.
+func (c BackchannelLogoutConfig) RejectsPrivateAddresses() bool {
+	return c.RejectPrivateAddresses == nil || *c.RejectPrivateAddresses
 }
 
 // IsEnabled reports whether the OAuth logout endpoint is active,

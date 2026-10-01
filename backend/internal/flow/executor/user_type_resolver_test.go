@@ -18,14 +18,14 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
-	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
 )
 
 type UserTypeResolverTestSuite struct {
 	suite.Suite
 	mockEntityTypeService *entitytypemock.EntityTypeServiceInterfaceMock
 	mockFlowFactory       *coremock.FlowFactoryInterfaceMock
-	mockOUService         *oumock.OrganizationUnitServiceInterfaceMock
+	mockOUService         *ouprovidermock.OrganizationUnitProviderMock
 	executor              *userTypeResolver
 }
 
@@ -51,7 +51,7 @@ func (suite *UserTypeResolverTestSuite) SetupTest() {
 		defaultInputs, []providers.Input{}, mock.Anything).
 		Return(createMockUserTypeResolverExecutor(suite.T()))
 
-	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	suite.mockOUService = ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 	suite.executor = newUserTypeResolver(suite.mockFlowFactory, suite.mockEntityTypeService, suite.mockOUService)
 }
 
@@ -100,7 +100,7 @@ func (suite *UserTypeResolverTestSuite) TestNewUserTypeResolver() {
 		defaultInputs, []providers.Input{}, mock.Anything).
 		Return(createMockUserTypeResolverExecutor(suite.T()))
 
-	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	mockOUService := ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 	executor := newUserTypeResolver(mockFlowFactory, mockEntityTypeService, mockOUService)
 
 	assert.NotNil(suite.T(), executor)

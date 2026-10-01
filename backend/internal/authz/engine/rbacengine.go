@@ -14,25 +14,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/role"
 )
 
-// rbacEngine implements Role-Based Access Control (RBAC) authorization.
-// It delegates authorization decisions to the role service.
-type rbacEngine struct {
-	roleService role.RoleServiceInterface
-}
-
-// evaluationGroup groups access evaluations that can be checked in one role service call.
-type evaluationGroup struct {
-	subject          Subject
-	resourceServerID string
-	permissions      []string
-	indexes          []int
-}
-
-// NewRBACEngine creates a new RBAC authorization engine.
-func NewRBACEngine(roleService role.RoleServiceInterface) AuthorizationEngine {
-	return &rbacEngine{
-		roleService: roleService,
-	}
+// newRBACEngine creates an RBAC authorization engine.
+func newRBACEngine(roleService role.RoleServiceInterface) AuthorizationEngine {
+	return &rbacEngine{roleService: roleService}
 }
 
 // EvaluateAccess evaluates a single fine-grained access request.
@@ -105,7 +89,7 @@ func groupEvaluations(evaluations []AccessEvaluationRequest) []evaluationGroup {
 // findEvaluationGroup returns the index of the group matching the subject.
 func findEvaluationGroup(groups []evaluationGroup, subject Subject, resourceServerID string) int {
 	for i, group := range groups {
-		if group.subject.Type == subject.Type &&
+		if group.subject.Category == subject.Category &&
 			group.subject.ID == subject.ID &&
 			slices.Equal(group.subject.GroupIDs, subject.GroupIDs) &&
 			slices.Equal(group.subject.RoleIDs, subject.RoleIDs) &&

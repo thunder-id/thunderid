@@ -11,7 +11,6 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -39,7 +38,7 @@ var _ entityTypeResolutionInterface = (*userTypeResolver)(nil)
 func newUserTypeResolver(
 	flowFactory core.FlowFactoryInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
-	ouService ou.OrganizationUnitServiceInterface,
+	ouService providers.OrganizationUnitProvider,
 ) *userTypeResolver {
 	logger := log.GetLogger().With(
 		log.String(log.LoggerKeyComponentName, userTypeResolverLoggerComponentName),

@@ -107,4 +107,41 @@ describe('fieldsForMode', () => {
     expect(headers).toMatchObject({kind: 'key-value', addLabelKey: 'connections:form.fields.httpHeaders.add'});
     expect(headers?.required).toBeUndefined();
   });
+
+  it('requires only the AuthZEN PDP single-evaluation endpoint on creation', () => {
+    expect(fieldNames(ConnectionTypes.AUTHZEN_PDP, 'create')).toEqual(['name', 'endpoint', 'batchEndpoint']);
+    expect(fieldNames(ConnectionTypes.AUTHZEN_PDP, 'edit')).toEqual([
+      'name',
+      'endpoint',
+      'batchEndpoint',
+      'timeoutMs',
+      'retryCount',
+      'authenticationScheme',
+      'bearerToken',
+      'httpHeaders',
+      'basicUsername',
+      'basicPassword',
+    ]);
+    const requiredFields = fieldsForMode(ConnectionTypes.AUTHZEN_PDP, 'create')
+      .filter((field) => field.required)
+      .map((field) => field.name);
+    const timeoutField = fieldsForMode(ConnectionTypes.AUTHZEN_PDP, 'edit').find((field) => field.name === 'timeoutMs');
+
+    expect(requiredFields).toEqual(['name', 'endpoint']);
+    expect(timeoutField).toMatchObject({defaultValue: '1000', placeholder: '1000'});
+    expect(
+      fieldsForMode(ConnectionTypes.AUTHZEN_PDP, 'edit').filter((field) => field.requiresHttpsWhenAuthenticated),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({name: 'endpoint', showErrorImmediately: true}),
+        expect.objectContaining({name: 'batchEndpoint', showErrorImmediately: true}),
+      ]),
+    );
+  });
+
+  it('edits AuthZEN PDP additional headers as key-value rows', () => {
+    const headers = fieldsForMode(ConnectionTypes.AUTHZEN_PDP, 'edit').find((field) => field.name === 'httpHeaders');
+
+    expect(headers).toMatchObject({kind: 'key-value', addLabelKey: 'connections:form.fields.httpHeaders.add'});
+  });
 });

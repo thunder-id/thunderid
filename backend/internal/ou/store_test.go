@@ -10,7 +10,6 @@ import (
 	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -559,7 +558,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChil
 		limit   int
 		offset  int
 		setup   func(parent string, limit, offset int)
-		assert  func(children []providers.OrganizationUnitBasic)
+		assert  func(children []OrganizationUnitBasic)
 		wantErr string
 	}{
 		{
@@ -579,7 +578,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChil
 					}, nil).
 					Once()
 			},
-			assert: func(children []providers.OrganizationUnitBasic) {
+			assert: func(children []OrganizationUnitBasic) {
 				suite.Len(children, 2)
 				suite.Equal("child1", children[0].ID)
 			},
@@ -681,15 +680,15 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChil
 func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit() {
 	tests := []struct {
 		name    string
-		ou      providers.OrganizationUnit
-		setup   func(ou providers.OrganizationUnit)
+		ou      OrganizationUnit
+		setup   func(ou OrganizationUnit)
 		wantErr string
 	}{
 		{
 			name: "success",
-			ou: func() providers.OrganizationUnit {
+			ou: func() OrganizationUnit {
 				parent := "parent1"
-				return providers.OrganizationUnit{
+				return OrganizationUnit{
 					ID:          "ou1",
 					Parent:      &parent,
 					Handle:      "root",
@@ -697,7 +696,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit(
 					Description: "desc",
 				}
 			}(),
-			setup: func(ou providers.OrganizationUnit) {
+			setup: func(ou OrganizationUnit) {
 				suite.expectDBClient()
 				suite.dbClientMock.
 					On(
@@ -721,9 +720,9 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit(
 		},
 		{
 			name: "success with design fields",
-			ou: func() providers.OrganizationUnit {
+			ou: func() OrganizationUnit {
 				parent := "parent1"
-				return providers.OrganizationUnit{
+				return OrganizationUnit{
 					ID:                        "ou1",
 					Parent:                    &parent,
 					Handle:                    "root",
@@ -740,7 +739,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit(
 					LogoURL:                   "https://example.com/logo.png",
 				}
 			}(),
-			setup: func(ou providers.OrganizationUnit) {
+			setup: func(ou OrganizationUnit) {
 				suite.expectDBClient()
 				suite.dbClientMock.
 					On(
@@ -767,8 +766,8 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit(
 		},
 		{
 			name: "execute error",
-			ou:   providers.OrganizationUnit{ID: "ou1"},
-			setup: func(ou providers.OrganizationUnit) {
+			ou:   OrganizationUnit{ID: "ou1"},
+			setup: func(ou OrganizationUnit) {
 				suite.expectDBClient()
 				suite.dbClientMock.
 					On(
@@ -793,8 +792,8 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit(
 		},
 		{
 			name: "db client error",
-			ou:   providers.OrganizationUnit{ID: "ou1"},
-			setup: func(ou providers.OrganizationUnit) {
+			ou:   OrganizationUnit{ID: "ou1"},
+			setup: func(ou OrganizationUnit) {
 				suite.providerMock.
 					On("GetEntityDBClient").
 					Return(nil, errors.New("db err")).
@@ -987,7 +986,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitByPa
 		name          string
 		path          []string
 		setup         func(path []string)
-		assert        func(ou providers.OrganizationUnit)
+		assert        func(ou OrganizationUnit)
 		wantErr       error
 		wantErrString string
 		after         func()
@@ -1015,7 +1014,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitByPa
 					}, nil).
 					Once()
 			},
-			assert: func(ou providers.OrganizationUnit) {
+			assert: func(ou OrganizationUnit) {
 				suite.Equal("child-id", ou.ID)
 				suite.NotNil(ou.Parent)
 				suite.Equal("root-id", *ou.Parent)
@@ -1136,7 +1135,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnit() {
 		name          string
 		id            string
 		setup         func(id string)
-		assert        func(ou providers.OrganizationUnit)
+		assert        func(ou OrganizationUnit)
 		wantErr       error
 		wantErrString string
 	}{
@@ -1153,7 +1152,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnit() {
 					Return([]map[string]interface{}{row}, nil).
 					Once()
 			},
-			assert: func(ou providers.OrganizationUnit) {
+			assert: func(ou OrganizationUnit) {
 				suite.Equal("ou1", ou.ID)
 				suite.NotNil(ou.Parent)
 				suite.Equal(testParentID, *ou.Parent)
@@ -1242,7 +1241,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitByHa
 		handle        string
 		parent        *string
 		setup         func(handle string, parent *string)
-		assert        func(ou providers.OrganizationUnit)
+		assert        func(ou OrganizationUnit)
 		wantErr       error
 		wantErrString string
 	}{
@@ -1259,7 +1258,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitByHa
 					Return([]map[string]interface{}{row}, nil).
 					Once()
 			},
-			assert: func(ou providers.OrganizationUnit) {
+			assert: func(ou OrganizationUnit) {
 				suite.Equal("ou1", ou.ID)
 				suite.Equal("root", ou.Handle)
 				suite.Nil(ou.Parent)
@@ -1278,7 +1277,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitByHa
 					Return([]map[string]interface{}{row}, nil).
 					Once()
 			},
-			assert: func(ou providers.OrganizationUnit) {
+			assert: func(ou OrganizationUnit) {
 				suite.Equal("ou2", ou.ID)
 				suite.Equal("child", ou.Handle)
 			},
@@ -1366,19 +1365,19 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitByHa
 func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CreateOrganizationUnit() {
 	tests := []struct {
 		name    string
-		ou      providers.OrganizationUnit
-		setup   func(ou providers.OrganizationUnit)
+		ou      OrganizationUnit
+		setup   func(ou OrganizationUnit)
 		wantErr string
 	}{
 		{
 			name: "success",
-			ou: providers.OrganizationUnit{
+			ou: OrganizationUnit{
 				ID:          "ou1",
 				Handle:      "root",
 				Name:        "Root",
 				Description: "desc",
 			},
-			setup: func(ou providers.OrganizationUnit) {
+			setup: func(ou OrganizationUnit) {
 				suite.expectDBClient()
 				suite.dbClientMock.
 					On(
@@ -1403,7 +1402,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CreateOrganizationUnit(
 		},
 		{
 			name: "success with design fields",
-			ou: providers.OrganizationUnit{
+			ou: OrganizationUnit{
 				ID:                        "ou1",
 				Handle:                    "root",
 				Name:                      "Root",
@@ -1418,7 +1417,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CreateOrganizationUnit(
 				SignOutFlowID:             "signout-flow-123",
 				LogoURL:                   "https://example.com/logo.png",
 			},
-			setup: func(ou providers.OrganizationUnit) {
+			setup: func(ou OrganizationUnit) {
 				suite.expectDBClient()
 				suite.dbClientMock.
 					On(
@@ -1446,13 +1445,13 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CreateOrganizationUnit(
 		},
 		{
 			name: "execute error",
-			ou: providers.OrganizationUnit{
+			ou: OrganizationUnit{
 				ID:          "ou-err",
 				Handle:      "root",
 				Name:        "Root",
 				Description: "desc",
 			},
-			setup: func(ou providers.OrganizationUnit) {
+			setup: func(ou OrganizationUnit) {
 				suite.expectDBClient()
 				suite.dbClientMock.
 					On(
@@ -1478,8 +1477,8 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CreateOrganizationUnit(
 		},
 		{
 			name: "db client error",
-			ou:   providers.OrganizationUnit{ID: "ou1"},
-			setup: func(ou providers.OrganizationUnit) {
+			ou:   OrganizationUnit{ID: "ou1"},
+			setup: func(ou OrganizationUnit) {
 				suite.providerMock.
 					On("GetEntityDBClient").
 					Return(nil, errors.New("db init failed")).
@@ -1516,7 +1515,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitList
 		limit         int
 		offset        int
 		setup         func(limit, offset int)
-		assert        func(ous []providers.OrganizationUnitBasic)
+		assert        func(ous []OrganizationUnitBasic)
 		wantErrString string
 	}{
 		{
@@ -1537,7 +1536,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitList
 					Return(rows, nil).
 					Once()
 			},
-			assert: func(ous []providers.OrganizationUnitBasic) {
+			assert: func(ous []OrganizationUnitBasic) {
 				suite.Len(ous, 2)
 				suite.Equal("root", ous[0].ID)
 				suite.Equal("https://example.com/root-logo.png", ous[0].LogoURL)
@@ -1747,7 +1746,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitsByI
 		name          string
 		ids           []string
 		setup         func(ids []string)
-		assert        func(ous []providers.OrganizationUnitBasic)
+		assert        func(ous []OrganizationUnitBasic)
 		wantErrString string
 	}{
 		{
@@ -1767,7 +1766,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitsByI
 					Return(rows, nil).
 					Once()
 			},
-			assert: func(ous []providers.OrganizationUnitBasic) {
+			assert: func(ous []OrganizationUnitBasic) {
 				suite.Len(ous, 2)
 				suite.Equal("ou1", ous[0].ID)
 				suite.Equal("https://example.com/ou1-logo.png", ous[0].LogoURL)
@@ -1778,7 +1777,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitsByI
 		{
 			name: "empty ids",
 			ids:  []string{},
-			assert: func(ous []providers.OrganizationUnitBasic) {
+			assert: func(ous []OrganizationUnitBasic) {
 				suite.Len(ous, 0)
 			},
 		},
@@ -2238,6 +2237,22 @@ func TestBuildOUFilterGroup(t *testing.T) {
 			g:         sg("name", tidcommon.Operator("co"), "Finance"),
 			startIdx:  2,
 			wantError: `unsupported operator "co"`,
+		},
+		{
+			name:     "starts with builds an escaped prefix LIKE",
+			g:        sg("name", tidcommon.OperatorSw, "Eng"),
+			startIdx: 2,
+			wantCond: ` AND LOWER(NAME) LIKE LOWER($2) ESCAPE '\'`,
+			wantArgs: []interface{}{"Eng%"},
+		},
+		{
+			// % and _ are LIKE wildcards, so an operand carrying either must be escaped or it
+			// would match more than the caller asked for.
+			name:     "starts with escapes wildcards in the operand",
+			g:        sg("name", tidcommon.OperatorSw, "100%_x"),
+			startIdx: 2,
+			wantCond: ` AND LOWER(NAME) LIKE LOWER($2) ESCAPE '\'`,
+			wantArgs: []interface{}{`100\%\_x%`},
 		},
 		{
 			name:     "nil group returns empty cond and nil args",

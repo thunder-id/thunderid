@@ -21,7 +21,6 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
@@ -67,7 +66,7 @@ type errorHandlingConfig struct {
 // httpRequestExecutor implements the ExecutorInterface for making HTTP requests to external endpoints.
 type httpRequestExecutor struct {
 	providers.Executor
-	ouService     ou.OrganizationUnitServiceInterface
+	ouService     providers.OrganizationUnitProvider
 	authnProvider providers.AuthnProviderManager
 	logger        *log.Logger
 }
@@ -77,7 +76,7 @@ var _ providers.Executor = (*httpRequestExecutor)(nil)
 // newHTTPRequestExecutor creates a new instance of HTTPRequestExecutor.
 func newHTTPRequestExecutor(
 	flowFactory core.FlowFactoryInterface,
-	ouService ou.OrganizationUnitServiceInterface,
+	ouService providers.OrganizationUnitProvider,
 	authnProvider providers.AuthnProviderManager,
 ) *httpRequestExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, httpRequestLoggerComponentName),

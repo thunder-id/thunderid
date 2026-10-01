@@ -115,6 +115,11 @@ const sidebar: SidebarsConfig = {
               id: 'sdks-and-tools/react/apis/hooks/use-thunderid',
               label: 'useThunderID()',
             },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/react/apis/hooks/management-hooks',
+              label: 'Management Hooks',
+            },
           ],
         },
       ],

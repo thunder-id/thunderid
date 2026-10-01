@@ -13,19 +13,18 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
-	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
 )
 
 const testOUID = "ou-123"
 
 type OUExecutorTestSuite struct {
 	suite.Suite
-	mockOUService         *oumock.OrganizationUnitServiceInterfaceMock
+	mockOUService         *ouprovidermock.OrganizationUnitProviderMock
 	mockFlowFactory       *coremock.FlowFactoryInterfaceMock
 	mockAuthnProvider     *managermock.AuthnProviderManagerMock
 	mockEntityTypeService *entitytypemock.EntityTypeServiceInterfaceMock
@@ -37,7 +36,7 @@ func TestOUExecutorSuite(t *testing.T) {
 }
 
 func (suite *OUExecutorTestSuite) SetupTest() {
-	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	suite.mockOUService = ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	suite.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
@@ -103,7 +102,7 @@ func newMockExecutor(name string, executorType providers.ExecutorType, defaultIn
 
 func (suite *OUExecutorTestSuite) TestNewOUExecutor() {
 	mockFlowFactory := coremock.NewFlowFactoryInterfaceMock(suite.T())
-	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	mockOUService := ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 
 	defaultInputs := []providers.Input{
 		{
@@ -263,7 +262,7 @@ type ExecutePrerequisitesFailureTestCase struct {
 }
 
 func (suite *OUExecutorTestSuite) TestExecute_PrerequisitesFailure() {
-	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	mockOUService := ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 
 	defaultInputs := []providers.Input{
 		{
@@ -396,7 +395,7 @@ func (suite *OUExecutorTestSuite) TestExecute_ErrorScenarios() {
 	}{
 		{
 			name:            "OU name conflict",
-			serviceError:    ou.ErrorOrganizationUnitNameConflict,
+			serviceError:    providers.ErrorOrganizationUnitNameConflict,
 			expectedFailure: ErrOUNameConflict.Error.DefaultValue,
 			expectError:     false,
 			expectNilResult: false,
@@ -411,7 +410,7 @@ func (suite *OUExecutorTestSuite) TestExecute_ErrorScenarios() {
 		},
 		{
 			name:            "OU handle conflict",
-			serviceError:    ou.ErrorOrganizationUnitHandleConflict,
+			serviceError:    providers.ErrorOrganizationUnitHandleConflict,
 			expectedFailure: ErrOUHandleConflict.Error.DefaultValue,
 			expectError:     false,
 			expectNilResult: false,
@@ -744,13 +743,13 @@ func (suite *OUExecutorTestSuite) TestExecute_RetryableOUCreationErrors() {
 	}{
 		{
 			name:           "OU name conflict",
-			serviceError:   ou.ErrorOrganizationUnitNameConflict,
+			serviceError:   providers.ErrorOrganizationUnitNameConflict,
 			expectedReason: ErrOUNameConflict.Error.DefaultValue,
 			message:        "Should return inputs for retry when OU name already exists",
 		},
 		{
 			name:           "OU handle conflict",
-			serviceError:   ou.ErrorOrganizationUnitHandleConflict,
+			serviceError:   providers.ErrorOrganizationUnitHandleConflict,
 			expectedReason: ErrOUHandleConflict.Error.DefaultValue,
 			message:        "Should return inputs for retry when OU handle already exists",
 		},

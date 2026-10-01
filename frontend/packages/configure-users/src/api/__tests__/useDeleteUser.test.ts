@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {AdministrationModes} from '@thunderid/contexts';
 import {waitFor, renderHook} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import UserQueryKeys from '../../constants/user-query-keys';
@@ -9,6 +10,10 @@ import useDeleteUser from '../useDeleteUser';
 const mockHttpRequest = vi.fn();
 const mockGetServerUrl = vi.fn().mockReturnValue('https://api.test.com');
 const mockShowToast = vi.fn();
+
+// How the console says this operation runs. Defaults to the flow, which is what a console that
+// declares nothing gets, so the tests written before the option existed are unaffected.
+let administrationOperation: unknown = AdministrationModes.FLOW;
 
 // Mock the dependencies
 vi.mock('@thunderid/react', () => ({
@@ -29,6 +34,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
     useToast: () => ({
       showToast: mockShowToast,
     }),
+    useAdministrationOperation: () => administrationOperation,
   };
 });
 
@@ -115,6 +121,7 @@ describe('useDeleteUser', () => {
     mockHttpRequest.mockReset();
     mockGetServerUrl.mockReset().mockReturnValue('https://api.test.com');
     mockShowToast.mockReset();
+    administrationOperation = AdministrationModes.FLOW;
   });
 
   afterEach(() => {
@@ -548,5 +555,67 @@ describe('useDeleteUser', () => {
 
     expect(result.current.error).toEqual(serverError);
     expect(result.current.error?.message).toBe('User has active sessions and cannot be deleted');
+  });
+
+  // A console that holds configuration only has no sessions or grants to end, so it deletes through
+  // the endpoint. The flow is not looked up at all, which is the point: the mode decides, rather
+  // than the deletion discovering whether a flow happens to be configured.
+  it('deletes through the endpoint when the console says native', async () => {
+    administrationOperation = AdministrationModes.NATIVE;
+    // A flow *is* configured. Native has to ignore it rather than fall back to it.
+    routeHttp({
+      '/server-config/flow': flowConfiguredConfig,
+      '/flows': administrationFlows,
+      '/users/': {},
+    });
+
+    const {result} = renderHook(() => useDeleteUser());
+
+    result.current.mutate('user-1');
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(requestsTo('/users/')).toHaveLength(1);
+    expect(requestsTo('/flow/execute')).toHaveLength(0);
+    expect(requestsTo('/server-config/flow')).toHaveLength(0);
+  });
+
+  // A distributor can replace one operation without forking this package.
+  it('calls the function the console supplied', async () => {
+    const deleted: string[] = [];
+    administrationOperation = (userId: string): Promise<void> => {
+      deleted.push(userId);
+      return Promise.resolve();
+    };
+    routeHttp({});
+
+    const {result} = renderHook(() => useDeleteUser());
+
+    result.current.mutate('user-1');
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(deleted).toEqual(['user-1']);
+    expect(mockHttpRequest).not.toHaveBeenCalled();
+  });
+
+  // Declaring nothing has to keep doing what this package did before the option existed.
+  it('runs through the flow when the console declares nothing', async () => {
+    mockFlowDeletion();
+
+    const {result} = renderHook(() => useDeleteUser());
+
+    result.current.mutate('user-1');
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(requestsTo('/flow/execute')).toHaveLength(1);
+    expect(requestsTo('/users/')).toHaveLength(0);
   });
 });

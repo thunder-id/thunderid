@@ -4,6 +4,9 @@
 package session
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/thunder-id/thunderid/internal/system/database/model"
 )
 
@@ -58,7 +61,7 @@ var (
 	// records a fact about an authentication that has already happened: losing a race with a
 	// concurrent slide must not discard it.
 	queryTouchAuthenticatedAt = model.DBQuery{
-		ID: "SSO-SESS-11",
+		ID: "SSO-SESS-16",
 		Query: `UPDATE "SSO_SESSION" SET AUTHENTICATED_AT = $1, LAST_ACTIVE_AT = $2, ` +
 			`IDLE_EXPIRES_AT = $3, VERSION = VERSION + 1, UPDATED_AT = CURRENT_TIMESTAMP ` +
 			`WHERE SESSION_ID = $4 AND DEPLOYMENT_ID = $5 AND AUTHENTICATED_AT <= $1`,
@@ -145,3 +148,22 @@ var (
 			`WHERE SESSION_ID = $1 AND APP_ID = $2 AND DEPLOYMENT_ID = $3`,
 	}
 )
+
+// participantsBySessionIDsChunkSize caps the session ids per query, keeping it under the
+// bind-parameter limit of either database.
+const participantsBySessionIDsChunkSize = 200
+
+// buildListParticipantsBySessionIDsQuery returns the participants of n sessions at once. Placeholders
+// are $1..$n for the ids and $n+1 for the deployment; both databases accept the $N form.
+func buildListParticipantsBySessionIDsQuery(n int) model.DBQuery {
+	placeholders := make([]string, n)
+	for i := range placeholders {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+	}
+	return model.DBQuery{
+		ID: "SSO-SESS-17",
+		Query: `SELECT SESSION_ID, APP_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID FROM "SSO_SESSION_PARTICIPANT" ` +
+			`WHERE SESSION_ID IN (` + strings.Join(placeholders, ", ") + `) AND DEPLOYMENT_ID = $` +
+			fmt.Sprint(n+1) + ` ORDER BY SESSION_ID, FIRST_JOINED_AT`,
+	}
+}

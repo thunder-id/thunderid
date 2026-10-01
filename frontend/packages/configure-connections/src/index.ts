@@ -17,6 +17,8 @@ export {default as useUpdateConnection} from './api/useUpdateConnection';
 export {default as AddCustomConnectionCard} from './components/AddCustomConnectionCard';
 export {default as AttributeMappingSection} from './components/AttributeMappingSection';
 export * from './components/AttributeMappingSection';
+export {default as SubjectMappingSection} from './components/SubjectMappingSection';
+export * from './components/SubjectMappingSection';
 export {default as ConnectionCard} from './components/ConnectionCard';
 export {default as ConnectionCategoryFilters} from './components/ConnectionCategoryFilters';
 export {default as ConnectionDeleteDialog} from './components/ConnectionDeleteDialog';
@@ -35,6 +37,7 @@ export * from './config/connectionVendorMeta';
 export {default as ConnectionConstants} from './constants/connection-constants';
 export {default as ConnectionQueryKeys} from './constants/query-keys';
 export * from './constants/connection-categories';
+export * from './constants/subject-mapping';
 
 // Models
 export * from './models/authenticators';
@@ -61,3 +64,5 @@ export * from './utils/connectionFormMapping';
 export {default as getConnectionIcon} from './utils/getConnectionIcon';
 export {default as isConflictError} from './utils/isConflictError';
 export * from './utils/keyValuePairs';
+export * from './utils/selectOptions';
+export * from './utils/subjectMapping';

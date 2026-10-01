@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
@@ -119,6 +120,7 @@ func (s *MappingTestSuite) TestWriteServiceErrorStatusMapping() {
 		{&notification.ErrorDuplicateSenderName, http.StatusConflict},
 		{&notification.ErrorSenderHasBlockingDependencies, http.StatusConflict},
 		{&notification.ErrorInvalidProvider, http.StatusBadRequest},
+		{&authzenpdp.ErrorHasBlockingDependencies, http.StatusConflict},
 		{&tidcommon.InternalServerError, http.StatusInternalServerError},
 	}
 	for _, tc := range cases {

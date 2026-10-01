@@ -113,9 +113,6 @@ type DesignProvider interface {
 // OrganizationUnitProvider defines the interface for the organization unit provider.
 type OrganizationUnitProvider interface {
 	GetOrganizationUnit(ctx context.Context, id string) (OrganizationUnit, *common.ServiceError)
-	GetOrganizationUnitList(
-		ctx context.Context, limit, offset int, f *common.FilterGroup,
-	) (*OrganizationUnitListResponse, *common.ServiceError)
 	CreateOrganizationUnit(
 		ctx context.Context, request OrganizationUnitRequestWithID,
 	) (OrganizationUnit, *common.ServiceError)

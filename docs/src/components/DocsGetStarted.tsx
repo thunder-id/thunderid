@@ -94,7 +94,7 @@ const BROWSE_TOPICS = [
   {
     label: 'SDKs',
     description: 'Client libraries and integrations',
-    href: '/sdks',
+    href: '/sdks-and-tools',
     icon: (
       <svg
         width="18"

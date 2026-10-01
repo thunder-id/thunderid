@@ -17,7 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
-	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
 )
 
 const testParentOUID = "parent-ou-123"
@@ -26,13 +26,13 @@ const testChildOUID = "child-ou-456"
 type OUResolverExecutorTestSuite struct {
 	suite.Suite
 	mockFlowFactory *coremock.FlowFactoryInterfaceMock
-	mockOUService   *oumock.OrganizationUnitServiceInterfaceMock
+	mockOUService   *ouprovidermock.OrganizationUnitProviderMock
 	executor        *ouResolverExecutor
 }
 
 func (suite *OUResolverExecutorTestSuite) SetupTest() {
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
-	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	suite.mockOUService = ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 
 	defaultInputs := []providers.Input{
 		{

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -820,4 +821,68 @@ func (ts *RefreshSecurityTestSuite) TestRefresh_UserDeleted_RejectsToken() {
 	_, err := testutils.RefreshAccessToken(refreshSecClientID, refreshSecClientSecret, tokens.RefreshToken)
 	ts.Require().Error(err, "Refresh must be rejected after the user is deleted")
 	ts.Assert().Contains(err.Error(), "invalid_grant", "Rejection should be invalid_grant")
+}
+
+// Refresh tokens are minted with the rt+jwt typ header (RFC 8725 §3.11 explicit typing), so a
+// validator that whitelists the token types it accepts rejects one by default rather than by
+// remembering to check the access_token_sub claim. The unit tests assert the builder passes the
+// constant; this asserts the type survives to the wire.
+func (ts *RefreshSecurityTestSuite) TestRefresh_TokenCarriesRTJWTTyp() {
+	userID := ts.createUser("refresh_sec_typ")
+	ts.createRole("RefreshSec_Typ", userID, []string{"read"})
+
+	tokens := ts.obtainTokens(refreshSecClientID, refreshSecClientSecret, "refresh_sec_typ", "openid read")
+
+	header, err := testutils.DecodeJWTHeaderMap(tokens.RefreshToken)
+	ts.Require().NoError(err, "Failed to decode refresh token header")
+	ts.Assert().Equal("rt+jwt", header["typ"], "Refresh token must carry the rt+jwt typ header")
+
+	// The access token keeps its own RFC 9068 type, so the two are distinguishable by header alone.
+	atHeader, err := testutils.DecodeJWTHeaderMap(tokens.AccessToken)
+	ts.Require().NoError(err, "Failed to decode access token header")
+	ts.Assert().Equal("at+jwt", atHeader["typ"], "Access token must keep its at+jwt typ header")
+}
+
+// A refresh token is not a subject token. Its sub names the OAuth client the token was issued to,
+// not the end user, who is carried in access_token_sub, so redeeming one on token exchange would
+// mint an access token attributed to the client at the refresh token's full scope. Token exchange
+// performs no client binding either, so it would sidestep the check the refresh grant enforces:
+// TestRefresh_ForeignClientRejected covers that the refresh grant does bind.
+//
+// Only observable end to end, since the rejection depends on the typ header the server minted.
+func (ts *RefreshSecurityTestSuite) TestRefresh_TokenRejectedAsTokenExchangeSubject() {
+	userID := ts.createUser("refresh_sec_exchange")
+	ts.createRole("RefreshSec_Exchange", userID, []string{"read"})
+
+	tokens := ts.obtainTokens(refreshSecClientID, refreshSecClientSecret, "refresh_sec_exchange", "openid read")
+
+	// Every declared subject_token_type is refused: the rejection is on the token's typ header, not
+	// on what the caller claims the token is.
+	for _, subjectTokenType := range []string{
+		"urn:ietf:params:oauth:token-type:jwt",
+		"urn:ietf:params:oauth:token-type:refresh_token",
+		"urn:ietf:params:oauth:token-type:access_token",
+		"urn:ietf:params:oauth:token-type:id_token",
+	} {
+		ts.Run(subjectTokenType, func() {
+			form := url.Values{}
+			form.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+			form.Set("subject_token", tokens.RefreshToken)
+			form.Set("subject_token_type", subjectTokenType)
+
+			req, err := http.NewRequest(http.MethodPost,
+				testutils.TestServerURL+"/oauth2/token", strings.NewReader(form.Encode()))
+			ts.Require().NoError(err, "Failed to build token exchange request")
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.SetBasicAuth(refreshSecClientID, refreshSecClientSecret)
+
+			resp, err := testutils.GetHTTPClient().Do(req)
+			ts.Require().NoError(err, "Token exchange request should complete")
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+
+			ts.Assert().Equal(http.StatusBadRequest, resp.StatusCode,
+				"A refresh token must be refused as a subject_token. Response: %s", string(body))
+		})
+	}
 }

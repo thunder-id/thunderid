@@ -1570,6 +1570,7 @@ func buildOAuthProfile(configs []providers.InboundAuthConfigWithSecret) *provide
 	return &providers.OAuthProfile{
 		RedirectURIs:                       cfg.RedirectURIs,
 		PostLogoutRedirectURIs:             cfg.PostLogoutRedirectURIs,
+		BackchannelLogoutURI:               cfg.BackchannelLogoutURI,
 		GrantTypes:                         grantTypes,
 		ResponseTypes:                      sysutils.ConvertToStringSlice(cfg.ResponseTypes),
 		TokenEndpointAuthMethod:            string(authMethod),
@@ -1596,6 +1597,7 @@ func oauthProfileToComplete(clientID string, p *providers.OAuthProfile) *provide
 		ClientID:                           clientID,
 		RedirectURIs:                       p.RedirectURIs,
 		PostLogoutRedirectURIs:             p.PostLogoutRedirectURIs,
+		BackchannelLogoutURI:               p.BackchannelLogoutURI,
 		GrantTypes:                         grants,
 		ResponseTypes:                      respTypes,
 		TokenEndpointAuthMethod:            providers.TokenEndpointAuthMethod(p.TokenEndpointAuthMethod),
@@ -1744,6 +1746,22 @@ func translateOAuthValidationError(err error) *tidcommon.ServiceError {
 		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
 			Key:          "error.agentservice.auth_code_requires_redirect_uris_description",
 			DefaultValue: "authorization_code grant type requires redirect URIs",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthInvalidBackchannelLogoutURI):
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
+			Key: "error.agentservice.invalid_backchannel_logout_uri_description",
+			DefaultValue: "Backchannel logout URI must be an absolute http or https URL without userinfo, " +
+				"a fragment or a wildcard",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthBackchannelLogoutURIRequiresHTTPS):
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
+			Key:          "error.agentservice.backchannel_logout_uri_requires_https_description",
+			DefaultValue: "Backchannel logout URI must use https for a public client",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthBackchannelLogoutURIPrivateHost):
+		return tidcommon.CustomServiceError(ErrorInvalidOAuthConfiguration, tidcommon.I18nMessage{
+			Key:          "error.agentservice.backchannel_logout_uri_private_host_description",
+			DefaultValue: "Backchannel logout URI must not name a loopback, link-local or private address",
 		})
 
 	// OAuth: grant + response type

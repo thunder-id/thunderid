@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -19,6 +20,7 @@ import (
 func Initialize(
 	mux *http.ServeMux,
 	ouService oupkg.OrganizationUnitServiceInterface,
+	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
 ) (ResourceServiceInterface, declarativeresource.ResourceExporter, error) {
 	// Initialize store and transactioner based on store mode
 	resourceStore, transactioner, err := initializeStore()
@@ -26,7 +28,7 @@ func Initialize(
 		return nil, nil, fmt.Errorf("failed to initialize resource store: %w", err)
 	}
 
-	resourceService, err := newResourceService(ouService, resourceStore, transactioner)
+	resourceService, err := newResourceService(ouService, resourceStore, transactioner, authZENPDPService)
 	if err != nil {
 		return nil, nil, err
 	}

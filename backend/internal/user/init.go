@@ -48,7 +48,7 @@ func Initialize(
 	ouUserResolver := newOUUserResolver(entityService, entityTypeService)
 
 	// Create and return exporter
-	exporter := newUserExporter(userService, entityService)
+	exporter := newUserExporter(userService, entityService, entityTypeService)
 	return userService, ouUserResolver, exporter, nil
 }
 

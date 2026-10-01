@@ -124,6 +124,8 @@ func (e *agentExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	return &declarativeresource.ResourceRules{
 		Variables: []string{
 			"InboundAuthConfig[].OAuthConfig.ClientID",
+		},
+		SecretVariables: []string{
 			"InboundAuthConfig[].OAuthConfig.ClientSecret",
 		},
 		ArrayVariables: []string{
@@ -156,11 +158,12 @@ func (e *agentExporter) GetResourceRulesForResource(resource interface{}) *decla
 	}
 
 	variables := []string{"InboundAuthConfig[].OAuthConfig.ClientID"}
+	var secrets []string
 	if !isPublicClient {
-		variables = append(variables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
+		secrets = append(secrets, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	}
 
-	rules := &declarativeresource.ResourceRules{Variables: variables}
+	rules := &declarativeresource.ResourceRules{Variables: variables, SecretVariables: secrets}
 	if hasRedirectURIs {
 		rules.ArrayVariables = []string{"InboundAuthConfig[].OAuthConfig.RedirectURIs"}
 	}

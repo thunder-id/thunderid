@@ -441,3 +441,21 @@ func (ts *OUAuthzTestSuite) doWithFilter(path, filterExpr string) *http.Response
 	ts.Require().NoError(err)
 	return resp
 }
+
+// TestListOUsOffsetBeyondAuthorizedSet verifies that paging past the end of the caller's authorized
+// organization units returns an empty page while still reporting the true total.
+func (ts *OUAuthzTestSuite) TestListOUsOffsetBeyondAuthorizedSet() {
+	resp := ts.do(http.MethodGet, "/organization-units?limit=10&offset=1000", nil)
+	defer closeBody(resp)
+
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var listResp OrganizationUnitListResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+
+	ts.Empty(listResp.OrganizationUnits,
+		"an offset past the authorized set must return no organization units")
+	ts.Equal(0, listResp.Count, "count must be zero for an empty page")
+	ts.GreaterOrEqual(listResp.TotalResults, 1,
+		"total results must still report the authorized set size")
+}

@@ -406,6 +406,47 @@ func (suite *I18nMgtServiceTestSuite) TestResolveTranslations_CustomNamespace_Su
 	suite.Equal("OK", result.Translations["console"]["btn_ok"])
 }
 
+func (suite *I18nMgtServiceTestSuite) TestGetTranslationsByKeys_ReadsOnlyRequestedKeys() {
+	suite.mockStore.On("GetTranslationsByKey", mock.Anything, "app.a.name", "custom").
+		Return(map[string]Translation{
+			"en-US": {Key: "app.a.name", Language: "en-US", Namespace: "custom", Value: "My App"},
+			"fr":    {Key: "app.a.name", Language: "fr", Namespace: "custom", Value: "Mon App"},
+		}, nil)
+	// A key with no translations is absent from the result rather than present and empty.
+	suite.mockStore.On("GetTranslationsByKey", mock.Anything, "app.a.logo_uri", "custom").
+		Return(map[string]Translation{}, nil)
+
+	result, err := suite.service.GetTranslationsByKeys(context.Background(), "custom",
+		[]string{"app.a.name", "app.a.logo_uri"})
+
+	suite.Nil(err)
+	suite.Equal(map[string]map[string]string{
+		"app.a.name": {"en-US": "My App", "fr": "Mon App"},
+	}, result)
+	// The whole namespace is never read, which is the point of asking by key.
+	suite.mockStore.AssertNotCalled(suite.T(), "GetTranslationsByNamespace", mock.Anything, "custom")
+}
+
+func (suite *I18nMgtServiceTestSuite) TestGetTranslationsByKeys_InvalidNamespace() {
+	result, err := suite.service.GetTranslationsByKeys(context.Background(), "invalid!",
+		[]string{"app.a.name"})
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidNamespace.Code, err.Code)
+}
+
+func (suite *I18nMgtServiceTestSuite) TestGetTranslationsByKeys_StoreError() {
+	suite.mockStore.On("GetTranslationsByKey", mock.Anything, "app.a.name", "custom").
+		Return(nil, errors.New("db error"))
+
+	result, err := suite.service.GetTranslationsByKeys(context.Background(), "custom",
+		[]string{"app.a.name"})
+
+	suite.Nil(result)
+	suite.NotNil(err)
+}
+
 func (suite *I18nMgtServiceTestSuite) TestResolveTranslations_InvalidNamespace() {
 	result, err := suite.service.ResolveTranslations(context.Background(), "en-US", "invalid!")
 

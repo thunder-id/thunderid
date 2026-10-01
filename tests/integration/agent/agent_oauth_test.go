@@ -130,17 +130,20 @@ func (ts *AgentOAuthFlowsTestSuite) TearDownSuite() {
 		_ = testutils.DeleteUserType(ts.entityTypeID)
 	}
 	// Restore the shared agent type before deleting the OU it points at, or the singleton is left
-	// referencing a deleted OU and a later suite's restore fails.
+	// referencing a deleted OU and a later suite's restore fails. A failed restore keeps the OU:
+	// leaking one is cheaper than every later suite inheriting a dangling reference.
+	agentTypeRestored := true
 	if ts.agentTypeSnapshot != nil {
 		if err := testutils.RestoreAgentType(ts.agentTypeSnapshot); err != nil {
 			ts.T().Errorf("teardown: failed to restore the default agent type: %v", err)
+			agentTypeRestored = false
 		}
 	}
 	if ts.resourceServerID != "" {
 		ts.NoError(testutils.DeleteResourceServerWithChildren(ts.resourceServerID),
 			"teardown: delete resource server and its actions")
 	}
-	if ts.ouID != "" {
+	if ts.ouID != "" && agentTypeRestored {
 		_ = testutils.DeleteOrganizationUnit(ts.ouID)
 	}
 }
@@ -666,13 +669,16 @@ func (s *CCAgentAuthzTestSuite) TearDownSuite() {
 			"teardown: delete resource server and its actions")
 	}
 	// Restore the shared agent type before deleting the OU it points at, or the singleton is left
-	// referencing a deleted OU and a later suite's restore fails.
+	// referencing a deleted OU and a later suite's restore fails. A failed restore keeps the OU:
+	// leaking one is cheaper than every later suite inheriting a dangling reference.
+	agentTypeRestored := true
 	if s.agentTypeSnapshot != nil {
 		if err := testutils.RestoreAgentType(s.agentTypeSnapshot); err != nil {
 			s.T().Errorf("teardown: failed to restore the default agent type: %v", err)
+			agentTypeRestored = false
 		}
 	}
-	if s.ouID != "" {
+	if s.ouID != "" && agentTypeRestored {
 		_ = testutils.DeleteOrganizationUnit(s.ouID)
 	}
 }
@@ -914,17 +920,20 @@ func (s *AgentTokenExchangeTestSuite) TearDownSuite() {
 		_ = testutils.DeleteUserType(s.entityTypeID)
 	}
 	// Restore the shared agent type before deleting the OU it points at, or the singleton is left
-	// referencing a deleted OU and a later suite's restore fails.
+	// referencing a deleted OU and a later suite's restore fails. A failed restore keeps the OU:
+	// leaking one is cheaper than every later suite inheriting a dangling reference.
+	agentTypeRestored := true
 	if s.agentTypeSnapshot != nil {
 		if err := testutils.RestoreAgentType(s.agentTypeSnapshot); err != nil {
 			s.T().Errorf("teardown: failed to restore the default agent type: %v", err)
+			agentTypeRestored = false
 		}
 	}
 	if s.resourceServerID != "" {
 		s.NoError(testutils.DeleteResourceServerWithChildren(s.resourceServerID),
 			"teardown: delete resource server and its actions")
 	}
-	if s.ouID != "" {
+	if s.ouID != "" && agentTypeRestored {
 		_ = testutils.DeleteOrganizationUnit(s.ouID)
 	}
 }

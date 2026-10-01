@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -15,6 +16,7 @@ import (
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/valueref"
 	"github.com/thunder-id/thunderid/internal/system/varname"
 )
 
@@ -29,6 +31,7 @@ type templatingRules struct {
 type resourceRules struct {
 	Variables             []string `yaml:"Variables,omitempty"`
 	ArrayVariables        []string `yaml:"ArrayVariables,omitempty"`
+	SecretVariables       []string `yaml:"SecretVariables,omitempty"`
 	DynamicPropertyFields []string `yaml:"DynamicPropertyFields,omitempty"`
 }
 
@@ -37,18 +40,95 @@ const (
 	yamlTagInline    = "inline"
 )
 
+// PlaceholderStyle decides what an exported document carries where a value was.
+type PlaceholderStyle int
+
+const (
+	// TemplatePlaceholders writes a Go template placeholder and reports the values alongside, for a
+	// deployment that holds its own configuration. This is what a data plane exports.
+	TemplatePlaceholders PlaceholderStyle = iota
+	// ValueReferences writes a reference naming where the value is held, and reports no values. This
+	// is what a control plane exports: it authors configuration but does not hold what the
+	// configuration refers to, so there is nothing for it to put beside the document.
+	ValueReferences
+)
+
 // Parameterizer handles the templating logic
 type parameterizer struct {
 	rules templatingRules
+	// style decides whether a placeholder is a template or a reference. It is set once, per plane.
+	style PlaceholderStyle
 	// resourceType qualifies the variable names emitted for the resource being parameterized. It is
 	// set per call on a copy rather than on the shared instance, so concurrent exports of different
 	// resource types cannot read each other's value.
 	resourceType string
+	// secrets collects the variable names this call emitted for a credential. It lives on the
+	// per-call copy for the same reason resourceType does.
+	secrets map[string]bool
 }
 
 // newParameterizer creates a new Parameterizer instance with the given templating rules
-func newParameterizer(rules templatingRules) *parameterizer {
-	return &parameterizer{rules: rules}
+func newParameterizer(rules templatingRules, style PlaceholderStyle) *parameterizer {
+	return &parameterizer{rules: rules, style: style, secrets: map[string]bool{}}
+}
+
+// errCredentialHeldAsVariable is returned when a value designated a credential refers to an
+// ordinary variable. A variable is returned by a read and a secret never is, so exporting it as it
+// stands would point a credential at the collection a read reaches. Rewriting the prefix instead
+// would name a secret that was never stored, so the export refuses rather than guess.
+var errCredentialHeldAsVariable = errors.New("a credential refers to a variable rather than a secret")
+
+// keepsStoredReference reports whether a stored value is a reference that must be written out as
+// it stands.
+//
+// A reference names where the value actually went. Deriving a new one from the resource as it is now
+// would rewrite that name whenever anything it is derived from has changed since, a rename most
+// obviously, and the document would then name a value the data plane has never held.
+//
+// It applies only in reference style. A template placeholder is regenerated every export by design,
+// and its value travels in the .env beside it.
+//
+// It judges one value, not a path: a path through a list reaches one value per element, and each
+// element keeps its own reference or is replaced on its own.
+//
+// Only a well-formed reference is kept. A credential that merely begins with a prefix is a value, so
+// it is replaced like any other rather than written out in the document.
+func (p *parameterizer) keepsStoredReference(stored string) bool {
+	return p.style == ValueReferences && valueref.IsWellFormedReference(stored)
+}
+
+// storedReference returns the reference a dynamic property already holds, or "" when it holds none.
+//
+// Reading the value decrypts a secret, and only a reference-style export keeps a stored reference,
+// so the value is read for that export alone.
+func (p *parameterizer) storedReference(propValue reflect.Value) string {
+	if p.style != ValueReferences {
+		return ""
+	}
+	if current := storedPropertyValue(propValue); p.keepsStoredReference(current) {
+		return current
+	}
+	return ""
+}
+
+// storedCredentialName checks a credential's stored reference before it is kept, and returns the name
+// the credential is held under.
+func (p *parameterizer) storedCredentialName(field, stored string) (string, error) {
+	if !valueref.IsSecretReference(stored) {
+		return "", fmt.Errorf("%w: %s %s holds %q", errCredentialHeldAsVariable, p.resourceType, field, stored)
+	}
+	return valueref.ReferencedName(stored), nil
+}
+
+// placeholderFor returns what stands in the document where the named value was.
+func (p *parameterizer) placeholderFor(varName string, isSecret bool) string {
+	if p.style != ValueReferences {
+		return fmt.Sprintf("{{.%s}}", varName)
+	}
+	if isSecret {
+		return valueref.SecretReference(varName)
+	}
+	return valueref.VariableReference(varName)
 }
 
 // forResourceType returns a copy bound to the given resource type, leaving the shared instance
@@ -56,14 +136,24 @@ func newParameterizer(rules templatingRules) *parameterizer {
 func (p *parameterizer) forResourceType(resourceType string) *parameterizer {
 	clone := *p
 	clone.resourceType = resourceType
+	clone.secrets = map[string]bool{}
 	return &clone
 }
 
+// markAsCredential records that a variable name holds a credential.
+func (p *parameterizer) markAsCredential(name string) {
+	p.secrets[name] = true
+}
+
 // ToParameterizedYAML converts an object directly to parameterized YAML.
-// It returns the template string and a map of variable names to their original values.
+//
+// It returns the template string, a map of variable names to their original values, and the subset
+// of those names whose value is a credential. The third is what lets a caller put a credential
+// where a read cannot return it: the values map alone cannot be told apart, and the isSecret marker
+// the template carries is only readable by parsing the text back.
 func (p *parameterizer) ToParameterizedYAML(ctx context.Context, obj interface{},
 	resourceType string, resourceName string,
-	rules *declarativeresource.ResourceRules) (string, map[string]string, error) {
+	rules *declarativeresource.ResourceRules) (string, map[string]string, map[string]bool, error) {
 	// Every variable name this call emits is qualified by the resource type.
 	p = p.forResourceType(resourceType)
 
@@ -73,6 +163,7 @@ func (p *parameterizer) ToParameterizedYAML(ctx context.Context, obj interface{}
 		localRules = &resourceRules{
 			Variables:             rules.Variables,
 			ArrayVariables:        rules.ArrayVariables,
+			SecretVariables:       rules.SecretVariables,
 			DynamicPropertyFields: rules.DynamicPropertyFields,
 		}
 	}
@@ -81,7 +172,7 @@ func (p *parameterizer) ToParameterizedYAML(ctx context.Context, obj interface{}
 	// Pass rules so fields in parameterization rules bypass omitempty
 	var node yaml.Node
 	if err := p.structToNodeIgnoringOmitempty(obj, &node, localRules, "", resourceName); err != nil {
-		return "", nil, fmt.Errorf("failed to convert object to node: %w", err)
+		return "", nil, nil, fmt.Errorf("failed to convert object to node: %w", err)
 	}
 
 	if localRules == nil {
@@ -90,13 +181,13 @@ func (p *parameterizer) ToParameterizedYAML(ctx context.Context, obj interface{}
 		encoder := yaml.NewEncoder(&buf)
 		encoder.SetIndent(2)
 		if err := encoder.Encode(&node); err != nil {
-			return "", nil, fmt.Errorf("failed to marshal data: %w", err)
+			return "", nil, nil, fmt.Errorf("failed to marshal data: %w", err)
 		}
 		err := encoder.Close()
 		if err != nil {
-			return "", nil, fmt.Errorf("failed to close encoder: %w", err)
+			return "", nil, nil, fmt.Errorf("failed to close encoder: %w", err)
 		}
-		return buf.String(), nil, nil
+		return buf.String(), nil, nil, nil
 	}
 
 	// Convert struct field paths to YAML field paths
@@ -106,23 +197,27 @@ func (p *parameterizer) ToParameterizedYAML(ctx context.Context, obj interface{}
 	// Dynamic property values must be extracted from the original struct here because
 	// structToNodeIgnoringOmitempty already baked template placeholders into their nodes.
 	variableValues := p.extractValuesFromNode(&node, rulesWithYAMLPaths, resourceName)
-	for k, v := range p.extractDynamicPropertyValues(obj, localRules, resourceName) {
-		variableValues[k] = v
+	// A dynamic property's value is read only for the .env a template-style export carries. Reading
+	// it decrypts a secret, and a reference-style export writes no value beside the document.
+	if p.style == TemplatePlaceholders {
+		for k, v := range p.extractDynamicPropertyValues(obj, localRules, resourceName) {
+			variableValues[k] = v
+		}
 	}
 
 	// Apply parameterization to the node tree
 	if err := p.parameterizeNode(&node, rulesWithYAMLPaths, resourceName); err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 
 	// Marshal back to YAML with preserved indentation
 	// Use custom renderer to handle template syntax properly
 	var buf bytes.Buffer
 	if err := p.renderNode(&buf, &node, 0); err != nil {
-		return "", nil, fmt.Errorf("failed to render parameterized YAML: %w", err)
+		return "", nil, nil, fmt.Errorf("failed to render parameterized YAML: %w", err)
 	}
 
-	return buf.String(), variableValues, nil
+	return buf.String(), variableValues, p.secrets, nil
 }
 
 // extractValuesFromNode reads the original values of parameterization variables from the node
@@ -137,6 +232,15 @@ func (p *parameterizer) extractValuesFromNode(
 	root := node.Content[0]
 
 	for _, path := range rules.Variables {
+		varName := p.pathToVariableName(resourceName, path)
+		if val := p.getScalarFromNode(root, path); val != "" {
+			values[varName] = val
+		}
+	}
+
+	// A secret variable is read exactly as an ordinary one. Which names are reported as credentials
+	// is decided where each value is written, since a kept reference is reported under its own name.
+	for _, path := range rules.SecretVariables {
 		varName := p.pathToVariableName(resourceName, path)
 		if val := p.getScalarFromNode(root, path); val != "" {
 			values[varName] = val
@@ -539,6 +643,14 @@ func (p *parameterizer) isFieldInRules(rules *resourceRules, fieldPath string) b
 		}
 	}
 
+	// Check SecretVariables, which are parameterized the same way
+	for _, varPath := range rules.SecretVariables {
+		normalizedVarPath := strings.ToLower(strings.ReplaceAll(varPath, "[]", ""))
+		if normalizedVarPath == normalizedPath {
+			return true
+		}
+	}
+
 	// Check ArrayVariables
 	for _, arrPath := range rules.ArrayVariables {
 		normalizedArrPath := strings.ToLower(strings.ReplaceAll(arrPath, "[]", ""))
@@ -599,7 +711,7 @@ func (p *parameterizer) isFieldDynamicProperty(rules *resourceRules, fieldPath s
 }
 
 // propertyToYAMLNode converts a Property interface to a YAML node
-func (p *parameterizer) propertyToYAMLNode(propValue reflect.Value, resourceName string) *yaml.Node {
+func (p *parameterizer) propertyToYAMLNode(propValue reflect.Value, resourceName string) (*yaml.Node, error) {
 	node := &yaml.Node{Kind: yaml.MappingNode}
 
 	// Property has methods: GetName(), GetValue(), IsSecret()
@@ -608,11 +720,11 @@ func (p *parameterizer) propertyToYAMLNode(propValue reflect.Value, resourceName
 	// Get the name
 	nameMethod := propValue.MethodByName("GetName")
 	if !nameMethod.IsValid() {
-		return node
+		return node, nil
 	}
 	nameResults := nameMethod.Call(nil)
 	if len(nameResults) == 0 {
-		return node
+		return node, nil
 	}
 	propName := nameResults[0].String()
 
@@ -627,7 +739,33 @@ func (p *parameterizer) propertyToYAMLNode(propValue reflect.Value, resourceName
 	}
 
 	// Generate template variable name
-	propValueStr := fmt.Sprintf("{{.%s}}", p.generatePropertyVarName(resourceName, propName))
+	propVarName := p.generatePropertyVarName(resourceName, propName)
+	propValueStr := p.placeholderFor(propVarName, isSecret)
+	credentialName := ""
+	if isSecret {
+		credentialName = propVarName
+	}
+
+	// A property already holding a reference keeps it, for the same reason a named field does: it
+	// names where the value went, and a derived name need not still agree with it. The reference
+	// also decides on its own whether this is a credential and under what name, so that a rename
+	// does not report one under a name nothing holds.
+	if current := p.storedReference(propValue); current != "" {
+		propValueStr = current
+		credentialName = ""
+		if isSecret {
+			name, err := p.storedCredentialName(propName, current)
+			if err != nil {
+				return nil, err
+			}
+			credentialName = name
+		} else if valueref.IsSecretReference(current) {
+			credentialName = valueref.ReferencedName(current)
+		}
+	}
+	if credentialName != "" {
+		p.markAsCredential(credentialName)
+	}
 
 	// Build the YAML node: {name: "...", value: "...", isSecret: true/false}
 	// Add name
@@ -650,7 +788,7 @@ func (p *parameterizer) propertyToYAMLNode(propValue reflect.Value, resourceName
 		)
 	}
 
-	return node
+	return node, nil
 }
 
 // generatePropertyVarName generates a context-aware variable name for a property
@@ -780,7 +918,10 @@ func (p *parameterizer) handleSliceOrArrayNode(
 			if propValue.CanAddr() {
 				propValue = propValue.Addr()
 			}
-			propNode := p.propertyToYAMLNode(propValue, resourceName)
+			propNode, err := p.propertyToYAMLNode(propValue, resourceName)
+			if err != nil {
+				return nil, err
+			}
 			node.Content = append(node.Content, propNode)
 		}
 		return node, nil
@@ -1033,8 +1174,9 @@ func (p *parameterizer) convertStructPathsToYAMLPaths(
 	logger := log.GetLogger().With(log.String("component", "Parameterizer"))
 
 	converted := &resourceRules{
-		Variables:      make([]string, len(rules.Variables)),
-		ArrayVariables: make([]string, len(rules.ArrayVariables)),
+		Variables:       make([]string, len(rules.Variables)),
+		ArrayVariables:  make([]string, len(rules.ArrayVariables)),
+		SecretVariables: make([]string, len(rules.SecretVariables)),
 	}
 
 	objType := reflect.TypeOf(obj)
@@ -1047,6 +1189,14 @@ func (p *parameterizer) convertStructPathsToYAMLPaths(
 		converted.Variables[i] = yamlPath
 		// Debug log to help troubleshoot path resolution
 		logger.Debug(ctx, "Converted variable path",
+			log.String("original", path),
+			log.String("yaml", yamlPath))
+	}
+
+	for i, path := range rules.SecretVariables {
+		yamlPath := p.convertPathToYAMLPath(objType, path)
+		converted.SecretVariables[i] = yamlPath
+		logger.Debug(ctx, "Converted secret variable path",
 			log.String("original", path),
 			log.String("yaml", yamlPath))
 	}
@@ -1137,13 +1287,50 @@ func (p *parameterizer) parameterizeNode(node *yaml.Node, rules *resourceRules, 
 
 	// Process simple variables
 	for _, path := range rules.Variables {
-		varName := p.pathToVariableName(resourceName, path)
-		if err := p.replaceNodeValue(root, path, fmt.Sprintf("{{.%s}}", varName)); err != nil {
+		placeholder := p.placeholderFor(p.pathToVariableName(resourceName, path), false)
+		if err := p.forEachValue(root, path, func(value *yaml.Node) error {
+			if !p.keepsStoredReference(value.Value) {
+				setPlaceholder(value, placeholder)
+			} else if valueref.IsSecretReference(value.Value) {
+				// A kept reference into the secret collection names a credential wherever it sits.
+				p.markAsCredential(valueref.ReferencedName(value.Value))
+			}
+			return nil
+		}); err != nil {
 			return err
 		}
 	}
 
-	// Process array variables
+	// Secret variables are replaced the same way. What makes one a secret is how it is written and
+	// reported, not whether it is replaced: leaving it out would leave the credential in the clear.
+	for _, path := range rules.SecretVariables {
+		varName := p.pathToVariableName(resourceName, path)
+		placeholder := p.placeholderFor(varName, true)
+		if err := p.forEachValue(root, path, func(value *yaml.Node) error {
+			if !p.keepsStoredReference(value.Value) {
+				setPlaceholder(value, placeholder)
+				p.markAsCredential(varName)
+				return nil
+			}
+			name, err := p.storedCredentialName(path, value.Value)
+			if err != nil {
+				return err
+			}
+			p.markAsCredential(name)
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+
+	// Process array variables.
+	//
+	// A reference names one held value, and there is no form of it that expands into list items, so
+	// in reference style the list is left as it is rather than written as something that cannot be
+	// resolved. Nothing here is a credential: what is parameterized as an array is an address list.
+	if p.style == ValueReferences {
+		return nil
+	}
 	for _, path := range rules.ArrayVariables {
 		varName := p.pathToVariableName(resourceName, path)
 		if err := p.replaceArrayNode(root, path, varName); err != nil {
@@ -1226,67 +1413,62 @@ func (p *parameterizer) toSnakeCase(s string) string {
 	return strings.ToUpper(result.String())
 }
 
-// replaceNodeValue finds and replaces a scalar value in the node tree
-// Handles array notation (e.g., "field[]" means iterate all array elements)
-func (p *parameterizer) replaceNodeValue(node *yaml.Node, path string, replacement string) error {
+// forEachValue calls visit with every value node the path reaches. A segment ending in "[]"
+// descends into each element of that list, so one path can reach one value per element. A path
+// that does not exist reaches nothing.
+func (p *parameterizer) forEachValue(node *yaml.Node, path string, visit func(*yaml.Node) error) error {
 	parts := strings.Split(path, ".")
 	current := node
 
 	for i, part := range parts {
-		// Check if this part indicates array access
 		isArrayAccess := strings.HasSuffix(part, "[]")
-		fieldName := part
-		if isArrayAccess {
-			fieldName = strings.TrimSuffix(part, "[]")
-		}
+		fieldName := strings.TrimSuffix(part, "[]")
 
 		if current.Kind != yaml.MappingNode {
-			return nil // Path doesn't exist
+			return nil
 		}
 
 		found := false
 		for j := 0; j < len(current.Content); j += 2 {
-			keyNode := current.Content[j]
+			if current.Content[j].Value != fieldName {
+				continue
+			}
 			valueNode := current.Content[j+1]
-
-			if keyNode.Value == fieldName {
-				if isArrayAccess {
-					// Handle array access - need to iterate through array elements
-					if valueNode.Kind == yaml.SequenceNode {
-						// Process each element in the sequence
-						for _, elemNode := range valueNode.Content {
-							if i == len(parts)-1 {
-								// This shouldn't happen for array access without further path
-								return nil
-							}
-							// Continue with remaining path on each element
-							remainingPath := strings.Join(parts[i+1:], ".")
-							if err := p.replaceNodeValue(elemNode, remainingPath, replacement); err != nil {
-								return err
-							}
-						}
-						return nil
-					}
-				} else if i == len(parts)-1 {
-					// Replace the value
-					valueNode.Kind = yaml.ScalarNode
-					valueNode.Tag = "!!str"
-					valueNode.Value = replacement
-					valueNode.Style = yaml.LiteralStyle
+			if isArrayAccess {
+				// A list is only descended into; one named as the final segment is not a value.
+				if valueNode.Kind != yaml.SequenceNode || i == len(parts)-1 {
 					return nil
 				}
-				current = valueNode
-				found = true
-				break
+				remainingPath := strings.Join(parts[i+1:], ".")
+				for _, elemNode := range valueNode.Content {
+					if err := p.forEachValue(elemNode, remainingPath, visit); err != nil {
+						return err
+					}
+				}
+				return nil
 			}
+			if i == len(parts)-1 {
+				return visit(valueNode)
+			}
+			current = valueNode
+			found = true
+			break
 		}
 
 		if !found {
-			return nil // Path doesn't exist
+			return nil
 		}
 	}
 
 	return nil
+}
+
+// setPlaceholder replaces a value node with the placeholder standing in for it.
+func setPlaceholder(value *yaml.Node, placeholder string) {
+	value.Kind = yaml.ScalarNode
+	value.Tag = "!!str"
+	value.Value = placeholder
+	value.Style = yaml.LiteralStyle
 }
 
 // replaceArrayNode finds and replaces an array with template range syntax
@@ -1552,4 +1734,18 @@ func (p *parameterizer) renderNode(buf *bytes.Buffer, node *yaml.Node, indent in
 		buf.WriteString(node.Value)
 	}
 	return nil
+}
+
+// storedPropertyValue reads a dynamic property's stored value, empty when it cannot be read.
+func storedPropertyValue(propValue reflect.Value) string {
+	method := propValue.MethodByName("GetValue")
+	if !method.IsValid() {
+		return ""
+	}
+	results := method.Call(nil)
+	if len(results) == 0 {
+		return ""
+	}
+	value, _ := results[0].Interface().(string)
+	return value
 }
