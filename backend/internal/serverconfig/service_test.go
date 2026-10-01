@@ -11,8 +11,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -271,6 +273,107 @@ func (suite *ServiceTestSuite) TestSetConfig_OK() {
 	suite.mockStore.EXPECT().
 		UpsertServerConfig(mock.Anything, ServerConfig{Name: ConfigNameCORS, Value: incomingRaw}).Return(nil)
 	svcErr := suite.service.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw)
+	assert.Nil(suite.T(), svcErr)
+}
+
+// --- writable composition ---
+
+// composingHandler adds the optional writable composition to the suite's handler mock, recording the
+// layers it was handed.
+type composingHandler struct {
+	*ServerConfigHandlerInterfaceMock
+	readOnly, existing, incoming any
+}
+
+func (h *composingHandler) ComposeWritable(readOnly, existing, incoming any) any {
+	h.readOnly, h.existing, h.incoming = readOnly, existing, incoming
+	return mergedVal
+}
+
+// TestSetConfig_RealCORSHandlerSkipsDeclarativeOrigin covers the PUT path (and a replacing import): an
+// incoming document may list origins the declarative layer already allows, and storing them in the
+// writable layer would leave them allowed after the declarative layer stops declaring them.
+func (suite *ServiceTestSuite) TestSetConfig_RealCORSHandlerSkipsDeclarativeOrigin() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
+		Return(storeLayers{ReadOnly: json.RawMessage(`{"allowedOrigins":["https://declared.example.com"]}`)}, nil)
+	var stored json.RawMessage
+	suite.mockStore.EXPECT().UpsertServerConfig(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, cfg ServerConfig) { stored = cfg.Value }).Return(nil)
+
+	svc := newServerConfigService(suite.mockStore,
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: cors.OriginHandler{}})
+	svcErr := svc.SetConfig(suite.ctx, ConfigNameCORS,
+		json.RawMessage(`{"allowedOrigins":["https://declared.example.com","https://db.example.com"]}`), false)
+
+	require.Nil(suite.T(), svcErr)
+	assert.JSONEq(suite.T(), `{"allowedOrigins":["https://db.example.com"]}`, string(stored))
+}
+
+// TestSetConfig_RealCORSHandlerReplacesWritable pins the default path as replacing: an origin already in
+// the writable layer and absent from the incoming document is dropped, the same as the PUT API.
+func (suite *ServiceTestSuite) TestSetConfig_RealCORSHandlerReplacesWritable() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
+		Return(storeLayers{Writable: json.RawMessage(`{"allowedOrigins":["https://a.example.com"]}`)}, nil)
+	var stored json.RawMessage
+	suite.mockStore.EXPECT().UpsertServerConfig(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, cfg ServerConfig) { stored = cfg.Value }).Return(nil)
+
+	svc := newServerConfigService(suite.mockStore,
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: cors.OriginHandler{}})
+	svcErr := svc.SetConfig(suite.ctx, ConfigNameCORS,
+		json.RawMessage(`{"allowedOrigins":["https://b.example.com"]}`), false)
+
+	require.Nil(suite.T(), svcErr)
+	assert.JSONEq(suite.T(), `{"allowedOrigins":["https://b.example.com"]}`, string(stored))
+}
+
+func (suite *ServiceTestSuite) TestSetConfig_MergeTrue_PersistsHandlerComposition() {
+	handler := &composingHandler{ServerConfigHandlerInterfaceMock: suite.mockHandler}
+	service := newServerConfigService(suite.mockStore,
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: handler})
+	suite.mockHandler.EXPECT().Decode(incomingRaw).Return(incomingVal, nil)
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
+		Return(storeLayers{ReadOnly: declarative, Writable: corsValue}, nil)
+	suite.mockHandler.EXPECT().Decode(declarative).Return(readOnlyVal, nil)
+	suite.mockHandler.EXPECT().Decode(corsValue).Return(writableVal, nil)
+	suite.mockHandler.EXPECT().Validate(mergedVal, readOnlyVal, writableVal).Return(nil)
+	suite.mockStore.EXPECT().UpsertServerConfig(mock.Anything,
+		ServerConfig{Name: ConfigNameCORS, Value: json.RawMessage(`"` + mergedVal + `"`)}).Return(nil)
+	svcErr := service.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw, true)
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), readOnlyVal, handler.readOnly)
+	assert.Equal(suite.T(), writableVal, handler.existing)
+	assert.Equal(suite.T(), incomingVal, handler.incoming)
+}
+
+// TestSetConfig_MergeTrue_RealCORSHandlerIsAdditive wires the real CORS handler through the service. The
+// composition is duck-typed, so a change to either side of the contract would otherwise revert a merging
+// import to replacing the writable layer without a compile error; only this test fails.
+func (suite *ServiceTestSuite) TestSetConfig_MergeTrue_RealCORSHandlerIsAdditive() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
+		Return(storeLayers{Writable: json.RawMessage(`{"allowedOrigins":["https://a.example.com"]}`)}, nil)
+	var stored json.RawMessage
+	suite.mockStore.EXPECT().UpsertServerConfig(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, cfg ServerConfig) { stored = cfg.Value }).Return(nil)
+
+	svc := newServerConfigService(suite.mockStore,
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: cors.OriginHandler{}})
+	svcErr := svc.SetConfig(suite.ctx, ConfigNameCORS,
+		json.RawMessage(`{"allowedOrigins":["https://b.example.com"]}`), true)
+
+	require.Nil(suite.T(), svcErr)
+	assert.JSONEq(suite.T(), `{"allowedOrigins":["https://a.example.com","https://b.example.com"]}`, string(stored))
+}
+
+// A handler that does not compose its writable value stores the incoming value regardless of merge.
+func (suite *ServiceTestSuite) TestSetConfig_MergeTrue_HandlerWithoutComposition() {
+	suite.mockHandler.EXPECT().Decode(incomingRaw).Return(incomingVal, nil)
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).Return(storeLayers{}, nil)
+	suite.mockHandler.EXPECT().Decode(json.RawMessage(nil)).Return(nil, nil)
+	suite.mockHandler.EXPECT().Validate(incomingVal, nil, nil).Return(nil)
+	suite.mockStore.EXPECT().UpsertServerConfig(mock.Anything,
+		ServerConfig{Name: ConfigNameCORS, Value: incomingRaw}).Return(nil)
+	svcErr := suite.service.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw, true)
 	assert.Nil(suite.T(), svcErr)
 }
 

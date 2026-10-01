@@ -34,6 +34,29 @@ func (OriginHandler) Validate(incoming, _, _ any) error {
 	return Validate(cfg.AllowedOrigins)
 }
 
+// ComposeWritable builds the value to store in the writable layer. Origins the read-only (declarative)
+// layer already allows are left out: they need no writable entry, and keeping one would leave the origin
+// allowed even after the declarative layer stops declaring it. A non-nil existing (the layer's current
+// value, offered on a merging import) is kept and the incoming origins are added to it, so an import
+// cannot revoke origins another import registered.
+func (h OriginHandler) ComposeWritable(readOnly, existing, incoming any) any {
+	declared := make(map[string]struct{})
+	ro, _ := readOnly.(OriginConfig)
+	for _, e := range ro.AllowedOrigins {
+		declared[entryKey(e)] = struct{}{}
+	}
+
+	merged, _ := h.Merge(existing, incoming).(OriginConfig)
+	out := make(OriginEntries, 0, len(merged.AllowedOrigins))
+	for _, e := range merged.AllowedOrigins {
+		if _, dup := declared[entryKey(e)]; dup {
+			continue
+		}
+		out = append(out, e)
+	}
+	return OriginConfig{AllowedOrigins: out}
+}
+
 // Merge combines read-only and writable origins, de-duplicated with read-only entries first.
 func (OriginHandler) Merge(readOnly, writable any) any {
 	seen := make(map[string]struct{})

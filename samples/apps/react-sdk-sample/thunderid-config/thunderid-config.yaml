@@ -180,6 +180,7 @@ inboundAuthConfig:
 ---
 resource_type: server_config
 name: cors
+importBehavior: merge
 value:
   allowedOrigins:
     - "http://localhost:3000"

@@ -383,16 +383,24 @@ func (_c *ServerConfigServiceMock_ListConfigNames_Call) RunAndReturn(run func(ct
 }
 
 // SetConfig provides a mock function for the type ServerConfigServiceMock
-func (_mock *ServerConfigServiceMock) SetConfig(ctx context.Context, name serverconfig.ConfigName, value json.RawMessage) *common.ServiceError {
-	ret := _mock.Called(ctx, name, value)
+func (_mock *ServerConfigServiceMock) SetConfig(ctx context.Context, name serverconfig.ConfigName, value json.RawMessage, merge ...bool) *common.ServiceError {
+	// bool
+	_va := make([]interface{}, len(merge))
+	for _i := range merge {
+		_va[_i] = merge[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, name, value)
+	_ca = append(_ca, _va...)
+	ret := _mock.Called(_ca...)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SetConfig")
 	}
 
 	var r0 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, serverconfig.ConfigName, json.RawMessage) *common.ServiceError); ok {
-		r0 = returnFunc(ctx, name, value)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, serverconfig.ConfigName, json.RawMessage, ...bool) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, name, value, merge...)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*common.ServiceError)
@@ -410,11 +418,13 @@ type ServerConfigServiceMock_SetConfig_Call struct {
 //   - ctx context.Context
 //   - name serverconfig.ConfigName
 //   - value json.RawMessage
-func (_e *ServerConfigServiceMock_Expecter) SetConfig(ctx interface{}, name interface{}, value interface{}) *ServerConfigServiceMock_SetConfig_Call {
-	return &ServerConfigServiceMock_SetConfig_Call{Call: _e.mock.On("SetConfig", ctx, name, value)}
+//   - merge ...bool
+func (_e *ServerConfigServiceMock_Expecter) SetConfig(ctx interface{}, name interface{}, value interface{}, merge ...interface{}) *ServerConfigServiceMock_SetConfig_Call {
+	return &ServerConfigServiceMock_SetConfig_Call{Call: _e.mock.On("SetConfig",
+		append([]interface{}{ctx, name, value}, merge...)...)}
 }
 
-func (_c *ServerConfigServiceMock_SetConfig_Call) Run(run func(ctx context.Context, name serverconfig.ConfigName, value json.RawMessage)) *ServerConfigServiceMock_SetConfig_Call {
+func (_c *ServerConfigServiceMock_SetConfig_Call) Run(run func(ctx context.Context, name serverconfig.ConfigName, value json.RawMessage, merge ...bool)) *ServerConfigServiceMock_SetConfig_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -428,10 +438,19 @@ func (_c *ServerConfigServiceMock_SetConfig_Call) Run(run func(ctx context.Conte
 		if args[2] != nil {
 			arg2 = args[2].(json.RawMessage)
 		}
+		var arg3 []bool
+		variadicArgs := make([]bool, len(args)-3)
+		for i, a := range args[3:] {
+			if a != nil {
+				variadicArgs[i] = a.(bool)
+			}
+		}
+		arg3 = variadicArgs
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3...,
 		)
 	})
 	return _c
@@ -442,7 +461,7 @@ func (_c *ServerConfigServiceMock_SetConfig_Call) Return(serviceError *common.Se
 	return _c
 }
 
-func (_c *ServerConfigServiceMock_SetConfig_Call) RunAndReturn(run func(ctx context.Context, name serverconfig.ConfigName, value json.RawMessage) *common.ServiceError) *ServerConfigServiceMock_SetConfig_Call {
+func (_c *ServerConfigServiceMock_SetConfig_Call) RunAndReturn(run func(ctx context.Context, name serverconfig.ConfigName, value json.RawMessage, merge ...bool) *common.ServiceError) *ServerConfigServiceMock_SetConfig_Call {
 	_c.Call.Return(run)
 	return _c
 }
