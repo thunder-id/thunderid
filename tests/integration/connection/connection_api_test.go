@@ -156,25 +156,32 @@ type vonageConnectionRequest struct {
 }
 
 type smsGatewayConnectionRequest struct {
-	Name       string `json:"name"`
-	URL        string `json:"url"`
-	HTTPMethod string `json:"httpMethod,omitempty"`
+	Name          string         `json:"name"`
+	URL           string         `json:"url"`
+	HTTPMethod    string         `json:"httpMethod,omitempty"`
+	APIKeyHeaders []apiKeyHeader `json:"apiKeyHeaders,omitempty"`
+}
+
+type apiKeyHeader struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 // connectionResponse is a superset response shape covering all vendors' fields, used to
 // decode any vendor's response without a per-vendor struct.
 type connectionResponse struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Type         string `json:"type"`
-	ClientID     string `json:"clientId,omitempty"`
-	ClientSecret string `json:"clientSecret,omitempty"`
-	AccountSID   string `json:"accountSid,omitempty"`
-	AuthToken    string `json:"authToken,omitempty"`
-	APIKey       string `json:"apiKey,omitempty"`
-	APISecret    string `json:"apiSecret,omitempty"`
-	SenderID     string `json:"senderId,omitempty"`
-	URL          string `json:"url,omitempty"`
+	ID            string         `json:"id"`
+	Name          string         `json:"name"`
+	Type          string         `json:"type"`
+	ClientID      string         `json:"clientId,omitempty"`
+	ClientSecret  string         `json:"clientSecret,omitempty"`
+	AccountSID    string         `json:"accountSid,omitempty"`
+	AuthToken     string         `json:"authToken,omitempty"`
+	APIKey        string         `json:"apiKey,omitempty"`
+	APISecret     string         `json:"apiSecret,omitempty"`
+	SenderID      string         `json:"senderId,omitempty"`
+	URL           string         `json:"url,omitempty"`
+	APIKeyHeaders []apiKeyHeader `json:"apiKeyHeaders,omitempty"`
 
 	Scopes                 []string                          `json:"scopes,omitempty"`
 	AttributeConfiguration *testutils.AttributeConfiguration `json:"attributeConfiguration,omitempty"`
@@ -397,12 +404,19 @@ func (s *ConnectionAPITestSuite) TestVonageCreateAndGet() {
 func (s *ConnectionAPITestSuite) TestSMSGatewayCRUDRoundTrip() {
 	created := s.createConnection("sms-gateway", smsGatewayConnectionRequest{
 		Name: "Test SMS Gateway", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+		APIKeyHeaders: []apiKeyHeader{
+			{Name: "X-First-Key", Value: "first-secret"},
+			{Name: "X-Second-Key", Value: "second-secret"},
+		},
 	})
 	defer s.deleteConnection("sms-gateway", created.ID)
 
 	s.Equal("sms-gateway", created.Type)
-	// SMS gateway fields are non-secret and round-trip in plaintext.
 	s.Equal("https://sms.example.com/send", created.URL)
+	s.Equal([]apiKeyHeader{
+		{Name: "X-First-Key", Value: maskedSecretValue},
+		{Name: "X-Second-Key", Value: maskedSecretValue},
+	}, created.APIKeyHeaders)
 
 	res, err := doRequest(http.MethodGet, "/connections/sms-gateway/"+created.ID, nil)
 	s.Require().NoError(err)
@@ -410,6 +424,37 @@ func (s *ConnectionAPITestSuite) TestSMSGatewayCRUDRoundTrip() {
 	var fetched connectionResponse
 	s.Require().NoError(res.decode(&fetched))
 	s.Equal("https://sms.example.com/send", fetched.URL)
+	s.Equal(created.APIKeyHeaders, fetched.APIKeyHeaders)
+
+	updateRes, err := doRequest(http.MethodPut, "/connections/sms-gateway/"+created.ID,
+		smsGatewayConnectionRequest{
+			Name: "Test SMS Gateway", URL: "https://sms.example.com/send", HTTPMethod: "POST",
+			APIKeyHeaders: []apiKeyHeader{
+				{Name: "X-Second-Key", Value: maskedSecretValue},
+				{Name: "X-Third-Key", Value: "third-secret"},
+			},
+		})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, updateRes.status, string(updateRes.body))
+	var updated connectionResponse
+	s.Require().NoError(updateRes.decode(&updated))
+	s.Equal([]apiKeyHeader{
+		{Name: "X-Second-Key", Value: maskedSecretValue},
+		{Name: "X-Third-Key", Value: maskedSecretValue},
+	}, updated.APIKeyHeaders)
+
+	deleteHeadersRes, err := doRequest(http.MethodPut, "/connections/sms-gateway/"+created.ID,
+		map[string]interface{}{
+			"name":          "Test SMS Gateway",
+			"url":           "https://sms.example.com/send",
+			"httpMethod":    "POST",
+			"apiKeyHeaders": []apiKeyHeader{},
+		})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, deleteHeadersRes.status, string(deleteHeadersRes.body))
+	var withoutHeaders connectionResponse
+	s.Require().NoError(deleteHeadersRes.decode(&withoutHeaders))
+	s.Empty(withoutHeaders.APIKeyHeaders)
 }
 
 // --- Cross-cutting behaviors ---

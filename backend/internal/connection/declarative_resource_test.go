@@ -18,6 +18,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/outboundauthn"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
@@ -200,6 +201,12 @@ type: authzen-pdp
 name: Production PDP
 endpoint: http://localhost:3592/access/v1/evaluation
 batchEndpoint: http://localhost:3592/access/v1/evaluations
+authentication:
+  scheme: API_KEY
+  apiKey:
+    headers:
+      - name: X-API-Key
+        value: secret
 subjectAttributeMappings:
   - subjectCategory: user
     entityType: TravelCustomer
@@ -213,14 +220,23 @@ subjectAttributeMappings:
 	pdp, ok := dto.(*authzenpdp.AuthZENPDPConnection)
 	s.Require().True(ok)
 	s.Equal("pdp-1", pdp.ID)
-	s.Equal("authzen-pdp", connectionModelFromAuthZENPDP(*pdp).Type)
 	s.Equal("http://localhost:3592/access/v1/evaluation", pdp.Endpoint)
 	s.Equal("http://localhost:3592/access/v1/evaluations", pdp.BatchEndpoint)
-	exported := connectionModelFromAuthZENPDP(*pdp)
+	exported, err := connectionModelFromAuthZENPDP(*pdp)
+	s.Require().NoError(err)
+	s.Equal("authzen-pdp", exported.Type)
+	s.Require().NotNil(exported.Authentication)
+	s.Equal(outboundauthn.SchemeAPIKey, exported.Authentication.Scheme)
+	s.Equal([]outboundauthn.APIKeyHeader{{Name: "X-Api-Key", Value: "secret"}},
+		exported.Authentication.APIKey.Headers)
 	s.Equal("pdp-1", connectionResourceID(pdp))
 
-	roundTripped := connectionModelToAuthZENPDP(exported)
+	roundTripped, err := connectionModelToAuthZENPDP(exported)
+	s.Require().NoError(err)
 	s.Require().NotNil(roundTripped)
+	authenticationConfig, err := roundTripped.OutboundAuthenticationConfig()
+	s.Require().NoError(err)
+	s.Equal(map[string]string{"X-Api-Key": "secret"}, authenticationConfig.APIKeyHeaders)
 }
 
 func (s *DeclarativeResourceTestSuite) TestParseConnectionFromNodeIDPVendor() {
@@ -379,7 +395,23 @@ func (s *DeclarativeResourceTestSuite) TestGetResourceRulesForResourceSecretSele
 		{connectionExportModel{Type: "twilio"}, []string{"AuthToken"}},
 		{connectionExportModel{Type: "vonage"}, []string{"APISecret"}},
 		{connectionExportModel{Type: "authzen-pdp"}, nil},
+		{connectionExportModel{Type: "authzen-pdp", Authentication: &authzenpdp.AuthenticationRequest{
+			Scheme: outboundauthn.SchemeBearer, Bearer: &authzenpdp.BearerAuthentication{Token: "secret"},
+		}}, []string{"Authentication.Bearer.Token"}},
+		{connectionExportModel{Type: "authzen-pdp", Authentication: &authzenpdp.AuthenticationRequest{
+			Scheme: outboundauthn.SchemeAPIKey,
+			APIKey: &authzenpdp.APIKeyAuthentication{Headers: []outboundauthn.APIKeyHeader{{
+				Name: "X-API-Key", Value: "secret",
+			}}},
+		}}, []string{"Authentication.APIKey.Headers[].Value"}},
 		{connectionExportModel{Type: smsGatewayVendorName}, nil},
+		{connectionExportModel{Type: smsGatewayVendorName,
+			Authentication: &outboundauthn.Authentication{
+				Scheme: outboundauthn.SchemeAPIKey,
+				APIKey: &outboundauthn.APIKeyCredentials{Headers: []outboundauthn.APIKeyHeader{{
+					Name: "X-API-Key", Value: "secret",
+				}}},
+			}}, []string{"Authentication.APIKey.Headers[].Value"}},
 	}
 	for _, tc := range cases {
 		rules := s.exporter.GetResourceRulesForResource(&tc.model)

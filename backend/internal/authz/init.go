@@ -4,6 +4,8 @@
 package authz
 
 import (
+	"net/http"
+
 	"github.com/thunder-id/thunderid/internal/authz/engine"
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	"github.com/thunder-id/thunderid/internal/entity"
@@ -23,7 +25,9 @@ func Initialize(
 	rbacEngine, authZENPDPEngine := engine.Initialize(
 		roleService,
 		authZENPDPService,
-		httpservice.NewHTTPClientWithTimeout(0),
+		httpservice.NewHTTPClientWithCheckRedirect(func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		}),
 	)
 	return newAuthorizationService(
 		rbacEngine,

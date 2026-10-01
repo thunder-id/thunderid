@@ -433,6 +433,8 @@ var defaultMessages = map[string]string{
 	"error.connectionservice.connection_has_blocking_dependencies_description": "The connection cannot be deleted because other resources depend on it. Remove or reassign them first.",
 	"error.connectionservice.connection_not_found": "Connection not found",
 	"error.connectionservice.connection_not_found_description": "No connection exists for the supplied identifier",
+	"error.connectionservice.invalid_authzen_pdp_authentication": "Invalid AuthZEN PDP authentication",
+	"error.connectionservice.invalid_authzen_pdp_authentication_description": "Configure a bearer token or one or more API key headers for the selected scheme.",
 	"error.connectionservice.invalid_authzen_pdp_endpoint": "Invalid AuthZEN PDP endpoint",
 	"error.connectionservice.invalid_authzen_pdp_endpoint_description": "The single and batch evaluation endpoints must be absolute URLs.",
 	"error.connectionservice.invalid_authzen_pdp_name": "Invalid AuthZEN PDP connection name",

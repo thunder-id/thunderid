@@ -77,7 +77,7 @@ describe('fieldsForMode', () => {
       'url',
       'httpMethod',
       'contentType',
-      'httpHeaders',
+      'apiKeyHeaders',
     ]);
     expect(fieldNames(ConnectionTypes.SMS_GATEWAY, 'create')).toEqual(fieldNames(ConnectionTypes.SMS_GATEWAY, 'edit'));
   });
@@ -102,9 +102,11 @@ describe('fieldsForMode', () => {
   });
 
   it('edits SMS gateway headers as key-value rows rather than one packed string', () => {
-    const headers = fieldsForMode(ConnectionTypes.SMS_GATEWAY, 'create').find((field) => field.name === 'httpHeaders');
+    const headers = fieldsForMode(ConnectionTypes.SMS_GATEWAY, 'create').find(
+      (field) => field.name === 'apiKeyHeaders',
+    );
 
-    expect(headers).toMatchObject({kind: 'key-value', addLabelKey: 'connections:form.fields.httpHeaders.add'});
+    expect(headers).toMatchObject({kind: 'key-value', addLabelKey: 'connections:form.fields.apiKeyHeaders.add'});
     expect(headers?.required).toBeUndefined();
   });
 });

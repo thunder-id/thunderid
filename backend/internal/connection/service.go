@@ -284,6 +284,13 @@ func (s *service) updateSMS(ctx context.Context, provider ncommon.NotificationPr
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	if provider == ncommon.NotificationProviderTypeCustom {
+		var err error
+		dto.Properties, err = mergeStoredSMSGatewayAPIKeyHeaders(dto.Properties, existing.Properties)
+		if err != nil {
+			return nil, &notification.ErrorInvalidRequestFormat
+		}
+	}
 	dto.Properties = mergeStoredSecrets(dto.Properties, existing.Properties)
 	return s.notificationService.UpdateSender(ctx, id, dto)
 }

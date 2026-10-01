@@ -100,7 +100,8 @@ func registerRoutes(mux *http.ServeMux, h *handler) {
 	registerSMSVendorRoutes(mux, h, "/connections/"+smsGatewayVendorName, ncommon.NotificationProviderTypeCustom,
 		createSMSHandler(h, smsGatewayToSenderDTO, smsGatewayFromSenderDTO),
 		getSMSHandler(h, ncommon.NotificationProviderTypeCustom, smsGatewayFromSenderDTO),
-		updateSMSHandler(h, ncommon.NotificationProviderTypeCustom, smsGatewayToSenderDTO, smsGatewayFromSenderDTO),
+		updateSMSHandler(h, ncommon.NotificationProviderTypeCustom, smsGatewayUpdateToSenderDTO,
+			smsGatewayFromSenderDTO),
 		collectionOpts, itemOpts)
 
 	registerAuthZENPDPVendorRoutes(mux, h, "/connections/authzen-pdp", collectionOpts, itemOpts)

@@ -66,8 +66,9 @@ const (
 	CustomPropKeyURL = "url"
 	// CustomPropKeyHTTPMethod is the property key for the HTTP method.
 	CustomPropKeyHTTPMethod = "http_method"
-	// CustomPropKeyHTTPHeaders is the property key for the HTTP headers.
-	CustomPropKeyHTTPHeaders = "http_headers"
+	// CustomPropKeyAPIKeyHeaders is the property key for custom-provider API key headers.
+	// The legacy key is retained so existing SMS gateway connections remain readable.
+	CustomPropKeyAPIKeyHeaders = "http_headers" // #nosec G101
 	// CustomPropKeyContentType is the property key for the content type.
 	CustomPropKeyContentType = "content_type"
 )

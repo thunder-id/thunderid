@@ -319,8 +319,21 @@ export interface SMSGatewayConnectionRequest {
   url: string;
   httpMethod: string;
   contentType: string;
-  /** Comma-separated "Key: value" pairs sent with every request. */
-  httpHeaders?: string;
+  /** Optional authentication applied to every request. SMS gateways support API-key headers only. */
+  authentication?: OutboundAuthentication;
+}
+
+/** One API-key HTTP header. Values are write-only and returned masked. */
+export interface APIKeyHeader {
+  name: string;
+  value: string;
+}
+
+export interface OutboundAuthentication {
+  scheme: 'NONE' | 'BEARER' | 'BASIC' | 'API_KEY';
+  bearer?: {token: string};
+  basic?: {username: string; password: string};
+  apiKey?: {headers: APIKeyHeader[]};
 }
 
 export type ConnectionRequest =
@@ -350,7 +363,7 @@ export interface ConnectionResponse extends OIDCConnectionRequest {
   url?: string;
   httpMethod?: string;
   contentType?: string;
-  httpHeaders?: string;
+  authentication?: OutboundAuthentication;
 }
 
 /**

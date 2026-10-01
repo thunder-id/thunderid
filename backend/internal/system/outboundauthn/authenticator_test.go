@@ -1,0 +1,216 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package outboundauthn
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestNewAppliesNoAuthentication(t *testing.T) {
+	authenticator, err := NewRequestAuthenticator(Config{Scheme: SchemeNone})
+	require.NoError(t, err)
+
+	req := httptestRequest(t)
+	authenticator.ApplyAuthentication(req)
+
+	require.Empty(t, req.Header)
+}
+
+func TestNewAppliesBearerAuthentication(t *testing.T) {
+	authenticator, err := NewRequestAuthenticator(Config{Scheme: SchemeBearer, BearerToken: "token"})
+	require.NoError(t, err)
+
+	req := httptestRequest(t)
+	authenticator.ApplyAuthentication(req)
+
+	require.Equal(t, "Bearer token", req.Header.Get("Authorization"))
+}
+
+func TestNewAppliesBasicAuthentication(t *testing.T) {
+	authenticator, err := NewRequestAuthenticator(Config{
+		Scheme: SchemeBasic, BasicUsername: "client", BasicPassword: "secret",
+	})
+	require.NoError(t, err)
+
+	req := httptestRequest(t)
+	authenticator.ApplyAuthentication(req)
+
+	require.Equal(t, "Basic Y2xpZW50OnNlY3JldA==", req.Header.Get("Authorization"))
+}
+
+func TestNewAppliesAPIKeyAuthentication(t *testing.T) {
+	authenticator, err := NewRequestAuthenticator(Config{
+		Scheme: SchemeAPIKey,
+		APIKeyHeaders: map[string]string{
+			"X-API-Key": "secret",
+			"X-Tenant":  "tenant-1",
+		},
+	})
+	require.NoError(t, err)
+
+	req := httptestRequest(t)
+	authenticator.ApplyAuthentication(req)
+
+	require.Equal(t, "secret", req.Header.Get("X-API-Key"))
+	require.Equal(t, "tenant-1", req.Header.Get("X-Tenant"))
+	require.Empty(t, req.Header.Get("Authorization"))
+}
+
+func TestNewRejectsAPIKeyWithoutHeader(t *testing.T) {
+	_, err := NewRequestAuthenticator(Config{Scheme: SchemeAPIKey})
+	require.EqualError(t, err, "at least one API key header is required")
+}
+
+func TestNewRejectsInvalidExplicitAuthenticationConfiguration(t *testing.T) {
+	tests := []struct {
+		name   string
+		config Config
+		error  string
+	}{
+		{
+			name:   "unsupported scheme without credentials",
+			config: Config{Scheme: "CUSTOM"},
+			error:  `unsupported outbound authentication scheme "CUSTOM"`,
+		},
+		{
+			name:   "unsupported scheme with bearer token",
+			config: Config{Scheme: "CUSTOM", BearerToken: "token"},
+			error:  `unsupported outbound authentication scheme "CUSTOM"`,
+		},
+		{
+			name:   "bearer scheme without token",
+			config: Config{Scheme: SchemeBearer},
+			error:  "bearer token is required",
+		},
+		{
+			name:   "basic scheme without username",
+			config: Config{Scheme: SchemeBasic},
+			error:  "basic username is required and cannot contain a colon",
+		},
+		{
+			name:   "basic username with colon",
+			config: Config{Scheme: SchemeBasic, BasicUsername: "client:id"},
+			error:  "basic username is required and cannot contain a colon",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := NewRequestAuthenticator(test.config)
+			require.EqualError(t, err, test.error)
+		})
+	}
+}
+
+func TestValidateAPIKeyHeader(t *testing.T) {
+	tests := []struct {
+		name        string
+		headerName  string
+		headerValue string
+		valid       bool
+	}{
+		{name: "valid", headerName: "x-api-key", headerValue: "secret", valid: true},
+		{name: "invalid name", headerName: "X Key", headerValue: "secret"},
+		{name: "invalid separator", headerName: "X:Key", headerValue: "secret"},
+		{name: "line break in value", headerName: "X-API-Key", headerValue: "secret\r\nX-Other: value"},
+		{name: "content type", headerName: "Content-Type", headerValue: "text/plain"},
+		{name: "content length", headerName: "Content-Length", headerValue: "10"},
+		{name: "host", headerName: "Host", headerValue: "pdp.example.com"},
+		{name: "authorization", headerName: "Authorization", headerValue: "Bearer secret"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			name, err := ValidateAPIKeyHeader(test.headerName, test.headerValue)
+			if test.valid {
+				require.NoError(t, err)
+				require.Equal(t, "X-Api-Key", name)
+				return
+			}
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestMergeAPIKeyHeaders(t *testing.T) {
+	merged, err := MergeAPIKeyHeaders(
+		[]APIKeyHeader{
+			{Name: "X-API-Key", Value: MaskedSecretValue},
+			{Name: "X-Tenant", Value: "tenant-2"},
+		},
+		[]APIKeyHeader{
+			{Name: "X-API-Key", Value: "secret"},
+			{Name: "X-Tenant", Value: "tenant-1"},
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, []APIKeyHeader{
+		{Name: "X-Api-Key", Value: "secret"},
+		{Name: "X-Tenant", Value: "tenant-2"},
+	}, merged)
+}
+
+func TestMergeAPIKeyHeadersRejectsUnknownMaskedHeader(t *testing.T) {
+	_, err := MergeAPIKeyHeaders(
+		[]APIKeyHeader{{Name: "X-Unknown", Value: MaskedSecretValue}},
+		[]APIKeyHeader{{Name: "X-API-Key", Value: "secret"}},
+	)
+	require.EqualError(t, err, `stored API key header "X-Unknown" was not found`)
+}
+
+func TestNewInfersAuthenticationScheme(t *testing.T) {
+	authenticator, err := NewRequestAuthenticator(Config{BearerToken: "token"})
+	require.NoError(t, err)
+
+	req := httptestRequest(t)
+	authenticator.ApplyAuthentication(req)
+
+	require.Equal(t, "Bearer token", req.Header.Get("Authorization"))
+}
+
+func TestConfigFromAuthenticationAcceptsOnlySelectedCredentials(t *testing.T) {
+	tests := []struct {
+		name           string
+		authentication *Authentication
+		scheme         string
+		valid          bool
+	}{
+		{name: "none", authentication: &Authentication{Scheme: SchemeNone}, scheme: SchemeNone, valid: true},
+		{name: "bearer", authentication: &Authentication{
+			Scheme: SchemeBearer, Bearer: &BearerCredentials{Token: "token"},
+		}, scheme: SchemeBearer, valid: true},
+		{name: "basic", authentication: &Authentication{
+			Scheme: SchemeBasic, Basic: &BasicCredentials{Username: "client"},
+		}, scheme: SchemeBasic, valid: true},
+		{name: "API key", authentication: &Authentication{
+			Scheme: SchemeAPIKey, APIKey: &APIKeyCredentials{Headers: []APIKeyHeader{{Name: "X-API-Key", Value: "secret"}}},
+		}, scheme: SchemeAPIKey, valid: true},
+		{name: "mixed credentials", authentication: &Authentication{
+			Scheme: SchemeBearer,
+			Bearer: &BearerCredentials{Token: "token"},
+			APIKey: &APIKeyCredentials{Headers: []APIKeyHeader{{Name: "X-API-Key", Value: "secret"}}},
+		}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			config, err := ConfigFromAuthentication(test.authentication)
+			if !test.valid {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, test.scheme, config.Scheme)
+		})
+	}
+}
+
+func httptestRequest(t *testing.T) *http.Request {
+	t.Helper()
+	return httptest.NewRequest(http.MethodGet, "https://example.com", nil)
+}

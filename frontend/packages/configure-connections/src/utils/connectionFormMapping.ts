@@ -1,10 +1,11 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {parseKeyValuePairs, serializeKeyValuePairs} from './keyValuePairs';
 import type {ConnectionFieldDef} from '../config/connectionFormFields';
-import type {ConnectionRequest, ConnectionResponse} from '../models/connection';
+import type {APIKeyHeader, ConnectionRequest, ConnectionResponse} from '../models/connection';
 
-/** The placeholder value the API returns for stored secrets. Must never be sent back. */
+/** The placeholder value the API returns for stored secrets. */
 export const MASKED_SECRET = '******';
 
 /** Flat string-keyed form state shared by all per-vendor forms. */
@@ -41,6 +42,11 @@ export function responseToFormValues(
     }
     if (field.kind === 'scopes') {
       values[field.name] = (response.scopes ?? []).join(' ');
+      continue;
+    }
+    if (field.name === 'apiKeyHeaders') {
+      const headers: APIKeyHeader[] = response.authentication?.apiKey?.headers ?? [];
+      values[field.name] = serializeKeyValuePairs(headers);
       continue;
     }
     if (field.name === 'redirectUri') {
@@ -100,6 +106,16 @@ export function formValuesToRequest(
       continue;
     }
 
+    if (field.name === 'apiKeyHeaders') {
+      const headers: APIKeyHeader[] = parseKeyValuePairs(raw);
+      if (headers.length > 0) {
+        payload['authentication'] = {scheme: 'API_KEY', apiKey: {headers}};
+      } else if (options.mode === 'edit') {
+        payload['authentication'] = {scheme: 'NONE'};
+      }
+      continue;
+    }
+
     if (field.kind === 'switch') {
       payload[field.name] = raw === 'true';
       continue;
@@ -150,6 +166,14 @@ export function validateConnectionForm(
 
     if (field.kind === 'readonly-copy' || field.kind === 'scopes' || field.kind === 'switch') {
       continue;
+    }
+
+    if (field.kind === 'key-value' && raw !== '') {
+      const pairs = parseKeyValuePairs(raw);
+      if (pairs.some((pair) => pair.name.trim() === '' || pair.value.trim() === '')) {
+        errors[field.name] = 'connections:validation.keyValuePair';
+        continue;
+      }
     }
 
     const requiredWhen: string | undefined = field.requiredWhen;

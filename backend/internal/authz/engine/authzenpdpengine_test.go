@@ -7,14 +7,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
@@ -22,7 +25,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
+	"github.com/thunder-id/thunderid/internal/system/outboundauthn"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/tests/mocks/httpmock"
 )
 
 type legacyAuthZENPDP struct {
@@ -36,6 +41,62 @@ type AuthZENPDPEngineTestSuite struct {
 
 func TestAuthZENPDPEngineTestSuite(t *testing.T) {
 	suite.Run(t, new(AuthZENPDPEngineTestSuite))
+}
+
+func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPPostAppliesAuthentication() {
+	tests := []struct {
+		name   string
+		config outboundauthn.Config
+		assert func(*http.Request)
+	}{
+		{
+			name: "none", config: outboundauthn.Config{Scheme: outboundauthn.SchemeNone},
+			assert: func(req *http.Request) { suite.Empty(req.Header.Get("Authorization")) },
+		},
+		{
+			name: "bearer", config: outboundauthn.Config{Scheme: outboundauthn.SchemeBearer, BearerToken: "token"},
+			assert: func(req *http.Request) { suite.Equal("Bearer token", req.Header.Get("Authorization")) },
+		},
+		{
+			name: "basic", config: outboundauthn.Config{
+				Scheme: outboundauthn.SchemeBasic, BasicUsername: "client", BasicPassword: "secret",
+			},
+			assert: func(req *http.Request) { suite.Equal("Basic Y2xpZW50OnNlY3JldA==", req.Header.Get("Authorization")) },
+		},
+		{
+			name: "multiple API keys", config: outboundauthn.Config{
+				Scheme: outboundauthn.SchemeAPIKey,
+				APIKeyHeaders: map[string]string{
+					"X-First-Key":  "first-secret",
+					"X-Second-Key": "second-secret",
+				},
+			},
+			assert: func(req *http.Request) {
+				suite.Equal("first-secret", req.Header.Get("X-First-Key"))
+				suite.Equal("second-secret", req.Header.Get("X-Second-Key"))
+			},
+		},
+	}
+
+	for _, test := range tests {
+		suite.Run(test.name, func() {
+			client := httpmock.NewHTTPClientInterfaceMock(suite.T())
+			client.EXPECT().Do(mock.Anything).Run(test.assert).Return(&http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"decision": true}`)),
+			}, nil).Once()
+			authenticator, err := outboundauthn.NewRequestAuthenticator(test.config)
+			suite.Require().NoError(err)
+			engine := &authZENPDPEngine{client: client}
+			var result authzen.AccessEvaluationResponse
+			err = engine.post(context.Background(), &authZENPDPSettings{
+				timeout:       time.Second,
+				authenticator: authenticator,
+			}, "https://pdp.example.com/access/v1/evaluation", []byte(`{}`), &result)
+			suite.Require().NoError(err)
+			suite.True(result.Decision)
+		})
+	}
 }
 
 type legacyAuthZENPDPService struct {

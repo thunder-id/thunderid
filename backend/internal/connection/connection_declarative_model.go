@@ -5,6 +5,7 @@ package connection
 
 import (
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/system/outboundauthn"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -43,6 +44,9 @@ type connectionExportModel struct {
 	AuthZENPDPBatchEndpoint string `yaml:"batchEndpoint,omitempty"            json:"batchEndpoint,omitempty"`
 	AuthZENPDPTimeoutMS     int    `yaml:"timeoutMs,omitempty"                json:"timeoutMs,omitempty"`
 	AuthZENPDPRetryCount    *int   `yaml:"retryCount,omitempty"               json:"retryCount,omitempty"`
+
+	Authentication *outboundauthn.Authentication `yaml:"authentication,omitempty" json:"authentication,omitempty"`
+
 	//nolint:lll
 	SubjectAttributeMappings []authzenpdp.SubjectAttributeMapping `yaml:"subjectAttributeMappings,omitempty" json:"subjectAttributeMappings,omitempty"`
 
@@ -54,6 +58,5 @@ type connectionExportModel struct {
 	SenderID    string `yaml:"senderId,omitempty"    json:"senderId,omitempty"`
 	URL         string `yaml:"url,omitempty"         json:"url,omitempty"`
 	HTTPMethod  string `yaml:"httpMethod,omitempty"  json:"httpMethod,omitempty"`
-	HTTPHeaders string `yaml:"httpHeaders,omitempty" json:"httpHeaders,omitempty"`
-	ContentType string `yaml:"contentType,omitempty" json:"contentType,omitempty"`
+	ContentType string `yaml:"contentType,omitempty"    json:"contentType,omitempty"`
 }

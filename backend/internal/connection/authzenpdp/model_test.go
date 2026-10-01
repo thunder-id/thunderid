@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/outboundauthn"
 )
 
 func TestMain(m *testing.M) {
@@ -92,10 +93,66 @@ func TestValidateEndpoint(t *testing.T) {
 	}
 }
 
+func TestValidateConnectionRequiresHTTPSForRemoteAuthenticatedEndpoints(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		batch    string
+		scheme   string
+		valid    bool
+	}{
+		{
+			name: "unauthenticated remote HTTP", endpoint: "http://pdp.example.com/evaluation",
+			scheme: "NONE", valid: true,
+		},
+		{
+			name: "authenticated remote HTTPS", endpoint: "https://pdp.example.com/evaluation",
+			scheme: "BEARER", valid: true,
+		},
+		{
+			name: "basic authenticated remote HTTPS", endpoint: "https://pdp.example.com/evaluation",
+			scheme: "BASIC", valid: true,
+		},
+		{
+			name: "authenticated localhost HTTP", endpoint: "http://localhost:3592/evaluation",
+			scheme: "API_KEY", valid: true,
+		},
+		{
+			name: "authenticated IPv4 loopback HTTP", endpoint: "http://127.0.0.1:3592/evaluation",
+			scheme: "API_KEY", valid: true,
+		},
+		{
+			name: "authenticated IPv6 loopback HTTP", endpoint: "http://[::1]:3592/evaluation",
+			scheme: "API_KEY", valid: true,
+		},
+		{name: "authenticated remote HTTP", endpoint: "http://pdp.example.com/evaluation", scheme: "BEARER"},
+		{name: "basic authenticated remote HTTP", endpoint: "http://pdp.example.com/evaluation", scheme: "BASIC"},
+		{
+			name: "authenticated remote HTTP batch endpoint", endpoint: "https://pdp.example.com/evaluation",
+			batch: "http://pdp.example.com/evaluations", scheme: "API_KEY",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateConnection(AuthZENPDPConnection{
+				Endpoint:             tt.endpoint,
+				BatchEndpoint:        tt.batch,
+				AuthenticationScheme: tt.scheme,
+			})
+			if tt.valid {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, "HTTPS is required when authentication is configured")
+		})
+	}
+}
+
 func TestFromRequestPreservesNativeSubjectMappings(t *testing.T) {
 	retries := 2
 	service := &AuthZENPDPService{defaults: config.AuthZENPDPConfig{TimeoutMS: 1200, RetryCount: &retries}}
-	connection := service.fromRequest(ConnectionRequest{
+	connection, err := service.fromRequest(ConnectionRequest{
 		Name:          "PDP",
 		Endpoint:      "https://pdp.example.com",
 		BatchEndpoint: "https://pdp.example.com/batch",
@@ -107,6 +164,7 @@ func TestFromRequestPreservesNativeSubjectMappings(t *testing.T) {
 			},
 		}},
 	})
+	require.NoError(t, err)
 
 	require.Equal(t, "https://pdp.example.com/batch", connection.BatchEndpoint)
 	require.Equal(t, 1200, connection.TimeoutMS)
@@ -129,6 +187,55 @@ func TestToResponseSerializesConnection(t *testing.T) {
 	require.Equal(t, "authzen-pdp", response.Type)
 	require.Equal(t, "https://pdp.example.com/access/v1/evaluation", response.Endpoint)
 	require.Equal(t, "https://pdp.example.com/access/v1/evaluations", response.BatchEndpoint)
+}
+
+func TestAuthenticationPropertiesRejectsInvalidAPIKeyHeaders(t *testing.T) {
+	tests := []struct {
+		name   string
+		header APIHeader
+	}{
+		{name: "invalid name", header: APIHeader{Name: "X Key", Value: "secret"}},
+		{name: "line break in value", header: APIHeader{Name: "X-API-Key", Value: "secret\nvalue"}},
+		{name: "reserved header", header: APIHeader{Name: "Content-Type", Value: "text/plain"}},
+		{name: "masked value", header: APIHeader{Name: "X-API-Key", Value: outboundauthn.MaskedSecretValue}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, _, err := authenticationProperties(&AuthenticationRequest{
+				Scheme: "API_KEY",
+				APIKey: &APIKeyAuthentication{Headers: []APIHeader{test.header}},
+			})
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestAuthenticationPropertiesRequiresSelectedCredentials(t *testing.T) {
+	tests := []struct {
+		name    string
+		request AuthenticationRequest
+	}{
+		{name: "none with bearer", request: AuthenticationRequest{
+			Scheme: outboundauthn.SchemeNone, Bearer: &BearerAuthentication{Token: "token"},
+		}},
+		{name: "bearer without bearer credentials", request: AuthenticationRequest{Scheme: outboundauthn.SchemeBearer}},
+		{name: "basic with API key credentials", request: AuthenticationRequest{
+			Scheme: outboundauthn.SchemeBasic, APIKey: &APIKeyAuthentication{},
+		}},
+		{name: "API key with bearer credentials", request: AuthenticationRequest{
+			Scheme: outboundauthn.SchemeAPIKey,
+			Bearer: &BearerAuthentication{Token: "token"},
+			APIKey: &APIKeyAuthentication{Headers: []APIHeader{{Name: "X-API-Key", Value: "secret"}}},
+		}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, _, err := authenticationProperties(&test.request)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestRuntimeConfigPreservesSubjectAttributeMappings(t *testing.T) {
