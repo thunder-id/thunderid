@@ -92,7 +92,7 @@ Fetching that URL returns the metadata document:
 }
 ```
 
-The client resolves the `authorization_servers` entry against <ProductName />'s own [Server Metadata](../../../protocols/oauth-oidc/server-metadata) document to discover the authorization, token, and JWKS endpoints, then runs an OAuth flow to get a token. How the client itself gets OAuth credentials, as a pre-registered application or through Dynamic Client Registration, is covered in [MCP Client Identity](../../mcp-clients).
+The client resolves the `authorization_servers` entry against <ProductName />'s own [Server Metadata](../../../protocols/oauth-oidc/server-metadata) document to discover the authorization, token, and JWKS endpoints, then runs an OAuth flow to get a token. How the client itself gets OAuth credentials, from its metadata document, as a pre-registered application, or through Dynamic Client Registration, is covered in [MCP Client Identity](../../mcp-clients).
 
 ## Step 5: Validate Tokens at the Tool Boundary
 
@@ -133,5 +133,5 @@ For those cases, have your MCP server call <ProductName /> as an AuthZEN policy 
 ## Next Steps
 
 - [Secure Your MCP Server (Python)](../../../../getting-started/connect-your-mcp/python): a complete, runnable version of this guide using FastMCP.
-- [MCP Client Identity](../../mcp-clients): register the clients that connect to your MCP server, or let them self-register through Dynamic Client Registration.
+- [MCP Client Identity](../../mcp-clients): register the clients that connect to your MCP server from their metadata documents or by configuring them manually, or let them self-register through Dynamic Client Registration.
 - [Securing MCP](../../../../use-cases/ai-agents/mcp-authorization/overview): the broader pattern for securing MCP servers and governing MCP clients.

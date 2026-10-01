@@ -1,0 +1,62 @@
+---
+title: Register an MCP Client from Its Metadata Document
+docType: guide
+persona: iam
+sidebar_position: 4
+description: Register Claude, ChatGPT, Visual Studio Code, or any MCP client that publishes a Client ID Metadata Document, after reviewing what its document declares.
+---
+
+# Register an MCP Client from Its Metadata Document
+
+Register an MCP client from its Client ID Metadata Document (CIMD) when its vendor publishes one. The client's ID is an HTTPS URL on the vendor's domain, and that URL serves the client's name, redirect URIs, and how it authenticates. You review what the document declares, and <ProductName /> creates the application from it. You do not enter redirect URIs or credentials yourself.
+
+<ProductName /> reads the document only when you register or re-fetch the client. When a user signs in, the client authenticates like any other application.
+
+For a client that picks a new callback port each time it starts, such as Claude Code, use [Dynamic Client Registration](../dynamic-client-registration) instead.
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get Started](../../../../getting-started/get-thunderid).
+- You can sign in to the <ProductName /> Console.
+- For a client without a tile in the Console, its metadata document URL.
+
+<Stepper stepNode="h2" as="h2">
+
+## Start the Application Wizard
+
+1. Sign in to the <ProductName /> Console.
+2. Navigate to **Applications** and click **Add Application**.
+3. Select **MCP Client**.
+4. If prompted, select an organization unit and click **Continue**.
+
+## Choose the Client
+
+On **Which MCP client are you connecting?**, do one of the following:
+
+- **For Claude, ChatGPT, or Visual Studio Code**, click its tile. <ProductName /> creates the application straight away and opens it.
+- **For any other client**, select **Another client with a CIMD**, enter its document URL, and click **Fetch document**. Review the preview, click **Continue**, adjust the name on the Details step if needed, and click **Finish**.
+
+</Stepper>
+
+The preview shows who publishes the client, how it authenticates, and where sign-in may return to. A redirect URI on the user's device is marked with a laptop icon. If every redirect URI returns to the user's device, the preview warns that any program on that device can present the client's identity, so register the client only if you trust it.
+
+## Review and Update the Client
+
+Open the application's **General** tab. A **CIMD** section shows the values taken from the document, read-only. Configure everything else, such as allowed user types and the sign-in flow, as you would for any other application.
+
+When the vendor changes its document, <ProductName /> does not pick up the change on its own. Click **Re-fetch document**, review the changes, click **Apply**, and then **Save**.
+
+## If a Document Is Rejected
+
+The Console shows why next to the URL, and nothing is created. The usual causes are:
+
+- The URL is not an `https` URL with a host name and a path.
+- The document cannot be retrieved, is not JSON, or its `client_id` does not match the URL.
+- A redirect URI is neither on the client's own domain nor on the user's device.
+- The client authenticates with a client secret, which a public document cannot carry.
+
+## Next Steps
+
+- [MCP Client Identity](../../mcp-clients): Why metadata documents exist, and how they compare with configuring a client manually and Dynamic Client Registration.
+- [Configure an MCP Client Manually](../register-a-client): Configure a client by hand when it does not publish a metadata document.
+- [Secure Your MCP Server](../../mcp-server/secure-your-mcp-server): Protect the MCP server these clients connect to.

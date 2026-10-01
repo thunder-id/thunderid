@@ -31,33 +31,39 @@ A user-delegated client needs a redirect URI to receive the authorization code. 
 
 That last case is why static registration alone does not cover every MCP client.
 
-## Static vs. Dynamic Registration
+## Registering Clients You Did Not Build
 
-Registering a client ahead of time, giving it a client ID and a fixed redirect URI before it ever connects, works when you know the client in advance. It does not work for an MCP server that any client might connect to: the server's operator cannot enumerate every client that will ever show up, and a client that picks a random callback port has no fixed redirect URI to register in the first place.
+Registering a client ahead of time, giving it a client ID and a fixed redirect URI before it ever connects, works when you know the client in advance. Many MCP clients are different. Claude and Visual Studio Code are the same client on every user's device, and they connect to MCP servers their vendor has never seen, so they cannot arrive with a client ID your server already knows, and you cannot pre-register every install.
 
-[RFC 7591 Dynamic Client Registration](../../protocols/oauth-oidc/dynamic-client-registration) (DCR) solves this by letting a client register itself against a registration endpoint at connection time, supplying its own redirect URI and receiving a client ID back immediately. This is why DCR shows up so often in MCP deployments: the client population is open-ended in a way most OAuth deployments are not. See that page for the protocol details; this page covers only the choice between the two approaches.
+[RFC 7591 Dynamic Client Registration](../../protocols/oauth-oidc/dynamic-client-registration) (DCR) handles this by letting each install register itself at connection time, supplying its own metadata and receiving a client ID back. That removes the manual step, but:
 
-The MCP specification's current revision deprecates DCR in favor of Client ID Metadata Documents, keeping DCR only for backward compatibility, so treat it as the fallback path rather than the default going forward.
+- **Every install becomes a new client.** A thousand users of the same app leave a thousand registrations behind.
+- **The metadata is self-asserted.** A program that calls itself "Claude" can register its own redirect URI and receive the authorization codes meant for Claude.
+- **There is no stable client ID to allow or refuse**, since every install has a different one.
+
+The MCP specification's current revision deprecates DCR in favor of Client ID Metadata Documents (CIMD), keeping DCR only for backward compatibility. With a metadata document, the vendor publishes the client's metadata as a JSON document at an HTTPS URL on its own domain, and that URL is the client ID on every install. The redirect URIs come from the vendor's document, so authorization codes return only to the vendor's domain or to the user's own device. In <ProductName />, you register such a client once from its document, and <ProductName /> reads the document only when you register or re-fetch it.
 
 ## How <ProductName /> Fits
 
-<ProductName /> represents an MCP client as the **MCP Client** application type, configured as either user-delegated or machine-to-machine. There are exactly two ways to give a client OAuth credentials: register it yourself in the Console, or let it register itself the first time it connects.
+<ProductName /> represents an MCP client as the **MCP Client** application type, configured as either user-delegated or machine-to-machine. There are three ways to create a client: register it from its metadata document, configure it manually in the Console, or let it register itself the first time it connects.
 
-### Register in the Console vs. Dynamic Client Registration
+### Compare the Registration Options
 
-| | Register in the Console | Dynamic Client Registration |
-|---|---|---|
-| **How it works** | You create the application ahead of time and set its redirect URI. | The client registers itself against the DCR endpoint the first time it connects. |
-| **Best for** | A fixed set of known clients, such as MCP Inspector or your own agent. | Clients you cannot enumerate in advance, or that expect DCR, such as Claude Code. |
-| **What you control** | The client's name, redirect URI, and client type, set up front in the Console. | Whether Dynamic Client Registration is enabled, and whether it requires authentication. |
+| | Metadata document | Configure manually | Dynamic Client Registration |
+|---|---|---|---|
+| **Who defines the client** | The vendor's metadata document | You, in the Console | The client, when it registers itself |
+| **How it works** | You enter the client's metadata document URL, or pick a known client, and review what the document declares before <ProductName /> creates the application. | You create the application ahead of time and set its redirect URI. | The client registers itself against the DCR endpoint the first time it connects. |
+| **Best for** | Third-party clients that publish a metadata document, such as Claude and Visual Studio Code. | Clients you build or configure yourself, such as MCP Inspector or your own agent. | Clients you cannot enumerate in advance, or that expect DCR, such as Claude Code. |
+| **What you control** | Which clients are registered. The redirect URIs and authentication method come from the vendor's document. | The client's name, redirect URI, and client type, set up front in the Console. | Whether Dynamic Client Registration is enabled, and whether it requires authentication. |
 
 ### Which Should You Pick?
 
-Register the client in the Console when you know it ahead of time and can set its redirect URI yourself. You get a client ID before the client ever connects, and the client type step configures the correct grant type for you. Reach for Dynamic Client Registration when you cannot enumerate every client in advance, such as a third-party AI host, or when the client itself expects DCR and has no way to accept a pre-issued client ID, such as Claude Code.
+Register the client from its metadata document when its vendor publishes one. You choose which clients may connect, and the vendor keeps the redirect URIs and keys accurate. Configure the client manually when you know it ahead of time and can set its redirect URI yourself, such as a client you built. Reach for Dynamic Client Registration when you cannot enumerate every client in advance, or when the client expects DCR and picks a random callback port each time it starts, such as Claude Code.
 
-The choice is not exclusive at the deployment level. You can pre-register some clients in the Console while leaving Dynamic Client Registration enabled for others.
+The choice is not exclusive at the deployment level. You can register some clients from their metadata documents, configure others manually, and leave Dynamic Client Registration enabled for the rest.
 
 ## Related
 
-- [Register an MCP Client in the Console](./register-a-client): create an application for a known client.
+- [Register an MCP Client from Its Metadata Document](./client-id-metadata-document): register a client its vendor describes in a metadata document.
+- [Configure an MCP Client Manually](./register-a-client): create an application for a known client.
 - [Enable Dynamic Client Registration](./dynamic-client-registration): let clients register themselves on first connect.

@@ -1,14 +1,14 @@
 ---
-title: Register an MCP Client in the Console
+title: Configure an MCP Client Manually
 docType: guide
 persona: iam
 sidebar_position: 2
-description: Register an MCP client application in the Console and choose between the user-delegated and machine-to-machine client types.
+description: Configure an MCP client manually in the Console, setting its redirect URIs and choosing between the user-delegated and machine-to-machine client types.
 ---
 
-# Register an MCP Client in the Console
+# Configure an MCP Client Manually
 
-Register an MCP client in the Console when you know its redirect URI ahead of time, such as MCP Inspector or a client you built yourself. This gives you a stable Client ID before the client ever connects.
+Configure an MCP client manually when you know its redirect URI ahead of time, such as MCP Inspector or a client you built yourself. This gives you a stable Client ID before the client ever connects. If the client's vendor publishes a metadata document, [register it from that document](../client-id-metadata-document) instead.
 
 ## Prerequisites
 
@@ -23,8 +23,9 @@ Register an MCP client in the Console when you know its redirect URI ahead of ti
 1. Sign in to the <ProductName /> Console.
 2. Navigate to **Applications** and click **Add Application**.
 3. Select **MCP Client**.
-4. Enter a name for the client.
-5. If prompted, select an organization unit.
+4. If prompted, select an organization unit.
+5. On **Which MCP client are you connecting?**, select **I'll configure it myself** and click **Continue**. The known client tiles and **Another client with a CIMD** register a client from its metadata document instead. See [Register an MCP Client from Its Metadata Document](../client-id-metadata-document).
+6. Enter a name for the client.
 
 ## Step 2: Choose the Client Type
 

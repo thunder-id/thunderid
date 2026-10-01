@@ -547,7 +547,12 @@ const sidebars: SidebarsConfig = {
                 {
                   type: 'doc',
                   id: 'guides/mcp/mcp-clients/register-a-client',
-                  label: 'Register in the Console',
+                  label: 'Configure Manually',
+                },
+                {
+                  type: 'doc',
+                  id: 'guides/mcp/mcp-clients/client-id-metadata-document',
+                  label: 'Client ID Metadata Document',
                 },
                 {
                   type: 'doc',

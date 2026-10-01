@@ -66,6 +66,7 @@ hiddenTags:
 fileGroupNames:
   agent.yaml: ~                  # Agents + Agent Types claimed by Identities
   application.yaml: Applications
+  cimd.yaml: Applications         # Client ID Metadata Document preview, used to register applications
   authzen.yaml: Access Control
   authentication.yaml: ~         # all tags claimed by Authentication
   connections.yaml: Connections
