@@ -109,7 +109,10 @@ func (s *cachedBackedEntityTypeStore) UpdateEntityTypeByID(
 	}
 
 	if existing != nil {
-		s.invalidateEntityTypeCache(ctx, existing.Category, existing.ID, existing.Name)
+		// Use the category parameter, not existing.Category: EntityType.Category is tagged
+		// json:"-", so a value served from the Redis cache backend has it blanked out by the
+		// JSON round trip, which would compute the wrong invalidation key.
+		s.invalidateEntityTypeCache(ctx, category, existing.ID, existing.Name)
 	}
 
 	s.cacheEntityType(ctx, &entityType)
@@ -138,7 +141,10 @@ func (s *cachedBackedEntityTypeStore) DeleteEntityTypeByID(ctx context.Context, 
 	}
 
 	if existing != nil {
-		s.invalidateEntityTypeCache(ctx, existing.Category, existing.ID, existing.Name)
+		// Use the category parameter, not existing.Category: EntityType.Category is tagged
+		// json:"-", so a value served from the Redis cache backend has it blanked out by the
+		// JSON round trip, which would compute the wrong invalidation key.
+		s.invalidateEntityTypeCache(ctx, category, existing.ID, existing.Name)
 	}
 
 	return nil
