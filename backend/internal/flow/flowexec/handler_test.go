@@ -191,6 +191,34 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_PropagatesInboundSSOCo
 	s.Equal("inbound-handle", gotInbound.HandleFor("flow-1"))
 }
 
+func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_PropagatesClientInfo() {
+	t := s.T()
+	mockSvc := NewFlowExecServiceInterfaceMock(t)
+
+	var got session.ClientInfo
+	mockSvc.EXPECT().Execute(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(ctx context.Context, _ string, _ string, _ string, _ bool, _ string,
+			_ map[string]string, _ string, _ string, _ string) {
+			got = session.ClientInfoFrom(ctx)
+		}).
+		Return(&FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete},
+			(*tidcommon.ServiceError)(nil))
+
+	h := newFlowExecutionHandler(mockSvc, session.NewCookieTransport(false), 0)
+	req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString(testFlowExecRequestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh) Chrome/140.0")
+	req.RemoteAddr = "203.0.113.10:54321"
+	w := httptest.NewRecorder()
+
+	h.HandleFlowExecutionRequest(w, req)
+
+	s.Equal(http.StatusOK, w.Code)
+	s.Equal("203.0.113.10", got.IP)
+	s.Equal("Mozilla/5.0 (Macintosh) Chrome/140.0", got.UserAgent)
+}
+
 // TestHandleFlowExecutionRequest_WritesSSOHandleCookie verifies a minted handle is emitted as the
 // per-flow cookie with the configured TTL and secure/http-only transport settings.
 func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_WritesSSOHandleCookie() {

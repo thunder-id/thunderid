@@ -50,10 +50,17 @@ func (s *StoreTestSuite) sampleSession() Session {
 		LastActiveAt:    base,
 		// IdleExpiresAt left zero on purpose to exercise the nullable path.
 		AbsoluteExpiresAt: base.Add(8 * time.Hour),
-		State:             StateActive,
-		Version:           1,
+		Properties: SessionProperties{
+			UserAgent:    "Mozilla/5.0 (Macintosh) Chrome/140.0",
+			LastActiveIP: "203.0.113.24",
+		},
+		State:   StateActive,
+		Version: 1,
 	}
 }
+
+// sampleProperties is sampleSession's properties as stored in the PROPERTIES column.
+const sampleProperties = `{"userAgent":"Mozilla/5.0 (Macintosh) Chrome/140.0","lastActiveIp":"203.0.113.24"}`
 
 func (s *StoreTestSuite) TestNewStore() {
 	st := newStore(s.mockDBProvider, testDeploymentID)
@@ -69,7 +76,8 @@ func (s *StoreTestSuite) TestCreate_Success() {
 		sess.SessionID, testDeploymentID, sess.SubjectID, sess.FlowID, sess.FlowVersion,
 		sess.FlowExecutionID, sess.HandleID,
 		sess.AuthenticatedAt, sess.CreatedAt, sess.LastActiveAt,
-		nil, sess.AbsoluteExpiresAt, string(sess.State), sess.Version).
+		nil, sess.AbsoluteExpiresAt, sampleProperties,
+		string(sess.State), sess.Version).
 		Return(int64(1), nil)
 
 	err := s.store.Create(context.Background(), sess)
@@ -87,7 +95,8 @@ func (s *StoreTestSuite) TestCreate_DBError() {
 		sess.SessionID, testDeploymentID, sess.SubjectID, sess.FlowID, sess.FlowVersion,
 		sess.FlowExecutionID, sess.HandleID,
 		sess.AuthenticatedAt, sess.CreatedAt, sess.LastActiveAt,
-		nil, sess.AbsoluteExpiresAt, string(sess.State), sess.Version).
+		nil, sess.AbsoluteExpiresAt, sampleProperties,
+		string(sess.State), sess.Version).
 		Return(int64(0), errors.New("db down"))
 
 	err := s.store.Create(context.Background(), sess)
@@ -112,6 +121,7 @@ func (s *StoreTestSuite) TestGetByHandle_Hit() {
 		"last_active_at":      base,
 		"idle_expires_at":     nil,
 		"absolute_expires_at": base.Add(8 * time.Hour),
+		"properties":          []byte(`{"lastActiveIp":"203.0.113.10"}`),
 		"state":               "ACTIVE",
 		"version":             int64(3),
 	}
@@ -134,6 +144,31 @@ func (s *StoreTestSuite) TestGetByHandle_Hit() {
 	s.Equal(3, got.Version)
 	s.True(got.AbsoluteExpiresAt.Equal(base.Add(8 * time.Hour)))
 	s.True(got.IdleExpiresAt.IsZero())
+	s.Empty(got.Properties.UserAgent, "a key missing from the properties maps to an empty string")
+	s.Equal("203.0.113.10", got.Properties.LastActiveIP)
+}
+
+func (s *StoreTestSuite) TestBuildSessionFromRow_Properties() {
+	base := time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC)
+	row := func(properties interface{}) map[string]interface{} {
+		return map[string]interface{}{
+			"session_id": "sess-1", "subject_id": "user-1", "flow_id": "flow-1", "flow_version": int64(2),
+			"flow_execution_id": "exec-1", "handle_id": "handle-abc", "authenticated_at": base,
+			"created_at": base, "last_active_at": base, "state": "ACTIVE", "version": int64(1),
+			"properties": properties,
+		}
+	}
+
+	got, err := buildSessionFromRow(row(nil))
+	s.Require().NoError(err)
+	s.Equal(SessionProperties{}, got.Properties, "a session recorded without properties has none")
+
+	got, err = buildSessionFromRow(row(sampleProperties))
+	s.Require().NoError(err)
+	s.Equal(s.sampleSession().Properties, got.Properties)
+
+	_, err = buildSessionFromRow(row("{not json"))
+	s.ErrorContains(err, "failed to parse properties")
 }
 
 func (s *StoreTestSuite) TestGetByHandle_Miss() {
@@ -218,7 +253,7 @@ func (s *StoreTestSuite) TestUpdate_Success() {
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryUpdateSession,
 		sess.FlowVersion, sess.HandleID,
-		sess.LastActiveAt, nil, sess.AbsoluteExpiresAt,
+		sess.LastActiveAt, sampleProperties, nil, sess.AbsoluteExpiresAt,
 		string(sess.State), sess.SessionID, testDeploymentID, sess.Version).
 		Return(int64(1), nil)
 
@@ -230,8 +265,8 @@ func (s *StoreTestSuite) TestUpdate_Success() {
 }
 
 // TestTouchAuthenticatedAt_Success pins the parameter order of the refresh statement. The query
-// binds the new authentication time twice (AUTHENTICATED_AT and LAST_ACTIVE_AT) before the idle
-// deadline, so a reordering here would silently write the wrong column rather than fail.
+// binds the new authentication time twice (AUTHENTICATED_AT and LAST_ACTIVE_AT) and the properties
+// before the idle deadline, so a reordering here would silently write the wrong column rather than fail.
 func (s *StoreTestSuite) TestTouchAuthenticatedAt_Success() {
 	sess := s.sampleSession()
 	authAt := sess.LastActiveAt.Add(time.Hour)
@@ -239,10 +274,10 @@ func (s *StoreTestSuite) TestTouchAuthenticatedAt_Success() {
 
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryTouchAuthenticatedAt,
-		authAt, authAt, idleAt, sess.SessionID, testDeploymentID).
+		authAt, authAt, sampleProperties, idleAt, sess.SessionID, testDeploymentID).
 		Return(int64(1), nil)
 
-	err := s.store.TouchAuthenticatedAt(context.Background(), sess.SessionID, authAt, idleAt)
+	err := s.store.TouchAuthenticatedAt(context.Background(), sess.SessionID, authAt, idleAt, sess.Properties)
 
 	s.NoError(err)
 	s.mockDBClient.AssertExpectations(s.T())
@@ -257,10 +292,10 @@ func (s *StoreTestSuite) TestTouchAuthenticatedAt_NoRowsIsNotAnError() {
 
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryTouchAuthenticatedAt,
-		authAt, authAt, authAt, sess.SessionID, testDeploymentID).
+		authAt, authAt, nil, authAt, sess.SessionID, testDeploymentID).
 		Return(int64(0), nil)
 
-	err := s.store.TouchAuthenticatedAt(context.Background(), sess.SessionID, authAt, authAt)
+	err := s.store.TouchAuthenticatedAt(context.Background(), sess.SessionID, authAt, authAt, SessionProperties{})
 
 	s.NoError(err, "a vanished session must not fail the refresh")
 	s.mockDBClient.AssertExpectations(s.T())
@@ -280,15 +315,16 @@ func (s *StoreTestSuite) TestTouchAuthenticatedAt_IsMonotonic() {
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	// The newer authentication lands first and updates the row.
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryTouchAuthenticatedAt,
-		newer, newer, newer, sess.SessionID, testDeploymentID).
+		newer, newer, nil, newer, sess.SessionID, testDeploymentID).
 		Return(int64(1), nil)
 	// The older one arrives second; the predicate excludes the row, so nothing is overwritten.
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryTouchAuthenticatedAt,
-		older, older, older, sess.SessionID, testDeploymentID).
+		older, older, nil, older, sess.SessionID, testDeploymentID).
 		Return(int64(0), nil)
 
-	s.Require().NoError(s.store.TouchAuthenticatedAt(context.Background(), sess.SessionID, newer, newer))
-	s.NoError(s.store.TouchAuthenticatedAt(context.Background(), sess.SessionID, older, older),
+	s.Require().NoError(s.store.TouchAuthenticatedAt(context.Background(), sess.SessionID, newer, newer,
+		SessionProperties{}))
+	s.NoError(s.store.TouchAuthenticatedAt(context.Background(), sess.SessionID, older, older, SessionProperties{}),
 		"an out-of-order touch that changes nothing is still a success")
 
 	s.mockDBClient.AssertExpectations(s.T())
@@ -309,10 +345,10 @@ func (s *StoreTestSuite) TestTouchAuthenticatedAt_ExecuteError() {
 
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryTouchAuthenticatedAt,
-		authAt, authAt, authAt, sess.SessionID, testDeploymentID).
+		authAt, authAt, nil, authAt, sess.SessionID, testDeploymentID).
 		Return(int64(0), errors.New("db down"))
 
-	err := s.store.TouchAuthenticatedAt(context.Background(), sess.SessionID, authAt, authAt)
+	err := s.store.TouchAuthenticatedAt(context.Background(), sess.SessionID, authAt, authAt, SessionProperties{})
 
 	s.Error(err)
 	s.mockDBClient.AssertExpectations(s.T())
@@ -324,7 +360,7 @@ func (s *StoreTestSuite) TestUpdate_VersionConflict() {
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryUpdateSession,
 		sess.FlowVersion, sess.HandleID,
-		sess.LastActiveAt, nil, sess.AbsoluteExpiresAt,
+		sess.LastActiveAt, sampleProperties, nil, sess.AbsoluteExpiresAt,
 		string(sess.State), sess.SessionID, testDeploymentID, sess.Version).
 		Return(int64(0), nil)
 
@@ -451,7 +487,7 @@ func (s *StoreTestSuite) TestUpdate_DBError() {
 	sess := s.sampleSession()
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryUpdateSession,
-		sess.FlowVersion, sess.HandleID, sess.LastActiveAt, nil, sess.AbsoluteExpiresAt,
+		sess.FlowVersion, sess.HandleID, sess.LastActiveAt, sampleProperties, nil, sess.AbsoluteExpiresAt,
 		string(sess.State), sess.SessionID, testDeploymentID, sess.Version).
 		Return(int64(0), errors.New("db down"))
 

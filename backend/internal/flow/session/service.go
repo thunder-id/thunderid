@@ -89,6 +89,9 @@ type LoadCheckpointInput struct {
 	Session *Session
 	// Context is the checkpoint context the SSO-Check node fetched, or nil to read it.
 	Context *SessionContext
+	// ClientInfo is the requesting client's metadata; its IP is recorded as the session's last-active
+	// IP when the activity refresh runs.
+	ClientInfo ClientInfo
 }
 
 // SaveCheckpointInput carries the data a Session join needs to persist. The caller resolves the
@@ -108,6 +111,9 @@ type SaveCheckpointInput struct {
 	// the joining participant so logout can resolve the session to its families. Empty leaves the
 	// participant's tfid unset.
 	TokenFamilyID string
+	// ClientInfo is the requesting client's metadata, recorded on a session this save establishes and
+	// used to refresh the last-active IP of an existing one.
+	ClientInfo ClientInfo
 }
 
 // SaveCheckpointResult reports the outcome of a save. Handle is the session's handle and SessionID
@@ -197,12 +203,15 @@ func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 	// under-reports auth_time and makes a later max_age check reject a request it should allow.
 	if !created {
 		now := time.Now().UTC()
+		properties := target.Properties
+		properties.LastActiveIP = activeIP(in.ClientInfo, target)
 		if err := s.store.TouchAuthenticatedAt(ctx, target.SessionID, now,
-			now.Add(s.timeouts.Idle)); err != nil {
+			now.Add(s.timeouts.Idle), properties); err != nil {
 			// The checkpoint itself is still worth saving, so degrade rather than fail the login.
 			s.logger.Error(ctx, "Failed to refresh session authentication time", log.Error(err))
 		} else {
 			target.AuthenticatedAt = now
+			target.Properties = properties
 		}
 	}
 
@@ -291,6 +300,7 @@ func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 	now := time.Now().UTC()
 	if now.Sub(sess.LastActiveAt) >= s.timeouts.ActivityRefresh {
 		sess.LastActiveAt = now
+		sess.Properties.LastActiveIP = activeIP(in.ClientInfo, sess)
 		sess.IdleExpiresAt = now.Add(s.timeouts.Idle)
 		if updErr := s.store.Update(ctx, sess); updErr != nil {
 			s.logger.Warn(ctx, "Failed to refresh session last-active timestamp", log.Error(updErr))
@@ -590,8 +600,12 @@ func (s *service) establishSession(ctx context.Context, in SaveCheckpointInput) 
 		// caps the session's total lifetime. The resolver rejects a session past either deadline.
 		IdleExpiresAt:     now.Add(s.timeouts.Idle),
 		AbsoluteExpiresAt: now.Add(s.timeouts.Absolute),
-		State:             StateActive,
-		Version:           1,
+		Properties: SessionProperties{
+			UserAgent:    in.ClientInfo.UserAgent,
+			LastActiveIP: in.ClientInfo.IP,
+		},
+		State:   StateActive,
+		Version: 1,
 	}
 	if err := s.store.Create(ctx, newSession); err != nil {
 		return nil, false, err
@@ -628,4 +642,13 @@ func (s *service) recordParticipant(ctx context.Context, sessionID, appID, token
 		FirstJoinedAt: now,
 		LastActiveAt:  now,
 	})
+}
+
+// activeIP returns the IP to record as the session's last-active IP: the requesting client's, or the
+// one already recorded when the request carried none, so a refresh never erases a known address.
+func activeIP(client ClientInfo, sess *Session) string {
+	if client.IP != "" {
+		return client.IP
+	}
+	return sess.Properties.LastActiveIP
 }

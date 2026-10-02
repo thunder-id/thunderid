@@ -7,12 +7,22 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"net"
 	"net/http"
+	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // cookieNamePrefix prefixes every per-flow SSO cookie name.
 const cookieNamePrefix = "tid_sso_"
+
+const (
+	// maxUserAgentLength caps the User-Agent recorded in a session's properties.
+	maxUserAgentLength = 512
+	// maxIPLength caps the IP recorded in a session's properties, wide enough for any textual IPv6 address.
+	maxIPLength = 45
+)
 
 // CookieName derives the per-flow SSO cookie name from the flow ID. Each flow gets its
 // own cookie so sessions from different flows do not clobber each other's handle. The
@@ -115,4 +125,30 @@ func (c *cookieTransport) Clear(w http.ResponseWriter, cookieName string) {
 		Secure:   c.secure,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+// ClientInfoFromRequest extracts the client metadata recorded on a session from the request: the
+// peer IP address and the User-Agent header, each truncated to its maximum length. Invalid UTF-8 is
+// dropped from the User-Agent, since a client can send any bytes and only valid text is recorded.
+func ClientInfoFromRequest(r *http.Request) ClientInfo {
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		ip = r.RemoteAddr
+	}
+	return ClientInfo{
+		IP:        truncate(ip, maxIPLength),
+		UserAgent: truncate(strings.ToValidUTF8(r.UserAgent(), ""), maxUserAgentLength),
+	}
+}
+
+// truncate shortens s to at most maxBytes bytes without splitting a multi-byte character.
+func truncate(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	cut := maxBytes
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
 }

@@ -27,10 +27,11 @@ type sessionStore interface {
 	// returns errVersionConflict when the stored version no longer matches, and bumps the in-memory
 	// Version on success.
 	Update(ctx context.Context, s *Session) error
-	// TouchAuthenticatedAt records a fresh authentication inside an existing session and slides the
-	// idle deadline with it. It carries no version guard, so it never loses to a concurrent slide.
+	// TouchAuthenticatedAt records a fresh authentication inside an existing session, with the session's
+	// properties (carrying the IP it came from), and slides the idle deadline with it. It carries no
+	// version guard, so it never loses to a concurrent slide.
 	TouchAuthenticatedAt(ctx context.Context, sessionID string, authenticatedAt,
-		idleExpiresAt time.Time) error
+		idleExpiresAt time.Time, properties SessionProperties) error
 
 	// CreateContext persists (or overwrites) one checkpoint's session context for a session.
 	CreateContext(ctx context.Context, c SessionContext) error
