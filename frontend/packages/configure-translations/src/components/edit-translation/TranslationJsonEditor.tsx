@@ -23,8 +23,8 @@ export interface TranslationJsonEditorProps {
   values: Record<string, string>;
   /** Keys from the server — used to block adding new keys in non-custom namespaces. */
   serverKeys: string[];
-  /** Whether the active namespace is "custom", which allows adding new keys. */
-  isCustomNamespace: boolean;
+  /** Whether the active namespace permits admins to add brand-new keys (e.g. the custom and notification namespaces). */
+  isKeyCreationAllowedNamespace: boolean;
   /** Current color mode used to apply the Monaco editor theme. */
   colorMode: 'light' | 'dark';
   /**
@@ -71,7 +71,7 @@ export interface TranslationJsonEditorProps {
 export default function TranslationJsonEditor({
   values,
   serverKeys,
-  isCustomNamespace,
+  isKeyCreationAllowedNamespace,
   colorMode,
   onChange,
 }: TranslationJsonEditorProps): JSX.Element {
@@ -116,7 +116,7 @@ export default function TranslationJsonEditor({
             Object.entries(record).filter(([, v]) => typeof v === 'string') as [string, string][],
           );
           // In non-custom namespaces, strip any keys that don't already exist on the server
-          if (!isCustomNamespace) {
+          if (!isKeyCreationAllowedNamespace) {
             const allowed = new Set(serverKeys);
             stringRecord = Object.fromEntries(Object.entries(stringRecord).filter(([k]) => allowed.has(k)));
           }
@@ -134,7 +134,7 @@ export default function TranslationJsonEditor({
 
   return (
     <Box sx={{display: 'flex', flexDirection: 'column', height: '100%'}}>
-      {!isCustomNamespace && (
+      {!isKeyCreationAllowedNamespace && (
         <Alert severity="info" sx={{flexShrink: 0, borderRadius: 0, border: 'none'}}>
           {t('editor.readOnlyKeys')}
         </Alert>

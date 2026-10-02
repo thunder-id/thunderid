@@ -33,6 +33,9 @@ Namespaces group translations by feature or screen type. The following namespace
 | `onboarding` | User onboarding and invitation flow text, including user creation forms, invite modes, and completion messages. |
 | `invite` | Invitation link validation, completion messages, and error text. |
 | `elements` | Shared UI element labels such as user type selectors and field placeholders. |
+| `notification` | Text used in notification notification templates. |
+
+Unlike the other default namespaces, the `notification` namespace is seeded from the server bootstrap resources at `backend/cmd/server/bootstrap/01-default-resources.yaml` rather than compiled-in defaults. Its default keys and values are ingested into the translation store on first startup, so you can override them through the API or the Console exactly like any other namespace. Also, as with a custom namespace, add brand-new keys to it. See [Resolve Translations](../resolve-translations) for how overrides take priority over these seeded defaults.
 
 You can also create translations in custom namespaces. Namespace names accept only alphanumeric characters, underscores, and hyphens (maximum 64 characters).
 

@@ -27,8 +27,10 @@ export interface TranslationEditorCardProps {
   currentValues: Record<string, string>;
   /** Server-saved values for the selected namespace. */
   serverValues: Record<string, string>;
-  /** Whether the active namespace is "custom", which allows adding new keys. */
-  isCustomNamespace: boolean;
+  /** The currently selected namespace; used to key the fields view so its add-key draft resets per namespace. */
+  selectedNamespace: string | null;
+  /** Whether the active namespace permits admins to add brand-new keys (e.g. the custom and notification namespaces). */
+  isKeyCreationAllowedNamespace: boolean;
   /** Color mode passed to the JSON editor. */
   colorMode: 'light' | 'dark';
   /** Called when the user switches between the Fields and JSON tabs. */
@@ -61,7 +63,8 @@ export default function TranslationEditorCard({
   search,
   currentValues,
   serverValues,
-  isCustomNamespace,
+  selectedNamespace,
+  isKeyCreationAllowedNamespace,
   colorMode,
   onTabChange,
   onSearchChange,
@@ -120,10 +123,11 @@ export default function TranslationEditorCard({
             <Divider sx={{mt: 1}} />
             <Box sx={{flex: 1, overflow: 'auto', px: 2.5, py: 2}}>
               <TranslationFieldsView
+                key={selectedNamespace ?? ''}
                 localValues={currentValues}
                 serverValues={serverValues}
                 search={search}
-                isCustomNamespace={isCustomNamespace}
+                isKeyCreationAllowedNamespace={isKeyCreationAllowedNamespace}
                 onChange={onFieldChange}
                 onResetField={onResetField}
               />
@@ -136,7 +140,7 @@ export default function TranslationEditorCard({
             <TranslationJsonEditor
               values={currentValues}
               serverKeys={Object.keys(serverValues)}
-              isCustomNamespace={isCustomNamespace}
+              isKeyCreationAllowedNamespace={isKeyCreationAllowedNamespace}
               colorMode={colorMode}
               onChange={onJsonChange}
             />

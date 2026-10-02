@@ -17,7 +17,7 @@ const defaultProps = {
   localValues: sampleValues,
   serverValues: sampleValues,
   search: '',
-  isCustomNamespace: false,
+  isKeyCreationAllowedNamespace: false,
   onChange: vi.fn(),
   onResetField: vi.fn(),
 };
@@ -153,21 +153,21 @@ describe('TranslationFieldsView', () => {
   });
 
   describe('Add Key (custom namespace)', () => {
-    it('shows the Add Key button when isCustomNamespace is true', () => {
-      render(<TranslationFieldsView {...defaultProps} isCustomNamespace />);
+    it('shows the Add Key button when isKeyCreationAllowedNamespace is true', () => {
+      render(<TranslationFieldsView {...defaultProps} isKeyCreationAllowedNamespace />);
 
       expect(screen.getByText(t('editor.addKey'))).toBeInTheDocument();
     });
 
-    it('does not show the Add Key button when isCustomNamespace is false', () => {
-      render(<TranslationFieldsView {...defaultProps} isCustomNamespace={false} />);
+    it('does not show the Add Key button when isKeyCreationAllowedNamespace is false', () => {
+      render(<TranslationFieldsView {...defaultProps} isKeyCreationAllowedNamespace={false} />);
 
       expect(screen.queryByText(t('editor.addKey'))).not.toBeInTheDocument();
     });
 
     it('shows the add key form when the Add Key button is clicked', async () => {
       const user = userEvent.setup();
-      render(<TranslationFieldsView {...defaultProps} isCustomNamespace />);
+      render(<TranslationFieldsView {...defaultProps} isKeyCreationAllowedNamespace />);
 
       await user.click(screen.getByText(t('editor.addKey')));
 
@@ -178,7 +178,7 @@ describe('TranslationFieldsView', () => {
     it('calls onChange and closes the form when a new key is submitted', async () => {
       const onChange = vi.fn();
       const user = userEvent.setup();
-      render(<TranslationFieldsView {...defaultProps} isCustomNamespace onChange={onChange} />);
+      render(<TranslationFieldsView {...defaultProps} isKeyCreationAllowedNamespace onChange={onChange} />);
 
       await user.click(screen.getByText(t('editor.addKey')));
 
@@ -198,7 +198,7 @@ describe('TranslationFieldsView', () => {
 
     it('closes the form and clears inputs when Cancel is clicked', async () => {
       const user = userEvent.setup();
-      render(<TranslationFieldsView {...defaultProps} isCustomNamespace />);
+      render(<TranslationFieldsView {...defaultProps} isKeyCreationAllowedNamespace />);
 
       await user.click(screen.getByText(t('editor.addKey')));
 
@@ -214,7 +214,7 @@ describe('TranslationFieldsView', () => {
 
     it('shows a duplicate key error when the entered key already exists', async () => {
       const user = userEvent.setup();
-      render(<TranslationFieldsView {...defaultProps} isCustomNamespace />);
+      render(<TranslationFieldsView {...defaultProps} isKeyCreationAllowedNamespace />);
 
       await user.click(screen.getByText(t('editor.addKey')));
 
@@ -227,7 +227,7 @@ describe('TranslationFieldsView', () => {
 
     it('disables the submit button when the key is empty', async () => {
       const user = userEvent.setup();
-      render(<TranslationFieldsView {...defaultProps} isCustomNamespace />);
+      render(<TranslationFieldsView {...defaultProps} isKeyCreationAllowedNamespace />);
 
       await user.click(screen.getByText(t('editor.addKey')));
 
@@ -237,7 +237,7 @@ describe('TranslationFieldsView', () => {
 
     it('disables the submit button when the key is a duplicate', async () => {
       const user = userEvent.setup();
-      render(<TranslationFieldsView {...defaultProps} isCustomNamespace />);
+      render(<TranslationFieldsView {...defaultProps} isKeyCreationAllowedNamespace />);
 
       await user.click(screen.getByText(t('editor.addKey')));
 

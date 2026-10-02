@@ -50,7 +50,7 @@ describe('TranslationJsonEditor', () => {
         <TranslationJsonEditor
           values={sampleValues}
           serverKeys={sampleServerKeys}
-          isCustomNamespace={false}
+          isKeyCreationAllowedNamespace={false}
           colorMode="light"
           onChange={vi.fn()}
         />,
@@ -67,7 +67,7 @@ describe('TranslationJsonEditor', () => {
         <TranslationJsonEditor
           values={sampleValues}
           serverKeys={sampleServerKeys}
-          isCustomNamespace={false}
+          isKeyCreationAllowedNamespace={false}
           colorMode="light"
           onChange={vi.fn()}
         />,
@@ -85,7 +85,7 @@ describe('TranslationJsonEditor', () => {
         <TranslationJsonEditor
           values={sampleValues}
           serverKeys={sampleServerKeys}
-          isCustomNamespace={false}
+          isKeyCreationAllowedNamespace={false}
           colorMode="light"
           onChange={onChange}
         />,
@@ -101,7 +101,7 @@ describe('TranslationJsonEditor', () => {
         <TranslationJsonEditor
           values={sampleValues}
           serverKeys={sampleServerKeys}
-          isCustomNamespace={false}
+          isKeyCreationAllowedNamespace={false}
           colorMode="light"
           onChange={vi.fn()}
         />,
@@ -119,7 +119,7 @@ describe('TranslationJsonEditor', () => {
         <TranslationJsonEditor
           values={sampleValues}
           serverKeys={sampleServerKeys}
-          isCustomNamespace={false}
+          isKeyCreationAllowedNamespace={false}
           colorMode="light"
           onChange={vi.fn()}
         />,
@@ -137,7 +137,7 @@ describe('TranslationJsonEditor', () => {
         <TranslationJsonEditor
           values={sampleValues}
           serverKeys={sampleServerKeys}
-          isCustomNamespace={false}
+          isKeyCreationAllowedNamespace={false}
           colorMode="light"
           onChange={onChange}
         />,
@@ -153,7 +153,7 @@ describe('TranslationJsonEditor', () => {
         <TranslationJsonEditor
           values={sampleValues}
           serverKeys={sampleServerKeys}
-          isCustomNamespace={false}
+          isKeyCreationAllowedNamespace={false}
           colorMode="light"
           onChange={vi.fn()}
         />,
@@ -171,7 +171,7 @@ describe('TranslationJsonEditor', () => {
         <TranslationJsonEditor
           values={sampleValues}
           serverKeys={sampleServerKeys}
-          isCustomNamespace={false}
+          isKeyCreationAllowedNamespace={false}
           colorMode="light"
           onChange={vi.fn()}
         />,
@@ -182,7 +182,7 @@ describe('TranslationJsonEditor', () => {
         <TranslationJsonEditor
           values={newValues}
           serverKeys={Object.keys(newValues)}
-          isCustomNamespace={false}
+          isKeyCreationAllowedNamespace={false}
           colorMode="light"
           onChange={vi.fn()}
         />,
@@ -201,7 +201,7 @@ describe('TranslationJsonEditor', () => {
         <TranslationJsonEditor
           values={sampleValues}
           serverKeys={sampleServerKeys}
-          isCustomNamespace
+          isKeyCreationAllowedNamespace
           colorMode="light"
           onChange={onChange}
         />,
@@ -220,7 +220,7 @@ describe('TranslationJsonEditor', () => {
         <TranslationJsonEditor
           values={{...expectedRecord}}
           serverKeys={sampleServerKeys}
-          isCustomNamespace
+          isKeyCreationAllowedNamespace
           colorMode="light"
           onChange={onChange}
         />,
@@ -239,7 +239,7 @@ describe('TranslationJsonEditor', () => {
         <TranslationJsonEditor
           values={sampleValues}
           serverKeys={sampleServerKeys}
-          isCustomNamespace
+          isKeyCreationAllowedNamespace
           colorMode="light"
           onChange={onChange}
         />,
@@ -253,7 +253,7 @@ describe('TranslationJsonEditor', () => {
         <TranslationJsonEditor
           values={{'actions.save': 'Enregistrer'}}
           serverKeys={sampleServerKeys}
-          isCustomNamespace
+          isKeyCreationAllowedNamespace
           colorMode="light"
           onChange={onChange}
         />,
@@ -265,7 +265,7 @@ describe('TranslationJsonEditor', () => {
         <TranslationJsonEditor
           values={externalValues}
           serverKeys={Object.keys(externalValues)}
-          isCustomNamespace
+          isKeyCreationAllowedNamespace
           colorMode="light"
           onChange={onChange}
         />,

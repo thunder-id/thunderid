@@ -1,6 +1,5 @@
-id: "self-registration-invite-sms"
+handle: "self-registration-invite-sms"
 displayName: "Self Registration Invite SMS"
-scenario: "SELF_REGISTRATION"
-type: "sms"
-contentType: "text/plain"
-body: "{{ctx(appName)}}: Finish your registration by clicking here: {{ctx(inviteLink)}}"
+channel: "sms"
+content:
+  body: "{{ctx(appName)}}: {{ t(notification:template.registration_link_instructions) }} {{ctx(inviteLink)}}"
