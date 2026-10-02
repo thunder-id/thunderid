@@ -442,6 +442,7 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetUserRoles_MergedOrderIs
 
 	suite.mockDBStore.On("GetUserRoles", suite.ctx, "user1", []string{"group1"}).Return(dbRoles, nil)
 	suite.mockFileStore.On("GetUserRoles", suite.ctx, "user1", []string{"group1"}).Return(fileRoles, nil)
+	suite.mockDBStore.On("GetEntityRoleIDs", suite.ctx, "user1", []string{"group1"}).Return([]string{}, nil)
 
 	first, err := suite.store.GetUserRoles(suite.ctx, "user1", []string{"group1"})
 	assert.NoError(suite.T(), err)
@@ -454,6 +455,93 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetUserRoles_MergedOrderIs
 		assert.NoError(suite.T(), err)
 		assert.Equal(suite.T(), first, repeat, "Repeated calls must return the roles in the same order")
 	}
+}
+
+// A role defined declaratively in the file store but assigned to the user via the DB must still
+// appear in GetUserRoles, not just in GetRoleAssignments/GetAuthorizedPermissions. This is the
+// same cross-store bridge as TestGetAuthorizedPermissions_DeclarativeRoleWithDynamicAssignment,
+// applied to role names instead of permissions.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetUserRoles_BridgesDBAssignmentOntoFileDefinedRole() {
+	declarativeRoleID := "a1c00000-0000-0000-0000-000000000004"
+
+	suite.mockDBStore.On("GetUserRoles", suite.ctx, "user1", []string{}).Return([]string{"DBRole"}, nil)
+	suite.mockFileStore.On("GetUserRoles", suite.ctx, "user1", []string{}).Return([]string{}, nil)
+	suite.mockDBStore.On("GetEntityRoleIDs", suite.ctx, "user1", []string{}).
+		Return([]string{declarativeRoleID}, nil)
+	suite.mockFileStore.On("IsRoleExist", suite.ctx, declarativeRoleID).Return(true, nil)
+	suite.mockFileStore.On("GetRole", suite.ctx, declarativeRoleID).
+		Return(RoleWithPermissions{ID: declarativeRoleID, Name: "TenantInstanceAdmin"}, nil)
+
+	result, err := suite.store.GetUserRoles(suite.ctx, "user1", []string{})
+
+	assert.NoError(suite.T(), err)
+	assert.ElementsMatch(suite.T(), []string{"DBRole", "TenantInstanceAdmin"}, result)
+}
+
+// A role ID from a DB assignment that is not declarative is already covered by
+// dbStore.GetUserRoles, so it must not be resolved (or double-counted) via the file store.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetUserRoles_DBOnlyRoleIsNotDoubleResolved() {
+	suite.mockDBStore.On("GetUserRoles", suite.ctx, "user1", []string{}).Return([]string{"DBRole"}, nil)
+	suite.mockFileStore.On("GetUserRoles", suite.ctx, "user1", []string{}).Return([]string{}, nil)
+	suite.mockDBStore.On("GetEntityRoleIDs", suite.ctx, "user1", []string{}).
+		Return([]string{"dbOnlyRoleID"}, nil)
+	suite.mockFileStore.On("IsRoleExist", suite.ctx, "dbOnlyRoleID").Return(false, nil)
+
+	result, err := suite.store.GetUserRoles(suite.ctx, "user1", []string{})
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), []string{"DBRole"}, result)
+}
+
+// Corruption is skipped here (unlike the enumeration helpers, which fail closed): role names feed
+// an informational token claim, not an authorization decision, so this mirrors
+// crossStoreAuthorizedPermissions in skipping both ErrRoleNotFound and ErrRoleDataCorrupted.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetUserRoles_CrossStoreSkipsBenignGetRoleErrors() {
+	for _, benignErr := range []error{ErrRoleNotFound, ErrRoleDataCorrupted} {
+		suite.Run(benignErr.Error(), func() {
+			suite.SetupTest()
+			suite.mockDBStore.On("GetUserRoles", suite.ctx, "user1", []string{}).Return([]string{}, nil)
+			suite.mockFileStore.On("GetUserRoles", suite.ctx, "user1", []string{}).Return([]string{}, nil)
+			suite.mockDBStore.On("GetEntityRoleIDs", suite.ctx, "user1", []string{}).
+				Return([]string{"role1"}, nil)
+			suite.mockFileStore.On("IsRoleExist", suite.ctx, "role1").Return(true, nil)
+			suite.mockFileStore.On("GetRole", suite.ctx, "role1").Return(RoleWithPermissions{}, benignErr)
+
+			result, err := suite.store.GetUserRoles(suite.ctx, "user1", []string{})
+
+			assert.NoError(suite.T(), err)
+			assert.Empty(suite.T(), result)
+		})
+	}
+}
+
+// A load failure other than ErrRoleNotFound/ErrRoleDataCorrupted is an actionable storage/IO
+// error and must propagate rather than silently producing an incomplete roles claim.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetUserRoles_CrossStorePropagatesGetRoleError() {
+	suite.mockDBStore.On("GetUserRoles", suite.ctx, "user1", []string{}).Return([]string{}, nil)
+	suite.mockFileStore.On("GetUserRoles", suite.ctx, "user1", []string{}).Return([]string{}, nil)
+	suite.mockDBStore.On("GetEntityRoleIDs", suite.ctx, "user1", []string{}).
+		Return([]string{"role1"}, nil)
+	suite.mockFileStore.On("IsRoleExist", suite.ctx, "role1").Return(true, nil)
+	suite.mockFileStore.On("GetRole", suite.ctx, "role1").
+		Return(RoleWithPermissions{}, errors.New("disk read failure"))
+
+	result, err := suite.store.GetUserRoles(suite.ctx, "user1", []string{})
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+}
+
+// Cross-store path must not call GetEntityRoleIDs when there's no assignee to look up.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetUserRoles_CrossStoreNoEntityNoGroups() {
+	suite.mockDBStore.On("GetUserRoles", suite.ctx, "", []string{}).Return([]string{}, nil)
+	suite.mockFileStore.On("GetUserRoles", suite.ctx, "", []string{}).Return([]string{}, nil)
+
+	result, err := suite.store.GetUserRoles(suite.ctx, "", []string{})
+
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), result)
+	suite.mockDBStore.AssertNotCalled(suite.T(), "GetEntityRoleIDs", mock.Anything, mock.Anything, mock.Anything)
 }
 
 // Test GetAuthorizedPermissions with empty result
