@@ -23,8 +23,8 @@ func runBuildEntityTypeQueryTests(t *testing.T, cases []struct {
 		t.Run(tc.name, func(t *testing.T) {
 			query := fn(tc.ouIDs)
 			assert.Equal(t, expectedID, query.ID)
-			assert.Equal(t, tc.wantPG, query.PostgresQuery)
-			assert.Equal(t, tc.wantSQLite, query.SQLiteQuery)
+			assert.Equal(t, tc.wantPG, query.GetQuery("postgres"))
+			assert.Equal(t, tc.wantPG, query.GetQuery("sqlite"))
 		})
 	}
 }
