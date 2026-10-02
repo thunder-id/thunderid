@@ -1,0 +1,669 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: thunderidinstances.apps.thunderid.io
+spec:
+  group: apps.thunderid.io
+  names:
+    kind: ThunderIDInstance
+    listKind: ThunderIDInstanceList
+    plural: thunderidinstances
+    singular: thunderidinstance
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ThunderIDInstance is the Schema for the thunderidinstances API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of ThunderIDInstance
+            properties:
+              autoScaling:
+                description: AutoScalingSpec configures a HorizontalPodAutoscaler
+                  for the Deployment - see reconcileHPA.
+                properties:
+                  maxReplicas:
+                    format: int32
+                    type: integer
+                  minReplicas:
+                    format: int32
+                    type: integer
+                  targetCPUUtilizationPercentage:
+                    format: int32
+                    type: integer
+                  targetMemoryUtilizationPercentage:
+                    format: int32
+                    type: integer
+                required:
+                - maxReplicas
+                - minReplicas
+                type: object
+              config:
+                description: |-
+                  Config groups every field that maps directly into ThunderID's own deployment.yaml — see
+                  AppConfigSpec. Kept separate from this struct's other, Kubernetes/operator-level fields.
+                properties:
+                  database:
+                    description: |-
+                      Database mirrors ThunderID's own "database:" section — see DatabaseSpec. Unset means the
+                      image's built-in sqlite default stands untouched. When unset, or set but not every scope
+                      resolves to postgres, spec.dataVolumeSize must be set (at least one local sqlite file needs
+                      somewhere to persist).
+                    properties:
+                      config:
+                        description: |-
+                          DatabaseBackendSpec is one database scope. ThunderID has four (config, runtime_transient,
+                          entity, runtime_persistent), each independently typed — see DatabaseSpec.
+                        properties:
+                          postgres:
+                            description: Set when type is "postgres".
+                            properties:
+                              connMaxLifetime:
+                                format: int32
+                                type: integer
+                              hostname:
+                                type: string
+                              maxIdleConns:
+                                format: int32
+                                type: integer
+                              maxOpenConns:
+                                format: int32
+                                type: integer
+                              name:
+                                type: string
+                              passwordRef:
+                                description: |-
+                                  PasswordRef names the Secret+key holding this scope's PostgreSQL password. Required (this scope's
+                                  DatabaseBackendSpec.Type is "postgres" whenever Postgres itself is set). K8s-only glue, not
+                                  a ThunderID field. Scopes are independent: point two scopes' PasswordRef at the same Secret with
+                                  different Key values to give each its own password out of one Secret object, or at the same
+                                  Secret+Key to share one password across them — the operator mounts exactly what each scope's
+                                  PasswordRef says, nothing more.
+                                properties:
+                                  key:
+                                    description: Key within the Secret holding the
+                                      value.
+                                    type: string
+                                  name:
+                                    description: Name of the Secret, in the same namespace
+                                      as the ThunderIDInstance.
+                                    type: string
+                                required:
+                                - key
+                                - name
+                                type: object
+                              port:
+                                type: string
+                              sslmode:
+                                enum:
+                                - require
+                                - verify-full
+                                - verify-ca
+                                - disable
+                                type: string
+                              username:
+                                type: string
+                            type: object
+                          sqlite:
+                            description: Set when type is "sqlite" (or unset).
+                            properties:
+                              connMaxLifetime:
+                                format: int32
+                                type: integer
+                              maxIdleConns:
+                                format: int32
+                                type: integer
+                              maxOpenConns:
+                                format: int32
+                                type: integer
+                              options:
+                                type: string
+                              path:
+                                type: string
+                            type: object
+                          type:
+                            enum:
+                            - sqlite
+                            - postgres
+                            type: string
+                        type: object
+                      entity:
+                        description: |-
+                          DatabaseBackendSpec is one database scope. ThunderID has four (config, runtime_transient,
+                          entity, runtime_persistent), each independently typed — see DatabaseSpec.
+                        properties:
+                          postgres:
+                            description: Set when type is "postgres".
+                            properties:
+                              connMaxLifetime:
+                                format: int32
+                                type: integer
+                              hostname:
+                                type: string
+                              maxIdleConns:
+                                format: int32
+                                type: integer
+                              maxOpenConns:
+                                format: int32
+                                type: integer
+                              name:
+                                type: string
+                              passwordRef:
+                                description: |-
+                                  PasswordRef names the Secret+key holding this scope's PostgreSQL password. Required (this scope's
+                                  DatabaseBackendSpec.Type is "postgres" whenever Postgres itself is set). K8s-only glue, not
+                                  a ThunderID field. Scopes are independent: point two scopes' PasswordRef at the same Secret with
+                                  different Key values to give each its own password out of one Secret object, or at the same
+                                  Secret+Key to share one password across them — the operator mounts exactly what each scope's
+                                  PasswordRef says, nothing more.
+                                properties:
+                                  key:
+                                    description: Key within the Secret holding the
+                                      value.
+                                    type: string
+                                  name:
+                                    description: Name of the Secret, in the same namespace
+                                      as the ThunderIDInstance.
+                                    type: string
+                                required:
+                                - key
+                                - name
+                                type: object
+                              port:
+                                type: string
+                              sslmode:
+                                enum:
+                                - require
+                                - verify-full
+                                - verify-ca
+                                - disable
+                                type: string
+                              username:
+                                type: string
+                            type: object
+                          sqlite:
+                            description: Set when type is "sqlite" (or unset).
+                            properties:
+                              connMaxLifetime:
+                                format: int32
+                                type: integer
+                              maxIdleConns:
+                                format: int32
+                                type: integer
+                              maxOpenConns:
+                                format: int32
+                                type: integer
+                              options:
+                                type: string
+                              path:
+                                type: string
+                            type: object
+                          type:
+                            enum:
+                            - sqlite
+                            - postgres
+                            type: string
+                        type: object
+                      runtimePersistent:
+                        description: |-
+                          DatabaseBackendSpec is one database scope. ThunderID has four (config, runtime_transient,
+                          entity, runtime_persistent), each independently typed — see DatabaseSpec.
+                        properties:
+                          postgres:
+                            description: Set when type is "postgres".
+                            properties:
+                              connMaxLifetime:
+                                format: int32
+                                type: integer
+                              hostname:
+                                type: string
+                              maxIdleConns:
+                                format: int32
+                                type: integer
+                              maxOpenConns:
+                                format: int32
+                                type: integer
+                              name:
+                                type: string
+                              passwordRef:
+                                description: |-
+                                  PasswordRef names the Secret+key holding this scope's PostgreSQL password. Required (this scope's
+                                  DatabaseBackendSpec.Type is "postgres" whenever Postgres itself is set). K8s-only glue, not
+                                  a ThunderID field. Scopes are independent: point two scopes' PasswordRef at the same Secret with
+                                  different Key values to give each its own password out of one Secret object, or at the same
+                                  Secret+Key to share one password across them — the operator mounts exactly what each scope's
+                                  PasswordRef says, nothing more.
+                                properties:
+                                  key:
+                                    description: Key within the Secret holding the
+                                      value.
+                                    type: string
+                                  name:
+                                    description: Name of the Secret, in the same namespace
+                                      as the ThunderIDInstance.
+                                    type: string
+                                required:
+                                - key
+                                - name
+                                type: object
+                              port:
+                                type: string
+                              sslmode:
+                                enum:
+                                - require
+                                - verify-full
+                                - verify-ca
+                                - disable
+                                type: string
+                              username:
+                                type: string
+                            type: object
+                          sqlite:
+                            description: Set when type is "sqlite" (or unset).
+                            properties:
+                              connMaxLifetime:
+                                format: int32
+                                type: integer
+                              maxIdleConns:
+                                format: int32
+                                type: integer
+                              maxOpenConns:
+                                format: int32
+                                type: integer
+                              options:
+                                type: string
+                              path:
+                                type: string
+                            type: object
+                          type:
+                            enum:
+                            - sqlite
+                            - postgres
+                            type: string
+                        type: object
+                      runtimeTransient:
+                        description: |-
+                          DatabaseBackendSpec is one database scope. ThunderID has four (config, runtime_transient,
+                          entity, runtime_persistent), each independently typed — see DatabaseSpec.
+                        properties:
+                          postgres:
+                            description: Set when type is "postgres".
+                            properties:
+                              connMaxLifetime:
+                                format: int32
+                                type: integer
+                              hostname:
+                                type: string
+                              maxIdleConns:
+                                format: int32
+                                type: integer
+                              maxOpenConns:
+                                format: int32
+                                type: integer
+                              name:
+                                type: string
+                              passwordRef:
+                                description: |-
+                                  PasswordRef names the Secret+key holding this scope's PostgreSQL password. Required (this scope's
+                                  DatabaseBackendSpec.Type is "postgres" whenever Postgres itself is set). K8s-only glue, not
+                                  a ThunderID field. Scopes are independent: point two scopes' PasswordRef at the same Secret with
+                                  different Key values to give each its own password out of one Secret object, or at the same
+                                  Secret+Key to share one password across them — the operator mounts exactly what each scope's
+                                  PasswordRef says, nothing more.
+                                properties:
+                                  key:
+                                    description: Key within the Secret holding the
+                                      value.
+                                    type: string
+                                  name:
+                                    description: Name of the Secret, in the same namespace
+                                      as the ThunderIDInstance.
+                                    type: string
+                                required:
+                                - key
+                                - name
+                                type: object
+                              port:
+                                type: string
+                              sslmode:
+                                enum:
+                                - require
+                                - verify-full
+                                - verify-ca
+                                - disable
+                                type: string
+                              username:
+                                type: string
+                            type: object
+                          sqlite:
+                            description: Set when type is "sqlite" (or unset).
+                            properties:
+                              connMaxLifetime:
+                                format: int32
+                                type: integer
+                              maxIdleConns:
+                                format: int32
+                                type: integer
+                              maxOpenConns:
+                                format: int32
+                                type: integer
+                              options:
+                                type: string
+                              path:
+                                type: string
+                            type: object
+                          type:
+                            enum:
+                            - sqlite
+                            - postgres
+                            type: string
+                        type: object
+                    type: object
+                  email:
+                    description: |-
+                      Email mirrors ThunderID's own "email:" section. Unset means no email section in
+                      deployment.yaml at all — see EmailSpec.
+                    properties:
+                      smtp:
+                        description: |-
+                          SMTPConfigSpec mirrors ThunderID's own deployment.yaml "email.smtp:" section, except password:
+                          SecretRef backs it, since ThunderID's own password field is always a file:// reference.
+                        properties:
+                          enableAuthentication:
+                            description: EnableAuthentication authenticates to the
+                              SMTP server using Username/SecretRef.
+                            type: boolean
+                          enableStartTLS:
+                            description: EnableStartTLS upgrades the SMTP connection
+                              to TLS via STARTTLS.
+                            type: boolean
+                          fromAddress:
+                            type: string
+                          host:
+                            type: string
+                          port:
+                            format: int32
+                            type: integer
+                          secretRef:
+                            description: |-
+                              SecretRef names the Secret+key holding the SMTP password. Required when
+                              EnableAuthentication is true, ignored otherwise. K8s-only glue, not a ThunderID field. Same
+                              Secret object a spec.config.database scope's postgres.passwordRef uses is fine too — just a
+                              different Key.
+                            properties:
+                              key:
+                                description: Key within the Secret holding the value.
+                                type: string
+                              name:
+                                description: Name of the Secret, in the same namespace
+                                  as the ThunderIDInstance.
+                                type: string
+                            required:
+                            - key
+                            - name
+                            type: object
+                          username:
+                            description: |-
+                              Username authenticates to the SMTP server. Required when EnableAuthentication is true,
+                              ignored otherwise.
+                            type: string
+                        required:
+                        - fromAddress
+                        - host
+                        - port
+                        type: object
+                    required:
+                    - smtp
+                    type: object
+                  jwt:
+                    description: JWT mirrors ThunderID's own "jwt:" section.
+                    properties:
+                      preferredKeyId:
+                        default: default-key
+                        description: |-
+                          PreferredKeyID selects which of ThunderID's two built-in signing keys ("default-key", RSA,
+                          or "ecdsa-key", ECDSA) it signs new tokens with. Both remain valid for verifying
+                          already-issued tokens regardless of this setting.
+                        enum:
+                        - default-key
+                        - ecdsa-key
+                        type: string
+                    type: object
+                  passkey:
+                    description: Passkey mirrors ThunderID's own "passkey:" section.
+                    properties:
+                      extraAllowedOrigins:
+                        description: |-
+                          ExtraAllowedOrigins adds WebAuthn/passkey origins beyond the instance's own public URL
+                          (spec.domain, or https://localhost:<port> when unset), which the operator always includes
+                          automatically — e.g. a separate frontend origin that also needs to register/verify passkeys
+                          against this instance.
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                  port:
+                    default: 8090
+                    description: |-
+                      Port is the port ThunderID listens on inside the pod — also used for the container port,
+                      all three probes, the Service, and the Ingress backend, so it only needs setting once here.
+                      Dual-purpose (Kubernetes wiring too), so it stays flat here rather than nested under a
+                      mirrored "server:" block like the rest of this struct.
+                    format: int32
+                    type: integer
+                  tls:
+                    description: TLS mirrors ThunderID's own "tls:" section.
+                    properties:
+                      minVersion:
+                        default: "1.3"
+                        description: |-
+                          MinVersion is the minimum TLS version ThunderID's own HTTPS listener accepts. Unrelated to
+                          spec.tlsSecret, which is the Ingress's TLS termination — this is the app's own listener.
+                        enum:
+                        - "1.2"
+                        - "1.3"
+                        type: string
+                    type: object
+                type: object
+              dataVolumeSize:
+                description: |-
+                  DataVolumeSize, when set (e.g. "1Gi"), provisions a ReadWriteOnce PersistentVolumeClaim
+                  mounted at /opt/thunderid/repository/database (where the SQLite files live) and gates
+                  setup.sh to run only once: the container entrypoint checks a marker file on that volume
+                  and skips setup.sh on every restart after the first, instead of rerunning it (and wiping
+                  the database) on every pod restart. Because the PVC is ReadWriteOnce, the Deployment
+                  strategy switches to Recreate to avoid two pods mounting it at once — only meaningful with
+                  replicas: 1. Either this or every Config.Database scope's Type=postgres must be set — a
+                  ThunderIDInstance with neither is rejected: ephemeral, wipe-on-every-restart SQLite is not a
+                  supported configuration.
+                type: string
+              domain:
+                description: |-
+                  Domain is the externally-reachable hostname for this instance. When set, the operator
+                  creates an Ingress (Host: spec.domain, TLS via spec.tlsSecret if set) so ThunderID is
+                  reachable without kubectl port-forward access — e.g. a real deployment behind a real
+                  DNS record. Optional: when unset (the default, and what every local/dev workflow in
+                  this repo actually uses), no Ingress is created and ThunderID is only reachable via its
+                  Service (kubectl port-forward svc/<name> 8090:8090 -> https://localhost:8090).
+                type: string
+              image:
+                type: string
+              replicas:
+                format: int32
+                type: integer
+              resources:
+                description: ResourceRequirements describes the compute resource requirements.
+                properties:
+                  claims:
+                    description: |-
+                      Claims lists the names of resources, defined in spec.resourceClaims,
+                      that are used by this container.
+
+                      This field depends on the
+                      DynamicResourceAllocation feature gate.
+
+                      This field is immutable. It can only be set for containers.
+                    items:
+                      description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                      properties:
+                        name:
+                          description: |-
+                            Name must match the name of one entry in pod.spec.resourceClaims of
+                            the Pod where this field is used. It makes that resource available
+                            inside a container.
+                          type: string
+                        request:
+                          description: |-
+                            Request is the name chosen for a request in the referenced claim.
+                            If empty, everything from the claim is made available, otherwise
+                            only the result of this request.
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                  limits:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: |-
+                      Limits describes the maximum amount of compute resources allowed.
+                      More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                    type: object
+                  requests:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: |-
+                      Requests describes the minimum amount of compute resources required.
+                      If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                      otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                      More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                    type: object
+                type: object
+              resourcesConfigMap:
+                type: string
+              securitySecret:
+                description: |-
+                  SecuritySecret names a pre-existing Secret holding ThunderID's TLS/JWT-signing/encryption
+                  key material and bootstrap admin password (server.cert, server.key, signing.cert,
+                  signing.key, ecdsa-signing.cert, ecdsa-signing.key, crypto.key, direct_auth_secret,
+                  admin-password). When unset, the operator generates and manages this Secret itself as
+                  "<name>-security".
+                type: string
+              tlsSecret:
+                type: string
+            required:
+            - image
+            type: object
+          status:
+            description: status defines the observed state of ThunderIDInstance
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              phase:
+                type: string
+              url:
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

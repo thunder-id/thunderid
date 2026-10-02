@@ -387,6 +387,20 @@ function test_i18n_extractor() {
     cd "$SCRIPT_DIR" || exit 1
 }
 
+function test_k8s_operator() {
+    # Standalone on purpose: unlike test_cli/test_i18n_extractor, this is not called from
+    # test_tools, so it never runs as part of `make tools_test` or `make test` - only via its own
+    # `make tools_test_k8s_operator`. Runs `go test` directly rather than the tool's own
+    # `make test-unit`, which also depends on manifests/generate/fmt - those regenerate CRD YAML
+    # and deepcopy code and reformat source, side effects a CI test invocation must not have (this
+    # repo's CRDs are manually maintained on Windows, so a regenerated CRD can legitimately differ
+    # from the committed one - see tools/k8s-operator/Makefile for the envtest-backed `test` tier
+    # and the Kind-cluster-backed `test-e2e` tier, both of which remain local-only).
+    echo "Running k8s-operator tests..."
+    cd "$SCRIPT_DIR/tools/k8s-operator" && go test $(go list ./... | grep -v /e2e)
+    cd "$SCRIPT_DIR" || exit 1
+}
+
 function lint_cli() {
     # tools/cli is a separate Go module with its own Go directive, and golangci-lint refuses to
     # run when the Go it was built with is older than the module it is linting. The CLI therefore
@@ -1255,6 +1269,9 @@ case "$1" in
     tools_lint_i18n_extractor)
         lint_i18n_extractor
         ;;
+    tools_test_k8s_operator)
+        test_k8s_operator
+        ;;
     package_samples)
         package_sample_app
         ;;
@@ -1310,6 +1327,7 @@ case "$1" in
         echo "  tools_build_i18n_extractor - Build the i18n-extractor binary"
         echo "  tools_test_i18n_extractor  - Run i18n-extractor tests"
         echo "  tools_lint_i18n_extractor  - Run golangci-lint on the i18n-extractor code"
+        echo "  tools_test_k8s_operator  - Run k8s-operator fake-client unit tests (not part of tools_test)"
         echo "  package_samples          - Package the sample applications (samples are distributed as source)"
         echo "  test_unit                - Run unit tests with coverage"
         echo "  test_integration         - Run integration tests. Use -run and -package for filtering"
